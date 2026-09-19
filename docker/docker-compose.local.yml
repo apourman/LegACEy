@@ -1,0 +1,24 @@
+services:
+  ace-db:
+    image: mysql:8.0
+    env_file: ../docker.env
+    ports:
+      - "127.0.0.1:${DB_HOST_PORT:-3310}:3306"
+    environment:
+      DB_ROOT: /repo/Database
+      ACE_DB_AUTH_NAME: ace_auth
+      ACE_DB_SHARD_NAME: ace_shard
+      ACE_DB_WORLD_NAME: ace_world
+    volumes:
+      - db-data:/var/lib/mysql
+      - ../Database:/repo/Database:ro
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+volumes:
+  db-data:
