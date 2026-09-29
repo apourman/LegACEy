@@ -38,13 +38,13 @@ namespace ACE.MarketApi
         {
             var query = request.Query;
 
-            var sortValue = Text(query["sort"]) ?? "newest";
+            var sortValue = QueryValue(query["sort"]) ?? "newest";
             var sort = ListingCatalog.Sorts.FirstOrDefault(s => s.Value == sortValue);
             if (sort == null)
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_sort");
 
             bool descending;
-            switch (Text(query["dir"]))
+            switch (QueryValue(query["dir"]))
             {
                 case null: descending = sort.DescendingByDefault; break;
                 case "asc": descending = false; break;
@@ -53,7 +53,7 @@ namespace ACE.MarketApi
             }
 
             var limit = DefaultPageSize;
-            if (Text(query["limit"]) is string limitText && (!int.TryParse(limitText, NumberStyles.None, CultureInfo.InvariantCulture, out limit) || limit < 1))
+            if (QueryValue(query["limit"]) is string limitText && (!int.TryParse(limitText, NumberStyles.None, CultureInfo.InvariantCulture, out limit) || limit < 1))
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_limit");
             limit = Math.Min(limit, MaxPageSize);
 
@@ -61,7 +61,7 @@ namespace ACE.MarketApi
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_price");
 
             int? itemType = null;
-            if (Text(query["type"]) is string typeText)
+            if (QueryValue(query["type"]) is string typeText)
             {
                 if (!ListingCatalog.TryParseItemType(typeText, out var parsed))
                     return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_type");
@@ -69,13 +69,13 @@ namespace ACE.MarketApi
             }
 
             ListingCatalog.Cursor after = null;
-            if (Text(query["cursor"]) is string cursorText)
+            if (QueryValue(query["cursor"]) is string cursorText)
             {
                 try
                 {
                     after = ListingCatalog.Cursor.Decode(cursorText);
                 }
-                catch (Exception e) when (e is FormatException || e is JsonException)
+                catch (Exception e) when (e is FormatException || e is JsonException || e is ArgumentException)
                 {
                     return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_cursor");
                 }
@@ -84,14 +84,11 @@ namespace ACE.MarketApi
                     return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_cursor");
             }
 
-            var now = time.GetUtcNow().UtcDateTime;
-            var banned = MarketUpkeep.ExpireAndReturnBanned(database, now);
-
             using var shard = database.CreateShard();
 
-            var rows = ListingCatalog.Visible(shard, now, banned);
+            var rows = VisibleNow(shard, database, time);
 
-            if (Text(query["q"]) is string text)
+            if (QueryValue(query["q"]) is string text)
                 rows = ListingCatalog.NameContains(rows, text);
             if (itemType is int type)
                 rows = rows.Where(r => r.Item.ItemType == type);
@@ -99,7 +96,7 @@ namespace ACE.MarketApi
                 rows = rows.Where(r => r.Listing.Price >= min);
             if (maxPrice is long max)
                 rows = rows.Where(r => r.Listing.Price <= max);
-            if (Text(query["seller"]) is string seller)
+            if (QueryValue(query["seller"]) is string seller)
                 rows = rows.Where(r => r.Seller == seller);
 
             List<ListingCatalog.Row> page;
@@ -108,8 +105,9 @@ namespace ACE.MarketApi
             {
                 page = ListingCatalog.Sort(rows, sort.Value, descending, after, out cursorKey).Take(limit + 1).ToList();
             }
-            catch (FormatException)
+            catch (Exception e) when (e is FormatException || e is OverflowException || e is ArgumentOutOfRangeException)
             {
+                // a cursor key that doesn't fit the sort's type
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_cursor");
             }
 
@@ -129,17 +127,14 @@ namespace ACE.MarketApi
         /// </summary>
         private static IResult Suggest(HttpRequest request, MarketDatabase database, TimeProvider time)
         {
-            var text = Text(request.Query["q"]);
+            var text = QueryValue(request.Query["q"]);
 
             if (text == null)
                 return Results.Json(new { suggestions = Array.Empty<string>() });
 
-            var now = time.GetUtcNow().UtcDateTime;
-            var banned = MarketUpkeep.ExpireAndReturnBanned(database, now);
-
             using var shard = database.CreateShard();
 
-            var suggestions = ListingCatalog.NameStartsWith(ListingCatalog.Visible(shard, now, banned), text)
+            var suggestions = ListingCatalog.NameStartsWith(VisibleNow(shard, database, time), text)
                 .Select(r => r.Item.Name)
                 .Distinct()
                 .OrderBy(n => n)
@@ -154,12 +149,9 @@ namespace ACE.MarketApi
         /// </summary>
         private static IResult Detail(long id, MarketDatabase database, TimeProvider time)
         {
-            var now = time.GetUtcNow().UtcDateTime;
-            var banned = MarketUpkeep.ExpireAndReturnBanned(database, now);
-
             using var shard = database.CreateShard();
 
-            var row = ListingCatalog.Visible(shard, now, banned).FirstOrDefault(r => r.Listing.Id == id);
+            var row = VisibleNow(shard, database, time).FirstOrDefault(r => r.Listing.Id == id);
 
             if (row == null)
                 return MarketHttp.Error(StatusCodes.Status404NotFound, "not_found");
@@ -172,12 +164,9 @@ namespace ACE.MarketApi
         /// </summary>
         private static IResult Facets(MarketDatabase database, TimeProvider time)
         {
-            var now = time.GetUtcNow().UtcDateTime;
-            var banned = MarketUpkeep.ExpireAndReturnBanned(database, now);
-
             using var shard = database.CreateShard();
 
-            var types = ListingCatalog.Visible(shard, now, banned)
+            var types = VisibleNow(shard, database, time)
                 .GroupBy(r => r.Item.ItemType)
                 .Select(g => new { ItemType = g.Key, Count = g.Count() })
                 .ToList()
@@ -193,9 +182,20 @@ namespace ACE.MarketApi
         }
 
         /// <summary>
+        /// The listings a visitor can see, after expiring overdue listings and returning banned sellers' listings
+        /// </summary>
+        private static IQueryable<ListingCatalog.Row> VisibleNow(Database.Models.Shard.ShardDbContext shard, MarketDatabase database, TimeProvider time)
+        {
+            var now = time.GetUtcNow().UtcDateTime;
+            var banned = MarketUpkeep.ExpireAndReturnBanned(database, now);
+
+            return ListingCatalog.Visible(shard, now, banned);
+        }
+
+        /// <summary>
         /// The trimmed query value, or null when it's missing or blank
         /// </summary>
-        private static string Text(StringValues value)
+        private static string QueryValue(StringValues value)
         {
             var text = value.ToString().Trim();
 
@@ -206,7 +206,7 @@ namespace ACE.MarketApi
         {
             price = null;
 
-            if (Text(value) is not string text)
+            if (QueryValue(value) is not string text)
                 return true;
 
             if (!long.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var parsed))

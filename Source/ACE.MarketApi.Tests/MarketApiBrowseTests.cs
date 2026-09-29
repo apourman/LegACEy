@@ -247,6 +247,8 @@ namespace ACE.MarketApi.Tests
                 ("dir=sideways", "bad_sort"),
                 ("cursor=garbage!", "bad_cursor"),
                 ($"sort=name&cursor={cursor}", "bad_cursor"),          // a cursor from another order
+                ("sort=price&dir=asc&cursor=" + new ListingCatalog.Cursor("price", false, "99999999999999999999", 1).Encode(), "bad_cursor"),   // a key that overflows
+                ("sort=newest&dir=desc&cursor=" + new ListingCatalog.Cursor("newest", true, "9999999999999999999", 1).Encode(), "bad_cursor"),     // ticks past the largest date
                 ("limit=0", "bad_limit"),
                 ("limit=abc", "bad_limit"),
                 ("minPrice=cheap", "bad_price"),

@@ -240,6 +240,24 @@ namespace ACE.MarketApi.Tests
         }
 
         [TestMethod]
+        public async Task List_ConcurrentRequestsForOneItem_ExactlyOneSucceeds()
+        {
+            var seller = NewSeller();
+            var guid = MarketApiTestData.AddVaultItem(seller.AccountId, seller.CharacterId, "Contested", VaultItemState.Held);
+
+            await using var host = await MarketApiHost.StartAsync();
+            var cookie = await host.SignInForCookieAsync(seller.Name, "pass");
+
+            var responses = await Task.WhenAll(Enumerable.Range(0, 8).Select(i => Task.Run(() => ListAsync(host, cookie, guid, 10 + i))));
+
+            Assert.AreEqual(1, responses.Count(r => r.StatusCode == HttpStatusCode.Created), string.Join(",", responses.Select(r => (int)r.StatusCode)));
+            Assert.IsTrue(responses.Where(r => r.StatusCode != HttpStatusCode.Created).All(r => r.StatusCode == HttpStatusCode.Conflict));
+            Assert.AreEqual(1L, MarketApiTestData.Scalar($"SELECT COUNT(*) FROM market_listing WHERE item_Guid = {guid};"));
+            Assert.AreEqual(1L, MarketApiTestData.Scalar($"SELECT row_Version FROM market_vault_item WHERE item_Guid = {guid};"));
+            Assert.AreEqual(1, Events(guid).Length);
+        }
+
+        [TestMethod]
         public async Task List_WithoutASession_IsRefused()
         {
             var seller = NewSeller();

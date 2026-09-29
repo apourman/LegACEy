@@ -42,7 +42,8 @@ namespace ACE.Database.Market
 
     /// <summary>
     /// Listing, delisting, expiry and ban returns. Market tables only: the item never moves, only its Vault row's state.
-    /// Every change is one SaveChanges guarded by the Vault row's and the listing's row versions, so a change that loses a race writes nothing.
+    /// Every change is one SaveChanges guarded by the Vault row's and the listing's row versions, so a change that loses a race for a row writes nothing.
+    /// The active-listing cap is a count, not a row, so parallel listings by one seller can pass it together.
     /// </summary>
     public static class ListingStore
     {
