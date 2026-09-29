@@ -141,9 +141,17 @@ namespace ACE.Database
         /// </summary>
         public void DepositToVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, VaultItem vaultItem, Action<bool> callback)
         {
+            DepositToVault(biota, rwLock, vaultItem, int.MaxValue, callback);
+        }
+
+        /// <summary>
+        /// Queues the deposit job, which also refuses when the account's Vault already holds maxItems (see ShardDatabase.DepositToVault)
+        /// </summary>
+        public void DepositToVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, VaultItem vaultItem, int maxItems, Action<bool> callback)
+        {
             _queue.Add(new Task(() =>
             {
-                var result = BaseDatabase.DepositToVault(biota, rwLock, vaultItem);
+                var result = BaseDatabase.DepositToVault(biota, rwLock, vaultItem, maxItems);
                 callback?.Invoke(result);
             }));
         }

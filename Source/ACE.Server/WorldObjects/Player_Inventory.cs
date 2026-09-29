@@ -249,6 +249,28 @@ namespace ACE.Server.WorldObjects
             return true;
         }
 
+        /// <summary>
+        /// Takes an item out of the pack for a Vault deposit: in memory only, with the client messages of TryRemoveFromInventoryWithNetworking but none of its saves.<para />
+        /// The networking removal queues a save of the item with no container, so a crash before the deposit commits would leave an ownerless item for the orphan purge to delete.
+        /// The caller hands the item to the deposit job and then forgets the object: never save it and never Destroy it.
+        /// </summary>
+        public bool TryRemoveFromInventoryForVault(ObjectGuid objectGuid, out WorldObject item)
+        {
+            if (!TryRemoveFromInventory(objectGuid, out item))
+                return false;
+
+            Session.Network.EnqueueSend(
+                new GameMessagePublicUpdateInstanceID(item, PropertyInstanceId.Container, ObjectGuid.Invalid),
+                new GameMessagePrivateUpdatePropertyInt(this, PropertyInt.EncumbranceVal, EncumbranceVal ?? 0));
+
+            if (item.WeenieType == WeenieType.Coin || item.WeenieType == WeenieType.Container)
+                UpdateCoinValue();
+
+            Session.Network.EnqueueSend(new GameMessageDeleteObject(item));
+
+            return true;
+        }
+
         public void TryShuffleStance(EquipMask wieldedLocation)
         {
             //Console.WriteLine($"{Name}.TryStanceShuffle({wieldedLocation})");

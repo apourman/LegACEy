@@ -30,8 +30,9 @@ namespace ACE.Database
         /// evicts the item from the cache, loads a fresh copy, applies the in-memory changes, inserts the Vault row and a deposit item event, and saves once.
         /// Returns false, having saved nothing, if the item still has a container, wielder or location, or if the save fails.
         /// The job sets vaultItem.DepositedTime; on failure, pass a new VaultItem to try again.
+        /// It also refuses, saving nothing, if the account's Vault already holds maxItems (checked in the job, which is serialized with every other Vault job).
         /// </summary>
-        public bool DepositToVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, VaultItem vaultItem)
+        public bool DepositToVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, VaultItem vaultItem, int maxItems = int.MaxValue)
         {
             if (vaultItem.ItemGuid != biota.Id || vaultItem.State != VaultItemState.Held)
             {
@@ -55,6 +56,12 @@ namespace ACE.Database
 
             return SaveVaultJob(nameof(DepositToVault), biota, rwLock, context =>
             {
+                if (context.MarketVaultItems.Count(r => r.AccountId == vaultItem.AccountId) >= maxItems)
+                {
+                    log.Warn($"[DATABASE][VAULT] DepositToVault 0x{biota.Id:X8} refused: the Vault of account {vaultItem.AccountId} already holds {maxItems} items");
+                    return null;
+                }
+
                 vaultItem.DepositedTime = DateTime.UtcNow;
 
                 context.MarketVaultItems.Add(vaultItem);
