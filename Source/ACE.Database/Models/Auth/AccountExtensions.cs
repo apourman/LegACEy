@@ -57,6 +57,37 @@ namespace ACE.Database.Models.Auth
             }
         }
 
+        /// <summary>
+        /// Checks the password without ever changing the account: bcrypt verify, or the SHA512 compare for old accounts.
+        /// Unlike PasswordMatches (the game client's check) it never rehashes or migrates, so the Market API's web sign-in can't disturb the game login.
+        /// </summary>
+        public static bool PasswordMatchesReadOnly(this Account account, string password)
+        {
+            if (string.IsNullOrEmpty(password) || string.IsNullOrEmpty(account.PasswordHash))
+                return false;
+
+            try
+            {
+                if (account.PasswordSalt == "use bcrypt")
+                    return BCryptProvider.Verify(password, account.PasswordHash);
+
+                return CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(GetPasswordHash(account, password)), Encoding.ASCII.GetBytes(account.PasswordHash));
+            }
+            catch (Exception ex) when (ex is FormatException || ex is BCrypt.Net.SaltParseException || ex is ArgumentException)
+            {
+                log.WarnFormat("{0} has an unreadable password hash or salt: {1}", account.AccountName, ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// True while a ban is in force, the same rule the game's login uses: a ban expire time still in the future
+        /// </summary>
+        public static bool IsBanned(this Account account, DateTime utcNow)
+        {
+            return account.BanExpireTime.HasValue && utcNow < account.BanExpireTime.Value;
+        }
+
         public static void SetPassword(this Account account, string value)
         {
             account.PasswordHash = GetPasswordHash(value);
