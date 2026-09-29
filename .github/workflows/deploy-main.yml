@@ -45,10 +45,10 @@ jobs:
     environment: production
     permissions: {}
     env:
-      DEPLOY_HOST: ${{ vars.ACE_DEPLOY_HOST }}
-      DEPLOY_USER: ${{ vars.ACE_DEPLOY_USER }}
+      DEPLOY_HOST: ${{ secrets.ACE_DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.ACE_DEPLOY_USER }}
       RELEASE_SHA: ${{ github.sha }}
-      RELEASE_ROOT: ${{ vars.ACE_RELEASE_ROOT }}
+      RELEASE_ROOT: ${{ secrets.ACE_RELEASE_ROOT }}
     steps:
       - name: Validate deployment variables
         run: |
