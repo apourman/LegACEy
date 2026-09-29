@@ -26,7 +26,7 @@ namespace ACE.Server.Market
         NoPackSpace,
         UniqueLimit,
 
-        // the channel (ticket 04)
+        // the channel
         RecentPlayerFight,
         Trading,
         Channelling,

@@ -194,8 +194,8 @@ namespace ACE.Server.Market
         }
 
         /// <summary>
-        /// Every withdrawal refusal rule, in order, without changing anything. Null if the item can be withdrawn.
-        /// The row is set whenever it is the player's account's. The item is created from the database, but not added anywhere, once the row checks pass.
+        /// Every withdrawal refusal rule, in order. Null if the item can be withdrawn. Nothing is changed, but the item is read from the database
+        /// and created (not added anywhere) once the row checks pass, for the pack-space and unique checks. The row is set whenever it is the player's account's.
         /// With no marked version the row must be held; with one, it must be withdrawing with exactly that version.
         /// </summary>
         public static VaultOutcome? CheckWithdraw(Player player, uint itemGuid, uint? markedRowVersion, out VaultItem row, out WorldObject item)
@@ -220,7 +220,11 @@ namespace ACE.Server.Market
             if (row.State == VaultItemState.Listed)
                 return VaultOutcome.Listed;
 
-            if (markedRowVersion == null ? row.State == VaultItemState.Withdrawing : row.State != VaultItemState.Withdrawing || row.RowVersion != markedRowVersion)
+            // a plain withdrawal needs a held row; one the channel marked must still carry the channel's mark
+            if (markedRowVersion == null && row.State == VaultItemState.Withdrawing)
+                return VaultOutcome.Withdrawing;
+
+            if (markedRowVersion != null && (row.State != VaultItemState.Withdrawing || row.RowVersion != markedRowVersion))
                 return VaultOutcome.Withdrawing;
 
             var biota = DatabaseManager.Shard.BaseDatabase.GetBiota(itemGuid, doNotAddToCache: true);

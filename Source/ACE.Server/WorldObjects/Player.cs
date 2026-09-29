@@ -124,6 +124,10 @@ namespace ACE.Server.WorldObjects
             AddBiotasToEquippedObjects(wieldedItems);
 
             UpdateCoinValue(false);
+
+            // the PK logout and Vault channel freezes never outlive a session, but IsFrozen is saved: a crash mid-freeze would keep it
+            if (IsFrozen ?? false)
+                IsFrozen = false;
         }
 
         public override void InitPhysicsObj()

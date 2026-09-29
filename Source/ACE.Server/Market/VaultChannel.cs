@@ -3,6 +3,7 @@ using System;
 using log4net;
 
 using ACE.Database.Market;
+using ACE.Database.Models.Shard.Market;
 using ACE.Entity.Enum;
 using ACE.Server.Entity.Actions;
 using ACE.Server.Managers;
@@ -34,6 +35,11 @@ namespace ACE.Server.Market
 
         private readonly Action<VaultResult> completed;
 
+        /// <summary>
+        /// True if the channel froze the player, so it only lifts its own freeze
+        /// </summary>
+        private bool froze;
+
         private VaultChannel(bool isDeposit, uint itemGuid, string itemName, uint markedRowVersion, Action<VaultResult> completed)
         {
             IsDeposit = isDeposit;
@@ -57,7 +63,7 @@ namespace ACE.Server.Market
                 return;
             }
 
-            Begin(player, new VaultChannel(true, itemGuid, item.Name, 0, completed));
+            Begin(player, new VaultChannel(isDeposit: true, itemGuid, item.Name, markedRowVersion: 0, completed));
         }
 
         /// <summary>
@@ -65,7 +71,7 @@ namespace ACE.Server.Market
         /// </summary>
         public static void StartWithdraw(Player player, uint itemGuid, Action<VaultResult> completed = null)
         {
-            Database.Models.Shard.Market.VaultItem row = null;
+            VaultItem row = null;
             var refusal = CheckStart(player) ?? Vault.CheckWithdraw(player, itemGuid, null, out row, out _);
 
             if (refusal == null)
@@ -74,7 +80,7 @@ namespace ACE.Server.Market
 
                 if (marked != null)
                 {
-                    Begin(player, new VaultChannel(false, itemGuid, row.Name, marked.Value, completed));
+                    Begin(player, new VaultChannel(isDeposit: false, itemGuid, row.Name, marked.Value, completed));
                     return;
                 }
 
@@ -91,20 +97,14 @@ namespace ACE.Server.Market
         /// </summary>
         public static void Cancel(Player player)
         {
-            var channel = player.TakeVaultChannel(null);
+            var channel = player.EndVaultChannel();
 
             if (channel == null)
                 return;
 
-            Unfreeze(player);
+            Unfreeze(player, channel);
 
-            WorldManager.EnqueueAction(new ActionEventDelegate(() =>
-            {
-                if (!channel.IsDeposit)
-                    Release(channel);
-
-                Vault.Finish(player, VaultOutcome.Interrupted, channel.ItemName, channel.ItemGuid, channel.completed);
-            }));
+            WorldManager.EnqueueAction(new ActionEventDelegate(() => Interrupt(player, channel)));
         }
 
         /// <summary>
@@ -132,10 +132,18 @@ namespace ACE.Server.Market
         {
             var seconds = (int)Math.Max(0, MarketSettings.Get(MarketSettings.ChannelSeconds));
 
-            player.TakeVaultChannel(channel);
+            if (!player.TryStartVaultChannel(channel))
+            {
+                Interrupt(player, channel, VaultOutcome.Channelling);
+                return;
+            }
 
-            player.IsFrozen = true;
-            player.EnqueueBroadcastPhysicsState();
+            if (!(player.IsFrozen ?? false))
+            {
+                player.IsFrozen = true;
+                player.EnqueueBroadcastPhysicsState();
+                channel.froze = true;
+            }
 
             player.Session?.Network.EnqueueSend(new GameMessageSystemChat(VaultMessages.ChannelStarted(channel.IsDeposit, channel.ItemName, seconds), ChatMessageType.Broadcast));
 
@@ -152,15 +160,12 @@ namespace ACE.Server.Market
             if (!player.TryEndVaultChannel(channel))
                 return;
 
-            Unfreeze(player);
+            Unfreeze(player, channel);
 
             // death and logout cancel the channel themselves; this is the backstop for any path that got past them
             if (player.IsInDeathProcess || player.IsDead || player.IsLoggingOut)
             {
-                if (!channel.IsDeposit)
-                    Release(channel);
-
-                Vault.Finish(player, VaultOutcome.Interrupted, channel.ItemName, channel.ItemGuid, channel.completed);
+                Interrupt(player, channel);
                 return;
             }
 
@@ -180,10 +185,24 @@ namespace ACE.Server.Market
             });
         }
 
-        private static void Unfreeze(Player player)
+        /// <summary>
+        /// Ends a channel that won't reach the Vault: a marked withdrawal goes back to held, and the outcome is reported
+        /// </summary>
+        private static void Interrupt(Player player, VaultChannel channel, VaultOutcome outcome = VaultOutcome.Interrupted)
         {
-            // a PK logout keeps its own freeze
-            if (player.PKLogout || !(player.IsFrozen ?? false))
+            if (!channel.IsDeposit)
+                Release(channel);
+
+            Vault.Finish(player, outcome, channel.ItemName, channel.ItemGuid, channel.completed);
+        }
+
+        /// <summary>
+        /// Lifts the channel's freeze. Called on whatever thread ends the channel, as PK logout's freeze is.
+        /// </summary>
+        private static void Unfreeze(Player player, VaultChannel channel)
+        {
+            // only the freeze this channel set, and a PK logout keeps its own
+            if (!channel.froze || player.PKLogout || !(player.IsFrozen ?? false))
                 return;
 
             player.IsFrozen = false;

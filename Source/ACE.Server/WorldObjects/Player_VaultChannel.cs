@@ -28,11 +28,19 @@ namespace ACE.Server.WorldObjects
         }
 
         /// <summary>
-        /// Swaps in a channel (or null) and returns the one there was. Atomic, so two cancels can't both end the same channel.
+        /// Makes the channel the player's, unless they already have one
         /// </summary>
-        internal VaultChannel TakeVaultChannel(VaultChannel channel)
+        internal bool TryStartVaultChannel(VaultChannel channel)
         {
-            return Interlocked.Exchange(ref vaultChannel, channel);
+            return Interlocked.CompareExchange(ref vaultChannel, channel, null) == null;
+        }
+
+        /// <summary>
+        /// Ends whatever channel the player has and returns it. Atomic, so two cancels can't both end the same channel.
+        /// </summary>
+        internal VaultChannel EndVaultChannel()
+        {
+            return Interlocked.Exchange(ref vaultChannel, null);
         }
 
         /// <summary>

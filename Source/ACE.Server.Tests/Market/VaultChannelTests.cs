@@ -28,6 +28,7 @@ namespace ACE.Server.Tests.Market
         private const uint DrudgeSkulkerWcid = 7;
         private const uint HarmOtherI = 7;      // Life Magic, damages health
         private const uint WeaknessOtherI = 3;  // Creature Enchantment, a debuff that does no damage
+        private const uint PyrealWcid = 273;
 
         // ---- the channel completes
 
@@ -314,6 +315,9 @@ namespace ACE.Server.Tests.Market
             var (player, item) = NewItem(null);
             var other = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
             var session = player.Session;
+            var coins = VaultTestWorld.NewItem(PyrealWcid);
+            coins.SetStackSize(10);
+            VaultTestWorld.Give(player, coins);
 
             using (ChannelSeconds(30))
             {
@@ -349,6 +353,8 @@ namespace ACE.Server.Tests.Market
 
                 AssertBlocked("giving", () => player.HandleActionGiveObjectRequest(other.Guid.Full, item.Guid.Full, 1));
                 AssertBlocked("dropping", () => player.HandleActionDropItem(item.Guid.Full));
+                AssertBlocked("splitting a stack onto the ground", () => player.HandleActionStackableSplitTo3D(coins.Guid.Full, 1));
+                Assert.AreEqual(10, coins.StackSize, "no coins were dropped");
                 Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full), "the item wasn't given or dropped");
 
                 AssertBlocked("the lifestone recall", () => player.HandleActionTeleToLifestone());
@@ -390,6 +396,41 @@ namespace ACE.Server.Tests.Market
             Assert.AreEqual(VaultOutcome.Interrupted, run.Wait().Outcome);
             Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full));
             ClearChannelSeconds();
+        }
+
+        [TestMethod]
+        public void Channel_End_LeavesAFreezeItDidNotSet()
+        {
+            var (player, item) = NewItem(null);
+            player.IsFrozen = true; // frozen by something else before the channel
+
+            using (ChannelSeconds(1))
+            {
+                var run = StartDeposit(player, item.Guid.Full);
+                Assert.AreEqual(VaultOutcome.Deposited, run.Wait().Outcome);
+            }
+
+            Assert.IsTrue(player.IsFrozen ?? false, "the channel only lifts its own freeze");
+        }
+
+        [TestMethod]
+        public void Channel_FreezeSavedByACrash_IsGoneAtNextLogin()
+        {
+            var (player, item) = NewItem(null);
+
+            using (ChannelSeconds(30))
+            {
+                var run = StartDeposit(player, item.Guid.Full);
+                Assert.IsTrue(player.GetProperty(PropertyBool.IsFrozen) ?? false, "the freeze is a saved property");
+
+                // the server stops mid-channel after a save: the next login loads the saved biota
+                var loaded = new Player(player.Biota, new List<ACE.Database.Models.Shard.Biota>(), new List<ACE.Database.Models.Shard.Biota>(), player.Character, null);
+
+                Assert.IsFalse(loaded.IsFrozen ?? false, "no channel survives a restart, so neither does its freeze");
+
+                VaultTestWorld.OnWorldThread(() => VaultChannel.Cancel(player));
+                Assert.AreEqual(VaultOutcome.Interrupted, run.Wait().Outcome);
+            }
         }
 
         [TestMethod]
