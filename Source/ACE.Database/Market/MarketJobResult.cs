@@ -1,11 +1,19 @@
 namespace ACE.Database.Market
 {
+    /// <summary>
+    /// What a market save job did. Only Saved changed anything.
+    /// </summary>
     public enum MarketJobResult
     {
         Saved,
+
+        // the job's own checks refused the request (not the job's kind of item, amounts that don't match)
         Refused,
+
+        // a player's balance would have fallen below zero
+        InsufficientFunds,
+
+        // the save failed
         Failed,
     }
-
-    public readonly record struct NoteStack(uint Guid, int StackSize);
 }

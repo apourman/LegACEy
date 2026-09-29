@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
+using ACE.Database;
 using ACE.Database.Market;
 using ACE.Database.Models.Shard.Market;
 using ACE.Database.Tests.Market;
@@ -157,6 +158,84 @@ namespace ACE.Server.Tests.Market
             Assert.AreEqual(VaultOutcome.InvalidAmount, VaultTestWorld.WithdrawNotes(player, 0).Outcome);
             Assert.AreEqual(VaultOutcome.InvalidAmount, VaultTestWorld.WithdrawNotes(player, -5).Outcome);
             Assert.AreEqual(balanceRow, BalanceRow(account));
+        }
+
+        [TestMethod]
+        public void WithdrawNotes_BalanceDropsBeforeTheSave_TheJobRefusesAndNothingChanges()
+        {
+            var account = VaultTestWorld.NewAccountId();
+            var player = VaultTestWorld.NewPlayer(account);
+            GiveNotes(player, 10);
+            Assert.AreEqual(VaultOutcome.NotesDeposited, VaultTestWorld.DepositNotes(player).Outcome);
+
+            // hold the save queue, so the withdrawal passes its world-thread check and waits behind this
+            var gate = new System.Threading.ManualResetEventSlim();
+            DatabaseManager.Shard.RemoveBiota(0x7FFFFFF0, _ => gate.Wait());
+
+            VaultResult result = null;
+            var done = new System.Threading.ManualResetEventSlim();
+            VaultTestWorld.OnWorldThread(() => Vault.WithdrawNotes(player, 8, r => { result = r; done.Set(); }));
+
+            // meanwhile something else (the web, an admin) spends most of the balance
+            using (var context = MarketTestDatabase.CreateContext(Db))
+            {
+                var spend = new Transfer { Kind = TransferKind.AdminAdjust, Memo = "test spend" };
+                spend.Entries.Add(Ledger.PlayerEntry(account, -5));
+                spend.Entries.Add(Ledger.SystemEntry(SystemAccount.Admin, 5));
+                Assert.IsTrue(Ledger.TryAdd(context, spend));
+                context.SaveChanges();
+            }
+            var balanceRow = BalanceRow(account);
+
+            gate.Set();
+            Assert.IsTrue(done.Wait(TimeSpan.FromSeconds(30)), "the withdrawal reported a result");
+
+            Assert.AreEqual(VaultOutcome.InsufficientFunds, result.Outcome, result.Message);
+            Assert.AreEqual(5, result.Balance, "the player is told the balance the job saw");
+            Assert.AreEqual(0, NotesInPacks(player));
+            Assert.AreEqual(0, DatabaseNoteStacks(player.Guid.Full).Count, "no notes were created");
+            Assert.AreEqual(balanceRow, BalanceRow(account));
+            Assert.AreEqual(0, Count($"SELECT COUNT(*) FROM market_transfer t JOIN market_ledger_entry e ON e.transfer_Id = t.id WHERE e.account_Id = {account} AND t.kind = '{TransferKind.NoteWithdraw}';"));
+        }
+
+        [TestMethod]
+        public void DepositNotes_ConcurrentJobsForOneAccount_NoDuplicateOrSkippedSequence()
+        {
+            // the jobs themselves, run side by side as the game's queue and (later) the Market API's writers would be: each retries a lost race from a fresh read
+            const int writers = 4;
+            const int jobsEach = 10;
+
+            var account = VaultTestWorld.NewAccountId();
+            var character = VaultTestWorld.NewPlayer(account).Guid.Full;
+            var start = new System.Threading.Barrier(writers);
+            var saved = 0L;
+            var results = new System.Collections.Concurrent.ConcurrentBag<MarketJobResult>();
+
+            var tasks = Enumerable.Range(0, writers).Select(w => System.Threading.Tasks.Task.Run(() =>
+            {
+                start.SignalAndWait();
+
+                for (var i = 0; i < jobsEach; i++)
+                {
+                    // notes that were never saved: nothing to delete, only the ledger is written
+                    var note = new NoteStack(0x7FF00000u + (uint)(account % 1000) * 100 + (uint)(w * jobsEach + i), 1);
+                    var result = DatabaseManager.Shard.BaseDatabase.DepositNotes(account, character, new[] { note }, out _);
+                    results.Add(result);
+
+                    if (result == MarketJobResult.Saved)
+                        System.Threading.Interlocked.Increment(ref saved);
+                }
+            })).ToArray();
+
+            Assert.IsTrue(System.Threading.Tasks.Task.WaitAll(tasks, TimeSpan.FromMinutes(2)));
+
+            Assert.IsTrue(results.All(r => r == MarketJobResult.Saved || r == MarketJobResult.Failed), "a job saves or fails, nothing else");
+            Assert.IsTrue(saved > writers, "the retries let most jobs through");
+
+            var sequences = MarketTestDatabase.Rows(Db, $"SELECT sequence FROM market_ledger_entry WHERE account_Id = {account} ORDER BY sequence;").Select(long.Parse).ToList();
+            CollectionAssert.AreEqual(Enumerable.Range(1, (int)saved).Select(i => (long)i).ToList(), sequences, "one sequence per saved job, no gaps or duplicates");
+            Assert.AreEqual($"{saved}|{saved}", string.Join("|", BalanceRow(account).Split('|').Take(2)));
+            Assert.AreEqual(saved, Count($"SELECT COUNT(*) FROM market_item_event WHERE account_Id = {account};"), "a failed job wrote no item event");
         }
 
         // ---- failures inside the save

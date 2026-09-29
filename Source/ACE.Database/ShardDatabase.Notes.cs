@@ -65,9 +65,6 @@ namespace ACE.Database
 
                 var transfer = NewTransfer(TransferKind.NoteDeposit, accountId, characterId, Ledger.PlayerEntry(accountId, amount), Ledger.SystemEntry(SystemAccount.Notes, -amount));
 
-                if (!Ledger.TryAdd(context, transfer))
-                    return null;
-
                 foreach (var note in notes)
                 {
                     context.MarketItemEvents.Add(new ItemEvent
@@ -89,7 +86,7 @@ namespace ACE.Database
         /// <summary>
         /// Pays out notes the world thread has created (not in any pack yet, pointed at the character): writes a note_withdraw transfer (player -n, NOTES +n)
         /// and inserts the note rows, in one save. The notes' stack sizes must add up to amount.
-        /// Refuses, saving nothing, if the balance is less than amount (balanceAfter is then the current balance).
+        /// Returns InsufficientFunds, saving nothing, if the balance is less than amount (balanceAfter is then the current balance).
         /// </summary>
         public MarketJobResult WithdrawNotes(uint accountId, uint characterId, IReadOnlyList<(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock)> notes, long amount, out long balanceAfter)
         {
@@ -126,9 +123,6 @@ namespace ACE.Database
             {
                 var transfer = NewTransfer(TransferKind.NoteWithdraw, accountId, characterId, Ledger.PlayerEntry(accountId, -amount), Ledger.SystemEntry(SystemAccount.Notes, amount));
 
-                if (!Ledger.TryAdd(context, transfer))
-                    return null;
-
                 foreach (var (biota, rwLock) in notes)
                 {
                     Biota row;
@@ -153,8 +147,8 @@ namespace ACE.Database
         }
 
         /// <summary>
-        /// Builds a job's changes (the transfer and everything saved with it) in a fresh context and saves once.
-        /// build returns null to refuse, and then nothing is saved. A save that lost a race for the balance row (a stale row version, or two first writes)
+        /// Builds a job's changes in a fresh context (build adds everything but the transfer it returns), adds the transfer to the ledger, and saves once.
+        /// build returns null to refuse, and then nothing is saved; so does a transfer the balance can't cover (InsufficientFunds). A save that lost a race for the balance row (a stale row version, or two first writes)
         /// wrote nothing, so it is rebuilt from a fresh read and tried again, up to LedgerJobAttempts times.
         /// </summary>
         private MarketJobResult SaveLedgerJob(string job, uint accountId, Func<ShardDbContext, Transfer> build, out long balanceAfter)
@@ -169,6 +163,13 @@ namespace ACE.Database
                     {
                         balanceAfter = Ledger.GetBalance(context, accountId);
                         return MarketJobResult.Refused;
+                    }
+
+                    if (!Ledger.TryAdd(context, transfer))
+                    {
+                        log.Warn($"[DATABASE][VAULT] {job} for account {accountId} refused: the balance is too low");
+                        balanceAfter = Ledger.GetBalance(context, accountId);
+                        return MarketJobResult.InsufficientFunds;
                     }
 
                     try
@@ -195,7 +196,8 @@ namespace ACE.Database
 
         private static bool IsBalanceRace(DbUpdateException ex)
         {
-            return ex is DbUpdateConcurrencyException || (ex.InnerException is MySqlException mysql && mysql.ErrorCode == MySqlErrorCode.DuplicateKeyEntry && mysql.Message.Contains("market_balance"));
+            // not every server names the table in a duplicate key message, so any duplicate key is retried: another cause fails again and ends as Failed
+            return ex is DbUpdateConcurrencyException || (ex.InnerException is MySqlException mysql && mysql.ErrorCode == MySqlErrorCode.DuplicateKeyEntry);
         }
 
         private static Transfer NewTransfer(string kind, uint accountId, uint characterId, params LedgerEntry[] entries)

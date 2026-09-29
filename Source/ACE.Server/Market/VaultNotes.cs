@@ -20,7 +20,7 @@ namespace ACE.Server.Market
     public static partial class Vault
     {
         /// <summary>
-        /// The most notes in one stack (the weenie's MaxStackSize)
+        /// The most notes in one stack: the spec's 1,000, which is also the trade note weenie's MaxStackSize
         /// </summary>
         public const int NoteStackSize = 1000;
 
@@ -38,11 +38,15 @@ namespace ACE.Server.Market
         /// </summary>
         public static void DepositNotes(Player player, Action<VaultResult> completed = null)
         {
-            var refusal = !Available ? VaultOutcome.NotAvailable : inFlight.Contains(player.Guid.Full) ? VaultOutcome.Busy : (VaultOutcome?)null;
-
-            if (refusal != null)
+            if (!Available)
             {
-                FinishNotes(player, refusal.Value, 0, 0, completed);
+                FinishNotes(player, VaultOutcome.NotAvailable, 0, 0, completed);
+                return;
+            }
+
+            if (inFlight.Contains(player.Guid.Full))
+            {
+                FinishNotes(player, VaultOutcome.Busy, 0, 0, completed);
                 return;
             }
 
@@ -181,7 +185,7 @@ namespace ACE.Server.Market
             if (result != MarketJobResult.Saved)
             {
                 // no row was written and the objects were never added anywhere: forget them
-                FinishNotes(player, result == MarketJobResult.Refused ? VaultOutcome.InsufficientFunds : VaultOutcome.SaveFailed, amount, balance, completed);
+                FinishNotes(player, result == MarketJobResult.InsufficientFunds ? VaultOutcome.InsufficientFunds : VaultOutcome.SaveFailed, amount, balance, completed);
                 return;
             }
 
