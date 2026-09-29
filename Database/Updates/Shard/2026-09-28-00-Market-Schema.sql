@@ -4,6 +4,8 @@
 -- and nothing here may use @variables (the runner's connection doesn't allow them).
 -- Creating triggers while binary logging is on needs log_bin_trust_function_creators=1 (set in the docker-compose files) or SUPER.
 -- The triggers come last: if they fail, the market startup check (ACE.Database.Market.MarketSchema) reports them missing.
+-- Recovery when the triggers failed (the runner still marks this script applied): enable log_bin_trust_function_creators
+-- (or run as a SUPER user), remove this file's line from the shard applied_updates.txt, and apply it again. It is idempotent.
 
 -- An escrowed item. The item keeps its biota row, with no container, wielder or location; this row is the only record of its owner.
 -- The foreign key refuses to delete or renumber the biota row while the item is in a Vault.
@@ -82,7 +84,7 @@ CREATE TABLE IF NOT EXISTS `market_transfer` (
   `actor_Character_Id` int unsigned DEFAULT NULL,
   `listing_Id` bigint DEFAULT NULL,
   `ticket_Id` bigint DEFAULT NULL,
-  `request_Key` varchar(64) DEFAULT NULL COMMENT 'idempotency key of the request that made it',
+  `request_Key` varchar(64) COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'idempotency key of the request that made it',
   `reverses_Transfer_Id` bigint DEFAULT NULL,
   `memo` varchar(512) DEFAULT NULL,
   `created_Time` datetime(6) NOT NULL,
@@ -143,7 +145,7 @@ CREATE TABLE IF NOT EXISTS `market_ticket` (
   `status` varchar(8) NOT NULL DEFAULT 'WAITING',
   `result_Code` varchar(32) DEFAULT NULL,
   `result_Message` varchar(512) DEFAULT NULL,
-  `idempotency_Key` varchar(64) NOT NULL,
+  `idempotency_Key` varchar(64) COLLATE utf8mb4_bin NOT NULL COMMENT 'compared exactly: keys differing only in case are different',
   `created_Time` datetime(6) NOT NULL,
   `claimed_Time` datetime(6) DEFAULT NULL,
   `finished_Time` datetime(6) DEFAULT NULL,
@@ -157,7 +159,7 @@ CREATE TABLE IF NOT EXISTS `market_ticket` (
 -- Stored API results for idempotent replays, kept 30 days
 CREATE TABLE IF NOT EXISTS `market_request` (
   `account_Id` int unsigned NOT NULL,
-  `idempotency_Key` varchar(64) NOT NULL,
+  `idempotency_Key` varchar(64) COLLATE utf8mb4_bin NOT NULL COMMENT 'compared exactly: keys differing only in case are different',
   `kind` varchar(32) NOT NULL,
   `result` json DEFAULT NULL,
   `created_Time` datetime(6) NOT NULL,

@@ -59,10 +59,9 @@ namespace ACE.Database.Tests.Market
         {
             Drop(database);
 
-            var config = ConfigManager.Config.MySql.Shard;
             var sql = RenameDatabases(File.ReadAllText(BaseScriptPath), database);
 
-            using var connection = new MySqlConnection($"server={config.Host};port={config.Port};user={config.Username};password={config.Password};{config.ConnectionOptions}");
+            using var connection = new MySqlConnection(ConnectionString());
             connection.Open();
             using var command = new MySqlCommand(sql, connection);
             command.CommandTimeout = 600;
@@ -71,9 +70,7 @@ namespace ACE.Database.Tests.Market
 
         public static void Drop(string database)
         {
-            var config = ConfigManager.Config.MySql.Shard;
-
-            using var connection = new MySqlConnection($"server={config.Host};port={config.Port};user={config.Username};password={config.Password};{config.ConnectionOptions}");
+            using var connection = new MySqlConnection(ConnectionString());
             connection.Open();
             using var command = new MySqlCommand($"DROP DATABASE IF EXISTS `{database}`;", connection);
             command.ExecuteNonQuery();
@@ -127,18 +124,22 @@ namespace ACE.Database.Tests.Market
             return ApplyAllUpdates(database);
         }
 
-        public static string RunnerConnectionString(string database)
+        /// <summary>
+        /// The update runner's connection options, which don't allow user variables
+        /// </summary>
+        public static string RunnerConnectionString(string database) => ServerConnectionString(database, "DefaultCommandTimeout=120;SslMode=None;AllowPublicKeyRetrieval=true");
+
+        /// <summary>
+        /// The configured shard connection options, on the given database or on none
+        /// </summary>
+        public static string ConnectionString(string database = null) => ServerConnectionString(database, ConfigManager.Config.MySql.Shard.ConnectionOptions);
+
+        private static string ServerConnectionString(string database, string options)
         {
             var config = ConfigManager.Config.MySql.Shard;
+            var databaseOption = database == null ? "" : $"database={database};";
 
-            return $"server={config.Host};port={config.Port};user={config.Username};password={config.Password};database={database};DefaultCommandTimeout=120;SslMode=None;AllowPublicKeyRetrieval=true";
-        }
-
-        public static string ConnectionString(string database)
-        {
-            var config = ConfigManager.Config.MySql.Shard;
-
-            return $"server={config.Host};port={config.Port};user={config.Username};password={config.Password};database={database};{config.ConnectionOptions}";
+            return $"server={config.Host};port={config.Port};user={config.Username};password={config.Password};{databaseOption}{options}";
         }
 
         /// <summary>

@@ -117,7 +117,7 @@ public partial class ShardDbContext
             entity.Property(e => e.ActorCharacterId).HasColumnName("actor_Character_Id");
             entity.Property(e => e.ListingId).HasColumnName("listing_Id");
             entity.Property(e => e.TicketId).HasColumnName("ticket_Id");
-            entity.Property(e => e.RequestKey).HasMaxLength(64).HasColumnName("request_Key");
+            entity.Property(e => e.RequestKey).HasMaxLength(64).UseCollation("utf8mb4_bin").HasColumnName("request_Key");
             entity.Property(e => e.ReversesTransferId).HasColumnName("reverses_Transfer_Id");
             entity.Property(e => e.Memo).HasMaxLength(512).HasColumnName("memo");
             entity.Property(e => e.CreatedTime).HasColumnType("datetime(6)").HasColumnName("created_Time");
@@ -175,7 +175,7 @@ public partial class ShardDbContext
             entity.Property(e => e.Status).IsRequired().HasMaxLength(8).HasColumnName("status");
             entity.Property(e => e.ResultCode).HasMaxLength(32).HasColumnName("result_Code");
             entity.Property(e => e.ResultMessage).HasMaxLength(512).HasColumnName("result_Message");
-            entity.Property(e => e.IdempotencyKey).IsRequired().HasMaxLength(64).HasColumnName("idempotency_Key");
+            entity.Property(e => e.IdempotencyKey).IsRequired().HasMaxLength(64).UseCollation("utf8mb4_bin").HasColumnName("idempotency_Key");
             entity.Property(e => e.CreatedTime).HasColumnType("datetime(6)").HasColumnName("created_Time");
             entity.Property(e => e.ClaimedTime).HasColumnType("datetime(6)").HasColumnName("claimed_Time");
             entity.Property(e => e.FinishedTime).HasColumnType("datetime(6)").HasColumnName("finished_Time");
@@ -188,7 +188,7 @@ public partial class ShardDbContext
             entity.ToTable("market_request");
 
             entity.Property(e => e.AccountId).HasColumnName("account_Id");
-            entity.Property(e => e.IdempotencyKey).HasMaxLength(64).HasColumnName("idempotency_Key");
+            entity.Property(e => e.IdempotencyKey).HasMaxLength(64).UseCollation("utf8mb4_bin").HasColumnName("idempotency_Key");
             entity.Property(e => e.Kind).IsRequired().HasMaxLength(32).HasColumnName("kind");
             entity.Property(e => e.Result).HasColumnType("json").HasColumnName("result");
             entity.Property(e => e.CreatedTime).HasColumnType("datetime(6)").HasColumnName("created_Time");

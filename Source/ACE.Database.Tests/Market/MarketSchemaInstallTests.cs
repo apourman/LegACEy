@@ -158,7 +158,8 @@ namespace ACE.Database.Tests.Market
         [TestMethod]
         public void SchemaCheck_AllTablesPresent_ReportsOk()
         {
-            MarketTestDatabase.CreateFresh(FreshDb);
+            var failures = MarketTestDatabase.CreateFresh(FreshDb);
+            Assert.IsFalse(failures.ContainsKey(MarketTestDatabase.MarketUpdateScript), failures.TryGetValue(MarketTestDatabase.MarketUpdateScript, out var ex) ? ex.ToString() : null);
 
             using var context = MarketTestDatabase.CreateContext(FreshDb);
             var result = MarketSchema.Check(context);

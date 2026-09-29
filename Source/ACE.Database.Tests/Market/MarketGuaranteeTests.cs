@@ -172,6 +172,7 @@ namespace ACE.Database.Tests.Market
             Assert.AreEqual(20, MarketSettings.SignInIpFailures.Default);
             Assert.AreEqual(15, MarketSettings.SignInIpWindowMinutes.Default);
             Assert.AreEqual(5, MarketSettings.LinkCodeMinutes.Default);
+            Assert.AreEqual(15, MarketSettings.SignInIpLockMinutes.Default);
             Assert.AreEqual(90, MarketSettings.PluginTokenDays.Default);
             Assert.AreEqual(60, MarketSettings.ChannelSeconds.Default);
             Assert.AreEqual("vault_channel_seconds", MarketSettings.ChannelSeconds.Key);
@@ -184,7 +185,7 @@ namespace ACE.Database.Tests.Market
         [TestMethod]
         public void MarketSettings_NoRow_ResolvesToDefault()
         {
-            MarketTestDatabase.Execute(Db, "DELETE FROM config_properties_long WHERE `key` IN (" + string.Join(",", MarketSettings.All.Select(s => $"'{s.Key}'")) + ");");
+            DeleteMarketSettingRows();
 
             using var context = MarketTestDatabase.CreateContext(Db);
 
@@ -207,7 +208,7 @@ namespace ACE.Database.Tests.Market
             }
             finally
             {
-                MarketTestDatabase.Execute(Db, "DELETE FROM config_properties_long WHERE `key` IN (" + string.Join(",", MarketSettings.All.Select(s => $"'{s.Key}'")) + ");");
+                DeleteMarketSettingRows();
             }
         }
 
@@ -292,18 +293,40 @@ namespace ACE.Database.Tests.Market
             using var first = MarketTestDatabase.CreateContext(Db);
             using var second = MarketTestDatabase.CreateContext(Db);
 
-            var a = first.MarketBalances.First(b => b.AccountId == 41);
-            var b = second.MarketBalances.First(x => x.AccountId == 41);
+            var firstBalance = first.MarketBalances.First(x => x.AccountId == 41);
+            var secondBalance = second.MarketBalances.First(x => x.AccountId == 41);
 
-            a.Balance -= 5;
-            a.RowVersion++;
+            firstBalance.Balance -= 5;
+            firstBalance.RowVersion++;
             first.SaveChanges();
 
-            b.Balance -= 5;
-            b.RowVersion++;
+            secondBalance.Balance -= 5;
+            secondBalance.RowVersion++;
             Assert.ThrowsExactly<DbUpdateConcurrencyException>(() => second.SaveChanges());
 
             Assert.AreEqual(5, MarketTestDatabase.Scalar(Db, "SELECT balance FROM market_balance WHERE account_Id = 41;"));
+        }
+
+        [TestMethod]
+        public void IdempotencyKeys_DifferingOnlyInCase_AreDistinct()
+        {
+            var now = DateTime.UtcNow;
+
+            using (var context = MarketTestDatabase.CreateContext(Db))
+            {
+                context.MarketTickets.Add(new Ticket { Kind = "vault_withdraw", AccountId = 51, Status = TicketStatus.Waiting, IdempotencyKey = "abc", CreatedTime = now });
+                context.MarketTickets.Add(new Ticket { Kind = "vault_withdraw", AccountId = 51, Status = TicketStatus.Waiting, IdempotencyKey = "ABC", CreatedTime = now });
+                context.MarketRequests.Add(new Request { AccountId = 51, IdempotencyKey = "abc", Kind = "purchase", CreatedTime = now });
+                context.MarketRequests.Add(new Request { AccountId = 51, IdempotencyKey = "ABC", Kind = "purchase", CreatedTime = now });
+                context.SaveChanges();
+            }
+
+            // the same key twice for one account is still refused
+            var ex = MarketTestDatabase.ExpectMySqlError(Db, "INSERT INTO market_ticket (kind, account_Id, status, idempotency_Key, created_Time) VALUES ('vault_withdraw', 51, 'WAITING', 'abc', UTC_TIMESTAMP(6));");
+            Assert.AreEqual(1062, ex.Number, ex.Message); // ER_DUP_ENTRY
+
+            using (var context = MarketTestDatabase.CreateContext(Db))
+                Assert.AreEqual("ABC", context.MarketRequests.Single(r => r.AccountId == 51 && r.IdempotencyKey == "ABC").IdempotencyKey);
         }
 
         [TestMethod]
@@ -328,6 +351,11 @@ namespace ACE.Database.Tests.Market
                 Assert.IsFalse(type.GetForeignKeys().Any(fk => market.Contains(fk.PrincipalEntityType)), type.ClrType.Name);
                 Assert.IsFalse(type.GetReferencingForeignKeys().Any(fk => market.Contains(fk.DeclaringEntityType)), type.ClrType.Name);
             }
+        }
+
+        private static void DeleteMarketSettingRows()
+        {
+            MarketTestDatabase.Execute(Db, "DELETE FROM config_properties_long WHERE `key` IN (" + string.Join(",", MarketSettings.All.Select(s => $"'{s.Key}'")) + ");");
         }
 
         private static VaultItem NewVaultItem(uint guid, uint accountId)
