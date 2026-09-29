@@ -23,6 +23,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- the escrow tests drive the save-queue jobs through SerializedShardDatabase, whose constructor is internal -->
+    <InternalsVisibleTo Include="ACE.Database.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\ACE.Entity\ACE.Entity.csproj" />
   </ItemGroup>
 
