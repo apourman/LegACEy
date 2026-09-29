@@ -89,7 +89,10 @@ for db_type in Authentication Shard World; do
   runuser -u "$deploy_user" -- ln -sfnT "$state_file" "$source_file"
 done
 
-"$backup"
+if ! "$backup" >/dev/null 2>&1; then
+  echo "Database backup failed; deployment stopped" >&2
+  exit 1
+fi
 
 atomic_switch() {
   local target=$1

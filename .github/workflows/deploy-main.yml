@@ -45,11 +45,19 @@ jobs:
     environment: production
     permissions: {}
     env:
-      DEPLOY_HOST: ${{ secrets.ACE_DEPLOY_HOST }}
-      DEPLOY_USER: ${{ secrets.ACE_DEPLOY_USER }}
+      DEPLOY_HOST: ${{ vars.ACE_DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.ACE_DEPLOY_USER }}
       RELEASE_SHA: ${{ github.sha }}
-      RELEASE_ROOT: ${{ secrets.ACE_RELEASE_ROOT }}
+      RELEASE_ROOT: ${{ vars.ACE_RELEASE_ROOT }}
     steps:
+      - name: Mask deployment details
+        run: |
+          for value in "$DEPLOY_HOST" "$DEPLOY_USER" "$RELEASE_ROOT"; do
+            if [[ -n "$value" ]]; then
+              echo "::add-mask::$value"
+            fi
+          done
+
       - name: Validate deployment variables
         run: |
           [[ -n "$DEPLOY_HOST" ]] || { echo 'ACE_DEPLOY_HOST is not configured in the production environment' >&2; exit 1; }
