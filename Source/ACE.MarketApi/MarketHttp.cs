@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Primitives;
 
 namespace ACE.MarketApi
 {
@@ -46,6 +47,16 @@ namespace ACE.MarketApi
 
             mmd = (long)price;
             return true;
+        }
+
+        /// <summary>
+        /// A query parameter's trimmed text, or null when it's absent or blank
+        /// </summary>
+        public static string QueryValue(StringValues value)
+        {
+            var text = value.ToString().Trim();
+
+            return text.Length == 0 ? null : text;
         }
 
         public static IResult Error(int statusCode, string error) => Results.Json(new { error }, statusCode: statusCode);

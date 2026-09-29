@@ -106,6 +106,7 @@ namespace ACE.MarketApi
             ListingEndpoints.Map(app);
             CatalogEndpoints.Map(app);
             PurchaseEndpoints.Map(app);
+            HistoryEndpoints.Map(app);
 
             return app;
         }
