@@ -293,8 +293,6 @@ Config/
 Dats/
 Logs/
 db-data/
-AppVeyor/
-
 # ACEmulator specific files
 [Cc]onfig.js
 log4net.config

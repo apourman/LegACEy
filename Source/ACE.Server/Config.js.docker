@@ -158,8 +158,8 @@
       "Host": "ace-db",
       "Port": 3306,
       "Database": "ace_auth",
-      "Username": "acedockeruser",
-      "Password": "2020acEmulator2017",
+      "Username": "",
+      "Password": "",
       "EnableDetailedErrors": false,
       "EnableSensitiveDataLogging": false
     },
@@ -167,8 +167,8 @@
       "Host": "ace-db",
       "Port": 3306,
       "Database": "ace_shard",
-      "Username": "acedockeruser",
-      "Password": "2020acEmulator2017",
+      "Username": "",
+      "Password": "",
       "EnableDetailedErrors": false,
       "EnableSensitiveDataLogging": false
     },
@@ -176,8 +176,8 @@
       "Host": "ace-db",
       "Port": 3306,
       "Database": "ace_world",
-      "Username": "acedockeruser",
-      "Password": "2020acEmulator2017",
+      "Username": "",
+      "Password": "",
       "EnableDetailedErrors": false,
       "EnableSensitiveDataLogging": false
     }

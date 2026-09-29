@@ -2,8 +2,8 @@
 set -euo pipefail
 source /docker-entrypoint-initdb.d/common.inc
 
-user="${MYSQL_USER:-acedockeruser}"
-password="${MYSQL_PASSWORD:-acedocker-password}"
+user="${MYSQL_USER:?MYSQL_USER is required}"
+password="${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}"
 user_sql="${user//\'/\'\'}"
 password_sql="${password//\'/\'\'}"
 
