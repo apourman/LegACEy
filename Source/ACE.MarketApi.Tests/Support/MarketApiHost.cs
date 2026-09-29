@@ -46,7 +46,11 @@ namespace ACE.MarketApi.Tests.Support
         /// <summary>
         /// Builds the API as Program does, on the test server. Throws what MarketApi.Create throws.
         /// </summary>
-        public static WebApplication Build(string shardDatabase = MarketApiTestData.ShardDatabase, string keysPath = null, ManualClock clock = null, params string[] extraArgs)
+        public static WebApplication Build(string shardDatabase = MarketApiTestData.ShardDatabase, string keysPath = null, ManualClock clock = null, params string[] extraArgs) =>
+            Build(shardDatabase, keysPath, clock, null, extraArgs);
+
+        /// <param name="services">registers test replacements for the API's services (the fee policy, the pause), which the API only adds when missing</param>
+        private static WebApplication Build(string shardDatabase, string keysPath, ManualClock clock, Action<IServiceCollection> services, string[] extraArgs)
         {
             return MarketApi.Create(new[]
             {
@@ -62,15 +66,22 @@ namespace ACE.MarketApi.Tests.Support
                     builder.Services.AddSingleton<TimeProvider>(clock);
 
                 builder.Services.AddSingleton<IStartupFilter, TestRemoteIpFilter>();
+
+                services?.Invoke(builder.Services);
             });
         }
 
-        public static async Task<MarketApiHost> StartAsync(string keysPath = null, ManualClock clock = null, params string[] extraArgs)
+        public static Task<MarketApiHost> StartAsync(string keysPath = null, ManualClock clock = null, params string[] extraArgs) => StartAsync(null, keysPath, clock, extraArgs);
+
+        /// <summary>
+        /// Starts the API with test services in place of its own
+        /// </summary>
+        public static async Task<MarketApiHost> StartAsync(Action<IServiceCollection> services, string keysPath = null, ManualClock clock = null, params string[] extraArgs)
         {
             keysPath ??= NewKeysPath();
             clock ??= new ManualClock(DateTimeOffset.UtcNow);
 
-            var app = Build(keysPath: keysPath, clock: clock, extraArgs: extraArgs);
+            var app = Build(MarketApiTestData.ShardDatabase, keysPath, clock, services, extraArgs);
             await app.StartAsync();
 
             return new MarketApiHost(app, clock, keysPath);
