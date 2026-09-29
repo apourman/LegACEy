@@ -11,6 +11,30 @@ namespace ACE.Server
 {
     partial class Program
     {
+        private static string ReadPassword()
+        {
+            if (Console.IsInputRedirected)
+                return Console.ReadLine();
+
+            var password = new System.Text.StringBuilder();
+            while (true)
+            {
+                var key = Console.ReadKey(intercept: true);
+                if (key.Key == ConsoleKey.Enter)
+                {
+                    Console.WriteLine();
+                    return password.ToString();
+                }
+                if (key.Key == ConsoleKey.Backspace)
+                {
+                    if (password.Length > 0)
+                        password.Length--;
+                }
+                else if (!char.IsControl(key.KeyChar))
+                    password.Append(key.KeyChar);
+            }
+        }
+
         private static void DoOutOfBoxSetup(string configFile)
         {
             MasterConfiguration config;
@@ -294,14 +318,11 @@ namespace ACE.Server
                 }
                 Console.WriteLine();
 
-                Console.Write($"Enter the password for your SQL server (default: \"{config.MySql.World.Password}\"): ");
+                Console.Write("Enter the password for your SQL server (press Enter to keep the current value): ");
                 if (!nonInteractiveSetup)
-                    variable = Console.ReadLine();
+                    variable = ReadPassword();
                 else
-                {
                     variable = Environment.GetEnvironmentVariable("MYSQL_PASSWORD");
-                    Console.WriteLine($"{variable}");
-                }
                 if (!string.IsNullOrWhiteSpace(variable))
                 {
                     config.MySql.Authentication.Password = variable.Trim();
@@ -317,8 +338,8 @@ namespace ACE.Server
                     config.MySql.Authentication.Username = variable.Trim();
                 Console.WriteLine();
 
-                Console.Write($"Enter the password for your authentication database (default: \"{config.MySql.Authentication.Password}\"): ");
-                variable = Console.ReadLine();
+                Console.Write("Enter the password for your authentication database (press Enter to keep the current value): ");
+                variable = ReadPassword();
                 if (!string.IsNullOrWhiteSpace(variable))
                     config.MySql.Authentication.Password = variable.Trim();
                 Console.WriteLine();
@@ -329,8 +350,8 @@ namespace ACE.Server
                     config.MySql.Shard.Username = variable.Trim();
                 Console.WriteLine();
 
-                Console.Write($"Enter the password for your shard database (default: \"{config.MySql.Shard.Password}\"): ");
-                variable = Console.ReadLine();
+                Console.Write("Enter the password for your shard database (press Enter to keep the current value): ");
+                variable = ReadPassword();
                 if (!string.IsNullOrWhiteSpace(variable))
                     config.MySql.Shard.Password = variable.Trim();
                 Console.WriteLine();
@@ -341,8 +362,8 @@ namespace ACE.Server
                     config.MySql.World.Username = variable.Trim();
                 Console.WriteLine();
 
-                Console.Write($"Enter the password for your world database (default: \"{config.MySql.World.Password}\"): ");
-                variable = Console.ReadLine();
+                Console.Write("Enter the password for your world database (press Enter to keep the current value): ");
+                variable = ReadPassword();
                 if (!string.IsNullOrWhiteSpace(variable))
                     config.MySql.World.Password = variable.Trim();
             }
