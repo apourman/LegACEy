@@ -158,6 +158,11 @@ public class ItemEvent
     public int? Quantity { get; set; }
 
     public DateTime EventTime { get; set; }
+
+    /// <summary>
+    /// Set this instead of TransferId when the transfer is saved in the same SaveChanges, so the event gets the transfer's new id
+    /// </summary>
+    public virtual Transfer Transfer { get; set; }
 }
 
 /// <summary>

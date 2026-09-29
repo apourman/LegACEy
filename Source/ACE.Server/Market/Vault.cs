@@ -22,7 +22,7 @@ namespace ACE.Server.Market
     /// Call Deposit and Withdraw on the world thread. The result is reported once through the callback:
     /// at once for a refusal, on the world thread after the save for a deposit or withdrawal.
     /// </summary>
-    public static class Vault
+    public static partial class Vault
     {
         private static readonly ILog log = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 

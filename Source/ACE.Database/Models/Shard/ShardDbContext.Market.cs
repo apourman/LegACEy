@@ -159,6 +159,11 @@ public partial class ShardDbContext
             entity.Property(e => e.TransferId).HasColumnName("transfer_Id");
             entity.Property(e => e.Quantity).HasColumnName("quantity");
             entity.Property(e => e.EventTime).HasColumnType("datetime(6)").HasColumnName("event_Time");
+
+            // EF only: MySQL has no foreign key here (see the schema script), this just lets an event take the id of a transfer saved with it
+            entity.HasOne(d => d.Transfer).WithMany()
+                .HasForeignKey(d => d.TransferId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Ticket>(entity =>

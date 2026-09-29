@@ -236,12 +236,21 @@ namespace ACE.Server.Tests.Market
 
         public static VaultResult Withdraw(Player player, uint itemGuid) => Run(player, itemGuid, Vault.Withdraw);
 
+        public static VaultResult DepositNotes(Player player) => Run(completed => Vault.DepositNotes(player, completed));
+
+        public static VaultResult WithdrawNotes(Player player, long amount) => Run(completed => Vault.WithdrawNotes(player, amount, completed));
+
         private static VaultResult Run(Player player, uint itemGuid, Action<Player, uint, Action<VaultResult>> entryPoint)
+        {
+            return Run(completed => entryPoint(player, itemGuid, completed));
+        }
+
+        private static VaultResult Run(Action<Action<VaultResult>> entryPoint)
         {
             VaultResult result = null;
             var done = new ManualResetEventSlim();
 
-            OnWorldThread(() => entryPoint(player, itemGuid, r => { result = r; done.Set(); }));
+            OnWorldThread(() => entryPoint(r => { result = r; done.Set(); }));
 
             Assert.IsTrue(done.Wait(TimeSpan.FromSeconds(30)), "the Vault reported a result");
 

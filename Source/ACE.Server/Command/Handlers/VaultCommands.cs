@@ -10,14 +10,15 @@ namespace ACE.Server.Command.Handlers
 {
     /// <summary>
     /// The /vault commands. Item deposits and withdrawals take the Vault channel, which then calls the Vault entry point the game bridge will use.
+    /// Trade notes (MMD) go in and out of the account balance instantly, never through the channel.
     /// </summary>
     public static class VaultCommands
     {
-        private const string Usage = "/vault deposit  (the last item you appraised)\n/vault withdraw <id>\n/vault list";
+        private const string Usage = "/vault deposit  (the last item you appraised)\n/vault withdraw <id>\n/vault list\n/vault deposit mmd  (all your trade notes)\n/vault withdraw mmd <amount>\n/vault balance";
 
         [CommandHandler("vault", AccessLevel.Player, CommandHandlerFlag.RequiresWorld, 0,
             "Move items between your pack and your account's Vault",
-            "deposit | withdraw <id> | list")]
+            "deposit | withdraw <id> | list | deposit mmd | withdraw mmd <amount> | balance")]
         public static void HandleVault(Session session, params string[] parameters)
         {
             var player = session.Player;
@@ -32,10 +33,25 @@ namespace ACE.Server.Command.Handlers
             {
                 case "deposit":
                     // the outcome is told to the player by the channel and the Vault
-                    VaultChannel.StartDeposit(player, player.CurrentAppraisalTarget ?? 0);
+                    if (parameters.Length >= 2 && IsMmd(parameters[1]))
+                        Vault.DepositNotes(player);
+                    else
+                        VaultChannel.StartDeposit(player, player.CurrentAppraisalTarget ?? 0);
                     break;
 
                 case "withdraw":
+                    if (parameters.Length >= 2 && IsMmd(parameters[1]))
+                    {
+                        if (parameters.Length < 3 || !long.TryParse(parameters[2], NumberStyles.None, CultureInfo.InvariantCulture, out var amount))
+                        {
+                            Tell(session, "Usage: /vault withdraw mmd <amount>, a whole number of trade notes.");
+                            return;
+                        }
+
+                        Vault.WithdrawNotes(player, amount);
+                        return;
+                    }
+
                     if (parameters.Length < 2 || !TryParseId(parameters[1], out var itemGuid))
                     {
                         Tell(session, "Usage: /vault withdraw <id>. /vault list shows each item's id.");
@@ -62,11 +78,23 @@ namespace ACE.Server.Command.Handlers
                     break;
                 }
 
+                case "balance":
+                    if (!Vault.Available)
+                    {
+                        Tell(session, VaultMessages.For(VaultOutcome.NotAvailable, null));
+                        return;
+                    }
+
+                    Tell(session, VaultMessages.Balance(Vault.Balance(player)));
+                    break;
+
                 default:
                     Tell(session, Usage);
                     break;
             }
         }
+
+        private static bool IsMmd(string text) => text.Equals("mmd", StringComparison.OrdinalIgnoreCase);
 
         private static bool TryParseId(string text, out uint id)
         {

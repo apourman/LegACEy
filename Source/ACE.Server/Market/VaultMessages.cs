@@ -43,6 +43,29 @@ namespace ACE.Server.Market
         }
 
         /// <summary>
+        /// What a player is told for a trade note (MMD) outcome
+        /// </summary>
+        public static string ForNotes(VaultOutcome outcome, long amount, long balance)
+        {
+            var notes = $"{amount:N0} trade note{(amount == 1 ? "" : "s")}";
+
+            return outcome switch
+            {
+                VaultOutcome.NotesDeposited => $"You deposit {notes}. Your balance is {balance:N0} MMD.",
+                VaultOutcome.NotesWithdrawn => $"You withdraw {notes}. Your balance is {balance:N0} MMD.",
+                VaultOutcome.NotesWithdrawnAtLogin => $"You withdraw {notes}, but your pack has no room for all of them right now. The rest will be in your pack when you next log in. Your balance is {balance:N0} MMD.",
+                VaultOutcome.NoNotes => "You have no trade notes in your packs to deposit.",
+                VaultOutcome.InvalidAmount => "Withdraw at least 1 MMD.",
+                VaultOutcome.InsufficientFunds => $"You cannot withdraw {notes}. Your balance is {balance:N0} MMD.",
+                VaultOutcome.NoPackSpace => $"You do not have room in your pack for {notes}.",
+                VaultOutcome.SaveFailed => "The Vault could not save your trade notes. Nothing was changed.",
+                _ => For(outcome, "Your trade notes"),
+            };
+        }
+
+        public static string Balance(long balance) => $"Your balance is {balance:N0} MMD.";
+
+        /// <summary>
         /// What a player is told when a deposit or withdrawal channel starts
         /// </summary>
         public static string ChannelStarted(bool deposit, string itemName, int seconds)

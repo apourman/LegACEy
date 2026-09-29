@@ -34,6 +34,14 @@ namespace ACE.Server.Market
 
         // the database job failed; the item is where it was
         SaveFailed,
+
+        // trade notes (MMD): instant, never through the channel
+        NotesDeposited,
+        NotesWithdrawn,
+        NotesWithdrawnAtLogin,
+        NoNotes,
+        InvalidAmount,
+        InsufficientFunds,
     }
 
     public sealed class VaultResult
@@ -47,13 +55,32 @@ namespace ACE.Server.Market
 
         public uint ItemGuid { get; }
 
-        public bool Success => Outcome == VaultOutcome.Deposited || Outcome == VaultOutcome.Withdrawn || Outcome == VaultOutcome.WithdrawnAtLogin;
+        /// <summary>
+        /// The MMD moved, for trade note deposits and withdrawals
+        /// </summary>
+        public long Amount { get; }
+
+        /// <summary>
+        /// The account balance after a trade note deposit or withdrawal
+        /// </summary>
+        public long Balance { get; }
+
+        public bool Success => Outcome == VaultOutcome.Deposited || Outcome == VaultOutcome.Withdrawn || Outcome == VaultOutcome.WithdrawnAtLogin
+            || Outcome == VaultOutcome.NotesDeposited || Outcome == VaultOutcome.NotesWithdrawn || Outcome == VaultOutcome.NotesWithdrawnAtLogin;
 
         public VaultResult(VaultOutcome outcome, string message, uint itemGuid)
         {
             Outcome = outcome;
             Message = message;
             ItemGuid = itemGuid;
+        }
+
+        public VaultResult(VaultOutcome outcome, string message, long amount, long balance)
+        {
+            Outcome = outcome;
+            Message = message;
+            Amount = amount;
+            Balance = balance;
         }
 
         public override string ToString() => $"{Outcome}: {Message}";

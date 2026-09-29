@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using log4net;
 
 using ACE.Database.Entity;
+using ACE.Database.Market;
 using ACE.Database.Models.Shard;
 using ACE.Database.Models.Shard.Market;
 using ACE.Entity.Enum;
@@ -165,6 +166,32 @@ namespace ACE.Database
             {
                 var result = BaseDatabase.WithdrawFromVault(biota, rwLock, accountId, characterId, expectedRowVersion);
                 callback?.Invoke(result);
+            }));
+        }
+
+        /// <summary>
+        /// Queues the note deposit job: the note rows deleted and a note_deposit transfer, saved once (see ShardDatabase.DepositNotes).
+        /// The callback gets the result and the balance after it.
+        /// </summary>
+        public void DepositNotes(uint accountId, uint characterId, IReadOnlyList<NoteStack> notes, Action<MarketJobResult, long> callback)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = BaseDatabase.DepositNotes(accountId, characterId, notes, out var balanceAfter);
+                callback?.Invoke(result, balanceAfter);
+            }));
+        }
+
+        /// <summary>
+        /// Queues the note withdrawal job: a note_withdraw transfer and the new note rows, saved once (see ShardDatabase.WithdrawNotes).
+        /// The callback gets the result and the balance after it (the current balance on a refusal).
+        /// </summary>
+        public void WithdrawNotes(uint accountId, uint characterId, IReadOnlyList<(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock)> notes, long amount, Action<MarketJobResult, long> callback)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = BaseDatabase.WithdrawNotes(accountId, characterId, notes, amount, out var balanceAfter);
+                callback?.Invoke(result, balanceAfter);
             }));
         }
 
