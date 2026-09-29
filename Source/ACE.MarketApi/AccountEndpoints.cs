@@ -12,7 +12,7 @@ using ACE.Database.Models.Auth;
 namespace ACE.MarketApi
 {
     /// <summary>
-    /// The signed-in account's own data. Read-only.
+    /// The signed-in account's own data. Nothing here changes it, beyond expiring overdue listings.
     /// </summary>
     public static class AccountEndpoints
     {
@@ -55,9 +55,12 @@ namespace ACE.MarketApi
         /// <summary>
         /// The account's Vault items and their states (held, listed, withdrawing)
         /// </summary>
-        private static async Task<IResult> Vault(HttpContext context, MarketDatabase database)
+        private static async Task<IResult> Vault(HttpContext context, MarketDatabase database, TimeProvider time)
         {
             var accountId = MarketHttp.AccountId(context);
+
+            // an item whose listing has outlived its lifetime shows as held
+            MarketUpkeep.Expire(database, time.GetUtcNow().UtcDateTime);
 
             using var shard = database.CreateShard();
 

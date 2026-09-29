@@ -163,6 +163,11 @@ public class ItemEvent
     /// Set this instead of TransferId when the transfer is saved in the same SaveChanges, so the event gets the transfer's new id
     /// </summary>
     public virtual Transfer Transfer { get; set; }
+
+    /// <summary>
+    /// Set this instead of ListingId when the listing is saved in the same SaveChanges, so the event gets the listing's new id
+    /// </summary>
+    public virtual Listing Listing { get; set; }
 }
 
 /// <summary>

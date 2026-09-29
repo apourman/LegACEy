@@ -164,6 +164,11 @@ public partial class ShardDbContext
             entity.HasOne(d => d.Transfer).WithMany()
                 .HasForeignKey(d => d.TransferId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // EF only as well: no MySQL foreign key to the listing
+            entity.HasOne(d => d.Listing).WithMany()
+                .HasForeignKey(d => d.ListingId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Ticket>(entity =>
