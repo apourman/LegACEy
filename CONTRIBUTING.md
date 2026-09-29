@@ -11,9 +11,8 @@ release.
 Release Please opens or updates a version and changelog pull request after
 changes reach `master`. Merging that pull request creates a draft GitHub
 Release. The workflow builds the tagged source, attaches a Linux x64 server
-archive and SHA-256 checksum, then publishes the release. The production deploy
-uses the same build artifact and skips release-only version and changelog
-commits.
+archive and SHA-256 checksum, publishes the release, and then deploys the same
+published archive to production.
 
 Do not edit `VERSION` or `CHANGELOG.md` by hand or create release tags manually;
 Release Please manages them.
