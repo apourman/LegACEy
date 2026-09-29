@@ -38,13 +38,13 @@ namespace ACE.MarketApi
         {
             var query = request.Query;
 
-            var sortValue = QueryValue(query["sort"]) ?? "newest";
+            var sortValue = MarketHttp.QueryValue(query["sort"]) ?? "newest";
             var sort = ListingCatalog.Sorts.FirstOrDefault(s => s.Value == sortValue);
             if (sort == null)
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_sort");
 
             bool descending;
-            switch (QueryValue(query["dir"]))
+            switch (MarketHttp.QueryValue(query["dir"]))
             {
                 case null: descending = sort.DescendingByDefault; break;
                 case "asc": descending = false; break;
@@ -53,7 +53,7 @@ namespace ACE.MarketApi
             }
 
             var limit = DefaultPageSize;
-            if (QueryValue(query["limit"]) is string limitText && (!int.TryParse(limitText, NumberStyles.None, CultureInfo.InvariantCulture, out limit) || limit < 1))
+            if (MarketHttp.QueryValue(query["limit"]) is string limitText && (!int.TryParse(limitText, NumberStyles.None, CultureInfo.InvariantCulture, out limit) || limit < 1))
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_limit");
             limit = Math.Min(limit, MaxPageSize);
 
@@ -61,7 +61,7 @@ namespace ACE.MarketApi
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_price");
 
             int? itemType = null;
-            if (QueryValue(query["type"]) is string typeText)
+            if (MarketHttp.QueryValue(query["type"]) is string typeText)
             {
                 if (!ListingCatalog.TryParseItemType(typeText, out var parsed))
                     return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_type");
@@ -69,7 +69,7 @@ namespace ACE.MarketApi
             }
 
             ListingCatalog.Cursor after = null;
-            if (QueryValue(query["cursor"]) is string cursorText)
+            if (MarketHttp.QueryValue(query["cursor"]) is string cursorText)
             {
                 try
                 {
@@ -88,7 +88,7 @@ namespace ACE.MarketApi
 
             var rows = VisibleNow(shard, database, time);
 
-            if (QueryValue(query["q"]) is string text)
+            if (MarketHttp.QueryValue(query["q"]) is string text)
                 rows = ListingCatalog.NameContains(rows, text);
             if (itemType is int type)
                 rows = rows.Where(r => r.Item.ItemType == type);
@@ -96,7 +96,7 @@ namespace ACE.MarketApi
                 rows = rows.Where(r => r.Listing.Price >= min);
             if (maxPrice is long max)
                 rows = rows.Where(r => r.Listing.Price <= max);
-            if (QueryValue(query["seller"]) is string seller)
+            if (MarketHttp.QueryValue(query["seller"]) is string seller)
                 rows = rows.Where(r => r.Seller == seller);
 
             List<ListingCatalog.Row> page;
@@ -127,7 +127,7 @@ namespace ACE.MarketApi
         /// </summary>
         private static IResult Suggest(HttpRequest request, MarketDatabase database, TimeProvider time)
         {
-            var text = QueryValue(request.Query["q"]);
+            var text = MarketHttp.QueryValue(request.Query["q"]);
 
             if (text == null)
                 return Results.Json(new { suggestions = Array.Empty<string>() });
@@ -195,18 +195,11 @@ namespace ACE.MarketApi
         /// <summary>
         /// The trimmed query value, or null when it's missing or blank
         /// </summary>
-        private static string QueryValue(StringValues value)
-        {
-            var text = value.ToString().Trim();
-
-            return text.Length == 0 ? null : text;
-        }
-
         private static bool TryPrice(StringValues value, out long? price)
         {
             price = null;
 
-            if (QueryValue(value) is not string text)
+            if (MarketHttp.QueryValue(value) is not string text)
                 return true;
 
             if (!long.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var parsed))

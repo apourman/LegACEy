@@ -221,13 +221,16 @@ namespace ACE.MarketApi.Tests
 
             var cookie = await host.SignInForCookieAsync(player.Name, "pass");
 
-            foreach (var bad in new[] { "?since=-1", "?since=abc", "?since=1.5", "?itemsBefore=0", "?itemsBefore=x", "?itemsLimit=0", "?itemsLimit=101" })
+            foreach (var (bad, error) in new[] { ("?since=-1", "bad_cursor"), ("?since=abc", "bad_cursor"), ("?since=1.5", "bad_cursor"), ("?itemsBefore=0", "bad_cursor"), ("?itemsBefore=x", "bad_cursor"), ("?itemsLimit=0", "bad_limit"), ("?itemsLimit=x", "bad_limit") })
             {
                 var response = await host.GetAsync("/history" + bad, cookie);
 
                 Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode, bad);
-                Assert.AreEqual("bad_cursor", await MarketApiHost.ErrorAsync(response), bad);
+                Assert.AreEqual(error, await MarketApiHost.ErrorAsync(response), bad);
             }
+
+            // like the catalog's limit, a limit above the most is capped rather than refused
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/history?itemsLimit=101", cookie)).StatusCode);
         }
 
         // ---- criterion 2: since returns exactly the entries after it
@@ -320,41 +323,41 @@ namespace ACE.MarketApi.Tests
             var buyer = NewPlayer("buyer");
 
             await using var host = await MarketApiHost.StartAsync();
-            var t = host.Clock.GetUtcNow().UtcDateTime.AddHours(-1);
+            var start = host.Clock.GetUtcNow().UtcDateTime.AddHours(-1);
 
             // a sword deposited, listed, delisted, listed again, expired, listed again and sold
             var sword = MarketApiTestData.AddVaultItem(seller.AccountId, seller.CharacterId, "Bone Slicer", VaultItemState.Held);
-            var first = MarketApiTestData.AddListing(seller.AccountId, seller.CharacterId, sword, 90, ListingStatus.Delisted, t);
-            var second = MarketApiTestData.AddListing(seller.AccountId, seller.CharacterId, sword, 95, ListingStatus.Expired, t);
-            var third = MarketApiTestData.AddListing(seller.AccountId, seller.CharacterId, sword, 100, ListingStatus.Sold, t);
+            var first = MarketApiTestData.AddListing(seller.AccountId, seller.CharacterId, sword, 90, ListingStatus.Delisted, start);
+            var second = MarketApiTestData.AddListing(seller.AccountId, seller.CharacterId, sword, 95, ListingStatus.Expired, start);
+            var third = MarketApiTestData.AddListing(seller.AccountId, seller.CharacterId, sword, 100, ListingStatus.Sold, start);
             MarketTestDatabase.Execute(MarketApiTestData.ShardDatabase, $"UPDATE market_listing SET buyer_Account_Id = {buyer.AccountId}, buyer_Character_Id = {buyer.CharacterId} WHERE id = {third};");
             MarketTestDatabase.Execute(MarketApiTestData.ShardDatabase, $"UPDATE market_vault_item SET account_Id = {buyer.AccountId}, character_Id = {buyer.CharacterId} WHERE item_Guid = {sword};");
 
-            AddItemEvent(sword, seller, ItemEventKind.Deposit, t.AddMinutes(1));
-            AddItemEvent(sword, seller, ItemEventKind.List, t.AddMinutes(2), first);
-            AddItemEvent(sword, seller, ItemEventKind.Delist, t.AddMinutes(3), first);
-            AddItemEvent(sword, seller, ItemEventKind.List, t.AddMinutes(4), second);
-            AddItemEvent(sword, seller, ItemEventKind.Expire, t.AddMinutes(5), second);
-            AddItemEvent(sword, seller, ItemEventKind.List, t.AddMinutes(6), third);
-            AddItemEvent(sword, seller, ItemEventKind.Sold, t.AddMinutes(7), third);
-            AddItemEvent(sword, buyer, ItemEventKind.Bought, t.AddMinutes(7), third);
+            AddItemEvent(sword, seller, ItemEventKind.Deposit, start.AddMinutes(1));
+            AddItemEvent(sword, seller, ItemEventKind.List, start.AddMinutes(2), first);
+            AddItemEvent(sword, seller, ItemEventKind.Delist, start.AddMinutes(3), first);
+            AddItemEvent(sword, seller, ItemEventKind.List, start.AddMinutes(4), second);
+            AddItemEvent(sword, seller, ItemEventKind.Expire, start.AddMinutes(5), second);
+            AddItemEvent(sword, seller, ItemEventKind.List, start.AddMinutes(6), third);
+            AddItemEvent(sword, seller, ItemEventKind.Sold, start.AddMinutes(7), third);
+            AddItemEvent(sword, buyer, ItemEventKind.Bought, start.AddMinutes(7), third);
 
             // a wand the seller deposited and took back out: its Vault row is gone, the item's own name remains
             var wand = MarketApiTestData.AddVaultItem(seller.AccountId, seller.CharacterId, "Vault copy of the name", VaultItemState.Held);
             MarketTestDatabase.Execute(MarketApiTestData.ShardDatabase, $"DELETE FROM market_vault_item WHERE item_Guid = {wand};");
             MarketTestDatabase.Execute(MarketApiTestData.ShardDatabase, $"INSERT INTO biota_properties_string (object_Id, type, value) VALUES ({wand}, 1, 'Wand of Sparks');");
-            AddItemEvent(wand, seller, ItemEventKind.Deposit, t.AddMinutes(8));
-            AddItemEvent(wand, seller, ItemEventKind.Withdraw, t.AddMinutes(9));
+            AddItemEvent(wand, seller, ItemEventKind.Deposit, start.AddMinutes(8));
+            AddItemEvent(wand, seller, ItemEventKind.Withdraw, start.AddMinutes(9));
 
             // destroyed trade notes: the money line says it, so they aren't item movements
             DepositNotes(seller, 3);
             var noteTransfer = MarketApiTestData.Scalar($"SELECT MAX(transfer_Id) FROM market_ledger_entry WHERE account_Id = {seller.AccountId};");
-            AddItemEvent(0xC7000000u + (uint)(seller.AccountId % 1000), seller, ItemEventKind.Deposit, t.AddMinutes(10), transferId: noteTransfer, quantity: 3);
+            AddItemEvent(0xC7000000u + (uint)(seller.AccountId % 1000), seller, ItemEventKind.Deposit, start.AddMinutes(10), transferId: noteTransfer, quantity: 3);
 
             // another account's movement of its own item
             var other = NewPlayer("other");
             var otherItem = MarketApiTestData.AddVaultItem(other.AccountId, other.CharacterId, "Not Mine", VaultItemState.Held);
-            AddItemEvent(otherItem, other, ItemEventKind.Deposit, t.AddMinutes(11));
+            AddItemEvent(otherItem, other, ItemEventKind.Deposit, start.AddMinutes(11));
 
             var history = await HistoryAsync(host, await host.SignInForCookieAsync(seller.Name, "pass"));
 
@@ -401,15 +404,15 @@ namespace ACE.MarketApi.Tests
             var player = NewPlayer("player");
 
             await using var host = await MarketApiHost.StartAsync();
-            var t = host.Clock.GetUtcNow().UtcDateTime.AddHours(-1);
+            var start = host.Clock.GetUtcNow().UtcDateTime.AddHours(-1);
 
             var ring = MarketApiTestData.AddVaultItem(player.AccountId, player.CharacterId, "Ring of Thorns", VaultItemState.Held);
-            var listing = MarketApiTestData.AddListing(player.AccountId, player.CharacterId, ring, 40, ListingStatus.BanReturned, t);
-            AddItemEvent(ring, player, ItemEventKind.BanReturn, t.AddMinutes(1), listing);
-            AddItemEvent(ring, player, ItemEventKind.Admin, t.AddMinutes(2));
+            var listing = MarketApiTestData.AddListing(player.AccountId, player.CharacterId, ring, 40, ListingStatus.BanReturned, start);
+            AddItemEvent(ring, player, ItemEventKind.BanReturn, start.AddMinutes(1), listing);
+            AddItemEvent(ring, player, ItemEventKind.Admin, start.AddMinutes(2));
 
             // an item that no longer exists anywhere
-            AddItemEvent(0xC6FFFFF0u, player, ItemEventKind.Withdraw, t.AddMinutes(3));
+            AddItemEvent(0xC6FFFFF0u, player, ItemEventKind.Withdraw, start.AddMinutes(3));
 
             var history = await HistoryAsync(host, await host.SignInForCookieAsync(player.Name, "pass"));
 
@@ -419,6 +422,50 @@ namespace ACE.MarketApi.Tests
                 "Ring of Thorns moved by an admin",
                 "Listing returned (account banned): Ring of Thorns",
             }, Texts(history, "items"));
+        }
+
+        [TestMethod]
+        public async Task History_ItemMovementsFromTheRealListingAndPurchaseFlows_AreWorded()
+        {
+            var seller = NewPlayer("seller");
+            var buyer = NewPlayer("buyer", balance: 300);
+
+            await using var host = await MarketApiHost.StartAsync();
+
+            // the game's deposit job writes the Vault row and a deposit event
+            var guid = MarketApiTestData.AddVaultItem(seller.AccountId, seller.CharacterId, "Staff of Tides", VaultItemState.Held);
+            AddItemEvent(guid, seller, ItemEventKind.Deposit, host.Clock.GetUtcNow().UtcDateTime.AddMinutes(-5));
+
+            var sellerCookie = await host.SignInForCookieAsync(seller.Name, "pass");
+
+            async Task<long> ListAsync(long price)
+            {
+                var response = await host.PostJsonAsync("/listings", new { itemGuid = guid, price }, sellerCookie);
+                Assert.AreEqual(HttpStatusCode.Created, response.StatusCode, await response.Content.ReadAsStringAsync());
+                return (await MarketApiHost.JsonAsync(response)).GetProperty("id").GetInt64();
+            }
+
+            var first = await ListAsync(250);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.PostJsonAsync($"/listings/{first}/delist", new { }, sellerCookie)).StatusCode);
+            var second = await ListAsync(200);
+            await BuyAsync(host, await host.SignInForCookieAsync(buyer.Name, "pass"), second, 200);
+
+            var history = await HistoryAsync(host, await host.SignInForCookieAsync(seller.Name, "pass"));
+
+            CollectionAssert.AreEqual(new[]
+            {
+                $"Sold Staff of Tides to {buyer.CharacterName}",
+                "Listed Staff of Tides for 200 MMD",
+                "Delisted Staff of Tides",
+                "Listed Staff of Tides for 250 MMD",
+                "Deposited Staff of Tides",
+            }, Texts(history, "items"));
+            CollectionAssert.AreEqual(new[] { $"Market fee · {Minus}0 MMD", $"Sold Staff of Tides to {buyer.CharacterName} · +200 MMD" }, Texts(history));
+
+            var buyerHistory = await HistoryAsync(host, await host.SignInForCookieAsync(buyer.Name, "pass"));
+
+            CollectionAssert.AreEqual(new[] { $"Bought Staff of Tides from {seller.CharacterName}" }, Texts(buyerHistory, "items"));
+            CollectionAssert.AreEqual(new[] { $"Bought Staff of Tides from {seller.CharacterName} · {Minus}200 MMD" }, Texts(buyerHistory));
         }
     }
 }

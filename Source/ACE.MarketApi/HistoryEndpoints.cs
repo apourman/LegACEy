@@ -37,19 +37,25 @@ namespace ACE.MarketApi
 
         /// <summary>
         /// GET /history?since={seq}&amp;itemsBefore={eventId}&amp;itemsLimit={n}
-        /// → balance, head (the account's last ledger sequence), the account's ledger lines with a sequence after since (newest first),
+        /// → balance, head (the account's last ledger sequence), every one of the account's ledger lines with a sequence after since (newest first),
         /// and a page of its item movements (newest first, paged back by event id).
         /// A poller passes the head it was last given as since, and never misses a line: the head is read first, and every line up to it is already committed.
+        /// Item movements have no per-account sequence, so their page is for browsing, not a poll cursor: an event id can commit after a higher one.
+        /// A sale still reaches a poller through its ledger line.
         /// </summary>
         private static async Task<IResult> History(HttpContext context, MarketDatabase database)
         {
             var accountId = MarketHttp.AccountId(context);
             var query = context.Request.Query;
 
-            if (!TryQueryLong(query["since"], 0, 0, out var since) ||
-                !TryQueryLong(query["itemsBefore"], null, 1, out var itemsBefore) ||
-                !TryQueryLong(query["itemsLimit"], DefaultItemsLimit, 1, out var itemsLimit) || itemsLimit > MaxItemsLimit)
+            if (!TryWhole(query["since"], 0, out var since) || !TryWhole(query["itemsBefore"], 1, out var itemsBefore))
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_cursor");
+
+            // like the catalog's limit: at least 1, and a larger one is capped
+            if (!TryWhole(query["itemsLimit"], 1, out var limit))
+                return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_limit");
+
+            var itemsLimit = (int)Math.Min(limit ?? DefaultItemsLimit, MaxItemsLimit);
 
             using var shard = database.CreateShard();
 
@@ -62,20 +68,20 @@ namespace ACE.MarketApi
             var head = balance?.LastSequence ?? 0;
 
             var lines = await shard.MarketLedgerEntries.AsNoTracking()
-                .Where(e => e.AccountId == accountId && e.Sequence > since && e.Sequence <= head)
+                .Where(e => e.AccountId == accountId && e.Sequence > (since ?? 0) && e.Sequence <= head)
                 .OrderByDescending(e => e.Sequence)
                 .Select(e => new LedgerLine(e.Sequence.Value, e.TransferId, e.Amount, e.BalanceAfter.Value, e.Memo,
                     e.Transfer.Kind, e.Transfer.ListingId, e.Transfer.ReversesTransferId, e.Transfer.Memo, e.Transfer.CreatedTime))
                 .ToListAsync();
 
-            // destroyed trade notes are item events of a note deposit, which its ledger line already tells
+            // destroyed trade notes: only a note deposit gives a deposit event a transfer, and its ledger line already tells it ("Deposited 50 trade notes")
             var eventQuery = shard.MarketItemEvents.AsNoTracking()
                 .Where(e => e.AccountId == accountId && !(e.Kind == ItemEventKind.Deposit && e.TransferId != null));
 
             if (itemsBefore != null)
                 eventQuery = eventQuery.Where(e => e.Id < itemsBefore);
 
-            var events = await eventQuery.OrderByDescending(e => e.Id).Take((int)itemsLimit + 1).ToListAsync();
+            var events = await eventQuery.OrderByDescending(e => e.Id).Take(itemsLimit + 1).ToListAsync();
 
             long? nextItemsBefore = null;
 
@@ -85,7 +91,7 @@ namespace ACE.MarketApi
                 nextItemsBefore = events[^1].Id;
             }
 
-            var names = await Names.ReadAsync(shard,
+            var names = await References.ReadAsync(shard,
                 lines.Where(l => l.ListingId != null).Select(l => l.ListingId.Value).Concat(events.Where(e => e.ListingId != null).Select(e => e.ListingId.Value)),
                 events.Select(e => e.ItemGuid));
 
@@ -102,7 +108,7 @@ namespace ACE.MarketApi
                     balanceAfter = l.BalanceAfter,
                     // stored as UTC; EF reads datetime(6) as Unspecified
                     time = DateTime.SpecifyKind(l.Time, DateTimeKind.Utc),
-                    text = Word(l, accountId, names),
+                    text = Describe(l, accountId, names),
                     memo = l.EntryMemo ?? l.TransferMemo,
                 }),
                 items = events.Select(e => new
@@ -113,7 +119,7 @@ namespace ACE.MarketApi
                     name = names.Item(e.ItemGuid),
                     listingId = e.ListingId,
                     time = DateTime.SpecifyKind(e.EventTime, DateTimeKind.Utc),
-                    text = Word(e, names),
+                    text = Describe(e, names),
                 }),
                 nextItemsBefore,
             });
@@ -125,11 +131,12 @@ namespace ACE.MarketApi
         /// <summary>
         /// A ledger line: what happened, then the signed amount ("Sold Bone Slicer to Bob · +100 MMD")
         /// </summary>
-        private static string Word(LedgerLine line, uint accountId, Names names)
+        private static string Describe(LedgerLine line, uint accountId, References names)
         {
             var listing = names.Listing(line.ListingId);
 
-            // a sale's seller has two lines: +price, then -fee (0 or less, even when the fee is 0)
+            // a sale's seller has two lines: +price, then -fee (0 or less, even when the fee is 0).
+            // The buyer's -price line is never the seller's: buying from your own account is refused (own_listing).
             var isFee = line.Kind == TransferKind.Purchase && listing != null && listing.SellerAccountId == accountId && line.Amount <= 0;
 
             var what = line.Kind switch
@@ -147,13 +154,13 @@ namespace ACE.MarketApi
 
             var sign = isFee || line.Amount < 0 ? Minus : "+";
 
-            return $"{what} · {sign}{Mmd(Math.Abs(line.Amount))} MMD";
+            return $"{what} · {sign}{Number(Math.Abs(line.Amount))} MMD";
         }
 
         /// <summary>
         /// An item movement ("Listed Bone Slicer for 100 MMD")
         /// </summary>
-        private static string Word(ItemEvent e, Names names)
+        private static string Describe(ItemEvent e, References names)
         {
             var item = names.ItemOrUnknown(e.ItemGuid);
             var listing = names.Listing(e.ListingId);
@@ -162,7 +169,7 @@ namespace ACE.MarketApi
             {
                 ItemEventKind.Deposit => $"Deposited {item}",
                 ItemEventKind.Withdraw => $"Withdrew {item}",
-                ItemEventKind.List when listing != null => $"Listed {item} for {Mmd(listing.Price)} MMD",
+                ItemEventKind.List when listing != null => $"Listed {item} for {Number(listing.Price)} MMD",
                 ItemEventKind.List => $"Listed {item}",
                 ItemEventKind.Delist => $"Delisted {item}",
                 ItemEventKind.Expire => $"Listing expired: {item}",
@@ -174,20 +181,18 @@ namespace ACE.MarketApi
             };
         }
 
-        private static string Notes(long count) => count == 1 ? "1 trade note" : $"{Mmd(count)} trade notes";
+        private static string Notes(long count) => count == 1 ? "1 trade note" : $"{Number(count)} trade notes";
 
-        private static string Mmd(long amount) => amount.ToString("N0", CultureInfo.InvariantCulture);
+        private static string Number(long amount) => amount.ToString("N0", CultureInfo.InvariantCulture);
 
         /// <summary>
-        /// A whole number at least min, or the fallback when the parameter is absent
+        /// A whole number at least min, or null when the parameter is absent
         /// </summary>
-        private static bool TryQueryLong(StringValues value, long? fallback, long min, out long? result)
+        private static bool TryWhole(StringValues value, long min, out long? result)
         {
-            result = fallback;
+            result = null;
 
-            var text = value.ToString().Trim();
-
-            if (text.Length == 0)
+            if (MarketHttp.QueryValue(value) is not string text)
                 return true;
 
             if (!long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) || parsed < min)
@@ -197,30 +202,23 @@ namespace ACE.MarketApi
             return true;
         }
 
-        private static bool TryQueryLong(StringValues value, long fallback, long min, out long result)
-        {
-            var ok = TryQueryLong(value, (long?)fallback, min, out long? parsed);
-            result = parsed ?? fallback;
-            return ok;
-        }
-
         /// <summary>
         /// The listings, item names and character names the lines refer to, read in one batch each
         /// </summary>
-        private sealed class Names
+        private sealed class References
         {
             private readonly Dictionary<long, Listing> listings;
             private readonly Dictionary<uint, string> items;
             private readonly Dictionary<uint, string> characters;
 
-            private Names(Dictionary<long, Listing> listings, Dictionary<uint, string> items, Dictionary<uint, string> characters)
+            private References(Dictionary<long, Listing> listings, Dictionary<uint, string> items, Dictionary<uint, string> characters)
             {
                 this.listings = listings;
                 this.items = items;
                 this.characters = characters;
             }
 
-            public static async Task<Names> ReadAsync(ShardDbContext shard, IEnumerable<long> listingIds, IEnumerable<uint> itemGuids)
+            public static async Task<References> ReadAsync(ShardDbContext shard, IEnumerable<long> listingIds, IEnumerable<uint> itemGuids)
             {
                 var listingIdSet = listingIds.ToHashSet();
 
@@ -249,7 +247,7 @@ namespace ACE.MarketApi
                 var characters = characterIds.Count == 0 ? new Dictionary<uint, string>() :
                     await shard.Character.AsNoTracking().Where(c => characterIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name);
 
-                return new Names(listings, items, characters);
+                return new References(listings, items, characters);
             }
 
             public Listing Listing(long? id) => id != null && listings.TryGetValue(id.Value, out var listing) ? listing : null;
