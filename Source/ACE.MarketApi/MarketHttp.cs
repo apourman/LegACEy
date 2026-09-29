@@ -34,6 +34,20 @@ namespace ACE.MarketApi
             return response.WriteAsJsonAsync(new { error });
         }
 
+        /// <summary>
+        /// A price in whole MMD, at least 1. Prices arrive as decimals so that 1.5 is refused as a price rather than as unreadable JSON.
+        /// </summary>
+        public static bool TryWholeMmd(decimal? value, out long mmd)
+        {
+            mmd = 0;
+
+            if (value is not decimal price || price < 1 || price != decimal.Truncate(price) || price > long.MaxValue)
+                return false;
+
+            mmd = (long)price;
+            return true;
+        }
+
         public static IResult Error(int statusCode, string error) => Results.Json(new { error }, statusCode: statusCode);
     }
 }

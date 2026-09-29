@@ -179,7 +179,7 @@ namespace ACE.Database
                         balanceAfter = transfer.Entries.Last(e => e.AccountId == accountId).BalanceAfter ?? 0;
                         return MarketJobResult.Saved;
                     }
-                    catch (DbUpdateException ex) when (attempt < LedgerJobAttempts && IsBalanceRace(ex))
+                    catch (DbUpdateException ex) when (attempt < LedgerJobAttempts && Ledger.IsLostRace(ex))
                     {
                         log.Warn($"[DATABASE][VAULT] {job} for account {accountId} lost a race for the balance row, trying again: {ex.GetFullMessage()}");
                     }
@@ -194,11 +194,6 @@ namespace ACE.Database
             }
         }
 
-        private static bool IsBalanceRace(DbUpdateException ex)
-        {
-            // not every server names the table in a duplicate key message, so any duplicate key is retried: another cause fails again and ends as Failed
-            return ex is DbUpdateConcurrencyException || (ex.InnerException is MySqlException mysql && mysql.ErrorCode == MySqlErrorCode.DuplicateKeyEntry);
-        }
 
         private static Transfer NewTransfer(string kind, uint accountId, uint characterId, params LedgerEntry[] entries)
         {

@@ -452,6 +452,22 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual(380L, Balance(buyer.AccountId));
         }
 
+        [TestMethod]
+        public async Task Purchase_KeyTheAccountUsedForAnotherKindOfRequest_AnswersKeyReusedAndChangesNothing()
+        {
+            var seller = NewPlayer("seller");
+            var buyer = NewPlayer("buyer", balance: 500);
+
+            await using var host = await MarketApiHost.StartAsync();
+            var listed = NewListing(host, seller, 50);
+            var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
+            MarketTestDatabase.Execute(MarketApiTestData.ShardDatabase, $"INSERT INTO market_request (account_Id, idempotency_Key, kind, result, created_Time) VALUES ({buyer.AccountId}, 'used', 'mmd_withdraw', '{{}}', UTC_TIMESTAMP(6));");
+            var before = Snapshot(listed, buyer, seller);
+
+            await AssertRefusedAsync(await PurchaseAsync(host, cookie, listed, "used"), HttpStatusCode.Conflict, "key_reused");
+            Assert.AreEqual(before, Snapshot(listed, buyer, seller));
+        }
+
         // ---- concurrency
 
         [TestMethod]
@@ -516,7 +532,7 @@ namespace ACE.MarketApi.Tests
             await using var host = await MarketApiHost.StartAsync();
             var listed = NewListing(host, seller, 50);
             var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
-            MarketApiTestData.Ban(seller.AccountId, DateTime.UtcNow.AddDays(3));
+            MarketApiTestData.Ban(seller.AccountId, host.Clock.GetUtcNow().UtcDateTime.AddDays(3));
 
             await AssertRefusedAsync(await PurchaseAsync(host, cookie, listed), HttpStatusCode.Gone, "gone");
 
@@ -536,7 +552,7 @@ namespace ACE.MarketApi.Tests
             var listed = NewListing(host, seller, 50);
             var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
             var before = Snapshot(listed, buyer, seller);
-            MarketApiTestData.Ban(buyer.AccountId, DateTime.UtcNow.AddDays(3));
+            MarketApiTestData.Ban(buyer.AccountId, host.Clock.GetUtcNow().UtcDateTime.AddDays(3));
 
             // the session stops working once the ban is noticed
             Assert.AreEqual(HttpStatusCode.Unauthorized, (await PurchaseAsync(host, cookie, listed)).StatusCode);

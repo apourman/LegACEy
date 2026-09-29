@@ -4,8 +4,6 @@ using System.Text.Json;
 
 using Microsoft.EntityFrameworkCore;
 
-using MySqlConnector;
-
 using ACE.Database.Models.Shard;
 using ACE.Database.Models.Shard.Market;
 
@@ -64,13 +62,11 @@ namespace ACE.Database.Market
         public const string RequestKind = "purchase";
 
         /// <summary>
-        /// The receipt of the buyer's earlier purchase with this key, or null
+        /// The account's earlier request with this key, of any kind (a key is the account's, whatever it was used for), or null
         /// </summary>
-        public static PurchaseReceipt StoredReceipt(ShardDbContext shard, uint accountId, string idempotencyKey)
+        public static Request StoredRequest(ShardDbContext shard, uint accountId, string idempotencyKey)
         {
-            var result = shard.MarketRequests.AsNoTracking().Where(r => r.AccountId == accountId && r.IdempotencyKey == idempotencyKey && r.Kind == RequestKind).Select(r => r.Result).FirstOrDefault();
-
-            return result == null ? null : PurchaseReceipt.FromJson(result);
+            return shard.MarketRequests.AsNoTracking().FirstOrDefault(r => r.AccountId == accountId && r.IdempotencyKey == idempotencyKey);
         }
 
         /// <summary>
@@ -163,7 +159,7 @@ namespace ACE.Database.Market
                 shard.SaveChanges();
                 return true;
             }
-            catch (DbUpdateException ex) when (ex is DbUpdateConcurrencyException || (ex.InnerException is MySqlException mysql && mysql.ErrorCode == MySqlErrorCode.DuplicateKeyEntry))
+            catch (DbUpdateException ex) when (Ledger.IsLostRace(ex))
             {
                 return false;
             }

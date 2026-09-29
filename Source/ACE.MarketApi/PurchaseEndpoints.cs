@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 
 using ACE.Database.Market;
 using ACE.Database.Models.Shard;
+using ACE.Database.Models.Shard.Market;
 
 namespace ACE.MarketApi
 {
@@ -40,7 +41,7 @@ namespace ACE.MarketApi
             if (request == null || string.IsNullOrEmpty(request.IdempotencyKey) || request.IdempotencyKey.Length > MaxKeyLength)
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_request");
 
-            if (request.ExpectedPrice is not decimal expected || expected < 1 || expected != decimal.Truncate(expected) || expected > long.MaxValue)
+            if (!MarketHttp.TryWholeMmd(request.ExpectedPrice, out var expected))
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "invalid_price");
 
             if (request.Count is not int count || count < 1)
@@ -52,10 +53,10 @@ namespace ACE.MarketApi
             using var shard = database.CreateShard();
 
             // a repeated key gets the first answer and nothing else happens
-            var stored = PurchaseStore.StoredReceipt(shard, buyer, request.IdempotencyKey);
+            var stored = PurchaseStore.StoredRequest(shard, buyer, request.IdempotencyKey);
 
             if (stored != null)
-                return new Stored(stored).Result;
+                return Replay(stored);
 
             if (pause.IsPaused)
                 return MarketHttp.Error(StatusCodes.Status503ServiceUnavailable, "paused");
@@ -72,24 +73,34 @@ namespace ACE.MarketApi
 
             for (var attempt = 0; attempt < MaxAttempts; attempt++)
             {
-                var answer = Attempt(shard, id, buyer, characterId.Value, (long)expected, count, request.IdempotencyKey, now, database, feePolicy, logger);
+                var answer = Attempt(shard, id, buyer, characterId.Value, expected, count, request.IdempotencyKey, now, database, feePolicy, logger);
 
-                if (answer == null)
-                    continue;
-
-                // the same key may have been bought by a parallel request meanwhile: that answer wins over a refusal
-                if (answer is not Stored)
+                // the same key may have been used by a parallel request meanwhile: its answer wins over a refusal or a lost race
+                if (answer?.Bought != true)
                 {
-                    stored = PurchaseStore.StoredReceipt(shard, buyer, request.IdempotencyKey);
+                    stored = PurchaseStore.StoredRequest(shard, buyer, request.IdempotencyKey);
 
                     if (stored != null)
-                        return new Stored(stored).Result;
+                        return Replay(stored);
                 }
 
-                return answer.Result;
+                if (answer != null)
+                    return answer.Result;
             }
 
+            // the listing is still buyable and affordable, but every save lost a race (a very busy buyer or seller balance)
             return MarketHttp.Error(StatusCodes.Status503ServiceUnavailable, "busy");
+        }
+
+        /// <summary>
+        /// The first answer to a key: a purchase's receipt, or key_reused if the account used the key for another kind of request
+        /// </summary>
+        private static IResult Replay(Request stored)
+        {
+            if (stored.Kind != PurchaseStore.RequestKind)
+                return MarketHttp.Error(StatusCodes.Status409Conflict, "key_reused");
+
+            return Receipt(PurchaseReceipt.FromJson(stored.Result)).Result;
         }
 
         /// <summary>
@@ -111,7 +122,7 @@ namespace ACE.MarketApi
                 return Refused(StatusCodes.Status403Forbidden, "own_listing");
 
             if (listing.Price != expectedPrice)
-                return new Answer(Results.Json(new { error = "price_changed", price = listing.Price }, statusCode: StatusCodes.Status409Conflict));
+                return new Answer(Results.Json(new { error = "price_changed", price = listing.Price }, statusCode: StatusCodes.Status409Conflict), false);
 
             if (count != item.StackSize)
                 return Refused(StatusCodes.Status400BadRequest, "invalid_count");
@@ -134,7 +145,7 @@ namespace ACE.MarketApi
             switch (result.Outcome)
             {
                 case PurchaseOutcome.Ok:
-                    return new Stored(result.Receipt);
+                    return Receipt(result.Receipt);
 
                 case PurchaseOutcome.NotBuyable:
                     return Refused(StatusCodes.Status410Gone, "gone");
@@ -171,26 +182,14 @@ namespace ACE.MarketApi
             return characters.OrderBy(c => c.Id).Select(c => (uint?)c.Id).FirstOrDefault();
         }
 
-        private static Answer Refused(int status, string error) => new Answer(MarketHttp.Error(status, error));
-
-        private class Answer
-        {
-            public IResult Result { get; }
-
-            public Answer(IResult result)
-            {
-                Result = result;
-            }
-        }
+        private static Answer Refused(int status, string error) => new Answer(MarketHttp.Error(status, error), false);
 
         /// <summary>
         /// A purchase's receipt, written out the same way the first time and on every replay
         /// </summary>
-        private sealed class Stored : Answer
-        {
-            public Stored(PurchaseReceipt receipt) : base(Results.Content(receipt.ToJson(), "application/json"))
-            {
-            }
-        }
+        private static Answer Receipt(PurchaseReceipt receipt) => new Answer(Results.Content(receipt.ToJson(), "application/json"), true);
+
+        /// <param name="Bought">the answer is a purchase's receipt</param>
+        private sealed record Answer(IResult Result, bool Bought);
     }
 }
