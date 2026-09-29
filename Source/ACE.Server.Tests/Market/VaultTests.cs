@@ -20,7 +20,7 @@ namespace ACE.Server.Tests.Market
     /// Seam 2: the game-side Vault. Every test drives the one Vault entry point (the one the /vault commands use) with a test player in a started world.
     /// </summary>
     [TestClass]
-    public class VaultTests
+    public partial class VaultTests
     {
         private const string Db = VaultTestWorld.Db;
 
@@ -417,6 +417,9 @@ namespace ACE.Server.Tests.Market
             var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
             var guid = item.Guid.Full;
             player.CurrentAppraisalTarget = guid;
+
+            // the commands channel first (ticket 04); keep the channel short here
+            using var channel = ChannelSeconds(1);
 
             VaultTestWorld.OnWorldThread(() => Command.Handlers.VaultCommands.HandleVault(player.Session, "deposit"));
             VaultTestWorld.WaitUntil(() => VaultStore.Get(guid) != null, "the deposit command's job");

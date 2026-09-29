@@ -33,8 +33,26 @@ namespace ACE.Server.Market
                 VaultOutcome.UniqueLimit => $"You cannot carry any more of {item}.",
                 VaultOutcome.SaveFailed => $"The Vault could not save {item}. Nothing was changed.",
 
+                VaultOutcome.RecentPlayerFight => "You have been in a player fight too recently to use the Vault. Try again in a couple of minutes.",
+                VaultOutcome.Trading => "Close the trade window before you use the Vault.",
+                VaultOutcome.Channelling => "You are already moving an item to or from your Vault.",
+                VaultOutcome.Interrupted => $"Your Vault channel was interrupted. {item} did not move.",
+
                 _ => outcome.ToString(),
             };
+        }
+
+        /// <summary>
+        /// What a player is told when a deposit or withdrawal channel starts
+        /// </summary>
+        public static string ChannelStarted(bool deposit, string itemName, int seconds)
+        {
+            var item = string.IsNullOrEmpty(itemName) ? "the item" : itemName;
+            var time = $"{seconds} second{(seconds == 1 ? "" : "s")}";
+
+            return deposit
+                ? $"You begin moving {item} into your Vault. Hold still for {time}; a player attack, death or logging out stops it."
+                : $"You begin taking {item} out of your Vault. Hold still for {time}; a player attack, death or logging out stops it.";
         }
     }
 }

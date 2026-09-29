@@ -75,6 +75,13 @@ namespace ACE.Server.WorldObjects
                 return;
             }
 
+            if (IsVaultChannelling)
+            {
+                SendWeenieError(WeenieError.YoureTooBusy);
+                OnAttackDone();
+                return;
+            }
+
             var weapon = GetEquippedMissileWeapon();
             var ammo = GetEquippedAmmo();
 

@@ -47,7 +47,15 @@ namespace ACE.Server.Market
             Available = check.Status == MarketSchemaStatus.Ok;
 
             if (Available)
+            {
                 log.Info($"[VAULT] Market schema check: {check.Report}");
+
+                // a withdrawal channel marks its row withdrawing; none survives a restart, so any mark left is from a crash
+                var released = VaultStore.ReleaseAllWithdrawing();
+
+                if (released > 0)
+                    log.Warn($"[VAULT] Released {released:N0} Vault item(s) left marked withdrawing by the last shutdown");
+            }
             else
                 log.Error($"[VAULT] Market schema check failed ({check.Report}). The Vault and the market are disabled until the market tables are installed and the server restarted.");
         }
@@ -67,57 +75,17 @@ namespace ACE.Server.Market
         /// </summary>
         public static void Deposit(Player player, uint itemGuid, Action<VaultResult> completed = null)
         {
-            if (!Available)
-            {
-                Finish(player, VaultOutcome.NotAvailable, null, itemGuid, completed);
-                return;
-            }
-
-            if (inFlight.Contains(player.Guid.Full))
-            {
-                Finish(player, VaultOutcome.Busy, null, itemGuid, completed);
-                return;
-            }
-
-            var guid = new ObjectGuid(itemGuid);
-
-            if (player.EquippedObjects.TryGetValue(guid, out var worn))
-            {
-                Finish(player, VaultOutcome.Worn, worn.Name, itemGuid, completed);
-                return;
-            }
-
-            var item = player.GetInventoryItem(guid);
-
-            if (item == null)
-            {
-                Finish(player, VaultOutcome.NotInPack, null, itemGuid, completed);
-                return;
-            }
-
-            if (player.ItemsInTradeWindow.Contains(guid))
-            {
-                Finish(player, VaultOutcome.InTrade, item.Name, itemGuid, completed);
-                return;
-            }
-
-            var refusal = CheckDepositRules(player, item);
+            var refusal = CheckDeposit(player, itemGuid, out var item);
 
             if (refusal != null)
             {
-                Finish(player, refusal.Value, item.Name, itemGuid, completed);
+                Finish(player, refusal.Value, item?.Name, itemGuid, completed);
                 return;
             }
 
+            var guid = item.Guid;
             var accountId = player.Character.AccountId;
             var vaultSize = (int)MarketSettings.Get(MarketSettings.VaultSize);
-
-            if (VaultStore.Count(accountId) >= vaultSize)
-            {
-                Finish(player, VaultOutcome.VaultFull, item.Name, itemGuid, completed);
-                return;
-            }
-
             var name = item.Name;
             var vaultItem = NewVaultItem(item, accountId, player.Guid.Full);
 
@@ -149,69 +117,29 @@ namespace ACE.Server.Market
         /// </summary>
         public static void Withdraw(Player player, uint itemGuid, Action<VaultResult> completed = null)
         {
-            if (!Available)
-            {
-                Finish(player, VaultOutcome.NotAvailable, null, itemGuid, completed);
-                return;
-            }
+            Withdraw(player, itemGuid, null, completed);
+        }
 
-            if (inFlight.Contains(player.Guid.Full))
+        /// <summary>
+        /// Withdraws an item whose Vault row the caller has already marked withdrawing (the channel does this when it starts).
+        /// The row must still have the version the mark gave it. On a refusal or failure the row stays marked: the caller releases it.
+        /// </summary>
+        public static void Withdraw(Player player, uint itemGuid, uint markedRowVersion, Action<VaultResult> completed = null)
+        {
+            Withdraw(player, itemGuid, (uint?)markedRowVersion, completed);
+        }
+
+        private static void Withdraw(Player player, uint itemGuid, uint? markedRowVersion, Action<VaultResult> completed)
+        {
+            var refusal = CheckWithdraw(player, itemGuid, markedRowVersion, out var row, out var item);
+
+            if (refusal != null)
             {
-                Finish(player, VaultOutcome.Busy, null, itemGuid, completed);
+                Finish(player, refusal.Value, row?.Name, itemGuid, completed);
                 return;
             }
 
             var accountId = player.Character.AccountId;
-            var row = VaultStore.Get(itemGuid);
-
-            if (row == null || row.AccountId != accountId)
-            {
-                Finish(player, VaultOutcome.NotInVault, null, itemGuid, completed);
-                return;
-            }
-
-            if (row.State == VaultItemState.Listed)
-            {
-                Finish(player, VaultOutcome.Listed, row.Name, itemGuid, completed);
-                return;
-            }
-
-            if (row.State == VaultItemState.Withdrawing)
-            {
-                Finish(player, VaultOutcome.Withdrawing, row.Name, itemGuid, completed);
-                return;
-            }
-
-            var biota = DatabaseManager.Shard.BaseDatabase.GetBiota(itemGuid, doNotAddToCache: true);
-
-            if (biota == null)
-            {
-                log.Error($"[VAULT] {player.Name} tried to withdraw 0x{itemGuid:X8}, which has a Vault row but no item row");
-                Finish(player, VaultOutcome.NotInVault, row.Name, itemGuid, completed);
-                return;
-            }
-
-            var item = WorldObjectFactory.CreateWorldObject(biota);
-
-            if (item == null)
-            {
-                log.Error($"[VAULT] {player.Name} tried to withdraw 0x{itemGuid:X8}, which could not be created from its biota");
-                Finish(player, VaultOutcome.SaveFailed, row.Name, itemGuid, completed);
-                return;
-            }
-
-            if (!player.CanAddToInventory(item))
-            {
-                Finish(player, VaultOutcome.NoPackSpace, row.Name, itemGuid, completed);
-                return;
-            }
-
-            if (item.IsUniqueOrContainsUnique && !player.CheckUniques(item))
-            {
-                Finish(player, VaultOutcome.UniqueLimit, row.Name, itemGuid, completed);
-                return;
-            }
-
             var name = item.Name;
 
             item.OwnerId = player.Guid.Full;
@@ -225,6 +153,103 @@ namespace ACE.Server.Market
                 // this runs on the save thread
                 WorldManager.EnqueueAction(new ActionEventDelegate(() => OnWithdrawn(player, item, name, saved, completed)));
             });
+        }
+
+        /// <summary>
+        /// Every deposit refusal rule, in order, without changing anything. Null if the item can go in the Vault.
+        /// The item is set whenever the player has it, so a refusal can name it.
+        /// </summary>
+        public static VaultOutcome? CheckDeposit(Player player, uint itemGuid, out WorldObject item)
+        {
+            item = null;
+
+            if (!Available)
+                return VaultOutcome.NotAvailable;
+
+            if (inFlight.Contains(player.Guid.Full))
+                return VaultOutcome.Busy;
+
+            var guid = new ObjectGuid(itemGuid);
+
+            if (player.EquippedObjects.TryGetValue(guid, out item))
+                return VaultOutcome.Worn;
+
+            item = player.GetInventoryItem(guid);
+
+            if (item == null)
+                return VaultOutcome.NotInPack;
+
+            if (player.ItemsInTradeWindow.Contains(guid))
+                return VaultOutcome.InTrade;
+
+            var refusal = CheckDepositRules(player, item);
+
+            if (refusal != null)
+                return refusal;
+
+            if (VaultStore.Count(player.Character.AccountId) >= (int)MarketSettings.Get(MarketSettings.VaultSize))
+                return VaultOutcome.VaultFull;
+
+            return null;
+        }
+
+        /// <summary>
+        /// Every withdrawal refusal rule, in order. Null if the item can be withdrawn. Nothing is changed, but the item is read from the database
+        /// and created (not added anywhere) once the row checks pass, for the pack-space and unique checks. The row is set whenever it is the player's account's.
+        /// With no marked version the row must be held; with one, it must be withdrawing with exactly that version.
+        /// </summary>
+        public static VaultOutcome? CheckWithdraw(Player player, uint itemGuid, uint? markedRowVersion, out VaultItem row, out WorldObject item)
+        {
+            row = null;
+            item = null;
+
+            if (!Available)
+                return VaultOutcome.NotAvailable;
+
+            if (inFlight.Contains(player.Guid.Full))
+                return VaultOutcome.Busy;
+
+            row = VaultStore.Get(itemGuid);
+
+            if (row == null || row.AccountId != player.Character.AccountId)
+            {
+                row = null;
+                return VaultOutcome.NotInVault;
+            }
+
+            if (row.State == VaultItemState.Listed)
+                return VaultOutcome.Listed;
+
+            // a plain withdrawal needs a held row; one the channel marked must still carry the channel's mark
+            if (markedRowVersion == null && row.State == VaultItemState.Withdrawing)
+                return VaultOutcome.Withdrawing;
+
+            if (markedRowVersion != null && (row.State != VaultItemState.Withdrawing || row.RowVersion != markedRowVersion))
+                return VaultOutcome.Withdrawing;
+
+            var biota = DatabaseManager.Shard.BaseDatabase.GetBiota(itemGuid, doNotAddToCache: true);
+
+            if (biota == null)
+            {
+                log.Error($"[VAULT] {player.Name} tried to withdraw 0x{itemGuid:X8}, which has a Vault row but no item row");
+                return VaultOutcome.NotInVault;
+            }
+
+            item = WorldObjectFactory.CreateWorldObject(biota);
+
+            if (item == null)
+            {
+                log.Error($"[VAULT] {player.Name} tried to withdraw 0x{itemGuid:X8}, which could not be created from its biota");
+                return VaultOutcome.SaveFailed;
+            }
+
+            if (!player.CanAddToInventory(item))
+                return VaultOutcome.NoPackSpace;
+
+            if (item.IsUniqueOrContainsUnique && !player.CheckUniques(item))
+                return VaultOutcome.UniqueLimit;
+
+            return null;
         }
 
         /// <summary>
@@ -290,7 +315,10 @@ namespace ACE.Server.Market
             Finish(player, inPack ? VaultOutcome.Withdrawn : VaultOutcome.WithdrawnAtLogin, name, item.Guid.Full, completed);
         }
 
-        private static void Finish(Player player, VaultOutcome outcome, string itemName, uint itemGuid, Action<VaultResult> completed)
+        /// <summary>
+        /// Tells the player the outcome and reports it to the caller
+        /// </summary>
+        internal static void Finish(Player player, VaultOutcome outcome, string itemName, uint itemGuid, Action<VaultResult> completed)
         {
             var result = new VaultResult(outcome, VaultMessages.For(outcome, itemName), itemGuid);
 

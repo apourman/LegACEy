@@ -996,6 +996,9 @@ namespace ACE.Server.WorldObjects
             //log.Info($"Updating PK timer for {Name}");
 
             LastPkAttackTimestamp = Time.GetUnixTime();
+
+            // every landed player hit, harmful spell or projectile comes through here, debuffs included; monster damage doesn't
+            CancelVaultChannel();
         }
 
         /// <summary>
