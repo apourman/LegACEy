@@ -1,6 +1,6 @@
 using System;
 using System.IO;
-using System.Security.Claims;
+using System.Net;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authentication;
@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -52,7 +52,6 @@ namespace ACE.MarketApi
                     throw new MarketUnavailableException($"Market schema check: {check.Report}. The market will not start until the market update script has been applied.");
             }
 
-            builder.Services.AddSingleton(options);
             builder.Services.AddSingleton(database);
             builder.Services.AddSingleton<SignInLimiter>();
             builder.Services.TryAddSingleton(TimeProvider.System);
@@ -72,14 +71,29 @@ namespace ACE.MarketApi
                     cookie.SlidingExpiration = true;
 
                     // a JSON API: answer 401/403 instead of redirecting to a login page
-                    cookie.Events.OnRedirectToLogin = context => WriteError(context.Response, StatusCodes.Status401Unauthorized, "unauthorized");
-                    cookie.Events.OnRedirectToAccessDenied = context => WriteError(context.Response, StatusCodes.Status403Forbidden, "forbidden");
+                    cookie.Events.OnRedirectToLogin = context => MarketHttp.WriteError(context.Response, StatusCodes.Status401Unauthorized, "unauthorized");
+                    cookie.Events.OnRedirectToAccessDenied = context => MarketHttp.WriteError(context.Response, StatusCodes.Status403Forbidden, "forbidden");
                     cookie.Events.OnValidatePrincipal = ValidateSession;
                 });
 
             builder.Services.AddAuthorization();
 
+            // behind a reverse proxy the connection's IP is the proxy's; trust X-Forwarded-For from the configured proxies only
+            if (options.TrustedProxies.Length > 0)
+            {
+                builder.Services.Configure<ForwardedHeadersOptions>(forwarded =>
+                {
+                    forwarded.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+
+                    foreach (var proxy in options.TrustedProxies)
+                        forwarded.KnownProxies.Add(IPAddress.Parse(proxy));
+                });
+            }
+
             var app = builder.Build();
+
+            if (options.TrustedProxies.Length > 0)
+                app.UseForwardedHeaders();
 
             app.UseAuthentication();
             app.UseAuthorization();
@@ -100,11 +114,8 @@ namespace ACE.MarketApi
 
             Account account = null;
 
-            if (TryGetAccountId(context.Principal, out var accountId))
-            {
-                using var auth = services.GetRequiredService<MarketDatabase>().CreateAuth();
-                account = await auth.Account.AsNoTracking().FirstOrDefaultAsync(a => a.AccountId == accountId);
-            }
+            if (MarketHttp.TryGetAccountId(context.Principal, out var accountId))
+                account = await services.GetRequiredService<MarketDatabase>().FindAccountAsync(accountId);
 
             if (account == null || account.IsBanned(now))
             {
@@ -112,28 +123,6 @@ namespace ACE.MarketApi
                 await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             }
         }
-
-        public static bool TryGetAccountId(ClaimsPrincipal principal, out uint accountId)
-        {
-            accountId = 0;
-            return principal != null && uint.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out accountId);
-        }
-
-        public static uint AccountId(HttpContext context)
-        {
-            if (!TryGetAccountId(context.User, out var accountId))
-                throw new InvalidOperationException("no signed-in account");
-
-            return accountId;
-        }
-
-        public static Task WriteError(HttpResponse response, int statusCode, string error)
-        {
-            response.StatusCode = statusCode;
-            return response.WriteAsJsonAsync(new { error });
-        }
-
-        public static IResult Error(int statusCode, string error) => Results.Json(new { error }, statusCode: statusCode);
     }
 
     /// <summary>

@@ -7,7 +7,6 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.EntityFrameworkCore;
 
 using ACE.Common;
 using ACE.Common.Cryptography;
@@ -41,27 +40,21 @@ namespace ACE.MarketApi
         private static async Task<IResult> Login(LoginRequest request, HttpContext context, MarketDatabase database, SignInLimiter limiter, TimeProvider time)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.Account) || request.Password == null)
-                return MarketApi.Error(StatusCodes.Status400BadRequest, "bad_request");
+                return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_request");
 
             var now = time.GetUtcNow();
             var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
-            SignInLimits limits;
-            using (var shard = database.CreateShard())
-                limits = SignInLimits.Read(shard);
-
             if (limiter.IsIpBlocked(ip, now))
-                return MarketApi.Error(StatusCodes.Status429TooManyRequests, "ip_blocked");
+                return MarketHttp.Error(StatusCodes.Status429TooManyRequests, "ip_blocked");
 
-            Account account;
-            using (var auth = database.CreateAuth())
-                account = await auth.Account.AsNoTracking().FirstOrDefaultAsync(a => a.AccountName == request.Account);
+            var account = await database.FindAccountAsync(request.Account);
 
             // an existing account is counted by id, whatever spelling the name was typed in (the column is case-insensitive)
             var accountKey = account != null ? "id:" + account.AccountId.ToString(CultureInfo.InvariantCulture) : "name:" + request.Account.Trim().ToLowerInvariant();
 
             if (limiter.IsAccountLocked(accountKey, now))
-                return MarketApi.Error(StatusCodes.Status429TooManyRequests, "account_locked");
+                return MarketHttp.Error(StatusCodes.Status429TooManyRequests, "account_locked");
 
             bool passwordMatches;
 
@@ -75,12 +68,16 @@ namespace ACE.MarketApi
 
             if (!passwordMatches)
             {
+                SignInLimits limits;
+                using (var shard = database.CreateShard())
+                    limits = SignInLimits.Read(shard);
+
                 limiter.RecordFailure(accountKey, ip, limits, now);
-                return MarketApi.Error(StatusCodes.Status401Unauthorized, "invalid_credentials");
+                return MarketHttp.Error(StatusCodes.Status401Unauthorized, "invalid_credentials");
             }
 
             if (account.IsBanned(now.UtcDateTime))
-                return MarketApi.Error(StatusCodes.Status403Forbidden, "banned");
+                return MarketHttp.Error(StatusCodes.Status403Forbidden, "banned");
 
             limiter.RecordSuccess(accountKey);
 

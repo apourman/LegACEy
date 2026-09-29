@@ -162,6 +162,28 @@ namespace ACE.MarketApi.Tests
         }
 
         [TestMethod]
+        public async Task SignIn_BehindATrustedProxy_BlocksTheForwardedClientIpNotTheProxy()
+        {
+            const string proxy = "10.8.8.8";
+            var name = MarketApiTestData.UniqueName("proxied");
+            MarketApiTestData.CreateAccount(name, "right");
+
+            await using var host = await MarketApiHost.StartAsync(extraArgs: $"--Market:TrustedProxies:0={proxy}");
+
+            for (var i = 0; i < 20; i++)
+                Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.SignInAsync(MarketApiTestData.UniqueName("ghost"), "wrong", proxy, forwardedFor: "203.0.113.5")).StatusCode);
+
+            Assert.AreEqual("ip_blocked", await MarketApiHost.ErrorAsync(await host.SignInAsync(name, "right", proxy, forwardedFor: "203.0.113.5")));
+            Assert.AreEqual(HttpStatusCode.OK, (await host.SignInAsync(name, "right", proxy, forwardedFor: "203.0.113.6")).StatusCode);
+
+            // an untrusted sender's X-Forwarded-For is ignored: it is judged by its own address
+            for (var i = 0; i < 20; i++)
+                await host.SignInAsync(MarketApiTestData.UniqueName("ghost"), "wrong", "10.7.7.7", forwardedFor: $"198.51.100.{i + 1}");
+
+            Assert.AreEqual("ip_blocked", await MarketApiHost.ErrorAsync(await host.SignInAsync(name, "right", "10.7.7.7", forwardedFor: "198.51.100.200")));
+        }
+
+        [TestMethod]
         public async Task SignIn_LockoutLimits_ComeFromTheServerSettings()
         {
             var name = MarketApiTestData.UniqueName("set");

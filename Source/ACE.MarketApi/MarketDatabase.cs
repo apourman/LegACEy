@@ -1,3 +1,5 @@
+using System.Threading.Tasks;
+
 using Microsoft.EntityFrameworkCore;
 
 using ACE.Common;
@@ -25,6 +27,24 @@ namespace ACE.MarketApi
         public AuthDbContext CreateAuth() => new AuthDbContext(authOptions);
 
         public ShardDbContext CreateShard() => new ShardDbContext(shardOptions);
+
+        /// <summary>
+        /// The account, read without tracking, or null
+        /// </summary>
+        public async Task<Account> FindAccountAsync(uint accountId)
+        {
+            using var auth = CreateAuth();
+            return await auth.Account.AsNoTracking().FirstOrDefaultAsync(a => a.AccountId == accountId);
+        }
+
+        /// <summary>
+        /// The account by name (the column is case-insensitive), read without tracking, or null
+        /// </summary>
+        public async Task<Account> FindAccountAsync(string accountName)
+        {
+            using var auth = CreateAuth();
+            return await auth.Account.AsNoTracking().FirstOrDefaultAsync(a => a.AccountName == accountName);
+        }
 
         /// <summary>
         /// Configured like the generated contexts' OnConfiguring, retry on failure included

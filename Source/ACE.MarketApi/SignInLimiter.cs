@@ -8,28 +8,30 @@ using ACE.Database.Models.Shard;
 namespace ACE.MarketApi
 {
     /// <summary>
+    /// Failures within the window lock the key (an account or an IP) for the lock time
+    /// </summary>
+    public sealed record LockoutRule(int Failures, TimeSpan Window, TimeSpan Lock)
+    {
+        public static LockoutRule Read(ShardDbContext context, MarketSetting failures, MarketSetting windowMinutes, MarketSetting lockMinutes)
+        {
+            // an admin's 0 or negative value means lock on the first failure, and never a negative time
+            return new LockoutRule(
+                (int)Math.Clamp(MarketSettings.Get(context, failures), 1, int.MaxValue),
+                TimeSpan.FromMinutes(Math.Max(0, MarketSettings.Get(context, windowMinutes))),
+                TimeSpan.FromMinutes(Math.Max(0, MarketSettings.Get(context, lockMinutes))));
+        }
+    }
+
+    /// <summary>
     /// The web sign-in lockout settings, read from the shard's server settings on each attempt so an admin's change applies at once
     /// </summary>
-    public sealed class SignInLimits
+    public sealed record SignInLimits(LockoutRule Account, LockoutRule Ip)
     {
-        public int AccountFailures { get; init; }
-        public TimeSpan AccountWindow { get; init; }
-        public TimeSpan AccountLock { get; init; }
-        public int IpFailures { get; init; }
-        public TimeSpan IpWindow { get; init; }
-        public TimeSpan IpLock { get; init; }
-
         public static SignInLimits Read(ShardDbContext context)
         {
-            return new SignInLimits
-            {
-                AccountFailures = (int)MarketSettings.Get(context, MarketSettings.SignInAccountFailures),
-                AccountWindow = TimeSpan.FromMinutes(MarketSettings.Get(context, MarketSettings.SignInAccountWindowMinutes)),
-                AccountLock = TimeSpan.FromMinutes(MarketSettings.Get(context, MarketSettings.SignInAccountLockMinutes)),
-                IpFailures = (int)MarketSettings.Get(context, MarketSettings.SignInIpFailures),
-                IpWindow = TimeSpan.FromMinutes(MarketSettings.Get(context, MarketSettings.SignInIpWindowMinutes)),
-                IpLock = TimeSpan.FromMinutes(MarketSettings.Get(context, MarketSettings.SignInIpLockMinutes)),
-            };
+            return new SignInLimits(
+                LockoutRule.Read(context, MarketSettings.SignInAccountFailures, MarketSettings.SignInAccountWindowMinutes, MarketSettings.SignInAccountLockMinutes),
+                LockoutRule.Read(context, MarketSettings.SignInIpFailures, MarketSettings.SignInIpWindowMinutes, MarketSettings.SignInIpLockMinutes));
         }
     }
 
@@ -68,14 +70,14 @@ namespace ACE.MarketApi
         {
             lock (gate)
             {
-                Fail(accounts, account, limits.AccountFailures, limits.AccountWindow, limits.AccountLock, now);
-                Fail(ips, ip, limits.IpFailures, limits.IpWindow, limits.IpLock, now);
+                Fail(accounts, account, limits.Account, now);
+                Fail(ips, ip, limits.Ip, now);
 
                 if (++failuresSincePrune >= PruneEvery)
                 {
                     failuresSincePrune = 0;
-                    Prune(accounts, limits.AccountWindow, now);
-                    Prune(ips, limits.IpWindow, now);
+                    Prune(accounts, limits.Account.Window, now);
+                    Prune(ips, limits.Ip.Window, now);
                 }
             }
         }
@@ -89,19 +91,19 @@ namespace ACE.MarketApi
                 accounts.Remove(account);
         }
 
-        private static void Fail(Dictionary<string, Counter> counters, string key, int limit, TimeSpan window, TimeSpan lockTime, DateTimeOffset now)
+        private static void Fail(Dictionary<string, Counter> counters, string key, LockoutRule rule, DateTimeOffset now)
         {
             if (!counters.TryGetValue(key, out var counter))
                 counters[key] = counter = new Counter();
 
-            while (counter.Failures.Count > 0 && counter.Failures.Peek() <= now - window)
+            while (counter.Failures.Count > 0 && counter.Failures.Peek() <= now - rule.Window)
                 counter.Failures.Dequeue();
 
             counter.Failures.Enqueue(now);
 
-            if (counter.Failures.Count >= limit)
+            if (counter.Failures.Count >= rule.Failures)
             {
-                counter.LockedUntil = now + lockTime;
+                counter.LockedUntil = now + rule.Lock;
                 counter.Failures.Clear();
             }
         }

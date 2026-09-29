@@ -46,14 +46,14 @@ namespace ACE.MarketApi.Tests.Support
         /// <summary>
         /// Builds the API as Program does, on the test server. Throws what MarketApi.Create throws.
         /// </summary>
-        public static WebApplication Build(string shardDatabase = MarketApiTestData.ShardDatabase, string keysPath = null, ManualClock clock = null)
+        public static WebApplication Build(string shardDatabase = MarketApiTestData.ShardDatabase, string keysPath = null, ManualClock clock = null, params string[] extraArgs)
         {
             return MarketApi.Create(new[]
             {
                 $"--Market:AuthDatabase={MarketApiTestData.AuthDatabase}",
                 $"--Market:ShardDatabase={shardDatabase}",
                 $"--Market:KeysPath={keysPath ?? NewKeysPath()}",
-            },
+            }.Concat(extraArgs).ToArray(),
             builder =>
             {
                 builder.WebHost.UseTestServer();
@@ -65,24 +65,27 @@ namespace ACE.MarketApi.Tests.Support
             });
         }
 
-        public static async Task<MarketApiHost> StartAsync(string keysPath = null, ManualClock clock = null)
+        public static async Task<MarketApiHost> StartAsync(string keysPath = null, ManualClock clock = null, params string[] extraArgs)
         {
             keysPath ??= NewKeysPath();
             clock ??= new ManualClock(DateTimeOffset.UtcNow);
 
-            var app = Build(keysPath: keysPath, clock: clock);
+            var app = Build(keysPath: keysPath, clock: clock, extraArgs: extraArgs);
             await app.StartAsync();
 
             return new MarketApiHost(app, clock, keysPath);
         }
 
-        public async Task<HttpResponseMessage> SignInAsync(string account, string password, string ip = DefaultIp)
+        public async Task<HttpResponseMessage> SignInAsync(string account, string password, string ip = DefaultIp, string forwardedFor = null)
         {
             var request = new HttpRequestMessage(HttpMethod.Post, "/auth/login")
             {
                 Content = JsonContent.Create(new { account, password }),
             };
             request.Headers.Add(RemoteIpHeader, ip);
+
+            if (forwardedFor != null)
+                request.Headers.Add("X-Forwarded-For", forwardedFor);
 
             return await Client.SendAsync(request);
         }

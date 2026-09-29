@@ -27,11 +27,12 @@ namespace ACE.MarketApi
         /// </summary>
         private static async Task<IResult> Me(HttpContext context, MarketDatabase database, TimeProvider time)
         {
-            var accountId = MarketApi.AccountId(context);
+            var accountId = MarketHttp.AccountId(context);
 
-            Account account;
-            using (var auth = database.CreateAuth())
-                account = await auth.Account.AsNoTracking().FirstAsync(a => a.AccountId == accountId);
+            var account = await database.FindAccountAsync(accountId);
+
+            if (account == null)
+                return MarketHttp.Error(StatusCodes.Status401Unauthorized, "unauthorized");
 
             using var shard = database.CreateShard();
 
@@ -56,7 +57,7 @@ namespace ACE.MarketApi
         /// </summary>
         private static async Task<IResult> Vault(HttpContext context, MarketDatabase database)
         {
-            var accountId = MarketApi.AccountId(context);
+            var accountId = MarketHttp.AccountId(context);
 
             using var shard = database.CreateShard();
 
