@@ -26,6 +26,8 @@ Extended documentation can be found on the project [Wiki](https://github.com/ACE
 * [Hosting ACE](https://github.com/ACEmulator/ACE/wiki/ACE-Hosting)
 * [Content Creation](https://github.com/ACEmulator/ACE/wiki/Content-Creation)
 
+Versioned LegACEy server builds are published on the [GitHub Releases page](https://github.com/apourman/LegACEy/releases). The Linux x64 archive requires the .NET 10 runtime and a separately configured DAT directory and database.
+
 ## Contributions
 * Contributions in the form of issues and pull requests are welcomed and encouraged.
 * The preferred way to contribute is to fork the repo and submit a pull request on GitHub.
