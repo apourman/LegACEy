@@ -224,6 +224,14 @@ namespace ACE.Database
 
         public virtual Biota GetBiota(ShardDbContext context, uint id, bool doNotAddToCache = false)
         {
+            return GetBiotaFromDatabase(context, id);
+        }
+
+        /// <summary>
+        /// Loads the biota and its populated collections through this context, never from a cache
+        /// </summary>
+        protected Biota GetBiotaFromDatabase(ShardDbContext context, uint id)
+        {
             var biota = context.Biota
                 .FirstOrDefault(r => r.Id == id);
 

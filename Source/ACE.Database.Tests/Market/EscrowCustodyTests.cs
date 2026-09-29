@@ -225,6 +225,45 @@ namespace ACE.Database.Tests.Market
         }
 
         [TestMethod]
+        public void SaveQueue_DepositAfterEarlierSaveThenWithdraw_RunInOrderAndEvictTheCachedCopy()
+        {
+            var guid = SeedPackItem();
+            var shardDb = NewCachingDatabase();
+            var queue = new SerializedShardDatabase(shardDb);
+
+            // a routine save of the item, still in the pack, queued before the deposit: it runs first and caches the item
+            var earlierSave = LoadEntity(guid);
+            var deposited = LoadEntity(guid);
+            RemoveFromPack(deposited);
+            var withdrawn = LoadEntity(guid);
+            RemoveFromPack(withdrawn);
+            PutInPack(withdrawn, OtherCharacterId);
+
+            var results = new List<string>();
+            var cachedAfterEarlierSave = false;
+
+            queue.Start();
+            try
+            {
+                queue.SaveBiota(earlierSave, new ReaderWriterLockSlim(), ok => { results.Add($"save:{ok}"); cachedAfterEarlierSave = shardDb.GetBiotaCacheKeys().Contains(guid); });
+                queue.DepositToVault(deposited, new ReaderWriterLockSlim(), NewVaultItem(guid), ok => results.Add($"deposit:{ok}"));
+                queue.WithdrawFromVault(withdrawn, new ReaderWriterLockSlim(), AccountId, OtherCharacterId, 0, ok => results.Add($"withdraw:{ok}"));
+            }
+            finally
+            {
+                queue.Stop(); // drains the queue
+            }
+
+            CollectionAssert.AreEqual(new[] { "save:True", "deposit:True", "withdraw:True" }, results);
+            Assert.IsTrue(cachedAfterEarlierSave);
+            Assert.DoesNotContain(guid, shardDb.GetBiotaCacheKeys());
+
+            Assert.AreEqual(OtherCharacterId, (uint)MarketTestDatabase.Scalar(Db, $"SELECT value FROM biota_properties_i_i_d WHERE object_Id = {guid} AND type = {(int)PropertyInstanceId.Container};"));
+            Assert.AreEqual(0, MarketTestDatabase.Scalar(Db, $"SELECT COUNT(*) FROM market_vault_item WHERE item_Guid = {guid};"));
+            CollectionAssert.AreEqual(new[] { ItemEventKind.Deposit, ItemEventKind.Withdraw }, MarketTestDatabase.Rows(Db, $"SELECT kind FROM market_item_event WHERE item_Guid = {guid} ORDER BY id;"));
+        }
+
+        [TestMethod]
         public void EvictBiota_UncachedGuid_ReturnsFalse()
         {
             var shardDb = NewCachingDatabase();
