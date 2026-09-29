@@ -27,7 +27,7 @@ namespace ACE.MarketApi
             if (request == null)
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_request");
 
-            if (request.Price is not decimal price || price < 1 || price != decimal.Truncate(price) || price > long.MaxValue)
+            if (!MarketHttp.TryWholeMmd(request.Price, out var price))
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "invalid_price");
 
             var accountId = MarketHttp.AccountId(context);
@@ -38,7 +38,7 @@ namespace ACE.MarketApi
 
             using var shard = database.CreateShard();
 
-            var result = ListingStore.List(shard, accountId, request.ItemGuid, (long)price, request.CharacterId, now, () => database.IsBanned(accountId, now));
+            var result = ListingStore.List(shard, accountId, request.ItemGuid, price, request.CharacterId, now, () => database.IsBanned(accountId, now));
 
             if (result.Outcome != ListingOutcome.Ok)
                 return Refusal(result.Outcome);

@@ -2,6 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Microsoft.EntityFrameworkCore;
+
+using MySqlConnector;
+
 using ACE.Database.Models.Shard;
 using ACE.Database.Models.Shard.Market;
 
@@ -111,6 +115,15 @@ namespace ACE.Database.Market
             context.MarketTransfers.Add(transfer);
 
             return true;
+        }
+
+        /// <summary>
+        /// True when a save failed because another writer got there first: a stale row version, or a duplicate key such as a first balance row created twice.
+        /// Not every server names the table in a duplicate key message, so any duplicate key counts: another cause fails again on the retry.
+        /// </summary>
+        public static bool IsLostRace(DbUpdateException ex)
+        {
+            return ex is DbUpdateConcurrencyException || (ex.InnerException is MySqlException mysql && mysql.ErrorCode == MySqlErrorCode.DuplicateKeyEntry);
         }
 
         private static void Validate(Transfer transfer)

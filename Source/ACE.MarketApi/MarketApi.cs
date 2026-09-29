@@ -54,6 +54,9 @@ namespace ACE.MarketApi
 
             builder.Services.AddSingleton(database);
             builder.Services.AddSingleton<SignInLimiter>();
+            builder.Services.AddSingleton<PurchaseLimiter>();
+            builder.Services.TryAddSingleton<IFeePolicy, ZeroFeePolicy>();
+            builder.Services.TryAddSingleton<IMarketPause, NoMarketPause>();
             builder.Services.TryAddSingleton(TimeProvider.System);
 
             builder.Services.AddDataProtection()
@@ -102,6 +105,7 @@ namespace ACE.MarketApi
             AccountEndpoints.Map(app);
             ListingEndpoints.Map(app);
             CatalogEndpoints.Map(app);
+            PurchaseEndpoints.Map(app);
 
             return app;
         }
