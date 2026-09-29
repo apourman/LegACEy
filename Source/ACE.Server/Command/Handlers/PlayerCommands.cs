@@ -31,13 +31,6 @@ namespace ACE.Server.Command.Handlers
             CommandHandlerHelper.WriteOutputInfo(session, $"Current world population: {PlayerManager.GetOnlineCount():N0}", ChatMessageType.Broadcast);
         }
 
-        [CommandHandler("deploycheck", AccessLevel.Player, CommandHandlerFlag.RequiresWorld, 0,
-            "Confirm the deployment test build is running.", "")]
-        public static void HandleDeployCheck(Session session, params string[] parameters)
-        {
-            CommandHandlerHelper.WriteOutputInfo(session, "LegACEy deployment check: ACE-CD-VERIFY-1", ChatMessageType.Broadcast);
-        }
-
         // quest info (uses GDLe formatting to match plugin expectations)
         [CommandHandler("myquests", AccessLevel.Player, CommandHandlerFlag.RequiresWorld, "Shows your quest log")]
         public static void HandleQuests(Session session, params string[] parameters)
