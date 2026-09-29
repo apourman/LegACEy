@@ -371,6 +371,42 @@ namespace ACE.Server.Tests.Market
             Assert.AreEqual(1, VaultStore.List(account).Count(r => r.ItemGuid == guid));
         }
 
+        // ---- one operation at a time, trade window
+
+        [TestMethod]
+        public void Vault_SecondOperationBeforeFirstFinishes_IsBusy()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var first = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+            var second = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+
+            VaultResult firstResult = null, secondResult = null;
+            var done = new System.Threading.ManualResetEventSlim();
+
+            VaultTestWorld.OnWorldThread(() =>
+            {
+                Vault.Deposit(player, first.Guid.Full, r => { firstResult = r; done.Set(); });
+                Vault.Deposit(player, second.Guid.Full, r => secondResult = r);
+            });
+
+            Assert.AreEqual(VaultOutcome.Busy, secondResult.Outcome, secondResult.Message);
+            Assert.IsTrue(done.Wait(TimeSpan.FromSeconds(30)));
+            Assert.AreEqual(VaultOutcome.Deposited, firstResult.Outcome);
+            Assert.IsNotNull(player.GetInventoryItem(second.Guid.Full), "the refused item stays in the pack");
+
+            // once the first is done the player can go on
+            Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, second.Guid.Full).Outcome);
+        }
+
+        [TestMethod]
+        public void Deposit_ItemInOpenTradeWindow_IsRefused()
+        {
+            var carried = NewItem(null);
+            carried.player.ItemsInTradeWindow.Add(carried.item.Guid);
+
+            AssertDepositRefused(carried, VaultOutcome.InTrade);
+        }
+
         // ---- commands
 
         [TestMethod]

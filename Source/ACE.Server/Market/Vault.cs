@@ -32,6 +32,12 @@ namespace ACE.Server.Market
         public static bool Available { get; private set; }
 
         /// <summary>
+        /// Players with a deposit or withdrawal in flight. One at a time each, so that two queued withdrawals can't both pass the pack-space and unique checks
+        /// before either has reached the pack. Only the world thread touches it.
+        /// </summary>
+        private static readonly HashSet<uint> inFlight = new HashSet<uint>();
+
+        /// <summary>
         /// Startup: checks the market schema. The update runner marks even a failed script as applied, so this is the only guard against a half-installed market.
         /// </summary>
         public static void Initialize()
@@ -67,6 +73,12 @@ namespace ACE.Server.Market
                 return;
             }
 
+            if (inFlight.Contains(player.Guid.Full))
+            {
+                Finish(player, VaultOutcome.Busy, null, itemGuid, completed);
+                return;
+            }
+
             var guid = new ObjectGuid(itemGuid);
 
             if (player.EquippedObjects.TryGetValue(guid, out var worn))
@@ -80,6 +92,12 @@ namespace ACE.Server.Market
             if (item == null)
             {
                 Finish(player, VaultOutcome.NotInPack, null, itemGuid, completed);
+                return;
+            }
+
+            if (player.ItemsInTradeWindow.Contains(guid))
+            {
+                Finish(player, VaultOutcome.InTrade, item.Name, itemGuid, completed);
                 return;
             }
 
@@ -100,9 +118,6 @@ namespace ACE.Server.Market
                 return;
             }
 
-            // cast-on enchantments don't tick on an escrowed item, and the buyer should get what the listing shows; the save deletes the rows no longer present
-            item.EnchantmentManager.DispelAllEnchantments();
-
             var name = item.Name;
             var vaultItem = NewVaultItem(item, accountId, player.Guid.Full);
 
@@ -111,6 +126,11 @@ namespace ACE.Server.Market
                 Finish(player, VaultOutcome.NotInPack, name, itemGuid, completed);
                 return;
             }
+
+            // cast-on enchantments don't tick on an escrowed item, and the buyer should get what the listing shows; the save deletes the rows no longer present
+            item.EnchantmentManager.DispelAllEnchantments();
+
+            inFlight.Add(player.Guid.Full);
 
             if (player.CurrentAppraisalTarget == itemGuid)
                 player.CurrentAppraisalTarget = null;
@@ -132,6 +152,12 @@ namespace ACE.Server.Market
             if (!Available)
             {
                 Finish(player, VaultOutcome.NotAvailable, null, itemGuid, completed);
+                return;
+            }
+
+            if (inFlight.Contains(player.Guid.Full))
+            {
+                Finish(player, VaultOutcome.Busy, null, itemGuid, completed);
                 return;
             }
 
@@ -192,6 +218,8 @@ namespace ACE.Server.Market
             item.ContainerId = player.Guid.Full;
             item.PlacementPosition = 0;
 
+            inFlight.Add(player.Guid.Full);
+
             DatabaseManager.Shard.WithdrawFromVault(item.Biota, item.BiotaDatabaseLock, accountId, player.Guid.Full, row.RowVersion, saved =>
             {
                 // this runs on the save thread
@@ -221,6 +249,8 @@ namespace ACE.Server.Market
 
         private static void OnDeposited(Player player, WorldObject item, string name, bool saved, Action<VaultResult> completed)
         {
+            inFlight.Remove(player.Guid.Full);
+
             if (saved)
             {
                 // the object is forgotten, never saved or destroyed: a later save would restore its container, and destroying it would delete its row
@@ -230,15 +260,20 @@ namespace ACE.Server.Market
 
             log.Warn($"[VAULT] Deposit of {name} (0x{item.Guid.Full:X8}) for {player.Name} failed; nothing was saved");
 
+            // the job refuses without saving when the Vault filled up meanwhile (another character of the account, or the setting was lowered)
+            var outcome = VaultStore.Count(player.Character.AccountId) >= (int)MarketSettings.Get(MarketSettings.VaultSize) ? VaultOutcome.VaultFull : VaultOutcome.SaveFailed;
+
             // the database still has the item in the pack. A player who has gone gets it back when they log in, so the object is just discarded.
             if (!player.IsLoggingOut && !player.TryCreateInInventoryWithNetworking(item))
                 log.Warn($"[VAULT] Deposit of {name} (0x{item.Guid.Full:X8}) for {player.Name} failed and the pack has no room for it; the database has it in the pack for the next login");
 
-            Finish(player, VaultOutcome.SaveFailed, name, item.Guid.Full, completed);
+            Finish(player, outcome, name, item.Guid.Full, completed);
         }
 
         private static void OnWithdrawn(Player player, WorldObject item, string name, bool saved, Action<VaultResult> completed)
         {
+            inFlight.Remove(player.Guid.Full);
+
             if (!saved)
             {
                 // the Vault row is still there and the object was never added anywhere: forget it
@@ -247,10 +282,12 @@ namespace ACE.Server.Market
             }
 
             // the database now has the item in this character's pack, so a player who has gone gets it at the next login
-            if (!player.IsLoggingOut && !player.TryCreateInInventoryWithNetworking(item))
+            var inPack = player.IsLoggingOut || player.TryCreateInInventoryWithNetworking(item);
+
+            if (!inPack)
                 log.Warn($"[VAULT] Withdrawn {name} (0x{item.Guid.Full:X8}) for {player.Name} could not be added to the pack; the database has it in the pack for the next login");
 
-            Finish(player, VaultOutcome.Withdrawn, name, item.Guid.Full, completed);
+            Finish(player, inPack ? VaultOutcome.Withdrawn : VaultOutcome.WithdrawnAtLogin, name, item.Guid.Full, completed);
         }
 
         private static void Finish(Player player, VaultOutcome outcome, string itemName, uint itemGuid, Action<VaultResult> completed)

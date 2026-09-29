@@ -1,4 +1,5 @@
-using System.Linq;
+using System;
+using System.Globalization;
 
 using ACE.Entity.Enum;
 using ACE.Server.Market;
@@ -45,6 +46,7 @@ namespace ACE.Server.Command.Handlers
                     break;
 
                 case "list":
+                {
                     if (!Vault.Available)
                     {
                         Tell(session, VaultMessages.For(VaultOutcome.NotAvailable, null));
@@ -58,6 +60,7 @@ namespace ACE.Server.Command.Handlers
                     foreach (var item in items)
                         Tell(session, $"0x{item.ItemGuid:X8}  {item.Name}{(item.StackSize > 1 ? $" x{item.StackSize:N0}" : "")}  [{item.State}]");
                     break;
+                }
 
                 default:
                     Tell(session, Usage);
@@ -67,8 +70,8 @@ namespace ACE.Server.Command.Handlers
 
         private static bool TryParseId(string text, out uint id)
         {
-            if (text.StartsWith("0x", System.StringComparison.OrdinalIgnoreCase))
-                return uint.TryParse(text.Substring(2), System.Globalization.NumberStyles.HexNumber, null, out id);
+            if (text.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+                return uint.TryParse(text.Substring(2), NumberStyles.HexNumber, null, out id);
 
             return uint.TryParse(text, out id);
         }

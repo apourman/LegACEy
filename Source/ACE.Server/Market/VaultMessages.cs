@@ -14,6 +14,9 @@ namespace ACE.Server.Market
                 VaultOutcome.Deposited => $"{item} is now in your Vault.",
                 VaultOutcome.Withdrawn => $"{item} is back in your pack.",
 
+                VaultOutcome.WithdrawnAtLogin => $"{item} is yours, but your pack has no room for it right now. It will be in your pack when you next log in.",
+                VaultOutcome.Busy => "Wait for your last Vault action to finish.",
+                VaultOutcome.InTrade => $"Take {item} out of the trade window before you put it in the Vault.",
                 VaultOutcome.NotAvailable => "The Vault is not available right now.",
                 VaultOutcome.NotInPack => "That item is not in your pack. Appraise an item in your pack first.",
                 VaultOutcome.Worn => $"Take {item} off before you put it in the Vault.",

@@ -5,8 +5,13 @@ namespace ACE.Server.Market
         Deposited,
         Withdrawn,
 
+        // the item is the player's and the database has it in their pack, but the pack had no room by the time the save finished: it appears at the next login
+        WithdrawnAtLogin,
+
         // refusals, each with its own message
         NotAvailable,
+        Busy,
+        InTrade,
         NotInPack,
         Worn,
         Attuned,
@@ -36,7 +41,7 @@ namespace ACE.Server.Market
 
         public uint ItemGuid { get; }
 
-        public bool Success => Outcome == VaultOutcome.Deposited || Outcome == VaultOutcome.Withdrawn;
+        public bool Success => Outcome == VaultOutcome.Deposited || Outcome == VaultOutcome.Withdrawn || Outcome == VaultOutcome.WithdrawnAtLogin;
 
         public VaultResult(VaultOutcome outcome, string message, uint itemGuid)
         {
