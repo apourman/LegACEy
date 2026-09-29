@@ -8,6 +8,7 @@ using log4net;
 
 using ACE.Database.Entity;
 using ACE.Database.Models.Shard;
+using ACE.Database.Models.Shard.Market;
 using ACE.Entity.Enum;
 
 namespace ACE.Database
@@ -131,6 +132,30 @@ namespace ACE.Database
             _queue.Add(new Task(() =>
             {
                 var result = BaseDatabase.SaveBiotasInParallel(biotas, doNotAddToCache);
+                callback?.Invoke(result);
+            }));
+        }
+
+        /// <summary>
+        /// Queues the deposit job: the item change, the Vault row and a deposit event, saved once (see ShardDatabase.DepositToVault)
+        /// </summary>
+        public void DepositToVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, VaultItem vaultItem, Action<bool> callback)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = BaseDatabase.DepositToVault(biota, rwLock, vaultItem);
+                callback?.Invoke(result);
+            }));
+        }
+
+        /// <summary>
+        /// Queues the withdraw job: the item change, the Vault row removal and a withdraw event, saved once (see ShardDatabase.WithdrawFromVault)
+        /// </summary>
+        public void WithdrawFromVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, uint accountId, uint characterId, uint expectedRowVersion, Action<bool> callback)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = BaseDatabase.WithdrawFromVault(biota, rwLock, accountId, characterId, expectedRowVersion);
                 callback?.Invoke(result);
             }));
         }
