@@ -26,6 +26,12 @@ namespace ACE.Server.Market
         NoPackSpace,
         UniqueLimit,
 
+        // the channel (ticket 04)
+        RecentPlayerFight,
+        Trading,
+        Channelling,
+        Interrupted,
+
         // the database job failed; the item is where it was
         SaveFailed,
     }

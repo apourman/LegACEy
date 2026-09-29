@@ -344,8 +344,8 @@ namespace ACE.Server.WorldObjects
 
             if (!FastTick) return;
 
-            // ensure PKLogout position is synced up for other players
-            if (PKLogout)
+            // ensure PKLogout (and Vault channel) position is synced up for other players
+            if (PKLogout || IsVaultChannelling)
             {
                 EnqueueBroadcast(new GameMessageUpdateMotion(this, new Motion(MotionStance.NonCombat, MotionCommand.Ready)));
                 PhysicsObj.StopCompletely(true);

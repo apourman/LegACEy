@@ -1007,6 +1007,14 @@ namespace ACE.Server.WorldObjects
 
             if ((itemRootOwner == this && containerRootOwner != this) || (itemRootOwner != this && containerRootOwner == this)) // Movement is between the player and the world
             {
+                // putting an item in a chest or corpse is a drop, and the player is frozen
+                if (IsVaultChannelling)
+                {
+                    Session.Network.EnqueueSend(new GameEventWeenieError(Session, WeenieError.YoureTooBusy));
+                    Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, itemGuid));
+                    return;
+                }
+
                 if (itemRootOwner is Vendor)
                 {
                     Session.Network.EnqueueSend(new GameEventWeenieError(Session, WeenieError.NotAllTheItemsAreAvailable));
@@ -1392,7 +1400,7 @@ namespace ACE.Server.WorldObjects
         /// </summary>
         public void HandleActionDropItem(uint itemGuid)
         {
-            if (IsBusy || Teleporting || suicideInProgress)
+            if (IsBusy || Teleporting || suicideInProgress || IsVaultChannelling)
             {
                 Session.Network.EnqueueSend(new GameEventWeenieError(Session, WeenieError.YoureTooBusy));
                 Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, itemGuid));
@@ -2498,6 +2506,14 @@ namespace ACE.Server.WorldObjects
         /// </summary>
         public void HandleActionStackableSplitTo3D(uint stackId, int amount)
         {
+            // splitting onto the ground is a drop
+            if (IsVaultChannelling)
+            {
+                Session.Network.EnqueueSend(new GameEventWeenieError(Session, WeenieError.YoureTooBusy));
+                Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, stackId));
+                return;
+            }
+
             if (amount <= 0)
             {
                 log.WarnFormat("Player 0x{0:X8}:{1} tried to split item with invalid amount ({3}) 0x{2:X8}.", Guid.Full, Name, stackId, amount);
@@ -3211,7 +3227,7 @@ namespace ACE.Server.WorldObjects
         /// </summary>
         public void HandleActionGiveObjectRequest(uint targetGuid, uint itemGuid, int amount)
         {
-            if (IsBusy || Teleporting || suicideInProgress)
+            if (IsBusy || Teleporting || suicideInProgress || IsVaultChannelling)
             {
                 Session.Network.EnqueueSend(new GameEventWeenieError(Session, WeenieError.YoureTooBusy));
                 Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, itemGuid));

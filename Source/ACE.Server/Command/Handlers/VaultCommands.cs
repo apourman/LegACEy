@@ -9,7 +9,7 @@ using ACE.Server.Network.GameMessages.Messages;
 namespace ACE.Server.Command.Handlers
 {
     /// <summary>
-    /// The /vault commands. Each hands its work to the Vault entry point, the same one the game bridge will use.
+    /// The /vault commands. Item deposits and withdrawals take the Vault channel, which then calls the Vault entry point the game bridge will use.
     /// </summary>
     public static class VaultCommands
     {
@@ -31,8 +31,8 @@ namespace ACE.Server.Command.Handlers
             switch (parameters[0].ToLowerInvariant())
             {
                 case "deposit":
-                    // the outcome is told to the player by the Vault itself
-                    Vault.Deposit(player, player.CurrentAppraisalTarget ?? 0);
+                    // the outcome is told to the player by the channel and the Vault
+                    VaultChannel.StartDeposit(player, player.CurrentAppraisalTarget ?? 0);
                     break;
 
                 case "withdraw":
@@ -42,7 +42,7 @@ namespace ACE.Server.Command.Handlers
                         return;
                     }
 
-                    Vault.Withdraw(player, itemGuid);
+                    VaultChannel.StartWithdraw(player, itemGuid);
                     break;
 
                 case "list":

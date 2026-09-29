@@ -1,0 +1,199 @@
+using System;
+
+using log4net;
+
+using ACE.Database.Market;
+using ACE.Entity.Enum;
+using ACE.Server.Entity.Actions;
+using ACE.Server.Managers;
+using ACE.Server.Network.GameMessages.Messages;
+using ACE.Server.WorldObjects;
+
+namespace ACE.Server.Market
+{
+    /// <summary>
+    /// The frozen channel every /vault item deposit and withdrawal takes (vault_channel_seconds, default 60), so the Vault is never a way out of a PK fight.
+    /// It is its own state, not the PK logout flag: that flag makes every physical attack on the player a critical hit.
+    /// A landed player attack (the PK timer update), death and logout cancel it. When the time is up it calls the Vault, which re-checks every rule.
+    /// MMD notes don't channel.
+    /// </summary>
+    public sealed class VaultChannel
+    {
+        private static readonly ILog log = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+
+        public bool IsDeposit { get; }
+
+        public uint ItemGuid { get; }
+
+        public string ItemName { get; }
+
+        /// <summary>
+        /// For a withdrawal: the version the Vault row got when the channel marked it withdrawing
+        /// </summary>
+        public uint MarkedRowVersion { get; }
+
+        private readonly Action<VaultResult> completed;
+
+        private VaultChannel(bool isDeposit, uint itemGuid, string itemName, uint markedRowVersion, Action<VaultResult> completed)
+        {
+            IsDeposit = isDeposit;
+            ItemGuid = itemGuid;
+            ItemName = itemName;
+            MarkedRowVersion = markedRowVersion;
+            this.completed = completed;
+        }
+
+        /// <summary>
+        /// Starts a deposit channel, on the world thread. A refusal is reported at once; otherwise the Vault's result is reported when the channel ends.
+        /// </summary>
+        public static void StartDeposit(Player player, uint itemGuid, Action<VaultResult> completed = null)
+        {
+            WorldObject item = null;
+            var refusal = CheckStart(player) ?? Vault.CheckDeposit(player, itemGuid, out item);
+
+            if (refusal != null)
+            {
+                Vault.Finish(player, refusal.Value, item?.Name, itemGuid, completed);
+                return;
+            }
+
+            Begin(player, new VaultChannel(true, itemGuid, item.Name, 0, completed));
+        }
+
+        /// <summary>
+        /// Starts a withdrawal channel, on the world thread. The Vault row is marked withdrawing now, so it can't be listed while the player channels.
+        /// </summary>
+        public static void StartWithdraw(Player player, uint itemGuid, Action<VaultResult> completed = null)
+        {
+            Database.Models.Shard.Market.VaultItem row = null;
+            var refusal = CheckStart(player) ?? Vault.CheckWithdraw(player, itemGuid, null, out row, out _);
+
+            if (refusal == null)
+            {
+                var marked = VaultStore.TryMarkWithdrawing(itemGuid, player.Character.AccountId, row.RowVersion);
+
+                if (marked != null)
+                {
+                    Begin(player, new VaultChannel(false, itemGuid, row.Name, marked.Value, completed));
+                    return;
+                }
+
+                // the row changed since it was read: say why, as the next attempt would
+                refusal = Vault.CheckWithdraw(player, itemGuid, null, out row, out _) ?? VaultOutcome.Withdrawing;
+            }
+
+            Vault.Finish(player, refusal.Value, row?.Name, itemGuid, completed);
+        }
+
+        /// <summary>
+        /// Cancels the player's channel, if any: the player is unfrozen now, and the item stays where it is.
+        /// Safe from any thread the PK timer, death or logout run on; the result is reported on the world thread.
+        /// </summary>
+        public static void Cancel(Player player)
+        {
+            var channel = player.TakeVaultChannel(null);
+
+            if (channel == null)
+                return;
+
+            Unfreeze(player);
+
+            WorldManager.EnqueueAction(new ActionEventDelegate(() =>
+            {
+                if (!channel.IsDeposit)
+                    Release(channel);
+
+                Vault.Finish(player, VaultOutcome.Interrupted, channel.ItemName, channel.ItemGuid, channel.completed);
+            }));
+        }
+
+        /// <summary>
+        /// The reasons a channel can't start, whatever the item: another channel, a recent player fight, a trade, or anything else keeping the player busy
+        /// </summary>
+        private static VaultOutcome? CheckStart(Player player)
+        {
+            if (player.IsVaultChannelling)
+                return VaultOutcome.Channelling;
+
+            // the same 2 minute window that delays a PK's logout
+            if (player.PKLogoutActive)
+                return VaultOutcome.RecentPlayerFight;
+
+            if (player.IsTrading)
+                return VaultOutcome.Trading;
+
+            if (player.IsBusy || player.Teleporting || player.suicideInProgress || player.IsInDeathProcess || player.IsDead || player.IsLoggingOut || player.PKLogout)
+                return VaultOutcome.Busy;
+
+            return null;
+        }
+
+        private static void Begin(Player player, VaultChannel channel)
+        {
+            var seconds = (int)Math.Max(0, MarketSettings.Get(MarketSettings.ChannelSeconds));
+
+            player.TakeVaultChannel(channel);
+
+            player.IsFrozen = true;
+            player.EnqueueBroadcastPhysicsState();
+
+            player.Session?.Network.EnqueueSend(new GameMessageSystemChat(VaultMessages.ChannelStarted(channel.IsDeposit, channel.ItemName, seconds), ChatMessageType.Broadcast));
+
+            // the world queue, not the player's: the Vault runs on the world thread
+            var chain = new ActionChain();
+            chain.AddDelaySeconds(seconds);
+            chain.AddAction(WorldManager.ActionQueue, () => Complete(player, channel));
+            chain.EnqueueChain();
+        }
+
+        private static void Complete(Player player, VaultChannel channel)
+        {
+            // cancelled meanwhile, perhaps followed by a new channel: this timer is not for it
+            if (!player.TryEndVaultChannel(channel))
+                return;
+
+            Unfreeze(player);
+
+            // death and logout cancel the channel themselves; this is the backstop for any path that got past them
+            if (player.IsInDeathProcess || player.IsDead || player.IsLoggingOut)
+            {
+                if (!channel.IsDeposit)
+                    Release(channel);
+
+                Vault.Finish(player, VaultOutcome.Interrupted, channel.ItemName, channel.ItemGuid, channel.completed);
+                return;
+            }
+
+            if (channel.IsDeposit)
+            {
+                Vault.Deposit(player, channel.ItemGuid, channel.completed);
+                return;
+            }
+
+            Vault.Withdraw(player, channel.ItemGuid, channel.MarkedRowVersion, result =>
+            {
+                // a withdrawal that didn't happen leaves the item held again
+                if (!result.Success)
+                    Release(channel);
+
+                channel.completed?.Invoke(result);
+            });
+        }
+
+        private static void Unfreeze(Player player)
+        {
+            // a PK logout keeps its own freeze
+            if (player.PKLogout || !(player.IsFrozen ?? false))
+                return;
+
+            player.IsFrozen = false;
+            player.EnqueueBroadcastPhysicsState();
+        }
+
+        private static void Release(VaultChannel channel)
+        {
+            if (!VaultStore.TryReleaseWithdrawing(channel.ItemGuid, channel.MarkedRowVersion))
+                log.Warn($"[VAULT] Could not put 0x{channel.ItemGuid:X8} back to held after its withdrawal channel ended: the row changed or is gone");
+        }
+    }
+}

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Threading;
@@ -8,6 +9,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 using ACE.Common;
 using ACE.Database;
+using ACE.Database.Models.Auth;
 using ACE.Database.Tests.Market;
 using ACE.DatLoader;
 using ACE.Entity;
@@ -17,6 +19,9 @@ using ACE.Server.Factories;
 using ACE.Server.Managers;
 using ACE.Server.Market;
 using ACE.Server.Network;
+using ACE.Server.Network.GameEvent;
+using ACE.Server.Network.GameMessages;
+using ACE.Server.Network.GameMessages.Messages;
 using ACE.Server.Network.Managers;
 using ACE.Server.WorldObjects;
 
@@ -34,6 +39,10 @@ namespace ACE.Server.Tests.Market
         public const uint SwordWcid = 12758; // swordacademy
         public const uint PackWcid = 136; // backpack, a side pack
         public const uint PetDeviceWcid = 48886; // petdevicegolemmud
+        public const uint HelmWcid = 35; // basinetchainmail, not bonded (academy weapons are, and never drop on death)
+
+        // outside Holtburg: combat reads positions to pick hit directions
+        private static readonly Position TestLocation = new Position(0xA9B4001F, 84.0f, 7.1f, 94.0f, 0.0f, 0.0f, 0.0f, 1.0f);
 
         private static string originalShardDatabase;
 
@@ -95,13 +104,71 @@ namespace ACE.Server.Tests.Market
             typeof(SocketManager).GetField("listeners", BindingFlags.NonPublic | BindingFlags.Static).SetValue(null, new ConnectionListener[0]);
 
             var session = new Session(null, new IPEndPoint(IPAddress.Loopback, 0), 1, 1);
+            session.SetAccount(accountId, $"vaulttest{accountId}", AccessLevel.Player); // as authentication does; squelch checks read it
 
             var player = new Player(template.Biota, new List<ACE.Database.Models.Shard.Biota>(), new List<ACE.Database.Models.Shard.Biota>(), template.Character, session);
 
             // login does this; commands find the player through the session
             typeof(Session).GetProperty(nameof(Session.Player)).SetMethod.Invoke(session, new object[] { player });
 
+            // a location and a physics object, as entering the world gives them: combat, casting and death read them
+            player.Location = new Position(TestLocation);
+            player.InitPhysicsObj();
+
+            // the test accounts aren't in the auth database; logout names the account in its log line
+            typeof(Player).GetField("<Account>k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(player, new Account { AccountId = accountId, AccountName = $"vaulttest{accountId}" });
+
             return player;
+        }
+
+        /// <summary>
+        /// Takes every message queued for the player's client since the last call. The session has no socket, so nothing else sends them.
+        /// </summary>
+        public static List<GameMessage> TakeSent(Player player)
+        {
+            var bundles = (Array)typeof(NetworkSession).GetField("currentBundles", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(player.Session.Network);
+            var sent = new List<GameMessage>();
+
+            foreach (var bundle in bundles)
+            {
+                var hasMore = bundle.GetType().GetProperty("HasMoreMessages");
+                var dequeue = bundle.GetType().GetMethod("Dequeue");
+
+                while ((bool)hasMore.GetValue(bundle))
+                    sent.Add((GameMessage)dequeue.Invoke(bundle, null));
+            }
+
+            return sent;
+        }
+
+        /// <summary>
+        /// True if one of the messages is a game event carrying the error, which is always its last field (weenie error, use done, save failed)
+        /// </summary>
+        public static bool HasError(List<GameMessage> sent, WeenieError error)
+        {
+            return sent.OfType<GameEventMessage>().Any(m =>
+            {
+                var data = m.Data.ToArray();
+                return data.Length >= 4 && BitConverter.ToUInt32(data, data.Length - 4) == (uint)error;
+            });
+        }
+
+        /// <summary>
+        /// The text of each system chat message
+        /// </summary>
+        public static List<string> Chats(List<GameMessage> sent)
+        {
+            var chats = new List<string>();
+
+            foreach (var message in sent.OfType<GameMessageSystemChat>())
+            {
+                // opcode, then the text as a 16-bit length and Windows-1252 bytes
+                var data = message.Data.ToArray();
+                var length = BitConverter.ToUInt16(data, 4);
+                chats.Add(System.Text.Encoding.GetEncoding(1252).GetString(data, 6, length));
+            }
+
+            return chats;
         }
 
         public static WorldObject NewItem(uint wcid)
