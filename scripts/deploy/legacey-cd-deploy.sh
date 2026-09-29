@@ -104,7 +104,7 @@ healthy=false
 if systemctl restart "$service"; then
   for _ in {1..90}; do
     if systemctl is-active --quiet "$service" \
-      && ss -H -lun | awk '$5 ~ /:9000$/ { found=1 } END { exit !found }' \
+      && ss -H -lun | awk '$4 ~ /:9000$/ { found=1 } END { exit !found }' \
       && journalctl -u "$service" --since "-2 minutes" --no-pager | grep -q 'World is now open'; then
       healthy=true
       break
