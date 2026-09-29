@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 using Microsoft.EntityFrameworkCore;
@@ -44,6 +47,27 @@ namespace ACE.MarketApi
         {
             using var auth = CreateAuth();
             return await auth.Account.AsNoTracking().FirstOrDefaultAsync(a => a.AccountName == accountName);
+        }
+
+        /// <summary>
+        /// True if the account is banned now, or no longer exists. Read just before a save; bans are never read inside one.
+        /// </summary>
+        public bool IsBanned(uint accountId, DateTime utcNow)
+        {
+            using var auth = CreateAuth();
+            var account = auth.Account.AsNoTracking().FirstOrDefault(a => a.AccountId == accountId);
+
+            return account == null || account.IsBanned(utcNow);
+        }
+
+        /// <summary>
+        /// Every account banned now (the game login's rule: the ban's expiry is still ahead)
+        /// </summary>
+        public HashSet<uint> BannedAccountIds(DateTime utcNow)
+        {
+            using var auth = CreateAuth();
+
+            return auth.Account.AsNoTracking().Where(a => a.BanExpireTime > utcNow).Select(a => a.AccountId).ToHashSet();
         }
 
         /// <summary>

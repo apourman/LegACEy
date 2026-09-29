@@ -122,6 +122,20 @@ namespace ACE.MarketApi.Tests.Support
             return await Client.SendAsync(request);
         }
 
+        public async Task<HttpResponseMessage> PostJsonAsync(string path, object body, string cookie = null)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, path)
+            {
+                Content = body is string raw ? new StringContent(raw, System.Text.Encoding.UTF8, "application/json") : JsonContent.Create(body),
+            };
+            request.Headers.Add(RemoteIpHeader, DefaultIp);
+
+            if (cookie != null)
+                request.Headers.Add("Cookie", cookie);
+
+            return await Client.SendAsync(request);
+        }
+
         public static async Task<JsonElement> JsonAsync(HttpResponseMessage response)
         {
             var text = await response.Content.ReadAsStringAsync();

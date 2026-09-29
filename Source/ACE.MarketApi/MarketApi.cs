@@ -100,6 +100,8 @@ namespace ACE.MarketApi
 
             AuthEndpoints.Map(app);
             AccountEndpoints.Map(app);
+            ListingEndpoints.Map(app);
+            CatalogEndpoints.Map(app);
 
             return app;
         }
@@ -119,6 +121,10 @@ namespace ACE.MarketApi
 
             if (account == null || account.IsBanned(now))
             {
+                // the market has noticed the ban: the account's listings go back to its Vault
+                if (account != null)
+                    MarketUpkeep.ReturnListings(services.GetRequiredService<MarketDatabase>(), new[] { account.AccountId }, now);
+
                 context.RejectPrincipal();
                 await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             }

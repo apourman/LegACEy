@@ -138,6 +138,38 @@ namespace ACE.MarketApi.Tests.Support
             return guid;
         }
 
+        /// <summary>
+        /// Sets search columns on a Vault row, e.g. "workmanship = 5, material_Type = 61"
+        /// </summary>
+        public static void SetVaultColumns(uint itemGuid, string assignments)
+        {
+            MarketTestDatabase.Execute(ShardDatabase, $"UPDATE market_vault_item SET {assignments} WHERE item_Guid = {itemGuid};");
+        }
+
+        /// <summary>
+        /// Inserts listing rows directly, bypassing the API. Returns the listing id.
+        /// </summary>
+        public static long AddListing(uint accountId, uint characterId, uint itemGuid, long price, string status, DateTime createdUtc)
+        {
+            MarketTestDatabase.Execute(ShardDatabase,
+                "INSERT INTO market_listing (item_Guid, seller_Account_Id, seller_Character_Id, price, status, created_Time) " +
+                $"VALUES ({itemGuid}, {accountId}, {characterId}, {price}, '{status}', '{createdUtc:yyyy-MM-dd HH:mm:ss.ffffff}');");
+
+            return MarketTestDatabase.Scalar(ShardDatabase, $"SELECT MAX(id) FROM market_listing WHERE item_Guid = {itemGuid};");
+        }
+
+        /// <summary>
+        /// Lifts a ban the way an admin does: the ban's expiry is cleared
+        /// </summary>
+        public static void LiftBan(uint accountId)
+        {
+            MarketTestDatabase.Execute(AuthDatabase, $"UPDATE account SET banned_Time = NULL, banned_By_Account_Id = NULL, ban_Expire_Time = NULL, ban_Reason = NULL WHERE accountId = {accountId};");
+        }
+
+        public static long Scalar(string sql) => MarketTestDatabase.Scalar(ShardDatabase, sql);
+
+        public static System.Collections.Generic.List<string> Rows(string sql) => MarketTestDatabase.Rows(ShardDatabase, sql);
+
         public static void SetSetting(string key, long value)
         {
             MarketTestDatabase.Execute(ShardDatabase, $"REPLACE INTO config_properties_long (`key`, `value`) VALUES ('{key}', {value});");
