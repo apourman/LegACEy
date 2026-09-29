@@ -11,6 +11,17 @@ CONFIGURATION=Debug
 START_DB=true
 BUILD=true
 
+[[ -f "$ROOT/docker.env" ]] || {
+  echo "Missing $ROOT/docker.env; copy docker.env.example and set local values." >&2
+  exit 1
+}
+set -a
+# shellcheck disable=SC1091
+source "$ROOT/docker.env"
+set +a
+MYSQL_USER="${MYSQL_USER:?MYSQL_USER is required in docker.env}"
+MYSQL_PASSWORD="${MYSQL_PASSWORD:?MYSQL_PASSWORD is required in docker.env}"
+
 usage() { echo "Usage: run-host.sh [--configuration NAME] [--no-build] [--no-db] [--help]"; }
 while (($#)); do
   case "$1" in
@@ -40,9 +51,22 @@ sed -i \
   -e "s|\"Port\": 3306|\"Port\": ${DB_HOST_PORT:-3310}|g" \
   -e "s|\"DatFilesDirectory\": \"/ace/Dats\"|\"DatFilesDirectory\": \"$DAT_DIR\"|" \
   -e "s|\"ModsDirectory\": \"/ace/Mods\"|\"ModsDirectory\": \"$MODS_DIR\"|" \
-  -e "s|\"Username\": \"acedockeruser\"|\"Username\": \"${MYSQL_USER:-acedockeruser}\"|g" \
-  -e "s|\"Password\": \"2020acEmulator2017\"|\"Password\": \"${MYSQL_PASSWORD:-2020acEmulator2017}\"|g" \
   "$CONFIG_DIR/Config.js"
+
+# Insert credentials as JSON strings so quotes, backslashes, and other special
+# characters in local development passwords cannot break the configuration.
+python3 - "$CONFIG_DIR/Config.js" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+config_path = Path(sys.argv[1])
+config = config_path.read_text()
+config = config.replace('"Username": ""', f'"Username": {json.dumps(os.environ["MYSQL_USER"])}')
+config = config.replace('"Password": ""', f'"Password": {json.dumps(os.environ["MYSQL_PASSWORD"])}')
+config_path.write_text(config)
+PY
 
 if [[ "$BUILD" == true ]]; then
   dotnet build "$ROOT/Source/ACE.Server/ACE.Server.csproj" -c "$CONFIGURATION" -p:Platform=x64
