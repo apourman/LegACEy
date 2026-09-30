@@ -42,6 +42,9 @@ namespace ACE.Server.Market
         NoNotes,
         InvalidAmount,
         InsufficientFunds,
+
+        // the market is paused (a failed ledger audit): MMD withdrawals are refused until /market resume
+        Paused,
     }
 
     public sealed class VaultResult

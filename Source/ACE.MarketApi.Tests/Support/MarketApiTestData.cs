@@ -109,11 +109,11 @@ namespace ACE.MarketApi.Tests.Support
                 $"FROM account WHERE accountId = {accountId};").Single();
         }
 
-        public static uint AddCharacter(uint accountId, string name, bool deleted = false)
+        public static uint AddCharacter(uint accountId, string name, bool deleted = false, string database = ShardDatabase)
         {
             var id = 0x50000000u + (uint)Interlocked.Increment(ref counter);
 
-            MarketTestDatabase.Execute(ShardDatabase, $"INSERT INTO `character` (id, account_Id, name, is_Plussed, is_Deleted) VALUES ({id}, {accountId}, '{name}', 0, {(deleted ? 1 : 0)});");
+            MarketTestDatabase.Execute(database, $"INSERT INTO `character` (id, account_Id, name, is_Plussed, is_Deleted) VALUES ({id}, {accountId}, '{name}', 0, {(deleted ? 1 : 0)});");
 
             return id;
         }
@@ -126,12 +126,12 @@ namespace ACE.MarketApi.Tests.Support
         /// <summary>
         /// An item row and its Vault row in the given state. Returns the item GUID.
         /// </summary>
-        public static uint AddVaultItem(uint accountId, uint characterId, string name, string state, uint wcid = 35, int stackSize = 1)
+        public static uint AddVaultItem(uint accountId, uint characterId, string name, string state, uint wcid = 35, int stackSize = 1, string database = ShardDatabase)
         {
             var guid = 0xC0000000u + (uint)Interlocked.Increment(ref counter);
 
-            MarketTestDatabase.Execute(ShardDatabase, $"INSERT INTO biota (id, weenie_Class_Id, weenie_Type) VALUES ({guid}, {wcid}, 1);");
-            MarketTestDatabase.Execute(ShardDatabase,
+            MarketTestDatabase.Execute(database, $"INSERT INTO biota (id, weenie_Class_Id, weenie_Type) VALUES ({guid}, {wcid}, 1);");
+            MarketTestDatabase.Execute(database,
                 "INSERT INTO market_vault_item (item_Guid, account_Id, character_Id, state, deposited_Time, wcid, name, item_Type, stack_Size) " +
                 $"VALUES ({guid}, {accountId}, {characterId}, '{state}', UTC_TIMESTAMP(6), {wcid}, '{name}', 2, {stackSize});");
 
@@ -149,13 +149,13 @@ namespace ACE.MarketApi.Tests.Support
         /// <summary>
         /// Inserts listing rows directly, bypassing the API. Returns the listing id.
         /// </summary>
-        public static long AddListing(uint accountId, uint characterId, uint itemGuid, long price, string status, DateTime createdUtc)
+        public static long AddListing(uint accountId, uint characterId, uint itemGuid, long price, string status, DateTime createdUtc, string database = ShardDatabase)
         {
-            MarketTestDatabase.Execute(ShardDatabase,
+            MarketTestDatabase.Execute(database,
                 "INSERT INTO market_listing (item_Guid, seller_Account_Id, seller_Character_Id, price, status, created_Time) " +
                 $"VALUES ({itemGuid}, {accountId}, {characterId}, {price}, '{status}', '{createdUtc:yyyy-MM-dd HH:mm:ss.ffffff}');");
 
-            return MarketTestDatabase.Scalar(ShardDatabase, $"SELECT MAX(id) FROM market_listing WHERE item_Guid = {itemGuid};");
+            return MarketTestDatabase.Scalar(database, $"SELECT MAX(id) FROM market_listing WHERE item_Guid = {itemGuid};");
         }
 
         /// <summary>

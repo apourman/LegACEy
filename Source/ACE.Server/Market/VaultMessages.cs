@@ -59,6 +59,7 @@ namespace ACE.Server.Market
                 VaultOutcome.InsufficientFunds => $"You cannot withdraw {notes}. Your balance is {balance:N0} MMD.",
                 VaultOutcome.NoPackSpace => $"You do not have room in your pack for {notes}.",
                 VaultOutcome.SaveFailed => "The Vault could not save your trade notes. Nothing was changed.",
+                VaultOutcome.Paused => $"The market is paused, so MMD withdrawals are stopped for now. Your balance is {balance:N0} MMD.",
                 _ => For(outcome, "Your trade notes"),
             };
         }

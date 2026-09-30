@@ -13,6 +13,9 @@ namespace ACE.Database.Market
         // a player's balance would have fallen below zero
         InsufficientFunds,
 
+        // the market is paused (a failed ledger audit), which stops MMD withdrawals
+        Paused,
+
         // the save failed
         Failed,
     }
