@@ -27,7 +27,7 @@ namespace ACE.MarketApi
         public const string SessionCookieName = "market_session";
 
         /// <summary>
-        /// Builds the API. Throws MarketUnavailableException, and so never starts, when the market's tables are missing.
+        /// Builds the API. Throws MarketUnavailableException, and so never starts, when the market's tables or the portal DAT are missing.
         /// </summary>
         /// <param name="configure">runs first, so a test host can swap in its own server, clock or services</param>
         public static WebApplication Create(string[] args, Action<WebApplicationBuilder> configure = null)
@@ -52,7 +52,20 @@ namespace ACE.MarketApi
                     throw new MarketUnavailableException($"Market schema check: {check.Report}. The market will not start until the market update script has been applied.");
             }
 
+            // the appraisal names spells and materials from the game's own data files
+            GameData gameData;
+            try
+            {
+                gameData = GameData.Load(ConfigManager.Config.Server.DatFilesDirectory);
+            }
+            catch (FileNotFoundException e)
+            {
+                throw new MarketUnavailableException(e.Message);
+            }
+
             builder.Services.AddSingleton(database);
+            builder.Services.AddSingleton(gameData);
+            builder.Services.TryAddSingleton(AppraisalRules.Default);
             builder.Services.AddSingleton<SignInLimiter>();
             builder.Services.AddSingleton<PurchaseLimiter>();
             builder.Services.TryAddSingleton<IFeePolicy, ZeroFeePolicy>();
@@ -139,7 +152,7 @@ namespace ACE.MarketApi
     }
 
     /// <summary>
-    /// The market can't run: its tables are missing
+    /// The market can't run: its tables or the game's data files are missing
     /// </summary>
     public sealed class MarketUnavailableException : Exception
     {

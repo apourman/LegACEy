@@ -9,6 +9,7 @@ using MySqlConnector;
 
 using ACE.Common.Cryptography;
 using ACE.Database.Tests.Market;
+using ACE.Entity.Enum.Properties;
 
 namespace ACE.MarketApi.Tests.Support
 {
@@ -144,6 +145,32 @@ namespace ACE.MarketApi.Tests.Support
         public static void SetVaultColumns(uint itemGuid, string assignments)
         {
             MarketTestDatabase.Execute(ShardDatabase, $"UPDATE market_vault_item SET {assignments} WHERE item_Guid = {itemGuid};");
+        }
+
+        /// <summary>
+        /// Adds properties to an item's biota, as the game stores them. Spells go in the spell book in the order given.
+        /// </summary>
+        public static void AddItemProperties(uint itemGuid,
+            (PropertyInt Key, int Value)[] ints = null,
+            (PropertyFloat Key, double Value)[] floats = null,
+            (PropertyString Key, string Value)[] strings = null,
+            (PropertyBool Key, bool Value)[] bools = null,
+            int[] spells = null)
+        {
+            foreach (var (key, value) in ints ?? Array.Empty<(PropertyInt, int)>())
+                MarketTestDatabase.Execute(ShardDatabase, $"INSERT INTO biota_properties_int (object_Id, type, value) VALUES ({itemGuid}, {(ushort)key}, {value});");
+
+            foreach (var (key, value) in floats ?? Array.Empty<(PropertyFloat, double)>())
+                MarketTestDatabase.Execute(ShardDatabase, $"INSERT INTO biota_properties_float (object_Id, type, value) VALUES ({itemGuid}, {(ushort)key}, {value.ToString("R", System.Globalization.CultureInfo.InvariantCulture)});");
+
+            foreach (var (key, value) in strings ?? Array.Empty<(PropertyString, string)>())
+                MarketTestDatabase.Execute(ShardDatabase, $"INSERT INTO biota_properties_string (object_Id, type, value) VALUES ({itemGuid}, {(ushort)key}, '{value.Replace("'", "''")}');");
+
+            foreach (var (key, value) in bools ?? Array.Empty<(PropertyBool, bool)>())
+                MarketTestDatabase.Execute(ShardDatabase, $"INSERT INTO biota_properties_bool (object_Id, type, value) VALUES ({itemGuid}, {(ushort)key}, {(value ? 1 : 0)});");
+
+            foreach (var spell in spells ?? Array.Empty<int>())
+                MarketTestDatabase.Execute(ShardDatabase, $"INSERT INTO biota_properties_spell_book (object_Id, spell, probability) VALUES ({itemGuid}, {spell}, 2);");
         }
 
         /// <summary>

@@ -5,7 +5,7 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
+using System.Text.Json.Serialization;
 
 using Microsoft.EntityFrameworkCore;
 
@@ -211,25 +211,26 @@ namespace ACE.MarketApi
         // ---- display
 
         /// <summary>
-        /// A listing ready to display: a browse row, and the listing page's basic facts (name, type, material, listed time, price, seller, wield)
+        /// A listing ready to display: a browse row with its one-line summary, and the listing page's basic facts (name, type, material, listed time, price, seller, wield)
         /// </summary>
-        public static object View(Row row) => new
+        public static ListingView View(Row row, AppraisalItem item) => new ListingView
         {
-            id = row.Listing.Id,
-            itemGuid = row.Listing.ItemGuid,
-            wcid = row.Item.Wcid,
-            name = row.Item.Name,
-            itemType = ItemTypeName(row.Item.ItemType),
-            material = MaterialName(row.Item.MaterialType),
-            workmanship = row.Item.Workmanship,
-            level = row.Item.WieldRequirements == (int)WieldRequirement.Level ? row.Item.WieldDifficulty : null,
-            arcaneLore = row.Item.ArcaneLore,
-            quantity = row.Item.StackSize,
-            price = row.Listing.Price,
-            seller = row.Seller,
-            listedTime = DateTime.SpecifyKind(row.Listing.CreatedTime, DateTimeKind.Utc),
-            wield = WieldText(row.Item),
-            icon = new
+            Id = row.Listing.Id,
+            ItemGuid = row.Listing.ItemGuid,
+            Wcid = row.Item.Wcid,
+            Name = row.Item.Name,
+            ItemType = ItemTypeName(row.Item.ItemType),
+            Material = AppraisalRules.MaterialName(item, row.Item.MaterialType),
+            Workmanship = row.Item.Workmanship,
+            Level = row.Item.WieldRequirements == (int)WieldRequirement.Level ? row.Item.WieldDifficulty : null,
+            ArcaneLore = row.Item.ArcaneLore,
+            Summary = AppraisalRules.Summary(item),
+            Quantity = row.Item.StackSize,
+            Price = row.Listing.Price,
+            Seller = row.Seller,
+            ListedTime = DateTime.SpecifyKind(row.Listing.CreatedTime, DateTimeKind.Utc),
+            Wield = WieldText(row.Item),
+            Icon = new
             {
                 underlay = row.Item.IconUnderlay,
                 icon = row.Item.Icon,
@@ -242,22 +243,51 @@ namespace ACE.MarketApi
         };
 
         /// <summary>
+        /// The listing page: the browse row's facts plus the appraisal lines and the spells
+        /// </summary>
+        public static ListingView Detail(Row row, AppraisalItem item, AppraisalRules rules)
+        {
+            var view = View(row, item);
+
+            view.Lines = rules.Format(item);
+            view.Spells = AppraisalRules.Spells(item);
+
+            return view;
+        }
+
+        /// <summary>
+        /// Serialized in camelCase. Lines and spells are on the listing page only.
+        /// </summary>
+        public sealed class ListingView
+        {
+            public long Id { get; set; }
+            public uint ItemGuid { get; set; }
+            public uint Wcid { get; set; }
+            public string Name { get; set; }
+            public string ItemType { get; set; }
+            public string Material { get; set; }
+            public int? Workmanship { get; set; }
+            public int? Level { get; set; }
+            public int? ArcaneLore { get; set; }
+            public string Summary { get; set; }
+            public int Quantity { get; set; }
+            public long Price { get; set; }
+            public string Seller { get; set; }
+            public DateTime ListedTime { get; set; }
+            public string Wield { get; set; }
+            public object Icon { get; set; }
+
+            [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+            public IReadOnlyList<string> Lines { get; set; }
+
+            [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+            public IReadOnlyList<GameData.Spell> Spells { get; set; }
+        }
+
+        /// <summary>
         /// The raw ItemType name, as the reference site shows it ("MeleeWeapon")
         /// </summary>
         public static string ItemTypeName(int itemType) => ((ItemType)unchecked((uint)itemType)).ToString();
-
-        /// <summary>
-        /// "White Sapphire", or null when the item has no material
-        /// </summary>
-        public static string MaterialName(int? materialType)
-        {
-            if (materialType is not int value || value == 0)
-                return null;
-
-            var material = (MaterialType)value;
-
-            return Enum.IsDefined(material) ? SplitWords(material.ToString()) : value.ToString(CultureInfo.InvariantCulture);
-        }
 
         /// <summary>
         /// "Level 150" or "Missile Weapons 390"; null when the item has no level or skill requirement
@@ -276,13 +306,11 @@ namespace ACE.MarketApi
                 case WieldRequirement.RawSkill:
                     if (item.WieldSkillType is not int skill)
                         return null;
-                    return $"{((Skill)skill).ToSentence()} {difficulty}";
+                    return AppraisalRules.SkillText(skill, difficulty);
 
                 default:
                     return null;
             }
         }
-
-        private static string SplitWords(string name) => Regex.Replace(name, "(?<=[a-z])(?=[A-Z])", " ");
     }
 }
