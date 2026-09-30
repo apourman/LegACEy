@@ -65,6 +65,7 @@ namespace ACE.MarketApi
 
             builder.Services.AddSingleton(database);
             builder.Services.AddSingleton(gameData);
+            builder.Services.AddSingleton(new IconStore(gameData, options.IconCachePath));
             builder.Services.TryAddSingleton(AppraisalRules.Default);
             builder.Services.AddSingleton<SignInLimiter>();
             builder.Services.AddSingleton<PurchaseLimiter>();
@@ -122,6 +123,7 @@ namespace ACE.MarketApi
             CatalogEndpoints.Map(app);
             PurchaseEndpoints.Map(app);
             HistoryEndpoints.Map(app);
+            IconEndpoints.Map(app);
 
             return app;
         }

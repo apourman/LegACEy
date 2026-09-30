@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -11,8 +12,8 @@ using ACE.Entity.Enum;
 namespace ACE.MarketApi
 {
     /// <summary>
-    /// What the appraisal needs from the game's own data files: spell names (and which spells are cantrips) and material names.
-    /// Read once from client_portal.dat, the same file the game server uses.
+    /// What the market needs from the game's own data files: spell names (and which spells are cantrips) and material names for the appraisal,
+    /// and icon textures and clothing tables for icons. Read from client_portal.dat, the same file the game server uses.
     /// </summary>
     public sealed class GameData
     {
@@ -23,6 +24,11 @@ namespace ACE.MarketApi
         /// </summary>
         private const uint MaterialNamesId = 0x27000000;
 
+        /// <summary>
+        /// Icons, and each layer of one, are 32×32
+        /// </summary>
+        public const int IconSize = 32;
+
         public sealed record Spell(string Name, bool Cantrip);
 
         private static readonly ConcurrentDictionary<string, GameData> loaded = new ConcurrentDictionary<string, GameData>();
@@ -31,10 +37,26 @@ namespace ACE.MarketApi
 
         private readonly IReadOnlyDictionary<uint, string> materials;
 
-        private GameData(IReadOnlyDictionary<uint, Spell> spells, IReadOnlyDictionary<uint, string> materials)
+        /// <summary>
+        /// Kept open for icons, which are read on demand. Its reads are thread safe.
+        /// </summary>
+        private readonly PortalDatDatabase portal;
+
+        /// <summary>
+        /// Every (icon, palette template) pair a clothing table names, read on first use
+        /// </summary>
+        private readonly Lazy<HashSet<(uint Icon, int PaletteTemplate)>> clothingIcons;
+
+        private GameData(IReadOnlyDictionary<uint, Spell> spells, IReadOnlyDictionary<uint, string> materials, PortalDatDatabase portal)
         {
             this.spells = spells;
             this.materials = materials;
+            this.portal = portal;
+
+            clothingIcons = new Lazy<HashSet<(uint, int)>>(() => portal.AllFiles.Keys
+                .Where(id => id >> 24 == 0x10)
+                .SelectMany(id => portal.ReadFromDat<ClothingTable>(id).ClothingSubPalEffects.Select(e => (e.Value.Icon, (int)e.Key)))
+                .ToHashSet());
         }
 
         /// <summary>
@@ -58,7 +80,7 @@ namespace ACE.MarketApi
 
             var materials = portal.ReadFromDat<DualDidMapper>(MaterialNamesId).ClientEnumToName.ToDictionary(m => m.Key, m => m.Value.Replace("_", " "));
 
-            return new GameData(spells, materials);
+            return new GameData(spells, materials, portal);
         }
 
         private static readonly string[] cantripTiers = { "Minor ", "Moderate ", "Major ", "Epic ", "Legendary " };
@@ -79,5 +101,40 @@ namespace ACE.MarketApi
         /// "Smoky Quartz", or null when the DAT doesn't name the material
         /// </summary>
         public string MaterialName(int materialType) => materials.TryGetValue(unchecked((uint)materialType), out var name) ? name : null;
+
+        /// <summary>
+        /// A 32×32 texture's pixels as straight RGBA (its default palette applied when it has one), or null when the id isn't a 32×32 texture in the DAT
+        /// </summary>
+        public byte[] IconPixels(uint textureId)
+        {
+            // 0x06 files are textures; checking the index first keeps unknown ids out of the DAT's file cache
+            if (textureId >> 24 != 0x06 || !portal.AllFiles.ContainsKey(textureId))
+                return null;
+
+            var texture = portal.ReadFromDat<Texture>(textureId);
+
+            if (texture.Width != IconSize || texture.Height != IconSize || texture.Format == SurfacePixelFormat.PFID_CUSTOM_RAW_JPEG)
+                return null;
+
+            var palette = texture.DefaultPaletteId is uint paletteId ? portal.ReadFromDat<Palette>(paletteId) : null;
+
+            return texture.GetPixels(palette);
+        }
+
+        /// <summary>
+        /// The icon a clothing table gives a palette template (as ClothingTable.GetIcon, which the game uses when it sets an item's palette), or 0 when it has none
+        /// </summary>
+        public uint ClothingIcon(uint clothingBase, int paletteTemplate)
+        {
+            if (clothingBase >> 24 != 0x10 || paletteTemplate < 0 || !portal.AllFiles.ContainsKey(clothingBase))
+                return 0;
+
+            return portal.ReadFromDat<ClothingTable>(clothingBase).GetIcon((uint)paletteTemplate);
+        }
+
+        /// <summary>
+        /// Whether some clothing table gives this icon for this palette template
+        /// </summary>
+        public bool IsClothingIcon(uint icon, int paletteTemplate) => clothingIcons.Value.Contains((icon, paletteTemplate));
     }
 }
