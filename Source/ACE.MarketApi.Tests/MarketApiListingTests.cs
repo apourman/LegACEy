@@ -92,7 +92,8 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual(120, row.GetProperty("arcaneLore").GetInt32());
             Assert.AreEqual(JsonValueKind.Null, row.GetProperty("level").ValueKind);
             Assert.AreEqual(1, row.GetProperty("quantity").GetInt32());
-            Assert.AreEqual(100667000u, row.GetProperty("icon").GetProperty("icon").GetUInt32());
+            var baseLayer = row.GetProperty("icon").GetProperty("layers").EnumerateArray().Single(l => l.GetProperty("kind").GetString() == "base");
+            Assert.AreEqual(100667000u, baseLayer.GetProperty("id").GetUInt32());
 
             var detailResponse = await host.GetAsync($"/listings/{id}");
             Assert.AreEqual(HttpStatusCode.OK, detailResponse.StatusCode);

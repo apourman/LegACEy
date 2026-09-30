@@ -27,6 +27,11 @@ namespace ACE.MarketApi
         public string KeysPath { get; set; } = "keys";
 
         /// <summary>
+        /// Where icon PNGs are cached once made from the portal DAT. Safe to delete: they are made again on the next request.
+        /// </summary>
+        public string IconCachePath { get; set; } = "icon-cache";
+
+        /// <summary>
         /// Marks the session cookie Secure, so browsers send it over HTTPS only. Turn off only for local HTTP testing.
         /// </summary>
         public bool SecureCookies { get; set; } = true;

@@ -230,16 +230,7 @@ namespace ACE.MarketApi
             Seller = row.Seller,
             ListedTime = DateTime.SpecifyKind(row.Listing.CreatedTime, DateTimeKind.Utc),
             Wield = WieldText(row.Item),
-            Icon = new
-            {
-                underlay = row.Item.IconUnderlay,
-                icon = row.Item.Icon,
-                overlay = row.Item.IconOverlay,
-                overlaySecondary = row.Item.IconOverlaySecondary,
-                uiEffects = row.Item.UiEffects,
-                paletteTemplate = row.Item.PaletteTemplate,
-                clothingBase = row.Item.ClothingBase,
-            },
+            Icon = ItemIcons.For(row.Item, item.GameData),
         };
 
         /// <summary>
@@ -275,7 +266,7 @@ namespace ACE.MarketApi
             public string Seller { get; set; }
             public DateTime ListedTime { get; set; }
             public string Wield { get; set; }
-            public object Icon { get; set; }
+            public ItemIcons.IconView Icon { get; set; }
 
             [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
             public IReadOnlyList<string> Lines { get; set; }
