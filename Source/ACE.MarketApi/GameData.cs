@@ -54,13 +54,21 @@ namespace ACE.MarketApi
 
             var portal = new PortalDatDatabase(path);
 
-            // cantrips are the item spells the client leaves out of item descriptions
-            var spells = portal.SpellTable.Spells.ToDictionary(s => s.Key, s => new Spell(s.Value.Name, ((SpellFlags)s.Value.Bitfield).HasFlag(SpellFlags.ExcludedFromItemDescriptions)));
+            var spells = portal.SpellTable.Spells.ToDictionary(s => s.Key, s => new Spell(s.Value.Name, IsCantrip(s.Value.Name, (SpellFlags)s.Value.Bitfield)));
 
             var materials = portal.ReadFromDat<DualDidMapper>(MaterialNamesId).ClientEnumToName.ToDictionary(m => m.Key, m => m.Value.Replace("_", " "));
 
             return new GameData(spells, materials);
         }
+
+        private static readonly string[] cantripTiers = { "Minor ", "Moderate ", "Major ", "Epic ", "Legendary " };
+
+        /// <summary>
+        /// A cantrip is an item spell the client leaves out of item descriptions (every Minor to Legendary one but a few, and the Feeble
+        /// ones), or one named by a cantrip tier (the few: the wards and Hermetic Links)
+        /// </summary>
+        private static bool IsCantrip(string name, SpellFlags flags) =>
+            flags.HasFlag(SpellFlags.ExcludedFromItemDescriptions) || cantripTiers.Any(tier => name.StartsWith(tier, System.StringComparison.Ordinal));
 
         /// <summary>
         /// The spell, or null when the spell table doesn't have it

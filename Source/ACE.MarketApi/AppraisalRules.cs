@@ -21,11 +21,11 @@ namespace ACE.MarketApi
     /// </summary>
     public sealed class AppraisalRules
     {
-        public IReadOnlyList<AppraisalRule> Lines { get; }
+        public IReadOnlyList<AppraisalRule> Rules { get; }
 
-        public AppraisalRules(IEnumerable<AppraisalRule> lines)
+        public AppraisalRules(IEnumerable<AppraisalRule> rules)
         {
-            Lines = lines.ToList();
+            Rules = rules.ToList();
         }
 
         /// <summary>
@@ -38,7 +38,7 @@ namespace ACE.MarketApi
             new AppraisalRule("Burden", i => Number(i.Int(PropertyInt.EncumbranceVal))),
             new AppraisalRule("Material", i => MaterialName(i, i.Int(PropertyInt.MaterialType))),
             new AppraisalRule("Workmanship", i => Number(i.Int(PropertyInt.ItemWorkmanship))),
-            new AppraisalRule("Set", i => i.Int(PropertyInt.EquipmentSetId) is int set && set != 0 ? EnumName((EquipmentSet)set) : null),
+            new AppraisalRule("Set", i => EnumName<EquipmentSet>(i.Int(PropertyInt.EquipmentSetId))),
 
             // tinkering
             new AppraisalRule("Number of Times Tinkered", i => i.Int(PropertyInt.NumTimesTinkered) is int times && times != 0 ? Number(times) : null),
@@ -52,7 +52,7 @@ namespace ACE.MarketApi
             new AppraisalRule("Elemental Damage Bonus", i => NonNeutral(Signed(i.Int(PropertyInt.ElementalDamageBonus)))),
             new AppraisalRule("Attack Bonus", i => Multiplier(i.Float(PropertyFloat.WeaponOffense))),
             new AppraisalRule("Speed", i => Number(i.Int(PropertyInt.WeaponTime))),
-            new AppraisalRule("Ammunition Type", i => i.Int(PropertyInt.AmmoType) is int ammo && ammo != 0 ? EnumName((AmmoType)ammo) : null),
+            new AppraisalRule("Ammunition Type", i => EnumName<AmmoType>(i.Int(PropertyInt.AmmoType))),
             new AppraisalRule("Missile Velocity", i => i.Float(PropertyFloat.MaximumVelocity)?.ToString("0.0", CultureInfo.InvariantCulture)),
             new AppraisalRule("Melee Defense Bonus", i => NonNeutral(Multiplier(i.Float(PropertyFloat.WeaponDefense)))),
             new AppraisalRule("Missile Defense Bonus", i => NonNeutral(Multiplier(i.Float(PropertyFloat.WeaponMissileDefense)))),
@@ -97,7 +97,7 @@ namespace ACE.MarketApi
         {
             var lines = new List<string>();
 
-            foreach (var rule in Lines)
+            foreach (var rule in Rules)
             {
                 if (rule.Value(item) is string value)
                     lines.Add(rule.Label == null ? value : $"{rule.Label}: {value}");
@@ -131,11 +131,11 @@ namespace ACE.MarketApi
         /// <summary>
         /// The item's spells by name from the spell table, cantrips first. A spell the table doesn't have is shown by its id.
         /// </summary>
-        public static IReadOnlyList<(string Name, bool Cantrip)> Spells(AppraisalItem item)
+        public static IReadOnlyList<GameData.Spell> Spells(AppraisalItem item)
         {
             return item.Spells
-                .Select(id => item.GameData.FindSpell(id) is GameData.Spell spell ? (spell.Name, spell.Cantrip) : ($"Unknown spell {Number(id)}", false))
-                .OrderBy(s => s.Item2 ? 0 : 1)
+                .Select(id => item.GameData.FindSpell(id) ?? new GameData.Spell($"Unknown spell {Number(id)}", false))
+                .OrderBy(spell => spell.Cantrip ? 0 : 1)
                 .ToList();
         }
 
@@ -238,8 +238,18 @@ namespace ACE.MarketApi
             if (skill is not int s || difficulty is not int d)
                 return null;
 
-            return $"{((Skill)s).ToSentence()} {Number(d)}";
+            return SkillText(s, d);
         }
+
+        /// <summary>
+        /// "Missile Weapons 390"
+        /// </summary>
+        public static string SkillText(int skill, int difficulty) => $"{((Skill)skill).ToSentence()} {Number(difficulty)}";
+
+        /// <summary>
+        /// The stored value's enum name split into words, or null when it's missing or 0
+        /// </summary>
+        private static string EnumName<T>(int? value) where T : struct, Enum => value is int v && v != 0 ? EnumName((T)Enum.ToObject(typeof(T), v)) : null;
 
         /// <summary>
         /// An enum's name split into words ("BludgeonRending" → "Bludgeon Rending"), or its number when it has no name
@@ -249,6 +259,6 @@ namespace ACE.MarketApi
             return Enum.IsDefined(value) ? SplitWords(value.ToString()) : Convert.ToInt64(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
         }
 
-        public static string SplitWords(string name) => Regex.Replace(name, "(?<=[a-z])(?=[A-Z])", " ");
+        private static string SplitWords(string name) => Regex.Replace(name, "(?<=[a-z])(?=[A-Z])", " ");
     }
 }

@@ -31,6 +31,9 @@ namespace ACE.MarketApi.Tests
         private const int TuskersBane = 2098;
         private const int BrogardsDefiance = 2108;
 
+        // cantrips the client does describe (no ExcludedFromItemDescriptions flag), so only their tier names them
+        private const int EpicBludgeonWard = 3955;
+
         /// <summary>
         /// 1 point every 15 seconds
         /// </summary>
@@ -346,6 +349,20 @@ namespace ACE.MarketApi.Tests
         }
 
         [TestMethod]
+        public async Task Detail_ACantripTheClientDescribes_IsStillACantrip()
+        {
+            await using var host = await MarketApiHost.StartAsync();
+            var seller = await NewSellerAsync(host);
+
+            var listing = await ListAsync(host, seller, "Warded Mace", ItemType.MeleeWeapon,
+                guid => MarketApiTestData.AddItemProperties(guid, spells: new[] { Hastening, EpicBludgeonWard }));
+
+            var spells = (await DetailAsync(host, listing)).GetProperty("spells").EnumerateArray().Select(s => (s.GetProperty("name").GetString(), s.GetProperty("cantrip").GetBoolean())).ToArray();
+
+            CollectionAssert.AreEqual(new[] { ("Epic Bludgeon Ward", true), ("Hastening", false) }, spells);
+        }
+
+        [TestMethod]
         public async Task Detail_WeaponDamage_IsARangeWithItsTypes()
         {
             await using var host = await MarketApiHost.StartAsync();
@@ -421,7 +438,7 @@ namespace ACE.MarketApi.Tests
                 before = Snapshot(listing);
             }
 
-            var changed = new AppraisalRules(AppraisalRules.Default.Lines.Select(rule => rule.Label == "Value" ? rule with { Label = "Worth" } : rule));
+            var changed = new AppraisalRules(AppraisalRules.Default.Rules.Select(rule => rule.Label == "Value" ? rule with { Label = "Worth" } : rule));
 
             await using (var host = await MarketApiHost.StartAsync(services => services.AddSingleton(changed)))
             {

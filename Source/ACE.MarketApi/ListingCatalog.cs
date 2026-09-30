@@ -250,12 +250,10 @@ namespace ACE.MarketApi
             var view = View(row, item);
 
             view.Lines = rules.Format(item);
-            view.Spells = AppraisalRules.Spells(item).Select(s => new SpellView(s.Name, s.Cantrip)).ToList();
+            view.Spells = AppraisalRules.Spells(item);
 
             return view;
         }
-
-        public sealed record SpellView(string Name, bool Cantrip);
 
         /// <summary>
         /// Serialized in camelCase. Lines and spells are on the listing page only.
@@ -283,7 +281,7 @@ namespace ACE.MarketApi
             public IReadOnlyList<string> Lines { get; set; }
 
             [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-            public IReadOnlyList<SpellView> Spells { get; set; }
+            public IReadOnlyList<GameData.Spell> Spells { get; set; }
         }
 
         /// <summary>
@@ -308,7 +306,7 @@ namespace ACE.MarketApi
                 case WieldRequirement.RawSkill:
                     if (item.WieldSkillType is not int skill)
                         return null;
-                    return $"{((Skill)skill).ToSentence()} {difficulty}";
+                    return AppraisalRules.SkillText(skill, difficulty);
 
                 default:
                     return null;
