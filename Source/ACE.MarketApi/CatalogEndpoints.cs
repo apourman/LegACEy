@@ -34,7 +34,7 @@ namespace ACE.MarketApi
         /// Filters: q (part of the name), type (ItemType name or number), minPrice, maxPrice, seller (character name).
         /// Sort: sort (newest, name, workmanship, level, arcane, price, seller) and dir (asc, desc). Paging: limit and the previous page's nextCursor.
         /// </summary>
-        private static IResult Browse(HttpRequest request, MarketDatabase database, TimeProvider time)
+        private static IResult Browse(HttpRequest request, MarketDatabase database, GameData gameData, TimeProvider time)
         {
             var query = request.Query;
 
@@ -119,7 +119,9 @@ namespace ACE.MarketApi
                 nextCursor = new ListingCatalog.Cursor(sort.Value, descending, cursorKey(last), last.Listing.Id).Encode();
             }
 
-            return Results.Json(new { listings = page.Select(ListingCatalog.View), nextCursor });
+            var items = AppraisalItem.Load(shard, gameData, page.Select(r => r.Listing.ItemGuid).ToList());
+
+            return Results.Json(new { listings = page.Select(r => ListingCatalog.View(r, items[r.Listing.ItemGuid])), nextCursor });
         }
 
         /// <summary>
@@ -145,9 +147,9 @@ namespace ACE.MarketApi
         }
 
         /// <summary>
-        /// The listing page's basic facts, or 404 when the listing isn't active (sold, delisted, expired, returned, unknown, or its seller is banned)
+        /// The listing page (basic facts, appraisal lines and spells), or 404 when the listing isn't active (sold, delisted, expired, returned, unknown, or its seller is banned)
         /// </summary>
-        private static IResult Detail(long id, MarketDatabase database, TimeProvider time)
+        private static IResult Detail(long id, MarketDatabase database, GameData gameData, AppraisalRules rules, TimeProvider time)
         {
             using var shard = database.CreateShard();
 
@@ -156,7 +158,9 @@ namespace ACE.MarketApi
             if (row == null)
                 return MarketHttp.Error(StatusCodes.Status404NotFound, "not_found");
 
-            return Results.Json(ListingCatalog.View(row));
+            var item = AppraisalItem.Load(shard, gameData, new[] { row.Listing.ItemGuid })[row.Listing.ItemGuid];
+
+            return Results.Json(ListingCatalog.Detail(row, item, rules));
         }
 
         /// <summary>
