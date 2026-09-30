@@ -84,7 +84,7 @@ jobs:
     if: >-
       always() && (
         (github.event_name == 'push' && needs.release-please.outputs.release_created == 'true' && needs.build.result == 'success') ||
-        (github.event_name == 'workflow_dispatch' && inputs.release_tag != '' && inputs.source_run_id != '')
+        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master' && inputs.release_tag != '' && inputs.source_run_id != '')
       )
     needs: [release-please, build]
     runs-on: ubuntu-latest
@@ -152,7 +152,7 @@ jobs:
           gh release edit "$RELEASE_TAG" --draft=false --repo "$REPOSITORY"
 
   deploy:
-    if: always() && needs.publish-release.result == 'success'
+    if: always() && needs.publish-release.result == 'success' && (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/master')
     needs: [release-please, build, publish-release]
     runs-on: ubuntu-latest
     environment: production
