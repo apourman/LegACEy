@@ -53,10 +53,8 @@ namespace ACE.MarketApi
             this.materials = materials;
             this.portal = portal;
 
-            clothingIcons = new Lazy<HashSet<(uint, int)>>(() => portal.AllFiles.Keys
-                .Where(id => id >> 24 == 0x10)
-                .SelectMany(id => portal.ReadFromDat<ClothingTable>(id).ClothingSubPalEffects.Select(e => (e.Value.Icon, (int)e.Key)))
-                .ToHashSet());
+            // a failed scan is retried on the next request rather than remembered
+            clothingIcons = new Lazy<HashSet<(uint, int)>>(ReadClothingIcons, System.Threading.LazyThreadSafetyMode.PublicationOnly);
         }
 
         /// <summary>
@@ -101,6 +99,27 @@ namespace ACE.MarketApi
         /// "Smoky Quartz", or null when the DAT doesn't name the material
         /// </summary>
         public string MaterialName(int materialType) => materials.TryGetValue(unchecked((uint)materialType), out var name) ? name : null;
+
+        /// <summary>
+        /// Reads every clothing table once, past the DAT's file cache, so the ~1,900 tables aren't kept in memory
+        /// </summary>
+        private HashSet<(uint, int)> ReadClothingIcons()
+        {
+            var icons = new HashSet<(uint, int)>();
+
+            foreach (var id in portal.AllFiles.Keys.Where(id => id >> 24 == 0x10))
+            {
+                var table = new ClothingTable();
+
+                using (var reader = new BinaryReader(new MemoryStream(portal.GetReaderForFile(id).Buffer)))
+                    table.Unpack(reader);
+
+                foreach (var effect in table.ClothingSubPalEffects)
+                    icons.Add((effect.Value.Icon, (int)effect.Key));
+            }
+
+            return icons;
+        }
 
         /// <summary>
         /// A 32×32 texture's pixels as straight RGBA (its default palette applied when it has one), or null when the id isn't a 32×32 texture in the DAT

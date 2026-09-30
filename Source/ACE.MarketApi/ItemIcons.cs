@@ -16,12 +16,12 @@ namespace ACE.MarketApi
     /// </summary>
     public static class ItemIcons
     {
-        public const uint WeaponPlate = 0x060011D2;
-        public const uint ArmorPlate = 0x060011CF;
-        public const uint ClothingPlate = 0x060011F3;
-        public const uint JewelryPlate = 0x060011D5;
-        public const uint GemPlate = 0x060011D3;
-        public const uint OtherPlate = 0x060011D4;
+        private const uint WeaponPlate = 0x060011D2;
+        private const uint ArmorPlate = 0x060011CF;
+        private const uint ClothingPlate = 0x060011F3;
+        private const uint JewelryPlate = 0x060011D5;
+        private const uint GemPlate = 0x060011D3;
+        private const uint OtherPlate = 0x060011D4;
 
         public sealed class IconView
         {
@@ -59,28 +59,29 @@ namespace ACE.MarketApi
 
         public static IconView For(VaultItem item, GameData gameData)
         {
-            var layers = new List<IconLayer> { Layer("plate", Plate(item.ItemType)) };
+            var layers = new List<IconLayer>();
 
-            if (item.IconUnderlay is uint underlay && underlay != 0)
-                layers.Add(Layer("underlay", underlay));
+            void Add(string kind, uint? id, int? paletteTemplate = null)
+            {
+                if (id is uint texture && texture != 0)
+                    layers.Add(new IconLayer { Kind = kind, Id = texture, PaletteTemplate = paletteTemplate, Url = "/icons/" + FileName(texture, paletteTemplate) });
+            }
+
+            Add("plate", Plate(item.ItemType));
+            Add("underlay", item.IconUnderlay);
 
             // as the game does when it sets an item's palette, and as the client does when it draws one: the icon comes from the clothing table
-            if (item.PaletteTemplate is int template && item.ClothingBase is uint clothingBase && gameData.ClothingIcon(clothingBase, template) is uint clothingIcon && clothingIcon != 0)
-                layers.Add(Layer("base", clothingIcon, template));
-            else if (item.Icon is uint icon && icon != 0)
-                layers.Add(Layer("base", icon));
+            var clothingIcon = item.PaletteTemplate is int template && item.ClothingBase is uint clothingBase ? gameData.ClothingIcon(clothingBase, template) : 0;
+            if (clothingIcon != 0)
+                Add("base", clothingIcon, item.PaletteTemplate);
+            else
+                Add("base", item.Icon);
 
-            if (item.IconOverlay is uint overlay && overlay != 0)
-                layers.Add(Layer("overlay", overlay));
-
-            if (item.IconOverlaySecondary is uint overlaySecondary && overlaySecondary != 0)
-                layers.Add(Layer("overlaySecondary", overlaySecondary));
+            Add("overlay", item.IconOverlay);
+            Add("overlaySecondary", item.IconOverlaySecondary);
 
             return new IconView { Layers = layers, Glow = GlowClasses(item.UiEffects) };
         }
-
-        private static IconLayer Layer(string kind, uint id, int? paletteTemplate = null) =>
-            new IconLayer { Kind = kind, Id = id, PaletteTemplate = paletteTemplate, Url = "/icons/" + FileName(id, paletteTemplate) };
 
         /// <summary>
         /// "0x06003237.png", or "0x06003237_p19.png" for palette template 19 (the reference site's names)
@@ -91,7 +92,7 @@ namespace ACE.MarketApi
         /// <summary>
         /// The plate the client draws under an icon, by item type
         /// </summary>
-        public static uint Plate(int itemType)
+        private static uint Plate(int itemType)
         {
             var type = (ItemType)unchecked((uint)itemType);
 
@@ -112,10 +113,10 @@ namespace ACE.MarketApi
         // ---- glow
 
         /// <summary>
-        /// The glow colour for each UI effect. There is no glow texture in the game data. Magical is the reference site's placeholder blue;
+        /// The glow color for each UI effect. There is no glow texture in the game data. Magical is the reference site's placeholder blue;
         /// the others are picked to read as their element or vital.
         /// </summary>
-        private static readonly (UiEffects Effect, string Colour)[] glows =
+        private static readonly (UiEffects Effect, string Color)[] glows =
         {
             (UiEffects.Magical, "rgba(127, 182, 255, 0.75)"),
             (UiEffects.Poisoned, "rgba(96, 200, 72, 0.75)"),
@@ -159,7 +160,7 @@ namespace ACE.MarketApi
         }
 
         /// <summary>
-        /// The stylesheet for the glow classes: a box-shadow in the effect's colour, as the reference site draws it
+        /// The stylesheet for the glow classes: a box-shadow in the effect's color, as the reference site draws it
         /// </summary>
         public static readonly string GlowStylesheet = BuildGlowStylesheet();
 
@@ -172,8 +173,8 @@ namespace ACE.MarketApi
             css.AppendLine("    box-shadow: 0 0 6px 1px var(--icon-glow);");
             css.AppendLine("}");
 
-            foreach (var (effect, colour) in glows)
-                css.AppendLine($".{GlowClass(effect)} {{ --icon-glow: {colour}; }}");
+            foreach (var (effect, color) in glows)
+                css.AppendLine($".{GlowClass(effect)} {{ --icon-glow: {color}; }}");
 
             return css.ToString();
         }

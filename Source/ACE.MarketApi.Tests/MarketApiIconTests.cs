@@ -149,7 +149,7 @@ namespace ACE.MarketApi.Tests
         }
 
         /// <summary>
-        /// Fully transparent pixels compare equal whatever their colour
+        /// Fully transparent pixels compare equal whatever their color
         /// </summary>
         private static void AssertSamePixels(IReadOnlyList<SKColor> expected, SKBitmap actual, string what)
         {
@@ -176,7 +176,7 @@ namespace ACE.MarketApi.Tests
             return await response.Content.ReadAsByteArrayAsync();
         }
 
-        // ---- criterion 1: PNGs made on Linux, no Windows-only code
+        // ---- PNGs from the DAT, with no Windows-only code
 
         [TestMethod]
         public async Task Icon_IsAPngMadeFromTheServersOwnDat()
@@ -206,7 +206,7 @@ namespace ACE.MarketApi.Tests
         }
 
         [TestMethod]
-        public void Texture_GetPixels_AppliesThePaletteAndCustomColours()
+        public void Texture_GetPixels_AppliesThePaletteAndCustomColors()
         {
             var texture = Portal.ReadFromDat<Texture>(IndexedTexture);
             Assert.AreEqual(SurfacePixelFormat.PFID_P8, texture.Format);
@@ -221,7 +221,7 @@ namespace ACE.MarketApi.Tests
                 CollectionAssert.AreEqual(new[] { (byte)(argb >> 16), (byte)(argb >> 8), (byte)argb, (byte)(argb >> 24) }, pixels.Skip(i * 4).Take(4).ToArray(), $"pixel {i}");
             }
 
-            // a custom colour replaces its palette index in the output, and leaves the DAT's cached palette alone
+            // a custom color replaces its palette index in the output, and leaves the DAT's cached palette alone
             var index = texture.SourceData[0];
             var original = palette.Colors[index];
             var recoloured = Portal.ReadFromDat<Texture>(IndexedTexture);
@@ -239,7 +239,7 @@ namespace ACE.MarketApi.Tests
             }
         }
 
-        // ---- criterion 2: the disk cache
+        // ---- the disk cache
 
         [TestMethod]
         public async Task Icon_SecondRequest_IsServedFromTheDiskCache()
@@ -288,7 +288,7 @@ namespace ACE.MarketApi.Tests
             Assert.IsFalse(Directory.Exists(cache) && Directory.EnumerateFiles(cache).Any(), "nothing cached");
         }
 
-        // ---- criterion 3: layers and plates in listing responses
+        // ---- layers and plates in listing responses
 
         [TestMethod]
         public async Task Listing_IconLayers_PlatePerItemTypeAndTheItemsOwnLayersInClientOrder()
@@ -342,7 +342,7 @@ namespace ACE.MarketApi.Tests
                 await GetPngAsync(fresh, url);
         }
 
-        // ---- criterion 4: a dyed armor piece shows its palette's colours; _pNN is the palette template
+        // ---- a dyed armor piece shows its palette's colors; _pNN is the palette template
 
         [TestMethod]
         public async Task Listing_DyedBreastplate_BaseIconIsTheClothingTablesIconForItsPalette()
@@ -359,7 +359,7 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual(19, baseLayer.GetProperty("paletteTemplate").GetInt32());
             Assert.AreEqual($"/icons/0x{NariyidIconPalette19:X8}_p19.png", baseLayer.GetProperty("url").GetString());
 
-            // its colours are template 19's, not the default's
+            // its colors are template 19's, not the default's
             using var dyed = DecodePng(await GetPngAsync(host, baseLayer.GetProperty("url").GetString()));
             AssertSamePixels(DatPixels(NariyidIconPalette19), dyed, "palette 19");
             var undyed = DatPixels(NariyidIconPalette20);
@@ -392,7 +392,7 @@ namespace ACE.MarketApi.Tests
             AssertSamePixels(Enumerable.Range(0, reference.Width * reference.Height).Select(i => reference.GetPixel(i % reference.Width, i / reference.Width)).ToArray(), ours, "reference");
         }
 
-        // ---- criterion 5: glow
+        // ---- glow
 
         [TestMethod]
         public async Task Listing_MagicalItems_CarryTheGlowClassForTheirUiEffects()
@@ -435,7 +435,7 @@ namespace ACE.MarketApi.Tests
                 StringAssert.Contains(css, $".icon-glow--{kebab} {{", effect.ToString());
             }
 
-            // the reference's colour for magical items
+            // the reference's color for magical items
             StringAssert.Contains(css, ".icon-glow--magical { --icon-glow: rgba(127, 182, 255, 0.75); }");
         }
     }
