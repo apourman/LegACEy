@@ -8,6 +8,7 @@ using System.Timers;
 using log4net;
 
 using ACE.Database;
+using ACE.Database.Market;
 
 namespace ACE.Server.Managers
 {
@@ -50,7 +51,8 @@ namespace ACE.Server.Managers
         /// </summary>
         private static void LoadPropertiesFromDB()
         {
-            foreach (var i in DatabaseManager.ShardConfig.GetAllBools())
+            // the market pause is the market's own row: a cached copy marked modified (by /modifypropertydesc) would be written back over a newer pause
+            foreach (var i in DatabaseManager.ShardConfig.GetAllBools().Where(i => i.Key != MarketPause.Key))
                 CachedBooleanSettings[i.Key] = new ConfigurationEntry<bool>(false, i.Value, i.Description);
 
             foreach (var i in DatabaseManager.ShardConfig.GetAllLongs())

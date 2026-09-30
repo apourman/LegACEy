@@ -13,7 +13,8 @@ namespace ACE.Database.Market
     /// <summary>
     /// The server-wide market pause that a failed ledger audit sets and /market resume lifts. While paused, purchases and MMD withdrawals are refused;
     /// browsing, listing and deposits go on. It is a row in the shard's config_properties_boolean, so the game and the Market API read the same value.
-    /// The key is not one of the game's PropertyManager defaults, so /modifybool can't change it: only the audit and /market resume do.
+    /// The key is not one of the game's PropertyManager defaults, so /modifybool can't change it, and PropertyManager doesn't cache it, so it never writes a stale copy back:
+    /// only the audit and /market resume change it.
     /// </summary>
     public static class MarketPause
     {

@@ -15,6 +15,7 @@ namespace ACE.Database.Market
         // refusals: nothing was written
         InvalidAmount,
         InvalidMemo,
+        UnknownAccount,
         UnknownTransfer,
         AlreadyReversed,
         Unbalanced,
