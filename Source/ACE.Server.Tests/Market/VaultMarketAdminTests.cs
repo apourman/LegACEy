@@ -12,6 +12,7 @@ using ACE.Database.Tests.Market;
 using ACE.Entity.Enum;
 using ACE.Server.Command;
 using ACE.Server.Command.Handlers;
+using ACE.Server.Managers;
 using ACE.Server.Market;
 using ACE.Server.WorldObjects;
 
@@ -192,6 +193,60 @@ namespace ACE.Server.Tests.Market
 
             Assert.AreEqual(1, Count($"SELECT COUNT(*) FROM market_transfer WHERE reverses_Transfer_Id = {grant};"));
             Assert.AreEqual(10, Ledger.GetBalance(account));
+        }
+
+        [TestMethod]
+        public void MarketAdminAdjust_LooksUpTheAccountOffTheWorldThread_ByNameOrId()
+        {
+            var admin = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+
+            CorrectionResult Adjust(string account)
+            {
+                CorrectionResult result = null;
+                var done = new System.Threading.ManualResetEventSlim();
+                MarketAdmin.Adjust(account, 1, "lookup", admin.Session.AccountId, admin.Guid.Full, r => { result = r; done.Set(); });
+                Assert.IsTrue(done.Wait(TimeSpan.FromSeconds(30)), "the correction reported a result");
+                return result;
+            }
+
+            var transfers = Count("SELECT COUNT(*) FROM market_transfer;");
+            Assert.AreEqual(CorrectionOutcome.UnknownAccount, Adjust("no-such-account-x9").Outcome);
+            Assert.AreEqual(CorrectionOutcome.UnknownAccount, Adjust("4000000000").Outcome);
+            Assert.AreEqual(transfers, Count("SELECT COUNT(*) FROM market_transfer;"));
+
+            // an id with a market balance
+            var account = VaultTestWorld.NewAccountId();
+            var player = VaultTestWorld.NewPlayer(account);
+            GiveNotes(player, 2);
+            Assert.AreEqual(VaultOutcome.NotesDeposited, VaultTestWorld.DepositNotes(player).Outcome);
+
+            var adjusted = Adjust(account.ToString());
+            Assert.AreEqual(CorrectionOutcome.Done, adjusted.Outcome);
+            Assert.AreEqual(3, adjusted.Balance);
+        }
+
+        [TestMethod]
+        public void PropertyManager_NeverWritesAStaleMarketPauseBack()
+        {
+            try
+            {
+                // the game's property cache syncs with the shard every 5 minutes, and last saw the market running
+                ResumeMarket();
+                PropertyManager.ResyncVariables();
+
+                using (var shard = MarketTestDatabase.CreateContext(Db))
+                    MarketPause.Pause(shard, "a failed audit", DateTime.UtcNow);
+
+                // /modifypropertydesc BOOL market_paused marks the cached entry modified, and the next sync writes modified entries back
+                PropertyManager.ModifyBoolDescription(MarketPause.Key, "edited by an admin");
+                PropertyManager.ResyncVariables();
+
+                Assert.IsTrue(Paused(), "only /market resume lifts the pause");
+            }
+            finally
+            {
+                ResumeMarket();
+            }
         }
 
         // ---- helpers

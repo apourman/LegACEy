@@ -71,7 +71,8 @@ namespace ACE.Database.Market
     public static class LedgerAudit
     {
         /// <summary>
-        /// The most failures reported per check, so a badly broken ledger still gives a readable report
+        /// The most failures reported per query of a check, so a badly broken ledger still gives a readable report.
+        /// The balance and sequence checks are two queries each, so they can report up to twice this.
         /// </summary>
         public const int FailuresPerCheck = 50;
 

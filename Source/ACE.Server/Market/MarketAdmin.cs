@@ -70,7 +70,7 @@ namespace ACE.Server.Market
         /// <summary>
         /// The account an admin named: an account id the market or the auth database knows, else an account name. Null if there is none.
         /// </summary>
-        public static uint? FindAccount(string text)
+        private static uint? FindAccount(string text)
         {
             if (uint.TryParse(text, out var id))
             {
@@ -86,12 +86,16 @@ namespace ACE.Server.Market
         }
 
         /// <summary>
-        /// Writes an admin_adjust transfer of amount MMD (negative to take MMD away) for the account, recorded with the admin's account and character and the memo
+        /// Writes an admin_adjust transfer of amount MMD (negative to take MMD away) for the account, recorded with the admin's account and character and the memo.
+        /// The account is an account name or id, looked up off the world thread (UnknownAccount if there is none).
         /// </summary>
-        public static void Adjust(uint accountId, long amount, string memo, uint adminAccountId, uint adminCharacterId, Action<CorrectionResult> completed)
+        public static void Adjust(string account, long amount, string memo, uint adminAccountId, uint adminCharacterId, Action<CorrectionResult> completed)
         {
             RunOffWorldThread(() =>
             {
+                if (FindAccount(account) is not uint accountId)
+                    return new CorrectionResult(CorrectionOutcome.UnknownAccount);
+
                 var result = LedgerCorrections.Adjust(() => new ShardDbContext(), accountId, amount, memo, adminAccountId, adminCharacterId, DateTime.UtcNow);
 
                 if (result.Outcome == CorrectionOutcome.Done)

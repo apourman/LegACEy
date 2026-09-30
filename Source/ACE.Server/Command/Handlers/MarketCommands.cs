@@ -1,4 +1,3 @@
-using System;
 using System.Globalization;
 using System.Linq;
 
@@ -71,19 +70,12 @@ namespace ACE.Server.Command.Handlers
             if (!TryAdmin(session, out var adminAccountId, out var adminCharacterId))
                 return;
 
-            var accountId = MarketAdmin.FindAccount(parameters[1]);
+            var account = parameters[1];
 
-            if (accountId == null)
-            {
-                Tell(session, $"No account {parameters[1]}. Name an account, or the id of one with a market balance.");
-                return;
-            }
-
-            var account = accountId.Value;
-
-            MarketAdmin.Adjust(account, amount, Memo(parameters), adminAccountId, adminCharacterId, result => Tell(session, result?.Outcome switch
+            MarketAdmin.Adjust(account, amount, Memo(parameters, 3), adminAccountId, adminCharacterId, result => Tell(session, result?.Outcome switch
             {
                 CorrectionOutcome.Done => $"Adjusted account {account} by {amount:+#;-#} MMD (transfer {result.TransferId}). Its balance is {result.Balance:N0} MMD.",
+                CorrectionOutcome.UnknownAccount => $"No account {account}. Name an account, or the id of one with a market balance.",
                 CorrectionOutcome.InsufficientFunds => $"That would take account {account} below 0 MMD. Nothing was changed.",
                 _ => Refused(result),
             }));
@@ -100,7 +92,7 @@ namespace ACE.Server.Command.Handlers
             if (!TryAdmin(session, out var adminAccountId, out var adminCharacterId))
                 return;
 
-            MarketAdmin.Reverse(transferId, Memo(parameters), adminAccountId, adminCharacterId, result => Tell(session, result?.Outcome switch
+            MarketAdmin.Reverse(transferId, Memo(parameters, 2), adminAccountId, adminCharacterId, result => Tell(session, result?.Outcome switch
             {
                 CorrectionOutcome.Done => $"Reversed transfer {transferId} (transfer {result.TransferId}). Only MMD moved: items and trade notes stay where they are.",
                 CorrectionOutcome.UnknownTransfer => $"There is no transfer {transferId}.",
@@ -126,7 +118,8 @@ namespace ACE.Server.Command.Handlers
             return false;
         }
 
-        private static string Memo(string[] parameters) => string.Join(" ", parameters.Skip(parameters[0].Equals("adjust", StringComparison.OrdinalIgnoreCase) ? 3 : 2));
+        /// <param name="words">how many words come before the memo: the verb and its arguments</param>
+        private static string Memo(string[] parameters, int words) => string.Join(" ", parameters.Skip(words));
 
         private static string Refused(CorrectionResult result) => result?.Outcome switch
         {
