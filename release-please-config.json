@@ -5,7 +5,7 @@
     ".": {
       "release-type": "simple",
       "version-file": "VERSION",
-      "changelog-path": "CHANGELOG.md",
+      "changelog-path": "LEGACEy_CHANGELOG.md",
       "initial-version": "0.1.0",
       "include-component-in-tag": false,
       "bump-minor-pre-major": true,

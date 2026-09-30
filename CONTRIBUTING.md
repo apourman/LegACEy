@@ -14,5 +14,6 @@ Release. The workflow builds the tagged source, attaches a Linux x64 server
 archive and SHA-256 checksum, publishes the release, and then deploys the same
 published archive to production.
 
-Do not edit `VERSION` or `CHANGELOG.md` by hand or create release tags manually;
-Release Please manages them.
+Do not edit `VERSION` or `LEGACEy_CHANGELOG.md` by hand or create release tags
+manually; Release Please manages them. The upstream `changelog.md` is kept
+separate and unchanged.
