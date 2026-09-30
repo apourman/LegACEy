@@ -1,3 +1,5 @@
+using ACE.Database.Market;
+
 namespace ACE.MarketApi
 {
     /// <summary>
@@ -9,10 +11,24 @@ namespace ACE.MarketApi
     }
 
     /// <summary>
-    /// Never paused. A stand-in until the ledger audit (ticket 10) keeps the real pause.
+    /// The pause as the shard database holds it, so the API sees what the audit and the game's /market resume write, as soon as they write it
     /// </summary>
-    public sealed class NoMarketPause : IMarketPause
+    public sealed class DatabaseMarketPause : IMarketPause
     {
-        public bool IsPaused => false;
+        private readonly MarketDatabase database;
+
+        public DatabaseMarketPause(MarketDatabase database)
+        {
+            this.database = database;
+        }
+
+        public bool IsPaused
+        {
+            get
+            {
+                using var shard = database.CreateShard();
+                return MarketPause.IsPaused(shard);
+            }
+        }
     }
 }

@@ -4,6 +4,7 @@ using System.Linq;
 
 using ACE.Database;
 using ACE.Database.Market;
+using ACE.Database.Models.Shard;
 using ACE.Entity.Enum;
 using ACE.Server.Entity.Actions;
 using ACE.Server.Factories;
@@ -104,7 +105,21 @@ namespace ACE.Server.Market
             }
 
             var accountId = player.Character.AccountId;
-            var balance = Ledger.GetBalance(accountId);
+            long balance;
+            bool paused;
+
+            using (var context = new ShardDbContext())
+            {
+                balance = Ledger.GetBalance(context, accountId);
+                paused = MarketPause.IsPaused(context);
+            }
+
+            // a failed ledger audit stops money leaving the market until an admin resumes it; deposits go on
+            if (paused)
+            {
+                FinishNotes(player, VaultOutcome.Paused, amount, balance, completed);
+                return;
+            }
 
             if (amount > balance)
             {
@@ -185,7 +200,14 @@ namespace ACE.Server.Market
             if (result != MarketJobResult.Saved)
             {
                 // no row was written and the objects were never added anywhere: forget them
-                FinishNotes(player, result == MarketJobResult.InsufficientFunds ? VaultOutcome.InsufficientFunds : VaultOutcome.SaveFailed, amount, balance, completed);
+                var outcome = result switch
+                {
+                    MarketJobResult.InsufficientFunds => VaultOutcome.InsufficientFunds,
+                    MarketJobResult.Paused => VaultOutcome.Paused,
+                    _ => VaultOutcome.SaveFailed,
+                };
+
+                FinishNotes(player, outcome, amount, balance, completed);
                 return;
             }
 

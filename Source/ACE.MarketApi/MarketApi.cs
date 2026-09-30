@@ -56,7 +56,9 @@ namespace ACE.MarketApi
             builder.Services.AddSingleton<SignInLimiter>();
             builder.Services.AddSingleton<PurchaseLimiter>();
             builder.Services.TryAddSingleton<IFeePolicy, ZeroFeePolicy>();
-            builder.Services.TryAddSingleton<IMarketPause, NoMarketPause>();
+            builder.Services.TryAddSingleton<IMarketPause, DatabaseMarketPause>();
+            builder.Services.TryAddSingleton(LedgerAuditSchedule.Default);
+            builder.Services.AddHostedService<LedgerAuditService>();
             builder.Services.TryAddSingleton(TimeProvider.System);
 
             builder.Services.AddDataProtection()

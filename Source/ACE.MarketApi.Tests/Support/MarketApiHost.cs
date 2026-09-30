@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace ACE.MarketApi.Tests.Support
 {
@@ -68,6 +69,10 @@ namespace ACE.MarketApi.Tests.Support
                 builder.Services.AddSingleton<IStartupFilter, TestRemoteIpFilter>();
 
                 services?.Invoke(builder.Services);
+
+                // the shared test shard is seeded with balances that have no ledger entries, which the audit would rightly fail and pause the market for:
+                // only tests that ask for a schedule (on their own shard) audit
+                builder.Services.TryAddSingleton(LedgerAuditSchedule.Off);
             });
         }
 
@@ -76,12 +81,18 @@ namespace ACE.MarketApi.Tests.Support
         /// <summary>
         /// Starts the API with test services in place of its own
         /// </summary>
-        public static async Task<MarketApiHost> StartAsync(Action<IServiceCollection> services, string keysPath = null, ManualClock clock = null, params string[] extraArgs)
+        public static Task<MarketApiHost> StartAsync(Action<IServiceCollection> services, string keysPath = null, ManualClock clock = null, params string[] extraArgs) =>
+            StartOnAsync(MarketApiTestData.ShardDatabase, services, keysPath, clock, extraArgs);
+
+        /// <summary>
+        /// Starts the API on another scratch shard, with test services in place of its own
+        /// </summary>
+        public static async Task<MarketApiHost> StartOnAsync(string shardDatabase, Action<IServiceCollection> services = null, string keysPath = null, ManualClock clock = null, params string[] extraArgs)
         {
             keysPath ??= NewKeysPath();
             clock ??= new ManualClock(DateTimeOffset.UtcNow);
 
-            var app = Build(MarketApiTestData.ShardDatabase, keysPath, clock, services, extraArgs);
+            var app = Build(shardDatabase, keysPath, clock, services, extraArgs);
             await app.StartAsync();
 
             return new MarketApiHost(app, clock, keysPath);
