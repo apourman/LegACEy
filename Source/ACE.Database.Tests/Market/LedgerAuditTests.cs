@@ -168,11 +168,16 @@ namespace ACE.Database.Tests.Market
             var short3 = DepositNotes(account, 10, 3, 4);
             var none = DepositNotes(account, 5);
 
+            // an event that lost its quantity counts for nothing
+            var unknown = DepositNotes(account, 1);
+            MarketTestDatabase.Execute(Db, $"INSERT INTO market_item_event (item_Guid, account_Id, kind, transfer_Id, quantity, event_Time) VALUES (1, {account}, 'deposit', {unknown}, NULL, UTC_TIMESTAMP(6));");
+
             var report = Audit();
 
             AssertFails(report, LedgerAuditCheck.NoteEvents, $"transfer {short3} ");
             AssertFails(report, LedgerAuditCheck.NoteEvents, $"transfer {none} ");
-            Assert.AreEqual(2, report.Failures.Count, Describe(report));
+            AssertFails(report, LedgerAuditCheck.NoteEvents, $"transfer {unknown} ");
+            Assert.AreEqual(3, report.Failures.Count, Describe(report));
         }
 
         // ---- the pause
@@ -219,6 +224,29 @@ namespace ACE.Database.Tests.Market
             {
                 Assert.IsFalse(MarketPause.IsPaused(context));
                 StringAssert.Contains(MarketPause.Get(context).Reason, "admin");
+            }
+        }
+
+        [TestMethod]
+        public void RunAndPause_AuditCannotRun_FailsClosedAndPausesTheMarket()
+        {
+            // a shard whose market tables are missing: the audit's query fails, but the pause row can still be written
+            const string bare = "ace_shard_market_audit_bare";
+            MarketTestDatabase.CreateFromBase(bare);
+
+            try
+            {
+                using var context = MarketTestDatabase.CreateContext(bare);
+
+                Assert.ThrowsExactly<MySqlConnector.MySqlException>(() => LedgerAudit.RunAndPause(context, "test", Now));
+
+                var state = MarketPause.Get(context);
+                Assert.IsTrue(state.Paused, "an audit that can't run doesn't leave money moving");
+                StringAssert.Contains(state.Reason, "could not run");
+            }
+            finally
+            {
+                MarketTestDatabase.Drop(bare);
             }
         }
 

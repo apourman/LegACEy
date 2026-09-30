@@ -53,7 +53,7 @@ namespace ACE.Database.Market
             if (!TryMemo(ref memo))
                 return new CorrectionResult(CorrectionOutcome.InvalidMemo);
 
-            var (result, transfer) = Save(newContext, context => (null, NewTransfer(TransferKind.AdminAdjust, adminAccountId, adminCharacterId, memo, now,
+            var (result, transfer) = SaveTransfer(newContext, context => (null, NewTransfer(TransferKind.AdminAdjust, adminAccountId, adminCharacterId, memo, now,
                 Ledger.PlayerEntry(accountId, amount), Ledger.SystemEntry(SystemAccount.Admin, -amount))));
 
             return result.Outcome == CorrectionOutcome.Done ? result with { Balance = transfer.Entries.Single(e => e.AccountId == accountId).BalanceAfter ?? 0 } : result;
@@ -61,6 +61,7 @@ namespace ACE.Database.Market
 
         /// <summary>
         /// Writes a reversal of the transfer: every entry negated, undone in reverse order so that no balance dips below zero on the way.
+        /// It moves MMD only: a reversed purchase leaves the item with the buyer, and a reversed note withdrawal leaves the notes in the world.
         /// A transfer can be reversed only once (market_transfer.reverses_Transfer_Id is unique). A reversal is a transfer too, so it can itself be reversed once.
         /// Refused if a balance would fall below zero, for example when the MMD a reversal takes back has already been spent.
         /// </summary>
@@ -70,7 +71,7 @@ namespace ACE.Database.Market
             if (!TryMemo(ref memo))
                 return new CorrectionResult(CorrectionOutcome.InvalidMemo);
 
-            return Save(newContext, context =>
+            return SaveTransfer(newContext, context =>
             {
                 var original = context.MarketTransfers.AsNoTracking().Include(t => t.Entries).FirstOrDefault(t => t.Id == transferId);
 
@@ -103,7 +104,7 @@ namespace ACE.Database.Market
         }
 
         /// <param name="build">reads through the context and returns a refusal, or the transfer to write</param>
-        private static (CorrectionResult result, Transfer transfer) Save(Func<ShardDbContext> newContext, Func<ShardDbContext, (CorrectionOutcome? refusal, Transfer transfer)> build)
+        private static (CorrectionResult result, Transfer transfer) SaveTransfer(Func<ShardDbContext> newContext, Func<ShardDbContext, (CorrectionOutcome? refusal, Transfer transfer)> build)
         {
             for (var attempt = 1; attempt <= Attempts; attempt++)
             {

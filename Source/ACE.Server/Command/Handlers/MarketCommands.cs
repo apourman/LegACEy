@@ -38,9 +38,12 @@ namespace ACE.Server.Command.Handlers
                     break;
 
                 case "resume":
-                    Tell(session, MarketAdmin.Resume(by)
-                        ? "The market is resumed: purchases and MMD withdrawals are allowed again."
-                        : "The market is not paused.");
+                    MarketAdmin.Resume(by, resumed => Tell(session, resumed switch
+                    {
+                        true => "The market is resumed: purchases and MMD withdrawals are allowed again.",
+                        false => "The market is not paused.",
+                        null => "The market could not be resumed; see the server log.",
+                    }));
                     break;
 
                 case "adjust":
@@ -78,7 +81,7 @@ namespace ACE.Server.Command.Handlers
 
             var account = accountId.Value;
 
-            MarketAdmin.Adjust(account, amount, Reason(parameters), adminAccountId, adminCharacterId, result => Tell(session, result?.Outcome switch
+            MarketAdmin.Adjust(account, amount, Memo(parameters), adminAccountId, adminCharacterId, result => Tell(session, result?.Outcome switch
             {
                 CorrectionOutcome.Done => $"Adjusted account {account} by {amount:+#;-#} MMD (transfer {result.TransferId}). Its balance is {result.Balance:N0} MMD.",
                 CorrectionOutcome.InsufficientFunds => $"That would take account {account} below 0 MMD. Nothing was changed.",
@@ -97,9 +100,9 @@ namespace ACE.Server.Command.Handlers
             if (!TryAdmin(session, out var adminAccountId, out var adminCharacterId))
                 return;
 
-            MarketAdmin.Reverse(transferId, Reason(parameters), adminAccountId, adminCharacterId, result => Tell(session, result?.Outcome switch
+            MarketAdmin.Reverse(transferId, Memo(parameters), adminAccountId, adminCharacterId, result => Tell(session, result?.Outcome switch
             {
-                CorrectionOutcome.Done => $"Reversed transfer {transferId} (transfer {result.TransferId}).",
+                CorrectionOutcome.Done => $"Reversed transfer {transferId} (transfer {result.TransferId}). Only MMD moved: items and trade notes stay where they are.",
                 CorrectionOutcome.UnknownTransfer => $"There is no transfer {transferId}.",
                 CorrectionOutcome.AlreadyReversed => $"Transfer {transferId} has already been reversed.",
                 CorrectionOutcome.Unbalanced => $"Transfer {transferId} doesn't add up to zero, so it can't be reversed. Correct it with /market adjust.",
@@ -123,7 +126,7 @@ namespace ACE.Server.Command.Handlers
             return false;
         }
 
-        private static string Reason(string[] parameters) => string.Join(" ", parameters.Skip(parameters[0].Equals("adjust", StringComparison.OrdinalIgnoreCase) ? 3 : 2));
+        private static string Memo(string[] parameters) => string.Join(" ", parameters.Skip(parameters[0].Equals("adjust", StringComparison.OrdinalIgnoreCase) ? 3 : 2));
 
         private static string Refused(CorrectionResult result) => result?.Outcome switch
         {

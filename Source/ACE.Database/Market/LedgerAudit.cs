@@ -123,7 +123,7 @@ UNION ALL
         CONCAT('transfer ', t.id, ' deposited ', IFNULL(d.amount, 0), ' MMD but its destroyed-note events hold ', IFNULL(v.quantity, 0))
    FROM market_transfer t
    LEFT JOIN (SELECT transfer_Id, SUM(amount) AS amount FROM market_ledger_entry WHERE account_Id IS NOT NULL GROUP BY transfer_Id) d ON d.transfer_Id = t.id
-   LEFT JOIN (SELECT transfer_Id, SUM(IFNULL(quantity, 1)) AS quantity FROM market_item_event WHERE kind = '{ItemEventKind.Deposit}' AND transfer_Id IS NOT NULL GROUP BY transfer_Id) v ON v.transfer_Id = t.id
+   LEFT JOIN (SELECT transfer_Id, SUM(quantity) AS quantity FROM market_item_event WHERE kind = '{ItemEventKind.Deposit}' AND transfer_Id IS NOT NULL GROUP BY transfer_Id) v ON v.transfer_Id = t.id
   WHERE t.kind = '{TransferKind.NoteDeposit}' AND IFNULL(d.amount, 0) <> IFNULL(v.quantity, 0)
   ORDER BY t.id LIMIT {FailuresPerCheck})";
 
@@ -139,11 +139,30 @@ UNION ALL
 
         /// <summary>
         /// Runs every check and, if any fails, pauses the market (purchases and MMD withdrawals) until an admin resumes it. A passing audit never lifts a pause.
+        /// An audit that can't run fails closed: it pauses the market too (if the pause can still be written), then throws.
         /// </summary>
         /// <param name="source">what ran the audit, for the pause's reason: "Market API startup", "hourly", "/market audit by ..."</param>
         public static LedgerAuditReport RunAndPause(ShardDbContext context, string source, DateTime now)
         {
-            var report = Run(context);
+            LedgerAuditReport report;
+
+            try
+            {
+                report = Run(context);
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    MarketPause.Pause(context, $"the ledger audit could not run ({source}): {ex.Message}", now);
+                }
+                catch (Exception)
+                {
+                    // the database is unreachable: nothing can move money now anyway, and the caller logs the audit's own error
+                }
+
+                throw;
+            }
 
             if (!report.Passed)
                 MarketPause.Pause(context, $"{report.Summary}, found by {source}. First: {report.Failures[0].Check}: {report.Failures[0].Detail}", now);

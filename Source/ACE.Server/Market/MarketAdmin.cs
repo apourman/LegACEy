@@ -27,7 +27,7 @@ namespace ACE.Server.Market
         /// <param name="by">who asked, for the pause's reason</param>
         public static void Audit(string by, Action<LedgerAuditReport> completed)
         {
-            Run(() =>
+            RunOffWorldThread(() =>
             {
                 using var context = new ShardDbContext();
 
@@ -48,20 +48,23 @@ namespace ACE.Server.Market
         }
 
         /// <summary>
-        /// Lifts the pause. Returns false if the market wasn't paused.
+        /// Lifts the pause. The callback gets false if the market wasn't paused (two admins resuming at once may both get true; the pause is lifted either way).
         /// </summary>
-        public static bool Resume(string by)
+        public static void Resume(string by, Action<bool?> completed)
         {
-            using var context = new ShardDbContext();
+            RunOffWorldThread<bool?>(() =>
+            {
+                using var context = new ShardDbContext();
 
-            if (!MarketPause.IsPaused(context))
-                return false;
+                if (!MarketPause.IsPaused(context))
+                    return false;
 
-            MarketPause.Resume(context, by, DateTime.UtcNow);
+                MarketPause.Resume(context, by, DateTime.UtcNow);
 
-            log.Warn($"[MARKET] Market resumed by {by}: purchases and MMD withdrawals are allowed again");
+                log.Warn($"[MARKET] Market resumed by {by}: purchases and MMD withdrawals are allowed again");
 
-            return true;
+                return true;
+            }, completed);
         }
 
         /// <summary>
@@ -87,7 +90,7 @@ namespace ACE.Server.Market
         /// </summary>
         public static void Adjust(uint accountId, long amount, string memo, uint adminAccountId, uint adminCharacterId, Action<CorrectionResult> completed)
         {
-            Run(() =>
+            RunOffWorldThread(() =>
             {
                 var result = LedgerCorrections.Adjust(() => new ShardDbContext(), accountId, amount, memo, adminAccountId, adminCharacterId, DateTime.UtcNow);
 
@@ -103,7 +106,7 @@ namespace ACE.Server.Market
         /// </summary>
         public static void Reverse(long transferId, string memo, uint adminAccountId, uint adminCharacterId, Action<CorrectionResult> completed)
         {
-            Run(() =>
+            RunOffWorldThread(() =>
             {
                 var result = LedgerCorrections.Reverse(() => new ShardDbContext(), transferId, memo, adminAccountId, adminCharacterId, DateTime.UtcNow);
 
@@ -115,9 +118,10 @@ namespace ACE.Server.Market
         }
 
         /// <summary>
-        /// Does the database work on the thread pool, so a long audit doesn't stall the world, then hands the result back to the world thread
+        /// Does the database work on the thread pool, so a long audit doesn't stall the world, then hands the result back to the world thread.
+        /// If the work throws, the error is logged and the callback gets default (null): callers must treat null as "failed, see the log".
         /// </summary>
-        private static void Run<T>(Func<T> work, Action<T> completed)
+        private static void RunOffWorldThread<T>(Func<T> work, Action<T> completed)
         {
             Task.Run(() =>
             {

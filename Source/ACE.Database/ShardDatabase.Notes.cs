@@ -87,7 +87,7 @@ namespace ACE.Database
         /// Pays out notes the world thread has created (not in any pack yet, pointed at the character): writes a note_withdraw transfer (player -n, NOTES +n)
         /// and inserts the note rows, in one save. The notes' stack sizes must add up to amount.
         /// Returns InsufficientFunds, saving nothing, if the balance is less than amount (balanceAfter is then the current balance),
-        /// and Paused, saving nothing, if the market has been paused since the world thread checked.
+        /// and Paused, saving nothing, if the market was paused by the time the job started (a pause landing during the job's own save isn't seen).
         /// </summary>
         public MarketJobResult WithdrawNotes(uint accountId, uint characterId, IReadOnlyList<(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock)> notes, long amount, out long balanceAfter)
         {
