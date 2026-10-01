@@ -43,7 +43,7 @@ namespace ACE.Server.Market
 
         /// <summary>
         /// Startup, before the world runs. A ticket still CLAIMED belonged to a server that stopped mid-work, and none of that work was saved
-        /// (finished work marks its ticket DONE in the same save), so each becomes FAILED. Long-finished tickets are deleted.
+        /// (finished work marks its ticket DONE in the same save), so each becomes FAILED. Long-finished tickets are deleted, and so are market rows nothing reads any more (MarketCleanup).
         /// </summary>
         public static void Recover()
         {
@@ -57,6 +57,8 @@ namespace ACE.Server.Market
                     log.Warn($"[BRIDGE] Failed {failed:N0} ticket(s) the last shutdown left claimed");
 
                 LogDeleted(TicketStore.DeleteFinished(context, now));
+
+                LogCleanup(MarketCleanup.Run(context, now));
             }
 
             nextCleanup = now + CleanupInterval;
@@ -64,7 +66,7 @@ namespace ACE.Server.Market
 
         /// <summary>
         /// Every pass of the world loop: about once a second, asks the save thread to claim waiting tickets, then runs them on the world thread.
-        /// One poll at a time, and the hourly cleanup rides on the same queue.
+        /// One poll at a time. The hourly cleanup (finished tickets, then MarketCleanup) rides on the same queue.
         /// </summary>
         public static void Tick()
         {
@@ -84,6 +86,7 @@ namespace ACE.Server.Market
                 nextCleanup = now + CleanupInterval;
 
                 DatabaseManager.Shard.DeleteFinishedTickets(LogDeleted);
+                DatabaseManager.Shard.DeleteExpiredMarketRows(LogCleanup);
             }
 
             DatabaseManager.Shard.ClaimTickets(ClaimLimit, tickets =>
@@ -216,6 +219,13 @@ namespace ACE.Server.Market
         {
             if (deleted > 0)
                 log.Info($"[BRIDGE] Deleted {deleted:N0} ticket(s) finished more than {TicketStore.KeepDays} days ago");
+        }
+
+        private static void LogCleanup(MarketCleanupReport deleted)
+        {
+            if (deleted?.Total > 0)
+                log.Info($"[MARKET] Deleted {deleted.Requests:N0} request result(s) older than {MarketCleanup.RequestKeepDays} days, {deleted.LinkCodes:N0} used or expired link code(s) " +
+                    $"and {deleted.PluginTokens:N0} plugin token(s) revoked or expired more than {MarketCleanup.PluginTokenKeepDays} days ago");
         }
     }
 }

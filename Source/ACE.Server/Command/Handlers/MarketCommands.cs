@@ -1,7 +1,10 @@
+using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 
 using ACE.Database.Market;
+using ACE.Database.Models.Shard.Market;
 using ACE.Entity.Enum;
 using ACE.Server.Market;
 using ACE.Server.Network;
@@ -10,15 +13,17 @@ using ACE.Server.Network.GameMessages.Messages;
 namespace ACE.Server.Command.Handlers
 {
     /// <summary>
-    /// /market: the ledger audit, lifting the pause a failed audit sets, and admin corrections to the ledger. Admins only.
+    /// /market: the ledger audit, lifting the pause a failed audit sets, admin corrections to the ledger, the Vault's WCID blocklist,
+    /// and the refresh of the Vault search columns after shard SQL updates. Admins only.
     /// </summary>
     public static class MarketCommands
     {
-        private const string Usage = "/market audit\n/market resume\n/market adjust <account> <+/-mmd> <reason>\n/market reverse <transfer> <reason>";
+        private const string Usage = "/market audit\n/market resume\n/market adjust <account> <+/-mmd> <reason>\n/market reverse <transfer> <reason>\n" +
+            "/market block <wcid> <reason>\n/market unblock <wcid>\n/market blocked\n/market refresh [wcid]";
 
         [CommandHandler("market", AccessLevel.Admin, CommandHandlerFlag.None, 1,
-            "Audit the market ledger, lift its pause, or correct it",
-            "audit | resume | adjust <account> <+/-mmd> <reason> | reverse <transfer> <reason>")]
+            "Audit the market ledger, lift its pause, correct it, block item types from the Vault, or refresh the Vault's search columns",
+            "audit | resume | adjust <account> <+/-mmd> <reason> | reverse <transfer> <reason> | block <wcid> <reason> | unblock <wcid> | blocked | refresh [wcid]")]
         public static void HandleMarket(Session session, params string[] parameters)
         {
             if (!Vault.Available)
@@ -53,6 +58,22 @@ namespace ACE.Server.Command.Handlers
                     Reverse(session, parameters);
                     break;
 
+                case "block":
+                    Block(session, parameters);
+                    break;
+
+                case "unblock":
+                    Unblock(session, parameters, by);
+                    break;
+
+                case "blocked":
+                    MarketAdmin.Blocked(blocks => TellBlocked(session, blocks));
+                    break;
+
+                case "refresh":
+                    Refresh(session, parameters, by);
+                    break;
+
                 default:
                     Tell(session, Usage);
                     break;
@@ -67,7 +88,7 @@ namespace ACE.Server.Command.Handlers
                 return;
             }
 
-            if (!TryAdmin(session, out var adminAccountId, out var adminCharacterId))
+            if (!TryAdmin(session, CorrectionsInGame, out var adminAccountId, out var adminCharacterId))
                 return;
 
             var account = parameters[1];
@@ -89,7 +110,7 @@ namespace ACE.Server.Command.Handlers
                 return;
             }
 
-            if (!TryAdmin(session, out var adminAccountId, out var adminCharacterId))
+            if (!TryAdmin(session, CorrectionsInGame, out var adminAccountId, out var adminCharacterId))
                 return;
 
             MarketAdmin.Reverse(transferId, Memo(parameters, 2), adminAccountId, adminCharacterId, result => Tell(session, result?.Outcome switch
@@ -103,10 +124,100 @@ namespace ACE.Server.Command.Handlers
             }));
         }
 
+        private static void Block(Session session, string[] parameters)
+        {
+            var reason = Memo(parameters, 2);
+
+            if (parameters.Length < 3 || !TryWcid(parameters[1], out var wcid) || reason.Length > VaultStore.MaxBlockReasonLength)
+            {
+                Tell(session, $"Usage: /market block <wcid> <reason>, a weenie class id and a reason of at most {VaultStore.MaxBlockReasonLength} characters.");
+                return;
+            }
+
+            if (!TryAdmin(session, "A block is recorded with the admin who adds it: use this command in game.", out var adminAccountId, out _))
+                return;
+
+            MarketAdmin.Block(wcid, reason, adminAccountId, result => Tell(session, result?.Outcome switch
+            {
+                BlockOutcome.Blocked => $"Blocked {wcid} ({result.WeenieName}) from new Vault deposits: {reason}." + InVaults(result.InVaults),
+                BlockOutcome.AlreadyBlocked => $"{wcid} ({result.WeenieName}) is already blocked: {result.Block.Reason} (account {result.Block.AddedByAccountId}, {Utc(result.Block.AddedTime)}). Nothing was changed.",
+                BlockOutcome.UnknownWeenie => $"No weenie {wcid} in the world database. Nothing was changed.",
+                _ => "The block failed. Nothing was changed; see the server log.",
+            }));
+        }
+
+        private static string InVaults(int count) => count == 0 ? "" : $" {count:N0} already in Vaults stay there; they can still be listed, bought and withdrawn.";
+
+        private static void Unblock(Session session, string[] parameters, string by)
+        {
+            if (parameters.Length != 2 || !TryWcid(parameters[1], out var wcid))
+            {
+                Tell(session, "Usage: /market unblock <wcid>");
+                return;
+            }
+
+            MarketAdmin.Unblock(wcid, by, removed => Tell(session, removed switch
+            {
+                true => $"Unblocked {wcid}: it can be deposited in the Vault again.",
+                false => $"{wcid} is not blocked.",
+                null => "The unblock failed. Nothing was changed; see the server log.",
+            }));
+        }
+
+        private static void TellBlocked(Session session, List<BlockedWcid> blocks)
+        {
+            if (blocks == null)
+            {
+                Tell(session, "The blocklist could not be read; see the server log.");
+                return;
+            }
+
+            if (blocks.Count == 0)
+            {
+                Tell(session, "No item types are blocked from the Vault.");
+                return;
+            }
+
+            Tell(session, $"{blocks.Count} item type(s) blocked from the Vault:");
+
+            foreach (var block in blocks)
+                Tell(session, $"{block.Wcid}: {block.Reason} (account {block.AddedByAccountId}, {Utc(block.AddedTime)})");
+        }
+
+        private static void Refresh(Session session, string[] parameters, string by)
+        {
+            uint wcid = 0;
+
+            if (parameters.Length > 2 || (parameters.Length == 2 && !TryWcid(parameters[1], out wcid)))
+            {
+                Tell(session, "Usage: /market refresh [wcid], every Vault item or only those of one weenie class.");
+                return;
+            }
+
+            uint? onlyWcid = parameters.Length == 2 ? wcid : null;
+
+            Tell(session, "Refreshing the Vault search columns...");
+
+            MarketAdmin.Refresh(onlyWcid, by, report => Tell(session, report switch
+            {
+                null => "The refresh failed; see the server log.",
+                { Failed: 0 } => $"Refreshed the search columns of {report.Refreshed:N0} Vault item(s).{Gone(report.Gone)}",
+                _ => $"Refreshed the search columns of {report.Refreshed:N0} Vault item(s);{Gone(report.Gone)} {report.Failed:N0} could not be refreshed, see the server log.",
+            }));
+        }
+
+        private static string Gone(int count) => count == 0 ? "" : $" {count:N0} left the Vault while it ran.";
+
+        private static bool TryWcid(string text, out uint wcid) => uint.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out wcid) && wcid > 0;
+
+        private static string Utc(DateTime time) => time.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC";
+
+        private const string CorrectionsInGame = "Ledger corrections are recorded with the admin who makes them: use this command in game.";
+
         /// <summary>
-        /// A correction is recorded with the admin's account and character, so it can't come from the console
+        /// A correction or a block is recorded with the admin's account (and character), so it can't come from the console
         /// </summary>
-        private static bool TryAdmin(Session session, out uint accountId, out uint characterId)
+        private static bool TryAdmin(Session session, string refusal, out uint accountId, out uint characterId)
         {
             accountId = session?.AccountId ?? 0;
             characterId = session?.Player?.Guid.Full ?? 0;
@@ -114,7 +225,7 @@ namespace ACE.Server.Command.Handlers
             if (session?.Player != null)
                 return true;
 
-            Tell(session, "Ledger corrections are recorded with the admin who makes them: use this command in game.");
+            Tell(session, refusal);
             return false;
         }
 

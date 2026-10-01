@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -7,14 +8,17 @@ using log4net;
 using ACE.Database;
 using ACE.Database.Market;
 using ACE.Database.Models.Shard;
+using ACE.Database.Models.Shard.Market;
+using ACE.Entity.Models;
 using ACE.Server.Entity.Actions;
+using ACE.Server.Factories;
 using ACE.Server.Managers;
 
 namespace ACE.Server.Market
 {
     /// <summary>
-    /// The game's side of market administration: the ledger audit on demand, lifting the pause, and admin corrections to the ledger.
-    /// The audit and the corrections run off the world thread; each callback runs back on the world thread.
+    /// The game's side of market administration: the ledger audit on demand, lifting the pause, admin corrections to the ledger,
+    /// the Vault's WCID blocklist and the search-column refresh. All of it runs off the world thread; each callback runs back on the world thread.
     /// </summary>
     public static class MarketAdmin
     {
@@ -122,6 +126,135 @@ namespace ACE.Server.Market
         }
 
         /// <summary>
+        /// Blocks a weenie class from new deposits, recorded with the admin's account, the reason and the time. Items of that class already in a Vault stay there.
+        /// The callback gets the weenie's name and the block in force (an earlier block is kept), or Unknown if the world database has no such weenie.
+        /// </summary>
+        public static void Block(uint wcid, string reason, uint adminAccountId, Action<BlockResult> completed)
+        {
+            RunOffWorldThread(() =>
+            {
+                var weenie = DatabaseManager.World.GetCachedWeenie(wcid);
+
+                if (weenie == null)
+                    return new BlockResult(BlockOutcome.UnknownWeenie, null, null, 0);
+
+                using var context = new ShardDbContext();
+
+                var block = VaultStore.Block(context, wcid, reason, adminAccountId, DateTime.UtcNow, out var added);
+                var inVaults = context.MarketVaultItems.Count(r => r.Wcid == wcid);
+
+                if (added)
+                    log.Warn($"[MARKET] Admin account {adminAccountId} blocked WCID {wcid} ({weenie.GetName()}) from the Vault: {reason}");
+
+                return new BlockResult(added ? BlockOutcome.Blocked : BlockOutcome.AlreadyBlocked, weenie.GetName(), block, inVaults);
+            }, completed);
+        }
+
+        /// <summary>
+        /// Lets a weenie class into the Vault again. The callback gets false if it wasn't blocked.
+        /// </summary>
+        public static void Unblock(uint wcid, string by, Action<bool?> completed)
+        {
+            RunOffWorldThread<bool?>(() =>
+            {
+                using var context = new ShardDbContext();
+
+                var removed = VaultStore.Unblock(context, wcid);
+
+                if (removed)
+                    log.Warn($"[MARKET] WCID {wcid} unblocked from the Vault by {by}");
+
+                return removed;
+            }, completed);
+        }
+
+        /// <summary>
+        /// Every blocked weenie class
+        /// </summary>
+        public static void Blocked(Action<List<BlockedWcid>> completed)
+        {
+            RunOffWorldThread(() =>
+            {
+                using var context = new ShardDbContext();
+                return VaultStore.ListBlocked(context);
+            }, completed);
+        }
+
+        /// <summary>
+        /// Re-copies the Vault search columns of every escrowed item, or of one weenie class, from the item rows as the database holds them now.
+        /// Run it after a shard SQL update changes items. Each item is loaded fresh, made into a WorldObject that is never added to the world or saved,
+        /// and copied with the same Vault.NewVaultItem as a deposit; only the search columns of its Vault row are written.
+        /// </summary>
+        public static void Refresh(uint? wcid, string by, Action<RefreshReport> completed)
+        {
+            RunOffWorldThread(() =>
+            {
+                List<uint> guids;
+
+                using (var context = new ShardDbContext())
+                    guids = VaultStore.ItemGuids(context, wcid);
+
+                int refreshed = 0, gone = 0, failed = 0;
+
+                foreach (var guid in guids)
+                {
+                    switch (RefreshOne(guid))
+                    {
+                        case true: refreshed++; break;
+                        case false: gone++; break;
+                        default: failed++; break;
+                    }
+                }
+
+                var what = wcid == null ? "every Vault item" : $"Vault items of WCID {wcid}";
+
+                if (failed == 0)
+                    log.Info($"[MARKET] {by} refreshed the search columns of {what}: {refreshed:N0} refreshed, {gone:N0} withdrawn meanwhile");
+                else
+                    log.Warn($"[MARKET] {by} refreshed the search columns of {what}: {refreshed:N0} refreshed, {gone:N0} withdrawn meanwhile, {failed:N0} could not be (see above)");
+
+                return new RefreshReport(refreshed, gone, failed);
+            }, completed);
+        }
+
+        /// <summary>
+        /// True if the row was refreshed, false if its Vault row is gone (withdrawn meanwhile, a normal race), null if the item couldn't be loaded or made into an object (logged)
+        /// </summary>
+        private static bool? RefreshOne(uint guid)
+        {
+            try
+            {
+                var biota = DatabaseManager.Shard.BaseDatabase.GetBiotaUncached(guid);
+
+                if (biota == null)
+                {
+                    log.Error($"[MARKET] Refresh: Vault item 0x{guid:X8} has no item row");
+                    return null;
+                }
+
+                var item = WorldObjectFactory.CreateWorldObject(biota);
+
+                if (item == null)
+                {
+                    log.Error($"[MARKET] Refresh: Vault item 0x{guid:X8} (WCID {biota.WeenieClassId}) could not be created from its item row");
+                    return null;
+                }
+
+                // the owner and state columns NewVaultItem fills are not written by UpdateSearchColumns
+                var columns = Vault.NewVaultItem(item, 0, 0);
+
+                using var context = new ShardDbContext();
+
+                return VaultStore.UpdateSearchColumns(context, columns);
+            }
+            catch (Exception ex)
+            {
+                log.Error($"[MARKET] Refresh: Vault item 0x{guid:X8} failed: {ex}");
+                return null;
+            }
+        }
+
+        /// <summary>
         /// Does the database work on the thread pool, so a long audit doesn't stall the world, then hands the result back to the world thread.
         /// If the work throws, the error is logged and the callback gets default (null): callers must treat null as "failed, see the log".
         /// </summary>
@@ -145,4 +278,19 @@ namespace ACE.Server.Market
             });
         }
     }
+
+    public enum BlockOutcome
+    {
+        Blocked,
+        AlreadyBlocked,
+        UnknownWeenie,
+    }
+
+    /// <param name="Block">the block in force: the new one, or the earlier one when AlreadyBlocked</param>
+    /// <param name="InVaults">how many items of the class are in Vaults now (a block doesn't move them)</param>
+    public sealed record BlockResult(BlockOutcome Outcome, string WeenieName, BlockedWcid Block, int InVaults);
+
+    /// <param name="Gone">items withdrawn while the refresh ran: nothing to refresh</param>
+    /// <param name="Failed">items whose columns couldn't be refreshed: logged one by one</param>
+    public sealed record RefreshReport(int Refreshed, int Gone, int Failed);
 }

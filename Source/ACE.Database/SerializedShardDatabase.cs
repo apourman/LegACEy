@@ -232,6 +232,18 @@ namespace ACE.Database
             }));
         }
 
+        /// <summary>
+        /// Queues deleting market rows nothing reads any more (see ShardDatabase.DeleteExpiredMarketRows)
+        /// </summary>
+        public void DeleteExpiredMarketRows(Action<MarketCleanupReport> callback)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = BaseDatabase.DeleteExpiredMarketRows();
+                callback?.Invoke(result);
+            }));
+        }
+
         public void RemoveBiota(uint id, Action<bool> callback)
         {
             _queue.Add(new Task(() =>

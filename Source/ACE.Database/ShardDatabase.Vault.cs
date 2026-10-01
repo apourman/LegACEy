@@ -27,6 +27,16 @@ namespace ACE.Database
         }
 
         /// <summary>
+        /// Loads a biota through a new context, never from or into the cache, so it shows what the database holds now (for example after a shard SQL update).
+        /// Null if there is no such row.
+        /// </summary>
+        public Biota GetBiotaUncached(uint id)
+        {
+            using (var context = new ShardDbContext())
+                return GetBiotaFromDatabase(context, id);
+        }
+
+        /// <summary>
         /// Saves an item the world thread has taken out of a pack (container cleared, cast-on enchantments removed) into the Vault:
         /// evicts the item from the cache, loads a fresh copy, applies the in-memory changes, inserts the Vault row and a deposit item event, and saves once.
         /// Returns false, having saved nothing, if the item still has a container, wielder or location, or if the save fails.
