@@ -161,7 +161,7 @@ namespace ACE.Server.Market
 
             inFlight.Add(player.Guid.Full);
 
-            var ticket = ticketId == null ? null : new TicketCompletion(ticketId.Value, VaultMessages.NotesWithdrawnFor(amount, player.Name));
+            var ticket = ticketId == null ? null : new TicketCompletion(ticketId.Value, VaultMessages.WithdrawnByTicket(VaultMessages.TradeNotes(amount), player.Name));
 
             DatabaseManager.Shard.WithdrawNotes(accountId, player.Guid.Full, notes.Select(n => (n.Biota, n.BiotaDatabaseLock)).ToList(), amount, (result, balanceAfter) =>
             {

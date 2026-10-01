@@ -152,7 +152,7 @@ namespace ACE.Server.Market
 
             inFlight.Add(player.Guid.Full);
 
-            var ticket = ticketId == null ? null : new TicketCompletion(ticketId.Value, VaultMessages.For(VaultOutcome.Withdrawn, name));
+            var ticket = ticketId == null ? null : new TicketCompletion(ticketId.Value, VaultMessages.WithdrawnByTicket(name, player.Name));
 
             DatabaseManager.Shard.WithdrawFromVault(item.Biota, item.BiotaDatabaseLock, accountId, player.Guid.Full, row.RowVersion, saved =>
             {

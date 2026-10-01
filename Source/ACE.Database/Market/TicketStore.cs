@@ -76,6 +76,11 @@ namespace ACE.Database.Market
         public const int KeepDays = 30;
 
         /// <summary>
+        /// The result message column's length
+        /// </summary>
+        public const int MaxMessageLength = 512;
+
+        /// <summary>
         /// Creates a WAITING ticket, unless the account already used the key: a ticket of the same kind is returned as it is, and one of another kind is refused.
         /// Two requests racing with one key both end up with the one ticket that was saved.
         /// </summary>
@@ -156,12 +161,7 @@ namespace ACE.Database.Market
         /// </summary>
         public static bool Fail(ShardDbContext context, long ticketId, string resultCode, string message, DateTime now)
         {
-            now = ListingStore.Truncate(now);
-            message = Cap(message);
-
-            return context.MarketTickets
-                .Where(t => t.Id == ticketId && t.Status == TicketStatus.Claimed)
-                .ExecuteUpdate(s => s.SetProperty(t => t.Status, TicketStatus.Failed).SetProperty(t => t.ResultCode, resultCode).SetProperty(t => t.ResultMessage, message).SetProperty(t => t.FinishedTime, now)) == 1;
+            return MarkFailed(context.MarketTickets.Where(t => t.Id == ticketId && t.Status == TicketStatus.Claimed), resultCode, message, now) == 1;
         }
 
         /// <summary>
@@ -170,12 +170,7 @@ namespace ACE.Database.Market
         /// </summary>
         public static int FailAllClaimed(ShardDbContext context, string message, DateTime now)
         {
-            now = ListingStore.Truncate(now);
-            message = Cap(message);
-
-            return context.MarketTickets
-                .Where(t => t.Status == TicketStatus.Claimed)
-                .ExecuteUpdate(s => s.SetProperty(t => t.Status, TicketStatus.Failed).SetProperty(t => t.ResultCode, ServerRestart).SetProperty(t => t.ResultMessage, message).SetProperty(t => t.FinishedTime, now));
+            return MarkFailed(context.MarketTickets.Where(t => t.Status == TicketStatus.Claimed), ServerRestart, message, now);
         }
 
         /// <summary>
@@ -217,8 +212,16 @@ namespace ACE.Database.Market
         }
 
         /// <summary>
-        /// The result message column holds 512 characters
+        /// One conditional update of the matching tickets to FAILED
         /// </summary>
-        private static string Cap(string message) => message != null && message.Length > 512 ? message.Substring(0, 512) : message;
+        private static int MarkFailed(IQueryable<Ticket> tickets, string resultCode, string message, DateTime now)
+        {
+            now = ListingStore.Truncate(now);
+            message = Cap(message);
+
+            return tickets.ExecuteUpdate(s => s.SetProperty(t => t.Status, TicketStatus.Failed).SetProperty(t => t.ResultCode, resultCode).SetProperty(t => t.ResultMessage, message).SetProperty(t => t.FinishedTime, now));
+        }
+
+        private static string Cap(string message) => message != null && message.Length > MaxMessageLength ? message.Substring(0, MaxMessageLength) : message;
     }
 }

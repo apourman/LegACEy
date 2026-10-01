@@ -235,6 +235,19 @@ namespace ACE.Server.Tests.Market
             Assert.AreEqual(1, Count($"SELECT COUNT(*) FROM market_ticket WHERE id = {recent};"));
         }
 
+        [TestMethod]
+        public void Bridge_EveryVaultRefusal_HasItsOwnResultCode()
+        {
+            var refusals = Enum.GetValues<VaultOutcome>().Where(o => !new VaultResult(o, "", 0).Success).ToList();
+            var codes = refusals.Select(GameBridge.ResultCode).ToList();
+
+            CollectionAssert.DoesNotContain(codes, "failed", "every refusal is named");
+            Assert.AreEqual(codes.Count, codes.Distinct().Count(), "no two refusals share a code");
+            CollectionAssert.AllItemsAreNotNull(codes);
+            Assert.IsTrue(codes.All(c => System.Text.RegularExpressions.Regex.IsMatch(c, "^[a-z]+(_[a-z]+)*$")), "codes are snake case");
+            Assert.AreEqual("no_pack_space", GameBridge.ResultCode(VaultOutcome.NoPackSpace));
+        }
+
         // ---- helpers
 
         /// <summary>

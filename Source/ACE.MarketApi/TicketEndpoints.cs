@@ -17,8 +17,6 @@ namespace ACE.MarketApi
     /// </summary>
     public static class TicketEndpoints
     {
-        private const int MaxKeyLength = 64;
-
         /// <param name="IdempotencyKey">the caller's key for this request (up to 64 characters): a repeat returns the same ticket</param>
         public sealed record VaultWithdrawRequest(uint? CharacterId, uint? ItemGuid, string IdempotencyKey);
 
@@ -34,7 +32,7 @@ namespace ACE.MarketApi
 
         private static IResult VaultWithdraw(VaultWithdrawRequest request, HttpContext context, MarketDatabase database, TimeProvider time)
         {
-            if (request == null || !IsKey(request.IdempotencyKey) || request.ItemGuid == null)
+            if (request == null || !MarketHttp.IsIdempotencyKey(request.IdempotencyKey) || request.ItemGuid == null)
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_request");
 
             return Create(context, database, time, request.CharacterId, TicketKind.VaultWithdraw, new TicketPayload(ItemGuid: request.ItemGuid), request.IdempotencyKey);
@@ -42,7 +40,7 @@ namespace ACE.MarketApi
 
         private static IResult MmdWithdraw(MmdWithdrawRequest request, HttpContext context, MarketDatabase database, TimeProvider time)
         {
-            if (request == null || !IsKey(request.IdempotencyKey))
+            if (request == null || !MarketHttp.IsIdempotencyKey(request.IdempotencyKey))
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_request");
 
             if (!MarketHttp.TryWholeMmd(request.Amount, out var amount))
@@ -81,8 +79,6 @@ namespace ACE.MarketApi
             return Results.Accepted($"/tickets/{result.Ticket.Id}", View(result.Ticket));
         }
 
-        private static bool IsKey(string idempotencyKey) => !string.IsNullOrEmpty(idempotencyKey) && idempotencyKey.Length <= MaxKeyLength;
-
         private static bool IsOwnCharacter(ShardDbContext shard, uint accountId, uint characterId) =>
             shard.Character.Any(c => c.Id == characterId && c.AccountId == accountId && !c.IsDeleted);
 
@@ -100,12 +96,10 @@ namespace ACE.MarketApi
                 amount = payload?.Amount,
                 resultCode = ticket.ResultCode,
                 resultMessage = ticket.ResultMessage,
-                createdTime = Utc(ticket.CreatedTime),
-                claimedTime = Utc(ticket.ClaimedTime),
-                finishedTime = Utc(ticket.FinishedTime),
+                createdTime = MarketHttp.Utc(ticket.CreatedTime),
+                claimedTime = MarketHttp.Utc(ticket.ClaimedTime),
+                finishedTime = MarketHttp.Utc(ticket.FinishedTime),
             };
         }
-
-        private static DateTime? Utc(DateTime? time) => time == null ? null : DateTime.SpecifyKind(time.Value, DateTimeKind.Utc);
     }
 }

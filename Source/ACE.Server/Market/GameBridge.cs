@@ -1,5 +1,4 @@
 using System;
-using System.Text.RegularExpressions;
 
 using log4net;
 
@@ -9,6 +8,7 @@ using ACE.Database.Models.Shard;
 using ACE.Database.Models.Shard.Market;
 using ACE.Server.Entity.Actions;
 using ACE.Server.Managers;
+using ACE.Server.WorldObjects;
 
 namespace ACE.Server.Market
 {
@@ -21,7 +21,7 @@ namespace ACE.Server.Market
     {
         private static readonly ILog log = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
-        // result codes of the bridge's own refusals; the Vault's refusals use their outcome's name (see ResultCode)
+        // result codes of the bridge's own refusals; the Vault's refusals have theirs in ResultCode
         public const string Offline = "offline";
         public const string InvalidCharacter = "invalid_character";
         public const string UnsupportedKind = "unsupported_kind";
@@ -51,15 +51,12 @@ namespace ACE.Server.Market
 
             using (var context = new ShardDbContext())
             {
-                var failed = TicketStore.FailAllClaimed(context, VaultMessages.ForTicket(TicketStore.ServerRestart), now);
+                var failed = TicketStore.FailAllClaimed(context, Message(TicketStore.ServerRestart), now);
 
                 if (failed > 0)
                     log.Warn($"[BRIDGE] Failed {failed:N0} ticket(s) the last shutdown left claimed");
 
-                var deleted = TicketStore.DeleteFinished(context, now);
-
-                if (deleted > 0)
-                    log.Info($"[BRIDGE] Deleted {deleted:N0} ticket(s) finished more than {TicketStore.KeepDays} days ago");
+                LogDeleted(TicketStore.DeleteFinished(context, now));
             }
 
             nextCleanup = now + CleanupInterval;
@@ -86,11 +83,7 @@ namespace ACE.Server.Market
             {
                 nextCleanup = now + CleanupInterval;
 
-                DatabaseManager.Shard.DeleteFinishedTickets(deleted =>
-                {
-                    if (deleted > 0)
-                        log.Info($"[BRIDGE] Deleted {deleted:N0} ticket(s) finished more than {TicketStore.KeepDays} days ago");
-                });
+                DatabaseManager.Shard.DeleteFinishedTickets(LogDeleted);
             }
 
             DatabaseManager.Shard.ClaimTickets(ClaimLimit, tickets =>
@@ -107,9 +100,38 @@ namespace ACE.Server.Market
         }
 
         /// <summary>
-        /// The result code for a Vault outcome that stopped a ticket: its name in snake case (NoPackSpace is no_pack_space)
+        /// The result code a ticket stopped by a Vault outcome fails with. Written out rather than derived from the names, so renaming an outcome
+        /// can't change what the API answers. Successes never fail a ticket.
         /// </summary>
-        public static string ResultCode(VaultOutcome outcome) => Regex.Replace(outcome.ToString(), "(?<!^)([A-Z])", "_$1").ToLowerInvariant();
+        public static string ResultCode(VaultOutcome outcome) => outcome switch
+        {
+            VaultOutcome.NotAvailable => "not_available",
+            VaultOutcome.Busy => "busy",
+            VaultOutcome.InTrade => "in_trade",
+            VaultOutcome.NotInPack => "not_in_pack",
+            VaultOutcome.Worn => "worn",
+            VaultOutcome.Attuned => "attuned",
+            VaultOutcome.ContainsAttuned => "contains_attuned",
+            VaultOutcome.PetOut => "pet_out",
+            VaultOutcome.ContainerNotEmpty => "container_not_empty",
+            VaultOutcome.BlockedWcid => "blocked_wcid",
+            VaultOutcome.VaultFull => "vault_full",
+            VaultOutcome.NotInVault => "not_in_vault",
+            VaultOutcome.Listed => "listed",
+            VaultOutcome.Withdrawing => "withdrawing",
+            VaultOutcome.NoPackSpace => "no_pack_space",
+            VaultOutcome.UniqueLimit => "unique_limit",
+            VaultOutcome.RecentPlayerFight => "recent_player_fight",
+            VaultOutcome.Trading => "trading",
+            VaultOutcome.Channelling => "channelling",
+            VaultOutcome.Interrupted => "interrupted",
+            VaultOutcome.SaveFailed => "save_failed",
+            VaultOutcome.NoNotes => "no_notes",
+            VaultOutcome.InvalidAmount => "invalid_amount",
+            VaultOutcome.InsufficientFunds => "insufficient_funds",
+            VaultOutcome.Paused => "paused",
+            _ => "failed",
+        };
 
         /// <summary>
         /// Runs a claimed ticket on the world thread
@@ -117,38 +139,44 @@ namespace ACE.Server.Market
         private static void Run(Ticket ticket)
         {
             var payload = TicketPayload.FromJson(ticket.Payload);
+            Action<Player> work;
 
-            if (ticket.Kind != TicketKind.VaultWithdraw && ticket.Kind != TicketKind.MmdWithdraw)
+            switch (ticket.Kind)
             {
-                // vault_deposit needs a live-inventory picker that isn't built yet
-                Fail(ticket, UnsupportedKind);
-                return;
+                case TicketKind.VaultWithdraw when payload?.ItemGuid is uint itemGuid:
+                    work = player => VaultChannel.StartWithdraw(player, itemGuid, result => Finished(ticket, result), ticket.Id);
+                    break;
+
+                case TicketKind.MmdWithdraw when payload?.Amount is long amount:
+                    work = player => Vault.WithdrawNotes(player, amount, result => Finished(ticket, result), ticket.Id);
+                    break;
+
+                case TicketKind.VaultWithdraw:
+                case TicketKind.MmdWithdraw:
+                    Fail(ticket, InvalidTicket);
+                    return;
+
+                default:
+                    // vault_deposit needs a live-inventory picker that isn't built yet
+                    Fail(ticket, UnsupportedKind);
+                    return;
             }
 
-            if (payload == null || (ticket.Kind == TicketKind.VaultWithdraw ? payload.ItemGuid == null : payload.Amount == null))
-            {
-                Fail(ticket, InvalidTicket);
-                return;
-            }
+            var character = ticket.CharacterId == null ? null : PlayerManager.GetOnlinePlayer(ticket.CharacterId.Value);
 
-            var player = ticket.CharacterId == null ? null : PlayerManager.GetOnlinePlayer(ticket.CharacterId.Value);
-
-            if (player != null && player.Character.AccountId != ticket.AccountId)
+            if (character != null && character.Character.AccountId != ticket.AccountId)
             {
                 Fail(ticket, InvalidCharacter);
                 return;
             }
 
-            if (player == null || player.IsLoggingOut)
+            if (character == null || character.IsLoggingOut)
             {
                 Fail(ticket, Offline);
                 return;
             }
 
-            if (ticket.Kind == TicketKind.VaultWithdraw)
-                VaultChannel.StartWithdraw(player, payload.ItemGuid.Value, result => Finished(ticket, result), ticket.Id);
-            else
-                Vault.WithdrawNotes(player, payload.Amount.Value, result => Finished(ticket, result), ticket.Id);
+            work(character);
         }
 
         private static void Finished(Ticket ticket, VaultResult result)
@@ -162,13 +190,32 @@ namespace ACE.Server.Market
 
         private static void Fail(Ticket ticket, string resultCode, string message = null)
         {
-            message ??= VaultMessages.ForTicket(resultCode);
+            message ??= Message(resultCode);
 
             DatabaseManager.Shard.FailTicket(ticket.Id, resultCode, message, failed =>
             {
                 if (!failed)
                     log.Warn($"[BRIDGE] Could not mark ticket {ticket.Id} ({ticket.Kind}, account {ticket.AccountId}) failed with {resultCode}: it is no longer claimed, or the write failed");
             });
+        }
+
+        /// <summary>
+        /// What the player is told when the bridge itself stops a ticket
+        /// </summary>
+        private static string Message(string resultCode) => resultCode switch
+        {
+            Offline => "That character is not online. Log in with it and ask again.",
+            InvalidCharacter => "That character is not on your account.",
+            UnsupportedKind => "The game server cannot do that kind of request yet.",
+            InvalidTicket => "The game server could not read that request.",
+            TicketStore.ServerRestart => "The game server restarted before this finished. Nothing was moved; ask again.",
+            _ => resultCode,
+        };
+
+        private static void LogDeleted(int deleted)
+        {
+            if (deleted > 0)
+                log.Info($"[BRIDGE] Deleted {deleted:N0} ticket(s) finished more than {TicketStore.KeepDays} days ago");
         }
     }
 }

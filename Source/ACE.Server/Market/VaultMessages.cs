@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 
-using ACE.Database.Market;
 using ACE.Database.Models.Shard.Market;
 
 namespace ACE.Server.Market
@@ -54,7 +53,7 @@ namespace ACE.Server.Market
         /// </summary>
         public static string ForNotes(VaultOutcome outcome, long amount, long balance)
         {
-            var notes = $"{amount:N0} trade note{(amount == 1 ? "" : "s")}";
+            var notes = TradeNotes(amount);
 
             return outcome switch
             {
@@ -74,22 +73,12 @@ namespace ACE.Server.Market
         public static string Balance(long balance) => $"Your balance is {balance:N0} MMD.";
 
         /// <summary>
-        /// A game bridge note withdrawal's result, saved with the notes before the balance after it is known
+        /// A game bridge withdrawal's result. It is saved with the withdrawal, before anyone knows whether the pack still has room,
+        /// so it holds either way: the item or notes are in the pack now, or at the character's next login.
         /// </summary>
-        public static string NotesWithdrawnFor(long amount, string characterName) => $"{amount:N0} trade note{(amount == 1 ? " is" : "s are")} in {characterName}'s pack.";
+        public static string WithdrawnByTicket(string what, string characterName) => $"{what} withdrawn to {characterName}.";
 
-        /// <summary>
-        /// Why the game bridge couldn't start a ticket's work
-        /// </summary>
-        public static string ForTicket(string resultCode) => resultCode switch
-        {
-            GameBridge.Offline => "That character is not online. Log in with it and ask again.",
-            GameBridge.InvalidCharacter => "That character is not on your account.",
-            GameBridge.UnsupportedKind => "The game server cannot do that kind of request yet.",
-            GameBridge.InvalidTicket => "The game server could not read that request.",
-            TicketStore.ServerRestart => "The game server restarted before this finished. Nothing was moved; ask again.",
-            _ => resultCode,
-        };
+        public static string TradeNotes(long amount) => $"{amount:N0} trade note{(amount == 1 ? "" : "s")}";
 
         public static string LinkCode(string code, long minutes) =>
             $"Your plugin link code is {code}. Enter it in the UtilityBelt plugin within {minutes:N0} minute{(minutes == 1 ? "" : "s")}. It works once, and never share it.";
