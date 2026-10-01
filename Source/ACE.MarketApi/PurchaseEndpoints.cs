@@ -3,6 +3,7 @@ using System.Linq;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
 
 using ACE.Database.Market;
@@ -29,7 +30,7 @@ namespace ACE.MarketApi
         /// <param name="CharacterId">the buyer's character the Vault row names; the account's first character when left out</param>
         public sealed record PurchaseRequest(int? Count, decimal? ExpectedPrice, string IdempotencyKey, uint? CharacterId);
 
-        public static void Map(WebApplication app)
+        public static void Map(IEndpointRouteBuilder app)
         {
             app.MapPost("/listings/{id:long}/purchase", Purchase).RequireAuthorization();
         }

@@ -115,7 +115,7 @@ namespace ACE.Server.Tests.Market
         }
 
         /// <summary>
-        /// The Market API's half of the exchange, as POST /auth/plugin-token runs it. Returns the token's id.
+        /// The Market API's half of the exchange, as POST /api/auth/plugin-token runs it. Returns the token's id.
         /// </summary>
         private static long Redeem(string code, string label, string passwordHash)
         {

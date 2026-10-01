@@ -2,6 +2,7 @@ using System;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 
 using ACE.Database.Market;
 
@@ -16,7 +17,7 @@ namespace ACE.MarketApi
         /// <param name="CharacterId">the account's character to list as; the depositing character when left out</param>
         public sealed record ListRequest(uint ItemGuid, decimal? Price, uint? CharacterId);
 
-        public static void Map(WebApplication app)
+        public static void Map(IEndpointRouteBuilder app)
         {
             app.MapPost("/listings", List).RequireAuthorization();
             app.MapPost("/listings/{id:long}/delist", Delist).RequireAuthorization();
@@ -45,7 +46,7 @@ namespace ACE.MarketApi
 
             var listing = result.Listing;
 
-            return Results.Created($"/listings/{listing.Id}", new
+            return Results.Created($"{MarketApi.PathBase}/listings/{listing.Id}", new
             {
                 id = listing.Id,
                 itemGuid = listing.ItemGuid,

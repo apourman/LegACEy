@@ -1,0 +1,5 @@
+# context is Source/: send only what the API build copies, never local configuration or build output
+**/bin/
+**/obj/
+**/Config.js
+**/*.user

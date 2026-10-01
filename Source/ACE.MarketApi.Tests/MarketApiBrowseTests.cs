@@ -12,7 +12,7 @@ using ACE.MarketApi.Tests.Support;
 namespace ACE.MarketApi.Tests
 {
     /// <summary>
-    /// GET /listings filters, sorts and cursor paging, GET /listings/suggest and GET /facets, on seeded data
+    /// GET /api/listings filters, sorts and cursor paging, GET /api/listings/suggest and GET /api/facets, on seeded data
     /// </summary>
     [TestClass]
     public class MarketApiBrowseTests
@@ -65,7 +65,7 @@ namespace ACE.MarketApi.Tests
                 var guid = MarketApiTestData.AddVaultItem(item.Aaron ? aaronId : bellaId, item.Aaron ? aaronChar : bellaChar, $"{market.Token} {item.Name}", VaultItemState.Held);
                 MarketApiTestData.SetVaultColumns(guid, $"item_Type = {item.Type}, {item.Columns}");
 
-                var response = await host.PostJsonAsync("/listings", new { itemGuid = guid, price = item.Price }, item.Aaron ? aaronCookie : bellaCookie);
+                var response = await host.PostJsonAsync("/api/listings", new { itemGuid = guid, price = item.Price }, item.Aaron ? aaronCookie : bellaCookie);
                 Assert.AreEqual(HttpStatusCode.Created, response.StatusCode, await response.Content.ReadAsStringAsync());
                 market.Ids[item.Name] = (await MarketApiHost.JsonAsync(response)).GetProperty("id").GetInt64();
 
@@ -88,7 +88,7 @@ namespace ACE.MarketApi.Tests
         /// </summary>
         private static async Task<string[]> NamesAsync(MarketApiHost host, Market market, string query)
         {
-            var page = await GetOkAsync(host, "/listings?" + query);
+            var page = await GetOkAsync(host, "/api/listings?" + query);
 
             return page.GetProperty("listings").EnumerateArray().Select(r => r.GetProperty("name").GetString().Substring(market.Token.Length + 1)).ToArray();
         }
@@ -120,7 +120,7 @@ namespace ACE.MarketApi.Tests
             CollectionAssert.AreEquivalent(new[] { "Cap" }, await NamesAsync(host, market, market.Query + "&type=" + (int)ItemType.Armor));
             CollectionAssert.AreEquivalent(new[] { "Bow" }, await NamesAsync(host, market, market.Query + "&type=missileweapon"));
 
-            var bad = await host.GetAsync("/listings?type=Spaceship");
+            var bad = await host.GetAsync("/api/listings?type=Spaceship");
             Assert.AreEqual(HttpStatusCode.BadRequest, bad.StatusCode);
             Assert.AreEqual("bad_type", await MarketApiHost.ErrorAsync(bad));
         }
@@ -196,7 +196,7 @@ namespace ACE.MarketApi.Tests
 
                 do
                 {
-                    var path = "/listings?" + market.Query + "&" + query + "&limit=2" + (cursor != null ? "&cursor=" + Uri.EscapeDataString(cursor) : "");
+                    var path = "/api/listings?" + market.Query + "&" + query + "&limit=2" + (cursor != null ? "&cursor=" + Uri.EscapeDataString(cursor) : "");
                     var page = await GetOkAsync(host, path);
                     var rows = page.GetProperty("listings").EnumerateArray().Select(r => r.GetProperty("name").GetString().Substring(market.Token.Length + 1)).ToArray();
 
@@ -220,14 +220,14 @@ namespace ACE.MarketApi.Tests
             await using var host = await MarketApiHost.StartAsync();
             var market = await SeedAsync(host);
 
-            var first = await GetOkAsync(host, "/listings?" + market.Query + "&sort=price&limit=2");
+            var first = await GetOkAsync(host, "/api/listings?" + market.Query + "&sort=price&limit=2");
             var cursor = first.GetProperty("nextCursor").GetString();
 
             // a cheaper listing arrives; the next page carries on after Bow
             var extra = MarketApiTestData.UniqueName("cheap");
             var extraId = MarketApiTestData.CreateAccount(extra, "pass");
             var guid = MarketApiTestData.AddVaultItem(extraId, MarketApiTestData.AddCharacter(extraId, extra + "C"), market.Token + " Apple", VaultItemState.Held);
-            Assert.AreEqual(HttpStatusCode.Created, (await host.PostJsonAsync("/listings", new { itemGuid = guid, price = 2 }, await host.SignInForCookieAsync(extra, "pass"))).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Created, (await host.PostJsonAsync("/api/listings", new { itemGuid = guid, price = 2 }, await host.SignInForCookieAsync(extra, "pass"))).StatusCode);
 
             CollectionAssert.AreEqual(new[] { "Cap", "Axe" }, await NamesAsync(host, market, market.Query + "&sort=price&limit=2&cursor=" + Uri.EscapeDataString(cursor)));
         }
@@ -238,7 +238,7 @@ namespace ACE.MarketApi.Tests
             await using var host = await MarketApiHost.StartAsync();
             var market = await SeedAsync(host);
 
-            var first = await GetOkAsync(host, "/listings?" + market.Query + "&sort=price&limit=2");
+            var first = await GetOkAsync(host, "/api/listings?" + market.Query + "&sort=price&limit=2");
             var cursor = Uri.EscapeDataString(first.GetProperty("nextCursor").GetString());
 
             foreach (var (query, error) in new[]
@@ -254,13 +254,13 @@ namespace ACE.MarketApi.Tests
                 ("minPrice=cheap", "bad_price"),
             })
             {
-                var response = await host.GetAsync("/listings?" + query);
+                var response = await host.GetAsync("/api/listings?" + query);
                 Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode, query);
                 Assert.AreEqual(error, await MarketApiHost.ErrorAsync(response), query);
             }
 
             // an oversized limit is capped rather than refused
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/listings?limit=100000")).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/api/listings?limit=100000")).StatusCode);
         }
 
         [TestMethod]
@@ -285,20 +285,20 @@ namespace ACE.MarketApi.Tests
             await using var host = await MarketApiHost.StartAsync();
             var market = await SeedAsync(host);
 
-            var all = await GetOkAsync(host, "/listings/suggest?" + market.Query);
+            var all = await GetOkAsync(host, "/api/listings/suggest?" + market.Query);
             CollectionAssert.AreEqual(new[] { "Axe", "Bow", "Cap", "Dagger", "Egg" }.Select(n => market.Token + " " + n).ToArray(),
                 all.GetProperty("suggestions").EnumerateArray().Select(s => s.GetString()).ToArray());
 
-            var some = await GetOkAsync(host, "/listings/suggest?q=" + Uri.EscapeDataString(market.Token + " d"));
+            var some = await GetOkAsync(host, "/api/listings/suggest?q=" + Uri.EscapeDataString(market.Token + " d"));
             CollectionAssert.AreEqual(new[] { market.Token + " Dagger" }, some.GetProperty("suggestions").EnumerateArray().Select(s => s.GetString()).ToArray());
 
             // too short to suggest
-            Assert.AreEqual(0, (await GetOkAsync(host, "/listings/suggest?q=")).GetProperty("suggestions").GetArrayLength());
+            Assert.AreEqual(0, (await GetOkAsync(host, "/api/listings/suggest?q=")).GetProperty("suggestions").GetArrayLength());
 
             // gone listings aren't suggested
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/listings/suggest?q=x")).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/api/listings/suggest?q=x")).StatusCode);
             MarkSold(market.Ids["Dagger"]);
-            Assert.AreEqual(0, (await GetOkAsync(host, "/listings/suggest?q=" + Uri.EscapeDataString(market.Token + " d"))).GetProperty("suggestions").GetArrayLength());
+            Assert.AreEqual(0, (await GetOkAsync(host, "/api/listings/suggest?q=" + Uri.EscapeDataString(market.Token + " d"))).GetProperty("suggestions").GetArrayLength());
         }
 
         [TestMethod]
@@ -307,7 +307,7 @@ namespace ACE.MarketApi.Tests
             await using var host = await MarketApiHost.StartAsync();
             var market = await SeedAsync(host);
 
-            var facets = await GetOkAsync(host, "/facets");
+            var facets = await GetOkAsync(host, "/api/facets");
             var types = facets.GetProperty("itemTypes").EnumerateArray().ToDictionary(t => t.GetProperty("value").GetString(), t => t.GetProperty("count").GetInt32());
 
             // other tests' listings share the database, so check at least ours are counted

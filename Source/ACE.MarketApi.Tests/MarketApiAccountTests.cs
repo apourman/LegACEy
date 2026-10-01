@@ -9,7 +9,7 @@ using ACE.MarketApi.Tests.Support;
 namespace ACE.MarketApi.Tests
 {
     /// <summary>
-    /// GET /me and GET /vault, and the session surviving a restart
+    /// GET /api/me and GET /api/vault, and the session surviving a restart
     /// </summary>
     [TestClass]
     public class MarketApiAccountTests
@@ -31,7 +31,7 @@ namespace ACE.MarketApi.Tests
 
             await using var host = await MarketApiHost.StartAsync();
 
-            var me = await MarketApiHost.JsonAsync(await host.GetAsync("/me", await host.SignInForCookieAsync(alice, "a-pass")));
+            var me = await MarketApiHost.JsonAsync(await host.GetAsync("/api/me", await host.SignInForCookieAsync(alice, "a-pass")));
 
             Assert.AreEqual(aliceId, me.GetProperty("accountId").GetUInt32());
             Assert.AreEqual(alice, me.GetProperty("accountName").GetString());
@@ -44,7 +44,7 @@ namespace ACE.MarketApi.Tests
             // an account with no balance row has 0
             var carol = MarketApiTestData.UniqueName("carol");
             MarketApiTestData.CreateAccount(carol, "c-pass");
-            var carolMe = await MarketApiHost.JsonAsync(await host.GetAsync("/me", await host.SignInForCookieAsync(carol, "c-pass")));
+            var carolMe = await MarketApiHost.JsonAsync(await host.GetAsync("/api/me", await host.SignInForCookieAsync(carol, "c-pass")));
             Assert.AreEqual(0, carolMe.GetProperty("balance").GetInt64());
             Assert.AreEqual(0, carolMe.GetProperty("characters").GetArrayLength());
         }
@@ -66,7 +66,7 @@ namespace ACE.MarketApi.Tests
 
             await using var host = await MarketApiHost.StartAsync();
 
-            var vault = await MarketApiHost.JsonAsync(await host.GetAsync("/vault", await host.SignInForCookieAsync(alice, "a-pass")));
+            var vault = await MarketApiHost.JsonAsync(await host.GetAsync("/api/vault", await host.SignInForCookieAsync(alice, "a-pass")));
             var items = vault.GetProperty("items").EnumerateArray().ToDictionary(i => i.GetProperty("itemGuid").GetUInt32());
 
             CollectionAssert.AreEquivalent(new[] { held, listed, withdrawing }, items.Keys.ToList());
@@ -79,7 +79,7 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual(7, items[withdrawing].GetProperty("stackSize").GetInt32());
             Assert.AreEqual(aliceChar, items[held].GetProperty("characterId").GetUInt32());
 
-            var bobVault = await MarketApiHost.JsonAsync(await host.GetAsync("/vault", await host.SignInForCookieAsync(bob, "b-pass")));
+            var bobVault = await MarketApiHost.JsonAsync(await host.GetAsync("/api/vault", await host.SignInForCookieAsync(bob, "b-pass")));
             CollectionAssert.AreEqual(new[] { bobs }, bobVault.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("itemGuid").GetUInt32()).ToList());
         }
 
@@ -88,7 +88,7 @@ namespace ACE.MarketApi.Tests
         {
             await using var host = await MarketApiHost.StartAsync();
 
-            foreach (var path in new[] { "/me", "/vault" })
+            foreach (var path in new[] { "/api/me", "/api/vault" })
             {
                 Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync(path)).StatusCode, path);
                 Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync(path, "market_session=forged")).StatusCode, path);
@@ -105,9 +105,9 @@ namespace ACE.MarketApi.Tests
             var cookie = await host.SignInForCookieAsync(name, "pass");
 
             foreach (var method in new[] { HttpMethod.Put, HttpMethod.Delete, HttpMethod.Patch })
-                Assert.AreEqual(HttpStatusCode.MethodNotAllowed, (await host.SendAsync(method, "/me", cookie)).StatusCode, method.Method);
+                Assert.AreEqual(HttpStatusCode.MethodNotAllowed, (await host.SendAsync(method, "/api/me", cookie)).StatusCode, method.Method);
 
-            var response = await host.GetAsync("/me", cookie);
+            var response = await host.GetAsync("/api/me", cookie);
             Assert.AreEqual("application/json", response.Content.Headers.ContentType?.MediaType);
         }
 
@@ -125,14 +125,14 @@ namespace ACE.MarketApi.Tests
 
             await using (var second = await MarketApiHost.StartAsync(keysPath))
             {
-                var response = await second.GetAsync("/me", cookie);
+                var response = await second.GetAsync("/api/me", cookie);
                 Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
                 Assert.AreEqual(name, (await MarketApiHost.JsonAsync(response)).GetProperty("accountName").GetString());
             }
 
             // control: without the persisted keys the cookie is worthless
             await using (var other = await MarketApiHost.StartAsync(MarketApiHost.NewKeysPath()))
-                Assert.AreEqual(HttpStatusCode.Unauthorized, (await other.GetAsync("/me", cookie)).StatusCode);
+                Assert.AreEqual(HttpStatusCode.Unauthorized, (await other.GetAsync("/api/me", cookie)).StatusCode);
         }
 
         [TestMethod]
@@ -144,12 +144,12 @@ namespace ACE.MarketApi.Tests
             await using var host = await MarketApiHost.StartAsync();
             var cookie = await host.SignInForCookieAsync(name, "pass");
 
-            var logout = await host.SendAsync(HttpMethod.Post, "/auth/logout", cookie);
+            var logout = await host.SendAsync(HttpMethod.Post, "/api/auth/logout", cookie);
             Assert.AreEqual(HttpStatusCode.OK, logout.StatusCode);
             Assert.IsTrue((await MarketApiHost.JsonAsync(logout)).GetProperty("ok").GetBoolean());
             var cleared = MarketApiHost.SessionCookie(logout);
 
-            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/me", cleared)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/api/me", cleared)).StatusCode);
         }
     }
 }

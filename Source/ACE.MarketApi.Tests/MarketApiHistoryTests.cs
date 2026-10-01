@@ -19,7 +19,7 @@ using ACE.MarketApi.Tests.Support;
 namespace ACE.MarketApi.Tests
 {
     /// <summary>
-    /// GET /history: the account's balance, head sequence and ledger lines worded for display, plus its item movements
+    /// GET /api/history: the account's balance, head sequence and ledger lines worded for display, plus its item movements
     /// </summary>
     [TestClass]
     public class MarketApiHistoryTests
@@ -90,14 +90,14 @@ namespace ACE.MarketApi.Tests
 
         private static async Task BuyAsync(MarketApiHost host, string cookie, long listingId, long price)
         {
-            var response = await host.PostJsonAsync($"/listings/{listingId}/purchase", new { count = 1, expectedPrice = price, idempotencyKey = Guid.NewGuid().ToString("N") }, cookie);
+            var response = await host.PostJsonAsync($"/api/listings/{listingId}/purchase", new { count = 1, expectedPrice = price, idempotencyKey = Guid.NewGuid().ToString("N") }, cookie);
 
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
         }
 
         private static async Task<JsonElement> HistoryAsync(MarketApiHost host, string cookie, string query = "")
         {
-            var response = await host.GetAsync("/history" + query, cookie);
+            var response = await host.GetAsync("/api/history" + query, cookie);
 
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
 
@@ -217,20 +217,20 @@ namespace ACE.MarketApi.Tests
 
             await using var host = await MarketApiHost.StartAsync();
 
-            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/history")).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/api/history")).StatusCode);
 
             var cookie = await host.SignInForCookieAsync(player.Name, "pass");
 
             foreach (var (bad, error) in new[] { ("?since=-1", "bad_cursor"), ("?since=abc", "bad_cursor"), ("?since=1.5", "bad_cursor"), ("?itemsBefore=0", "bad_cursor"), ("?itemsBefore=x", "bad_cursor"), ("?itemsLimit=0", "bad_limit"), ("?itemsLimit=x", "bad_limit") })
             {
-                var response = await host.GetAsync("/history" + bad, cookie);
+                var response = await host.GetAsync("/api/history" + bad, cookie);
 
                 Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode, bad);
                 Assert.AreEqual(error, await MarketApiHost.ErrorAsync(response), bad);
             }
 
             // like the catalog's limit, a limit above the most is capped rather than refused
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/history?itemsLimit=101", cookie)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/api/history?itemsLimit=101", cookie)).StatusCode);
         }
 
         // ---- criterion 2: since returns exactly the entries after it
@@ -440,13 +440,13 @@ namespace ACE.MarketApi.Tests
 
             async Task<long> ListAsync(long price)
             {
-                var response = await host.PostJsonAsync("/listings", new { itemGuid = guid, price }, sellerCookie);
+                var response = await host.PostJsonAsync("/api/listings", new { itemGuid = guid, price }, sellerCookie);
                 Assert.AreEqual(HttpStatusCode.Created, response.StatusCode, await response.Content.ReadAsStringAsync());
                 return (await MarketApiHost.JsonAsync(response)).GetProperty("id").GetInt64();
             }
 
             var first = await ListAsync(250);
-            Assert.AreEqual(HttpStatusCode.OK, (await host.PostJsonAsync($"/listings/{first}/delist", new { }, sellerCookie)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.PostJsonAsync($"/api/listings/{first}/delist", new { }, sellerCookie)).StatusCode);
             var second = await ListAsync(200);
             await BuyAsync(host, await host.SignInForCookieAsync(buyer.Name, "pass"), second, 200);
 

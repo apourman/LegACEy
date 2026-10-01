@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 
 using ACE.Common;
 using ACE.Common.Cryptography;
@@ -26,7 +27,7 @@ namespace ACE.MarketApi
         /// </summary>
         private static readonly Lazy<string> unknownAccountHash = new Lazy<string>(() => BCryptProvider.HashPassword(Guid.NewGuid().ToString(), Math.Clamp(ConfigManager.Config.Server.Accounts.PasswordHashWorkFactor, 4, 31)));
 
-        public static void Map(WebApplication app)
+        public static void Map(IEndpointRouteBuilder app)
         {
             app.MapPost("/auth/login", Login);
             // cast: a handler taking only HttpContext would otherwise bind as a RequestDelegate and drop its result

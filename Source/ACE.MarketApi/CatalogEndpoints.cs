@@ -6,6 +6,7 @@ using System.Text.Json;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Primitives;
 
 namespace ACE.MarketApi
@@ -22,7 +23,7 @@ namespace ACE.MarketApi
 
         public const int MaxSuggestions = 10;
 
-        public static void Map(WebApplication app)
+        public static void Map(IEndpointRouteBuilder app)
         {
             app.MapGet("/listings", Browse);
             app.MapGet("/listings/suggest", Suggest);

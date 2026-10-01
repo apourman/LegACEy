@@ -42,4 +42,9 @@
       <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-4f7c-pmjv-c25w" />
     </ItemGroup>
 
+  <ItemGroup>
+    <!-- the development marker's one SQL source, shared with scripts/market/bootstrap.sh (absent from the Market API image build, which never marks) -->
+    <EmbeddedResource Include="..\..\scripts\market\dev-marker.sql" LogicalName="ACE.Database.Market.dev-marker.sql" Condition="Exists('..\..\scripts\market\dev-marker.sql')" />
+  </ItemGroup>
+
 </Project>

@@ -29,7 +29,7 @@ namespace ACE.MarketApi.Tests
             MarketApiTestData.SetVaultColumns(guid, $"item_Type = {(int)ItemType.MeleeWeapon}, workmanship = 3");
 
             var cookie = await host.SignInForCookieAsync(seller, "pass");
-            var listed = await host.PostJsonAsync("/listings", new { itemGuid = guid, price = 40 }, cookie);
+            var listed = await host.PostJsonAsync("/api/listings", new { itemGuid = guid, price = 40 }, cookie);
             Assert.AreEqual(HttpStatusCode.Created, listed.StatusCode, await listed.Content.ReadAsStringAsync());
             var rowVersion = MarketApiTestData.Scalar($"SELECT row_Version FROM market_vault_item WHERE item_Guid = {guid};");
 
@@ -52,7 +52,7 @@ namespace ACE.MarketApi.Tests
                 Assert.IsTrue(updated, "the row was there to refresh");
             }
 
-            var page = await MarketApiHost.JsonAsync(await host.GetAsync("/listings?q=" + System.Uri.EscapeDataString(token)));
+            var page = await MarketApiHost.JsonAsync(await host.GetAsync("/api/listings?q=" + System.Uri.EscapeDataString(token)));
             var row = page.GetProperty("listings").EnumerateArray().Single();
 
             Assert.AreEqual($"{token} New Name", row.GetProperty("name").GetString());
@@ -60,7 +60,7 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual(120, row.GetProperty("level").GetInt32());
             Assert.AreEqual(75, row.GetProperty("arcaneLore").GetInt32());
 
-            var byOldName = await MarketApiHost.JsonAsync(await host.GetAsync("/listings?q=" + System.Uri.EscapeDataString(token + " Old")));
+            var byOldName = await MarketApiHost.JsonAsync(await host.GetAsync("/api/listings?q=" + System.Uri.EscapeDataString(token + " Old")));
             Assert.AreEqual(0, byOldName.GetProperty("listings").GetArrayLength(), "the old name no longer matches");
 
             Assert.AreEqual(rowVersion, MarketApiTestData.Scalar($"SELECT row_Version FROM market_vault_item WHERE item_Guid = {guid};"),

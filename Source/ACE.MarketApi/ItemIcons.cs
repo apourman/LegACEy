@@ -64,7 +64,7 @@ namespace ACE.MarketApi
             void Add(string kind, uint? id, int? paletteTemplate = null)
             {
                 if (id is uint texture && texture != 0)
-                    layers.Add(new IconLayer { Kind = kind, Id = texture, PaletteTemplate = paletteTemplate, Url = "/icons/" + FileName(texture, paletteTemplate) });
+                    layers.Add(new IconLayer { Kind = kind, Id = texture, PaletteTemplate = paletteTemplate, Url = MarketApi.PathBase + "/icons/" + FileName(texture, paletteTemplate) });
             }
 
             Add("plate", Plate(item.ItemType));

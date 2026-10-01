@@ -31,9 +31,28 @@ namespace ACE.MarketApi.Tests
         {
             await using var host = await MarketApiHost.StartAsync();
 
-            var response = await host.GetAsync("/me");
+            var response = await host.GetAsync("/api/me");
 
             Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        }
+
+        [TestMethod]
+        public void Startup_DatabaseLoginSetting_ReplacesTheConfigJsLogin()
+        {
+            // a container gets its login from docker.env, not from the Config.js it mounts: a wrong one must be the one used
+            var ex = Assert.Throws<Exception>(() => MarketApiHost.Build(extraArgs: new[] { "--Market:DatabaseUsername=nosuchmarketuser", "--Market:DatabasePassword=wrong" }));
+
+            StringAssert.Contains(ex.ToString(), "nosuchmarketuser");
+        }
+
+        [TestMethod]
+        public async Task Startup_DatabaseLoginSetting_WithTheRightLogin_StartsAndAnswers()
+        {
+            var mysql = ACE.Common.ConfigManager.Config.MySql.Shard;
+
+            await using var host = await MarketApiHost.StartAsync(extraArgs: new[] { $"--Market:DatabaseUsername={mysql.Username}", $"--Market:DatabasePassword={mysql.Password}" });
+
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/api/facets")).StatusCode);
         }
 
         [TestMethod]
@@ -54,7 +73,7 @@ namespace ACE.MarketApi.Tests
                 {
                     try
                     {
-                        up = (await client.GetAsync("/me")).StatusCode == HttpStatusCode.Unauthorized;
+                        up = (await client.GetAsync("/api/me")).StatusCode == HttpStatusCode.Unauthorized;
                     }
                     catch (HttpRequestException)
                     {
@@ -64,10 +83,10 @@ namespace ACE.MarketApi.Tests
 
                 Assert.IsTrue(up, "the API process never answered: " + output);
 
-                var login = await client.PostAsync("/auth/login", JsonContent.Create(new { account = name, password = "secret" }));
+                var login = await client.PostAsync("/api/auth/login", JsonContent.Create(new { account = name, password = "secret" }));
                 Assert.AreEqual(HttpStatusCode.OK, login.StatusCode, await login.Content.ReadAsStringAsync());
 
-                var me = new HttpRequestMessage(HttpMethod.Get, "/me");
+                var me = new HttpRequestMessage(HttpMethod.Get, "/api/me");
                 me.Headers.Add("Cookie", MarketApiHost.SessionCookie(login));
                 var meResponse = await client.SendAsync(me);
 

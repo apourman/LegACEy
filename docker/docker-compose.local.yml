@@ -22,5 +22,34 @@ services:
       retries: 30
       start_period: 20s
 
+  # The Market API (local only): its own image, reaching ace-db over the compose network. The game server runs natively on the host.
+  # After an API code change: docker compose -f docker/docker-compose.local.yml up -d --build market-api
+  market-api:
+    build:
+      context: ../Source
+      dockerfile: ../docker/market-api/Dockerfile
+    depends_on:
+      ace-db:
+        condition: service_healthy
+    # only the application login from docker.env, never the root password: scripts/market/*.sh pass --env-file ../docker.env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Local
+      Market__DatabaseUsername: ${MYSQL_USER:-}
+      Market__DatabasePassword: ${MYSQL_PASSWORD:-}
+    ports:
+      # loopback only: plain HTTP is never reachable from another machine
+      - "127.0.0.1:${MARKET_API_PORT:-5080}:8080"
+    volumes:
+      - ./market-api/appsettings.Local.json:/app/appsettings.Local.json:ro
+      # ACE's configuration with no login in it: ace-db:3306 and /ace/Dats
+      - ../Source/ACE.Server/Config.js.docker:/ace/Config/Config.js:ro
+      - ${ACE_HOST_DAT_DIRECTORY:-${HOME}/ace_dats/retail}:/ace/Dats:ro
+      # sessions and icons survive a rebuild
+      - market-api-keys:/data/keys
+      - market-api-icons:/data/icon-cache
+    # health: the image's HEALTHCHECK (GET /api/facets)
+
 volumes:
   db-data:
+  market-api-keys:
+  market-api-icons:

@@ -3,6 +3,7 @@ using System.Linq;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 
 using ACE.Database.Market;
 using ACE.Database.Models.Shard;
@@ -13,7 +14,7 @@ namespace ACE.MarketApi
     /// <summary>
     /// The game bridge: asking the game server to move something out of the Vault. The API only writes a ticket; the game server claims it,
     /// does the work on the world thread through the same Vault code as /vault (an item withdrawal takes the channel, so the character must be online),
-    /// and writes the result, which GET /tickets/{id} shows.
+    /// and writes the result, which GET /api/tickets/{id} shows.
     /// </summary>
     public static class TicketEndpoints
     {
@@ -23,7 +24,7 @@ namespace ACE.MarketApi
         /// <param name="Amount">whole MMD, at least 1; a decimal so that 1.5 is refused as an amount rather than as unreadable JSON</param>
         public sealed record MmdWithdrawRequest(uint? CharacterId, decimal? Amount, string IdempotencyKey);
 
-        public static void Map(WebApplication app)
+        public static void Map(IEndpointRouteBuilder app)
         {
             app.MapPost("/vault/withdraw", VaultWithdraw).RequireAuthorization();
             app.MapPost("/mmd/withdraw", MmdWithdraw).RequireAuthorization();
@@ -76,7 +77,7 @@ namespace ACE.MarketApi
             if (result.Outcome == TicketCreateOutcome.KeyReused)
                 return MarketHttp.Error(StatusCodes.Status409Conflict, "key_reused");
 
-            return Results.Accepted($"/tickets/{result.Ticket.Id}", View(result.Ticket));
+            return Results.Accepted($"{MarketApi.PathBase}/tickets/{result.Ticket.Id}", View(result.Ticket));
         }
 
         private static bool IsOwnCharacter(ShardDbContext shard, uint accountId, uint characterId) =>

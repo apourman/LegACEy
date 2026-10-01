@@ -13,7 +13,7 @@ using ACE.MarketApi.Tests.Support;
 namespace ACE.MarketApi.Tests
 {
     /// <summary>
-    /// Plugin sign-in: /vault link codes exchanged for tokens at POST /auth/plugin-token, bearer tokens on API calls,
+    /// Plugin sign-in: /vault link codes exchanged for tokens at POST /api/auth/plugin-token, bearer tokens on API calls,
     /// the website's token list and revoke, and tokens dying on a password change or during a ban
     /// </summary>
     [TestClass]
@@ -37,7 +37,7 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual("Laptop", body.GetProperty("label").GetString());
             Assert.IsTrue(token.Length >= 32, "a long random token");
 
-            var me = await host.GetWithTokenAsync("/me", token);
+            var me = await host.GetWithTokenAsync("/api/me", token);
             Assert.AreEqual(HttpStatusCode.OK, me.StatusCode, await me.Content.ReadAsStringAsync());
             Assert.AreEqual(player.AccountId, (await MarketApiHost.JsonAsync(me)).GetProperty("accountId").GetUInt32());
 
@@ -129,7 +129,7 @@ namespace ACE.MarketApi.Tests
 
             await using var host = await MarketApiHost.StartAsync();
 
-            var missing = await host.PostJsonAsync("/auth/plugin-token", new { label = "x" });
+            var missing = await host.PostJsonAsync("/api/auth/plugin-token", new { label = "x" });
             Assert.AreEqual(HttpStatusCode.BadRequest, missing.StatusCode);
 
             var longLabel = await ExchangeAsync(host, NewLinkCode(player, host), new string('x', PluginAuth.LabelMaxLength + 1));
@@ -178,20 +178,20 @@ namespace ACE.MarketApi.Tests
 
             var token = await NewTokenAsync(host, player);
 
-            foreach (var path in new[] { "/me", "/vault", "/history", "/tokens" })
+            foreach (var path in new[] { "/api/me", "/api/vault", "/api/history", "/api/tokens" })
             {
                 var response = await host.GetWithTokenAsync(path, token);
                 Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, path + ": " + await response.Content.ReadAsStringAsync());
             }
 
-            var history = await MarketApiHost.JsonAsync(await host.GetWithTokenAsync("/history", token));
+            var history = await MarketApiHost.JsonAsync(await host.GetWithTokenAsync("/api/history", token));
             Assert.AreEqual(42, history.GetProperty("balance").GetInt64(), "the token signs in as its account");
 
             // used every 89 days, it outlives its 90 day lifetime
             for (var i = 0; i < 3; i++)
             {
                 host.Clock.Advance(TimeSpan.FromDays(89));
-                Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/me", token)).StatusCode, "use " + i);
+                Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/me", token)).StatusCode, "use " + i);
 
                 using var shard = MarketApiTestData.Shard();
                 var row = shard.MarketPluginTokens.AsNoTracking().Single(t => t.AccountId == player.AccountId);
@@ -214,7 +214,7 @@ namespace ACE.MarketApi.Tests
             var stillGood = await NewTokenAsync(host, player);
 
             host.Clock.Advance(TimeSpan.FromSeconds(1));
-            var expired = await host.GetWithTokenAsync("/me", token);
+            var expired = await host.GetWithTokenAsync("/api/me", token);
             Assert.AreEqual(HttpStatusCode.Unauthorized, expired.StatusCode);
             Assert.AreEqual("unauthorized", await MarketApiHost.ErrorAsync(expired));
 
@@ -222,9 +222,9 @@ namespace ACE.MarketApi.Tests
             MarketApiTestData.SetSetting(MarketSettings.PluginTokenDays.Key, 2);
             try
             {
-                Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/me", stillGood)).StatusCode, "renewed now for 2 days");
+                Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/me", stillGood)).StatusCode, "renewed now for 2 days");
                 host.Clock.Advance(TimeSpan.FromDays(2));
-                Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/me", stillGood)).StatusCode);
+                Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/api/me", stillGood)).StatusCode);
             }
             finally
             {
@@ -237,16 +237,16 @@ namespace ACE.MarketApi.Tests
         {
             await using var host = await MarketApiHost.StartAsync();
 
-            var unknown = await host.GetWithTokenAsync("/me", "not-a-token");
+            var unknown = await host.GetWithTokenAsync("/api/me", "not-a-token");
             Assert.AreEqual(HttpStatusCode.Unauthorized, unknown.StatusCode);
             Assert.AreEqual("unauthorized", await MarketApiHost.ErrorAsync(unknown));
 
-            var none = await host.GetAsync("/me");
+            var none = await host.GetAsync("/api/me");
             Assert.AreEqual(HttpStatusCode.Unauthorized, none.StatusCode);
             Assert.AreEqual("unauthorized", await MarketApiHost.ErrorAsync(none));
 
             // public routes ignore a bad token
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/listings", "not-a-token")).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/listings", "not-a-token")).StatusCode);
         }
 
         // ---- listing and revoking
@@ -266,7 +266,7 @@ namespace ACE.MarketApi.Tests
 
             var cookie = await host.SignInForCookieAsync(player.Name, player.Password);
 
-            var listed = await MarketApiHost.JsonAsync(await host.GetAsync("/tokens", cookie));
+            var listed = await MarketApiHost.JsonAsync(await host.GetAsync("/api/tokens", cookie));
             var tokens = listed.GetProperty("tokens").EnumerateArray().ToList();
             CollectionAssert.AreEqual(new[] { "Desktop", "Laptop" }, tokens.Select(t => t.GetProperty("label").GetString()).ToList(), "newest first, own tokens only");
             Assert.IsFalse(tokens[0].TryGetProperty("tokenHash", out _), "never the hash");
@@ -278,28 +278,28 @@ namespace ACE.MarketApi.Tests
             var othersId = MarketApiTestData.Scalar($"SELECT id FROM market_plugin_token WHERE account_Id = {other.AccountId};");
 
             // another account's token can't be revoked
-            var notMine = await host.PostJsonAsync($"/tokens/{othersId}/revoke", new { }, cookie);
+            var notMine = await host.PostJsonAsync($"/api/tokens/{othersId}/revoke", new { }, cookie);
             Assert.AreEqual(HttpStatusCode.NotFound, notMine.StatusCode);
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/me", othersToken)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/me", othersToken)).StatusCode);
 
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/me", laptop)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/me", laptop)).StatusCode);
 
-            var revoked = await host.PostJsonAsync($"/tokens/{laptopId}/revoke", new { }, cookie);
+            var revoked = await host.PostJsonAsync($"/api/tokens/{laptopId}/revoke", new { }, cookie);
             Assert.AreEqual(HttpStatusCode.OK, revoked.StatusCode, await revoked.Content.ReadAsStringAsync());
 
-            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/me", laptop)).StatusCode, "revoked at once");
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/me", desktop)).StatusCode, "the other token still works");
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/api/me", laptop)).StatusCode, "revoked at once");
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/me", desktop)).StatusCode, "the other token still works");
 
-            var after = await MarketApiHost.JsonAsync(await host.GetWithTokenAsync("/tokens", desktop));
+            var after = await MarketApiHost.JsonAsync(await host.GetWithTokenAsync("/api/tokens", desktop));
             CollectionAssert.AreEqual(new[] { "Desktop" }, after.GetProperty("tokens").EnumerateArray().Select(t => t.GetProperty("label").GetString()).ToList());
 
             // a token can revoke itself (the plugin's sign-out)
             var desktopId = after.GetProperty("tokens")[0].GetProperty("id").GetInt64();
-            Assert.AreEqual(HttpStatusCode.OK, (await host.PostJsonAsync($"/tokens/{desktopId}/revoke", new { }, token: desktop)).StatusCode);
-            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/me", desktop)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.PostJsonAsync($"/api/tokens/{desktopId}/revoke", new { }, token: desktop)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/api/me", desktop)).StatusCode);
 
-            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/tokens")).StatusCode);
-            Assert.AreEqual(HttpStatusCode.NotFound, (await host.PostJsonAsync("/tokens/abc/revoke", new { }, cookie)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/api/tokens")).StatusCode);
+            Assert.AreEqual(HttpStatusCode.NotFound, (await host.PostJsonAsync("/api/tokens/abc/revoke", new { }, cookie)).StatusCode);
         }
 
         // ---- invalidation
@@ -313,19 +313,19 @@ namespace ACE.MarketApi.Tests
 
             var first = await NewTokenAsync(host, player, "one");
             var second = await NewTokenAsync(host, player, "two");
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/me", first)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/me", first)).StatusCode);
 
             MarketApiTestData.SetPassword(player.AccountId, "new-pass");
 
-            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/me", first)).StatusCode);
-            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/me", second)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/api/me", first)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/api/me", second)).StatusCode);
 
             // they're gone from the list too; a new link after the change works
             var cookie = await host.SignInForCookieAsync(player.Name, "new-pass");
-            Assert.AreEqual(0, (await MarketApiHost.JsonAsync(await host.GetAsync("/tokens", cookie))).GetProperty("tokens").GetArrayLength());
+            Assert.AreEqual(0, (await MarketApiHost.JsonAsync(await host.GetAsync("/api/tokens", cookie))).GetProperty("tokens").GetArrayLength());
 
             var fresh = await NewTokenAsync(host, player, "three");
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/me", fresh)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/me", fresh)).StatusCode);
         }
 
         [TestMethod]
@@ -339,17 +339,17 @@ namespace ACE.MarketApi.Tests
 
             // a ban an admin lifts
             MarketApiTestData.Ban(player.AccountId, host.Clock.GetUtcNow().UtcDateTime.AddDays(30));
-            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/me", token)).StatusCode);
-            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/history", token)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/api/me", token)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/api/history", token)).StatusCode);
             MarketApiTestData.LiftBan(player.AccountId);
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/me", token)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/me", token)).StatusCode);
 
             // a ban that runs out
             MarketApiTestData.Ban(player.AccountId, host.Clock.GetUtcNow().UtcDateTime.AddDays(3));
             host.Clock.Advance(TimeSpan.FromDays(2));
-            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/me", token)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/api/me", token)).StatusCode);
             host.Clock.Advance(TimeSpan.FromDays(1) + TimeSpan.FromSeconds(1));
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/me", token)).StatusCode, "the token wasn't revoked by the ban");
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/me", token)).StatusCode, "the token wasn't revoked by the ban");
         }
 
         // ---- helpers
@@ -384,7 +384,7 @@ namespace ACE.MarketApi.Tests
         }
 
         private static Task<HttpResponseMessage> ExchangeAsync(MarketApiHost host, string code, string label, string ip = MarketApiHost.DefaultIp) =>
-            host.PostJsonAsync("/auth/plugin-token", new { code, label }, ip: ip);
+            host.PostJsonAsync("/api/auth/plugin-token", new { code, label }, ip: ip);
 
         private static async Task<string> NewTokenAsync(MarketApiHost host, Player player, string label = "plugin")
         {

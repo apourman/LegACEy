@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 
 using ACE.Database.Market;
 using ACE.Database.Models.Auth;
@@ -17,7 +18,7 @@ namespace ACE.MarketApi
     {
         public sealed record PluginTokenRequest(string Code, string Label);
 
-        public static void Map(WebApplication app)
+        public static void Map(IEndpointRouteBuilder app)
         {
             app.MapPost("/auth/plugin-token", Exchange);
             app.MapGet("/tokens", ListTokens).RequireAuthorization();

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Primitives;
 
@@ -30,13 +31,13 @@ namespace ACE.MarketApi
 
         private const string UnknownCharacter = "someone";
 
-        public static void Map(WebApplication app)
+        public static void Map(IEndpointRouteBuilder app)
         {
             app.MapGet("/history", History).RequireAuthorization();
         }
 
         /// <summary>
-        /// GET /history?since={seq}&amp;itemsBefore={eventId}&amp;itemsLimit={n}
+        /// GET /api/history?since={seq}&amp;itemsBefore={eventId}&amp;itemsLimit={n}
         /// → balance, head (the account's last ledger sequence), every one of the account's ledger lines with a sequence after since (newest first),
         /// and a page of its item movements (newest first, paged back by event id).
         /// A poller passes the head it was last given as since, and never misses a line: the head is read first, and every line up to it is already committed.
