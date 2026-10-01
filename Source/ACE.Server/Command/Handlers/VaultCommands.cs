@@ -113,24 +113,12 @@ namespace ACE.Server.Command.Handlers
                             return;
                         }
 
-                        Tell(session, VaultPlugin.Revoke(player, tokenId) ? $"Revoked plugin token #{tokenId}. It stops working at once." : $"Your account has no plugin token #{tokenId}.");
+                        Tell(session, VaultMessages.TokenRevoked(tokenId, VaultPlugin.Revoke(player, tokenId)));
                         return;
                     }
 
-                    var tokens = VaultPlugin.Tokens(player);
-
-                    if (tokens.Count == 0)
-                    {
-                        Tell(session, "Your account has no plugin tokens. /vault link signs in the UtilityBelt plugin.");
-                        return;
-                    }
-
-                    Tell(session, $"Your account's plugin tokens ({tokens.Count:N0}):");
-
-                    foreach (var token in tokens)
-                        Tell(session, $"#{token.Id}  {token.Label ?? "(no label)"}  last used {(token.LastUsedTime is DateTime used ? used.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "never")}, expires {token.ExpiresTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}");
-
-                    Tell(session, "/vault tokens revoke <id> stops one.");
+                    foreach (var line in VaultMessages.Tokens(VaultPlugin.ListTokens(player)))
+                        Tell(session, line);
                     break;
 
                 default:

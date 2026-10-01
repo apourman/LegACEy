@@ -31,7 +31,7 @@ namespace ACE.Server.Market
         /// <summary>
         /// The account's tokens that still work. The password hash is read from the auth database now, so a password change since login hides every token.
         /// </summary>
-        public static List<PluginToken> Tokens(Player player)
+        public static List<PluginToken> ListTokens(Player player)
         {
             var account = DatabaseManager.Authentication.GetAccountById(player.Character.AccountId);
 

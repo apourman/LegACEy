@@ -137,6 +137,19 @@ namespace ACE.MarketApi
         }
 
         /// <summary>
+        /// True when the account is banned now. The market has then noticed the ban, so the account's listings go back to its Vault.
+        /// Every signed-in request (cookie or plugin token) asks this.
+        /// </summary>
+        public static bool NoticeBan(MarketDatabase database, Account account, DateTime now)
+        {
+            if (!account.IsBanned(now))
+                return false;
+
+            MarketUpkeep.ReturnListings(database, new[] { account.AccountId }, now);
+            return true;
+        }
+
+        /// <summary>
         /// Bans are checked on every request, so a session stops working as soon as a ban is in force
         /// </summary>
         private static async Task ValidateSession(CookieValidatePrincipalContext context)
@@ -149,12 +162,8 @@ namespace ACE.MarketApi
             if (MarketHttp.TryGetAccountId(context.Principal, out var accountId))
                 account = await services.GetRequiredService<MarketDatabase>().FindAccountAsync(accountId);
 
-            if (account == null || account.IsBanned(now))
+            if (account == null || NoticeBan(services.GetRequiredService<MarketDatabase>(), account, now))
             {
-                // the market has noticed the ban: the account's listings go back to its Vault
-                if (account != null)
-                    MarketUpkeep.ReturnListings(services.GetRequiredService<MarketDatabase>(), new[] { account.AccountId }, now);
-
                 context.RejectPrincipal();
                 await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             }

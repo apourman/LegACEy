@@ -20,7 +20,7 @@ namespace ACE.MarketApi
         public static void Map(WebApplication app)
         {
             app.MapPost("/auth/plugin-token", Exchange);
-            app.MapGet("/tokens", Tokens).RequireAuthorization();
+            app.MapGet("/tokens", ListTokens).RequireAuthorization();
             app.MapPost("/tokens/{id:long}/revoke", Revoke).RequireAuthorization();
         }
 
@@ -78,7 +78,7 @@ namespace ACE.MarketApi
         /// <summary>
         /// The account's working tokens, newest first. Never the token or its hash.
         /// </summary>
-        private static async Task<IResult> Tokens(HttpContext context, MarketDatabase database, TimeProvider time)
+        private static async Task<IResult> ListTokens(HttpContext context, MarketDatabase database, TimeProvider time)
         {
             var account = await database.FindAccountAsync(MarketHttp.AccountId(context));
 

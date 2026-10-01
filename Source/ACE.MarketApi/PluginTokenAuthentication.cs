@@ -10,7 +10,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using ACE.Database.Market;
-using ACE.Database.Models.Auth;
 
 namespace ACE.MarketApi
 {
@@ -55,12 +54,8 @@ namespace ACE.MarketApi
             if (account == null || !PluginAuth.IsUsable(token, account.PasswordHash, now))
                 return AuthenticateResult.Fail("plugin token revoked, expired or issued before a password change");
 
-            if (account.IsBanned(now))
-            {
-                // the market has noticed the ban: the account's listings go back to its Vault, as for a web session
-                MarketUpkeep.ReturnListings(database, new[] { account.AccountId }, now);
+            if (MarketApi.NoticeBan(database, account, now))
                 return AuthenticateResult.Fail("account banned");
-            }
 
             PluginAuth.Renew(shard, token, now);
 

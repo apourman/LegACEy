@@ -37,14 +37,14 @@ namespace ACE.Database.Market
         /// </summary>
         public static string NewLinkCode(ShardDbContext context, uint accountId, uint characterId, DateTime utcNow)
         {
-            var code = Shown(new string(Enumerable.Range(0, CodeLength).Select(_ => CodeAlphabet[RandomNumberGenerator.GetInt32(CodeAlphabet.Length)]).ToArray()));
+            var code = FormatCode(new string(Enumerable.Range(0, CodeLength).Select(_ => CodeAlphabet[RandomNumberGenerator.GetInt32(CodeAlphabet.Length)]).ToArray()));
 
             context.MarketLinkCodes.Add(new LinkCode
             {
                 CodeHash = Hash(code),
                 AccountId = accountId,
                 CharacterId = characterId,
-                ExpiresTime = Stored(utcNow).AddMinutes(LinkCodeMinutes(context)),
+                ExpiresTime = TruncateToMicroseconds(utcNow).AddMinutes(LinkCodeMinutes(context)),
             });
             context.SaveChanges();
 
@@ -52,23 +52,14 @@ namespace ACE.Database.Market
         }
 
         /// <summary>
-        /// A link code through the configured shard database, valid from now
+        /// The link code setting, in whole minutes. At least 1: an admin's 0 or negative value would make every code expired on arrival.
         /// </summary>
-        public static string NewLinkCode(uint accountId, uint characterId)
-        {
-            using (var context = new ShardDbContext())
-                return NewLinkCode(context, accountId, characterId, DateTime.UtcNow);
-        }
+        public static long LinkCodeMinutes(ShardDbContext context) => Math.Clamp(MarketSettings.Get(context, MarketSettings.LinkCodeMinutes), 1, 60 * 24 * 365);
 
         /// <summary>
-        /// The link code setting, in whole minutes
+        /// The plugin token setting, in whole days. At least 1, for the same reason.
         /// </summary>
-        public static long LinkCodeMinutes(ShardDbContext context) => Math.Clamp(MarketSettings.Get(context, MarketSettings.LinkCodeMinutes), 0, 60 * 24 * 365);
-
-        /// <summary>
-        /// The plugin token setting, in whole days
-        /// </summary>
-        public static long TokenDays(ShardDbContext context) => Math.Clamp(MarketSettings.Get(context, MarketSettings.PluginTokenDays), 0, 365 * 100);
+        public static long TokenDays(ShardDbContext context) => Math.Clamp(MarketSettings.Get(context, MarketSettings.PluginTokenDays), 1, 365 * 100);
 
         /// <summary>
         /// The stored form of a link code or token
@@ -90,7 +81,7 @@ namespace ACE.Database.Market
             if (typed.Length != CodeLength)
                 return null;
 
-            var hash = Hash(Shown(typed));
+            var hash = Hash(FormatCode(typed));
             var linkCode = context.MarketLinkCodes.FirstOrDefault(c => c.CodeHash == hash);
 
             return linkCode != null && linkCode.UsedTime == null && utcNow < linkCode.ExpiresTime ? linkCode : null;
@@ -106,7 +97,7 @@ namespace ACE.Database.Market
         {
             secret = Base64Url(RandomNumberGenerator.GetBytes(TokenBytes));
 
-            var now = Stored(utcNow);
+            var now = TruncateToMicroseconds(utcNow);
 
             var token = new PluginToken
             {
@@ -152,7 +143,7 @@ namespace ACE.Database.Market
         /// </summary>
         public static bool IsUsable(PluginToken token, string passwordHash, DateTime utcNow)
         {
-            return token.RevokedTime == null && utcNow < token.ExpiresTime && token.PasswordFingerprint.AsSpan().SequenceEqual(Fingerprint(passwordHash));
+            return token.RevokedTime == null && utcNow < token.ExpiresTime && CryptographicOperations.FixedTimeEquals(token.PasswordFingerprint, Fingerprint(passwordHash));
         }
 
         /// <summary>
@@ -160,7 +151,7 @@ namespace ACE.Database.Market
         /// </summary>
         public static void Renew(ShardDbContext context, PluginToken token, DateTime utcNow)
         {
-            var now = Stored(utcNow);
+            var now = TruncateToMicroseconds(utcNow);
 
             token.LastUsedTime = now;
             token.ExpiresTime = now.AddDays(TokenDays(context));
@@ -192,7 +183,7 @@ namespace ACE.Database.Market
 
             if (token.RevokedTime == null)
             {
-                token.RevokedTime = Stored(utcNow);
+                token.RevokedTime = TruncateToMicroseconds(utcNow);
                 context.SaveChanges();
             }
 
@@ -202,12 +193,12 @@ namespace ACE.Database.Market
         /// <summary>
         /// The time as datetime(6) keeps it. MySQL rounds extra digits, which could move an expiry past the instant it was meant for.
         /// </summary>
-        private static DateTime Stored(DateTime utc) => new DateTime(utc.Ticks - utc.Ticks % 10, DateTimeKind.Utc);
+        private static DateTime TruncateToMicroseconds(DateTime utc) => new DateTime(utc.Ticks - utc.Ticks % 10, DateTimeKind.Utc);
 
         /// <summary>
         /// A code as it's shown, and hashed: XXXXX-XXXXX
         /// </summary>
-        private static string Shown(string code) => code.Substring(0, CodeLength / 2) + "-" + code.Substring(CodeLength / 2);
+        private static string FormatCode(string code) => code.Substring(0, CodeLength / 2) + "-" + code.Substring(CodeLength / 2);
 
         private static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
