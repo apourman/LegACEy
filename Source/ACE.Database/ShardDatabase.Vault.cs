@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading;
 
 using ACE.Common.Extensions;
+using ACE.Database.Market;
 using ACE.Database.Models.Shard;
 using ACE.Database.Models.Shard.Market;
 using ACE.Entity.Enum;
@@ -75,8 +76,9 @@ namespace ACE.Database
         /// evicts the item from the cache, loads a fresh copy, applies the in-memory changes, deletes the Vault row, writes a withdraw item event, and saves once.
         /// Returns false, having saved nothing, if the item has no container, if its Vault row is missing, belongs to another account, is listed,
         /// or no longer has expectedRowVersion (someone changed it since the caller read it), or if the save fails.
+        /// A game bridge ticket passed as ticket is marked done in the same save, so the item can't move without its ticket finishing.
         /// </summary>
-        public bool WithdrawFromVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, uint accountId, uint characterId, uint expectedRowVersion)
+        public bool WithdrawFromVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, uint accountId, uint characterId, uint expectedRowVersion, TicketCompletion ticket = null)
         {
             rwLock.EnterReadLock();
             try
@@ -105,7 +107,12 @@ namespace ACE.Database
                 // the row version is a concurrency token: the delete only succeeds if nobody changed the row since it was read here
                 context.MarketVaultItems.Remove(vaultItem);
 
-                return NewItemEvent(biota.Id, accountId, characterId, ItemEventKind.Withdraw, DateTime.UtcNow);
+                var now = DateTime.UtcNow;
+
+                if (ticket != null)
+                    TicketStore.Complete(context, ticket, now);
+
+                return NewItemEvent(biota.Id, accountId, characterId, ItemEventKind.Withdraw, now);
             });
         }
 

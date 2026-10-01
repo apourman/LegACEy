@@ -54,3 +54,15 @@ public static class TicketStatus
     public const string Done = "DONE";
     public const string Failed = "FAILED";
 }
+
+/// <summary>
+/// The game bridge's work: the website and plugin ask for these, and the game server does them
+/// </summary>
+public static class TicketKind
+{
+    public const string VaultWithdraw = "vault_withdraw";
+    public const string MmdWithdraw = "mmd_withdraw";
+
+    // in the contract, but asking for one needs a live-inventory picker that the in-game UI work will build: the game fails it as unsupported
+    public const string VaultDeposit = "vault_deposit";
+}

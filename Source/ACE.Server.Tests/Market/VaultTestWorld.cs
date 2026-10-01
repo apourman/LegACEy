@@ -135,6 +135,26 @@ namespace ACE.Server.Tests.Market
         }
 
         /// <summary>
+        /// Puts the player in the player manager's online list, as entering the world does, so the game bridge finds them. Disposing takes them off it again.
+        /// </summary>
+        public static IDisposable Online(Player player)
+        {
+            var online = (Dictionary<uint, Player>)typeof(PlayerManager).GetField("onlinePlayers", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
+
+            // the world thread is the one that looks players up for the bridge
+            OnWorldThread(() => online[player.Guid.Full] = player);
+
+            return new Disposer(() => OnWorldThread(() => online.Remove(player.Guid.Full)));
+        }
+
+        private sealed class Disposer : IDisposable
+        {
+            private readonly Action action;
+            public Disposer(Action action) => this.action = action;
+            public void Dispose() => action();
+        }
+
+        /// <summary>
         /// Takes every message queued for the player's client since the last call. The session has no socket, so nothing else sends them.
         /// </summary>
         public static List<GameMessage> TakeSent(Player player)

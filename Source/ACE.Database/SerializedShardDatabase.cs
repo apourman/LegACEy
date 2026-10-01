@@ -158,13 +158,14 @@ namespace ACE.Database
         }
 
         /// <summary>
-        /// Queues the withdraw job: the item change, the Vault row removal and a withdraw event, saved once (see ShardDatabase.WithdrawFromVault)
+        /// Queues the withdraw job: the item change, the Vault row removal and a withdraw event, saved once (see ShardDatabase.WithdrawFromVault).
+        /// A game bridge ticket passed as ticket is marked done in the same save.
         /// </summary>
-        public void WithdrawFromVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, uint accountId, uint characterId, uint expectedRowVersion, Action<bool> callback)
+        public void WithdrawFromVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, uint accountId, uint characterId, uint expectedRowVersion, Action<bool> callback, TicketCompletion ticket = null)
         {
             _queue.Add(new Task(() =>
             {
-                var result = BaseDatabase.WithdrawFromVault(biota, rwLock, accountId, characterId, expectedRowVersion);
+                var result = BaseDatabase.WithdrawFromVault(biota, rwLock, accountId, characterId, expectedRowVersion, ticket);
                 callback?.Invoke(result);
             }));
         }
@@ -184,14 +185,50 @@ namespace ACE.Database
 
         /// <summary>
         /// Queues the note withdrawal job: a note_withdraw transfer and the new note rows, saved once (see ShardDatabase.WithdrawNotes).
-        /// The callback gets the result and the balance after it (the current balance on a refusal).
+        /// The callback gets the result and the balance after it (the current balance on a refusal). A game bridge ticket passed as ticket is marked done in the same save.
         /// </summary>
-        public void WithdrawNotes(uint accountId, uint characterId, IReadOnlyList<(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock)> notes, long amount, Action<MarketJobResult, long> callback)
+        public void WithdrawNotes(uint accountId, uint characterId, IReadOnlyList<(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock)> notes, long amount, Action<MarketJobResult, long> callback, TicketCompletion ticket = null)
         {
             _queue.Add(new Task(() =>
             {
-                var result = BaseDatabase.WithdrawNotes(accountId, characterId, notes, amount, out var balanceAfter);
+                var result = BaseDatabase.WithdrawNotes(accountId, characterId, notes, amount, out var balanceAfter, ticket);
                 callback?.Invoke(result, balanceAfter);
+            }));
+        }
+
+        /// <summary>
+        /// Queues a game bridge poll: claims up to limit waiting tickets (see ShardDatabase.ClaimTickets)
+        /// </summary>
+        public void ClaimTickets(int limit, Action<List<Ticket>> callback)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = BaseDatabase.ClaimTickets(limit);
+                callback?.Invoke(result);
+            }));
+        }
+
+        /// <summary>
+        /// Queues marking a claimed ticket FAILED (see ShardDatabase.FailTicket)
+        /// </summary>
+        public void FailTicket(long ticketId, string resultCode, string message, Action<bool> callback)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = BaseDatabase.FailTicket(ticketId, resultCode, message);
+                callback?.Invoke(result);
+            }));
+        }
+
+        /// <summary>
+        /// Queues deleting long-finished tickets (see ShardDatabase.DeleteFinishedTickets)
+        /// </summary>
+        public void DeleteFinishedTickets(Action<int> callback)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = BaseDatabase.DeleteFinishedTickets();
+                callback?.Invoke(result);
             }));
         }
 

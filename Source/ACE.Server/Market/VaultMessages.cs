@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 
+using ACE.Database.Market;
 using ACE.Database.Models.Shard.Market;
 
 namespace ACE.Server.Market
@@ -71,6 +72,24 @@ namespace ACE.Server.Market
         }
 
         public static string Balance(long balance) => $"Your balance is {balance:N0} MMD.";
+
+        /// <summary>
+        /// A game bridge note withdrawal's result, saved with the notes before the balance after it is known
+        /// </summary>
+        public static string NotesWithdrawnFor(long amount, string characterName) => $"{amount:N0} trade note{(amount == 1 ? " is" : "s are")} in {characterName}'s pack.";
+
+        /// <summary>
+        /// Why the game bridge couldn't start a ticket's work
+        /// </summary>
+        public static string ForTicket(string resultCode) => resultCode switch
+        {
+            GameBridge.Offline => "That character is not online. Log in with it and ask again.",
+            GameBridge.InvalidCharacter => "That character is not on your account.",
+            GameBridge.UnsupportedKind => "The game server cannot do that kind of request yet.",
+            GameBridge.InvalidTicket => "The game server could not read that request.",
+            TicketStore.ServerRestart => "The game server restarted before this finished. Nothing was moved; ask again.",
+            _ => resultCode,
+        };
 
         public static string LinkCode(string code, long minutes) =>
             $"Your plugin link code is {code}. Enter it in the UtilityBelt plugin within {minutes:N0} minute{(minutes == 1 ? "" : "s")}. It works once, and never share it.";
