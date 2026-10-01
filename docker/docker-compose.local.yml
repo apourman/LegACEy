@@ -49,7 +49,21 @@ services:
       - market-api-icons:/data/icon-cache
     # health: the image's HEALTHCHECK (GET /api/facets)
 
+  market-web:
+    build:
+      context: ..
+      dockerfile: docker/market-web/Dockerfile
+    depends_on:
+      market-api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${MARKET_WEB_PORT:-5173}:5173"
+    volumes:
+      - ${MARKET_WEB_SOURCE:-../market-web}:/app
+      - market-web-dependencies:/app/node_modules
+
 volumes:
+  market-web-dependencies:
   db-data:
   market-api-keys:
   market-api-icons:

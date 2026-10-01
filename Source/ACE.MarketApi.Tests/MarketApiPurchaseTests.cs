@@ -105,6 +105,27 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual(error, JsonDocument.Parse(body).RootElement.GetProperty("error").GetString(), body);
         }
 
+        [TestMethod]
+        public async Task Purchase_SecondCharacter_IsNamedOnBuyersVaultAndSellersHistory()
+        {
+            var seller = NewPlayer("seller");
+            var buyer = NewPlayer("buyer", balance: 500);
+            var secondName = buyer.Name + "Second";
+            var second = MarketApiTestData.AddCharacter(buyer.AccountId, secondName);
+            await using var host = await MarketApiHost.StartAsync();
+            var listed = NewListing(host, seller, 120);
+            var buyerCookie = await host.SignInForCookieAsync(buyer.Name, "pass");
+            var response = await host.PostJsonAsync($"/api/listings/{listed.ListingId}/purchase",
+                new { count = 1, expectedPrice = 120, characterId = second, idempotencyKey = "second-character" }, buyerCookie);
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
+            var vault = await MarketApiHost.JsonAsync(await host.GetAsync("/api/vault", buyerCookie));
+            Assert.AreEqual(second, vault.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("itemGuid").GetUInt32() == listed.ItemGuid).GetProperty("characterId").GetUInt32());
+            var sellerCookie = await host.SignInForCookieAsync(seller.Name, "pass");
+            var history = await MarketApiHost.JsonAsync(await host.GetAsync("/api/history", sellerCookie));
+            Assert.IsTrue(history.GetProperty("transfers").EnumerateArray().Any(l => l.GetProperty("text").GetString().Contains("to " + secondName)));
+            Assert.IsTrue(history.GetProperty("items").EnumerateArray().Any(l => l.GetProperty("text").GetString().Contains("to " + secondName)));
+        }
+
         // ---- a sale
 
         [TestMethod]
