@@ -18,7 +18,7 @@ using ACE.Server.WorldObjects;
 namespace ACE.Server.Market
 {
     /// <summary>
-    /// The game side of the Vault: the one entry point the /vault commands (and later the game bridge) use to move an item between a pack and the account's Vault.
+    /// The game side of the Vault: the one entry point the /vault commands and the game bridge use to move an item between a pack and the account's Vault.
     /// Call Deposit and Withdraw on the world thread. The result is reported once through the callback:
     /// at once for a refusal, on the world thread after the save for a deposit or withdrawal.
     /// </summary>
@@ -49,6 +49,9 @@ namespace ACE.Server.Market
             if (Available)
             {
                 log.Info($"[VAULT] Market schema check: {check.Report}");
+
+                // tickets this server was working on when it stopped; must run before the release below, which ends their channels' marks
+                GameBridge.Recover();
 
                 // a withdrawal channel marks its row withdrawing; none survives a restart, so any mark left is from a crash
                 var released = VaultStore.ReleaseAllWithdrawing();
@@ -123,13 +126,14 @@ namespace ACE.Server.Market
         /// <summary>
         /// Withdraws an item whose Vault row the caller has already marked withdrawing (the channel does this when it starts).
         /// The row must still have the version the mark gave it. On a refusal or failure the row stays marked: the caller releases it.
+        /// A game bridge ticket given as ticketId is marked done in the same save as the item.
         /// </summary>
-        public static void Withdraw(Player player, uint itemGuid, uint markedRowVersion, Action<VaultResult> completed = null)
+        public static void Withdraw(Player player, uint itemGuid, uint markedRowVersion, Action<VaultResult> completed = null, long? ticketId = null)
         {
-            Withdraw(player, itemGuid, (uint?)markedRowVersion, completed);
+            Withdraw(player, itemGuid, (uint?)markedRowVersion, completed, ticketId);
         }
 
-        private static void Withdraw(Player player, uint itemGuid, uint? markedRowVersion, Action<VaultResult> completed)
+        private static void Withdraw(Player player, uint itemGuid, uint? markedRowVersion, Action<VaultResult> completed, long? ticketId = null)
         {
             var refusal = CheckWithdraw(player, itemGuid, markedRowVersion, out var row, out var item);
 
@@ -148,11 +152,13 @@ namespace ACE.Server.Market
 
             inFlight.Add(player.Guid.Full);
 
+            var ticket = ticketId == null ? null : new TicketCompletion(ticketId.Value, VaultMessages.WithdrawnByTicket(name, player.Name));
+
             DatabaseManager.Shard.WithdrawFromVault(item.Biota, item.BiotaDatabaseLock, accountId, player.Guid.Full, row.RowVersion, saved =>
             {
                 // this runs on the save thread
                 WorldManager.EnqueueAction(new ActionEventDelegate(() => OnWithdrawn(player, item, name, saved, completed)));
-            });
+            }, ticket);
         }
 
         /// <summary>

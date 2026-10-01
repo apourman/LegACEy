@@ -53,7 +53,7 @@ namespace ACE.Server.Market
         /// </summary>
         public static string ForNotes(VaultOutcome outcome, long amount, long balance)
         {
-            var notes = $"{amount:N0} trade note{(amount == 1 ? "" : "s")}";
+            var notes = TradeNotes(amount);
 
             return outcome switch
             {
@@ -71,6 +71,14 @@ namespace ACE.Server.Market
         }
 
         public static string Balance(long balance) => $"Your balance is {balance:N0} MMD.";
+
+        /// <summary>
+        /// A game bridge withdrawal's result. It is saved with the withdrawal, before anyone knows whether the pack still has room,
+        /// so it holds either way: the item or notes are in the pack now, or at the character's next login.
+        /// </summary>
+        public static string WithdrawnByTicket(string what, string characterName) => $"{what} withdrawn to {characterName}.";
+
+        public static string TradeNotes(long amount) => $"{amount:N0} trade note{(amount == 1 ? "" : "s")}";
 
         public static string LinkCode(string code, long minutes) =>
             $"Your plugin link code is {code}. Enter it in the UtilityBelt plugin within {minutes:N0} minute{(minutes == 1 ? "" : "s")}. It works once, and never share it.";

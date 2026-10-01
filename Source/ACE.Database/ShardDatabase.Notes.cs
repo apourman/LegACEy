@@ -88,8 +88,9 @@ namespace ACE.Database
         /// and inserts the note rows, in one save. The notes' stack sizes must add up to amount.
         /// Returns InsufficientFunds, saving nothing, if the balance is less than amount (balanceAfter is then the current balance),
         /// and Paused, saving nothing, if the market was paused by the time the job started (a pause landing during the job's own save isn't seen).
+        /// A game bridge ticket passed as ticket is marked done in the same save, and the transfer names it.
         /// </summary>
-        public MarketJobResult WithdrawNotes(uint accountId, uint characterId, IReadOnlyList<(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock)> notes, long amount, out long balanceAfter)
+        public MarketJobResult WithdrawNotes(uint accountId, uint characterId, IReadOnlyList<(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock)> notes, long amount, out long balanceAfter, TicketCompletion ticket = null)
         {
             balanceAfter = 0;
 
@@ -133,6 +134,12 @@ namespace ACE.Database
             return SaveLedgerJob(nameof(WithdrawNotes), accountId, context =>
             {
                 var transfer = NewTransfer(TransferKind.NoteWithdraw, accountId, characterId, Ledger.PlayerEntry(accountId, -amount), Ledger.SystemEntry(SystemAccount.Notes, amount));
+
+                if (ticket != null)
+                {
+                    transfer.TicketId = ticket.TicketId;
+                    TicketStore.Complete(context, ticket, transfer.CreatedTime);
+                }
 
                 foreach (var (biota, rwLock) in notes)
                 {

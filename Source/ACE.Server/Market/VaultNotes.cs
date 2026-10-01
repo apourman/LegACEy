@@ -83,8 +83,9 @@ namespace ACE.Server.Market
         /// <summary>
         /// Pays out amount MMD as trade notes, in stacks of up to 1,000. The notes are created in memory and pointed at the player, but only added to the pack
         /// once the save has inserted their rows and debited the balance, so that no save of the pack can write them before the ledger does.
+        /// A game bridge ticket given as ticketId is marked done in the same save, and the transfer names it.
         /// </summary>
-        public static void WithdrawNotes(Player player, long amount, Action<VaultResult> completed = null)
+        public static void WithdrawNotes(Player player, long amount, Action<VaultResult> completed = null, long? ticketId = null)
         {
             if (!Available)
             {
@@ -160,11 +161,13 @@ namespace ACE.Server.Market
 
             inFlight.Add(player.Guid.Full);
 
+            var ticket = ticketId == null ? null : new TicketCompletion(ticketId.Value, VaultMessages.WithdrawnByTicket(VaultMessages.TradeNotes(amount), player.Name));
+
             DatabaseManager.Shard.WithdrawNotes(accountId, player.Guid.Full, notes.Select(n => (n.Biota, n.BiotaDatabaseLock)).ToList(), amount, (result, balanceAfter) =>
             {
                 // this runs on the save thread
                 WorldManager.EnqueueAction(new ActionEventDelegate(() => OnNotesWithdrawn(player, notes, amount, result, balanceAfter, completed)));
-            });
+            }, ticket);
         }
 
         private static void OnNotesDeposited(Player player, List<WorldObject> notes, long amount, MarketJobResult result, long balance, Action<VaultResult> completed)

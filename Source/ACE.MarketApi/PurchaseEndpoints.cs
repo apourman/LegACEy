@@ -21,8 +21,6 @@ namespace ACE.MarketApi
         /// </summary>
         private const int MaxAttempts = 5;
 
-        private const int MaxKeyLength = 64;
-
         private static readonly uint[] noBans = Array.Empty<uint>();
 
         /// <param name="Count">must equal the whole stack</param>
@@ -38,7 +36,7 @@ namespace ACE.MarketApi
 
         private static IResult Purchase(long id, PurchaseRequest request, HttpContext context, MarketDatabase database, TimeProvider time, IMarketPause pause, PurchaseLimiter limiter, IFeePolicy feePolicy, ILoggerFactory loggers)
         {
-            if (request == null || string.IsNullOrEmpty(request.IdempotencyKey) || request.IdempotencyKey.Length > MaxKeyLength)
+            if (request == null || !MarketHttp.IsIdempotencyKey(request.IdempotencyKey))
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_request");
 
             if (!MarketHttp.TryWholeMmd(request.ExpectedPrice, out var expected))

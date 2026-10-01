@@ -71,7 +71,7 @@ namespace ACE.MarketApi
                 token = secret,
                 tokenId = token.Id,
                 label = token.Label,
-                expiresTime = Utc(token.ExpiresTime),
+                expiresTime = MarketHttp.Utc(token.ExpiresTime),
             });
         }
 
@@ -92,9 +92,9 @@ namespace ACE.MarketApi
                 {
                     id = t.Id,
                     label = t.Label,
-                    createdTime = Utc(t.CreatedTime),
-                    lastUsedTime = t.LastUsedTime is DateTime used ? Utc(used) : (DateTime?)null,
-                    expiresTime = Utc(t.ExpiresTime),
+                    createdTime = MarketHttp.Utc(t.CreatedTime),
+                    lastUsedTime = MarketHttp.Utc(t.LastUsedTime),
+                    expiresTime = MarketHttp.Utc(t.ExpiresTime),
                 });
 
             return Results.Json(new { tokens });
@@ -112,7 +112,5 @@ namespace ACE.MarketApi
 
             return Results.Json(new { ok = true });
         }
-
-        private static DateTime Utc(DateTime stored) => DateTime.SpecifyKind(stored, DateTimeKind.Utc);
     }
 }

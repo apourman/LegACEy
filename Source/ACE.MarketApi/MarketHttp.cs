@@ -60,5 +60,19 @@ namespace ACE.MarketApi
         }
 
         public static IResult Error(int statusCode, string error) => Results.Json(new { error }, statusCode: statusCode);
+
+        /// <summary>
+        /// The longest idempotency key a request may carry (the key columns hold 64 characters)
+        /// </summary>
+        public const int MaxIdempotencyKeyLength = 64;
+
+        public static bool IsIdempotencyKey(string key) => !string.IsNullOrEmpty(key) && key.Length <= MaxIdempotencyKeyLength;
+
+        /// <summary>
+        /// A stored time as UTC: datetime(6) columns are UTC by convention, and EF reads them back unspecified
+        /// </summary>
+        public static DateTime Utc(DateTime stored) => DateTime.SpecifyKind(stored, DateTimeKind.Utc);
+
+        public static DateTime? Utc(DateTime? stored) => stored == null ? null : Utc(stored.Value);
     }
 }

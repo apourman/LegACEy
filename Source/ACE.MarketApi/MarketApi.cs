@@ -132,6 +132,7 @@ namespace ACE.MarketApi
             HistoryEndpoints.Map(app);
             PluginTokenEndpoints.Map(app);
             IconEndpoints.Map(app);
+            TicketEndpoints.Map(app);
 
             return app;
         }

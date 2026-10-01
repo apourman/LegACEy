@@ -182,7 +182,8 @@ public partial class ShardDbContext
             entity.Property(e => e.AccountId).HasColumnName("account_Id");
             entity.Property(e => e.CharacterId).HasColumnName("character_Id");
             entity.Property(e => e.Payload).HasColumnType("json").HasColumnName("payload");
-            entity.Property(e => e.Status).IsRequired().HasMaxLength(8).HasColumnName("status");
+            // a concurrency token, so finishing a ticket in the same save as its work only matches a ticket that is still CLAIMED
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(8).IsConcurrencyToken().HasColumnName("status");
             entity.Property(e => e.ResultCode).HasMaxLength(32).HasColumnName("result_Code");
             entity.Property(e => e.ResultMessage).HasMaxLength(512).HasColumnName("result_Message");
             entity.Property(e => e.IdempotencyKey).IsRequired().HasMaxLength(64).UseCollation("utf8mb4_bin").HasColumnName("idempotency_Key");
