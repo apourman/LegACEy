@@ -24,23 +24,31 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const signedIn = useRef(false);
+  const generation = useRef(0);
   const navigate = useNavigate();
   const location = useLocation();
   const currentLocation = useRef(location);
   currentLocation.current = location;
-  async function refresh() {
+  async function refresh(required = false) {
+    const version = ++generation.current;
     try {
       const account = await getMe();
+      if (version !== generation.current) {
+        if (required) throw new ApiError('unauthorized', 401);
+        return;
+      }
       signedIn.current = true;
       setMe(account); setCharacterId(readCharacter(account)); setError('');
     } catch (e) {
-      if (!(e instanceof ApiError && e.status === 401)) setError(e instanceof Error ? e.message : 'Could not load your account.');
-    } finally { setLoading(false); }
+      if (version === generation.current && !(e instanceof ApiError && e.status === 401)) setError(e instanceof Error ? e.message : 'Could not load your account.');
+      if (required) throw e;
+    } finally { if (version === generation.current) setLoading(false); }
   }
   useEffect(() => {
     const ended = () => {
       if (!signedIn.current) return;
-      signedIn.current = false; setMe(null); setCharacterId(null);
+      generation.current++;
+      signedIn.current = false; setMe(null); setCharacterId(null); setLoading(false); setError('');
       const here = currentLocation.current;
       navigate('/signin', { state: { ended: true, returnTo: here.pathname + here.search } });
     };
@@ -56,11 +64,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try { localStorage.setItem(`market-character-${me.accountId}`, String(id)); } catch { /* The selection still works for this page. */ }
   }
   async function login(account: string, password: string) {
+    generation.current++;
+    signedIn.current = false;
     await signIn(account, password);
-    await refresh();
+    await refresh(true);
   }
   async function logout() {
-    await signOut(); signedIn.current = false; setMe(null); setCharacterId(null); navigate('/');
+    generation.current++;
+    await signOut(); generation.current++; signedIn.current = false; setMe(null); setCharacterId(null); setError(''); navigate('/');
   }
   return <SessionContext.Provider value={{ me, characterId, loading, error, selectCharacter, refresh, login, logout }}>{children}</SessionContext.Provider>;
 }

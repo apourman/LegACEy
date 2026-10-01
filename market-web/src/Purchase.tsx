@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ApiError, getListing, purchase, type Detail, type PurchaseRequest } from './api';
+import { ApiError, getListing, purchase, type Detail, type Me, type PurchaseRequest } from './api';
 import { useSession } from './session';
 
 interface Attempt { item: Detail; request: PurchaseRequest; characterName: string; balanceAfter: number }
+function makeAttempt(item: Detail, account: Me, characterId: number): Attempt {
+  const character = account.characters.find(c => c.id === characterId);
+  if (!character) throw new ApiError('invalid_character', 400);
+  return { item, characterName: character.name, balanceAfter: account.balance - item.price,
+    request: { count: item.quantity, expectedPrice: item.price, characterId: character.id, idempotencyKey: crypto.randomUUID() } };
+}
 export function PurchaseDialog({ item, close }: { item: Detail; close: () => void }) {
   const session = useSession();
-  const [attempt, setAttempt] = useState<Attempt>(() => {
-    const character = session.me!.characters.find(c => c.id === session.characterId)!;
-    return { item, characterName: character.name, balanceAfter: session.me!.balance - item.price,
-      request: { count: item.quantity, expectedPrice: item.price, characterId: character.id, idempotencyKey: crypto.randomUUID() } };
-  });
+  const [attempt, setAttempt] = useState<Attempt>(() => makeAttempt(item, session.me!, session.characterId!));
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
   const [error, setError] = useState<ApiError | null>(null);
@@ -18,7 +20,7 @@ export function PurchaseDialog({ item, close }: { item: Detail; close: () => voi
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => { dialog.current?.showModal(); }, []);
   async function confirm() {
-    if (inFlight.current || bought) return;
+    if (inFlight.current || bought || session.me?.paused) return;
     inFlight.current = true; setBusy(true); setError(null);
     try {
       await purchase(attempt.item.id, attempt.request);
@@ -34,10 +36,7 @@ export function PurchaseDialog({ item, close }: { item: Detail; close: () => voi
     inFlight.current = true; setBusy(true);
     try {
       const fresh = await getListing(item.id);
-      const character = session.me.characters.find(c => c.id === session.characterId);
-      if (!character) throw new ApiError('invalid_character', 400);
-      setAttempt({ item: fresh, characterName: character.name, balanceAfter: session.me.balance - fresh.price,
-        request: { count: fresh.quantity, expectedPrice: fresh.price, characterId: character.id, idempotencyKey: crypto.randomUUID() } });
+      setAttempt(makeAttempt(fresh, session.me, session.characterId));
       setError(null);
     } catch (e) { setError(e instanceof ApiError ? e : new ApiError('network', 0)); }
     finally { inFlight.current = false; setBusy(false); }
@@ -54,10 +53,11 @@ export function PurchaseDialog({ item, close }: { item: Detail; close: () => voi
     <h2 id="purchase-title">{bought ? 'Purchase complete' : 'Confirm purchase'}</h2>
     <p><strong>{attempt.item.name} × {attempt.request.count}</strong></p>
     <dl><dt>Buying as</dt><dd>{attempt.characterName}</dd><dt>Whole stack price</dt><dd>{attempt.request.expectedPrice} MMD</dd><dt>Balance after purchase</dt><dd>{attempt.balanceAfter} MMD</dd></dl>
+    {session.me?.paused && !bought && error?.code !== 'paused' && <p role="status" className="notice">The market is paused. Purchases are temporarily unavailable.</p>}
     {error && <p role="alert" className="notice">{error.message}{error.code === 'price_changed' && ` New price: ${error.price} MMD.`}</p>}
     {bought ? <><p role="status">Purchased. Your item is in your Vault.</p><Link className="button" to="/vault" onClick={close}>Go to Vault</Link></> :
       error?.code === 'price_changed' ? <button disabled={busy} onClick={() => void newPriceAttempt()}>Review new price</button> :
-      (!error || retryable) && <button disabled={busy} onClick={() => void confirm()}>{busy ? 'Purchasing…' : retryable ? 'Retry this attempt' : 'Confirm purchase'}</button>}
+      (!error || retryable) && <button disabled={busy || session.me?.paused} onClick={() => void confirm()}>{busy ? 'Purchasing…' : retryable ? 'Retry this attempt' : 'Confirm purchase'}</button>}
     <button className="secondary" disabled={busy} onClick={close}>{bought ? 'Close' : 'Cancel'}</button>
   </dialog>;
 }

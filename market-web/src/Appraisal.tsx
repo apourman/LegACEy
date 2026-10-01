@@ -36,9 +36,10 @@ export function AppraisalPopover({ item }: { item: Listing }) {
     return () => { active = false; };
   }, [open, detail, item.id]);
   return <div className="popover-anchor" onPointerEnter={e => { if (e.pointerType === "mouse") setOpen(true); }} onPointerLeave={e => { if (e.pointerType === "mouse") setOpen(false); }}
+    onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); } }}
     onFocus={() => setOpen(true)} onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false); }}>
     <button className="icon-button" aria-label={`Appraise ${item.name}`} aria-expanded={open} aria-controls={id}
-      onClick={() => setOpen(true)} onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); } }}><Icon icon={item.icon} /></button>
+      onClick={() => setOpen(true)}><Icon icon={item.icon} /></button>
     {open && <div id={id} role="region" aria-label={`${item.name} appraisal`} className="popover">
       <button className="close-popover" aria-label="Close appraisal" onClick={() => setOpen(false)}>×</button>
       <strong>{item.name} × {item.quantity}</strong><p>{item.price} MMD · {item.seller}</p>

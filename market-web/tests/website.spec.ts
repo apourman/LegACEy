@@ -159,3 +159,54 @@ test('load more uses cursor and filter changes discard previous rows', async ({ 
   await expect(page.getByRole('heading', { name: 'No listings match' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Bone Slicer' })).toHaveCount(0);
 });
+
+test('a delayed account refresh cannot restore the account after sign-out', async ({ page }) => {
+  let calls = 0;
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/me', async route => {
+    if (++calls > 1) await pending;
+    await route.fulfill({ json: me });
+  });
+  await page.route('**/api/auth/logout', route => route.fulfill({ json: { ok: true } }));
+  await page.goto('/');
+  await expect(page.getByText('Alpha', { exact: true })).toBeVisible();
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await expect.poll(() => calls).toBe(2);
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await expect(page.getByRole('link', { name: 'Sign in', exact: true })).toBeVisible();
+  const response = page.waitForResponse('**/api/me'); release(); await response;
+  await page.waitForTimeout(100);
+  await expect(page.getByText('Alpha', { exact: true })).toHaveCount(0);
+});
+test('sign-in stays on the form when loading the account fails', async ({ page }) => {
+  let authenticated = false;
+  await page.route('**/api/auth/login', route => { authenticated = true; return route.fulfill({ json: { ok: true } }); });
+  await page.route('**/api/me', route => route.fulfill(authenticated ? { status: 503, json: { error: 'server' } } : { status: 401, json: { error: 'unauthorized' } }));
+  await page.goto('/signin');
+  await page.getByLabel('Account name').fill('Alpha'); await page.getByLabel('Password', { exact: true }).fill('pass');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  await expect(page.locator('.signin [role="alert"]')).toContainText('server is unavailable');
+});
+test('Escape dismisses appraisal from its close button', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Appraise Bone Slicer' }).focus();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Close appraisal' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('region', { name: 'Bone Slicer appraisal' })).toHaveCount(0);
+});
+test('an open purchase stays fixed but is disabled after pause is refreshed', async ({ page }) => {
+  let paused = false;
+  await page.route('**/api/me', route => route.fulfill({ json: { ...me, paused } }));
+  await page.goto('/listing/1');
+  await page.getByRole('button', { name: 'Buy', exact: true }).click();
+  paused = true;
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await expect(page.getByRole('button', { name: 'Confirm purchase' })).toBeDisabled();
+  paused = false;
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await expect(page.getByRole('button', { name: 'Confirm purchase' })).toBeEnabled();
+  await expect(page.getByRole('dialog')).toContainText('380 MMD');
+});
