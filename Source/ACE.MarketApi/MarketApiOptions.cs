@@ -22,6 +22,16 @@ namespace ACE.MarketApi
         public string ShardDatabase { get; set; }
 
         /// <summary>
+        /// Replaces Config.js's MySQL user for the auth and shard databases. A container mounts a Config.js without a login and gets this from docker.env.
+        /// </summary>
+        public string DatabaseUsername { get; set; }
+
+        /// <summary>
+        /// Replaces Config.js's MySQL password for the auth and shard databases (see DatabaseUsername)
+        /// </summary>
+        public string DatabasePassword { get; set; }
+
+        /// <summary>
         /// Where the cookie signing keys are kept. Put it on a volume, so a restart or redeploy doesn't sign everyone out.
         /// </summary>
         public string KeysPath { get; set; } = "keys";

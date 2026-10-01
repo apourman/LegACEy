@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 
 using Microsoft.EntityFrameworkCore;
 
+using MySqlConnector;
+
 using ACE.Common;
 using ACE.Database;
 using ACE.Database.Models.Auth;
@@ -21,10 +23,12 @@ namespace ACE.MarketApi
         private readonly DbContextOptions<AuthDbContext> authOptions;
         private readonly DbContextOptions<ShardDbContext> shardOptions;
 
-        public MarketDatabase(DatabaseConfiguration config, string authDatabase = null, string shardDatabase = null)
+        /// <param name="username">replaces the configured MySQL user when set</param>
+        /// <param name="password">replaces the configured MySQL password when set</param>
+        public MarketDatabase(DatabaseConfiguration config, string authDatabase = null, string shardDatabase = null, string username = null, string password = null)
         {
-            authOptions = Options<AuthDbContext>(config.Authentication, authDatabase);
-            shardOptions = Options<ShardDbContext>(config.Shard, shardDatabase);
+            authOptions = Options<AuthDbContext>(config.Authentication, authDatabase, username, password);
+            shardOptions = Options<ShardDbContext>(config.Shard, shardDatabase, username, password);
         }
 
         public AuthDbContext CreateAuth() => new AuthDbContext(authOptions);
@@ -73,11 +77,19 @@ namespace ACE.MarketApi
         /// <summary>
         /// Configured like the generated contexts' OnConfiguring, retry on failure included
         /// </summary>
-        private static DbContextOptions<T> Options<T>(MySqlConfiguration config, string databaseOverride) where T : DbContext
+        private static DbContextOptions<T> Options<T>(MySqlConfiguration config, string databaseOverride, string usernameOverride, string passwordOverride) where T : DbContext
         {
             var database = string.IsNullOrWhiteSpace(databaseOverride) ? config.Database : databaseOverride;
 
-            var connectionString = $"server={config.Host};port={config.Port};user={config.Username};password={config.Password};database={database};{config.ConnectionOptions}";
+            // built, not concatenated, so a password from docker.env may contain ';' or quotes
+            var connectionString = new MySqlConnectionStringBuilder(config.ConnectionOptions)
+            {
+                Server = config.Host,
+                Port = config.Port,
+                UserID = string.IsNullOrEmpty(usernameOverride) ? config.Username : usernameOverride,
+                Password = string.IsNullOrEmpty(passwordOverride) ? config.Password : passwordOverride,
+                Database = database,
+            }.ConnectionString;
 
             var builder = new DbContextOptionsBuilder<T>()
                 .UseMySql(connectionString, DatabaseManager.CachedServerVersionAutoDetect(database, connectionString), mysql =>

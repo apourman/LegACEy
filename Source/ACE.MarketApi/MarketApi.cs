@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -28,6 +29,11 @@ namespace ACE.MarketApi
         public const string SessionCookieName = "market_session";
 
         /// <summary>
+        /// Every route is served under this path; the website owns the rest of the origin
+        /// </summary>
+        public const string PathBase = "/api";
+
+        /// <summary>
         /// Builds the API. Throws MarketUnavailableException, and so never starts, when the market's tables or the portal DAT are missing.
         /// </summary>
         /// <param name="configure">runs first, so a test host can swap in its own server, clock or services</param>
@@ -42,7 +48,7 @@ namespace ACE.MarketApi
             if (ConfigManager.Config == null)
                 ConfigManager.Initialize(options.AceConfigPath);
 
-            var database = new MarketDatabase(ConfigManager.Config.MySql, options.AuthDatabase, options.ShardDatabase);
+            var database = new MarketDatabase(ConfigManager.Config.MySql, options.AuthDatabase, options.ShardDatabase, options.DatabaseUsername, options.DatabasePassword);
 
             // the update runner marks even a failed script as applied, so check the tables ourselves
             using (var shard = database.CreateShard())
@@ -124,17 +130,52 @@ namespace ACE.MarketApi
             app.UseAuthentication();
             app.UseAuthorization();
 
-            AuthEndpoints.Map(app);
-            AccountEndpoints.Map(app);
-            ListingEndpoints.Map(app);
-            CatalogEndpoints.Map(app);
-            PurchaseEndpoints.Map(app);
-            HistoryEndpoints.Map(app);
-            PluginTokenEndpoints.Map(app);
-            IconEndpoints.Map(app);
-            TicketEndpoints.Map(app);
+            // the website and the API share one origin: the website owns /, the API /api. No CORS policy, so other origins can't read answers.
+            var api = app.MapGroup(PathBase);
+            api.AddEndpointFilter(RequireRequestHeader);
+
+            AuthEndpoints.Map(api);
+            AccountEndpoints.Map(api);
+            ListingEndpoints.Map(api);
+            CatalogEndpoints.Map(api);
+            PurchaseEndpoints.Map(api);
+            HistoryEndpoints.Map(api);
+            PluginTokenEndpoints.Map(api);
+            IconEndpoints.Map(api);
+            TicketEndpoints.Map(api);
 
             return app;
+        }
+
+        /// <summary>
+        /// The header every website request carries. Another site can make a browser send the session cookie, but not a custom header,
+        /// without a CORS preflight the API never approves.
+        /// </summary>
+        public const string RequestHeader = "X-Market-Request";
+
+        /// <summary>
+        /// CSRF: a request that changes something and is signed in by the session cookie must carry X-Market-Request: 1, or it's refused (403 csrf).
+        /// A request signed in by a plugin token is exempt: the token is never sent by a browser on its own.
+        /// </summary>
+        private static async ValueTask<object> RequireRequestHeader(EndpointFilterInvocationContext invocation, EndpointFilterDelegate next)
+        {
+            var context = invocation.HttpContext;
+            var method = context.Request.Method;
+
+            if (HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method) || HttpMethods.IsTrace(method))
+                return await next(invocation);
+
+            if (context.Request.Headers[RequestHeader] == "1")
+                return await next(invocation);
+
+            // both are cached for the request, so the authorization middleware's own authentication isn't repeated
+            if ((await context.AuthenticateAsync(PluginTokenAuthenticationHandler.SchemeName)).Succeeded)
+                return await next(invocation);
+
+            if (!(await context.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)).Succeeded)
+                return await next(invocation);
+
+            return MarketHttp.Error(StatusCodes.Status403Forbidden, "csrf");
         }
 
         /// <summary>

@@ -95,16 +95,16 @@ namespace ACE.MarketApi.Tests
             var guid = MarketApiTestData.AddVaultItem(seller.AccountId, seller.CharacterId, "Iconic " + itemType, VaultItemState.Held);
             MarketApiTestData.SetVaultColumns(guid, $"item_Type = {(int)itemType}" + (vaultColumns != null ? ", " + vaultColumns : ""));
 
-            var listed = await host.PostJsonAsync("/listings", new { itemGuid = guid, price = 5 }, seller.Cookie);
+            var listed = await host.PostJsonAsync("/api/listings", new { itemGuid = guid, price = 5 }, seller.Cookie);
             Assert.AreEqual(HttpStatusCode.Created, listed.StatusCode, await listed.Content.ReadAsStringAsync());
             var id = (await MarketApiHost.JsonAsync(listed)).GetProperty("id").GetInt64();
 
-            var detail = await host.GetAsync($"/listings/{id}");
+            var detail = await host.GetAsync($"/api/listings/{id}");
             Assert.AreEqual(HttpStatusCode.OK, detail.StatusCode);
             var icon = (await MarketApiHost.JsonAsync(detail)).GetProperty("icon");
 
             // browse rows carry the same icon
-            var browse = await MarketApiHost.JsonAsync(await host.GetAsync("/listings?limit=100"));
+            var browse = await MarketApiHost.JsonAsync(await host.GetAsync("/api/listings?limit=100"));
             var row = browse.GetProperty("listings").EnumerateArray().Single(l => l.GetProperty("id").GetInt64() == id);
             Assert.AreEqual(icon.GetRawText(), row.GetProperty("icon").GetRawText());
 
@@ -185,7 +185,7 @@ namespace ACE.MarketApi.Tests
 
             foreach (var id in new[] { ArmorPlate, WeaponPlate, NariyidIconPalette20 })
             {
-                using var bitmap = DecodePng(await GetPngAsync(host, $"/icons/0x{id:X8}.png"));
+                using var bitmap = DecodePng(await GetPngAsync(host, $"/api/icons/0x{id:X8}.png"));
 
                 Assert.AreEqual(32, bitmap.Width);
                 Assert.AreEqual(32, bitmap.Height);
@@ -247,19 +247,19 @@ namespace ACE.MarketApi.Tests
             var cache = NewCacheDirectory();
             await using var host = await StartAsync(cache);
 
-            var first = await GetPngAsync(host, $"/icons/0x{ArmorPlate:X8}.png");
+            var first = await GetPngAsync(host, $"/api/icons/0x{ArmorPlate:X8}.png");
             var cached = Path.Combine(cache, $"0x{ArmorPlate:X8}.png");
             Assert.IsTrue(File.Exists(cached), "the first request writes the PNG to the disk cache");
             CollectionAssert.AreEqual(first, File.ReadAllBytes(cached));
 
             // swap the cached file for another icon's: a second request that serves it came from the disk, not the DAT
-            var other = await GetPngAsync(host, $"/icons/0x{WeaponPlate:X8}.png");
+            var other = await GetPngAsync(host, $"/api/icons/0x{WeaponPlate:X8}.png");
             File.WriteAllBytes(cached, other);
 
-            CollectionAssert.AreEqual(other, await GetPngAsync(host, $"/icons/0x{ArmorPlate:X8}.png"));
+            CollectionAssert.AreEqual(other, await GetPngAsync(host, $"/api/icons/0x{ArmorPlate:X8}.png"));
 
             // palette variants are cached under their own key
-            await GetPngAsync(host, $"/icons/0x{NariyidIconPalette19:X8}_p19.png");
+            await GetPngAsync(host, $"/api/icons/0x{NariyidIconPalette19:X8}_p19.png");
             Assert.IsTrue(File.Exists(Path.Combine(cache, $"0x{NariyidIconPalette19:X8}_p19.png")));
         }
 
@@ -271,14 +271,14 @@ namespace ACE.MarketApi.Tests
 
             foreach (var path in new[]
             {
-                "/icons/0x12345678.png",                          // not a texture id
-                "/icons/0x06FFFFF0.png",                          // not in the DAT
-                $"/icons/0x{IndexedTexture:X8}.png",              // a texture, but not a 32×32 icon
-                $"/icons/0x{NariyidIconPalette19:X8}_p99.png",    // no clothing table gives this icon for palette 99
-                "/icons/0x060011CF.gif",
-                "/icons/060011CF.png",
-                "/icons/0x060011CF_p.png",
-                "/icons/0x060011CF_p123456789012.png",
+                "/api/icons/0x12345678.png",                          // not a texture id
+                "/api/icons/0x06FFFFF0.png",                          // not in the DAT
+                $"/api/icons/0x{IndexedTexture:X8}.png",              // a texture, but not a 32×32 icon
+                $"/api/icons/0x{NariyidIconPalette19:X8}_p99.png",    // no clothing table gives this icon for palette 99
+                "/api/icons/0x060011CF.gif",
+                "/api/icons/060011CF.png",
+                "/api/icons/0x060011CF_p.png",
+                "/api/icons/0x060011CF_p123456789012.png",
             })
             {
                 var response = await host.GetAsync(path);
@@ -318,11 +318,11 @@ namespace ACE.MarketApi.Tests
 
                 var expected = new List<(string, uint, string)>
                 {
-                    ("plate", plate, $"/icons/0x{plate:X8}.png"),
-                    ("underlay", Underlay, $"/icons/0x{Underlay:X8}.png"),
-                    ("base", NariyidIconPalette20, $"/icons/0x{NariyidIconPalette20:X8}.png"),
-                    ("overlay", Overlay, $"/icons/0x{Overlay:X8}.png"),
-                    ("overlaySecondary", OverlaySecondary, $"/icons/0x{OverlaySecondary:X8}.png"),
+                    ("plate", plate, $"/api/icons/0x{plate:X8}.png"),
+                    ("underlay", Underlay, $"/api/icons/0x{Underlay:X8}.png"),
+                    ("base", NariyidIconPalette20, $"/api/icons/0x{NariyidIconPalette20:X8}.png"),
+                    ("overlay", Overlay, $"/api/icons/0x{Overlay:X8}.png"),
+                    ("overlaySecondary", OverlaySecondary, $"/api/icons/0x{OverlaySecondary:X8}.png"),
                 };
                 CollectionAssert.AreEqual(expected, Layers(icon), type.ToString());
             }
@@ -331,8 +331,8 @@ namespace ACE.MarketApi.Tests
             var plain = await ListedIconAsync(host, seller, ItemType.Gem, $"icon = {NariyidIconPalette20}");
             CollectionAssert.AreEqual(new List<(string, uint, string)>
             {
-                ("plate", GemPlate, $"/icons/0x{GemPlate:X8}.png"),
-                ("base", NariyidIconPalette20, $"/icons/0x{NariyidIconPalette20:X8}.png"),
+                ("plate", GemPlate, $"/api/icons/0x{GemPlate:X8}.png"),
+                ("base", NariyidIconPalette20, $"/api/icons/0x{NariyidIconPalette20:X8}.png"),
             }, Layers(plain));
 
             // every layer URL serves a PNG
@@ -357,7 +357,7 @@ namespace ACE.MarketApi.Tests
             var baseLayer = icon.GetProperty("layers").EnumerateArray().Single(l => l.GetProperty("kind").GetString() == "base");
             Assert.AreEqual(NariyidIconPalette19, baseLayer.GetProperty("id").GetUInt32());
             Assert.AreEqual(19, baseLayer.GetProperty("paletteTemplate").GetInt32());
-            Assert.AreEqual($"/icons/0x{NariyidIconPalette19:X8}_p19.png", baseLayer.GetProperty("url").GetString());
+            Assert.AreEqual($"/api/icons/0x{NariyidIconPalette19:X8}_p19.png", baseLayer.GetProperty("url").GetString());
 
             // its colors are template 19's, not the default's
             using var dyed = DecodePng(await GetPngAsync(host, baseLayer.GetProperty("url").GetString()));
@@ -370,7 +370,7 @@ namespace ACE.MarketApi.Tests
             {
                 var kept = (await ListedIconAsync(host, seller, ItemType.Armor, columns)).GetProperty("layers").EnumerateArray().Single(l => l.GetProperty("kind").GetString() == "base");
                 Assert.AreEqual(NariyidIconPalette20, kept.GetProperty("id").GetUInt32(), columns);
-                Assert.AreEqual($"/icons/0x{NariyidIconPalette20:X8}.png", kept.GetProperty("url").GetString(), columns);
+                Assert.AreEqual($"/api/icons/0x{NariyidIconPalette20:X8}.png", kept.GetProperty("url").GetString(), columns);
                 Assert.IsFalse(kept.TryGetProperty("paletteTemplate", out _), columns);
             }
 
@@ -387,7 +387,7 @@ namespace ACE.MarketApi.Tests
 
             // the reference site's own PNG for its Nariyid Breastplate (palette template 19), downloaded 2026-09-30
             using var reference = DecodePng(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "reference_0x06003237_p19.png")));
-            using var ours = DecodePng(await GetPngAsync(host, $"/icons/0x{NariyidIconPalette19:X8}_p19.png"));
+            using var ours = DecodePng(await GetPngAsync(host, $"/api/icons/0x{NariyidIconPalette19:X8}_p19.png"));
 
             AssertSamePixels(Enumerable.Range(0, reference.Width * reference.Height).Select(i => reference.GetPixel(i % reference.Width, i / reference.Width)).ToArray(), ours, "reference");
         }
@@ -424,7 +424,7 @@ namespace ACE.MarketApi.Tests
         {
             await using var host = await StartAsync(NewCacheDirectory());
 
-            var response = await host.GetAsync("/icons/glow.css");
+            var response = await host.GetAsync("/api/icons/glow.css");
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
             Assert.AreEqual("text/css", response.Content.Headers.ContentType?.MediaType);
             var css = await response.Content.ReadAsStringAsync();

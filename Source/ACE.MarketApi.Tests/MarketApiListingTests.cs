@@ -12,7 +12,7 @@ using ACE.MarketApi.Tests.Support;
 namespace ACE.MarketApi.Tests
 {
     /// <summary>
-    /// POST /listings, delisting, expiry, bans, and GET /listings/{id}
+    /// POST /api/listings, delisting, expiry, bans, and GET /api/listings/{id}
     /// </summary>
     [TestClass]
     public class MarketApiListingTests
@@ -30,7 +30,7 @@ namespace ACE.MarketApi.Tests
         }
 
         private static async Task<HttpResponseMessage> ListAsync(MarketApiHost host, string cookie, uint itemGuid, long price) =>
-            await host.PostJsonAsync("/listings", new { itemGuid, price }, cookie);
+            await host.PostJsonAsync("/api/listings", new { itemGuid, price }, cookie);
 
         private static async Task<long> ListOkAsync(MarketApiHost host, string cookie, uint itemGuid, long price)
         {
@@ -42,7 +42,7 @@ namespace ACE.MarketApi.Tests
 
         private static async Task<JsonElement[]> BrowseAsync(MarketApiHost host, string query)
         {
-            var response = await host.GetAsync("/listings?" + query);
+            var response = await host.GetAsync("/api/listings?" + query);
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
 
             return (await MarketApiHost.JsonAsync(response)).GetProperty("listings").EnumerateArray().ToArray();
@@ -72,7 +72,7 @@ namespace ACE.MarketApi.Tests
             var response = await ListAsync(host, cookie, guid, 150);
             Assert.AreEqual(HttpStatusCode.Created, response.StatusCode, await response.Content.ReadAsStringAsync());
             var id = (await MarketApiHost.JsonAsync(response)).GetProperty("id").GetInt64();
-            Assert.AreEqual($"/listings/{id}", response.Headers.Location?.OriginalString);
+            Assert.AreEqual($"/api/listings/{id}", response.Headers.Location?.OriginalString);
 
             Assert.AreEqual(VaultItemState.Listed, VaultState(guid));
             Assert.AreEqual(Database.Models.Shard.Market.ListingStatus.Active, ListingStatus(id));
@@ -95,7 +95,7 @@ namespace ACE.MarketApi.Tests
             var baseLayer = row.GetProperty("icon").GetProperty("layers").EnumerateArray().Single(l => l.GetProperty("kind").GetString() == "base");
             Assert.AreEqual(100667000u, baseLayer.GetProperty("id").GetUInt32());
 
-            var detailResponse = await host.GetAsync($"/listings/{id}");
+            var detailResponse = await host.GetAsync($"/api/listings/{id}");
             Assert.AreEqual(HttpStatusCode.OK, detailResponse.StatusCode);
             var detail = await MarketApiHost.JsonAsync(detailResponse);
             Assert.AreEqual(id, detail.GetProperty("id").GetInt64());
@@ -120,7 +120,7 @@ namespace ACE.MarketApi.Tests
             await using var host = await MarketApiHost.StartAsync();
             var id = await ListOkAsync(host, await host.SignInForCookieAsync(seller.Name, "pass"), guid, 5);
 
-            var detail = await MarketApiHost.JsonAsync(await host.GetAsync($"/listings/{id}"));
+            var detail = await MarketApiHost.JsonAsync(await host.GetAsync($"/api/listings/{id}"));
             Assert.AreEqual("Level 150", detail.GetProperty("wield").GetString());
             Assert.AreEqual(150, (await BrowseAsync(host, "q=" + Uri.EscapeDataString(name))).Single().GetProperty("level").GetInt32());
         }
@@ -141,11 +141,11 @@ namespace ACE.MarketApi.Tests
                 Assert.AreEqual("invalid_price", await MarketApiHost.ErrorAsync(response));
             }
 
-            var fractional = await host.PostJsonAsync("/listings", $"{{\"itemGuid\": {guid}, \"price\": 1.5}}", cookie);
+            var fractional = await host.PostJsonAsync("/api/listings", $"{{\"itemGuid\": {guid}, \"price\": 1.5}}", cookie);
             Assert.AreEqual(HttpStatusCode.BadRequest, fractional.StatusCode);
             Assert.AreEqual("invalid_price", await MarketApiHost.ErrorAsync(fractional));
 
-            var missing = await host.PostJsonAsync("/listings", $"{{\"itemGuid\": {guid}}}", cookie);
+            var missing = await host.PostJsonAsync("/api/listings", $"{{\"itemGuid\": {guid}}}", cookie);
             Assert.AreEqual(HttpStatusCode.BadRequest, missing.StatusCode);
             Assert.AreEqual("invalid_price", await MarketApiHost.ErrorAsync(missing));
 
@@ -267,7 +267,7 @@ namespace ACE.MarketApi.Tests
             await using var host = await MarketApiHost.StartAsync();
 
             Assert.AreEqual(HttpStatusCode.Unauthorized, (await ListAsync(host, null, guid, 10)).StatusCode);
-            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.PostJsonAsync("/listings/1/delist", new { })).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.PostJsonAsync("/api/listings/1/delist", new { })).StatusCode);
             Assert.AreEqual(VaultItemState.Held, VaultState(guid));
         }
 
@@ -283,15 +283,15 @@ namespace ACE.MarketApi.Tests
             await using var host = await MarketApiHost.StartAsync();
             var cookie = await host.SignInForCookieAsync(seller.Name, "pass");
 
-            var foreign = await host.PostJsonAsync("/listings", new { itemGuid = guid, price = 3, characterId = stranger.CharacterId }, cookie);
+            var foreign = await host.PostJsonAsync("/api/listings", new { itemGuid = guid, price = 3, characterId = stranger.CharacterId }, cookie);
             Assert.AreEqual(HttpStatusCode.BadRequest, foreign.StatusCode);
             Assert.AreEqual("invalid_character", await MarketApiHost.ErrorAsync(foreign));
 
-            var response = await host.PostJsonAsync("/listings", new { itemGuid = guid, price = 3, characterId = alt }, cookie);
+            var response = await host.PostJsonAsync("/api/listings", new { itemGuid = guid, price = 3, characterId = alt }, cookie);
             Assert.AreEqual(HttpStatusCode.Created, response.StatusCode, await response.Content.ReadAsStringAsync());
             var id = (await MarketApiHost.JsonAsync(response)).GetProperty("id").GetInt64();
 
-            Assert.AreEqual(altName, (await MarketApiHost.JsonAsync(await host.GetAsync($"/listings/{id}"))).GetProperty("seller").GetString());
+            Assert.AreEqual(altName, (await MarketApiHost.JsonAsync(await host.GetAsync($"/api/listings/{id}"))).GetProperty("seller").GetString());
             Assert.AreEqual((long)alt, MarketApiTestData.Scalar($"SELECT seller_Character_Id FROM market_listing WHERE id = {id};"));
         }
 
@@ -310,13 +310,13 @@ namespace ACE.MarketApi.Tests
             var id = await ListOkAsync(host, cookie, guid, 40);
 
             // someone else's listing, or one that doesn't exist, isn't found
-            var notMine = await host.PostJsonAsync($"/listings/{id}/delist", new { }, await host.SignInForCookieAsync(other.Name, "pass"));
+            var notMine = await host.PostJsonAsync($"/api/listings/{id}/delist", new { }, await host.SignInForCookieAsync(other.Name, "pass"));
             Assert.AreEqual(HttpStatusCode.NotFound, notMine.StatusCode);
             Assert.AreEqual("not_found", await MarketApiHost.ErrorAsync(notMine));
-            Assert.AreEqual(HttpStatusCode.NotFound, (await host.PostJsonAsync("/listings/987654321/delist", new { }, cookie)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.NotFound, (await host.PostJsonAsync("/api/listings/987654321/delist", new { }, cookie)).StatusCode);
             Assert.AreEqual(VaultItemState.Listed, VaultState(guid));
 
-            var response = await host.PostJsonAsync($"/listings/{id}/delist", new { }, cookie);
+            var response = await host.PostJsonAsync($"/api/listings/{id}/delist", new { }, cookie);
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
 
             Assert.AreEqual(VaultItemState.Held, VaultState(guid));
@@ -327,12 +327,12 @@ namespace ACE.MarketApi.Tests
             CollectionAssert.AreEqual(new[] { $"list:{id}", $"delist:{id}" }, Events(guid));
             Assert.AreEqual(0, (await BrowseAsync(host, "q=" + Uri.EscapeDataString(name))).Length);
 
-            var twice = await host.PostJsonAsync($"/listings/{id}/delist", new { }, cookie);
+            var twice = await host.PostJsonAsync($"/api/listings/{id}/delist", new { }, cookie);
             Assert.AreEqual(HttpStatusCode.Conflict, twice.StatusCode);
             Assert.AreEqual("not_active", await MarketApiHost.ErrorAsync(twice));
 
             // the Vault shows it held, and it can be listed again
-            var vault = await MarketApiHost.JsonAsync(await host.GetAsync("/vault", cookie));
+            var vault = await MarketApiHost.JsonAsync(await host.GetAsync("/api/vault", cookie));
             Assert.AreEqual("held", vault.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("itemGuid").GetUInt32() == guid).GetProperty("state").GetString());
             await ListOkAsync(host, cookie, guid, 45);
         }
@@ -352,7 +352,7 @@ namespace ACE.MarketApi.Tests
 
             host.Clock.Advance(TimeSpan.FromDays(14) - TimeSpan.FromSeconds(1));
             Assert.AreEqual(1, (await BrowseAsync(host, "q=" + Uri.EscapeDataString(name))).Length, "still listed just before its lifetime ends");
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync($"/listings/{id}")).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync($"/api/listings/{id}")).StatusCode);
 
             host.Clock.Advance(TimeSpan.FromSeconds(1));
             Assert.AreEqual(0, (await BrowseAsync(host, "q=" + Uri.EscapeDataString(name))).Length);
@@ -360,7 +360,7 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual(Database.Models.Shard.Market.ListingStatus.Expired, ListingStatus(id));
             Assert.AreEqual(VaultItemState.Held, VaultState(guid));
             CollectionAssert.AreEqual(new[] { $"list:{id}", $"expire:{id}" }, Events(guid));
-            Assert.AreEqual(HttpStatusCode.NotFound, (await host.GetAsync($"/listings/{id}")).StatusCode);
+            Assert.AreEqual(HttpStatusCode.NotFound, (await host.GetAsync($"/api/listings/{id}")).StatusCode);
 
             // relisting works (the session is 14 days old, so sign in again)
             await ListOkAsync(host, await host.SignInForCookieAsync(seller.Name, "pass"), guid, 12);
@@ -380,10 +380,10 @@ namespace ACE.MarketApi.Tests
             try
             {
                 host.Clock.Advance(TimeSpan.FromDays(1));
-                Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync($"/listings/{id}")).StatusCode);
+                Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync($"/api/listings/{id}")).StatusCode);
 
                 host.Clock.Advance(TimeSpan.FromDays(1));
-                Assert.AreEqual(HttpStatusCode.NotFound, (await host.GetAsync($"/listings/{id}")).StatusCode);
+                Assert.AreEqual(HttpStatusCode.NotFound, (await host.GetAsync($"/api/listings/{id}")).StatusCode);
                 Assert.AreEqual(Database.Models.Shard.Market.ListingStatus.Expired, ListingStatus(id));
                 Assert.AreEqual(VaultItemState.Held, VaultState(guid));
             }
@@ -422,7 +422,7 @@ namespace ACE.MarketApi.Tests
                 Assert.AreEqual(Database.Models.Shard.Market.ListingStatus.BanReturned, ListingStatus(listing));
                 Assert.AreEqual(VaultItemState.Held, VaultState(item));
                 CollectionAssert.AreEqual(new[] { $"list:{listing}", $"ban_return:{listing}" }, Events(item));
-                Assert.AreEqual(HttpStatusCode.NotFound, (await host.GetAsync($"/listings/{listing}")).StatusCode);
+                Assert.AreEqual(HttpStatusCode.NotFound, (await host.GetAsync($"/api/listings/{listing}")).StatusCode);
             }
 
             Assert.AreEqual(Database.Models.Shard.Market.ListingStatus.Active, ListingStatus(honestId));
@@ -439,7 +439,7 @@ namespace ACE.MarketApi.Tests
 
             MarketApiTestData.Ban(seller.AccountId, host.Clock.GetUtcNow().UtcDateTime.AddDays(3));
 
-            Assert.AreEqual(HttpStatusCode.NotFound, (await host.GetAsync($"/listings/{id}")).StatusCode);
+            Assert.AreEqual(HttpStatusCode.NotFound, (await host.GetAsync($"/api/listings/{id}")).StatusCode);
             Assert.AreEqual(Database.Models.Shard.Market.ListingStatus.BanReturned, ListingStatus(id));
             Assert.AreEqual(VaultItemState.Held, VaultState(guid));
         }
@@ -483,13 +483,13 @@ namespace ACE.MarketApi.Tests
 
             var newCookie = await host.SignInForCookieAsync(seller.Name, "pass");
 
-            var vault = await MarketApiHost.JsonAsync(await host.GetAsync("/vault", newCookie));
+            var vault = await MarketApiHost.JsonAsync(await host.GetAsync("/api/vault", newCookie));
             var items = vault.GetProperty("items").EnumerateArray().ToDictionary(i => i.GetProperty("itemGuid").GetUInt32(), i => i.GetProperty("state").GetString());
             CollectionAssert.AreEquivalent(new[] { listed, held }, items.Keys.ToArray());
             Assert.IsTrue(items.Values.All(s => s == "held"), string.Join(",", items.Values));
             Assert.AreEqual(before, Snapshot(), "same GUIDs and properties");
 
-            Assert.AreEqual(77, (await MarketApiHost.JsonAsync(await host.GetAsync("/me", newCookie))).GetProperty("balance").GetInt64());
+            Assert.AreEqual(77, (await MarketApiHost.JsonAsync(await host.GetAsync("/api/me", newCookie))).GetProperty("balance").GetInt64());
             Assert.AreEqual(0L, MarketApiTestData.Scalar($"SELECT COUNT(*) FROM market_listing WHERE seller_Account_Id = {seller.AccountId} AND status = 'active';"), "nothing relisted");
             Assert.AreEqual(0, (await BrowseAsync(host, "q=" + Uri.EscapeDataString(token))).Length);
 
@@ -511,7 +511,7 @@ namespace ACE.MarketApi.Tests
 
             MarketApiTestData.Ban(seller.AccountId, host.Clock.GetUtcNow().UtcDateTime.AddDays(3));
 
-            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/vault", cookie)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/api/vault", cookie)).StatusCode);
             Assert.AreEqual(Database.Models.Shard.Market.ListingStatus.BanReturned, ListingStatus(id));
             Assert.AreEqual(VaultItemState.Held, VaultState(guid));
         }
@@ -534,7 +534,7 @@ namespace ACE.MarketApi.Tests
 
             var delistedItem = MarketApiTestData.AddVaultItem(seller.AccountId, seller.CharacterId, "Delisted Thing", VaultItemState.Held);
             var delisted = await ListOkAsync(host, cookie, delistedItem, 10);
-            Assert.AreEqual(HttpStatusCode.OK, (await host.PostJsonAsync($"/listings/{delisted}/delist", new { }, cookie)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.PostJsonAsync($"/api/listings/{delisted}/delist", new { }, cookie)).StatusCode);
 
             var expiredItem = MarketApiTestData.AddVaultItem(seller.AccountId, seller.CharacterId, "Expired Thing", VaultItemState.Listed);
             var expired = MarketApiTestData.AddListing(seller.AccountId, seller.CharacterId, expiredItem, 10, Database.Models.Shard.Market.ListingStatus.Active, now.AddDays(-15));
@@ -547,12 +547,12 @@ namespace ACE.MarketApi.Tests
 
             foreach (var id in new[] { sold, delisted, expired, returned, 987654321L })
             {
-                var response = await host.GetAsync($"/listings/{id}");
+                var response = await host.GetAsync($"/api/listings/{id}");
                 Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode, id.ToString());
                 Assert.AreEqual("not_found", await MarketApiHost.ErrorAsync(response));
             }
 
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync($"/listings/{active}")).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync($"/api/listings/{active}")).StatusCode);
             Assert.AreEqual(VaultItemState.Held, VaultState(expiredItem), "the overdue listing was expired when noticed");
         }
     }

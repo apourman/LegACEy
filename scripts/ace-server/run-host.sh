@@ -11,6 +11,9 @@ CONFIGURATION=Debug
 START_DB=true
 BUILD=true
 
+# read before docker.env is sourced: docker.env sets ACE_DAT_FILES_DIRECTORY to the game container's path
+DAT_DIR="${ACE_HOST_DAT_DIRECTORY:-${ACE_DAT_FILES_DIRECTORY:-$HOME/ace_dats/retail}}"
+
 [[ -f "$ROOT/docker.env" ]] || {
   echo "Missing $ROOT/docker.env; copy docker.env.example and set local values." >&2
   exit 1
@@ -42,7 +45,6 @@ if [[ "$START_DB" == true ]]; then
   "$ROOT/scripts/db-bootstrap/bootstrap.sh"
 fi
 
-DAT_DIR="${ACE_DAT_FILES_DIRECTORY:-$HOME/ace_dats/retail}"
 [[ -d "$DAT_DIR" ]] || { echo "Missing DAT directory: $DAT_DIR" >&2; exit 1; }
 mkdir -p "$CONFIG_DIR" "$LOG_DIR" "$MODS_DIR"
 cp "$CONFIG_TEMPLATE" "$CONFIG_DIR/Config.js"
@@ -51,6 +53,8 @@ sed -i \
   -e "s|\"Port\": 3306|\"Port\": ${DB_HOST_PORT:-3310}|g" \
   -e "s|\"DatFilesDirectory\": \"/ace/Dats\"|\"DatFilesDirectory\": \"$DAT_DIR\"|" \
   -e "s|\"ModsDirectory\": \"/ace/Mods\"|\"ModsDirectory\": \"$MODS_DIR\"|" \
+  -e "s|\"Database\": \"ace_auth\"|\"Database\": \"${ACE_HOST_AUTH_DATABASE:-ace_auth}\"|" \
+  -e "s|\"Database\": \"ace_shard\"|\"Database\": \"${ACE_HOST_SHARD_DATABASE:-ace_shard}\"|" \
   "$CONFIG_DIR/Config.js"
 
 # Insert credentials as JSON strings so quotes, backslashes, and other special

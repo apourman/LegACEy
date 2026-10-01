@@ -53,6 +53,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ACE.MarketApi", "ACE.Market
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ACE.MarketApi.Tests", "ACE.MarketApi.Tests\ACE.MarketApi.Tests.csproj", "{7128EA5A-AA2D-43A7-B9AB-AFE636A64714}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ACE.MarketDev", "ACE.MarketDev\ACE.MarketDev.csproj", "{7BCC4027-86CE-40BA-8203-427094ABF87F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -99,6 +101,10 @@ Global
 		{75101B9A-EAC8-4869-A5BD-22CA275440A2}.Debug|x64.Build.0 = Debug|x64
 		{75101B9A-EAC8-4869-A5BD-22CA275440A2}.Release|x64.ActiveCfg = Release|x64
 		{75101B9A-EAC8-4869-A5BD-22CA275440A2}.Release|x64.Build.0 = Release|x64
+		{7BCC4027-86CE-40BA-8203-427094ABF87F}.Debug|x64.ActiveCfg = Debug|x64
+		{7BCC4027-86CE-40BA-8203-427094ABF87F}.Debug|x64.Build.0 = Debug|x64
+		{7BCC4027-86CE-40BA-8203-427094ABF87F}.Release|x64.ActiveCfg = Release|x64
+		{7BCC4027-86CE-40BA-8203-427094ABF87F}.Release|x64.Build.0 = Release|x64
 		{7128EA5A-AA2D-43A7-B9AB-AFE636A64714}.Debug|x64.ActiveCfg = Debug|x64
 		{7128EA5A-AA2D-43A7-B9AB-AFE636A64714}.Debug|x64.Build.0 = Debug|x64
 		{7128EA5A-AA2D-43A7-B9AB-AFE636A64714}.Release|x64.ActiveCfg = Release|x64

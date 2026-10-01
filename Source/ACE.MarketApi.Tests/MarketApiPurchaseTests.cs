@@ -16,7 +16,7 @@ using ACE.MarketApi.Tests.Support;
 namespace ACE.MarketApi.Tests
 {
     /// <summary>
-    /// POST /listings/{id}/purchase: one save moves the item and the MMD, every refusal changes nothing, and a key is never charged twice
+    /// POST /api/listings/{id}/purchase: one save moves the item and the MMD, every refusal changes nothing, and a key is never charged twice
     /// </summary>
     [TestClass]
     public class MarketApiPurchaseTests
@@ -76,7 +76,7 @@ namespace ACE.MarketApi.Tests
         }
 
         private static Task<HttpResponseMessage> PurchaseAsync(MarketApiHost host, string cookie, Listed listed, string key = null, long? expectedPrice = null, int count = 1) =>
-            host.PostJsonAsync($"/listings/{listed.ListingId}/purchase", new { count, expectedPrice = expectedPrice ?? listed.Price, idempotencyKey = key ?? Guid.NewGuid().ToString("N") }, cookie);
+            host.PostJsonAsync($"/api/listings/{listed.ListingId}/purchase", new { count, expectedPrice = expectedPrice ?? listed.Price, idempotencyKey = key ?? Guid.NewGuid().ToString("N") }, cookie);
 
         private static long Balance(uint accountId) => MarketApiTestData.Scalar($"SELECT IFNULL((SELECT balance FROM market_balance WHERE account_Id = {accountId}), 0);");
 
@@ -152,13 +152,13 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual("purchase", MarketApiTestData.Rows($"SELECT kind FROM market_request WHERE account_Id = {buyer.AccountId} AND idempotency_Key = '{key}';").Single());
 
             // the buyer's Vault has it; the seller's doesn't
-            var vault = await MarketApiHost.JsonAsync(await host.GetAsync("/vault", cookie));
+            var vault = await MarketApiHost.JsonAsync(await host.GetAsync("/api/vault", cookie));
             Assert.IsTrue(vault.GetProperty("items").EnumerateArray().Any(i => i.GetProperty("itemGuid").GetUInt32() == listed.ItemGuid && i.GetProperty("state").GetString() == VaultItemState.Held));
-            var sellerVault = await MarketApiHost.JsonAsync(await host.GetAsync("/vault", await host.SignInForCookieAsync(seller.Name, "pass")));
+            var sellerVault = await MarketApiHost.JsonAsync(await host.GetAsync("/api/vault", await host.SignInForCookieAsync(seller.Name, "pass")));
             Assert.IsFalse(sellerVault.GetProperty("items").EnumerateArray().Any(i => i.GetProperty("itemGuid").GetUInt32() == listed.ItemGuid));
 
             // and it's gone from the catalog
-            Assert.AreEqual(HttpStatusCode.NotFound, (await host.GetAsync($"/listings/{listed.ListingId}")).StatusCode);
+            Assert.AreEqual(HttpStatusCode.NotFound, (await host.GetAsync($"/api/listings/{listed.ListingId}")).StatusCode);
         }
 
         [TestMethod]
@@ -190,7 +190,7 @@ namespace ACE.MarketApi.Tests
             await using var host = await MarketApiHost.StartAsync();
             var listed = NewListing(host, seller, 30);
             var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
-            var path = $"/listings/{listed.ListingId}/purchase";
+            var path = $"/api/listings/{listed.ListingId}/purchase";
 
             await AssertRefusedAsync(await host.PostJsonAsync(path, new { count = 1, expectedPrice = 30 }, cookie), HttpStatusCode.BadRequest, "bad_request");
             await AssertRefusedAsync(await host.PostJsonAsync(path, new { count = 1, expectedPrice = 30, idempotencyKey = new string('k', 65) }, cookie), HttpStatusCode.BadRequest, "bad_request");
@@ -215,7 +215,7 @@ namespace ACE.MarketApi.Tests
             var listed = NewListing(host, seller, 30);
             var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
 
-            var response = await host.PostJsonAsync($"/listings/{listed.ListingId}/purchase", new { count = 1, expectedPrice = 30, idempotencyKey = "alt", characterId = alt }, cookie);
+            var response = await host.PostJsonAsync($"/api/listings/{listed.ListingId}/purchase", new { count = 1, expectedPrice = 30, idempotencyKey = "alt", characterId = alt }, cookie);
 
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
             Assert.AreEqual($"{buyer.AccountId}|{alt}|held|1", VaultRow(listed.ItemGuid));
@@ -300,7 +300,7 @@ namespace ACE.MarketApi.Tests
             var cookie = await host.SignInForCookieAsync(seller.Name, "pass");
             var before = Snapshot(listed, seller);
 
-            var response = await host.PostJsonAsync($"/listings/{listed.ListingId}/purchase", new { count = 1, expectedPrice = 50, idempotencyKey = "own", characterId = alt }, cookie);
+            var response = await host.PostJsonAsync($"/api/listings/{listed.ListingId}/purchase", new { count = 1, expectedPrice = 50, idempotencyKey = "own", characterId = alt }, cookie);
 
             await AssertRefusedAsync(response, HttpStatusCode.Forbidden, "own_listing");
             Assert.AreEqual(before, Snapshot(listed, seller));
@@ -383,7 +383,7 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual(before, Snapshot(listed, buyer, seller));
 
             // browsing still works while paused, and buying works again once it's lifted
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync($"/listings/{listed.ListingId}")).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync($"/api/listings/{listed.ListingId}")).StatusCode);
 
             pause.Paused = false;
             var response = await PurchaseAsync(host, cookie, listed);

@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 
 using ACE.Database.Market;
@@ -16,7 +17,7 @@ namespace ACE.MarketApi
     /// </summary>
     public static class AccountEndpoints
     {
-        public static void Map(WebApplication app)
+        public static void Map(IEndpointRouteBuilder app)
         {
             app.MapGet("/me", Me).RequireAuthorization();
             app.MapGet("/vault", Vault).RequireAuthorization();

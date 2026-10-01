@@ -6,17 +6,18 @@ using System.Text.RegularExpressions;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 
 using SkiaSharp;
 
 namespace ACE.MarketApi
 {
     /// <summary>
-    /// Icon PNGs by texture id and optional palette template ("/icons/0x06003237.png", "/icons/0x06003237_p19.png"), and the glow stylesheet. No sign-in.
+    /// Icon PNGs by texture id and optional palette template ("/api/icons/0x06003237.png", "/api/icons/0x06003237_p19.png"), and the glow stylesheet. No sign-in.
     /// </summary>
     public static class IconEndpoints
     {
-        public static void Map(WebApplication app)
+        public static void Map(IEndpointRouteBuilder app)
         {
             app.MapGet("/icons/glow.css", () => Results.Text(ItemIcons.GlowStylesheet, "text/css"));
             app.MapGet("/icons/{file}", Icon);

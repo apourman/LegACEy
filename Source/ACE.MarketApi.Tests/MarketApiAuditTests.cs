@@ -128,9 +128,9 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual(500, Balance(buyer.AccountId), "nothing was charged");
 
             // browsing and listing go on
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/listings")).StatusCode);
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync($"/listings/{listed.ListingId}")).StatusCode);
-            var listing = await host.PostJsonAsync("/listings", new { itemGuid = held, price = 7 }, sellerCookie);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/api/listings")).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync($"/api/listings/{listed.ListingId}")).StatusCode);
+            var listing = await host.PostJsonAsync("/api/listings", new { itemGuid = held, price = 7 }, sellerCookie);
             Assert.AreEqual(HttpStatusCode.Created, listing.StatusCode, await listing.Content.ReadAsStringAsync());
 
             // the admin fixes the books and resumes, as /market resume does
@@ -206,7 +206,7 @@ namespace ACE.MarketApi.Tests
         }
 
         private static Task<HttpResponseMessage> PurchaseAsync(MarketApiHost host, string cookie, Listed listed) =>
-            host.PostJsonAsync($"/listings/{listed.ListingId}/purchase", new { count = 1, expectedPrice = listed.Price, idempotencyKey = Guid.NewGuid().ToString("N") }, cookie);
+            host.PostJsonAsync($"/api/listings/{listed.ListingId}/purchase", new { count = 1, expectedPrice = listed.Price, idempotencyKey = Guid.NewGuid().ToString("N") }, cookie);
 
         private static long Balance(uint accountId) => MarketTestDatabase.Scalar(Db, $"SELECT IFNULL((SELECT balance FROM market_balance WHERE account_Id = {accountId}), 0);");
 

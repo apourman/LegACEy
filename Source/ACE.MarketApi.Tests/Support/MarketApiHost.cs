@@ -26,6 +26,11 @@ namespace ACE.MarketApi.Tests.Support
 
         public const string RemoteIpHeader = "X-Test-Remote-Ip";
 
+        /// <summary>
+        /// The header the website sends on every request; a cookie-signed request that changes something is refused without it
+        /// </summary>
+        public const string RequestHeader = "X-Market-Request";
+
         public WebApplication App { get; }
 
         public HttpClient Client { get; }
@@ -100,7 +105,7 @@ namespace ACE.MarketApi.Tests.Support
 
         public async Task<HttpResponseMessage> SignInAsync(string account, string password, string ip = DefaultIp, string forwardedFor = null)
         {
-            var request = new HttpRequestMessage(HttpMethod.Post, "/auth/login")
+            var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/login")
             {
                 Content = JsonContent.Create(new { account, password }),
             };
@@ -138,29 +143,34 @@ namespace ACE.MarketApi.Tests.Support
         /// </summary>
         public Task<HttpResponseMessage> GetWithTokenAsync(string path, string token) => SendAsync(HttpMethod.Get, path, token: token);
 
-        public async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, string cookie = null, string token = null)
+        /// <param name="requestHeader">sends X-Market-Request: 1, as the website does on every request</param>
+        public async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, string cookie = null, string token = null, bool requestHeader = true)
         {
             var request = new HttpRequestMessage(method, path);
             request.Headers.Add(RemoteIpHeader, DefaultIp);
-            AddCredentials(request, cookie, token);
+            AddCredentials(request, cookie, token, requestHeader);
 
             return await Client.SendAsync(request);
         }
 
-        public async Task<HttpResponseMessage> PostJsonAsync(string path, object body, string cookie = null, string token = null, string ip = DefaultIp)
+        /// <param name="requestHeader">sends X-Market-Request: 1, as the website does on every request</param>
+        public async Task<HttpResponseMessage> PostJsonAsync(string path, object body, string cookie = null, string token = null, string ip = DefaultIp, bool requestHeader = true)
         {
             var request = new HttpRequestMessage(HttpMethod.Post, path)
             {
                 Content = body is string raw ? new StringContent(raw, System.Text.Encoding.UTF8, "application/json") : JsonContent.Create(body),
             };
             request.Headers.Add(RemoteIpHeader, ip);
-            AddCredentials(request, cookie, token);
+            AddCredentials(request, cookie, token, requestHeader);
 
             return await Client.SendAsync(request);
         }
 
-        private static void AddCredentials(HttpRequestMessage request, string cookie, string token)
+        private static void AddCredentials(HttpRequestMessage request, string cookie, string token, bool requestHeader)
         {
+            if (requestHeader)
+                request.Headers.Add(RequestHeader, "1");
+
             if (cookie != null)
                 request.Headers.Add("Cookie", cookie);
 

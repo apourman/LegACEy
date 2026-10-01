@@ -13,7 +13,7 @@ using ACE.MarketApi.Tests.Support;
 namespace ACE.MarketApi.Tests
 {
     /// <summary>
-    /// The game bridge from the web side: POST /vault/withdraw and POST /mmd/withdraw create tickets, GET /tickets/{id} shows what the game server did.
+    /// The game bridge from the web side: POST /api/vault/withdraw and POST /api/mmd/withdraw create tickets, GET /api/tickets/{id} shows what the game server did.
     /// The game server's side is played here by the shared store it uses (TicketStore.Claim, Complete and Fail); seam 2 drives the real one.
     /// </summary>
     [TestClass]
@@ -32,24 +32,24 @@ namespace ACE.MarketApi.Tests
         private static string NewKey() => Guid.NewGuid().ToString("N");
 
         private static Task<HttpResponseMessage> MmdWithdrawAsync(MarketApiHost host, string cookie, uint characterId, object amount, string idempotencyKey) =>
-            host.PostJsonAsync("/mmd/withdraw", new { characterId, amount, idempotencyKey }, cookie);
+            host.PostJsonAsync("/api/mmd/withdraw", new { characterId, amount, idempotencyKey }, cookie);
 
         private static Task<HttpResponseMessage> VaultWithdrawAsync(MarketApiHost host, string cookie, uint characterId, uint itemGuid, string idempotencyKey) =>
-            host.PostJsonAsync("/vault/withdraw", new { characterId, itemGuid, idempotencyKey }, cookie);
+            host.PostJsonAsync("/api/vault/withdraw", new { characterId, itemGuid, idempotencyKey }, cookie);
 
         private static async Task<JsonElement> AcceptedAsync(HttpResponseMessage response)
         {
             Assert.AreEqual(HttpStatusCode.Accepted, response.StatusCode, await response.Content.ReadAsStringAsync());
 
             var ticket = await MarketApiHost.JsonAsync(response);
-            Assert.AreEqual($"/tickets/{ticket.GetProperty("id").GetInt64()}", response.Headers.Location?.OriginalString);
+            Assert.AreEqual($"/api/tickets/{ticket.GetProperty("id").GetInt64()}", response.Headers.Location?.OriginalString);
 
             return ticket;
         }
 
         private static async Task<JsonElement> TicketAsync(MarketApiHost host, string cookie, long id)
         {
-            var response = await host.GetAsync($"/tickets/{id}", cookie);
+            var response = await host.GetAsync($"/api/tickets/{id}", cookie);
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
 
             return await MarketApiHost.JsonAsync(response);
@@ -142,13 +142,13 @@ namespace ACE.MarketApi.Tests
             using (var shard = MarketApiTestData.Shard())
                 code = PluginAuth.NewLinkCode(shard, player.AccountId, player.CharacterId, host.Clock.GetUtcNow().UtcDateTime);
 
-            var exchanged = await host.PostJsonAsync("/auth/plugin-token", new { code, label = "plugin" });
+            var exchanged = await host.PostJsonAsync("/api/auth/plugin-token", new { code, label = "plugin" });
             Assert.AreEqual(HttpStatusCode.OK, exchanged.StatusCode, await exchanged.Content.ReadAsStringAsync());
             var token = (await MarketApiHost.JsonAsync(exchanged)).GetProperty("token").GetString();
 
-            var ticket = await AcceptedAsync(await host.PostJsonAsync("/mmd/withdraw", new { characterId = player.CharacterId, amount = 3, idempotencyKey = NewKey() }, token: token));
+            var ticket = await AcceptedAsync(await host.PostJsonAsync("/api/mmd/withdraw", new { characterId = player.CharacterId, amount = 3, idempotencyKey = NewKey() }, token: token));
 
-            var read = await host.GetWithTokenAsync($"/tickets/{ticket.GetProperty("id").GetInt64()}", token);
+            var read = await host.GetWithTokenAsync($"/api/tickets/{ticket.GetProperty("id").GetInt64()}", token);
             Assert.AreEqual(HttpStatusCode.OK, read.StatusCode);
         }
 
@@ -247,13 +247,13 @@ namespace ACE.MarketApi.Tests
 
             await AssertRefused(MmdWithdrawAsync(host, cookie, player.CharacterId, 5, null), HttpStatusCode.BadRequest, "bad_request");
             await AssertRefused(MmdWithdrawAsync(host, cookie, player.CharacterId, 5, new string('k', 65)), HttpStatusCode.BadRequest, "bad_request");
-            await AssertRefused(host.PostJsonAsync("/mmd/withdraw", new { amount = 5, idempotencyKey = NewKey() }, cookie), HttpStatusCode.BadRequest, "invalid_character");
+            await AssertRefused(host.PostJsonAsync("/api/mmd/withdraw", new { amount = 5, idempotencyKey = NewKey() }, cookie), HttpStatusCode.BadRequest, "invalid_character");
             await AssertRefused(MmdWithdrawAsync(host, cookie, deleted, 5, NewKey()), HttpStatusCode.BadRequest, "invalid_character");
             await AssertRefused(MmdWithdrawAsync(host, cookie, stranger.CharacterId, 5, NewKey()), HttpStatusCode.BadRequest, "invalid_character");
             await AssertRefused(MmdWithdrawAsync(host, cookie, player.CharacterId, 0, NewKey()), HttpStatusCode.BadRequest, "invalid_amount");
             await AssertRefused(MmdWithdrawAsync(host, cookie, player.CharacterId, 1.5m, NewKey()), HttpStatusCode.BadRequest, "invalid_amount");
             await AssertRefused(MmdWithdrawAsync(host, cookie, player.CharacterId, null, NewKey()), HttpStatusCode.BadRequest, "invalid_amount");
-            await AssertRefused(host.PostJsonAsync("/vault/withdraw", new { characterId = player.CharacterId, idempotencyKey = NewKey() }, cookie), HttpStatusCode.BadRequest, "bad_request");
+            await AssertRefused(host.PostJsonAsync("/api/vault/withdraw", new { characterId = player.CharacterId, idempotencyKey = NewKey() }, cookie), HttpStatusCode.BadRequest, "bad_request");
             await AssertRefused(VaultWithdrawAsync(host, cookie, stranger.CharacterId, 1, NewKey()), HttpStatusCode.BadRequest, "invalid_character");
 
             Assert.AreEqual(0L, Tickets(player.AccountId));
@@ -270,16 +270,16 @@ namespace ACE.MarketApi.Tests
             var cookie = await host.SignInForCookieAsync(owner.Name, "pass");
             var id = (await AcceptedAsync(await MmdWithdrawAsync(host, cookie, owner.CharacterId, 5, NewKey()))).GetProperty("id").GetInt64();
 
-            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync($"/tickets/{id}")).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync($"/api/tickets/{id}")).StatusCode);
             Assert.AreEqual(HttpStatusCode.Unauthorized, (await MmdWithdrawAsync(host, null, owner.CharacterId, 5, NewKey())).StatusCode);
             Assert.AreEqual(HttpStatusCode.Unauthorized, (await VaultWithdrawAsync(host, null, owner.CharacterId, 1, NewKey())).StatusCode);
 
             var otherCookie = await host.SignInForCookieAsync(other.Name, "pass");
-            var response = await host.GetAsync($"/tickets/{id}", otherCookie);
+            var response = await host.GetAsync($"/api/tickets/{id}", otherCookie);
             Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
             Assert.AreEqual("not_found", await MarketApiHost.ErrorAsync(response));
 
-            Assert.AreEqual(HttpStatusCode.NotFound, (await host.GetAsync("/tickets/999999999", cookie)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.NotFound, (await host.GetAsync("/api/tickets/999999999", cookie)).StatusCode);
         }
     }
 }

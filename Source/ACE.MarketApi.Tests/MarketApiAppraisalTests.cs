@@ -68,7 +68,7 @@ namespace ACE.MarketApi.Tests
             MarketApiTestData.SetVaultColumns(guid, $"item_Type = {(int)itemType}" + (vaultColumns != null ? ", " + vaultColumns : ""));
             properties(guid);
 
-            var response = await host.PostJsonAsync("/listings", new { itemGuid = guid, price = 50 }, seller.Cookie);
+            var response = await host.PostJsonAsync("/api/listings", new { itemGuid = guid, price = 50 }, seller.Cookie);
             Assert.AreEqual(HttpStatusCode.Created, response.StatusCode, await response.Content.ReadAsStringAsync());
 
             return (await MarketApiHost.JsonAsync(response)).GetProperty("id").GetInt64();
@@ -151,7 +151,7 @@ namespace ACE.MarketApi.Tests
 
         private static async Task<JsonElement> DetailAsync(MarketApiHost host, long listingId)
         {
-            var response = await host.GetAsync($"/listings/{listingId}");
+            var response = await host.GetAsync($"/api/listings/{listingId}");
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
 
             return await MarketApiHost.JsonAsync(response);
@@ -392,7 +392,7 @@ namespace ACE.MarketApi.Tests
             var crossbow = await ListBluntCrossbowAsync(host, seller);
             var breastplate = await ListNariyidBreastplateAsync(host, seller);
 
-            var response = await host.GetAsync("/listings?seller=" + Uri.EscapeDataString(await SellerNameAsync(host, crossbow)));
+            var response = await host.GetAsync("/api/listings?seller=" + Uri.EscapeDataString(await SellerNameAsync(host, crossbow)));
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
 
             var rows = (await MarketApiHost.JsonAsync(response)).GetProperty("listings").EnumerateArray().ToDictionary(r => r.GetProperty("id").GetInt64(), r => r.GetProperty("summary").GetString());

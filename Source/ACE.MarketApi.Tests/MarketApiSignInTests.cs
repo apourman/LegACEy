@@ -248,13 +248,13 @@ namespace ACE.MarketApi.Tests
             await using var host = await MarketApiHost.StartAsync();
             var cookie = await host.SignInForCookieAsync(name, "right");
 
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/me", cookie)).StatusCode);
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/vault", cookie)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/api/me", cookie)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/api/vault", cookie)).StatusCode);
 
             MarketApiTestData.Ban(id, DateTime.UtcNow.AddDays(1));
 
-            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/me", cookie)).StatusCode);
-            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/vault", cookie)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/api/me", cookie)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/api/vault", cookie)).StatusCode);
         }
 
         private static string ToHex(string text) => Convert.ToHexString(System.Text.Encoding.UTF8.GetBytes(text));
