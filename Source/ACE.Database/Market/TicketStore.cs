@@ -128,16 +128,22 @@ namespace ACE.Database.Market
         }
 
         /// <summary>
+        /// The result code of a ticket left CLAIMED that the server running is no longer working on (its claim or its work stopped on an error)
+        /// </summary>
+        public const string Abandoned = "abandoned";
+
+        /// <summary>
         /// Claims up to limit WAITING tickets, oldest first, and returns the ones this caller claimed.
         /// Each is claimed with its own conditional update from WAITING: one row changed means this caller owns it, so two pollers never both claim one.
+        /// Each claim commits on its own, so claimed collects the ids as they are claimed: if a later statement throws, the caller knows which tickets it holds (see Unclaim).
         /// </summary>
-        public static List<Ticket> Claim(ShardDbContext context, int limit, DateTime now)
+        public static List<Ticket> Claim(ShardDbContext context, int limit, DateTime now, List<long> claimed = null)
         {
             now = ListingStore.Truncate(now);
 
             var waiting = context.MarketTickets.AsNoTracking().Where(t => t.Status == TicketStatus.Waiting).OrderBy(t => t.Id).Select(t => t.Id).Take(limit).ToList();
 
-            var claimed = new List<long>();
+            claimed ??= new List<long>();
 
             foreach (var id in waiting)
             {
@@ -154,6 +160,31 @@ namespace ACE.Database.Market
                 return new List<Ticket>();
 
             return context.MarketTickets.AsNoTracking().Where(t => claimed.Contains(t.Id)).OrderBy(t => t.Id).ToList();
+        }
+
+        /// <summary>
+        /// Puts tickets this caller claimed back to WAITING, for a claim that failed before the caller could run them. Returns how many.
+        /// </summary>
+        public static int Unclaim(ShardDbContext context, IReadOnlyCollection<long> ids)
+        {
+            if (ids.Count == 0)
+                return 0;
+
+            return context.MarketTickets
+                .Where(t => ids.Contains(t.Id) && t.Status == TicketStatus.Claimed)
+                .ExecuteUpdate(s => s.SetProperty(t => t.Status, TicketStatus.Waiting).SetProperty(t => t.ClaimedTime, (DateTime?)null));
+        }
+
+        /// <summary>
+        /// While the server runs: fails every ticket CLAIMED before claimedBefore that isn't in running (the tickets the server is working on now).
+        /// Such a ticket was claimed but never run, or its work stopped without an answer, and no work of it was saved (finished work marks its ticket DONE in the same save,
+        /// and a save attempted after this fails on the ticket's status). Returns how many.
+        /// </summary>
+        public static int FailAbandoned(ShardDbContext context, IReadOnlyCollection<long> running, DateTime claimedBefore, string message, DateTime now)
+        {
+            claimedBefore = ListingStore.Truncate(claimedBefore);
+
+            return MarkFailed(context.MarketTickets.Where(t => t.Status == TicketStatus.Claimed && t.ClaimedTime < claimedBefore && !running.Contains(t.Id)), Abandoned, message, now);
         }
 
         /// <summary>

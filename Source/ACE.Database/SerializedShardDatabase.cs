@@ -140,7 +140,7 @@ namespace ACE.Database
         /// <summary>
         /// Queues the deposit job: the item change, the Vault row and a deposit event, saved once (see ShardDatabase.DepositToVault)
         /// </summary>
-        public void DepositToVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, VaultItem vaultItem, Action<bool> callback)
+        public void DepositToVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, VaultItem vaultItem, Action<MarketJobResult> callback)
         {
             DepositToVault(biota, rwLock, vaultItem, int.MaxValue, callback);
         }
@@ -148,11 +148,11 @@ namespace ACE.Database
         /// <summary>
         /// Queues the deposit job, which also refuses when the account's Vault already holds maxItems (see ShardDatabase.DepositToVault)
         /// </summary>
-        public void DepositToVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, VaultItem vaultItem, int maxItems, Action<bool> callback)
+        public void DepositToVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, VaultItem vaultItem, int maxItems, Action<MarketJobResult> callback)
         {
             _queue.Add(new Task(() =>
             {
-                var result = BaseDatabase.DepositToVault(biota, rwLock, vaultItem, maxItems);
+                var result = RunMarketJob(nameof(DepositToVault), () => BaseDatabase.DepositToVault(biota, rwLock, vaultItem, maxItems));
                 callback?.Invoke(result);
             }));
         }
@@ -161,11 +161,11 @@ namespace ACE.Database
         /// Queues the withdraw job: the item change, the Vault row removal and a withdraw event, saved once (see ShardDatabase.WithdrawFromVault).
         /// A game bridge ticket passed as ticket is marked done in the same save.
         /// </summary>
-        public void WithdrawFromVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, uint accountId, uint characterId, uint expectedRowVersion, Action<bool> callback, TicketCompletion ticket = null)
+        public void WithdrawFromVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, uint accountId, uint characterId, uint expectedRowVersion, Action<MarketJobResult> callback, TicketCompletion ticket = null)
         {
             _queue.Add(new Task(() =>
             {
-                var result = BaseDatabase.WithdrawFromVault(biota, rwLock, accountId, characterId, expectedRowVersion, ticket);
+                var result = RunMarketJob(nameof(WithdrawFromVault), () => BaseDatabase.WithdrawFromVault(biota, rwLock, accountId, characterId, expectedRowVersion, ticket));
                 callback?.Invoke(result);
             }));
         }
@@ -178,7 +178,8 @@ namespace ACE.Database
         {
             _queue.Add(new Task(() =>
             {
-                var result = BaseDatabase.DepositNotes(accountId, characterId, notes, out var balanceAfter);
+                long balanceAfter = 0;
+                var result = RunMarketJob(nameof(DepositNotes), () => BaseDatabase.DepositNotes(accountId, characterId, notes, out balanceAfter));
                 callback?.Invoke(result, balanceAfter);
             }));
         }
@@ -191,9 +192,28 @@ namespace ACE.Database
         {
             _queue.Add(new Task(() =>
             {
-                var result = BaseDatabase.WithdrawNotes(accountId, characterId, notes, amount, out var balanceAfter, ticket);
+                long balanceAfter = 0;
+                var result = RunMarketJob(nameof(WithdrawNotes), () => BaseDatabase.WithdrawNotes(accountId, characterId, notes, amount, out balanceAfter, ticket));
                 callback?.Invoke(result, balanceAfter);
             }));
+        }
+
+        /// <summary>
+        /// The market jobs catch their own failures. This is the backstop that keeps the caller's callback running if one ever throws:
+        /// DoWork would swallow the exception and the callback would never run, leaving the player's Vault busy and the item out of the world.
+        /// Whether such a job saved can't be known, so it answers Unknown and the caller puts nothing back into the world.
+        /// </summary>
+        private static MarketJobResult RunMarketJob(string job, Func<MarketJobResult> run)
+        {
+            try
+            {
+                return run();
+            }
+            catch (Exception ex)
+            {
+                log.Error($"[DATABASE][VAULT] {job} threw: {ex}");
+                return MarketJobResult.Unknown;
+            }
         }
 
         /// <summary>
@@ -204,6 +224,18 @@ namespace ACE.Database
             _queue.Add(new Task(() =>
             {
                 var result = BaseDatabase.ClaimTickets(limit);
+                callback?.Invoke(result);
+            }));
+        }
+
+        /// <summary>
+        /// Queues failing claimed tickets this server isn't working on any more (see ShardDatabase.FailAbandonedTickets)
+        /// </summary>
+        public void FailAbandonedTickets(IReadOnlyCollection<long> running, TimeSpan claimedFor, string message, Action<int> callback)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = BaseDatabase.FailAbandonedTickets(running, claimedFor, message);
                 callback?.Invoke(result);
             }));
         }

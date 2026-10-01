@@ -12,6 +12,7 @@ using log4net.Core;
 
 using ACE.Common;
 using ACE.Database.Adapter;
+using ACE.Database.Market;
 using ACE.Database.Models.Shard;
 using ACE.Database.Models.Shard.Market;
 using ACE.Entity.Enum;
@@ -76,7 +77,7 @@ namespace ACE.Database.Tests.Market
             var item = LoadEntity(guid);
             RemoveFromPack(item);
 
-            Assert.IsTrue(shardDb.DepositToVault(item, new ReaderWriterLockSlim(), NewVaultItem(guid)));
+            Assert.AreEqual(MarketJobResult.Saved, shardDb.DepositToVault(item, new ReaderWriterLockSlim(), NewVaultItem(guid)));
 
             Assert.AreEqual(0, ContainerRows(guid));
             Assert.AreEqual(1, MarketTestDatabase.Scalar(Db, $"SELECT COUNT(*) FROM market_vault_item WHERE item_Guid = {guid} AND account_Id = {AccountId} AND character_Id = {CharacterId} AND state = '{VaultItemState.Held}';"));
@@ -92,17 +93,17 @@ namespace ACE.Database.Tests.Market
             var item = LoadEntity(guid);
             RemoveFromPack(item);
 
-            bool result;
+            MarketJobResult result;
             using (FailInsertsInto("market_item_event"))
                 result = shardDb.DepositToVault(item, new ReaderWriterLockSlim(), NewVaultItem(guid));
 
-            Assert.IsFalse(result);
+            Assert.AreEqual(MarketJobResult.Failed, result);
             Assert.AreEqual(1, ContainerRows(guid), "the item must still be in the pack");
             Assert.AreEqual(0, MarketTestDatabase.Scalar(Db, $"SELECT COUNT(*) FROM market_vault_item WHERE item_Guid = {guid};"));
             Assert.AreEqual(0, MarketTestDatabase.Scalar(Db, $"SELECT COUNT(*) FROM market_item_event WHERE item_Guid = {guid};"));
 
             // with the failure gone, the same deposit goes through
-            Assert.IsTrue(shardDb.DepositToVault(item, new ReaderWriterLockSlim(), NewVaultItem(guid)));
+            Assert.AreEqual(MarketJobResult.Saved, shardDb.DepositToVault(item, new ReaderWriterLockSlim(), NewVaultItem(guid)));
             Assert.AreEqual(0, ContainerRows(guid));
             Assert.AreEqual(1, MarketTestDatabase.Scalar(Db, $"SELECT COUNT(*) FROM market_vault_item WHERE item_Guid = {guid};"));
         }
@@ -115,7 +116,7 @@ namespace ACE.Database.Tests.Market
 
             var item = LoadEntity(guid); // container not cleared
 
-            Assert.IsFalse(shardDb.DepositToVault(item, new ReaderWriterLockSlim(), NewVaultItem(guid)));
+            Assert.AreEqual(MarketJobResult.Refused, shardDb.DepositToVault(item, new ReaderWriterLockSlim(), NewVaultItem(guid)));
 
             Assert.AreEqual(1, ContainerRows(guid));
             Assert.AreEqual(0, MarketTestDatabase.Scalar(Db, $"SELECT COUNT(*) FROM market_vault_item WHERE item_Guid = {guid};"));
@@ -131,7 +132,7 @@ namespace ACE.Database.Tests.Market
             var item = LoadEntity(guid);
             PutInPack(item, OtherCharacterId);
 
-            Assert.IsTrue(shardDb.WithdrawFromVault(item, new ReaderWriterLockSlim(), AccountId, OtherCharacterId, expectedRowVersion: 3));
+            Assert.AreEqual(MarketJobResult.Saved, shardDb.WithdrawFromVault(item, new ReaderWriterLockSlim(), AccountId, OtherCharacterId, expectedRowVersion: 3));
 
             Assert.AreEqual(OtherCharacterId, (uint)MarketTestDatabase.Scalar(Db, $"SELECT value FROM biota_properties_i_i_d WHERE object_Id = {guid} AND type = {(int)PropertyInstanceId.Container};"));
             Assert.AreEqual(0, MarketTestDatabase.Scalar(Db, $"SELECT COUNT(*) FROM market_vault_item WHERE item_Guid = {guid};"));
@@ -147,11 +148,11 @@ namespace ACE.Database.Tests.Market
             var item = LoadEntity(guid);
             PutInPack(item, CharacterId);
 
-            bool result;
+            MarketJobResult result;
             using (FailInsertsInto("market_item_event"))
                 result = shardDb.WithdrawFromVault(item, new ReaderWriterLockSlim(), AccountId, CharacterId, expectedRowVersion: 0);
 
-            Assert.IsFalse(result);
+            Assert.AreEqual(MarketJobResult.Failed, result);
             AssertStillInEscrow(guid);
         }
 
@@ -164,29 +165,29 @@ namespace ACE.Database.Tests.Market
             var listed = SeedVaultItem(rowVersion: 0, state: VaultItemState.Listed);
             var item = LoadEntity(listed);
             PutInPack(item, CharacterId);
-            Assert.IsFalse(shardDb.WithdrawFromVault(item, new ReaderWriterLockSlim(), AccountId, CharacterId, expectedRowVersion: 0));
+            Assert.AreEqual(MarketJobResult.Refused, shardDb.WithdrawFromVault(item, new ReaderWriterLockSlim(), AccountId, CharacterId, expectedRowVersion: 0));
             AssertStillInEscrow(listed);
 
             // another account's item
             var held = SeedVaultItem(rowVersion: 0);
             item = LoadEntity(held);
             PutInPack(item, CharacterId);
-            Assert.IsFalse(shardDb.WithdrawFromVault(item, new ReaderWriterLockSlim(), AccountId + 1, CharacterId, expectedRowVersion: 0));
+            Assert.AreEqual(MarketJobResult.Refused, shardDb.WithdrawFromVault(item, new ReaderWriterLockSlim(), AccountId + 1, CharacterId, expectedRowVersion: 0));
             AssertStillInEscrow(held);
 
             // the row changed since the caller read it
-            Assert.IsFalse(shardDb.WithdrawFromVault(item, new ReaderWriterLockSlim(), AccountId, CharacterId, expectedRowVersion: 1));
+            Assert.AreEqual(MarketJobResult.Refused, shardDb.WithdrawFromVault(item, new ReaderWriterLockSlim(), AccountId, CharacterId, expectedRowVersion: 1));
             AssertStillInEscrow(held);
 
             // not pointed at a container
             item = LoadEntity(held);
-            Assert.IsFalse(shardDb.WithdrawFromVault(item, new ReaderWriterLockSlim(), AccountId, CharacterId, expectedRowVersion: 0));
+            Assert.AreEqual(MarketJobResult.Refused, shardDb.WithdrawFromVault(item, new ReaderWriterLockSlim(), AccountId, CharacterId, expectedRowVersion: 0));
             AssertStillInEscrow(held);
 
             // no Vault row at all
             var loose = SeedPackItem();
             item = LoadEntity(loose);
-            Assert.IsFalse(shardDb.WithdrawFromVault(item, new ReaderWriterLockSlim(), AccountId, CharacterId, expectedRowVersion: 0));
+            Assert.AreEqual(MarketJobResult.Refused, shardDb.WithdrawFromVault(item, new ReaderWriterLockSlim(), AccountId, CharacterId, expectedRowVersion: 0));
             Assert.AreEqual(0, MarketTestDatabase.Scalar(Db, $"SELECT COUNT(*) FROM market_item_event WHERE item_Guid = {loose};"));
         }
 
@@ -204,7 +205,7 @@ namespace ACE.Database.Tests.Market
 
             var item = BiotaConverter.ConvertToEntityBiota(cachedCopy);
             RemoveFromPack(item);
-            Assert.IsTrue(shardDb.DepositToVault(item, new ReaderWriterLockSlim(), NewVaultItem(guid)));
+            Assert.AreEqual(MarketJobResult.Saved, shardDb.DepositToVault(item, new ReaderWriterLockSlim(), NewVaultItem(guid)));
 
             // the entry is gone and its context is disposed: nothing can be written back through the old copy
             Assert.DoesNotContain(guid, shardDb.GetBiotaCacheKeys());
@@ -254,7 +255,7 @@ namespace ACE.Database.Tests.Market
                 queue.Stop(); // drains the queue
             }
 
-            CollectionAssert.AreEqual(new[] { "save:True", "deposit:True", "withdraw:True" }, results);
+            CollectionAssert.AreEqual(new[] { "save:True", "deposit:Saved", "withdraw:Saved" }, results);
             Assert.IsTrue(cachedAfterEarlierSave);
             Assert.DoesNotContain(guid, shardDb.GetBiotaCacheKeys());
 
@@ -289,7 +290,7 @@ namespace ACE.Database.Tests.Market
             item.PropertiesEnchantmentRegistry.Clear();
             RemoveFromPack(item);
 
-            Assert.IsTrue(shardDb.DepositToVault(item, new ReaderWriterLockSlim(), NewVaultItem(guid)));
+            Assert.AreEqual(MarketJobResult.Saved, shardDb.DepositToVault(item, new ReaderWriterLockSlim(), NewVaultItem(guid)));
 
             Assert.AreEqual(0, MarketTestDatabase.Scalar(Db, $"SELECT COUNT(*) FROM biota_properties_enchantment_registry WHERE object_Id = {guid};"));
             Assert.AreEqual(1, MarketTestDatabase.Scalar(Db, $"SELECT COUNT(*) FROM market_vault_item WHERE item_Guid = {guid};"));

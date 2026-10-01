@@ -41,14 +41,18 @@ namespace ACE.Database
                 return MarketJobResult.Refused;
             }
 
-            foreach (var note in notes)
-                EvictBiota(note.Guid);
-
             var guids = notes.Select(n => n.Guid).ToList();
             var amount = notes.Sum(n => (long)n.StackSize);
 
+            // GUIDs of deleted notes can come back after a restart, so only an event written since this job started is this job's
+            var started = ListingStore.Truncate(DateTime.UtcNow);
+            var firstGuid = guids[0];
+
             return SaveLedgerJob(nameof(DepositNotes), accountId, context =>
             {
+                foreach (var guid in guids)
+                    EvictBiota(guid);
+
                 var rows = context.Biota.AsNoTracking().Where(r => guids.Contains(r.Id)).Select(r => new { r.Id, r.WeenieClassId }).ToList();
 
                 var notANote = rows.FirstOrDefault(r => r.WeenieClassId != TradeNoteWcid);
@@ -80,14 +84,17 @@ namespace ACE.Database
                 }
 
                 return transfer;
-            }, out balanceAfter);
+            },
+            context => context.MarketItemEvents.Any(e => e.ItemGuid == firstGuid && e.Kind == ItemEventKind.Deposit && e.TransferId != null && e.EventTime >= started),
+            out balanceAfter);
         }
 
         /// <summary>
         /// Pays out notes the world thread has created (not in any pack yet, pointed at the character): writes a note_withdraw transfer (player -n, NOTES +n)
         /// and inserts the note rows, in one save. The notes' stack sizes must add up to amount.
         /// Returns InsufficientFunds, saving nothing, if the balance is less than amount (balanceAfter is then the current balance),
-        /// and Paused, saving nothing, if the market was paused by the time the job started (a pause landing during the job's own save isn't seen).
+        /// Paused, saving nothing, if the market was paused by the time the job started (a pause landing during the job's own save isn't seen),
+        /// and Banned, saving nothing, if the account is banned then (a ban freezes the balance, and it may have landed after the request was made).
         /// A game bridge ticket passed as ticket is marked done in the same save, and the transfer names it.
         /// </summary>
         public MarketJobResult WithdrawNotes(uint accountId, uint characterId, IReadOnlyList<(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock)> notes, long amount, out long balanceAfter, TicketCompletion ticket = null)
@@ -121,15 +128,33 @@ namespace ACE.Database
                 return MarketJobResult.Refused;
             }
 
-            using (var context = new ShardDbContext())
+            try
             {
-                if (MarketPause.IsPaused(context))
+                using (var context = new ShardDbContext())
                 {
-                    log.Warn($"[DATABASE][VAULT] WithdrawNotes for account {accountId} refused: the market is paused");
-                    balanceAfter = Ledger.GetBalance(context, accountId);
-                    return MarketJobResult.Paused;
+                    if (MarketPause.IsPaused(context))
+                    {
+                        log.Warn($"[DATABASE][VAULT] WithdrawNotes for account {accountId} refused: the market is paused");
+                        balanceAfter = Ledger.GetBalance(context, accountId);
+                        return MarketJobResult.Paused;
+                    }
+
+                    if (IsAccountBanned(accountId))
+                    {
+                        log.Warn($"[DATABASE][VAULT] WithdrawNotes for account {accountId} refused: the account is banned");
+                        balanceAfter = Ledger.GetBalance(context, accountId);
+                        return MarketJobResult.Banned;
+                    }
                 }
             }
+            catch (Exception ex)
+            {
+                log.Error($"[DATABASE][VAULT] WithdrawNotes for account {accountId} failed before saving, nothing was saved: {ex.GetFullMessage()}");
+                return MarketJobResult.Failed;
+            }
+
+            // the notes' GUIDs are new, and nothing but this job saves them before it succeeds, so a note row means the job committed
+            var firstGuid = notes[0].biota.Id;
 
             return SaveLedgerJob(nameof(WithdrawNotes), accountId, context =>
             {
@@ -161,57 +186,97 @@ namespace ACE.Database
                 }
 
                 return transfer;
-            }, out balanceAfter);
+            },
+            context => context.Biota.Any(b => b.Id == firstGuid),
+            out balanceAfter);
         }
 
         /// <summary>
         /// Builds a job's changes in a fresh context (build adds everything but the transfer it returns), adds the transfer to the ledger, and saves once.
         /// build returns null to refuse, and then nothing is saved; so does a transfer the balance can't cover (InsufficientFunds). A save that lost a race for the balance row (a stale row version, or two first writes)
         /// wrote nothing, so it is rebuilt from a fresh read and tried again, up to LedgerJobAttempts times.
+        /// A save can also fail after its commit (the acknowledgement was lost, and the retry strategy's second try then fails on the rows the first wrote),
+        /// which looks like a lost race. So before any retry, and after any other failure while saving, committed asks the database whether the job's changes are there:
+        /// rebuilding a job that already committed would apply it twice. No exception escapes, so the caller's callback always runs.
         /// </summary>
-        private MarketJobResult SaveLedgerJob(string job, uint accountId, Func<ShardDbContext, Transfer> build, out long balanceAfter)
+        private MarketJobResult SaveLedgerJob(string job, uint accountId, Func<ShardDbContext, Transfer> build, Func<ShardDbContext, bool> committed, out long balanceAfter)
         {
+            balanceAfter = 0;
+
             for (var attempt = 1; ; attempt++)
             {
-                using (var context = new ShardDbContext())
+                var saving = false;
+
+                try
                 {
-                    var transfer = build(context);
-
-                    if (transfer == null)
+                    if (attempt > 1)
                     {
-                        balanceAfter = Ledger.GetBalance(context, accountId);
-                        return MarketJobResult.Refused;
+                        using (var check = new ShardDbContext())
+                        {
+                            if (committed(check))
+                            {
+                                log.Warn($"[DATABASE][VAULT] {job} for account {accountId} committed although its save reported a lost race; treating it as saved");
+                                balanceAfter = Ledger.GetBalance(check, accountId);
+                                return MarketJobResult.Saved;
+                            }
+                        }
                     }
 
-                    if (!Ledger.TryAdd(context, transfer))
+                    using (var context = new ShardDbContext())
                     {
-                        log.Warn($"[DATABASE][VAULT] {job} for account {accountId} refused: the balance is too low");
-                        balanceAfter = Ledger.GetBalance(context, accountId);
-                        return MarketJobResult.InsufficientFunds;
-                    }
+                        var transfer = build(context);
 
-                    try
-                    {
+                        if (transfer == null)
+                        {
+                            balanceAfter = Ledger.GetBalance(context, accountId);
+                            return MarketJobResult.Refused;
+                        }
+
+                        if (!Ledger.TryAdd(context, transfer))
+                        {
+                            log.Warn($"[DATABASE][VAULT] {job} for account {accountId} refused: the balance is too low");
+                            balanceAfter = Ledger.GetBalance(context, accountId);
+                            return MarketJobResult.InsufficientFunds;
+                        }
+
+                        saving = true;
                         context.SaveChanges();
 
                         balanceAfter = transfer.Entries.Last(e => e.AccountId == accountId).BalanceAfter ?? 0;
                         return MarketJobResult.Saved;
                     }
-                    catch (DbUpdateException ex) when (attempt < LedgerJobAttempts && Ledger.IsLostRace(ex))
-                    {
-                        log.Warn($"[DATABASE][VAULT] {job} for account {accountId} lost a race for the balance row, trying again: {ex.GetFullMessage()}");
-                    }
-                    catch (Exception ex)
-                    {
-                        log.Error($"[DATABASE][VAULT] {job} for account {accountId} failed, nothing was saved: {ex.GetFullMessage()}");
+                }
+                catch (DbUpdateException ex) when (saving && attempt < LedgerJobAttempts && Ledger.IsLostRace(ex))
+                {
+                    log.Warn($"[DATABASE][VAULT] {job} for account {accountId} lost a race for the balance row, trying again: {ex.GetFullMessage()}");
+                }
+                catch (Exception ex) when (!saving)
+                {
+                    log.Error($"[DATABASE][VAULT] {job} for account {accountId} failed before saving, nothing was saved: {ex.GetFullMessage()}");
+                    return MarketJobResult.Failed;
+                }
+                catch (Exception ex)
+                {
+                    log.Error($"[DATABASE][VAULT] {job} for account {accountId} failed while saving: {ex.GetFullMessage()}");
 
-                        balanceAfter = 0;
-                        return MarketJobResult.Failed;
+                    var result = Reconcile(job, $"for account {accountId}", committed);
+
+                    if (result == MarketJobResult.Saved)
+                    {
+                        try
+                        {
+                            balanceAfter = Ledger.GetBalance(accountId);
+                        }
+                        catch (Exception)
+                        {
+                            // only the message's balance is lost
+                        }
                     }
+
+                    return result;
                 }
             }
         }
-
 
         private static Transfer NewTransfer(string kind, uint accountId, uint characterId, params LedgerEntry[] entries)
         {
