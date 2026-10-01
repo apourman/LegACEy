@@ -267,15 +267,17 @@ namespace ACE.Server.Tests.Market
         private static string Property(string table, uint guid, int type) =>
             MarketTestDatabase.Rows(Db, $"SELECT value FROM {table} WHERE object_Id = {guid} AND type = {type};").SingleOrDefault();
 
-        private static string Int(uint guid, PropertyInt type) => Property("biota_properties_int", guid, (int)type) ?? Dash(type == PropertyInt.ItemType || type == PropertyInt.StackSize || type == PropertyInt.Value || type == PropertyInt.WieldRequirements);
+        /// <summary>
+        /// The property's value; when the item lacks it, "-" for a nullable column, or null for a column that has a default instead (the caller supplies it)
+        /// </summary>
+        private static string Int(uint guid, PropertyInt type) => Property("biota_properties_int", guid, (int)type) ?? (ColumnHasDefault(type) ? null : "-");
+
+        private static bool ColumnHasDefault(PropertyInt type) => type == PropertyInt.ItemType || type == PropertyInt.StackSize || type == PropertyInt.Value || type == PropertyInt.WieldRequirements;
 
         private static string Float(uint guid, PropertyFloat type) => Property("biota_properties_float", guid, (int)type) ?? "-";
 
         private static string Did(uint guid, PropertyDataId type) => Property("biota_properties_d_i_d", guid, (int)type) ?? "-";
 
         private static string Str(uint guid, PropertyString type) => Property("biota_properties_string", guid, (int)type);
-
-        // columns that are never null take a default instead (the callers supply it)
-        private static string Dash(bool hasDefault) => hasDefault ? null : "-";
     }
 }

@@ -154,7 +154,6 @@ namespace ACE.Database.Market
             return context.MarketBlockedWcids.Where(r => r.Wcid == wcid).ExecuteDelete() > 0;
         }
 
-
         /// <summary>
         /// Marks a held row as being withdrawn, if it still has the expected version and belongs to the account.
         /// Returns the row's new version, or null if the row was changed or is gone.

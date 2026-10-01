@@ -88,7 +88,7 @@ namespace ACE.Server.Command.Handlers
                 return;
             }
 
-            if (!TryAdmin(session, out var adminAccountId, out var adminCharacterId))
+            if (!TryAdmin(session, CorrectionsInGame, out var adminAccountId, out var adminCharacterId))
                 return;
 
             var account = parameters[1];
@@ -110,7 +110,7 @@ namespace ACE.Server.Command.Handlers
                 return;
             }
 
-            if (!TryAdmin(session, out var adminAccountId, out var adminCharacterId))
+            if (!TryAdmin(session, CorrectionsInGame, out var adminAccountId, out var adminCharacterId))
                 return;
 
             MarketAdmin.Reverse(transferId, Memo(parameters, 2), adminAccountId, adminCharacterId, result => Tell(session, result?.Outcome switch
@@ -134,7 +134,7 @@ namespace ACE.Server.Command.Handlers
                 return;
             }
 
-            if (!TryAdmin(session, out var adminAccountId, out _, "A block is recorded with the admin who adds it: use this command in game."))
+            if (!TryAdmin(session, "A block is recorded with the admin who adds it: use this command in game.", out var adminAccountId, out _))
                 return;
 
             MarketAdmin.Block(wcid, reason, adminAccountId, result => Tell(session, result?.Outcome switch
@@ -194,27 +194,30 @@ namespace ACE.Server.Command.Handlers
                 return;
             }
 
-            uint? only = parameters.Length == 2 ? wcid : null;
+            uint? onlyWcid = parameters.Length == 2 ? wcid : null;
 
             Tell(session, "Refreshing the Vault search columns...");
 
-            MarketAdmin.Refresh(only, by, report => Tell(session, report switch
+            MarketAdmin.Refresh(onlyWcid, by, report => Tell(session, report switch
             {
                 null => "The refresh failed; see the server log.",
-                { Failed: 0 } => $"Refreshed the search columns of {report.Refreshed:N0} Vault item(s).",
-                _ => $"Refreshed the search columns of {report.Refreshed:N0} Vault item(s); {report.Failed:N0} could not be refreshed, see the server log.",
+                { Failed: 0 } => $"Refreshed the search columns of {report.Refreshed:N0} Vault item(s).{Gone(report.Gone)}",
+                _ => $"Refreshed the search columns of {report.Refreshed:N0} Vault item(s);{Gone(report.Gone)} {report.Failed:N0} could not be refreshed, see the server log.",
             }));
         }
+
+        private static string Gone(int count) => count == 0 ? "" : $" {count:N0} left the Vault while it ran.";
 
         private static bool TryWcid(string text, out uint wcid) => uint.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out wcid) && wcid > 0;
 
         private static string Utc(DateTime time) => time.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC";
 
+        private const string CorrectionsInGame = "Ledger corrections are recorded with the admin who makes them: use this command in game.";
+
         /// <summary>
-        /// A correction is recorded with the admin's account and character, so it can't come from the console
+        /// A correction or a block is recorded with the admin's account (and character), so it can't come from the console
         /// </summary>
-        private static bool TryAdmin(Session session, out uint accountId, out uint characterId,
-            string refusal = "Ledger corrections are recorded with the admin who makes them: use this command in game.")
+        private static bool TryAdmin(Session session, string refusal, out uint accountId, out uint characterId)
         {
             accountId = session?.AccountId ?? 0;
             characterId = session?.Player?.Guid.Full ?? 0;

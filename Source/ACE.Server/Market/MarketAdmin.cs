@@ -194,31 +194,33 @@ namespace ACE.Server.Market
                 using (var context = new ShardDbContext())
                     guids = VaultStore.ItemGuids(context, wcid);
 
-                int refreshed = 0, failed = 0;
+                int refreshed = 0, gone = 0, failed = 0;
 
                 foreach (var guid in guids)
                 {
-                    if (RefreshOne(guid))
-                        refreshed++;
-                    else
-                        failed++;
+                    switch (RefreshOne(guid))
+                    {
+                        case true: refreshed++; break;
+                        case false: gone++; break;
+                        default: failed++; break;
+                    }
                 }
 
                 var what = wcid == null ? "every Vault item" : $"Vault items of WCID {wcid}";
 
                 if (failed == 0)
-                    log.Info($"[MARKET] {by} refreshed the search columns of {what}: {refreshed:N0} refreshed");
+                    log.Info($"[MARKET] {by} refreshed the search columns of {what}: {refreshed:N0} refreshed, {gone:N0} withdrawn meanwhile");
                 else
-                    log.Warn($"[MARKET] {by} refreshed the search columns of {what}: {refreshed:N0} refreshed, {failed:N0} could not be (see above)");
+                    log.Warn($"[MARKET] {by} refreshed the search columns of {what}: {refreshed:N0} refreshed, {gone:N0} withdrawn meanwhile, {failed:N0} could not be (see above)");
 
-                return new RefreshReport(refreshed, failed);
+                return new RefreshReport(refreshed, gone, failed);
             }, completed);
         }
 
         /// <summary>
-        /// False if the item couldn't be loaded or made into an object, or its Vault row is gone (withdrawn meanwhile)
+        /// True if the row was refreshed, false if its Vault row is gone (withdrawn meanwhile, a normal race), null if the item couldn't be loaded or made into an object (logged)
         /// </summary>
-        private static bool RefreshOne(uint guid)
+        private static bool? RefreshOne(uint guid)
         {
             try
             {
@@ -227,7 +229,7 @@ namespace ACE.Server.Market
                 if (biota == null)
                 {
                     log.Error($"[MARKET] Refresh: Vault item 0x{guid:X8} has no item row");
-                    return false;
+                    return null;
                 }
 
                 var item = WorldObjectFactory.CreateWorldObject(biota);
@@ -235,7 +237,7 @@ namespace ACE.Server.Market
                 if (item == null)
                 {
                     log.Error($"[MARKET] Refresh: Vault item 0x{guid:X8} (WCID {biota.WeenieClassId}) could not be created from its item row");
-                    return false;
+                    return null;
                 }
 
                 // the owner and state columns NewVaultItem fills are not written by UpdateSearchColumns
@@ -248,7 +250,7 @@ namespace ACE.Server.Market
             catch (Exception ex)
             {
                 log.Error($"[MARKET] Refresh: Vault item 0x{guid:X8} failed: {ex}");
-                return false;
+                return null;
             }
         }
 
@@ -288,6 +290,7 @@ namespace ACE.Server.Market
     /// <param name="InVaults">how many items of the class are in Vaults now (a block doesn't move them)</param>
     public sealed record BlockResult(BlockOutcome Outcome, string WeenieName, BlockedWcid Block, int InVaults);
 
+    /// <param name="Gone">items withdrawn while the refresh ran: nothing to refresh</param>
     /// <param name="Failed">items whose columns couldn't be refreshed: logged one by one</param>
-    public sealed record RefreshReport(int Refreshed, int Failed);
+    public sealed record RefreshReport(int Refreshed, int Gone, int Failed);
 }
