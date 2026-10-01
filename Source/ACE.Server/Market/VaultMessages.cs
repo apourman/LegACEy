@@ -1,3 +1,9 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+
+using ACE.Database.Models.Shard.Market;
+
 namespace ACE.Server.Market
 {
     /// <summary>
@@ -65,6 +71,33 @@ namespace ACE.Server.Market
         }
 
         public static string Balance(long balance) => $"Your balance is {balance:N0} MMD.";
+
+        public static string LinkCode(string code, long minutes) =>
+            $"Your plugin link code is {code}. Enter it in the UtilityBelt plugin within {minutes:N0} minute{(minutes == 1 ? "" : "s")}. It works once, and never share it.";
+
+        /// <summary>
+        /// /vault tokens: a header, one line per token, and how to revoke one
+        /// </summary>
+        public static IEnumerable<string> Tokens(IReadOnlyCollection<PluginToken> tokens)
+        {
+            if (tokens.Count == 0)
+            {
+                yield return "Your account has no plugin tokens. /vault link signs in the UtilityBelt plugin.";
+                yield break;
+            }
+
+            yield return $"Your account's plugin tokens ({tokens.Count:N0}):";
+
+            foreach (var token in tokens)
+                yield return $"#{token.Id}  {token.Label ?? "(no label)"}  last used {(token.LastUsedTime is DateTime used ? Day(used) : "never")}, expires {Day(token.ExpiresTime)}";
+
+            yield return "/vault tokens revoke <id> stops one.";
+        }
+
+        public static string TokenRevoked(long tokenId, bool revoked) =>
+            revoked ? $"Revoked plugin token #{tokenId}. It stops working at once." : $"Your account has no plugin token #{tokenId}.";
+
+        private static string Day(DateTime utc) => utc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
         /// <summary>
         /// What a player is told when a deposit or withdrawal channel starts

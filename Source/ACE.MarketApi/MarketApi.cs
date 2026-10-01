@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
@@ -93,9 +94,15 @@ namespace ACE.MarketApi
                     cookie.Events.OnRedirectToLogin = context => MarketHttp.WriteError(context.Response, StatusCodes.Status401Unauthorized, "unauthorized");
                     cookie.Events.OnRedirectToAccessDenied = context => MarketHttp.WriteError(context.Response, StatusCodes.Status403Forbidden, "forbidden");
                     cookie.Events.OnValidatePrincipal = ValidateSession;
-                });
+                })
+                .AddScheme<AuthenticationSchemeOptions, PluginTokenAuthenticationHandler>(PluginTokenAuthenticationHandler.SchemeName, null);
 
-            builder.Services.AddAuthorization();
+            // RequireAuthorization takes the plugin's bearer token or the website's cookie. The token scheme is challenged first, so it only adds
+            // its WWW-Authenticate header before the cookie scheme writes the 401 body.
+            builder.Services.AddAuthorization(authorization =>
+                authorization.DefaultPolicy = new AuthorizationPolicyBuilder(PluginTokenAuthenticationHandler.SchemeName, CookieAuthenticationDefaults.AuthenticationScheme)
+                    .RequireAuthenticatedUser()
+                    .Build());
 
             // behind a reverse proxy the connection's IP is the proxy's; trust X-Forwarded-For from the configured proxies only
             if (options.TrustedProxies.Length > 0)
@@ -123,9 +130,23 @@ namespace ACE.MarketApi
             CatalogEndpoints.Map(app);
             PurchaseEndpoints.Map(app);
             HistoryEndpoints.Map(app);
+            PluginTokenEndpoints.Map(app);
             IconEndpoints.Map(app);
 
             return app;
+        }
+
+        /// <summary>
+        /// True when the account is banned now. The market has then noticed the ban, so the account's listings go back to its Vault.
+        /// Every signed-in request (cookie or plugin token) asks this.
+        /// </summary>
+        public static bool NoticeBan(MarketDatabase database, Account account, DateTime now)
+        {
+            if (!account.IsBanned(now))
+                return false;
+
+            MarketUpkeep.ReturnListings(database, new[] { account.AccountId }, now);
+            return true;
         }
 
         /// <summary>
@@ -141,12 +162,8 @@ namespace ACE.MarketApi
             if (MarketHttp.TryGetAccountId(context.Principal, out var accountId))
                 account = await services.GetRequiredService<MarketDatabase>().FindAccountAsync(accountId);
 
-            if (account == null || account.IsBanned(now))
+            if (account == null || NoticeBan(services.GetRequiredService<MarketDatabase>(), account, now))
             {
-                // the market has noticed the ban: the account's listings go back to its Vault
-                if (account != null)
-                    MarketUpkeep.ReturnListings(services.GetRequiredService<MarketDatabase>(), new[] { account.AccountId }, now);
-
                 context.RejectPrincipal();
                 await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             }
