@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -9,11 +10,16 @@ using ACE.Database.Models.Shard.Market;
 namespace ACE.Database.Market
 {
     /// <summary>
-    /// Reads of the Vault tables through the configured shard database. Item moves go through the deposit and withdraw save-queue jobs;
-    /// the only writes here are the withdrawal channel's marks on a Vault row, which never touch an item.
+    /// Reads of the Vault tables, through the configured shard database or a context the caller gives. Item moves go through the deposit and withdraw save-queue jobs;
+    /// the only writes here never touch an item: the withdrawal channel's marks on a Vault row, the admin's search-column refresh, and the WCID blocklist.
     /// </summary>
     public static class VaultStore
     {
+        /// <summary>
+        /// The longest reason a WCID block can record (the column's size)
+        /// </summary>
+        public const int MaxBlockReasonLength = 255;
+
         /// <summary>
         /// Every item in the account's Vault, oldest deposit first
         /// </summary>
@@ -49,6 +55,105 @@ namespace ACE.Database.Market
             using (var context = new ShardDbContext())
                 return context.MarketBlockedWcids.Any(r => r.Wcid == wcid);
         }
+
+        /// <summary>
+        /// The GUIDs of every item in any Vault, or only of items of one weenie class
+        /// </summary>
+        public static List<uint> ItemGuids(ShardDbContext context, uint? wcid = null)
+        {
+            var rows = context.MarketVaultItems.AsNoTracking();
+
+            if (wcid != null)
+                rows = rows.Where(r => r.Wcid == wcid.Value);
+
+            return rows.OrderBy(r => r.ItemGuid).Select(r => r.ItemGuid).ToList();
+        }
+
+        /// <summary>
+        /// Overwrites a Vault row's search columns (wcid, name, type, stack size, value, icon layers, stats) with the ones given, in one UPDATE.
+        /// The owner, state, deposit time and row version are left alone: the columns only describe the item, so a refresh never makes a listing,
+        /// purchase or withdrawal in flight fail its row-version check. False if the item has no Vault row.
+        /// </summary>
+        public static bool UpdateSearchColumns(ShardDbContext context, VaultItem columns)
+        {
+            var changed = context.MarketVaultItems
+                .Where(r => r.ItemGuid == columns.ItemGuid)
+                .ExecuteUpdate(s => s
+                    .SetProperty(r => r.Wcid, columns.Wcid)
+                    .SetProperty(r => r.Name, columns.Name)
+                    .SetProperty(r => r.ItemType, columns.ItemType)
+                    .SetProperty(r => r.StackSize, columns.StackSize)
+                    .SetProperty(r => r.Value, columns.Value)
+                    .SetProperty(r => r.IconUnderlay, columns.IconUnderlay)
+                    .SetProperty(r => r.Icon, columns.Icon)
+                    .SetProperty(r => r.IconOverlay, columns.IconOverlay)
+                    .SetProperty(r => r.IconOverlaySecondary, columns.IconOverlaySecondary)
+                    .SetProperty(r => r.UiEffects, columns.UiEffects)
+                    .SetProperty(r => r.PaletteTemplate, columns.PaletteTemplate)
+                    .SetProperty(r => r.ClothingBase, columns.ClothingBase)
+                    .SetProperty(r => r.Workmanship, columns.Workmanship)
+                    .SetProperty(r => r.ArcaneLore, columns.ArcaneLore)
+                    .SetProperty(r => r.WieldRequirements, columns.WieldRequirements)
+                    .SetProperty(r => r.WieldSkillType, columns.WieldSkillType)
+                    .SetProperty(r => r.WieldDifficulty, columns.WieldDifficulty)
+                    .SetProperty(r => r.ArmorLevel, columns.ArmorLevel)
+                    .SetProperty(r => r.Damage, columns.Damage)
+                    .SetProperty(r => r.DamageMod, columns.DamageMod)
+                    .SetProperty(r => r.MaterialType, columns.MaterialType)
+                    .SetProperty(r => r.EquipmentSetId, columns.EquipmentSetId)
+                    .SetProperty(r => r.ImbuedEffect, columns.ImbuedEffect));
+
+            return changed == 1;
+        }
+
+        /// <summary>
+        /// Every blocked weenie class, lowest id first
+        /// </summary>
+        public static List<BlockedWcid> ListBlocked(ShardDbContext context)
+        {
+            return context.MarketBlockedWcids.AsNoTracking().OrderBy(r => r.Wcid).ToList();
+        }
+
+        /// <summary>
+        /// Blocks the weenie class from new deposits, recording the reason, the admin and the time.
+        /// Returns the block now in force: the new one, or the earlier one if the class was already blocked (that one is kept unchanged).
+        /// </summary>
+        public static BlockedWcid Block(ShardDbContext context, uint wcid, string reason, uint adminAccountId, DateTime now, out bool added)
+        {
+            added = false;
+
+            var existing = context.MarketBlockedWcids.AsNoTracking().FirstOrDefault(r => r.Wcid == wcid);
+
+            if (existing != null)
+                return existing;
+
+            var block = new BlockedWcid { Wcid = wcid, Reason = reason, AddedByAccountId = adminAccountId, AddedTime = now };
+
+            context.MarketBlockedWcids.Add(block);
+
+            try
+            {
+                context.SaveChanges();
+            }
+            catch (DbUpdateException ex) when (Ledger.IsLostRace(ex))
+            {
+                // another admin blocked it at the same moment
+                context.ChangeTracker.Clear();
+                return context.MarketBlockedWcids.AsNoTracking().First(r => r.Wcid == wcid);
+            }
+
+            added = true;
+            return block;
+        }
+
+        /// <summary>
+        /// Lets the weenie class into the Vault again. False if it wasn't blocked.
+        /// </summary>
+        public static bool Unblock(ShardDbContext context, uint wcid)
+        {
+            return context.MarketBlockedWcids.Where(r => r.Wcid == wcid).ExecuteDelete() > 0;
+        }
+
 
         /// <summary>
         /// Marks a held row as being withdrawn, if it still has the expected version and belongs to the account.
