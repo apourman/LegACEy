@@ -66,6 +66,9 @@ namespace ACE.Server.Market
 
         public static string Balance(long balance) => $"Your balance is {balance:N0} MMD.";
 
+        public static string LinkCode(string code, long minutes) =>
+            $"Your plugin link code is {code}. Enter it in the UtilityBelt plugin within {minutes:N0} minute{(minutes == 1 ? "" : "s")}. It works once, and never share it.";
+
         /// <summary>
         /// What a player is told when a deposit or withdrawal channel starts
         /// </summary>

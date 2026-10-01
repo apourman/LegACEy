@@ -68,6 +68,21 @@ namespace ACE.Database.Tests.Market
             command.ExecuteNonQuery();
         }
 
+        /// <summary>
+        /// A fresh scratch auth database from the base script, which names ace_auth itself
+        /// </summary>
+        public static void CreateAuth(string database)
+        {
+            Drop(database);
+
+            var sql = File.ReadAllText(Path.Combine(RepositoryRoot, "Database", "Base", "AuthenticationBase.sql")).Replace("ace_auth", database);
+
+            using var connection = new MySqlConnection(ConnectionString());
+            connection.Open();
+            using var command = new MySqlCommand(sql, connection);
+            command.ExecuteNonQuery();
+        }
+
         public static void Drop(string database)
         {
             using var connection = new MySqlConnection(ConnectionString());

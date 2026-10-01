@@ -83,6 +83,15 @@ namespace ACE.MarketApi
         }
 
         /// <summary>
+        /// A failure with no account to count against, such as a wrong plugin link code. It counts toward the IP's block, like a wrong password.
+        /// </summary>
+        public void RecordIpFailure(string ip, LockoutRule rule, DateTimeOffset now)
+        {
+            lock (gate)
+                Fail(ips, ip, rule, now);
+        }
+
+        /// <summary>
         /// A correct password clears the account's failures. The IP's failures stay: one address may be trying many accounts.
         /// </summary>
         public void RecordSuccess(string account)

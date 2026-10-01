@@ -37,7 +37,7 @@ namespace ACE.MarketApi.Tests.Support
         {
             MarketTestDatabase.InitializeConfig();
 
-            CreateAuth(AuthDatabase);
+            MarketTestDatabase.CreateAuth(AuthDatabase);
 
             var failures = MarketTestDatabase.CreateFresh(ShardDatabase);
             if (failures.Count > 0)
@@ -51,18 +51,6 @@ namespace ACE.MarketApi.Tests.Support
             MarketTestDatabase.Drop(AuthDatabase);
             MarketTestDatabase.Drop(ShardDatabase);
             MarketTestDatabase.Drop(BareShardDatabase);
-        }
-
-        private static void CreateAuth(string database)
-        {
-            MarketTestDatabase.Drop(database);
-
-            var sql = File.ReadAllText(Path.Combine(MarketTestDatabase.RepositoryRoot, "Database", "Base", "AuthenticationBase.sql")).Replace("ace_auth", database);
-
-            using var connection = new MySqlConnection(MarketTestDatabase.ConnectionString());
-            connection.Open();
-            using var command = new MySqlCommand(sql, connection);
-            command.ExecuteNonQuery();
         }
 
         /// <summary>
@@ -92,6 +80,19 @@ namespace ACE.MarketApi.Tests.Support
             MarketTestDatabase.Execute(AuthDatabase, $"INSERT INTO account (accountName, passwordHash, passwordSalt, accessLevel) VALUES ('{name}', '{hash}', '{salt}', 0);");
 
             return (uint)MarketTestDatabase.Scalar(AuthDatabase, $"SELECT accountId FROM account WHERE accountName = '{name}';");
+        }
+
+        /// <summary>
+        /// Changes the account's password the way the game's /passwd does: a new bcrypt hash
+        /// </summary>
+        public static void SetPassword(uint accountId, string password)
+        {
+            MarketTestDatabase.Execute(AuthDatabase, $"UPDATE account SET passwordHash = '{BCryptProvider.HashPassword(password, 4)}', passwordSalt = 'use bcrypt' WHERE accountId = {accountId};");
+        }
+
+        public static string PasswordHash(uint accountId)
+        {
+            return MarketTestDatabase.Rows(AuthDatabase, $"SELECT passwordHash FROM account WHERE accountId = {accountId};").Single();
         }
 
         public static void Ban(uint accountId, DateTime expiresUtc)
@@ -192,6 +193,8 @@ namespace ACE.MarketApi.Tests.Support
         {
             MarketTestDatabase.Execute(AuthDatabase, $"UPDATE account SET banned_Time = NULL, banned_By_Account_Id = NULL, ban_Expire_Time = NULL, ban_Reason = NULL WHERE accountId = {accountId};");
         }
+
+        public static ACE.Database.Models.Shard.ShardDbContext Shard() => MarketTestDatabase.CreateContext(ShardDatabase);
 
         public static long Scalar(string sql) => MarketTestDatabase.Scalar(ShardDatabase, sql);
 

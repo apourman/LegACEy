@@ -14,11 +14,11 @@ namespace ACE.Server.Command.Handlers
     /// </summary>
     public static class VaultCommands
     {
-        private const string Usage = "/vault deposit  (the last item you appraised)\n/vault withdraw <id>\n/vault list\n/vault deposit mmd  (all your trade notes)\n/vault withdraw mmd <amount>\n/vault balance";
+        private const string Usage = "/vault deposit  (the last item you appraised)\n/vault withdraw <id>\n/vault list\n/vault deposit mmd  (all your trade notes)\n/vault withdraw mmd <amount>\n/vault balance\n/vault link  (a code for the UtilityBelt plugin)\n/vault tokens\n/vault tokens revoke <id>";
 
         [CommandHandler("vault", AccessLevel.Player, CommandHandlerFlag.RequiresWorld, 0,
             "Move items between your pack and your account's Vault",
-            "deposit | withdraw <id> | list | deposit mmd | withdraw mmd <amount> | balance")]
+            "deposit | withdraw <id> | list | deposit mmd | withdraw mmd <amount> | balance | link | tokens | tokens revoke <id>")]
         public static void HandleVault(Session session, params string[] parameters)
         {
             var player = session.Player;
@@ -86,6 +86,51 @@ namespace ACE.Server.Command.Handlers
                     }
 
                     Tell(session, VaultMessages.Balance(Vault.Balance(player)));
+                    break;
+
+                case "link":
+                    if (!Vault.Available)
+                    {
+                        Tell(session, VaultMessages.For(VaultOutcome.NotAvailable, null));
+                        return;
+                    }
+
+                    Tell(session, VaultMessages.LinkCode(VaultPlugin.NewLinkCode(player, out var minutes), minutes));
+                    break;
+
+                case "tokens":
+                    if (!Vault.Available)
+                    {
+                        Tell(session, VaultMessages.For(VaultOutcome.NotAvailable, null));
+                        return;
+                    }
+
+                    if (parameters.Length >= 2 && parameters[1].Equals("revoke", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (parameters.Length < 3 || !long.TryParse(parameters[2], NumberStyles.None, CultureInfo.InvariantCulture, out var tokenId))
+                        {
+                            Tell(session, "Usage: /vault tokens revoke <id>. /vault tokens shows each token's id.");
+                            return;
+                        }
+
+                        Tell(session, VaultPlugin.Revoke(player, tokenId) ? $"Revoked plugin token #{tokenId}. It stops working at once." : $"Your account has no plugin token #{tokenId}.");
+                        return;
+                    }
+
+                    var tokens = VaultPlugin.Tokens(player);
+
+                    if (tokens.Count == 0)
+                    {
+                        Tell(session, "Your account has no plugin tokens. /vault link signs in the UtilityBelt plugin.");
+                        return;
+                    }
+
+                    Tell(session, $"Your account's plugin tokens ({tokens.Count:N0}):");
+
+                    foreach (var token in tokens)
+                        Tell(session, $"#{token.Id}  {token.Label ?? "(no label)"}  last used {(token.LastUsedTime is DateTime used ? used.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "never")}, expires {token.ExpiresTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}");
+
+                    Tell(session, "/vault tokens revoke <id> stops one.");
                     break;
 
                 default:

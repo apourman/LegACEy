@@ -133,29 +133,39 @@ namespace ACE.MarketApi.Tests.Support
 
         public Task<HttpResponseMessage> GetAsync(string path, string cookie = null) => SendAsync(HttpMethod.Get, path, cookie);
 
-        public async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, string cookie = null)
+        /// <summary>
+        /// A GET signed in with a plugin token (Authorization: Bearer)
+        /// </summary>
+        public Task<HttpResponseMessage> GetWithTokenAsync(string path, string token) => SendAsync(HttpMethod.Get, path, token: token);
+
+        public async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, string cookie = null, string token = null)
         {
             var request = new HttpRequestMessage(method, path);
             request.Headers.Add(RemoteIpHeader, DefaultIp);
-
-            if (cookie != null)
-                request.Headers.Add("Cookie", cookie);
+            AddCredentials(request, cookie, token);
 
             return await Client.SendAsync(request);
         }
 
-        public async Task<HttpResponseMessage> PostJsonAsync(string path, object body, string cookie = null)
+        public async Task<HttpResponseMessage> PostJsonAsync(string path, object body, string cookie = null, string token = null, string ip = DefaultIp)
         {
             var request = new HttpRequestMessage(HttpMethod.Post, path)
             {
                 Content = body is string raw ? new StringContent(raw, System.Text.Encoding.UTF8, "application/json") : JsonContent.Create(body),
             };
-            request.Headers.Add(RemoteIpHeader, DefaultIp);
+            request.Headers.Add(RemoteIpHeader, ip);
+            AddCredentials(request, cookie, token);
 
+            return await Client.SendAsync(request);
+        }
+
+        private static void AddCredentials(HttpRequestMessage request, string cookie, string token)
+        {
             if (cookie != null)
                 request.Headers.Add("Cookie", cookie);
 
-            return await Client.SendAsync(request);
+            if (token != null)
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
         }
 
         public static async Task<JsonElement> JsonAsync(HttpResponseMessage response)

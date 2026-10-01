@@ -35,6 +35,11 @@ namespace ACE.Server.Tests.Market
     {
         public const string Db = "ace_shard_market_vault";
 
+        /// <summary>
+        /// A scratch auth database, so tests that need account rows (plugin tokens read the password hash) never touch the configured one
+        /// </summary>
+        public const string AuthDb = "ace_auth_market_vault";
+
         // world database weenies
         public const uint SwordWcid = 12758; // swordacademy
         public const uint PackWcid = 136; // backpack, a side pack
@@ -46,6 +51,8 @@ namespace ACE.Server.Tests.Market
 
         private static string originalShardDatabase;
 
+        private static string originalAuthDatabase;
+
         private static uint nextAccountId = 900000;
 
         public static void Start()
@@ -56,8 +63,12 @@ namespace ACE.Server.Tests.Market
             if (failures.TryGetValue(MarketTestDatabase.MarketUpdateScript, out var ex))
                 throw ex;
 
+            MarketTestDatabase.CreateAuth(AuthDb);
+
             originalShardDatabase = ConfigManager.Config.MySql.Shard.Database;
             ConfigManager.Config.MySql.Shard.Database = Db;
+            originalAuthDatabase = ConfigManager.Config.MySql.Authentication.Database;
+            ConfigManager.Config.MySql.Authentication.Database = AuthDb;
             ConfigManager.Config.Server.LandblockPreloading = false;
 
             System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance); // as Program.Main does, for the DAT strings
@@ -86,8 +97,10 @@ namespace ACE.Server.Tests.Market
             DatabaseManager.Stop();
 
             ConfigManager.Config.MySql.Shard.Database = originalShardDatabase;
+            ConfigManager.Config.MySql.Authentication.Database = originalAuthDatabase;
 
             MarketTestDatabase.Drop(Db);
+            MarketTestDatabase.Drop(AuthDb);
         }
 
         public static uint NewAccountId() => Interlocked.Increment(ref nextAccountId);

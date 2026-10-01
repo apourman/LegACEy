@@ -214,7 +214,8 @@ public partial class ShardDbContext
             entity.Property(e => e.AccountId).HasColumnName("account_Id");
             entity.Property(e => e.CharacterId).HasColumnName("character_Id");
             entity.Property(e => e.ExpiresTime).HasColumnType("datetime(6)").HasColumnName("expires_Time");
-            entity.Property(e => e.UsedTime).HasColumnType("datetime(6)").HasColumnName("used_Time");
+            // a code is used once: of two exchanges racing for it, only the first save finds used_Time still null
+            entity.Property(e => e.UsedTime).HasColumnType("datetime(6)").HasColumnName("used_Time").IsConcurrencyToken();
         });
 
         modelBuilder.Entity<PluginToken>(entity =>
