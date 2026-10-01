@@ -221,7 +221,7 @@ namespace ACE.MarketApi.Tests
 
             var cookie = await host.SignInForCookieAsync(player.Name, "pass");
 
-            foreach (var (bad, error) in new[] { ("?since=-1", "bad_cursor"), ("?since=abc", "bad_cursor"), ("?since=1.5", "bad_cursor"), ("?itemsBefore=0", "bad_cursor"), ("?itemsBefore=x", "bad_cursor"), ("?itemsLimit=0", "bad_limit"), ("?itemsLimit=x", "bad_limit") })
+            foreach (var (bad, error) in new[] { ("?since=-1", "bad_cursor"), ("?since=abc", "bad_cursor"), ("?since=1.5", "bad_cursor"), ("?itemsBefore=0", "bad_cursor"), ("?itemsBefore=x", "bad_cursor"), ("?since=0&transfersBefore=1", "bad_cursor"), ("?itemsLimit=0", "bad_limit"), ("?itemsLimit=x", "bad_limit") })
             {
                 var response = await host.GetAsync("/api/history" + bad, cookie);
 
@@ -239,8 +239,12 @@ namespace ACE.MarketApi.Tests
         public async Task History_Since_ReturnsExactlyTheEntriesAfterIt()
         {
             var player = NewPlayer("player");
+            var other = NewPlayer("other");
 
             await using var host = await MarketApiHost.StartAsync();
+
+            for (var i = 1; i <= 7; i++)
+                DepositNotes(other, i);
 
             for (var i = 1; i <= 6; i++)
                 DepositNotes(player, i);
@@ -251,15 +255,82 @@ namespace ACE.MarketApi.Tests
             {
                 var history = await HistoryAsync(host, cookie, $"?since={since}");
 
-                var expected = Enumerable.Range(since + 1, Math.Max(0, 6 - since)).Reverse().Select(s => (long)s).ToArray();
+                var expected = Enumerable.Range(since + 1, Math.Max(0, 6 - since)).Select(s => (long)s).ToArray();
 
                 CollectionAssert.AreEqual(expected, Sequences(history), $"since={since}");
                 Assert.AreEqual(6L, history.GetProperty("head").GetInt64());
                 Assert.AreEqual(21L, history.GetProperty("balance").GetInt64());
+                Assert.AreEqual((long)Math.Max(since, 6), history.GetProperty("nextSince").GetInt64());
+                Assert.IsFalse(history.GetProperty("more").GetBoolean());
             }
 
             // the cursor is the account's own numbering, not the global entry id
             Assert.IsTrue(MarketApiTestData.Scalar($"SELECT MIN(id) FROM market_ledger_entry WHERE account_Id = {player.AccountId};") > 6);
+        }
+
+        [TestMethod]
+        public async Task History_TransfersBefore_PagesBackwardWithoutGapsOrDuplicates()
+        {
+            var player = NewPlayer("backpages");
+            await using var host = await MarketApiHost.StartAsync();
+
+            for (var i = 1; i <= 123; i++)
+                DepositNotes(player, 1);
+
+            var cookie = await host.SignInForCookieAsync(player.Name, "pass");
+            long? before = null;
+            var seen = new List<long>();
+
+            while (true)
+            {
+                var query = before == null ? "?transfersLimit=37" : $"?transfersLimit=37&transfersBefore={before}";
+                var page = await HistoryAsync(host, cookie, query);
+                var sequences = Sequences(page);
+                CollectionAssert.AreEqual(sequences.OrderByDescending(sequence => sequence).ToArray(), sequences);
+                seen.AddRange(sequences);
+
+                if (page.GetProperty("nextTransfersBefore").ValueKind == System.Text.Json.JsonValueKind.Null)
+                    break;
+
+                before = page.GetProperty("nextTransfersBefore").GetInt64();
+            }
+
+            CollectionAssert.AreEqual(Enumerable.Range(1, 123).Select(sequence => (long)sequence).Reverse().ToArray(), seen.ToArray());
+        }
+
+        [TestMethod]
+        public async Task History_SincePagesForwardAcrossMoreThanOneHundredAndNewTransfers()
+        {
+            var player = NewPlayer("forwardpages");
+            await using var host = await MarketApiHost.StartAsync();
+
+            for (var i = 1; i <= 205; i++)
+                DepositNotes(player, 1);
+
+            var cookie = await host.SignInForCookieAsync(player.Name, "pass");
+            var seen = new List<long>();
+            long since = 0;
+            var first = await HistoryAsync(host, cookie, $"?since={since}&transfersLimit=100");
+            CollectionAssert.AreEqual(Enumerable.Range(1, 100).Select(sequence => (long)sequence).ToArray(), Sequences(first));
+            seen.AddRange(Sequences(first));
+            since = first.GetProperty("nextSince").GetInt64();
+            Assert.IsTrue(first.GetProperty("more").GetBoolean());
+
+            for (var i = 206; i <= 210; i++)
+                DepositNotes(player, 1);
+
+            var second = await HistoryAsync(host, cookie, $"?since={since}&transfersLimit=100");
+            CollectionAssert.AreEqual(Enumerable.Range(101, 100).Select(sequence => (long)sequence).ToArray(), Sequences(second));
+            seen.AddRange(Sequences(second));
+            since = second.GetProperty("nextSince").GetInt64();
+            Assert.IsTrue(second.GetProperty("more").GetBoolean());
+
+            var third = await HistoryAsync(host, cookie, $"?since={since}&transfersLimit=100");
+            CollectionAssert.AreEqual(Enumerable.Range(201, 10).Select(sequence => (long)sequence).ToArray(), Sequences(third));
+            seen.AddRange(Sequences(third));
+            Assert.AreEqual(210L, third.GetProperty("nextSince").GetInt64());
+            Assert.IsFalse(third.GetProperty("more").GetBoolean());
+            CollectionAssert.AreEqual(Enumerable.Range(1, 210).Select(sequence => (long)sequence).ToArray(), seen.ToArray());
         }
 
         // ---- criterion 3: polling during concurrent writes never misses an entry
@@ -287,19 +358,20 @@ namespace ACE.MarketApi.Tests
 
             async Task PollAsync()
             {
-                var history = await HistoryAsync(host, cookie, $"?since={since}");
+                var history = await HistoryAsync(host, cookie, $"?since={since}&transfersLimit=25");
                 var head = history.GetProperty("head").GetInt64();
                 var sequences = Sequences(history);
 
-                // every poll returns exactly since+1..head, newest first: nothing skipped, nothing repeated
-                CollectionAssert.AreEqual(Enumerable.Range((int)since + 1, (int)(head - since)).Reverse().Select(s => (long)s).ToArray(), sequences, $"poll since={since} head={head}");
+                // each bounded poll returns the next sequences in order, without skipping or repeating
+                var expectedCount = Math.Min(25, (int)(head - since));
+                CollectionAssert.AreEqual(Enumerable.Range((int)since + 1, expectedCount).Select(s => (long)s).ToArray(), sequences, $"poll since={since} head={head}");
 
                 // the balance is the balance after the head entry
-                if (sequences.Length > 0)
-                    Assert.AreEqual(history.GetProperty("transfers")[0].GetProperty("balanceAfter").GetInt64(), history.GetProperty("balance").GetInt64());
+                if (sequences.Length > 0 && !history.GetProperty("more").GetBoolean())
+                    Assert.AreEqual(history.GetProperty("transfers")[sequences.Length - 1].GetProperty("balanceAfter").GetInt64(), history.GetProperty("balance").GetInt64());
 
                 seen.AddRange(sequences);
-                since = head;
+                since = history.GetProperty("nextSince").GetInt64();
                 polls++;
             }
 

@@ -7,6 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 using ACE.Database.Market;
 using ACE.Database.Models.Shard.Market;
+using ACE.Entity.Enum.Properties;
+using ACE.MarketApi;
 using ACE.MarketApi.Tests.Support;
 
 namespace ACE.MarketApi.Tests
@@ -137,6 +139,66 @@ namespace ACE.MarketApi.Tests
 
             var bobVault = await MarketApiHost.JsonAsync(await host.GetAsync("/api/vault", await host.SignInForCookieAsync(bob, "b-pass")));
             CollectionAssert.AreEqual(new[] { bobs }, bobVault.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("itemGuid").GetUInt32()).ToList());
+        }
+
+        [TestMethod]
+        public async Task Vault_ReturnsIconsListingDetailsAndWithdrawingTicketId()
+        {
+            var name = MarketApiTestData.UniqueName("vaultfields");
+            var accountId = MarketApiTestData.CreateAccount(name, "pass");
+            var characterId = MarketApiTestData.AddCharacter(accountId, name + "Main");
+            var held = MarketApiTestData.AddVaultItem(accountId, characterId, "Held", VaultItemState.Held);
+            var listed = MarketApiTestData.AddVaultItem(accountId, characterId, "Listed", VaultItemState.Listed);
+            var withdrawing = MarketApiTestData.AddVaultItem(accountId, characterId, "Withdrawing", VaultItemState.Withdrawing);
+            MarketApiTestData.SetVaultColumns(held, "icon = 100667000");
+            MarketApiTestData.SetVaultColumns(listed, "icon = 100667001");
+            MarketApiTestData.SetVaultColumns(withdrawing, "icon = 100667002");
+
+            await using var host = await MarketApiHost.StartAsync();
+            var now = host.Clock.GetUtcNow().UtcDateTime;
+            var listingId = MarketApiTestData.AddListing(accountId, characterId, listed, 321, ListingStatus.Active, now);
+            long ticketId;
+            using (var shard = host.App.Services.GetRequiredService<MarketDatabase>().CreateShard())
+                ticketId = TicketStore.Create(shard, accountId, characterId, TicketKind.VaultWithdraw,
+                    new TicketPayload(ItemGuid: withdrawing), "vault-ticket-fields", now).Ticket.Id;
+
+            var cookie = await host.SignInForCookieAsync(name, "pass");
+            var vault = await MarketApiHost.JsonAsync(await host.GetAsync("/api/vault", cookie));
+            var items = vault.GetProperty("items").EnumerateArray().ToDictionary(item => item.GetProperty("itemGuid").GetUInt32());
+
+            Assert.IsTrue(items[held].GetProperty("icon").GetProperty("layers").EnumerateArray()
+                .Any(layer => layer.GetProperty("url").GetString() == "/api/icons/0x06000E78.png"));
+            Assert.AreEqual(listingId, items[listed].GetProperty("listingId").GetInt64());
+            Assert.AreEqual(321, items[listed].GetProperty("price").GetInt64());
+            using (var shard = MarketApiTestData.Shard())
+                Assert.AreEqual(Database.Market.ListingStore.Truncate(now).AddDays(MarketSettings.Get(shard, MarketSettings.ListingLifetimeDays)),
+                    items[listed].GetProperty("expiresTime").GetDateTime().ToUniversalTime());
+            Assert.AreEqual(ticketId, items[withdrawing].GetProperty("ticketId").GetInt64());
+        }
+
+        [TestMethod]
+        public async Task VaultDetail_ReturnsOwnAppraisalAndHidesAnotherAccountsItem()
+        {
+            var alice = MarketApiTestData.UniqueName("vaultdetail");
+            var aliceId = MarketApiTestData.CreateAccount(alice, "a-pass");
+            var bob = MarketApiTestData.UniqueName("vaultdetailother");
+            var bobId = MarketApiTestData.CreateAccount(bob, "b-pass");
+            var aliceChar = MarketApiTestData.AddCharacter(aliceId, alice + "Main");
+            var bobChar = MarketApiTestData.AddCharacter(bobId, bob + "Main");
+            var aliceItem = MarketApiTestData.AddVaultItem(aliceId, aliceChar, "Appraised", VaultItemState.Held);
+            var bobItem = MarketApiTestData.AddVaultItem(bobId, bobChar, "Private", VaultItemState.Held);
+            MarketApiTestData.AddItemProperties(aliceItem, ints: new[] { (PropertyInt.Damage, 10) });
+
+            await using var host = await MarketApiHost.StartAsync();
+            var aliceCookie = await host.SignInForCookieAsync(alice, "a-pass");
+            var appraisal = await MarketApiHost.JsonAsync(await host.GetAsync($"/api/vault/{aliceItem}", aliceCookie));
+
+            CollectionAssert.Contains(appraisal.GetProperty("lines").EnumerateArray().Select(line => line.GetString()).ToArray(), "Damage: 10 - 10");
+            Assert.IsTrue(appraisal.GetProperty("spells").ValueKind == System.Text.Json.JsonValueKind.Array);
+
+            var forbidden = await host.GetAsync($"/api/vault/{bobItem}", aliceCookie);
+            Assert.AreEqual(HttpStatusCode.NotFound, forbidden.StatusCode);
+            Assert.AreEqual("not_found", await MarketApiHost.ErrorAsync(forbidden));
         }
 
         [TestMethod]

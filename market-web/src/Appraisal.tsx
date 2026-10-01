@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react';
-import { getListing, type Detail, type Icon as IconData, type Listing } from './api';
+import { getListing, getVaultAppraisal, type Detail, type Icon as IconData, type Listing, type VaultAppraisal, type VaultItem } from './api';
 
 export function Icon({ icon }: { icon: IconData }) {
   return <span aria-hidden="true" className={`item-icon ${icon.glow ?? ''}`}>
@@ -44,6 +44,32 @@ export function AppraisalPopover({ item }: { item: Listing }) {
       <button className="close-popover" aria-label="Close appraisal" onClick={() => setOpen(false)}>×</button>
       <strong>{item.name} × {item.quantity}</strong><p>{item.price} MMD · {item.seller}</p>
       {detail ? <Appraisal item={detail} /> : <p role="status">{error || 'Loading appraisal…'}</p>}
+    </div>}
+  </div>;
+}
+
+export function VaultAppraisalPopover({ item }: { item: VaultItem }) {
+  const [open, setOpen] = useState(false);
+  const [appraisal, setAppraisal] = useState<VaultAppraisal | null>(null);
+  const [error, setError] = useState('');
+  const id = useId();
+  useEffect(() => {
+    if (!open || appraisal) return;
+    let active = true;
+    void getVaultAppraisal(item.itemGuid).then(value => { if (active) setAppraisal(value); }, e => { if (active) setError(e.message); });
+    return () => { active = false; };
+  }, [open, appraisal, item.itemGuid]);
+  return <div className="popover-anchor" onPointerEnter={e => { if (e.pointerType === 'mouse') setOpen(true); }} onPointerLeave={e => { if (e.pointerType === 'mouse') setOpen(false); }}
+    onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); } }}
+    onFocus={() => setOpen(true)} onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false); }}>
+    <button className="icon-button" aria-label={`Appraise ${item.name}`} aria-expanded={open} aria-controls={id}
+      onClick={() => setOpen(true)}><Icon icon={item.icon} /></button>
+    {open && <div id={id} role="region" aria-label={`${item.name} appraisal`} className="popover">
+      <button className="close-popover" aria-label="Close appraisal" onClick={() => setOpen(false)}>×</button>
+      <strong>{item.name} × {item.stackSize}</strong>
+      {appraisal ? <><ul className="appraisal-lines">{appraisal.lines.map((line, i) => <li key={i}>{line}</li>)}</ul>
+        {appraisal.spells.length > 0 && <><h3>Spells</h3><ul>{[...appraisal.spells.filter(s => s.cantrip), ...appraisal.spells.filter(s => !s.cantrip)].map((spell, i) => <li key={i} className={spell.cantrip ? 'cantrip' : undefined}>{spell.name}</li>)}</ul></>}</>
+        : <p role="status">{error || 'Loading appraisal…'}</p>}
     </div>}
   </div>;
 }

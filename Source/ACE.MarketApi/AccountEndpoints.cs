@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -9,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 
 using ACE.Database.Market;
 using ACE.Database.Models.Auth;
+using ACE.Database.Models.Shard.Market;
 
 namespace ACE.MarketApi
 {
@@ -21,6 +23,7 @@ namespace ACE.MarketApi
         {
             app.MapGet("/me", Me).RequireAuthorization();
             app.MapGet("/vault", Vault).RequireAuthorization();
+            app.MapGet("/vault/{itemGuid}", VaultDetail).RequireAuthorization();
         }
 
         /// <summary>
@@ -63,7 +66,7 @@ namespace ACE.MarketApi
         /// <summary>
         /// The account's Vault items and their states (held, listed, withdrawing)
         /// </summary>
-        private static async Task<IResult> Vault(HttpContext context, MarketDatabase database, TimeProvider time)
+        private static async Task<IResult> Vault(HttpContext context, MarketDatabase database, TimeProvider time, GameData gameData)
         {
             var accountId = MarketHttp.AccountId(context);
 
@@ -77,6 +80,32 @@ namespace ACE.MarketApi
                 .OrderBy(v => v.DepositedTime).ThenBy(v => v.ItemGuid)
                 .ToListAsync();
 
+            var itemGuids = items.Select(v => v.ItemGuid).ToHashSet();
+            var listings = itemGuids.Count == 0 ? new Dictionary<uint, Database.Models.Shard.Market.Listing>() :
+                await shard.MarketListings.AsNoTracking()
+                    .Where(l => itemGuids.Contains(l.ItemGuid) && l.SellerAccountId == accountId && l.Status == Database.Models.Shard.Market.ListingStatus.Active)
+                    .ToDictionaryAsync(l => l.ItemGuid);
+            var ticketIds = new Dictionary<uint, long>();
+
+            if (items.Any(v => v.State == VaultItemState.Withdrawing))
+            {
+                var tickets = await shard.MarketTickets.AsNoTracking()
+                    .Where(t => t.AccountId == accountId && t.Kind == TicketKind.VaultWithdraw &&
+                        (t.Status == TicketStatus.Waiting || t.Status == TicketStatus.Claimed))
+                    .OrderBy(t => t.Id)
+                    .ToListAsync();
+
+                foreach (var ticket in tickets)
+                {
+                    var itemGuid = TicketPayload.FromJson(ticket.Payload)?.ItemGuid;
+
+                    if (itemGuid.HasValue && itemGuids.Contains(itemGuid.Value) && !ticketIds.ContainsKey(itemGuid.Value))
+                        ticketIds.Add(itemGuid.Value, ticket.Id);
+                }
+            }
+
+            var listingLifetimeDays = MarketSettings.Get(shard, MarketSettings.ListingLifetimeDays);
+
             return Results.Json(new
             {
                 items = items.Select(v => new
@@ -88,9 +117,38 @@ namespace ACE.MarketApi
                     stackSize = v.StackSize,
                     state = v.State,
                     characterId = v.CharacterId,
+                    icon = ItemIcons.For(v, gameData),
+                    listingId = listings.TryGetValue(v.ItemGuid, out var listing) ? listing.Id : (long?)null,
+                    price = listing?.Price,
+                    expiresTime = listing == null ? (DateTime?)null : DateTime.SpecifyKind(listing.CreatedTime.AddDays(Math.Max(0, listingLifetimeDays)), DateTimeKind.Utc),
+                    ticketId = ticketIds.TryGetValue(v.ItemGuid, out var ticketId) ? ticketId : (long?)null,
                     // stored as UTC; EF reads datetime(6) as Unspecified
                     depositedTime = DateTime.SpecifyKind(v.DepositedTime, DateTimeKind.Utc),
                 }),
+            });
+        }
+
+        /// <summary>
+        /// The signed-in account's appraisal for its own Vault item.
+        /// </summary>
+        private static async Task<IResult> VaultDetail(uint itemGuid, HttpContext context, MarketDatabase database, GameData gameData, AppraisalRules rules)
+        {
+            var accountId = MarketHttp.AccountId(context);
+
+            using var shard = database.CreateShard();
+
+            var item = await shard.MarketVaultItems.AsNoTracking()
+                .FirstOrDefaultAsync(v => v.ItemGuid == itemGuid && v.AccountId == accountId);
+
+            if (item == null)
+                return MarketHttp.Error(StatusCodes.Status404NotFound, "not_found");
+
+            var appraisal = AppraisalItem.Load(shard, gameData, new[] { itemGuid })[itemGuid];
+
+            return Results.Json(new
+            {
+                lines = rules.Format(appraisal),
+                spells = AppraisalRules.Spells(appraisal),
             });
         }
     }

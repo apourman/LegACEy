@@ -42,6 +42,7 @@ namespace ACE.MarketApi.Tests
             ("POST", "/auth/plugin-token"),
             ("GET", "/me"),
             ("GET", "/vault"),
+            ("GET", "/vault/1"),
             ("GET", "/listings"),
             ("GET", "/listings/suggest?q=a"),
             ("GET", "/listings/1"),
