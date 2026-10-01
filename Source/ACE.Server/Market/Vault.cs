@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 
 using log4net;
 
 using ACE.Database;
+using ACE.Database.Adapter;
 using ACE.Database.Market;
 using ACE.Database.Models.Shard.Market;
 using ACE.Entity;
@@ -74,11 +76,24 @@ namespace ACE.Server.Market
         /// <summary>
         /// Moves an item from the player's pack into their account's Vault.
         /// The item is taken out of the pack in memory only. The networking removal saves an ownerless item, and destroying the item would delete its row.
-        /// The deposit job then saves the item and the Vault row together. On success the object is forgotten; on failure it goes back to the pack.
+        /// The deposit job then saves the item and the Vault row together. On success the object is forgotten; on a failure that saved nothing it goes back to the pack.
         /// </summary>
         public static void Deposit(Player player, uint itemGuid, Action<VaultResult> completed = null)
         {
-            var refusal = CheckDeposit(player, itemGuid, out var item);
+            VaultOutcome? refusal;
+            WorldObject item;
+
+            try
+            {
+                refusal = CheckDeposit(player, itemGuid, out item);
+            }
+            catch (Exception ex)
+            {
+                // the checks read the database; nothing has moved yet
+                log.Error($"[VAULT] Deposit of 0x{itemGuid:X8} for {player.Name} failed in its checks: {ex}");
+                Finish(player, VaultOutcome.SaveFailed, null, itemGuid, completed);
+                return;
+            }
 
             if (refusal != null)
             {
@@ -92,25 +107,64 @@ namespace ACE.Server.Market
             var name = item.Name;
             var vaultItem = NewVaultItem(item, accountId, player.Guid.Full);
 
+            // where the item is now, which the in-memory removal clears
+            var containerId = item.ContainerId;
+            var ownerId = item.OwnerId;
+            var placement = item.PlacementPosition;
+
+            // what the Vault saves: the item out of every pack, without cast-on enchantments (they don't tick on an escrowed item, and the buyer should get what the listing shows)
+            var escrowed = EscrowCopy(item);
+
             if (!player.TryRemoveFromInventoryForVault(guid, out _))
             {
                 Finish(player, VaultOutcome.NotInPack, name, itemGuid, completed);
                 return;
             }
 
-            // cast-on enchantments don't tick on an escrowed item, and the buyer should get what the listing shows; the save deletes the rows no longer present
-            item.EnchantmentManager.DispelAllEnchantments();
+            // Saves the save queue already holds (a player save collects every changed possession) keep a reference to the item's live biota
+            // and read it when they run, which may be just before the deposit job. Left cleared, the item would be saved without a container,
+            // and a crash before the deposit job commits would leave an ownerless row for the startup purge to delete.
+            // So the live item keeps saying where it was until the job is done; the job saves the escrowed copy.
+            item.ContainerId = containerId;
+            item.OwnerId = ownerId;
+            item.PlacementPosition = placement;
 
             inFlight.Add(player.Guid.Full);
 
             if (player.CurrentAppraisalTarget == itemGuid)
                 player.CurrentAppraisalTarget = null;
 
-            DatabaseManager.Shard.DepositToVault(item.Biota, item.BiotaDatabaseLock, vaultItem, vaultSize, saved =>
+            DatabaseManager.Shard.DepositToVault(escrowed, new ReaderWriterLockSlim(), vaultItem, vaultSize, result =>
             {
                 // this runs on the save thread
-                WorldManager.EnqueueAction(new ActionEventDelegate(() => OnDeposited(player, item, name, saved, completed)));
+                WorldManager.EnqueueAction(new ActionEventDelegate(() => OnDeposited(player, item, name, result, completed)));
             });
+        }
+
+        /// <summary>
+        /// A copy of the item's biota as the Vault keeps it: no container, owner or pack slot, and no enchantments.
+        /// The item's own spells are in its spell book and stay.
+        /// </summary>
+        private static ACE.Entity.Models.Biota EscrowCopy(WorldObject item)
+        {
+            ACE.Entity.Models.Biota copy;
+
+            item.BiotaDatabaseLock.EnterReadLock();
+            try
+            {
+                copy = BiotaConverter.ConvertToEntityBiota(BiotaConverter.ConvertFromEntityBiota(item.Biota));
+            }
+            finally
+            {
+                item.BiotaDatabaseLock.ExitReadLock();
+            }
+
+            copy.PropertiesIID?.Remove(PropertyInstanceId.Container);
+            copy.PropertiesIID?.Remove(PropertyInstanceId.Owner);
+            copy.PropertiesInt?.Remove(PropertyInt.PlacementPosition);
+            copy.PropertiesEnchantmentRegistry?.Clear();
+
+            return copy;
         }
 
         /// <summary>
@@ -135,7 +189,21 @@ namespace ACE.Server.Market
 
         private static void Withdraw(Player player, uint itemGuid, uint? markedRowVersion, Action<VaultResult> completed, long? ticketId = null)
         {
-            var refusal = CheckWithdraw(player, itemGuid, markedRowVersion, out var row, out var item);
+            VaultOutcome? refusal;
+            VaultItem row;
+            WorldObject item;
+
+            try
+            {
+                refusal = CheckWithdraw(player, itemGuid, markedRowVersion, out row, out item);
+            }
+            catch (Exception ex)
+            {
+                // the checks read the database; nothing has moved yet, and the caller releases a channel's mark on any refusal
+                log.Error($"[VAULT] Withdrawal of 0x{itemGuid:X8} for {player.Name} failed in its checks: {ex}");
+                Finish(player, VaultOutcome.SaveFailed, null, itemGuid, completed);
+                return;
+            }
 
             if (refusal != null)
             {
@@ -154,10 +222,10 @@ namespace ACE.Server.Market
 
             var ticket = ticketId == null ? null : new TicketCompletion(ticketId.Value, VaultMessages.WithdrawnByTicket(name, player.Name));
 
-            DatabaseManager.Shard.WithdrawFromVault(item.Biota, item.BiotaDatabaseLock, accountId, player.Guid.Full, row.RowVersion, saved =>
+            DatabaseManager.Shard.WithdrawFromVault(item.Biota, item.BiotaDatabaseLock, accountId, player.Guid.Full, row.RowVersion, result =>
             {
                 // this runs on the save thread
-                WorldManager.EnqueueAction(new ActionEventDelegate(() => OnWithdrawn(player, item, name, saved, completed)));
+                WorldManager.EnqueueAction(new ActionEventDelegate(() => OnWithdrawn(player, item, name, result, completed)));
             }, ticket);
         }
 
@@ -278,37 +346,71 @@ namespace ACE.Server.Market
             return null;
         }
 
-        private static void OnDeposited(Player player, WorldObject item, string name, bool saved, Action<VaultResult> completed)
+        private static void OnDeposited(Player player, WorldObject item, string name, MarketJobResult result, Action<VaultResult> completed)
         {
             inFlight.Remove(player.Guid.Full);
 
-            if (saved)
+            if (result == MarketJobResult.Saved)
             {
-                // the object is forgotten, never saved or destroyed: a later save would restore its container, and destroying it would delete its row
+                // The object is forgotten, never destroyed: destroying it would delete its row. Cleared as the Vault has it,
+                // so that a save of it from anything still holding it can't put it back in a pack.
+                item.ContainerId = null;
+                item.OwnerId = null;
+                item.PlacementPosition = null;
+
                 Finish(player, VaultOutcome.Deposited, name, item.Guid.Full, completed);
                 return;
             }
 
-            log.Warn($"[VAULT] Deposit of {name} (0x{item.Guid.Full:X8}) for {player.Name} failed; nothing was saved");
+            if (result == MarketJobResult.Unknown)
+            {
+                // the database has the item either in the pack or in the Vault; putting it back here could make a second copy, so the next login shows which
+                log.Error($"[VAULT] Deposit of {name} (0x{item.Guid.Full:X8}) for {player.Name} may or may not have been saved; the object is dropped and the database decides at the next login");
+                Finish(player, VaultOutcome.Unconfirmed, name, item.Guid.Full, completed);
+                return;
+            }
+
+            log.Warn($"[VAULT] Deposit of {name} (0x{item.Guid.Full:X8}) for {player.Name} failed ({result}); nothing was saved");
 
             // the job refuses without saving when the Vault filled up meanwhile (another character of the account, or the setting was lowered)
-            var outcome = VaultStore.Count(player.Character.AccountId) >= (int)MarketSettings.Get(MarketSettings.VaultSize) ? VaultOutcome.VaultFull : VaultOutcome.SaveFailed;
+            var outcome = VaultOutcome.SaveFailed;
 
-            // the database still has the item in the pack. A player who has gone gets it back when they log in, so the object is just discarded.
+            try
+            {
+                if (VaultStore.Count(player.Character.AccountId) >= (int)MarketSettings.Get(MarketSettings.VaultSize))
+                    outcome = VaultOutcome.VaultFull;
+            }
+            catch (Exception ex)
+            {
+                log.Warn($"[VAULT] Could not read the Vault size for {player.Name}'s failed deposit: {ex.Message}");
+            }
+
+            // the database still has the item in the pack (the live item kept its container throughout). A player who has gone gets it back when they log in, so the object is just discarded.
             if (!player.IsLoggingOut && !player.TryCreateInInventoryWithNetworking(item))
                 log.Warn($"[VAULT] Deposit of {name} (0x{item.Guid.Full:X8}) for {player.Name} failed and the pack has no room for it; the database has it in the pack for the next login");
 
             Finish(player, outcome, name, item.Guid.Full, completed);
         }
 
-        private static void OnWithdrawn(Player player, WorldObject item, string name, bool saved, Action<VaultResult> completed)
+        private static void OnWithdrawn(Player player, WorldObject item, string name, MarketJobResult result, Action<VaultResult> completed)
         {
             inFlight.Remove(player.Guid.Full);
 
-            if (!saved)
+            if (result != MarketJobResult.Saved)
             {
-                // the Vault row is still there and the object was never added anywhere: forget it
-                Finish(player, VaultOutcome.SaveFailed, name, item.Guid.Full, completed);
+                // The object was never added anywhere: forget it. After a failure the Vault row is still there.
+                // After Unknown the item is either still in the Vault or already in this character's pack in the database, and the next login shows which.
+                var outcome = result switch
+                {
+                    MarketJobResult.Banned => VaultOutcome.Banned,
+                    MarketJobResult.Unknown => VaultOutcome.Unconfirmed,
+                    _ => VaultOutcome.SaveFailed,
+                };
+
+                if (result == MarketJobResult.Unknown)
+                    log.Error($"[VAULT] Withdrawal of {name} (0x{item.Guid.Full:X8}) for {player.Name} may or may not have been saved; the database decides at the next login");
+
+                Finish(player, outcome, name, item.Guid.Full, completed);
                 return;
             }
 

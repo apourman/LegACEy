@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 using log4net;
 
@@ -36,10 +38,23 @@ namespace ACE.Server.Market
 
         private static readonly TimeSpan CleanupInterval = TimeSpan.FromHours(1);
 
+        /// <summary>
+        /// How often claimed tickets this server isn't running are looked for, and how long after its claim one counts as abandoned.
+        /// Longer than any claim takes to reach the world thread, so a ticket claimed by a poll still on its way is never failed.
+        /// </summary>
+        private static readonly TimeSpan AbandonedInterval = TimeSpan.FromMinutes(1);
+        public static readonly TimeSpan AbandonedAfter = TimeSpan.FromMinutes(5);
+
         // only the world thread touches these
         private static bool polling;
         private static DateTime nextPoll;
         private static DateTime nextCleanup;
+        private static DateTime nextAbandonedCheck;
+
+        /// <summary>
+        /// The tickets this server is working on: claimed and handed to the Vault, with no answer yet
+        /// </summary>
+        private static readonly HashSet<long> running = new HashSet<long>();
 
         /// <summary>
         /// Startup, before the world runs. A ticket still CLAIMED belonged to a server that stopped mid-work, and none of that work was saved
@@ -89,6 +104,18 @@ namespace ACE.Server.Market
                 DatabaseManager.Shard.DeleteExpiredMarketRows(LogCleanup);
             }
 
+            // a claim that failed part way, or work that stopped without an answer, leaves a ticket CLAIMED that only a restart would otherwise fail
+            if (now >= nextAbandonedCheck)
+            {
+                nextAbandonedCheck = now + AbandonedInterval;
+
+                DatabaseManager.Shard.FailAbandonedTickets(running.ToList(), AbandonedAfter, Message(TicketStore.Abandoned), failed =>
+                {
+                    if (failed > 0)
+                        log.Warn($"[BRIDGE] Failed {failed:N0} ticket(s) claimed more than {AbandonedAfter.TotalMinutes:N0} minutes ago that this server is not working on");
+                });
+            }
+
             DatabaseManager.Shard.ClaimTickets(ClaimLimit, tickets =>
             {
                 // this runs on the save thread
@@ -129,6 +156,8 @@ namespace ACE.Server.Market
             VaultOutcome.Channelling => "channelling",
             VaultOutcome.Interrupted => "interrupted",
             VaultOutcome.SaveFailed => "save_failed",
+            VaultOutcome.Unconfirmed => "unconfirmed",
+            VaultOutcome.Banned => "banned",
             VaultOutcome.NoNotes => "no_notes",
             VaultOutcome.InvalidAmount => "invalid_amount",
             VaultOutcome.InsufficientFunds => "insufficient_funds",
@@ -179,11 +208,25 @@ namespace ACE.Server.Market
                 return;
             }
 
-            work(character);
+            running.Add(ticket.Id);
+
+            try
+            {
+                work(character);
+            }
+            catch (Exception ex)
+            {
+                // the Vault answers its own failures; this is a backstop so the ticket isn't left claimed
+                log.Error($"[BRIDGE] Ticket {ticket.Id} ({ticket.Kind}, account {ticket.AccountId}) threw: {ex}");
+                running.Remove(ticket.Id);
+                Fail(ticket, ResultCode(VaultOutcome.SaveFailed), VaultMessages.For(VaultOutcome.SaveFailed, null));
+            }
         }
 
         private static void Finished(Ticket ticket, VaultResult result)
         {
+            running.Remove(ticket.Id);
+
             // success was saved together with the ticket's DONE
             if (result.Success)
                 return;
@@ -212,6 +255,7 @@ namespace ACE.Server.Market
             UnsupportedKind => "The game server cannot do that kind of request yet.",
             InvalidTicket => "The game server could not read that request.",
             TicketStore.ServerRestart => "The game server restarted before this finished. Nothing was moved; ask again.",
+            TicketStore.Abandoned => "The game server stopped working on this before it finished. Nothing was moved; ask again.",
             _ => resultCode,
         };
 

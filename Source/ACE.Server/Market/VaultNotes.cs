@@ -55,8 +55,19 @@ namespace ACE.Server.Market
 
             foreach (var note in player.GetTradeNotes().Where(n => n.WeenieClassId == ShardDatabase.TradeNoteWcid && !player.ItemsInTradeWindow.Contains(n.Guid)))
             {
+                var containerId = note.ContainerId;
+                var ownerId = note.OwnerId;
+                var placement = note.PlacementPosition;
+
                 if (player.TryRemoveFromInventoryForVault(note.Guid, out var taken))
+                {
+                    // as for an item deposit: a save already queued reads the live biota when it runs, so the note keeps saying it is in the pack until the job is done
+                    taken.ContainerId = containerId;
+                    taken.OwnerId = ownerId;
+                    taken.PlacementPosition = placement;
+
                     notes.Add(taken);
+                }
             }
 
             if (notes.Count == 0)
@@ -109,10 +120,19 @@ namespace ACE.Server.Market
             long balance;
             bool paused;
 
-            using (var context = new ShardDbContext())
+            try
             {
-                balance = Ledger.GetBalance(context, accountId);
-                paused = MarketPause.IsPaused(context);
+                using (var context = new ShardDbContext())
+                {
+                    balance = Ledger.GetBalance(context, accountId);
+                    paused = MarketPause.IsPaused(context);
+                }
+            }
+            catch (Exception ex)
+            {
+                log.Error($"[VAULT] Note withdrawal of {amount:N0} MMD for {player.Name} failed in its checks: {ex}");
+                FinishNotes(player, VaultOutcome.SaveFailed, amount, 0, completed);
+                return;
             }
 
             // a failed ledger audit stops money leaving the market until an admin resumes it; deposits go on
@@ -176,14 +196,30 @@ namespace ACE.Server.Market
 
             if (result == MarketJobResult.Saved)
             {
-                // the objects are forgotten, never saved or destroyed: their rows are gone, and a save would write them back
+                // The objects are forgotten, never saved or destroyed: their rows are gone, and a save would write them back.
+                // Cleared, so that a save from anything still holding one can't write it back into a pack.
+                foreach (var note in notes)
+                {
+                    note.ContainerId = null;
+                    note.OwnerId = null;
+                    note.PlacementPosition = null;
+                }
+
                 FinishNotes(player, VaultOutcome.NotesDeposited, amount, balance, completed);
+                return;
+            }
+
+            if (result == MarketJobResult.Unknown)
+            {
+                // the database has the notes either in the pack or banked; putting them back here could double them, so the next login shows which
+                log.Error($"[VAULT] Note deposit of {amount:N0} MMD for {player.Name} may or may not have been saved; the notes are dropped and the database decides at the next login");
+                FinishNotes(player, VaultOutcome.Unconfirmed, amount, balance, completed);
                 return;
             }
 
             log.Warn($"[VAULT] Note deposit of {amount:N0} MMD for {player.Name} failed ({result}); nothing was saved");
 
-            // the database still has the notes in the pack. A player who has gone gets them back when they log in, so the objects are just discarded.
+            // the database still has the notes in the pack (the live notes kept their container throughout). A player who has gone gets them back when they log in, so the objects are just discarded.
             if (!player.IsLoggingOut)
             {
                 foreach (var note in notes)
@@ -202,13 +238,19 @@ namespace ACE.Server.Market
 
             if (result != MarketJobResult.Saved)
             {
-                // no row was written and the objects were never added anywhere: forget them
+                // The objects were never added anywhere: forget them. After a failure no row was written.
+                // After Unknown the notes are either unpaid or already in this character's pack in the database, and the next login shows which.
                 var outcome = result switch
                 {
                     MarketJobResult.InsufficientFunds => VaultOutcome.InsufficientFunds,
                     MarketJobResult.Paused => VaultOutcome.Paused,
+                    MarketJobResult.Banned => VaultOutcome.Banned,
+                    MarketJobResult.Unknown => VaultOutcome.Unconfirmed,
                     _ => VaultOutcome.SaveFailed,
                 };
+
+                if (result == MarketJobResult.Unknown)
+                    log.Error($"[VAULT] Note withdrawal of {amount:N0} MMD for {player.Name} may or may not have been saved; the database decides at the next login");
 
                 FinishNotes(player, outcome, amount, balance, completed);
                 return;

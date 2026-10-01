@@ -38,6 +38,8 @@ namespace ACE.Server.Market
                 VaultOutcome.NoPackSpace => $"You do not have room in your pack for {item}.",
                 VaultOutcome.UniqueLimit => $"You cannot carry any more of {item}.",
                 VaultOutcome.SaveFailed => $"The Vault could not save {item}. Nothing was changed.",
+                VaultOutcome.Unconfirmed => $"The Vault could not confirm whether {item} moved. Log out and back in: it will be in your pack or in your Vault.",
+                VaultOutcome.Banned => "Your account is banned, so its Vault is frozen.",
 
                 VaultOutcome.RecentPlayerFight => "You have been in a player fight too recently to use the Vault. Try again in a couple of minutes.",
                 VaultOutcome.Trading => "Close the trade window before you use the Vault.",
@@ -65,6 +67,8 @@ namespace ACE.Server.Market
                 VaultOutcome.InsufficientFunds => $"You cannot withdraw {notes}. Your balance is {balance:N0} MMD.",
                 VaultOutcome.NoPackSpace => $"You do not have room in your pack for {notes}.",
                 VaultOutcome.SaveFailed => "The Vault could not save your trade notes. Nothing was changed.",
+                VaultOutcome.Unconfirmed => "The Vault could not confirm whether your trade notes moved. Log out and back in, then check /vault balance.",
+                VaultOutcome.Banned => "Your account is banned, so its balance is frozen.",
                 VaultOutcome.Paused => $"The market is paused, so MMD withdrawals are stopped for now. Your balance is {balance:N0} MMD.",
                 _ => For(outcome, "Your trade notes"),
             };

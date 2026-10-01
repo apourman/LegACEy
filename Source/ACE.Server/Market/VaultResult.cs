@@ -35,6 +35,13 @@ namespace ACE.Server.Market
         // the database job failed; the item is where it was
         SaveFailed,
 
+        // the save failed in a way that may still have committed, and the database couldn't be read to tell: nothing is put back in the world,
+        // and the next login shows where the item or notes are
+        Unconfirmed,
+
+        // the account is banned, which freezes the Vault and the balance
+        Banned,
+
         // trade notes (MMD): instant, never through the channel
         NotesDeposited,
         NotesWithdrawn,

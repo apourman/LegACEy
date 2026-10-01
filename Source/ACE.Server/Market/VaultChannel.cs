@@ -79,20 +79,31 @@ namespace ACE.Server.Market
         public static void StartWithdraw(Player player, uint itemGuid, Action<VaultResult> completed = null, long? ticketId = null)
         {
             VaultItem row = null;
-            var refusal = CheckStart(player) ?? Vault.CheckWithdraw(player, itemGuid, null, out row, out _);
+            VaultOutcome? refusal;
 
-            if (refusal == null)
+            try
             {
-                var marked = VaultStore.TryMarkWithdrawing(itemGuid, player.Character.AccountId, row.RowVersion);
+                refusal = CheckStart(player) ?? Vault.CheckWithdraw(player, itemGuid, null, out row, out _);
 
-                if (marked != null)
+                if (refusal == null)
                 {
-                    Begin(player, new VaultChannel(isDeposit: false, itemGuid, row.Name, marked.Value, completed, ticketId));
-                    return;
-                }
+                    var marked = VaultStore.TryMarkWithdrawing(itemGuid, player.Character.AccountId, row.RowVersion);
 
-                // the row changed since it was read: say why, as the next attempt would
-                refusal = Vault.CheckWithdraw(player, itemGuid, null, out row, out _) ?? VaultOutcome.Withdrawing;
+                    if (marked != null)
+                    {
+                        Begin(player, new VaultChannel(isDeposit: false, itemGuid, row.Name, marked.Value, completed, ticketId));
+                        return;
+                    }
+
+                    // the row changed since it was read: say why, as the next attempt would
+                    refusal = Vault.CheckWithdraw(player, itemGuid, null, out row, out _) ?? VaultOutcome.Withdrawing;
+                }
+            }
+            catch (Exception ex)
+            {
+                // the checks and the mark are single statements, so nothing is half done. A mark whose answer was lost stays until the next restart.
+                log.Error($"[VAULT] Withdrawal channel of 0x{itemGuid:X8} for {player.Name} failed to start: {ex}");
+                refusal = VaultOutcome.SaveFailed;
             }
 
             Vault.Finish(player, refusal.Value, row?.Name, itemGuid, completed);
@@ -218,8 +229,16 @@ namespace ACE.Server.Market
 
         private static void Release(VaultChannel channel)
         {
-            if (!VaultStore.TryReleaseWithdrawing(channel.ItemGuid, channel.MarkedRowVersion))
-                log.Warn($"[VAULT] Could not put 0x{channel.ItemGuid:X8} back to held after its withdrawal channel ended: the row changed or is gone");
+            try
+            {
+                if (!VaultStore.TryReleaseWithdrawing(channel.ItemGuid, channel.MarkedRowVersion))
+                    log.Warn($"[VAULT] Could not put 0x{channel.ItemGuid:X8} back to held after its withdrawal channel ended: the row changed or is gone");
+            }
+            catch (Exception ex)
+            {
+                // the row stays marked withdrawing, so it can't be listed or withdrawn, until the next restart releases it
+                log.Error($"[VAULT] Could not put 0x{channel.ItemGuid:X8} back to held after its withdrawal channel ended; the next restart will: {ex.Message}");
+            }
         }
     }
 }

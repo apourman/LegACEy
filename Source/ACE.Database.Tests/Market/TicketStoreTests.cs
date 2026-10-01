@@ -191,7 +191,82 @@ namespace ACE.Database.Tests.Market
             CollectionAssert.AreEquivalent(new[] { recentDone, oldWaiting, oldClaimed }, Ids());
         }
 
+        [TestMethod]
+        public void ClaimTickets_FailsPartWay_PutsWhatItClaimedBackToWaiting()
+        {
+            var first = NewTicket("partial-1");
+            var second = NewTicket("partial-2");
+
+            // the second claim's UPDATE fails inside MySQL, after the first claim has committed
+            MarketTestDatabase.Execute(Db, $"CREATE TRIGGER test_fail_claim BEFORE UPDATE ON market_ticket FOR EACH ROW BEGIN IF NEW.id = {second} AND NEW.status = '{TicketStatus.Claimed}' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'injected failure'; END IF; END");
+
+            var original = ACE.Common.ConfigManager.Config.MySql.Shard.Database;
+            ACE.Common.ConfigManager.Config.MySql.Shard.Database = Db;
+            try
+            {
+                Assert.IsEmpty(new ShardDatabase().ClaimTickets(10), "a failed claim hands nothing to the world");
+            }
+            finally
+            {
+                ACE.Common.ConfigManager.Config.MySql.Shard.Database = original;
+                MarketTestDatabase.Execute(Db, "DROP TRIGGER IF EXISTS test_fail_claim;");
+            }
+
+            Assert.AreEqual(TicketStatus.Waiting, Status(first), "the ticket the failed claim had claimed waits for the next poll instead of staying claimed until a restart");
+            Assert.AreEqual(TicketStatus.Waiting, Status(second));
+
+            using (var context = MarketTestDatabase.CreateContext(Db))
+                CollectionAssert.AreEqual(new[] { first, second }, TicketStore.Claim(context, 10, DateTime.UtcNow).Select(t => t.Id).ToList());
+        }
+
+        [TestMethod]
+        public void FailAbandoned_FailsOnlyOldClaimsTheServerIsNotRunning()
+        {
+            var now = DateTime.UtcNow;
+            var abandoned = NewTicket("abandoned");
+            var running = NewTicket("running");
+            var recent = NewTicket("recent");
+            var waiting = NewTicket("waiting");
+            var done = NewTicket("done");
+            Claim(abandoned);
+            Claim(running);
+            Claim(recent);
+            Claim(done);
+            CompleteAlone(done);
+            MarketTestDatabase.Execute(Db, $"UPDATE market_ticket SET claimed_Time = UTC_TIMESTAMP(6) - INTERVAL 10 MINUTE WHERE id IN ({abandoned}, {running}, {done});");
+
+            using (var context = MarketTestDatabase.CreateContext(Db))
+                Assert.AreEqual(1, TicketStore.FailAbandoned(context, new[] { running }, now - TimeSpan.FromMinutes(5), "lost track", now));
+
+            Assert.AreEqual($"{TicketStatus.Failed}|{TicketStore.Abandoned}|lost track|1", Row(abandoned));
+            Assert.AreEqual(TicketStatus.Claimed, Status(running), "a ticket the server is working on is left alone");
+            Assert.AreEqual(TicketStatus.Claimed, Status(recent), "a claim still on its way to the world thread is left alone");
+            Assert.AreEqual(TicketStatus.Waiting, Status(waiting));
+            Assert.AreEqual(TicketStatus.Done, Status(done));
+        }
+
+        [TestMethod]
+        public void FailAbandoned_TicketWhoseWorkThenSaves_TheWorkSavesNothing()
+        {
+            var ticket = NewTicket("late-work");
+            Claim(ticket);
+
+            using (var context = MarketTestDatabase.CreateContext(Db))
+                Assert.AreEqual(1, TicketStore.FailAbandoned(context, Array.Empty<long>(), DateTime.UtcNow.AddMinutes(1), "lost track", DateTime.UtcNow));
+
+            // work that finishes after the ticket was failed can't save: DONE needs the ticket still CLAIMED, in the work's own save
+            using (var context = MarketTestDatabase.CreateContext(Db))
+            {
+                TicketStore.Complete(context, new TicketCompletion(ticket, "done"), DateTime.UtcNow);
+                Assert.ThrowsExactly<DbUpdateConcurrencyException>(() => context.SaveChanges());
+            }
+
+            Assert.AreEqual(TicketStatus.Failed, Status(ticket));
+        }
+
         // ---- helpers
+
+        private static string Status(long ticketId) => MarketTestDatabase.Rows(Db, $"SELECT status FROM market_ticket WHERE id = {ticketId};").Single();
 
         private static uint NewAccountId() => Interlocked.Increment(ref nextAccountId);
 
