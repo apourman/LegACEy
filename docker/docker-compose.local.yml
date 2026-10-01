@@ -31,10 +31,11 @@ services:
     depends_on:
       ace-db:
         condition: service_healthy
-    # MYSQL_USER and MYSQL_PASSWORD become the API's database login (see the Dockerfile's entrypoint)
-    env_file: ../docker.env
+    # only the application login from docker.env, never the root password: scripts/market/*.sh pass --env-file ../docker.env
     environment:
       ASPNETCORE_ENVIRONMENT: Local
+      Market__DatabaseUsername: ${MYSQL_USER:-}
+      Market__DatabasePassword: ${MYSQL_PASSWORD:-}
     ports:
       # loopback only: plain HTTP is never reachable from another machine
       - "127.0.0.1:${MARKET_API_PORT:-5080}:8080"
@@ -46,12 +47,7 @@ services:
       # sessions and icons survive a rebuild
       - market-api-keys:/data/keys
       - market-api-icons:/data/icon-cache
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/api/facets"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 30s
+    # health: the image's HEALTHCHECK (GET /api/facets)
 
 volumes:
   db-data:

@@ -14,15 +14,9 @@ database_exists() {
   [[ "$(db_sql -N -e "SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = '$1';")" == "1" ]]
 }
 
-# the marker the development guard (ACE.Database.Market.DevelopmentGuard) looks for. Written here, for databases this script creates,
-# and by the interactive "scripts/market/dev.sh mark"; never by an update script.
+# the development marker (scripts/market/dev-marker.sql, the same file DevelopmentGuard.Mark runs), for databases this script creates
 mark() {
-  db_sql "$1" <<'SQL'
-CREATE TABLE IF NOT EXISTS `legacey_dev_marker` (
-  `id` tinyint unsigned NOT NULL, `purpose` varchar(32) NOT NULL, `marked_Time` datetime(6) NOT NULL, PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='This database is a local development database: development tools may write it. Never create this on a server.';
-INSERT IGNORE INTO `legacey_dev_marker` (`id`, `purpose`, `marked_Time`) VALUES (1, 'development', UTC_TIMESTAMP(6));
-SQL
+  db_sql "$1" < "$ROOT/scripts/market/dev-marker.sql"
 }
 
 # the base scripts create and USE their own database (ace_auth, ace_shard); rename it

@@ -6,7 +6,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 ACCOUNT="${MARKET_SMOKE_ACCOUNT:-seedalpha}"
-PASSWORD="${MARKET_SMOKE_PASSWORD:-${MARKET_SEED_PASSWORD:-marketdev}}"
+PASSWORD="${MARKET_SMOKE_PASSWORD:-$MARKET_SEED_PASSWORD}"
 CHARACTER="${MARKET_SMOKE_CHARACTER:-Seed Alpha}"
 TIMEOUT_SECONDS=10
 
@@ -32,14 +32,8 @@ tables="$(db_sql -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE tab
 ok "schema: $MARKET_SHARD_DATABASE has the market tables"
 
 # ---- API (the container's health check, then the public facets endpoint)
-container="$("${COMPOSE[@]}" ps -a -q market-api 2>/dev/null || true)"
-[[ -n "$container" ]] || fail "API" "the market-api container doesn't exist (scripts/market/api.sh)"
-
-for _ in {1..30}; do
-  health="$(docker inspect -f '{{.State.Status}}/{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$container" 2>/dev/null || echo missing)"
-  [[ "$health" == running/starting ]] || break
-  sleep 2
-done
+health="$(api_health 30)"
+[[ "$health" != missing ]] || fail "API" "the market-api container doesn't exist (scripts/market/api.sh)"
 [[ "$health" == running/healthy ]] || fail "API" "the market-api container is $health (scripts/market/api.sh; docker compose -f docker/docker-compose.local.yml logs market-api)"
 
 curl -fsS --max-time 5 -o /dev/null "$MARKET_API_URL/api/facets" || fail "API" "$MARKET_API_URL/api/facets doesn't answer"
@@ -49,8 +43,9 @@ ok "API: market-api is healthy and $MARKET_API_URL/api/facets answers"
 headers="$(mktemp)"
 trap 'rm -f "$headers"' EXIT
 
-login_status="$(curl -sS --max-time 10 -o /dev/null -D "$headers" -w '%{http_code}' -H 'Content-Type: application/json' \
-  -d "$(jq -nc --arg a "$ACCOUNT" --arg p "$PASSWORD" '{account: $a, password: $p}')" "$MARKET_API_URL/api/auth/login")" || fail "API" "sign-in request failed"
+# the password goes through stdin, not the command line
+login_status="$(jq -nc --arg a "$ACCOUNT" --arg p "$PASSWORD" '{account: $a, password: $p}' | curl -sS --max-time 10 -o /dev/null -D "$headers" -w '%{http_code}' \
+  -H 'Content-Type: application/json' --data-binary @- "$MARKET_API_URL/api/auth/login")" || fail "API" "sign-in request failed"
 [[ "$login_status" == 200 ]] || fail "seed" "signing in as $ACCOUNT answered $login_status (scripts/market/seed.sh creates it)"
 cookie="$(sed -n 's/^[Ss]et-[Cc]ookie: \(market_session=[^;]*\).*/\1/p' "$headers" | tail -1)"
 [[ -n "$cookie" ]] || fail "API" "sign-in set no market_session cookie"

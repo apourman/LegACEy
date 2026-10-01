@@ -40,5 +40,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
     CMD curl -fsS -o /dev/null http://127.0.0.1:8080/api/facets || exit 1
 
-# the database login comes from docker.env (MYSQL_USER, MYSQL_PASSWORD), never from a file in the image or in git
-ENTRYPOINT ["sh", "-c", "export Market__DatabaseUsername=\"${Market__DatabaseUsername:-$MYSQL_USER}\" Market__DatabasePassword=\"${Market__DatabasePassword:-$MYSQL_PASSWORD}\"; exec dotnet ACE.MarketApi.dll"]
+# the database login comes from the environment (Market__DatabaseUsername, Market__DatabasePassword), never from a file in the image or in git
+ENTRYPOINT ["dotnet", "ACE.MarketApi.dll"]

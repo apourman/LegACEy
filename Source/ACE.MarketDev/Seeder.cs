@@ -93,8 +93,16 @@ namespace ACE.MarketDev
             var existing = Accounts.Where(a => DatabaseManager.Authentication.GetAccountByName(a.Name) != null).Select(a => a.Name).ToList();
             if (existing.Count > 0)
             {
-                Console.WriteLine($"Already seeded ({string.Join(", ", existing)} exist). Nothing written.");
-                return 0;
+                // the last item of the last account is written last (its listing, then the audit only reads): if it's there, a run finished
+                if (existing.Count == Accounts.Length && IsComplete())
+                {
+                    Console.WriteLine($"Already seeded ({string.Join(", ", existing)} exist). Nothing written.");
+                    return 0;
+                }
+
+                Console.Error.WriteLine($"Partly seeded ({string.Join(", ", existing)} exist, but an earlier run stopped before the end). Nothing written. " +
+                    "Start over: drop the market databases and run scripts/market/bootstrap.sh (scripts/market/README.md).");
+                return 1;
             }
 
             // check what can be checked before the first write, so a bad weenie doesn't leave a half-seeded database
@@ -121,7 +129,11 @@ namespace ACE.MarketDev
                 var deposited = new List<(SeedItem Seed, uint Guid)>();
 
                 foreach (var seedItem in seed.Items)
-                    deposited.Add((seedItem, Deposit(seedItem, nextItemGuid++, account.AccountId, characters[0].Guid.Full)));
+                {
+                    var guid = nextItemGuid++;
+                    Deposit(seedItem, guid, account.AccountId, characters[0].Guid.Full);
+                    deposited.Add((seedItem, guid));
+                }
 
                 var balance = LedgerCorrections.Adjust(() => new ShardDbContext(), account.AccountId, StartingBalance, "seed: development balance", account.AccountId, null, now);
                 if (balance.Outcome != CorrectionOutcome.Done)
@@ -167,6 +179,27 @@ namespace ACE.MarketDev
         }
 
         /// <summary>
+        /// True when every seed account has its full Vault and every listing a run makes: the run that made them finished
+        /// </summary>
+        private static bool IsComplete()
+        {
+            using var shard = new ShardDbContext();
+
+            foreach (var seed in Accounts)
+            {
+                var accountId = DatabaseManager.Authentication.GetAccountByName(seed.Name).AccountId;
+
+                if (shard.MarketVaultItems.Count(v => v.AccountId == accountId) < seed.Items.Length)
+                    return false;
+
+                if (shard.MarketListings.Count(l => l.SellerAccountId == accountId) < seed.Items.Count(i => i.Price != null))
+                    return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
         /// The first GUID above every biota already in the range, so seeding twice into a reset auth database never reuses an item's GUID
         /// </summary>
         private static uint NextFree(uint start, uint end)
@@ -197,7 +230,7 @@ namespace ACE.MarketDev
         /// A new item from the weenie, saved as a new item is, then escrowed through the deposit job, as /vault deposit does:
         /// the item row (no container, owner or location), its Vault row and the deposit event in one save
         /// </summary>
-        private static uint Deposit(SeedItem seedItem, uint guid, uint accountId, uint characterId)
+        private static void Deposit(SeedItem seedItem, uint guid, uint accountId, uint characterId)
         {
             var item = WorldObjectFactory.CreateWorldObject(DatabaseManager.World.GetCachedWeenie(seedItem.Wcid), new ObjectGuid(guid));
 
@@ -211,8 +244,6 @@ namespace ACE.MarketDev
 
             if (result != MarketJobResult.Saved)
                 throw new InvalidOperationException($"depositing {item.Name} (wcid {seedItem.Wcid}): {result}");
-
-            return guid;
         }
     }
 }

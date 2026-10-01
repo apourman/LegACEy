@@ -14,6 +14,7 @@ namespace ACE.Database.Tests.Market
     /// Every refusal names the failed check and leaves every target exactly as it was.
     /// </summary>
     [TestClass]
+    [DoNotParallelize]
     public class DevelopmentGuardTests
     {
         private const string Auth = "ace_auth_market_guard";
@@ -70,10 +71,11 @@ namespace ACE.Database.Tests.Market
             });
         }
 
-        private static DevelopmentGuardSettings Settings(params string[] databases) => new DevelopmentGuardSettings
+        private static DevelopmentGuardSettings Settings(string shard = Shard) => new DevelopmentGuardSettings
         {
             AllowedEndpoints = new[] { AllowedEndpoint },
-            AllowedDatabases = databases.Length > 0 ? databases : new[] { Auth, Shard },
+            AllowedAuthDatabases = new[] { Auth },
+            AllowedShardDatabases = new[] { shard },
         };
 
         /// <summary>
@@ -119,6 +121,7 @@ namespace ACE.Database.Tests.Market
             var result = DevelopmentGuard.Run(new[] { auth, shard }, Settings(), WriteBoth(auth, shard, wrote));
 
             Assert.IsFalse(result.Passed);
+            Assert.AreEqual(DevelopmentCheck.DatabaseName, result.Check);
             Assert.AreEqual("shard database name", result.FailedCheck, result.Detail);
             StringAssert.Contains(result.Detail, AlternateShard);
             Assert.AreEqual(0, wrote.Count);
@@ -137,6 +140,7 @@ namespace ACE.Database.Tests.Market
             var remote = DevelopmentGuard.Run(new[] { remoteAuth, shard }, Settings(), WriteBoth(remoteAuth, shard, wrote));
 
             Assert.IsFalse(remote.Passed);
+            Assert.AreEqual(DevelopmentCheck.Endpoint, remote.Check);
             Assert.AreEqual("auth endpoint", remote.FailedCheck, remote.Detail);
             StringAssert.Contains(remote.Detail, "192.0.2.10");
 
@@ -146,6 +150,13 @@ namespace ACE.Database.Tests.Market
 
             Assert.IsFalse(other.Passed);
             Assert.AreEqual("auth database name", other.FailedCheck, other.Detail);
+
+            // the allowed shard's name in the auth role: each role has its own allow-list
+            var shardAsAuth = Target(Shard) with { Role = DevelopmentTarget.AuthRole };
+            var swapped = DevelopmentGuard.Run(new[] { shardAsAuth, shard }, Settings(), WriteBoth(shardAsAuth, shard, wrote));
+
+            Assert.IsFalse(swapped.Passed);
+            Assert.AreEqual("auth database name", swapped.FailedCheck, swapped.Detail);
 
             Assert.AreEqual(0, wrote.Count);
             AssertUnchanged(before);
@@ -159,9 +170,10 @@ namespace ACE.Database.Tests.Market
             var before = FingerprintAll();
             var wrote = new List<string>();
 
-            var result = DevelopmentGuard.Run(new[] { auth, shard }, Settings(Auth, UnmarkedShard), WriteBoth(auth, shard, wrote));
+            var result = DevelopmentGuard.Run(new[] { auth, shard }, Settings(UnmarkedShard), WriteBoth(auth, shard, wrote));
 
             Assert.IsFalse(result.Passed);
+            Assert.AreEqual(DevelopmentCheck.Marker, result.Check);
             Assert.AreEqual("shard marker", result.FailedCheck, result.Detail);
             StringAssert.Contains(result.Detail, UnmarkedShard);
             Assert.AreEqual(0, wrote.Count);

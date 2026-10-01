@@ -4,6 +4,8 @@ using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 
+using Microsoft.AspNetCore.Routing;
+
 using ACE.Database.Market;
 using ACE.Database.Models.Shard.Market;
 using ACE.Entity.Enum;
@@ -71,6 +73,12 @@ namespace ACE.MarketApi.Tests
 
             await using var host = await MarketApiHost.StartAsync();
             var cookie = await host.SignInForCookieAsync(player.Name, "pass");
+
+            // the list below is every route the API maps, and every one of them is under /api
+            var mapped = ((IEndpointRouteBuilder)host.App).DataSources.SelectMany(d => d.Endpoints).OfType<RouteEndpoint>().ToList();
+            Assert.AreEqual(Routes.Length, mapped.Count, string.Join(", ", mapped.Select(e => e.RoutePattern.RawText)));
+            foreach (var endpoint in mapped)
+                StringAssert.StartsWith(endpoint.RoutePattern.RawText, MarketApi.PathBase + "/");
 
             foreach (var (method, path) in Routes)
             {

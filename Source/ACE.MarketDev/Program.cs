@@ -16,7 +16,8 @@ namespace ACE.MarketDev
     ///   seed    fills the databases with accounts, characters, Vault items, balances and listings
     ///
     /// Options: --config &lt;Config.js&gt; (the ACE configuration naming the databases, default ./Config.js), --password &lt;password&gt; (seed accounts).
-    /// Settings: MARKET_DEV_ALLOWED_ENDPOINTS and MARKET_DEV_ALLOWED_DATABASES (comma-separated) replace the guard's allow-lists.
+    /// Settings: MARKET_DEV_ALLOWED_ENDPOINTS, MARKET_DEV_ALLOWED_AUTH_DATABASES and MARKET_DEV_ALLOWED_SHARD_DATABASES (comma-separated)
+    /// replace the guard's allow-lists.
     /// </summary>
     public static class Program
     {
@@ -49,7 +50,18 @@ namespace ACE.MarketDev
                 case "seed":
                     var password = options.GetValueOrDefault("password", Environment.GetEnvironmentVariable("MARKET_SEED_PASSWORD") ?? DefaultSeedPassword);
                     var exitCode = 1;
-                    var result = DevelopmentGuard.Run(targets, settings, () => exitCode = Seeder.Seed(password));
+                    var result = DevelopmentGuard.Run(targets, settings, () =>
+                    {
+                        try
+                        {
+                            exitCode = Seeder.Seed(password);
+                        }
+                        catch (Exception)
+                        {
+                            Console.Error.WriteLine("Seeding stopped part way; the databases are partly seeded. Start over: drop the market databases and run scripts/market/bootstrap.sh.");
+                            throw;
+                        }
+                    });
 
                     return result.Passed ? exitCode : Report(result);
 
@@ -75,9 +87,13 @@ namespace ACE.MarketDev
             if (endpoints != null)
                 settings.AllowedEndpoints = endpoints;
 
-            var databases = List(Environment.GetEnvironmentVariable("MARKET_DEV_ALLOWED_DATABASES"));
-            if (databases != null)
-                settings.AllowedDatabases = databases;
+            var authDatabases = List(Environment.GetEnvironmentVariable("MARKET_DEV_ALLOWED_AUTH_DATABASES"));
+            if (authDatabases != null)
+                settings.AllowedAuthDatabases = authDatabases;
+
+            var shardDatabases = List(Environment.GetEnvironmentVariable("MARKET_DEV_ALLOWED_SHARD_DATABASES"));
+            if (shardDatabases != null)
+                settings.AllowedShardDatabases = shardDatabases;
 
             return settings;
         }
@@ -112,7 +128,7 @@ namespace ACE.MarketDev
             }
 
             // the guard checks every endpoint, then every name, then the markers: a marker failure means the endpoints and names are allowed
-            if (!result.FailedCheck.EndsWith(" marker", StringComparison.Ordinal))
+            if (result.Check != DevelopmentCheck.Marker)
                 return Report(result);
 
             if (Console.IsInputRedirected)

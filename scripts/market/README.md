@@ -40,7 +40,7 @@ Signed-in sessions (the cookie keys) and cached icons are kept in the named volu
 
 ## Seed data
 
-`seed.sh` creates two accounts with the password `marketdev` (or `--password`, or `MARKET_SEED_PASSWORD`):
+`seed.sh` creates two accounts with the password `marketdev` (or `MARKET_SEED_PASSWORD`, which the smoke check uses too):
 
 - `seedalpha`: characters `Seed Alpha` and `Seed Alpha Second`; five Vault items, four listed (one by the second character);
 - `seedbravo`: characters `Seed Bravo` and `Seed Bravo Second`; three Vault items, two listed.
@@ -55,7 +55,7 @@ The seed tool (`Source/ACE.MarketDev`) writes the database directly, so before a
 shard databases it would write are:
 
 - at an allowed endpoint (`127.0.0.1:3310` by default; `MARKET_DEV_ALLOWED_ENDPOINTS`);
-- named exactly as allowed (`ace_market_auth`, `ace_market_shard`; `MARKET_DEV_ALLOWED_DATABASES`);
+- named exactly as allowed for their role (`ace_market_auth`, `ace_market_shard`; `MARKET_DEV_ALLOWED_AUTH_DATABASES`, `MARKET_DEV_ALLOWED_SHARD_DATABASES`);
 - marked as development databases (a `legacey_dev_marker` row).
 
 If any check fails it writes nothing and names the failed check. `bootstrap.sh` marks the databases it creates.

@@ -21,7 +21,19 @@ namespace ACE.Database.Market
     }
 
     /// <summary>
-    /// What the development guard lets a tool write: exact endpoints ("host:port") and exact database names
+    /// The guard's checks, in the order they run
+    /// </summary>
+    public enum DevelopmentCheck
+    {
+        None,
+        Target,
+        Endpoint,
+        DatabaseName,
+        Marker,
+    }
+
+    /// <summary>
+    /// What the development guard lets a tool write: exact endpoints ("host:port") and, per role, exact database names
     /// </summary>
     public sealed class DevelopmentGuardSettings
     {
@@ -30,22 +42,28 @@ namespace ACE.Database.Market
         /// </summary>
         public static readonly IReadOnlyList<string> DefaultEndpoints = new[] { "127.0.0.1:3310", "localhost:3310", "::1:3310" };
 
-        /// <summary>
-        /// The local market stack's own databases (scripts/market)
-        /// </summary>
-        public static readonly IReadOnlyList<string> DefaultDatabases = new[] { "ace_market_auth", "ace_market_shard" };
-
         public IReadOnlyList<string> AllowedEndpoints { get; set; } = DefaultEndpoints;
 
-        public IReadOnlyList<string> AllowedDatabases { get; set; } = DefaultDatabases;
+        /// <summary>
+        /// The local market stack's own auth database (scripts/market)
+        /// </summary>
+        public IReadOnlyList<string> AllowedAuthDatabases { get; set; } = new[] { "ace_market_auth" };
+
+        /// <summary>
+        /// The local market stack's own shard database (scripts/market)
+        /// </summary>
+        public IReadOnlyList<string> AllowedShardDatabases { get; set; } = new[] { "ace_market_shard" };
+
+        public IReadOnlyList<string> AllowedDatabases(string role) => role == DevelopmentTarget.AuthRole ? AllowedAuthDatabases : AllowedShardDatabases;
     }
 
-    /// <param name="FailedCheck">the check that failed ("shard database name", "auth marker", ...), or null when every check passed</param>
-    public sealed record DevelopmentGuardResult(string FailedCheck, string Detail)
+    /// <param name="Check">the check that failed, or None when every check passed</param>
+    /// <param name="FailedCheck">the failed check named for people ("shard database name", "auth marker", ...), or null</param>
+    public sealed record DevelopmentGuardResult(DevelopmentCheck Check, string FailedCheck, string Detail)
     {
-        public static readonly DevelopmentGuardResult Pass = new DevelopmentGuardResult(null, "every check passed");
+        public static readonly DevelopmentGuardResult Pass = new DevelopmentGuardResult(DevelopmentCheck.None, null, "every check passed");
 
-        public bool Passed => FailedCheck == null;
+        public bool Passed => Check == DevelopmentCheck.None;
     }
 
     /// <summary>
@@ -75,23 +93,25 @@ namespace ACE.Database.Market
             foreach (var role in Roles)
             {
                 if (targets.Count(t => t.Role == role) != 1)
-                    return new DevelopmentGuardResult($"{role} target", $"expected exactly one {role} database to check, got {targets.Count(t => t.Role == role)}");
+                    return new DevelopmentGuardResult(DevelopmentCheck.Target, $"{role} target", $"expected exactly one {role} database to check, got {targets.Count(t => t.Role == role)}");
             }
 
             var unknown = targets.FirstOrDefault(t => !Roles.Contains(t.Role));
             if (unknown != null)
-                return new DevelopmentGuardResult("target", $"unknown target role '{unknown.Role}'");
+                return new DevelopmentGuardResult(DevelopmentCheck.Target, "target", $"unknown target role '{unknown.Role}'");
 
             foreach (var target in targets)
             {
                 if (!IsAllowedEndpoint(target.Connection, settings.AllowedEndpoints))
-                    return new DevelopmentGuardResult($"{target.Role} endpoint", $"{target.Role} endpoint {target.Endpoint} is not allowed (allowed: {string.Join(", ", settings.AllowedEndpoints)})");
+                    return new DevelopmentGuardResult(DevelopmentCheck.Endpoint, $"{target.Role} endpoint", $"{target.Role} endpoint {target.Endpoint} is not allowed (allowed: {string.Join(", ", settings.AllowedEndpoints)})");
             }
 
             foreach (var target in targets)
             {
-                if (!settings.AllowedDatabases.Contains(target.Connection.Database, StringComparer.Ordinal))
-                    return new DevelopmentGuardResult($"{target.Role} database name", $"{target.Role} database '{target.Connection.Database}' is not allowed (allowed: {string.Join(", ", settings.AllowedDatabases)})");
+                var allowed = settings.AllowedDatabases(target.Role);
+
+                if (!allowed.Contains(target.Connection.Database, StringComparer.Ordinal))
+                    return new DevelopmentGuardResult(DevelopmentCheck.DatabaseName, $"{target.Role} database name", $"{target.Role} database '{target.Connection.Database}' is not allowed (allowed: {string.Join(", ", allowed)})");
             }
 
             foreach (var target in targets)
@@ -104,11 +124,11 @@ namespace ACE.Database.Market
                 }
                 catch (MySqlException ex)
                 {
-                    return new DevelopmentGuardResult($"{target.Role} marker", $"{target.Role} database '{target.Connection.Database}' at {target.Endpoint} could not be read: {ex.Message}");
+                    return new DevelopmentGuardResult(DevelopmentCheck.Marker, $"{target.Role} marker", $"{target.Role} database '{target.Connection.Database}' at {target.Endpoint} could not be read: {ex.Message}");
                 }
 
                 if (marker != MarkerPurpose)
-                    return new DevelopmentGuardResult($"{target.Role} marker", $"{target.Role} database '{target.Connection.Database}' has no development marker (run the interactive mark step if it really is a development database)");
+                    return new DevelopmentGuardResult(DevelopmentCheck.Marker, $"{target.Role} marker", $"{target.Role} database '{target.Connection.Database}' has no development marker (run the interactive mark step if it really is a development database)");
             }
 
             return DevelopmentGuardResult.Pass;
@@ -133,12 +153,22 @@ namespace ACE.Database.Market
         public static void Mark(MySqlConfiguration connection)
         {
             using var db = Open(connection);
+            using var command = new MySqlCommand(MarkerSql.Value, db);
 
-            Execute(db, $"CREATE TABLE IF NOT EXISTS `{MarkerTable}` (" +
-                "`id` tinyint unsigned NOT NULL, `purpose` varchar(32) NOT NULL, `marked_Time` datetime(6) NOT NULL, PRIMARY KEY (`id`)" +
-                ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='This database is a local development database: development tools may write it. Never create this on a server.';");
-            Execute(db, $"INSERT IGNORE INTO `{MarkerTable}` (`id`, `purpose`, `marked_Time`) VALUES (1, '{MarkerPurpose}', UTC_TIMESTAMP(6));");
+            command.ExecuteNonQuery();
         }
+
+        /// <summary>
+        /// scripts/market/dev-marker.sql, embedded: the bootstrap script runs the same file
+        /// </summary>
+        private static readonly Lazy<string> MarkerSql = new Lazy<string>(() =>
+        {
+            using var stream = typeof(DevelopmentGuard).Assembly.GetManifestResourceStream("ACE.Database.Market.dev-marker.sql")
+                ?? throw new InvalidOperationException("the development marker script isn't embedded");
+            using var reader = new System.IO.StreamReader(stream);
+
+            return reader.ReadToEnd();
+        });
 
         private static bool IsAllowedEndpoint(MySqlConfiguration connection, IReadOnlyList<string> allowed)
         {
@@ -182,12 +212,6 @@ namespace ACE.Database.Market
             db.Open();
 
             return db;
-        }
-
-        private static void Execute(MySqlConnection db, string sql)
-        {
-            using var command = new MySqlCommand(sql, db);
-            command.ExecuteNonQuery();
         }
     }
 }
