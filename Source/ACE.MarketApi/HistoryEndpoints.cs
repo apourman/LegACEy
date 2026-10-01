@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Builder;
@@ -30,6 +31,10 @@ namespace ACE.MarketApi
         private const string UnknownItem = "an unknown item";
 
         private const string UnknownCharacter = "someone";
+
+        private static readonly Expression<Func<LedgerEntry, LedgerLine>> LedgerLineProjection = e =>
+            new LedgerLine(e.Sequence.Value, e.TransferId, e.Amount, e.BalanceAfter.Value, e.Memo,
+                e.Transfer.Kind, e.Transfer.ListingId, e.Transfer.ReversesTransferId, e.Transfer.Memo, e.Transfer.CreatedTime);
 
         public static void Map(IEndpointRouteBuilder app)
         {
@@ -90,8 +95,7 @@ namespace ACE.MarketApi
                     .Where(e => e.Sequence > watermark)
                     .OrderBy(e => e.Sequence)
                     .Take(transfersLimit)
-                    .Select(e => new LedgerLine(e.Sequence.Value, e.TransferId, e.Amount, e.BalanceAfter.Value, e.Memo,
-                        e.Transfer.Kind, e.Transfer.ListingId, e.Transfer.ReversesTransferId, e.Transfer.Memo, e.Transfer.CreatedTime))
+                    .Select(LedgerLineProjection)
                     .ToListAsync();
 
                 nextSince = lines.Count == 0 ? watermark : lines[^1].Sequence;
@@ -107,8 +111,7 @@ namespace ACE.MarketApi
                 lines = await pageQuery
                     .OrderByDescending(e => e.Sequence)
                     .Take(transfersLimit + 1)
-                    .Select(e => new LedgerLine(e.Sequence.Value, e.TransferId, e.Amount, e.BalanceAfter.Value, e.Memo,
-                        e.Transfer.Kind, e.Transfer.ListingId, e.Transfer.ReversesTransferId, e.Transfer.Memo, e.Transfer.CreatedTime))
+                    .Select(LedgerLineProjection)
                     .ToListAsync();
 
                 if (lines.Count > transfersLimit)
