@@ -3,6 +3,9 @@ using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 
+using Microsoft.Extensions.DependencyInjection;
+
+using ACE.Database.Market;
 using ACE.Database.Models.Shard.Market;
 using ACE.MarketApi.Tests.Support;
 
@@ -14,6 +17,59 @@ namespace ACE.MarketApi.Tests
     [TestClass]
     public class MarketApiAccountTests
     {
+        [TestMethod]
+        public async Task BannedSession_NextMeIs401_AndNewSignInExplainsBan()
+        {
+            var name = MarketApiTestData.UniqueName("banview");
+            var id = MarketApiTestData.CreateAccount(name, "pass");
+            await using var host = await MarketApiHost.StartAsync();
+            var cookie = await host.SignInForCookieAsync(name, "pass");
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/api/me", cookie)).StatusCode);
+            MarketApiTestData.Ban(id, host.Clock.GetUtcNow().UtcDateTime.AddDays(3));
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/api/me", cookie)).StatusCode);
+            var login = await host.PostJsonAsync("/api/auth/login", new { account = name, password = "pass" });
+            Assert.AreEqual(HttpStatusCode.Forbidden, login.StatusCode);
+            Assert.AreEqual("banned", (await MarketApiHost.JsonAsync(login)).GetProperty("error").GetString());
+        }
+
+        [TestMethod]
+        public async Task Me_ReturnsPauseAndOwnCurrentCountsAndConfiguredCaps()
+        {
+            var name = MarketApiTestData.UniqueName("counts");
+            var id = MarketApiTestData.CreateAccount(name, "pass");
+            var character = MarketApiTestData.AddCharacter(id, name + "Main");
+            var held = MarketApiTestData.AddVaultItem(id, character, "Held", VaultItemState.Held);
+            var listed = MarketApiTestData.AddVaultItem(id, character, "Listed", VaultItemState.Listed);
+            var expired = MarketApiTestData.AddVaultItem(id, character, "Expired", VaultItemState.Listed);
+            await using var host = await MarketApiHost.StartAsync();
+            var now = host.Clock.GetUtcNow().UtcDateTime;
+            MarketApiTestData.AddListing(id, character, listed, 5, ListingStatus.Active, now);
+            MarketApiTestData.AddListing(id, character, expired, 5, ListingStatus.Active, now.AddDays(-30));
+            MarketApiTestData.SetSetting(MarketSettings.VaultSize.Key, 42);
+            MarketApiTestData.SetSetting(MarketSettings.ActiveListings.Key, 7);
+            try
+            {
+                var cookie = await host.SignInForCookieAsync(name, "pass");
+                var me = await MarketApiHost.JsonAsync(await host.GetAsync("/api/me", cookie));
+                Assert.IsFalse(me.GetProperty("paused").GetBoolean());
+                Assert.AreEqual(3, me.GetProperty("vaultCount").GetInt32());
+                Assert.AreEqual(1, me.GetProperty("listingCount").GetInt32());
+                Assert.AreEqual(42L, me.GetProperty("vaultCap").GetInt64());
+                Assert.AreEqual(7L, me.GetProperty("listingCap").GetInt64());
+                using var shard = host.App.Services.GetRequiredService<MarketDatabase>().CreateShard();
+                ACE.Database.Market.MarketPause.Pause(shard, "test", now);
+                me = await MarketApiHost.JsonAsync(await host.GetAsync("/api/me", cookie));
+                Assert.IsTrue(me.GetProperty("paused").GetBoolean());
+            }
+            finally
+            {
+                MarketApiTestData.ClearSetting(MarketSettings.VaultSize.Key);
+                MarketApiTestData.ClearSetting(MarketSettings.ActiveListings.Key);
+                using var shard = host.App.Services.GetRequiredService<MarketDatabase>().CreateShard();
+                ACE.Database.Market.MarketPause.Resume(shard, "test", host.Clock.GetUtcNow().UtcDateTime);
+            }
+        }
+
         [TestMethod]
         public async Task Me_ReturnsTheSignedInAccountsDataOnly()
         {

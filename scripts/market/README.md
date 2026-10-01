@@ -75,3 +75,34 @@ output (`DatabaseSetupScripts/Updates/Shard/applied_updates.txt`), not in the da
 older shard updates to a recreated shard. `bootstrap.sh` applies the market script itself, so the market doesn't depend on that file.
 
 Settings: `MARKET_AUTH_DATABASE`, `MARKET_SHARD_DATABASE`, `MARKET_API_PORT`, `DB_HOST_PORT`, `MARKET_GAME_RUN_DIR`.
+
+### Website
+
+After `scripts/market/api.sh`, run `scripts/market/web.sh`. Open
+`http://localhost:5173` (override with `MARKET_WEB_PORT`). This is the website
+and API's single origin; the website proxies `/api` to `market-api:8080`.
+Only loopback is published. The source is mounted with polling for live reload;
+the lockfile installs dependencies into the named `market-web-dependencies`
+volume at startup. No host Node installation is needed.
+
+Type checking and the static production build use the same image:
+
+```sh
+docker compose --env-file docker.env -f docker/docker-compose.local.yml exec -T market-web npm run typecheck
+docker compose --env-file docker.env -f docker/docker-compose.local.yml exec -T market-web npm run build
+```
+
+The build writes `market-web/dist` (HTML, CSS and JavaScript only). Production
+hosting must send SPA routes such as `/listing/1` to `index.html` and proxy
+`/api` to the API. Deployment is outside this local spec.
+
+Browser regression checks run in the browser image (also no host Node):
+
+```sh
+docker run --rm --ipc=host -v "$PWD/market-web:/app" -v market-browser-dependencies:/app/node_modules -w /app mcr.microsoft.com/playwright:v1.55.1-noble sh -c 'npm ci && npm run test:browser'
+```
+
+When developing from another worktree, run the stack scripts from the main
+checkout. Set `MARKET_WEB_SOURCE` to that worktree's absolute `market-web`
+path for the source bind mount. Rebuild the API with the worktree's build
+context and `--no-deps`; never start or recreate `ace-db` from that worktree.

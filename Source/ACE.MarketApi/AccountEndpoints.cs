@@ -26,7 +26,7 @@ namespace ACE.MarketApi
         /// <summary>
         /// The account, its characters, its MMD balance and whether it's frozen (banned)
         /// </summary>
-        private static async Task<IResult> Me(HttpContext context, MarketDatabase database, TimeProvider time)
+        private static async Task<IResult> Me(HttpContext context, MarketDatabase database, TimeProvider time, IMarketPause pause)
         {
             var accountId = MarketHttp.AccountId(context);
 
@@ -34,6 +34,8 @@ namespace ACE.MarketApi
 
             if (account == null)
                 return MarketHttp.Error(StatusCodes.Status401Unauthorized, "unauthorized");
+
+            MarketUpkeep.Expire(database, time.GetUtcNow().UtcDateTime);
 
             using var shard = database.CreateShard();
 
@@ -50,6 +52,11 @@ namespace ACE.MarketApi
                 characters,
                 balance = Ledger.GetBalance(shard, accountId),
                 frozen = account.IsBanned(time.GetUtcNow().UtcDateTime),
+                paused = pause.IsPaused,
+                vaultCount = await shard.MarketVaultItems.CountAsync(v => v.AccountId == accountId),
+                vaultCap = MarketSettings.Get(shard, MarketSettings.VaultSize),
+                listingCount = await shard.MarketListings.CountAsync(l => l.SellerAccountId == accountId && l.Status == Database.Models.Shard.Market.ListingStatus.Active),
+                listingCap = MarketSettings.Get(shard, MarketSettings.ActiveListings),
             });
         }
 
