@@ -37,10 +37,11 @@ namespace ACE.MarketApi
         }
 
         /// <summary>
-        /// GET /api/history?since={seq}&amp;itemsBefore={eventId}&amp;itemsLimit={n}
-        /// → balance, head (the account's last ledger sequence), every one of the account's ledger lines with a sequence after since (newest first),
+        /// GET /api/history?since={seq}&amp;transfersLimit={n}&amp;itemsBefore={eventId}&amp;itemsLimit={n}
+        /// → balance, head (the account's last ledger sequence), one bounded page of its ledger lines,
         /// and a page of its item movements (newest first, paged back by event id).
-        /// A poller passes the head it was last given as since, and never misses a line: the head is read first, and every line up to it is already committed.
+        /// Backward browsing is newest first; polling passes the last sequence it received and is oldest first.
+        /// The head is read first, and every line up to it is already committed.
         /// Item movements have no per-account sequence, so their page is for browsing, not a poll cursor: an event id can commit after a higher one.
         /// A sale still reaches a poller through its ledger line.
         /// </summary>
@@ -49,7 +50,10 @@ namespace ACE.MarketApi
             var accountId = MarketHttp.AccountId(context);
             var query = context.Request.Query;
 
-            if (!TryWhole(query["since"], 0, out var since) || !TryWhole(query["itemsBefore"], 1, out var itemsBefore))
+            if (!TryWhole(query["since"], 0, out var since) || !TryWhole(query["transfersBefore"], 1, out var transfersBefore) || !TryWhole(query["itemsBefore"], 1, out var itemsBefore))
+                return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_cursor");
+
+            if (since != null && transfersBefore != null)
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_cursor");
 
             // like the catalog's limit: at least 1, and a larger one is capped
@@ -57,6 +61,11 @@ namespace ACE.MarketApi
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_limit");
 
             var itemsLimit = (int)Math.Min(limit ?? DefaultItemsLimit, MaxItemsLimit);
+
+            if (!TryWhole(query["transfersLimit"], 1, out var transferLimit))
+                return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_limit");
+
+            var transfersLimit = (int)Math.Min(transferLimit ?? DefaultItemsLimit, MaxItemsLimit);
 
             using var shard = database.CreateShard();
 
@@ -68,12 +77,46 @@ namespace ACE.MarketApi
 
             var head = balance?.LastSequence ?? 0;
 
-            var lines = await shard.MarketLedgerEntries.AsNoTracking()
-                .Where(e => e.AccountId == accountId && e.Sequence > (since ?? 0) && e.Sequence <= head)
-                .OrderByDescending(e => e.Sequence)
-                .Select(e => new LedgerLine(e.Sequence.Value, e.TransferId, e.Amount, e.BalanceAfter.Value, e.Memo,
-                    e.Transfer.Kind, e.Transfer.ListingId, e.Transfer.ReversesTransferId, e.Transfer.Memo, e.Transfer.CreatedTime))
-                .ToListAsync();
+            var ledgerQuery = shard.MarketLedgerEntries.AsNoTracking()
+                .Where(e => e.AccountId == accountId && e.Sequence <= head);
+            List<LedgerLine> lines;
+            long? nextTransfersBefore = null;
+            long? nextSince = null;
+            var more = false;
+
+            if (since is long watermark)
+            {
+                lines = await ledgerQuery
+                    .Where(e => e.Sequence > watermark)
+                    .OrderBy(e => e.Sequence)
+                    .Take(transfersLimit)
+                    .Select(e => new LedgerLine(e.Sequence.Value, e.TransferId, e.Amount, e.BalanceAfter.Value, e.Memo,
+                        e.Transfer.Kind, e.Transfer.ListingId, e.Transfer.ReversesTransferId, e.Transfer.Memo, e.Transfer.CreatedTime))
+                    .ToListAsync();
+
+                nextSince = lines.Count == 0 ? watermark : lines[^1].Sequence;
+                more = nextSince < head;
+            }
+            else
+            {
+                var pageQuery = ledgerQuery;
+
+                if (transfersBefore is long before)
+                    pageQuery = pageQuery.Where(e => e.Sequence < before);
+
+                lines = await pageQuery
+                    .OrderByDescending(e => e.Sequence)
+                    .Take(transfersLimit + 1)
+                    .Select(e => new LedgerLine(e.Sequence.Value, e.TransferId, e.Amount, e.BalanceAfter.Value, e.Memo,
+                        e.Transfer.Kind, e.Transfer.ListingId, e.Transfer.ReversesTransferId, e.Transfer.Memo, e.Transfer.CreatedTime))
+                    .ToListAsync();
+
+                if (lines.Count > transfersLimit)
+                {
+                    lines.RemoveAt(lines.Count - 1);
+                    nextTransfersBefore = lines[^1].Sequence;
+                }
+            }
 
             // destroyed trade notes: only a note deposit gives a deposit event a transfer, and its ledger line already tells it ("Deposited 50 trade notes")
             var eventQuery = shard.MarketItemEvents.AsNoTracking()
@@ -112,6 +155,9 @@ namespace ACE.MarketApi
                     text = Describe(l, accountId, names),
                     memo = l.EntryMemo ?? l.TransferMemo,
                 }),
+                nextTransfersBefore,
+                nextSince,
+                more,
                 items = events.Select(e => new
                 {
                     id = e.Id,

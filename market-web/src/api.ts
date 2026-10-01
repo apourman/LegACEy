@@ -19,6 +19,22 @@ export interface Facets {
 }
 export interface PurchaseRequest { count: number; expectedPrice: number; characterId: number; idempotencyKey: string }
 export interface Receipt { status: 'ok'; listingId: number; itemGuid: number; price: number; fee: number; balance: number }
+export interface VaultItem {
+  itemGuid: number; wcid: number; name: string; itemType: number; stackSize: number; state: 'held' | 'listed' | 'withdrawing';
+  characterId: number; depositedTime: string; icon: Icon; listingId: number | null; price: number | null;
+  expiresTime: string | null; ticketId: number | null;
+}
+export interface VaultResult { items: VaultItem[] }
+export interface VaultAppraisal { lines: string[]; spells: { name: string; cantrip: boolean }[] }
+export interface HistoryTransfer {
+  sequence: number; transferId: number; kind: string; amount: number; balanceAfter: number;
+  time: string; text: string; memo: string | null;
+}
+export interface HistoryItem { id: number; itemGuid: number; kind: string; name: string; listingId: number | null; time: string; text: string }
+export interface HistoryResult {
+  balance: number; head: number; transfers: HistoryTransfer[]; items: HistoryItem[];
+  nextTransfersBefore: number | null; nextSince: number | null; more: boolean; nextItemsBefore: number | null;
+}
 
 export const messages: Record<string, string> = {
   invalid_credentials: 'The account name or password is incorrect.',
@@ -46,6 +62,9 @@ export const messages: Record<string, string> = {
   bad_cursor: 'This page has changed. Reload the search.',
   network: 'The response was lost. Retry this attempt to find out whether it succeeded.',
   server: 'The server is unavailable. Try again later.',
+  not_in_vault: 'That item is not in your Vault.',
+  not_held: 'Only held Vault items can be listed.',
+  listing_limit: 'You have reached your active listing limit.',
 };
 export class ApiError extends Error {
   constructor(public code: string, public status: number, public price?: number) {
@@ -78,3 +97,9 @@ export const suggest = (q: string) => request<{ suggestions: string[] }>(`/listi
 export const getFacets = () => request<Facets>('/facets');
 export const getListing = (id: number) => request<Detail>(`/listings/${id}`);
 export const purchase = (id: number, attempt: PurchaseRequest) => request<Receipt>(`/listings/${id}/purchase`, attempt);
+export const getVault = () => request<VaultResult>('/vault');
+export const getVaultAppraisal = (itemGuid: number) => request<VaultAppraisal>(`/vault/${itemGuid}`);
+export const listVaultItem = (itemGuid: number, price: number, characterId: number) =>
+  request<{ id: number; itemGuid: number; price: number; status: string; listedTime: string }>('/listings', { itemGuid, price, characterId });
+export const delistVaultItem = (listingId: number) => request<{ id: number; itemGuid: number; status: string }>(`/listings/${listingId}/delist`, {});
+export const getHistory = (query: URLSearchParams) => request<HistoryResult>(`/history?${query}`);

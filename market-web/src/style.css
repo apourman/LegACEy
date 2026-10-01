@@ -58,6 +58,24 @@ dialog { color: #f1e8d5; background: #20271f; border: 1px solid #8c9a7a; border-
 .signin { max-width: 400px; margin: 1.5rem auto; }.signin form { display: grid; gap: 1.2rem; margin: 1.5rem 0; }
 footer { padding: 1.5rem 2rem; border-top: 1px solid #38403b; color: #818f85; font-size: .8rem; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.table-scroll { overflow-x: auto; }
+.vault-table { min-width: 880px; }
+.vault-item-name { display: flex; align-items: center; gap: .65rem; min-width: 190px; }
+.vault-item-name .item-icon { flex: 0 0 32px; }
+.vault-state { display: inline-block; text-transform: capitalize; padding: .15rem .5rem; border: 1px solid #526152; border-radius: 1rem; }
+.vault-state--listed { color: #eed099; border-color: #8c7548; }
+.vault-state--withdrawing { color: #b9d5ef; border-color: #54718b; }
+.vault-table td small { display: block; margin-top: .3rem; }
+.vault-action { display: flex; align-items: end; gap: .5rem; min-width: 190px; }
+.vault-action label { width: 105px; }
+.vault-action button { white-space: nowrap; }
+.history-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2rem; }
+.history-grid section { min-width: 0; }
+.history-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid #36433b; }
+.history-list li { padding: 1rem .25rem; border-bottom: 1px solid #303b34; }
+.history-list time, .history-list small { color: #a4ada7; font-size: .8rem; }
+.history-list p { margin: .35rem 0; }
 .skip-link { position: fixed; top: -100px; left: 1rem; z-index: 30; background: #222; padding: 1rem; }.skip-link:focus { top: 1rem; }
 @media(max-width: 900px) { .desktop-column { display: none; }.listing-detail { grid-template-columns: 1fr; }.purchase-card { order: -1; } }
+@media(max-width: 760px) { .history-grid { grid-template-columns: 1fr; } }
 @media(max-width: 540px) { main { padding: 1.5rem .75rem 3rem; }header { padding: 1rem; }nav { gap: .8rem; }h1 { font-size: 2rem; }.filters { padding: .8rem; }.listing-table { font-size: .75rem; }.listing-table td, .listing-table th { padding: .7rem .3rem; }.listing-table td small { display: none; }.listing-table td:nth-child(2) { max-width: 120px; overflow-wrap: anywhere; }.listing-detail .appraisal-lines { columns: 1; }.listing-table .price { white-space: nowrap; } }
