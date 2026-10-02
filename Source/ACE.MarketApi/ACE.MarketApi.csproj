@@ -27,10 +27,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.8" />
+    <!-- OpenAPI.NET 2.7.5 contains the fix for GHSA-v5pm-xwqc-g5wc; ASP.NET OpenAPI 10.0.8 depends on 2.0.0. -->
+    <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
     <!-- icons are encoded with SkiaSharp, not Windows-only System.Drawing; the NoDependencies native build needs no fontconfig in a slim Linux container -->
     <PackageReference Include="SkiaSharp" Version="3.119.4" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.4" />
   </ItemGroup>
+
+  <Target Name="GenerateMarketOpenApi" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true' and '$(TargetFramework)' == 'net10.0'">
+    <Exec Command="dotnet &quot;$(TargetPath)&quot; --generate-openapi &quot;$(MSBuildProjectDirectory)/openapi.json&quot;" />
+  </Target>
 
   <ItemGroup>
     <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-4f7c-pmjv-c25w" />

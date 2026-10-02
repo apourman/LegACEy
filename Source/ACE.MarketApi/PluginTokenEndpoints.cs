@@ -20,9 +20,9 @@ namespace ACE.MarketApi
 
         public static void Map(IEndpointRouteBuilder app)
         {
-            app.MapPost("/auth/plugin-token", Exchange);
-            app.MapGet("/tokens", ListTokens).RequireAuthorization();
-            app.MapPost("/tokens/{id:long}/revoke", Revoke).RequireAuthorization();
+            app.MapPost("/auth/plugin-token", Exchange).Json<PluginTokenResponse>(200, 400, 401, 403, 429);
+            app.MapGet("/tokens", ListTokens).Json<PluginTokensResponse>(200, 401).RequireAuthorization();
+            app.MapPost("/tokens/{id:long}/revoke", Revoke).Json<OkResponse>(200, 404).RequireAuthorization();
         }
 
         /// <summary>
@@ -67,13 +67,7 @@ namespace ACE.MarketApi
             if (token == null)
                 return MarketHttp.Error(StatusCodes.Status401Unauthorized, "invalid_code");
 
-            return Results.Json(new
-            {
-                token = secret,
-                tokenId = token.Id,
-                label = token.Label,
-                expiresTime = MarketHttp.Utc(token.ExpiresTime),
-            });
+            return Results.Json(new PluginTokenResponse(secret, token.Id, token.Label, MarketHttp.Utc(token.ExpiresTime)));
         }
 
         /// <summary>
@@ -89,16 +83,15 @@ namespace ACE.MarketApi
             using var shard = database.CreateShard();
 
             var tokens = PluginAuth.ListTokens(shard, account.AccountId, account.PasswordHash, time.GetUtcNow().UtcDateTime)
-                .Select(t => new
-                {
-                    id = t.Id,
-                    label = t.Label,
-                    createdTime = MarketHttp.Utc(t.CreatedTime),
-                    lastUsedTime = MarketHttp.Utc(t.LastUsedTime),
-                    expiresTime = MarketHttp.Utc(t.ExpiresTime),
-                });
+                .Select(t => new PluginTokenInfoResponse(
+                    t.Id,
+                    t.Label,
+                    MarketHttp.Utc(t.CreatedTime),
+                    MarketHttp.Utc(t.LastUsedTime),
+                    MarketHttp.Utc(t.ExpiresTime)))
+                .ToList();
 
-            return Results.Json(new { tokens });
+            return Results.Json(new PluginTokensResponse(tokens));
         }
 
         /// <summary>
@@ -111,7 +104,7 @@ namespace ACE.MarketApi
             if (!PluginAuth.Revoke(shard, MarketHttp.AccountId(context), id, time.GetUtcNow().UtcDateTime))
                 return MarketHttp.Error(StatusCodes.Status404NotFound, "not_found");
 
-            return Results.Json(new { ok = true });
+            return Results.Json(new OkResponse(true));
         }
     }
 }

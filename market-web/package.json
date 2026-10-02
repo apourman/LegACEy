@@ -7,19 +7,22 @@
     "dev": "vite --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "build": "vite build",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "generate:api": "openapi-typescript ../Source/ACE.MarketApi/openapi.json -o src/api-schema.ts"
   },
   "dependencies": {
+    "openapi-fetch": "^0.17.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-router-dom": "7.18.4"
   },
   "devDependencies": {
+    "@playwright/test": "1.55.1",
     "@types/react": "19.2.0",
     "@types/react-dom": "19.2.0",
     "@vitejs/plugin-react": "5.0.4",
+    "openapi-typescript": "^7.13.0",
     "typescript": "5.9.3",
-    "vite": "7.3.6",
-    "@playwright/test": "1.55.1"
+    "vite": "7.3.6"
   }
 }

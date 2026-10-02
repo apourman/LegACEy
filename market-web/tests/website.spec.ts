@@ -15,6 +15,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/me') return route.fulfill({ status: 401, json: { error: 'unauthorized' } });
+    if (path === '/api/tickets') return route.fulfill({ json: [] });
     if (path === '/api/facets') return route.fulfill({ json: {
       itemTypes: [{ value: 'MeleeWeapon', label: 'MeleeWeapon', count: 1 }],
       sorts: [{ value: 'newest', label: 'Newest', defaultDir: 'desc' }, { value: 'price', label: 'Price', defaultDir: 'asc' }],
@@ -145,8 +146,9 @@ test('account without characters cannot buy and has a clear next step', async ({
 });
 
 test('load more uses cursor and filter changes discard previous rows', async ({ page }) => {
-  await page.route('**/api/listings?**', route => {
+  await page.route('**/api/listings**', route => {
     const url = new URL(route.request().url());
+    if (url.pathname !== '/api/listings') return route.fallback();
     if (url.searchParams.has('q')) return route.fulfill({ json: { listings: [], nextCursor: null } });
     return route.fulfill({ json: url.searchParams.has('cursor') ? { listings: [{ ...listing, id: 2, name: 'Chainmail Basinet' }], nextCursor: null } : { listings: [listing], nextCursor: 'next-page' } });
   });

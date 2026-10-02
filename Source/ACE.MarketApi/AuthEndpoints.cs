@@ -29,9 +29,9 @@ namespace ACE.MarketApi
 
         public static void Map(IEndpointRouteBuilder app)
         {
-            app.MapPost("/auth/login", Login);
+            app.MapPost("/auth/login", Login).Json<LoginResponse>(200, 400, 401, 403, 429);
             // cast: a handler taking only HttpContext would otherwise bind as a RequestDelegate and drop its result
-            app.MapPost("/auth/logout", (Delegate)Logout);
+            app.MapPost("/auth/logout", (Delegate)Logout).Json<OkResponse>();
         }
 
         /// <summary>
@@ -90,14 +90,14 @@ namespace ACE.MarketApi
 
             await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
 
-            return Results.Json(new { accountId = account.AccountId, accountName = account.AccountName });
+            return Results.Json(new LoginResponse(account.AccountId, account.AccountName));
         }
 
         private static async Task<IResult> Logout(HttpContext context)
         {
             await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
 
-            return Results.Json(new { ok = true });
+            return Results.Json(new OkResponse(true));
         }
     }
 }

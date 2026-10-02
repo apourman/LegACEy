@@ -19,8 +19,8 @@ namespace ACE.MarketApi
 
         public static void Map(IEndpointRouteBuilder app)
         {
-            app.MapPost("/listings", List).RequireAuthorization();
-            app.MapPost("/listings/{id:long}/delist", Delist).RequireAuthorization();
+            app.MapPost("/listings", List).Json<ListedResponse>(201, 400, 403, 404, 409).RequireAuthorization();
+            app.MapPost("/listings/{id:long}/delist", Delist).Json<DelistedResponse>(200, 403, 404, 409).RequireAuthorization();
         }
 
         private static IResult List(ListRequest request, HttpContext context, MarketDatabase database, TimeProvider time)
@@ -46,14 +46,12 @@ namespace ACE.MarketApi
 
             var listing = result.Listing;
 
-            return Results.Created($"{MarketApi.PathBase}/listings/{listing.Id}", new
-            {
-                id = listing.Id,
-                itemGuid = listing.ItemGuid,
-                price = listing.Price,
-                status = listing.Status,
-                listedTime = DateTime.SpecifyKind(listing.CreatedTime, DateTimeKind.Utc),
-            });
+            return Results.Created($"{MarketApi.PathBase}/listings/{listing.Id}", new ListedResponse(
+                listing.Id,
+                listing.ItemGuid,
+                listing.Price,
+                listing.Status.ToString(),
+                DateTime.SpecifyKind(listing.CreatedTime, DateTimeKind.Utc)));
         }
 
         private static IResult Delist(long id, HttpContext context, MarketDatabase database, TimeProvider time)
@@ -71,7 +69,7 @@ namespace ACE.MarketApi
             if (result.Outcome != ListingOutcome.Ok)
                 return Refusal(result.Outcome);
 
-            return Results.Json(new { id = result.Listing.Id, itemGuid = result.Listing.ItemGuid, status = result.Listing.Status });
+            return Results.Json(new DelistedResponse(result.Listing.Id, result.Listing.ItemGuid, result.Listing.Status.ToString()));
         }
 
         private static IResult Refusal(ListingOutcome outcome) => outcome switch

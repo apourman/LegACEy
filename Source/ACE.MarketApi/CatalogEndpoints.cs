@@ -25,10 +25,10 @@ namespace ACE.MarketApi
 
         public static void Map(IEndpointRouteBuilder app)
         {
-            app.MapGet("/listings", Browse);
-            app.MapGet("/listings/suggest", Suggest);
-            app.MapGet("/listings/{id:long}", Detail);
-            app.MapGet("/facets", Facets);
+            app.MapGet("/listings", Browse).Json<BrowseResponse>(200, 400);
+            app.MapGet("/listings/suggest", Suggest).Json<SuggestionsResponse>();
+            app.MapGet("/listings/{id:long}", Detail).Json<ListingDetailResponse>(200, 404);
+            app.MapGet("/facets", Facets).Json<FacetsResponse>();
         }
 
         /// <summary>
@@ -122,7 +122,7 @@ namespace ACE.MarketApi
 
             var items = AppraisalItem.Load(shard, gameData, page.Select(r => r.Listing.ItemGuid).ToList());
 
-            return Results.Json(new { listings = page.Select(r => ListingCatalog.View(r, items[r.Listing.ItemGuid])), nextCursor });
+            return Results.Json(new BrowseResponse(page.Select(r => ApiContractViews.Listing(ListingCatalog.View(r, items[r.Listing.ItemGuid]))).ToList(), nextCursor));
         }
 
         /// <summary>
@@ -133,7 +133,7 @@ namespace ACE.MarketApi
             var text = MarketHttp.QueryValue(request.Query["q"]);
 
             if (text == null)
-                return Results.Json(new { suggestions = Array.Empty<string>() });
+                return Results.Json(new SuggestionsResponse(Array.Empty<string>()));
 
             using var shard = database.CreateShard();
 
@@ -144,7 +144,7 @@ namespace ACE.MarketApi
                 .Take(MaxSuggestions)
                 .ToList();
 
-            return Results.Json(new { suggestions });
+            return Results.Json(new SuggestionsResponse(suggestions));
         }
 
         /// <summary>
@@ -161,7 +161,7 @@ namespace ACE.MarketApi
 
             var item = AppraisalItem.Load(shard, gameData, new[] { row.Listing.ItemGuid })[row.Listing.ItemGuid];
 
-            return Results.Json(ListingCatalog.Detail(row, item, rules));
+            return Results.Json(ApiContractViews.Detail(ListingCatalog.Detail(row, item, rules)));
         }
 
         /// <summary>
@@ -179,11 +179,9 @@ namespace ACE.MarketApi
                 .OrderBy(t => t.label, StringComparer.Ordinal)
                 .ToList();
 
-            return Results.Json(new
-            {
-                itemTypes = types,
-                sorts = ListingCatalog.Sorts.Select(s => new { value = s.Value, label = s.Label, defaultDir = s.DescendingByDefault ? "desc" : "asc" }),
-            });
+            return Results.Json(new FacetsResponse(
+                types.Select(t => new FacetItemResponse(t.value, t.label, t.count)).ToList(),
+                ListingCatalog.Sorts.Select(s => new SortResponse(s.Value, s.Label, s.DescendingByDefault ? "desc" : "asc")).ToList()));
         }
 
         /// <summary>

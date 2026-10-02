@@ -32,7 +32,7 @@ namespace ACE.MarketApi
 
         public static void Map(IEndpointRouteBuilder app)
         {
-            app.MapPost("/listings/{id:long}/purchase", Purchase).RequireAuthorization();
+            app.MapPost("/listings/{id:long}/purchase", Purchase).Json<PurchaseReceipt>(200, 400, 403, 404, 409, 410, 429, 500, 503).RequireAuthorization();
         }
 
         private static IResult Purchase(long id, PurchaseRequest request, HttpContext context, MarketDatabase database, TimeProvider time, IMarketPause pause, PurchaseLimiter limiter, IFeePolicy feePolicy, ILoggerFactory loggers)
@@ -121,7 +121,7 @@ namespace ACE.MarketApi
                 return Refused(StatusCodes.Status403Forbidden, "own_listing");
 
             if (listing.Price != expectedPrice)
-                return new Answer(Results.Json(new { error = "price_changed", price = listing.Price }, statusCode: StatusCodes.Status409Conflict), false);
+                return new Answer(Results.Json(new ApiError("price_changed", listing.Price), statusCode: StatusCodes.Status409Conflict), false);
 
             if (count != item.StackSize)
                 return Refused(StatusCodes.Status400BadRequest, "invalid_count");

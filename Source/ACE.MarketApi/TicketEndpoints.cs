@@ -33,12 +33,12 @@ namespace ACE.MarketApi
 
         public static void Map(IEndpointRouteBuilder app)
         {
-            app.MapPost("/vault/withdraw", VaultWithdraw).RequireAuthorization();
-            app.MapPost("/vault/deposit", VaultDeposit).RequireAuthorization();
-            app.MapPost("/inventory/snapshot", InventorySnapshot).RequireAuthorization();
-            app.MapPost("/mmd/withdraw", MmdWithdraw).RequireAuthorization();
-            app.MapGet("/tickets", List).RequireAuthorization();
-            app.MapGet("/tickets/{id:long}", Get).RequireAuthorization();
+            app.MapPost("/vault/withdraw", VaultWithdraw).Json<TicketResponse>(202, 400, 401, 404, 409).RequireAuthorization();
+            app.MapPost("/vault/deposit", VaultDeposit).Json<TicketResponse>(202, 400, 401, 404, 409).RequireAuthorization();
+            app.MapPost("/inventory/snapshot", InventorySnapshot).Json<TicketResponse>(202, 400, 401, 404, 409).RequireAuthorization();
+            app.MapPost("/mmd/withdraw", MmdWithdraw).Json<TicketResponse>(202, 400, 401, 404, 409, 503).RequireAuthorization();
+            app.MapGet("/tickets", List).Json<TicketResponse[]>(200, 401).RequireAuthorization();
+            app.MapGet("/tickets/{id:long}", Get).Json<TicketResponse>(200, 401, 404).RequireAuthorization();
         }
 
         private static IResult VaultWithdraw(VaultWithdrawRequest request, HttpContext context, MarketDatabase database, TimeProvider time, GameData gameData)
@@ -150,28 +150,26 @@ namespace ACE.MarketApi
         private static bool IsOwnCharacter(ShardDbContext shard, uint accountId, uint characterId) =>
             shard.Character.Any(c => c.Id == characterId && c.AccountId == accountId && !c.IsDeleted);
 
-        private static object View(Ticket ticket, GameData gameData)
+        private static TicketResponse View(Ticket ticket, GameData gameData)
         {
             var payload = TicketPayload.FromJson(ticket.Payload);
 
-            return new
-            {
-                id = ticket.Id,
-                kind = ticket.Kind,
-                status = ticket.Status,
-                characterId = ticket.CharacterId,
-                itemGuid = payload?.ItemGuid,
-                amount = payload?.Amount,
-                resultCode = ticket.ResultCode,
-                resultMessage = ticket.ResultMessage,
-                progress = ticket.Progress,
-                progressTime = MarketHttp.Utc(ticket.ProgressTime),
-                progressUntil = MarketHttp.Utc(ticket.ProgressUntil),
-                result = ParseResult(ticket, gameData),
-                createdTime = MarketHttp.Utc(ticket.CreatedTime),
-                claimedTime = MarketHttp.Utc(ticket.ClaimedTime),
-                finishedTime = MarketHttp.Utc(ticket.FinishedTime),
-            };
+            return new TicketResponse(
+                ticket.Id,
+                ticket.Kind,
+                ticket.Status,
+                ticket.CharacterId,
+                payload?.ItemGuid,
+                payload?.Amount,
+                ticket.ResultCode,
+                ticket.ResultMessage,
+                ticket.Progress,
+                MarketHttp.Utc(ticket.ProgressTime),
+                MarketHttp.Utc(ticket.ProgressUntil),
+                ParseResult(ticket, gameData),
+                MarketHttp.Utc(ticket.CreatedTime),
+                MarketHttp.Utc(ticket.ClaimedTime),
+                MarketHttp.Utc(ticket.FinishedTime));
         }
 
         private static JsonElement? ParseResult(Ticket ticket, GameData gameData)
