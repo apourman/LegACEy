@@ -36,9 +36,14 @@ namespace ACE.MarketApi
             new LedgerLine(e.Sequence.Value, e.TransferId, e.Amount, e.BalanceAfter.Value, e.Memo,
                 e.Transfer.Kind, e.Transfer.ListingId, e.Transfer.ReversesTransferId, e.Transfer.Memo, e.Transfer.CreatedTime);
 
+        /// <summary>
+        /// History's query parameters: their names are the keys History reads, and the document lists them with these types. History parses each value itself.
+        /// </summary>
+        public sealed record HistoryQuery(long? Since, long? TransfersBefore, long? ItemsBefore, long? ItemsLimit, long? TransfersLimit);
+
         public static void Map(IEndpointRouteBuilder app)
         {
-            app.MapGet("/history", History).Json<HistoryResponse>(200, 400).RequireAuthorization();
+            app.MapGet("/history", History).Json<HistoryResponse>(200, 400).Query<HistoryQuery>().RequireAuthorization();
         }
 
         /// <summary>
@@ -55,19 +60,19 @@ namespace ACE.MarketApi
             var accountId = MarketHttp.AccountId(context);
             var query = context.Request.Query;
 
-            if (!TryWhole(query["since"], 0, out var since) || !TryWhole(query["transfersBefore"], 1, out var transfersBefore) || !TryWhole(query["itemsBefore"], 1, out var itemsBefore))
+            if (!TryWhole(query[MarketHttp.QueryName(nameof(HistoryQuery.Since))], 0, out var since) || !TryWhole(query[MarketHttp.QueryName(nameof(HistoryQuery.TransfersBefore))], 1, out var transfersBefore) || !TryWhole(query[MarketHttp.QueryName(nameof(HistoryQuery.ItemsBefore))], 1, out var itemsBefore))
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_cursor");
 
             if (since != null && transfersBefore != null)
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_cursor");
 
             // like the catalog's limit: at least 1, and a larger one is capped
-            if (!TryWhole(query["itemsLimit"], 1, out var limit))
+            if (!TryWhole(query[MarketHttp.QueryName(nameof(HistoryQuery.ItemsLimit))], 1, out var limit))
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_limit");
 
             var itemsLimit = (int)Math.Min(limit ?? DefaultItemsLimit, MaxItemsLimit);
 
-            if (!TryWhole(query["transfersLimit"], 1, out var transferLimit))
+            if (!TryWhole(query[MarketHttp.QueryName(nameof(HistoryQuery.TransfersLimit))], 1, out var transferLimit))
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_limit");
 
             var transfersLimit = (int)Math.Min(transferLimit ?? DefaultItemsLimit, MaxItemsLimit);

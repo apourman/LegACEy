@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -120,10 +119,7 @@ namespace ACE.MarketApi
             if (existing == null)
                 return null;
 
-            if (existing.Outcome == TicketCreateOutcome.KeyReused)
-                return MarketHttp.Error(StatusCodes.Status409Conflict, "key_reused");
-
-            return Results.Accepted($"{MarketApi.PathBase}/tickets/{existing.Ticket.Id}", View(existing.Ticket, gameData));
+            return Answer(existing.Outcome, existing.Ticket, gameData);
         }
 
         /// <summary>
@@ -141,11 +137,16 @@ namespace ACE.MarketApi
 
             var result = TicketStore.Create(shard, accountId, characterId.Value, kind, payload, idempotencyKey, time.GetUtcNow().UtcDateTime);
 
-            if (result.Outcome == TicketCreateOutcome.KeyReused)
-                return MarketHttp.Error(StatusCodes.Status409Conflict, "key_reused");
-
-            return Results.Accepted($"{MarketApi.PathBase}/tickets/{result.Ticket.Id}", View(result.Ticket, gameData));
+            return Answer(result.Outcome, result.Ticket, gameData);
         }
+
+        /// <summary>
+        /// A created or replayed ticket: 202 with the ticket as it is now, or 409 key_reused when the key was used for another kind
+        /// </summary>
+        private static IResult Answer(TicketCreateOutcome outcome, Ticket ticket, GameData gameData) =>
+            outcome == TicketCreateOutcome.KeyReused
+                ? MarketHttp.Error(StatusCodes.Status409Conflict, "key_reused")
+                : Results.Accepted($"{MarketApi.PathBase}/tickets/{ticket.Id}", View(ticket, gameData));
 
         private static bool IsOwnCharacter(ShardDbContext shard, uint accountId, uint characterId) =>
             shard.Character.Any(c => c.Id == characterId && c.AccountId == accountId && !c.IsDeleted);
@@ -172,9 +173,13 @@ namespace ACE.MarketApi
                 MarketHttp.Utc(ticket.FinishedTime));
         }
 
-        private static JsonElement? ParseResult(Ticket ticket, GameData gameData)
+        /// <summary>
+        /// An inventory snapshot's result, with each item's raw icon ids turned into the API's icon URLs.
+        /// Null until it's done, for a result that can't be read, and for every other kind of ticket (the game writes no other result).
+        /// </summary>
+        private static InventorySnapshotResponse ParseResult(Ticket ticket, GameData gameData)
         {
-            if (ticket.Result == null)
+            if (ticket.Result == null || ticket.Kind != TicketKind.InventorySnapshot)
                 return null;
 
             try
@@ -182,33 +187,25 @@ namespace ACE.MarketApi
                 using var document = JsonDocument.Parse(ticket.Result);
                 var root = document.RootElement;
 
-                if (ticket.Kind == TicketKind.InventorySnapshot)
+                if (root.ValueKind != JsonValueKind.Object
+                    || !root.TryGetProperty("snapshotTime", out var snapshotTime)
+                    || snapshotTime.ValueKind != JsonValueKind.String
+                    || !snapshotTime.TryGetDateTime(out var time)
+                    || !root.TryGetProperty("items", out var items)
+                    || items.ValueKind != JsonValueKind.Array)
+                    return null;
+
+                var projected = new List<InventorySnapshotItemResponse>(items.GetArrayLength());
+
+                foreach (var item in items.EnumerateArray())
                 {
-                    if (root.ValueKind != JsonValueKind.Object
-                        || !root.TryGetProperty("snapshotTime", out var snapshotTime)
-                        || snapshotTime.ValueKind != JsonValueKind.String
-                        || !root.TryGetProperty("items", out var items)
-                        || items.ValueKind != JsonValueKind.Array)
+                    if (!TryProjectSnapshotItem(item, gameData, out var projectedItem))
                         return null;
 
-                    var projected = new List<object>(items.GetArrayLength());
-
-                    foreach (var item in items.EnumerateArray())
-                    {
-                        if (!TryProjectSnapshotItem(item, gameData, out var projectedItem))
-                            return null;
-
-                        projected.Add(projectedItem);
-                    }
-
-                    return JsonSerializer.SerializeToElement(new
-                    {
-                        snapshotTime = snapshotTime.GetString(),
-                        items = projected,
-                    }, new JsonSerializerOptions(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.Never });
+                    projected.Add(projectedItem);
                 }
 
-                return root.Clone();
+                return new InventorySnapshotResponse(time, projected);
             }
             catch (JsonException)
             {
@@ -216,7 +213,7 @@ namespace ACE.MarketApi
             }
         }
 
-        private static bool TryProjectSnapshotItem(JsonElement item, GameData gameData, out object projected)
+        private static bool TryProjectSnapshotItem(JsonElement item, GameData gameData, out InventorySnapshotItemResponse projected)
         {
             projected = null;
 
@@ -248,14 +245,7 @@ namespace ACE.MarketApi
                 ClothingBase = clothingBase,
             };
 
-            projected = new
-            {
-                itemGuid = guid,
-                name,
-                stackSize,
-                refusalCode,
-                icon = ItemIcons.For(row, gameData),
-            };
+            projected = new InventorySnapshotItemResponse(guid, name, stackSize, refusalCode, ApiContractViews.Icon(ItemIcons.For(row, gameData)));
 
             return true;
         }

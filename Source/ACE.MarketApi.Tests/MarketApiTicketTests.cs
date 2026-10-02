@@ -3,6 +3,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 using ACE.Database.Market;
@@ -59,6 +60,17 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
 
             return await MarketApiHost.JsonAsync(response);
+        }
+
+        /// <summary>
+        /// Finishes an inventory snapshot ticket with this result, as the game server does
+        /// </summary>
+        private static void CompleteSnapshot(MarketApiHost host, long id, string result)
+        {
+            using var shard = MarketApiTestData.Shard();
+            TicketStore.ClaimOne(shard, id, host.Clock.GetUtcNow().UtcDateTime);
+            TicketStore.Complete(shard, new TicketCompletion(id, "Inventory snapshot is ready.", result), host.Clock.GetUtcNow().UtcDateTime);
+            shard.SaveChanges();
         }
 
         /// <summary>
@@ -246,12 +258,7 @@ namespace ACE.MarketApi.Tests
             var id = created.GetProperty("id").GetInt64();
             var result = "{\"snapshotTime\":\"2026-10-02T00:00:00Z\",\"items\":[{\"itemGuid\":3221225473,\"name\":\"Snapshot Sword\",\"stackSize\":1,\"itemType\":2,\"icon\":100677439,\"iconUnderlay\":null,\"iconOverlay\":null,\"iconOverlaySecondary\":null,\"uiEffects\":null,\"paletteTemplate\":null,\"clothingBase\":null,\"refusalCode\":null}]}";
 
-            using (var shard = MarketApiTestData.Shard())
-            {
-                TicketStore.ClaimOne(shard, id, host.Clock.GetUtcNow().UtcDateTime);
-                TicketStore.Complete(shard, new TicketCompletion(id, "Inventory snapshot is ready.", result), host.Clock.GetUtcNow().UtcDateTime);
-                shard.SaveChanges();
-            }
+            CompleteSnapshot(host, id, result);
 
             var ticket = await TicketAsync(host, cookie, id);
             var item = ticket.GetProperty("result").GetProperty("items")[0];
@@ -261,6 +268,38 @@ namespace ACE.MarketApi.Tests
             Assert.IsTrue(layers.Any(layer => layer.GetProperty("kind").GetString() == "base" && layer.GetProperty("url").GetString() == "/api/icons/0x0600373F.png"),
                 "the snapshot's base icon URL points at the item's actual portal DAT icon");
             Assert.AreEqual(JsonValueKind.Null, item.GetProperty("refusalCode").ValueKind);
+        }
+
+        [TestMethod]
+        public async Task InventorySnapshot_Result_KeepsItsWireShape_AndReadsAsTheNamedRecords()
+        {
+            var player = NewPlayer("snapshotshape");
+
+            await using var host = await MarketApiHost.StartAsync();
+            var cookie = await host.SignInForCookieAsync(player.Name, "pass");
+            var id = (await AcceptedAsync(await InventorySnapshotAsync(host, cookie, player.CharacterId, NewKey()))).GetProperty("id").GetInt64();
+            // as the game writes it: DateTime.UtcNow to the tick, and an item the Vault would refuse
+            var result = "{\"snapshotTime\":\"2026-10-02T12:34:56.1234567Z\",\"items\":[{\"itemGuid\":3221225473,\"name\":\"Snapshot Sword\",\"stackSize\":3,\"itemType\":2,\"icon\":100677439,\"iconUnderlay\":null,\"iconOverlay\":null,\"iconOverlaySecondary\":null,\"uiEffects\":null,\"paletteTemplate\":null,\"clothingBase\":null,\"refusalCode\":\"worn\"}]}";
+
+            CompleteSnapshot(host, id, result);
+
+            var wire = (await TicketAsync(host, cookie, id)).GetProperty("result");
+
+            Assert.AreEqual(
+                "{\"snapshotTime\":\"2026-10-02T12:34:56.1234567Z\",\"items\":[{\"itemGuid\":3221225473,\"name\":\"Snapshot Sword\",\"stackSize\":3,\"refusalCode\":\"worn\","
+                + "\"icon\":{\"layers\":[{\"kind\":\"plate\",\"id\":100667855,\"url\":\"/api/icons/0x060011CF.png\"},{\"kind\":\"base\",\"id\":100677439,\"url\":\"/api/icons/0x0600373F.png\"}],\"glow\":null}}]}",
+                wire.GetRawText(), "the snapshot result's wire shape is unchanged");
+
+            var strict = new JsonSerializerOptions(JsonSerializerDefaults.Web) { UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow, RespectRequiredConstructorParameters = true };
+            var snapshot = wire.Deserialize<InventorySnapshotResponse>(strict);
+            var item = snapshot.Items.Single();
+
+            Assert.AreEqual(new DateTime(2026, 10, 2, 12, 34, 56, DateTimeKind.Utc).AddTicks(1234567), snapshot.SnapshotTime);
+            Assert.AreEqual(3221225473u, item.ItemGuid);
+            Assert.AreEqual("Snapshot Sword", item.Name);
+            Assert.AreEqual(3, item.StackSize);
+            Assert.AreEqual("worn", item.RefusalCode);
+            Assert.IsTrue(item.Icon.Layers.Any(layer => layer.Kind == "base" && layer.Url == "/api/icons/0x0600373F.png"));
         }
 
         [TestMethod]
@@ -284,10 +323,7 @@ namespace ACE.MarketApi.Tests
                 var id = created.GetProperty("id").GetInt64();
                 ticketIds[i] = id;
 
-                using var shard = MarketApiTestData.Shard();
-                TicketStore.ClaimOne(shard, id, host.Clock.GetUtcNow().UtcDateTime);
-                TicketStore.Complete(shard, new TicketCompletion(id, "Inventory snapshot is ready.", malformedResults[i]), host.Clock.GetUtcNow().UtcDateTime);
-                shard.SaveChanges();
+                CompleteSnapshot(host, id, malformedResults[i]);
             }
 
             var itemResponses = new System.Collections.Generic.List<HttpResponseMessage>();

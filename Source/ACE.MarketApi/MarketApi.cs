@@ -1,6 +1,9 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Net;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authentication;
@@ -9,6 +12,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
@@ -70,6 +74,7 @@ namespace ACE.MarketApi
                 throw new MarketUnavailableException(e.Message);
             }
 
+            AddJson(builder.Services);
             builder.Services.AddSingleton(database);
             builder.Services.AddSingleton(gameData);
             builder.Services.AddSingleton(new IconStore(gameData, options.IconCachePath));
@@ -131,19 +136,41 @@ namespace ACE.MarketApi
             app.UseAuthorization();
 
             // the website and the API share one origin: the website owns /, the API /api. No CORS policy, so other origins can't read answers.
-            MapEndpoints(app, includeRequestFilter: true);
+            MapEndpoints(app);
 
             return app;
         }
 
         /// <summary>
-        /// Maps endpoint metadata without creating the database or loading DATs. This is also used by the build-time OpenAPI generator.
+        /// The API's JSON, for MarketApi.Create and the OpenAPI generator alike: ASP.NET's web defaults, stated. Requests may quote numbers
+        /// ("3" reads as 3), which a game plugin may rely on, so this stays lenient; answers always write numbers.
         /// </summary>
-        public static void MapEndpoints(IEndpointRouteBuilder app, bool includeRequestFilter = false)
+        public static void AddJson(IServiceCollection services) =>
+            services.ConfigureHttpJsonOptions(json =>
+            {
+                json.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+                json.SerializerOptions.NumberHandling = JsonNumberHandling.AllowReadingFromString;
+            });
+
+        /// <summary>
+        /// Maps every route under /api with the CSRF filter. Mapping needs the services registered, not the database or the DATs,
+        /// so the OpenAPI generator (MarketOpenApi) maps the same routes on placeholders.
+        /// </summary>
+        public static void MapEndpoints(IEndpointRouteBuilder app)
         {
             var api = app.MapGroup(PathBase);
-            if (includeRequestFilter)
-                api.AddEndpointFilter(RequireRequestHeader);
+            api.AddEndpointFilter(RequireRequestHeader);
+
+            // the document shows the answers the group adds: 401 where sign-in is required, and 403 csrf where RequireRequestHeader can refuse.
+            // A finally convention runs after each route's own conventions, so it sees RequireAuthorization.
+            ((IEndpointConventionBuilder)api).Finally(endpoint =>
+            {
+                if (endpoint.Metadata.OfType<IAuthorizeData>().Any())
+                    DeclareError(endpoint, StatusCodes.Status401Unauthorized);
+
+                if (endpoint.Metadata.OfType<HttpMethodMetadata>().SelectMany(m => m.HttpMethods).Any(IsChange))
+                    DeclareError(endpoint, StatusCodes.Status403Forbidden);
+            });
 
             AuthEndpoints.Map(api);
             AccountEndpoints.Map(api);
@@ -169,9 +196,8 @@ namespace ACE.MarketApi
         private static async ValueTask<object> RequireRequestHeader(EndpointFilterInvocationContext invocation, EndpointFilterDelegate next)
         {
             var context = invocation.HttpContext;
-            var method = context.Request.Method;
 
-            if (HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method) || HttpMethods.IsTrace(method))
+            if (!IsChange(context.Request.Method))
                 return await next(invocation);
 
             if (context.Request.Headers[RequestHeader] == "1")
@@ -185,6 +211,18 @@ namespace ACE.MarketApi
                 return await next(invocation);
 
             return MarketHttp.Error(StatusCodes.Status403Forbidden, "csrf");
+        }
+
+        /// <summary>
+        /// Every method but GET, HEAD, OPTIONS and TRACE may change something
+        /// </summary>
+        private static bool IsChange(string method) =>
+            !(HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method) || HttpMethods.IsTrace(method));
+
+        private static void DeclareError(EndpointBuilder endpoint, int statusCode)
+        {
+            if (!endpoint.Metadata.OfType<IProducesResponseTypeMetadata>().Any(m => m.StatusCode == statusCode))
+                endpoint.Metadata.Add(new ProducesResponseTypeMetadata(statusCode, typeof(ApiError), new[] { "application/json" }));
         }
 
         /// <summary>

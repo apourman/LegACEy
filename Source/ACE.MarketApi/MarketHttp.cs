@@ -1,5 +1,6 @@
 using System;
 using System.Security.Claims;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Http;
@@ -58,6 +59,12 @@ namespace ACE.MarketApi
 
             return text.Length == 0 ? null : text;
         }
+
+        /// <summary>
+        /// A query parameter's name from the property of the record that documents it (BrowseQuery.MinPrice is minPrice), so what a handler reads
+        /// and what the OpenAPI document lists can't drift apart
+        /// </summary>
+        public static string QueryName(string property) => JsonNamingPolicy.CamelCase.ConvertName(property);
 
         public static IResult Error(int statusCode, string error) => Results.Json(new ApiError(error), statusCode: statusCode);
 

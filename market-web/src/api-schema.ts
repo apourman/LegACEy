@@ -106,6 +106,15 @@ export interface paths {
                         "application/json": components["schemas"]["OkResponse"];
                     };
                 };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiError"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -214,7 +223,7 @@ export interface paths {
                 query?: never;
                 header?: never;
                 path: {
-                    itemGuid: number | string;
+                    itemGuid: number;
                 };
                 cookie?: never;
             };
@@ -269,12 +278,12 @@ export interface paths {
                 query?: {
                     q?: string;
                     type?: string;
-                    minPrice?: string;
-                    maxPrice?: string;
+                    minPrice?: number;
+                    maxPrice?: number;
                     seller?: string;
                     sort?: string;
                     dir?: string;
-                    limit?: string;
+                    limit?: number;
                     cursor?: string;
                 };
                 header?: never;
@@ -328,6 +337,15 @@ export interface paths {
                 };
                 /** @description Bad Request */
                 400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiError"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -397,6 +415,15 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["DelistedResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiError"];
                     };
                 };
                 /** @description Forbidden */
@@ -594,6 +621,15 @@ export interface paths {
                         "application/json": components["schemas"]["ApiError"];
                     };
                 };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiError"];
+                    };
+                };
                 /** @description Forbidden */
                 403: {
                     headers: {
@@ -675,11 +711,11 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
-                    since?: string;
-                    transfersBefore?: string;
-                    itemsBefore?: string;
-                    itemsLimit?: string;
-                    transfersLimit?: string;
+                    since?: number;
+                    transfersBefore?: number;
+                    itemsBefore?: number;
+                    itemsLimit?: number;
+                    transfersLimit?: number;
                 };
                 header?: never;
                 path?: never;
@@ -698,6 +734,15 @@ export interface paths {
                 };
                 /** @description Bad Request */
                 400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiError"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -863,6 +908,24 @@ export interface paths {
                         "application/json": components["schemas"]["OkResponse"];
                     };
                 };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiError"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiError"];
+                    };
+                };
                 /** @description Not Found */
                 404: {
                     headers: {
@@ -1010,6 +1073,15 @@ export interface paths {
                         "application/json": components["schemas"]["ApiError"];
                     };
                 };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiError"];
+                    };
+                };
                 /** @description Not Found */
                 404: {
                     headers: {
@@ -1078,6 +1150,15 @@ export interface paths {
                 };
                 /** @description Unauthorized */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiError"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1160,6 +1241,15 @@ export interface paths {
                         "application/json": components["schemas"]["ApiError"];
                     };
                 };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiError"];
+                    };
+                };
                 /** @description Not Found */
                 404: {
                     headers: {
@@ -1228,6 +1318,15 @@ export interface paths {
                 };
                 /** @description Unauthorized */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiError"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1377,7 +1476,7 @@ export interface components {
             /** @enum {string} */
             error: "account_locked" | "attuned" | "bad_cursor" | "bad_limit" | "bad_price" | "bad_request" | "bad_sort" | "bad_type" | "banned" | "blocked_wcid" | "busy" | "channelling" | "confirmation_busy" | "confirm_timeout" | "container_not_empty" | "contains_attuned" | "csrf" | "declined" | "gone" | "in_trade" | "insufficient_funds" | "invalid_character" | "invalid_count" | "invalid_code" | "invalid_credentials" | "invalid_fee" | "invalid_price" | "invalid_amount" | "ip_blocked" | "key_reused" | "listing_limit" | "network" | "not_active" | "not_available" | "not_found" | "not_held" | "not_in_pack" | "not_in_vault" | "ok" | "own_listing" | "paused" | "pet_out" | "price_changed" | "rate_limited" | "recent_player_fight" | "server" | "trading" | "unauthorized" | "vault_full" | "worn";
             /** Format: int64 */
-            price?: null | number | string;
+            price?: null | number;
         };
         AppraisalResponse: {
             lines: string[];
@@ -1389,21 +1488,21 @@ export interface components {
         };
         CharacterResponse: {
             /** Format: uint32 */
-            id: number | string;
+            id: number;
             name: string;
         };
         DelistedResponse: {
             /** Format: int64 */
-            id: number | string;
+            id: number;
             /** Format: uint32 */
-            itemGuid: number | string;
+            itemGuid: number;
             status: string;
         };
         FacetItemResponse: {
             value: string;
             label: string;
             /** Format: int32 */
-            count: number | string;
+            count: number;
         };
         FacetsResponse: {
             itemTypes: components["schemas"]["FacetItemResponse"][];
@@ -1411,42 +1510,42 @@ export interface components {
         };
         HistoryItemResponse: {
             /** Format: int64 */
-            id: number | string;
+            id: number;
             /** Format: uint32 */
-            itemGuid: number | string;
+            itemGuid: number;
             kind: string;
             name: string;
             /** Format: int64 */
-            listingId: null | number | string;
+            listingId: null | number;
             /** Format: date-time */
             time: string;
             text: string;
         };
         HistoryResponse: {
             /** Format: int64 */
-            balance: number | string;
+            balance: number;
             /** Format: int64 */
-            head: number | string;
+            head: number;
             transfers: components["schemas"]["HistoryTransferResponse"][];
             /** Format: int64 */
-            nextTransfersBefore: null | number | string;
+            nextTransfersBefore: null | number;
             /** Format: int64 */
-            nextSince: null | number | string;
+            nextSince: null | number;
             more: boolean;
             items: components["schemas"]["HistoryItemResponse"][];
             /** Format: int64 */
-            nextItemsBefore: null | number | string;
+            nextItemsBefore: null | number;
         };
         HistoryTransferResponse: {
             /** Format: int64 */
-            sequence: number | string;
+            sequence: number;
             /** Format: int64 */
-            transferId: number | string;
+            transferId: number;
             kind: string;
             /** Format: int64 */
-            amount: number | string;
+            amount: number;
             /** Format: int64 */
-            balanceAfter: number | string;
+            balanceAfter: number;
             /** Format: date-time */
             time: string;
             text: string;
@@ -1455,55 +1554,66 @@ export interface components {
         IconLayerResponse: {
             kind: string;
             /** Format: uint32 */
-            id: number | string;
+            id: number;
             url: string;
             /** Format: int32 */
-            paletteTemplate?: null | number | string;
+            paletteTemplate?: null | number;
         };
         IconResponse: {
             layers: components["schemas"]["IconLayerResponse"][];
             glow: null | string;
         };
+        InventorySnapshotItemResponse: {
+            /** Format: uint32 */
+            itemGuid: number;
+            name: string;
+            /** Format: int32 */
+            stackSize: number;
+            refusalCode: null | string;
+            icon: components["schemas"]["IconResponse"];
+        };
         InventorySnapshotRequest: {
             /** Format: uint32 */
-            characterId: null | number | string;
+            characterId: null | number;
             idempotencyKey: null | string;
         };
-        JsonElement: {
-            [key: string]: unknown;
-        } | unknown[] | string | number | boolean | null;
+        InventorySnapshotResponse: {
+            /** Format: date-time */
+            snapshotTime: string;
+            items: components["schemas"]["InventorySnapshotItemResponse"][];
+        };
         ListedResponse: {
             /** Format: int64 */
-            id: number | string;
+            id: number;
             /** Format: uint32 */
-            itemGuid: number | string;
+            itemGuid: number;
             /** Format: int64 */
-            price: number | string;
+            price: number;
             status: string;
             /** Format: date-time */
             listedTime: string;
         };
         ListingDetailResponse: {
             /** Format: int64 */
-            id: number | string;
+            id: number;
             /** Format: uint32 */
-            itemGuid: number | string;
+            itemGuid: number;
             /** Format: uint32 */
-            wcid: number | string;
+            wcid: number;
             name: string;
             itemType: string;
             material: null | string;
             /** Format: int32 */
-            workmanship: null | number | string;
+            workmanship: null | number;
             /** Format: int32 */
-            level: null | number | string;
+            level: null | number;
             /** Format: int32 */
-            arcaneLore: null | number | string;
+            arcaneLore: null | number;
             summary: string;
             /** Format: int32 */
-            quantity: number | string;
+            quantity: number;
             /** Format: int64 */
-            price: number | string;
+            price: number;
             seller: string;
             /** Format: date-time */
             listedTime: string;
@@ -1514,25 +1624,25 @@ export interface components {
         };
         ListingResponse: {
             /** Format: int64 */
-            id: number | string;
+            id: number;
             /** Format: uint32 */
-            itemGuid: number | string;
+            itemGuid: number;
             /** Format: uint32 */
-            wcid: number | string;
+            wcid: number;
             name: string;
             itemType: string;
             material: null | string;
             /** Format: int32 */
-            workmanship: null | number | string;
+            workmanship: null | number;
             /** Format: int32 */
-            level: null | number | string;
+            level: null | number;
             /** Format: int32 */
-            arcaneLore: null | number | string;
+            arcaneLore: null | number;
             summary: string;
             /** Format: int32 */
-            quantity: number | string;
+            quantity: number;
             /** Format: int64 */
-            price: number | string;
+            price: number;
             seller: string;
             /** Format: date-time */
             listedTime: string;
@@ -1541,11 +1651,11 @@ export interface components {
         };
         ListRequest: {
             /** Format: uint32 */
-            itemGuid: number | string;
+            itemGuid: number;
             /** Format: double */
-            price: null | number | string;
+            price: null | number;
             /** Format: uint32 */
-            characterId: null | number | string;
+            characterId: null | number;
         };
         LoginRequest: {
             account: null | string;
@@ -1553,32 +1663,32 @@ export interface components {
         };
         LoginResponse: {
             /** Format: uint32 */
-            accountId: number | string;
+            accountId: number;
             accountName: string;
         };
         MeResponse: {
             /** Format: uint32 */
-            accountId: number | string;
+            accountId: number;
             accountName: string;
             characters: components["schemas"]["CharacterResponse"][];
             /** Format: int64 */
-            balance: number | string;
+            balance: number;
             frozen: boolean;
             paused: boolean;
             /** Format: int32 */
-            vaultCount: number | string;
+            vaultCount: number;
             /** Format: int64 */
-            vaultCap: number | string;
+            vaultCap: number;
             /** Format: int32 */
-            listingCount: number | string;
+            listingCount: number;
             /** Format: int64 */
-            listingCap: number | string;
+            listingCap: number;
         };
         MmdWithdrawRequest: {
             /** Format: uint32 */
-            characterId: null | number | string;
+            characterId: null | number;
             /** Format: double */
-            amount: null | number | string;
+            amount: null | number;
             idempotencyKey: null | string;
         };
         OkResponse: {
@@ -1586,7 +1696,7 @@ export interface components {
         };
         PluginTokenInfoResponse: {
             /** Format: int64 */
-            id: number | string;
+            id: number;
             label: string;
             /** Format: date-time */
             createdTime: string;
@@ -1602,7 +1712,7 @@ export interface components {
         PluginTokenResponse: {
             token: string;
             /** Format: int64 */
-            tokenId: number | string;
+            tokenId: number;
             label: string;
             /** Format: date-time */
             expiresTime: string;
@@ -1613,24 +1723,24 @@ export interface components {
         PurchaseReceipt: {
             status: null | string;
             /** Format: int64 */
-            listingId: number | string;
+            listingId: number;
             /** Format: uint32 */
-            itemGuid: number | string;
+            itemGuid: number;
             /** Format: int64 */
-            price: number | string;
+            price: number;
             /** Format: int64 */
-            fee: number | string;
+            fee: number;
             /** Format: int64 */
-            balance: number | string;
+            balance: number;
         };
         PurchaseRequest: {
             /** Format: int32 */
-            count: null | number | string;
+            count: null | number;
             /** Format: double */
-            expectedPrice: null | number | string;
+            expectedPrice: null | number;
             idempotencyKey: null | string;
             /** Format: uint32 */
-            characterId: null | number | string;
+            characterId: null | number;
         };
         SortResponse: {
             value: string;
@@ -1646,15 +1756,15 @@ export interface components {
         };
         TicketResponse: {
             /** Format: int64 */
-            id: number | string;
+            id: number;
             kind: string;
             status: string;
             /** Format: uint32 */
-            characterId: null | number | string;
+            characterId: null | number;
             /** Format: uint32 */
-            itemGuid: null | number | string;
+            itemGuid: null | number;
             /** Format: int64 */
-            amount: null | number | string;
+            amount: null | number;
             resultCode: null | string;
             resultMessage: null | string;
             progress: null | string;
@@ -1662,7 +1772,7 @@ export interface components {
             progressTime: null | string;
             /** Format: date-time */
             progressUntil: null | string;
-            result: null | components["schemas"]["InventorySnapshotResponse"] | components["schemas"]["JsonElement"];
+            result: null | components["schemas"]["InventorySnapshotResponse"];
             /** Format: date-time */
             createdTime: string;
             /** Format: date-time */
@@ -1672,33 +1782,33 @@ export interface components {
         };
         VaultDepositRequest: {
             /** Format: uint32 */
-            characterId: null | number | string;
+            characterId: null | number;
             /** Format: uint32 */
-            itemGuid: null | number | string;
+            itemGuid: null | number;
             idempotencyKey: null | string;
         };
         VaultItemResponse: {
             /** Format: uint32 */
-            itemGuid: number | string;
+            itemGuid: number;
             /** Format: uint32 */
-            wcid: number | string;
+            wcid: number;
             name: string;
             /** Format: int32 */
-            itemType: number | string;
+            itemType: number;
             /** Format: int32 */
-            stackSize: number | string;
+            stackSize: number;
             state: string;
             /** Format: uint32 */
-            characterId: number | string;
+            characterId: number;
             icon: components["schemas"]["IconResponse"];
             /** Format: int64 */
-            listingId: null | number | string;
+            listingId: null | number;
             /** Format: int64 */
-            price: null | number | string;
+            price: null | number;
             /** Format: date-time */
             expiresTime: null | string;
             /** Format: int64 */
-            ticketId: null | number | string;
+            ticketId: null | number;
             /** Format: date-time */
             depositedTime: string;
         };
@@ -1707,24 +1817,10 @@ export interface components {
         };
         VaultWithdrawRequest: {
             /** Format: uint32 */
-            characterId: null | number | string;
+            characterId: null | number;
             /** Format: uint32 */
-            itemGuid: null | number | string;
+            itemGuid: null | number;
             idempotencyKey: null | string;
-        };
-        InventorySnapshotItemResponse: {
-            /** Format: uint32 */
-            itemGuid: number;
-            name: string;
-            /** Format: int32 */
-            stackSize: number;
-            refusalCode: string | null;
-            icon: components["schemas"]["IconResponse"];
-        };
-        InventorySnapshotResponse: {
-            /** Format: date-time */
-            snapshotTime: string;
-            items: components["schemas"]["InventorySnapshotItemResponse"][];
         };
     };
     responses: never;

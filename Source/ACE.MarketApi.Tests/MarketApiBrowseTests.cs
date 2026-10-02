@@ -256,7 +256,7 @@ namespace ACE.MarketApi.Tests
             {
                 var response = await host.GetAsync("/api/listings?" + query);
                 Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode, query);
-                Assert.AreEqual(error, await MarketApiHost.ErrorAsync(response), query);
+                Assert.AreEqual($"{{\"error\":\"{error}\"}}", await response.Content.ReadAsStringAsync(), "an error body is only its code: " + query);
             }
 
             // an oversized limit is capped rather than refused

@@ -259,7 +259,7 @@ namespace ACE.MarketApi.Tests
             var response = await PurchaseAsync(host, cookie, listed, expectedPrice: 100);
 
             await AssertRefusedAsync(response, HttpStatusCode.Conflict, "price_changed");
-            Assert.AreEqual(120L, (await MarketApiHost.JsonAsync(response)).GetProperty("price").GetInt64());
+            Assert.AreEqual("{\"error\":\"price_changed\",\"price\":120}", await response.Content.ReadAsStringAsync(), "price_changed carries the current price");
             Assert.AreEqual(before, Snapshot(listed, buyer, seller));
         }
 

@@ -1,36 +1,30 @@
-import createClient from 'openapi-fetch';
+import createClient, { type Client, type ClientOptions } from 'openapi-fetch';
 import type { components, paths } from './api-schema';
 
-type NumericField = 'id' | 'itemGuid' | 'wcid' | 'accountId' | 'characterId' | 'listingId' | 'ticketId' | 'balance' | 'vaultCount' | 'vaultCap' | 'listingCount' | 'listingCap' | 'price' | 'fee' | 'sequence' | 'transferId' | 'balanceAfter' | 'head' | 'nextTransfersBefore' | 'nextSince' | 'nextItemsBefore' | 'amount' | 'count' | 'quantity' | 'workmanship' | 'level' | 'arcaneLore' | 'itemType' | 'stackSize' | 'tokenId';
-type ApiShape<T> = T extends readonly (infer Item)[] ? ApiShape<Item>[]
-  : T extends object ? { [K in keyof T]: K extends NumericField
-    ? (null extends T[K] ? number | null : number)
-    : ApiShape<T[K]> }
-  : T;
-type ApiSchema<Name extends keyof components['schemas']> = ApiShape<components['schemas'][Name]>;
-
-export type Character = ApiSchema<'CharacterResponse'>;
-export type Me = ApiSchema<'MeResponse'>;
-export type Icon = ApiSchema<'IconResponse'>;
-export type Listing = ApiSchema<'ListingResponse'>;
-export type Spell = ApiSchema<'SpellResponse'>;
-export type Detail = Listing & { lines: string[]; spells: Spell[] };
-export type BrowseResult = ApiSchema<'BrowseResponse'>;
-export type Facets = ApiSchema<'FacetsResponse'>;
-export type PurchaseRequest = ApiSchema<'PurchaseRequest'>;
-export type Receipt = ApiSchema<'PurchaseReceipt'>;
-export type VaultItem = ApiSchema<'VaultItemResponse'>;
-export type VaultResult = ApiSchema<'VaultResponse'>;
-export type VaultAppraisal = ApiSchema<'AppraisalResponse'>;
-export type HistoryTransfer = ApiSchema<'HistoryTransferResponse'>;
-export type HistoryItem = ApiSchema<'HistoryItemResponse'>;
-export type HistoryResult = ApiSchema<'HistoryResponse'>;
-export type Ticket = ApiSchema<'TicketResponse'>;
-export type InventorySnapshotItem = ApiSchema<'InventorySnapshotItemResponse'>;
-export type InventorySnapshot = ApiSchema<'InventorySnapshotResponse'>;
+type Schemas = components['schemas'];
+export type Character = Schemas['CharacterResponse'];
+export type Me = Schemas['MeResponse'];
+export type Icon = Schemas['IconResponse'];
+export type Listing = Schemas['ListingResponse'];
+export type Spell = Schemas['SpellResponse'];
+export type Detail = Schemas['ListingDetailResponse'];
+export type BrowseResult = Schemas['BrowseResponse'];
+export type Facets = Schemas['FacetsResponse'];
+export type PurchaseRequest = Schemas['PurchaseRequest'];
+export type Receipt = Schemas['PurchaseReceipt'];
+export type VaultItem = Schemas['VaultItemResponse'];
+export type VaultResult = Schemas['VaultResponse'];
+export type VaultAppraisal = Schemas['AppraisalResponse'];
+export type HistoryTransfer = Schemas['HistoryTransferResponse'];
+export type HistoryItem = Schemas['HistoryItemResponse'];
+export type HistoryResult = Schemas['HistoryResponse'];
+export type Ticket = Schemas['TicketResponse'];
+export type InventorySnapshotItem = Schemas['InventorySnapshotItemResponse'];
+export type InventorySnapshot = Schemas['InventorySnapshotResponse'];
 
 export const ticketProgress = { awaitingConfirmation: 'awaiting_confirmation', channelling: 'channelling' } as const;
 
+// keyed by the API's error codes, so a code the API doesn't declare is a type error
 export const messages: Record<string, string> = {
   invalid_credentials: 'The account name or password is incorrect.',
   account_locked: 'Too many failed sign-ins. Your account is temporarily locked. Try again later.',
@@ -77,65 +71,61 @@ export const messages: Record<string, string> = {
   not_held: 'Only held Vault items can be listed.',
   listing_limit: 'You have reached your active listing limit.',
   not_active: 'This listing is no longer active. It may have sold or expired.',
-};
+} satisfies Partial<Record<Schemas['ApiError']['error'], string>>;
 
-type ErrorBody = components['schemas']['ApiError'];
 export class ApiError extends Error {
-  constructor(public code: string, public status: number, public price?: number | string | null) {
+  constructor(public code: string, public status: number, public price?: number) {
     super(messages[code] ?? `The request failed (${code}).`);
   }
 }
-
+// A signed-in view subscribes here. Login's 401 is a password answer, not session expiry.
 export const sessionEnded = new EventTarget();
-type Client = ReturnType<typeof createClient<paths>>;
-export function createMarketApiClient(baseUrl: string, fetcher: typeof fetch = fetch): Client {
-  return createClient<paths>({ baseUrl, fetch: fetcher });
+
+export type MarketApiClient = Client<paths>;
+/** Thrown when no answer arrived at all, as opposed to an answer that couldn't be read */
+class NoAnswer extends Error {}
+/** A client for the Market API's routes. A server loader makes one per request, with its own base URL and headers. */
+export function createMarketApiClient(options?: ClientOptions): MarketApiClient {
+  const client = createClient<paths>(options);
+  client.use({ onError: () => new NoAnswer() });
+  return client;
 }
+/** The website's own client: same origin with the session cookie, and the header the API's CSRF check asks for */
+export const browserClient = createMarketApiClient({ credentials: 'same-origin', headers: { 'X-Market-Request': '1' } });
 
-let client = createMarketApiClient('');
-export function setMarketApiBaseUrl(baseUrl: string, fetcher?: typeof fetch): void {
-  client = createMarketApiClient(baseUrl, fetcher);
-}
-
-async function result<T>(call: Promise<{ data?: unknown; error?: unknown; response: Response }>, login = false): Promise<T> {
-  let response: Response;
-  let data: unknown;
-  let error: unknown;
-  try {
-    const answer = await call;
-    ({ response, data, error } = answer);
-  } catch {
-    throw new ApiError('network', 0);
-  }
-
+async function result<T>(call: Promise<{ data?: T; error?: unknown; response: Response }>, login = false): Promise<T> {
+  let answer;
+  try { answer = await call; }
+  catch (e) { throw new ApiError(e instanceof NoAnswer ? 'network' : 'server', 0); }
+  const { data, error, response } = answer;
   if (response.status === 401 && !login) sessionEnded.dispatchEvent(new Event('ended'));
   if (!response.ok) {
-    const body = (error ?? data ?? {}) as ErrorBody;
-    throw new ApiError(body.error ?? 'server', response.status, body.price);
+    const body: Partial<Schemas['ApiError']> = typeof error === 'object' && error !== null ? error : {};
+    throw new ApiError(body.error ?? 'server', response.status, body.price ?? undefined);
   }
   if (data === undefined) throw new ApiError('server', response.status);
-  return data as T;
+  return data;
 }
 
-const headers = { 'X-Market-Request': '1' };
+// The query passes the page's URL values through as text, and the API refuses a bad one (bad_price, bad_limit) with its own message
 type ListingQuery = NonNullable<paths['/api/listings']['get']['parameters']['query']>;
 type HistoryQuery = NonNullable<paths['/api/history']['get']['parameters']['query']>;
-export const getMe = () => result<Me>(client.GET('/api/me', { credentials: 'include', headers }));
-export const signIn = (account: string, password: string) => result<components['schemas']['LoginResponse']>(client.POST('/api/auth/login', { body: { account, password }, credentials: 'include', headers }), true);
-export const signOut = () => result<components['schemas']['OkResponse']>(client.POST('/api/auth/logout', { credentials: 'include', headers }));
-export const browse = (query: URLSearchParams) => result<BrowseResult>(client.GET('/api/listings', { params: { query: Object.fromEntries(query) as ListingQuery }, credentials: 'include', headers }));
-export const suggest = (q: string) => result<components['schemas']['SuggestionsResponse']>(client.GET('/api/listings/suggest', { params: { query: { q } }, credentials: 'include', headers }));
-export const getFacets = () => result<Facets>(client.GET('/api/facets', { credentials: 'include', headers }));
-export const getListing = (id: number) => result<Detail>(client.GET('/api/listings/{id}', { params: { path: { id } }, credentials: 'include', headers }));
-export const purchase = (id: number, attempt: PurchaseRequest) => result<Receipt>(client.POST('/api/listings/{id}/purchase', { params: { path: { id } }, body: attempt, credentials: 'include', headers }));
-export const getVault = () => result<VaultResult>(client.GET('/api/vault', { credentials: 'include', headers }));
-export const getVaultAppraisal = (itemGuid: number) => result<VaultAppraisal>(client.GET('/api/vault/{itemGuid}', { params: { path: { itemGuid } }, credentials: 'include', headers }));
-export const listVaultItem = (itemGuid: number, price: number, characterId: number) => result<components['schemas']['ListedResponse']>(client.POST('/api/listings', { body: { itemGuid, price, characterId }, credentials: 'include', headers }));
-export const delistVaultItem = (listingId: number) => result<components['schemas']['DelistedResponse']>(client.POST('/api/listings/{id}/delist', { params: { path: { id: listingId } }, credentials: 'include', headers }));
-export const getHistory = (query: URLSearchParams) => result<HistoryResult>(client.GET('/api/history', { params: { query: Object.fromEntries(query) as HistoryQuery }, credentials: 'include', headers }));
-export const getTickets = () => result<Ticket[]>(client.GET('/api/tickets', { credentials: 'include', headers }));
-export const getTicket = (id: number) => result<Ticket>(client.GET('/api/tickets/{id}', { params: { path: { id } }, credentials: 'include', headers }));
-export const requestInventorySnapshot = (characterId: number, idempotencyKey: string) => result<Ticket>(client.POST('/api/inventory/snapshot', { body: { characterId, idempotencyKey }, credentials: 'include', headers }));
-export const depositVaultItem = (characterId: number, itemGuid: number, idempotencyKey: string) => result<Ticket>(client.POST('/api/vault/deposit', { body: { characterId, itemGuid, idempotencyKey }, credentials: 'include', headers }));
-export const withdrawVaultItem = (characterId: number, itemGuid: number, idempotencyKey: string) => result<Ticket>(client.POST('/api/vault/withdraw', { body: { characterId, itemGuid, idempotencyKey }, credentials: 'include', headers }));
-export const withdrawMmd = (characterId: number, amount: number, idempotencyKey: string) => result<Ticket>(client.POST('/api/mmd/withdraw', { body: { characterId, amount, idempotencyKey }, credentials: 'include', headers }));
+export const getMe = (client = browserClient) => result(client.GET('/api/me'));
+export const signIn = (account: string, password: string, client = browserClient) => result(client.POST('/api/auth/login', { body: { account, password } }), true);
+export const signOut = (client = browserClient) => result(client.POST('/api/auth/logout'));
+export const browse = (query: URLSearchParams, client = browserClient) => result(client.GET('/api/listings', { params: { query: Object.fromEntries(query) as ListingQuery } }));
+export const suggest = (q: string, client = browserClient) => result(client.GET('/api/listings/suggest', { params: { query: { q } } }));
+export const getFacets = (client = browserClient) => result(client.GET('/api/facets'));
+export const getListing = (id: number, client = browserClient) => result(client.GET('/api/listings/{id}', { params: { path: { id } } }));
+export const purchase = (id: number, attempt: PurchaseRequest, client = browserClient) => result(client.POST('/api/listings/{id}/purchase', { params: { path: { id } }, body: attempt }));
+export const getVault = (client = browserClient) => result(client.GET('/api/vault'));
+export const getVaultAppraisal = (itemGuid: number, client = browserClient) => result(client.GET('/api/vault/{itemGuid}', { params: { path: { itemGuid } } }));
+export const listVaultItem = (itemGuid: number, price: number, characterId: number, client = browserClient) => result(client.POST('/api/listings', { body: { itemGuid, price, characterId } }));
+export const delistVaultItem = (listingId: number, client = browserClient) => result(client.POST('/api/listings/{id}/delist', { params: { path: { id: listingId } } }));
+export const getHistory = (query: URLSearchParams, client = browserClient) => result(client.GET('/api/history', { params: { query: Object.fromEntries(query) as HistoryQuery } }));
+export const getTickets = (client = browserClient) => result(client.GET('/api/tickets'));
+export const getTicket = (id: number, client = browserClient) => result(client.GET('/api/tickets/{id}', { params: { path: { id } } }));
+export const requestInventorySnapshot = (characterId: number, idempotencyKey: string, client = browserClient) => result(client.POST('/api/inventory/snapshot', { body: { characterId, idempotencyKey } }));
+export const depositVaultItem = (characterId: number, itemGuid: number, idempotencyKey: string, client = browserClient) => result(client.POST('/api/vault/deposit', { body: { characterId, itemGuid, idempotencyKey } }));
+export const withdrawVaultItem = (characterId: number, itemGuid: number, idempotencyKey: string, client = browserClient) => result(client.POST('/api/vault/withdraw', { body: { characterId, itemGuid, idempotencyKey } }));
+export const withdrawMmd = (characterId: number, amount: number, idempotencyKey: string, client = browserClient) => result(client.POST('/api/mmd/withdraw', { body: { characterId, amount, idempotencyKey } }));
