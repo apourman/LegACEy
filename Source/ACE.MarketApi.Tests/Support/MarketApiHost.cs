@@ -18,13 +18,19 @@ namespace ACE.MarketApi.Tests.Support
 {
     /// <summary>
     /// Seam 1: the Market API in-process on the ASP.NET Core test server, against the scratch auth and shard databases on the real MySQL.
-    /// A request's client IP is set by the X-Test-Remote-Ip header, the clock by <see cref="Clock"/>.
+    /// A request's connection address is set by the X-Test-Remote-Ip header, the clock by <see cref="Clock"/>.
+    /// <see cref="Client"/> sends the service key on every request, as the BFF does; <see cref="ClientWithoutKey"/> sends none.
     /// </summary>
     internal sealed class MarketApiHost : IAsyncDisposable
     {
         public const string DefaultIp = "10.1.1.1";
 
         public const string RemoteIpHeader = "X-Test-Remote-Ip";
+
+        /// <summary>
+        /// The service key every test host is configured with (Market:ServiceKey)
+        /// </summary>
+        public const string ServiceKey = "3f9c1d7e5a2b8c4d6e0f1a3b5c7d9e1f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d";
 
         /// <summary>
         /// The header the website sends on every request; a cookie-signed request that changes something is refused without it
@@ -43,9 +49,20 @@ namespace ACE.MarketApi.Tests.Support
         {
             App = app;
             Client = app.GetTestClient();
+            Client.DefaultRequestHeaders.Add(ServiceGate.KeyHeader, ServiceKey);
             Clock = clock;
             KeysPath = keysPath;
         }
+
+        /// <summary>
+        /// A client that sends no service key (dispose it)
+        /// </summary>
+        public HttpClient ClientWithoutKey() => App.GetTestClient();
+
+        /// <summary>
+        /// The configuration argument that gives a host built by hand the test service key
+        /// </summary>
+        public static string ServiceKeyArgument => $"--Market:ServiceKey={ServiceKey}";
 
         public static string NewKeysPath() => Path.Combine(Path.GetTempPath(), "ace-market-api-tests", Guid.NewGuid().ToString("N"));
 
@@ -63,6 +80,7 @@ namespace ACE.MarketApi.Tests.Support
                 $"--Market:AuthDatabase={MarketApiTestData.AuthDatabase}",
                 $"--Market:ShardDatabase={shardDatabase}",
                 $"--Market:KeysPath={keysPath ?? NewKeysPath()}",
+                ServiceKeyArgument,
             }.Concat(extraArgs).ToArray(),
             builder =>
             {
@@ -115,6 +133,35 @@ namespace ACE.MarketApi.Tests.Support
                 request.Headers.Add("X-Forwarded-For", forwardedFor);
 
             return await Client.SendAsync(request);
+        }
+
+        /// <summary>
+        /// The BFF's session sign-in (POST /api/auth/session) from the connection address ip, carrying X-Market-Client-Ip when clientIp is given
+        /// </summary>
+        public async Task<HttpResponseMessage> SessionSignInAsync(string account, string password, string ip = DefaultIp, string clientIp = null)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/session")
+            {
+                Content = JsonContent.Create(new { account, password }),
+            };
+            request.Headers.Add(RemoteIpHeader, ip);
+
+            if (clientIp != null)
+                request.Headers.Add(ServiceGate.ClientIpHeader, clientIp);
+
+            return await Client.SendAsync(request);
+        }
+
+        /// <summary>
+        /// Starts a web session and returns its bearer token, failing the test if sign-in fails
+        /// </summary>
+        public async Task<string> SignInForSessionAsync(string account, string password)
+        {
+            var response = await SessionSignInAsync(account, password);
+
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
+
+            return (await JsonAsync(response)).GetProperty("token").GetString();
         }
 
         /// <summary>

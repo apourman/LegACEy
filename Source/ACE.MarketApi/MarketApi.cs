@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -48,6 +49,9 @@ namespace ACE.MarketApi
             configure?.Invoke(builder);
 
             var options = builder.Configuration.GetSection("Market").Get<MarketApiOptions>() ?? new MarketApiOptions();
+
+            // first: without the service key the API would refuse everything, so it doesn't start
+            var gate = ServiceGate.For(options.ServiceKey);
 
             if (ConfigManager.Config == null)
                 ConfigManager.Initialize(options.AceConfigPath);
@@ -106,12 +110,13 @@ namespace ACE.MarketApi
                     cookie.Events.OnRedirectToAccessDenied = context => MarketHttp.WriteError(context.Response, StatusCodes.Status403Forbidden, "forbidden");
                     cookie.Events.OnValidatePrincipal = ValidateSession;
                 })
-                .AddScheme<AuthenticationSchemeOptions, PluginTokenAuthenticationHandler>(PluginTokenAuthenticationHandler.SchemeName, null);
+                .AddScheme<AuthenticationSchemeOptions, PluginTokenAuthenticationHandler>(PluginTokenAuthenticationHandler.SchemeName, null)
+                .AddScheme<AuthenticationSchemeOptions, WebSessionAuthenticationHandler>(WebSessionAuthenticationHandler.SchemeName, null);
 
-            // RequireAuthorization takes the plugin's bearer token or the website's cookie. The token scheme is challenged first, so it only adds
-            // its WWW-Authenticate header before the cookie scheme writes the 401 body.
+            // RequireAuthorization takes the plugin's bearer token, the BFF's web session bearer token or the website's cookie. The bearer schemes
+            // are challenged first and write no body (only the 401 status and WWW-Authenticate), so the cookie scheme writes the 401 body.
             builder.Services.AddAuthorization(authorization =>
-                authorization.DefaultPolicy = new AuthorizationPolicyBuilder(PluginTokenAuthenticationHandler.SchemeName, CookieAuthenticationDefaults.AuthenticationScheme)
+                authorization.DefaultPolicy = new AuthorizationPolicyBuilder(PluginTokenAuthenticationHandler.SchemeName, WebSessionAuthenticationHandler.SchemeName, CookieAuthenticationDefaults.AuthenticationScheme)
                     .RequireAuthenticatedUser()
                     .Build());
 
@@ -127,10 +132,19 @@ namespace ACE.MarketApi
                 });
             }
 
+            // answers name no server software
+            builder.WebHost.ConfigureKestrel(kestrel => kestrel.AddServerHeader = false);
+
             var app = builder.Build();
 
+            // the connection's address only: X-Forwarded-For from a configured proxy. Removed with TrustedProxies once the BFF is the only caller.
             if (options.TrustedProxies.Length > 0)
                 app.UseForwardedHeaders();
+
+            // health, the service key and X-Market-Client-Ip, before routing and authentication. UseRouting is explicit so that
+            // WebApplication doesn't add it at the start of the pipeline, ahead of the gate.
+            app.Use((HttpContext context, RequestDelegate next) => gate.InvokeAsync(context, () => next(context)));
+            app.UseRouting();
 
             app.UseAuthentication();
             app.UseAuthorization();
@@ -191,7 +205,7 @@ namespace ACE.MarketApi
 
         /// <summary>
         /// CSRF: a request that changes something and is signed in by the session cookie must carry X-Market-Request: 1, or it's refused (403 csrf).
-        /// A request signed in by a plugin token is exempt: the token is never sent by a browser on its own.
+        /// A request signed in by a bearer token (a plugin token or a web session) is exempt: a browser never sends one on its own.
         /// </summary>
         private static async ValueTask<object> RequireRequestHeader(EndpointFilterInvocationContext invocation, EndpointFilterDelegate next)
         {
@@ -205,6 +219,9 @@ namespace ACE.MarketApi
 
             // both are cached for the request, so the authorization middleware's own authentication isn't repeated
             if ((await context.AuthenticateAsync(PluginTokenAuthenticationHandler.SchemeName)).Succeeded)
+                return await next(invocation);
+
+            if ((await context.AuthenticateAsync(WebSessionAuthenticationHandler.SchemeName)).Succeeded)
                 return await next(invocation);
 
             if (!(await context.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)).Succeeded)
@@ -226,15 +243,15 @@ namespace ACE.MarketApi
         }
 
         /// <summary>
-        /// True when the account is banned now. The market has then noticed the ban, so the account's listings go back to its Vault.
-        /// Every signed-in request (cookie or plugin token) asks this.
+        /// True when the account is banned now. The market has then noticed the ban: the account's listings go back to its Vault, and every
+        /// web session of the account is revoked for good. Every signed-in request (cookie, plugin token or web session) asks this.
         /// </summary>
         public static bool NoticeBan(MarketDatabase database, Account account, DateTime now)
         {
             if (!account.IsBanned(now))
                 return false;
 
-            MarketUpkeep.ReturnListings(database, new[] { account.AccountId }, now);
+            MarketUpkeep.NoticeBans(database, new[] { account.AccountId }, now);
             return true;
         }
 

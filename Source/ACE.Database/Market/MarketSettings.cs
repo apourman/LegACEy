@@ -57,6 +57,10 @@ namespace ACE.Database.Market
 
         public static readonly MarketSetting PluginTokenDays = new("market_plugin_token_days", 90, "the number of days a plugin token lasts, renewed each time it's used");
 
+        public static readonly MarketSetting WebSessionIdleDays = new("market_web_session_idle_days", 14, "the number of days a web session lasts unused; each use renews it (written at most once an hour), never past its absolute lifetime");
+
+        public static readonly MarketSetting WebSessionAbsoluteDays = new("market_web_session_absolute_days", 30, "the number of days after sign-in that a web session ends, however much it's used");
+
         public static readonly MarketSetting ChannelSeconds = new("vault_channel_seconds", 60, "the number of seconds a /vault deposit or withdrawal channels before it completes");
 
         public static readonly IReadOnlyList<MarketSetting> All = new[]
@@ -73,6 +77,8 @@ namespace ACE.Database.Market
             SignInIpLockMinutes,
             LinkCodeMinutes,
             PluginTokenDays,
+            WebSessionIdleDays,
+            WebSessionAbsoluteDays,
             ChannelSeconds,
         };
 

@@ -174,6 +174,11 @@ namespace ACE.Database.Tests.Market
             Assert.AreEqual(5, MarketSettings.LinkCodeMinutes.Default);
             Assert.AreEqual(15, MarketSettings.SignInIpLockMinutes.Default);
             Assert.AreEqual(90, MarketSettings.PluginTokenDays.Default);
+            Assert.AreEqual(14, MarketSettings.WebSessionIdleDays.Default);
+            Assert.AreEqual("market_web_session_idle_days", MarketSettings.WebSessionIdleDays.Key);
+            Assert.AreEqual(30, MarketSettings.WebSessionAbsoluteDays.Default);
+            Assert.AreEqual("market_web_session_absolute_days", MarketSettings.WebSessionAbsoluteDays.Key);
+            CollectionAssert.IsSubsetOf(new[] { MarketSettings.WebSessionIdleDays, MarketSettings.WebSessionAbsoluteDays }, MarketSettings.All.ToList(), "in the shared settings list");
             Assert.AreEqual(60, MarketSettings.ChannelSeconds.Default);
             Assert.AreEqual("vault_channel_seconds", MarketSettings.ChannelSeconds.Key);
 
@@ -338,7 +343,7 @@ namespace ACE.Database.Tests.Market
             var market = entityTypes.Where(t => t.ClrType.Namespace == typeof(VaultItem).Namespace).ToList();
             var existing = entityTypes.Except(market).ToList();
 
-            Assert.AreEqual(11, market.Count, string.Join(", ", market.Select(t => t.ClrType.Name)));
+            Assert.AreEqual(12, market.Count, string.Join(", ", market.Select(t => t.ClrType.Name)));
             foreach (var type in market)
                 StringAssert.StartsWith(type.GetTableName(), "market_", type.ClrType.Name);
 

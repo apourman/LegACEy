@@ -435,7 +435,8 @@ namespace ACE.Server.Market
         {
             if (deleted?.Total > 0)
                 log.Info($"[MARKET] Deleted {deleted.Requests:N0} request result(s) older than {MarketCleanup.RequestKeepDays} days, {deleted.LinkCodes:N0} used or expired link code(s) " +
-                    $"and {deleted.PluginTokens:N0} plugin token(s) revoked or expired more than {MarketCleanup.PluginTokenKeepDays} days ago");
+                    $"{deleted.PluginTokens:N0} plugin token(s) revoked or expired more than {MarketCleanup.PluginTokenKeepDays} days ago " +
+                    $"and {deleted.WebSessions:N0} web session(s) revoked or expired more than {MarketCleanup.WebSessionKeepDays} days ago");
         }
     }
 }

@@ -192,14 +192,15 @@ namespace ACE.Database.Market
 
         /// <summary>
         /// The time as datetime(6) keeps it. MySQL rounds extra digits, which could move an expiry past the instant it was meant for.
+        /// Web sessions (WebSessions) store their times the same way.
         /// </summary>
-        private static DateTime TruncateToMicroseconds(DateTime utc) => new DateTime(utc.Ticks - utc.Ticks % 10, DateTimeKind.Utc);
+        internal static DateTime TruncateToMicroseconds(DateTime utc) => new DateTime(utc.Ticks - utc.Ticks % 10, DateTimeKind.Utc);
 
         /// <summary>
         /// A code as it's shown, and hashed: XXXXX-XXXXX
         /// </summary>
         private static string FormatCode(string code) => code.Substring(0, CodeLength / 2) + "-" + code.Substring(CodeLength / 2);
 
-        private static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        internal static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
 }

@@ -53,6 +53,7 @@ namespace ACE.Database.Market
             "market_link_code",
             "market_plugin_token",
             "market_blocked_wcid",
+            "market_web_session",
         };
 
         /// <summary>

@@ -39,12 +39,18 @@ namespace ACE.MarketApi
             if (header == null || !header.StartsWith(BearerPrefix, StringComparison.OrdinalIgnoreCase))
                 return AuthenticateResult.NoResult();
 
+            var secret = header.Substring(BearerPrefix.Length).Trim();
+
+            // a web session is the web session scheme's
+            if (WebSessions.IsSessionToken(secret))
+                return AuthenticateResult.NoResult();
+
             var database = Context.RequestServices.GetRequiredService<MarketDatabase>();
             var now = Context.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow().UtcDateTime;
 
             using var shard = database.CreateShard();
 
-            var token = PluginAuth.FindToken(shard, header.Substring(BearerPrefix.Length).Trim());
+            var token = PluginAuth.FindToken(shard, secret);
 
             if (token == null)
                 return AuthenticateResult.Fail("unknown plugin token");

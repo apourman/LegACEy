@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Starts the local Docker MySQL (port 3310) if it isn't running, and creates the market stack's own auth and shard databases:
-# base schemas, the market update script, and the development marker. An existing database is left as it is.
+# base schemas, the market update scripts, and the development marker. An existing database is left as it is, apart from the
+# (idempotent) market scripts.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
@@ -51,6 +52,8 @@ elif [[ "$progress_columns" != "4" ]]; then
   echo "The market ticket progress schema is only partly installed ($progress_columns of 4 columns); repair it before bootstrapping." >&2
   exit 1
 fi
+# the API's web sessions (CREATE TABLE IF NOT EXISTS, so it's safe to apply on every run)
+db_sql "$MARKET_SHARD_DATABASE" < "$ROOT/Database/Updates/Shard/2026-10-02-00-Market-Web-Sessions.sql"
 
 for database in "$MARKET_AUTH_DATABASE" "$MARKET_SHARD_DATABASE"; do
   if [[ "$(db_sql -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '$database' AND table_name = 'legacey_dev_marker';")" != "1" ]]; then

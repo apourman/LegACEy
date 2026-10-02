@@ -10,6 +10,19 @@ Everything listens on loopback only. You need Docker, the .NET 10 SDK, `jq`, `cu
 `~/ace_dats/retail` (or `ACE_HOST_DAT_DIRECTORY`), and an untracked `docker.env` in the repository root
 (copy `docker.env.example`). The database login comes from `docker.env`; nothing secret is in git.
 
+The Market API is private: it answers only requests that carry its service key in `X-Market-Service-Key`, except
+`GET /health`, which answers a bare `ok` for health checks. Set the key once in `docker.env`:
+
+```bash
+printf '\nMARKET_SERVICE_KEY=%s\n' "$(openssl rand -hex 32)" >> docker.env
+```
+
+Compose gives it to `market-api` (as `Market__ServiceKey`) and to `market-web`, whose dev proxy adds it to every
+`/api` request. `api.sh`, `web.sh` and `smoke.sh` stop with a message when it's missing or shorter than 32 characters,
+and the API itself refuses to start without it. To call the API by hand, send the header, e.g.
+`curl -H "X-Market-Service-Key: $(sed -n 's/^MARKET_SERVICE_KEY=//p' docker.env)" http://127.0.0.1:5080/api/facets`
+(the key is then visible in your process list; `smoke.sh` reads it from a private file instead).
+
 From the repository root, in order:
 
 ```bash
@@ -25,9 +38,10 @@ From the repository root, in order:
 
 ## The smoke check
 
-It signs in as `seedalpha`, asks for an MMD withdrawal to the offline character `Seed Alpha`, and expects the game
+It checks `/health` without the key, that a request without the key is refused, and that one with it answers. Then it
+signs in as `seedalpha`, asks for an MMD withdrawal to the offline character `Seed Alpha`, and expects the game
 server to fail it `offline` within 10 seconds. It prints `SMOKE PASS`, or `SMOKE FAIL (<piece>)` naming the missing
-piece: `database`, `schema`, `API`, `seed` or `game`.
+piece: `config`, `database`, `schema`, `API`, `seed` or `game`.
 
 ## Ticket status walkthrough
 
@@ -93,7 +107,7 @@ docker compose -f docker/docker-compose.local.yml exec ace-db sh -c 'MYSQL_PWD="
 
 Stop the game server first, and restart it afterwards. The game server records applied update scripts in its build
 output (`DatabaseSetupScripts/Updates/Shard/applied_updates.txt`), not in the database, so it won't reapply ACE's
-older shard updates to a recreated shard. `bootstrap.sh` applies both market schema scripts itself, so the market doesn't depend on that file.
+older shard updates to a recreated shard. `bootstrap.sh` applies the market schema scripts itself (the schema, ticket progress and web sessions), so the market doesn't depend on that file.
 
 Settings: `MARKET_AUTH_DATABASE`, `MARKET_SHARD_DATABASE`, `MARKET_API_PORT`, `DB_HOST_PORT`, `MARKET_GAME_RUN_DIR`.
 

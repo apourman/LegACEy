@@ -61,11 +61,18 @@ namespace ACE.MarketApi.Tests
             ("POST", "/inventory/snapshot"),
             ("POST", "/mmd/withdraw"),
             ("GET", "/tickets/1"),
+            ("POST", "/auth/session"),
+            ("DELETE", "/auth/session"),
         };
 
         private static Task<HttpResponseMessage> SendAsync(MarketApiHost host, string method, string path, string cookie)
         {
-            return method == "GET" ? host.GetAsync(path, cookie) : host.PostJsonAsync(path, new { }, cookie);
+            return method switch
+            {
+                "GET" => host.GetAsync(path, cookie),
+                "POST" => host.PostJsonAsync(path, new { }, cookie),
+                _ => host.SendAsync(new HttpMethod(method), path, cookie),
+            };
         }
 
         // ---- /api

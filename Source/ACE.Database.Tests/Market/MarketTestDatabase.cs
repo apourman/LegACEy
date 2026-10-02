@@ -22,6 +22,8 @@ namespace ACE.Database.Tests.Market
 
         public const string TicketProgressUpdateScript = "2026-10-01-00-Market-Ticket-Progress.sql";
 
+        public const string WebSessionsUpdateScript = "2026-10-02-00-Market-Web-Sessions.sql";
+
         private static bool configInitialized;
 
         public static void InitializeConfig()
@@ -55,6 +57,8 @@ namespace ACE.Database.Tests.Market
         public static string MarketUpdateScriptPath => Path.Combine(UpdatesPath, MarketUpdateScript);
 
         public static string TicketProgressUpdateScriptPath => Path.Combine(UpdatesPath, TicketProgressUpdateScript);
+
+        public static string WebSessionsUpdateScriptPath => Path.Combine(UpdatesPath, WebSessionsUpdateScript);
 
         /// <summary>
         /// Drops the database if present and runs the base shard script into it, as Program_Setup does.

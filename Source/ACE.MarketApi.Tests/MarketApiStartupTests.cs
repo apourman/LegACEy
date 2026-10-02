@@ -29,6 +29,40 @@ namespace ACE.MarketApi.Tests
         }
 
         [TestMethod]
+        public void Startup_WebSessionTableMissing_RefusesToStart()
+        {
+            MarketTestDatabase.Execute(MarketApiTestData.ShardDatabase, "RENAME TABLE market_web_session TO market_web_session_aside;");
+            try
+            {
+                var ex = Assert.ThrowsExactly<MarketUnavailableException>(() => MarketApiHost.Build());
+                StringAssert.Contains(ex.Message, "missing: market_web_session");
+            }
+            finally
+            {
+                MarketTestDatabase.Execute(MarketApiTestData.ShardDatabase, "RENAME TABLE market_web_session_aside TO market_web_session;");
+            }
+        }
+
+        [TestMethod]
+        public void Startup_NoServiceKey_RefusesToStart()
+        {
+            foreach (var key in new[] { "", "   " })
+            {
+                var ex = Assert.ThrowsExactly<MarketUnavailableException>(() => MarketApiHost.Build(extraArgs: new[] { $"--Market:ServiceKey={key}" }));
+                StringAssert.Contains(ex.Message, "Market:ServiceKey is not set");
+                StringAssert.Contains(ex.Message, "MARKET_SERVICE_KEY");
+            }
+        }
+
+        [TestMethod]
+        public void Startup_ShortServiceKey_RefusesToStart()
+        {
+            var ex = Assert.ThrowsExactly<MarketUnavailableException>(() => MarketApiHost.Build(extraArgs: new[] { "--Market:ServiceKey=" + new string('k', ServiceGate.MinimumKeyLength - 1) }));
+
+            StringAssert.Contains(ex.Message, $"shorter than {ServiceGate.MinimumKeyLength} characters");
+        }
+
+        [TestMethod]
         public void Startup_TicketProgressColumnsMissing_RefusesToStart()
         {
             MarketTestDatabase.Execute(MarketApiTestData.ShardDatabase,
@@ -88,12 +122,13 @@ namespace ACE.MarketApi.Tests
             {
                 using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
 
-                var up = false;
-                for (var i = 0; i < 120 && !up && !process.HasExited; i++)
+                // the health check needs no key, as a container's health check has none
+                HttpResponseMessage health = null;
+                for (var i = 0; i < 120 && health == null && !process.HasExited; i++)
                 {
                     try
                     {
-                        up = (await client.GetAsync("/api/me")).StatusCode == HttpStatusCode.Unauthorized;
+                        health = await client.GetAsync("/health");
                     }
                     catch (HttpRequestException)
                     {
@@ -101,7 +136,17 @@ namespace ACE.MarketApi.Tests
                     }
                 }
 
-                Assert.IsTrue(up, "the API process never answered: " + output);
+                Assert.IsNotNull(health, "the API process never answered: " + output);
+                Assert.AreEqual(HttpStatusCode.OK, health.StatusCode);
+                Assert.AreEqual("ok", await health.Content.ReadAsStringAsync());
+                Assert.IsFalse(health.Headers.Contains("Server"), "the answer names no server software");
+
+                var noKey = await client.GetAsync("/api/me");
+                Assert.AreEqual(HttpStatusCode.Unauthorized, noKey.StatusCode);
+                Assert.AreEqual("", await noKey.Content.ReadAsStringAsync());
+
+                client.DefaultRequestHeaders.Add(ServiceGate.KeyHeader, MarketApiHost.ServiceKey);
+                Assert.AreEqual(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/me")).StatusCode, "with the key, /me still needs a sign-in");
 
                 var login = await client.PostAsync("/api/auth/login", JsonContent.Create(new { account = name, password = "secret" }));
                 Assert.AreEqual(HttpStatusCode.OK, login.StatusCode, await login.Content.ReadAsStringAsync());
@@ -161,6 +206,7 @@ namespace ACE.MarketApi.Tests
             startInfo.ArgumentList.Add($"--Market:AuthDatabase={MarketApiTestData.AuthDatabase}");
             startInfo.ArgumentList.Add($"--Market:ShardDatabase={shardDatabase}");
             startInfo.ArgumentList.Add($"--Market:KeysPath={MarketApiHost.NewKeysPath()}");
+            startInfo.ArgumentList.Add(MarketApiHost.ServiceKeyArgument);
 
             var process = new Process { StartInfo = startInfo };
             process.OutputDataReceived += (_, e) => { lock (log) log.AppendLine(e.Data); };
