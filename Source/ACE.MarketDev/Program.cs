@@ -14,7 +14,8 @@ namespace ACE.MarketDev
     ///   check   runs the guard and reports the first failed check (writes nothing)
     ///   mark    marks the configured auth and shard databases as development databases, after a typed confirmation
     ///   seed    fills the databases with accounts, characters, Vault items, balances and listings
-    ///   fixture creates ticket-status examples after proving the game server is stopped
+    ///   fixture creates ticket-status examples (--character), or moves one ticket forward (--ticket, --to, --code, --seconds),
+    ///           after proving the game server is stopped
     ///
     /// Options: --config &lt;Config.js&gt; (the ACE configuration naming the databases, default ./Config.js), --password &lt;password&gt; (seed accounts).
     /// Settings: MARKET_DEV_ALLOWED_ENDPOINTS, MARKET_DEV_ALLOWED_AUTH_DATABASES and MARKET_DEV_ALLOWED_SHARD_DATABASES (comma-separated)
@@ -67,12 +68,33 @@ namespace ACE.MarketDev
                     return result.Passed ? exitCode : Report(result);
 
                 case "fixture":
-                    var character = options.GetValueOrDefault("character");
-                    if (string.IsNullOrWhiteSpace(character))
-                        return Usage(2);
+                    Func<bool> fixture;
+                    if (options.TryGetValue("ticket", out var ticketText))
+                    {
+                        if (!long.TryParse(ticketText, out var ticketId) || !options.TryGetValue("to", out var to))
+                            return Usage(2);
+
+                        int? seconds = null;
+                        if (options.TryGetValue("seconds", out var secondsText))
+                        {
+                            if (!int.TryParse(secondsText, out var parsed) || parsed < 0)
+                                return Usage(2);
+                            seconds = parsed;
+                        }
+
+                        fixture = () => TicketFixture.Move(ticketId, to, options.GetValueOrDefault("code"), seconds);
+                    }
+                    else
+                    {
+                        var character = options.GetValueOrDefault("character");
+                        if (string.IsNullOrWhiteSpace(character))
+                            return Usage(2);
+
+                        fixture = () => TicketFixture.CreateExamples(character);
+                    }
 
                     var fixtureExitCode = 1;
-                    var fixtureGuard = DevelopmentGuard.Run(targets, settings, () => fixtureExitCode = TicketFixture.Run(character) ? 0 : 4);
+                    var fixtureGuard = DevelopmentGuard.Run(targets, settings, () => fixtureExitCode = fixture() ? 0 : 4);
                     return fixtureGuard.Passed ? fixtureExitCode : Report(fixtureGuard);
 
                 default:
@@ -182,7 +204,7 @@ namespace ACE.MarketDev
 
         private static int Usage(int exitCode)
         {
-            Console.Error.WriteLine("Usage: ACE.MarketDev <check|mark|seed|fixture> [--config <Config.js>] [--password <seed account password>] [--character <name>]");
+            Console.Error.WriteLine("Usage: ACE.MarketDev <check|mark|seed|fixture> [--config <Config.js>] [--password <seed account password>] [--character <name>] [--ticket <id> --to <stage> [--code <reason>] [--seconds <countdown>]]");
             return exitCode;
         }
     }

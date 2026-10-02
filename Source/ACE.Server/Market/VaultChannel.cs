@@ -169,7 +169,7 @@ namespace ACE.Server.Market
             if (channel.TicketId is long ticketId)
             {
                 var progressTime = DateTime.UtcNow;
-                DatabaseManager.Shard.SetTicketProgress(ticketId, "channelling", progressTime, progressTime.AddSeconds(seconds), updated =>
+                DatabaseManager.Shard.SetTicketProgress(ticketId, TicketProgress.Channelling, progressTime, progressTime.AddSeconds(seconds), updated =>
                 {
                     if (!updated)
                         log.Warn($"[VAULT] Ticket {ticketId} was no longer claimed when its withdrawal channel progress was written");

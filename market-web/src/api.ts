@@ -36,10 +36,12 @@ export interface HistoryResult {
   balance: number; head: number; transfers: HistoryTransfer[]; items: HistoryItem[];
   nextTransfersBefore: number | null; nextSince: number | null; more: boolean; nextItemsBefore: number | null;
 }
+/** The stage of a CLAIMED ticket (market_ticket.progress), which the status panel counts down to progressUntil */
+export const ticketProgress = { awaitingConfirmation: 'awaiting_confirmation', channelling: 'channelling' } as const;
 export interface Ticket {
   id: number; kind: 'vault_withdraw' | 'mmd_withdraw' | string; status: 'WAITING' | 'CLAIMED' | 'DONE' | 'FAILED';
   characterId: number | null; itemGuid: number | null; amount: number | null;
-  resultCode: string | null; resultMessage: string | null; progress: 'awaiting_confirmation' | 'channelling' | string | null;
+  resultCode: string | null; resultMessage: string | null; progress: typeof ticketProgress[keyof typeof ticketProgress] | string | null;
   progressTime: string | null; progressUntil: string | null; result: unknown | null;
   createdTime: string; claimedTime: string | null; finishedTime: string | null;
 }

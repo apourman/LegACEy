@@ -35,10 +35,7 @@ namespace ACE.MarketApi
 
         private static IResult VaultWithdraw(VaultWithdrawRequest request, HttpContext context, MarketDatabase database, TimeProvider time)
         {
-            if (request == null || !MarketHttp.IsIdempotencyKey(request.IdempotencyKey))
-                return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_request");
-
-            var replay = Replay(context, database, TicketKind.VaultWithdraw, request.IdempotencyKey);
+            var replay = Replay(context, database, TicketKind.VaultWithdraw, request?.IdempotencyKey);
             if (replay != null)
                 return replay;
 
@@ -50,10 +47,7 @@ namespace ACE.MarketApi
 
         private static IResult MmdWithdraw(MmdWithdrawRequest request, HttpContext context, MarketDatabase database, TimeProvider time, IMarketPause pause)
         {
-            if (request == null || !MarketHttp.IsIdempotencyKey(request.IdempotencyKey))
-                return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_request");
-
-            var replay = Replay(context, database, TicketKind.MmdWithdraw, request.IdempotencyKey);
+            var replay = Replay(context, database, TicketKind.MmdWithdraw, request?.IdempotencyKey);
             if (replay != null)
                 return replay;
 
@@ -82,8 +76,15 @@ namespace ACE.MarketApi
             return Results.Json(tickets.Select(View));
         }
 
+        /// <summary>
+        /// The answer a ticket-creating request gets before any other check: 400 for a missing or malformed key, and for a key the account
+        /// already used, its original ticket (or 409 key_reused for another kind). Null when the key is new and the request goes on.
+        /// </summary>
         private static IResult Replay(HttpContext context, MarketDatabase database, string kind, string idempotencyKey)
         {
+            if (!MarketHttp.IsIdempotencyKey(idempotencyKey))
+                return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_request");
+
             using var shard = database.CreateShard();
             var existing = TicketStore.FindByKey(shard, MarketHttp.AccountId(context), idempotencyKey, kind);
 

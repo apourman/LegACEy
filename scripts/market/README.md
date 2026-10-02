@@ -37,7 +37,16 @@ With MySQL, Market API and website running and the game server stopped, run:
 ./scripts/market/dev.sh fixture --character "Seed Alpha"
 ```
 
-The fixture first adds a temporary unknown-kind probe ticket and watches it for five seconds. If the game claims it, the fixture deletes the probe and refuses to continue. Otherwise it creates examples for WAITING, CLAIMED/Working, CLAIMED/Channelling, DONE, and every supported bridge and item/MMD withdrawal failure reason. These rows demonstrate presentation only: the fixture does not touch Vault rows, balances, ledger entries or item rows. Sign in as `seedalpha` at `http://localhost:5173`, then reload any page to see the status panel rebuild the examples from the API. The channel sample has a 60-second display countdown; it does not run a game channel.
+The fixture first adds a temporary unknown-kind probe ticket and watches it for five seconds. If the game claims it, the fixture deletes the probe and refuses to continue. Otherwise it creates one ticket in each state (WAITING, CLAIMED, awaiting confirmation, channelling, DONE) and one for every failure reason the game answers, with the game's own messages naming the account's first Vault item and the character. These rows demonstrate presentation only: the fixture writes `market_ticket` rows and nothing else, so a DONE withdrawal moved no Vault item, MMD or trade notes. Sign in as `seedalpha` at `http://localhost:5173`; the status panel shows every example while any is unfinished, and rebuilds them after a reload.
+
+To watch one ticket change, move it forward (the same probe runs first):
+
+```bash
+./scripts/market/dev.sh fixture --ticket 63 --to channelling --seconds 20    # or claimed, awaiting_confirmation
+./scripts/market/dev.sh fixture --ticket 63 --to failed --code interrupted   # or --to done
+```
+
+A WAITING ticket is claimed first, as the game would. Tickets only move forward: a finished ticket can't move, and `--code` must be a reason the game answers (an unknown one lists them). The countdown defaults to `vault_channel_seconds` for channelling and 30 seconds for a confirmation.
 
 The separate `./scripts/market/smoke.sh` uses the real game process. It requests an MMD withdrawal for offline `Seed Alpha` and waits for the game to report `offline`.
 

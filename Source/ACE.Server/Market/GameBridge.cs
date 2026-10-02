@@ -248,7 +248,7 @@ namespace ACE.Server.Market
         /// <summary>
         /// What the player is told when the bridge itself stops a ticket
         /// </summary>
-        private static string Message(string resultCode) => resultCode switch
+        public static string Message(string resultCode) => resultCode switch
         {
             Offline => "That character is not online. Log in with it and ask again.",
             InvalidCharacter => "That character is not on your account.",

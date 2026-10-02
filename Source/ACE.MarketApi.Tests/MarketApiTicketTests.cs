@@ -55,6 +55,52 @@ namespace ACE.MarketApi.Tests
             return await MarketApiHost.JsonAsync(response);
         }
 
+        /// <summary>
+        /// Runs the body with the market paused, and resumes it afterwards whatever happens
+        /// </summary>
+        private static async Task WhilePausedAsync(Func<Task> body)
+        {
+            using (var shard = MarketApiTestData.Shard())
+                MarketPause.Pause(shard, "ticket replay test", DateTime.UtcNow);
+
+            try
+            {
+                await body();
+            }
+            finally
+            {
+                using var shard = MarketApiTestData.Shard();
+                MarketPause.Resume(shard, "test cleanup", DateTime.UtcNow);
+            }
+        }
+
+        /// <summary>
+        /// Adds count tickets for the player straight into the table: CLAIMED (claimed just now, so no poller takes them) or finished just now
+        /// </summary>
+        private static void AddTickets(Player player, int count, string status)
+        {
+            var finished = status == TicketStatus.Claimed ? "NULL" : "UTC_TIMESTAMP(6)";
+
+            MarketTestDatabase.Execute(MarketApiTestData.ShardDatabase,
+                "INSERT INTO market_ticket (kind, account_Id, character_Id, payload, status, idempotency_Key, created_Time, claimed_Time, finished_Time) " +
+                $"WITH RECURSIVE n (i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < {count}) " +
+                $"SELECT '{TicketKind.MmdWithdraw}', {player.AccountId}, {player.CharacterId}, '{{\"amount\":1}}', '{status}', REPLACE(UUID(), '-', ''), UTC_TIMESTAMP(6), UTC_TIMESTAMP(6), {finished} FROM n;");
+        }
+
+        private static async Task<JsonElement[]> TicketListAsync(MarketApiHost host, string cookie)
+        {
+            var response = await host.GetAsync("/api/tickets", cookie);
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
+
+            return (await MarketApiHost.JsonAsync(response)).EnumerateArray().ToArray();
+        }
+
+        private static void AssertNewestFirst(JsonElement[] tickets)
+        {
+            var ids = tickets.Select(ticket => ticket.GetProperty("id").GetInt64()).ToArray();
+            CollectionAssert.AreEqual(ids.OrderByDescending(id => id).ToArray(), ids);
+        }
+
         private static long Tickets(uint accountId) => MarketApiTestData.Scalar($"SELECT COUNT(*) FROM market_ticket WHERE account_Id = {accountId};");
 
         /// <summary>
@@ -198,9 +244,8 @@ namespace ACE.MarketApi.Tests
             await using var host = await MarketApiHost.StartAsync();
             var cookie = await host.SignInForCookieAsync(player.Name, "pass");
             var first = await AcceptedAsync(await MmdWithdrawAsync(host, cookie, player.CharacterId, 20, key));
-            using (var shard = MarketApiTestData.Shard())
-                MarketPause.Pause(shard, "ticket replay test", DateTime.UtcNow);
-            try
+
+            await WhilePausedAsync(async () =>
             {
                 // A retry belongs to the original request even if the new body is invalid and withdrawals are paused.
                 var replay = await MmdWithdrawAsync(host, cookie, 0, 1.5m, key);
@@ -212,16 +257,11 @@ namespace ACE.MarketApi.Tests
                 Assert.AreEqual(HttpStatusCode.ServiceUnavailable, newRequest.StatusCode);
                 Assert.AreEqual("paused", await MarketApiHost.ErrorAsync(newRequest));
                 Assert.AreEqual(1L, Tickets(player.AccountId));
-            }
-            finally
-            {
-                using var shard = MarketApiTestData.Shard();
-                MarketPause.Resume(shard, "test cleanup", DateTime.UtcNow);
-            }
+            });
         }
 
         [TestMethod]
-        public async Task VaultWithdrawalReplay_ReturnsOriginalBeforeCharacterAndItemValidation()
+        public async Task VaultWithdrawalReplay_ReturnsOriginalWhilePausedAndBeforeCharacterAndItemValidation()
         {
             var player = NewPlayer();
             var guid = MarketApiTestData.AddVaultItem(player.AccountId, player.CharacterId, "Replay Sword", VaultItemState.Held);
@@ -230,13 +270,17 @@ namespace ACE.MarketApi.Tests
             await using var host = await MarketApiHost.StartAsync();
             var cookie = await host.SignInForCookieAsync(player.Name, "pass");
             var first = await AcceptedAsync(await VaultWithdrawAsync(host, cookie, player.CharacterId, guid, key));
-            var replayResponse = await host.PostJsonAsync("/api/vault/withdraw", new { characterId = 0, itemGuid = (uint?)null, idempotencyKey = key }, cookie);
-            var replay = await AcceptedAsync(replayResponse);
 
-            Assert.AreEqual(first.GetProperty("id").GetInt64(), replay.GetProperty("id").GetInt64());
-            Assert.AreEqual(guid, replay.GetProperty("itemGuid").GetUInt32());
-            Assert.AreEqual(player.CharacterId, replay.GetProperty("characterId").GetUInt32());
-            Assert.AreEqual(1L, Tickets(player.AccountId));
+            await WhilePausedAsync(async () =>
+            {
+                var replayResponse = await host.PostJsonAsync("/api/vault/withdraw", new { characterId = 0, itemGuid = (uint?)null, idempotencyKey = key }, cookie);
+                var replay = await AcceptedAsync(replayResponse);
+
+                Assert.AreEqual(first.GetProperty("id").GetInt64(), replay.GetProperty("id").GetInt64());
+                Assert.AreEqual(guid, replay.GetProperty("itemGuid").GetUInt32());
+                Assert.AreEqual(player.CharacterId, replay.GetProperty("characterId").GetUInt32());
+                Assert.AreEqual(1L, Tickets(player.AccountId));
+            });
         }
 
         [TestMethod]
@@ -376,6 +420,43 @@ namespace ACE.MarketApi.Tests
             Assert.IsTrue(tickets[0].GetProperty("finishedTime").GetString() != null);
             Assert.IsFalse(ids.Contains(oldDone));
             Assert.IsFalse(ids.Contains(otherTicket));
+        }
+
+        [TestMethod]
+        public async Task TicketList_KeepsEveryUnfinishedTicketEvenPastTheCap()
+        {
+            var player = NewPlayer();
+            AddTickets(player, 3, TicketStatus.Done);
+            AddTickets(player, TicketStore.MaxVisible + 5, TicketStatus.Claimed);
+
+            await using var host = await MarketApiHost.StartAsync();
+            var tickets = await TicketListAsync(host, await host.SignInForCookieAsync(player.Name, "pass"));
+
+            Assert.AreEqual(TicketStore.MaxVisible + 5, tickets.Length);
+            Assert.IsTrue(tickets.All(ticket => ticket.GetProperty("status").GetString() == TicketStatus.Claimed));
+            AssertNewestFirst(tickets);
+        }
+
+        [TestMethod]
+        public async Task TicketList_FillsTheCapWithTheNewestFinishedTicketsAfterEveryUnfinishedOne()
+        {
+            var player = NewPlayer();
+            AddTickets(player, 30, TicketStatus.Done);
+            AddTickets(player, 40, TicketStatus.Claimed);
+            AddTickets(player, 40, TicketStatus.Failed);
+
+            await using var host = await MarketApiHost.StartAsync();
+            var tickets = await TicketListAsync(host, await host.SignInForCookieAsync(player.Name, "pass"));
+
+            Assert.AreEqual(TicketStore.MaxVisible, tickets.Length);
+            Assert.AreEqual(40, tickets.Count(ticket => ticket.GetProperty("status").GetString() == TicketStatus.Claimed));
+            Assert.AreEqual(40, tickets.Count(ticket => ticket.GetProperty("status").GetString() == TicketStatus.Failed));
+            Assert.AreEqual(20, tickets.Count(ticket => ticket.GetProperty("status").GetString() == TicketStatus.Done));
+            AssertNewestFirst(tickets);
+
+            // the DONE tickets left out are the oldest ones
+            var oldestKept = tickets.Where(ticket => ticket.GetProperty("status").GetString() == TicketStatus.Done).Min(ticket => ticket.GetProperty("id").GetInt64());
+            Assert.AreEqual(10L, MarketApiTestData.Scalar($"SELECT COUNT(*) FROM market_ticket WHERE account_Id = {player.AccountId} AND status = '{TicketStatus.Done}' AND id < {oldestKept};"));
         }
     }
 }

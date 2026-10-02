@@ -1,96 +1,129 @@
 import { useEffect, useRef, useState } from 'react';
-import { getTickets, type Ticket } from './api';
+import { getTickets, ticketProgress, type Ticket } from './api';
 import { useSession } from './session';
+import { announceTicketFinished, onTicketCreated } from './tickets';
+
+const isUnfinished = (ticket: Ticket) => ticket.status === 'WAITING' || ticket.status === 'CLAIMED';
 
 function countdown(until: string | null, now: number) {
   if (!until) return null;
   const seconds = Math.ceil((Date.parse(until) - now) / 1000);
   if (seconds <= 0) return 'Finishing…';
-  return `Finishing in ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} left`;
 }
 
-function title(ticket: Ticket, now: number) {
+function statusText(ticket: Ticket, now: number) {
   if (ticket.status === 'WAITING') return 'Waiting for the game server';
   if (ticket.status === 'CLAIMED') {
-    if (ticket.progress === 'awaiting_confirmation') return `Confirm in game · ${countdown(ticket.progressUntil, now) ?? '30 seconds'}`;
-    if (ticket.progress === 'channelling') return `Channelling · ${countdown(ticket.progressUntil, now) ?? 'in progress'}`;
+    if (ticket.progress === ticketProgress.awaitingConfirmation) return `Confirm in game · ${countdown(ticket.progressUntil, now) ?? 'waiting for you'}`;
+    if (ticket.progress === ticketProgress.channelling) return `Channelling · ${countdown(ticket.progressUntil, now) ?? 'in progress'}`;
     return 'Working';
   }
   if (ticket.status === 'DONE') return ticket.resultMessage || 'Done';
-  return ticket.resultMessage || `Failed${ticket.resultCode ? ` · ${ticket.resultCode}` : ''}`;
+  return [ticket.resultMessage || 'Failed', ticket.resultCode && `(${ticket.resultCode})`].filter(Boolean).join(' ');
 }
 
 function description(ticket: Ticket) {
-  if (ticket.kind === 'mmd_withdraw') return `Withdraw ${ticket.amount ?? 'MMD'} MMD`;
-  if (ticket.kind === 'vault_withdraw') return `Withdraw Vault item #${ticket.itemGuid ?? 'unknown'}`;
+  if (ticket.kind === 'mmd_withdraw') return `Withdraw ${ticket.amount ?? ''} MMD`;
+  if (ticket.kind === 'vault_withdraw') return ticket.itemGuid === null ? 'Withdraw a Vault item' : `Withdraw Vault item #${ticket.itemGuid}`;
   return `Market request #${ticket.id}`;
 }
 
+/**
+ * The account's market requests, on every page while any is unfinished: then it shows every ticket GET /api/tickets returns, so it rebuilds
+ * after a reload. It polls only while something is unfinished (every 2 seconds, 10 when the tab is hidden). A ticket that finishes while
+ * shown refreshes the balance and the Vault, and stays shown with its result until cleared.
+ */
 export function TicketStatusPanel() {
   const session = useSession();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [error, setError] = useState('');
   const [now, setNow] = useState(Date.now());
-  const previous = useRef<Map<number, Ticket['status']>>(new Map());
-  const polling = useRef(false);
+  const watched = useRef<Map<number, Ticket>>(new Map());
+  const cleared = useRef<Set<number>>(new Set());
+
+  const publish = () => setTickets([...watched.current.values()].sort((a, b) => b.id - a.id));
 
   useEffect(() => {
-    setTickets([]);
-    previous.current.clear();
+    watched.current = new Map();
+    cleared.current = new Set();
+    publish();
+    setError('');
     if (!session.me) return;
 
-    let interval: ReturnType<typeof setInterval>;
     let active = true;
+    let inFlight = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const schedule = () => {
+      clearTimeout(timer);
+      if (active && [...watched.current.values()].some(isUnfinished))
+        timer = setTimeout(() => void poll(), document.visibilityState === 'hidden' ? 10_000 : 2_000);
+    };
+
     const poll = async () => {
-      if (polling.current) return;
-      polling.current = true;
+      if (inFlight) return;
+      inFlight = true;
+      clearTimeout(timer);
       try {
-        const next = await getTickets();
+        const latest = await getTickets();
         if (!active) return;
-        const was = previous.current;
-        const justFinished = next.some(ticket => {
-          const old = was.get(ticket.id);
-          const finished = ticket.status === 'DONE' || ticket.status === 'FAILED';
-          const transitioned = old !== undefined && old !== 'DONE' && old !== 'FAILED' && finished;
-          const completedDuringFirstPoll = old === undefined && finished && Date.now() - Date.parse(ticket.createdTime) < 10_000;
-          return transitioned || completedDuringFirstPoll;
-        });
-        previous.current = new Map(next.map(ticket => [ticket.id, ticket.status]));
-        setTickets(next);
+        let finished = false;
+        const anyUnfinished = latest.some(isUnfinished);
+        for (const ticket of latest) {
+          const shown = watched.current.get(ticket.id);
+          if (shown && isUnfinished(shown) && !isUnfinished(ticket)) finished = true;
+          // with nothing unfinished, only tickets already shown stay (with their results); nothing new appears
+          if (shown || (anyUnfinished && !cleared.current.has(ticket.id))) watched.current.set(ticket.id, ticket);
+        }
+        publish();
         setError('');
-        if (justFinished) {
+        if (finished) {
           await session.refresh();
-          window.dispatchEvent(new Event('market-ticket-finished'));
+          announceTicketFinished();
         }
       } catch (e) {
         if (active) setError(e instanceof Error ? e.message : 'Could not refresh request status.');
-      } finally { polling.current = false; }
+      } finally {
+        inFlight = false;
+        schedule();
+      }
     };
-    const schedule = () => {
-      clearInterval(interval);
-      interval = setInterval(() => void poll(), document.visibilityState === 'hidden' ? 10_000 : 2_000);
-    };
+
+    const stopWatchingCreated = onTicketCreated(ticket => {
+      watched.current.set(ticket.id, ticket);
+      publish();
+      void poll();
+    });
     void poll();
-    schedule();
     document.addEventListener('visibilitychange', schedule);
-    const countdownTimer = setInterval(() => setNow(Date.now()), 1000);
+    const clock = setInterval(() => setNow(Date.now()), 1000);
     return () => {
       active = false;
-      clearInterval(interval);
-      clearInterval(countdownTimer);
+      clearTimeout(timer);
+      clearInterval(clock);
+      stopWatchingCreated();
       document.removeEventListener('visibilitychange', schedule);
-      polling.current = false;
     };
   }, [session.me?.accountId]);
 
-  if (!session.me) return null;
+  function clearFinished() {
+    for (const ticket of [...watched.current.values()]) {
+      if (isUnfinished(ticket)) continue;
+      watched.current.delete(ticket.id);
+      cleared.current.add(ticket.id);
+    }
+    publish();
+  }
+
+  if (!session.me || (tickets.length === 0 && !error)) return null;
   return <section className="ticket-panel" aria-label="Market requests" aria-live="polite">
     <h2>Market requests</h2>
+    {tickets.some(ticket => !isUnfinished(ticket)) && <button className="secondary" onClick={clearFinished}>Clear finished</button>}
     {error && <p role="alert" className="ticket-error">{error}</p>}
-    {tickets.length === 0 && !error && <p className="muted">No recent requests.</p>}
     <ul>{tickets.map(ticket => <li key={ticket.id}>
       <span><strong>{description(ticket)}</strong><small>Request #{ticket.id}</small></span>
-      <span className={`ticket-status ticket-status--${ticket.status.toLowerCase()}`}>{title(ticket, now)}</span>
+      <span className={`ticket-status ticket-status--${ticket.status.toLowerCase()}`}>{statusText(ticket, now)}</span>
     </li>)}</ul>
   </section>;
 }
