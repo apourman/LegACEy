@@ -37,7 +37,7 @@ With MySQL, Market API and website running and the game server stopped, run:
 ./scripts/market/dev.sh fixture --character "Seed Alpha"
 ```
 
-The fixture first adds a temporary unknown-kind probe ticket and watches it for five seconds. If the game claims it, the fixture deletes the probe and refuses to continue. Otherwise it creates examples for WAITING, CLAIMED/Working, CLAIMED/Channelling, DONE, and FAILED (`offline` and `paused`). These rows demonstrate presentation only: the fixture does not touch Vault rows, balances, ledger entries or item rows. Sign in as `seedalpha` at `http://localhost:5173`, then reload any page to see the status panel rebuild the examples from the API. The channel sample has a 60-second display countdown; it does not run a game channel.
+The fixture first adds a temporary unknown-kind probe ticket and watches it for five seconds. If the game claims it, the fixture deletes the probe and refuses to continue. Otherwise it creates examples for WAITING, CLAIMED/Working, CLAIMED/Channelling, DONE, and every supported bridge and item/MMD withdrawal failure reason. These rows demonstrate presentation only: the fixture does not touch Vault rows, balances, ledger entries or item rows. Sign in as `seedalpha` at `http://localhost:5173`, then reload any page to see the status panel rebuild the examples from the API. The channel sample has a 60-second display countdown; it does not run a game channel.
 
 The separate `./scripts/market/smoke.sh` uses the real game process. It requests an MMD withdrawal for offline `Seed Alpha` and waits for the game to report `offline`.
 

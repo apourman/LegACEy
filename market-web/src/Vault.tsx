@@ -4,6 +4,38 @@ import { delistVaultItem, getVault, listVaultItem, withdrawMmd, withdrawVaultIte
 import { Icon, VaultAppraisalPopover } from './Appraisal';
 import { useSession } from './session';
 
+const fallbackTicketAttempts = new Map<string, { payload: string; key: string }>();
+
+function ticketAttempt(accountId: number, storageKey: string, payload: object): string {
+  const serializedPayload = JSON.stringify(payload);
+  const key = `market-ticket-attempt:${accountId}:${storageKey}`;
+  try {
+    const saved = sessionStorage.getItem(key);
+    if (saved) {
+      const attempt = JSON.parse(saved) as { payload: string; key: string };
+      if (attempt.payload === serializedPayload) return attempt.key;
+    }
+    const idempotencyKey = crypto.randomUUID();
+    const attempt = { payload: serializedPayload, key: idempotencyKey };
+    sessionStorage.setItem(key, JSON.stringify(attempt));
+    fallbackTicketAttempts.set(key, attempt);
+    return idempotencyKey;
+  } catch {
+    const previous = fallbackTicketAttempts.get(key);
+    if (previous?.payload === serializedPayload) return previous.key;
+    const idempotencyKey = crypto.randomUUID();
+    fallbackTicketAttempts.set(key, { payload: serializedPayload, key: idempotencyKey });
+    return idempotencyKey;
+  }
+}
+
+function clearTicketAttempt(accountId: number, storageKey: string) {
+  const key = `market-ticket-attempt:${accountId}:${storageKey}`;
+  fallbackTicketAttempts.delete(key);
+  try { sessionStorage.removeItem(key); }
+  catch { /* Storage can be unavailable in restricted browser contexts. */ }
+}
+
 export function Vault() {
   const session = useSession();
   const [items, setItems] = useState<VaultItem[]>([]);
@@ -69,10 +101,13 @@ export function Vault() {
 
   async function withdraw(item: VaultItem) {
     const characterId = session.characterId;
-    if (busyItem !== null || characterId === null || item.state !== 'held') return;
-    await act(item, () => withdrawVaultItem(characterId, item.itemGuid, crypto.randomUUID()),
+    if (busyItem !== null || characterId === null || item.state !== 'held' || !session.me) return;
+    const attemptKey = `vault:${item.itemGuid}`;
+    const key = ticketAttempt(session.me.accountId, attemptKey, { characterId, itemGuid: item.itemGuid });
+    const succeeded = await act(item, () => withdrawVaultItem(characterId, item.itemGuid, key),
       `Withdrawal requested for ${item.name}. Keep ${session.me?.characters.find(c => c.id === characterId)?.name ?? 'your character'} online.`,
       'Could not request this withdrawal.');
+    if (succeeded) clearTicketAttempt(session.me.accountId, attemptKey);
   }
 
   async function withdrawNotes(e: FormEvent<HTMLFormElement>) {
@@ -83,15 +118,19 @@ export function Vault() {
     if (!Number.isSafeInteger(amount) || amount < 1) { setError('Enter at least 1 whole MMD.'); return; }
     if (amount > session.me.balance) { setError('The amount cannot exceed your MMD balance.'); return; }
     setBusyMmd(true); setError(''); setNotice('');
+    const accountId = session.me.accountId;
+    const attemptKey = 'mmd';
+    const key = ticketAttempt(accountId, attemptKey, { characterId: session.characterId, amount });
     try {
-      await withdrawMmd(session.characterId, amount, crypto.randomUUID());
+      await withdrawMmd(session.characterId, amount, key);
+      clearTicketAttempt(accountId, attemptKey);
       setNotice(`Withdrawal requested. Keep ${session.me.characters.find(c => c.id === session.characterId)?.name ?? 'your character'} online.`);
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not request an MMD withdrawal.'); }
     finally { setBusyMmd(false); }
   }
 
   // Refreshes whether or not the action succeeds: a refusal such as not_held means the Vault changed under the page.
-  async function act(item: VaultItem, action: () => Promise<unknown>, success: string, fallback: string) {
+  async function act(item: VaultItem, action: () => Promise<unknown>, success: string, fallback: string): Promise<boolean> {
     setBusyItem(item.itemGuid); setError(''); setNotice('');
     let failure = '';
     try {
@@ -104,6 +143,7 @@ export function Vault() {
       if (failure) setError(failure); else setNotice(success);
       setBusyItem(null);
     }
+    return failure === '';
   }
 
   if (session.loading) return <p role="status">Loading your account…</p>;

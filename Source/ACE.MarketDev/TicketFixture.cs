@@ -18,6 +18,35 @@ namespace ACE.MarketDev
     {
         private const string UnknownKind = "marketdev_unknown_probe";
 
+        private sealed record FailureExample(string Code, string Message);
+
+        private static readonly FailureExample[] FailureExamples =
+        {
+            new("offline", "That character is not online. Log in with it and ask again."),
+            new("invalid_character", "That character is not on your account."),
+            new("unsupported_kind", "The game server cannot do that kind of request yet."),
+            new("invalid_ticket", "The game server could not read that request."),
+            new("server_restart", "The game server restarted before this finished. Nothing was moved; ask again."),
+            new("abandoned", "The game server stopped working on this before it finished. Nothing was moved; ask again."),
+            new("not_available", "The Vault is not available right now."),
+            new("busy", "Wait for your last Vault action to finish."),
+            new("not_in_vault", "That item is not in your Vault. Use /vault list to see its id."),
+            new("listed", "That item is listed for sale. Delist it before you withdraw it."),
+            new("withdrawing", "That item is already being withdrawn."),
+            new("no_pack_space", "You do not have room in your pack for the item or trade notes."),
+            new("unique_limit", "You cannot carry any more of this item."),
+            new("recent_player_fight", "You have been in a player fight too recently to use the Vault. Try again in a couple of minutes."),
+            new("trading", "Close the trade window before you use the Vault."),
+            new("channelling", "You are already moving an item to or from your Vault."),
+            new("interrupted", "Your Vault channel was interrupted. The item did not move."),
+            new("save_failed", "The Vault could not save your item or trade notes. Nothing was changed."),
+            new("unconfirmed", "The Vault could not confirm whether the item or trade notes moved. Log out and back in, then check your pack and Vault balance."),
+            new("banned", "Your account is banned, so its Vault and balance are frozen."),
+            new("invalid_amount", "Withdraw at least 1 MMD."),
+            new("insufficient_funds", "You do not have enough MMD for this withdrawal."),
+            new("paused", "The market is paused, so MMD withdrawals are stopped for now."),
+        };
+
         public static bool Run(string characterName)
         {
             uint accountId;
@@ -90,23 +119,25 @@ namespace ACE.MarketDev
             Finish(done, TicketStatus.Done, TicketStore.Ok, "Fixture complete. No MMD or item was moved.", now,
                 "{\"message\":\"Fixture complete. No MMD or item was moved.\"}");
 
-            var offline = Create(accountId, characterId, TicketKind.VaultWithdraw, "fixture-offline-" + Guid.NewGuid().ToString("N"));
-            Claim(offline, now);
-            Fail(offline, "offline", "Your character is offline. This fixture did not move an item.", now);
-
-            var paused = Create(accountId, characterId, TicketKind.MmdWithdraw, "fixture-paused-" + Guid.NewGuid().ToString("N"));
-            Claim(paused, now);
-            Fail(paused, "paused", "The market is paused. This fixture did not change your balance.", now);
-
             Console.WriteLine("Ticket fixture created presentation-only tickets (all writes were limited to market_ticket):");
             Console.WriteLine($"  WAITING: #{waiting}");
             Console.WriteLine($"  CLAIMED / Working: #{working}");
             Console.WriteLine($"  CLAIMED / Channelling: #{channelling}");
             Console.WriteLine($"  DONE: #{done}");
-            Console.WriteLine($"  FAILED / offline: #{offline}");
-            Console.WriteLine($"  FAILED / paused: #{paused}");
+            foreach (var failure in FailureExamples)
+            {
+                var failed = Create(accountId, characterId, FailureKind(failure.Code), "fixture-" + failure.Code + "-" + Guid.NewGuid().ToString("N"));
+                Claim(failed, now);
+                Fail(failed, failure.Code, failure.Message, now);
+                Console.WriteLine($"  FAILED / {failure.Code}: #{failed}");
+            }
+
             return true;
         }
+
+        private static string FailureKind(string code) => code is "invalid_amount" or "insufficient_funds" or "paused"
+            ? TicketKind.MmdWithdraw
+            : TicketKind.VaultWithdraw;
 
         private static long Create(uint accountId, uint characterId, string kind, string key)
         {
