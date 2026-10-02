@@ -24,7 +24,7 @@ namespace ACE.MarketApi
         public const int MaxSuggestions = 10;
 
         /// <summary>
-        /// Browse's query, for the document only: Browse reads and checks each value itself
+        /// Browse's query parameters: their names are the keys Browse reads, and the document lists them with these types. Browse parses each value itself.
         /// </summary>
         public sealed record BrowseQuery(string Q, string Type, long? MinPrice, long? MaxPrice, string Seller, string Sort, string Dir, int? Limit, string Cursor);
 
@@ -46,13 +46,13 @@ namespace ACE.MarketApi
         {
             var query = request.Query;
 
-            var sortValue = MarketHttp.QueryValue(query["sort"]) ?? "newest";
+            var sortValue = MarketHttp.QueryValue(query[MarketHttp.QueryName(nameof(BrowseQuery.Sort))]) ?? "newest";
             var sort = ListingCatalog.Sorts.FirstOrDefault(s => s.Value == sortValue);
             if (sort == null)
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_sort");
 
             bool descending;
-            switch (MarketHttp.QueryValue(query["dir"]))
+            switch (MarketHttp.QueryValue(query[MarketHttp.QueryName(nameof(BrowseQuery.Dir))]))
             {
                 case null: descending = sort.DescendingByDefault; break;
                 case "asc": descending = false; break;
@@ -61,15 +61,15 @@ namespace ACE.MarketApi
             }
 
             var limit = DefaultPageSize;
-            if (MarketHttp.QueryValue(query["limit"]) is string limitText && (!int.TryParse(limitText, NumberStyles.None, CultureInfo.InvariantCulture, out limit) || limit < 1))
+            if (MarketHttp.QueryValue(query[MarketHttp.QueryName(nameof(BrowseQuery.Limit))]) is string limitText && (!int.TryParse(limitText, NumberStyles.None, CultureInfo.InvariantCulture, out limit) || limit < 1))
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_limit");
             limit = Math.Min(limit, MaxPageSize);
 
-            if (!TryPrice(query["minPrice"], out var minPrice) || !TryPrice(query["maxPrice"], out var maxPrice))
+            if (!TryPrice(query[MarketHttp.QueryName(nameof(BrowseQuery.MinPrice))], out var minPrice) || !TryPrice(query[MarketHttp.QueryName(nameof(BrowseQuery.MaxPrice))], out var maxPrice))
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_price");
 
             int? itemType = null;
-            if (MarketHttp.QueryValue(query["type"]) is string typeText)
+            if (MarketHttp.QueryValue(query[MarketHttp.QueryName(nameof(BrowseQuery.Type))]) is string typeText)
             {
                 if (!ListingCatalog.TryParseItemType(typeText, out var parsed))
                     return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_type");
@@ -77,7 +77,7 @@ namespace ACE.MarketApi
             }
 
             ListingCatalog.Cursor after = null;
-            if (MarketHttp.QueryValue(query["cursor"]) is string cursorText)
+            if (MarketHttp.QueryValue(query[MarketHttp.QueryName(nameof(BrowseQuery.Cursor))]) is string cursorText)
             {
                 try
                 {
@@ -96,7 +96,7 @@ namespace ACE.MarketApi
 
             var rows = VisibleNow(shard, database, time);
 
-            if (MarketHttp.QueryValue(query["q"]) is string text)
+            if (MarketHttp.QueryValue(query[MarketHttp.QueryName(nameof(BrowseQuery.Q))]) is string text)
                 rows = ListingCatalog.NameContains(rows, text);
             if (itemType is int type)
                 rows = rows.Where(r => r.Item.ItemType == type);
@@ -104,7 +104,7 @@ namespace ACE.MarketApi
                 rows = rows.Where(r => r.Listing.Price >= min);
             if (maxPrice is long max)
                 rows = rows.Where(r => r.Listing.Price <= max);
-            if (MarketHttp.QueryValue(query["seller"]) is string seller)
+            if (MarketHttp.QueryValue(query[MarketHttp.QueryName(nameof(BrowseQuery.Seller))]) is string seller)
                 rows = rows.Where(r => r.Seller == seller);
 
             List<ListingCatalog.Row> page;
@@ -137,7 +137,7 @@ namespace ACE.MarketApi
         /// </summary>
         private static IResult Suggest(HttpRequest request, MarketDatabase database, TimeProvider time)
         {
-            var text = MarketHttp.QueryValue(request.Query["q"]);
+            var text = MarketHttp.QueryValue(request.Query[MarketHttp.QueryName(nameof(SuggestQuery.Q))]);
 
             if (text == null)
                 return Results.Json(new SuggestionsResponse(Array.Empty<string>()));

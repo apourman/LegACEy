@@ -1,10 +1,9 @@
-// The contracts' nullable annotations are how the OpenAPI document tells a field that may be null from one that is always present;
-// without them every string would be documented as nullable
+// The contracts' nullable annotations are how the OpenAPI document tells a field that may be null from one that is always present.
+// Without them ASP.NET documents every reference-type field (strings, lists, records) as nullable: checked by generating without this line.
 #nullable enable
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 
 using Microsoft.AspNetCore.Builder;
@@ -38,6 +37,7 @@ namespace ACE.MarketApi
     public sealed record IconLayerResponse(string Kind, uint Id, string Url, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? PaletteTemplate = null);
     public sealed record IconResponse(IReadOnlyList<IconLayerResponse> Layers, string? Glow);
     public sealed record SpellResponse(string Name, bool Cantrip);
+    // Both flat on purpose: nesting the listing would change the wire shape, and deriving the detail from the listing drops the listing's fields from the document's required list
     public sealed record ListingResponse(long Id, uint ItemGuid, uint Wcid, string Name, string ItemType, string? Material, int? Workmanship, int? Level, int? ArcaneLore, string Summary, int Quantity, long Price, string Seller, DateTime ListedTime, string? Wield, IconResponse Icon);
     public sealed record ListingDetailResponse(long Id, uint ItemGuid, uint Wcid, string Name, string ItemType, string? Material, int? Workmanship, int? Level, int? ArcaneLore, string Summary, int Quantity, long Price, string Seller, DateTime ListedTime, string? Wield, IconResponse Icon, IReadOnlyList<string> Lines, IReadOnlyList<SpellResponse> Spells);
     public sealed record BrowseResponse(IReadOnlyList<ListingResponse> Listings, string? NextCursor);
@@ -99,7 +99,8 @@ namespace ACE.MarketApi
 
         /// <summary>
         /// Documents the query parameters a handler reads by hand: one optional parameter per property of T, typed from the property.
-        /// Only the document uses T. The handler keeps its own parsing, so a bad value is still refused with the handler's error code.
+        /// The handler reads each key through MarketHttp.QueryName(nameof(T.Property)) and keeps its own parsing, so a bad value is still refused
+        /// with the handler's error code.
         /// </summary>
         public static RouteHandlerBuilder Query<T>(this RouteHandlerBuilder route) => route.AddOpenApiOperationTransformer(async (operation, context, cancellationToken) =>
         {
@@ -108,7 +109,7 @@ namespace ACE.MarketApi
             {
                 operation.Parameters.Add(new OpenApiParameter
                 {
-                    Name = JsonNamingPolicy.CamelCase.ConvertName(property.Name),
+                    Name = MarketHttp.QueryName(property.Name),
                     In = ParameterLocation.Query,
                     Required = false,
                     Schema = await context.GetOrCreateSchemaAsync(Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType, null, cancellationToken),

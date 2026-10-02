@@ -119,10 +119,7 @@ namespace ACE.MarketApi
             if (existing == null)
                 return null;
 
-            if (existing.Outcome == TicketCreateOutcome.KeyReused)
-                return MarketHttp.Error(StatusCodes.Status409Conflict, "key_reused");
-
-            return Results.Accepted($"{MarketApi.PathBase}/tickets/{existing.Ticket.Id}", View(existing.Ticket, gameData));
+            return Answer(existing.Outcome, existing.Ticket, gameData);
         }
 
         /// <summary>
@@ -140,11 +137,16 @@ namespace ACE.MarketApi
 
             var result = TicketStore.Create(shard, accountId, characterId.Value, kind, payload, idempotencyKey, time.GetUtcNow().UtcDateTime);
 
-            if (result.Outcome == TicketCreateOutcome.KeyReused)
-                return MarketHttp.Error(StatusCodes.Status409Conflict, "key_reused");
-
-            return Results.Accepted($"{MarketApi.PathBase}/tickets/{result.Ticket.Id}", View(result.Ticket, gameData));
+            return Answer(result.Outcome, result.Ticket, gameData);
         }
+
+        /// <summary>
+        /// A created or replayed ticket: 202 with the ticket as it is now, or 409 key_reused when the key was used for another kind
+        /// </summary>
+        private static IResult Answer(TicketCreateOutcome outcome, Ticket ticket, GameData gameData) =>
+            outcome == TicketCreateOutcome.KeyReused
+                ? MarketHttp.Error(StatusCodes.Status409Conflict, "key_reused")
+                : Results.Accepted($"{MarketApi.PathBase}/tickets/{ticket.Id}", View(ticket, gameData));
 
         private static bool IsOwnCharacter(ShardDbContext shard, uint accountId, uint characterId) =>
             shard.Character.Any(c => c.Id == characterId && c.AccountId == accountId && !c.IsDeleted);

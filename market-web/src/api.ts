@@ -24,6 +24,7 @@ export type InventorySnapshot = Schemas['InventorySnapshotResponse'];
 
 export const ticketProgress = { awaitingConfirmation: 'awaiting_confirmation', channelling: 'channelling' } as const;
 
+// keyed by the API's error codes, so a code the API doesn't declare is a type error
 export const messages: Record<string, string> = {
   invalid_credentials: 'The account name or password is incorrect.',
   account_locked: 'Too many failed sign-ins. Your account is temporarily locked. Try again later.',
@@ -70,7 +71,7 @@ export const messages: Record<string, string> = {
   not_held: 'Only held Vault items can be listed.',
   listing_limit: 'You have reached your active listing limit.',
   not_active: 'This listing is no longer active. It may have sold or expired.',
-};
+} satisfies Partial<Record<Schemas['ApiError']['error'], string>>;
 
 export class ApiError extends Error {
   constructor(public code: string, public status: number, public price?: number) {

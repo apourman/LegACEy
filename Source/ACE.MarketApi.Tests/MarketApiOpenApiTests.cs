@@ -4,13 +4,18 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 using ACE.MarketApi.Tests.Support;
 
@@ -142,6 +147,16 @@ namespace ACE.MarketApi.Tests
         }
 
         [TestMethod]
+        public async Task RunningApi_StillReadsQuotedNumbers()
+        {
+            // the document narrows numbers to plain ones; the API itself stays lenient, as before, for game plugins that quote them
+            await using var host = await MarketApiHost.StartAsync();
+            var json = host.App.Services.GetRequiredService<IOptions<JsonOptions>>().Value.SerializerOptions;
+
+            Assert.AreEqual(JsonNumberHandling.AllowReadingFromString, json.NumberHandling);
+        }
+
+        [TestMethod]
         public async Task TicketResult_IsTheInventorySnapshotRecord()
         {
             using var document = await GenerateAsync();
@@ -151,13 +166,63 @@ namespace ACE.MarketApi.Tests
             var alternatives = result.GetProperty("oneOf").EnumerateArray().Select(alternative => JsonSerializer.Serialize(alternative)).ToList();
             CollectionAssert.AreEquivalent(new[] { "{\"type\":\"null\"}", "{\"$ref\":\"#/components/schemas/InventorySnapshotResponse\"}" }, alternatives);
 
-            // each schema has exactly its record's properties
-            foreach (var type in new[] { typeof(TicketResponse), typeof(InventorySnapshotResponse), typeof(InventorySnapshotItemResponse), typeof(IconResponse) })
+            // each schema has exactly its record's properties, with their types and nullability
+            var nullability = new NullabilityInfoContext();
+            foreach (var type in new[] { typeof(TicketResponse), typeof(InventorySnapshotResponse), typeof(InventorySnapshotItemResponse), typeof(IconResponse), typeof(IconLayerResponse) })
             {
-                var expected = type.GetConstructors().Single().GetParameters().Select(parameter => JsonNamingPolicy.CamelCase.ConvertName(parameter.Name)).ToList();
-                var documented = schemas.GetProperty(type.Name).GetProperty("properties").EnumerateObject().Select(property => property.Name).ToList();
-                CollectionAssert.AreEqual(expected, documented, type.Name);
+                var parameters = type.GetConstructors().Single().GetParameters();
+                var properties = schemas.GetProperty(type.Name).GetProperty("properties");
+                CollectionAssert.AreEqual(parameters.Select(parameter => JsonNamingPolicy.CamelCase.ConvertName(parameter.Name)).ToList(),
+                    properties.EnumerateObject().Select(property => property.Name).ToList(), type.Name);
+
+                foreach (var parameter in parameters)
+                {
+                    var name = $"{type.Name}.{parameter.Name}";
+                    var (types, reference) = Describe(properties.GetProperty(JsonNamingPolicy.CamelCase.ConvertName(parameter.Name)));
+                    var clr = Nullable.GetUnderlyingType(parameter.ParameterType) ?? parameter.ParameterType;
+
+                    Assert.AreEqual(nullability.Create(parameter).ReadState == NullabilityState.Nullable, types.Contains("null"), $"{name} nullability");
+                    if (JsonType(clr) is string expected)
+                        Assert.IsTrue(types.Contains(expected), $"{name} is documented as {string.Join("|", types)}, not {expected}");
+                    else
+                        Assert.AreEqual("#/components/schemas/" + clr.Name, reference, name);
+                }
             }
+        }
+
+        /// <summary>
+        /// The JSON type a property of this CLR type is written as; null for a record, which the document refers to by name
+        /// </summary>
+        private static string JsonType(Type type)
+        {
+            if (type == typeof(string) || type == typeof(DateTime))
+                return "string";
+            if (type == typeof(bool))
+                return "boolean";
+            if (type == typeof(int) || type == typeof(uint) || type == typeof(long))
+                return "integer";
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IReadOnlyList<>))
+                return "array";
+            return null;
+        }
+
+        /// <summary>
+        /// A property schema's types (including "null") and the schema it refers to, if any
+        /// </summary>
+        private static (List<string> Types, string Reference) Describe(JsonElement property)
+        {
+            var types = new List<string>();
+            string reference = null;
+
+            foreach (var schema in property.TryGetProperty("oneOf", out var alternatives) ? alternatives.EnumerateArray().ToList() : new List<JsonElement> { property })
+            {
+                if (schema.TryGetProperty("$ref", out var target))
+                    reference = target.GetString();
+                if (schema.TryGetProperty("type", out var type))
+                    types.AddRange(type.ValueKind == JsonValueKind.Array ? type.EnumerateArray().Select(t => t.GetString()) : new[] { type.GetString() });
+            }
+
+            return (types, reference);
         }
 
         [TestMethod]

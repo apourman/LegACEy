@@ -2,7 +2,6 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Builder;
@@ -42,12 +41,18 @@ namespace ACE.MarketApi
                 {
                     if (context.JsonPropertyInfo?.DeclaringType == typeof(ApiError) && context.JsonPropertyInfo.Name == "error")
                         schema.Enum = ApiError.Codes.Select(code => (JsonNode)JsonValue.Create(code)).ToList();
+
+                    // The API's JSON reads quoted numbers too, so ASP.NET documents each number as number-or-patterned-string. The API always
+                    // writes plain numbers, and the document describes the plain-number requests the website sends: a subset of what the API accepts.
+                    if (schema.Type is JsonSchemaType type && (type & (JsonSchemaType.Integer | JsonSchemaType.Number)) != 0)
+                    {
+                        schema.Type = type & ~JsonSchemaType.String;
+                        schema.Pattern = null;
+                    }
                     return Task.CompletedTask;
                 });
             });
-            // The API writes every number as a JSON number. ASP.NET's web defaults also read quoted numbers, which would document every integer as
-            // integer-or-string; the document describes the numbers the API writes and the website sends.
-            builder.Services.ConfigureHttpJsonOptions(json => json.SerializerOptions.NumberHandling = JsonNumberHandling.Strict);
+            MarketApi.AddJson(builder.Services);
             builder.Services.AddAuthorization();
 
             // Handler binding asks which parameters are services; nothing resolves them, since no request is served

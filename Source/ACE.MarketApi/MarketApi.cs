@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authentication;
@@ -72,6 +74,7 @@ namespace ACE.MarketApi
                 throw new MarketUnavailableException(e.Message);
             }
 
+            AddJson(builder.Services);
             builder.Services.AddSingleton(database);
             builder.Services.AddSingleton(gameData);
             builder.Services.AddSingleton(new IconStore(gameData, options.IconCachePath));
@@ -137,6 +140,17 @@ namespace ACE.MarketApi
 
             return app;
         }
+
+        /// <summary>
+        /// The API's JSON, for MarketApi.Create and the OpenAPI generator alike: ASP.NET's web defaults, stated. Requests may quote numbers
+        /// ("3" reads as 3), which a game plugin may rely on, so this stays lenient; answers always write numbers.
+        /// </summary>
+        public static void AddJson(IServiceCollection services) =>
+            services.ConfigureHttpJsonOptions(json =>
+            {
+                json.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+                json.SerializerOptions.NumberHandling = JsonNumberHandling.AllowReadingFromString;
+            });
 
         /// <summary>
         /// Maps every route under /api with the CSRF filter. Mapping needs the services registered, not the database or the DATs,

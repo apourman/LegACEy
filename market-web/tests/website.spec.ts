@@ -15,7 +15,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/me') return route.fulfill({ status: 401, json: { error: 'unauthorized' } });
-    // a signed-in page's request panel asks for tickets; a 404 here would show a second alert
+    // a signed-in page's request panel asks for tickets; the 404 below would put its own alert beside the one a check reads
     if (path === '/api/tickets') return route.fulfill({ json: [] });
     if (path === '/api/facets') return route.fulfill({ json: {
       itemTypes: [{ value: 'MeleeWeapon', label: 'MeleeWeapon', count: 1 }],
