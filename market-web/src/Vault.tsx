@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { delistVaultItem, getVault, listVaultItem, withdrawMmd, withdrawVaultItem, type VaultItem } from './api';
+import { delistVaultItem, depositVaultItem, getTicket, getVault, listVaultItem, messages, requestInventorySnapshot, withdrawMmd, withdrawVaultItem, type InventorySnapshot, type VaultItem } from './api';
 import { Icon, VaultAppraisalPopover } from './Appraisal';
 import { useSession } from './session';
 import { announceTicketCreated, clearTicketAttempt, onTicketFinished, ticketAttempt } from './tickets';
@@ -15,6 +15,9 @@ export function Vault() {
   const [notice, setNotice] = useState('');
   const [mmdAmount, setMmdAmount] = useState('');
   const [busyMmd, setBusyMmd] = useState(false);
+  const [snapshot, setSnapshot] = useState<InventorySnapshot | null>(null);
+  const [snapshotBusy, setSnapshotBusy] = useState(false);
+  const [depositBusyItem, setDepositBusyItem] = useState<number | null>(null);
   const generation = useRef(0);
 
   async function refresh() {
@@ -44,7 +47,7 @@ export function Vault() {
     return () => { generation.current++; document.removeEventListener('visibilitychange', visible); };
   }, [session.me?.accountId]);
 
-  useEffect(() => onTicketFinished(() => { if (session.me) void refresh(); }), [session.me?.accountId]);
+  useEffect(() => onTicketFinished(() => { setSnapshot(null); if (session.me) void refresh(); }), [session.me?.accountId]);
 
   const characterName = (id: number | null) => session.me?.characters.find(c => c.id === id)?.name;
 
@@ -96,6 +99,53 @@ export function Vault() {
     finally { setBusyMmd(false); }
   }
 
+  async function refreshInventory() {
+    const characterId = session.characterId;
+    if (snapshotBusy || characterId === null || !session.me) return;
+    const accountId = session.me.accountId;
+    const actionKey = 'inventory-snapshot';
+    const key = ticketAttempt(accountId, actionKey, { characterId });
+    setSnapshotBusy(true); setError(''); setNotice('');
+    try {
+      const created = await requestInventorySnapshot(characterId, key);
+      clearTicketAttempt(accountId, actionKey);
+      announceTicketCreated(created);
+
+      let current = created;
+      const deadline = Date.now() + 30_000;
+      while ((current.status === 'WAITING' || current.status === 'CLAIMED') && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 750));
+        current = await getTicket(created.id);
+      }
+      if (current.status === 'FAILED') throw new Error(current.resultMessage || 'The game could not read your inventory.');
+      if (current.status !== 'DONE' || !current.result) throw new Error('The snapshot is still waiting. Check Market requests, then refresh again.');
+      setSnapshot(current.result as InventorySnapshot);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not read your in-game inventory.');
+    } finally {
+      setSnapshotBusy(false);
+    }
+  }
+
+  async function deposit(itemGuid: number) {
+    const characterId = session.characterId;
+    if (depositBusyItem !== null || characterId === null || !session.me) return;
+    const accountId = session.me.accountId;
+    const actionKey = `vault-deposit:${itemGuid}`;
+    const key = ticketAttempt(accountId, actionKey, { characterId, itemGuid });
+    setDepositBusyItem(itemGuid); setError(''); setNotice('');
+    try {
+      const ticket = await depositVaultItem(characterId, itemGuid, key);
+      clearTicketAttempt(accountId, actionKey);
+      announceTicketCreated(ticket);
+      setNotice('Switch to your game client and confirm the deposit within 30 seconds. Saying Yes starts the 60-second channel.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not request this deposit.');
+    } finally {
+      setDepositBusyItem(null);
+    }
+  }
+
   // Refreshes whether or not the action succeeds: a refusal such as not_held means the Vault changed under the page.
   async function act(item: VaultItem, action: () => Promise<unknown>, success: string, fallback: string): Promise<boolean> {
     setBusyItem(item.itemGuid); setError(''); setNotice('');
@@ -131,6 +181,29 @@ export function Vault() {
         <label>Whole MMD amount<input type="number" min="1" step="1" inputMode="numeric" value={mmdAmount} onChange={e => setMmdAmount(e.target.value)} /></label>
         <button disabled={busyMmd || session.characterId === null || session.me.paused}>{busyMmd ? 'Requesting…' : 'Withdraw MMD'}</button>
       </form>
+    </section>
+    <section className="inventory-panel" aria-labelledby="inventory-heading">
+      <div className="inventory-panel-heading">
+        <div><h2 id="inventory-heading">Deposit from your pack</h2><p className="muted">Your acting character must be online. The game asks you to confirm before the 60-second channel begins.</p></div>
+        <button className="secondary" disabled={snapshotBusy || session.characterId === null} onClick={() => void refreshInventory()}>
+          {snapshotBusy ? 'Reading pack…' : snapshot ? 'Refresh inventory' : 'Choose an item'}
+        </button>
+      </div>
+      {snapshot && <>
+        <p className="muted snapshot-time">Inventory captured {new Date(snapshot.snapshotTime).toLocaleString()}</p>
+        {snapshot.items.length === 0 ? <p className="muted">Your pack is empty.</p> : <ul className="inventory-picker">
+          {snapshot.items.map(item => <li key={item.itemGuid} className={item.refusalCode ? 'inventory-item inventory-item--refused' : 'inventory-item'}>
+            <Icon icon={item.icon} />
+            <span className="inventory-item-copy"><strong>{item.name}<small> × {item.stackSize}</small></strong>
+              {item.refusalCode && <small className="muted">{messages[item.refusalCode] ?? 'This item cannot be deposited.'}</small>}
+            </span>
+            <button disabled={!!item.refusalCode || depositBusyItem !== null || session.characterId === null}
+              onClick={() => void deposit(item.itemGuid)}>
+              {depositBusyItem === item.itemGuid ? 'Requesting…' : 'Deposit'}
+            </button>
+          </li>)}
+        </ul>}
+      </>}
     </section>
     {loading && <p role="status">Refreshing Vault…</p>}
     {!loading && items.length === 0 && <div className="empty"><h2>Your Vault is empty</h2><p>Items bought from the market and deposited in game appear here.</p></div>}

@@ -37,6 +37,12 @@ namespace ACE.MarketApi.Tests
         private static Task<HttpResponseMessage> VaultWithdrawAsync(MarketApiHost host, string cookie, uint characterId, uint itemGuid, string idempotencyKey) =>
             host.PostJsonAsync("/api/vault/withdraw", new { characterId, itemGuid, idempotencyKey }, cookie);
 
+        private static Task<HttpResponseMessage> InventorySnapshotAsync(MarketApiHost host, string cookie, uint characterId, string idempotencyKey) =>
+            host.PostJsonAsync("/api/inventory/snapshot", new { characterId, idempotencyKey }, cookie);
+
+        private static Task<HttpResponseMessage> VaultDepositAsync(MarketApiHost host, string cookie, uint characterId, uint itemGuid, string idempotencyKey) =>
+            host.PostJsonAsync("/api/vault/deposit", new { characterId, itemGuid, idempotencyKey }, cookie);
+
         private static async Task<JsonElement> AcceptedAsync(HttpResponseMessage response)
         {
             Assert.AreEqual(HttpStatusCode.Accepted, response.StatusCode, await response.Content.ReadAsStringAsync());
@@ -179,6 +185,81 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual(TicketStatus.Failed, failed.GetProperty("status").GetString());
             Assert.AreEqual("offline", failed.GetProperty("resultCode").GetString());
             Assert.AreEqual("Your character must be online.", failed.GetProperty("resultMessage").GetString());
+        }
+
+        [TestMethod]
+        public async Task InventorySnapshot_AndVaultDeposit_CreateTickets_AndReplayBeforeCharacterValidation()
+        {
+            var player = NewPlayer("deposit");
+            var stranger = NewPlayer("depositstranger");
+
+            await using var host = await MarketApiHost.StartAsync();
+            var cookie = await host.SignInForCookieAsync(player.Name, "pass");
+            var snapshotKey = NewKey();
+
+            var snapshot = await AcceptedAsync(await InventorySnapshotAsync(host, cookie, player.CharacterId, snapshotKey));
+            var snapshotId = snapshot.GetProperty("id").GetInt64();
+
+            Assert.AreEqual("inventory_snapshot", snapshot.GetProperty("kind").GetString());
+            Assert.AreEqual(TicketStatus.Waiting, snapshot.GetProperty("status").GetString());
+            Assert.AreEqual(player.CharacterId, snapshot.GetProperty("characterId").GetUInt32());
+
+            var replay = await AcceptedAsync(await InventorySnapshotAsync(host, cookie, stranger.CharacterId, snapshotKey));
+            Assert.AreEqual(snapshotId, replay.GetProperty("id").GetInt64(), "an idempotent retry is returned before validating its changed body");
+            Assert.AreEqual("key_reused", await MarketApiHost.ErrorAsync(await VaultDepositAsync(host, cookie, player.CharacterId, 0xC0000001, snapshotKey)));
+
+            var depositKey = NewKey();
+            var deposit = await AcceptedAsync(await VaultDepositAsync(host, cookie, player.CharacterId, 0xC0000001, depositKey));
+            Assert.AreEqual(TicketKind.VaultDeposit, deposit.GetProperty("kind").GetString());
+            Assert.AreEqual(0xC0000001u, deposit.GetProperty("itemGuid").GetUInt32());
+            var depositReplay = await AcceptedAsync(await VaultDepositAsync(host, cookie, stranger.CharacterId, 0xC0000002, depositKey));
+            Assert.AreEqual(deposit.GetProperty("id").GetInt64(), depositReplay.GetProperty("id").GetInt64());
+            Assert.AreEqual(0xC0000001u, depositReplay.GetProperty("itemGuid").GetUInt32());
+
+            Assert.AreEqual("invalid_character", await MarketApiHost.ErrorAsync(await InventorySnapshotAsync(host, cookie, stranger.CharacterId, NewKey())));
+            Assert.AreEqual("invalid_character", await MarketApiHost.ErrorAsync(await VaultDepositAsync(host, cookie, stranger.CharacterId, 0xC0000002, NewKey())));
+            Assert.AreEqual(2L, Tickets(player.AccountId), "the two valid requests create tickets; validation failures do not");
+        }
+
+        [TestMethod]
+        public async Task InventorySnapshot_AndVaultDeposit_AreRefusedForAFrozenAccount()
+        {
+            var player = NewPlayer("depositfrozen");
+
+            await using var host = await MarketApiHost.StartAsync();
+            var cookie = await host.SignInForCookieAsync(player.Name, "pass");
+            MarketApiTestData.Ban(player.AccountId, host.Clock.GetUtcNow().UtcDateTime.AddDays(1));
+
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await InventorySnapshotAsync(host, cookie, player.CharacterId, NewKey())).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await VaultDepositAsync(host, cookie, player.CharacterId, 0xC0000003, NewKey())).StatusCode);
+            Assert.AreEqual(0L, Tickets(player.AccountId), "a frozen account cannot create tickets");
+        }
+
+        [TestMethod]
+        public async Task InventorySnapshot_ResultTurnsRawIconLayersIntoApiUrls()
+        {
+            var player = NewPlayer("snapshoticons");
+
+            await using var host = await MarketApiHost.StartAsync();
+            var cookie = await host.SignInForCookieAsync(player.Name, "pass");
+            var created = await AcceptedAsync(await InventorySnapshotAsync(host, cookie, player.CharacterId, NewKey()));
+            var id = created.GetProperty("id").GetInt64();
+            var result = "{\"snapshotTime\":\"2026-10-02T00:00:00Z\",\"items\":[{\"itemGuid\":3221225473,\"name\":\"Snapshot Sword\",\"stackSize\":1,\"itemType\":2,\"icon\":100677439,\"iconUnderlay\":null,\"iconOverlay\":null,\"iconOverlaySecondary\":null,\"uiEffects\":null,\"paletteTemplate\":null,\"clothingBase\":null,\"refusalCode\":null}]}";
+
+            using (var shard = MarketApiTestData.Shard())
+            {
+                TicketStore.ClaimOne(shard, id, host.Clock.GetUtcNow().UtcDateTime);
+                TicketStore.Complete(shard, new TicketCompletion(id, "Inventory snapshot is ready.", result), host.Clock.GetUtcNow().UtcDateTime);
+                shard.SaveChanges();
+            }
+
+            var ticket = await TicketAsync(host, cookie, id);
+            var item = ticket.GetProperty("result").GetProperty("items")[0];
+            var layers = item.GetProperty("icon").GetProperty("layers").EnumerateArray().ToArray();
+
+            Assert.IsTrue(layers.Length >= 2, "the plate and base icon are represented");
+            Assert.IsTrue(layers.All(layer => layer.GetProperty("url").GetString().StartsWith("/api/icons/", StringComparison.Ordinal)));
+            Assert.AreEqual(JsonValueKind.Null, item.GetProperty("refusalCode").ValueKind);
         }
 
         [TestMethod]

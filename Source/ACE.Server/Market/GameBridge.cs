@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 
 using log4net;
 
@@ -8,6 +9,7 @@ using ACE.Database;
 using ACE.Database.Market;
 using ACE.Database.Models.Shard;
 using ACE.Database.Models.Shard.Market;
+using ACE.Entity.Enum;
 using ACE.Server.Entity.Actions;
 using ACE.Server.Managers;
 using ACE.Server.WorldObjects;
@@ -30,6 +32,8 @@ namespace ACE.Server.Market
         public const string InvalidTicket = "invalid_ticket";
 
         public static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
+
+        public static readonly TimeSpan ConfirmationTimeout = TimeSpan.FromSeconds(30);
 
         /// <summary>
         /// The most tickets one poll claims
@@ -183,13 +187,21 @@ namespace ACE.Server.Market
                     work = player => Vault.WithdrawNotes(player, amount, result => Finished(ticket, result), ticket.Id);
                     break;
 
+                case TicketKind.VaultDeposit when payload?.ItemGuid is uint depositGuid:
+                    work = player => StartDepositConfirmation(player, ticket, depositGuid);
+                    break;
+
+                case TicketKind.InventorySnapshot:
+                    work = player => SnapshotInventory(player, ticket);
+                    break;
+
                 case TicketKind.VaultWithdraw:
                 case TicketKind.MmdWithdraw:
+                case TicketKind.VaultDeposit:
                     Fail(ticket, InvalidTicket);
                     return;
 
                 default:
-                    // vault_deposit needs a live-inventory picker that isn't built yet
                     Fail(ticket, UnsupportedKind);
                     return;
             }
@@ -223,6 +235,149 @@ namespace ACE.Server.Market
             }
         }
 
+        private static void SnapshotInventory(Player player, Ticket ticket)
+        {
+            var now = DateTime.UtcNow;
+            var items = InventoryItems(player).Select(item =>
+            {
+                var refusal = Vault.CheckDeposit(player, item.Guid.Full, out _);
+
+                return new
+                {
+                    itemGuid = item.Guid.Full,
+                    name = item.Name,
+                    stackSize = item.StackSize ?? 1,
+                    itemType = (int)item.ItemType,
+                    icon = item.IconId,
+                    iconUnderlay = item.IconUnderlayId,
+                    iconOverlay = item.IconOverlayId,
+                    iconOverlaySecondary = item.IconOverlaySecondary,
+                    uiEffects = (int?)item.UiEffects,
+                    paletteTemplate = item.PaletteTemplate,
+                    clothingBase = item.ClothingBase,
+                    refusalCode = refusal == null ? null : ResultCode(refusal.Value),
+                };
+            }).ToArray();
+
+            var result = JsonSerializer.Serialize(new { snapshotTime = now, items }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            DatabaseManager.Shard.CompleteTicket(new TicketCompletion(ticket.Id, "Inventory snapshot is ready.", result), completed =>
+            {
+                WorldManager.EnqueueAction(new ACE.Server.Entity.Actions.ActionEventDelegate(() =>
+                {
+                    running.Remove(ticket.Id);
+
+                    if (!completed)
+                        log.Warn($"[BRIDGE] Could not complete inventory snapshot ticket {ticket.Id} for account {ticket.AccountId}");
+                }));
+            });
+        }
+
+        private static IEnumerable<WorldObject> InventoryItems(Container container)
+        {
+            foreach (var item in container.Inventory.Values.OrderBy(item => item.PlacementPosition))
+            {
+                yield return item;
+
+                if (item is Container nested)
+                    foreach (var child in InventoryItems(nested))
+                        yield return child;
+            }
+        }
+
+        private static void StartDepositConfirmation(Player player, Ticket ticket, uint itemGuid)
+        {
+            WorldObject item = null;
+            VaultOutcome? refusal;
+
+            try
+            {
+                refusal = VaultChannel.CheckStart(player) ?? Vault.CheckDeposit(player, itemGuid, out item);
+            }
+            catch (Exception ex)
+            {
+                log.Error($"[BRIDGE] Deposit ticket {ticket.Id} for {player.Name} failed its up-front checks: {ex}");
+                Fail(ticket, ResultCode(VaultOutcome.SaveFailed), VaultMessages.For(VaultOutcome.SaveFailed, item?.Name));
+                return;
+            }
+
+            if (refusal != null)
+            {
+                Fail(ticket, ResultCode(refusal.Value), VaultMessages.For(refusal.Value, item?.Name));
+                return;
+            }
+
+            var now = DateTime.UtcNow;
+            var deadline = now + ConfirmationTimeout;
+            DatabaseManager.Shard.SetTicketProgress(ticket.Id, TicketProgress.AwaitingConfirmation, now, deadline, updated =>
+            {
+                if (!updated)
+                    log.Warn($"[BRIDGE] Ticket {ticket.Id} was no longer claimed when its confirmation progress was written");
+            });
+
+            var confirmation = new DepositConfirmation(ticket, itemGuid);
+            var seconds = (int)Math.Max(0, MarketSettings.Get(MarketSettings.ChannelSeconds));
+            var text = $"Deposit {item.Name} into your Vault? Saying Yes will freeze you for {seconds} seconds; a player attack, death or logout stops it.";
+
+            if (!player.ConfirmationManager.EnqueueSendWithoutTimeout(confirmation, text))
+            {
+                Fail(ticket, "confirmation_busy");
+                return;
+            }
+
+            var timeout = new ACE.Server.Entity.Actions.ActionChain();
+            timeout.AddDelaySeconds(ConfirmationTimeout.TotalSeconds);
+            timeout.AddAction(WorldManager.ActionQueue, () => player.ConfirmationManager.Timeout(ConfirmationType.Yes_No, confirmation.ContextId));
+            timeout.EnqueueChain();
+        }
+
+        private static void DepositConfirmed(Ticket ticket, uint itemGuid, bool response, bool timedOut)
+        {
+            WorldManager.EnqueueAction(new ACE.Server.Entity.Actions.ActionEventDelegate(() =>
+            {
+                var player = ticket.CharacterId is uint id ? PlayerManager.GetOnlinePlayer(id) : null;
+
+                if (timedOut)
+                {
+                    Fail(ticket, player == null || player.IsLoggingOut ? Offline : "confirm_timeout");
+                    return;
+                }
+
+                if (!response)
+                {
+                    Fail(ticket, "declined");
+                    return;
+                }
+
+                if (player == null || player.IsLoggingOut)
+                {
+                    Fail(ticket, Offline);
+                    return;
+                }
+
+                if (player.Character.AccountId != ticket.AccountId)
+                {
+                    Fail(ticket, InvalidCharacter);
+                    return;
+                }
+
+                VaultChannel.StartDeposit(player, itemGuid, result => Finished(ticket, result), ticket.Id, afterConfirmation: true);
+            }));
+        }
+
+        private sealed class DepositConfirmation : ACE.Server.Entity.Confirmation
+        {
+            private readonly Ticket ticket;
+            private readonly uint itemGuid;
+
+            public DepositConfirmation(Ticket ticket, uint itemGuid) : base(new ACE.Entity.ObjectGuid(ticket.CharacterId.Value), ConfirmationType.Yes_No)
+            {
+                this.ticket = ticket;
+                this.itemGuid = itemGuid;
+            }
+
+            public override void ProcessConfirmation(bool response, bool timeout = false) => DepositConfirmed(ticket, itemGuid, response, timeout);
+        }
+
         private static void Finished(Ticket ticket, VaultResult result)
         {
             running.Remove(ticket.Id);
@@ -236,6 +391,7 @@ namespace ACE.Server.Market
 
         private static void Fail(Ticket ticket, string resultCode, string message = null)
         {
+            running.Remove(ticket.Id);
             message ??= Message(resultCode);
 
             DatabaseManager.Shard.FailTicket(ticket.Id, resultCode, message, failed =>
@@ -256,6 +412,9 @@ namespace ACE.Server.Market
             InvalidTicket => "The game server could not read that request.",
             TicketStore.ServerRestart => "The game server restarted before this finished. Nothing was moved; ask again.",
             TicketStore.Abandoned => "The game server stopped working on this before it finished. Nothing was moved; ask again.",
+            "declined" => "You declined the deposit in game. Nothing was moved.",
+            "confirm_timeout" => "The deposit was not confirmed in time. Nothing was moved.",
+            "confirmation_busy" => "Another yes/no popup was already open. Nothing was moved.",
             _ => resultCode,
         };
 

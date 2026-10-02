@@ -148,11 +148,11 @@ namespace ACE.Database
         /// <summary>
         /// Queues the deposit job, which also refuses when the account's Vault already holds maxItems (see ShardDatabase.DepositToVault)
         /// </summary>
-        public void DepositToVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, VaultItem vaultItem, int maxItems, Action<MarketJobResult> callback)
+        public void DepositToVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, VaultItem vaultItem, int maxItems, Action<MarketJobResult> callback, TicketCompletion ticket = null)
         {
             _queue.Add(new Task(() =>
             {
-                var result = RunMarketJob(nameof(DepositToVault), () => BaseDatabase.DepositToVault(biota, rwLock, vaultItem, maxItems));
+                var result = RunMarketJob(nameof(DepositToVault), () => BaseDatabase.DepositToVault(biota, rwLock, vaultItem, maxItems, ticket));
                 callback?.Invoke(result);
             }));
         }
@@ -248,6 +248,18 @@ namespace ACE.Database
             _queue.Add(new Task(() =>
             {
                 var result = BaseDatabase.FailTicket(ticketId, resultCode, message);
+                callback?.Invoke(result);
+            }));
+        }
+
+        /// <summary>
+        /// Queues completing a claimed ticket with optional structured result data.
+        /// </summary>
+        public void CompleteTicket(TicketCompletion completion, Action<bool> callback)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = BaseDatabase.CompleteTicket(completion);
                 callback?.Invoke(result);
             }));
         }

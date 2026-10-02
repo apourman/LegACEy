@@ -46,7 +46,7 @@ namespace ACE.Database
         /// (checked in the job, which is serialized with every other Vault job). Failed means nothing was saved; Unknown means the save may have committed.
         /// The job sets vaultItem.DepositedTime; after a refusal or failure, pass a new VaultItem to try again.
         /// </summary>
-        public MarketJobResult DepositToVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, VaultItem vaultItem, int maxItems = int.MaxValue)
+        public MarketJobResult DepositToVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, VaultItem vaultItem, int maxItems = int.MaxValue, TicketCompletion ticket = null)
         {
             if (vaultItem.ItemGuid != biota.Id || vaultItem.State != VaultItemState.Held)
             {
@@ -77,6 +77,9 @@ namespace ACE.Database
                 }
 
                 vaultItem.DepositedTime = DateTime.UtcNow;
+
+                if (ticket != null)
+                    TicketStore.Complete(context, ticket, vaultItem.DepositedTime);
 
                 context.MarketVaultItems.Add(vaultItem);
                 context.MarketItemEvents.Add(NewItemEvent(biota.Id, vaultItem.AccountId, vaultItem.CharacterId, ItemEventKind.Deposit, vaultItem.DepositedTime));

@@ -26,6 +26,8 @@ function statusText(ticket: Ticket, now: number) {
 function description(ticket: Ticket) {
   if (ticket.kind === 'mmd_withdraw') return `Withdraw ${ticket.amount ?? ''} MMD`;
   if (ticket.kind === 'vault_withdraw') return ticket.itemGuid === null ? 'Withdraw a Vault item' : `Withdraw Vault item #${ticket.itemGuid}`;
+  if (ticket.kind === 'vault_deposit') return ticket.itemGuid === null ? 'Deposit a pack item' : `Deposit item #${ticket.itemGuid}`;
+  if (ticket.kind === 'inventory_snapshot') return 'Read in-game inventory';
   return `Market request #${ticket.id}`;
 }
 

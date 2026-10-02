@@ -82,6 +82,8 @@ namespace ACE.Server.Market
         /// </summary>
         public static string WithdrawnByTicket(string what, string characterName) => $"{what} withdrawn to {characterName}.";
 
+        public static string DepositedByTicket(string what, string characterName) => $"{what} deposited from {characterName}.";
+
         public static string TradeNotes(long amount) => $"{amount:N0} trade note{(amount == 1 ? "" : "s")}";
 
         public static string LinkCode(string code, long minutes) =>

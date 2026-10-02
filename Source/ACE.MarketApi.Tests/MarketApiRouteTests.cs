@@ -57,6 +57,8 @@ namespace ACE.MarketApi.Tests
             ("GET", "/icons/glow.css"),
             ("GET", "/icons/0x06003237.png"),
             ("POST", "/vault/withdraw"),
+            ("POST", "/vault/deposit"),
+            ("POST", "/inventory/snapshot"),
             ("POST", "/mmd/withdraw"),
             ("GET", "/tickets/1"),
         };

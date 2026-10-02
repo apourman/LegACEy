@@ -52,7 +52,8 @@ namespace ACE.Database.Market
     /// A claimed ticket to mark done in the same save as its work, so a crash can never leave the work saved and the ticket unfinished
     /// </summary>
     /// <param name="Message">what the player is told</param>
-    public sealed record TicketCompletion(long TicketId, string Message);
+    /// <param name="Result">optional structured JSON result, for example a live inventory snapshot</param>
+    public sealed record TicketCompletion(long TicketId, string Message, string Result = null);
 
     /// <summary>
     /// The game bridge's queue (market_ticket). The Market API creates tickets; the game server claims them, does the work, and writes the result.
@@ -279,6 +280,7 @@ namespace ACE.Database.Market
             ticket.Status = TicketStatus.Done;
             ticket.ResultCode = Ok;
             ticket.ResultMessage = Cap(completion.Message);
+            ticket.Result = completion.Result;
             ticket.FinishedTime = ListingStore.Truncate(now);
         }
 

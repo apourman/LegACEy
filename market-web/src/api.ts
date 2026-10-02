@@ -39,12 +39,16 @@ export interface HistoryResult {
 /** The stage of a CLAIMED ticket (market_ticket.progress), which the status panel counts down to progressUntil */
 export const ticketProgress = { awaitingConfirmation: 'awaiting_confirmation', channelling: 'channelling' } as const;
 export interface Ticket {
-  id: number; kind: 'vault_withdraw' | 'mmd_withdraw' | string; status: 'WAITING' | 'CLAIMED' | 'DONE' | 'FAILED';
+  id: number; kind: 'vault_withdraw' | 'mmd_withdraw' | 'vault_deposit' | 'inventory_snapshot' | string; status: 'WAITING' | 'CLAIMED' | 'DONE' | 'FAILED';
   characterId: number | null; itemGuid: number | null; amount: number | null;
   resultCode: string | null; resultMessage: string | null; progress: typeof ticketProgress[keyof typeof ticketProgress] | string | null;
   progressTime: string | null; progressUntil: string | null; result: unknown | null;
   createdTime: string; claimedTime: string | null; finishedTime: string | null;
 }
+export interface InventorySnapshotItem {
+  itemGuid: number; name: string; stackSize: number; refusalCode: string | null; icon: Icon;
+}
+export interface InventorySnapshot { snapshotTime: string; items: InventorySnapshotItem[] }
 
 export const messages: Record<string, string> = {
   invalid_credentials: 'The account name or password is incorrect.',
@@ -59,7 +63,7 @@ export const messages: Record<string, string> = {
   own_listing: 'You cannot buy your own listing.',
   rate_limited: 'Too many purchase attempts. Wait a minute and try again.',
   paused: 'The market is paused. Purchases and MMD withdrawals are temporarily unavailable.',
-  busy: 'The server is busy. Try this purchase again.',
+  busy: 'The server is busy. Wait for the current action to finish, then try again.',
   key_reused: 'This request key was already used. Close this dialog and start a new purchase.',
   invalid_price: 'The price must be a positive whole number of MMD.',
   invalid_count: 'The whole stack must be purchased. Reload the listing.',
@@ -73,6 +77,22 @@ export const messages: Record<string, string> = {
   network: 'The response was lost. Retry this attempt to find out whether it succeeded.',
   server: 'The server is unavailable. Try again later.',
   not_in_vault: 'That item is not in your Vault.',
+  not_in_pack: 'That item is no longer in your pack.',
+  worn: 'Take that item off before depositing it.',
+  attuned: 'That item is attuned and cannot be deposited.',
+  contains_attuned: 'That container holds an attuned item and cannot be deposited.',
+  pet_out: 'Unsummon the pet before depositing this item.',
+  container_not_empty: 'Empty this container before depositing it.',
+  blocked_wcid: 'This item type cannot be deposited.',
+  in_trade: 'Take that item out of the trade window before depositing it.',
+  vault_full: 'Your Vault is full. List or withdraw something first.',
+  recent_player_fight: 'You have been in a player fight too recently to use the Vault.',
+  trading: 'Close the trade window before using the Vault.',
+  channelling: 'You are already moving an item to or from your Vault.',
+  not_available: 'The Vault is not available right now.',
+  declined: 'You declined the deposit in game. Nothing was moved.',
+  confirm_timeout: 'The deposit was not confirmed in time. Nothing was moved.',
+  confirmation_busy: 'Another yes/no popup was already open. Nothing was moved.',
   not_held: 'Only held Vault items can be listed.',
   listing_limit: 'You have reached your active listing limit.',
   not_active: 'This listing is no longer active. It may have sold or expired.',
@@ -115,6 +135,11 @@ export const listVaultItem = (itemGuid: number, price: number, characterId: numb
 export const delistVaultItem = (listingId: number) => request<{ id: number; itemGuid: number; status: string }>(`/listings/${listingId}/delist`, {});
 export const getHistory = (query: URLSearchParams) => request<HistoryResult>(`/history?${query}`);
 export const getTickets = () => request<Ticket[]>('/tickets');
+export const getTicket = (id: number) => request<Ticket>(`/tickets/${id}`);
+export const requestInventorySnapshot = (characterId: number, idempotencyKey: string) =>
+  request<Ticket>('/inventory/snapshot', { characterId, idempotencyKey });
+export const depositVaultItem = (characterId: number, itemGuid: number, idempotencyKey: string) =>
+  request<Ticket>('/vault/deposit', { characterId, itemGuid, idempotencyKey });
 export const withdrawVaultItem = (characterId: number, itemGuid: number, idempotencyKey: string) =>
   request<Ticket>('/vault/withdraw', { characterId, itemGuid, idempotencyKey });
 export const withdrawMmd = (characterId: number, amount: number, idempotencyKey: string) =>
