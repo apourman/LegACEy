@@ -144,9 +144,9 @@ namespace ACE.Database.Tests.Market
         }
 
         /// <summary>
-        /// The update runner's connection options, which don't allow user variables
+        /// The update runner's connection options, including support for idempotent scripts using prepared statements.
         /// </summary>
-        public static string RunnerConnectionString(string database) => ServerConnectionString(database, "DefaultCommandTimeout=120;SslMode=None;AllowPublicKeyRetrieval=true");
+        public static string RunnerConnectionString(string database) => ServerConnectionString(database, "DefaultCommandTimeout=120;SslMode=None;AllowPublicKeyRetrieval=true;AllowUserVariables=true");
 
         /// <summary>
         /// The configured shard connection options, on the given database or on none

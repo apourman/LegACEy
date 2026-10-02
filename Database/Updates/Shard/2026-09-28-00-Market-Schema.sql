@@ -1,7 +1,6 @@
 -- Marketplace: every table the market stores, and the escrow and money invariants MySQL enforces.
 -- Safe to run more than once: every statement is create-if-not-exists.
--- The update runner sends this file as one command without DELIMITER support, so each trigger body is a single statement,
--- and nothing here may use @variables (the runner's connection doesn't allow them).
+-- The update runner sends this file as one command without DELIMITER support, so each trigger body is a single statement.
 -- Creating triggers while binary logging is on needs log_bin_trust_function_creators=1 (set in the docker-compose files) or SUPER.
 -- The triggers come last: if they fail, the market startup check (ACE.Database.Market.MarketSchema) reports them missing.
 -- Recovery when the triggers failed (the runner still marks this script applied): enable log_bin_trust_function_creators

@@ -157,6 +157,18 @@ namespace ACE.Database.Tests.Market
         }
 
         [TestMethod]
+        public void TicketProgressUpdate_AppliedTwice_SucceedsAndChangesNothing()
+        {
+            MarketTestDatabase.CreateFresh(ExistingDb);
+            MarketTestDatabase.Execute(ExistingDb, "INSERT INTO market_ticket (kind, account_Id, character_Id, payload, status, idempotency_Key, created_Time) VALUES ('mmd_withdraw', 1, 1, '{}', 'WAITING', 'repeat-migration', UTC_TIMESTAMP(6));");
+            var before = SchemaSnapshot(ExistingDb);
+
+            MarketTestDatabase.ApplyUpdate(ExistingDb, MarketTestDatabase.TicketProgressUpdateScriptPath);
+
+            CollectionAssert.AreEqual(before, SchemaSnapshot(ExistingDb), "second run changed the schema or data");
+        }
+
+        [TestMethod]
         public void SchemaCheck_AllTablesPresent_ReportsOk()
         {
             var failures = MarketTestDatabase.CreateFresh(FreshDb);
