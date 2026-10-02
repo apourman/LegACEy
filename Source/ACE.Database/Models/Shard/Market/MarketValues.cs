@@ -66,3 +66,12 @@ public static class TicketKind
     // in the contract, but asking for one needs a live-inventory picker that the in-game UI work will build: the game fails it as unsupported
     public const string VaultDeposit = "vault_deposit";
 }
+
+/// <summary>
+/// The stage a CLAIMED ticket is in (market_ticket.progress), which the website shows with a countdown to progress_Until
+/// </summary>
+public static class TicketProgress
+{
+    public const string AwaitingConfirmation = "awaiting_confirmation";
+    public const string Channelling = "channelling";
+}

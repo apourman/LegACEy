@@ -3,38 +3,7 @@ import { Link } from 'react-router-dom';
 import { delistVaultItem, getVault, listVaultItem, withdrawMmd, withdrawVaultItem, type VaultItem } from './api';
 import { Icon, VaultAppraisalPopover } from './Appraisal';
 import { useSession } from './session';
-
-const fallbackTicketAttempts = new Map<string, { payload: string; key: string }>();
-
-function ticketAttempt(accountId: number, storageKey: string, payload: object): string {
-  const serializedPayload = JSON.stringify(payload);
-  const key = `market-ticket-attempt:${accountId}:${storageKey}`;
-  try {
-    const saved = sessionStorage.getItem(key);
-    if (saved) {
-      const attempt = JSON.parse(saved) as { payload: string; key: string };
-      if (attempt.payload === serializedPayload) return attempt.key;
-    }
-    const idempotencyKey = crypto.randomUUID();
-    const attempt = { payload: serializedPayload, key: idempotencyKey };
-    sessionStorage.setItem(key, JSON.stringify(attempt));
-    fallbackTicketAttempts.set(key, attempt);
-    return idempotencyKey;
-  } catch {
-    const previous = fallbackTicketAttempts.get(key);
-    if (previous?.payload === serializedPayload) return previous.key;
-    const idempotencyKey = crypto.randomUUID();
-    fallbackTicketAttempts.set(key, { payload: serializedPayload, key: idempotencyKey });
-    return idempotencyKey;
-  }
-}
-
-function clearTicketAttempt(accountId: number, storageKey: string) {
-  const key = `market-ticket-attempt:${accountId}:${storageKey}`;
-  fallbackTicketAttempts.delete(key);
-  try { sessionStorage.removeItem(key); }
-  catch { /* Storage can be unavailable in restricted browser contexts. */ }
-}
+import { announceTicketCreated, clearTicketAttempt, onTicketFinished, ticketAttempt } from './tickets';
 
 export function Vault() {
   const session = useSession();
@@ -75,11 +44,9 @@ export function Vault() {
     return () => { generation.current++; document.removeEventListener('visibilitychange', visible); };
   }, [session.me?.accountId]);
 
-  useEffect(() => {
-    const finished = () => { if (session.me) void refresh(); };
-    window.addEventListener('market-ticket-finished', finished);
-    return () => window.removeEventListener('market-ticket-finished', finished);
-  }, [session.me?.accountId]);
+  useEffect(() => onTicketFinished(() => { if (session.me) void refresh(); }), [session.me?.accountId]);
+
+  const characterName = (id: number | null) => session.me?.characters.find(c => c.id === id)?.name;
 
   async function list(item: VaultItem) {
     const characterId = session.characterId;
@@ -104,8 +71,8 @@ export function Vault() {
     if (busyItem !== null || characterId === null || item.state !== 'held' || !session.me) return;
     const attemptKey = `vault:${item.itemGuid}`;
     const key = ticketAttempt(session.me.accountId, attemptKey, { characterId, itemGuid: item.itemGuid });
-    const succeeded = await act(item, () => withdrawVaultItem(characterId, item.itemGuid, key),
-      `Withdrawal requested for ${item.name}. Keep ${session.me?.characters.find(c => c.id === characterId)?.name ?? 'your character'} online.`,
+    const succeeded = await act(item, async () => announceTicketCreated(await withdrawVaultItem(characterId, item.itemGuid, key)),
+      `Withdrawal requested for ${item.name}. Keep ${characterName(characterId) ?? 'your character'} online.`,
       'Could not request this withdrawal.');
     if (succeeded) clearTicketAttempt(session.me.accountId, attemptKey);
   }
@@ -122,9 +89,9 @@ export function Vault() {
     const attemptKey = 'mmd';
     const key = ticketAttempt(accountId, attemptKey, { characterId: session.characterId, amount });
     try {
-      await withdrawMmd(session.characterId, amount, key);
+      announceTicketCreated(await withdrawMmd(session.characterId, amount, key));
       clearTicketAttempt(accountId, attemptKey);
-      setNotice(`Withdrawal requested. Keep ${session.me.characters.find(c => c.id === session.characterId)?.name ?? 'your character'} online.`);
+      setNotice(`Withdrawal requested. Keep ${characterName(session.characterId) ?? 'your character'} online.`);
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not request an MMD withdrawal.'); }
     finally { setBusyMmd(false); }
   }
@@ -170,7 +137,7 @@ export function Vault() {
     {items.length > 0 && <div className="table-scroll"><table className="listing-table vault-table"><caption className="sr-only">Your Vault items</caption><thead><tr>
       <th><span className="sr-only">Appraisal</span></th><th>Item</th><th>State</th><th>Deposited by</th><th>Listed price</th><th>Action</th>
     </tr></thead><tbody>{items.map(item => {
-      const character = session.me?.characters.find(c => c.id === item.characterId)?.name ?? 'Unknown character';
+      const character = characterName(item.characterId) ?? 'Unknown character';
       return <tr key={item.itemGuid}>
         <td><VaultAppraisalPopover item={item} /></td>
         <td><span className="vault-item-name"><Icon icon={item.icon} />{item.name}<span className="stack">× {item.stackSize}</span></span></td>

@@ -86,7 +86,7 @@ namespace ACE.Database.Market
         /// </summary>
         public static TicketCreateResult Create(ShardDbContext context, uint accountId, uint characterId, string kind, TicketPayload payload, string idempotencyKey, DateTime now)
         {
-            var existing = Existing(context, accountId, idempotencyKey, kind);
+            var existing = FindByKey(context, accountId, idempotencyKey, kind);
 
             if (existing != null)
                 return existing;
@@ -115,7 +115,7 @@ namespace ACE.Database.Market
                 // a parallel request with the same key saved first: its ticket is the answer
                 context.ChangeTracker.Clear();
 
-                return Existing(context, accountId, idempotencyKey, kind) ?? throw new InvalidOperationException($"ticket key {idempotencyKey} of account {accountId} lost a race but no ticket has it", ex);
+                return FindByKey(context, accountId, idempotencyKey, kind) ?? throw new InvalidOperationException($"ticket key {idempotencyKey} of account {accountId} lost a race but no ticket has it", ex);
             }
         }
 
@@ -128,15 +128,15 @@ namespace ACE.Database.Market
         }
 
         /// <summary>
-        /// The account's ticket key, or null if it has not been used. Ticket creation endpoints call this before validating the rest of a retry.
+        /// The most tickets VisibleToPlayer returns, unless the unfinished ones alone are more
         /// </summary>
-        public static TicketCreateResult FindByKey(ShardDbContext context, uint accountId, string idempotencyKey, string kind) =>
-            Existing(context, accountId, idempotencyKey, kind);
+        public const int MaxVisible = 100;
 
         /// <summary>
-        /// Unfinished tickets regardless of age, plus recently finished tickets. All unfinished tickets are retained even if they alone exceed limit.
+        /// Unfinished tickets regardless of age, plus tickets finished in the last 24 hours, newest first.
+        /// At most MaxVisible, filled with the newest finished tickets after every unfinished one, which are all kept even if they alone are more.
         /// </summary>
-        public static List<Ticket> VisibleToPlayer(ShardDbContext context, uint accountId, DateTime now, int limit = 100)
+        public static List<Ticket> VisibleToPlayer(ShardDbContext context, uint accountId, DateTime now)
         {
             var recent = now - TimeSpan.FromHours(24);
             var unfinished = context.MarketTickets.AsNoTracking()
@@ -147,7 +147,7 @@ namespace ACE.Database.Market
             var finished = context.MarketTickets.AsNoTracking()
                 .Where(t => t.AccountId == accountId && (t.Status == TicketStatus.Done || t.Status == TicketStatus.Failed) && t.FinishedTime >= recent)
                 .OrderByDescending(t => t.Id)
-                .Take(Math.Max(0, limit - unfinished.Count))
+                .Take(Math.Max(0, MaxVisible - unfinished.Count))
                 .ToList();
 
             return unfinished.Concat(finished).OrderByDescending(t => t.Id).ToList();
@@ -173,12 +173,8 @@ namespace ACE.Database.Market
 
             foreach (var id in waiting)
             {
-                var changed = context.MarketTickets
-                    .Where(t => t.Id == id && t.Status == TicketStatus.Waiting)
-                    .ExecuteUpdate(s => s.SetProperty(t => t.Status, TicketStatus.Claimed).SetProperty(t => t.ClaimedTime, now));
-
-                // 0 rows: another poller claimed it first
-                if (changed == 1)
+                // false: another poller claimed it first
+                if (ClaimOne(context, id, now))
                     claimed.Add(id);
             }
 
@@ -186,6 +182,18 @@ namespace ACE.Database.Market
                 return new List<Ticket>();
 
             return context.MarketTickets.AsNoTracking().Where(t => claimed.Contains(t.Id)).OrderBy(t => t.Id).ToList();
+        }
+
+        /// <summary>
+        /// Claims one WAITING ticket with a conditional update. False if it isn't WAITING (another caller claimed it, or it finished).
+        /// </summary>
+        public static bool ClaimOne(ShardDbContext context, long ticketId, DateTime now)
+        {
+            now = ListingStore.Truncate(now);
+
+            return context.MarketTickets
+                .Where(t => t.Id == ticketId && t.Status == TicketStatus.Waiting)
+                .ExecuteUpdate(s => s.SetProperty(t => t.Status, TicketStatus.Claimed).SetProperty(t => t.ClaimedTime, now)) == 1;
         }
 
         /// <summary>
@@ -274,7 +282,11 @@ namespace ACE.Database.Market
             ticket.FinishedTime = ListingStore.Truncate(now);
         }
 
-        private static TicketCreateResult Existing(ShardDbContext context, uint accountId, string idempotencyKey, string kind)
+        /// <summary>
+        /// What the account's key already made: Existing with its ticket when that ticket is of this kind, KeyReused when it is of another kind,
+        /// or null when the key is unused. Ticket-creating endpoints call this before any other check, so a retry always gets its ticket.
+        /// </summary>
+        public static TicketCreateResult FindByKey(ShardDbContext context, uint accountId, string idempotencyKey, string kind)
         {
             var existing = context.MarketTickets.AsNoTracking().FirstOrDefault(t => t.AccountId == accountId && t.IdempotencyKey == idempotencyKey);
 
