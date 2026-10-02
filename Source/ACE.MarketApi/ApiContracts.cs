@@ -15,7 +15,7 @@ namespace ACE.MarketApi
             "account_locked", "attuned", "bad_cursor", "bad_limit", "bad_price", "bad_request", "bad_sort", "bad_type",
             "banned", "blocked_wcid", "busy", "channelling", "confirmation_busy", "confirm_timeout", "container_not_empty",
             "contains_attuned", "csrf", "declined", "gone", "in_trade", "insufficient_funds", "invalid_character", "invalid_count",
-            "invalid_credentials", "invalid_fee", "invalid_price", "invalid_amount", "ip_blocked", "key_reused", "listing_limit",
+            "invalid_code", "invalid_credentials", "invalid_fee", "invalid_price", "invalid_amount", "ip_blocked", "key_reused", "listing_limit",
             "network", "not_active", "not_available", "not_found", "not_held", "not_in_pack", "not_in_vault", "ok",
             "own_listing", "paused", "pet_out", "price_changed", "rate_limited", "recent_player_fight", "server", "trading",
             "unauthorized", "vault_full", "worn",

@@ -1312,6 +1312,7 @@
               "insufficient_funds",
               "invalid_character",
               "invalid_count",
+              "invalid_code",
               "invalid_credentials",
               "invalid_fee",
               "invalid_price",

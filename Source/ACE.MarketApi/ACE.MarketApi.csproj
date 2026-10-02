@@ -35,6 +35,10 @@
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.4" />
   </ItemGroup>
 
+  <Target Name="PreserveCommittedMarketOpenApi" BeforeTargets="GenerateMarketOpenApi" Condition="'$(DesignTimeBuild)' != 'true' and '$(TargetFramework)' == 'net10.0'">
+    <Copy SourceFiles="$(MSBuildProjectDirectory)/openapi.json" DestinationFiles="$(MSBuildProjectDirectory)/obj/market-openapi-committed-before-build.json" />
+  </Target>
+
   <Target Name="GenerateMarketOpenApi" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true' and '$(TargetFramework)' == 'net10.0'">
     <Exec Command="dotnet &quot;$(TargetPath)&quot; --generate-openapi &quot;$(MSBuildProjectDirectory)/openapi.json&quot;" />
   </Target>

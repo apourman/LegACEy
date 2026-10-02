@@ -50,15 +50,39 @@ namespace ACE.MarketApi.Tests
             {
                 await Program.GenerateOpenApi(generated);
                 Assert.IsTrue(File.Exists(committed), $"Expected committed OpenAPI document at {committed}.");
-                CollectionAssert.AreEqual(
-                    await File.ReadAllBytesAsync(committed),
-                    await File.ReadAllBytesAsync(generated),
-                    "The committed document is out of date; build ACE.MarketApi to regenerate it.");
+                var preBuildCommitted = Path.Combine(Path.GetDirectoryName(committed), "obj", "market-openapi-committed-before-build.json");
+                Assert.IsTrue(File.Exists(preBuildCommitted), $"Expected the build to preserve the pre-generation document at {preBuildCommitted}.");
+                AssertDocumentsMatch(await File.ReadAllBytesAsync(preBuildCommitted), await File.ReadAllBytesAsync(generated));
             }
             finally
             {
                 File.Delete(generated);
             }
+        }
+
+        [TestMethod]
+        public void OpenApiDriftCheck_RejectsStaleCommittedContent()
+        {
+            var committed = File.ReadAllBytes(FindCommittedDocument());
+            var generated = Path.Combine(Path.GetTempPath(), $"market-openapi-{Guid.NewGuid():N}.json");
+            try
+            {
+                Program.GenerateOpenApi(generated).GetAwaiter().GetResult();
+                var stale = (byte[])committed.Clone();
+                stale[0] ^= 1;
+
+                Assert.ThrowsExactly<AssertFailedException>(() => AssertDocumentsMatch(stale, File.ReadAllBytes(generated)));
+                AssertDocumentsMatch(committed, File.ReadAllBytes(generated));
+            }
+            finally
+            {
+                File.Delete(generated);
+            }
+        }
+
+        private static void AssertDocumentsMatch(byte[] committed, byte[] generated)
+        {
+            CollectionAssert.AreEqual(committed, generated, "The committed document is out of date; build ACE.MarketApi to regenerate it.");
         }
 
         private static string FindCommittedDocument()
