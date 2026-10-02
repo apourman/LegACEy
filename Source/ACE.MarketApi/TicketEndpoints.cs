@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -181,43 +182,35 @@ namespace ACE.MarketApi
             try
             {
                 using var document = JsonDocument.Parse(ticket.Result);
+                var root = document.RootElement;
 
-                if (ticket.Kind == TicketKind.InventorySnapshot && document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("items", out var items))
+                if (ticket.Kind == TicketKind.InventorySnapshot)
                 {
-                    var projected = items.EnumerateArray().Select(item =>
-                    {
-                        var guid = item.GetProperty("itemGuid").GetUInt32();
-                        var row = new VaultItem
-                        {
-                            ItemGuid = guid,
-                            ItemType = item.GetProperty("itemType").GetInt32(),
-                            Icon = ReadUInt(item, "icon"),
-                            IconUnderlay = ReadNullableUInt(item, "iconUnderlay"),
-                            IconOverlay = ReadNullableUInt(item, "iconOverlay"),
-                            IconOverlaySecondary = ReadNullableUInt(item, "iconOverlaySecondary"),
-                            UiEffects = ReadNullableInt(item, "uiEffects"),
-                            PaletteTemplate = ReadNullableInt(item, "paletteTemplate"),
-                            ClothingBase = ReadNullableUInt(item, "clothingBase"),
-                        };
+                    if (root.ValueKind != JsonValueKind.Object
+                        || !root.TryGetProperty("snapshotTime", out var snapshotTime)
+                        || snapshotTime.ValueKind != JsonValueKind.String
+                        || !root.TryGetProperty("items", out var items)
+                        || items.ValueKind != JsonValueKind.Array)
+                        return null;
 
-                        return new
-                        {
-                            itemGuid = guid,
-                            name = item.GetProperty("name").GetString(),
-                            stackSize = item.GetProperty("stackSize").GetInt32(),
-                            refusalCode = item.TryGetProperty("refusalCode", out var refusal) && refusal.ValueKind != JsonValueKind.Null ? refusal.GetString() : null,
-                            icon = ItemIcons.For(row, gameData),
-                        };
-                    }).ToArray();
+                    var projected = new List<object>(items.GetArrayLength());
+
+                    foreach (var item in items.EnumerateArray())
+                    {
+                        if (!TryProjectSnapshotItem(item, gameData, out var projectedItem))
+                            return null;
+
+                        projected.Add(projectedItem);
+                    }
 
                     return JsonSerializer.SerializeToElement(new
                     {
-                        snapshotTime = document.RootElement.GetProperty("snapshotTime").GetString(),
+                        snapshotTime = snapshotTime.GetString(),
                         items = projected,
                     }, new JsonSerializerOptions(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.Never });
                 }
 
-                return document.RootElement.Clone();
+                return root.Clone();
             }
             catch (JsonException)
             {
@@ -225,10 +218,110 @@ namespace ACE.MarketApi
             }
         }
 
-        private static uint ReadUInt(JsonElement item, string property) => item.GetProperty(property).GetUInt32();
+        private static bool TryProjectSnapshotItem(JsonElement item, GameData gameData, out object projected)
+        {
+            projected = null;
 
-        private static uint? ReadNullableUInt(JsonElement item, string property) => item.TryGetProperty(property, out var value) && value.ValueKind != JsonValueKind.Null ? value.GetUInt32() : null;
+            if (item.ValueKind != JsonValueKind.Object
+                || !TryReadUInt(item, "itemGuid", out var guid)
+                || !TryReadString(item, "name", out var name)
+                || !TryReadInt(item, "stackSize", out var stackSize)
+                || !TryReadInt(item, "itemType", out var itemType)
+                || !TryReadUInt(item, "icon", out var icon)
+                || !TryReadNullableString(item, "refusalCode", out var refusalCode)
+                || !TryReadNullableUInt(item, "iconUnderlay", out var iconUnderlay)
+                || !TryReadNullableUInt(item, "iconOverlay", out var iconOverlay)
+                || !TryReadNullableUInt(item, "iconOverlaySecondary", out var iconOverlaySecondary)
+                || !TryReadNullableInt(item, "uiEffects", out var uiEffects)
+                || !TryReadNullableInt(item, "paletteTemplate", out var paletteTemplate)
+                || !TryReadNullableUInt(item, "clothingBase", out var clothingBase))
+                return false;
 
-        private static int? ReadNullableInt(JsonElement item, string property) => item.TryGetProperty(property, out var value) && value.ValueKind != JsonValueKind.Null ? value.GetInt32() : null;
+            var row = new VaultItem
+            {
+                ItemGuid = guid,
+                ItemType = itemType,
+                Icon = icon,
+                IconUnderlay = iconUnderlay,
+                IconOverlay = iconOverlay,
+                IconOverlaySecondary = iconOverlaySecondary,
+                UiEffects = uiEffects,
+                PaletteTemplate = paletteTemplate,
+                ClothingBase = clothingBase,
+            };
+
+            projected = new
+            {
+                itemGuid = guid,
+                name,
+                stackSize,
+                refusalCode,
+                icon = ItemIcons.For(row, gameData),
+            };
+
+            return true;
+        }
+
+        private static bool TryReadUInt(JsonElement item, string property, out uint value)
+        {
+            value = default;
+            return item.TryGetProperty(property, out var element)
+                && element.ValueKind == JsonValueKind.Number
+                && element.TryGetUInt32(out value);
+        }
+
+        private static bool TryReadInt(JsonElement item, string property, out int value)
+        {
+            value = default;
+            return item.TryGetProperty(property, out var element)
+                && element.ValueKind == JsonValueKind.Number
+                && element.TryGetInt32(out value);
+        }
+
+        private static bool TryReadString(JsonElement item, string property, out string value)
+        {
+            value = null;
+            if (!item.TryGetProperty(property, out var element) || element.ValueKind != JsonValueKind.String)
+                return false;
+
+            value = element.GetString();
+            return true;
+        }
+
+        private static bool TryReadNullableString(JsonElement item, string property, out string value)
+        {
+            value = null;
+            if (!item.TryGetProperty(property, out var element) || element.ValueKind == JsonValueKind.Null)
+                return true;
+            if (element.ValueKind != JsonValueKind.String)
+                return false;
+
+            value = element.GetString();
+            return true;
+        }
+
+        private static bool TryReadNullableUInt(JsonElement item, string property, out uint? value)
+        {
+            value = null;
+            if (!item.TryGetProperty(property, out var element) || element.ValueKind == JsonValueKind.Null)
+                return true;
+            if (element.ValueKind != JsonValueKind.Number || !element.TryGetUInt32(out var parsed))
+                return false;
+
+            value = parsed;
+            return true;
+        }
+
+        private static bool TryReadNullableInt(JsonElement item, string property, out int? value)
+        {
+            value = null;
+            if (!item.TryGetProperty(property, out var element) || element.ValueKind == JsonValueKind.Null)
+                return true;
+            if (element.ValueKind != JsonValueKind.Number || !element.TryGetInt32(out var parsed))
+                return false;
+
+            value = parsed;
+            return true;
+        }
     }
 }

@@ -200,7 +200,7 @@ namespace ACE.MarketApi.Tests
             var snapshot = await AcceptedAsync(await InventorySnapshotAsync(host, cookie, player.CharacterId, snapshotKey));
             var snapshotId = snapshot.GetProperty("id").GetInt64();
 
-            Assert.AreEqual("inventory_snapshot", snapshot.GetProperty("kind").GetString());
+            Assert.AreEqual(TicketKind.InventorySnapshot, snapshot.GetProperty("kind").GetString());
             Assert.AreEqual(TicketStatus.Waiting, snapshot.GetProperty("status").GetString());
             Assert.AreEqual(player.CharacterId, snapshot.GetProperty("characterId").GetUInt32());
 
@@ -258,8 +258,79 @@ namespace ACE.MarketApi.Tests
             var layers = item.GetProperty("icon").GetProperty("layers").EnumerateArray().ToArray();
 
             Assert.IsTrue(layers.Length >= 2, "the plate and base icon are represented");
-            Assert.IsTrue(layers.All(layer => layer.GetProperty("url").GetString().StartsWith("/api/icons/", StringComparison.Ordinal)));
+            Assert.IsTrue(layers.Any(layer => layer.GetProperty("kind").GetString() == "base" && layer.GetProperty("url").GetString() == "/api/icons/0x0600373F.png"),
+                "the snapshot's base icon URL points at the item's actual portal DAT icon");
             Assert.AreEqual(JsonValueKind.Null, item.GetProperty("refusalCode").ValueKind);
+        }
+
+        [TestMethod]
+        public async Task InventorySnapshot_MalformedResultShapes_DoNotBreakTicketList()
+        {
+            var player = NewPlayer("snapshotmalformed");
+
+            await using var host = await MarketApiHost.StartAsync();
+            var cookie = await host.SignInForCookieAsync(player.Name, "pass");
+            var malformedResults = new[]
+            {
+                "{\"snapshotTime\":\"2026-10-02T00:00:00Z\",\"items\":{}}",
+                "{\"snapshotTime\":\"2026-10-02T00:00:00Z\",\"items\":[{\"itemGuid\":3221225473,\"stackSize\":1,\"itemType\":2,\"icon\":100677439}]}",
+                "{\"snapshotTime\":\"2026-10-02T00:00:00Z\",\"items\":[null]}"
+            };
+            var ticketIds = new long[malformedResults.Length];
+
+            for (var i = 0; i < malformedResults.Length; i++)
+            {
+                var created = await AcceptedAsync(await InventorySnapshotAsync(host, cookie, player.CharacterId, NewKey()));
+                var id = created.GetProperty("id").GetInt64();
+                ticketIds[i] = id;
+
+                using var shard = MarketApiTestData.Shard();
+                TicketStore.ClaimOne(shard, id, host.Clock.GetUtcNow().UtcDateTime);
+                TicketStore.Complete(shard, new TicketCompletion(id, "Inventory snapshot is ready.", malformedResults[i]), host.Clock.GetUtcNow().UtcDateTime);
+                shard.SaveChanges();
+            }
+
+            var itemResponses = new System.Collections.Generic.List<HttpResponseMessage>();
+            var requestFailures = new System.Collections.Generic.List<string>();
+            foreach (var id in ticketIds)
+            {
+                try
+                {
+                    itemResponses.Add(await host.GetAsync($"/api/tickets/{id}", cookie));
+                }
+                catch (Exception exception)
+                {
+                    requestFailures.Add($"GET /api/tickets/{id}: {exception.GetType().Name}");
+                }
+            }
+
+            HttpResponseMessage listResponse = null;
+            try
+            {
+                listResponse = await host.GetAsync("/api/tickets", cookie);
+            }
+            catch (Exception exception)
+            {
+                requestFailures.Add($"GET /api/tickets: {exception.GetType().Name}");
+            }
+
+            Assert.AreEqual(0, requestFailures.Count, string.Join("; ", requestFailures));
+            Assert.AreEqual(ticketIds.Length, itemResponses.Count);
+            Assert.AreEqual(HttpStatusCode.OK, listResponse.StatusCode);
+
+            foreach (var response in itemResponses)
+                Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
+
+            var tickets = (await MarketApiHost.JsonAsync(listResponse)).EnumerateArray().ToArray();
+            Assert.AreEqual(3, tickets.Length);
+            Assert.IsTrue(tickets.All(ticket => ticket.GetProperty("kind").GetString() == TicketKind.InventorySnapshot));
+            Assert.IsTrue(tickets.All(ticket => ticket.GetProperty("result").ValueKind == JsonValueKind.Null),
+                "malformed snapshot results are omitted while the ticket list remains available");
+            foreach (var response in itemResponses)
+            {
+                var ticket = await MarketApiHost.JsonAsync(response);
+                Assert.AreEqual(JsonValueKind.Null, ticket.GetProperty("result").ValueKind, "a malformed result is omitted by the single-ticket endpoint");
+            }
         }
 
         [TestMethod]
@@ -361,6 +432,33 @@ namespace ACE.MarketApi.Tests
                 Assert.AreEqual(guid, replay.GetProperty("itemGuid").GetUInt32());
                 Assert.AreEqual(player.CharacterId, replay.GetProperty("characterId").GetUInt32());
                 Assert.AreEqual(1L, Tickets(player.AccountId));
+            });
+        }
+
+        [TestMethod]
+        public async Task VaultDepositReplay_ReturnsOriginalWhilePaused_AndNewDepositAndSnapshotRequestsAreAccepted()
+        {
+            var player = NewPlayer("depositpaused");
+            var key = NewKey();
+
+            await using var host = await MarketApiHost.StartAsync();
+            var cookie = await host.SignInForCookieAsync(player.Name, "pass");
+            var first = await AcceptedAsync(await VaultDepositAsync(host, cookie, player.CharacterId, 0xC0000010, key));
+
+            await WhilePausedAsync(async () =>
+            {
+                var replayResponse = await host.PostJsonAsync("/api/vault/deposit", new { characterId = 0, itemGuid = (uint?)null, idempotencyKey = key }, cookie);
+                var replay = await AcceptedAsync(replayResponse);
+                Assert.AreEqual(first.GetProperty("id").GetInt64(), replay.GetProperty("id").GetInt64());
+                Assert.AreEqual(0xC0000010u, replay.GetProperty("itemGuid").GetUInt32());
+
+                var deposit = await AcceptedAsync(await VaultDepositAsync(host, cookie, player.CharacterId, 0xC0000011, NewKey()));
+                Assert.AreEqual(TicketKind.VaultDeposit, deposit.GetProperty("kind").GetString());
+
+                var snapshot = await AcceptedAsync(await InventorySnapshotAsync(host, cookie, player.CharacterId, NewKey()));
+                Assert.AreEqual(TicketKind.InventorySnapshot, snapshot.GetProperty("kind").GetString());
+
+                Assert.AreEqual(3L, Tickets(player.AccountId), "pause does not stop new deposits or inventory snapshots");
             });
         }
 

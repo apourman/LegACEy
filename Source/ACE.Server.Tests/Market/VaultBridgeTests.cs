@@ -1,8 +1,6 @@
 using System;
 using System.Linq;
 using System.Text.Json;
-using System.Collections;
-using System.Reflection;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -214,7 +212,7 @@ namespace ACE.Server.Tests.Market
 
             using (VaultTestWorld.Online(player))
             {
-                var ticket = NewTicket(player, "inventory_snapshot", new TicketPayload());
+                var ticket = NewTicket(player, TicketKind.InventorySnapshot, new TicketPayload());
 
                 Assert.AreEqual($"{TicketStatus.Done}|{TicketStore.Ok}", WaitForTicket(ticket));
 
@@ -241,7 +239,7 @@ namespace ACE.Server.Tests.Market
         public void Bridge_InventorySnapshot_OfflineCharacterFails()
         {
             var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
-            var ticket = NewTicket(player, "inventory_snapshot", new TicketPayload());
+            var ticket = NewTicket(player, TicketKind.InventorySnapshot, new TicketPayload());
 
             Assert.AreEqual($"{TicketStatus.Failed}|{GameBridge.Offline}", WaitForTicket(ticket));
             Assert.IsFalse(string.IsNullOrWhiteSpace(TicketMessage(ticket)));
@@ -290,7 +288,7 @@ namespace ACE.Server.Tests.Market
                 var context = PendingConfirmationContext(player);
                 VaultTestWorld.OnWorldThread(() => player.ConfirmationManager.HandleResponse(ConfirmationType.Yes_No, context, false));
 
-                Assert.AreEqual($"{TicketStatus.Failed}|declined", WaitForTicket(ticket));
+                Assert.AreEqual($"{TicketStatus.Failed}|{GameBridge.DeclinedResultCode}", WaitForTicket(ticket));
                 Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full));
                 Assert.IsNull(VaultStore.Get(item.Guid.Full));
             }
@@ -308,9 +306,13 @@ namespace ACE.Server.Tests.Market
                 var oldContext = PendingConfirmationContext(player);
                 var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
 
-                Assert.AreEqual($"{TicketStatus.Failed}|confirmation_busy", WaitForTicket(ticket));
+                Assert.AreEqual($"{TicketStatus.Failed}|{GameBridge.ConfirmationBusyResultCode}", WaitForTicket(ticket));
                 Assert.AreEqual(oldContext, PendingConfirmationContext(player), "the existing popup remains open");
                 Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full));
+                var failed = ReadTicket(ticket);
+                Assert.IsNull(failed.Progress, "a terminal ticket has no stale progress stage");
+                Assert.IsNull(failed.ProgressTime);
+                Assert.IsNull(failed.ProgressUntil);
 
                 VaultTestWorld.OnWorldThread(() => player.ConfirmationManager.HandleResponse(ConfirmationType.Yes_No, oldContext, false));
             }
@@ -327,11 +329,12 @@ namespace ACE.Server.Tests.Market
                 var first = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
                 VaultTestWorld.WaitUntil(() => ReadTicket(first).Progress == TicketProgress.AwaitingConfirmation, "the first confirmation request");
                 var oldContext = PendingConfirmationContext(player);
-                VaultTestWorld.OnWorldThread(() => Assert.IsTrue(player.ConfirmationManager.Timeout(ConfirmationType.Yes_No, oldContext)));
 
-                Assert.AreEqual($"{TicketStatus.Failed}|confirm_timeout", WaitForTicket(first));
+                Assert.AreEqual($"{TicketStatus.Failed}|{GameBridge.ConfirmationTimeoutResultCode}", WaitForTicket(first, TimeSpan.FromSeconds(45)));
                 Assert.IsNull(PendingConfirmationContextOrNull(player), "timeout removed the expired confirmation");
                 Assert.IsFalse(BridgeIsRunning(first), "timeout released the bridge's running entry");
+                VaultTestWorld.OnWorldThread(() => player.ConfirmationManager.HandleResponse(ConfirmationType.Yes_No, oldContext, true));
+                Assert.IsFalse(player.IsVaultChannelling, "a late Yes with no pending popup starts no channel");
 
                 var second = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
                 VaultTestWorld.WaitUntil(() => ReadTicket(second).Progress == TicketProgress.AwaitingConfirmation, "the next confirmation request");
@@ -343,7 +346,7 @@ namespace ACE.Server.Tests.Market
                 Assert.AreEqual(TicketStatus.Claimed, ReadTicket(second).Status);
 
                 VaultTestWorld.OnWorldThread(() => player.ConfirmationManager.HandleResponse(ConfirmationType.Yes_No, newContext, false));
-                Assert.AreEqual($"{TicketStatus.Failed}|declined", WaitForTicket(second));
+                Assert.AreEqual($"{TicketStatus.Failed}|{GameBridge.DeclinedResultCode}", WaitForTicket(second));
                 Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full));
             }
         }
@@ -459,6 +462,51 @@ namespace ACE.Server.Tests.Market
         }
 
         [TestMethod]
+        public void Bridge_VaultDeposit_DeadlineAfterRelogFailsOfflineForTheOriginalCharacterSession()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+            var originalLogin = VaultTestWorld.Online(player);
+            var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
+            VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == TicketProgress.AwaitingConfirmation, "the confirmation request");
+            var context = PendingConfirmationContext(player);
+
+            originalLogin.Dispose();
+            var reloggedPlayer = VaultTestWorld.Reconnect(player);
+            using (VaultTestWorld.Online(reloggedPlayer))
+            {
+                VaultTestWorld.OnWorldThread(() => player.ConfirmationManager.Timeout(ConfirmationType.Yes_No, context));
+
+                Assert.AreEqual($"{TicketStatus.Failed}|{GameBridge.Offline}", WaitForTicket(ticket));
+                Assert.IsFalse(reloggedPlayer.IsVaultChannelling);
+                Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full));
+                Assert.IsNull(VaultStore.Get(item.Guid.Full));
+            }
+        }
+
+        [TestMethod]
+        public void ConfirmationManager_FellowshipStaleContextKeepsCurrentConfirmation()
+        {
+            var inviter = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var invited = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+
+            using (VaultTestWorld.Online(inviter))
+            using (VaultTestWorld.Online(invited))
+            {
+                var confirmation = new Confirmation_Fellowship(inviter.Guid, invited.Guid);
+                VaultTestWorld.OnWorldThread(() => Assert.IsTrue(invited.ConfirmationManager.EnqueueSend(confirmation, inviter.Name)));
+                var currentContext = PendingConfirmationContext(invited, ConfirmationType.Fellowship);
+                var staleContext = currentContext == 1 ? currentContext + 1 : currentContext - 1;
+
+                VaultTestWorld.OnWorldThread(() => invited.ConfirmationManager.HandleResponse(ConfirmationType.Fellowship, staleContext, false));
+
+                Assert.AreEqual(currentContext, PendingConfirmationContext(invited, ConfirmationType.Fellowship));
+                CollectionAssert.Contains(VaultTestWorld.Chats(VaultTestWorld.TakeSent(invited)), "That offer of fellowship has expired.");
+                VaultTestWorld.OnWorldThread(() => invited.ConfirmationManager.HandleResponse(ConfirmationType.Fellowship, currentContext, false));
+            }
+        }
+
+        [TestMethod]
         public void Bridge_VaultDeposit_PlayerHitDuringChannelFailsInterruptedAndKeepsItemInPack()
         {
             var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
@@ -481,25 +529,25 @@ namespace ACE.Server.Tests.Market
             }
         }
 
-        private static uint PendingConfirmationContext(Player player)
+        private static uint PendingConfirmationContext(Player player, ConfirmationType confirmationType = ConfirmationType.Yes_No)
         {
-            var context = PendingConfirmationContextOrNull(player);
+            var context = PendingConfirmationContextOrNull(player, confirmationType);
             Assert.IsTrue(context.HasValue, "a yes/no confirmation is pending");
             return context.Value;
         }
 
-        private static uint? PendingConfirmationContextOrNull(Player player)
+        private static uint? PendingConfirmationContextOrNull(Player player, ConfirmationType confirmationType = ConfirmationType.Yes_No)
         {
-            var field = typeof(ACE.Server.WorldObjects.Managers.ConfirmationManager).GetField("confirmations", BindingFlags.NonPublic | BindingFlags.Instance);
-            var confirmations = (IDictionary)field.GetValue(player.ConfirmationManager);
-            var confirmation = confirmations[ConfirmationType.Yes_No];
-            return confirmation == null ? null : (uint)confirmation.GetType().GetField("ContextId").GetValue(confirmation);
+            var context = (uint?)null;
+            VaultTestWorld.OnWorldThread(() => context = player.ConfirmationManager.PendingContext(confirmationType));
+            return context;
         }
 
         private static bool BridgeIsRunning(long ticketId)
         {
-            var field = typeof(GameBridge).GetField("running", BindingFlags.NonPublic | BindingFlags.Static);
-            return ((System.Collections.Generic.HashSet<long>)field.GetValue(null)).Contains(ticketId);
+            var running = false;
+            VaultTestWorld.OnWorldThread(() => running = GameBridge.IsTicketRunning(ticketId));
+            return running;
         }
 
         // ---- restart
@@ -593,6 +641,18 @@ namespace ACE.Server.Tests.Market
         private static string WaitForTicket(long ticketId)
         {
             VaultTestWorld.WaitUntil(() => TicketStatusOf(ticketId) is TicketStatus.Done or TicketStatus.Failed, $"ticket {ticketId} to finish");
+
+            return TicketResult(ticketId);
+        }
+
+        private static string WaitForTicket(long ticketId, TimeSpan timeout)
+        {
+            var deadline = DateTime.UtcNow + timeout;
+            while (TicketStatusOf(ticketId) is not (TicketStatus.Done or TicketStatus.Failed))
+            {
+                Assert.IsTrue(DateTime.UtcNow < deadline, $"timed out waiting for ticket {ticketId} to finish");
+                System.Threading.Thread.Sleep(20);
+            }
 
             return TicketResult(ticketId);
         }

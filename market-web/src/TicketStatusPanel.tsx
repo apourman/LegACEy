@@ -70,19 +70,19 @@ export function TicketStatusPanel() {
       try {
         const latest = await getTickets();
         if (!active) return;
-        let finished = false;
+        const finishedTickets: Ticket[] = [];
         const anyUnfinished = latest.some(isUnfinished);
         for (const ticket of latest) {
           const shown = watched.current.get(ticket.id);
-          if (shown && isUnfinished(shown) && !isUnfinished(ticket)) finished = true;
+          if (shown && isUnfinished(shown) && !isUnfinished(ticket)) finishedTickets.push(ticket);
           // with nothing unfinished, only tickets already shown stay (with their results); nothing new appears
           if (shown || (anyUnfinished && !cleared.current.has(ticket.id))) watched.current.set(ticket.id, ticket);
         }
         publish();
         setError('');
-        if (finished) {
+        if (finishedTickets.length > 0) {
           await session.refresh();
-          announceTicketFinished();
+          for (const ticket of finishedTickets) announceTicketFinished(ticket);
         }
       } catch (e) {
         if (active) setError(e instanceof Error ? e.message : 'Could not refresh request status.');

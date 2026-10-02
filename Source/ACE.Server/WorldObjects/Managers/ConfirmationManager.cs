@@ -27,6 +27,9 @@ namespace ACE.Server.WorldObjects.Managers
             Player = player;
         }
 
+        internal uint? PendingContext(ConfirmationType confirmationType) =>
+            confirmations.TryGetValue(confirmationType, out var confirmation) ? confirmation.ContextId : null;
+
         /// <summary>
         /// Builds a new confirmation request on the server,
         /// and sends the request to the client

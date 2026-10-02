@@ -63,7 +63,7 @@ export const messages: Record<string, string> = {
   own_listing: 'You cannot buy your own listing.',
   rate_limited: 'Too many purchase attempts. Wait a minute and try again.',
   paused: 'The market is paused. Purchases and MMD withdrawals are temporarily unavailable.',
-  busy: 'The server is busy. Wait for the current action to finish, then try again.',
+  busy: 'The server is busy. Try this purchase again.',
   key_reused: 'This request key was already used. Close this dialog and start a new purchase.',
   invalid_price: 'The price must be a positive whole number of MMD.',
   invalid_count: 'The whole stack must be purchased. Reload the listing.',
