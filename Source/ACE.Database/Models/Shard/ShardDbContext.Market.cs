@@ -189,6 +189,10 @@ public partial class ShardDbContext
             entity.Property(e => e.IdempotencyKey).IsRequired().HasMaxLength(64).UseCollation("utf8mb4_bin").HasColumnName("idempotency_Key");
             entity.Property(e => e.CreatedTime).HasColumnType("datetime(6)").HasColumnName("created_Time");
             entity.Property(e => e.ClaimedTime).HasColumnType("datetime(6)").HasColumnName("claimed_Time");
+            entity.Property(e => e.Progress).HasMaxLength(32).HasColumnName("progress");
+            entity.Property(e => e.ProgressTime).HasColumnType("datetime(6)").HasColumnName("progress_Time");
+            entity.Property(e => e.ProgressUntil).HasColumnType("datetime(6)").HasColumnName("progress_Until");
+            entity.Property(e => e.Result).HasColumnType("json").HasColumnName("result");
             entity.Property(e => e.FinishedTime).HasColumnType("datetime(6)").HasColumnName("finished_Time");
         });
 

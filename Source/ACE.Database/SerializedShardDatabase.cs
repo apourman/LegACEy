@@ -253,6 +253,18 @@ namespace ACE.Database
         }
 
         /// <summary>
+        /// Queues a claimed ticket's progress update (see ShardDatabase.SetTicketProgress)
+        /// </summary>
+        public void SetTicketProgress(long ticketId, string progress, DateTime progressTime, DateTime progressUntil, Action<bool> callback)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = BaseDatabase.SetTicketProgress(ticketId, progress, progressTime, progressUntil);
+                callback?.Invoke(result);
+            }));
+        }
+
+        /// <summary>
         /// Queues deleting long-finished tickets (see ShardDatabase.DeleteFinishedTickets)
         /// </summary>
         public void DeleteFinishedTickets(Action<int> callback)

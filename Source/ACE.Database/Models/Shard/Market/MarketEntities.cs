@@ -206,6 +206,17 @@ public class Ticket
 
     public DateTime? ClaimedTime { get; set; }
 
+    public string Progress { get; set; }
+
+    public DateTime? ProgressTime { get; set; }
+
+    public DateTime? ProgressUntil { get; set; }
+
+    /// <summary>
+    /// Optional structured result, currently used by inventory snapshot tickets.
+    /// </summary>
+    public string Result { get; set; }
+
     public DateTime? FinishedTime { get; set; }
 }
 

@@ -29,6 +29,18 @@ It signs in as `seedalpha`, asks for an MMD withdrawal to the offline character 
 server to fail it `offline` within 10 seconds. It prints `SMOKE PASS`, or `SMOKE FAIL (<piece>)` naming the missing
 piece: `database`, `schema`, `API`, `seed` or `game`.
 
+## Ticket status walkthrough
+
+With MySQL, Market API and website running and the game server stopped, run:
+
+```bash
+./scripts/market/dev.sh fixture --character "Seed Alpha"
+```
+
+The fixture first adds a temporary unknown-kind probe ticket and watches it for five seconds. If the game claims it, the fixture deletes the probe and refuses to continue. Otherwise it creates examples for WAITING, CLAIMED/Working, CLAIMED/Channelling, DONE, and FAILED (`offline` and `paused`). These rows demonstrate presentation only: the fixture does not touch Vault rows, balances, ledger entries or item rows. Sign in as `seedalpha` at `http://localhost:5173`, then reload any page to see the status panel rebuild the examples from the API. The channel sample has a 60-second display countdown; it does not run a game channel.
+
+The separate `./scripts/market/smoke.sh` uses the real game process. It requests an MMD withdrawal for offline `Seed Alpha` and waits for the game to report `offline`.
+
 ## After an API code change
 
 ```bash
@@ -72,7 +84,7 @@ docker compose -f docker/docker-compose.local.yml exec ace-db sh -c 'MYSQL_PWD="
 
 Stop the game server first, and restart it afterwards. The game server records applied update scripts in its build
 output (`DatabaseSetupScripts/Updates/Shard/applied_updates.txt`), not in the database, so it won't reapply ACE's
-older shard updates to a recreated shard. `bootstrap.sh` applies the market script itself, so the market doesn't depend on that file.
+older shard updates to a recreated shard. `bootstrap.sh` applies both market schema scripts itself, so the market doesn't depend on that file.
 
 Settings: `MARKET_AUTH_DATABASE`, `MARKET_SHARD_DATABASE`, `MARKET_API_PORT`, `DB_HOST_PORT`, `MARKET_GAME_RUN_DIR`.
 

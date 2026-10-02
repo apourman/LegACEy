@@ -122,7 +122,7 @@ namespace ACE.Database.Tests.Market
         {
             // an existing server: base plus every earlier update, with live data, before the market script arrives
             MarketTestDatabase.CreateFromBase(ExistingDb);
-            MarketTestDatabase.ApplyAllUpdates(ExistingDb, f => f.Name != MarketTestDatabase.MarketUpdateScript);
+            MarketTestDatabase.ApplyAllUpdates(ExistingDb, f => f.Name != MarketTestDatabase.MarketUpdateScript && f.Name != MarketTestDatabase.TicketProgressUpdateScript);
 
             MarketTestDatabase.Execute(ExistingDb, "INSERT INTO biota (id, weenie_Class_Id, weenie_Type) VALUES (2147483649, 20630, 51);");
             MarketTestDatabase.Execute(ExistingDb, "INSERT INTO config_properties_long (`key`, `value`) VALUES ('existing_setting', 7);");
@@ -130,6 +130,7 @@ namespace ACE.Database.Tests.Market
             Assert.AreEqual(0, MarketTestDatabase.Scalar(ExistingDb, "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'market%';"));
 
             MarketTestDatabase.ApplyUpdate(ExistingDb, MarketTestDatabase.MarketUpdateScriptPath);
+            MarketTestDatabase.ApplyUpdate(ExistingDb, MarketTestDatabase.TicketProgressUpdateScriptPath);
 
             AssertFullMarketSchema(ExistingDb);
             Assert.AreEqual(1, MarketTestDatabase.Scalar(ExistingDb, "SELECT COUNT(*) FROM biota WHERE id = 2147483649;"));
@@ -215,6 +216,23 @@ namespace ACE.Database.Tests.Market
 
             Assert.AreEqual(MarketSchemaStatus.Missing, result.Status);
             CollectionAssert.Contains(result.Missing.ToList(), "market_ledger_entry_no_delete");
+        }
+
+        [TestMethod]
+        public void SchemaCheck_TicketProgressColumnsMissing_ReportsEachMissing()
+        {
+            var failures = MarketTestDatabase.CreateFresh(FreshDb);
+            Assert.IsFalse(failures.ContainsKey(MarketTestDatabase.MarketUpdateScript), failures.TryGetValue(MarketTestDatabase.MarketUpdateScript, out var marketEx) ? marketEx.ToString() : null);
+            Assert.IsFalse(failures.ContainsKey(MarketTestDatabase.TicketProgressUpdateScript), failures.TryGetValue(MarketTestDatabase.TicketProgressUpdateScript, out var progressEx) ? progressEx.ToString() : null);
+
+            MarketTestDatabase.Execute(FreshDb, "ALTER TABLE market_ticket DROP COLUMN progress, DROP COLUMN progress_Time, DROP COLUMN progress_Until, DROP COLUMN result;");
+
+            using var context = MarketTestDatabase.CreateContext(FreshDb);
+            var result = MarketSchema.Check(context);
+
+            Assert.AreEqual(MarketSchemaStatus.Missing, result.Status);
+            foreach (var column in new[] { "market_ticket.progress", "market_ticket.progress_Time", "market_ticket.progress_Until", "market_ticket.result" })
+                CollectionAssert.Contains(result.Missing.ToList(), column);
         }
 
         private static void AssertFullMarketSchema(string database)

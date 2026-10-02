@@ -128,6 +128,32 @@ namespace ACE.Database.Market
         }
 
         /// <summary>
+        /// The account's ticket key, or null if it has not been used. Ticket creation endpoints call this before validating the rest of a retry.
+        /// </summary>
+        public static TicketCreateResult FindByKey(ShardDbContext context, uint accountId, string idempotencyKey, string kind) =>
+            Existing(context, accountId, idempotencyKey, kind);
+
+        /// <summary>
+        /// Unfinished tickets regardless of age, plus recently finished tickets. All unfinished tickets are retained even if they alone exceed limit.
+        /// </summary>
+        public static List<Ticket> VisibleToPlayer(ShardDbContext context, uint accountId, DateTime now, int limit = 100)
+        {
+            var recent = now - TimeSpan.FromHours(24);
+            var unfinished = context.MarketTickets.AsNoTracking()
+                .Where(t => t.AccountId == accountId && (t.Status == TicketStatus.Waiting || t.Status == TicketStatus.Claimed))
+                .OrderByDescending(t => t.Id)
+                .ToList();
+
+            var finished = context.MarketTickets.AsNoTracking()
+                .Where(t => t.AccountId == accountId && (t.Status == TicketStatus.Done || t.Status == TicketStatus.Failed) && t.FinishedTime >= recent)
+                .OrderByDescending(t => t.Id)
+                .Take(Math.Max(0, limit - unfinished.Count))
+                .ToList();
+
+            return unfinished.Concat(finished).OrderByDescending(t => t.Id).ToList();
+        }
+
+        /// <summary>
         /// The result code of a ticket left CLAIMED that the server running is no longer working on (its claim or its work stopped on an error)
         /// </summary>
         public const string Abandoned = "abandoned";
@@ -193,6 +219,22 @@ namespace ACE.Database.Market
         public static bool Fail(ShardDbContext context, long ticketId, string resultCode, string message, DateTime now)
         {
             return MarkFailed(context.MarketTickets.Where(t => t.Id == ticketId && t.Status == TicketStatus.Claimed), resultCode, message, now) == 1;
+        }
+
+        /// <summary>
+        /// Updates the presentation stage of a claimed ticket without changing the work or ticket state.
+        /// </summary>
+        public static bool SetProgress(ShardDbContext context, long ticketId, string progress, DateTime progressTime, DateTime progressUntil)
+        {
+            progressTime = ListingStore.Truncate(progressTime);
+            progressUntil = ListingStore.Truncate(progressUntil);
+
+            return context.MarketTickets
+                .Where(t => t.Id == ticketId && t.Status == TicketStatus.Claimed)
+                .ExecuteUpdate(s => s
+                    .SetProperty(t => t.Progress, progress)
+                    .SetProperty(t => t.ProgressTime, progressTime)
+                    .SetProperty(t => t.ProgressUntil, progressUntil)) == 1;
         }
 
         /// <summary>

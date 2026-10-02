@@ -53,6 +53,7 @@ namespace ACE.MarketApi.Tests
             ("GET", "/history"),
             ("GET", "/tokens"),
             ("POST", "/tokens/1/revoke"),
+            ("GET", "/tickets"),
             ("GET", "/icons/glow.css"),
             ("GET", "/icons/0x06003237.png"),
             ("POST", "/vault/withdraw"),

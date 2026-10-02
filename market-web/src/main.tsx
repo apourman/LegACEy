@@ -6,6 +6,7 @@ import { Browse } from './Browse';
 import { ListingPage } from './ListingPage';
 import { Vault } from './Vault';
 import { History } from './History';
+import { TicketStatusPanel } from './TicketStatusPanel';
 import { SessionProvider, useSession } from './session';
 import './style.css';
 
@@ -18,7 +19,7 @@ function Header() {
       <label className="character-picker">Acting character<select value={session.characterId ?? ''} onChange={e => session.selectCharacter(Number(e.target.value))} disabled={session.characterId === null}>
         {session.me.characters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}{session.me.characters.length === 0 && <option value="">No characters</option>}</select></label>
       <button className="secondary" onClick={() => void logout()}>Sign out</button></> : <Link to="/signin">Sign in</Link>}
-  </nav></header>{session.me?.paused && <p role="status" className="pause-banner">The market is paused. Purchases are temporarily unavailable.</p>}
+  </nav></header>{session.me?.paused && <p role="status" className="pause-banner">The market is paused. Purchases and MMD withdrawals are temporarily unavailable.</p>}
   {(error || session.error) && <p role="alert" className="notice">{error || session.error}</p>}</>;
 }
 function SignIn() {
@@ -44,7 +45,7 @@ function SignIn() {
     <Link to="/">Continue browsing</Link>
   </section>;
 }
-function App() { return <SessionProvider><a className="skip-link" href="#main">Skip to content</a><Header /><main id="main"><Routes>
+function App() { return <SessionProvider><a className="skip-link" href="#main">Skip to content</a><Header /><TicketStatusPanel /><main id="main"><Routes>
   <Route path="/" element={<Browse />} /><Route path="/listing/:id" element={<ListingPage />} /><Route path="/signin" element={<SignIn />} /><Route path="/vault" element={<Vault />} /><Route path="/history" element={<History />} />
   <Route path="*" element={<section><h1>Page not found</h1><Link to="/">Back to browse</Link></section>} />
 </Routes></main><footer>LegACEy · Player marketplace</footer></SessionProvider>; }
