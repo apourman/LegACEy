@@ -65,7 +65,7 @@ namespace ACE.Server.Market
                 VaultOutcome.NoNotes => "You have no trade notes in your packs to deposit.",
                 VaultOutcome.InvalidAmount => "Withdraw at least 1 MMD.",
                 VaultOutcome.InsufficientFunds => $"You cannot withdraw {notes}. Your balance is {balance:N0} MMD.",
-                VaultOutcome.NoPackSpace => $"You do not have room in your pack for {notes}.",
+                VaultOutcome.NoPackSpace => $"You do not have room in your pack for {notes}. Nothing was withdrawn. Free some pack space and try again.",
                 VaultOutcome.SaveFailed => "The Vault could not save your trade notes. Nothing was changed.",
                 VaultOutcome.Unconfirmed => "The Vault could not confirm whether your trade notes moved. Log out and back in, then check /vault balance.",
                 VaultOutcome.Banned => "Your account is banned, so its balance is frozen.",

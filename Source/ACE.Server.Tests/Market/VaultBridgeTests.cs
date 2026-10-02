@@ -1,9 +1,13 @@
 using System;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
+using MySqlConnector;
+
+using ACE.Database;
 using ACE.Database.Market;
 using ACE.Database.Models.Shard.Market;
 using ACE.Database.Tests.Market;
@@ -95,6 +99,92 @@ namespace ACE.Server.Tests.Market
             Assert.AreEqual(0, NotesInPacks(player));
             Assert.AreEqual(0, DatabaseNoteStacks(player.Guid.Full).Count);
             Assert.AreEqual(balanceRow, BalanceRow(account), "the balance row is exactly as before");
+        }
+
+        [TestMethod]
+        public void Bridge_MmdWithdraw_FullPack_IsRefusedNoPackSpace_TellsThePlayerToFreeSpace_AndNothingMoves()
+        {
+            var account = VaultTestWorld.NewAccountId();
+            var player = VaultTestWorld.NewPlayer(account);
+            GiveNotes(player, 10);
+            Assert.AreEqual(VaultOutcome.NotesDeposited, VaultTestWorld.DepositNotes(player).Outcome);
+            var balanceRow = BalanceRow(account);
+            VaultTestWorld.OnWorldThread(() =>
+            {
+                while (player.TryAddToInventory(VaultTestWorld.NewItem(VaultTestWorld.SwordWcid), out _)) { }
+            });
+
+            using (VaultTestWorld.Online(player))
+            {
+                var ticket = NewTicket(player, TicketKind.MmdWithdraw, new TicketPayload(Amount: 4));
+
+                Assert.AreEqual($"{TicketStatus.Failed}|no_pack_space", WaitForTicket(ticket));
+                StringAssert.Contains(TicketMessage(ticket), "Free some pack space", "the website shows this message, which says what to do");
+            }
+
+            Assert.AreEqual(0, NotesInPacks(player));
+            Assert.AreEqual(0, DatabaseNoteStacks(player.Guid.Full).Count);
+            Assert.AreEqual(balanceRow, BalanceRow(account), "the balance row is exactly as before");
+        }
+
+        [TestMethod]
+        public void Bridge_MmdWithdraw_PackFillsDuringTheSave_TicketIsDone_AndTheNotesArriveAtNextLogin()
+        {
+            var account = VaultTestWorld.NewAccountId();
+            var player = VaultTestWorld.NewPlayer(account);
+            GiveNotes(player, 50);
+            Assert.AreEqual(VaultOutcome.NotesDeposited, VaultTestWorld.DepositNotes(player).Outcome);
+
+            using (VaultTestWorld.Online(player))
+            {
+                long ticket;
+
+                // the withdrawal's save waits on this lock, after the up-front checks have passed
+                using (var balanceLock = new MySqlConnection(MarketTestDatabase.ConnectionString(Db)))
+                {
+                    balanceLock.Open();
+                    using var transaction = balanceLock.BeginTransaction();
+                    using (var command = new MySqlCommand($"SELECT balance FROM market_balance WHERE account_Id = {account} FOR UPDATE;", balanceLock, transaction))
+                        command.ExecuteScalar();
+
+                    ticket = NewTicket(player, TicketKind.MmdWithdraw, new TicketPayload(Amount: 20));
+
+                    // the bridge runs the ticket only once its checks passed, and the save's answer is what releases it: fill the pack in between
+                    var filled = false;
+                    VaultTestWorld.WaitUntil(() =>
+                    {
+                        VaultTestWorld.OnWorldThread(() =>
+                        {
+                            if (!GameBridge.IsTicketRunning(ticket))
+                                return;
+
+                            while (player.TryAddToInventory(VaultTestWorld.NewItem(VaultTestWorld.SwordWcid), out _)) { }
+                            filled = true;
+                        });
+                        return filled;
+                    }, "the withdrawal to pass its checks");
+
+                    Assert.AreEqual(TicketStatus.Claimed, ReadTicket(ticket).Status, "the save has not run yet");
+                    VaultTestWorld.TakeSent(player);
+                    transaction.Rollback();
+                }
+
+                Assert.AreEqual($"{TicketStatus.Done}|{TicketStore.Ok}", WaitForTicket(ticket));
+                VaultTestWorld.WaitUntil(() => !GameBridge.IsTicketRunning(ticket), "the bridge to hear the withdrawal's answer");
+                Assert.AreEqual(30, Ledger.GetBalance(account), "the balance was debited");
+                Assert.IsTrue(VaultTestWorld.Chats(VaultTestWorld.TakeSent(player)).Any(c => c.Contains("when you next log in")), "the player is told the notes arrive at the next login");
+                Assert.AreEqual(0, NotesInPacks(player), "the full pack took none of them now");
+            }
+
+            CollectionAssert.AreEqual(new[] { 20L }, DatabaseNoteStacks(player.Guid.Full), "the database has the notes in the character's pack");
+
+            // the next login loads the character's possessions from the database
+            var possessed = DatabaseManager.Shard.BaseDatabase.GetPossessedBiotasInParallel(player.Guid.Full);
+            var loaded = new Player(player.Biota, possessed.Inventory, possessed.WieldedItems, player.Character, null);
+            var notes = loaded.GetTradeNotes().Where(n => n.WeenieClassId == TradeNoteWcid).ToList();
+
+            Assert.AreEqual(20, notes.Sum(n => n.StackSize ?? 1), "the notes are in the pack after reconnecting");
+            Assert.IsTrue(notes.All(n => n.OwnerId == player.Guid.Full && n.ContainerId == player.Guid.Full), "the character owns them");
         }
 
         // ---- items
@@ -333,8 +423,11 @@ namespace ACE.Server.Tests.Market
                 Assert.AreEqual($"{TicketStatus.Failed}|{GameBridge.ConfirmationTimeoutResultCode}", WaitForTicket(first, TimeSpan.FromSeconds(45)));
                 Assert.IsNull(PendingConfirmationContextOrNull(player), "timeout removed the expired confirmation");
                 Assert.IsFalse(BridgeIsRunning(first), "timeout released the bridge's running entry");
+                var timedOut = TicketOutcome(first);
                 VaultTestWorld.OnWorldThread(() => player.ConfirmationManager.HandleResponse(ConfirmationType.Yes_No, oldContext, true));
                 Assert.IsFalse(player.IsVaultChannelling, "a late Yes with no pending popup starts no channel");
+                AfterQueuedWork(); // anything the late Yes queued has run, writes included
+                Assert.AreEqual(timedOut, TicketOutcome(first), "a late Yes leaves the timed-out ticket's status and result as they were");
 
                 var second = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
                 VaultTestWorld.WaitUntil(() => ReadTicket(second).Progress == TicketProgress.AwaitingConfirmation, "the next confirmation request");
@@ -662,6 +755,24 @@ namespace ACE.Server.Tests.Market
         private static string TicketResult(long ticketId) => MarketTestDatabase.Rows(Db, $"SELECT status, result_Code FROM market_ticket WHERE id = {ticketId};").Single();
 
         private static string TicketMessage(long ticketId) => MarketTestDatabase.Rows(Db, $"SELECT result_Message FROM market_ticket WHERE id = {ticketId};").Single();
+
+        /// <summary>
+        /// Waits until work already queued on the world thread, and the saves that work queued, have run
+        /// </summary>
+        private static void AfterQueuedWork()
+        {
+            VaultTestWorld.OnWorldThread(() => { });
+
+            var saved = new ManualResetEventSlim();
+            DatabaseManager.Shard.GetCurrentQueueWaitTime(_ => saved.Set());
+            Assert.IsTrue(saved.Wait(TimeSpan.FromSeconds(30)), "the save queue ran the queued work");
+        }
+
+        /// <summary>
+        /// Everything a finished ticket says about how it ended
+        /// </summary>
+        private static string TicketOutcome(long ticketId) => MarketTestDatabase.Rows(Db, $@"SELECT status, IFNULL(result_Code, ''), IFNULL(result_Message, ''), IFNULL(result, ''),
+            IFNULL(progress, ''), IFNULL(progress_Time, ''), IFNULL(progress_Until, ''), IFNULL(finished_Time, '') FROM market_ticket WHERE id = {ticketId};").Single();
 
         private static Ticket ReadTicket(long ticketId)
         {

@@ -179,7 +179,7 @@ export function Vault() {
     {error && <p role="alert" className="notice">{error}</p>}
     {notice && <p role="status" className="notice">{notice}</p>}
     <section className="withdraw-panel" aria-labelledby="withdraw-mmd-heading">
-      <div><h2 id="withdraw-mmd-heading">Withdraw MMD</h2><p className="muted">Trade notes go to your acting character. If their pack is full, the notes arrive at next login.</p></div>
+      <div><h2 id="withdraw-mmd-heading">Withdraw MMD</h2><p className="muted">Trade notes go to your acting character. If their pack has no room for the notes, nothing moves: free some pack space and try again.</p></div>
       <form onSubmit={e => void withdrawNotes(e)}>
         <label>Whole MMD amount<input type="number" min="1" step="1" inputMode="numeric" value={mmdAmount} onChange={e => setMmdAmount(e.target.value)} /></label>
         <button disabled={busyMmd || session.characterId === null || session.me.paused}>{busyMmd ? 'Requesting…' : 'Withdraw MMD'}</button>
