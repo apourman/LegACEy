@@ -70,6 +70,7 @@ namespace ACE.MarketApi
             AddQueryParameters(document, "/api/listings/suggest", "q");
             AddQueryParameters(document, "/api/history", "since", "transfersBefore", "itemsBefore", "itemsLimit", "transfersLimit");
             AddInventorySnapshotSchema(document);
+            AddTicketResultSchema(document);
             var errorSchema = document["components"]?["schemas"]?["ApiError"]?["properties"]?["error"]?.AsObject();
             if (errorSchema != null)
             {
@@ -129,6 +130,41 @@ namespace ACE.MarketApi
                         ["items"] = new JsonObject { ["$ref"] = "#/components/schemas/InventorySnapshotItemResponse" },
                     },
                 },
+            };
+        }
+
+        private static void AddTicketResultSchema(JsonObject document)
+        {
+            var schemas = document["components"]?["schemas"]?.AsObject() ?? throw new InvalidOperationException("OpenAPI schemas are missing.");
+            schemas["JsonElement"] = new JsonObject
+            {
+                ["anyOf"] = new JsonArray
+                {
+                    new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["additionalProperties"] = true,
+                    },
+                    new JsonObject
+                    {
+                        ["type"] = "array",
+                        ["items"] = new JsonObject(),
+                    },
+                    new JsonObject { ["type"] = "string" },
+                    new JsonObject { ["type"] = "number" },
+                    new JsonObject { ["type"] = "boolean" },
+                    new JsonObject { ["type"] = "null" },
+                },
+            };
+
+            var result = schemas["TicketResponse"]?["properties"]?["result"]?.AsObject()
+                ?? throw new InvalidOperationException("TicketResponse.result is missing from the OpenAPI schema.");
+            result.Clear();
+            result["anyOf"] = new JsonArray
+            {
+                new JsonObject { ["type"] = "null" },
+                new JsonObject { ["$ref"] = "#/components/schemas/InventorySnapshotResponse" },
+                new JsonObject { ["$ref"] = "#/components/schemas/JsonElement" },
             };
         }
     }

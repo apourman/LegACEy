@@ -80,6 +80,29 @@ namespace ACE.MarketApi.Tests
             }
         }
 
+        [TestMethod]
+        public async Task TicketResult_ReferencesTheNamedInventorySnapshotSchema()
+        {
+            var path = Path.Combine(Path.GetTempPath(), $"market-openapi-{Guid.NewGuid():N}.json");
+            try
+            {
+                await Program.GenerateOpenApi(path);
+                using var document = JsonDocument.Parse(await File.ReadAllTextAsync(path));
+                var result = document.RootElement.GetProperty("components").GetProperty("schemas")
+                    .GetProperty("TicketResponse").GetProperty("properties").GetProperty("result");
+                var alternatives = result.GetProperty("anyOf").EnumerateArray().ToList();
+
+                Assert.IsTrue(alternatives.Any(alternative => alternative.TryGetProperty("$ref", out var reference)
+                    && reference.GetString() == "#/components/schemas/InventorySnapshotResponse"));
+                Assert.IsTrue(alternatives.Any(alternative => alternative.TryGetProperty("$ref", out var reference)
+                    && reference.GetString() == "#/components/schemas/JsonElement"), "Other JSON result shapes remain representable.");
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
         private static void AssertDocumentsMatch(byte[] committed, byte[] generated)
         {
             CollectionAssert.AreEqual(committed, generated, "The committed document is out of date; build ACE.MarketApi to regenerate it.");

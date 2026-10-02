@@ -1469,7 +1469,9 @@ export interface components {
             characterId: null | number | string;
             idempotencyKey: null | string;
         };
-        JsonElement: unknown;
+        JsonElement: {
+            [key: string]: unknown;
+        } | unknown[] | string | number | boolean | null;
         ListedResponse: {
             /** Format: int64 */
             id: number | string;
@@ -1660,7 +1662,7 @@ export interface components {
             progressTime: null | string;
             /** Format: date-time */
             progressUntil: null | string;
-            result: null | components["schemas"]["JsonElement"];
+            result: null | components["schemas"]["InventorySnapshotResponse"] | components["schemas"]["JsonElement"];
             /** Format: date-time */
             createdTime: string;
             /** Format: date-time */

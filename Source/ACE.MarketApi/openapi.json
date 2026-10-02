@@ -1754,7 +1754,30 @@
           }
         }
       },
-      "JsonElement": {},
+      "JsonElement": {
+        "anyOf": [
+          {
+            "type": "object",
+            "additionalProperties": true
+          },
+          {
+            "type": "array",
+            "items": {}
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
       "ListedResponse": {
         "required": [
           "id",
@@ -2603,9 +2626,12 @@
             "format": "date-time"
           },
           "result": {
-            "oneOf": [
+            "anyOf": [
               {
                 "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/InventorySnapshotResponse"
               },
               {
                 "$ref": "#/components/schemas/JsonElement"
