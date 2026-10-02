@@ -1,54 +1,35 @@
-export interface Character { id: number; name: string }
-export interface Me {
-  accountId: number; accountName: string; characters: Character[]; balance: number;
-  frozen: boolean; paused: boolean; vaultCount: number; vaultCap: number;
-  listingCount: number; listingCap: number;
-}
-export interface Icon { layers: { kind: string; url: string }[]; glow: string | null }
-export interface Listing {
-  id: number; itemGuid: number; name: string; itemType: string; material: string | null;
-  workmanship: number | null; level: number | null; arcaneLore: number | null;
-  summary: string; quantity: number; price: number; seller: string; listedTime: string;
-  wield: string | null; icon: Icon;
-}
-export interface Spell { name: string; cantrip: boolean }
-export interface Detail extends Listing { lines: string[]; spells: Spell[] }
-export interface BrowseResult { listings: Listing[]; nextCursor: string | null }
-export interface Facets {
-  itemTypes: { value: string; label: string; count: number }[];
-  sorts: { value: string; label: string; defaultDir: string }[];
-}
-export interface PurchaseRequest { count: number; expectedPrice: number; characterId: number; idempotencyKey: string }
-export interface Receipt { status: 'ok'; listingId: number; itemGuid: number; price: number; fee: number; balance: number }
-export interface VaultItem {
-  itemGuid: number; wcid: number; name: string; itemType: number; stackSize: number; state: 'held' | 'listed' | 'withdrawing';
-  characterId: number; depositedTime: string; icon: Icon; listingId: number | null; price: number | null;
-  expiresTime: string | null; ticketId: number | null;
-}
-export interface VaultResult { items: VaultItem[] }
-export interface VaultAppraisal { lines: string[]; spells: Spell[] }
-export interface HistoryTransfer {
-  sequence: number; transferId: number; kind: string; amount: number; balanceAfter: number;
-  time: string; text: string; memo: string | null;
-}
-export interface HistoryItem { id: number; itemGuid: number; kind: string; name: string; listingId: number | null; time: string; text: string }
-export interface HistoryResult {
-  balance: number; head: number; transfers: HistoryTransfer[]; items: HistoryItem[];
-  nextTransfersBefore: number | null; nextSince: number | null; more: boolean; nextItemsBefore: number | null;
-}
-/** The stage of a CLAIMED ticket (market_ticket.progress), which the status panel counts down to progressUntil */
+import createClient from 'openapi-fetch';
+import type { components, paths } from './api-schema';
+
+type NumericField = 'id' | 'itemGuid' | 'wcid' | 'accountId' | 'characterId' | 'listingId' | 'ticketId' | 'balance' | 'vaultCount' | 'vaultCap' | 'listingCount' | 'listingCap' | 'price' | 'fee' | 'sequence' | 'transferId' | 'balanceAfter' | 'head' | 'nextTransfersBefore' | 'nextSince' | 'nextItemsBefore' | 'amount' | 'count' | 'quantity' | 'workmanship' | 'level' | 'arcaneLore' | 'itemType' | 'stackSize' | 'tokenId';
+type ApiShape<T> = T extends readonly (infer Item)[] ? ApiShape<Item>[]
+  : T extends object ? { [K in keyof T]: K extends NumericField
+    ? (null extends T[K] ? number | null : number)
+    : ApiShape<T[K]> }
+  : T;
+type ApiSchema<Name extends keyof components['schemas']> = ApiShape<components['schemas'][Name]>;
+
+export type Character = ApiSchema<'CharacterResponse'>;
+export type Me = ApiSchema<'MeResponse'>;
+export type Icon = ApiSchema<'IconResponse'>;
+export type Listing = ApiSchema<'ListingResponse'>;
+export type Spell = ApiSchema<'SpellResponse'>;
+export type Detail = Listing & { lines: string[]; spells: Spell[] };
+export type BrowseResult = ApiSchema<'BrowseResponse'>;
+export type Facets = ApiSchema<'FacetsResponse'>;
+export type PurchaseRequest = ApiSchema<'PurchaseRequest'>;
+export type Receipt = ApiSchema<'PurchaseReceipt'>;
+export type VaultItem = ApiSchema<'VaultItemResponse'>;
+export type VaultResult = ApiSchema<'VaultResponse'>;
+export type VaultAppraisal = ApiSchema<'AppraisalResponse'>;
+export type HistoryTransfer = ApiSchema<'HistoryTransferResponse'>;
+export type HistoryItem = ApiSchema<'HistoryItemResponse'>;
+export type HistoryResult = ApiSchema<'HistoryResponse'>;
+export type Ticket = ApiSchema<'TicketResponse'>;
+export type InventorySnapshotItem = ApiSchema<'InventorySnapshotItemResponse'>;
+export type InventorySnapshot = ApiSchema<'InventorySnapshotResponse'>;
+
 export const ticketProgress = { awaitingConfirmation: 'awaiting_confirmation', channelling: 'channelling' } as const;
-export interface Ticket {
-  id: number; kind: 'vault_withdraw' | 'mmd_withdraw' | 'vault_deposit' | 'inventory_snapshot' | string; status: 'WAITING' | 'CLAIMED' | 'DONE' | 'FAILED';
-  characterId: number | null; itemGuid: number | null; amount: number | null;
-  resultCode: string | null; resultMessage: string | null; progress: typeof ticketProgress[keyof typeof ticketProgress] | string | null;
-  progressTime: string | null; progressUntil: string | null; result: unknown | null;
-  createdTime: string; claimedTime: string | null; finishedTime: string | null;
-}
-export interface InventorySnapshotItem {
-  itemGuid: number; name: string; stackSize: number; refusalCode: string | null; icon: Icon;
-}
-export interface InventorySnapshot { snapshotTime: string; items: InventorySnapshotItem[] }
 
 export const messages: Record<string, string> = {
   invalid_credentials: 'The account name or password is incorrect.',
@@ -97,50 +78,64 @@ export const messages: Record<string, string> = {
   listing_limit: 'You have reached your active listing limit.',
   not_active: 'This listing is no longer active. It may have sold or expired.',
 };
+
+type ErrorBody = components['schemas']['ApiError'];
 export class ApiError extends Error {
-  constructor(public code: string, public status: number, public price?: number) {
+  constructor(public code: string, public status: number, public price?: number | string | null) {
     super(messages[code] ?? `The request failed (${code}).`);
   }
 }
-// A signed-in view subscribes here. Login's 401 is a password answer, not session expiry.
+
 export const sessionEnded = new EventTarget();
-async function request<T>(path: string, body?: object, login = false): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(`/api${path}`, {
-      method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin',
-      headers: { 'X-Market-Request': '1', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-  } catch { throw new ApiError('network', 0); }
-  if (response.status === 401 && !login) sessionEnded.dispatchEvent(new Event('ended'));
-  let result;
-  try { result = await response.json(); }
-  catch { throw new ApiError('server', response.status); }
-  if (!response.ok) throw new ApiError(result.error ?? 'server', response.status, result.price);
-  return result as T;
+type Client = ReturnType<typeof createClient<paths>>;
+export function createMarketApiClient(baseUrl: string, fetcher: typeof fetch = fetch): Client {
+  return createClient<paths>({ baseUrl, fetch: fetcher });
 }
-export const getMe = () => request<Me>('/me');
-export const signIn = (account: string, password: string) => request<{ ok: boolean }>('/auth/login', { account, password }, true);
-export const signOut = () => request<{ ok: boolean }>('/auth/logout', {});
-export const browse = (query: URLSearchParams) => request<BrowseResult>(`/listings?${query}`);
-export const suggest = (q: string) => request<{ suggestions: string[] }>(`/listings/suggest?q=${encodeURIComponent(q)}`);
-export const getFacets = () => request<Facets>('/facets');
-export const getListing = (id: number) => request<Detail>(`/listings/${id}`);
-export const purchase = (id: number, attempt: PurchaseRequest) => request<Receipt>(`/listings/${id}/purchase`, attempt);
-export const getVault = () => request<VaultResult>('/vault');
-export const getVaultAppraisal = (itemGuid: number) => request<VaultAppraisal>(`/vault/${itemGuid}`);
-export const listVaultItem = (itemGuid: number, price: number, characterId: number) =>
-  request<{ id: number; itemGuid: number; price: number; status: string; listedTime: string }>('/listings', { itemGuid, price, characterId });
-export const delistVaultItem = (listingId: number) => request<{ id: number; itemGuid: number; status: string }>(`/listings/${listingId}/delist`, {});
-export const getHistory = (query: URLSearchParams) => request<HistoryResult>(`/history?${query}`);
-export const getTickets = () => request<Ticket[]>('/tickets');
-export const getTicket = (id: number) => request<Ticket>(`/tickets/${id}`);
-export const requestInventorySnapshot = (characterId: number, idempotencyKey: string) =>
-  request<Ticket>('/inventory/snapshot', { characterId, idempotencyKey });
-export const depositVaultItem = (characterId: number, itemGuid: number, idempotencyKey: string) =>
-  request<Ticket>('/vault/deposit', { characterId, itemGuid, idempotencyKey });
-export const withdrawVaultItem = (characterId: number, itemGuid: number, idempotencyKey: string) =>
-  request<Ticket>('/vault/withdraw', { characterId, itemGuid, idempotencyKey });
-export const withdrawMmd = (characterId: number, amount: number, idempotencyKey: string) =>
-  request<Ticket>('/mmd/withdraw', { characterId, amount, idempotencyKey });
+
+let client = createMarketApiClient('');
+export function setMarketApiBaseUrl(baseUrl: string, fetcher?: typeof fetch): void {
+  client = createMarketApiClient(baseUrl, fetcher);
+}
+
+async function result<T>(call: Promise<{ data?: unknown; error?: unknown; response: Response }>, login = false): Promise<T> {
+  let response: Response;
+  let data: unknown;
+  let error: unknown;
+  try {
+    const answer = await call;
+    ({ response, data, error } = answer);
+  } catch {
+    throw new ApiError('network', 0);
+  }
+
+  if (response.status === 401 && !login) sessionEnded.dispatchEvent(new Event('ended'));
+  if (!response.ok) {
+    const body = (error ?? data ?? {}) as ErrorBody;
+    throw new ApiError(body.error ?? 'server', response.status, body.price);
+  }
+  if (data === undefined) throw new ApiError('server', response.status);
+  return data as T;
+}
+
+const headers = { 'X-Market-Request': '1' };
+type ListingQuery = NonNullable<paths['/api/listings']['get']['parameters']['query']>;
+type HistoryQuery = NonNullable<paths['/api/history']['get']['parameters']['query']>;
+export const getMe = () => result<Me>(client.GET('/api/me', { credentials: 'include', headers }));
+export const signIn = (account: string, password: string) => result<components['schemas']['LoginResponse']>(client.POST('/api/auth/login', { body: { account, password }, credentials: 'include', headers }), true);
+export const signOut = () => result<components['schemas']['OkResponse']>(client.POST('/api/auth/logout', { credentials: 'include', headers }));
+export const browse = (query: URLSearchParams) => result<BrowseResult>(client.GET('/api/listings', { params: { query: Object.fromEntries(query) as ListingQuery }, credentials: 'include', headers }));
+export const suggest = (q: string) => result<components['schemas']['SuggestionsResponse']>(client.GET('/api/listings/suggest', { params: { query: { q } }, credentials: 'include', headers }));
+export const getFacets = () => result<Facets>(client.GET('/api/facets', { credentials: 'include', headers }));
+export const getListing = (id: number) => result<Detail>(client.GET('/api/listings/{id}', { params: { path: { id } }, credentials: 'include', headers }));
+export const purchase = (id: number, attempt: PurchaseRequest) => result<Receipt>(client.POST('/api/listings/{id}/purchase', { params: { path: { id } }, body: attempt, credentials: 'include', headers }));
+export const getVault = () => result<VaultResult>(client.GET('/api/vault', { credentials: 'include', headers }));
+export const getVaultAppraisal = (itemGuid: number) => result<VaultAppraisal>(client.GET('/api/vault/{itemGuid}', { params: { path: { itemGuid } }, credentials: 'include', headers }));
+export const listVaultItem = (itemGuid: number, price: number, characterId: number) => result<components['schemas']['ListedResponse']>(client.POST('/api/listings', { body: { itemGuid, price, characterId }, credentials: 'include', headers }));
+export const delistVaultItem = (listingId: number) => result<components['schemas']['DelistedResponse']>(client.POST('/api/listings/{id}/delist', { params: { path: { id: listingId } }, credentials: 'include', headers }));
+export const getHistory = (query: URLSearchParams) => result<HistoryResult>(client.GET('/api/history', { params: { query: Object.fromEntries(query) as HistoryQuery }, credentials: 'include', headers }));
+export const getTickets = () => result<Ticket[]>(client.GET('/api/tickets', { credentials: 'include', headers }));
+export const getTicket = (id: number) => result<Ticket>(client.GET('/api/tickets/{id}', { params: { path: { id } }, credentials: 'include', headers }));
+export const requestInventorySnapshot = (characterId: number, idempotencyKey: string) => result<Ticket>(client.POST('/api/inventory/snapshot', { body: { characterId, idempotencyKey }, credentials: 'include', headers }));
+export const depositVaultItem = (characterId: number, itemGuid: number, idempotencyKey: string) => result<Ticket>(client.POST('/api/vault/deposit', { body: { characterId, itemGuid, idempotencyKey }, credentials: 'include', headers }));
+export const withdrawVaultItem = (characterId: number, itemGuid: number, idempotencyKey: string) => result<Ticket>(client.POST('/api/vault/withdraw', { body: { characterId, itemGuid, idempotencyKey }, credentials: 'include', headers }));
+export const withdrawMmd = (characterId: number, amount: number, idempotencyKey: string) => result<Ticket>(client.POST('/api/mmd/withdraw', { body: { characterId, amount, idempotencyKey }, credentials: 'include', headers }));

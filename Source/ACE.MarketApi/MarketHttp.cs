@@ -59,7 +59,7 @@ namespace ACE.MarketApi
             return text.Length == 0 ? null : text;
         }
 
-        public static IResult Error(int statusCode, string error) => Results.Json(new { error }, statusCode: statusCode);
+        public static IResult Error(int statusCode, string error) => Results.Json(new ApiError(error), statusCode: statusCode);
 
         /// <summary>
         /// The longest idempotency key a request may carry (the key columns hold 64 characters)

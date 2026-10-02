@@ -19,8 +19,8 @@ namespace ACE.MarketApi
     {
         public static void Map(IEndpointRouteBuilder app)
         {
-            app.MapGet("/icons/glow.css", () => Results.Text(ItemIcons.GlowStylesheet, "text/css"));
-            app.MapGet("/icons/{file}", Icon);
+            app.MapGet("/icons/glow.css", () => Results.Text(ItemIcons.GlowStylesheet, "text/css")).File(200, "text/css");
+            app.MapGet("/icons/{file}", Icon).File(200, "image/png", 404);
         }
 
         private static IResult Icon(string file, IconStore icons, HttpResponse response)

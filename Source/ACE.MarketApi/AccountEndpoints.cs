@@ -21,9 +21,9 @@ namespace ACE.MarketApi
     {
         public static void Map(IEndpointRouteBuilder app)
         {
-            app.MapGet("/me", Me).RequireAuthorization();
-            app.MapGet("/vault", Vault).RequireAuthorization();
-            app.MapGet("/vault/{itemGuid}", VaultDetail).RequireAuthorization();
+            app.MapGet("/me", Me).Json<MeResponse>(200, 401).RequireAuthorization();
+            app.MapGet("/vault", Vault).Json<VaultResponse>(200, 401).RequireAuthorization();
+            app.MapGet("/vault/{itemGuid}", VaultDetail).Json<AppraisalResponse>(200, 401, 404).RequireAuthorization();
         }
 
         /// <summary>
@@ -45,22 +45,20 @@ namespace ACE.MarketApi
             var characters = await shard.Character.AsNoTracking()
                 .Where(c => c.AccountId == accountId && !c.IsDeleted)
                 .OrderBy(c => c.Name)
-                .Select(c => new { id = c.Id, name = c.Name })
+                .Select(c => new CharacterResponse(c.Id, c.Name))
                 .ToListAsync();
 
-            return Results.Json(new
-            {
-                accountId = account.AccountId,
-                accountName = account.AccountName,
+            return Results.Json(new MeResponse(
+                account.AccountId,
+                account.AccountName,
                 characters,
-                balance = Ledger.GetBalance(shard, accountId),
-                frozen = account.IsBanned(time.GetUtcNow().UtcDateTime),
-                paused = pause.IsPaused,
-                vaultCount = await shard.MarketVaultItems.CountAsync(v => v.AccountId == accountId),
-                vaultCap = MarketSettings.Get(shard, MarketSettings.VaultSize),
-                listingCount = await shard.MarketListings.CountAsync(l => l.SellerAccountId == accountId && l.Status == Database.Models.Shard.Market.ListingStatus.Active),
-                listingCap = MarketSettings.Get(shard, MarketSettings.ActiveListings),
-            });
+                Ledger.GetBalance(shard, accountId),
+                account.IsBanned(time.GetUtcNow().UtcDateTime),
+                pause.IsPaused,
+                await shard.MarketVaultItems.CountAsync(v => v.AccountId == accountId),
+                MarketSettings.Get(shard, MarketSettings.VaultSize),
+                await shard.MarketListings.CountAsync(l => l.SellerAccountId == accountId && l.Status == Database.Models.Shard.Market.ListingStatus.Active),
+                MarketSettings.Get(shard, MarketSettings.ActiveListings)));
         }
 
         /// <summary>
@@ -106,26 +104,20 @@ namespace ACE.MarketApi
 
             var listingLifetime = ListingStore.Lifetime(shard);
 
-            return Results.Json(new
-            {
-                items = items.Select(v => new
-                {
-                    itemGuid = v.ItemGuid,
-                    wcid = v.Wcid,
-                    name = v.Name,
-                    itemType = v.ItemType,
-                    stackSize = v.StackSize,
-                    state = v.State,
-                    characterId = v.CharacterId,
-                    icon = ItemIcons.For(v, gameData),
-                    listingId = listings.TryGetValue(v.ItemGuid, out var listing) ? listing.Id : (long?)null,
-                    price = listing?.Price,
-                    expiresTime = listing == null ? (DateTime?)null : MarketHttp.Utc(listing.CreatedTime + listingLifetime),
-                    ticketId = ticketIds.TryGetValue(v.ItemGuid, out var ticketId) ? ticketId : (long?)null,
-                    // stored as UTC; EF reads datetime(6) as Unspecified
-                    depositedTime = DateTime.SpecifyKind(v.DepositedTime, DateTimeKind.Utc),
-                }),
-            });
+            return Results.Json(new VaultResponse(items.Select(v => new VaultItemResponse(
+                v.ItemGuid,
+                v.Wcid,
+                v.Name,
+                v.ItemType,
+                v.StackSize,
+                v.State.ToString(),
+                v.CharacterId,
+                ApiContractViews.Icon(ItemIcons.For(v, gameData)),
+                listings.TryGetValue(v.ItemGuid, out var listing) ? listing.Id : null,
+                listing?.Price,
+                listing == null ? null : MarketHttp.Utc(listing.CreatedTime + listingLifetime),
+                ticketIds.TryGetValue(v.ItemGuid, out var ticketId) ? ticketId : null,
+                DateTime.SpecifyKind(v.DepositedTime, DateTimeKind.Utc))).ToList()));
         }
 
         /// <summary>
@@ -145,11 +137,7 @@ namespace ACE.MarketApi
 
             var appraisal = AppraisalItem.Load(shard, gameData, new[] { itemGuid })[itemGuid];
 
-            return Results.Json(new
-            {
-                lines = rules.Format(appraisal),
-                spells = AppraisalRules.Spells(appraisal),
-            });
+            return Results.Json(new AppraisalResponse(rules.Format(appraisal), AppraisalRules.Spells(appraisal).Select(ApiContractViews.Spell).ToList()));
         }
     }
 }

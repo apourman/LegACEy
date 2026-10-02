@@ -1,0 +1,2935 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "ACE.MarketApi | v1",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "AuthEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "AuthEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/me": {
+      "get": {
+        "tags": [
+          "AccountEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/vault": {
+      "get": {
+        "tags": [
+          "AccountEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/vault/{itemGuid}": {
+      "get": {
+        "tags": [
+          "AccountEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "itemGuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "uint32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppraisalResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/listings": {
+      "post": {
+        "tags": [
+          "ListingEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "CatalogEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowseResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "minPrice",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "maxPrice",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "seller",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dir",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/listings/{id}/delist": {
+      "post": {
+        "tags": [
+          "ListingEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DelistedResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/listings/suggest": {
+      "get": {
+        "tags": [
+          "CatalogEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionsResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/listings/{id}": {
+      "get": {
+        "tags": [
+          "CatalogEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/facets": {
+      "get": {
+        "tags": [
+          "CatalogEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacetsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/listings/{id}/purchase": {
+      "post": {
+        "tags": [
+          "PurchaseEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Gone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/history": {
+      "get": {
+        "tags": [
+          "HistoryEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "transfersBefore",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemsBefore",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemsLimit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "transfersLimit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/auth/plugin-token": {
+      "post": {
+        "tags": [
+          "PluginTokenEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PluginTokenRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginTokenResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tokens": {
+      "get": {
+        "tags": [
+          "PluginTokenEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginTokensResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tokens/{id}/revoke": {
+      "post": {
+        "tags": [
+          "PluginTokenEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/icons/glow.css": {
+      "get": {
+        "tags": [
+          "ACE.MarketApi"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/css": {
+                "schema": {
+                  "type": "string",
+                  "format": "byte"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/icons/{file}": {
+      "get": {
+        "tags": [
+          "IconEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "file",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "byte"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/vault/withdraw": {
+      "post": {
+        "tags": [
+          "TicketEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VaultWithdrawRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/vault/deposit": {
+      "post": {
+        "tags": [
+          "TicketEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VaultDepositRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/inventory/snapshot": {
+      "post": {
+        "tags": [
+          "TicketEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InventorySnapshotRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mmd/withdraw": {
+      "post": {
+        "tags": [
+          "TicketEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MmdWithdrawRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tickets": {
+      "get": {
+        "tags": [
+          "TicketEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TicketResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tickets/{id}": {
+      "get": {
+        "tags": [
+          "TicketEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiError": {
+        "required": [
+          "error"
+        ],
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "account_locked",
+              "attuned",
+              "bad_cursor",
+              "bad_limit",
+              "bad_price",
+              "bad_request",
+              "bad_sort",
+              "bad_type",
+              "banned",
+              "blocked_wcid",
+              "busy",
+              "channelling",
+              "confirmation_busy",
+              "confirm_timeout",
+              "container_not_empty",
+              "contains_attuned",
+              "csrf",
+              "declined",
+              "gone",
+              "in_trade",
+              "insufficient_funds",
+              "invalid_character",
+              "invalid_count",
+              "invalid_code",
+              "invalid_credentials",
+              "invalid_fee",
+              "invalid_price",
+              "invalid_amount",
+              "ip_blocked",
+              "key_reused",
+              "listing_limit",
+              "network",
+              "not_active",
+              "not_available",
+              "not_found",
+              "not_held",
+              "not_in_pack",
+              "not_in_vault",
+              "ok",
+              "own_listing",
+              "paused",
+              "pet_out",
+              "price_changed",
+              "rate_limited",
+              "recent_player_fight",
+              "server",
+              "trading",
+              "unauthorized",
+              "vault_full",
+              "worn"
+            ]
+          },
+          "price": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "AppraisalResponse": {
+        "required": [
+          "lines",
+          "spells"
+        ],
+        "type": "object",
+        "properties": {
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "spells": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SpellResponse"
+            }
+          }
+        }
+      },
+      "BrowseResponse": {
+        "required": [
+          "listings",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "listings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ListingResponse"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CharacterResponse": {
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "DelistedResponse": {
+        "required": [
+          "id",
+          "itemGuid",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "itemGuid": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "FacetItemResponse": {
+        "required": [
+          "value",
+          "label",
+          "count"
+        ],
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "count": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "FacetsResponse": {
+        "required": [
+          "itemTypes",
+          "sorts"
+        ],
+        "type": "object",
+        "properties": {
+          "itemTypes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FacetItemResponse"
+            }
+          },
+          "sorts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SortResponse"
+            }
+          }
+        }
+      },
+      "HistoryItemResponse": {
+        "required": [
+          "id",
+          "itemGuid",
+          "kind",
+          "name",
+          "listingId",
+          "time",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "itemGuid": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "listingId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "HistoryResponse": {
+        "required": [
+          "balance",
+          "head",
+          "transfers",
+          "nextTransfersBefore",
+          "nextSince",
+          "more",
+          "items",
+          "nextItemsBefore"
+        ],
+        "type": "object",
+        "properties": {
+          "balance": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "head": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "transfers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HistoryTransferResponse"
+            }
+          },
+          "nextTransfersBefore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "nextSince": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "more": {
+            "type": "boolean"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HistoryItemResponse"
+            }
+          },
+          "nextItemsBefore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "HistoryTransferResponse": {
+        "required": [
+          "sequence",
+          "transferId",
+          "kind",
+          "amount",
+          "balanceAfter",
+          "time",
+          "text",
+          "memo"
+        ],
+        "type": "object",
+        "properties": {
+          "sequence": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "transferId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "amount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "balanceAfter": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "text": {
+            "type": "string"
+          },
+          "memo": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "IconLayerResponse": {
+        "required": [
+          "kind",
+          "id",
+          "url"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "id": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "url": {
+            "type": "string"
+          },
+          "paletteTemplate": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "IconResponse": {
+        "required": [
+          "layers",
+          "glow"
+        ],
+        "type": "object",
+        "properties": {
+          "layers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IconLayerResponse"
+            }
+          },
+          "glow": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "InventorySnapshotRequest": {
+        "required": [
+          "characterId",
+          "idempotencyKey"
+        ],
+        "type": "object",
+        "properties": {
+          "characterId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "idempotencyKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "JsonElement": {
+        "anyOf": [
+          {
+            "type": "object",
+            "additionalProperties": true
+          },
+          {
+            "type": "array",
+            "items": {}
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "ListedResponse": {
+        "required": [
+          "id",
+          "itemGuid",
+          "price",
+          "status",
+          "listedTime"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "itemGuid": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "price": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "status": {
+            "type": "string"
+          },
+          "listedTime": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ListingDetailResponse": {
+        "required": [
+          "id",
+          "itemGuid",
+          "wcid",
+          "name",
+          "itemType",
+          "material",
+          "workmanship",
+          "level",
+          "arcaneLore",
+          "summary",
+          "quantity",
+          "price",
+          "seller",
+          "listedTime",
+          "wield",
+          "icon",
+          "lines",
+          "spells"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "itemGuid": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "wcid": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "itemType": {
+            "type": "string"
+          },
+          "material": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "workmanship": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "level": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "arcaneLore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "quantity": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "price": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "seller": {
+            "type": "string"
+          },
+          "listedTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "wield": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "icon": {
+            "$ref": "#/components/schemas/IconResponse"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "spells": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SpellResponse"
+            }
+          }
+        }
+      },
+      "ListingResponse": {
+        "required": [
+          "id",
+          "itemGuid",
+          "wcid",
+          "name",
+          "itemType",
+          "material",
+          "workmanship",
+          "level",
+          "arcaneLore",
+          "summary",
+          "quantity",
+          "price",
+          "seller",
+          "listedTime",
+          "wield",
+          "icon"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "itemGuid": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "wcid": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "itemType": {
+            "type": "string"
+          },
+          "material": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "workmanship": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "level": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "arcaneLore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "quantity": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "price": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "seller": {
+            "type": "string"
+          },
+          "listedTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "wield": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "icon": {
+            "$ref": "#/components/schemas/IconResponse"
+          }
+        }
+      },
+      "ListRequest": {
+        "required": [
+          "itemGuid",
+          "price",
+          "characterId"
+        ],
+        "type": "object",
+        "properties": {
+          "itemGuid": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "price": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d\u002B)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "characterId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          }
+        }
+      },
+      "LoginRequest": {
+        "required": [
+          "account",
+          "password"
+        ],
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "password": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "LoginResponse": {
+        "required": [
+          "accountId",
+          "accountName"
+        ],
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "accountName": {
+            "type": "string"
+          }
+        }
+      },
+      "MeResponse": {
+        "required": [
+          "accountId",
+          "accountName",
+          "characters",
+          "balance",
+          "frozen",
+          "paused",
+          "vaultCount",
+          "vaultCap",
+          "listingCount",
+          "listingCap"
+        ],
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "characters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CharacterResponse"
+            }
+          },
+          "balance": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "frozen": {
+            "type": "boolean"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "vaultCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "vaultCap": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "listingCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "listingCap": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "MmdWithdrawRequest": {
+        "required": [
+          "characterId",
+          "amount",
+          "idempotencyKey"
+        ],
+        "type": "object",
+        "properties": {
+          "characterId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "amount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d\u002B)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "idempotencyKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "OkResponse": {
+        "required": [
+          "ok"
+        ],
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PluginTokenInfoResponse": {
+        "required": [
+          "id",
+          "label",
+          "createdTime",
+          "lastUsedTime",
+          "expiresTime"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "label": {
+            "type": "string"
+          },
+          "createdTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastUsedTime": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "expiresTime": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PluginTokenRequest": {
+        "required": [
+          "code",
+          "label"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "label": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PluginTokenResponse": {
+        "required": [
+          "token",
+          "tokenId",
+          "label",
+          "expiresTime"
+        ],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "tokenId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "label": {
+            "type": "string"
+          },
+          "expiresTime": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PluginTokensResponse": {
+        "required": [
+          "tokens"
+        ],
+        "type": "object",
+        "properties": {
+          "tokens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PluginTokenInfoResponse"
+            }
+          }
+        }
+      },
+      "PurchaseReceipt": {
+        "required": [
+          "status",
+          "listingId",
+          "itemGuid",
+          "price",
+          "fee",
+          "balance"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "listingId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "itemGuid": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "price": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "fee": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "balance": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "PurchaseRequest": {
+        "required": [
+          "count",
+          "expectedPrice",
+          "idempotencyKey",
+          "characterId"
+        ],
+        "type": "object",
+        "properties": {
+          "count": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "expectedPrice": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d\u002B)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "idempotencyKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "characterId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          }
+        }
+      },
+      "SortResponse": {
+        "required": [
+          "value",
+          "label",
+          "defaultDir"
+        ],
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "defaultDir": {
+            "type": "string"
+          }
+        }
+      },
+      "SpellResponse": {
+        "required": [
+          "name",
+          "cantrip"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "cantrip": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SuggestionsResponse": {
+        "required": [
+          "suggestions"
+        ],
+        "type": "object",
+        "properties": {
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "TicketResponse": {
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "characterId",
+          "itemGuid",
+          "amount",
+          "resultCode",
+          "resultMessage",
+          "progress",
+          "progressTime",
+          "progressUntil",
+          "result",
+          "createdTime",
+          "claimedTime",
+          "finishedTime"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "characterId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "itemGuid": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "amount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "resultCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "resultMessage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "progress": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "progressTime": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "progressUntil": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/InventorySnapshotResponse"
+              },
+              {
+                "$ref": "#/components/schemas/JsonElement"
+              }
+            ]
+          },
+          "createdTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "claimedTime": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "finishedTime": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "VaultDepositRequest": {
+        "required": [
+          "characterId",
+          "itemGuid",
+          "idempotencyKey"
+        ],
+        "type": "object",
+        "properties": {
+          "characterId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "itemGuid": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "idempotencyKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "VaultItemResponse": {
+        "required": [
+          "itemGuid",
+          "wcid",
+          "name",
+          "itemType",
+          "stackSize",
+          "state",
+          "characterId",
+          "icon",
+          "listingId",
+          "price",
+          "expiresTime",
+          "ticketId",
+          "depositedTime"
+        ],
+        "type": "object",
+        "properties": {
+          "itemGuid": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "wcid": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "itemType": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "stackSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "state": {
+            "type": "string"
+          },
+          "characterId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "icon": {
+            "$ref": "#/components/schemas/IconResponse"
+          },
+          "listingId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "price": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "expiresTime": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "ticketId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "depositedTime": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "VaultResponse": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VaultItemResponse"
+            }
+          }
+        }
+      },
+      "VaultWithdrawRequest": {
+        "required": [
+          "characterId",
+          "itemGuid",
+          "idempotencyKey"
+        ],
+        "type": "object",
+        "properties": {
+          "characterId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "itemGuid": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "uint32"
+          },
+          "idempotencyKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "InventorySnapshotItemResponse": {
+        "type": "object",
+        "required": [
+          "itemGuid",
+          "name",
+          "stackSize",
+          "refusalCode",
+          "icon"
+        ],
+        "properties": {
+          "itemGuid": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "stackSize": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "refusalCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "icon": {
+            "$ref": "#/components/schemas/IconResponse"
+          }
+        }
+      },
+      "InventorySnapshotResponse": {
+        "type": "object",
+        "required": [
+          "snapshotTime",
+          "items"
+        ],
+        "properties": {
+          "snapshotTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InventorySnapshotItemResponse"
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "AuthEndpoints"
+    },
+    {
+      "name": "AccountEndpoints"
+    },
+    {
+      "name": "ListingEndpoints"
+    },
+    {
+      "name": "CatalogEndpoints"
+    },
+    {
+      "name": "PurchaseEndpoints"
+    },
+    {
+      "name": "HistoryEndpoints"
+    },
+    {
+      "name": "PluginTokenEndpoints"
+    },
+    {
+      "name": "ACE.MarketApi"
+    },
+    {
+      "name": "IconEndpoints"
+    },
+    {
+      "name": "TicketEndpoints"
+    }
+  ]
+}

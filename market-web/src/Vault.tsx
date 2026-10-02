@@ -1,9 +1,19 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { delistVaultItem, depositVaultItem, getTicket, getVault, listVaultItem, messages, requestInventorySnapshot, withdrawMmd, withdrawVaultItem, type InventorySnapshot, type VaultItem } from './api';
+import { delistVaultItem, depositVaultItem, getTicket, getVault, listVaultItem, messages, requestInventorySnapshot, withdrawMmd, withdrawVaultItem, type InventorySnapshot, type Ticket, type VaultItem } from './api';
 import { Icon, VaultAppraisalPopover } from './Appraisal';
 import { useSession } from './session';
 import { announceTicketCreated, clearTicketAttempt, onTicketFinished, ticketAttempt } from './tickets';
+
+function isInventorySnapshot(result: Ticket['result']): result is InventorySnapshot {
+  return result !== null
+    && typeof result === 'object'
+    && !Array.isArray(result)
+    && 'snapshotTime' in result
+    && typeof result.snapshotTime === 'string'
+    && 'items' in result
+    && Array.isArray(result.items);
+}
 
 export function Vault() {
   const session = useSession();
@@ -121,8 +131,8 @@ export function Vault() {
         current = await getTicket(created.id);
       }
       if (current.status === 'FAILED') throw new Error(current.resultMessage || 'The game could not read your inventory.');
-      if (current.status !== 'DONE' || !current.result) throw new Error('The snapshot is still waiting. Check Market requests, then refresh again.');
-      setSnapshot(current.result as InventorySnapshot);
+      if (current.status !== 'DONE' || !isInventorySnapshot(current.result)) throw new Error('The snapshot is still waiting. Check Market requests, then refresh again.');
+      setSnapshot(current.result);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not read your in-game inventory.');
     } finally {

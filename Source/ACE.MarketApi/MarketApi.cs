@@ -131,8 +131,19 @@ namespace ACE.MarketApi
             app.UseAuthorization();
 
             // the website and the API share one origin: the website owns /, the API /api. No CORS policy, so other origins can't read answers.
+            MapEndpoints(app, includeRequestFilter: true);
+
+            return app;
+        }
+
+        /// <summary>
+        /// Maps endpoint metadata without creating the database or loading DATs. This is also used by the build-time OpenAPI generator.
+        /// </summary>
+        public static void MapEndpoints(IEndpointRouteBuilder app, bool includeRequestFilter = false)
+        {
             var api = app.MapGroup(PathBase);
-            api.AddEndpointFilter(RequireRequestHeader);
+            if (includeRequestFilter)
+                api.AddEndpointFilter(RequireRequestHeader);
 
             AuthEndpoints.Map(api);
             AccountEndpoints.Map(api);
@@ -143,8 +154,6 @@ namespace ACE.MarketApi
             PluginTokenEndpoints.Map(api);
             IconEndpoints.Map(api);
             TicketEndpoints.Map(api);
-
-            return app;
         }
 
         /// <summary>

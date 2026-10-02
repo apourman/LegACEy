@@ -38,7 +38,7 @@ namespace ACE.MarketApi
 
         public static void Map(IEndpointRouteBuilder app)
         {
-            app.MapGet("/history", History).RequireAuthorization();
+            app.MapGet("/history", History).Json<HistoryResponse>(200, 400).RequireAuthorization();
         }
 
         /// <summary>
@@ -142,37 +142,25 @@ namespace ACE.MarketApi
                 lines.Where(l => l.ListingId != null).Select(l => l.ListingId.Value).Concat(events.Where(e => e.ListingId != null).Select(e => e.ListingId.Value)),
                 events.Select(e => e.ItemGuid));
 
-            return Results.Json(new
-            {
-                balance = balance?.Balance ?? 0,
-                head,
-                transfers = lines.Select(l => new
-                {
-                    sequence = l.Sequence,
-                    transferId = l.TransferId,
-                    kind = l.Kind,
-                    amount = l.Amount,
-                    balanceAfter = l.BalanceAfter,
-                    // stored as UTC; EF reads datetime(6) as Unspecified
-                    time = DateTime.SpecifyKind(l.Time, DateTimeKind.Utc),
-                    text = Describe(l, accountId, names),
-                    memo = l.EntryMemo ?? l.TransferMemo,
-                }),
-                nextTransfersBefore,
-                nextSince,
-                more,
-                items = events.Select(e => new
-                {
-                    id = e.Id,
-                    itemGuid = e.ItemGuid,
-                    kind = e.Kind,
-                    name = names.Item(e.ItemGuid),
-                    listingId = e.ListingId,
-                    time = DateTime.SpecifyKind(e.EventTime, DateTimeKind.Utc),
-                    text = Describe(e, names),
-                }),
-                nextItemsBefore,
-            });
+            var transfers = lines.Select(l => new HistoryTransferResponse(
+                l.Sequence,
+                l.TransferId,
+                l.Kind,
+                l.Amount,
+                l.BalanceAfter,
+                DateTime.SpecifyKind(l.Time, DateTimeKind.Utc),
+                Describe(l, accountId, names),
+                l.EntryMemo ?? l.TransferMemo)).ToList();
+            var historyItems = events.Select(e => new HistoryItemResponse(
+                e.Id,
+                e.ItemGuid,
+                e.Kind,
+                names.Item(e.ItemGuid),
+                e.ListingId,
+                DateTime.SpecifyKind(e.EventTime, DateTimeKind.Utc),
+                Describe(e, names))).ToList();
+
+            return Results.Json(new HistoryResponse(balance?.Balance ?? 0, head, transfers, nextTransfersBefore, nextSince, more, historyItems, nextItemsBefore));
         }
 
         private sealed record LedgerLine(long Sequence, long TransferId, long Amount, long BalanceAfter, string EntryMemo,
