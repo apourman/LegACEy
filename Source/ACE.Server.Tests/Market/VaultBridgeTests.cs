@@ -170,7 +170,7 @@ namespace ACE.Server.Tests.Market
                 }
 
                 Assert.AreEqual($"{TicketStatus.Done}|{TicketStore.Ok}", WaitForTicket(ticket));
-                VaultTestWorld.WaitUntil(() => !GameBridge.IsTicketRunning(ticket), "the bridge to hear the withdrawal's answer");
+                VaultTestWorld.WaitUntil(() => !BridgeIsRunning(ticket), "the bridge to hear the withdrawal's answer");
                 Assert.AreEqual(30, Ledger.GetBalance(account), "the balance was debited");
                 Assert.IsTrue(VaultTestWorld.Chats(VaultTestWorld.TakeSent(player)).Any(c => c.Contains("when you next log in")), "the player is told the notes arrive at the next login");
                 Assert.AreEqual(0, NotesInPacks(player), "the full pack took none of them now");
