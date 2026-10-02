@@ -191,9 +191,11 @@ namespace ACE.Server.Tests.Market
             {
                 var wrongAccount = NewTicket(stranger, TicketKind.VaultWithdraw, new TicketPayload(ItemGuid: guid), accountId: player.Character.AccountId);
                 var deposit = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: guid));
+                var unsupported = NewTicket(player, "future_market_request", new TicketPayload(ItemGuid: guid));
 
                 Assert.AreEqual($"{TicketStatus.Failed}|invalid_character", WaitForTicket(wrongAccount));
-                Assert.AreEqual($"{TicketStatus.Failed}|unsupported_kind", WaitForTicket(deposit));
+                Assert.AreEqual($"{TicketStatus.Failed}|not_in_pack", WaitForTicket(deposit));
+                Assert.AreEqual($"{TicketStatus.Failed}|unsupported_kind", WaitForTicket(unsupported));
             }
 
             AssertStillHeld(player, guid);
@@ -389,6 +391,31 @@ namespace ACE.Server.Tests.Market
         }
 
         [TestMethod]
+        public void Bridge_VaultDeposit_DeathWhilePopupOpenFailsInterrupted()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+
+            using (VaultTestWorld.Online(player))
+            {
+                var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
+                VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == TicketProgress.AwaitingConfirmation, "the confirmation before death");
+                var context = PendingConfirmationContext(player);
+
+                VaultTestWorld.OnWorldThread(() =>
+                {
+                    player.IsInDeathProcess = true;
+                    player.ConfirmationManager.HandleResponse(ConfirmationType.Yes_No, context, true);
+                });
+
+                Assert.AreEqual($"{TicketStatus.Failed}|interrupted", WaitForTicket(ticket));
+                Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full));
+                Assert.IsFalse(player.IsVaultChannelling);
+                Assert.IsNull(VaultStore.Get(item.Guid.Full));
+            }
+        }
+
+        [TestMethod]
         public void Bridge_VaultDeposit_ProgressStartsAtYesAfterTwentyFiveSecondsAwaitingConfirmation()
         {
             var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
@@ -456,10 +483,9 @@ namespace ACE.Server.Tests.Market
 
         private static uint PendingConfirmationContext(Player player)
         {
-            var field = typeof(ACE.Server.WorldObjects.Managers.ConfirmationManager).GetField("confirmations", BindingFlags.NonPublic | BindingFlags.Instance);
-            var confirmations = (IDictionary)field.GetValue(player.ConfirmationManager);
-            var confirmation = confirmations[ConfirmationType.Yes_No];
-            return (uint)confirmation.GetType().GetField("ContextId").GetValue(confirmation);
+            var context = PendingConfirmationContextOrNull(player);
+            Assert.IsTrue(context.HasValue, "a yes/no confirmation is pending");
+            return context.Value;
         }
 
         private static uint? PendingConfirmationContextOrNull(Player player)

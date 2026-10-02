@@ -360,7 +360,7 @@ namespace ACE.Server.Market
                     return;
                 }
 
-                VaultChannel.StartDeposit(player, itemGuid, result => Finished(ticket, result), ticket.Id);
+                VaultChannel.StartDeposit(player, itemGuid, result => Finished(ticket, result), ticket.Id, afterConfirmation: true);
             }));
         }
 

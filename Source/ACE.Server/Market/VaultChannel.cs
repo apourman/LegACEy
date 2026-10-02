@@ -59,10 +59,10 @@ namespace ACE.Server.Market
         /// <summary>
         /// Starts a deposit channel, on the world thread. A refusal is reported at once; otherwise the Vault's result is reported when the channel ends.
         /// </summary>
-        public static void StartDeposit(Player player, uint itemGuid, Action<VaultResult> completed = null, long? ticketId = null)
+        public static void StartDeposit(Player player, uint itemGuid, Action<VaultResult> completed = null, long? ticketId = null, bool afterConfirmation = false)
         {
             WorldObject item = null;
-            var refusal = CheckStart(player) ?? Vault.CheckDeposit(player, itemGuid, out item);
+            var refusal = CheckStart(player, afterConfirmation) ?? Vault.CheckDeposit(player, itemGuid, out item);
 
             if (refusal != null)
             {
@@ -129,7 +129,7 @@ namespace ACE.Server.Market
         /// <summary>
         /// The reasons a channel can't start, whatever the item: another channel, a recent player fight, a trade, or anything else keeping the player busy
         /// </summary>
-        internal static VaultOutcome? CheckStart(Player player)
+        internal static VaultOutcome? CheckStart(Player player, bool afterConfirmation = false)
         {
             if (player.IsVaultChannelling)
                 return VaultOutcome.Channelling;
@@ -141,7 +141,10 @@ namespace ACE.Server.Market
             if (player.IsTrading)
                 return VaultOutcome.Trading;
 
-            if (player.IsBusy || player.Teleporting || player.suicideInProgress || player.IsInDeathProcess || player.IsDead || player.IsLoggingOut || player.PKLogout)
+            if (player.IsInDeathProcess || player.IsDead)
+                return afterConfirmation ? VaultOutcome.Interrupted : VaultOutcome.Busy;
+
+            if (player.IsBusy || player.Teleporting || player.suicideInProgress || player.IsLoggingOut || player.PKLogout)
                 return VaultOutcome.Busy;
 
             return null;
