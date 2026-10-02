@@ -35,7 +35,7 @@ namespace ACE.Server.Market
         public uint MarkedRowVersion { get; }
 
         /// <summary>
-        /// The game bridge ticket that asked for this withdrawal, marked done in the same save as the item
+        /// The game bridge ticket that asked for this channel, marked done in the same save as the item
         /// </summary>
         public long? TicketId { get; }
 
@@ -59,7 +59,7 @@ namespace ACE.Server.Market
         /// <summary>
         /// Starts a deposit channel, on the world thread. A refusal is reported at once; otherwise the Vault's result is reported when the channel ends.
         /// </summary>
-        public static void StartDeposit(Player player, uint itemGuid, Action<VaultResult> completed = null)
+        public static void StartDeposit(Player player, uint itemGuid, Action<VaultResult> completed = null, long? ticketId = null)
         {
             WorldObject item = null;
             var refusal = CheckStart(player) ?? Vault.CheckDeposit(player, itemGuid, out item);
@@ -70,7 +70,7 @@ namespace ACE.Server.Market
                 return;
             }
 
-            Begin(player, new VaultChannel(isDeposit: true, itemGuid, item.Name, markedRowVersion: 0, completed));
+            Begin(player, new VaultChannel(isDeposit: true, itemGuid, item.Name, markedRowVersion: 0, completed, ticketId));
         }
 
         /// <summary>
@@ -129,7 +129,7 @@ namespace ACE.Server.Market
         /// <summary>
         /// The reasons a channel can't start, whatever the item: another channel, a recent player fight, a trade, or anything else keeping the player busy
         /// </summary>
-        private static VaultOutcome? CheckStart(Player player)
+        internal static VaultOutcome? CheckStart(Player player)
         {
             if (player.IsVaultChannelling)
                 return VaultOutcome.Channelling;
@@ -200,7 +200,7 @@ namespace ACE.Server.Market
 
             if (channel.IsDeposit)
             {
-                Vault.Deposit(player, channel.ItemGuid, channel.completed);
+                Vault.Deposit(player, channel.ItemGuid, channel.completed, channel.TicketId);
                 return;
             }
 

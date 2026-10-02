@@ -80,6 +80,14 @@ namespace ACE.Server.Market
         /// </summary>
         public static void Deposit(Player player, uint itemGuid, Action<VaultResult> completed = null)
         {
+            Deposit(player, itemGuid, completed, null);
+        }
+
+        /// <summary>
+        /// Deposits an item for a game bridge ticket, completing the ticket with the item and Vault row in the same save.
+        /// </summary>
+        public static void Deposit(Player player, uint itemGuid, Action<VaultResult> completed, long? ticketId)
+        {
             VaultOutcome? refusal;
             WorldObject item;
 
@@ -134,11 +142,13 @@ namespace ACE.Server.Market
             if (player.CurrentAppraisalTarget == itemGuid)
                 player.CurrentAppraisalTarget = null;
 
+            var ticket = ticketId is long id ? new TicketCompletion(id, VaultMessages.DepositedByTicket(name, player.Name)) : null;
+
             DatabaseManager.Shard.DepositToVault(escrowed, new ReaderWriterLockSlim(), vaultItem, vaultSize, result =>
             {
                 // this runs on the save thread
                 WorldManager.EnqueueAction(new ActionEventDelegate(() => OnDeposited(player, item, name, result, completed)));
-            });
+            }, ticket);
         }
 
         /// <summary>

@@ -62,9 +62,8 @@ public static class TicketKind
 {
     public const string VaultWithdraw = "vault_withdraw";
     public const string MmdWithdraw = "mmd_withdraw";
-
-    // in the contract, but asking for one needs a live-inventory picker that the in-game UI work will build: the game fails it as unsupported
     public const string VaultDeposit = "vault_deposit";
+    public const string InventorySnapshot = "inventory_snapshot";
 }
 
 /// <summary>

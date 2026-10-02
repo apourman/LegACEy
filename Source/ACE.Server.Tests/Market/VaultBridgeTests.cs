@@ -1,5 +1,8 @@
 using System;
 using System.Linq;
+using System.Text.Json;
+using System.Collections;
+using System.Reflection;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -8,6 +11,7 @@ using ACE.Database.Models.Shard.Market;
 using ACE.Database.Tests.Market;
 using ACE.Entity.Enum;
 using ACE.Entity.Enum.Properties;
+using ACE.Server.Entity;
 using ACE.Server.Market;
 using ACE.Server.WorldObjects;
 
@@ -193,6 +197,283 @@ namespace ACE.Server.Tests.Market
             }
 
             AssertStillHeld(player, guid);
+        }
+
+        [TestMethod]
+        public void Bridge_InventorySnapshot_ListsPackItemsWithSharedRefusals_AndMovesNothing()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var allowed = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+            var attuned = VaultTestWorld.NewItem(VaultTestWorld.SwordWcid);
+            attuned.Attuned = AttunedStatus.Attuned;
+            VaultTestWorld.Give(player, attuned);
+            var worn = VaultTestWorld.NewItem(VaultTestWorld.SwordWcid);
+            Assert.IsTrue(player.TryEquipObject(worn, EquipMask.MeleeWeapon));
+
+            using (VaultTestWorld.Online(player))
+            {
+                var ticket = NewTicket(player, "inventory_snapshot", new TicketPayload());
+
+                Assert.AreEqual($"{TicketStatus.Done}|{TicketStore.Ok}", WaitForTicket(ticket));
+
+                using var result = JsonDocument.Parse(ReadTicket(ticket).Result);
+                var items = result.RootElement.GetProperty("items").EnumerateArray().ToArray();
+                var entries = items.ToDictionary(item => item.GetProperty("itemGuid").GetUInt32());
+
+                Assert.AreEqual(2, entries.Count, "pack contents are included and worn items are omitted");
+                Assert.IsTrue(entries.ContainsKey(allowed.Guid.Full));
+                Assert.IsTrue(entries.ContainsKey(attuned.Guid.Full));
+                Assert.IsFalse(entries.ContainsKey(worn.Guid.Full));
+                Assert.AreEqual(JsonValueKind.Null, entries[allowed.Guid.Full].GetProperty("refusalCode").ValueKind);
+                Assert.AreEqual("attuned", entries[attuned.Guid.Full].GetProperty("refusalCode").GetString());
+                Assert.AreEqual(allowed.Name, entries[allowed.Guid.Full].GetProperty("name").GetString());
+                Assert.AreEqual(allowed.StackSize ?? 1, entries[allowed.Guid.Full].GetProperty("stackSize").GetInt32());
+                Assert.IsNotNull(entries[allowed.Guid.Full].GetProperty("icon"));
+                Assert.IsNotNull(player.GetInventoryItem(allowed.Guid.Full), "the snapshot did not remove the item");
+                Assert.IsNotNull(player.GetInventoryItem(attuned.Guid.Full), "a refused item stays in the pack");
+                Assert.AreEqual(0, VaultStore.Count(player.Character.AccountId));
+            }
+        }
+
+        [TestMethod]
+        public void Bridge_InventorySnapshot_OfflineCharacterFails()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var ticket = NewTicket(player, "inventory_snapshot", new TicketPayload());
+
+            Assert.AreEqual($"{TicketStatus.Failed}|{GameBridge.Offline}", WaitForTicket(ticket));
+            Assert.IsFalse(string.IsNullOrWhiteSpace(TicketMessage(ticket)));
+        }
+
+        [TestMethod]
+        public void Bridge_VaultDeposit_ConfirmationStartsChannelAndCompletesInItsOwnSave()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+            long ticket;
+
+            using (ChannelSeconds(3))
+            using (VaultTestWorld.Online(player))
+            {
+                ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
+                VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == TicketProgress.AwaitingConfirmation, "the in-game confirmation request");
+
+                Assert.IsNotNull(player.ConfirmationManager);
+                var context = PendingConfirmationContext(player);
+                VaultTestWorld.OnWorldThread(() => player.ConfirmationManager.HandleResponse(ConfirmationType.Yes_No, context, true));
+
+                VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == TicketProgress.Channelling, "the deposit channel to start after Yes");
+                Assert.IsTrue(player.IsFrozen ?? false, "the normal channel freezes the player after Yes");
+                var progress = ReadTicket(ticket);
+                Assert.AreEqual(3, (progress.ProgressUntil.Value - progress.ProgressTime.Value).TotalSeconds, 0.01);
+                Assert.AreEqual($"{TicketStatus.Done}|{TicketStore.Ok}", WaitForTicket(ticket));
+            }
+
+            VaultTestWorld.WaitUntil(() => VaultStore.Get(item.Guid.Full) != null, "the deposited Vault row");
+            Assert.IsNull(player.GetInventoryItem(item.Guid.Full));
+            Assert.AreEqual(0L, Count($"SELECT COUNT(*) FROM market_ticket WHERE id = {ticket} AND status <> '{TicketStatus.Done}';"));
+            Assert.AreEqual(0L, Count($"SELECT COUNT(*) FROM market_vault_item WHERE item_Guid = {item.Guid.Full} AND account_Id <> {player.Character.AccountId};"));
+        }
+
+        [TestMethod]
+        public void Bridge_VaultDeposit_NoFailsAndLeavesItemInThePack()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+
+            using (VaultTestWorld.Online(player))
+            {
+                var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
+                VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == TicketProgress.AwaitingConfirmation, "the in-game confirmation request");
+                var context = PendingConfirmationContext(player);
+                VaultTestWorld.OnWorldThread(() => player.ConfirmationManager.HandleResponse(ConfirmationType.Yes_No, context, false));
+
+                Assert.AreEqual($"{TicketStatus.Failed}|declined", WaitForTicket(ticket));
+                Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full));
+                Assert.IsNull(VaultStore.Get(item.Guid.Full));
+            }
+        }
+
+        [TestMethod]
+        public void Bridge_VaultDeposit_ExistingYesNoPopupFailsBusyAndKeepsThatPopup()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+
+            using (VaultTestWorld.Online(player))
+            {
+                VaultTestWorld.OnWorldThread(() => Assert.IsTrue(player.ConfirmationManager.EnqueueSend(new Confirmation_Custom(player.Guid, () => { }), "Existing question")));
+                var oldContext = PendingConfirmationContext(player);
+                var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
+
+                Assert.AreEqual($"{TicketStatus.Failed}|confirmation_busy", WaitForTicket(ticket));
+                Assert.AreEqual(oldContext, PendingConfirmationContext(player), "the existing popup remains open");
+                Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full));
+
+                VaultTestWorld.OnWorldThread(() => player.ConfirmationManager.HandleResponse(ConfirmationType.Yes_No, oldContext, false));
+            }
+        }
+
+        [TestMethod]
+        public void Bridge_VaultDeposit_TimeoutRemovesOnlyItsPopup_AndLateYesCannotAnswerTheNextOne()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+
+            using (VaultTestWorld.Online(player))
+            {
+                var first = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
+                VaultTestWorld.WaitUntil(() => ReadTicket(first).Progress == TicketProgress.AwaitingConfirmation, "the first confirmation request");
+                var oldContext = PendingConfirmationContext(player);
+                VaultTestWorld.OnWorldThread(() => Assert.IsTrue(player.ConfirmationManager.Timeout(ConfirmationType.Yes_No, oldContext)));
+
+                Assert.AreEqual($"{TicketStatus.Failed}|confirm_timeout", WaitForTicket(first));
+                Assert.IsNull(PendingConfirmationContextOrNull(player), "timeout removed the expired confirmation");
+                Assert.IsFalse(BridgeIsRunning(first), "timeout released the bridge's running entry");
+
+                var second = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
+                VaultTestWorld.WaitUntil(() => ReadTicket(second).Progress == TicketProgress.AwaitingConfirmation, "the next confirmation request");
+                var newContext = PendingConfirmationContext(player);
+
+                Assert.AreNotEqual(oldContext, newContext);
+                VaultTestWorld.OnWorldThread(() => player.ConfirmationManager.HandleResponse(ConfirmationType.Yes_No, oldContext, true));
+                Assert.AreEqual(newContext, PendingConfirmationContext(player), "a late answer leaves the newer popup pending");
+                Assert.AreEqual(TicketStatus.Claimed, ReadTicket(second).Status);
+
+                VaultTestWorld.OnWorldThread(() => player.ConfirmationManager.HandleResponse(ConfirmationType.Yes_No, newContext, false));
+                Assert.AreEqual($"{TicketStatus.Failed}|declined", WaitForTicket(second));
+                Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full));
+            }
+        }
+
+        [TestMethod]
+        public void Bridge_VaultDeposit_RechecksPackAndRecentFightAfterYes()
+        {
+            var movedPlayer = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var movedItem = VaultTestWorld.Give(movedPlayer, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+
+            using (VaultTestWorld.Online(movedPlayer))
+            {
+                var ticket = NewTicket(movedPlayer, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: movedItem.Guid.Full));
+                VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == TicketProgress.AwaitingConfirmation, "the confirmation before pack re-check");
+                var context = PendingConfirmationContext(movedPlayer);
+                VaultTestWorld.OnWorldThread(() =>
+                {
+                    Assert.IsTrue(movedPlayer.TryRemoveFromInventoryForVault(movedItem.Guid, out _));
+                    movedPlayer.ConfirmationManager.HandleResponse(ConfirmationType.Yes_No, context, true);
+                });
+
+                Assert.AreEqual($"{TicketStatus.Failed}|not_in_pack", WaitForTicket(ticket));
+                Assert.IsNull(VaultStore.Get(movedItem.Guid.Full));
+            }
+
+            var fightingPlayer = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var fightingItem = VaultTestWorld.Give(fightingPlayer, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+            fightingPlayer.PlayerKillerStatus = PlayerKillerStatus.PK;
+
+            using (VaultTestWorld.Online(fightingPlayer))
+            {
+                var ticket = NewTicket(fightingPlayer, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: fightingItem.Guid.Full));
+                VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == TicketProgress.AwaitingConfirmation, "the confirmation before fight re-check");
+                var context = PendingConfirmationContext(fightingPlayer);
+                VaultTestWorld.OnWorldThread(() =>
+                {
+                    Player.UpdatePKTimers(NewPk(), fightingPlayer);
+                    fightingPlayer.ConfirmationManager.HandleResponse(ConfirmationType.Yes_No, context, true);
+                });
+
+                Assert.AreEqual($"{TicketStatus.Failed}|recent_player_fight", WaitForTicket(ticket));
+                Assert.IsNotNull(fightingPlayer.GetInventoryItem(fightingItem.Guid.Full));
+                Assert.IsFalse(fightingPlayer.IsVaultChannelling);
+            }
+        }
+
+        [TestMethod]
+        public void Bridge_VaultDeposit_ProgressStartsAtYesAfterTwentyFiveSecondsAwaitingConfirmation()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+
+            using (ChannelSeconds(3))
+            using (VaultTestWorld.Online(player))
+            {
+                var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
+                VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == TicketProgress.AwaitingConfirmation, "the confirmation request");
+                MarketTestDatabase.Execute(Db, $"UPDATE market_ticket SET claimed_Time = UTC_TIMESTAMP(6) - INTERVAL 25 SECOND WHERE id = {ticket};");
+                var context = PendingConfirmationContext(player);
+                VaultTestWorld.OnWorldThread(() => player.ConfirmationManager.HandleResponse(ConfirmationType.Yes_No, context, true));
+
+                VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == TicketProgress.Channelling, "the channel progress after Yes");
+                var progress = ReadTicket(ticket);
+                Assert.IsTrue((progress.ProgressTime.Value - progress.ClaimedTime.Value).TotalSeconds >= 24, "the channel starts from the answer, not the claim");
+                Assert.AreEqual(3, (progress.ProgressUntil.Value - progress.ProgressTime.Value).TotalSeconds, 0.01);
+                Assert.AreEqual($"{TicketStatus.Done}|{TicketStore.Ok}", WaitForTicket(ticket));
+            }
+        }
+
+        [TestMethod]
+        public void Bridge_VaultDeposit_DeadlineAfterLogoutFailsOffline()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+            var online = VaultTestWorld.Online(player);
+            var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
+            VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == TicketProgress.AwaitingConfirmation, "the confirmation request");
+            var context = PendingConfirmationContext(player);
+
+            online.Dispose();
+            VaultTestWorld.OnWorldThread(() => player.ConfirmationManager.Timeout(ConfirmationType.Yes_No, context));
+
+            Assert.AreEqual($"{TicketStatus.Failed}|{GameBridge.Offline}", WaitForTicket(ticket));
+            Assert.IsNull(PendingConfirmationContextOrNull(player));
+            Assert.IsFalse(BridgeIsRunning(ticket));
+            Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full));
+            Assert.IsNull(VaultStore.Get(item.Guid.Full));
+        }
+
+        [TestMethod]
+        public void Bridge_VaultDeposit_PlayerHitDuringChannelFailsInterruptedAndKeepsItemInPack()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+            player.PlayerKillerStatus = PlayerKillerStatus.PK;
+
+            using (ChannelSeconds(30))
+            using (VaultTestWorld.Online(player))
+            {
+                var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
+                VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == TicketProgress.AwaitingConfirmation, "the confirmation request");
+                var context = PendingConfirmationContext(player);
+                VaultTestWorld.OnWorldThread(() => player.ConfirmationManager.HandleResponse(ConfirmationType.Yes_No, context, true));
+                VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == TicketProgress.Channelling, "the deposit channel");
+
+                VaultTestWorld.OnWorldThread(() => player.TakeDamage(NewPk(), DamageType.Slash, 1, BodyPart.Chest));
+                Assert.AreEqual($"{TicketStatus.Failed}|interrupted", WaitForTicket(ticket));
+                Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full));
+                Assert.IsNull(VaultStore.Get(item.Guid.Full));
+            }
+        }
+
+        private static uint PendingConfirmationContext(Player player)
+        {
+            var field = typeof(ACE.Server.WorldObjects.Managers.ConfirmationManager).GetField("confirmations", BindingFlags.NonPublic | BindingFlags.Instance);
+            var confirmations = (IDictionary)field.GetValue(player.ConfirmationManager);
+            var confirmation = confirmations[ConfirmationType.Yes_No];
+            return (uint)confirmation.GetType().GetField("ContextId").GetValue(confirmation);
+        }
+
+        private static uint? PendingConfirmationContextOrNull(Player player)
+        {
+            var field = typeof(ACE.Server.WorldObjects.Managers.ConfirmationManager).GetField("confirmations", BindingFlags.NonPublic | BindingFlags.Instance);
+            var confirmations = (IDictionary)field.GetValue(player.ConfirmationManager);
+            var confirmation = confirmations[ConfirmationType.Yes_No];
+            return confirmation == null ? null : (uint)confirmation.GetType().GetField("ContextId").GetValue(confirmation);
+        }
+
+        private static bool BridgeIsRunning(long ticketId)
+        {
+            var field = typeof(GameBridge).GetField("running", BindingFlags.NonPublic | BindingFlags.Static);
+            return ((System.Collections.Generic.HashSet<long>)field.GetValue(null)).Contains(ticketId);
         }
 
         // ---- restart

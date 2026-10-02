@@ -86,6 +86,25 @@ namespace ACE.Database
         }
 
         /// <summary>
+        /// Completes a claimed ticket with optional structured result data, for read-only bridge work such as inventory snapshots.
+        /// </summary>
+        public bool CompleteTicket(TicketCompletion completion)
+        {
+            try
+            {
+                using var context = new ShardDbContext();
+                TicketStore.Complete(context, completion, DateTime.UtcNow);
+                context.SaveChanges();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                log.Error($"[DATABASE][BRIDGE] Completing ticket {completion.TicketId} failed: {ex.GetFullMessage()}");
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Writes the current stage of a claimed bridge ticket. The game calls this on its serialized database queue.
         /// </summary>
         public bool SetTicketProgress(long ticketId, string progress, DateTime progressTime, DateTime progressUntil)
