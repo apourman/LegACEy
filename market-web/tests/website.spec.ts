@@ -15,6 +15,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/me') return route.fulfill({ status: 401, json: { error: 'unauthorized' } });
+    // a signed-in page's request panel asks for tickets; a 404 here would show a second alert
     if (path === '/api/tickets') return route.fulfill({ json: [] });
     if (path === '/api/facets') return route.fulfill({ json: {
       itemTypes: [{ value: 'MeleeWeapon', label: 'MeleeWeapon', count: 1 }],
@@ -43,11 +44,45 @@ test('browse preserves filters in URL and back navigation, with focus appraisal'
   await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
 });
 
+test('sign in, browse listings and buy one', async ({ page }) => {
+  let signedIn = false;
+  const logins: unknown[] = [];
+  const purchases: { body: unknown; csrf: string }[] = [];
+  await page.route('**/api/auth/login', route => {
+    logins.push(route.request().postDataJSON());
+    signedIn = true;
+    return route.fulfill({ json: { accountId: 1, accountName: 'Alpha' } });
+  });
+  await page.route('**/api/me', route => route.fulfill(signedIn ? { json: me } : { status: 401, json: { error: 'unauthorized' } }));
+  await page.route('**/api/listings/1/purchase', route => {
+    purchases.push({ body: route.request().postDataJSON(), csrf: route.request().headers()['x-market-request'] });
+    return route.fulfill({ json: { status: 'ok', listingId: 1, itemGuid: 10, price: 120, fee: 0, balance: 380 } });
+  });
+
+  await page.goto('/signin');
+  await page.getByLabel('Account name').fill('Alpha');
+  await page.getByLabel('Password', { exact: true }).fill('pass');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByText('Alpha', { exact: true })).toBeVisible();
+  expect(logins).toEqual([{ account: 'Alpha', password: 'pass' }]);
+
+  await expect(page).toHaveURL(/\/$/);
+  await page.getByRole('link', { name: 'Bone Slicer' }).click();
+  await page.getByRole('button', { name: 'Buy', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm purchase' }).click();
+  await expect(page.getByRole('link', { name: 'Go to Vault' })).toBeVisible();
+  expect(purchases).toHaveLength(1);
+  expect(purchases[0].body).toMatchObject({ count: 3, expectedPrice: 120, characterId: 11 });
+  expect(purchases[0].csrf).toBe('1');
+});
+
 test('purchase retries keep character price and key, then refresh account and link Vault', async ({ page }) => {
   await page.route('**/api/me', route => route.fulfill({ json: me }));
   let attempts: object[] = [];
+  const csrfHeaders: string[] = [];
   await page.route('**/api/listings/1/purchase', async route => {
     attempts.push(route.request().postDataJSON());
+    csrfHeaders.push(route.request().headers()['x-market-request']);
     if (attempts.length === 1) return route.abort('failed');
     await route.fulfill({ json: { status: 'ok', balance: 380, price: 120, fee: 0, listingId: 1, itemGuid: 10 } });
   });
@@ -64,6 +99,16 @@ test('purchase retries keep character price and key, then refresh account and li
   expect(attempts).toHaveLength(2);
   expect(attempts[0]).toEqual(attempts[1]);
   expect(attempts[0]).toMatchObject({ characterId: 12, expectedPrice: 120, count: 3 });
+  expect(csrfHeaders, 'every attempt carries the header the API checks for CSRF').toEqual(['1', '1']);
+});
+
+test('an unreadable answer is reported as a server problem, not a lost response', async ({ page }) => {
+  await page.route('**/api/me', route => route.fulfill({ json: me }));
+  await page.route('**/api/listings/1/purchase', route => route.fulfill({ contentType: 'application/json', body: '{"status":' }));
+  await page.goto('/listing/1');
+  await page.getByRole('button', { name: 'Buy', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm purchase' }).click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('The server is unavailable.');
 });
 
 test('price changed requires a fresh confirmation and fresh key', async ({ page }) => {
@@ -146,9 +191,8 @@ test('account without characters cannot buy and has a clear next step', async ({
 });
 
 test('load more uses cursor and filter changes discard previous rows', async ({ page }) => {
-  await page.route('**/api/listings**', route => {
+  await page.route(url => url.pathname === '/api/listings', route => {
     const url = new URL(route.request().url());
-    if (url.pathname !== '/api/listings') return route.fallback();
     if (url.searchParams.has('q')) return route.fulfill({ json: { listings: [], nextCursor: null } });
     return route.fulfill({ json: url.searchParams.has('cursor') ? { listings: [{ ...listing, id: 2, name: 'Chainmail Basinet' }], nextCursor: null } : { listings: [listing], nextCursor: 'next-page' } });
   });

@@ -35,12 +35,19 @@
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.4" />
   </ItemGroup>
 
-  <Target Name="PreserveCommittedMarketOpenApi" BeforeTargets="GenerateMarketOpenApi" Condition="'$(DesignTimeBuild)' != 'true' and '$(TargetFramework)' == 'net10.0'">
-    <Copy SourceFiles="$(MSBuildProjectDirectory)/openapi.json" DestinationFiles="$(MSBuildProjectDirectory)/obj/market-openapi-committed-before-build.json" />
-  </Target>
+  <!--
+    The OpenAPI document. Every build writes it to obj/openapi.json and leaves the committed openapi.json alone;
+    MarketApiOpenApiTests fails when the two differ. To refresh the committed file:
+      dotnet build Source/ACE.MarketApi -p:Platform=x64 -p:UpdateOpenApi=true
+    then regenerate the website's client: npm run generate:api in market-web.
+  -->
+  <PropertyGroup>
+    <MarketOpenApiOutput>$(MSBuildProjectDirectory)/obj/openapi.json</MarketOpenApiOutput>
+  </PropertyGroup>
 
-  <Target Name="GenerateMarketOpenApi" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true' and '$(TargetFramework)' == 'net10.0'">
-    <Exec Command="dotnet &quot;$(TargetPath)&quot; --generate-openapi &quot;$(MSBuildProjectDirectory)/openapi.json&quot;" />
+  <Target Name="GenerateMarketOpenApi" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Exec Command="dotnet &quot;$(TargetPath)&quot; --generate-openapi &quot;$(MarketOpenApiOutput)&quot;" />
+    <Copy Condition="'$(UpdateOpenApi)' == 'true'" SourceFiles="$(MarketOpenApiOutput)" DestinationFiles="$(MSBuildProjectDirectory)/openapi.json" />
   </Target>
 
   <ItemGroup>

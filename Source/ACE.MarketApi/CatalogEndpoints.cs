@@ -23,10 +23,17 @@ namespace ACE.MarketApi
 
         public const int MaxSuggestions = 10;
 
+        /// <summary>
+        /// Browse's query, for the document only: Browse reads and checks each value itself
+        /// </summary>
+        public sealed record BrowseQuery(string Q, string Type, long? MinPrice, long? MaxPrice, string Seller, string Sort, string Dir, int? Limit, string Cursor);
+
+        public sealed record SuggestQuery(string Q);
+
         public static void Map(IEndpointRouteBuilder app)
         {
-            app.MapGet("/listings", Browse).Json<BrowseResponse>(200, 400);
-            app.MapGet("/listings/suggest", Suggest).Json<SuggestionsResponse>();
+            app.MapGet("/listings", Browse).Json<BrowseResponse>(200, 400).Query<BrowseQuery>();
+            app.MapGet("/listings/suggest", Suggest).Json<SuggestionsResponse>().Query<SuggestQuery>();
             app.MapGet("/listings/{id:long}", Detail).Json<ListingDetailResponse>(200, 404);
             app.MapGet("/facets", Facets).Json<FacetsResponse>();
         }

@@ -1,39 +1,42 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+
+using ACE.MarketApi.Tests.Support;
 
 namespace ACE.MarketApi.Tests
 {
+    /// <summary>
+    /// The OpenAPI document: it lists every route the API maps with what each answers, its schemas come from the contract records,
+    /// and the committed openapi.json is what the build generates.
+    /// </summary>
     [TestClass]
     public class MarketApiOpenApiTests
     {
-        [TestMethod]
-        public async Task EveryEndpoint_HasASuccessResponseSchema()
+        private const string RefreshCommand = "dotnet build Source/ACE.MarketApi -p:Platform=x64 -p:UpdateOpenApi=true, then npm run generate:api in market-web";
+
+        private sealed record MappedRoute(string Method, string Path, bool SignedIn);
+
+        /// <summary>
+        /// The document's bytes, as the build's generator writes them
+        /// </summary>
+        private static async Task<byte[]> GenerateBytesAsync()
         {
             var path = Path.Combine(Path.GetTempPath(), $"market-openapi-{Guid.NewGuid():N}.json");
             try
             {
-                await Program.GenerateOpenApi(path);
-                using var document = JsonDocument.Parse(await File.ReadAllTextAsync(path));
-                var paths = document.RootElement.GetProperty("paths");
-                var operations = paths.EnumerateObject()
-                    .SelectMany(item => item.Value.EnumerateObject().Select(operation => (Path: item.Name, Method: operation.Name, Operation: operation.Value)))
-                    .Where(item => item.Method is "get" or "post" or "put" or "patch" or "delete")
-                    .ToList();
-
-                Assert.AreEqual(24, operations.Count, "Every mapped Market API route must be represented exactly once.");
-                foreach (var (route, method, operation) in operations)
-                {
-                    var response = operation.GetProperty("responses").EnumerateObject()
-                        .FirstOrDefault(candidate => candidate.Name.StartsWith("2", StringComparison.Ordinal));
-                    Assert.IsFalse(response.Equals(default(JsonProperty)), $"{method.ToUpperInvariant()} {route} has no success response.");
-                    Assert.IsTrue(response.Value.TryGetProperty("content", out var content), $"{method.ToUpperInvariant()} {route} has no response content.");
-                    Assert.IsTrue(content.EnumerateObject().Any(media => media.Value.TryGetProperty("schema", out _)), $"{method.ToUpperInvariant()} {route} has no response schema.");
-                }
+                await MarketOpenApi.WriteAsync(path);
+                return await File.ReadAllBytesAsync(path);
             }
             finally
             {
@@ -41,83 +44,164 @@ namespace ACE.MarketApi.Tests
             }
         }
 
-        [TestMethod]
-        public async Task CommittedOpenApi_MatchesTheBuiltInGenerator()
+        private static async Task<JsonDocument> GenerateAsync() => JsonDocument.Parse(await GenerateBytesAsync());
+
+        /// <summary>
+        /// Every route the running API maps, as the document names it: lower-case method, and the path without route constraints
+        /// </summary>
+        private static async Task<List<MappedRoute>> MappedRoutesAsync()
         {
-            var generated = Path.Combine(Path.GetTempPath(), $"market-openapi-{Guid.NewGuid():N}.json");
-            var committed = FindCommittedDocument();
-            try
-            {
-                await Program.GenerateOpenApi(generated);
-                Assert.IsTrue(File.Exists(committed), $"Expected committed OpenAPI document at {committed}.");
-                var preBuildCommitted = Path.Combine(Path.GetDirectoryName(committed), "obj", "market-openapi-committed-before-build.json");
-                Assert.IsTrue(File.Exists(preBuildCommitted), $"Expected the build to preserve the pre-generation document at {preBuildCommitted}.");
-                AssertDocumentsMatch(await File.ReadAllBytesAsync(preBuildCommitted), await File.ReadAllBytesAsync(generated));
-            }
-            finally
-            {
-                File.Delete(generated);
-            }
+            await using var host = await MarketApiHost.StartAsync();
+
+            return ((IEndpointRouteBuilder)host.App).DataSources
+                .SelectMany(source => source.Endpoints)
+                .OfType<RouteEndpoint>()
+                .SelectMany(endpoint => endpoint.Metadata.GetRequiredMetadata<IHttpMethodMetadata>().HttpMethods.Select(method => new MappedRoute(
+                    method.ToLowerInvariant(),
+                    Regex.Replace(endpoint.RoutePattern.RawText, @"\{(\w+):[^}]+\}", "{$1}"),
+                    endpoint.Metadata.GetMetadata<IAuthorizeData>() != null)))
+                .ToList();
         }
 
-        [TestMethod]
-        public void OpenApiDriftCheck_RejectsStaleCommittedContent()
-        {
-            var committed = File.ReadAllBytes(FindCommittedDocument());
-            var generated = Path.Combine(Path.GetTempPath(), $"market-openapi-{Guid.NewGuid():N}.json");
-            try
-            {
-                Program.GenerateOpenApi(generated).GetAwaiter().GetResult();
-                var stale = (byte[])committed.Clone();
-                stale[0] ^= 1;
+        private static JsonElement Operation(JsonDocument document, MappedRoute route) =>
+            document.RootElement.GetProperty("paths").GetProperty(route.Path).GetProperty(route.Method);
 
-                Assert.ThrowsExactly<AssertFailedException>(() => AssertDocumentsMatch(stale, File.ReadAllBytes(generated)));
-                AssertDocumentsMatch(committed, File.ReadAllBytes(generated));
-            }
-            finally
-            {
-                File.Delete(generated);
-            }
+        private static void AssertDeclaresApiError(JsonDocument document, MappedRoute route, string status)
+        {
+            var name = $"{route.Method.ToUpperInvariant()} {route.Path}";
+
+            Assert.IsTrue(Operation(document, route).GetProperty("responses").TryGetProperty(status, out var response), $"{name} does not declare {status}.");
+            Assert.AreEqual("#/components/schemas/ApiError", response.GetProperty("content").GetProperty("application/json").GetProperty("schema").GetProperty("$ref").GetString(), name);
         }
 
-        [TestMethod]
-        public async Task TicketResult_ReferencesTheNamedInventorySnapshotSchema()
-        {
-            var path = Path.Combine(Path.GetTempPath(), $"market-openapi-{Guid.NewGuid():N}.json");
-            try
-            {
-                await Program.GenerateOpenApi(path);
-                using var document = JsonDocument.Parse(await File.ReadAllTextAsync(path));
-                var result = document.RootElement.GetProperty("components").GetProperty("schemas")
-                    .GetProperty("TicketResponse").GetProperty("properties").GetProperty("result");
-                var alternatives = result.GetProperty("anyOf").EnumerateArray().ToList();
-
-                Assert.IsTrue(alternatives.Any(alternative => alternative.TryGetProperty("$ref", out var reference)
-                    && reference.GetString() == "#/components/schemas/InventorySnapshotResponse"));
-                Assert.IsTrue(alternatives.Any(alternative => alternative.TryGetProperty("$ref", out var reference)
-                    && reference.GetString() == "#/components/schemas/JsonElement"), "Other JSON result shapes remain representable.");
-            }
-            finally
-            {
-                File.Delete(path);
-            }
-        }
-
-        private static void AssertDocumentsMatch(byte[] committed, byte[] generated)
-        {
-            CollectionAssert.AreEqual(committed, generated, "The committed document is out of date; build ACE.MarketApi to regenerate it.");
-        }
-
-        private static string FindCommittedDocument()
+        private static string ProjectFile(string relativePath)
         {
             for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory != null; directory = directory.Parent)
             {
-                var candidate = Path.Combine(directory.FullName, "Source", "ACE.MarketApi", "openapi.json");
-                if (File.Exists(candidate))
-                    return candidate;
+                var project = Path.Combine(directory.FullName, "Source", "ACE.MarketApi");
+                if (File.Exists(Path.Combine(project, "ACE.MarketApi.csproj")))
+                    return Path.Combine(project, relativePath);
             }
 
-            return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../Source/ACE.MarketApi/openapi.json"));
+            throw new DirectoryNotFoundException("Source/ACE.MarketApi was not found above " + AppContext.BaseDirectory);
+        }
+
+        [TestMethod]
+        public async Task EveryMappedRoute_IsDocumented_WithASuccessResponseSchema()
+        {
+            var routes = await MappedRoutesAsync();
+            using var document = await GenerateAsync();
+
+            var documented = document.RootElement.GetProperty("paths").EnumerateObject()
+                .SelectMany(path => path.Value.EnumerateObject().Select(operation => $"{operation.Name} {path.Name}"))
+                .ToList();
+
+            CollectionAssert.AreEquivalent(routes.Select(route => $"{route.Method} {route.Path}").ToList(), documented, "the document lists exactly the routes the API maps");
+
+            foreach (var route in routes)
+            {
+                var success = Operation(document, route).GetProperty("responses").EnumerateObject().FirstOrDefault(response => response.Name.StartsWith('2'));
+                Assert.IsNotNull(success.Name, $"{route.Method.ToUpperInvariant()} {route.Path} has no success response.");
+                Assert.IsTrue(success.Value.TryGetProperty("content", out var content) && content.EnumerateObject().Any(media => media.Value.TryGetProperty("schema", out _)),
+                    $"{route.Method.ToUpperInvariant()} {route.Path} has no success response schema.");
+            }
+        }
+
+        [TestMethod]
+        public async Task SignedInRoutes_Declare401_AndRoutesThatChangeSomething_Declare403()
+        {
+            var routes = await MappedRoutesAsync();
+            using var document = await GenerateAsync();
+
+            Assert.IsTrue(routes.Any(route => route.SignedIn && route.Path == "/api/listings/{id}/purchase"), "purchase requires sign-in");
+            Assert.IsFalse(routes.Any(route => route.SignedIn && route.Path == "/api/facets"), "the catalog does not");
+
+            // the authorization middleware answers 401 unauthorized
+            foreach (var route in routes.Where(route => route.SignedIn))
+                AssertDeclaresApiError(document, route, "401");
+
+            // the CSRF filter answers 403 csrf to a cookie-signed request without X-Market-Request
+            foreach (var route in routes.Where(route => route.Method != "get"))
+                AssertDeclaresApiError(document, route, "403");
+        }
+
+        [TestMethod]
+        public async Task Integers_AreDocumentedAsIntegers()
+        {
+            using var document = await GenerateAsync();
+
+            var text = document.RootElement.GetRawText();
+            Assert.IsFalse(text.Contains("\"pattern\""), "no number is documented as a patterned string");
+
+            var listing = document.RootElement.GetProperty("components").GetProperty("schemas").GetProperty("ListingResponse").GetProperty("properties");
+            Assert.AreEqual("integer", listing.GetProperty("price").GetProperty("type").GetString());
+            Assert.AreEqual("integer", listing.GetProperty("itemGuid").GetProperty("type").GetString());
+
+            var limit = Operation(document, new MappedRoute("get", "/api/listings", false)).GetProperty("parameters").EnumerateArray().Single(p => p.GetProperty("name").GetString() == "limit");
+            Assert.AreEqual("integer", limit.GetProperty("schema").GetProperty("type").GetString(), "query parameters have their real types");
+        }
+
+        [TestMethod]
+        public async Task TicketResult_IsTheInventorySnapshotRecord()
+        {
+            using var document = await GenerateAsync();
+            var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+
+            var result = schemas.GetProperty("TicketResponse").GetProperty("properties").GetProperty("result");
+            var alternatives = result.GetProperty("oneOf").EnumerateArray().Select(alternative => JsonSerializer.Serialize(alternative)).ToList();
+            CollectionAssert.AreEquivalent(new[] { "{\"type\":\"null\"}", "{\"$ref\":\"#/components/schemas/InventorySnapshotResponse\"}" }, alternatives);
+
+            // each schema has exactly its record's properties
+            foreach (var type in new[] { typeof(TicketResponse), typeof(InventorySnapshotResponse), typeof(InventorySnapshotItemResponse), typeof(IconResponse) })
+            {
+                var expected = type.GetConstructors().Single().GetParameters().Select(parameter => JsonNamingPolicy.CamelCase.ConvertName(parameter.Name)).ToList();
+                var documented = schemas.GetProperty(type.Name).GetProperty("properties").EnumerateObject().Select(property => property.Name).ToList();
+                CollectionAssert.AreEqual(expected, documented, type.Name);
+            }
+        }
+
+        [TestMethod]
+        public async Task Generation_StartsNoServer_WhateverTheEnvironmentSays()
+        {
+            // a port that's taken: if generation listened on it, it would fail
+            using var taken = new TcpListener(IPAddress.Loopback, 0);
+            taken.Start();
+            var port = ((IPEndPoint)taken.LocalEndpoint).Port;
+
+            var urls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
+            var ports = Environment.GetEnvironmentVariable("ASPNETCORE_HTTP_PORTS");
+            try
+            {
+                Environment.SetEnvironmentVariable("ASPNETCORE_URLS", $"http://127.0.0.1:{port}");
+                Environment.SetEnvironmentVariable("ASPNETCORE_HTTP_PORTS", port.ToString());
+
+                using var document = await GenerateAsync();
+
+                Assert.IsTrue(document.RootElement.GetProperty("paths").EnumerateObject().Any());
+                Assert.IsFalse(document.RootElement.TryGetProperty("servers", out _), "the document names no server");
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("ASPNETCORE_URLS", urls);
+                Environment.SetEnvironmentVariable("ASPNETCORE_HTTP_PORTS", ports);
+            }
+        }
+
+        [TestMethod]
+        public async Task CommittedOpenApi_IsWhatTheBuildGenerates()
+        {
+            var committed = ProjectFile("openapi.json");
+            var built = ProjectFile(Path.Combine("obj", "openapi.json"));
+
+            Assert.IsTrue(File.Exists(built), $"The build writes {built}.");
+            Assert.IsTrue(File.Exists(committed), $"{committed} is missing: {RefreshCommand}");
+
+            var builtBytes = await File.ReadAllBytesAsync(built);
+
+            // the build's copy is current: the generator, run here, writes the same bytes
+            CollectionAssert.AreEqual(await GenerateBytesAsync(), builtBytes, "obj/openapi.json is stale; build ACE.MarketApi.");
+
+            CollectionAssert.AreEqual(await File.ReadAllBytesAsync(committed), builtBytes, $"The committed openapi.json is out of date: {RefreshCommand}");
         }
     }
 }

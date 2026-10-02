@@ -36,9 +36,14 @@ namespace ACE.MarketApi
             new LedgerLine(e.Sequence.Value, e.TransferId, e.Amount, e.BalanceAfter.Value, e.Memo,
                 e.Transfer.Kind, e.Transfer.ListingId, e.Transfer.ReversesTransferId, e.Transfer.Memo, e.Transfer.CreatedTime);
 
+        /// <summary>
+        /// History's query, for the document only: History reads and checks each value itself
+        /// </summary>
+        public sealed record HistoryQuery(long? Since, long? TransfersBefore, long? ItemsBefore, long? ItemsLimit, long? TransfersLimit);
+
         public static void Map(IEndpointRouteBuilder app)
         {
-            app.MapGet("/history", History).Json<HistoryResponse>(200, 400).RequireAuthorization();
+            app.MapGet("/history", History).Json<HistoryResponse>(200, 400).Query<HistoryQuery>().RequireAuthorization();
         }
 
         /// <summary>
