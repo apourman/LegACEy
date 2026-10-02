@@ -36,6 +36,13 @@ export interface HistoryResult {
   balance: number; head: number; transfers: HistoryTransfer[]; items: HistoryItem[];
   nextTransfersBefore: number | null; nextSince: number | null; more: boolean; nextItemsBefore: number | null;
 }
+export interface Ticket {
+  id: number; kind: 'vault_withdraw' | 'mmd_withdraw' | string; status: 'WAITING' | 'CLAIMED' | 'DONE' | 'FAILED';
+  characterId: number | null; itemGuid: number | null; amount: number | null;
+  resultCode: string | null; resultMessage: string | null; progress: 'awaiting_confirmation' | 'channelling' | string | null;
+  progressTime: string | null; progressUntil: string | null; result: unknown | null;
+  createdTime: string; claimedTime: string | null; finishedTime: string | null;
+}
 
 export const messages: Record<string, string> = {
   invalid_credentials: 'The account name or password is incorrect.',
@@ -49,7 +56,7 @@ export const messages: Record<string, string> = {
   insufficient_funds: 'You do not have enough MMD for this purchase.',
   own_listing: 'You cannot buy your own listing.',
   rate_limited: 'Too many purchase attempts. Wait a minute and try again.',
-  paused: 'The market is paused. Purchases are temporarily unavailable.',
+  paused: 'The market is paused. Purchases and MMD withdrawals are temporarily unavailable.',
   busy: 'The server is busy. Try this purchase again.',
   key_reused: 'This request key was already used. Close this dialog and start a new purchase.',
   invalid_price: 'The price must be a positive whole number of MMD.',
@@ -105,3 +112,8 @@ export const listVaultItem = (itemGuid: number, price: number, characterId: numb
   request<{ id: number; itemGuid: number; price: number; status: string; listedTime: string }>('/listings', { itemGuid, price, characterId });
 export const delistVaultItem = (listingId: number) => request<{ id: number; itemGuid: number; status: string }>(`/listings/${listingId}/delist`, {});
 export const getHistory = (query: URLSearchParams) => request<HistoryResult>(`/history?${query}`);
+export const getTickets = () => request<Ticket[]>('/tickets');
+export const withdrawVaultItem = (characterId: number, itemGuid: number, idempotencyKey: string) =>
+  request<Ticket>('/vault/withdraw', { characterId, itemGuid, idempotencyKey });
+export const withdrawMmd = (characterId: number, amount: number, idempotencyKey: string) =>
+  request<Ticket>('/mmd/withdraw', { characterId, amount, idempotencyKey });

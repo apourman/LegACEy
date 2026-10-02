@@ -2,6 +2,7 @@ using System;
 
 using log4net;
 
+using ACE.Database;
 using ACE.Database.Market;
 using ACE.Database.Models.Shard.Market;
 using ACE.Entity.Enum;
@@ -164,6 +165,16 @@ namespace ACE.Server.Market
             }
 
             player.Session?.Network.EnqueueSend(new GameMessageSystemChat(VaultMessages.ChannelStarted(channel.IsDeposit, channel.ItemName, seconds), ChatMessageType.Broadcast));
+
+            if (channel.TicketId is long ticketId)
+            {
+                var progressTime = DateTime.UtcNow;
+                DatabaseManager.Shard.SetTicketProgress(ticketId, "channelling", progressTime, progressTime.AddSeconds(seconds), updated =>
+                {
+                    if (!updated)
+                        log.Warn($"[VAULT] Ticket {ticketId} was no longer claimed when its withdrawal channel progress was written");
+                });
+            }
 
             // the world queue, not the player's: the Vault runs on the world thread
             var chain = new ActionChain();

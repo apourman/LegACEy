@@ -102,14 +102,20 @@ namespace ACE.Server.Tests.Market
         {
             var (player, guid) = DepositedItem();
 
-            using (ChannelSeconds(1))
+            using (ChannelSeconds(3))
             using (VaultTestWorld.Online(player))
             {
                 var ticket = NewTicket(player, TicketKind.VaultWithdraw, new TicketPayload(ItemGuid: guid));
 
                 VaultTestWorld.WaitUntil(() => player.IsVaultChannelling, "the channel to start");
+                VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == "channelling", "the channel progress to reach the ticket");
                 Assert.IsTrue(player.IsFrozen ?? false, "the channel freezes the player");
                 Assert.AreEqual(TicketStatus.Claimed, TicketStatusOf(ticket), "the ticket is in progress while the player channels");
+                var progress = ReadTicket(ticket);
+                Assert.AreEqual("channelling", progress.Progress);
+                Assert.IsNotNull(progress.ProgressTime);
+                Assert.IsNotNull(progress.ProgressUntil);
+                Assert.AreEqual(3, (progress.ProgressUntil.Value - progress.ProgressTime.Value).TotalSeconds, 0.01);
                 Assert.AreEqual(VaultItemState.Withdrawing, VaultStore.Get(guid).State);
 
                 Assert.AreEqual($"{TicketStatus.Done}|{TicketStore.Ok}", WaitForTicket(ticket));
@@ -289,6 +295,12 @@ namespace ACE.Server.Tests.Market
         private static string TicketResult(long ticketId) => MarketTestDatabase.Rows(Db, $"SELECT status, result_Code FROM market_ticket WHERE id = {ticketId};").Single();
 
         private static string TicketMessage(long ticketId) => MarketTestDatabase.Rows(Db, $"SELECT result_Message FROM market_ticket WHERE id = {ticketId};").Single();
+
+        private static Ticket ReadTicket(long ticketId)
+        {
+            using var shard = MarketTestDatabase.CreateContext(Db);
+            return shard.MarketTickets.Single(t => t.Id == ticketId);
+        }
 
         private static void AssertStillHeld(Player player, uint guid)
         {

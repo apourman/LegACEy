@@ -44,6 +44,13 @@ fi
 # idempotent; the game server's update runner applies the other shard updates when it starts
 echo "Applying the market schema to $MARKET_SHARD_DATABASE..."
 db_sql "$MARKET_SHARD_DATABASE" < "$MARKET_SCHEMA_SCRIPT"
+progress_columns="$(db_sql -N -e "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = '$MARKET_SHARD_DATABASE' AND TABLE_NAME = 'market_ticket' AND COLUMN_NAME IN ('progress', 'progress_Time', 'progress_Until', 'result');")"
+if [[ "$progress_columns" == "0" ]]; then
+  db_sql "$MARKET_SHARD_DATABASE" < "$ROOT/Database/Updates/Shard/2026-10-01-00-Market-Ticket-Progress.sql"
+elif [[ "$progress_columns" != "4" ]]; then
+  echo "The market ticket progress schema is only partly installed ($progress_columns of 4 columns); repair it before bootstrapping." >&2
+  exit 1
+fi
 
 for database in "$MARKET_AUTH_DATABASE" "$MARKET_SHARD_DATABASE"; do
   if [[ "$(db_sql -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '$database' AND table_name = 'legacey_dev_marker';")" != "1" ]]; then

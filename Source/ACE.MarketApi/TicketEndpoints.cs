@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Text.Json;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -28,21 +29,36 @@ namespace ACE.MarketApi
         {
             app.MapPost("/vault/withdraw", VaultWithdraw).RequireAuthorization();
             app.MapPost("/mmd/withdraw", MmdWithdraw).RequireAuthorization();
+            app.MapGet("/tickets", List).RequireAuthorization();
             app.MapGet("/tickets/{id:long}", Get).RequireAuthorization();
         }
 
         private static IResult VaultWithdraw(VaultWithdrawRequest request, HttpContext context, MarketDatabase database, TimeProvider time)
         {
-            if (request == null || !MarketHttp.IsIdempotencyKey(request.IdempotencyKey) || request.ItemGuid == null)
+            if (request == null || !MarketHttp.IsIdempotencyKey(request.IdempotencyKey))
+                return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_request");
+
+            var replay = Replay(context, database, TicketKind.VaultWithdraw, request.IdempotencyKey);
+            if (replay != null)
+                return replay;
+
+            if (request.ItemGuid == null)
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_request");
 
             return Create(context, database, time, request.CharacterId, TicketKind.VaultWithdraw, new TicketPayload(ItemGuid: request.ItemGuid), request.IdempotencyKey);
         }
 
-        private static IResult MmdWithdraw(MmdWithdrawRequest request, HttpContext context, MarketDatabase database, TimeProvider time)
+        private static IResult MmdWithdraw(MmdWithdrawRequest request, HttpContext context, MarketDatabase database, TimeProvider time, IMarketPause pause)
         {
             if (request == null || !MarketHttp.IsIdempotencyKey(request.IdempotencyKey))
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_request");
+
+            var replay = Replay(context, database, TicketKind.MmdWithdraw, request.IdempotencyKey);
+            if (replay != null)
+                return replay;
+
+            if (pause.IsPaused)
+                return MarketHttp.Error(StatusCodes.Status503ServiceUnavailable, "paused");
 
             if (!MarketHttp.TryWholeMmd(request.Amount, out var amount))
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "invalid_amount");
@@ -59,9 +75,30 @@ namespace ACE.MarketApi
             return ticket == null ? MarketHttp.Error(StatusCodes.Status404NotFound, "not_found") : Results.Json(View(ticket));
         }
 
+        private static IResult List(HttpContext context, MarketDatabase database, TimeProvider time)
+        {
+            using var shard = database.CreateShard();
+            var tickets = TicketStore.VisibleToPlayer(shard, MarketHttp.AccountId(context), time.GetUtcNow().UtcDateTime);
+            return Results.Json(tickets.Select(View));
+        }
+
+        private static IResult Replay(HttpContext context, MarketDatabase database, string kind, string idempotencyKey)
+        {
+            using var shard = database.CreateShard();
+            var existing = TicketStore.FindByKey(shard, MarketHttp.AccountId(context), idempotencyKey, kind);
+
+            if (existing == null)
+                return null;
+
+            if (existing.Outcome == TicketCreateOutcome.KeyReused)
+                return MarketHttp.Error(StatusCodes.Status409Conflict, "key_reused");
+
+            return Results.Accepted($"{MarketApi.PathBase}/tickets/{existing.Ticket.Id}", View(existing.Ticket));
+        }
+
         /// <summary>
         /// Writes the ticket, or finds the one the key already made. Either way the answer is the ticket as it is now.
-        /// The pause, the balance and the Vault row are left to the game server, which checks them when it does the work.
+        /// The balance and Vault row are left to the game server, which checks them when it does the work.
         /// </summary>
         private static IResult Create(HttpContext context, MarketDatabase database, TimeProvider time, uint? characterId, string kind, TicketPayload payload, string idempotencyKey)
         {
@@ -97,10 +134,30 @@ namespace ACE.MarketApi
                 amount = payload?.Amount,
                 resultCode = ticket.ResultCode,
                 resultMessage = ticket.ResultMessage,
+                progress = ticket.Progress,
+                progressTime = MarketHttp.Utc(ticket.ProgressTime),
+                progressUntil = MarketHttp.Utc(ticket.ProgressUntil),
+                result = ParseResult(ticket.Result),
                 createdTime = MarketHttp.Utc(ticket.CreatedTime),
                 claimedTime = MarketHttp.Utc(ticket.ClaimedTime),
                 finishedTime = MarketHttp.Utc(ticket.FinishedTime),
             };
+        }
+
+        private static JsonElement? ParseResult(string result)
+        {
+            if (result == null)
+                return null;
+
+            try
+            {
+                using var document = JsonDocument.Parse(result);
+                return document.RootElement.Clone();
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
         }
     }
 }

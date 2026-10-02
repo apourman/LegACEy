@@ -446,6 +446,24 @@ namespace ACE.Server.Tests.Market
             Assert.AreEqual(VaultOutcome.Withdrawn, VaultTestWorld.Withdraw(player, guid).Outcome);
         }
 
+        [TestMethod]
+        public void Vault_Initialize_MissingTicketProgressColumns_DisablesTheMarket()
+        {
+            MarketTestDatabase.Execute(VaultTestWorld.Db,
+                "ALTER TABLE market_ticket DROP COLUMN progress, DROP COLUMN progress_Time, DROP COLUMN progress_Until, DROP COLUMN result;");
+            try
+            {
+                Vault.Initialize();
+                Assert.IsFalse(Vault.Available, "the game refuses to expose market actions on the old ticket schema");
+            }
+            finally
+            {
+                MarketTestDatabase.Execute(VaultTestWorld.Db,
+                    "ALTER TABLE market_ticket ADD COLUMN progress varchar(32) DEFAULT NULL, ADD COLUMN progress_Time datetime(6) DEFAULT NULL, ADD COLUMN progress_Until datetime(6) DEFAULT NULL, ADD COLUMN result json DEFAULT NULL;");
+                Vault.Initialize();
+            }
+        }
+
         // ---- helpers
 
         private sealed class ChannelRun

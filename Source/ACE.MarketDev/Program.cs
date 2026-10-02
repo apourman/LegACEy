@@ -14,6 +14,7 @@ namespace ACE.MarketDev
     ///   check   runs the guard and reports the first failed check (writes nothing)
     ///   mark    marks the configured auth and shard databases as development databases, after a typed confirmation
     ///   seed    fills the databases with accounts, characters, Vault items, balances and listings
+    ///   fixture creates ticket-status examples after proving the game server is stopped
     ///
     /// Options: --config &lt;Config.js&gt; (the ACE configuration naming the databases, default ./Config.js), --password &lt;password&gt; (seed accounts).
     /// Settings: MARKET_DEV_ALLOWED_ENDPOINTS, MARKET_DEV_ALLOWED_AUTH_DATABASES and MARKET_DEV_ALLOWED_SHARD_DATABASES (comma-separated)
@@ -64,6 +65,15 @@ namespace ACE.MarketDev
                     });
 
                     return result.Passed ? exitCode : Report(result);
+
+                case "fixture":
+                    var character = options.GetValueOrDefault("character");
+                    if (string.IsNullOrWhiteSpace(character))
+                        return Usage(2);
+
+                    var fixtureExitCode = 1;
+                    var fixtureGuard = DevelopmentGuard.Run(targets, settings, () => fixtureExitCode = TicketFixture.Run(character) ? 0 : 4);
+                    return fixtureGuard.Passed ? fixtureExitCode : Report(fixtureGuard);
 
                 default:
                     return Usage(2);
@@ -172,7 +182,7 @@ namespace ACE.MarketDev
 
         private static int Usage(int exitCode)
         {
-            Console.Error.WriteLine("Usage: ACE.MarketDev <check|mark|seed> [--config <Config.js>] [--password <seed account password>]");
+            Console.Error.WriteLine("Usage: ACE.MarketDev <check|mark|seed|fixture> [--config <Config.js>] [--password <seed account password>] [--character <name>]");
             return exitCode;
         }
     }

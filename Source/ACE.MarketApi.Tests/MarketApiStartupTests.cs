@@ -8,6 +8,8 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
 
+using ACE.Database.Market;
+using ACE.Database.Tests.Market;
 using ACE.MarketApi.Tests.Support;
 
 namespace ACE.MarketApi.Tests
@@ -24,6 +26,24 @@ namespace ACE.MarketApi.Tests
             var ex = Assert.ThrowsExactly<MarketUnavailableException>(() => MarketApiHost.Build(shardDatabase: MarketApiTestData.BareShardDatabase));
 
             StringAssert.Contains(ex.Message, "missing: market_vault_item");
+        }
+
+        [TestMethod]
+        public void Startup_TicketProgressColumnsMissing_RefusesToStart()
+        {
+            MarketTestDatabase.Execute(MarketApiTestData.ShardDatabase,
+                "ALTER TABLE market_ticket DROP COLUMN progress, DROP COLUMN progress_Time, DROP COLUMN progress_Until, DROP COLUMN result;");
+            try
+            {
+                var ex = Assert.ThrowsExactly<MarketUnavailableException>(() => MarketApiHost.Build());
+                foreach (var column in new[] { "market_ticket.progress", "market_ticket.progress_Time", "market_ticket.progress_Until", "market_ticket.result" })
+                    StringAssert.Contains(ex.Message, column);
+            }
+            finally
+            {
+                MarketTestDatabase.Execute(MarketApiTestData.ShardDatabase,
+                    "ALTER TABLE market_ticket ADD COLUMN progress varchar(32) DEFAULT NULL, ADD COLUMN progress_Time datetime(6) DEFAULT NULL, ADD COLUMN progress_Until datetime(6) DEFAULT NULL, ADD COLUMN result json DEFAULT NULL;");
+            }
         }
 
         [TestMethod]
@@ -97,6 +117,9 @@ namespace ACE.MarketApi.Tests
             {
                 if (!process.HasExited)
                     process.Kill(true);
+
+                using var shard = MarketApiTestData.Shard();
+                MarketPause.Resume(shard, "process startup test cleanup", DateTime.UtcNow);
             }
         }
 

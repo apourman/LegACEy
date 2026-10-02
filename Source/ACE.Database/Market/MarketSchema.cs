@@ -66,6 +66,14 @@ namespace ACE.Database.Market
             "market_ledger_entry_no_delete",
         };
 
+        public static readonly IReadOnlyList<string> RequiredColumns = new[]
+        {
+            "market_ticket.progress",
+            "market_ticket.progress_Time",
+            "market_ticket.progress_Until",
+            "market_ticket.result",
+        };
+
         /// <summary>
         /// Checks the configured shard database
         /// </summary>
@@ -88,8 +96,13 @@ namespace ACE.Database.Market
                 .SqlQueryRaw<string>("SELECT TRIGGER_NAME AS `Value` FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME LIKE 'market%'")
                 .ToList();
 
+            var columns = context.Database
+                .SqlQueryRaw<string>("SELECT CONCAT(TABLE_NAME, '.', COLUMN_NAME) AS `Value` FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'market_ticket'")
+                .ToList();
+
             var missing = Tables.Where(t => !tables.Contains(t))
                 .Concat(Triggers.Where(t => !triggers.Contains(t)))
+                .Concat(RequiredColumns.Where(c => !columns.Contains(c)))
                 .ToList();
 
             return new MarketSchemaCheckResult(missing);

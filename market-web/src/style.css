@@ -75,7 +75,25 @@ footer { padding: 1.5rem 2rem; border-top: 1px solid #38403b; color: #818f85; fo
 .history-list li { padding: 1rem .25rem; border-bottom: 1px solid #303b34; }
 .history-list time, .history-list small { color: #a4ada7; font-size: .8rem; }
 .history-list p { margin: .35rem 0; }
+.ticket-panel { padding: .7rem 2rem; background: #202720; border-bottom: 1px solid #465043; }
+.ticket-panel h2 { display: inline-block; margin: 0 .9rem 0 0; font: 700 .85rem system-ui; color: #c8b58c; }
+.ticket-panel > p { display: inline; margin: 0; font-size: .82rem; }
+.ticket-panel ul { display: flex; gap: .6rem; flex-wrap: wrap; list-style: none; padding: 0; margin: .6rem 0 0; }
+.ticket-panel li { display: flex; justify-content: space-between; align-items: center; gap: 1rem; min-width: min(100%, 360px); max-width: 720px; padding: .55rem .75rem; border: 1px solid #465043; border-radius: 6px; background: #171d19; font-size: .82rem; }
+.ticket-panel li > span:first-child { display: grid; }
+.ticket-panel li small { color: #9ca99f; }
+.ticket-status { color: #d5b983; text-align: right; }
+.ticket-status--done { color: #b6c99d; }
+.ticket-status--failed { color: #edaa91; }
+.ticket-error { color: #edaa91; }
+.withdraw-panel { display: flex; justify-content: space-between; align-items: end; gap: 2rem; padding: 1.2rem 1.5rem; margin: 1.5rem 0; background: #1a201d; border: 1px solid #36433b; border-radius: 8px; }
+.withdraw-panel h2 { margin: 0; }
+.withdraw-panel p { margin: .4rem 0 0; }
+.withdraw-panel form { display: flex; align-items: end; gap: .7rem; min-width: min(100%, 420px); }
+.withdraw-panel form label { flex: 1; }
+.vault-actions { display: grid; gap: .6rem; justify-items: start; }
 .skip-link { position: fixed; top: -100px; left: 1rem; z-index: 30; background: #222; padding: 1rem; }.skip-link:focus { top: 1rem; }
 @media(max-width: 900px) { .desktop-column { display: none; }.listing-detail { grid-template-columns: 1fr; }.purchase-card { order: -1; } }
 @media(max-width: 760px) { .history-grid { grid-template-columns: 1fr; } }
-@media(max-width: 540px) { main { padding: 1.5rem .75rem 3rem; }header { padding: 1rem; }nav { gap: .8rem; }h1 { font-size: 2rem; }.filters { padding: .8rem; }.listing-table { font-size: .75rem; }.listing-table td, .listing-table th { padding: .7rem .3rem; }.listing-table td small { display: none; }.listing-table td:nth-child(2) { max-width: 120px; overflow-wrap: anywhere; }.listing-detail .appraisal-lines { columns: 1; }.listing-table .price { white-space: nowrap; } }
+@media(max-width: 760px) { .withdraw-panel { align-items: stretch; flex-direction: column; gap: 1rem; }.withdraw-panel form { min-width: 0; } }
+@media(max-width: 540px) { main { padding: 1.5rem .75rem 3rem; }header { padding: 1rem; }nav { gap: .8rem; }h1 { font-size: 2rem; }.filters { padding: .8rem; }.listing-table { font-size: .75rem; }.listing-table td, .listing-table th { padding: .7rem .3rem; }.listing-table td small { display: none; }.listing-table td:nth-child(2) { max-width: 120px; overflow-wrap: anywhere; }.listing-detail .appraisal-lines { columns: 1; }.listing-table .price { white-space: nowrap; }.ticket-panel { padding: .7rem .75rem; }.ticket-panel li { align-items: start; flex-direction: column; gap: .2rem; }.ticket-status { text-align: left; }.withdraw-panel form { align-items: stretch; flex-direction: column; } }

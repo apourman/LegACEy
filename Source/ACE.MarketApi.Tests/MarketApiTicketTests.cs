@@ -82,6 +82,10 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual(20, ticket.GetProperty("amount").GetInt64());
             Assert.AreEqual(JsonValueKind.Null, ticket.GetProperty("itemGuid").ValueKind);
             Assert.AreEqual(JsonValueKind.Null, ticket.GetProperty("resultCode").ValueKind);
+            Assert.AreEqual(JsonValueKind.Null, ticket.GetProperty("progress").ValueKind);
+            Assert.AreEqual(JsonValueKind.Null, ticket.GetProperty("progressTime").ValueKind);
+            Assert.AreEqual(JsonValueKind.Null, ticket.GetProperty("progressUntil").ValueKind);
+            Assert.AreEqual(JsonValueKind.Null, ticket.GetProperty("result").ValueKind);
 
             Assert.AreEqual($"{TicketKind.MmdWithdraw}|{player.AccountId}|{player.CharacterId}|{TicketStatus.Waiting}|20",
                 MarketApiTestData.Rows($"SELECT kind, account_Id, character_Id, status, payload->>'$.amount' FROM market_ticket WHERE id = {id};").Single());
@@ -186,6 +190,56 @@ namespace ACE.MarketApi.Tests
         }
 
         [TestMethod]
+        public async Task MmdWithdrawalReplay_ReturnsOriginalBeforePauseAndRequestValidation()
+        {
+            var player = NewPlayer();
+            var key = NewKey();
+
+            await using var host = await MarketApiHost.StartAsync();
+            var cookie = await host.SignInForCookieAsync(player.Name, "pass");
+            var first = await AcceptedAsync(await MmdWithdrawAsync(host, cookie, player.CharacterId, 20, key));
+            using (var shard = MarketApiTestData.Shard())
+                MarketPause.Pause(shard, "ticket replay test", DateTime.UtcNow);
+            try
+            {
+                // A retry belongs to the original request even if the new body is invalid and withdrawals are paused.
+                var replay = await MmdWithdrawAsync(host, cookie, 0, 1.5m, key);
+                var replayed = await AcceptedAsync(replay);
+                Assert.AreEqual(first.GetProperty("id").GetInt64(), replayed.GetProperty("id").GetInt64());
+                Assert.AreEqual(20, replayed.GetProperty("amount").GetInt64());
+
+                var newRequest = await MmdWithdrawAsync(host, cookie, player.CharacterId, 5, NewKey());
+                Assert.AreEqual(HttpStatusCode.ServiceUnavailable, newRequest.StatusCode);
+                Assert.AreEqual("paused", await MarketApiHost.ErrorAsync(newRequest));
+                Assert.AreEqual(1L, Tickets(player.AccountId));
+            }
+            finally
+            {
+                using var shard = MarketApiTestData.Shard();
+                MarketPause.Resume(shard, "test cleanup", DateTime.UtcNow);
+            }
+        }
+
+        [TestMethod]
+        public async Task VaultWithdrawalReplay_ReturnsOriginalBeforeCharacterAndItemValidation()
+        {
+            var player = NewPlayer();
+            var guid = MarketApiTestData.AddVaultItem(player.AccountId, player.CharacterId, "Replay Sword", VaultItemState.Held);
+            var key = NewKey();
+
+            await using var host = await MarketApiHost.StartAsync();
+            var cookie = await host.SignInForCookieAsync(player.Name, "pass");
+            var first = await AcceptedAsync(await VaultWithdrawAsync(host, cookie, player.CharacterId, guid, key));
+            var replayResponse = await host.PostJsonAsync("/api/vault/withdraw", new { characterId = 0, itemGuid = (uint?)null, idempotencyKey = key }, cookie);
+            var replay = await AcceptedAsync(replayResponse);
+
+            Assert.AreEqual(first.GetProperty("id").GetInt64(), replay.GetProperty("id").GetInt64());
+            Assert.AreEqual(guid, replay.GetProperty("itemGuid").GetUInt32());
+            Assert.AreEqual(player.CharacterId, replay.GetProperty("characterId").GetUInt32());
+            Assert.AreEqual(1L, Tickets(player.AccountId));
+        }
+
+        [TestMethod]
         public async Task SameKeyConcurrently_CreatesOneTicket_AndEveryRequestGetsIt()
         {
             var player = NewPlayer();
@@ -271,6 +325,7 @@ namespace ACE.MarketApi.Tests
             var id = (await AcceptedAsync(await MmdWithdrawAsync(host, cookie, owner.CharacterId, 5, NewKey()))).GetProperty("id").GetInt64();
 
             Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync($"/api/tickets/{id}")).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/api/tickets")).StatusCode);
             Assert.AreEqual(HttpStatusCode.Unauthorized, (await MmdWithdrawAsync(host, null, owner.CharacterId, 5, NewKey())).StatusCode);
             Assert.AreEqual(HttpStatusCode.Unauthorized, (await VaultWithdrawAsync(host, null, owner.CharacterId, 1, NewKey())).StatusCode);
 
@@ -280,6 +335,47 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual("not_found", await MarketApiHost.ErrorAsync(response));
 
             Assert.AreEqual(HttpStatusCode.NotFound, (await host.GetAsync("/api/tickets/999999999", cookie)).StatusCode);
+        }
+
+        [TestMethod]
+        public async Task TicketList_IncludesOldUnfinishedAndRecentlyFinishedOnlyForThisAccount()
+        {
+            var owner = NewPlayer();
+            var other = NewPlayer();
+
+            await using var host = await MarketApiHost.StartAsync();
+            var ownerCookie = await host.SignInForCookieAsync(owner.Name, "pass");
+            var otherCookie = await host.SignInForCookieAsync(other.Name, "pass");
+
+            async Task<long> Create(string cookie, uint characterId, int amount)
+            {
+                var ticket = await AcceptedAsync(await MmdWithdrawAsync(host, cookie, characterId, amount, NewKey()));
+                return ticket.GetProperty("id").GetInt64();
+            }
+
+            var waiting = await Create(ownerCookie, owner.CharacterId, 10);
+            var recentDone = await Create(ownerCookie, owner.CharacterId, 11);
+            var oldDone = await Create(ownerCookie, owner.CharacterId, 12);
+            var otherTicket = await Create(otherCookie, other.CharacterId, 13);
+
+            MarketTestDatabase.Execute(MarketApiTestData.ShardDatabase,
+                $"UPDATE market_ticket SET created_Time = UTC_TIMESTAMP(6) - INTERVAL 25 HOUR WHERE id = {waiting}; " +
+                $"UPDATE market_ticket SET status = 'DONE', created_Time = UTC_TIMESTAMP(6) - INTERVAL 25 HOUR, finished_Time = UTC_TIMESTAMP(6) WHERE id = {recentDone}; " +
+                $"UPDATE market_ticket SET status = 'FAILED', created_Time = UTC_TIMESTAMP(6) - INTERVAL 25 HOUR, finished_Time = UTC_TIMESTAMP(6) - INTERVAL 25 HOUR WHERE id = {oldDone}; " +
+                $"UPDATE market_ticket SET status = 'WAITING', created_Time = UTC_TIMESTAMP(6) - INTERVAL 25 HOUR WHERE id = {otherTicket};");
+
+            var response = await host.GetAsync("/api/tickets", ownerCookie);
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
+            var tickets = await MarketApiHost.JsonAsync(response);
+            var ids = tickets.EnumerateArray().Select(ticket => ticket.GetProperty("id").GetInt64()).ToArray();
+
+            CollectionAssert.AreEqual(new[] { recentDone, waiting }, ids);
+            Assert.AreEqual("DONE", tickets[0].GetProperty("status").GetString());
+            Assert.AreEqual(JsonValueKind.Null, tickets[0].GetProperty("progress").ValueKind);
+            Assert.AreEqual(JsonValueKind.Null, tickets[0].GetProperty("result").ValueKind);
+            Assert.IsTrue(tickets[0].GetProperty("finishedTime").GetString() != null);
+            Assert.IsFalse(ids.Contains(oldDone));
+            Assert.IsFalse(ids.Contains(otherTicket));
         }
     }
 }

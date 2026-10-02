@@ -86,6 +86,23 @@ namespace ACE.Database
         }
 
         /// <summary>
+        /// Writes the current stage of a claimed bridge ticket. The game calls this on its serialized database queue.
+        /// </summary>
+        public bool SetTicketProgress(long ticketId, string progress, DateTime progressTime, DateTime progressUntil)
+        {
+            try
+            {
+                using (var context = new ShardDbContext())
+                    return TicketStore.SetProgress(context, ticketId, progress, progressTime, progressUntil);
+            }
+            catch (Exception ex)
+            {
+                log.Error($"[DATABASE][BRIDGE] Updating ticket {ticketId} progress failed: {ex.GetFullMessage()}");
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Deletes tickets that finished more than TicketStore.KeepDays ago. Returns how many, or 0 if the delete failed (logged).
         /// </summary>
         public int DeleteFinishedTickets()
