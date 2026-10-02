@@ -134,9 +134,15 @@ namespace ACE.Database.Market
         /// </summary>
         public static DateTime ExpiryCutoff(ShardDbContext shard, DateTime now)
         {
-            var days = Math.Max(0, MarketSettings.Get(shard, MarketSettings.ListingLifetimeDays));
+            return Truncate(now) - Lifetime(shard);
+        }
 
-            return Truncate(now) - TimeSpan.FromDays(days);
+        /// <summary>
+        /// How long a listing stays active: a listing created at T expires at T plus this
+        /// </summary>
+        public static TimeSpan Lifetime(ShardDbContext shard)
+        {
+            return TimeSpan.FromDays(Math.Max(0, MarketSettings.Get(shard, MarketSettings.ListingLifetimeDays)));
         }
 
         /// <summary>

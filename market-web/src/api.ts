@@ -11,7 +11,8 @@ export interface Listing {
   summary: string; quantity: number; price: number; seller: string; listedTime: string;
   wield: string | null; icon: Icon;
 }
-export interface Detail extends Listing { lines: string[]; spells: { name: string; cantrip: boolean }[] }
+export interface Spell { name: string; cantrip: boolean }
+export interface Detail extends Listing { lines: string[]; spells: Spell[] }
 export interface BrowseResult { listings: Listing[]; nextCursor: string | null }
 export interface Facets {
   itemTypes: { value: string; label: string; count: number }[];
@@ -25,7 +26,7 @@ export interface VaultItem {
   expiresTime: string | null; ticketId: number | null;
 }
 export interface VaultResult { items: VaultItem[] }
-export interface VaultAppraisal { lines: string[]; spells: { name: string; cantrip: boolean }[] }
+export interface VaultAppraisal { lines: string[]; spells: Spell[] }
 export interface HistoryTransfer {
   sequence: number; transferId: number; kind: string; amount: number; balanceAfter: number;
   time: string; text: string; memo: string | null;
@@ -65,6 +66,7 @@ export const messages: Record<string, string> = {
   not_in_vault: 'That item is not in your Vault.',
   not_held: 'Only held Vault items can be listed.',
   listing_limit: 'You have reached your active listing limit.',
+  not_active: 'This listing is no longer active. It may have sold or expired.',
 };
 export class ApiError extends Error {
   constructor(public code: string, public status: number, public price?: number) {

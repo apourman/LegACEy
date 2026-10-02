@@ -42,31 +42,37 @@ export function Vault() {
   }, [session.me?.accountId]);
 
   async function list(item: VaultItem) {
-    if (busyItem !== null || session.characterId === null) return;
+    const characterId = session.characterId;
+    if (busyItem !== null || characterId === null) return;
     const text = prices[item.itemGuid] ?? '';
     const price = Number(text);
     if (!/^\d+$/.test(text) || !Number.isSafeInteger(price) || price < 1) {
       setError('The price must be a positive whole number of MMD.');
       return;
     }
-    setBusyItem(item.itemGuid); setError(''); setNotice('');
-    try {
-      await listVaultItem(item.itemGuid, price, session.characterId);
-      setNotice(`${item.name} is listed for ${price} MMD.`);
-      await Promise.all([refresh(), session.refresh()]);
-    } catch (e) { setError(e instanceof Error ? e.message : 'Could not list this item.'); }
-    finally { setBusyItem(null); }
+    await act(item, () => listVaultItem(item.itemGuid, price, characterId), `${item.name} is listed for ${price} MMD.`, 'Could not list this item.');
   }
 
   async function delist(item: VaultItem) {
     if (busyItem !== null || item.listingId === null) return;
+    const listingId = item.listingId;
+    await act(item, () => delistVaultItem(listingId), `${item.name} has been delisted.`, 'Could not delist this item.');
+  }
+
+  // Refreshes whether or not the action succeeds: a refusal such as not_held means the Vault changed under the page.
+  async function act(item: VaultItem, action: () => Promise<unknown>, success: string, fallback: string) {
     setBusyItem(item.itemGuid); setError(''); setNotice('');
+    let failure = '';
     try {
-      await delistVaultItem(item.listingId);
-      setNotice(`${item.name} has been delisted.`);
+      await action();
+    } catch (e) { failure = e instanceof Error ? e.message : fallback; }
+    try {
       await Promise.all([refresh(), session.refresh()]);
-    } catch (e) { setError(e instanceof Error ? e.message : 'Could not delist this item.'); }
-    finally { setBusyItem(null); }
+    } finally {
+      // set after the refresh, which clears the error it starts with
+      if (failure) setError(failure); else setNotice(success);
+      setBusyItem(null);
+    }
   }
 
   if (session.loading) return <p role="status">Loading your account…</p>;
@@ -76,6 +82,7 @@ export function Vault() {
     <div className="page-title"><p className="eyebrow">YOUR ITEMS</p><h1>Vault</h1>
       <p className="muted">{session.me.vaultCount} / {session.me.vaultCap} items · {session.me.listingCount} / {session.me.listingCap} active listings</p>
       <p className="muted">Choose a held item to list it as your acting character. Only held items can be listed.</p>
+      {session.characterId === null && <p>Create a character in game first.</p>}
     </div>
     {error && <p role="alert" className="notice">{error}</p>}
     {notice && <p role="status" className="notice">{notice}</p>}

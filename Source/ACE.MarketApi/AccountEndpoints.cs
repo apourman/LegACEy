@@ -104,7 +104,7 @@ namespace ACE.MarketApi
                 }
             }
 
-            var listingLifetimeDays = MarketSettings.Get(shard, MarketSettings.ListingLifetimeDays);
+            var listingLifetime = ListingStore.Lifetime(shard);
 
             return Results.Json(new
             {
@@ -120,7 +120,7 @@ namespace ACE.MarketApi
                     icon = ItemIcons.For(v, gameData),
                     listingId = listings.TryGetValue(v.ItemGuid, out var listing) ? listing.Id : (long?)null,
                     price = listing?.Price,
-                    expiresTime = listing == null ? (DateTime?)null : DateTime.SpecifyKind(listing.CreatedTime.AddDays(Math.Max(0, listingLifetimeDays)), DateTimeKind.Utc),
+                    expiresTime = listing == null ? (DateTime?)null : MarketHttp.Utc(listing.CreatedTime + listingLifetime),
                     ticketId = ticketIds.TryGetValue(v.ItemGuid, out var ticketId) ? ticketId : (long?)null,
                     // stored as UTC; EF reads datetime(6) as Unspecified
                     depositedTime = DateTime.SpecifyKind(v.DepositedTime, DateTimeKind.Utc),
