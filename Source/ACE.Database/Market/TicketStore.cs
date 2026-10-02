@@ -306,7 +306,14 @@ namespace ACE.Database.Market
             now = ListingStore.Truncate(now);
             message = Cap(message);
 
-            return tickets.ExecuteUpdate(s => s.SetProperty(t => t.Status, TicketStatus.Failed).SetProperty(t => t.ResultCode, resultCode).SetProperty(t => t.ResultMessage, message).SetProperty(t => t.FinishedTime, now));
+            return tickets.ExecuteUpdate(s => s
+                .SetProperty(t => t.Status, TicketStatus.Failed)
+                .SetProperty(t => t.ResultCode, resultCode)
+                .SetProperty(t => t.ResultMessage, message)
+                .SetProperty(t => t.Progress, (string)null)
+                .SetProperty(t => t.ProgressTime, (DateTime?)null)
+                .SetProperty(t => t.ProgressUntil, (DateTime?)null)
+                .SetProperty(t => t.FinishedTime, now));
         }
 
         private static string Cap(string message) => message != null && message.Length > MaxMessageLength ? message.Substring(0, MaxMessageLength) : message;

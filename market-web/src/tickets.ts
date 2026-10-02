@@ -41,7 +41,7 @@ const ticketCreatedEvent = 'market-ticket-created';
 const ticketFinishedEvent = 'market-ticket-finished';
 
 export const announceTicketCreated = (ticket: Ticket) => window.dispatchEvent(new CustomEvent<Ticket>(ticketCreatedEvent, { detail: ticket }));
-export const announceTicketFinished = () => window.dispatchEvent(new Event(ticketFinishedEvent));
+export const announceTicketFinished = (ticket: Ticket) => window.dispatchEvent(new CustomEvent<Ticket>(ticketFinishedEvent, { detail: ticket }));
 
 /** Subscribes to tickets the website creates; returns the unsubscribe function. */
 export function onTicketCreated(handler: (ticket: Ticket) => void) {
@@ -51,7 +51,8 @@ export function onTicketCreated(handler: (ticket: Ticket) => void) {
 }
 
 /** Subscribes to watched tickets finishing; returns the unsubscribe function. */
-export function onTicketFinished(handler: () => void) {
-  window.addEventListener(ticketFinishedEvent, handler);
-  return () => window.removeEventListener(ticketFinishedEvent, handler);
+export function onTicketFinished(handler: (ticket: Ticket) => void) {
+  const listener = (e: Event) => handler((e as CustomEvent<Ticket>).detail);
+  window.addEventListener(ticketFinishedEvent, listener);
+  return () => window.removeEventListener(ticketFinishedEvent, listener);
 }

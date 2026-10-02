@@ -134,6 +134,20 @@ namespace ACE.Server.Tests.Market
             return player;
         }
 
+        public static Player Reconnect(Player previousLogin)
+        {
+            var accountId = previousLogin.Character.AccountId;
+            var session = new Session(null, new IPEndPoint(IPAddress.Loopback, 0), 1, 1);
+            session.SetAccount(accountId, $"vaulttest{accountId}", AccessLevel.Player);
+
+            var player = new Player(previousLogin.Biota, new List<ACE.Database.Models.Shard.Biota>(), new List<ACE.Database.Models.Shard.Biota>(), previousLogin.Character, session);
+            typeof(Session).GetProperty(nameof(Session.Player)).SetMethod.Invoke(session, new object[] { player });
+            typeof(Player).GetField("<Account>k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(player,
+                new Account { AccountId = accountId, AccountName = $"vaulttest{accountId}" });
+
+            return player;
+        }
+
         /// <summary>
         /// Puts the player in the player manager's online list, as entering the world does, so the game bridge finds them. Disposing takes them off it again.
         /// </summary>

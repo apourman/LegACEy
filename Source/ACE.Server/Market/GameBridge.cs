@@ -30,6 +30,9 @@ namespace ACE.Server.Market
         public const string InvalidCharacter = "invalid_character";
         public const string UnsupportedKind = "unsupported_kind";
         public const string InvalidTicket = "invalid_ticket";
+        public const string DeclinedResultCode = "declined";
+        public const string ConfirmationTimeoutResultCode = "confirm_timeout";
+        public const string ConfirmationBusyResultCode = "confirmation_busy";
 
         public static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
 
@@ -59,6 +62,8 @@ namespace ACE.Server.Market
         /// The tickets this server is working on: claimed and handed to the Vault, with no answer yet
         /// </summary>
         private static readonly HashSet<long> running = new HashSet<long>();
+
+        internal static bool IsTicketRunning(long ticketId) => running.Contains(ticketId);
 
         /// <summary>
         /// Startup, before the world runs. A ticket still CLAIMED belonged to a server that stopped mid-work, and none of that work was saved
@@ -314,13 +319,13 @@ namespace ACE.Server.Market
                     log.Warn($"[BRIDGE] Ticket {ticket.Id} was no longer claimed when its confirmation progress was written");
             });
 
-            var confirmation = new DepositConfirmation(ticket, itemGuid);
+            var confirmation = new DepositConfirmation(ticket, itemGuid, player);
             var seconds = (int)Math.Max(0, MarketSettings.Get(MarketSettings.ChannelSeconds));
             var text = $"Deposit {item.Name} into your Vault? Saying Yes will freeze you for {seconds} seconds; a player attack, death or logout stops it.";
 
             if (!player.ConfirmationManager.EnqueueSendWithoutTimeout(confirmation, text))
             {
-                Fail(ticket, "confirmation_busy");
+                Fail(ticket, ConfirmationBusyResultCode);
                 return;
             }
 
@@ -330,7 +335,7 @@ namespace ACE.Server.Market
             timeout.EnqueueChain();
         }
 
-        private static void DepositConfirmed(Ticket ticket, uint itemGuid, bool response, bool timedOut)
+        private static void DepositConfirmed(Ticket ticket, uint itemGuid, Player originalPlayer, bool response, bool timedOut)
         {
             WorldManager.EnqueueAction(new ACE.Server.Entity.Actions.ActionEventDelegate(() =>
             {
@@ -338,17 +343,17 @@ namespace ACE.Server.Market
 
                 if (timedOut)
                 {
-                    Fail(ticket, player == null || player.IsLoggingOut ? Offline : "confirm_timeout");
+                    Fail(ticket, player == null || player.IsLoggingOut || !ReferenceEquals(player, originalPlayer) ? Offline : ConfirmationTimeoutResultCode);
                     return;
                 }
 
                 if (!response)
                 {
-                    Fail(ticket, "declined");
+                    Fail(ticket, DeclinedResultCode);
                     return;
                 }
 
-                if (player == null || player.IsLoggingOut)
+                if (player == null || player.IsLoggingOut || !ReferenceEquals(player, originalPlayer))
                 {
                     Fail(ticket, Offline);
                     return;
@@ -368,14 +373,16 @@ namespace ACE.Server.Market
         {
             private readonly Ticket ticket;
             private readonly uint itemGuid;
+            private readonly Player originalPlayer;
 
-            public DepositConfirmation(Ticket ticket, uint itemGuid) : base(new ACE.Entity.ObjectGuid(ticket.CharacterId.Value), ConfirmationType.Yes_No)
+            public DepositConfirmation(Ticket ticket, uint itemGuid, Player originalPlayer) : base(new ACE.Entity.ObjectGuid(ticket.CharacterId.Value), ConfirmationType.Yes_No)
             {
                 this.ticket = ticket;
                 this.itemGuid = itemGuid;
+                this.originalPlayer = originalPlayer;
             }
 
-            public override void ProcessConfirmation(bool response, bool timeout = false) => DepositConfirmed(ticket, itemGuid, response, timeout);
+            public override void ProcessConfirmation(bool response, bool timeout = false) => DepositConfirmed(ticket, itemGuid, originalPlayer, response, timeout);
         }
 
         private static void Finished(Ticket ticket, VaultResult result)
@@ -412,9 +419,9 @@ namespace ACE.Server.Market
             InvalidTicket => "The game server could not read that request.",
             TicketStore.ServerRestart => "The game server restarted before this finished. Nothing was moved; ask again.",
             TicketStore.Abandoned => "The game server stopped working on this before it finished. Nothing was moved; ask again.",
-            "declined" => "You declined the deposit in game. Nothing was moved.",
-            "confirm_timeout" => "The deposit was not confirmed in time. Nothing was moved.",
-            "confirmation_busy" => "Another yes/no popup was already open. Nothing was moved.",
+            DeclinedResultCode => "You declined the deposit in game. Nothing was moved.",
+            ConfirmationTimeoutResultCode => "The deposit was not confirmed in time. Nothing was moved.",
+            ConfirmationBusyResultCode => "Another yes/no popup was already open. Nothing was moved.",
             _ => resultCode,
         };
 

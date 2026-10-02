@@ -47,7 +47,10 @@ export function Vault() {
     return () => { generation.current++; document.removeEventListener('visibilitychange', visible); };
   }, [session.me?.accountId]);
 
-  useEffect(() => onTicketFinished(() => { setSnapshot(null); if (session.me) void refresh(); }), [session.me?.accountId]);
+  useEffect(() => onTicketFinished(ticket => {
+    if (ticket.kind === 'vault_deposit') setSnapshot(null);
+    if (session.me) void refresh();
+  }), [session.me?.accountId]);
 
   const characterName = (id: number | null) => session.me?.characters.find(c => c.id === id)?.name;
 
@@ -138,7 +141,7 @@ export function Vault() {
       const ticket = await depositVaultItem(characterId, itemGuid, key);
       clearTicketAttempt(accountId, actionKey);
       announceTicketCreated(ticket);
-      setNotice('Switch to your game client and confirm the deposit within 30 seconds. Saying Yes starts the 60-second channel.');
+      setNotice('Confirm in game within 30 seconds.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not request this deposit.');
     } finally {
