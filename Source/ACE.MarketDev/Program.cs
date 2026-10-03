@@ -1,9 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 
 using ACE.Common;
+using ACE.Database;
 using ACE.Database.Market;
+using ACE.Database.Models.Shard;
 
 namespace ACE.MarketDev
 {
@@ -14,6 +18,7 @@ namespace ACE.MarketDev
     ///   check   runs the guard and reports the first failed check (writes nothing)
     ///   mark    marks the configured auth and shard databases as development databases, after a typed confirmation
     ///   seed    fills the databases with accounts, characters, Vault items, balances and listings
+    ///   fresh   drops, recreates and seeds only the fixed end-to-end database pair
     ///   fixture creates ticket-status examples (--character), or moves one ticket forward (--ticket, --to, --code, --seconds),
     ///           after proving the game server is stopped
     ///
@@ -46,6 +51,11 @@ namespace ACE.MarketDev
                 case "check":
                     return Report(DevelopmentGuard.Check(targets, settings));
 
+                case "audit":
+                    var auditExitCode = 1;
+                    var auditGuard = DevelopmentGuard.Run(targets, settings, () => auditExitCode = AuditLedger());
+                    return auditGuard.Passed ? auditExitCode : Report(auditGuard);
+
                 case "mark":
                     return Mark(targets, settings);
 
@@ -66,6 +76,24 @@ namespace ACE.MarketDev
                     });
 
                     return result.Passed ? exitCode : Report(result);
+
+                case "fresh":
+                    var freshExitCode = 1;
+                    var freshResult = DevelopmentGuard.RunFresh(targets, () =>
+                    {
+                        try
+                        {
+                            ResetFreshDatabases();
+                            freshExitCode = Seeder.Seed(options.GetValueOrDefault("password", Environment.GetEnvironmentVariable("MARKET_SEED_PASSWORD") ?? DefaultSeedPassword));
+                        }
+                        catch (Exception)
+                        {
+                            Console.Error.WriteLine("Fresh setup stopped part way. The end-to-end databases may be empty or partly initialized; retry scripts/market/fresh.sh.");
+                            freshExitCode = 1;
+                        }
+                    });
+
+                    return freshResult.Passed ? freshExitCode : Report(freshResult);
 
                 case "fixture":
                     Func<bool> fixture;
@@ -204,8 +232,40 @@ namespace ACE.MarketDev
 
         private static int Usage(int exitCode)
         {
-            Console.Error.WriteLine("Usage: ACE.MarketDev <check|mark|seed|fixture> [--config <Config.js>] [--password <seed account password>] [--character <name>] [--ticket <id> --to <stage> [--code <reason>] [--seconds <countdown>]]");
+            Console.Error.WriteLine("Usage: ACE.MarketDev <check|mark|seed|fresh|audit|fixture> [--config <Config.js>] [--password <seed account password>] [--character <name>] [--ticket <id> --to <stage> [--code <reason>] [--seconds <countdown>]]");
             return exitCode;
+        }
+
+        private static int AuditLedger()
+        {
+            using var shard = new ShardDbContext();
+            var audit = LedgerAudit.Run(shard);
+            Console.WriteLine(audit.Summary);
+            foreach (var failure in audit.Failures)
+                Console.WriteLine($"  {failure.Check}: {failure.Detail}");
+            return audit.Passed ? 0 : 1;
+        }
+
+        /// <summary>
+        /// Drops and recreates the fixed e2e pair after RunFresh has checked both configured names and endpoints.
+        /// The SQL script contains only those fixed names and talks to the already-running local MySQL container.
+        /// </summary>
+        private static void ResetFreshDatabases()
+        {
+            var root = Environment.GetEnvironmentVariable("MARKET_DEV_ROOT");
+            if (string.IsNullOrWhiteSpace(root))
+                throw new InvalidOperationException("MARKET_DEV_ROOT is required; use scripts/market/fresh.sh.");
+
+            var script = Path.Combine(root, "scripts", "market", "fresh-databases.sh");
+            var start = new ProcessStartInfo("bash") { UseShellExecute = false };
+            start.ArgumentList.Add(script);
+            start.Environment["MARKET_DEV_ROOT"] = root;
+
+            using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start the end-to-end database reset script.");
+            process.WaitForExit();
+
+            if (process.ExitCode != 0)
+                throw new InvalidOperationException($"The end-to-end database reset script exited with status {process.ExitCode}.");
         }
     }
 }

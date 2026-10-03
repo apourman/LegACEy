@@ -3,13 +3,14 @@
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-[[ -f "$ROOT/docker.env" ]] || {
-  echo "Missing $ROOT/docker.env; copy docker.env.example and set local values." >&2
+DOCKER_ENV_FILE="${MARKET_DOCKER_ENV_FILE:-$ROOT/docker.env}"
+[[ -f "$DOCKER_ENV_FILE" ]] || {
+  echo "Missing $DOCKER_ENV_FILE; copy docker.env.example and set local values." >&2
   exit 1
 }
 
 # --env-file: the market-api service takes its database login (MYSQL_USER, MYSQL_PASSWORD) from docker.env
-COMPOSE=(docker compose --env-file "$ROOT/docker.env" -f "$ROOT/docker/docker-compose.local.yml")
+COMPOSE=(docker compose --env-file "$DOCKER_ENV_FILE" -f "$ROOT/docker/docker-compose.local.yml")
 
 # the market stack's own databases on the local Docker MySQL, so seeding never touches ace_auth or ace_shard
 MARKET_AUTH_DATABASE="${MARKET_AUTH_DATABASE:-ace_market_auth}"
@@ -31,12 +32,12 @@ done
 # BFF's session cookie). Prints it for capture; never echo it or put it on a command line. Fails, saying what to do, when it's missing or too short.
 docker_env_secret() {
   local name="$1" value
-  value="$(sed -n "s/^[[:space:]]*$name=//p" "$ROOT/docker.env" | tail -1 | tr -d '\r')"
+  value="$(sed -n "s/^[[:space:]]*$name=//p" "$DOCKER_ENV_FILE" | tail -1 | tr -d '\r')"
   value="${value#\"}"; value="${value%\"}"
   # 32: the API's minimum key length (ServiceGate.MinimumKeyLength in Source/ACE.MarketApi/ServiceGate.cs) and the BFF's
   # (minimumSecretLength in market-web/src/bff/settings.server.ts); keep them equal
   if (( ${#value} < 32 )); then
-    echo "$name in $ROOT/docker.env is missing or shorter than 32 characters." >&2
+    echo "$name in $DOCKER_ENV_FILE is missing or shorter than 32 characters." >&2
     echo "Add a line: $name=<the output of: openssl rand -hex 32>" >&2
     return 1
   fi
