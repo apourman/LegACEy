@@ -6,12 +6,21 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <DecalInstallDir Condition="'$(DecalInstallDir)' == ''">C:\Program Files (x86)\Decal 3.0</DecalInstallDir>
+    <ManagedDirectXDir Condition="'$(ManagedDirectXDir)' == ''">C:\Windows\Microsoft.NET\DirectX for Managed Code\1.0.2902.0</ManagedDirectXDir>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="UtilityBelt.Service" Version="3.0.15" ExcludeAssets="runtime" />
+    <PackageReference Include="UtilityBelt.Service" Version="[3.0.15]" ExcludeAssets="runtime" />
     <Reference Include="Decal.Adapter">
       <HintPath>$(DecalInstallDir)\Decal.Adapter.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Microsoft.DirectX">
+      <HintPath>$(ManagedDirectXDir)\Microsoft.DirectX.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Microsoft.DirectX.Direct3D">
+      <HintPath>$(ManagedDirectXDir)\Microsoft.DirectX.Direct3D.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <ProjectReference Include="..\LegACEy.Client.PanelHost\LegACEy.Client.PanelHost.csproj" />

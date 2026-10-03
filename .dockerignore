@@ -23,3 +23,6 @@ Dockerfile*
 **/*.cmd
 **/*.sh
 **/*.zip
+
+# client solution (built separately, never part of the server image)
+Client/

@@ -1,15 +1,19 @@
 using System;
+using System.IO;
 using System.Numerics;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using AvaloniaColor = Avalonia.Media.Color;
 using AvaloniaBrushes = Avalonia.Media.Brushes;
 using Bitmap = System.Drawing.Bitmap;
+using IOPath = System.IO.Path;
 using Decal.Adapter;
 using ImGuiNET;
 using LegACEy.Client.PanelHost;
+using Microsoft.DirectX.Direct3D;
 using UtilityBelt.Service;
 using UtilityBelt.Service.Views;
 
@@ -20,14 +24,16 @@ public sealed class Plugin : FilterBase
 {
     private const int PanelWidth = 360;
     private const int PanelHeight = 180;
+    private static readonly string PluginDirectory = IOPath.GetDirectoryName(typeof(Plugin).Assembly.Location)!;
 
     private Hud? _hud;
     private AvaloniaPanel? _panel;
-    private object? _texture;
+    private ManagedTexture? _texture;
     private bool _failed;
 
     protected override void Startup()
     {
+        AppDomain.CurrentDomain.AssemblyResolve += ResolveFromPluginDirectory;
         CoreManager.Current.FilterInitComplete += OnFilterInitComplete;
     }
 
@@ -35,26 +41,57 @@ public sealed class Plugin : FilterBase
     {
         CoreManager.Current.FilterInitComplete -= OnFilterInitComplete;
         TearDown();
+        AppDomain.CurrentDomain.AssemblyResolve -= ResolveFromPluginDirectory;
+    }
+
+    /// <summary>
+    /// The client process has no binding redirects, and Avalonia references older builds of
+    /// System.Buffers, System.Numerics.Vectors and others than the ones shipped beside the plugin.
+    /// Serve the shipped copy when it is the same or newer, and log every redirect.
+    /// </summary>
+    private static Assembly? ResolveFromPluginDirectory(object? sender, ResolveEventArgs args)
+    {
+        var requested = new AssemblyName(args.Name);
+        var path = IOPath.Combine(PluginDirectory, requested.Name + ".dll");
+        if (!File.Exists(path))
+            return null;
+
+        var shipped = AssemblyName.GetAssemblyName(path);
+        if (requested.Version != null && shipped.Version < requested.Version)
+            return null;
+
+        Log($"Assembly redirect: {args.Name} -> {shipped.Version}, requested by {args.RequestingAssembly?.GetName().Name ?? "unknown"}");
+        return Assembly.LoadFrom(path);
+    }
+
+    private static void Log(string message)
+    {
+        try
+        {
+            File.AppendAllText(IOPath.Combine(PluginDirectory, "legacey-avalonia.log"), $"{DateTime.Now:O} {message}{Environment.NewLine}");
+        }
+        catch
+        {
+            // Logging must never break assembly resolution or the client callback that triggered it.
+        }
     }
 
     private void OnFilterInitComplete(object? sender, EventArgs e)
     {
         CoreManager.Current.FilterInitComplete -= OnFilterInitComplete;
-        try
+        Guard(() =>
         {
-            AvaloniaPanel.EnsureRuntimeInitialized();
-            _panel = AvaloniaPanel.Create(CreateDemoControl(), PanelWidth, PanelHeight);
+            _panel = AvaloniaPanel.Create(CreateDemoControl, PanelWidth, PanelHeight);
+
+            // UtilityBelt releases and recreates managed textures from this bitmap around device
+            // resets; the next render uploads the current frame again.
+            using (var blank = new Bitmap(PanelWidth, PanelHeight))
+                _texture = new ManagedTexture(blank);
+
             _hud = UBService.Huds.CreateHud("LegACEy Avalonia");
             _hud.Title = "LegACEy Avalonia";
             _hud.OnRender += OnRender;
-            _hud.OnDestroyTextures += OnDestroyTextures;
-            _hud.OnCreateTextures += OnCreateTextures;
-            CreateTexture();
-        }
-        catch (Exception exception)
-        {
-            DisablePanel(exception);
-        }
+        });
     }
 
     private static Control CreateDemoControl() => new Border
@@ -93,101 +130,51 @@ public sealed class Plugin : FilterBase
 
     private void OnRender(object? sender, EventArgs e)
     {
-        if (_failed || _panel == null || _texture == null)
+        if (_failed || _panel == null || _texture?.Texture == null)
             return;
 
-        try
+        Guard(() =>
         {
-            _panel.Tick(TimeSpan.FromMilliseconds(16));
-            UploadFrame(_panel.Frame);
-            var texturePointer = (IntPtr)_texture.GetType().GetProperty("TexturePtr")!.GetValue(_texture, null)!;
-            ImGui.Image(texturePointer, new Vector2(PanelWidth, PanelHeight));
-        }
-        catch (Exception exception)
-        {
-            DisablePanel(exception);
-        }
+            _panel.Tick();
+            Upload(_panel.Frame, _texture.Texture);
+            ImGui.Image(_texture.TexturePtr, new Vector2(PanelWidth, PanelHeight));
+        });
     }
 
-    private void OnDestroyTextures(object? sender, EventArgs e) => DestroyTexture();
-
-    private void OnCreateTextures(object? sender, EventArgs e)
+    /// <summary>Copy the whole BGRA frame into the dynamic A8R8G8B8 texture, honouring its pitch.</summary>
+    private static void Upload(PanelFrame frame, Texture texture)
     {
-        if (_failed)
-            return;
+        var level = texture.GetLevelDescription(0);
+        if (level.Width != frame.Width || level.Height != frame.Height || level.Format != Format.A8R8G8B8)
+            throw new InvalidOperationException(
+                $"The panel frame ({frame.Width}x{frame.Height} BGRA) does not match the texture ({level.Width}x{level.Height} {level.Format}).");
 
+        var bits = texture.LockRectangle(0, LockFlags.Discard, out var pitch);
         try
         {
-            CreateTexture();
-        }
-        catch (Exception exception)
-        {
-            DisablePanel(exception);
-        }
-    }
-
-    private void CreateTexture()
-    {
-        DestroyTexture();
-        using (var blank = new Bitmap(PanelWidth, PanelHeight))
-        {
-            var managedTextureType = typeof(UBService).Assembly.GetType("UtilityBelt.Service.Views.ManagedTexture", throwOnError: true)!;
-            var constructor = managedTextureType.GetConstructor(new[] { typeof(Bitmap) })
-                ?? throw new MissingMethodException(managedTextureType.FullName, ".ctor(Bitmap)");
-            _texture = constructor.Invoke(new object[] { blank });
-        }
-        if (_panel != null)
-            UploadFrame(_panel.Frame);
-    }
-
-    private void UploadFrame(PanelFrame frame)
-    {
-        if (_texture == null)
-            return;
-
-        var nativeTexture = _texture.GetType().GetProperty("Texture")!.GetValue(_texture, null);
-        if (nativeTexture == null)
-            return;
-        var nativeType = nativeTexture.GetType();
-        var lockMethod = Array.Find(nativeType.GetMethods(BindingFlags.Instance | BindingFlags.Public), method =>
-        {
-            if (method.Name != "LockRectangle") return false;
-            var parameters = method.GetParameters();
-            return parameters.Length == 3 &&
-                parameters[0].ParameterType == typeof(int) &&
-                parameters[1].ParameterType.IsEnum &&
-                parameters[2].IsOut &&
-                parameters[2].ParameterType == typeof(int).MakeByRefType();
-        }) ?? throw new MissingMethodException(nativeType.FullName, "LockRectangle(int, LockFlags, out int)");
-        var unlockMethod = nativeType.GetMethod("UnlockRectangle", new[] { typeof(int) })
-            ?? throw new MissingMethodException(nativeType.FullName, "UnlockRectangle(int)");
-        var flagsType = lockMethod.GetParameters()[1].ParameterType;
-        var discard = Enum.Parse(flagsType, "Discard");
-        var lockArguments = new object[] { 0, discard, 0 };
-        var locked = lockMethod.Invoke(nativeTexture, lockArguments)
-            ?? throw new InvalidOperationException("The dynamic D3D texture lock returned no locked region.");
-
-        try
-        {
-            var bits = (IntPtr)locked.GetType().GetProperty("InternalData")!.GetValue(locked, null)!;
-            var pitch = (int)lockArguments[2];
-            var rowBytes = checked(frame.Width * 4);
-            if (bits == IntPtr.Zero || pitch < rowBytes)
-                throw new InvalidOperationException($"The dynamic D3D texture returned an invalid lock (pitch {pitch}, row {rowBytes}).");
+            if (bits.InternalData == IntPtr.Zero || pitch < frame.Stride)
+                throw new InvalidOperationException($"The dynamic D3D texture returned an invalid lock (pitch {pitch}, row {frame.Stride}).");
 
             for (var row = 0; row < frame.Height; row++)
-                System.Runtime.InteropServices.Marshal.Copy(frame.Pixels, row * frame.Stride, IntPtr.Add(bits, row * pitch), rowBytes);
+                Marshal.Copy(frame.Pixels, row * frame.Stride, IntPtr.Add(bits.InternalData, row * pitch), frame.Stride);
         }
         finally
         {
-            unlockMethod.Invoke(nativeTexture, new object[] { 0 });
+            texture.UnlockRectangle(0);
         }
     }
 
-    private void DestroyTexture()
+    /// <summary>Run panel work from a game callback; any exception disables the panel instead of escaping.</summary>
+    private void Guard(Action action)
     {
-        (_texture as IDisposable)?.Dispose();
-        _texture = null;
+        try
+        {
+            action();
+        }
+        catch (Exception exception)
+        {
+            DisablePanel(exception);
+        }
     }
 
     private void DisablePanel(Exception exception)
@@ -209,13 +196,12 @@ public sealed class Plugin : FilterBase
         if (_hud != null)
         {
             _hud.OnRender -= OnRender;
-            _hud.OnDestroyTextures -= OnDestroyTextures;
-            _hud.OnCreateTextures -= OnCreateTextures;
             _hud.Dispose();
             _hud = null;
         }
 
-        DestroyTexture();
+        _texture?.Dispose();
+        _texture = null;
         _panel?.Dispose();
         _panel = null;
     }

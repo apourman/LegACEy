@@ -7,9 +7,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="11.3.22" />
-    <PackageReference Include="Avalonia.Headless" Version="11.3.22" />
-    <PackageReference Include="Avalonia.Skia" Version="11.3.22" />
+    <PackageReference Include="Avalonia" Version="[11.3.22]" />
+    <PackageReference Include="Avalonia.Headless" Version="[11.3.22]" />
+    <PackageReference Include="Avalonia.Skia" Version="[11.3.22]" />
   </ItemGroup>
 
 </Project>
