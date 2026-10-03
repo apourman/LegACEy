@@ -5,7 +5,7 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
-CONFIG="$MARKET_GAME_RUN_DIR/Config.js"
+CONFIG="${MARKET_DEV_CONFIG:-$MARKET_GAME_RUN_DIR/Config.js}"
 [[ -f "$CONFIG" ]] || { echo "Missing $CONFIG: run scripts/market/game.sh once first (it writes the game's configuration)." >&2; exit 1; }
 
 build_log="$(mktemp)"
@@ -15,5 +15,5 @@ dotnet build "$ROOT/Source/ACE.MarketDev/ACE.MarketDev.csproj" -c Debug -p:Platf
   echo "Building the development tool failed (output above)." >&2
   exit 1
 }
-cd "$MARKET_GAME_RUN_DIR"
+cd "$(dirname "$CONFIG")"
 dotnet "$ROOT/Source/ACE.MarketDev/bin/x64/Debug/net10.0/ACE.MarketDev.dll" "$@" --config "$CONFIG"

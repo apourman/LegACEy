@@ -43,6 +43,8 @@ namespace ACE.MarketDev
 
         private sealed record SeedAccount(string Name, string[] Characters, SeedItem[] Items);
 
+        private sealed record SeedPair(string File, string Project);
+
         private static readonly SeedAccount[] Accounts =
         {
             new SeedAccount("seedalpha", new[] { "Seed Alpha", "Seed Alpha Second" }, new[]
@@ -61,11 +63,29 @@ namespace ACE.MarketDev
             }),
         };
 
+        // Keep these names in step with the production Playwright projects. Each file/project gets its own buyers,
+        // sellers, characters, Vault rows, balances and listings so parallel browser projects cannot share state.
+        private static readonly SeedPair[] E2EPairs =
+        {
+            new SeedPair("website", "desktop"),
+            new SeedPair("website", "phone"),
+        };
+
+        private static SeedAccount[] E2EAccounts() => E2EPairs.SelectMany(pair => new[]
+        {
+            new SeedAccount($"{pair.File}-{pair.Project}-alpha", new[] { $"{pair.File} {pair.Project} Alpha", $"{pair.File} {pair.Project} Alpha Second" }, Accounts[0].Items),
+            new SeedAccount($"{pair.File}-{pair.Project}-bravo", new[] { $"{pair.File} {pair.Project} Bravo", $"{pair.File} {pair.Project} Bravo Second" }, Accounts[1].Items),
+        }).ToArray();
+
         // outside Holtburg, where a new character would start
         private static readonly Position StartLocation = new Position(0xA9B4001F, 84.0f, 7.1f, 94.0f, 0.0f, 0.0f, 0.0f, 1.0f);
 
         public static int Seed(string password)
         {
+            var accounts = ConfigManager.Config.MySql.Shard.Database == DevelopmentGuardSettings.E2EShardDatabase
+                ? E2EAccounts()
+                : Accounts;
+
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance); // as Program.Main does, for the DAT strings
 
             DatManager.Initialize(ConfigManager.Config.Server.DatFilesDirectory, true);
@@ -90,11 +110,11 @@ namespace ACE.MarketDev
                 }
             }
 
-            var existing = Accounts.Where(a => DatabaseManager.Authentication.GetAccountByName(a.Name) != null).Select(a => a.Name).ToList();
+            var existing = accounts.Where(a => DatabaseManager.Authentication.GetAccountByName(a.Name) != null).Select(a => a.Name).ToList();
             if (existing.Count > 0)
             {
                 // the last item of the last account is written last (its listing, then the audit only reads): if it's there, a run finished
-                if (existing.Count == Accounts.Length && IsComplete())
+                if (existing.Count == accounts.Length && IsComplete(accounts))
                 {
                     Console.WriteLine($"Already seeded ({string.Join(", ", existing)} exist). Nothing written.");
                     return 0;
@@ -106,7 +126,7 @@ namespace ACE.MarketDev
             }
 
             // check what can be checked before the first write, so a bad weenie doesn't leave a half-seeded database
-            var missing = Accounts.SelectMany(a => a.Items).Select(i => i.Wcid).Distinct().Where(wcid => DatabaseManager.World.GetCachedWeenie(wcid) == null).ToList();
+            var missing = accounts.SelectMany(a => a.Items).Select(i => i.Wcid).Distinct().Where(wcid => DatabaseManager.World.GetCachedWeenie(wcid) == null).ToList();
             if (DatabaseManager.World.GetCachedWeenie("human") == null)
                 missing.Add(1);
             if (missing.Count > 0)
@@ -119,7 +139,7 @@ namespace ACE.MarketDev
             var nextPlayerGuid = NextFree(PlayerGuidBase, ObjectGuid.PlayerMax);
             var nextItemGuid = NextFree(ItemGuidBase, ObjectGuid.DynamicMax);
 
-            foreach (var seed in Accounts)
+            foreach (var seed in accounts)
             {
                 var account = DatabaseManager.Authentication.CreateAccount(seed.Name, password, AccessLevel.Player, IPAddress.Loopback);
                 var characters = seed.Characters.Select(name => CreateCharacter(account.AccountId, name, nextPlayerGuid++)).ToList();
@@ -174,18 +194,18 @@ namespace ACE.MarketDev
                     return 1;
             }
 
-            Console.WriteLine($"Seeded. Sign in as {string.Join(" or ", Accounts.Select(a => a.Name))} with the seed password.");
+            Console.WriteLine($"Seeded. Sign in as {string.Join(" or ", accounts.Select(a => a.Name))} with the seed password.");
             return 0;
         }
 
         /// <summary>
         /// True when every seed account has its full Vault and every listing a run makes: the run that made them finished
         /// </summary>
-        private static bool IsComplete()
+        private static bool IsComplete(SeedAccount[] accounts)
         {
             using var shard = new ShardDbContext();
 
-            foreach (var seed in Accounts)
+            foreach (var seed in accounts)
             {
                 var accountId = DatabaseManager.Authentication.GetAccountByName(seed.Name).AccountId;
 

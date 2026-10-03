@@ -99,13 +99,37 @@ The seed tool (`Source/ACE.MarketDev`) writes the database directly, so before a
 shard databases it would write are:
 
 - at an allowed endpoint (`127.0.0.1:3310` by default; `MARKET_DEV_ALLOWED_ENDPOINTS`);
-- named exactly as allowed for their role (`ace_market_auth`, `ace_market_shard`; `MARKET_DEV_ALLOWED_AUTH_DATABASES`, `MARKET_DEV_ALLOWED_SHARD_DATABASES`);
+- named exactly as allowed for their role (`ace_market_auth`, `ace_market_shard`, `ace_market_e2e_auth`, `ace_market_e2e_shard`; `MARKET_DEV_ALLOWED_AUTH_DATABASES`, `MARKET_DEV_ALLOWED_SHARD_DATABASES`);
 - marked as development databases (a `legacey_dev_marker` row).
 
 If any check fails it writes nothing and names the failed check. `bootstrap.sh` marks the databases it creates.
 To mark existing ones, run `./scripts/market/dev.sh mark` at a terminal and type `MARK`. Never mark a server's
 database: the guard is a safeguard against mistakes, and a tunnel to a marked database would pass it.
 `./scripts/market/dev.sh check` runs the checks without writing.
+
+## Production end-to-end stack
+
+The separate production-image stack runs at `http://127.0.0.1:5174`. It shares only the already-running `docker-ace-db-1` MySQL container and
+uses `ace_market_e2e_auth` and `ace_market_e2e_shard`; it doesn't recreate or remove the development stack.
+
+```bash
+./scripts/market/e2e.sh up       # fresh seeded data, then start the production API and BFF images
+./scripts/market/e2e.sh fresh    # drop/recreate only the fixed e2e pair, apply schemas, mark and seed
+./scripts/market/e2e.sh audit    # run the market ledger audit against the e2e shard
+./scripts/market/e2e.sh down     # remove only the market-e2e Compose project
+```
+
+`fresh` refuses any endpoint other than local MySQL at `127.0.0.1:3310` and any database names other than the fixed e2e pair before it
+starts the reset script. The seed creates an independent Alpha/Bravo pair for each test file and viewport project; the current `website`
+suite has `website-desktop-alpha` / `website-desktop-bravo` and `website-phone-alpha` / `website-phone-bravo`. Set
+`MARKET_SEED_PASSWORD` for a different local test password. To run the ticket walkthrough on the e2e data, use its seeded character name:
+
+```bash
+MARKET_DEV_CONFIG="$HOME/.local/state/legacey/market-e2e/Config.js" ./scripts/market/dev.sh fixture --character "website desktop Alpha"
+```
+
+The BFF production image builds the framework output in a Node build stage and runs it with production dependencies as the unprivileged
+`node` user. API address and both BFF secrets are passed at runtime through the environment; no secrets enter either image.
 
 ## Starting over
 
@@ -143,7 +167,6 @@ docker compose --env-file docker.env -f docker/docker-compose.local.yml exec -T 
 ```
 
 The build writes `market-web/build` (`build/server` for the BFF's server, `build/client` for the browser's files); `npm start` runs it.
-The production image and deployment come later.
 
 Browser regression checks run in the browser image (also no host Node). They start the BFF themselves, against a fake Market API that
 each check scripts, so they need no database:

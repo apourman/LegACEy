@@ -37,6 +37,9 @@ namespace ACE.Database.Market
     /// </summary>
     public sealed class DevelopmentGuardSettings
     {
+        public const string E2EAuthDatabase = "ace_market_e2e_auth";
+        public const string E2EShardDatabase = "ace_market_e2e_shard";
+
         /// <summary>
         /// The local Docker MySQL (scripts/db-bootstrap), never the ace-db on 3306
         /// </summary>
@@ -47,12 +50,12 @@ namespace ACE.Database.Market
         /// <summary>
         /// The local market stack's own auth database (scripts/market)
         /// </summary>
-        public IReadOnlyList<string> AllowedAuthDatabases { get; set; } = new[] { "ace_market_auth" };
+        public IReadOnlyList<string> AllowedAuthDatabases { get; set; } = new[] { "ace_market_auth", E2EAuthDatabase };
 
         /// <summary>
         /// The local market stack's own shard database (scripts/market)
         /// </summary>
-        public IReadOnlyList<string> AllowedShardDatabases { get; set; } = new[] { "ace_market_shard" };
+        public IReadOnlyList<string> AllowedShardDatabases { get; set; } = new[] { "ace_market_shard", E2EShardDatabase };
 
         public IReadOnlyList<string> AllowedDatabases(string role) => role == DevelopmentTarget.AuthRole ? AllowedAuthDatabases : AllowedShardDatabases;
     }
@@ -90,15 +93,9 @@ namespace ACE.Database.Market
         /// </summary>
         public static DevelopmentGuardResult Check(IReadOnlyList<DevelopmentTarget> targets, DevelopmentGuardSettings settings)
         {
-            foreach (var role in Roles)
-            {
-                if (targets.Count(t => t.Role == role) != 1)
-                    return new DevelopmentGuardResult(DevelopmentCheck.Target, $"{role} target", $"expected exactly one {role} database to check, got {targets.Count(t => t.Role == role)}");
-            }
-
-            var unknown = targets.FirstOrDefault(t => !Roles.Contains(t.Role));
-            if (unknown != null)
-                return new DevelopmentGuardResult(DevelopmentCheck.Target, "target", $"unknown target role '{unknown.Role}'");
+            var targetShape = CheckTargetShape(targets);
+            if (!targetShape.Passed)
+                return targetShape;
 
             foreach (var target in targets)
             {
@@ -132,6 +129,62 @@ namespace ACE.Database.Market
             }
 
             return DevelopmentGuardResult.Pass;
+        }
+
+        /// <summary>
+        /// Validates the exact local targets that the destructive fresh command is allowed to replace.
+        /// This check is configuration-only: it never opens a connection, so fresh can refuse before its first write.
+        /// </summary>
+        public static DevelopmentGuardResult CheckFreshTargets(IReadOnlyList<DevelopmentTarget> targets)
+        {
+            var targetShape = CheckTargetShape(targets);
+            if (!targetShape.Passed)
+                return targetShape;
+
+            foreach (var target in targets)
+            {
+                if (!IsAllowedEndpoint(target.Connection, DevelopmentGuardSettings.DefaultEndpoints))
+                    return new DevelopmentGuardResult(DevelopmentCheck.Endpoint, $"{target.Role} endpoint", $"{target.Role} endpoint {target.Endpoint} is not allowed (allowed: {string.Join(", ", DevelopmentGuardSettings.DefaultEndpoints)})");
+            }
+
+            foreach (var target in targets)
+            {
+                var expected = target.Role == DevelopmentTarget.AuthRole
+                    ? DevelopmentGuardSettings.E2EAuthDatabase
+                    : DevelopmentGuardSettings.E2EShardDatabase;
+
+                if (!string.Equals(target.Connection.Database, expected, StringComparison.Ordinal))
+                    return new DevelopmentGuardResult(DevelopmentCheck.DatabaseName, $"{target.Role} database name", $"{target.Role} database '{target.Connection.Database}' is not the fresh target '{expected}'");
+            }
+
+            return DevelopmentGuardResult.Pass;
+        }
+
+        private static DevelopmentGuardResult CheckTargetShape(IReadOnlyList<DevelopmentTarget> targets)
+        {
+            foreach (var role in Roles)
+            {
+                if (targets.Count(t => t.Role == role) != 1)
+                    return new DevelopmentGuardResult(DevelopmentCheck.Target, $"{role} target", $"expected exactly one {role} database to check, got {targets.Count(t => t.Role == role)}");
+            }
+
+            var unknown = targets.FirstOrDefault(t => !Roles.Contains(t.Role));
+            return unknown == null
+                ? DevelopmentGuardResult.Pass
+                : new DevelopmentGuardResult(DevelopmentCheck.Target, "target", $"unknown target role '{unknown.Role}'");
+        }
+
+        /// <summary>
+        /// Calls the destructive fresh operation only after its fixed database names and local MySQL endpoint pass validation.
+        /// </summary>
+        public static DevelopmentGuardResult RunFresh(IReadOnlyList<DevelopmentTarget> targets, Action write)
+        {
+            var result = CheckFreshTargets(targets);
+
+            if (result.Passed)
+                write();
+
+            return result;
         }
 
         /// <summary>
