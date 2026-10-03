@@ -32,25 +32,9 @@ namespace ACE.MarketApi
         public string DatabasePassword { get; set; }
 
         /// <summary>
-        /// Where the cookie signing keys are kept. Put it on a volume, so a restart or redeploy doesn't sign everyone out.
-        /// </summary>
-        public string KeysPath { get; set; } = "keys";
-
-        /// <summary>
         /// Where icon PNGs are cached once made from the portal DAT. Safe to delete: they are made again on the next request.
         /// </summary>
         public string IconCachePath { get; set; } = "icon-cache";
-
-        /// <summary>
-        /// Marks the session cookie Secure, so browsers send it over HTTPS only. Turn off only for local HTTP testing.
-        /// </summary>
-        public bool SecureCookies { get; set; } = true;
-
-        /// <summary>
-        /// IP addresses of reverse proxies whose X-Forwarded-For is trusted. Without them, behind a proxy every client shares
-        /// the proxy's IP, and the sign-in IP block would block everyone.
-        /// </summary>
-        public string[] TrustedProxies { get; set; } = System.Array.Empty<string>();
 
         /// <summary>
         /// The secret every request but the health check must carry in X-Market-Service-Key (ServiceGate). Required, at least

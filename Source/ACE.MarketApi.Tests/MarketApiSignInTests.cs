@@ -25,8 +25,9 @@ namespace ACE.MarketApi.Tests
             var response = await host.SignInAsync(name, "hunter2");
 
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
-            Assert.AreEqual(id, (await MarketApiHost.JsonAsync(response)).GetProperty("accountId").GetUInt32());
-            MarketApiHost.SessionCookie(response);
+            var signIn = await MarketApiHost.JsonAsync(response);
+            Assert.AreEqual(id, signIn.GetProperty("accountId").GetUInt32());
+            StringAssert.StartsWith(MarketApiHost.SessionToken(signIn), "ws.", "a web session token");
             Assert.AreEqual(before, MarketApiTestData.AccountRow(id));
         }
 
@@ -162,21 +163,26 @@ namespace ACE.MarketApi.Tests
         }
 
         [TestMethod]
-        public async Task SignIn_BehindATrustedProxy_BlocksTheForwardedClientIpNotTheProxy()
+        public async Task SignIn_XForwardedFor_IsIgnored_EvenFromAFormerlyTrustedProxy()
         {
             const string proxy = "10.8.8.8";
             var name = MarketApiTestData.UniqueName("proxied");
             MarketApiTestData.CreateAccount(name, "right");
 
+            // the removed Market:TrustedProxies setting, set as a deployment had it: it no longer makes X-Forwarded-For count
             await using var host = await MarketApiHost.StartAsync(extraArgs: $"--Market:TrustedProxies:0={proxy}");
 
+            // every attempt names another forwarded address; the connection's own is what counts, so it is blocked
             for (var i = 0; i < 20; i++)
-                Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.SignInAsync(MarketApiTestData.UniqueName("ghost"), "wrong", proxy, forwardedFor: "203.0.113.5")).StatusCode);
+                Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.SignInAsync(MarketApiTestData.UniqueName("ghost"), "wrong", proxy, forwardedFor: $"203.0.113.{i + 1}")).StatusCode);
 
-            Assert.AreEqual("ip_blocked", await MarketApiHost.ErrorAsync(await host.SignInAsync(name, "right", proxy, forwardedFor: "203.0.113.5")));
-            Assert.AreEqual(HttpStatusCode.OK, (await host.SignInAsync(name, "right", proxy, forwardedFor: "203.0.113.6")).StatusCode);
+            Assert.AreEqual("ip_blocked", await MarketApiHost.ErrorAsync(await host.SignInAsync(name, "right", proxy, forwardedFor: "203.0.113.200")));
+            Assert.AreEqual("ip_blocked", await MarketApiHost.ErrorAsync(await host.SignInAsync(name, "right", proxy)));
 
-            // an untrusted sender's X-Forwarded-For is ignored: it is judged by its own address
+            // and another connection forwarding one of those addresses isn't blocked by them
+            Assert.AreEqual(HttpStatusCode.OK, (await host.SignInAsync(name, "right", "10.7.7.7", forwardedFor: "203.0.113.5")).StatusCode);
+
+            // any sender's X-Forwarded-For is ignored: it is judged by its own address
             for (var i = 0; i < 20; i++)
                 await host.SignInAsync(MarketApiTestData.UniqueName("ghost"), "wrong", "10.7.7.7", forwardedFor: $"198.51.100.{i + 1}");
 
@@ -246,15 +252,15 @@ namespace ACE.MarketApi.Tests
             var id = MarketApiTestData.CreateAccount(name, "right");
 
             await using var host = await MarketApiHost.StartAsync();
-            var cookie = await host.SignInForCookieAsync(name, "right");
+            var session = await host.SignInForSessionAsync(name, "right");
 
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/api/me", cookie)).StatusCode);
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/api/vault", cookie)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/api/me", session)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/api/vault", session)).StatusCode);
 
             MarketApiTestData.Ban(id, DateTime.UtcNow.AddDays(1));
 
-            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/api/me", cookie)).StatusCode);
-            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/api/vault", cookie)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/api/me", session)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/api/vault", session)).StatusCode);
         }
 
         private static string ToHex(string text) => Convert.ToHexString(System.Text.Encoding.UTF8.GetBytes(text));

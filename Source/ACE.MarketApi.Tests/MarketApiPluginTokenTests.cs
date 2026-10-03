@@ -264,9 +264,9 @@ namespace ACE.MarketApi.Tests
             var desktop = await NewTokenAsync(host, player, "Desktop");
             var othersToken = await NewTokenAsync(host, other, "Other");
 
-            var cookie = await host.SignInForCookieAsync(player.Name, player.Password);
+            var session = await host.SignInForSessionAsync(player.Name, player.Password);
 
-            var listed = await MarketApiHost.JsonAsync(await host.GetAsync("/api/tokens", cookie));
+            var listed = await MarketApiHost.JsonAsync(await host.GetAsync("/api/tokens", session));
             var tokens = listed.GetProperty("tokens").EnumerateArray().ToList();
             CollectionAssert.AreEqual(new[] { "Desktop", "Laptop" }, tokens.Select(t => t.GetProperty("label").GetString()).ToList(), "newest first, own tokens only");
             Assert.IsFalse(tokens[0].TryGetProperty("tokenHash", out _), "never the hash");
@@ -278,13 +278,13 @@ namespace ACE.MarketApi.Tests
             var othersId = MarketApiTestData.Scalar($"SELECT id FROM market_plugin_token WHERE account_Id = {other.AccountId};");
 
             // another account's token can't be revoked
-            var notMine = await host.PostJsonAsync($"/api/tokens/{othersId}/revoke", new { }, cookie);
+            var notMine = await host.PostJsonAsync($"/api/tokens/{othersId}/revoke", new { }, session);
             Assert.AreEqual(HttpStatusCode.NotFound, notMine.StatusCode);
             Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/me", othersToken)).StatusCode);
 
             Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/me", laptop)).StatusCode);
 
-            var revoked = await host.PostJsonAsync($"/api/tokens/{laptopId}/revoke", new { }, cookie);
+            var revoked = await host.PostJsonAsync($"/api/tokens/{laptopId}/revoke", new { }, session);
             Assert.AreEqual(HttpStatusCode.OK, revoked.StatusCode, await revoked.Content.ReadAsStringAsync());
 
             Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/api/me", laptop)).StatusCode, "revoked at once");
@@ -299,7 +299,7 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/api/me", desktop)).StatusCode);
 
             Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/api/tokens")).StatusCode);
-            Assert.AreEqual(HttpStatusCode.NotFound, (await host.PostJsonAsync("/api/tokens/abc/revoke", new { }, cookie)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.NotFound, (await host.PostJsonAsync("/api/tokens/abc/revoke", new { }, session)).StatusCode);
         }
 
         // ---- invalidation
@@ -321,8 +321,8 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/api/me", second)).StatusCode);
 
             // they're gone from the list too; a new link after the change works
-            var cookie = await host.SignInForCookieAsync(player.Name, "new-pass");
-            Assert.AreEqual(0, (await MarketApiHost.JsonAsync(await host.GetAsync("/api/tokens", cookie))).GetProperty("tokens").GetArrayLength());
+            var session = await host.SignInForSessionAsync(player.Name, "new-pass");
+            Assert.AreEqual(0, (await MarketApiHost.JsonAsync(await host.GetAsync("/api/tokens", session))).GetProperty("tokens").GetArrayLength());
 
             var fresh = await NewTokenAsync(host, player, "three");
             Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/me", fresh)).StatusCode);

@@ -30,7 +30,6 @@ namespace ACE.MarketApi.Tests
             MarketApiTestData.CreateAccount(name, "pass");
 
             await using var host = await MarketApiHost.StartAsync();
-            var cookie = await host.SignInForCookieAsync(name, "pass");
             var session = await host.SignInForSessionAsync(name, "pass");
             using var keyless = host.ClientWithoutKey();
 
@@ -58,8 +57,6 @@ namespace ACE.MarketApi.Tests
                 {
                     var request = new HttpRequestMessage(new HttpMethod(method), path);
                     request.Headers.Add(MarketApiHost.RemoteIpHeader, MarketApiHost.DefaultIp);
-                    request.Headers.Add(MarketApiHost.RequestHeader, "1");
-                    request.Headers.Add("Cookie", cookie);
                     request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", session);
                     if (method == "POST")
                         request.Content = JsonContent.Create(new { account = name, password = "pass" });
@@ -77,8 +74,7 @@ namespace ACE.MarketApi.Tests
                 }
             }
 
-            // the same sign-ins work with the key: the refusals above were the key's alone
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/api/me", cookie)).StatusCode);
+            // the same sign-in works with the key: the refusals above were the key's alone
             Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/me", session)).StatusCode);
         }
 
@@ -102,8 +98,8 @@ namespace ACE.MarketApi.Tests
                 Assert.AreEqual(HttpStatusCode.Unauthorized, (await keyless.SendAsync(request)).StatusCode);
             }
 
-            Assert.AreEqual(HttpStatusCode.OK, (await host.SessionSignInAsync(name, "right", "10.6.6.6", clientIp: "198.51.100.66")).StatusCode);
-            Assert.AreEqual(HttpStatusCode.OK, (await host.SessionSignInAsync(name, "right", "10.6.6.6")).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.SignInAsync(name, "right", "10.6.6.6", clientIp: "198.51.100.66")).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.SignInAsync(name, "right", "10.6.6.6")).StatusCode);
         }
 
         [TestMethod]
@@ -132,14 +128,14 @@ namespace ACE.MarketApi.Tests
             }
 
             // a valid-key sign-in from headerIp gets the normal answer, not ip_blocked
-            var signIn = await host.SessionSignInAsync(victim, "right", "10.23.0.1", clientIp: headerIp);
+            var signIn = await host.SignInAsync(victim, "right", "10.23.0.1", clientIp: headerIp);
             Assert.AreEqual(HttpStatusCode.OK, signIn.StatusCode, await signIn.Content.ReadAsStringAsync());
 
             // the same failures with the key do block it, so the limit above was really in reach
             var blockedAfterKeyed = MarketApiTestData.UniqueName("cipkeyed");
             MarketApiTestData.CreateAccount(blockedAfterKeyed, "right");
             await FailTwentyTimes(host, "10.23.0.1", headerIp);
-            Assert.AreEqual("ip_blocked", await MarketApiHost.ErrorAsync(await host.SessionSignInAsync(blockedAfterKeyed, "right", "10.23.0.1", clientIp: headerIp)));
+            Assert.AreEqual("ip_blocked", await MarketApiHost.ErrorAsync(await host.SignInAsync(blockedAfterKeyed, "right", "10.23.0.1", clientIp: headerIp)));
         }
 
         // ---- health
@@ -184,19 +180,16 @@ namespace ACE.MarketApi.Tests
 
             await FailTwentyTimes(host, bff, "203.0.113.7");
 
-            var blocked = await host.SessionSignInAsync(victim, "right", bff, clientIp: "203.0.113.7");
+            var blocked = await host.SignInAsync(victim, "right", bff, clientIp: "203.0.113.7");
             Assert.AreEqual(HttpStatusCode.TooManyRequests, blocked.StatusCode);
             Assert.AreEqual("ip_blocked", await MarketApiHost.ErrorAsync(blocked));
 
             // the same BFF connection for another player, or with no client IP (the connection address), isn't blocked
-            Assert.AreEqual(HttpStatusCode.OK, (await host.SessionSignInAsync(victim, "right", bff, clientIp: "203.0.113.8")).StatusCode);
-            Assert.AreEqual(HttpStatusCode.OK, (await host.SessionSignInAsync(victim, "right", bff)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.SignInAsync(victim, "right", bff, clientIp: "203.0.113.8")).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.SignInAsync(victim, "right", bff)).StatusCode);
 
-            // the cookie sign-in counts the same address
-            var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/login") { Content = JsonContent.Create(new { account = victim, password = "right" }) };
-            request.Headers.Add(MarketApiHost.RemoteIpHeader, "10.99.0.1");
-            request.Headers.Add(ServiceGate.ClientIpHeader, "203.0.113.7");
-            Assert.AreEqual("ip_blocked", await MarketApiHost.ErrorAsync(await host.Client.SendAsync(request)));
+            // the address is the player's, whichever connection carries it: another BFF connection with the same client IP is blocked too
+            Assert.AreEqual("ip_blocked", await MarketApiHost.ErrorAsync(await host.SignInAsync(victim, "right", "10.99.0.1", clientIp: "203.0.113.7")));
         }
 
         [TestMethod]
@@ -209,8 +202,8 @@ namespace ACE.MarketApi.Tests
 
             await FailTwentyTimes(host, "10.21.0.5", clientIp: null);
 
-            Assert.AreEqual("ip_blocked", await MarketApiHost.ErrorAsync(await host.SessionSignInAsync(victim, "right", "10.21.0.5")));
-            Assert.AreEqual(HttpStatusCode.OK, (await host.SessionSignInAsync(victim, "right", "10.21.0.5", clientIp: "203.0.113.21")).StatusCode);
+            Assert.AreEqual("ip_blocked", await MarketApiHost.ErrorAsync(await host.SignInAsync(victim, "right", "10.21.0.5")));
+            Assert.AreEqual(HttpStatusCode.OK, (await host.SignInAsync(victim, "right", "10.21.0.5", clientIp: "203.0.113.21")).StatusCode);
         }
 
         [TestMethod]
@@ -223,13 +216,13 @@ namespace ACE.MarketApi.Tests
 
             await FailTwentyTimes(host, MarketApiHost.DefaultIp, "2001:db8:1:2::10");
 
-            Assert.AreEqual("ip_blocked", await MarketApiHost.ErrorAsync(await host.SessionSignInAsync(victim, "right", clientIp: "2001:db8:1:2::10")));
-            Assert.AreEqual("ip_blocked", await MarketApiHost.ErrorAsync(await host.SessionSignInAsync(victim, "right", clientIp: "2001:0db8:0001:0002:0000:0000:0000:0010")), "the same address written out");
-            Assert.AreEqual(HttpStatusCode.OK, (await host.SessionSignInAsync(victim, "right", clientIp: "2001:db8:1:2::11")).StatusCode, "another address in the same /64");
+            Assert.AreEqual("ip_blocked", await MarketApiHost.ErrorAsync(await host.SignInAsync(victim, "right", clientIp: "2001:db8:1:2::10")));
+            Assert.AreEqual("ip_blocked", await MarketApiHost.ErrorAsync(await host.SignInAsync(victim, "right", clientIp: "2001:0db8:0001:0002:0000:0000:0000:0010")), "the same address written out");
+            Assert.AreEqual(HttpStatusCode.OK, (await host.SignInAsync(victim, "right", clientIp: "2001:db8:1:2::11")).StatusCode, "another address in the same /64");
 
             await FailTwentyTimes(host, MarketApiHost.DefaultIp, "::ffff:203.0.113.30");
 
-            Assert.AreEqual("ip_blocked", await MarketApiHost.ErrorAsync(await host.SessionSignInAsync(victim, "right", clientIp: "203.0.113.30")));
+            Assert.AreEqual("ip_blocked", await MarketApiHost.ErrorAsync(await host.SignInAsync(victim, "right", clientIp: "203.0.113.30")));
         }
 
         [TestMethod]
@@ -264,16 +257,17 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual(HttpStatusCode.BadRequest, (await host.Client.SendAsync(twice)).StatusCode);
 
             // the refused attempts, far more than the limits, reached neither the account lock nor the connection's IP block
-            Assert.AreEqual(HttpStatusCode.OK, (await host.SessionSignInAsync(name, "right", "10.22.0.1")).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.SignInAsync(name, "right", "10.22.0.1")).StatusCode);
         }
 
         [TestMethod]
-        public async Task ClientIpHeader_WinsOverATrustedProxysForwardedFor()
+        public async Task ClientIpHeader_WinsOverXForwardedFor_WhichIsNeverCounted()
         {
             const string proxy = "10.8.8.9";
             var name = MarketApiTestData.UniqueName("cipxff");
             MarketApiTestData.CreateAccount(name, "right");
 
+            // the old Market:TrustedProxies setting is gone; set as before, it changes nothing
             await using var host = await MarketApiHost.StartAsync(extraArgs: $"--Market:TrustedProxies:0={proxy}");
 
             for (var i = 0; i < 20; i++)
@@ -285,7 +279,7 @@ namespace ACE.MarketApi.Tests
                 Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.Client.SendAsync(request)).StatusCode);
             }
 
-            Assert.AreEqual("ip_blocked", await MarketApiHost.ErrorAsync(await host.SessionSignInAsync(name, "right", proxy, clientIp: "203.0.113.50")));
+            Assert.AreEqual("ip_blocked", await MarketApiHost.ErrorAsync(await host.SignInAsync(name, "right", proxy, clientIp: "203.0.113.50")));
 
             var forwarded = new HttpRequestMessage(HttpMethod.Post, "/api/auth/session") { Content = JsonContent.Create(new { account = name, password = "right" }) };
             forwarded.Headers.Add(MarketApiHost.RemoteIpHeader, proxy);
@@ -300,7 +294,7 @@ namespace ACE.MarketApi.Tests
         {
             for (var i = 0; i < 20; i++)
             {
-                var response = await host.SessionSignInAsync(MarketApiTestData.UniqueName("ghost"), "wrong", connection, clientIp);
+                var response = await host.SignInAsync(MarketApiTestData.UniqueName("ghost"), "wrong", connection, clientIp);
                 Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode, await response.Content.ReadAsStringAsync());
             }
         }

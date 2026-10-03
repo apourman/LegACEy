@@ -14,8 +14,9 @@ using ACE.Database.Market;
 namespace ACE.MarketApi
 {
     /// <summary>
-    /// The BFF's sign-in: "Authorization: Bearer ws.…", a web session from POST /api/auth/session. In the default authorization policy
-    /// with the plugin token and the cookie, so every route that requires a signed-in account takes it.
+    /// The BFF's sign-in: "Authorization: Bearer ws.…", a web session from POST /api/auth/session. The default authentication scheme, so a
+    /// route that allows anonymous callers still sees a signed-in visitor, and in the default authorization policy with the plugin token, so every
+    /// route that requires a signed-in account takes it.
     /// Each use reads the session and the account again. A ban in force revokes every web session of the account (MarketApi.NoticeBan) and
     /// refuses this one; a revoked session, one past its idle or absolute expiry, or one started under another password is refused.
     /// Otherwise a use slides the idle expiry, written at most once an hour (WebSessions.Touch).

@@ -113,7 +113,7 @@ namespace ACE.MarketApi.Tests
         }
 
         [TestMethod]
-        public async Task SignedInRoutes_Declare401_AndRoutesThatChangeSomething_Declare403()
+        public async Task SignedInRoutes_Declare401_And403IsDeclaredOnlyWhereARouteRefuses()
         {
             var routes = await MappedRoutesAsync();
             using var document = await GenerateAsync();
@@ -125,9 +125,14 @@ namespace ACE.MarketApi.Tests
             foreach (var route in routes.Where(route => route.SignedIn))
                 AssertDeclaresApiError(document, route, "401");
 
-            // the CSRF filter answers 403 csrf to a cookie-signed request without X-Market-Request
-            foreach (var route in routes.Where(route => route.Method != "get"))
-                AssertDeclaresApiError(document, route, "403");
+            // routes that refuse with 403 themselves (banned, own_listing) declare it
+            foreach (var path in new[] { "/api/auth/session", "/api/listings", "/api/listings/{id}/delist", "/api/listings/{id}/purchase", "/api/auth/plugin-token" })
+                AssertDeclaresApiError(document, new MappedRoute("post", path, false), "403");
+
+            // the API has no CSRF filter any more (the BFF checks cross-site requests), so a route that changes something but never refuses
+            // with 403 doesn't claim to
+            foreach (var path in new[] { "/api/mmd/withdraw", "/api/vault/withdraw", "/api/vault/deposit", "/api/inventory/snapshot", "/api/tokens/{id}/revoke" })
+                Assert.IsFalse(Operation(document, new MappedRoute("post", path, true)).GetProperty("responses").TryGetProperty("403", out _), $"POST {path} declares 403");
         }
 
         [TestMethod]

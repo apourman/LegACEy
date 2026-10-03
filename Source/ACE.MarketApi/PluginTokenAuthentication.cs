@@ -14,7 +14,7 @@ using ACE.Database.Market;
 namespace ACE.MarketApi
 {
     /// <summary>
-    /// The plugin's sign-in: "Authorization: Bearer &lt;token&gt;", next to the website's cookie. Both are in the default authorization policy,
+    /// The plugin's sign-in: "Authorization: Bearer &lt;token&gt;", next to the BFF's web session. Both are in the default authorization policy,
     /// so every route that requires a signed-in account takes either.
     /// Each use reads the token and the account again: a revoked or expired token, a changed password (the fingerprint no longer matches)
     /// or a ban in force refuses it. A use renews the token's lifetime.
@@ -69,7 +69,7 @@ namespace ACE.MarketApi
         }
 
         /// <summary>
-        /// Names the scheme the caller can use. The cookie scheme, challenged after this one, writes the 401 and its JSON body.
+        /// Names the scheme the caller can use. The web session scheme, challenged after this one, writes the 401 and its JSON body.
         /// </summary>
         protected override Task HandleChallengeAsync(AuthenticationProperties properties)
         {

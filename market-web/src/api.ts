@@ -78,41 +78,65 @@ export class ApiError extends Error {
     super(messages[code] ?? `The request failed (${code}).`);
   }
 }
-// A signed-in view subscribes here. Login's 401 is a password answer, not session expiry.
+// A signed-in view subscribes here (in the browser). Sign-in's 401 is a password answer, not session expiry.
 export const sessionEnded = new EventTarget();
+const inBrowser = typeof window !== 'undefined';
 
 export type MarketApiClient = Client<paths>;
 /** Thrown when no answer arrived at all, as opposed to an answer that couldn't be read */
 class NoAnswer extends Error {}
-/** A client for the Market API's routes. A server loader makes one per request, with its own base URL and headers. */
+/**
+ * A client for the Market API's routes, generated from its OpenAPI document. The one client for both sides of the website:
+ * - in the browser, browserClient below: the BFF's own /api/* proxy, same origin;
+ * - on the BFF's server, one per request (bff/api.server.ts): the private API's address, with the service key, the player's address and their token.
+ */
 export function createMarketApiClient(options?: ClientOptions): MarketApiClient {
   const client = createClient<paths>(options);
   client.use({ onError: () => new NoAnswer() });
   return client;
 }
-/** The website's own client: same origin with the session cookie, and the header the API's CSRF check asks for */
+/** The browser's client: the BFF's /api/* proxy with the session cookie, and the header the BFF's cross-site check asks for */
 export const browserClient = createMarketApiClient({ credentials: 'same-origin', headers: { 'X-Market-Request': '1' } });
 
-async function result<T>(call: Promise<{ data?: T; error?: unknown; response: Response }>, login = false): Promise<T> {
+function apiErrorFrom(error: unknown, status: number) {
+  const body: Partial<Schemas['ApiError']> = typeof error === 'object' && error !== null ? error : {};
+  return new ApiError(body.error ?? 'server', status, body.price ?? undefined);
+}
+
+async function result<T>(call: Promise<{ data?: T; error?: unknown; response: Response }>): Promise<T> {
   let answer;
   try { answer = await call; }
   catch (e) { throw new ApiError(e instanceof NoAnswer ? 'network' : 'server', 0); }
   const { data, error, response } = answer;
-  if (response.status === 401 && !login) sessionEnded.dispatchEvent(new Event('ended'));
-  if (!response.ok) {
-    const body: Partial<Schemas['ApiError']> = typeof error === 'object' && error !== null ? error : {};
-    throw new ApiError(body.error ?? 'server', response.status, body.price ?? undefined);
-  }
+  if (response.status === 401 && inBrowser) sessionEnded.dispatchEvent(new Event('ended'));
+  if (!response.ok) throw apiErrorFrom(error, response.status);
   if (data === undefined) throw new ApiError('server', response.status);
   return data;
 }
+
+/** What the BFF's sign-in answers: the account, never the token (that stays in the HttpOnly cookie) */
+export interface SignedIn { accountId: number; accountName: string }
+
+/** A POST to one of the BFF's own routes (sign-in, sign-out), with the same error handling as the API's routes */
+async function bffPost<T>(path: string, body: unknown, login: boolean): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(path, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Market-Request': '1' }, body: JSON.stringify(body) });
+  } catch { throw new ApiError('network', 0); }
+  let parsed: unknown;
+  try { parsed = await response.json(); } catch { parsed = undefined; }
+  if (response.status === 401 && !login && inBrowser) sessionEnded.dispatchEvent(new Event('ended'));
+  if (!response.ok) throw apiErrorFrom(parsed, response.status);
+  if (parsed === undefined) throw new ApiError('server', response.status);
+  return parsed as T;
+}
+export const signIn = (account: string, password: string) => bffPost<SignedIn>('/auth/sign-in', { account, password }, true);
+export const signOut = () => bffPost<{ ok: boolean }>('/auth/sign-out', {}, false);
 
 // The query passes the page's URL values through as text, and the API refuses a bad one (bad_price, bad_limit) with its own message
 type ListingQuery = NonNullable<paths['/api/listings']['get']['parameters']['query']>;
 type HistoryQuery = NonNullable<paths['/api/history']['get']['parameters']['query']>;
 export const getMe = (client = browserClient) => result(client.GET('/api/me'));
-export const signIn = (account: string, password: string, client = browserClient) => result(client.POST('/api/auth/login', { body: { account, password } }), true);
-export const signOut = (client = browserClient) => result(client.POST('/api/auth/logout'));
 export const browse = (query: URLSearchParams, client = browserClient) => result(client.GET('/api/listings', { params: { query: Object.fromEntries(query) as ListingQuery } }));
 export const suggest = (q: string, client = browserClient) => result(client.GET('/api/listings/suggest', { params: { query: { q } } }));
 export const getFacets = (client = browserClient) => result(client.GET('/api/facets'));

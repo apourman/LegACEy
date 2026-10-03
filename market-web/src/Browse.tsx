@@ -1,40 +1,47 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { browse, getFacets, suggest, type BrowseResult, type Facets } from './api';
+import { Link, useNavigation, useSearchParams } from 'react-router';
+import { browse, suggest, type BrowseResult, type Facets } from './api';
 import { AppraisalPopover } from './Appraisal';
+import { LocalTime } from './LocalTime';
 
 const columns = [
   ['Name', 'name'], ['Type', ''], ['Workmanship', 'workmanship'], ['Wield level', 'level'],
   ['Arcane lore', 'arcane'], ['Price', 'price'], ['Seller', 'seller'], ['Listed time', 'newest'],
 ];
-export function Browse() {
+/**
+ * The listings for the address's filters and sort. The first page and the facets come from the route's loader (rendered on the server);
+ * "Load more" adds pages from the browser. A new address replaces everything with the loader's new first page.
+ */
+export function Browse({ first, facets, loadError }: { first: BrowseResult; facets: Facets | null; loadError: string }) {
   const [params, setParams] = useSearchParams();
   const query = params.toString();
-  const [facets, setFacets] = useState<Facets | null>(null);
-  const [result, setResult] = useState<BrowseResult>({ listings: [], nextCursor: null });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const navigation = useNavigation();
+  // a new search is on its way: its old rows go at once, as they did when the page fetched them itself
+  const searching = navigation.state === 'loading' && navigation.location.pathname === '/';
+  const [pages, setPages] = useState({ first, result: first });
+  const [moreLoading, setMoreLoading] = useState(false);
+  const [moreError, setMoreError] = useState('');
   const [name, setName] = useState(params.get('q') ?? '');
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const generation = useRef(0);
   const loadingMore = useRef(false);
-  useEffect(() => { let active = true; void getFacets().then(f => { if (active) setFacets(f); }, e => { if (active) setError(e.message); }); return () => { active = false; }; }, []);
+  if (pages.first !== first) {
+    setPages({ first, result: first }); setMoreLoading(false); setMoreError('');
+  }
   useEffect(() => {
-    const version = ++generation.current;
+    generation.current++;
     loadingMore.current = false;
-    setName(params.get('q') ?? ''); setResult({ listings: [], nextCursor: null }); setLoading(true); setError('');
-    // The cursor is owned by this page, never by a shared filter URL.
-    const filters = new URLSearchParams(query); filters.delete('cursor');
-    void browse(filters).then(r => { if (version === generation.current) setResult(r); }, e => { if (version === generation.current) setError(e.message); })
-      .finally(() => { if (version === generation.current) setLoading(false); });
-    return () => { generation.current++; };
-  }, [query]);
+    setName(params.get('q') ?? '');
+  }, [first]);
   useEffect(() => {
     let active = true; setSuggestions([]);
     if (!name.trim()) return;
     const timer = setTimeout(() => { void suggest(name).then(r => { if (active) setSuggestions(r.suggestions); }, () => {}); }, 250);
     return () => { active = false; clearTimeout(timer); };
   }, [name]);
+  const result: BrowseResult = searching ? { listings: [], nextCursor: null } : pages.result;
+  const loading = searching || moreLoading;
+  const error = searching ? '' : moreError || loadError;
   function filter(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const next = new URLSearchParams(params); next.delete('cursor');
@@ -53,13 +60,13 @@ export function Browse() {
   }
   async function more() {
     if (!result.nextCursor || loadingMore.current) return;
-    const version = generation.current; loadingMore.current = true; setLoading(true); setError('');
+    const version = generation.current; loadingMore.current = true; setMoreLoading(true); setMoreError('');
     const next = new URLSearchParams(query); next.set('cursor', result.nextCursor);
     try {
       const page = await browse(next);
-      if (version === generation.current) setResult(old => ({ listings: [...old.listings, ...page.listings.filter(row => !old.listings.some(existing => existing.id === row.id))], nextCursor: page.nextCursor }));
-    } catch (e) { if (version === generation.current) setError(e instanceof Error ? e.message : 'Could not load listings.'); }
-    finally { if (version === generation.current) { setLoading(false); loadingMore.current = false; } }
+      if (version === generation.current) setPages(old => ({ ...old, result: { listings: [...old.result.listings, ...page.listings.filter(row => !old.result.listings.some(existing => existing.id === row.id))], nextCursor: page.nextCursor } }));
+    } catch (e) { if (version === generation.current) setMoreError(e instanceof Error ? e.message : 'Could not load listings.'); }
+    finally { if (version === generation.current) { setMoreLoading(false); loadingMore.current = false; } }
   }
   const sortKey = params.get('sort') ?? 'newest';
   const direction = params.get('dir') ?? (sortKey === 'newest' ? 'desc' : 'asc');
@@ -87,7 +94,7 @@ export function Browse() {
       <td><Link to={`/listing/${item.id}`}>{item.name}</Link><span className="stack">× {item.quantity}</span><small className="muted">{item.summary}</small></td>
       <td className="desktop-column">{item.itemType}</td><td className="desktop-column">{item.workmanship ?? '—'}</td><td className="desktop-column">{item.level ?? '—'}</td><td className="desktop-column">{item.arcaneLore ?? '—'}</td>
       <td className="price">{item.price} <small>MMD</small></td><td><button className="text-button seller" onClick={() => seller(item.seller)}>{item.seller}</button></td>
-      <td className="desktop-column"><time dateTime={item.listedTime}>{new Date(item.listedTime).toLocaleString()}</time></td>
+      <td className="desktop-column"><LocalTime iso={item.listedTime} /></td>
     </tr>)}</tbody></table>}
     {result.nextCursor && <button className="load-more" disabled={loading} onClick={() => void more()}>Load more</button>}
   </>;

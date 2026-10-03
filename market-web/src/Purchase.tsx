@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { ApiError, getListing, purchase, type Detail, type Me, type PurchaseRequest } from './api';
 import { useSession } from './session';
 

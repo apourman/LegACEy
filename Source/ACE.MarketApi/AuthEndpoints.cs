@@ -3,8 +3,6 @@ using System.Globalization;
 using System.Security.Claims;
 using System.Threading.Tasks;
 
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -17,7 +15,8 @@ using ACE.Database.Models.Auth;
 namespace ACE.MarketApi
 {
     /// <summary>
-    /// Web sign-in with the game account and password: the website's cookie (until the BFF replaces it), and the BFF's web sessions
+    /// Web sign-in with the game account and password: the BFF's web sessions. The BFF keeps the token in its own signed cookie and sends it
+    /// back as "Authorization: Bearer"; the API sets no cookie.
     /// </summary>
     public static class AuthEndpoints
     {
@@ -30,45 +29,13 @@ namespace ACE.MarketApi
 
         public static void Map(IEndpointRouteBuilder app)
         {
-            app.MapPost("/auth/login", Login).Json<LoginResponse>(200, 400, 401, 403, 429);
-            // cast: a handler taking only HttpContext would otherwise bind as a RequestDelegate and drop its result
-            app.MapPost("/auth/logout", (Delegate)Logout).Json<OkResponse>();
-
             app.MapPost("/auth/session", SignIn).Json<SessionResponse>(200, 400, 401, 403, 429);
             // only a web session has a web session to end
             app.MapDelete("/auth/session", SignOut).Json<OkResponse>().RequireAuthorization(WebSessionAuthenticationHandler.PolicyName);
         }
 
         /// <summary>
-        /// The website's sign-in: sets the session cookie
-        /// </summary>
-        private static async Task<IResult> Login(LoginRequest request, HttpContext context, MarketDatabase database, SignInLimiter limiter, TimeProvider time)
-        {
-            var (refusal, account) = await CheckPassword(request, context, database, limiter, time);
-
-            if (refusal != null)
-                return refusal;
-
-            var identity = new ClaimsIdentity(new[]
-            {
-                new Claim(ClaimTypes.NameIdentifier, account.AccountId.ToString(CultureInfo.InvariantCulture)),
-                new Claim(ClaimTypes.Name, account.AccountName),
-            }, CookieAuthenticationDefaults.AuthenticationScheme);
-
-            await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
-
-            return Results.Json(new LoginResponse(account.AccountId, account.AccountName));
-        }
-
-        private static async Task<IResult> Logout(HttpContext context)
-        {
-            await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-
-            return Results.Json(new OkResponse(true));
-        }
-
-        /// <summary>
-        /// The BFF's sign-in: the same checks as the website's, with the client IP from X-Market-Client-Ip (ServiceGate). Starts a web session and
+        /// The BFF's sign-in, with the client IP from X-Market-Client-Ip (ServiceGate). Starts a web session and
         /// returns its token, which is stored only as a hash, and its expiry times. Sets no cookie: the BFF keeps the token in its own.
         /// </summary>
         private static async Task<IResult> SignIn(LoginRequest request, HttpContext context, MarketDatabase database, SignInLimiter limiter, TimeProvider time)
@@ -87,7 +54,7 @@ namespace ACE.MarketApi
 
         /// <summary>
         /// Revokes the web session the request is signed in with; its token is refused from then on. The route authenticates web sessions only,
-        /// so a cookie or plugin token gets 401 from the web session scheme's challenge.
+        /// so a plugin token gets 401 from the web session scheme's challenge.
         /// </summary>
         private static IResult SignOut(HttpContext context, MarketDatabase database, TimeProvider time)
         {

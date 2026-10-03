@@ -28,8 +28,8 @@ namespace ACE.MarketApi.Tests
             var guid = MarketApiTestData.AddVaultItem(sellerId, sellerChar, $"{token} Old Name", VaultItemState.Held);
             MarketApiTestData.SetVaultColumns(guid, $"item_Type = {(int)ItemType.MeleeWeapon}, workmanship = 3");
 
-            var cookie = await host.SignInForCookieAsync(seller, "pass");
-            var listed = await host.PostJsonAsync("/api/listings", new { itemGuid = guid, price = 40 }, cookie);
+            var session = await host.SignInForSessionAsync(seller, "pass");
+            var listed = await host.PostJsonAsync("/api/listings", new { itemGuid = guid, price = 40 }, session);
             Assert.AreEqual(HttpStatusCode.Created, listed.StatusCode, await listed.Content.ReadAsStringAsync());
             var rowVersion = MarketApiTestData.Scalar($"SELECT row_Version FROM market_vault_item WHERE item_Guid = {guid};");
 

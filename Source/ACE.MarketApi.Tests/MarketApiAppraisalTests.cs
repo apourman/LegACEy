@@ -43,7 +43,7 @@ namespace ACE.MarketApi.Tests
         {
             public uint AccountId;
             public uint CharacterId;
-            public string Cookie;
+            public string Session;
         }
 
         private static async Task<Seller> NewSellerAsync(MarketApiHost host)
@@ -55,7 +55,7 @@ namespace ACE.MarketApi.Tests
             {
                 AccountId = accountId,
                 CharacterId = MarketApiTestData.AddCharacter(accountId, MarketApiTestData.UniqueName("Appraiser")),
-                Cookie = await host.SignInForCookieAsync(name, "pass"),
+                Session = await host.SignInForSessionAsync(name, "pass"),
             };
         }
 
@@ -68,7 +68,7 @@ namespace ACE.MarketApi.Tests
             MarketApiTestData.SetVaultColumns(guid, $"item_Type = {(int)itemType}" + (vaultColumns != null ? ", " + vaultColumns : ""));
             properties(guid);
 
-            var response = await host.PostJsonAsync("/api/listings", new { itemGuid = guid, price = 50 }, seller.Cookie);
+            var response = await host.PostJsonAsync("/api/listings", new { itemGuid = guid, price = 50 }, seller.Session);
             Assert.AreEqual(HttpStatusCode.Created, response.StatusCode, await response.Content.ReadAsStringAsync());
 
             return (await MarketApiHost.JsonAsync(response)).GetProperty("id").GetInt64();

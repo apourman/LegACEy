@@ -42,7 +42,7 @@ namespace ACE.MarketApi.Tests
             await using var host = await MarketApiHost.StartAsync();
             var now = Microseconds(host.Clock.GetUtcNow().UtcDateTime);
 
-            var response = await host.SessionSignInAsync(player.Name, "pass");
+            var response = await host.SignInAsync(player.Name, "pass");
 
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
             Assert.IsFalse(response.Headers.Contains("Set-Cookie"), "the BFF keeps the token in its own cookie");
@@ -92,13 +92,13 @@ namespace ACE.MarketApi.Tests
             }
 
             await Refused(await host.PostJsonAsync("/api/auth/session", new { account = player.Name }), HttpStatusCode.BadRequest, "bad_request");
-            await Refused(await host.SessionSignInAsync(MarketApiTestData.UniqueName("nobody"), "pass"), HttpStatusCode.Unauthorized, "invalid_credentials");
-            await Refused(await host.SessionSignInAsync(banned.Name, "pass"), HttpStatusCode.Forbidden, "banned");
+            await Refused(await host.SignInAsync(MarketApiTestData.UniqueName("nobody"), "pass"), HttpStatusCode.Unauthorized, "invalid_credentials");
+            await Refused(await host.SignInAsync(banned.Name, "pass"), HttpStatusCode.Forbidden, "banned");
 
             for (var i = 0; i < 5; i++)
-                await Refused(await host.SessionSignInAsync(player.Name, "wrong"), HttpStatusCode.Unauthorized, "invalid_credentials");
+                await Refused(await host.SignInAsync(player.Name, "wrong"), HttpStatusCode.Unauthorized, "invalid_credentials");
 
-            await Refused(await host.SessionSignInAsync(player.Name, "pass"), HttpStatusCode.TooManyRequests, "account_locked");
+            await Refused(await host.SignInAsync(player.Name, "pass"), HttpStatusCode.TooManyRequests, "account_locked");
 
             Assert.AreEqual(0L, MarketApiTestData.Scalar($"SELECT COUNT(*) FROM market_web_session WHERE account_Id IN ({player.AccountId}, {banned.AccountId});"));
         }
@@ -113,7 +113,7 @@ namespace ACE.MarketApi.Tests
             var token = await host.SignInForSessionAsync(player.Name, "pass");
 
             // CSRF is the BFF's job: a bearer token is never sent by a browser on its own
-            var list = await host.PostJsonAsync("/api/listings", new { itemGuid = guid, price = 10 }, token: token, requestHeader: false);
+            var list = await host.PostJsonAsync("/api/listings", new { itemGuid = guid, price = 10 }, token: token);
             Assert.AreEqual(HttpStatusCode.Created, list.StatusCode, await list.Content.ReadAsStringAsync());
         }
 
@@ -203,6 +203,25 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual($"{Sql(pastTheHour)}|{Sql(pastTheHour.AddDays(14))}", SessionTimes(token, "last_Used_Time", "idle_Expires_Time"), "half an hour after the last write");
         }
 
+        [TestMethod]
+        public async Task AnonymousRoutes_SeeTheSignedInVisitor_TheWebSessionIsTheDefaultScheme()
+        {
+            var player = NewPlayer("wsanon");
+
+            var start = DateTimeOffset.FromUnixTimeSeconds(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            await using var host = await MarketApiHost.StartAsync(clock: new ManualClock(start));
+            var token = await host.SignInForSessionAsync(player.Name, "pass");
+
+            // routes open to anyone authenticate a bearer web session too: the BFF's browse page uses the visitor's session, so it renews it
+            host.Clock.Advance(TimeSpan.FromHours(2));
+            var used = host.Clock.GetUtcNow().UtcDateTime;
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/facets", token)).StatusCode);
+            Assert.AreEqual($"{Sql(used)}|{Sql(used.AddDays(14))}", SessionTimes(token, "last_Used_Time", "idle_Expires_Time"), "the anonymous route used the session");
+
+            // a dead session doesn't refuse an open route: it is simply not signed in there
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/facets", "ws." + new string('C', 43))).StatusCode);
+        }
+
         // ---- revocation
 
         [TestMethod]
@@ -214,7 +233,7 @@ namespace ACE.MarketApi.Tests
             var token = await host.SignInForSessionAsync(player.Name, "pass");
             var other = await host.SignInForSessionAsync(player.Name, "pass");
 
-            var signOut = await host.SendAsync(HttpMethod.Delete, "/api/auth/session", token: token, requestHeader: false);
+            var signOut = await host.SendAsync(HttpMethod.Delete, "/api/auth/session", token: token);
             Assert.AreEqual(HttpStatusCode.OK, signOut.StatusCode, await signOut.Content.ReadAsStringAsync());
 
             Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/api/me", token)).StatusCode);
@@ -224,18 +243,33 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/me", other)).StatusCode, "the account's other session goes on");
         }
 
+        /// <summary>
+        /// A plugin token for the player, from a link code exchanged at POST /api/auth/plugin-token
+        /// </summary>
+        private static async Task<string> PluginTokenAsync(MarketApiHost host, Player player)
+        {
+            string code;
+            using (var shard = MarketApiTestData.Shard())
+                code = ACE.Database.Market.PluginAuth.NewLinkCode(shard, player.AccountId, player.CharacterId, host.Clock.GetUtcNow().UtcDateTime);
+
+            var exchange = await host.PostJsonAsync("/api/auth/plugin-token", new { code, label = "plugin" });
+            Assert.AreEqual(HttpStatusCode.OK, exchange.StatusCode, await exchange.Content.ReadAsStringAsync());
+
+            return (await MarketApiHost.JsonAsync(exchange)).GetProperty("token").GetString();
+        }
+
         [TestMethod]
-        public async Task SignOut_WithACookie_HasNoWebSessionToEnd()
+        public async Task SignOut_WithAPluginToken_HasNoWebSessionToEnd()
         {
             var player = NewPlayer("wsoutc");
 
             await using var host = await MarketApiHost.StartAsync();
-            var cookie = await host.SignInForCookieAsync(player.Name, "pass");
+            var plugin = await PluginTokenAsync(host, player);
 
-            var signOut = await host.SendAsync(HttpMethod.Delete, "/api/auth/session", cookie);
+            var signOut = await host.SendAsync(HttpMethod.Delete, "/api/auth/session", plugin);
             Assert.AreEqual(HttpStatusCode.Unauthorized, signOut.StatusCode);
             Assert.AreEqual("unauthorized", await MarketApiHost.ErrorAsync(signOut));
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/api/me", cookie)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/me", plugin)).StatusCode);
         }
 
         [TestMethod]
@@ -246,7 +280,7 @@ namespace ACE.MarketApi.Tests
             await using var host = await MarketApiHost.StartAsync();
             var token = await host.SignInForSessionAsync(player.Name, "pass");
 
-            // sign-out takes only a web session, so the cookie scheme never writes its 401 body: the web session scheme must
+            // sign-out takes only a web session, so no other scheme writes its 401 body: the web session scheme must
             foreach (var (label, bearer) in new[] { ("no sign-in", (string)null), ("a forged token", "ws." + new string('B', 43)), ("a plugin-shaped token", "not-a-session") })
             {
                 var response = await host.SendAsync(HttpMethod.Delete, "/api/auth/session", token: bearer);
@@ -303,25 +337,25 @@ namespace ACE.MarketApi.Tests
         }
 
         [TestMethod]
-        public async Task Ban_SeenByACookieRequestOrBrowsing_AlsoEndsTheWebSessions()
+        public async Task Ban_SeenByAPluginTokenOrBrowsing_AlsoEndsTheWebSessions()
         {
-            var cookieSeen = NewPlayer("wsbanc");
+            var pluginSeen = NewPlayer("wsbanc");
             var browseSeen = NewPlayer("wsbanb");
 
             await using var host = await MarketApiHost.StartAsync();
-            var cookie = await host.SignInForCookieAsync(cookieSeen.Name, "pass");
-            var cookieAccountsSession = await host.SignInForSessionAsync(cookieSeen.Name, "pass");
+            var plugin = await PluginTokenAsync(host, pluginSeen);
+            var pluginAccountsSession = await host.SignInForSessionAsync(pluginSeen.Name, "pass");
             var browseAccountsSession = await host.SignInForSessionAsync(browseSeen.Name, "pass");
 
-            MarketApiTestData.Ban(cookieSeen.AccountId, BanEnds(host));
-            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/api/me", cookie)).StatusCode);
-            MarketApiTestData.LiftBan(cookieSeen.AccountId);
+            MarketApiTestData.Ban(pluginSeen.AccountId, BanEnds(host));
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/api/me", plugin)).StatusCode);
+            MarketApiTestData.LiftBan(pluginSeen.AccountId);
 
             MarketApiTestData.Ban(browseSeen.AccountId, BanEnds(host));
             Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/api/listings")).StatusCode, "anyone's browse request sees every ban");
             MarketApiTestData.LiftBan(browseSeen.AccountId);
 
-            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/api/me", cookieAccountsSession)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/api/me", pluginAccountsSession)).StatusCode);
             Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/api/me", browseAccountsSession)).StatusCode);
         }
 

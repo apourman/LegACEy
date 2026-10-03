@@ -75,8 +75,8 @@ namespace ACE.MarketApi.Tests
             return new Listed(guid, id, price);
         }
 
-        private static Task<HttpResponseMessage> PurchaseAsync(MarketApiHost host, string cookie, Listed listed, string key = null, long? expectedPrice = null, int count = 1) =>
-            host.PostJsonAsync($"/api/listings/{listed.ListingId}/purchase", new { count, expectedPrice = expectedPrice ?? listed.Price, idempotencyKey = key ?? Guid.NewGuid().ToString("N") }, cookie);
+        private static Task<HttpResponseMessage> PurchaseAsync(MarketApiHost host, string session, Listed listed, string key = null, long? expectedPrice = null, int count = 1) =>
+            host.PostJsonAsync($"/api/listings/{listed.ListingId}/purchase", new { count, expectedPrice = expectedPrice ?? listed.Price, idempotencyKey = key ?? Guid.NewGuid().ToString("N") }, session);
 
         private static long Balance(uint accountId) => MarketApiTestData.Scalar($"SELECT IFNULL((SELECT balance FROM market_balance WHERE account_Id = {accountId}), 0);");
 
@@ -114,14 +114,14 @@ namespace ACE.MarketApi.Tests
             var second = MarketApiTestData.AddCharacter(buyer.AccountId, secondName);
             await using var host = await MarketApiHost.StartAsync();
             var listed = NewListing(host, seller, 120);
-            var buyerCookie = await host.SignInForCookieAsync(buyer.Name, "pass");
+            var buyerSession = await host.SignInForSessionAsync(buyer.Name, "pass");
             var response = await host.PostJsonAsync($"/api/listings/{listed.ListingId}/purchase",
-                new { count = 1, expectedPrice = 120, characterId = second, idempotencyKey = "second-character" }, buyerCookie);
+                new { count = 1, expectedPrice = 120, characterId = second, idempotencyKey = "second-character" }, buyerSession);
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
-            var vault = await MarketApiHost.JsonAsync(await host.GetAsync("/api/vault", buyerCookie));
+            var vault = await MarketApiHost.JsonAsync(await host.GetAsync("/api/vault", buyerSession));
             Assert.AreEqual(second, vault.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("itemGuid").GetUInt32() == listed.ItemGuid).GetProperty("characterId").GetUInt32());
-            var sellerCookie = await host.SignInForCookieAsync(seller.Name, "pass");
-            var history = await MarketApiHost.JsonAsync(await host.GetAsync("/api/history", sellerCookie));
+            var sellerSession = await host.SignInForSessionAsync(seller.Name, "pass");
+            var history = await MarketApiHost.JsonAsync(await host.GetAsync("/api/history", sellerSession));
             Assert.IsTrue(history.GetProperty("transfers").EnumerateArray().Any(l => l.GetProperty("text").GetString().Contains("to " + secondName)));
             Assert.IsTrue(history.GetProperty("items").EnumerateArray().Any(l => l.GetProperty("text").GetString().Contains("to " + secondName)));
         }
@@ -136,10 +136,10 @@ namespace ACE.MarketApi.Tests
 
             await using var host = await MarketApiHost.StartAsync();
             var listed = NewListing(host, seller, 120);
-            var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
+            var session = await host.SignInForSessionAsync(buyer.Name, "pass");
             var key = "buy-" + Guid.NewGuid().ToString("N");
 
-            var response = await PurchaseAsync(host, cookie, listed, key);
+            var response = await PurchaseAsync(host, session, listed, key);
 
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
             var body = await MarketApiHost.JsonAsync(response);
@@ -173,9 +173,9 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual("purchase", MarketApiTestData.Rows($"SELECT kind FROM market_request WHERE account_Id = {buyer.AccountId} AND idempotency_Key = '{key}';").Single());
 
             // the buyer's Vault has it; the seller's doesn't
-            var vault = await MarketApiHost.JsonAsync(await host.GetAsync("/api/vault", cookie));
+            var vault = await MarketApiHost.JsonAsync(await host.GetAsync("/api/vault", session));
             Assert.IsTrue(vault.GetProperty("items").EnumerateArray().Any(i => i.GetProperty("itemGuid").GetUInt32() == listed.ItemGuid && i.GetProperty("state").GetString() == VaultItemState.Held));
-            var sellerVault = await MarketApiHost.JsonAsync(await host.GetAsync("/api/vault", await host.SignInForCookieAsync(seller.Name, "pass")));
+            var sellerVault = await MarketApiHost.JsonAsync(await host.GetAsync("/api/vault", await host.SignInForSessionAsync(seller.Name, "pass")));
             Assert.IsFalse(sellerVault.GetProperty("items").EnumerateArray().Any(i => i.GetProperty("itemGuid").GetUInt32() == listed.ItemGuid));
 
             // and it's gone from the catalog
@@ -190,14 +190,14 @@ namespace ACE.MarketApi.Tests
 
             await using var host = await MarketApiHost.StartAsync();
             var listed = NewListing(host, seller, 30, stackSize: 5, name: "Stacked");
-            var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
+            var session = await host.SignInForSessionAsync(buyer.Name, "pass");
             var before = Snapshot(listed, buyer, seller);
 
-            await AssertRefusedAsync(await PurchaseAsync(host, cookie, listed, count: 1), HttpStatusCode.BadRequest, "invalid_count");
-            await AssertRefusedAsync(await PurchaseAsync(host, cookie, listed, count: 6), HttpStatusCode.BadRequest, "invalid_count");
+            await AssertRefusedAsync(await PurchaseAsync(host, session, listed, count: 1), HttpStatusCode.BadRequest, "invalid_count");
+            await AssertRefusedAsync(await PurchaseAsync(host, session, listed, count: 6), HttpStatusCode.BadRequest, "invalid_count");
             Assert.AreEqual(before, Snapshot(listed, buyer, seller));
 
-            var response = await PurchaseAsync(host, cookie, listed, count: 5);
+            var response = await PurchaseAsync(host, session, listed, count: 5);
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
             Assert.AreEqual(70L, Balance(buyer.AccountId));
         }
@@ -210,15 +210,15 @@ namespace ACE.MarketApi.Tests
 
             await using var host = await MarketApiHost.StartAsync();
             var listed = NewListing(host, seller, 30);
-            var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
+            var session = await host.SignInForSessionAsync(buyer.Name, "pass");
             var path = $"/api/listings/{listed.ListingId}/purchase";
 
-            await AssertRefusedAsync(await host.PostJsonAsync(path, new { count = 1, expectedPrice = 30 }, cookie), HttpStatusCode.BadRequest, "bad_request");
-            await AssertRefusedAsync(await host.PostJsonAsync(path, new { count = 1, expectedPrice = 30, idempotencyKey = new string('k', 65) }, cookie), HttpStatusCode.BadRequest, "bad_request");
-            await AssertRefusedAsync(await host.PostJsonAsync(path, new { count = 1, idempotencyKey = "k" }, cookie), HttpStatusCode.BadRequest, "invalid_price");
-            await AssertRefusedAsync(await host.PostJsonAsync(path, new { count = 1, expectedPrice = 29.5, idempotencyKey = "k" }, cookie), HttpStatusCode.BadRequest, "invalid_price");
-            await AssertRefusedAsync(await host.PostJsonAsync(path, new { expectedPrice = 30, idempotencyKey = "k" }, cookie), HttpStatusCode.BadRequest, "invalid_count");
-            await AssertRefusedAsync(await host.PostJsonAsync(path, new { count = 1, expectedPrice = 30, idempotencyKey = "k", characterId = seller.CharacterId }, cookie), HttpStatusCode.BadRequest, "invalid_character");
+            await AssertRefusedAsync(await host.PostJsonAsync(path, new { count = 1, expectedPrice = 30 }, session), HttpStatusCode.BadRequest, "bad_request");
+            await AssertRefusedAsync(await host.PostJsonAsync(path, new { count = 1, expectedPrice = 30, idempotencyKey = new string('k', 65) }, session), HttpStatusCode.BadRequest, "bad_request");
+            await AssertRefusedAsync(await host.PostJsonAsync(path, new { count = 1, idempotencyKey = "k" }, session), HttpStatusCode.BadRequest, "invalid_price");
+            await AssertRefusedAsync(await host.PostJsonAsync(path, new { count = 1, expectedPrice = 29.5, idempotencyKey = "k" }, session), HttpStatusCode.BadRequest, "invalid_price");
+            await AssertRefusedAsync(await host.PostJsonAsync(path, new { expectedPrice = 30, idempotencyKey = "k" }, session), HttpStatusCode.BadRequest, "invalid_count");
+            await AssertRefusedAsync(await host.PostJsonAsync(path, new { count = 1, expectedPrice = 30, idempotencyKey = "k", characterId = seller.CharacterId }, session), HttpStatusCode.BadRequest, "invalid_character");
             Assert.AreEqual(HttpStatusCode.Unauthorized, (await PurchaseAsync(host, null, listed)).StatusCode);
 
             Assert.AreEqual(ListingStatus.Active, ListingRow(listed.ListingId).Split('|')[0]);
@@ -234,9 +234,9 @@ namespace ACE.MarketApi.Tests
 
             await using var host = await MarketApiHost.StartAsync();
             var listed = NewListing(host, seller, 30);
-            var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
+            var session = await host.SignInForSessionAsync(buyer.Name, "pass");
 
-            var response = await host.PostJsonAsync($"/api/listings/{listed.ListingId}/purchase", new { count = 1, expectedPrice = 30, idempotencyKey = "alt", characterId = alt }, cookie);
+            var response = await host.PostJsonAsync($"/api/listings/{listed.ListingId}/purchase", new { count = 1, expectedPrice = 30, idempotencyKey = "alt", characterId = alt }, session);
 
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
             Assert.AreEqual($"{buyer.AccountId}|{alt}|held|1", VaultRow(listed.ItemGuid));
@@ -253,10 +253,10 @@ namespace ACE.MarketApi.Tests
 
             await using var host = await MarketApiHost.StartAsync();
             var listed = NewListing(host, seller, 120);
-            var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
+            var session = await host.SignInForSessionAsync(buyer.Name, "pass");
             var before = Snapshot(listed, buyer, seller);
 
-            var response = await PurchaseAsync(host, cookie, listed, expectedPrice: 100);
+            var response = await PurchaseAsync(host, session, listed, expectedPrice: 100);
 
             await AssertRefusedAsync(response, HttpStatusCode.Conflict, "price_changed");
             Assert.AreEqual("{\"error\":\"price_changed\",\"price\":120}", await response.Content.ReadAsStringAsync(), "price_changed carries the current price");
@@ -270,7 +270,7 @@ namespace ACE.MarketApi.Tests
             var buyer = NewPlayer("buyer", balance: 500);
 
             await using var host = await MarketApiHost.StartAsync();
-            var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
+            var session = await host.SignInForSessionAsync(buyer.Name, "pass");
             var now = host.Clock.GetUtcNow().UtcDateTime;
 
             foreach (var status in new[] { ListingStatus.Sold, ListingStatus.Delisted, ListingStatus.Expired, ListingStatus.BanReturned })
@@ -279,17 +279,17 @@ namespace ACE.MarketApi.Tests
                 var listed = new Listed(guid, MarketApiTestData.AddListing(seller.AccountId, seller.CharacterId, guid, 10, status, now.AddMinutes(-1)), 10);
                 var before = Snapshot(listed, buyer, seller);
 
-                await AssertRefusedAsync(await PurchaseAsync(host, cookie, listed), HttpStatusCode.Gone, "gone");
+                await AssertRefusedAsync(await PurchaseAsync(host, session, listed), HttpStatusCode.Gone, "gone");
                 Assert.AreEqual(before, Snapshot(listed, buyer, seller), status);
             }
 
             // still marked active but past its lifetime
             var overdueGuid = MarketApiTestData.AddVaultItem(seller.AccountId, seller.CharacterId, "Overdue", VaultItemState.Listed);
             var overdue = new Listed(overdueGuid, MarketApiTestData.AddListing(seller.AccountId, seller.CharacterId, overdueGuid, 10, ListingStatus.Active, now.AddDays(-14)), 10);
-            await AssertRefusedAsync(await PurchaseAsync(host, cookie, overdue), HttpStatusCode.Gone, "gone");
+            await AssertRefusedAsync(await PurchaseAsync(host, session, overdue), HttpStatusCode.Gone, "gone");
             Assert.AreEqual(0L, Transfers(overdue.ListingId));
 
-            await AssertRefusedAsync(await PurchaseAsync(host, cookie, new Listed(1, long.MaxValue, 10)), HttpStatusCode.Gone, "gone");
+            await AssertRefusedAsync(await PurchaseAsync(host, session, new Listed(1, long.MaxValue, 10)), HttpStatusCode.Gone, "gone");
             Assert.AreEqual(500L, Balance(buyer.AccountId));
         }
 
@@ -304,8 +304,8 @@ namespace ACE.MarketApi.Tests
             var listed = NewListing(host, seller, 120);
             var before = Snapshot(listed, buyer, seller, penniless);
 
-            await AssertRefusedAsync(await PurchaseAsync(host, await host.SignInForCookieAsync(buyer.Name, "pass"), listed), HttpStatusCode.Conflict, "insufficient_funds");
-            await AssertRefusedAsync(await PurchaseAsync(host, await host.SignInForCookieAsync(penniless.Name, "pass"), listed), HttpStatusCode.Conflict, "insufficient_funds");
+            await AssertRefusedAsync(await PurchaseAsync(host, await host.SignInForSessionAsync(buyer.Name, "pass"), listed), HttpStatusCode.Conflict, "insufficient_funds");
+            await AssertRefusedAsync(await PurchaseAsync(host, await host.SignInForSessionAsync(penniless.Name, "pass"), listed), HttpStatusCode.Conflict, "insufficient_funds");
 
             Assert.AreEqual(before, Snapshot(listed, buyer, seller, penniless));
         }
@@ -318,10 +318,10 @@ namespace ACE.MarketApi.Tests
 
             await using var host = await MarketApiHost.StartAsync();
             var listed = NewListing(host, seller, 50);
-            var cookie = await host.SignInForCookieAsync(seller.Name, "pass");
+            var session = await host.SignInForSessionAsync(seller.Name, "pass");
             var before = Snapshot(listed, seller);
 
-            var response = await host.PostJsonAsync($"/api/listings/{listed.ListingId}/purchase", new { count = 1, expectedPrice = 50, idempotencyKey = "own", characterId = alt }, cookie);
+            var response = await host.PostJsonAsync($"/api/listings/{listed.ListingId}/purchase", new { count = 1, expectedPrice = 50, idempotencyKey = "own", characterId = alt }, session);
 
             await AssertRefusedAsync(response, HttpStatusCode.Forbidden, "own_listing");
             Assert.AreEqual(before, Snapshot(listed, seller));
@@ -338,31 +338,31 @@ namespace ACE.MarketApi.Tests
             try
             {
                 await using var host = await MarketApiHost.StartAsync();
-                var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
+                var session = await host.SignInForSessionAsync(buyer.Name, "pass");
                 var listings = Enumerable.Range(0, 5).Select(i => NewListing(host, seller, 10, name: "Fast " + i)).ToArray();
 
                 for (var i = 0; i < 3; i++)
                 {
-                    var ok = await PurchaseAsync(host, cookie, listings[i]);
+                    var ok = await PurchaseAsync(host, session, listings[i]);
                     Assert.AreEqual(HttpStatusCode.OK, ok.StatusCode, await ok.Content.ReadAsStringAsync());
                 }
 
                 var before = Snapshot(listings[3], buyer, seller);
-                await AssertRefusedAsync(await PurchaseAsync(host, cookie, listings[3]), HttpStatusCode.TooManyRequests, "rate_limited");
+                await AssertRefusedAsync(await PurchaseAsync(host, session, listings[3]), HttpStatusCode.TooManyRequests, "rate_limited");
                 Assert.AreEqual(before, Snapshot(listings[3], buyer, seller));
 
                 // still limited just before the minute is up
                 host.Clock.Advance(TimeSpan.FromSeconds(59));
-                await AssertRefusedAsync(await PurchaseAsync(host, cookie, listings[3]), HttpStatusCode.TooManyRequests, "rate_limited");
+                await AssertRefusedAsync(await PurchaseAsync(host, session, listings[3]), HttpStatusCode.TooManyRequests, "rate_limited");
 
                 // a minute after the first three
                 host.Clock.Advance(TimeSpan.FromSeconds(2));
-                var later = await PurchaseAsync(host, cookie, listings[3]);
+                var later = await PurchaseAsync(host, session, listings[3]);
                 Assert.AreEqual(HttpStatusCode.OK, later.StatusCode, await later.Content.ReadAsStringAsync());
 
                 // another buyer isn't slowed by this one
                 var other = NewPlayer("other", balance: 100);
-                var otherResponse = await PurchaseAsync(host, await host.SignInForCookieAsync(other.Name, "pass"), listings[4]);
+                var otherResponse = await PurchaseAsync(host, await host.SignInForSessionAsync(other.Name, "pass"), listings[4]);
                 Assert.AreEqual(HttpStatusCode.OK, otherResponse.StatusCode, await otherResponse.Content.ReadAsStringAsync());
             }
             finally
@@ -378,14 +378,14 @@ namespace ACE.MarketApi.Tests
             var buyer = NewPlayer("buyer", balance: 1000);
 
             await using var host = await MarketApiHost.StartAsync();
-            var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
+            var session = await host.SignInForSessionAsync(buyer.Name, "pass");
             var listed = NewListing(host, seller, 10);
 
             // ten refused attempts (a wrong price), then the eleventh is rate limited
             for (var i = 0; i < 10; i++)
-                await AssertRefusedAsync(await PurchaseAsync(host, cookie, listed, expectedPrice: 9), HttpStatusCode.Conflict, "price_changed");
+                await AssertRefusedAsync(await PurchaseAsync(host, session, listed, expectedPrice: 9), HttpStatusCode.Conflict, "price_changed");
 
-            await AssertRefusedAsync(await PurchaseAsync(host, cookie, listed), HttpStatusCode.TooManyRequests, "rate_limited");
+            await AssertRefusedAsync(await PurchaseAsync(host, session, listed), HttpStatusCode.TooManyRequests, "rate_limited");
         }
 
         [TestMethod]
@@ -397,17 +397,17 @@ namespace ACE.MarketApi.Tests
 
             await using var host = await MarketApiHost.StartAsync(services => services.AddSingleton<IMarketPause>(pause));
             var listed = NewListing(host, seller, 50);
-            var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
+            var session = await host.SignInForSessionAsync(buyer.Name, "pass");
             var before = Snapshot(listed, buyer, seller);
 
-            await AssertRefusedAsync(await PurchaseAsync(host, cookie, listed), HttpStatusCode.ServiceUnavailable, "paused");
+            await AssertRefusedAsync(await PurchaseAsync(host, session, listed), HttpStatusCode.ServiceUnavailable, "paused");
             Assert.AreEqual(before, Snapshot(listed, buyer, seller));
 
             // browsing still works while paused, and buying works again once it's lifted
             Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync($"/api/listings/{listed.ListingId}")).StatusCode);
 
             pause.Paused = false;
-            var response = await PurchaseAsync(host, cookie, listed);
+            var response = await PurchaseAsync(host, session, listed);
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
         }
 
@@ -421,24 +421,24 @@ namespace ACE.MarketApi.Tests
 
             await using var host = await MarketApiHost.StartAsync();
             var listed = NewListing(host, seller, 120);
-            var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
+            var session = await host.SignInForSessionAsync(buyer.Name, "pass");
             var key = "double-click";
 
-            var first = await PurchaseAsync(host, cookie, listed, key);
+            var first = await PurchaseAsync(host, session, listed, key);
             var firstBody = await first.Content.ReadAsStringAsync();
             Assert.AreEqual(HttpStatusCode.OK, first.StatusCode, firstBody);
 
             var after = Snapshot(listed, buyer, seller);
 
             // the same request again, and again after the balance changed: the stored answer each time
-            var second = await PurchaseAsync(host, cookie, listed, key);
+            var second = await PurchaseAsync(host, session, listed, key);
             Assert.AreEqual(HttpStatusCode.OK, second.StatusCode);
             Assert.AreEqual(firstBody, await second.Content.ReadAsStringAsync());
 
             Assert.AreEqual(after, Snapshot(listed, buyer, seller));
 
             MarketTestDatabase.Execute(MarketApiTestData.ShardDatabase, $"UPDATE market_balance SET balance = 0, row_Version = row_Version + 1 WHERE account_Id = {buyer.AccountId};");
-            var third = await PurchaseAsync(host, cookie, listed, key);
+            var third = await PurchaseAsync(host, session, listed, key);
             Assert.AreEqual(HttpStatusCode.OK, third.StatusCode);
             Assert.AreEqual(firstBody, await third.Content.ReadAsStringAsync());
 
@@ -449,7 +449,7 @@ namespace ACE.MarketApi.Tests
             // keys are the buyer's own: another buyer's same key is a new request
             var other = NewPlayer("other", balance: 100);
             var second2 = NewListing(host, seller, 10);
-            var otherResponse = await PurchaseAsync(host, await host.SignInForCookieAsync(other.Name, "pass"), second2, key);
+            var otherResponse = await PurchaseAsync(host, await host.SignInForSessionAsync(other.Name, "pass"), second2, key);
             Assert.AreEqual(HttpStatusCode.OK, otherResponse.StatusCode, await otherResponse.Content.ReadAsStringAsync());
             Assert.AreEqual(second2.ListingId, (await MarketApiHost.JsonAsync(otherResponse)).GetProperty("listingId").GetInt64());
         }
@@ -462,9 +462,9 @@ namespace ACE.MarketApi.Tests
 
             await using var host = await MarketApiHost.StartAsync();
             var listed = NewListing(host, seller, 120);
-            var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
+            var session = await host.SignInForSessionAsync(buyer.Name, "pass");
 
-            var responses = await Task.WhenAll(Enumerable.Range(0, 6).Select(_ => Task.Run(() => PurchaseAsync(host, cookie, listed, "retry-storm"))));
+            var responses = await Task.WhenAll(Enumerable.Range(0, 6).Select(_ => Task.Run(() => PurchaseAsync(host, session, listed, "retry-storm"))));
             var bodies = await Task.WhenAll(responses.Select(r => r.Content.ReadAsStringAsync()));
 
             Assert.IsTrue(responses.All(r => r.StatusCode == HttpStatusCode.OK), string.Join(" ", bodies));
@@ -481,11 +481,11 @@ namespace ACE.MarketApi.Tests
 
             await using var host = await MarketApiHost.StartAsync();
             var listed = NewListing(host, seller, 50);
-            var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
+            var session = await host.SignInForSessionAsync(buyer.Name, "pass");
             MarketTestDatabase.Execute(MarketApiTestData.ShardDatabase, $"INSERT INTO market_request (account_Id, idempotency_Key, kind, result, created_Time) VALUES ({buyer.AccountId}, 'used', 'mmd_withdraw', '{{}}', UTC_TIMESTAMP(6));");
             var before = Snapshot(listed, buyer, seller);
 
-            await AssertRefusedAsync(await PurchaseAsync(host, cookie, listed, "used"), HttpStatusCode.Conflict, "key_reused");
+            await AssertRefusedAsync(await PurchaseAsync(host, session, listed, "used"), HttpStatusCode.Conflict, "key_reused");
             Assert.AreEqual(before, Snapshot(listed, buyer, seller));
         }
 
@@ -499,11 +499,11 @@ namespace ACE.MarketApi.Tests
 
             await using var host = await MarketApiHost.StartAsync();
             var listed = NewListing(host, seller, 100);
-            var cookies = new List<string>();
+            var sessions = new List<string>();
             foreach (var buyer in buyers)
-                cookies.Add(await host.SignInForCookieAsync(buyer.Name, "pass"));
+                sessions.Add(await host.SignInForSessionAsync(buyer.Name, "pass"));
 
-            var responses = await Task.WhenAll(cookies.Select(cookie => Task.Run(() => PurchaseAsync(host, cookie, listed))));
+            var responses = await Task.WhenAll(sessions.Select(session => Task.Run(() => PurchaseAsync(host, session, listed))));
             var bodies = await Task.WhenAll(responses.Select(r => r.Content.ReadAsStringAsync()));
 
             Assert.AreEqual(1, responses.Count(r => r.StatusCode == HttpStatusCode.OK), string.Join(" ", bodies));
@@ -527,9 +527,9 @@ namespace ACE.MarketApi.Tests
 
             await using var host = await MarketApiHost.StartAsync();
             var listings = sellers.Select(s => NewListing(host, s, 100)).ToArray();
-            var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
+            var session = await host.SignInForSessionAsync(buyer.Name, "pass");
 
-            var responses = await Task.WhenAll(listings.Select(l => Task.Run(() => PurchaseAsync(host, cookie, l))));
+            var responses = await Task.WhenAll(listings.Select(l => Task.Run(() => PurchaseAsync(host, session, l))));
             var bodies = await Task.WhenAll(responses.Select(r => r.Content.ReadAsStringAsync()));
 
             Assert.AreEqual(2, responses.Count(r => r.StatusCode == HttpStatusCode.OK), string.Join(" ", bodies));
@@ -552,10 +552,10 @@ namespace ACE.MarketApi.Tests
 
             await using var host = await MarketApiHost.StartAsync();
             var listed = NewListing(host, seller, 50);
-            var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
+            var session = await host.SignInForSessionAsync(buyer.Name, "pass");
             MarketApiTestData.Ban(seller.AccountId, host.Clock.GetUtcNow().UtcDateTime.AddDays(3));
 
-            await AssertRefusedAsync(await PurchaseAsync(host, cookie, listed), HttpStatusCode.Gone, "gone");
+            await AssertRefusedAsync(await PurchaseAsync(host, session, listed), HttpStatusCode.Gone, "gone");
 
             Assert.AreEqual(500L, Balance(buyer.AccountId));
             Assert.AreEqual(0L, Transfers(listed.ListingId));
@@ -571,12 +571,12 @@ namespace ACE.MarketApi.Tests
 
             await using var host = await MarketApiHost.StartAsync();
             var listed = NewListing(host, seller, 50);
-            var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
+            var session = await host.SignInForSessionAsync(buyer.Name, "pass");
             var before = Snapshot(listed, buyer, seller);
             MarketApiTestData.Ban(buyer.AccountId, host.Clock.GetUtcNow().UtcDateTime.AddDays(3));
 
             // the session stops working once the ban is noticed
-            Assert.AreEqual(HttpStatusCode.Unauthorized, (await PurchaseAsync(host, cookie, listed)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, (await PurchaseAsync(host, session, listed)).StatusCode);
             Assert.AreEqual(before, Snapshot(listed, buyer, seller));
         }
 
@@ -595,18 +595,18 @@ namespace ACE.MarketApi.Tests
             });
 
             await using var host = await MarketApiHost.StartAsync(services => services.AddSingleton<IFeePolicy>(policy));
-            var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
+            var session = await host.SignInForSessionAsync(buyer.Name, "pass");
 
             toBan = buyer;
             var first = NewListing(host, seller, 50);
             var before = Snapshot(first, buyer, seller);
-            await AssertRefusedAsync(await PurchaseAsync(host, cookie, first), HttpStatusCode.Forbidden, "banned");
+            await AssertRefusedAsync(await PurchaseAsync(host, session, first), HttpStatusCode.Forbidden, "banned");
             Assert.AreEqual(before, Snapshot(first, buyer, seller));
 
             MarketApiTestData.LiftBan(buyer.AccountId);
             toBan = seller;
             var second = NewListing(host, seller, 50);
-            await AssertRefusedAsync(await PurchaseAsync(host, cookie, second), HttpStatusCode.Gone, "gone");
+            await AssertRefusedAsync(await PurchaseAsync(host, session, second), HttpStatusCode.Gone, "gone");
             Assert.AreEqual(500L, Balance(buyer.AccountId));
             Assert.AreEqual(0L, Transfers(second.ListingId));
             Assert.AreEqual($"{seller.AccountId}|{seller.CharacterId}|held|1", VaultRow(second.ItemGuid));
@@ -624,19 +624,19 @@ namespace ACE.MarketApi.Tests
 
             await using var host = await MarketApiHost.StartAsync(services => services.AddSingleton<IFeePolicy>(new TestFeePolicy(_ => new SellerFee(fee, "test"))));
             var listed = NewListing(host, seller, 100);
-            var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
+            var session = await host.SignInForSessionAsync(buyer.Name, "pass");
             var before = Snapshot(listed, buyer, seller);
 
             foreach (var bad in new[] { 101m, -1m, 2.5m })
             {
                 fee = bad;
-                await AssertRefusedAsync(await PurchaseAsync(host, cookie, listed), HttpStatusCode.InternalServerError, "invalid_fee");
+                await AssertRefusedAsync(await PurchaseAsync(host, session, listed), HttpStatusCode.InternalServerError, "invalid_fee");
                 Assert.AreEqual(before, Snapshot(listed, buyer, seller), bad.ToString());
             }
 
             // the whole price is still inside the contract
             fee = 100m;
-            var response = await PurchaseAsync(host, cookie, listed);
+            var response = await PurchaseAsync(host, session, listed);
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
             Assert.AreEqual(0L, Balance(seller.AccountId));
         }
@@ -651,9 +651,9 @@ namespace ACE.MarketApi.Tests
             await using var host = await MarketApiHost.StartAsync(services => services.AddSingleton<IFeePolicy>(policy));
             var listed = NewListing(host, seller, 100, stackSize: 3);
             MarketApiTestData.SetVaultColumns(listed.ItemGuid, "item_Type = 1");
-            var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
+            var session = await host.SignInForSessionAsync(buyer.Name, "pass");
 
-            var response = await PurchaseAsync(host, cookie, listed, count: 3);
+            var response = await PurchaseAsync(host, session, listed, count: 3);
 
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
             Assert.AreEqual(7L, (await MarketApiHost.JsonAsync(response)).GetProperty("fee").GetInt64());

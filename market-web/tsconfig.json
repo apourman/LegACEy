@@ -3,7 +3,10 @@
     "target": "ES2022", "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext", "moduleResolution": "bundler", "jsx": "react-jsx",
     "strict": true, "skipLibCheck": true, "noEmit": true,
-    "allowImportingTsExtensions": true, "esModuleInterop": true
+    "allowImportingTsExtensions": true, "esModuleInterop": true,
+    "allowJs": true, "checkJs": true,
+    "types": ["node", "vite/client"],
+    "rootDirs": [".", "./.react-router/types"]
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "tests", "bff-tests", ".react-router/types/**/*", "vite.config.ts", "vitest.config.ts", "react-router.config.ts", "playwright.config.ts", "server.js"]
 }

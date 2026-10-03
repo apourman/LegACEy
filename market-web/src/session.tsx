@@ -1,29 +1,29 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router';
 import { ApiError, getMe, sessionEnded, signIn, signOut, type Me } from './api';
+import { browserCharacter, migrateStoredCharacter, writeCharacterCookie } from './character';
 
 interface Session {
   me: Me | null; characterId: number | null; loading: boolean; error: string;
   selectCharacter: (id: number) => void; refresh: () => Promise<void>;
   login: (account: string, password: string) => Promise<void>; logout: () => Promise<void>;
 }
+/** The account as the server rendered it (the root loader) */
+export interface InitialSession { me: Me | null; characterId: number | null; error: string }
+
 const SessionContext = createContext<Session | null>(null);
 export function useSession() {
   const value = useContext(SessionContext);
   if (!value) throw new Error('Session provider missing');
   return value;
 }
-function readCharacter(me: Me): number | null {
-  let saved: number | null = null;
-  try { saved = Number(localStorage.getItem(`market-character-${me.accountId}`)); } catch { /* Storage can be disabled. */ }
-  return me.characters.find(c => c.id === saved)?.id ?? me.characters[0]?.id ?? null;
-}
-export function SessionProvider({ children }: { children: ReactNode }) {
-  const [me, setMe] = useState<Me | null>(null);
-  const [characterId, setCharacterId] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const signedIn = useRef(false);
+/** Starts from the server's render, so the header is right before any script runs; from then on the browser keeps it current through /api/me */
+export function SessionProvider({ initial, children }: { initial: InitialSession; children: ReactNode }) {
+  const [me, setMe] = useState<Me | null>(initial.me);
+  const [characterId, setCharacterId] = useState<number | null>(initial.characterId);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(initial.error);
+  const signedIn = useRef(initial.me !== null);
   const generation = useRef(0);
   const navigate = useNavigate();
   const location = useLocation();
@@ -38,7 +38,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return;
       }
       signedIn.current = true;
-      setMe(account); setCharacterId(readCharacter(account)); setError('');
+      setMe(account); setCharacterId(browserCharacter(account)); setError('');
     } catch (e) {
       if (version === generation.current && !(e instanceof ApiError && e.status === 401)) setError(e instanceof Error ? e.message : 'Could not load your account.');
       if (required) throw e;
@@ -55,13 +55,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const visible = () => { if (document.visibilityState === 'visible' && signedIn.current) void refresh(); };
     sessionEnded.addEventListener('ended', ended);
     document.addEventListener('visibilitychange', visible);
-    void refresh();
+    // a choice saved before the BFF moves into the cookie on the first load; that load may still show the server's choice briefly
+    if (initial.me) {
+      const saved = browserCharacter(initial.me);
+      if (saved !== initial.characterId) setCharacterId(saved);
+    }
+    // the server had a session but couldn't load the account: try again from here
+    if (initial.error) { setLoading(true); void refresh(); }
     return () => { sessionEnded.removeEventListener('ended', ended); document.removeEventListener('visibilitychange', visible); };
   }, [navigate]);
   function selectCharacter(id: number) {
     if (!me?.characters.some(c => c.id === id)) return;
     setCharacterId(id);
-    try { localStorage.setItem(`market-character-${me.accountId}`, String(id)); } catch { /* The selection still works for this page. */ }
+    migrateStoredCharacter(me);
+    try { writeCharacterCookie(me.accountId, id); } catch { /* The selection still works for this page. */ }
   }
   async function login(account: string, password: string) {
     generation.current++;

@@ -88,16 +88,16 @@ namespace ACE.MarketApi.Tests
             return MarketApiTestData.AddListing(seller.AccountId, seller.CharacterId, guid, price, ListingStatus.Active, host.Clock.GetUtcNow().UtcDateTime.AddMinutes(-1));
         }
 
-        private static async Task BuyAsync(MarketApiHost host, string cookie, long listingId, long price)
+        private static async Task BuyAsync(MarketApiHost host, string session, long listingId, long price)
         {
-            var response = await host.PostJsonAsync($"/api/listings/{listingId}/purchase", new { count = 1, expectedPrice = price, idempotencyKey = Guid.NewGuid().ToString("N") }, cookie);
+            var response = await host.PostJsonAsync($"/api/listings/{listingId}/purchase", new { count = 1, expectedPrice = price, idempotencyKey = Guid.NewGuid().ToString("N") }, session);
 
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
         }
 
-        private static async Task<JsonElement> HistoryAsync(MarketApiHost host, string cookie, string query = "")
+        private static async Task<JsonElement> HistoryAsync(MarketApiHost host, string session, string query = "")
         {
-            var response = await host.GetAsync("/api/history" + query, cookie);
+            var response = await host.GetAsync("/api/history" + query, session);
 
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
 
@@ -128,11 +128,11 @@ namespace ACE.MarketApi.Tests
             DepositNotes(buyer, 1500);
             DepositNotes(seller, 50);
             var listingId = ListItem(host, seller, "Bone Slicer", 100);
-            await BuyAsync(host, await host.SignInForCookieAsync(buyer.Name, "pass"), listingId, 100);
+            await BuyAsync(host, await host.SignInForSessionAsync(buyer.Name, "pass"), listingId, 100);
             AddTransfer(TransferKind.NoteWithdraw, seller.AccountId, -20, SystemAccount.Notes, characterId: seller.CharacterId);
             AddTransfer(TransferKind.AdminAdjust, seller.AccountId, 5, SystemAccount.Admin, memo: "refund for lag");
 
-            var history = await HistoryAsync(host, await host.SignInForCookieAsync(seller.Name, "pass"));
+            var history = await HistoryAsync(host, await host.SignInForSessionAsync(seller.Name, "pass"));
 
             Assert.AreEqual(135L, history.GetProperty("balance").GetInt64());
             Assert.AreEqual(5L, history.GetProperty("head").GetInt64());
@@ -152,7 +152,7 @@ namespace ACE.MarketApi.Tests
             CollectionAssert.AreEqual(new[] { "admin_adjust", "note_withdraw", "purchase", "purchase", "note_deposit" }, lines.Select(l => l.GetProperty("kind").GetString()).ToArray());
             Assert.AreEqual(lines[2].GetProperty("transferId").GetInt64(), lines[3].GetProperty("transferId").GetInt64(), "the sale and its fee are one transfer");
 
-            var buyerHistory = await HistoryAsync(host, await host.SignInForCookieAsync(buyer.Name, "pass"));
+            var buyerHistory = await HistoryAsync(host, await host.SignInForSessionAsync(buyer.Name, "pass"));
 
             Assert.AreEqual(1400L, buyerHistory.GetProperty("balance").GetInt64());
             Assert.AreEqual(2L, buyerHistory.GetProperty("head").GetInt64());
@@ -172,9 +172,9 @@ namespace ACE.MarketApi.Tests
             await using var host = await MarketApiHost.StartAsync(services => services.AddSingleton<IFeePolicy>(new FixedFeePolicy(new SellerFee(7, "7% sale fee"))));
 
             var listingId = ListItem(host, seller, "Frost Bow", 100);
-            await BuyAsync(host, await host.SignInForCookieAsync(buyer.Name, "pass"), listingId, 100);
+            await BuyAsync(host, await host.SignInForSessionAsync(buyer.Name, "pass"), listingId, 100);
 
-            var history = await HistoryAsync(host, await host.SignInForCookieAsync(seller.Name, "pass"));
+            var history = await HistoryAsync(host, await host.SignInForSessionAsync(seller.Name, "pass"));
 
             CollectionAssert.AreEqual(new[] { $"Market fee (7% sale fee) · {Minus}7 MMD", $"Sold Frost Bow to {buyer.CharacterName} · +100 MMD" }, Texts(history));
             Assert.AreEqual("7% sale fee", history.GetProperty("transfers")[0].GetProperty("memo").GetString());
@@ -193,7 +193,7 @@ namespace ACE.MarketApi.Tests
             DepositNotes(player, 10);
             DepositNotes(other, 30);
 
-            var history = await HistoryAsync(host, await host.SignInForCookieAsync(player.Name, "pass"));
+            var history = await HistoryAsync(host, await host.SignInForSessionAsync(player.Name, "pass"));
 
             // one line: the NOTES leg and the other account's transfers are never shown
             CollectionAssert.AreEqual(new[] { "Deposited 10 trade notes · +10 MMD" }, Texts(history));
@@ -202,7 +202,7 @@ namespace ACE.MarketApi.Tests
 
             // an account with no ledger lines at all
             var fresh = NewPlayer("fresh");
-            var empty = await HistoryAsync(host, await host.SignInForCookieAsync(fresh.Name, "pass"));
+            var empty = await HistoryAsync(host, await host.SignInForSessionAsync(fresh.Name, "pass"));
 
             Assert.AreEqual(0L, empty.GetProperty("balance").GetInt64());
             Assert.AreEqual(0L, empty.GetProperty("head").GetInt64());
@@ -219,18 +219,18 @@ namespace ACE.MarketApi.Tests
 
             Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/api/history")).StatusCode);
 
-            var cookie = await host.SignInForCookieAsync(player.Name, "pass");
+            var session = await host.SignInForSessionAsync(player.Name, "pass");
 
             foreach (var (bad, error) in new[] { ("?since=-1", "bad_cursor"), ("?since=abc", "bad_cursor"), ("?since=1.5", "bad_cursor"), ("?itemsBefore=0", "bad_cursor"), ("?itemsBefore=x", "bad_cursor"), ("?since=0&transfersBefore=1", "bad_cursor"), ("?itemsLimit=0", "bad_limit"), ("?itemsLimit=x", "bad_limit") })
             {
-                var response = await host.GetAsync("/api/history" + bad, cookie);
+                var response = await host.GetAsync("/api/history" + bad, session);
 
                 Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode, bad);
                 Assert.AreEqual(error, await MarketApiHost.ErrorAsync(response), bad);
             }
 
             // like the catalog's limit, a limit above the most is capped rather than refused
-            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/api/history?itemsLimit=101", cookie)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/api/history?itemsLimit=101", session)).StatusCode);
         }
 
         // ---- criterion 2: since returns exactly the entries after it
@@ -249,11 +249,11 @@ namespace ACE.MarketApi.Tests
             for (var i = 1; i <= 6; i++)
                 DepositNotes(player, i);
 
-            var cookie = await host.SignInForCookieAsync(player.Name, "pass");
+            var session = await host.SignInForSessionAsync(player.Name, "pass");
 
             for (var since = 0; since <= 8; since++)
             {
-                var history = await HistoryAsync(host, cookie, $"?since={since}");
+                var history = await HistoryAsync(host, session, $"?since={since}");
 
                 var expected = Enumerable.Range(since + 1, Math.Max(0, 6 - since)).Select(s => (long)s).ToArray();
 
@@ -277,14 +277,14 @@ namespace ACE.MarketApi.Tests
             for (var i = 1; i <= 123; i++)
                 DepositNotes(player, 1);
 
-            var cookie = await host.SignInForCookieAsync(player.Name, "pass");
+            var session = await host.SignInForSessionAsync(player.Name, "pass");
             long? before = null;
             var seen = new List<long>();
 
             while (true)
             {
                 var query = before == null ? "?transfersLimit=37" : $"?transfersLimit=37&transfersBefore={before}";
-                var page = await HistoryAsync(host, cookie, query);
+                var page = await HistoryAsync(host, session, query);
                 var sequences = Sequences(page);
                 CollectionAssert.AreEqual(sequences.OrderByDescending(sequence => sequence).ToArray(), sequences);
                 seen.AddRange(sequences);
@@ -307,10 +307,10 @@ namespace ACE.MarketApi.Tests
             for (var i = 1; i <= 205; i++)
                 DepositNotes(player, 1);
 
-            var cookie = await host.SignInForCookieAsync(player.Name, "pass");
+            var session = await host.SignInForSessionAsync(player.Name, "pass");
             var seen = new List<long>();
             long since = 0;
-            var first = await HistoryAsync(host, cookie, $"?since={since}&transfersLimit=100");
+            var first = await HistoryAsync(host, session, $"?since={since}&transfersLimit=100");
             CollectionAssert.AreEqual(Enumerable.Range(1, 100).Select(sequence => (long)sequence).ToArray(), Sequences(first));
             seen.AddRange(Sequences(first));
             since = first.GetProperty("nextSince").GetInt64();
@@ -319,13 +319,13 @@ namespace ACE.MarketApi.Tests
             for (var i = 206; i <= 210; i++)
                 DepositNotes(player, 1);
 
-            var second = await HistoryAsync(host, cookie, $"?since={since}&transfersLimit=100");
+            var second = await HistoryAsync(host, session, $"?since={since}&transfersLimit=100");
             CollectionAssert.AreEqual(Enumerable.Range(101, 100).Select(sequence => (long)sequence).ToArray(), Sequences(second));
             seen.AddRange(Sequences(second));
             since = second.GetProperty("nextSince").GetInt64();
             Assert.IsTrue(second.GetProperty("more").GetBoolean());
 
-            var third = await HistoryAsync(host, cookie, $"?since={since}&transfersLimit=100");
+            var third = await HistoryAsync(host, session, $"?since={since}&transfersLimit=100");
             CollectionAssert.AreEqual(Enumerable.Range(201, 10).Select(sequence => (long)sequence).ToArray(), Sequences(third));
             seen.AddRange(Sequences(third));
             Assert.AreEqual(210L, third.GetProperty("nextSince").GetInt64());
@@ -344,7 +344,7 @@ namespace ACE.MarketApi.Tests
             var player = NewPlayer("hot");
 
             await using var host = await MarketApiHost.StartAsync();
-            var cookie = await host.SignInForCookieAsync(player.Name, "pass");
+            var session = await host.SignInForSessionAsync(player.Name, "pass");
 
             var seen = new List<long>();
             var polls = 0;
@@ -358,7 +358,7 @@ namespace ACE.MarketApi.Tests
 
             async Task PollAsync()
             {
-                var history = await HistoryAsync(host, cookie, $"?since={since}&transfersLimit=25");
+                var history = await HistoryAsync(host, session, $"?since={since}&transfersLimit=25");
                 var head = history.GetProperty("head").GetInt64();
                 var sequences = Sequences(history);
 
@@ -431,7 +431,7 @@ namespace ACE.MarketApi.Tests
             var otherItem = MarketApiTestData.AddVaultItem(other.AccountId, other.CharacterId, "Not Mine", VaultItemState.Held);
             AddItemEvent(otherItem, other, ItemEventKind.Deposit, start.AddMinutes(11));
 
-            var history = await HistoryAsync(host, await host.SignInForCookieAsync(seller.Name, "pass"));
+            var history = await HistoryAsync(host, await host.SignInForSessionAsync(seller.Name, "pass"));
 
             CollectionAssert.AreEqual(new[]
             {
@@ -453,19 +453,19 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual(third, items[2].GetProperty("listingId").GetInt64());
             Assert.AreEqual(JsonValueKind.Null, items[0].GetProperty("listingId").ValueKind);
 
-            var buyerHistory = await HistoryAsync(host, await host.SignInForCookieAsync(buyer.Name, "pass"));
+            var buyerHistory = await HistoryAsync(host, await host.SignInForSessionAsync(buyer.Name, "pass"));
             CollectionAssert.AreEqual(new[] { $"Bought Bone Slicer from {seller.CharacterName}" }, Texts(buyerHistory, "items"));
 
             // paging back through the movements by event id
-            var cookie = await host.SignInForCookieAsync(seller.Name, "pass");
-            var page = await HistoryAsync(host, cookie, "?itemsLimit=4");
+            var session = await host.SignInForSessionAsync(seller.Name, "pass");
+            var page = await HistoryAsync(host, session, "?itemsLimit=4");
             CollectionAssert.AreEqual(Texts(history, "items").Take(4).ToArray(), Texts(page, "items"));
 
             var next = page.GetProperty("nextItemsBefore").GetInt64();
-            var rest = await HistoryAsync(host, cookie, $"?itemsLimit=4&itemsBefore={next}");
+            var rest = await HistoryAsync(host, session, $"?itemsLimit=4&itemsBefore={next}");
             CollectionAssert.AreEqual(Texts(history, "items").Skip(4).Take(4).ToArray(), Texts(rest, "items"));
 
-            var last = await HistoryAsync(host, cookie, $"?itemsLimit=4&itemsBefore={rest.GetProperty("nextItemsBefore").GetInt64()}");
+            var last = await HistoryAsync(host, session, $"?itemsLimit=4&itemsBefore={rest.GetProperty("nextItemsBefore").GetInt64()}");
             CollectionAssert.AreEqual(Texts(history, "items").Skip(8).ToArray(), Texts(last, "items"));
             Assert.AreEqual(JsonValueKind.Null, last.GetProperty("nextItemsBefore").ValueKind);
         }
@@ -486,7 +486,7 @@ namespace ACE.MarketApi.Tests
             // an item that no longer exists anywhere
             AddItemEvent(0xC6FFFFF0u, player, ItemEventKind.Withdraw, start.AddMinutes(3));
 
-            var history = await HistoryAsync(host, await host.SignInForCookieAsync(player.Name, "pass"));
+            var history = await HistoryAsync(host, await host.SignInForSessionAsync(player.Name, "pass"));
 
             CollectionAssert.AreEqual(new[]
             {
@@ -508,21 +508,21 @@ namespace ACE.MarketApi.Tests
             var guid = MarketApiTestData.AddVaultItem(seller.AccountId, seller.CharacterId, "Staff of Tides", VaultItemState.Held);
             AddItemEvent(guid, seller, ItemEventKind.Deposit, host.Clock.GetUtcNow().UtcDateTime.AddMinutes(-5));
 
-            var sellerCookie = await host.SignInForCookieAsync(seller.Name, "pass");
+            var sellerSession = await host.SignInForSessionAsync(seller.Name, "pass");
 
             async Task<long> ListAsync(long price)
             {
-                var response = await host.PostJsonAsync("/api/listings", new { itemGuid = guid, price }, sellerCookie);
+                var response = await host.PostJsonAsync("/api/listings", new { itemGuid = guid, price }, sellerSession);
                 Assert.AreEqual(HttpStatusCode.Created, response.StatusCode, await response.Content.ReadAsStringAsync());
                 return (await MarketApiHost.JsonAsync(response)).GetProperty("id").GetInt64();
             }
 
             var first = await ListAsync(250);
-            Assert.AreEqual(HttpStatusCode.OK, (await host.PostJsonAsync($"/api/listings/{first}/delist", new { }, sellerCookie)).StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, (await host.PostJsonAsync($"/api/listings/{first}/delist", new { }, sellerSession)).StatusCode);
             var second = await ListAsync(200);
-            await BuyAsync(host, await host.SignInForCookieAsync(buyer.Name, "pass"), second, 200);
+            await BuyAsync(host, await host.SignInForSessionAsync(buyer.Name, "pass"), second, 200);
 
-            var history = await HistoryAsync(host, await host.SignInForCookieAsync(seller.Name, "pass"));
+            var history = await HistoryAsync(host, await host.SignInForSessionAsync(seller.Name, "pass"));
 
             CollectionAssert.AreEqual(new[]
             {
@@ -534,7 +534,7 @@ namespace ACE.MarketApi.Tests
             }, Texts(history, "items"));
             CollectionAssert.AreEqual(new[] { $"Market fee · {Minus}0 MMD", $"Sold Staff of Tides to {buyer.CharacterName} · +200 MMD" }, Texts(history));
 
-            var buyerHistory = await HistoryAsync(host, await host.SignInForCookieAsync(buyer.Name, "pass"));
+            var buyerHistory = await HistoryAsync(host, await host.SignInForSessionAsync(buyer.Name, "pass"));
 
             CollectionAssert.AreEqual(new[] { $"Bought Staff of Tides from {seller.CharacterName}" }, Texts(buyerHistory, "items"));
             CollectionAssert.AreEqual(new[] { $"Bought Staff of Tides from {seller.CharacterName} · {Minus}200 MMD" }, Texts(buyerHistory));

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Builds and (re)starts the Market API container alone, then waits for its health check. Run it again after an API code change.
-# The API listens on 127.0.0.1:$MARKET_API_PORT only, and answers only requests carrying MARKET_SERVICE_KEY from docker.env (except /health).
+# The API is private: it has no host port. Only the BFF (market-web) reaches it, on the compose network they share, and it answers only requests
+# carrying MARKET_SERVICE_KEY from docker.env (except /health). Readiness comes from the container's own health check (Docker's status).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
@@ -15,7 +16,7 @@ echo "Waiting for market-api to report healthy..."
 health="$(api_health 60)"
 
 if [[ "$health" == running/healthy ]]; then
-  echo "market-api is healthy at $MARKET_API_URL/api"
+  echo "market-api is healthy (Docker health check; no host port: the BFF reaches it as http://market-api:8080)"
   exit 0
 fi
 

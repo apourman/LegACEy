@@ -4,33 +4,38 @@ Runs the whole market on one machine, as separate processes:
 
 - MySQL in Docker (`ace-db`, `127.0.0.1:3310`, from `docker/docker-compose.local.yml`; never the `ace-db` on 3306);
 - the game server, natively, on the market stack's own databases;
-- the Market API in its own Docker container (`market-api`, `127.0.0.1:5080`, under `/api`).
+- the Market API in its own Docker container (`market-api`, under `/api`), with **no host port**;
+- the BFF (`market-web`): the website's own server, with live reload, on `127.0.0.1:5173`, the one local origin.
+
+The browser only ever talks to the BFF. The BFF renders the pages, signs players in, keeps their session in its own signed cookie, checks
+cross-site requests, and forwards an allowlist of API routes through `/api/*`. The Market API is private: only the BFF reaches it, on the
+Docker network they share (`market`), and it answers only requests that carry its service key in `X-Market-Service-Key`, except
+`GET /health`, which answers a bare `ok` for health checks.
 
 Everything listens on loopback only. You need Docker, the .NET 10 SDK, `jq`, `curl`, the client DATs in
 `~/ace_dats/retail` (or `ACE_HOST_DAT_DIRECTORY`), and an untracked `docker.env` in the repository root
 (copy `docker.env.example`). The database login comes from `docker.env`; nothing secret is in git.
 
-The Market API is private: it answers only requests that carry its service key in `X-Market-Service-Key`, except
-`GET /health`, which answers a bare `ok` for health checks. Set the key once in `docker.env`:
+Set the two market secrets once in `docker.env`:
 
 ```bash
 printf '\nMARKET_SERVICE_KEY=%s\n' "$(openssl rand -hex 32)" >> docker.env
+printf '\nMARKET_COOKIE_SECRET=%s\n' "$(openssl rand -hex 32)" >> docker.env
 ```
 
-Compose gives it to `market-api` (as `Market__ServiceKey`) and to `market-web`, whose dev proxy adds it to every
-`/api` request. `api.sh`, `web.sh` and `smoke.sh` stop with a message when it's missing or shorter than 32 characters,
-and the API itself refuses to start without it. To call the API by hand, send the header, e.g.
-`curl -H "X-Market-Service-Key: $(sed -n 's/^MARKET_SERVICE_KEY=//p' docker.env)" http://127.0.0.1:5080/api/facets`
-(the key is then visible in your process list; `smoke.sh` reads it from a private file instead).
+Compose gives each container only its own: `market-api` gets the key (as `Market__ServiceKey`); `market-web` gets the key and the cookie
+secret. `api.sh`, `web.sh` and `smoke.sh` stop with a message when one is missing or shorter than 32 characters, and the API and the BFF
+refuse to start without them. Changing the cookie secret signs everyone out.
 
 From the repository root, in order:
 
 ```bash
 ./scripts/market/bootstrap.sh   # start MySQL; create ace_market_auth and ace_market_shard with the market schema and the development marker
 ./scripts/market/game.sh        # build and run the game server on them (stays in the foreground; Ctrl+C stops it)
-./scripts/market/api.sh         # in another terminal: build and start the market-api container, wait until healthy
+./scripts/market/api.sh         # in another terminal: build and start the market-api container, wait until Docker reports it healthy
+./scripts/market/web.sh         # build and start the BFF, wait until it is healthy
 ./scripts/market/seed.sh        # accounts, characters, Vault items, balances and listings
-./scripts/market/smoke.sh       # proves API -> database -> game -> database -> API
+./scripts/market/smoke.sh       # proves BFF -> API -> database -> game -> database -> API -> BFF
 ```
 
 `game.sh` must have run once before `seed.sh`: it writes the configuration the seed tool reads
@@ -38,10 +43,11 @@ From the repository root, in order:
 
 ## The smoke check
 
-It checks `/health` without the key, that a request without the key is refused, and that one with it answers. Then it
-signs in as `seedalpha`, asks for an MMD withdrawal to the offline character `Seed Alpha`, and expects the game
-server to fail it `offline` within 10 seconds. It prints `SMOKE PASS`, or `SMOKE FAIL (<piece>)` naming the missing
-piece: `config`, `database`, `schema`, `API`, `seed` or `game`.
+It goes through the BFF, as a browser would. It checks that the API container is healthy and publishes no port, that the BFF's
+`/health` answers `ok`, that a route off the BFF's allowlist (`/api/tokens`) gets 404, and that the BFF reaches the API with the service
+key. Then it signs in as `seedalpha` at the BFF's `/auth/sign-in`, asks for an MMD withdrawal to the offline character `Seed Alpha`
+through `/api/*`, expects the game server to fail it `offline` within 10 seconds, and signs out. It prints `SMOKE PASS`, or
+`SMOKE FAIL (<piece>)` naming the missing piece: `config`, `database`, `schema`, `API`, `BFF`, `seed` or `game`.
 
 ## Ticket status walkthrough
 
@@ -70,8 +76,11 @@ The separate `./scripts/market/smoke.sh` uses the real game process. It requests
 ./scripts/market/api.sh         # rebuilds the image and restarts market-api alone
 ```
 
-Signed-in sessions (the cookie keys) and cached icons are kept in the named volumes `market-api-keys` and
-`market-api-icons`, so they survive the rebuild. Automated API tests still run in-process (`dotnet test Source/ACE.MarketApi.Tests`).
+Signed-in sessions live in the database (`market_web_session`), so a rebuild of the API or the BFF signs nobody out. Cached icons are kept
+in the named volume `market-api-icons`. Automated API tests still run in-process (`dotnet test Source/ACE.MarketApi.Tests`).
+
+To call the API by hand, go through its container (it has no host port), e.g.
+`docker compose --env-file docker.env -f docker/docker-compose.local.yml exec market-api curl -s http://127.0.0.1:8080/health`.
 
 ## Seed data
 
@@ -109,29 +118,35 @@ Stop the game server first, and restart it afterwards. The game server records a
 output (`DatabaseSetupScripts/Updates/Shard/applied_updates.txt`), not in the database, so it won't reapply ACE's
 older shard updates to a recreated shard. `bootstrap.sh` applies the market schema scripts itself (the schema, ticket progress and web sessions), so the market doesn't depend on that file.
 
-Settings: `MARKET_AUTH_DATABASE`, `MARKET_SHARD_DATABASE`, `MARKET_API_PORT`, `DB_HOST_PORT`, `MARKET_GAME_RUN_DIR`.
+Settings: `MARKET_AUTH_DATABASE`, `MARKET_SHARD_DATABASE`, `MARKET_WEB_PORT`, `DB_HOST_PORT`, `MARKET_GAME_RUN_DIR`.
 
-### Website
+### Website (the BFF)
 
-After `scripts/market/api.sh`, run `scripts/market/web.sh`. Open
-`http://localhost:5173` (override with `MARKET_WEB_PORT`). This is the website
-and API's single origin; the website proxies `/api` to `market-api:8080`.
-Only loopback is published. The source is mounted with polling for live reload;
-the lockfile installs dependencies into the named `market-web-dependencies`
-volume at startup. No host Node installation is needed.
+After `scripts/market/api.sh`, run `scripts/market/web.sh`. Open `http://localhost:5173` (override with `MARKET_WEB_PORT`). This is the
+one local origin: the BFF serves the pages and its own `/auth/sign-in`, `/auth/sign-out`, `/health` and `/api/*` routes. Only loopback is
+published. The source is mounted with polling for live reload; the lockfile installs dependencies into the named `market-web-dependencies`
+volume at startup. The container runs as the image's `node` user, so files the dev server writes into the checkout (React Router's
+`.react-router/` route types) are yours. No host Node installation is needed.
 
-Type checking and the static production build use the same image:
+The BFF's settings are environment variables only (`market-web/src/bff/settings.server.ts`): `MARKET_API_URL`, `MARKET_SERVICE_KEY`,
+`MARKET_COOKIE_SECRET`, and optionally `MARKET_TRUSTED_PROXY` (a reverse proxy's address, whose right-most `X-Forwarded-For` entry is then
+the player's), `MARKET_SITE_ORIGIN` (the public origin, behind such a proxy) and `MARKET_GATEWAY_IS_LOOPBACK`. Locally there is no proxy;
+the port is published on the host's `127.0.0.1`, and Docker delivers those connections from the network's gateway, so compose sets
+`MARKET_GATEWAY_IS_LOOPBACK=true` and the API counts local players as `127.0.0.1`, not the gateway.
+
+Type checking, the production build and the BFF's request tests use the same image:
 
 ```sh
 docker compose --env-file docker.env -f docker/docker-compose.local.yml exec -T market-web npm run typecheck
 docker compose --env-file docker.env -f docker/docker-compose.local.yml exec -T market-web npm run build
+docker compose --env-file docker.env -f docker/docker-compose.local.yml exec -T market-web npm run test:bff
 ```
 
-The build writes `market-web/dist` (HTML, CSS and JavaScript only). Production
-hosting must send SPA routes such as `/listing/1` to `index.html` and proxy
-`/api` to the API. Deployment is outside this local spec.
+The build writes `market-web/build` (`build/server` for the BFF's server, `build/client` for the browser's files); `npm start` runs it.
+The production image and deployment come later.
 
-Browser regression checks run in the browser image (also no host Node):
+Browser regression checks run in the browser image (also no host Node). They start the BFF themselves, against a fake Market API that
+each check scripts, so they need no database:
 
 ```sh
 docker run --rm --ipc=host -v "$PWD/market-web:/app" -v market-browser-dependencies:/app/node_modules -w /app mcr.microsoft.com/playwright:v1.55.1-noble sh -c 'npm ci && npm run test:browser'
