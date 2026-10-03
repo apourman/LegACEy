@@ -60,13 +60,13 @@ namespace ACE.MarketDev
                     return Mark(targets, settings);
 
                 case "seed":
-                    var password = options.GetValueOrDefault("password", Environment.GetEnvironmentVariable("MARKET_SEED_PASSWORD") ?? DefaultSeedPassword);
+                    var password = SeedPassword(options);
                     var exitCode = 1;
                     var result = DevelopmentGuard.Run(targets, settings, () =>
                     {
                         try
                         {
-                            exitCode = Seeder.Seed(password);
+                            exitCode = Seeder.Seed(password, DevelopmentGuard.IsEndToEndPair(targets));
                         }
                         catch (Exception)
                         {
@@ -84,11 +84,12 @@ namespace ACE.MarketDev
                         try
                         {
                             ResetFreshDatabases();
-                            freshExitCode = Seeder.Seed(options.GetValueOrDefault("password", Environment.GetEnvironmentVariable("MARKET_SEED_PASSWORD") ?? DefaultSeedPassword));
+                            freshExitCode = Seeder.Seed(SeedPassword(options), endToEnd: true);
                         }
-                        catch (Exception)
+                        catch (Exception ex)
                         {
-                            Console.Error.WriteLine("Fresh setup stopped part way. The end-to-end databases may be empty or partly initialized; retry scripts/market/fresh.sh.");
+                            Console.Error.WriteLine($"Fresh setup stopped part way: {ex.Message}");
+                            Console.Error.WriteLine("The end-to-end databases may be empty or partly initialized; retry scripts/market/fresh.sh.");
                             freshExitCode = 1;
                         }
                     });
@@ -160,6 +161,9 @@ namespace ACE.MarketDev
 
         private static string[] List(string value) =>
             string.IsNullOrWhiteSpace(value) ? null : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        private static string SeedPassword(Dictionary<string, string> options) =>
+            options.GetValueOrDefault("password", Environment.GetEnvironmentVariable("MARKET_SEED_PASSWORD") ?? DefaultSeedPassword);
 
         private static int Report(DevelopmentGuardResult result)
         {

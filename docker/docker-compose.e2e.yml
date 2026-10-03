@@ -29,6 +29,8 @@ services:
       MARKET_API_URL: http://market-api:8080
       MARKET_SERVICE_KEY: ${MARKET_SERVICE_KEY:?MARKET_SERVICE_KEY must be set in the docker env file}
       MARKET_COOKIE_SECRET: ${MARKET_COOKIE_SECRET:?MARKET_COOKIE_SECRET must be set in the docker env file}
+      # as in docker-compose.local.yml: no reverse proxy, so no trusted proxy. The port is published on the host's 127.0.0.1 only, and
+      # Docker delivers those connections from the network's gateway, which therefore counts as 127.0.0.1.
       MARKET_TRUSTED_PROXY: ""
       MARKET_GATEWAY_IS_LOOPBACK: "true"
     networks:

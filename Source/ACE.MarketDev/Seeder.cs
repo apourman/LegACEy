@@ -80,11 +80,10 @@ namespace ACE.MarketDev
         // outside Holtburg, where a new character would start
         private static readonly Position StartLocation = new Position(0xA9B4001F, 84.0f, 7.1f, 94.0f, 0.0f, 0.0f, 0.0f, 1.0f);
 
-        public static int Seed(string password)
+        /// <param name="endToEnd">true for the end-to-end pair (DevelopmentGuard.IsEndToEndPair): one account pair per test file and project</param>
+        public static int Seed(string password, bool endToEnd)
         {
-            var accounts = ConfigManager.Config.MySql.Shard.Database == DevelopmentGuardSettings.E2EShardDatabase
-                ? E2EAccounts()
-                : Accounts;
+            var accounts = endToEnd ? E2EAccounts() : Accounts;
 
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance); // as Program.Main does, for the DAT strings
 

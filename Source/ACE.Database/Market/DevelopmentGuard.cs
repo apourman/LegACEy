@@ -73,7 +73,7 @@ namespace ACE.Database.Market
     /// The development database guard, shared by the development tools that write the database directly (the seed tool, the ticket fixture).
     /// Before any write it checks, for both the auth and the shard target:
     /// - the endpoint is on an exact allow-list;
-    /// - the database name is on an exact allow-list;
+    /// - the database name is on an exact allow-list, and the end-to-end databases are named only as a pair;
     /// - the database has the development marker row.
     /// The first two read only the configuration, so a target that fails them is never connected to. The marker check only reads.
     /// If any check fails, nothing is written anywhere.
@@ -97,11 +97,9 @@ namespace ACE.Database.Market
             if (!targetShape.Passed)
                 return targetShape;
 
-            foreach (var target in targets)
-            {
-                if (!IsAllowedEndpoint(target.Connection, settings.AllowedEndpoints))
-                    return new DevelopmentGuardResult(DevelopmentCheck.Endpoint, $"{target.Role} endpoint", $"{target.Role} endpoint {target.Endpoint} is not allowed (allowed: {string.Join(", ", settings.AllowedEndpoints)})");
-            }
+            var endpoints = CheckEndpoints(targets, settings.AllowedEndpoints);
+            if (!endpoints.Passed)
+                return endpoints;
 
             foreach (var target in targets)
             {
@@ -110,6 +108,12 @@ namespace ACE.Database.Market
                 if (!allowed.Contains(target.Connection.Database, StringComparer.Ordinal))
                     return new DevelopmentGuardResult(DevelopmentCheck.DatabaseName, $"{target.Role} database name", $"{target.Role} database '{target.Connection.Database}' is not allowed (allowed: {string.Join(", ", allowed)})");
             }
+
+            // each name is allowed on its own; the end-to-end databases are also only ever used together, so a mixed
+            // configuration can't seed end-to-end accounts into the development auth database (or the reverse)
+            var endToEndNames = targets.Count(IsEndToEndDatabase);
+            if (endToEndNames != 0 && endToEndNames != targets.Count)
+                return new DevelopmentGuardResult(DevelopmentCheck.DatabaseName, "database pair", $"{string.Join(" and ", targets.Select(t => $"{t.Role} database '{t.Connection.Database}'"))} are not one pair: {DevelopmentGuardSettings.E2EAuthDatabase} and {DevelopmentGuardSettings.E2EShardDatabase} are only used together");
 
             foreach (var target in targets)
             {
@@ -141,23 +145,31 @@ namespace ACE.Database.Market
             if (!targetShape.Passed)
                 return targetShape;
 
-            foreach (var target in targets)
-            {
-                if (!IsAllowedEndpoint(target.Connection, DevelopmentGuardSettings.DefaultEndpoints))
-                    return new DevelopmentGuardResult(DevelopmentCheck.Endpoint, $"{target.Role} endpoint", $"{target.Role} endpoint {target.Endpoint} is not allowed (allowed: {string.Join(", ", DevelopmentGuardSettings.DefaultEndpoints)})");
-            }
+            var endpoints = CheckEndpoints(targets, DevelopmentGuardSettings.DefaultEndpoints);
+            if (!endpoints.Passed)
+                return endpoints;
 
-            foreach (var target in targets)
-            {
-                var expected = target.Role == DevelopmentTarget.AuthRole
-                    ? DevelopmentGuardSettings.E2EAuthDatabase
-                    : DevelopmentGuardSettings.E2EShardDatabase;
+            var other = targets.FirstOrDefault(t => !IsEndToEndDatabase(t));
+            return other == null
+                ? DevelopmentGuardResult.Pass
+                : new DevelopmentGuardResult(DevelopmentCheck.DatabaseName, $"{other.Role} database name", $"{other.Role} database '{other.Connection.Database}' is not the fresh target '{EndToEndDatabase(other.Role)}'");
+        }
 
-                if (!string.Equals(target.Connection.Database, expected, StringComparison.Ordinal))
-                    return new DevelopmentGuardResult(DevelopmentCheck.DatabaseName, $"{target.Role} database name", $"{target.Role} database '{target.Connection.Database}' is not the fresh target '{expected}'");
-            }
+        /// <summary>
+        /// True when the targets are exactly the end-to-end pair, which the seed fills with the per-test-file accounts. Reads only the configuration.
+        /// </summary>
+        public static bool IsEndToEndPair(IReadOnlyList<DevelopmentTarget> targets) => CheckTargetShape(targets).Passed && targets.All(IsEndToEndDatabase);
 
-            return DevelopmentGuardResult.Pass;
+        private static string EndToEndDatabase(string role) => role == DevelopmentTarget.AuthRole ? DevelopmentGuardSettings.E2EAuthDatabase : DevelopmentGuardSettings.E2EShardDatabase;
+
+        private static bool IsEndToEndDatabase(DevelopmentTarget target) => string.Equals(target.Connection.Database, EndToEndDatabase(target.Role), StringComparison.Ordinal);
+
+        private static DevelopmentGuardResult CheckEndpoints(IReadOnlyList<DevelopmentTarget> targets, IReadOnlyList<string> allowed)
+        {
+            var refused = targets.FirstOrDefault(t => !IsAllowedEndpoint(t.Connection, allowed));
+            return refused == null
+                ? DevelopmentGuardResult.Pass
+                : new DevelopmentGuardResult(DevelopmentCheck.Endpoint, $"{refused.Role} endpoint", $"{refused.Role} endpoint {refused.Endpoint} is not allowed (allowed: {string.Join(", ", allowed)})");
         }
 
         private static DevelopmentGuardResult CheckTargetShape(IReadOnlyList<DevelopmentTarget> targets)
