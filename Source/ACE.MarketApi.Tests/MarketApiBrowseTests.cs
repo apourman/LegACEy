@@ -57,15 +57,15 @@ namespace ACE.MarketApi.Tests
                 ("Egg", true, (int)ItemType.Food, "workmanship = 1", 1000),
             };
 
-            var aaronCookie = await host.SignInForCookieAsync(aaron, "pass");
-            var bellaCookie = await host.SignInForCookieAsync(bella, "pass");
+            var aaronSession = await host.SignInForSessionAsync(aaron, "pass");
+            var bellaSession = await host.SignInForSessionAsync(bella, "pass");
 
             foreach (var item in items)
             {
                 var guid = MarketApiTestData.AddVaultItem(item.Aaron ? aaronId : bellaId, item.Aaron ? aaronChar : bellaChar, $"{market.Token} {item.Name}", VaultItemState.Held);
                 MarketApiTestData.SetVaultColumns(guid, $"item_Type = {item.Type}, {item.Columns}");
 
-                var response = await host.PostJsonAsync("/api/listings", new { itemGuid = guid, price = item.Price }, item.Aaron ? aaronCookie : bellaCookie);
+                var response = await host.PostJsonAsync("/api/listings", new { itemGuid = guid, price = item.Price }, item.Aaron ? aaronSession : bellaSession);
                 Assert.AreEqual(HttpStatusCode.Created, response.StatusCode, await response.Content.ReadAsStringAsync());
                 market.Ids[item.Name] = (await MarketApiHost.JsonAsync(response)).GetProperty("id").GetInt64();
 
@@ -227,7 +227,7 @@ namespace ACE.MarketApi.Tests
             var extra = MarketApiTestData.UniqueName("cheap");
             var extraId = MarketApiTestData.CreateAccount(extra, "pass");
             var guid = MarketApiTestData.AddVaultItem(extraId, MarketApiTestData.AddCharacter(extraId, extra + "C"), market.Token + " Apple", VaultItemState.Held);
-            Assert.AreEqual(HttpStatusCode.Created, (await host.PostJsonAsync("/api/listings", new { itemGuid = guid, price = 2 }, await host.SignInForCookieAsync(extra, "pass"))).StatusCode);
+            Assert.AreEqual(HttpStatusCode.Created, (await host.PostJsonAsync("/api/listings", new { itemGuid = guid, price = 2 }, await host.SignInForSessionAsync(extra, "pass"))).StatusCode);
 
             CollectionAssert.AreEqual(new[] { "Cap", "Axe" }, await NamesAsync(host, market, market.Query + "&sort=price&limit=2&cursor=" + Uri.EscapeDataString(cursor)));
         }

@@ -3,3 +3,7 @@
 !market-web/**
 market-web/node_modules/
 market-web/dist/
+market-web/build/
+market-web/.react-router/
+market-web/test-results/
+market-web/playwright-report/

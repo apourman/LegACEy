@@ -148,11 +148,11 @@ namespace ACE.MarketApi.Tests
                 client.DefaultRequestHeaders.Add(ServiceGate.KeyHeader, MarketApiHost.ServiceKey);
                 Assert.AreEqual(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/me")).StatusCode, "with the key, /me still needs a sign-in");
 
-                var login = await client.PostAsync("/api/auth/login", JsonContent.Create(new { account = name, password = "secret" }));
+                var login = await client.PostAsync("/api/auth/session", JsonContent.Create(new { account = name, password = "secret" }));
                 Assert.AreEqual(HttpStatusCode.OK, login.StatusCode, await login.Content.ReadAsStringAsync());
 
                 var me = new HttpRequestMessage(HttpMethod.Get, "/api/me");
-                me.Headers.Add("Cookie", MarketApiHost.SessionCookie(login));
+                me.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", MarketApiHost.SessionToken(await MarketApiHost.JsonAsync(login)));
                 var meResponse = await client.SendAsync(me);
 
                 Assert.AreEqual(HttpStatusCode.OK, meResponse.StatusCode);
@@ -205,7 +205,6 @@ namespace ACE.MarketApi.Tests
             startInfo.ArgumentList.Add($"--Market:AceConfigPath={Path.Combine(dir, "Config.js")}");
             startInfo.ArgumentList.Add($"--Market:AuthDatabase={MarketApiTestData.AuthDatabase}");
             startInfo.ArgumentList.Add($"--Market:ShardDatabase={shardDatabase}");
-            startInfo.ArgumentList.Add($"--Market:KeysPath={MarketApiHost.NewKeysPath()}");
             startInfo.ArgumentList.Add(MarketApiHost.ServiceKeyArgument);
 
             var process = new Process { StartInfo = startInfo };

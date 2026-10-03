@@ -30,8 +30,8 @@ RUN apt-get update \
 WORKDIR /app
 COPY --from=build /app .
 
-# the named volumes for the cookie keys and the icon cache start out owned by the non-root user
-RUN mkdir -p /data/keys /data/icon-cache && chown -R app:app /data
+# the named volume for the icon cache starts out owned by the non-root user
+RUN mkdir -p /data/icon-cache && chown -R app:app /data
 
 USER app
 ENV ASPNETCORE_HTTP_PORTS=8080

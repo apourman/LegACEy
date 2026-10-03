@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { getHistory, type HistoryItem, type HistoryTransfer } from './api';
 import { useSession } from './session';
 
@@ -12,7 +12,8 @@ export function History() {
   const [balance, setBalance] = useState(0);
   const [transferCursor, setTransferCursor] = useState<number | null>(null);
   const [itemCursor, setItemCursor] = useState<number | null>(null);
-  const [loading, setLoading] = useState(false);
+  // signed in, the page that arrives from the server says it is loading, not that there is no history: it loads in the browser
+  const [loading, setLoading] = useState(session.me !== null);
   const [loadingTransfers, setLoadingTransfers] = useState(false);
   const [loadingItems, setLoadingItems] = useState(false);
   const [error, setError] = useState('');

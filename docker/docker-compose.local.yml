@@ -23,7 +23,8 @@ services:
       start_period: 20s
 
   # The Market API (local only): its own image, reaching ace-db over the compose network. The game server runs natively on the host.
-  # After an API code change: docker compose -f docker/docker-compose.local.yml up -d --build market-api
+  # It is private: no host port. Only the BFF (market-web) reaches it, on the market network they share; scripts/market/api.sh waits on the
+  # container's own health check. After an API code change: scripts/market/api.sh
   market-api:
     build:
       context: ../Source
@@ -38,19 +39,20 @@ services:
       Market__DatabaseUsername: ${MYSQL_USER:-}
       Market__DatabasePassword: ${MYSQL_PASSWORD:-}
       Market__ServiceKey: ${MARKET_SERVICE_KEY:-}
-    ports:
-      # loopback only: plain HTTP is never reachable from another machine
-      - "127.0.0.1:${MARKET_API_PORT:-5080}:8080"
+    networks:
+      - default
+      - market
     volumes:
       - ./market-api/appsettings.Local.json:/app/appsettings.Local.json:ro
       # ACE's configuration with no login in it: ace-db:3306 and /ace/Dats
       - ../Source/ACE.Server/Config.js.docker:/ace/Config/Config.js:ro
       - ${ACE_HOST_DAT_DIRECTORY:-${HOME}/ace_dats/retail}:/ace/Dats:ro
-      # sessions and icons survive a rebuild
-      - market-api-keys:/data/keys
+      # cached icons survive a rebuild (sessions live in the database)
       - market-api-icons:/data/icon-cache
     # health: the image's HEALTHCHECK (GET /health, which needs no key)
 
+  # The BFF: the website's own server (market-web/server.js) with live reload, the one local origin, on the host's loopback only.
+  # It is on the market network alone: it reaches market-api, never ace-db.
   market-web:
     build:
       context: ..
@@ -58,17 +60,35 @@ services:
     depends_on:
       market-api:
         condition: service_healthy
-    # the dev proxy (market-web/vite.config.ts) adds the service key to every /api request it forwards
+    # each from docker.env: the API's service key, and the secret that signs the session cookie (scripts/market/web.sh checks both first)
     environment:
+      MARKET_API_URL: http://market-api:8080
       MARKET_SERVICE_KEY: ${MARKET_SERVICE_KEY:-}
+      MARKET_COOKIE_SECRET: ${MARKET_COOKIE_SECRET:-}
+      # no reverse proxy locally, so no trusted proxy: the client IP is the connection's address. The port is published on the host's
+      # 127.0.0.1 only, and Docker delivers those connections from the network's gateway, which therefore counts as 127.0.0.1.
+      MARKET_TRUSTED_PROXY: ""
+      MARKET_GATEWAY_IS_LOOPBACK: "true"
+    networks:
+      - market
     ports:
       - "127.0.0.1:${MARKET_WEB_PORT:-5173}:5173"
     volumes:
       - ${MARKET_WEB_SOURCE:-../market-web}:/app
       - market-web-dependencies:/app/node_modules
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      # npm ci runs first on every start
+      start_period: 180s
+
+networks:
+  # the BFF and the API, and nothing else
+  market:
 
 volumes:
   market-web-dependencies:
   db-data:
-  market-api-keys:
   market-api-icons:

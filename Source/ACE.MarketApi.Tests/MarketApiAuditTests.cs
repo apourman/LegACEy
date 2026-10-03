@@ -60,7 +60,6 @@ namespace ACE.MarketApi.Tests
             {
                 $"--Market:AuthDatabase={MarketApiTestData.AuthDatabase}",
                 $"--Market:ShardDatabase={Db}",
-                $"--Market:KeysPath={MarketApiHost.NewKeysPath()}",
                 MarketApiHost.ServiceKeyArgument,
             }, builder => builder.WebHost.UseTestServer());
 
@@ -85,8 +84,8 @@ namespace ACE.MarketApi.Tests
             await using (var host = await StartAsync(LedgerAuditSchedule.Default))
             {
                 var listed = NewListing(host, seller, 120);
-                var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
-                var response = await PurchaseAsync(host, cookie, listed);
+                var session = await host.SignInForSessionAsync(buyer.Name, "pass");
+                var response = await PurchaseAsync(host, session, listed);
                 Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
             }
 
@@ -98,8 +97,8 @@ namespace ACE.MarketApi.Tests
                 Assert.IsFalse(logs.Any(LogLevel.Critical), string.Join("\n", logs.Lines));
 
                 var listed = NewListing(host, seller, 5);
-                var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
-                Assert.AreEqual(HttpStatusCode.OK, (await PurchaseAsync(host, cookie, listed)).StatusCode);
+                var session = await host.SignInForSessionAsync(buyer.Name, "pass");
+                Assert.AreEqual(HttpStatusCode.OK, (await PurchaseAsync(host, session, listed)).StatusCode);
             }
         }
 
@@ -120,10 +119,10 @@ namespace ACE.MarketApi.Tests
 
             var listed = NewListing(host, seller, 50);
             var held = MarketApiTestData.AddVaultItem(seller.AccountId, seller.CharacterId, "Held Helm", VaultItemState.Held, database: Db);
-            var buyerCookie = await host.SignInForCookieAsync(buyer.Name, "pass");
-            var sellerCookie = await host.SignInForCookieAsync(seller.Name, "pass");
+            var buyerSession = await host.SignInForSessionAsync(buyer.Name, "pass");
+            var sellerSession = await host.SignInForSessionAsync(seller.Name, "pass");
 
-            var refused = await PurchaseAsync(host, buyerCookie, listed);
+            var refused = await PurchaseAsync(host, buyerSession, listed);
             Assert.AreEqual(HttpStatusCode.ServiceUnavailable, refused.StatusCode);
             Assert.AreEqual("paused", await MarketApiHost.ErrorAsync(refused));
             Assert.AreEqual(500, Balance(buyer.AccountId), "nothing was charged");
@@ -131,14 +130,14 @@ namespace ACE.MarketApi.Tests
             // browsing and listing go on
             Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/api/listings")).StatusCode);
             Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync($"/api/listings/{listed.ListingId}")).StatusCode);
-            var listing = await host.PostJsonAsync("/api/listings", new { itemGuid = held, price = 7 }, sellerCookie);
+            var listing = await host.PostJsonAsync("/api/listings", new { itemGuid = held, price = 7 }, sellerSession);
             Assert.AreEqual(HttpStatusCode.Created, listing.StatusCode, await listing.Content.ReadAsStringAsync());
 
             // the admin fixes the books and resumes, as /market resume does
             MarketTestDatabase.Execute(Db, $"UPDATE market_balance SET balance = 10 WHERE account_Id = {balanceHolder};");
             Resume();
 
-            var bought = await PurchaseAsync(host, buyerCookie, listed);
+            var bought = await PurchaseAsync(host, buyerSession, listed);
             Assert.AreEqual(HttpStatusCode.OK, bought.StatusCode, await bought.Content.ReadAsStringAsync());
             Assert.AreEqual(450, Balance(buyer.AccountId));
         }
@@ -164,8 +163,8 @@ namespace ACE.MarketApi.Tests
             }
 
             var listed = NewListing(host, seller, 50);
-            var cookie = await host.SignInForCookieAsync(buyer.Name, "pass");
-            var refused = await PurchaseAsync(host, cookie, listed);
+            var session = await host.SignInForSessionAsync(buyer.Name, "pass");
+            var refused = await PurchaseAsync(host, session, listed);
             Assert.AreEqual(HttpStatusCode.ServiceUnavailable, refused.StatusCode);
             Assert.AreEqual("paused", await MarketApiHost.ErrorAsync(refused));
         }
@@ -206,8 +205,8 @@ namespace ACE.MarketApi.Tests
             return new Listed(guid, id, price);
         }
 
-        private static Task<HttpResponseMessage> PurchaseAsync(MarketApiHost host, string cookie, Listed listed) =>
-            host.PostJsonAsync($"/api/listings/{listed.ListingId}/purchase", new { count = 1, expectedPrice = listed.Price, idempotencyKey = Guid.NewGuid().ToString("N") }, cookie);
+        private static Task<HttpResponseMessage> PurchaseAsync(MarketApiHost host, string session, Listed listed) =>
+            host.PostJsonAsync($"/api/listings/{listed.ListingId}/purchase", new { count = 1, expectedPrice = listed.Price, idempotencyKey = Guid.NewGuid().ToString("N") }, session);
 
         private static long Balance(uint accountId) => MarketTestDatabase.Scalar(Db, $"SELECT IFNULL((SELECT balance FROM market_balance WHERE account_Id = {accountId}), 0);");
 

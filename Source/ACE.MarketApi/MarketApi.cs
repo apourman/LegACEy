@@ -1,20 +1,15 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Metadata;
-using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,10 +26,8 @@ namespace ACE.MarketApi
     /// </summary>
     public static class MarketApi
     {
-        public const string SessionCookieName = "market_session";
-
         /// <summary>
-        /// Every route is served under this path; the website owns the rest of the origin
+        /// Every route is served under this path; the BFF forwards its allowlisted /api/* routes as they are
         /// </summary>
         public const string PathBase = "/api";
 
@@ -91,33 +84,18 @@ namespace ACE.MarketApi
             builder.Services.AddHostedService<LedgerAuditService>();
             builder.Services.TryAddSingleton(TimeProvider.System);
 
-            builder.Services.AddDataProtection()
-                .SetApplicationName("ACE.MarketApi")
-                .PersistKeysToFileSystem(new DirectoryInfo(options.KeysPath));
-
-            builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
-                .AddCookie(cookie =>
-                {
-                    cookie.Cookie.Name = SessionCookieName;
-                    cookie.Cookie.HttpOnly = true;
-                    cookie.Cookie.SameSite = SameSiteMode.Lax;
-                    cookie.Cookie.SecurePolicy = options.SecureCookies ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest;
-                    cookie.ExpireTimeSpan = TimeSpan.FromDays(14);
-                    cookie.SlidingExpiration = true;
-
-                    // a JSON API: answer 401/403 instead of redirecting to a login page
-                    cookie.Events.OnRedirectToLogin = context => MarketHttp.WriteUnauthorized(context.Response);
-                    cookie.Events.OnRedirectToAccessDenied = context => MarketHttp.WriteError(context.Response, StatusCodes.Status403Forbidden, "forbidden");
-                    cookie.Events.OnValidatePrincipal = ValidateSession;
-                })
+            // Signed in by "Authorization: Bearer" only: the BFF's web session (the default scheme, so a route that allows anonymous callers still
+            // sees a signed-in visitor) or the plugin's token. The API keeps no cookie and has no CSRF check: browsers never reach it, and a
+            // browser never sends a bearer token on its own. Cross-site protection lives in the BFF.
+            builder.Services.AddAuthentication(WebSessionAuthenticationHandler.SchemeName)
                 .AddScheme<AuthenticationSchemeOptions, PluginTokenAuthenticationHandler>(PluginTokenAuthenticationHandler.SchemeName, null)
                 .AddScheme<AuthenticationSchemeOptions, WebSessionAuthenticationHandler>(WebSessionAuthenticationHandler.SchemeName, null);
 
-            // RequireAuthorization takes a bearer token (the plugin's, or the BFF's web session) or the website's cookie. Each challenge that can
-            // answer writes the 401 JSON body only if no earlier one has (MarketHttp.WriteUnauthorized), so the scheme order can't leave it empty.
+            // RequireAuthorization takes either bearer token. Each challenge that can answer writes the 401 JSON body only if no earlier one has
+            // (MarketHttp.WriteUnauthorized), so the scheme order can't leave it empty.
             builder.Services.AddAuthorization(authorization =>
             {
-                authorization.DefaultPolicy = new AuthorizationPolicyBuilder(BearerSchemes.Append(CookieAuthenticationDefaults.AuthenticationScheme).ToArray())
+                authorization.DefaultPolicy = new AuthorizationPolicyBuilder(BearerSchemes)
                     .RequireAuthenticatedUser()
                     .Build();
 
@@ -126,26 +104,10 @@ namespace ACE.MarketApi
                     .RequireAuthenticatedUser());
             });
 
-            // behind a reverse proxy the connection's IP is the proxy's; trust X-Forwarded-For from the configured proxies only
-            if (options.TrustedProxies.Length > 0)
-            {
-                builder.Services.Configure<ForwardedHeadersOptions>(forwarded =>
-                {
-                    forwarded.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-
-                    foreach (var proxy in options.TrustedProxies)
-                        forwarded.KnownProxies.Add(IPAddress.Parse(proxy));
-                });
-            }
-
             // answers name no server software
             builder.WebHost.ConfigureKestrel(kestrel => kestrel.AddServerHeader = false);
 
             var app = builder.Build();
-
-            // the connection's address only: X-Forwarded-For from a configured proxy. Removed with TrustedProxies once the BFF is the only caller.
-            if (options.TrustedProxies.Length > 0)
-                app.UseForwardedHeaders();
 
             // health, the service key and X-Market-Client-Ip, before routing and authentication. UseRouting is explicit so that
             // WebApplication doesn't add it at the start of the pipeline, ahead of the gate.
@@ -155,7 +117,8 @@ namespace ACE.MarketApi
             app.UseAuthentication();
             app.UseAuthorization();
 
-            // the website and the API share one origin: the website owns /, the API /api. No CORS policy, so other origins can't read answers.
+            // the API is private: only the BFF calls it, on the network they share. No CORS policy, and X-Forwarded-For means nothing here:
+            // the player's address comes from the BFF's X-Market-Client-Ip (ServiceGate).
             MapEndpoints(app);
 
             return app;
@@ -173,23 +136,19 @@ namespace ACE.MarketApi
             });
 
         /// <summary>
-        /// Maps every route under /api with the CSRF filter. Mapping needs the services registered, not the database or the DATs,
-        /// so the OpenAPI generator (MarketOpenApi) maps the same routes on placeholders.
+        /// Maps every route under /api. Mapping needs the services registered, not the database or the DATs, so the OpenAPI generator
+        /// (MarketOpenApi) maps the same routes on placeholders.
         /// </summary>
         public static void MapEndpoints(IEndpointRouteBuilder app)
         {
             var api = app.MapGroup(PathBase);
-            api.AddEndpointFilter(RequireRequestHeader);
 
-            // the document shows the answers the group adds: 401 where sign-in is required, and 403 csrf where RequireRequestHeader can refuse.
-            // A finally convention runs after each route's own conventions, so it sees RequireAuthorization.
+            // the document shows the 401 the group adds where sign-in is required. A finally convention runs after each route's own
+            // conventions, so it sees RequireAuthorization.
             ((IEndpointConventionBuilder)api).Finally(endpoint =>
             {
                 if (endpoint.Metadata.OfType<IAuthorizeData>().Any())
                     DeclareError(endpoint, StatusCodes.Status401Unauthorized);
-
-                if (endpoint.Metadata.OfType<HttpMethodMetadata>().SelectMany(m => m.HttpMethods).Any(IsChange))
-                    DeclareError(endpoint, StatusCodes.Status403Forbidden);
             });
 
             AuthEndpoints.Map(api);
@@ -204,49 +163,9 @@ namespace ACE.MarketApi
         }
 
         /// <summary>
-        /// The header every website request carries. Another site can make a browser send the session cookie, but not a custom header,
-        /// without a CORS preflight the API never approves.
-        /// </summary>
-        public const string RequestHeader = "X-Market-Request";
-
-        /// <summary>
-        /// The schemes signed in by "Authorization: Bearer", in the order they're challenged: in the default policy (ahead of the cookie), and
-        /// exempt from the CSRF header, since a browser never sends a bearer token on its own. A new bearer scheme goes here.
+        /// The schemes signed in by "Authorization: Bearer", in the order they're challenged in the default policy. A new bearer scheme goes here.
         /// </summary>
         private static readonly string[] BearerSchemes = { PluginTokenAuthenticationHandler.SchemeName, WebSessionAuthenticationHandler.SchemeName };
-
-        /// <summary>
-        /// CSRF: a request that changes something and is signed in by the session cookie must carry X-Market-Request: 1, or it's refused (403 csrf).
-        /// A request signed in by a bearer token (a plugin token or a web session) is exempt: a browser never sends one on its own.
-        /// </summary>
-        private static async ValueTask<object> RequireRequestHeader(EndpointFilterInvocationContext invocation, EndpointFilterDelegate next)
-        {
-            var context = invocation.HttpContext;
-
-            if (!IsChange(context.Request.Method))
-                return await next(invocation);
-
-            if (context.Request.Headers[RequestHeader] == "1")
-                return await next(invocation);
-
-            // each is cached for the request, so the authorization middleware's own authentication isn't repeated
-            foreach (var scheme in BearerSchemes)
-            {
-                if ((await context.AuthenticateAsync(scheme)).Succeeded)
-                    return await next(invocation);
-            }
-
-            if (!(await context.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)).Succeeded)
-                return await next(invocation);
-
-            return MarketHttp.Error(StatusCodes.Status403Forbidden, "csrf");
-        }
-
-        /// <summary>
-        /// Every method but GET, HEAD, OPTIONS and TRACE may change something
-        /// </summary>
-        private static bool IsChange(string method) =>
-            !(HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method) || HttpMethods.IsTrace(method));
 
         private static void DeclareError(EndpointBuilder endpoint, int statusCode)
         {
@@ -256,7 +175,7 @@ namespace ACE.MarketApi
 
         /// <summary>
         /// True when the account is banned now. The market has then noticed the ban: the account's listings go back to its Vault, and every
-        /// web session of the account is revoked for good. Every signed-in request (cookie, plugin token or web session) asks this.
+        /// web session of the account is revoked for good. Every signed-in request (web session or plugin token) asks this.
         /// </summary>
         public static bool NoticeBan(MarketDatabase database, Account account, DateTime now)
         {
@@ -265,26 +184,6 @@ namespace ACE.MarketApi
 
             MarketUpkeep.ReturnListingsAndEndWebSessions(database, new[] { account.AccountId }, now);
             return true;
-        }
-
-        /// <summary>
-        /// Bans are checked on every request, so a session stops working as soon as a ban is in force
-        /// </summary>
-        private static async Task ValidateSession(CookieValidatePrincipalContext context)
-        {
-            var services = context.HttpContext.RequestServices;
-            var now = services.GetRequiredService<TimeProvider>().GetUtcNow().UtcDateTime;
-
-            Account account = null;
-
-            if (MarketHttp.TryGetAccountId(context.Principal, out var accountId))
-                account = await services.GetRequiredService<MarketDatabase>().FindAccountAsync(accountId);
-
-            if (account == null || NoticeBan(services.GetRequiredService<MarketDatabase>(), account, now))
-            {
-                context.RejectPrincipal();
-                await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-            }
         }
     }
 

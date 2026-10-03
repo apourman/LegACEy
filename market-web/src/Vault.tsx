@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { delistVaultItem, depositVaultItem, getTicket, getVault, listVaultItem, messages, requestInventorySnapshot, withdrawMmd, withdrawVaultItem, type InventorySnapshot, type VaultItem } from './api';
 import { Icon, VaultAppraisalPopover } from './Appraisal';
 import { useSession } from './session';
@@ -9,7 +9,8 @@ export function Vault() {
   const session = useSession();
   const [items, setItems] = useState<VaultItem[]>([]);
   const [prices, setPrices] = useState<Record<number, string>>({});
-  const [loading, setLoading] = useState(false);
+  // signed in, the page that arrives from the server says it is loading, not that the Vault is empty: the items load in the browser
+  const [loading, setLoading] = useState(session.me !== null);
   const [busyItem, setBusyItem] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');

@@ -16,8 +16,8 @@ namespace ACE.MarketApi
     /// <item>Every other request needs X-Market-Service-Key, compared in constant time with the configured key; a missing or wrong key gets
     /// a bare 401 (no body, no challenge header), so the answer says nothing about the API behind it.</item>
     /// <item>On a request with the right key, X-Market-Client-Ip (the player's address, as the BFF saw it) becomes the connection's remote address,
-    /// so the sign-in limits and logging count the player rather than the BFF. Without it, the connection address is used (after the
-    /// TrustedProxies forwarded headers, when configured). A value that isn't one plain IP address gets a bare 400: guessing would pool players.</item>
+    /// so the sign-in limits and logging count the player rather than the BFF. Without it, the connection address is used; X-Forwarded-For
+    /// is never read. A value that isn't one plain IP address gets a bare 400: guessing would pool players.</item>
     /// </list>
     /// </summary>
     public sealed class ServiceGate

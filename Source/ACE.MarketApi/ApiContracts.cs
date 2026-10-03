@@ -30,7 +30,6 @@ namespace ACE.MarketApi
         };
     }
     public sealed record OkResponse(bool Ok);
-    public sealed record LoginResponse(uint AccountId, string AccountName);
     /// <param name="Token">the session's bearer token; only its hash is stored, so it can't be shown again</param>
     /// <param name="IdleExpiresTime">when the session ends unless used; each use moves it on, never past AbsoluteExpiresTime</param>
     /// <param name="AbsoluteExpiresTime">when the session ends however much it's used</param>
