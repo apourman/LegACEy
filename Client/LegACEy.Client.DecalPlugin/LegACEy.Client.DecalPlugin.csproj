@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x86</PlatformTarget>
+    <Prefer32Bit>true</Prefer32Bit>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <DecalInstallDir Condition="'$(DecalInstallDir)' == ''">C:\Program Files (x86)\Decal 3.0</DecalInstallDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="UtilityBelt.Service" Version="3.0.15" ExcludeAssets="runtime" />
+    <Reference Include="Decal.Adapter">
+      <HintPath>$(DecalInstallDir)\Decal.Adapter.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <ProjectReference Include="..\LegACEy.Client.PanelHost\LegACEy.Client.PanelHost.csproj" />
+  </ItemGroup>
+
+  <Target Name="VerifyAvaloniaX86NativeAssets" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
+    <Error Condition="!Exists('$(TargetDir)x86\libSkiaSharp.dll')" Text="The x86 SkiaSharp native library must ship in the plugin output." />
+    <Error Condition="!Exists('$(TargetDir)x86\libHarfBuzzSharp.dll')" Text="The x86 HarfBuzz native library must ship in the plugin output." />
+  </Target>
+</Project>
