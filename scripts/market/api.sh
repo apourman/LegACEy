@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Builds and (re)starts the Market API container alone, then waits for its health check. Run it again after an API code change.
-# The API listens on 127.0.0.1:$MARKET_API_PORT only.
+# The API listens on 127.0.0.1:$MARKET_API_PORT only, and answers only requests carrying MARKET_SERVICE_KEY from docker.env (except /health).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
+# the API refuses to start without it; say so before building
+require_service_key
 db_running || { echo "ace-db is not running: run scripts/market/bootstrap.sh first." >&2; exit 1; }
 
 # --no-deps: ace-db is already up; never recreate it from here

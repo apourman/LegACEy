@@ -58,7 +58,7 @@ namespace ACE.MarketApi
             if (account == null)
                 return MarketHttp.Error(StatusCodes.Status401Unauthorized, "invalid_code");
 
-            if (account.IsBanned(now.UtcDateTime))
+            if (MarketApi.NoticeBan(database, account, now.UtcDateTime))
                 return MarketHttp.Error(StatusCodes.Status403Forbidden, "banned");
 
             var token = PluginAuth.Redeem(shard, linkCode, label, account.PasswordHash, now.UtcDateTime, out var secret);

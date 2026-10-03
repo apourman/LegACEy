@@ -51,5 +51,12 @@ namespace ACE.MarketApi
         /// the proxy's IP, and the sign-in IP block would block everyone.
         /// </summary>
         public string[] TrustedProxies { get; set; } = System.Array.Empty<string>();
+
+        /// <summary>
+        /// The secret every request but the health check must carry in X-Market-Service-Key (ServiceGate). Required, at least
+        /// ServiceGate.MinimumKeyLength characters: the API refuses to start without it. Never in a file in git: locally it comes from
+        /// MARKET_SERVICE_KEY in the untracked docker.env, as Market__ServiceKey.
+        /// </summary>
+        public string ServiceKey { get; set; }
     }
 }

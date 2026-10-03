@@ -9,7 +9,7 @@ using ACE.Database.Models.Shard.Market;
 namespace ACE.Database.Tests.Market
 {
     /// <summary>
-    /// Seam 3: the market's cleanup of rows nothing reads any more (stored request results, link codes, plugin tokens), against real MySQL.
+    /// Seam 3: the market's cleanup of rows nothing reads any more (stored request results, link codes, plugin tokens, web sessions), against real MySQL.
     /// Finished tickets are the game bridge's own cleanup and must be left alone.
     /// </summary>
     [TestClass]
@@ -102,6 +102,34 @@ namespace ACE.Database.Tests.Market
         }
 
         [TestMethod]
+        public void Run_DeletesWebSessionsRevokedOrExpiredMoreThanAWeekAgo_KeepsTheRest()
+        {
+            var now = new DateTime(2026, 10, 1, 12, 0, 0, DateTimeKind.Utc);
+
+            using (var context = MarketTestDatabase.CreateContext(Db))
+            {
+                context.MarketWebSessions.Add(NewSession(1, idle: now.AddDays(13), absolute: now.AddDays(29), revoked: null));
+                context.MarketWebSessions.Add(NewSession(2, idle: now.AddDays(13), absolute: now.AddDays(29), revoked: now.AddDays(-8)));
+                context.MarketWebSessions.Add(NewSession(3, idle: now.AddDays(13), absolute: now.AddDays(29), revoked: now.AddDays(-6)));
+                context.MarketWebSessions.Add(NewSession(4, idle: now.AddDays(-8), absolute: now.AddDays(10), revoked: null));
+                context.MarketWebSessions.Add(NewSession(5, idle: now.AddDays(-6), absolute: now.AddDays(10), revoked: null));
+                context.MarketWebSessions.Add(NewSession(6, idle: now.AddDays(-8), absolute: now.AddDays(-8), revoked: null));
+                context.MarketWebSessions.Add(NewSession(7, idle: now.AddDays(-7).AddSeconds(1), absolute: now.AddDays(-7).AddSeconds(1), revoked: null));
+                context.SaveChanges();
+            }
+
+            MarketCleanupReport report;
+
+            using (var context = MarketTestDatabase.CreateContext(Db))
+                report = MarketCleanup.Run(context, now);
+
+            Assert.AreEqual(3, report.WebSessions, "revoked 8 days ago, idle 8 days ago, past both 8 days ago");
+            Assert.AreEqual(3, report.Total);
+            CollectionAssert.AreEquivalent(new[] { "1", "3", "5", "7" }, MarketTestDatabase.Rows(Db, "SELECT account_Id FROM market_web_session;"),
+                "the live session, and those that ended within the week, are kept");
+        }
+
+        [TestMethod]
         public void Run_LeavesTicketsToTheGameBridge()
         {
             var now = DateTime.UtcNow;
@@ -125,6 +153,18 @@ namespace ACE.Database.Tests.Market
             CharacterId = 1,
             ExpiresTime = expires,
             UsedTime = used,
+        };
+
+        private static WebSession NewSession(uint accountId, DateTime idle, DateTime absolute, DateTime? revoked) => new WebSession
+        {
+            TokenHash = Guid.NewGuid().ToByteArray(),
+            AccountId = accountId,
+            CreatedTime = absolute.AddDays(-30),
+            LastUsedTime = idle.AddDays(-14),
+            IdleExpiresTime = idle,
+            AbsoluteExpiresTime = absolute,
+            PasswordFingerprint = new byte[32],
+            RevokedTime = revoked,
         };
 
         private static PluginToken NewToken(string label, DateTime expires, DateTime? revoked) => new PluginToken

@@ -26,6 +26,26 @@ for name in "$MARKET_AUTH_DATABASE" "$MARKET_SHARD_DATABASE"; do
   [[ "$name" =~ ^[A-Za-z0-9_]+$ ]] || { echo "Database names may hold only letters, digits and _: '$name'" >&2; exit 1; }
 done
 
+# The Market API's service key, MARKET_SERVICE_KEY in docker.env (the same value compose gives the API and the website's dev proxy).
+# Prints it for capture; never echo it or put it on a command line. Fails, saying what to do, when it's missing or too short.
+service_key() {
+  local key
+  key="$(sed -n 's/^[[:space:]]*MARKET_SERVICE_KEY=//p' "$ROOT/docker.env" | tail -1 | tr -d '\r')"
+  key="${key#\"}"; key="${key%\"}"
+  # 32: the API's minimum, ServiceGate.MinimumKeyLength in Source/ACE.MarketApi/ServiceGate.cs; keep them equal
+  if (( ${#key} < 32 )); then
+    echo "MARKET_SERVICE_KEY in $ROOT/docker.env is missing or shorter than 32 characters." >&2
+    echo "Add a line: MARKET_SERVICE_KEY=<the output of: openssl rand -hex 32>" >&2
+    return 1
+  fi
+  printf '%s' "$key"
+}
+
+# exits when the service key isn't configured
+require_service_key() {
+  service_key >/dev/null || exit 1
+}
+
 # runs mysql in the ace-db container as the application user; the password stays inside the container
 db_sql() {
   "${COMPOSE[@]}" exec -T ace-db sh -c 'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql -u"$MYSQL_USER" --default-character-set=utf8mb4 "$@"' mysql "$@"

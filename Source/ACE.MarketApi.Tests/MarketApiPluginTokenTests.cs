@@ -44,16 +44,16 @@ namespace ACE.MarketApi.Tests
             // only hashes are stored: the code and the token can't be read back out of the database
             using var shard = MarketApiTestData.Shard();
             var codeRow = shard.MarketLinkCodes.AsNoTracking().Single(c => c.AccountId == player.AccountId);
-            CollectionAssert.AreEqual(PluginAuth.Hash(code), codeRow.CodeHash);
+            CollectionAssert.AreEqual(MarketCredentials.Hash(code), codeRow.CodeHash);
             Assert.IsFalse(codeRow.CodeHash.SequenceEqual(Encoding.UTF8.GetBytes(code)));
             Assert.IsNotNull(codeRow.UsedTime);
 
             var tokenRow = shard.MarketPluginTokens.AsNoTracking().Single(t => t.AccountId == player.AccountId);
-            CollectionAssert.AreEqual(PluginAuth.Hash(token), tokenRow.TokenHash);
+            CollectionAssert.AreEqual(MarketCredentials.Hash(token), tokenRow.TokenHash);
             Assert.IsFalse(tokenRow.TokenHash.SequenceEqual(Encoding.UTF8.GetBytes(token)));
             Assert.AreEqual(body.GetProperty("tokenId").GetInt64(), tokenRow.Id);
             Assert.AreEqual("Laptop", tokenRow.Label);
-            CollectionAssert.AreEqual(PluginAuth.Fingerprint(MarketApiTestData.PasswordHash(player.AccountId)), tokenRow.PasswordFingerprint);
+            CollectionAssert.AreEqual(MarketCredentials.Fingerprint(MarketApiTestData.PasswordHash(player.AccountId)), tokenRow.PasswordFingerprint);
             AssertTime(host.Clock.GetUtcNow().UtcDateTime.AddDays(90), tokenRow.ExpiresTime, "90 days by default");
         }
 

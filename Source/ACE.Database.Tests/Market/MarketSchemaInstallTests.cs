@@ -21,7 +21,7 @@ namespace ACE.Database.Tests.Market
         private static readonly string[] ExpectedTables =
         {
             "market_vault_item", "market_listing", "market_balance", "market_transfer", "market_ledger_entry", "market_item_event",
-            "market_ticket", "market_request", "market_link_code", "market_plugin_token", "market_blocked_wcid",
+            "market_ticket", "market_request", "market_link_code", "market_plugin_token", "market_blocked_wcid", "market_web_session",
         };
 
         // table|index|unique(0/1)|columns in order
@@ -58,6 +58,9 @@ namespace ACE.Database.Tests.Market
             "market_plugin_token|market_plugin_token_hash_uidx|1|token_Hash",
             "market_plugin_token|market_plugin_token_account_idx|0|account_Id",
             "market_blocked_wcid|PRIMARY|1|wcid",
+            "market_web_session|PRIMARY|1|id",
+            "market_web_session|market_web_session_hash_uidx|1|token_Hash",
+            "market_web_session|market_web_session_account_idx|0|account_Id",
         };
 
         // constraint|table|referenced table|delete rule|update rule
@@ -122,7 +125,7 @@ namespace ACE.Database.Tests.Market
         {
             // an existing server: base plus every earlier update, with live data, before the market script arrives
             MarketTestDatabase.CreateFromBase(ExistingDb);
-            MarketTestDatabase.ApplyAllUpdates(ExistingDb, f => f.Name != MarketTestDatabase.MarketUpdateScript && f.Name != MarketTestDatabase.TicketProgressUpdateScript);
+            MarketTestDatabase.ApplyAllUpdates(ExistingDb, f => f.Name != MarketTestDatabase.MarketUpdateScript && f.Name != MarketTestDatabase.TicketProgressUpdateScript && f.Name != MarketTestDatabase.WebSessionsUpdateScript);
 
             MarketTestDatabase.Execute(ExistingDb, "INSERT INTO biota (id, weenie_Class_Id, weenie_Type) VALUES (2147483649, 20630, 51);");
             MarketTestDatabase.Execute(ExistingDb, "INSERT INTO config_properties_long (`key`, `value`) VALUES ('existing_setting', 7);");
@@ -131,6 +134,7 @@ namespace ACE.Database.Tests.Market
 
             MarketTestDatabase.ApplyUpdate(ExistingDb, MarketTestDatabase.MarketUpdateScriptPath);
             MarketTestDatabase.ApplyUpdate(ExistingDb, MarketTestDatabase.TicketProgressUpdateScriptPath);
+            MarketTestDatabase.ApplyUpdate(ExistingDb, MarketTestDatabase.WebSessionsUpdateScriptPath);
 
             AssertFullMarketSchema(ExistingDb);
             Assert.AreEqual(1, MarketTestDatabase.Scalar(ExistingDb, "SELECT COUNT(*) FROM biota WHERE id = 2147483649;"));
@@ -166,6 +170,36 @@ namespace ACE.Database.Tests.Market
             MarketTestDatabase.ApplyUpdate(ExistingDb, MarketTestDatabase.TicketProgressUpdateScriptPath);
 
             CollectionAssert.AreEqual(before, SchemaSnapshot(ExistingDb), "second run changed the schema or data");
+        }
+
+        [TestMethod]
+        public void WebSessionsUpdate_AppliedTwice_SucceedsAndChangesNothing()
+        {
+            MarketTestDatabase.CreateFresh(ExistingDb);
+            MarketTestDatabase.Execute(ExistingDb,
+                "INSERT INTO market_web_session (token_Hash, account_Id, created_Time, last_Used_Time, idle_Expires_Time, absolute_Expires_Time, password_Fingerprint) " +
+                "VALUES (X'01', 1, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6), UTC_TIMESTAMP(6) + INTERVAL 14 DAY, UTC_TIMESTAMP(6) + INTERVAL 30 DAY, X'02');");
+            var before = SchemaSnapshot(ExistingDb);
+
+            MarketTestDatabase.ApplyUpdate(ExistingDb, MarketTestDatabase.WebSessionsUpdateScriptPath);
+
+            CollectionAssert.AreEqual(before, SchemaSnapshot(ExistingDb), "second run changed the schema or data");
+            Assert.AreEqual(1, MarketTestDatabase.Scalar(ExistingDb, "SELECT COUNT(*) FROM market_web_session;"));
+        }
+
+        [TestMethod]
+        public void SchemaCheck_WebSessionTableMissing_ReportsMissing()
+        {
+            var failures = MarketTestDatabase.CreateFresh(FreshDb);
+            Assert.AreEqual(0, failures.Count, string.Join(", ", failures.Keys));
+
+            MarketTestDatabase.Execute(FreshDb, "DROP TABLE market_web_session;");
+
+            using var context = MarketTestDatabase.CreateContext(FreshDb);
+            var result = MarketSchema.Check(context);
+
+            Assert.AreEqual(MarketSchemaStatus.Missing, result.Status);
+            CollectionAssert.AreEqual(new[] { "market_web_session" }, result.Missing.ToList());
         }
 
         [TestMethod]
@@ -312,7 +346,9 @@ namespace ACE.Database.Tests.Market
             snapshot.AddRange(MarketTestDatabase.Rows(database,
                 "SELECT TRIGGER_NAME, EVENT_OBJECT_TABLE, EVENT_MANIPULATION, ACTION_TIMING, ACTION_STATEMENT, CREATED FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() ORDER BY TRIGGER_NAME;"));
 
-            foreach (var table in ExpectedTables)
+            // the tables present: a snapshot may be of the market script alone, before the later scripts' tables exist
+            var present = MarketTestDatabase.Rows(database, "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE();");
+            foreach (var table in ExpectedTables.Where(present.Contains))
                 snapshot.Add($"{table} rows: {MarketTestDatabase.Scalar(database, $"SELECT COUNT(*) FROM `{table}`;")}");
             snapshot.Add("balance: " + string.Join(",", MarketTestDatabase.Rows(database, "SELECT * FROM market_balance ORDER BY account_Id;")));
 

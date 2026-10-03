@@ -61,6 +61,7 @@ namespace ACE.MarketApi.Tests
                 $"--Market:AuthDatabase={MarketApiTestData.AuthDatabase}",
                 $"--Market:ShardDatabase={Db}",
                 $"--Market:KeysPath={MarketApiHost.NewKeysPath()}",
+                MarketApiHost.ServiceKeyArgument,
             }, builder => builder.WebHost.UseTestServer());
 
             Assert.AreEqual(LedgerAuditSchedule.Default, app.Services.GetRequiredService<LedgerAuditSchedule>());

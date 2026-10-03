@@ -197,7 +197,7 @@ namespace ACE.MarketApi
         private static IQueryable<ListingCatalog.Row> VisibleNow(Database.Models.Shard.ShardDbContext shard, MarketDatabase database, TimeProvider time)
         {
             var now = time.GetUtcNow().UtcDateTime;
-            var banned = MarketUpkeep.ExpireAndReturnBanned(database, now);
+            var banned = MarketUpkeep.ExpireAndHandleBans(database, now);
 
             return ListingCatalog.Visible(shard, now, banned);
         }

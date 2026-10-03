@@ -31,11 +31,13 @@ services:
     depends_on:
       ace-db:
         condition: service_healthy
-    # only the application login from docker.env, never the root password: scripts/market/*.sh pass --env-file ../docker.env
+    # only the application login and the service key from docker.env, never the root password: scripts/market/*.sh pass --env-file ../docker.env.
+    # An empty service key stops the API at startup with a message saying so (scripts/market/api.sh checks it first).
     environment:
       ASPNETCORE_ENVIRONMENT: Local
       Market__DatabaseUsername: ${MYSQL_USER:-}
       Market__DatabasePassword: ${MYSQL_PASSWORD:-}
+      Market__ServiceKey: ${MARKET_SERVICE_KEY:-}
     ports:
       # loopback only: plain HTTP is never reachable from another machine
       - "127.0.0.1:${MARKET_API_PORT:-5080}:8080"
@@ -47,7 +49,7 @@ services:
       # sessions and icons survive a rebuild
       - market-api-keys:/data/keys
       - market-api-icons:/data/icon-cache
-    # health: the image's HEALTHCHECK (GET /api/facets)
+    # health: the image's HEALTHCHECK (GET /health, which needs no key)
 
   market-web:
     build:
@@ -56,6 +58,9 @@ services:
     depends_on:
       market-api:
         condition: service_healthy
+    # the dev proxy (market-web/vite.config.ts) adds the service key to every /api request it forwards
+    environment:
+      MARKET_SERVICE_KEY: ${MARKET_SERVICE_KEY:-}
     ports:
       - "127.0.0.1:${MARKET_WEB_PORT:-5173}:5173"
     volumes:

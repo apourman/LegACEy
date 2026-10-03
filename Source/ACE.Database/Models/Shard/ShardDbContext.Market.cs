@@ -6,7 +6,7 @@ namespace ACE.Database.Models.Shard;
 
 /// <summary>
 /// Market tables, mapped through the generated context's partial hook so that regenerating ShardDbContext.cs keeps them.
-/// The schema comes from Database/Updates/Shard/2026-09-28-00-Market-Schema.sql.
+/// The schema comes from Database/Updates/Shard/2026-09-28-00-Market-Schema.sql and the later market scripts beside it.
 /// When re-scaffolding the shard database, leave the market_* tables out: they're mapped here.
 /// </summary>
 public partial class ShardDbContext
@@ -30,6 +30,8 @@ public partial class ShardDbContext
     public virtual DbSet<LinkCode> MarketLinkCodes { get; set; }
 
     public virtual DbSet<PluginToken> MarketPluginTokens { get; set; }
+
+    public virtual DbSet<WebSession> MarketWebSessions { get; set; }
 
     public virtual DbSet<BlockedWcid> MarketBlockedWcids { get; set; }
 
@@ -238,6 +240,23 @@ public partial class ShardDbContext
             entity.Property(e => e.ExpiresTime).HasColumnType("datetime(6)").HasColumnName("expires_Time");
             entity.Property(e => e.RevokedTime).HasColumnType("datetime(6)").HasColumnName("revoked_Time");
             entity.Property(e => e.PasswordFingerprint).IsRequired().HasMaxLength(64).HasColumnName("password_Fingerprint");
+        });
+
+        modelBuilder.Entity<WebSession>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("PRIMARY");
+
+            entity.ToTable("market_web_session");
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.TokenHash).IsRequired().HasMaxLength(64).HasColumnName("token_Hash");
+            entity.Property(e => e.AccountId).HasColumnName("account_Id");
+            entity.Property(e => e.CreatedTime).HasColumnType("datetime(6)").HasColumnName("created_Time");
+            entity.Property(e => e.LastUsedTime).HasColumnType("datetime(6)").HasColumnName("last_Used_Time");
+            entity.Property(e => e.IdleExpiresTime).HasColumnType("datetime(6)").HasColumnName("idle_Expires_Time");
+            entity.Property(e => e.AbsoluteExpiresTime).HasColumnType("datetime(6)").HasColumnName("absolute_Expires_Time");
+            entity.Property(e => e.PasswordFingerprint).IsRequired().HasMaxLength(64).HasColumnName("password_Fingerprint");
+            entity.Property(e => e.RevokedTime).HasColumnType("datetime(6)").HasColumnName("revoked_Time");
         });
 
         modelBuilder.Entity<BlockedWcid>(entity =>

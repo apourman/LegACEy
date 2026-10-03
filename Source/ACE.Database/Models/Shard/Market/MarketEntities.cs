@@ -289,3 +289,36 @@ public class BlockedWcid
 
     public DateTime AddedTime { get; set; }
 }
+
+/// <summary>
+/// A web session issued at sign-in (for the BFF). Only the token's hash is stored.
+/// </summary>
+public class WebSession
+{
+    public long Id { get; set; }
+
+    public byte[] TokenHash { get; set; }
+
+    public uint AccountId { get; set; }
+
+    public DateTime CreatedTime { get; set; }
+
+    /// <summary>
+    /// Written at most once an hour, so frequent requests (ticket polling) don't write on every call
+    /// </summary>
+    public DateTime LastUsedTime { get; set; }
+
+    /// <summary>
+    /// Slides forward with use, never past AbsoluteExpiresTime
+    /// </summary>
+    public DateTime IdleExpiresTime { get; set; }
+
+    public DateTime AbsoluteExpiresTime { get; set; }
+
+    /// <summary>
+    /// A fingerprint of the account's password hash at sign-in; a password change ends the session
+    /// </summary>
+    public byte[] PasswordFingerprint { get; set; }
+
+    public DateTime? RevokedTime { get; set; }
+}

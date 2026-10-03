@@ -10,9 +10,9 @@ namespace ACE.Database.Market
     /// <summary>
     /// How many rows one cleanup deleted, per table
     /// </summary>
-    public sealed record MarketCleanupReport(int Requests, int LinkCodes, int PluginTokens)
+    public sealed record MarketCleanupReport(int Requests, int LinkCodes, int PluginTokens, int WebSessions)
     {
-        public int Total => Requests + LinkCodes + PluginTokens;
+        public int Total => Requests + LinkCodes + PluginTokens + WebSessions;
     }
 
     /// <summary>
@@ -33,15 +33,23 @@ namespace ACE.Database.Market
         public const int PluginTokenKeepDays = 30;
 
         /// <summary>
+        /// Web sessions that ended (revoked, idle too long, or past their absolute expiry) are kept this long, so an admin can still see recent ones.
+        /// Nothing else reads them: an ended session is refused whether its row exists or not.
+        /// </summary>
+        public const int WebSessionKeepDays = 7;
+
+        /// <summary>
         /// Deletes, each in one statement:
         /// request results older than RequestKeepDays;
         /// link codes that were used or have expired (a code can never be redeemed again, so they're deleted at once);
-        /// plugin tokens revoked or expired more than PluginTokenKeepDays ago.
+        /// plugin tokens revoked or expired more than PluginTokenKeepDays ago;
+        /// web sessions revoked or expired more than WebSessionKeepDays ago.
         /// </summary>
         public static MarketCleanupReport Run(ShardDbContext context, DateTime now)
         {
             var requestsBefore = now - TimeSpan.FromDays(RequestKeepDays);
             var tokensBefore = now - TimeSpan.FromDays(PluginTokenKeepDays);
+            var sessionsBefore = now - TimeSpan.FromDays(WebSessionKeepDays);
 
             var requests = context.MarketRequests
                 .Where(r => r.CreatedTime < requestsBefore)
@@ -56,7 +64,12 @@ namespace ACE.Database.Market
                 .Where(t => t.RevokedTime < tokensBefore || t.ExpiresTime < tokensBefore)
                 .ExecuteDelete();
 
-            return new MarketCleanupReport(requests, linkCodes, pluginTokens);
+            // the idle expiry is never past the absolute one, but both are checked so a hand-edited row is still cleaned up
+            var webSessions = context.MarketWebSessions
+                .Where(s => s.RevokedTime < sessionsBefore || s.IdleExpiresTime < sessionsBefore || s.AbsoluteExpiresTime < sessionsBefore)
+                .ExecuteDelete();
+
+            return new MarketCleanupReport(requests, linkCodes, pluginTokens, webSessions);
         }
     }
 }
