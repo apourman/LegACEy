@@ -82,12 +82,6 @@ public sealed class Plugin : FilterBase
         Guard(() =>
         {
             _panel = AvaloniaPanel.Create(CreateDemoControl, PanelWidth, PanelHeight);
-
-            // UtilityBelt releases and recreates managed textures from this bitmap around device
-            // resets; the next render uploads the current frame again.
-            using (var blank = new Bitmap(PanelWidth, PanelHeight))
-                _texture = new ManagedTexture(blank);
-
             _hud = UBService.Huds.CreateHud("LegACEy Avalonia");
             _hud.Title = "LegACEy Avalonia";
             _hud.OnRender += OnRender;
@@ -130,11 +124,22 @@ public sealed class Plugin : FilterBase
 
     private void OnRender(object? sender, EventArgs e)
     {
-        if (_failed || _panel == null || _texture?.Texture == null)
+        if (_failed || _panel == null)
             return;
 
         Guard(() =>
         {
+            // UtilityBelt has no Direct3D device until the game renders, so the texture is created
+            // on first render. UtilityBelt then releases and recreates it from this bitmap around
+            // device resets, leaving Texture null in between; the next render re-uploads the frame.
+            if (_texture == null)
+            {
+                using var blank = new Bitmap(PanelWidth, PanelHeight);
+                _texture = new ManagedTexture(blank);
+            }
+            if (_texture.Texture == null)
+                return;
+
             _panel.Tick();
             Upload(_panel.Frame, _texture.Texture);
             ImGui.Image(_texture.TexturePtr, new Vector2(PanelWidth, PanelHeight));
