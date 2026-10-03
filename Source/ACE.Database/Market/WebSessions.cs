@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Security.Cryptography;
 
 using Microsoft.EntityFrameworkCore;
 
@@ -31,14 +30,19 @@ namespace ACE.Database.Market
         private const int TokenBytes = 32;
 
         /// <summary>
+        /// The longest either lifetime setting is taken to be (10 years), whatever an admin sets
+        /// </summary>
+        public const long MaxLifetimeDays = 365 * 10;
+
+        /// <summary>
         /// The idle lifetime setting, in whole days. At least 1: an admin's 0 or negative value would end every session on arrival.
         /// </summary>
-        public static long IdleDays(ShardDbContext context) => Math.Clamp(MarketSettings.Get(context, MarketSettings.WebSessionIdleDays), 1, 365 * 10);
+        public static long IdleDays(ShardDbContext context) => Math.Clamp(MarketSettings.Get(context, MarketSettings.WebSessionIdleDays), 1, MaxLifetimeDays);
 
         /// <summary>
         /// The absolute lifetime setting, in whole days. At least 1, for the same reason.
         /// </summary>
-        public static long AbsoluteDays(ShardDbContext context) => Math.Clamp(MarketSettings.Get(context, MarketSettings.WebSessionAbsoluteDays), 1, 365 * 10);
+        public static long AbsoluteDays(ShardDbContext context) => Math.Clamp(MarketSettings.Get(context, MarketSettings.WebSessionAbsoluteDays), 1, MaxLifetimeDays);
 
         /// <summary>
         /// True when the bearer text is meant to be a web session (whether or not one exists)
@@ -52,20 +56,20 @@ namespace ACE.Database.Market
         /// <param name="token">the token to hand to the caller; only its hash is stored</param>
         public static WebSession Create(ShardDbContext context, uint accountId, string passwordHash, DateTime utcNow, out string token)
         {
-            token = TokenPrefix + PluginAuth.Base64Url(RandomNumberGenerator.GetBytes(TokenBytes));
+            token = TokenPrefix + MarketCredentials.NewSecret(TokenBytes);
 
-            var now = PluginAuth.TruncateToMicroseconds(utcNow);
+            var now = MarketCredentials.StoredTime(utcNow);
             var absolute = now.AddDays(AbsoluteDays(context));
 
             var session = new WebSession
             {
-                TokenHash = PluginAuth.Hash(token),
+                TokenHash = MarketCredentials.Hash(token),
                 AccountId = accountId,
                 CreatedTime = now,
                 LastUsedTime = now,
                 IdleExpiresTime = Earlier(now.AddDays(IdleDays(context)), absolute),
                 AbsoluteExpiresTime = absolute,
-                PasswordFingerprint = PluginAuth.Fingerprint(passwordHash),
+                PasswordFingerprint = MarketCredentials.Fingerprint(passwordHash),
             };
 
             context.MarketWebSessions.Add(session);
@@ -82,7 +86,7 @@ namespace ACE.Database.Market
             if (!IsSessionToken(token))
                 return null;
 
-            var hash = PluginAuth.Hash(token);
+            var hash = MarketCredentials.Hash(token);
 
             return context.MarketWebSessions.FirstOrDefault(s => s.TokenHash == hash);
         }
@@ -95,19 +99,19 @@ namespace ACE.Database.Market
             return session.RevokedTime == null
                 && utcNow < session.IdleExpiresTime
                 && utcNow < session.AbsoluteExpiresTime
-                && CryptographicOperations.FixedTimeEquals(session.PasswordFingerprint, PluginAuth.Fingerprint(passwordHash));
+                && MarketCredentials.FingerprintMatches(session.PasswordFingerprint, passwordHash);
         }
 
         /// <summary>
-        /// A use. When the last recorded use is at least RenewInterval old, records this one and slides the idle expiry, never past the absolute expiry.
+        /// A use. When the last recorded use is more than RenewInterval old, records this one and slides the idle expiry, never past the absolute expiry.
         /// Otherwise writes nothing. Returns true when it wrote. Only the two changed columns are written, so a concurrent revoke is never undone.
         /// </summary>
         public static bool Touch(ShardDbContext context, WebSession session, DateTime utcNow)
         {
-            if (utcNow - session.LastUsedTime < RenewInterval)
+            if (utcNow - session.LastUsedTime <= RenewInterval)
                 return false;
 
-            var now = PluginAuth.TruncateToMicroseconds(utcNow);
+            var now = MarketCredentials.StoredTime(utcNow);
 
             session.LastUsedTime = now;
             session.IdleExpiresTime = Earlier(now.AddDays(IdleDays(context)), session.AbsoluteExpiresTime);
@@ -121,7 +125,7 @@ namespace ACE.Database.Market
         /// </summary>
         public static void Revoke(ShardDbContext context, long sessionId, DateTime utcNow)
         {
-            var now = PluginAuth.TruncateToMicroseconds(utcNow);
+            var now = MarketCredentials.StoredTime(utcNow);
 
             context.MarketWebSessions
                 .Where(s => s.Id == sessionId && s.RevokedTime == null)
@@ -137,7 +141,7 @@ namespace ACE.Database.Market
             if (accountIds.Count == 0)
                 return 0;
 
-            var now = PluginAuth.TruncateToMicroseconds(utcNow);
+            var now = MarketCredentials.StoredTime(utcNow);
             var ids = accountIds.ToList();
             var live = context.MarketWebSessions.Where(s => ids.Contains(s.AccountId) && s.RevokedTime == null);
 

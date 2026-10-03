@@ -38,7 +38,7 @@ namespace ACE.Server.Tests.Market
             {
                 var row = shard.MarketLinkCodes.AsNoTracking().Single(c => c.AccountId == account);
 
-                CollectionAssert.AreEqual(PluginAuth.Hash(code), row.CodeHash);
+                CollectionAssert.AreEqual(MarketCredentials.Hash(code), row.CodeHash);
                 Assert.IsFalse(row.CodeHash.SequenceEqual(Encoding.UTF8.GetBytes(code)), "the code itself isn't stored");
                 Assert.AreEqual(player.Character.Id, row.CharacterId);
                 Assert.IsNull(row.UsedTime);

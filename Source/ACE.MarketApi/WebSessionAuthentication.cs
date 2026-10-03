@@ -26,7 +26,10 @@ namespace ACE.MarketApi
 
         public const string SessionIdClaim = "web_session";
 
-        private const string BearerPrefix = "Bearer ";
+        /// <summary>
+        /// The authorization policy that takes a web session and nothing else (sign-out)
+        /// </summary>
+        public const string PolicyName = "WebSessionOnly";
 
         public WebSessionAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
             : base(options, logger, encoder)
@@ -35,14 +38,9 @@ namespace ACE.MarketApi
 
         protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
         {
-            string header = Request.Headers.Authorization;
+            var secret = MarketHttp.BearerToken(Request);
 
-            if (header == null || !header.StartsWith(BearerPrefix, StringComparison.OrdinalIgnoreCase))
-                return AuthenticateResult.NoResult();
-
-            var secret = header.Substring(BearerPrefix.Length).Trim();
-
-            // a plugin token is the plugin scheme's
+            // no bearer token, or a plugin token, which is the plugin scheme's
             if (!WebSessions.IsSessionToken(secret))
                 return AuthenticateResult.NoResult();
 
@@ -81,14 +79,9 @@ namespace ACE.MarketApi
         }
 
         /// <summary>
-        /// Only the status: the plugin token scheme names Bearer in WWW-Authenticate, and the cookie scheme, challenged last, writes the JSON body
+        /// The API's 401 JSON body, unless an earlier challenge already wrote it. In the default policy the plugin token scheme, challenged
+        /// first, has named Bearer in WWW-Authenticate; on sign-out this is the only scheme.
         /// </summary>
-        protected override Task HandleChallengeAsync(AuthenticationProperties properties)
-        {
-            if (!Response.HasStarted)
-                Response.StatusCode = 401;
-
-            return Task.CompletedTask;
-        }
+        protected override Task HandleChallengeAsync(AuthenticationProperties properties) => MarketHttp.WriteUnauthorized(Response);
     }
 }

@@ -106,19 +106,25 @@ namespace ACE.MarketApi
                     cookie.SlidingExpiration = true;
 
                     // a JSON API: answer 401/403 instead of redirecting to a login page
-                    cookie.Events.OnRedirectToLogin = context => MarketHttp.WriteError(context.Response, StatusCodes.Status401Unauthorized, "unauthorized");
+                    cookie.Events.OnRedirectToLogin = context => MarketHttp.WriteUnauthorized(context.Response);
                     cookie.Events.OnRedirectToAccessDenied = context => MarketHttp.WriteError(context.Response, StatusCodes.Status403Forbidden, "forbidden");
                     cookie.Events.OnValidatePrincipal = ValidateSession;
                 })
                 .AddScheme<AuthenticationSchemeOptions, PluginTokenAuthenticationHandler>(PluginTokenAuthenticationHandler.SchemeName, null)
                 .AddScheme<AuthenticationSchemeOptions, WebSessionAuthenticationHandler>(WebSessionAuthenticationHandler.SchemeName, null);
 
-            // RequireAuthorization takes the plugin's bearer token, the BFF's web session bearer token or the website's cookie. The bearer schemes
-            // are challenged first and write no body (only the 401 status and WWW-Authenticate), so the cookie scheme writes the 401 body.
+            // RequireAuthorization takes a bearer token (the plugin's, or the BFF's web session) or the website's cookie. Each challenge that can
+            // answer writes the 401 JSON body only if no earlier one has (MarketHttp.WriteUnauthorized), so the scheme order can't leave it empty.
             builder.Services.AddAuthorization(authorization =>
-                authorization.DefaultPolicy = new AuthorizationPolicyBuilder(PluginTokenAuthenticationHandler.SchemeName, WebSessionAuthenticationHandler.SchemeName, CookieAuthenticationDefaults.AuthenticationScheme)
+            {
+                authorization.DefaultPolicy = new AuthorizationPolicyBuilder(BearerSchemes.Append(CookieAuthenticationDefaults.AuthenticationScheme).ToArray())
                     .RequireAuthenticatedUser()
-                    .Build());
+                    .Build();
+
+                authorization.AddPolicy(WebSessionAuthenticationHandler.PolicyName, policy => policy
+                    .AddAuthenticationSchemes(WebSessionAuthenticationHandler.SchemeName)
+                    .RequireAuthenticatedUser());
+            });
 
             // behind a reverse proxy the connection's IP is the proxy's; trust X-Forwarded-For from the configured proxies only
             if (options.TrustedProxies.Length > 0)
@@ -204,6 +210,12 @@ namespace ACE.MarketApi
         public const string RequestHeader = "X-Market-Request";
 
         /// <summary>
+        /// The schemes signed in by "Authorization: Bearer", in the order they're challenged: in the default policy (ahead of the cookie), and
+        /// exempt from the CSRF header, since a browser never sends a bearer token on its own. A new bearer scheme goes here.
+        /// </summary>
+        private static readonly string[] BearerSchemes = { PluginTokenAuthenticationHandler.SchemeName, WebSessionAuthenticationHandler.SchemeName };
+
+        /// <summary>
         /// CSRF: a request that changes something and is signed in by the session cookie must carry X-Market-Request: 1, or it's refused (403 csrf).
         /// A request signed in by a bearer token (a plugin token or a web session) is exempt: a browser never sends one on its own.
         /// </summary>
@@ -217,12 +229,12 @@ namespace ACE.MarketApi
             if (context.Request.Headers[RequestHeader] == "1")
                 return await next(invocation);
 
-            // both are cached for the request, so the authorization middleware's own authentication isn't repeated
-            if ((await context.AuthenticateAsync(PluginTokenAuthenticationHandler.SchemeName)).Succeeded)
-                return await next(invocation);
-
-            if ((await context.AuthenticateAsync(WebSessionAuthenticationHandler.SchemeName)).Succeeded)
-                return await next(invocation);
+            // each is cached for the request, so the authorization middleware's own authentication isn't repeated
+            foreach (var scheme in BearerSchemes)
+            {
+                if ((await context.AuthenticateAsync(scheme)).Succeeded)
+                    return await next(invocation);
+            }
 
             if (!(await context.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)).Succeeded)
                 return await next(invocation);
@@ -251,7 +263,7 @@ namespace ACE.MarketApi
             if (!account.IsBanned(now))
                 return false;
 
-            MarketUpkeep.NoticeBans(database, new[] { account.AccountId }, now);
+            MarketUpkeep.ReturnListingsAndEndWebSessions(database, new[] { account.AccountId }, now);
             return true;
         }
 

@@ -32,6 +32,7 @@ service_key() {
   local key
   key="$(sed -n 's/^[[:space:]]*MARKET_SERVICE_KEY=//p' "$ROOT/docker.env" | tail -1 | tr -d '\r')"
   key="${key#\"}"; key="${key%\"}"
+  # 32: the API's minimum, ServiceGate.MinimumKeyLength in Source/ACE.MarketApi/ServiceGate.cs; keep them equal
   if (( ${#key} < 32 )); then
     echo "MARKET_SERVICE_KEY in $ROOT/docker.env is missing or shorter than 32 characters." >&2
     echo "Add a line: MARKET_SERVICE_KEY=<the output of: openssl rand -hex 32>" >&2

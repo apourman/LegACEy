@@ -80,9 +80,9 @@ namespace ACE.MarketApi.Tests
         {
             var player = NewPlayer("wsno");
             var banned = NewPlayer("wsban");
-            MarketApiTestData.Ban(banned.AccountId, DateTime.UtcNow.AddDays(1));
 
             await using var host = await MarketApiHost.StartAsync();
+            MarketApiTestData.Ban(banned.AccountId, BanEnds(host));
 
             async Task Refused(HttpResponseMessage response, HttpStatusCode status, string code)
             {
@@ -169,8 +169,11 @@ namespace ACE.MarketApi.Tests
         {
             var player = NewPlayer("wshour");
 
-            await using var host = await MarketApiHost.StartAsync();
-            var signedIn = Microseconds(host.Clock.GetUtcNow().UtcDateTime);
+            // a whole second, so "exactly an hour" after sign-in is exact to the microsecond the row keeps
+            var start = DateTimeOffset.FromUnixTimeSeconds(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
+            await using var host = await MarketApiHost.StartAsync(clock: new ManualClock(start));
+            var signedIn = start.UtcDateTime;
             var token = await host.SignInForSessionAsync(player.Name, "pass");
             var atSignIn = $"{Sql(signedIn)}|{Sql(signedIn.AddDays(14))}";
 
@@ -186,13 +189,18 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual(atSignIn, SessionTimes(token, "last_Used_Time", "idle_Expires_Time"), "59 minutes of use wrote nothing");
 
             host.Clock.Advance(TimeSpan.FromMinutes(1));
-            var hourLater = Microseconds(host.Clock.GetUtcNow().UtcDateTime);
+            Assert.AreEqual(signedIn.AddHours(1), host.Clock.GetUtcNow().UtcDateTime);
             Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/me", token)).StatusCode);
-            Assert.AreEqual($"{Sql(hourLater)}|{Sql(hourLater.AddDays(14))}", SessionTimes(token, "last_Used_Time", "idle_Expires_Time"), "an hour after the last write");
+            Assert.AreEqual(atSignIn, SessionTimes(token, "last_Used_Time", "idle_Expires_Time"), "exactly an hour after the last write: not over an hour, so nothing");
+
+            host.Clock.Advance(TimeSpan.FromTicks(10));
+            var pastTheHour = host.Clock.GetUtcNow().UtcDateTime;
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/me", token)).StatusCode);
+            Assert.AreEqual($"{Sql(pastTheHour)}|{Sql(pastTheHour.AddDays(14))}", SessionTimes(token, "last_Used_Time", "idle_Expires_Time"), "a microsecond over an hour after the last write");
 
             host.Clock.Advance(TimeSpan.FromMinutes(30));
             Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/me", token)).StatusCode);
-            Assert.AreEqual($"{Sql(hourLater)}|{Sql(hourLater.AddDays(14))}", SessionTimes(token, "last_Used_Time", "idle_Expires_Time"), "half an hour after the last write");
+            Assert.AreEqual($"{Sql(pastTheHour)}|{Sql(pastTheHour.AddDays(14))}", SessionTimes(token, "last_Used_Time", "idle_Expires_Time"), "half an hour after the last write");
         }
 
         // ---- revocation
@@ -231,6 +239,25 @@ namespace ACE.MarketApi.Tests
         }
 
         [TestMethod]
+        public async Task SignOut_RefusedByTheWebSessionSchemeAlone_StillAnswersTheJson401()
+        {
+            var player = NewPlayer("wsoutj");
+
+            await using var host = await MarketApiHost.StartAsync();
+            var token = await host.SignInForSessionAsync(player.Name, "pass");
+
+            // sign-out takes only a web session, so the cookie scheme never writes its 401 body: the web session scheme must
+            foreach (var (label, bearer) in new[] { ("no sign-in", (string)null), ("a forged token", "ws." + new string('B', 43)), ("a plugin-shaped token", "not-a-session") })
+            {
+                var response = await host.SendAsync(HttpMethod.Delete, "/api/auth/session", token: bearer);
+                Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode, label);
+                Assert.AreEqual("unauthorized", await MarketApiHost.ErrorAsync(response), label);
+            }
+
+            Assert.AreEqual(HttpStatusCode.OK, (await host.GetWithTokenAsync("/api/me", token)).StatusCode, "none of those ended the real session");
+        }
+
+        [TestMethod]
         public async Task PasswordChange_EndsTheSession()
         {
             var player = NewPlayer("wspass");
@@ -261,7 +288,7 @@ namespace ACE.MarketApi.Tests
             var second = await host.SignInForSessionAsync(player.Name, "pass");
             var bystanders = await host.SignInForSessionAsync(bystander.Name, "pass");
 
-            MarketApiTestData.Ban(player.AccountId, DateTime.UtcNow.AddDays(1));
+            MarketApiTestData.Ban(player.AccountId, BanEnds(host));
 
             Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetWithTokenAsync("/api/me", first)).StatusCode, "the request that sees the ban");
 
@@ -286,11 +313,11 @@ namespace ACE.MarketApi.Tests
             var cookieAccountsSession = await host.SignInForSessionAsync(cookieSeen.Name, "pass");
             var browseAccountsSession = await host.SignInForSessionAsync(browseSeen.Name, "pass");
 
-            MarketApiTestData.Ban(cookieSeen.AccountId, DateTime.UtcNow.AddDays(1));
+            MarketApiTestData.Ban(cookieSeen.AccountId, BanEnds(host));
             Assert.AreEqual(HttpStatusCode.Unauthorized, (await host.GetAsync("/api/me", cookie)).StatusCode);
             MarketApiTestData.LiftBan(cookieSeen.AccountId);
 
-            MarketApiTestData.Ban(browseSeen.AccountId, DateTime.UtcNow.AddDays(1));
+            MarketApiTestData.Ban(browseSeen.AccountId, BanEnds(host));
             Assert.AreEqual(HttpStatusCode.OK, (await host.GetAsync("/api/listings")).StatusCode, "anyone's browse request sees every ban");
             MarketApiTestData.LiftBan(browseSeen.AccountId);
 
@@ -322,6 +349,11 @@ namespace ACE.MarketApi.Tests
         private static string SessionTimes(string token, params string[] columns) => MarketApiTestData.Rows(
             "SELECT CONCAT_WS('|', " + string.Join(", ", columns.Select(c => $"IFNULL(DATE_FORMAT({c}, '{TimeFormat}'), '-')")) + ") " +
             $"FROM market_web_session WHERE token_Hash = UNHEX('{Sha256(token)}');").Single();
+
+        /// <summary>
+        /// A ban's expiry a day ahead of the host's clock, the clock the API judges bans by
+        /// </summary>
+        private static DateTime BanEnds(MarketApiHost host) => host.Clock.GetUtcNow().UtcDateTime.AddDays(1);
 
         private static DateTime Microseconds(DateTime utc) => new DateTime(utc.Ticks - utc.Ticks % 10, DateTimeKind.Utc);
 

@@ -7,6 +7,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig(({ command, mode }) => {
   const serviceKey = loadEnv(mode, '.', 'MARKET_').MARKET_SERVICE_KEY ?? '';
 
+  // 32: the API's minimum, ServiceGate.MinimumKeyLength in Source/ACE.MarketApi/ServiceGate.cs; keep them equal
   if (command === 'serve' && serviceKey.length < 32)
     console.warn('MARKET_SERVICE_KEY is missing or shorter than 32 characters: the Market API will refuse every /api request (401). Set it in docker.env.');
 

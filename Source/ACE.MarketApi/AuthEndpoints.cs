@@ -35,7 +35,8 @@ namespace ACE.MarketApi
             app.MapPost("/auth/logout", (Delegate)Logout).Json<OkResponse>();
 
             app.MapPost("/auth/session", SignIn).Json<SessionResponse>(200, 400, 401, 403, 429);
-            app.MapDelete("/auth/session", SignOut).Json<OkResponse>().RequireAuthorization();
+            // only a web session has a web session to end
+            app.MapDelete("/auth/session", SignOut).Json<OkResponse>().RequireAuthorization(WebSessionAuthenticationHandler.PolicyName);
         }
 
         /// <summary>
@@ -85,8 +86,8 @@ namespace ACE.MarketApi
         }
 
         /// <summary>
-        /// Revokes the web session the request is signed in with; its token is refused from then on. A cookie or plugin token has no web session
-        /// to end, so it gets 401.
+        /// Revokes the web session the request is signed in with; its token is refused from then on. The route authenticates web sessions only,
+        /// so a cookie or plugin token gets 401 from the web session scheme's challenge.
         /// </summary>
         private static IResult SignOut(HttpContext context, MarketDatabase database, TimeProvider time)
         {

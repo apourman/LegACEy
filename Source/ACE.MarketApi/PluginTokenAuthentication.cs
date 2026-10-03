@@ -25,8 +25,6 @@ namespace ACE.MarketApi
 
         public const string TokenIdClaim = "plugin_token";
 
-        private const string BearerPrefix = "Bearer ";
-
         public PluginTokenAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
             : base(options, logger, encoder)
         {
@@ -34,15 +32,10 @@ namespace ACE.MarketApi
 
         protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
         {
-            string header = Request.Headers.Authorization;
+            var secret = MarketHttp.BearerToken(Request);
 
-            if (header == null || !header.StartsWith(BearerPrefix, StringComparison.OrdinalIgnoreCase))
-                return AuthenticateResult.NoResult();
-
-            var secret = header.Substring(BearerPrefix.Length).Trim();
-
-            // a web session is the web session scheme's
-            if (WebSessions.IsSessionToken(secret))
+            // no bearer token, or a web session, which is the web session scheme's
+            if (secret == null || WebSessions.IsSessionToken(secret))
                 return AuthenticateResult.NoResult();
 
             var database = Context.RequestServices.GetRequiredService<MarketDatabase>();

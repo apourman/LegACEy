@@ -30,6 +30,27 @@ namespace ACE.MarketApi
             return accountId;
         }
 
+        /// <summary>
+        /// The token of "Authorization: Bearer &lt;token&gt;" (the scheme name in any case), trimmed; or null when there is none
+        /// </summary>
+        public static string BearerToken(HttpRequest request)
+        {
+            const string prefix = "Bearer ";
+            string header = request.Headers.Authorization;
+
+            if (header == null || !header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            return header.Substring(prefix.Length).Trim();
+        }
+
+        /// <summary>
+        /// The 401 every authentication scheme answers: { "error": "unauthorized" }. Written once: a challenge that runs after another has
+        /// started the answer leaves it alone, so the order of the schemes can't leave a 401 without its body.
+        /// </summary>
+        public static Task WriteUnauthorized(HttpResponse response) =>
+            response.HasStarted ? Task.CompletedTask : WriteError(response, StatusCodes.Status401Unauthorized, "unauthorized");
+
         public static Task WriteError(HttpResponse response, int statusCode, string error)
         {
             response.StatusCode = statusCode;

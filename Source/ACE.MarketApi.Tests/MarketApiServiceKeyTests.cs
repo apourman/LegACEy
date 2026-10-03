@@ -106,6 +106,42 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual(HttpStatusCode.OK, (await host.SessionSignInAsync(name, "right", "10.6.6.6")).StatusCode);
         }
 
+        [TestMethod]
+        public async Task ClientIpHeader_WithAMissingOrWrongKey_CountsNothingTowardThatIpsLimit()
+        {
+            const string headerIp = "198.51.100.77";
+            var victim = MarketApiTestData.UniqueName("cipkey");
+            MarketApiTestData.CreateAccount(victim, "right");
+
+            await using var host = await MarketApiHost.StartAsync();
+            using var keyless = host.ClientWithoutKey();
+
+            // 30 failures naming headerIp, each over a different unknown account (so no account lock): more than the 20 that block an IP
+            for (var i = 0; i < 30; i++)
+            {
+                var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/session")
+                {
+                    Content = JsonContent.Create(new { account = MarketApiTestData.UniqueName("ghost"), password = "wrong" }),
+                };
+                request.Headers.Add(MarketApiHost.RemoteIpHeader, "10.23.0.1");
+                request.Headers.Add(ServiceGate.ClientIpHeader, headerIp);
+                if (i % 2 == 1)
+                    request.Headers.Add(ServiceGate.KeyHeader, WrongKeySameLength);
+
+                Assert.AreEqual(HttpStatusCode.Unauthorized, (await keyless.SendAsync(request)).StatusCode, i % 2 == 1 ? "wrong key" : "no key");
+            }
+
+            // a valid-key sign-in from headerIp gets the normal answer, not ip_blocked
+            var signIn = await host.SessionSignInAsync(victim, "right", "10.23.0.1", clientIp: headerIp);
+            Assert.AreEqual(HttpStatusCode.OK, signIn.StatusCode, await signIn.Content.ReadAsStringAsync());
+
+            // the same failures with the key do block it, so the limit above was really in reach
+            var blockedAfterKeyed = MarketApiTestData.UniqueName("cipkeyed");
+            MarketApiTestData.CreateAccount(blockedAfterKeyed, "right");
+            await FailTwentyTimes(host, "10.23.0.1", headerIp);
+            Assert.AreEqual("ip_blocked", await MarketApiHost.ErrorAsync(await host.SessionSignInAsync(blockedAfterKeyed, "right", "10.23.0.1", clientIp: headerIp)));
+        }
+
         // ---- health
 
         [TestMethod]

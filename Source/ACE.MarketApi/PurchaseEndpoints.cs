@@ -157,7 +157,7 @@ namespace ACE.MarketApi
 
                 case PurchaseOutcome.SellerBanned:
                     // the ban is noticed: the seller's listings go back to their Vault, and their web sessions end
-                    MarketUpkeep.NoticeBans(database, new[] { listing.SellerAccountId }, now);
+                    MarketUpkeep.ReturnListingsAndEndWebSessions(database, new[] { listing.SellerAccountId }, now);
                     return Refused(StatusCodes.Status410Gone, "gone");
 
                 case PurchaseOutcome.Conflict:

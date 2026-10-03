@@ -21,25 +21,25 @@ namespace ACE.MarketApi
         }
 
         /// <summary>
-        /// Expires overdue listings, then notices the ban of every banned account. Returns the banned accounts, whose listings must stay hidden
-        /// even if returning them lost a race this time.
+        /// Expires overdue listings, then returns the listings and ends the web sessions of every banned account. Returns the banned accounts,
+        /// whose listings must stay hidden even if returning them lost a race this time.
         /// </summary>
-        public static HashSet<uint> ExpireAndReturnBanned(MarketDatabase database, DateTime now)
+        public static HashSet<uint> ExpireAndHandleBans(MarketDatabase database, DateTime now)
         {
             Expire(database, now);
 
             var banned = database.BannedAccountIds(now);
 
-            NoticeBans(database, banned, now);
+            ReturnListingsAndEndWebSessions(database, banned, now);
 
             return banned;
         }
 
         /// <summary>
-        /// The market has seen these accounts banned: every web session they have is revoked, for good (it stays refused after the ban ends),
-        /// and their active listings go back to their Vaults (ban_returned).
+        /// What the market does when it sees accounts banned: their active listings go back to their Vaults (ban_returned), and every web session
+        /// they have is revoked, for good (it stays refused after the ban ends).
         /// </summary>
-        public static void NoticeBans(MarketDatabase database, IReadOnlyCollection<uint> accountIds, DateTime now)
+        public static void ReturnListingsAndEndWebSessions(MarketDatabase database, IReadOnlyCollection<uint> accountIds, DateTime now)
         {
             if (accountIds.Count == 0)
                 return;
