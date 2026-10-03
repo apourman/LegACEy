@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { AppLoadContext } from 'react-router';
 import type { BffSettings } from '../src/bff/settings.server';
 import {
-  cookieFrom, detail, facets, listing, loadBff, me, request, serviceKey, settings, site, startFakeApi,
+  cookieFrom, detail, facets, listing, loadBff, me, request, sendRaw, serviceKey, settings, site, startFakeApi,
   type Bff, type FakeApi, type RecordedRequest,
 } from './harness';
 
@@ -56,7 +56,7 @@ describe('1. the allowlist', () => {
     ['GET', '/api/tokens'], ['POST', '/api/tokens/1/revoke'], ['POST', '/api/auth/plugin-token'],
     ['POST', '/api/auth/session'], ['DELETE', '/api/auth/session'], ['POST', '/api/auth/login'],
     ['GET', '/api/openapi.json'], ['GET', '/api/openapi/v1.json'], ['GET', '/openapi/v1.json'], ['GET', '/api'], ['GET', '/api/'],
-    ['GET', '/api/me/'], ['GET', '/api/no-such-route'], ['GET', '/health/../api/tokens'],
+    ['GET', '/api/me/'], ['GET', '/api/no-such-route'],
     ['GET', '/api/listings/1/../../tokens'], ['GET', '/api/icons/..%2Ftokens'], ['GET', '/api/listings/%2e%2e'], ['GET', '/api/vault/1%2F..%2F..%2Ftokens'],
   ];
   it.each(unlisted)('an unlisted path, %s %s, gets 404 and never reaches the API', async (method, path) => {
@@ -78,6 +78,22 @@ describe('1. the allowlist', () => {
     const response = await send(request(path, { method, headers: { 'X-Market-Request': '1', 'Content-Type': 'application/json' }, body: ['GET', 'HEAD'].includes(method) ? undefined : '{}' }));
     expect(response.status).toBe(404);
     expect(api.requests).toEqual([]);
+  });
+
+  // A Request built here normalises dot-segments before the BFF sees it; a socket doesn't. These go over a real connection, as written.
+  const raw: [string, string][] = [
+    ['GET', '/health/../api/tokens'], ['GET', '/api/listings/1/../../tokens'], ['GET', '/api/./tokens'], ['GET', '/api/me/../tokens'],
+    ['GET', '/api/icons/../tokens'], ['POST', '/api/listings/1/../../tokens/1/revoke'], ['GET', '/api/icons/..%2F..%2Ftokens'],
+    ['GET', '//api/tokens'], ['GET', '/api//tokens'], ['GET', '/api/../api/tokens'], ['GET', '/api/tokens?redirect=/api/me'],
+  ];
+  it.each(raw)('a raw, un-normalised path over a socket, %s %s, gets 404 and never reaches the API', async (method, rawPath) => {
+    expect(await sendRaw(bff.handle, context(), method, rawPath)).toBe(404);
+    expect(api.requests).toEqual([]);
+  });
+
+  it('the raw-socket path does reach the BFF: a listed route sent the same way is forwarded', async () => {
+    expect(await sendRaw(bff.handle, context(), 'GET', '/api/facets')).toBe(200);
+    expect(forwarded('/api/facets')).toHaveLength(1);
   });
 
   const listed: [string, string][] = [
@@ -587,6 +603,46 @@ describe('7. the header on the first render', () => {
     const cookie = await signedIn();
     const html = visible(await (await send(request('/', { headers: { Cookie: cookie } }))).text());
     expect(html).toContain('The market is paused. Purchases and MMD withdrawals are temporarily unavailable.');
+  });
+
+  const ended = 'Your session has ended. Please sign in again.';
+
+  it.each(['/', '/listing/1', '/vault'])('a session the API has ended (401) shows "%s" with the session-ended message on the first render, and clears the cookie', async path => {
+    const cookie = await signedIn();
+    api.on('GET', '/api/me', { status: 401, json: { error: 'unauthorized' } });
+    const response = await send(request(path, { headers: { Cookie: cookie } }));
+    const cleared = response.headers.getSetCookie().find(c => c.startsWith('market_session='));
+    expect(cleared).toMatch(/^market_session=;/);
+    const html = visible(await response.text());
+    expect(html).toContain(`<p role="status" class="notice">${ended}</p>`);
+    expect(html).toContain('>Sign in</a>');
+  });
+
+  it('a 401 from a page\'s own loader (Browse, Listing) during a signed-in render shows the message too', async () => {
+    const cookie = await signedIn();
+    api.on('GET', '/api/listings/1', { status: 401, json: { error: 'unauthorized' } });
+    const response = await send(request('/listing/1', { headers: { Cookie: cookie } }));
+    expect(response.headers.getSetCookie().some(c => c.startsWith('market_session=;'))).toBe(true);
+    const html = visible(await response.text());
+    expect(html).toContain(`<p role="status" class="notice">${ended}</p>`);
+    // the whole page agrees the session is over: the header is signed out, though the account's own call still answered
+    expect(html).toContain('>Sign in</a>');
+    expect(html).not.toContain('<span>Alpha</span>');
+  });
+
+  it('a visitor who had no session cookie, or a live session, never sees the session-ended message', async () => {
+    // the API would refuse this visitor's account: but a visitor with no session never asks for one
+    api.on('GET', '/api/me', { status: 401, json: { error: 'unauthorized' } });
+    for (const path of ['/', '/listing/1', '/signin']) {
+      const response = await send(request(path));
+      expect(visible(await response.text()), path).not.toContain(ended);
+      expect(response.headers.getSetCookie(), path).toEqual([]);
+    }
+    api.on('GET', '/api/me', { json: me });
+    const cookie = await signedIn();
+    expect(visible(await (await send(request('/', { headers: { Cookie: cookie } }))).text())).not.toContain(ended);
+    // a cookie that isn't ours (wrong signature) is no session: nothing ended
+    expect(visible(await (await send(request('/', { headers: { Cookie: 'market_session=forged.value' } }))).text())).not.toContain(ended);
   });
 
   it('signed out, the header offers sign-in and asks the API for no account', async () => {

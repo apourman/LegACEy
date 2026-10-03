@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { messages } from '../api';
+import { errorMessage, messages } from '../api';
 import { useSession } from '../session';
 
 export default function SignIn() {
@@ -20,7 +20,7 @@ export default function SignIn() {
       await session.login(String(data.get('account')), String(data.get('password')));
       const returnTo = location.state?.returnTo;
       navigate(typeof returnTo === 'string' && returnTo.startsWith('/') && !returnTo.startsWith('//') && !returnTo.startsWith('/signin') ? returnTo : '/', { replace: true });
-    } catch (e) { setError(e instanceof Error ? e.message : 'Sign-in failed.'); }
+    } catch (e) { setError(errorMessage(e, 'Sign-in failed.')); }
     finally { setBusy(false); }
   }
   return <section className="signin"><p className="eyebrow">YOUR GAME ACCOUNT</p><h1>Sign in</h1>

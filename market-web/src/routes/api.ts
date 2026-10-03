@@ -1,8 +1,6 @@
 import type { Route } from './+types/api';
 import { allowedRoute } from '../bff/allowlist.server';
-import { apiHeaders, noClientIp } from '../bff/api.server';
-import { clientIp } from '../bff/client-ip.server';
-import { clearedSessionCookieHeader, readSessionToken } from '../bff/cookies.server';
+import { sessionCall } from '../bff/api.server';
 import { crossSiteRefusal } from '../bff/csrf.server';
 
 // /api/*: the browser's only way to the private Market API. Reads arrive at the loader, everything else at the action; both take the same path.
@@ -29,12 +27,8 @@ async function proxy(request: Request, context: Route.LoaderArgs['context']): Pr
   const refusal = crossSiteRefusal(request, context.bff, { requireRequestHeader: true });
   if (refusal) return refusal;
 
-  const settings = context.bff;
-  const token = 'withoutToken' in route ? null : await readSessionToken(request, settings);
-  const address = clientIp(request, context);
-  if (address === null) return noClientIp();
-
-  const headers = new Headers(apiHeaders(settings, address, token));
+  const call = await sessionCall(request, context, { signedIn: !('withoutToken' in route) });
+  const headers = new Headers(call.headers);
   for (const name of forwardedRequestHeaders) {
     const value = request.headers.get(name);
     if (value !== null) headers.set(name, value);
@@ -42,7 +36,7 @@ async function proxy(request: Request, context: Route.LoaderArgs['context']): Pr
 
   let answer: Response;
   try {
-    answer = await fetch(settings.apiUrl + url.pathname + url.search, {
+    answer = await fetch(context.bff.apiUrl + url.pathname + url.search, {
       method: request.method,
       headers,
       body: request.method === 'GET' ? undefined : await request.arrayBuffer(),
@@ -58,7 +52,7 @@ async function proxy(request: Request, context: Route.LoaderArgs['context']): Pr
     const value = answer.headers.get(name);
     if (value !== null) returned.set(name, value);
   }
-  if (answer.status === 401 && token !== null) returned.append('Set-Cookie', await clearedSessionCookieHeader(settings));
+  if (call.endsSession(answer.status)) returned.append('Set-Cookie', await call.clearedSessionCookie());
 
   const empty = answer.status === 204 || answer.status === 304;
   return new Response(empty ? null : answer.body, { status: answer.status, headers: returned });

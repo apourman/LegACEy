@@ -1,7 +1,10 @@
+import { createServer } from 'node:http';
+import { connect, type AddressInfo } from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequestHandler, type AppLoadContext, type ServerBuild } from 'react-router';
 import { createServer as createViteServer, type ViteDevServer } from 'vite';
+import { createRequestListener } from '@mjackson/node-fetch-server';
 import type { BffSettings } from '../src/bff/settings.server';
 import type { FakeApi } from './fake-api';
 
@@ -36,6 +39,27 @@ export async function loadBff(): Promise<Bff> {
   const handle = entry.createBffHandler(build, 'production');
   const routesOnly = createRequestHandler(build, 'production');
   return { handle, handleRoutesOnly: (request, context) => routesOnly(request, context), close: () => vite.close() };
+}
+
+/**
+ * Sends one request line exactly as written (no URL normalising on this side) over a real socket to the handler served by Node's HTTP server, the
+ * way server.js serves it (@mjackson/node-fetch-server), and returns the status code
+ */
+export async function sendRaw(handle: Bff['handle'], context: AppLoadContext, method: string, rawPath: string): Promise<number> {
+  const server = createServer(createRequestListener(request => handle(request, context)));
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const socket = connect((server.address() as AddressInfo).port, '127.0.0.1');
+    // a change comes as the site itself would send it, so only the path decides
+    const change = method === 'GET' || method === 'HEAD' ? '' : `Origin: ${site}\r\nX-Market-Request: 1\r\nContent-Length: 0\r\n`;
+    socket.write(`${method} ${rawPath} HTTP/1.1\r\nHost: market.test\r\n${change}Connection: close\r\n\r\n`);
+    let answer = '';
+    for await (const chunk of socket) answer += chunk;
+    return Number(/^HTTP\/1\.1 (\d{3})/.exec(answer)?.[1]);
+  } finally {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+  }
 }
 
 export function settings(api: FakeApi, overrides: Partial<BffSettings> = {}): BffSettings {

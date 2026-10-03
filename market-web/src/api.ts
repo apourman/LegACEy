@@ -98,9 +98,17 @@ export function createMarketApiClient(options?: ClientOptions): MarketApiClient 
 /** The browser's client: the BFF's /api/* proxy with the session cookie, and the header the BFF's cross-site check asks for */
 export const browserClient = createMarketApiClient({ credentials: 'same-origin', headers: { 'X-Market-Request': '1' } });
 
+/** The message to show for anything thrown: an Error's own, otherwise the fallback */
+export const errorMessage = (thrown: unknown, fallback: string) => thrown instanceof Error ? thrown.message : fallback;
+
+/** An error answer's body as the API's error shape ({ "error": code, price? }) as it came, or { "error": fallback } when it isn't one */
+export function errorBody(body: unknown, fallback = 'server'): { error: string; price?: number | null } {
+  return typeof body === 'object' && body !== null && typeof (body as { error?: unknown }).error === 'string' ? body as { error: string } : { error: fallback };
+}
+
 function apiErrorFrom(error: unknown, status: number) {
-  const body: Partial<Schemas['ApiError']> = typeof error === 'object' && error !== null ? error : {};
-  return new ApiError(body.error ?? 'server', status, body.price ?? undefined);
+  const body = errorBody(error);
+  return new ApiError(body.error, status, body.price ?? undefined);
 }
 
 async function result<T>(call: Promise<{ data?: T; error?: unknown; response: Response }>): Promise<T> {

@@ -32,9 +32,13 @@ export const minimumSecretLength = 32;
  * - MARKET_COOKIE_SECRET: signs the session cookie, at least 32 characters;
  * - MARKET_TRUSTED_PROXY (optional): the reverse proxy's address, whose right-most X-Forwarded-For entry is the player's;
  * - MARKET_SITE_ORIGIN (optional): the public origin, when a proxy in front changes the scheme or host;
- * - MARKET_GATEWAY_IS_LOOPBACK (optional, local Docker only): "true" counts connections from the container's default gateway as 127.0.0.1.
+ * - MARKET_GATEWAY_IS_LOOPBACK (optional, local Docker only): "true" counts connections from the container's default gateway as 127.0.0.1 (logged at startup; a warning when no gateway can be read).
  */
-export function settingsFromEnv(env: Record<string, string | undefined> = process.env, defaultGateway: () => string | null = readDefaultGateway): BffSettings {
+export function settingsFromEnv(
+  env: Record<string, string | undefined> = process.env,
+  defaultGateway: () => string | null = readDefaultGateway,
+  log: Pick<Console, 'info' | 'warn'> = console,
+): BffSettings {
   const problems: string[] = [];
   const text = (name: string) => (env[name] ?? '').trim();
 
@@ -59,11 +63,16 @@ export function settingsFromEnv(env: Record<string, string | undefined> = proces
     catch { problems.push('MARKET_SITE_ORIGIN must be an origin, such as https://market.example.'); }
   }
 
+  // said once, at startup: which address will count as loopback, or that none will
   const loopbackPeers: string[] = [];
   if (text('MARKET_GATEWAY_IS_LOOPBACK') === 'true') {
-    const gateway = defaultGateway();
-    if (gateway) loopbackPeers.push(gateway);
-    else problems.push('MARKET_GATEWAY_IS_LOOPBACK is set, but this container has no default gateway to treat as loopback.');
+    const gateway = normalizeAddress(defaultGateway());
+    if (gateway) {
+      loopbackPeers.push(gateway);
+      log.info(`MARKET_GATEWAY_IS_LOOPBACK: connections from the default gateway ${gateway} count as 127.0.0.1.`);
+    } else {
+      log.warn('MARKET_GATEWAY_IS_LOOPBACK is true, but no default gateway could be read (/proc/net/route): every connection counts as its own address.');
+    }
   }
 
   if (problems.length > 0) throw new Error('The BFF is not configured:\n  ' + problems.join('\n  '));

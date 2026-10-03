@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigation, useSearchParams } from 'react-router';
-import { browse, suggest, type BrowseResult, type Facets } from './api';
+import { browse, errorMessage, suggest, type BrowseResult, type Facets } from './api';
 import { AppraisalPopover } from './Appraisal';
 import { LocalTime } from './LocalTime';
 
@@ -65,7 +65,7 @@ export function Browse({ first, facets, loadError }: { first: BrowseResult; face
     try {
       const page = await browse(next);
       if (version === generation.current) setPages(old => ({ ...old, result: { listings: [...old.result.listings, ...page.listings.filter(row => !old.result.listings.some(existing => existing.id === row.id))], nextCursor: page.nextCursor } }));
-    } catch (e) { if (version === generation.current) setMoreError(e instanceof Error ? e.message : 'Could not load listings.'); }
+    } catch (e) { if (version === generation.current) setMoreError(errorMessage(e, 'Could not load listings.')); }
     finally { if (version === generation.current) { setMoreLoading(false); loadingMore.current = false; } }
   }
   const sortKey = params.get('sort') ?? 'newest';

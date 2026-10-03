@@ -1,5 +1,5 @@
 import type { Route } from './+types/browse';
-import { browse, getFacets, type BrowseResult, type Facets } from '../api';
+import { browse, errorMessage, getFacets, type BrowseResult, type Facets } from '../api';
 import { apiFor } from '../bff/api.server';
 import { Browse } from '../Browse';
 
@@ -15,10 +15,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const [listings, facets] = await Promise.allSettled([browse(filters, api.client), getFacets(api.client)]);
   const failure = [listings, facets].find(outcome => outcome.status === 'rejected');
 
-  return api.respond({
+  return api.respondClearingEndedSession({
     result: listings.status === 'fulfilled' ? listings.value : { listings: [], nextCursor: null } as BrowseResult,
     facets: facets.status === 'fulfilled' ? facets.value : null as Facets | null,
-    error: failure ? (failure.reason instanceof Error ? failure.reason.message : 'Could not load listings.') : '',
+    error: failure ? errorMessage(failure.reason, 'Could not load listings.') : '',
   });
 }
 

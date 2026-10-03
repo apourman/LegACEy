@@ -1,5 +1,5 @@
 import type { Route } from './+types/listing';
-import { ApiError, getListing } from '../api';
+import { ApiError, errorMessage, getListing } from '../api';
 import { apiFor } from '../bff/api.server';
 import { ListingPage, type ListingView } from '../ListingPage';
 
@@ -11,15 +11,15 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   const api = await apiFor(request, context);
   const view: ListingView = { item: null, gone: false, error: '' };
 
-  if (!/^\d{1,18}$/.test(params.id)) return api.respond({ ...view, gone: true }, { status: 404 });
+  if (!/^\d{1,18}$/.test(params.id)) return api.respondClearingEndedSession({ ...view, gone: true }, { status: 404 });
 
   try {
     view.item = await getListing(Number(params.id), api.client);
   } catch (e) {
-    if (e instanceof ApiError && (e.status === 404 || e.status === 410)) return api.respond({ ...view, gone: true }, { status: e.status });
-    view.error = e instanceof Error ? e.message : 'Could not load this listing.';
+    if (e instanceof ApiError && (e.status === 404 || e.status === 410)) return api.respondClearingEndedSession({ ...view, gone: true }, { status: e.status });
+    view.error = errorMessage(e, 'Could not load this listing.');
   }
-  return api.respond(view);
+  return api.respondClearingEndedSession(view);
 }
 
 export default function ListingRoute({ loaderData, params }: Route.ComponentProps) {
