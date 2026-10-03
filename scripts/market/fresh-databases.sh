@@ -4,19 +4,10 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
-[[ "$DB_HOST_PORT" == 3310 ]] || { echo "End-to-end data uses only 127.0.0.1:3310; DB_HOST_PORT must be 3310." >&2; exit 1; }
-db_running || { echo "docker-ace-db-1 is not running." >&2; exit 1; }
-container_id="$(docker inspect -f '{{.Id}}' docker-ace-db-1 2>/dev/null || true)"
-compose_id="$("${COMPOSE[@]}" ps --status running -q ace-db 2>/dev/null || true)"
-[[ -n "$container_id" && "$container_id" == "$compose_id" ]] || {
-  echo "Refusing to use MySQL: the local compose service is not docker-ace-db-1." >&2
-  exit 1
-}
-health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' docker-ace-db-1)"
-[[ "$health" == healthy ]] || { echo "docker-ace-db-1 is not healthy ($health)." >&2; exit 1; }
+require_local_ace_db
 
-AUTH_DATABASE=ace_market_e2e_auth
-SHARD_DATABASE=ace_market_e2e_shard
+AUTH_DATABASE="$MARKET_E2E_AUTH_DATABASE"
+SHARD_DATABASE="$MARKET_E2E_SHARD_DATABASE"
 
 create_from_base() {
   local database="$1" base="$2" name="$3"

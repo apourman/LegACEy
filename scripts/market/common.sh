@@ -21,6 +21,11 @@ MARKET_WEB_URL="${MARKET_WEB_URL:-http://127.0.0.1:$MARKET_WEB_PORT}"
 DB_HOST_PORT="${DB_HOST_PORT:-3310}"
 MARKET_GAME_RUN_DIR="${MARKET_GAME_RUN_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/legacey/market-host}"
 MARKET_SCHEMA_SCRIPT="$ROOT/Database/Updates/Shard/2026-09-28-00-Market-Schema.sql"
+# the end-to-end stack's own databases and state (e2e.sh, fresh.sh). Fixed, not settings: ACE.MarketDev's guard (DevelopmentGuardSettings)
+# and docker/market-api/appsettings.E2E.json name the same pair.
+MARKET_E2E_AUTH_DATABASE=ace_market_e2e_auth
+MARKET_E2E_SHARD_DATABASE=ace_market_e2e_shard
+MARKET_E2E_RUN_DIR="${MARKET_E2E_RUN_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/legacey/market-e2e}"
 export MARKET_SEED_PASSWORD="${MARKET_SEED_PASSWORD:-marketdev}"
 
 # the names go into SQL and sed unquoted
@@ -65,6 +70,24 @@ db_sql() {
 
 db_running() {
   [[ -n "$("${COMPOSE[@]}" ps --status running -q ace-db 2>/dev/null)" ]]
+}
+
+# exits unless docker-ace-db-1 is this compose project's running, healthy ace-db, published at 127.0.0.1:3310: the only MySQL the
+# end-to-end scripts write, and the endpoint ACE.MarketDev's fresh guard accepts
+require_local_ace_db() {
+  local container_id compose_id health published
+  [[ "$DB_HOST_PORT" == 3310 ]] || { echo "End-to-end data uses only 127.0.0.1:3310; DB_HOST_PORT must be 3310." >&2; exit 1; }
+  db_running || { echo "docker-ace-db-1 is not running; start the local MySQL service first." >&2; exit 1; }
+  container_id="$(docker inspect -f '{{.Id}}' docker-ace-db-1 2>/dev/null || true)"
+  compose_id="$("${COMPOSE[@]}" ps --status running -q ace-db 2>/dev/null || true)"
+  [[ -n "$container_id" && "$container_id" == "$compose_id" ]] || {
+    echo "Refusing to use MySQL: the local compose service is not docker-ace-db-1." >&2
+    exit 1
+  }
+  health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' docker-ace-db-1)"
+  [[ "$health" == healthy ]] || { echo "docker-ace-db-1 is not healthy ($health)." >&2; exit 1; }
+  published="$(docker port docker-ace-db-1 3306/tcp 2>/dev/null || true)"
+  [[ "$published" == 127.0.0.1:3310 ]] || { echo "docker-ace-db-1 is not published at 127.0.0.1:3310 only (published: ${published:-nothing})." >&2; exit 1; }
 }
 
 # a compose service's container id, running or not (empty when it doesn't exist)

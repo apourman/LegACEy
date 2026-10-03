@@ -113,25 +113,31 @@ The separate production-image stack runs at `http://127.0.0.1:5174`. It shares o
 uses `ace_market_e2e_auth` and `ace_market_e2e_shard`; it doesn't recreate or remove the development stack.
 
 ```bash
-./scripts/market/e2e.sh up       # fresh seeded data, then start the production API and BFF images
-./scripts/market/e2e.sh fresh    # drop/recreate only the fixed e2e pair, apply schemas, mark and seed
+./scripts/market/e2e.sh up       # fresh seeded data, then start the production API and BFF images and run the smoke check
+./scripts/market/e2e.sh fresh    # drop/recreate only the fixed e2e pair, apply schemas, mark and seed (a running stack is stopped, then restarted)
+./scripts/market/e2e.sh smoke    # sign in as website-desktop-alpha and browse listings through the production BFF
 ./scripts/market/e2e.sh audit    # run the market ledger audit against the e2e shard
 ./scripts/market/e2e.sh down     # remove only the market-e2e Compose project
 ```
 
 `fresh` refuses any endpoint other than local MySQL at `127.0.0.1:3310` and any database names other than the fixed e2e pair before it
-starts the reset script. The seed creates an independent Alpha/Bravo pair for each test file and viewport project; the current `website`
-suite has `website-desktop-alpha` / `website-desktop-bravo` and `website-phone-alpha` / `website-phone-bravo`. Set
-`MARKET_SEED_PASSWORD` for a different local test password. To run the ticket walkthrough on the e2e data, use its seeded character name:
+starts the reset script. The guard also refuses a configuration that mixes the development and e2e databases (one of each), so `seed` and
+`fixture` can't write e2e accounts into a development database. The seed creates an independent Alpha/Bravo pair for each test file and
+viewport project; the current `website` suite has `website-desktop-alpha` / `website-desktop-bravo` and `website-phone-alpha` /
+`website-phone-bravo`. Add a file's projects to `E2EPairs` in `Source/ACE.MarketDev/Seeder.cs` when the suite gains one. Set
+`MARKET_SEED_PASSWORD` for a different local test password.
 
-The production E2E API uses a separate `market_e2e_api` MySQL login. Its randomly generated password is stored in a mode-600
-`api-db.env` file under the E2E run directory (or `MARKET_E2E_API_CREDENTIALS_FILE`); the parent directory is mode 700. The E2E
-runner recreates the login with write access only to `ace_market_e2e_auth` and `ace_market_e2e_shard`, and `SELECT` access to
-`ace_world`. The local development API continues to use its existing `MYSQL_USER`/`MYSQL_PASSWORD` login.
+To run the ticket walkthrough on the e2e data, use its seeded character name:
 
 ```bash
 MARKET_DEV_CONFIG="$HOME/.local/state/legacey/market-e2e/Config.js" ./scripts/market/dev.sh fixture --character "website desktop Alpha"
 ```
+
+The production E2E API uses a separate `market_e2e_api` MySQL login. Its randomly generated password is stored in a mode-600
+`api-db.env` file under the E2E run directory (or `MARKET_E2E_API_CREDENTIALS_FILE`); the parent directory is mode 700. The E2E
+runner recreates the login with write access only to `ace_market_e2e_auth` and `ace_market_e2e_shard`, and `SELECT` access to
+`ace_world`. The local development API continues to use its existing `MYSQL_USER`/`MYSQL_PASSWORD` login. The generated `Config.js`
+holds the application login's password and is created mode 600.
 
 The BFF production image builds the framework output in a Node build stage and runs it with production dependencies as the unprivileged
 `node` user. API address and both BFF secrets are passed at runtime through the environment; no secrets enter either image.
