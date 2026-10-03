@@ -5,8 +5,8 @@ services:
       dockerfile: ../docker/market-api/Dockerfile
     environment:
       ASPNETCORE_ENVIRONMENT: E2E
-      Market__DatabaseUsername: ${MYSQL_USER:?MYSQL_USER must be set in the docker env file}
-      Market__DatabasePassword: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set in the docker env file}
+      Market__DatabaseUsername: ${MARKET_E2E_API_DB_USER:?E2E API database login must be provisioned by scripts/market/e2e.sh}
+      Market__DatabasePassword: ${MARKET_E2E_API_DB_PASSWORD:?E2E API database login must be provisioned by scripts/market/e2e.sh}
       Market__ServiceKey: ${MARKET_SERVICE_KEY:?MARKET_SERVICE_KEY must be set in the docker env file}
     networks:
       - database

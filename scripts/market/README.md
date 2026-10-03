@@ -124,6 +124,11 @@ starts the reset script. The seed creates an independent Alpha/Bravo pair for ea
 suite has `website-desktop-alpha` / `website-desktop-bravo` and `website-phone-alpha` / `website-phone-bravo`. Set
 `MARKET_SEED_PASSWORD` for a different local test password. To run the ticket walkthrough on the e2e data, use its seeded character name:
 
+The production E2E API uses a separate `market_e2e_api` MySQL login. Its randomly generated password is stored in a mode-600
+`api-db.env` file under the E2E run directory (or `MARKET_E2E_API_CREDENTIALS_FILE`); the parent directory is mode 700. The E2E
+runner recreates the login with write access only to `ace_market_e2e_auth` and `ace_market_e2e_shard`, and `SELECT` access to
+`ace_world`. The local development API continues to use its existing `MYSQL_USER`/`MYSQL_PASSWORD` login.
+
 ```bash
 MARKET_DEV_CONFIG="$HOME/.local/state/legacey/market-e2e/Config.js" ./scripts/market/dev.sh fixture --character "website desktop Alpha"
 ```

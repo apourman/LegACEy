@@ -3,8 +3,48 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
-E2E_COMPOSE=(docker compose --project-name market-e2e --env-file "$DOCKER_ENV_FILE" -f "$ROOT/docker/docker-compose.e2e.yml")
-CONFIG="${MARKET_E2E_RUN_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/legacey/market-e2e}/Config.js"
+E2E_RUN_DIR="${MARKET_E2E_RUN_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/legacey/market-e2e}"
+E2E_API_CREDENTIALS="${MARKET_E2E_API_CREDENTIALS_FILE:-${E2E_RUN_DIR}/api-db.env}"
+CONFIG="$E2E_RUN_DIR/Config.js"
+E2E_COMPOSE=(docker compose --project-name market-e2e --env-file "$DOCKER_ENV_FILE" --env-file "$E2E_API_CREDENTIALS" -f "$ROOT/docker/docker-compose.e2e.yml")
+
+ensure_e2e_api_credentials() {
+  local credentials_dir password user
+  credentials_dir="$(dirname "$E2E_API_CREDENTIALS")"
+  mkdir -p "$credentials_dir"
+  chmod 700 "$credentials_dir"
+  if [[ ! -f "$E2E_API_CREDENTIALS" ]]; then
+    password="$(openssl rand -hex 32)"
+    (umask 077; printf 'MARKET_E2E_API_DB_USER=market_e2e_api\nMARKET_E2E_API_DB_PASSWORD=%s\n' "$password" > "$E2E_API_CREDENTIALS")
+  fi
+  chmod 600 "$E2E_API_CREDENTIALS"
+  user="$(sed -n 's/^MARKET_E2E_API_DB_USER=//p' "$E2E_API_CREDENTIALS" | tail -1)"
+  password="$(sed -n 's/^MARKET_E2E_API_DB_PASSWORD=//p' "$E2E_API_CREDENTIALS" | tail -1)"
+  [[ "$user" == market_e2e_api && "$password" =~ ^[a-f0-9]{64}$ ]] || {
+    echo "Invalid E2E API credentials file: $E2E_API_CREDENTIALS" >&2
+    return 1
+  }
+}
+
+provision_e2e_api_login() {
+  local password
+  password="$(sed -n 's/^MARKET_E2E_API_DB_PASSWORD=//p' "$E2E_API_CREDENTIALS" | tail -1)"
+  [[ "$password" =~ ^[a-f0-9]{64}$ ]] || { echo "Invalid E2E API credentials file: $E2E_API_CREDENTIALS" >&2; return 1; }
+  # The isolated API identity can write only to its two disposable databases. ace_world is shared with the game and stays read-only.
+  docker exec -i docker-ace-db-1 sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot --default-character-set=utf8mb4' <<SQL
+DROP USER IF EXISTS 'market_e2e_api'@'%';
+CREATE USER 'market_e2e_api'@'%' IDENTIFIED BY '$password';
+GRANT ALL PRIVILEGES ON \`ace_market_e2e_auth\`.* TO 'market_e2e_api'@'%';
+GRANT ALL PRIVILEGES ON \`ace_market_e2e_shard\`.* TO 'market_e2e_api'@'%';
+GRANT SELECT ON \`ace_world\`.* TO 'market_e2e_api'@'%';
+FLUSH PRIVILEGES;
+SQL
+}
+
+compose() {
+  ensure_e2e_api_credentials
+  "${E2E_COMPOSE[@]}" "$@"
+}
 
 wait_healthy() {
   local service="$1" id state
@@ -24,7 +64,9 @@ wait_healthy() {
 case "${1:-}" in
   up)
     "$ROOT/scripts/market/fresh.sh"
-    "${E2E_COMPOSE[@]}" up -d --build
+    ensure_e2e_api_credentials
+    provision_e2e_api_login
+    compose up -d --build
     wait_healthy market-api
     wait_healthy market-bff
     echo "End-to-end stack healthy at http://127.0.0.1:5174."
@@ -37,7 +79,7 @@ case "${1:-}" in
     MARKET_DEV_ROOT="$ROOT" MARKET_DEV_CONFIG="$CONFIG" "$ROOT/scripts/market/dev.sh" audit
     ;;
   down)
-    "${E2E_COMPOSE[@]}" down --remove-orphans
+    compose down --remove-orphans
     ;;
   *)
     echo "Usage: scripts/market/e2e.sh <up|fresh|audit|down>" >&2
