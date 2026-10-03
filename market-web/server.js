@@ -60,8 +60,9 @@ const listener = createRequestListener(async (request, client) => {
 const clientDirectory = path.join(root, 'build', 'client');
 /** @param {import('node:http').IncomingMessage} request @param {import('node:http').ServerResponse} response */
 async function serveAsset(request, response) {
-  const pathname = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname);
-  if (!pathname.startsWith('/assets/') || pathname.includes('..') || (request.method !== 'GET' && request.method !== 'HEAD')) return false;
+  // asset names are plain: anything encoded or climbing out of the directory isn't one
+  const pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
+  if (!pathname.startsWith('/assets/') || pathname.includes('%') || pathname.includes('..') || (request.method !== 'GET' && request.method !== 'HEAD')) return false;
   const file = path.join(clientDirectory, pathname);
   const info = await stat(file).catch(() => null);
   if (!info?.isFile()) return false;
@@ -77,7 +78,7 @@ async function serveAsset(request, response) {
 
 server.on('request', (request, response) => {
   if (vite) vite.middlewares(request, response, () => listener(request, response));
-  else void serveAsset(request, response).then(served => { if (!served) listener(request, response); });
+  else void serveAsset(request, response).catch(() => false).then(served => { if (!served) listener(request, response); });
 });
 
 server.listen(port, host, () => console.log(`Market BFF (${production ? 'production' : 'development'}) on http://${host}:${port}`));

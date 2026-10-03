@@ -27,7 +27,7 @@ namespace ACE.MarketApi
     public static class MarketApi
     {
         /// <summary>
-        /// Every route is served under this path; the website owns the rest of the origin
+        /// Every route is served under this path; the BFF forwards its allowlisted /api/* routes as they are
         /// </summary>
         public const string PathBase = "/api";
 
