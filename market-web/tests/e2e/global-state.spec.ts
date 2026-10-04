@@ -1,87 +1,97 @@
+import type { Locator } from "@playwright/test";
 import { expect, signIn, test } from "./fixtures";
 import { checkA11y } from "../a11y";
-import { withRestoredGlobalState } from "../../src/global-state";
 import {
     mutateGlobalState,
     readGlobalState,
-    restoreGlobalState,
+    withRestoredGlobalState,
 } from "./live-global-state";
 
+// The global-state project runs these one at a time, after the parallel projects finish (playwright.e2e.config.ts).
 const accounts = ["global-state-global-alpha", "global-state-global-bravo"];
+const [player] = accounts;
 
-test("the global-state account starts unpaused and can end its session cleanly", async ({
-    page,
-}) => {
-    await signIn(page, accounts[0]);
+async function delistAll(delist: Locator) {
+    for (let listed = await delist.count(); listed > 0; listed--) {
+        await delist.first().click();
+        await expect(delist).toHaveCount(listed - 1);
+    }
+}
+
+test("shows the paused banner while the market is paused", async ({ page }) => {
+    const before = readGlobalState(accounts);
+    await signIn(page, player);
+    await page.goto("/");
+    await withRestoredGlobalState(accounts, async () => {
+        mutateGlobalState(accounts, ["pause"]);
+        await page.reload();
+        await expect(
+            page
+                .getByRole("status")
+                .filter({ hasText: "The market is paused" }),
+        ).toBeVisible();
+        await checkA11y(page);
+    });
+    expect(readGlobalState(accounts)).toEqual(before);
+});
+
+test("ends a browser session when its account is banned", async ({ page }) => {
+    const before = readGlobalState(accounts);
+    await signIn(page, player);
     await page.goto("/");
     await checkA11y(page);
-    await expect(page.getByText("Market paused")).toHaveCount(0);
-    await page.getByRole("button", { name: "Sign out" }).click();
+    await withRestoredGlobalState(accounts, async () => {
+        mutateGlobalState([player], ["bans"]);
+        await page.reload();
+        await expect(
+            page.getByRole("link", { name: "Sign in", exact: true }),
+        ).toBeVisible();
+        await checkA11y(page);
+    });
+    expect(readGlobalState(accounts)).toEqual(before);
+});
+
+test("refuses a new listing over the active listing setting", async ({
+    page,
+}) => {
+    const before = readGlobalState(accounts);
+    await signIn(page, player);
+    await page.goto("/vault");
+    await expect(page.getByRole("heading", { name: "Vault" })).toBeVisible();
+    await checkA11y(page);
+    const row = (item: string) =>
+        page.locator("tbody tr").filter({ hasText: item }).first();
+    const delist = page.getByRole("button", { name: "Delist" });
+    // start from no listings, whatever earlier tests left (a ban also returns them)
+    await delistAll(delist);
+    await withRestoredGlobalState(accounts, async () => {
+        mutateGlobalState(accounts, ["settings"]); // one active listing
+        await row("Kite Shield").locator("input[type=number]").fill("37");
+        await row("Kite Shield")
+            .getByRole("button", { name: "List item" })
+            .click();
+        await expect(delist).toHaveCount(1);
+        await row("Chainmail Basinet").locator("input[type=number]").fill("38");
+        await row("Chainmail Basinet")
+            .getByRole("button", { name: "List item" })
+            .click();
+        await expect(page.getByRole("alert")).toContainText(
+            "You have reached your active listing limit.",
+        );
+        await expect(delist).toHaveCount(1);
+    });
+    expect(readGlobalState(accounts)).toEqual(before);
+    await delistAll(delist);
+});
+
+test("puts pause, bans and settings back after a step fails midway", async () => {
+    const before = readGlobalState(accounts);
     await expect(
-        page.getByRole("link", { name: "Sign in", exact: true }),
-    ).toBeVisible();
-    await checkA11y(page);
-});
-
-test("shows the paused banner while restoring the live setting", async ({
-    page,
-}) => {
-    const before = await readGlobalState(accounts);
-    await signIn(page, accounts[0]);
-    await page.goto("/");
-    await withRestoredGlobalState(
-        before,
-        async () => {
-            await mutateGlobalState(accounts.slice(0, 1), ["pause"]);
-            await page.reload();
-            await checkA11y(page);
-            await expect(
-                page
-                    .getByRole("status")
-                    .filter({ hasText: "The market is paused" }),
-            ).toBeVisible();
-        },
-        (state) => restoreGlobalState(state, accounts),
-    );
-    expect(await readGlobalState(accounts)).toEqual(before);
-});
-
-test("ends a browser session when its account is banned, then restores the ban", async ({
-    page,
-}) => {
-    const before = await readGlobalState(accounts);
-    await signIn(page, accounts[0]);
-    await page.goto("/");
-    await checkA11y(page);
-    await withRestoredGlobalState(
-        before,
-        async () => {
-            await mutateGlobalState(accounts.slice(0, 1), ["bans"]);
-            await page.reload();
-            await expect(
-                page.getByRole("link", { name: "Sign in", exact: true }),
-            ).toBeVisible();
-            await checkA11y(page);
-        },
-        (state) => restoreGlobalState(state, accounts),
-    );
-    expect(await readGlobalState(accounts)).toEqual(before);
-});
-
-test("restores pause, bans and settings after a forced midway failure", async ({
-    page,
-}) => {
-    const before = await readGlobalState(accounts);
-    await expect(
-        withRestoredGlobalState(
-            before,
-            async () => {
-                await mutateGlobalState(accounts);
-                throw new Error("forced midway failure");
-            },
-            (state) => restoreGlobalState(state, accounts),
-        ),
+        withRestoredGlobalState(accounts, async () => {
+            mutateGlobalState(accounts, ["pause", "settings", "bans"]);
+            expect(readGlobalState(accounts)).not.toEqual(before);
+            throw new Error("forced midway failure");
+        }),
     ).rejects.toThrow("forced midway failure");
-    expect(await readGlobalState(accounts)).toEqual(before);
-    await page.goto("/");
+    expect(readGlobalState(accounts)).toEqual(before);
 });

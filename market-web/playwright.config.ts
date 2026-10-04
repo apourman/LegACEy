@@ -7,9 +7,10 @@ const port = process.env.MARKET_WEB_TEST_PORT ?? '5173';
 process.env.MARKET_WEB_TEST_API_PORT ??= String(Number(port) + 1);
 
 export default defineConfig({
-    // tests/ also holds Vitest's *.test.ts(x) and the end-to-end suite (tests/e2e, playwright.e2e.config.ts).
+    // tests/ also holds Vitest's *.test.ts(x) and the end-to-end suite (tests/e2e, playwright.e2e.config.ts): only *.spec files outside e2e are ours.
     testDir: './tests',
-    testIgnore: ['**/*.test.ts', '**/*.test.tsx', '**/e2e/**'],
+    testMatch: '**/*.spec.ts',
+    testIgnore: '**/e2e/**',
     workers: 1,
     use: { baseURL: `http://127.0.0.1:${port}`, hasTouch: true },
     webServer: {

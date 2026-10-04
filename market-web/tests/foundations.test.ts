@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { ApiError, messages, type Me } from "../src/api";
 import { chooseCharacter } from "../src/character";
 import { checkMmdAmount } from "../src/mmd";
@@ -11,10 +11,6 @@ import {
     ticketStatusText,
 } from "../src/ticket-presentation";
 import { clearTicketAttempt, ticketAttempt } from "../src/tickets";
-import {
-    withRestoredGlobalState,
-    type GlobalStateSnapshot,
-} from "../src/global-state";
 
 const me: Me = {
     accountId: 3,
@@ -204,6 +200,7 @@ describe("ticket presentation and polling", () => {
         expect(pollingDelay("visible")).toBe(2_000);
         expect(pollingDelay("hidden")).toBe(10_000);
         expect(shouldPollTickets([{ ...base, status: "CLAIMED" }])).toBe(true);
+        expect(shouldPollTickets([{ ...base, status: "DONE" }])).toBe(false);
         expect(shouldPollTickets([{ ...base, status: "FAILED" }])).toBe(false);
     });
 });
@@ -246,61 +243,5 @@ describe("stable ticket keys", () => {
             ticketAttempt(78, "mmd", { characterId: 4, amount: 10 }),
         ).not.toBe(first);
         clearTicketAttempt(77, "mmd");
-    });
-});
-
-describe("global-state restoration", () => {
-    it("restores pause, bans and settings after a forced failure", async () => {
-        const original = {
-            paused: false,
-            bannedDetails: {
-                "seed-bravo": {
-                    bannedAt: "original",
-                    bannedByAccountId: null,
-                    expiresAt: null,
-                    reason: null,
-                },
-            },
-            settings: { listingLimit: { value: 200, description: "" } },
-        };
-        let state: GlobalStateSnapshot = {
-            paused: original.paused,
-            bannedDetails: { ...original.bannedDetails },
-            settings: { ...original.settings },
-        };
-        const restore = vi.fn(async (snapshot: GlobalStateSnapshot) => {
-            state = {
-                paused: snapshot.paused,
-                bannedDetails: { ...snapshot.bannedDetails },
-                settings: { ...snapshot.settings },
-            };
-        });
-        await expect(
-            withRestoredGlobalState(
-                original,
-                async () => {
-                    state = {
-                        paused: true,
-                        bannedDetails: {
-                            ...state.bannedDetails,
-                            "seed-alpha": {
-                                bannedAt: "forced",
-                                bannedByAccountId: null,
-                                expiresAt: null,
-                                reason: null,
-                            },
-                        },
-                        settings: {
-                            ...state.settings,
-                            listingLimit: { value: 1, description: "" },
-                        },
-                    };
-                    throw new Error("forced midway failure");
-                },
-                restore,
-            ),
-        ).rejects.toThrow("forced midway failure");
-        expect(state).toEqual(original);
-        expect(restore).toHaveBeenCalledOnce();
     });
 });
