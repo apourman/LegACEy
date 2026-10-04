@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using Avalonia.Input;
@@ -41,8 +42,11 @@ public sealed class Plugin : FilterBase
     private const int InputTestHeight = 300;
     private const int InputWindowWidth = 380;
     private const int InputWindowHeight = 350;
+    private const int BreakoutWindowWidth = 500;
+    private const int BreakoutWindowHeight = 390;
     private const string InputTestSlot = "Input test";
     private const string ThemeGallerySlot = "Theme gallery";
+    private const string BreakoutSlot = "Breakout";
     private static readonly string PluginDirectory = IOPath.GetDirectoryName(typeof(Plugin).Assembly.Location)!;
 
     private Device? _device;
@@ -50,9 +54,16 @@ public sealed class Plugin : FilterBase
     private IndicatorBar? _bar;
     private InputTestPanel? _inputTest;
     private ThemeGalleryControl? _themeGallery;
+    private BreakoutGame? _breakout;
     private ScreenSurface? _barSurface;
     private ScreenSurface? _inputTestSurface;
     private ScreenSurface? _themeGallerySurface;
+    private ScreenSurface? _breakoutSurface;
+    private WindowManager? _windows;
+    private PostUiDrawHook? _postUiDrawHook;
+    private IntPtr _nativeDevice;
+    private bool _windowsEnabled;
+    private DateTime _lastBreakoutStep = DateTime.UtcNow;
     private ScreenSurface? _hovered;
     private readonly InputRouterService _inputRouter = new();
     private Point _pointer;
@@ -75,6 +86,8 @@ public sealed class Plugin : FilterBase
         CoreManager.Current.CharacterFilter.Logoff -= OnLogoff;
         CoreManager.Current.RenderFrame -= OnRenderFrame;
         CoreManager.Current.WindowMessage -= OnWindowMessage;
+        _postUiDrawHook?.Dispose();
+        _postUiDrawHook = null;
         RestoreNativeBar();
         TearDown();
         AppDomain.CurrentDomain.AssemblyResolve -= ResolveFromPluginDirectory;
@@ -131,6 +144,8 @@ public sealed class Plugin : FilterBase
         {
             if (_barSurface == null)
                 CreateUi();
+            else if (_windows == null)
+                CreateWindowManager();
             _inGame = true;
         });
     }
@@ -140,17 +155,25 @@ public sealed class Plugin : FilterBase
         Guard(() => ApplyReset(_inputRouter.Route(new NativeInputMessage(InputRouterService.WmLogoff, IntPtr.Zero, IntPtr.Zero), GetInputSurfaces())));
         Guard(() => _hovered?.Panel.PointerLeave());
         _inGame = false;
+        foreach (var window in _windows?.ZOrder.ToArray() ?? Array.Empty<ManagedWindow>())
+            _windows!.Close(window.Id);
+        _windows = null;
         _nativeBarBounds = null;
         _hovered = null;
         _dragOffset = null;
         if (_barSurface != null) _barSurface.Visible = false;
         if (_inputTestSurface != null) _inputTestSurface.Visible = false;
         if (_themeGallerySurface != null) _themeGallerySurface.Visible = false;
+        if (_breakoutSurface != null) _breakoutSurface.Visible = false;
+        _bar?.SetOpen(InputTestSlot, false);
+        _bar?.SetOpen(ThemeGallerySlot, false);
+        _bar?.SetOpen(BreakoutSlot, false);
     }
 
     private void CreateUi()
     {
-        _device = GameDevice.Open();
+        _device = GameDevice.Open(out _nativeDevice);
+        CreateWindowManager();
         var acclient = Process.GetCurrentProcess().MainModule!.FileName;
         _portal = new PortalDat(IOPath.Combine(IOPath.GetDirectoryName(acclient)!, "client_portal.dat"));
         GameArtImageExtension.CurrentSource = _portal;
@@ -166,6 +189,7 @@ public sealed class Plugin : FilterBase
             new IndicatorSlot("Mini-game", 0x060074A6, () => NativeUi.ToggleRootElement(NativeUi.MiniGame)),
             new IndicatorSlot(InputTestSlot, 0x06004D20, ToggleInputTest, "B"),
             new IndicatorSlot(ThemeGallerySlot, AcClientTheme.WindowChromeCenterId, ToggleThemeGallery, "T"),
+            new IndicatorSlot(BreakoutSlot, 0x06004D20, ToggleBreakout, "R"),
             new IndicatorSlot("Log out", 0x060074B1, NativeUi.RequestLogOut)
         };
         var size = IndicatorBar.MeasureFor(slots.Length);
@@ -178,9 +202,7 @@ public sealed class Plugin : FilterBase
             var chrome = new ThemeWindowChrome(_portal, "Input test", _inputTest);
             chrome.CloseRequested += (_, _) =>
             {
-                if (_inputTestSurface != null) _inputTestSurface.Visible = false;
-                _bar?.SetOpen(InputTestSlot, false);
-                if (_hovered == _inputTestSurface) _hovered = null;
+                CloseWindow("input-test");
             };
             return chrome;
         }, InputWindowWidth, InputWindowHeight);
@@ -190,35 +212,35 @@ public sealed class Plugin : FilterBase
             _themeGallery = new ThemeGalleryControl();
             _themeGallery.ThemeSwitchRequested += (_, _) => SwitchTheme();
             var chrome = new ThemeWindowChrome(_portal, "Theme gallery", _themeGallery);
-            chrome.CloseRequested += (_, _) =>
-            {
-                if (_themeGallerySurface != null) _themeGallerySurface.Visible = false;
-                _bar?.SetOpen(ThemeGallerySlot, false);
-                if (_hovered == _themeGallerySurface) _hovered = null;
-            };
+            chrome.CloseRequested += (_, _) => CloseWindow("theme-gallery");
             return chrome;
         }, 580, 560);
         _themeGallerySurface = new ScreenSurface(_device, galleryPanel);
+        var breakoutPanel = AvaloniaPanel.Create(() =>
+        {
+            _breakout = new BreakoutGame(BreakoutWindowWidth - 16, BreakoutWindowHeight - 42);
+            var chrome = new ThemeWindowChrome(_portal, "Breakout", _breakout);
+            chrome.CloseRequested += (_, _) => CloseWindow("breakout");
+            return chrome;
+        }, BreakoutWindowWidth, BreakoutWindowHeight);
+        _breakoutSurface = new ScreenSurface(_device, breakoutPanel);
         ApplyCurrentTheme();
         Log("Indicator bar replacement ready.");
     }
 
-    private void ToggleThemeGallery()
+    private void CreateWindowManager()
     {
-        if (_themeGallerySurface == null) return;
-        _themeGallerySurface.Visible = !_themeGallerySurface.Visible;
-        _bar?.SetOpen(ThemeGallerySlot, _themeGallerySurface.Visible);
-        if (_themeGallerySurface.Visible)
-            PlaceThemeGallery();
+        if (_device == null) return;
+        _windows = new WindowManager(new Size(_device.Viewport.Width, _device.Viewport.Height), new FileWindowPositionStore(IOPath.Combine(PluginDirectory, "window-positions.txt")), SessionServer(), SessionCharacter());
+        _postUiDrawHook ??= new PostUiDrawHook(DrawWindowsAfterRetailUi, DisableWindows);
+        _windowsEnabled = _postUiDrawHook.Install(_nativeDevice);
+        if (!_windowsEnabled)
+            Log("LegACEy windows disabled: IDirect3DDevice9.EndScene hook could not be installed.");
     }
 
-    private void PlaceThemeGallery()
+    private void ToggleThemeGallery()
     {
-        var screen = _device!.Viewport;
-        var size = _themeGallerySurface!.Bounds.Size;
-        _themeGallerySurface.Location = new Point(
-            Math.Max(0, Math.Min((screen.Width - size.Width) / 2, screen.Width - size.Width)),
-            Math.Max(0, Math.Min((screen.Height - size.Height) / 2, screen.Height - size.Height)));
+        ToggleWindow("theme-gallery", ThemeGallerySlot, 580, 560, new Point(120, 70));
     }
 
     private void SwitchTheme()
@@ -238,15 +260,39 @@ public sealed class Plugin : FilterBase
 
     private void ToggleInputTest()
     {
-        if (_inputTestSurface == null || _barSurface == null)
-            return;
+        ToggleWindow("input-test", InputTestSlot, InputWindowWidth, InputWindowHeight, new Point(120, 70));
+    }
 
-        _inputTestSurface.Visible = !_inputTestSurface.Visible;
-        _bar?.SetOpen(InputTestSlot, _inputTestSurface.Visible);
-        if (_inputTestSurface.Visible)
-            PlaceInputTest();
-        else if (_hovered == _inputTestSurface)
-            _hovered = null;
+    private void ToggleBreakout() => ToggleWindow("breakout", BreakoutSlot, BreakoutWindowWidth, BreakoutWindowHeight, new Point(180, 80));
+
+    private void ToggleWindow(string id, string slot, int width, int height, Point defaultLocation)
+    {
+        if (!_windowsEnabled || _windows == null)
+            return;
+        var surface = SurfaceById(id);
+        if (surface == null)
+            return;
+        if (surface.Visible)
+        {
+            CloseWindow(id);
+            return;
+        }
+
+        var window = _windows.Open(new WindowDefinition(id, id, width, height), defaultLocation);
+        surface.Location = window.Location;
+        surface.Visible = true;
+        _bar?.SetOpen(slot, true);
+    }
+
+    private void CloseWindow(string id)
+    {
+        var surface = SurfaceById(id);
+        if (surface != null) surface.Visible = false;
+        _windows?.Close(id);
+        if (_hovered == surface) _hovered = null;
+        if (id == "input-test") _bar?.SetOpen(InputTestSlot, false);
+        if (id == "theme-gallery") _bar?.SetOpen(ThemeGallerySlot, false);
+        if (id == "breakout") _bar?.SetOpen(BreakoutSlot, false);
     }
 
     /// <summary>The handle was pressed: the bar follows the pointer until the button goes up.</summary>
@@ -263,8 +309,6 @@ public sealed class Plugin : FilterBase
         _barSurface.Location = new Point(
             Math.Max(0, Math.Min(screen.Width - size.Width, pointer.X - _dragOffset!.Value.Width)),
             Math.Max(0, Math.Min(screen.Height - size.Height, pointer.Y - _dragOffset.Value.Height)));
-        if (_inputTestSurface is { Visible: true })
-            PlaceInputTest();
     }
 
     /// <summary>
@@ -283,16 +327,6 @@ public sealed class Plugin : FilterBase
         Log($"Moved the retail indicators bar to {_nativeBarBounds}.");
     }
 
-    /// <summary>Open the input test panel just below the bar, or above it when there's no room below.</summary>
-    private void PlaceInputTest()
-    {
-        var bar = _barSurface!.Bounds;
-        var screen = _device!.Viewport;
-        var x = Math.Max(0, Math.Min(bar.Left, screen.Width - InputWindowWidth));
-        var y = bar.Bottom + 4 + InputWindowHeight <= screen.Height ? bar.Bottom + 4 : Math.Max(0, bar.Top - 4 - InputWindowHeight);
-        _inputTestSurface!.Location = new Point(x, y);
-    }
-
     /// <summary>
     /// Each frame in game: take over the retail bar if the client is showing it, then draw our
     /// surfaces.
@@ -306,12 +340,48 @@ public sealed class Plugin : FilterBase
         {
             TakeOverNativeBar();
             _barSurface.Render();
-
-            if (_inputTestSurface is { Visible: true })
-                _inputTestSurface.Render();
-            if (_themeGallerySurface is { Visible: true })
-                _themeGallerySurface.Render();
         });
+
+        if (_failed || !_windowsEnabled)
+            return;
+
+        GuardWindows(() =>
+        {
+            if (_windows != null)
+            {
+                var viewport = new Size(_device!.Viewport.Width, _device.Viewport.Height);
+                if (_windows.Screen != viewport)
+                {
+                    _windows.ResizeScreen(viewport);
+                    SyncWindowLocations();
+                }
+            }
+
+            PrepareWindow(_inputTestSurface);
+            PrepareWindow(_themeGallerySurface);
+            PrepareWindow(_breakoutSurface);
+            if (_breakout is { } breakout)
+            {
+                var now = DateTime.UtcNow;
+                breakout.Step(now - _lastBreakoutStep);
+                _lastBreakoutStep = now;
+            }
+        });
+    }
+
+    private static void PrepareWindow(ScreenSurface? surface)
+    {
+        if (surface is { Visible: true })
+            surface.Prepare();
+    }
+
+    /// <summary>Called by IDirect3DDevice9.EndScene after retail and Decal UI drawing.</summary>
+    private void DrawWindowsAfterRetailUi()
+    {
+        if (!_windowsEnabled || _windows == null)
+            return;
+        foreach (var window in _windows.ZOrder.Reverse())
+            SurfaceById(window.Id)?.DrawNow();
     }
 
     /// <summary>
@@ -331,8 +401,6 @@ public sealed class Plugin : FilterBase
         _nativeBarBounds = bounds;
         _barSurface!.Location = bounds.Location;
         _barSurface.Visible = true;
-        if (_inputTestSurface is { Visible: true })
-            PlaceInputTest();
     }
 
     private void RestoreNativeBar()
@@ -375,31 +443,46 @@ public sealed class Plugin : FilterBase
         var route = _inputRouter.Route(
             new NativeInputMessage(e.Msg, new IntPtr(e.WParam), new IntPtr(lParam)),
             GetInputSurfaces());
-        Guard(() =>
+        GuardInput(route, () =>
         {
             var target = route.SurfaceId == null ? null : SurfaceById(route.SurfaceId);
             switch (route.Action)
             {
                 case InputAction.PointerMove:
-                    var point = new Point((short)(e.LParam & 0xffff), (short)((e.LParam >> 16) & 0xffff));
+                    var point = new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff));
                     _pointer = point;
                     if (target != _hovered)
                     {
                         _hovered?.Panel.PointerLeave();
                         _hovered = target;
                     }
-                    if (_dragOffset != null)
+                    if (_windows?.IsDragging == true)
+                    {
+                        _windows.Move(point);
+                        SyncWindowLocations();
+                    }
+                    else if (_dragOffset != null)
                         DragBar(point);
                     else
                         target?.Panel.PointerMove(route.X, route.Y);
                     break;
                 case InputAction.PointerDown:
                     _pointer = new Point(route.X + target!.Location.X, route.Y + target.Location.Y);
+                    if (target != _barSurface && _windows != null)
+                    {
+                        _windows.Press(_pointer);
+                        SyncWindowLocations();
+                    }
                     target.Panel.PointerDown(route.X, route.Y);
                     e.Eat = route.Eat;
                     break;
                 case InputAction.PointerUp:
                     target!.Panel.PointerUp(route.X, route.Y);
+                    if (_windows?.IsDragging == true)
+                    {
+                        _windows.Release();
+                        SyncWindowLocations();
+                    }
                     if (_dragOffset != null)
                         EndBarDrag();
                     e.Eat = route.Eat;
@@ -436,15 +519,42 @@ public sealed class Plugin : FilterBase
         });
     }
 
+    private void GuardInput(InputRoute route, Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception exception)
+        {
+            var id = route.SurfaceId ?? route.ClearFocusSurfaceId ?? route.ReleaseCaptureSurfaceId;
+            var windowFailure = id != "bar" && (id != null || (_hovered != null && _hovered != _barSurface));
+            if (windowFailure)
+            {
+                _postUiDrawHook?.Dispose();
+                _postUiDrawHook = null;
+                DisableWindows(exception);
+            }
+            else
+                Disable(exception);
+        }
+    }
+
     private InputSurface[] GetInputSurfaces()
     {
-        var surfaces = new System.Collections.Generic.List<InputSurface>(2);
+        var surfaces = new System.Collections.Generic.List<InputSurface>(4);
         if (_barSurface is { Visible: true })
             surfaces.Add(new InputSurface("bar", _barSurface.Location.X, _barSurface.Location.Y, _barSurface.Bounds.Width, _barSurface.Bounds.Height, 0, _barSurface.Panel.WantsKeyboard));
-        if (_inputTestSurface is { Visible: true })
-            surfaces.Add(new InputSurface("input-test", _inputTestSurface.Location.X, _inputTestSurface.Location.Y, _inputTestSurface.Bounds.Width, _inputTestSurface.Bounds.Height, 1, _inputTestSurface.Panel.WantsKeyboard));
-        if (_themeGallerySurface is { Visible: true })
-            surfaces.Add(new InputSurface("theme-gallery", _themeGallerySurface.Location.X, _themeGallerySurface.Location.Y, _themeGallerySurface.Bounds.Width, _themeGallerySurface.Bounds.Height, 2, _themeGallerySurface.Panel.WantsKeyboard));
+        if (_windows != null)
+        {
+            var z = _windows.ZOrder.Count;
+            foreach (var window in _windows.ZOrder)
+            {
+                var surface = SurfaceById(window.Id);
+                if (surface is not { Visible: true }) continue;
+                surfaces.Add(new InputSurface(window.Id, window.Location.X, window.Location.Y, window.Width, window.Height, z--, surface.Panel.WantsKeyboard));
+            }
+        }
         return surfaces.ToArray();
     }
 
@@ -453,6 +563,7 @@ public sealed class Plugin : FilterBase
         "bar" => _barSurface,
         "input-test" => _inputTestSurface,
         "theme-gallery" => _themeGallerySurface,
+        "breakout" => _breakoutSurface,
         _ => null
     };
 
@@ -463,6 +574,14 @@ public sealed class Plugin : FilterBase
         _hovered?.Panel.PointerLeave();
         _hovered = null;
         _dragOffset = null;
+        _windows?.Release();
+    }
+
+    private void SyncWindowLocations()
+    {
+        if (_windows == null) return;
+        foreach (var window in _windows.ZOrder)
+            SurfaceById(window.Id)!.Location = window.Location;
     }
 
     private static KeyModifiers ToKeyModifiers(InputModifiers modifiers)
@@ -488,6 +607,20 @@ public sealed class Plugin : FilterBase
         }
     }
 
+    private void GuardWindows(Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception exception)
+        {
+            _postUiDrawHook?.Dispose();
+            _postUiDrawHook = null;
+            DisableWindows(exception);
+        }
+    }
+
     /// <summary>Stop drawing, give the player the retail bar back, and log why.</summary>
     private void Disable(Exception exception)
     {
@@ -495,6 +628,48 @@ public sealed class Plugin : FilterBase
         Log($"Indicator bar replacement disabled: {exception}");
         RestoreNativeBar();
         TearDown();
+    }
+
+    /// <summary>Disable only the post-UI windows when EndScene fails; retail surfaces continue.</summary>
+    private void DisableWindows(Exception exception)
+    {
+        _windowsEnabled = false;
+        Log($"LegACEy windows disabled: {exception}");
+        foreach (var surface in new[] { _inputTestSurface, _themeGallerySurface, _breakoutSurface })
+            if (surface != null) surface.Visible = false;
+        _bar?.SetOpen(InputTestSlot, false);
+        _bar?.SetOpen(ThemeGallerySlot, false);
+        _bar?.SetOpen(BreakoutSlot, false);
+        foreach (var window in _windows?.ZOrder.ToArray() ?? Array.Empty<ManagedWindow>())
+            _windows!.Close(window.Id);
+    }
+
+    private static string SessionCharacter()
+    {
+        var filter = CoreManager.Current.CharacterFilter;
+        return PropertyText(filter, "Character") is { } character
+            ? PropertyText(character, "Name") ?? character
+            : PropertyText(filter, "Name") ?? "unknown-character";
+    }
+
+    private static string SessionServer()
+    {
+        var filter = CoreManager.Current.CharacterFilter;
+        var server = PropertyText(filter, "Server");
+        return server ?? "unknown-server";
+    }
+
+    private static string? PropertyText(object target, string property)
+    {
+        try
+        {
+            var value = target.GetType().GetProperty(property)?.GetValue(target, null);
+            return value?.ToString();
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private void TearDown()
@@ -506,11 +681,18 @@ public sealed class Plugin : FilterBase
         _inputTestSurface = null;
         _themeGallerySurface?.Dispose();
         _themeGallerySurface = null;
+        _breakoutSurface?.Dispose();
+        _breakoutSurface = null;
+        _postUiDrawHook?.Dispose();
+        _postUiDrawHook = null;
+        _windows = null;
+        _windowsEnabled = false;
         _portal?.Dispose();
         _portal = null;
         _bar = null;
         _inputTest = null;
         _themeGallery = null;
+        _breakout = null;
         GameArtImageExtension.CurrentSource = null;
     }
 }
