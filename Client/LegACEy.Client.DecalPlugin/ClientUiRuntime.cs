@@ -67,12 +67,16 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private Size? _dragOffset;
     private RetailTakeoverLifecycle? _barTakeover;
     private readonly GameStatePort _gameState = new(new GameStateSnapshot("unknown-character", "unknown-server", 0, 0, 0, 0, 0, 0));
+    private readonly GameStatePoller _gameStatePoller;
     private ClientUiFramework? _clientUi;
     private readonly Dictionary<string, ScreenSurface> _featureSurfaces = new(StringComparer.Ordinal);
     private readonly List<FeatureTakeover> _featureTakeovers = new();
     private bool _inGame;
     private bool _failed;
     private bool _acThemeActive = true;
+
+    public ClientUiRuntime() => _gameStatePoller = new GameStatePoller(_gameState, ReadGameState,
+        error => Log($"Character stats temporarily unavailable; keeping UI active and retrying: {error.Message}"));
 
     public void Startup()
     {
@@ -144,13 +148,13 @@ internal sealed class ClientUiRuntime : IClientUiHost
 
         Guard(() =>
         {
-            PublishGameState();
             if (_barSurface == null)
                 CreateUi();
             if (_windows == null)
                 CreateWindowManager();
             _clientUi ??= new ClientUiFramework(this, _gameState, CurrentTheme());
             _inGame = true;
+            PublishGameState();
         });
     }
 
@@ -837,13 +841,15 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private static string SessionCharacter() => CoreManager.Current.CharacterFilter.Name;
     private static string SessionServer() => CoreManager.Current.CharacterFilter.Server;
 
-    private void PublishGameState()
+    private void PublishGameState() => _gameStatePoller.Poll(_inGame);
+
+    private static GameStateSnapshot ReadGameState()
     {
         var filter = CoreManager.Current.CharacterFilter;
-        _gameState.Publish(new GameStateSnapshot(SessionCharacter(), SessionServer(),
+        return new GameStateSnapshot(SessionCharacter(), SessionServer(),
             filter.Health, filter.EffectiveVital[Decal.Adapter.Wrappers.CharFilterVitalType.Health],
             filter.Stamina, filter.EffectiveVital[Decal.Adapter.Wrappers.CharFilterVitalType.Stamina],
-            filter.Mana, filter.EffectiveVital[Decal.Adapter.Wrappers.CharFilterVitalType.Mana]));
+            filter.Mana, filter.EffectiveVital[Decal.Adapter.Wrappers.CharFilterVitalType.Mana]);
     }
 
     private sealed class NativeElementPort : IRetailTakeoverPort
