@@ -11,7 +11,7 @@ namespace LegACEy.Client.GameArt;
 /// and up to 61 sorted entries per node, and files stored in chained blocks whose first four
 /// bytes point at the next block. The file is opened for shared reading, since acclient keeps it open.
 /// </remarks>
-public sealed class PortalDat : IDisposable
+public sealed class PortalDat : IDisposable, IGameArtSource
 {
     private const int HeaderOffset = 0x140;
     private const int BranchCount = 0x3E;

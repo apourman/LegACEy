@@ -11,6 +11,7 @@ using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.InputRouter;
 using LegACEy.Client.PanelHost;
+using LegACEy.Client.Themes;
 using Microsoft.DirectX.Direct3D;
 
 namespace LegACEy.Client.DecalPlugin;
@@ -38,15 +39,20 @@ public sealed class Plugin : FilterBase
 
     private const int InputTestWidth = 360;
     private const int InputTestHeight = 300;
+    private const int InputWindowWidth = 380;
+    private const int InputWindowHeight = 350;
     private const string InputTestSlot = "Input test";
+    private const string ThemeGallerySlot = "Theme gallery";
     private static readonly string PluginDirectory = IOPath.GetDirectoryName(typeof(Plugin).Assembly.Location)!;
 
     private Device? _device;
     private PortalDat? _portal;
     private IndicatorBar? _bar;
     private InputTestPanel? _inputTest;
+    private ThemeGalleryControl? _themeGallery;
     private ScreenSurface? _barSurface;
     private ScreenSurface? _inputTestSurface;
+    private ScreenSurface? _themeGallerySurface;
     private ScreenSurface? _hovered;
     private readonly InputRouterService _inputRouter = new();
     private Point _pointer;
@@ -54,6 +60,7 @@ public sealed class Plugin : FilterBase
     private Rectangle? _nativeBarBounds;
     private bool _inGame;
     private bool _failed;
+    private bool _acThemeActive = true;
 
     protected override void Startup()
     {
@@ -138,6 +145,7 @@ public sealed class Plugin : FilterBase
         _dragOffset = null;
         if (_barSurface != null) _barSurface.Visible = false;
         if (_inputTestSurface != null) _inputTestSurface.Visible = false;
+        if (_themeGallerySurface != null) _themeGallerySurface.Visible = false;
     }
 
     private void CreateUi()
@@ -145,6 +153,7 @@ public sealed class Plugin : FilterBase
         _device = GameDevice.Open();
         var acclient = Process.GetCurrentProcess().MainModule!.FileName;
         _portal = new PortalDat(IOPath.Combine(IOPath.GetDirectoryName(acclient)!, "client_portal.dat"));
+        GameArtImageExtension.CurrentSource = _portal;
 
         var slots = new[]
         {
@@ -156,15 +165,75 @@ public sealed class Plugin : FilterBase
             new IndicatorSlot("Character info", 0x060074A2, () => NativeUi.ToggleRootElement(NativeUi.CharacterInfo)),
             new IndicatorSlot("Mini-game", 0x060074A6, () => NativeUi.ToggleRootElement(NativeUi.MiniGame)),
             new IndicatorSlot(InputTestSlot, 0x06004D20, ToggleInputTest, "B"),
+            new IndicatorSlot(ThemeGallerySlot, AcClientTheme.WindowChromeCenterId, ToggleThemeGallery, "T"),
             new IndicatorSlot("Log out", 0x060074B1, NativeUi.RequestLogOut)
         };
         var size = IndicatorBar.MeasureFor(slots.Length);
         var barPanel = AvaloniaPanel.Create(() => _bar = new IndicatorBar(slots, _portal.ReadImage), size.Width, size.Height);
         _barSurface = new ScreenSurface(_device, barPanel);
 
-        var inputPanel = AvaloniaPanel.Create(() => _inputTest = new InputTestPanel(InputTestWidth, InputTestHeight), InputTestWidth, InputTestHeight);
+        var inputPanel = AvaloniaPanel.Create(() =>
+        {
+            _inputTest = new InputTestPanel(InputTestWidth, InputTestHeight);
+            var chrome = new ThemeWindowChrome(_portal, "Input test", _inputTest);
+            chrome.CloseRequested += (_, _) =>
+            {
+                if (_inputTestSurface != null) _inputTestSurface.Visible = false;
+                _bar?.SetOpen(InputTestSlot, false);
+                if (_hovered == _inputTestSurface) _hovered = null;
+            };
+            return chrome;
+        }, InputWindowWidth, InputWindowHeight);
         _inputTestSurface = new ScreenSurface(_device, inputPanel);
+        var galleryPanel = AvaloniaPanel.Create(() =>
+        {
+            _themeGallery = new ThemeGalleryControl();
+            _themeGallery.ThemeSwitchRequested += (_, _) => SwitchTheme();
+            var chrome = new ThemeWindowChrome(_portal, "Theme gallery", _themeGallery);
+            chrome.CloseRequested += (_, _) =>
+            {
+                if (_themeGallerySurface != null) _themeGallerySurface.Visible = false;
+                _bar?.SetOpen(ThemeGallerySlot, false);
+                if (_hovered == _themeGallerySurface) _hovered = null;
+            };
+            return chrome;
+        }, 580, 560);
+        _themeGallerySurface = new ScreenSurface(_device, galleryPanel);
+        ApplyCurrentTheme();
         Log("Indicator bar replacement ready.");
+    }
+
+    private void ToggleThemeGallery()
+    {
+        if (_themeGallerySurface == null) return;
+        _themeGallerySurface.Visible = !_themeGallerySurface.Visible;
+        _bar?.SetOpen(ThemeGallerySlot, _themeGallerySurface.Visible);
+        if (_themeGallerySurface.Visible)
+            PlaceThemeGallery();
+    }
+
+    private void PlaceThemeGallery()
+    {
+        var screen = _device!.Viewport;
+        var size = _themeGallerySurface!.Bounds.Size;
+        _themeGallerySurface.Location = new Point(
+            Math.Max(0, Math.Min((screen.Width - size.Width) / 2, screen.Width - size.Width)),
+            Math.Max(0, Math.Min((screen.Height - size.Height) / 2, screen.Height - size.Height)));
+    }
+
+    private void SwitchTheme()
+    {
+        _acThemeActive = !_acThemeActive;
+        ApplyCurrentTheme();
+    }
+
+    private void ApplyCurrentTheme()
+    {
+        if (_barSurface == null || _inputTestSurface == null || _themeGallerySurface == null || _portal == null) return;
+        IClientTheme theme = _acThemeActive ? new AcClientTheme(_portal) : new SimpleClientTheme();
+        _barSurface.Panel.ApplyTheme(theme);
+        _inputTestSurface.Panel.ApplyTheme(theme);
+        _themeGallerySurface.Panel.ApplyTheme(theme);
     }
 
     private void ToggleInputTest()
@@ -219,8 +288,8 @@ public sealed class Plugin : FilterBase
     {
         var bar = _barSurface!.Bounds;
         var screen = _device!.Viewport;
-        var x = Math.Max(0, Math.Min(bar.Left, screen.Width - InputTestWidth));
-        var y = bar.Bottom + 4 + InputTestHeight <= screen.Height ? bar.Bottom + 4 : Math.Max(0, bar.Top - 4 - InputTestHeight);
+        var x = Math.Max(0, Math.Min(bar.Left, screen.Width - InputWindowWidth));
+        var y = bar.Bottom + 4 + InputWindowHeight <= screen.Height ? bar.Bottom + 4 : Math.Max(0, bar.Top - 4 - InputWindowHeight);
         _inputTestSurface!.Location = new Point(x, y);
     }
 
@@ -240,6 +309,8 @@ public sealed class Plugin : FilterBase
 
             if (_inputTestSurface is { Visible: true })
                 _inputTestSurface.Render();
+            if (_themeGallerySurface is { Visible: true })
+                _themeGallerySurface.Render();
         });
     }
 
@@ -372,6 +443,8 @@ public sealed class Plugin : FilterBase
             surfaces.Add(new InputSurface("bar", _barSurface.Location.X, _barSurface.Location.Y, _barSurface.Bounds.Width, _barSurface.Bounds.Height, 0, _barSurface.Panel.WantsKeyboard));
         if (_inputTestSurface is { Visible: true })
             surfaces.Add(new InputSurface("input-test", _inputTestSurface.Location.X, _inputTestSurface.Location.Y, _inputTestSurface.Bounds.Width, _inputTestSurface.Bounds.Height, 1, _inputTestSurface.Panel.WantsKeyboard));
+        if (_themeGallerySurface is { Visible: true })
+            surfaces.Add(new InputSurface("theme-gallery", _themeGallerySurface.Location.X, _themeGallerySurface.Location.Y, _themeGallerySurface.Bounds.Width, _themeGallerySurface.Bounds.Height, 2, _themeGallerySurface.Panel.WantsKeyboard));
         return surfaces.ToArray();
     }
 
@@ -379,6 +452,7 @@ public sealed class Plugin : FilterBase
     {
         "bar" => _barSurface,
         "input-test" => _inputTestSurface,
+        "theme-gallery" => _themeGallerySurface,
         _ => null
     };
 
@@ -430,9 +504,13 @@ public sealed class Plugin : FilterBase
         _barSurface = null;
         _inputTestSurface?.Dispose();
         _inputTestSurface = null;
+        _themeGallerySurface?.Dispose();
+        _themeGallerySurface = null;
         _portal?.Dispose();
         _portal = null;
         _bar = null;
         _inputTest = null;
+        _themeGallery = null;
+        GameArtImageExtension.CurrentSource = null;
     }
 }

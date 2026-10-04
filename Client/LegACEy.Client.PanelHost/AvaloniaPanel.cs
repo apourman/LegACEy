@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -8,6 +9,8 @@ using Avalonia.Platform;
 using Avalonia.Themes.Simple;
 using Avalonia.VisualTree;
 using Avalonia.Threading;
+using Avalonia.Styling;
+using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.PanelHost;
 
@@ -26,6 +29,7 @@ public sealed class AvaloniaPanel : IDisposable
     private readonly Window _window;
     private PanelFrame _frame;
     private bool _disposed;
+    private IStyle? _themeStyles;
     private Point _pointerPosition = new(-1, -1);
 
     private AvaloniaPanel(Control content, int width, int height)
@@ -215,6 +219,21 @@ public sealed class AvaloniaPanel : IDisposable
     {
         VerifyUsable();
         _window.FocusManager?.ClearFocus();
+    }
+
+    /// <summary>Replace this panel's theme styles without rebuilding its control tree.</summary>
+    public void ApplyTheme(IClientTheme theme)
+    {
+        if (theme == null) throw new ArgumentNullException(nameof(theme));
+        VerifyUsable();
+        if (_themeStyles != null)
+            _window.Styles.Remove(_themeStyles);
+        _themeStyles = theme.CreateStyles();
+        _window.Styles.Add(_themeStyles);
+        if (Content is ThemeWindowChrome rootChrome)
+            rootChrome.ApplyTheme(theme);
+        foreach (var chrome in Content.GetVisualDescendants().OfType<ThemeWindowChrome>())
+            chrome.ApplyTheme(theme);
     }
 
     private static RawInputModifiers ToRawModifiers(KeyModifiers modifiers)
