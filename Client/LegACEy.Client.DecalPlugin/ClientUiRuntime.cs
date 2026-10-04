@@ -257,6 +257,8 @@ internal sealed class ClientUiRuntime : IClientUiHost
         _barSurface?.Panel.ApplyTheme(theme);
         foreach (var surface in _featureSurfaces.Values)
             surface.Panel.ApplyTheme(theme);
+        foreach (var takeover in _featureTakeovers)
+            takeover.Surface?.Panel.ApplyTheme(theme);
     }
 
     private IClientTheme CurrentTheme() => _acThemeActive && _portal != null ? new AcClientTheme(_portal) : new SimpleClientTheme();
@@ -285,7 +287,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
         var inspector = new ElementInspectorControl(roots,
             id => { var element = NativeUi.GetElement(id); return element != IntPtr.Zero && NativeUi.IsVisible(element); },
             id => { var element = NativeUi.GetElement(id); return element == IntPtr.Zero ? Rectangle.Empty : NativeUi.GetBounds(element); },
-            (id, visible) => { var element = NativeUi.GetElement(id); if (element != IntPtr.Zero) NativeUi.SetVisible(element, visible); },
+            id => _clientUi!.HideRoot(id),
             (id, location) => _clientUi!.MoveRoot(id, location),
             id => _clientUi!.TakeOverRoot(id, new Border { Background = Avalonia.Media.Brushes.Black, Child = new TextBlock { Text = "LegACEy placeholder surface", Margin = new Avalonia.Thickness(12), Foreground = Avalonia.Media.Brushes.White } }));
         var chrome = new ThemeWindowChrome(_portal!, "Element inspector", inspector);
@@ -414,7 +416,10 @@ internal sealed class ClientUiRuntime : IClientUiHost
             }
             TakeOverNativeBar();
             foreach (var takeover in _featureTakeovers.ToArray())
+            {
                 takeover.Lifecycle.Tick(viewport: new Size(_device!.Viewport.Width, _device.Viewport.Height));
+                takeover.Renderer?.RenderFrame(_inGame, _postUiDrawHook?.IsInstalled == true);
+            }
             _barRenderer!.RenderFrame(_inGame, _postUiDrawHook?.IsInstalled == true);
         });
 
@@ -454,7 +459,12 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private void DrawAfterRetailUi()
     {
         if (_failed) return;
-        Guard(() => _barRenderer?.DrawAfterRetailUi());
+        Guard(() =>
+        {
+            _barRenderer?.DrawAfterRetailUi();
+            foreach (var takeover in _featureTakeovers.ToArray())
+                takeover.Renderer?.DrawAfterRetailUi();
+        });
         if (_failed || !_windowsEnabled || _windows == null)
             return;
         foreach (var window in _windows.ZOrder.Reverse())
@@ -474,6 +484,8 @@ internal sealed class ClientUiRuntime : IClientUiHost
     /// </summary>
     private void TakeOverNativeBar()
     {
+        if (_featureTakeovers.Any(takeover => takeover.RootElementId == NativeUi.Indicators)) return;
+        _barTakeover ??= new RetailTakeoverLifecycle(new NativeBarPort(NativeUi.Indicators), new SurfaceTakeoverPort(_barSurface!));
         var viewport = _device!.Viewport;
         if (_barTakeover?.Tick(_dragOffset != null, new Size(viewport.Width, viewport.Height)) == true)
             _dragOffset = null;
@@ -481,30 +493,70 @@ internal sealed class ClientUiRuntime : IClientUiHost
 
     IDisposable IClientUiHost.OpenWindow(WindowDefinition definition, Control content, Point requestedLocation)
     {
-        if (!_windowsEnabled || _windows == null || _device == null)
+        if (!_windowsEnabled || _windows == null || _device == null || _postUiDrawHook?.HasRun != true)
             throw new InvalidOperationException("LegACEy windows are unavailable until the post-UI renderer is ready.");
         if (_featureSurfaces.ContainsKey(definition.Id))
             throw new InvalidOperationException($"A feature window named '{definition.Id}' is already registered.");
         var panel = AvaloniaPanel.Create(() => content, definition.Width, definition.Height);
         var surface = new ScreenSurface(_device, panel);
-        var window = _windows.Open(definition, requestedLocation);
-        surface.Location = window.Location;
-        surface.Visible = true;
-        surface.Panel.ApplyTheme(_clientUi?.Theme ?? CurrentTheme());
-        _featureSurfaces.Add(definition.Id, surface);
-        return new FeatureWindow(this, definition.Id);
+        var opened = false;
+        try
+        {
+            var window = _windows.Open(definition, requestedLocation);
+            opened = true;
+            surface.Location = window.Location;
+            surface.Visible = true;
+            panel.ApplyTheme(_clientUi?.Theme ?? CurrentTheme());
+            _featureSurfaces.Add(definition.Id, surface);
+            return new FeatureWindow(this, definition.Id);
+        }
+        catch
+        {
+            try { surface.Dispose(); }
+            finally { if (opened) _windows.Close(definition.Id); }
+            throw;
+        }
     }
 
-    IDisposable IClientUiHost.TakeOverRoot(uint rootElementId, Control content)
+    IDisposable IClientUiHost.TakeOverRoot(uint rootElementId, Control content) => RegisterRoot(rootElementId, content);
+    IDisposable IClientUiHost.HideRoot(uint rootElementId) => RegisterRoot(rootElementId, null);
+
+    private IDisposable RegisterRoot(uint rootElementId, Control? content)
     {
         if (_device == null)
             throw new InvalidOperationException("The game rendering device is unavailable.");
-        var panel = AvaloniaPanel.Create(() => content, 280, 120);
-        var surface = new ScreenSurface(_device, panel);
-        var lifecycle = new RetailTakeoverLifecycle(new NativeElementPort(rootElementId), new SurfaceTakeoverPort(surface));
-        var registration = new FeatureTakeover(this, rootElementId, lifecycle, surface);
-        _featureTakeovers.Add(registration);
-        return registration;
+        if (_featureTakeovers.Any(takeover => takeover.RootElementId == rootElementId))
+            throw new InvalidOperationException("The retail root already has a feature owner.");
+        ScreenSurface? surface = null;
+        RetailTakeoverLifecycle? lifecycle = null;
+        try
+        {
+            if (content != null)
+            {
+                var panel = AvaloniaPanel.Create(() => content, 280, 120);
+                surface = new ScreenSurface(_device, panel);
+                panel.ApplyTheme(_clientUi?.Theme ?? CurrentTheme());
+            }
+            // Give the inspector exclusive ownership of the bar's retail root.
+            if (rootElementId == NativeUi.Indicators)
+            {
+                RestoreNativeBar();
+                if (_barTakeover != null) throw new InvalidOperationException("Could not release the indicators bar.");
+                _barSurface!.Visible = false;
+            }
+            lifecycle = new RetailTakeoverLifecycle(new NativeElementPort(rootElementId),
+                surface == null ? new MoveOnlySurface() : new SurfaceTakeoverPort(surface));
+            lifecycle.Tick();
+            var registration = new FeatureTakeover(this, rootElementId, lifecycle, surface);
+            _featureTakeovers.Add(registration);
+            return registration;
+        }
+        catch
+        {
+            try { lifecycle?.Dispose(); }
+            finally { surface?.Dispose(); }
+            throw;
+        }
     }
 
     bool IClientUiHost.MoveRoot(uint rootElementId, Point location)
@@ -512,6 +564,9 @@ internal sealed class ClientUiRuntime : IClientUiHost
         var active = _featureTakeovers.LastOrDefault(takeover => takeover.RootElementId == rootElementId);
         if (active != null)
             return active.Lifecycle.MoveTo(location);
+
+        if (rootElementId == NativeUi.Indicators && _barTakeover != null)
+            return _barTakeover.MoveTo(location);
 
         using var lifecycle = new RetailTakeoverLifecycle(new NativeElementPort(rootElementId), new MoveOnlySurface());
         lifecycle.Tick();
@@ -521,6 +576,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private void ReleaseFeatureWindow(string id)
     {
         if (!_featureSurfaces.TryGetValue(id, out var surface)) return;
+        if (_hovered == surface) _hovered = null;
         surface.Visible = false;
         surface.Dispose();
         _featureSurfaces.Remove(id);
@@ -531,7 +587,8 @@ internal sealed class ClientUiRuntime : IClientUiHost
     {
         if (!_featureTakeovers.Contains(registration)) return;
         registration.Lifecycle.Dispose();
-        registration.Surface.Dispose();
+        if (_hovered == registration.Surface) _hovered = null;
+        registration.Surface?.Dispose();
         _featureTakeovers.Remove(registration);
     }
 
@@ -596,7 +653,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
                     break;
                 case InputAction.PointerDown:
                     _pointer = new Point(route.X + target!.Location.X, route.Y + target.Location.Y);
-                    if (target != _barSurface && _windows != null)
+                    if (route.SurfaceId != null && _windows?.Get(route.SurfaceId) != null)
                     {
                         _windows.Press(_pointer);
                         SyncWindowLocations();
@@ -683,17 +740,22 @@ internal sealed class ClientUiRuntime : IClientUiHost
                 surfaces.Add(new InputSurface(window.Id, window.Location.X, window.Location.Y, window.Width, window.Height, z--, surface.Panel.WantsKeyboard));
             }
         }
+        foreach (var takeover in _featureTakeovers)
+        {
+            var surface = takeover.Surface;
+            if (surface is not { Visible: true }) continue;
+            surfaces.Add(new InputSurface(takeover.InputId, surface.Location.X, surface.Location.Y,
+                surface.Bounds.Width, surface.Bounds.Height, 0, surface.Panel.WantsKeyboard));
+        }
         return surfaces.ToArray();
     }
 
-    private ScreenSurface? SurfaceById(string? id) => SurfaceRegistrationById(id).Surface ??
-        (id != null && _featureSurfaces.TryGetValue(id, out var featureSurface) ? featureSurface : null);
-
-    private (ScreenSurface? Surface, string? Slot) SurfaceRegistrationById(string? id) => id switch
+    private ScreenSurface? SurfaceById(string? id)
     {
-        "bar" => (_barSurface, null),
-        _ => (null, null)
-    };
+        if (id == "bar") return _barSurface;
+        if (id != null && _featureSurfaces.TryGetValue(id, out var surface)) return surface;
+        return _featureTakeovers.FirstOrDefault(takeover => takeover.InputId == id)?.Surface;
+    }
 
     private void ApplyReset(InputRoute route)
     {
@@ -772,54 +834,16 @@ internal sealed class ClientUiRuntime : IClientUiHost
         _clientUi = null;
     }
 
-    private static string SessionCharacter()
-    {
-        var filter = CoreManager.Current.CharacterFilter;
-        return PropertyText(filter, "Character") is { } character
-            ? PropertyText(character, "Name") ?? character
-            : PropertyText(filter, "Name") ?? "unknown-character";
-    }
-
-    private static string SessionServer()
-    {
-        var filter = CoreManager.Current.CharacterFilter;
-        var server = PropertyText(filter, "Server");
-        return server ?? "unknown-server";
-    }
+    private static string SessionCharacter() => CoreManager.Current.CharacterFilter.Name;
+    private static string SessionServer() => CoreManager.Current.CharacterFilter.Server;
 
     private void PublishGameState()
     {
         var filter = CoreManager.Current.CharacterFilter;
-        var character = PropertyText(filter, "Character");
-        var characterName = character != null ? PropertyText(character, "Name") ?? character : PropertyText(filter, "Name") ?? "unknown-character";
-        var server = PropertyText(filter, "Server") ?? "unknown-server";
-        _gameState.Publish(new GameStateSnapshot(characterName, server,
-            PropertyInteger(filter, "Health"), PropertyInteger(filter, "MaxHealth"),
-            PropertyInteger(filter, "Stamina"), PropertyInteger(filter, "MaxStamina"),
-            PropertyInteger(filter, "Mana"), PropertyInteger(filter, "MaxMana")));
-    }
-
-    private static int PropertyInteger(object target, string property)
-    {
-        try
-        {
-            var value = target.GetType().GetProperty(property)?.GetValue(target, null);
-            return Convert.ToInt32(value ?? 0);
-        }
-        catch { return 0; }
-    }
-
-    private static string? PropertyText(object target, string property)
-    {
-        try
-        {
-            var value = target.GetType().GetProperty(property)?.GetValue(target, null);
-            return value?.ToString();
-        }
-        catch
-        {
-            return null;
-        }
+        _gameState.Publish(new GameStateSnapshot(SessionCharacter(), SessionServer(),
+            filter.Health, filter.EffectiveVital[Decal.Adapter.Wrappers.CharFilterVitalType.Health],
+            filter.Stamina, filter.EffectiveVital[Decal.Adapter.Wrappers.CharFilterVitalType.Stamina],
+            filter.Mana, filter.EffectiveVital[Decal.Adapter.Wrappers.CharFilterVitalType.Mana]));
     }
 
     private sealed class NativeElementPort : IRetailTakeoverPort
@@ -848,11 +872,16 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private sealed class FeatureTakeover : IDisposable
     {
         private readonly ClientUiRuntime _owner;
-        public FeatureTakeover(ClientUiRuntime owner, uint rootElementId, RetailTakeoverLifecycle lifecycle, ScreenSurface surface)
-        { _owner = owner; RootElementId = rootElementId; Lifecycle = lifecycle; Surface = surface; }
+        public FeatureTakeover(ClientUiRuntime owner, uint rootElementId, RetailTakeoverLifecycle lifecycle, ScreenSurface? surface)
+        {
+            _owner = owner; RootElementId = rootElementId; Lifecycle = lifecycle; Surface = surface;
+            if (surface != null) Renderer = new RetailSurfaceRenderer(surface.Prepare, surface.DrawNow);
+        }
         public uint RootElementId { get; }
         public RetailTakeoverLifecycle Lifecycle { get; }
-        public ScreenSurface Surface { get; }
+        public ScreenSurface? Surface { get; }
+        public RetailSurfaceRenderer? Renderer { get; }
+        public string InputId => "retail-root-" + RootElementId;
         public void Dispose() => _owner.ReleaseFeatureTakeover(this);
     }
 

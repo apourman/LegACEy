@@ -11,6 +11,7 @@ public interface IClientUiHost
 {
     IDisposable OpenWindow(WindowDefinition definition, Control content, Point requestedLocation);
     IDisposable TakeOverRoot(uint rootElementId, Control content);
+    IDisposable HideRoot(uint rootElementId);
     bool MoveRoot(uint rootElementId, Point location);
     void ApplyTheme(IClientTheme theme);
 }
@@ -41,8 +42,10 @@ public sealed class ClientUiFramework : IDisposable
 
     public void SetTheme(IClientTheme theme)
     {
-        _theme = theme ?? throw new ArgumentNullException(nameof(theme));
-        _host.ApplyTheme(theme);
+        EnsureActive();
+        if (theme == null) throw new ArgumentNullException(nameof(theme));
+        try { _host.ApplyTheme(theme); _theme = theme; }
+        catch { EndSession(); throw; }
     }
 
     public bool OpenWindow(WindowDefinition definition, Control content, Point? requestedLocation = null)
@@ -68,10 +71,20 @@ public sealed class ClientUiFramework : IDisposable
     {
         EnsureActive();
         if (content == null) throw new ArgumentNullException(nameof(content));
+        return RegisterTakeover(() => _host.TakeOverRoot(rootElementId, content));
+    }
+
+    public IDisposable HideRoot(uint rootElementId)
+    {
+        EnsureActive();
+        return RegisterTakeover(() => _host.HideRoot(rootElementId));
+    }
+
+    private IDisposable RegisterTakeover(Func<IDisposable> create)
+    {
         try
         {
-            var hostRegistration = _host.TakeOverRoot(rootElementId, content);
-            var registration = new TakeoverRegistration(this, hostRegistration);
+            var registration = new TakeoverRegistration(this, create());
             _takeovers.Add(registration);
             return registration;
         }
