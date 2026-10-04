@@ -16,9 +16,9 @@
 # Every test suite writes per-test results, which gate_results.py reconciles with the suite's exit status and the exact list in
 # gate-known-failures.txt: any other failure stops the gate and names the test, and so does a known failure that passes or disappears.
 #
-# Needs what the end-to-end scripts need (docker.env or MARKET_DOCKER_ENV_FILE, docker-ace-db-1 healthy, the DATs, jq), Node 22 for the
-# website, and a Source/ACE.Server/Config.js the .NET tests can use. Results, logs and summary.md go to the results directory (default
-# ~/.local/state/legacey/market-gate/<UTC time>).
+# Needs what the end-to-end scripts need (a docker.env in this checkout's root, where docker/docker-compose.local.yml reads it;
+# docker-ace-db-1 healthy; the DATs; jq), Node 22 for the website, and a Source/ACE.Server/Config.js the .NET tests can use. Results,
+# logs and summary.md go to the results directory (default ~/.local/state/legacey/market-gate/<UTC time>).
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
@@ -63,38 +63,47 @@ record() {
     step_details["$1"]="${3:-}"
 }
 
-banner() {
-    printf '\n==== gate: %s ====\n' "$1"
+# execute <step> <command...>: runs the command under a banner, its output also in the step's log; returns its exit status
+execute() {
+    local step="$1" log
+    shift
+    log="$(log_for "$step")"
+    printf '\n==== gate: %s ====\n' "$step"
+    "$@" 2>&1 | tee "$log"
+    return "${PIPESTATUS[0]}"
+}
+
+# fail <step> <detail> <problems>: records the step as failed and stops the gate there. A failure while tearing down after an earlier
+# one keeps the earlier one as the reason.
+fail() {
+    record "$1" FAIL "$2"
+    [[ -n "$stopped_at" ]] && return
+    stopped_at="$1"
+    stop_problems="$3"
 }
 
 # run <step> <command...>: a step judged by its exit status alone. Returns non-zero (and records why) when it fails.
 run() {
     local name="$1" status log
-    shift
     log="$(log_for "$name")"
-    banner "$name"
-    "$@" 2>&1 | tee "$log"
-    status=${PIPESTATUS[0]}
+    execute "$@"
+    status=$?
     if (( status == 0 )); then
         record "$name" pass
         return 0
     fi
-    record "$name" FAIL "exit $status; log: $log"
-    stopped_at="$name"
-    stop_problems="$(printf '%s exited %s. The end of its log (%s):\n%s' "$name" "$status" "$log" "$(tail -n 15 "$log")")"
+    fail "$name" "exit $status; log: $log" "$(printf '%s exited %s. The end of its log (%s):\n%s' "$name" "$status" "$log" "$(tail -n 15 "$log")")"
     return 1
 }
 
 # suite <step> <suite name in gate-known-failures.txt> <format> <results file> <command...>: a test suite. Its exit status is captured,
 # never ignored, and reconciled with its per-test results.
 suite() {
-    local name="$1" suite_name="$2" format="$3" results="$4" status detail problems log
+    local name="$1" suite_name="$2" format="$3" results="$4" status detail problems
     shift 4
-    log="$(log_for "$name")"
     rm -f "$results"
-    banner "$name"
-    "$@" 2>&1 | tee "$log"
-    status=${PIPESTATUS[0]}
+    execute "$name" "$@"
+    status=$?
     problems="$run_dir/logs/$suite_name.problems"
     if detail="$(python3 "$SCRIPTS/gate_results.py" check --suite "$suite_name" --format "$format" --results "$results" \
         --exit-status "$status" --known "$KNOWN_FAILURES" --root "$WEB" --known-out "$known_seen" 2>"$problems")"; then
@@ -102,9 +111,7 @@ suite() {
         return 0
     fi
     cat "$problems" >&2
-    record "$name" FAIL "$detail (exit $status)"
-    stopped_at="$name"
-    stop_problems="$(cat "$problems")"
+    fail "$name" "$detail (exit $status)" "$(cat "$problems")"
     return 1
 }
 
