@@ -1,27 +1,40 @@
 using System;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Reflection;
-using DrawingColor = System.Drawing.Color;
 using IOPath = System.IO.Path;
 using Decal.Adapter;
+using LegACEy.Client.Demo;
+using LegACEy.Client.GameArt;
 using LegACEy.Client.PanelHost;
-using VirindiViewService;
+using Microsoft.DirectX.Direct3D;
 
 namespace LegACEy.Client.DecalPlugin;
 
+/// <summary>
+/// Proof of concept: replace the retail floating indicators bar with an Avalonia bar drawn
+/// straight onto the game's device. It keeps the retail buttons and adds a Breakout slot.
+/// </summary>
 [FriendlyName("LegACEy Avalonia Panel")]
 public sealed class Plugin : FilterBase
 {
-    private const int PanelWidth = 360;
-    private const int PanelHeight = 260;
+    private const int BreakoutWidth = 360;
+    private const int BreakoutHeight = 260;
+    private const string BreakoutSlot = "Breakout";
     private static readonly string PluginDirectory = IOPath.GetDirectoryName(typeof(Plugin).Assembly.Location)!;
 
     private readonly Stopwatch _frameClock = new();
+    private Device? _device;
+    private PortalDat? _portal;
+    private IndicatorBar? _bar;
     private BreakoutGame? _game;
-    private AvaloniaPanel? _panel;
-    private HudView? _view;
-    private AvaloniaHudControl? _control;
+    private ScreenSurface? _barSurface;
+    private ScreenSurface? _breakoutSurface;
+    private ScreenSurface? _hovered;
+    private ScreenSurface? _captured;
+    private Rectangle? _nativeBarBounds;
+    private bool _inGame;
     private bool _failed;
 
     protected override void Startup()
@@ -36,6 +49,8 @@ public sealed class Plugin : FilterBase
         CoreManager.Current.CharacterFilter.LoginComplete -= OnLoginComplete;
         CoreManager.Current.CharacterFilter.Logoff -= OnLogoff;
         CoreManager.Current.RenderFrame -= OnRenderFrame;
+        CoreManager.Current.WindowMessage -= OnWindowMessage;
+        RestoreNativeBar();
         TearDown();
         AppDomain.CurrentDomain.AssemblyResolve -= ResolveFromPluginDirectory;
     }
@@ -75,63 +90,209 @@ public sealed class Plugin : FilterBase
     private void OnFilterInitComplete(object? sender, EventArgs e)
     {
         CoreManager.Current.FilterInitComplete -= OnFilterInitComplete;
-        Guard(() =>
-        {
-            _panel = AvaloniaPanel.Create(() => _game = new BreakoutGame(PanelWidth, PanelHeight), PanelWidth, PanelHeight);
-            CoreManager.Current.CharacterFilter.LoginComplete += OnLoginComplete;
-            CoreManager.Current.CharacterFilter.Logoff += OnLogoff;
-            CoreManager.Current.RenderFrame += OnRenderFrame;
-        });
+        CoreManager.Current.CharacterFilter.LoginComplete += OnLoginComplete;
+        CoreManager.Current.CharacterFilter.Logoff += OnLogoff;
+        CoreManager.Current.RenderFrame += OnRenderFrame;
+        CoreManager.Current.WindowMessage += OnWindowMessage;
     }
 
-    /// <summary>Create the VVS window, with its sidebar icon, once a character is in the world.</summary>
+    /// <summary>Build the bar and the Breakout panel the first time a character is in the world.</summary>
     private void OnLoginComplete(object? sender, EventArgs e)
     {
-        if (_failed || _panel == null || _view != null)
+        if (_failed)
             return;
 
         Guard(() =>
         {
-            _view = new HudView("LegACEy Breakout", PanelWidth, PanelHeight, new ACImage(DrawingColor.FromArgb(0x32, 0x75, 0x8d)))
-            {
-                UserResizeable = false
-            };
-            _control = new AvaloniaHudControl(_panel);
-            _control.PointerMoved += point => Guard(() => _game?.PointAt(point.X));
-            _control.PointerPressed += _ => Guard(() => _game?.Click());
-            _view.Controls.HeadControl = _control;
+            if (_barSurface == null)
+                CreateUi();
+            _inGame = true;
         });
     }
 
     private void OnLogoff(object? sender, EventArgs e)
     {
-        _view?.Dispose();
-        _view = null;
-        _control = null;
+        _inGame = false;
+        _nativeBarBounds = null;
+        _hovered = null;
+        _captured = null;
+        if (_barSurface != null) _barSurface.Visible = false;
+        if (_breakoutSurface != null) _breakoutSurface.Visible = false;
+    }
+
+    private void CreateUi()
+    {
+        _device = GameDevice.Open();
+        var acclient = Process.GetCurrentProcess().MainModule!.FileName;
+        _portal = new PortalDat(IOPath.Combine(IOPath.GetDirectoryName(acclient)!, "client_portal.dat"));
+
+        var slots = new[]
+        {
+            new IndicatorSlot("Link status", 0x06007498, () => NativeUi.ToggleRootElement(NativeUi.LinkStatus)),
+            new IndicatorSlot("Positive effects", 0x0600749C, () => NativeUi.ToggleRootElement(NativeUi.PositiveEffects)),
+            new IndicatorSlot("Negative effects", 0x0600749F, () => NativeUi.ToggleRootElement(NativeUi.NegativeEffects)),
+            new IndicatorSlot("Vitae", 0x060074A1, () => NativeUi.ToggleRootElement(NativeUi.Vitae)),
+            new IndicatorSlot("Character info", 0x060074A2, () => NativeUi.ToggleRootElement(NativeUi.CharacterInfo)),
+            new IndicatorSlot("Mini-game", 0x060074A6, () => NativeUi.ToggleRootElement(NativeUi.MiniGame)),
+            new IndicatorSlot(BreakoutSlot, 0x06004D20, ToggleBreakout, "B"),
+            new IndicatorSlot("Log out", 0x060074B1, NativeUi.RequestLogOut)
+        };
+        var size = IndicatorBar.MeasureFor(slots.Length);
+        var barPanel = AvaloniaPanel.Create(() => _bar = new IndicatorBar(slots, _portal.ReadImage), size.Width, size.Height);
+        _barSurface = new ScreenSurface(_device, barPanel);
+
+        var breakoutPanel = AvaloniaPanel.Create(() => _game = new BreakoutGame(BreakoutWidth, BreakoutHeight), BreakoutWidth, BreakoutHeight);
+        _breakoutSurface = new ScreenSurface(_device, breakoutPanel);
+        Log("Indicator bar replacement ready.");
+    }
+
+    private void ToggleBreakout()
+    {
+        if (_breakoutSurface == null || _barSurface == null)
+            return;
+
+        _breakoutSurface.Visible = !_breakoutSurface.Visible;
+        _bar?.SetOpen(BreakoutSlot, _breakoutSurface.Visible);
+        if (_breakoutSurface.Visible)
+            PlaceBreakout();
+        else if (_hovered == _breakoutSurface)
+            _hovered = null;
+    }
+
+    /// <summary>Open Breakout just below the bar, or above it when there's no room below.</summary>
+    private void PlaceBreakout()
+    {
+        var bar = _barSurface!.Bounds;
+        var screen = _device!.Viewport;
+        var x = Math.Max(0, Math.Min(bar.Left, screen.Width - BreakoutWidth));
+        var y = bar.Bottom + 4 + BreakoutHeight <= screen.Height ? bar.Bottom + 4 : Math.Max(0, bar.Top - 4 - BreakoutHeight);
+        _breakoutSurface!.Location = new Point(x, y);
     }
 
     /// <summary>
-    /// Step the game and tick Avalonia on the game's render thread while the window is open, and
-    /// redraw the control only when its pixels changed. The game pauses while the window is closed.
+    /// Each frame in game: take over the retail bar if the client is showing it, then draw our
+    /// surfaces. Breakout steps by real elapsed time and pauses while closed.
     /// </summary>
     private void OnRenderFrame(object? sender, EventArgs e)
     {
-        if (_failed || _panel == null || _view is not { Visible: true })
-        {
-            _frameClock.Reset();
+        if (_failed || !_inGame || _barSurface == null)
             return;
-        }
 
         Guard(() =>
         {
-            _game?.Step(_frameClock.Elapsed);
-            _frameClock.Restart();
-            if (_panel.Tick())
-                _control?.Invalidate();
+            TakeOverNativeBar();
+            _barSurface.Render();
+
+            if (_breakoutSurface is { Visible: true })
+            {
+                _game?.Step(_frameClock.Elapsed);
+                _frameClock.Restart();
+                _breakoutSurface.Render();
+            }
+            else
+            {
+                _frameClock.Reset();
+            }
         });
     }
 
-    /// <summary>Run panel work from a game callback; any exception disables the panel instead of escaping.</summary>
+    /// <summary>
+    /// Hide the retail indicators bar whenever the client shows it, and put ours where it was.
+    /// Checking every frame also catches the client showing it again, for example after a resize.
+    /// </summary>
+    private void TakeOverNativeBar()
+    {
+        var native = NativeUi.GetElement(NativeUi.Indicators);
+        if (native == IntPtr.Zero || !NativeUi.IsVisible(native))
+            return;
+
+        var bounds = NativeUi.GetBounds(native);
+        NativeUi.SetVisible(native, false);
+        if (_nativeBarBounds != bounds)
+            Log($"Replaced the retail indicators bar at {bounds}.");
+        _nativeBarBounds = bounds;
+        _barSurface!.Location = bounds.Location;
+        _barSurface.Visible = true;
+        if (_breakoutSurface is { Visible: true })
+            PlaceBreakout();
+    }
+
+    private void RestoreNativeBar()
+    {
+        if (!_inGame || _nativeBarBounds == null)
+            return;
+
+        try
+        {
+            var native = NativeUi.GetElement(NativeUi.Indicators);
+            if (native != IntPtr.Zero)
+                NativeUi.SetVisible(native, true);
+        }
+        catch (Exception exception)
+        {
+            Log($"Could not restore the retail indicators bar: {exception}");
+        }
+        _nativeBarBounds = null;
+    }
+
+    /// <summary>
+    /// Route the left mouse button and pointer moves to our surfaces. A press on a surface is eaten
+    /// so the world behind it doesn't get the click, and the matching release goes to the same surface.
+    /// </summary>
+    private void OnWindowMessage(object? sender, WindowMessageEventArgs e)
+    {
+        if (_failed || !_inGame || _barSurface == null)
+            return;
+
+        const short MouseMove = 0x0200, LeftDown = 0x0201, LeftUp = 0x0202, LeftDoubleClick = 0x0203, RightDown = 0x0204, RightUp = 0x0205;
+        if (e.Msg < MouseMove || e.Msg > RightUp)
+            return;
+
+        var point = new Point((short)(e.LParam & 0xFFFF), (short)((e.LParam >> 16) & 0xFFFF));
+        Guard(() =>
+        {
+            var target = _captured ?? SurfaceAt(point);
+            switch (e.Msg)
+            {
+                case MouseMove:
+                    if (target != _hovered)
+                    {
+                        _hovered?.Panel.PointerLeave();
+                        _hovered = target;
+                    }
+                    target?.Panel.PointerMove(point.X - target.Location.X, point.Y - target.Location.Y);
+                    break;
+                case LeftDown:
+                case LeftDoubleClick:
+                    if (target == null) return;
+                    _captured = target;
+                    target.Panel.PointerDown(point.X - target.Location.X, point.Y - target.Location.Y);
+                    e.Eat = true;
+                    break;
+                case LeftUp:
+                    if (_captured == null) return;
+                    _captured = null;
+                    target!.Panel.PointerUp(point.X - target.Location.X, point.Y - target.Location.Y);
+                    e.Eat = true;
+                    break;
+                case RightDown:
+                case RightUp:
+                    if (target != null) e.Eat = true;
+                    break;
+            }
+        });
+    }
+
+    private ScreenSurface? SurfaceAt(Point point)
+    {
+        if (_breakoutSurface is { Visible: true } && _breakoutSurface.Bounds.Contains(point))
+            return _breakoutSurface;
+        if (_barSurface is { Visible: true } && _barSurface.Bounds.Contains(point))
+            return _barSurface;
+        return null;
+    }
+
+    /// <summary>Run UI work from a game callback; any exception disables the replacement instead of escaping.</summary>
     private void Guard(Action action)
     {
         try
@@ -140,23 +301,30 @@ public sealed class Plugin : FilterBase
         }
         catch (Exception exception)
         {
-            DisablePanel(exception);
+            Disable(exception);
         }
     }
 
-    private void DisablePanel(Exception exception)
+    /// <summary>Stop drawing, give the player the retail bar back, and log why.</summary>
+    private void Disable(Exception exception)
     {
         _failed = true;
+        Log($"Indicator bar replacement disabled: {exception}");
+        RestoreNativeBar();
         TearDown();
-        Log($"Panel disabled: {exception}");
     }
 
     private void TearDown()
     {
-        _view?.Dispose();
-        _view = null;
-        _control = null;
-        _panel?.Dispose();
-        _panel = null;
+        _hovered = null;
+        _captured = null;
+        _barSurface?.Dispose();
+        _barSurface = null;
+        _breakoutSurface?.Dispose();
+        _breakoutSurface = null;
+        _portal?.Dispose();
+        _portal = null;
+        _bar = null;
+        _game = null;
     }
 }

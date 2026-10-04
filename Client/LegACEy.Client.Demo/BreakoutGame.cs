@@ -3,15 +3,16 @@ using System.Collections.Generic;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Media;
 
-namespace LegACEy.Client.DecalPlugin;
+namespace LegACEy.Client.Demo;
 
 /// <summary>
-/// A small Breakout game drawn by one Avalonia control. The host steps it once per game frame and
-/// feeds it pointer positions in control coordinates.
+/// A small Breakout game drawn by one Avalonia control. The host steps it once per game frame;
+/// the paddle follows the pointer and a click launches the ball, through Avalonia's own input events.
 /// </summary>
-internal sealed class BreakoutGame : Control
+public sealed class BreakoutGame : Control
 {
     private const int Columns = 8;
     private const int Rows = 5;
@@ -57,8 +58,21 @@ internal sealed class BreakoutGame : Control
         NewGame();
     }
 
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        base.OnPointerMoved(e);
+        PointAt(e.GetPosition(this).X);
+    }
+
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        base.OnPointerPressed(e);
+        Click();
+        e.Handled = true;
+    }
+
     /// <summary>Move the paddle's centre to a pointer x position.</summary>
-    public void PointAt(double x)
+    private void PointAt(double x)
     {
         _paddleX = Math.Max(0, Math.Min(Width - PaddleWidth, x - (PaddleWidth / 2)));
         if (!_launched)
@@ -67,7 +81,7 @@ internal sealed class BreakoutGame : Control
     }
 
     /// <summary>Launch the ball, or start a new game after a win or loss.</summary>
-    public void Click()
+    private void Click()
     {
         if (_lives == 0 || _bricks.Count == 0)
         {

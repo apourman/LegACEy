@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\LegACEy.Client.PanelHost\LegACEy.Client.PanelHost.csproj" />
+    <ProjectReference Include="..\LegACEy.Client.Demo\LegACEy.Client.Demo.csproj" />
   </ItemGroup>
 
 </Project>

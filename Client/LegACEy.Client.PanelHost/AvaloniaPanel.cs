@@ -2,6 +2,7 @@ using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Platform;
 using Avalonia.Threading;
@@ -115,6 +116,41 @@ public sealed class AvaloniaPanel : IDisposable
             changed = true;
         }
         return changed;
+    }
+
+    /// <summary>The pointer moved to a point in panel pixels. Avalonia updates hover state and raises pointer events.</summary>
+    public void PointerMove(double x, double y)
+    {
+        VerifyUsable();
+        _window.MouseMove(new Point(x, y));
+    }
+
+    /// <summary>The left button went down at a point in panel pixels.</summary>
+    public void PointerDown(double x, double y)
+    {
+        VerifyUsable();
+        _window.MouseMove(new Point(x, y));
+        _window.MouseDown(new Point(x, y), MouseButton.Left);
+    }
+
+    /// <summary>The left button went up at a point in panel pixels.</summary>
+    public void PointerUp(double x, double y)
+    {
+        VerifyUsable();
+        _window.MouseUp(new Point(x, y), MouseButton.Left);
+    }
+
+    /// <summary>The pointer left the panel, so nothing in it should show a hover state.</summary>
+    public void PointerLeave()
+    {
+        VerifyUsable();
+        _window.MouseMove(new Point(-1, -1));
+    }
+
+    private void VerifyUsable()
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(AvaloniaPanel));
+        Dispatcher.UIThread.VerifyAccess();
     }
 
     public void Dispose()
