@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x86</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Reloaded.Hooks" Version="4.3.3" />
+    <Compile Include="../LegACEy.Client.DecalPlugin/PostUiDrawHook.cs" Link="PostUiDrawHook.cs" />
+  </ItemGroup>
+</Project>

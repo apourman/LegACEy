@@ -1,158 +1,130 @@
 using System;
+using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
+using Reloaded.Hooks;
+using Reloaded.Hooks.Definitions;
+using Reloaded.Hooks.Definitions.X86;
 
 namespace LegACEy.Client.DecalPlugin;
 
-/// <summary>
-/// Intercepts Decal's exported EndSceneO forwarding slot, which its EndScene wrapper calls
-/// after the game's retail UI and Decal's pre-EndScene subscribers have drawn. The slot is
-/// restored on dispose, and a callback exception disables this seam only.
-/// </summary>
+/// <summary>Draws before the checked retail RenderDeviceD3D.EndScene function.</summary>
 internal sealed class PostUiDrawHook : IDisposable
 {
+    internal static readonly byte[] Signature = { 0x56, 0x8b, 0xf1, 0x8a, 0x86, 0xac, 0, 0, 0, 0x84, 0xc0, 0x74, 0x16 };
     private readonly Action _draw;
     private readonly Action<Exception> _failed;
-    private readonly EndSceneDelegate _callback;
-    private readonly Func<IntPtr, IntPtr, bool> _writeSlot;
-    private GCHandle _callbackRoot;
-    private IntPtr _slot;
-    private IntPtr _originalPointer;
-    private EndSceneDelegate? _original;
+    private IHook<EndSceneDelegate>? _hook;
+    private GCHandle _root;
     private bool _installed;
     private bool _inside;
     private bool _hasRun;
 
-    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-    internal delegate int EndSceneDelegate(IntPtr device);
+    [Function(CallingConventions.MicrosoftThiscall)]
+    internal delegate void EndSceneDelegate(IntPtr renderDevice);
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool VirtualProtect(IntPtr address, UIntPtr size, uint newProtect, out uint oldProtect);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
-    private static extern IntPtr GetModuleHandle(string moduleName);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Ansi, ExactSpelling = true)]
-    private static extern IntPtr GetProcAddress(IntPtr module, string exportName);
-
-    private const uint PageExecuteReadWrite = 0x40;
-
-    public PostUiDrawHook(Action draw, Action<Exception> failed, Func<IntPtr, IntPtr, bool>? writeSlot = null)
+    public PostUiDrawHook(Action draw, Action<Exception> failed)
     {
         _draw = draw ?? throw new ArgumentNullException(nameof(draw));
         _failed = failed ?? throw new ArgumentNullException(nameof(failed));
-        _callback = OnEndScene;
-        _writeSlot = writeSlot ?? WriteSlot;
     }
 
     public bool IsInstalled => _installed;
-
-    /// <summary>Whether the client has actually called this draw hook since installation.</summary>
     public bool HasRun => _hasRun;
 
     public bool Install()
     {
         if (_installed) return true;
-        var inject = GetModuleHandle("Inject.dll");
-        return inject != IntPtr.Zero && InstallForwardingSlot(GetProcAddress(inject, "EndSceneO"));
+        var module = Process.GetCurrentProcess().MainModule!;
+        var rva = FindEndSceneRva(File.ReadAllBytes(module.FileName));
+        return rva.HasValue && InstallAt(IntPtr.Add(module.BaseAddress, rva.Value));
     }
 
-    internal bool InstallForwardingSlot(IntPtr slot)
+    internal bool InstallAt(IntPtr entry)
     {
-        if (_installed) return true;
-        // A failed removal must keep forwarding through the existing hook.
-        if (_callbackRoot.IsAllocated) return false;
-        if (slot == IntPtr.Zero) return false;
-        _slot = slot;
-        _originalPointer = Marshal.ReadIntPtr(_slot);
-        if (_originalPointer == IntPtr.Zero) return false;
-        _original = (EndSceneDelegate)Marshal.GetDelegateForFunctionPointer(_originalPointer, typeof(EndSceneDelegate));
-        var callback = Marshal.GetFunctionPointerForDelegate(_callback);
-        _callbackRoot = GCHandle.Alloc(_callback);
-        if (!_writeSlot(_slot, callback))
+        if (IntPtr.Size != 4) return false;
+        for (var i = 0; i < Signature.Length; i++)
+            if (Marshal.ReadByte(entry, i) != Signature[i]) return false;
+        _root = GCHandle.Alloc(this);
+        try
         {
-            _callbackRoot.Free();
-            _slot = IntPtr.Zero;
-            _original = null;
-            return false;
+            _hook = ReloadedHooks.Instance.CreateHook<EndSceneDelegate>(OnEndScene, entry.ToInt64());
+            _installed = true;
+            _hasRun = false;
+            _hook.Activate();
+            return true;
         }
-        _hasRun = false;
-        _installed = true;
-        return true;
+        catch
+        {
+            Dispose();
+            throw;
+        }
     }
 
-    private int OnEndScene(IntPtr device)
+    private void OnEndScene(IntPtr renderDevice)
     {
-        var original = _original;
+        var original = _hook!.OriginalFunction;
         if (!_inside && _installed)
         {
-            _hasRun = true;
             _inside = true;
-            try
-            {
-                _draw();
-            }
+            _hasRun = true;
+            try { _draw(); }
             catch (Exception exception)
             {
-                _installed = false;
-                try
-                {
-                    _failed(exception);
-                }
-                catch
-                {
-                    // Failure reporting must never escape the unmanaged callback.
-                }
-                RestoreSlot();
+                try { _failed(exception); }
+                catch { /* Reporting must never escape the native callback. */ }
+                Dispose();
             }
-            finally
-            {
-                _inside = false;
-            }
+            finally { _inside = false; }
         }
-        // Retry a failed removal on later frames, while still forwarding EndScene.
-        if (!_installed && _callbackRoot.IsAllocated) RestoreSlot();
-        return original == null ? 0 : original(device);
+        // Reloaded keeps the trampoline callable even after Disable().
+        original(renderDevice);
     }
 
     public void Dispose()
     {
-        if (!_installed && _slot == IntPtr.Zero) return;
         _installed = false;
-        RestoreSlot();
-        GC.KeepAlive(_callback);
-    }
-
-    private void RestoreSlot()
-    {
-        if (!_callbackRoot.IsAllocated) return;
         try
         {
-            // Another hook may now chain through ours; do not overwrite it or release our callback.
-            if (Marshal.ReadIntPtr(_slot) != Marshal.GetFunctionPointerForDelegate(_callback)) return;
-            if (!_writeSlot(_slot, _originalPointer)) return;
+            // Disable redirects entirely through native code, preserving other detour chains.
+            _hook?.Disable();
         }
         catch
         {
-            // Keep the delegate rooted and the original callable until removal succeeds.
+            // A still-callable managed callback must remain rooted and keep forwarding.
             return;
         }
-        _slot = IntPtr.Zero;
-        _original = null;
-        _callbackRoot.Free();
+        if (_root.IsAllocated) _root.Free();
     }
 
-    private static bool WriteSlot(IntPtr slot, IntPtr value)
+    /// <summary>Require one signature in executable PE sections; never trust a PDB address.</summary>
+    internal static int? FindEndSceneRva(byte[] image)
     {
-        if (!VirtualProtect(slot, (UIntPtr)IntPtr.Size, PageExecuteReadWrite, out var oldProtect))
-            return false;
-        try
+        if (image.Length < 64 || image[0] != 'M' || image[1] != 'Z') return null;
+        var pe = BitConverter.ToInt32(image, 0x3c);
+        if (pe < 0 || pe > image.Length - 24 || BitConverter.ToInt32(image, pe) != 0x4550 ||
+            BitConverter.ToUInt16(image, pe + 4) != 0x14c) return null;
+        var count = BitConverter.ToUInt16(image, pe + 6);
+        var sections = pe + 24 + BitConverter.ToUInt16(image, pe + 20);
+        int? found = null;
+        for (var section = 0; section < count; section++)
         {
-            Marshal.WriteIntPtr(slot, value);
-            return true;
+            var header = sections + section * 40;
+            if (header > image.Length - 40) return null;
+            if ((BitConverter.ToUInt32(image, header + 36) & 0x20000000) == 0) continue;
+            var rva = BitConverter.ToInt32(image, header + 12);
+            var size = BitConverter.ToInt32(image, header + 16);
+            var offset = BitConverter.ToInt32(image, header + 20);
+            if (offset < 0 || size < 0 || offset > image.Length - size) return null;
+            for (var pos = offset; pos <= offset + size - Signature.Length; pos++)
+            {
+                var matches = true;
+                for (var i = 0; i < Signature.Length && matches; i++) matches = image[pos + i] == Signature[i];
+                if (!matches) continue;
+                if (found.HasValue) return null;
+                found = checked(rva + pos - offset);
+            }
         }
-        finally
-        {
-            VirtualProtect(slot, (UIntPtr)IntPtr.Size, oldProtect, out _);
-        }
+        return found;
     }
 }

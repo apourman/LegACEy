@@ -245,7 +245,7 @@ public sealed class Plugin : FilterBase
             return;
         }
         if (!_windowsEnabled)
-            Log("LegACEy windows disabled: Decal EndSceneO forwarding hook could not be installed.");
+            Log("LegACEy windows disabled: checked retail EndScene hook could not be installed.");
     }
 
     private void ToggleThemeGallery()
@@ -282,7 +282,7 @@ public sealed class Plugin : FilterBase
             return;
         if (_postUiDrawHook?.HasRun != true)
         {
-            Log("LegACEy windows unavailable: the installed Decal EndSceneO hook has not run. Keeping the indicator bar interactive.");
+            Log("LegACEy windows unavailable: the installed retail EndScene hook has not run. Keeping the indicator bar interactive.");
             return;
         }
         var (surface, slot) = SurfaceRegistrationById(id);
@@ -400,7 +400,7 @@ public sealed class Plugin : FilterBase
             if (_firstPostUiWindow)
             {
                 _firstPostUiWindow = false;
-                Log("LegACEy post-UI window draw reached through Decal EndSceneO.");
+                Log("LegACEy post-UI window draw reached through retail RenderDeviceD3D.EndScene.");
             }
         }
     }

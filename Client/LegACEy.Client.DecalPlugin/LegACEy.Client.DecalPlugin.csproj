@@ -11,6 +11,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Reloaded.Hooks" Version="4.3.3" />
     <Reference Include="Decal.Adapter">
       <HintPath>$(DecalInstallDir)\Decal.Adapter.dll</HintPath>
       <Private>false</Private>
