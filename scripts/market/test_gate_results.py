@@ -3,8 +3,10 @@
 import contextlib
 import io
 import json
+import shutil
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 import gate_results
@@ -28,9 +30,11 @@ def trx(outcomes):
 class Check(unittest.TestCase):
     def setUp(self):
         self.directory = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.directory)
         self.known_file = self.directory / "known.txt"
         self.known_file.write_text(f"# comment\nsuite Suite.Tests.{KNOWN}\nother Suite.Tests.passes\n")
         self.known_out = self.directory / "known-out.tsv"
+        self.skipped_out = self.directory / "skipped-out.tsv"
 
     def run_check(self, content, exit_status, format="trx", file_name="results.trx"):
         results = self.directory / file_name
@@ -38,7 +42,7 @@ class Check(unittest.TestCase):
             results.write_text(content)
         out, err = io.StringIO(), io.StringIO()
         arguments = ["check", "--suite", "suite", "--format", format, "--results", str(results), "--exit-status", str(exit_status),
-                     "--known", str(self.known_file), "--known-out", str(self.known_out), "--root", "/repo/market-web"]
+                     "--known", str(self.known_file), "--known-out", str(self.known_out), "--skipped-out", str(self.skipped_out), "--root", "/repo/market-web"]
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             status = gate_results.main(arguments)
         return status, out.getvalue(), err.getvalue()
@@ -104,6 +108,24 @@ class Check(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertEqual(detail, "1 passed, 1 skipped")
         self.assertIn("RUN ERROR: tests/b.test.tsx failed outside its tests: SyntaxError: nope", problems)
+        self.assertEqual(self.skipped_out.read_text(), "suite\ttests/a.test.ts > later\n")
+
+    def test_a_skipped_test_is_named_but_does_not_fail(self):
+        self.known_file.write_text("")
+        status, detail, problems = self.run_check(trx({"a": "Passed", "b": "NotExecuted"}), 0)
+        self.assertEqual((status, detail, problems), (0, "1 passed, 1 skipped", ""))
+        self.assertEqual(self.skipped_out.read_text(), "suite\tSuite.Tests.b\n")
+
+    def test_a_blank_or_missing_message_reads_as_no_message(self):
+        report = {"testResults": [{"name": "/repo/market-web/tests/b.test.ts", "status": "failed", "message": "  \n \t\n", "assertionResults": []}]}
+        status, _, problems = self.run_check(json.dumps(report), 1, "vitest-json", "vitest.json")
+        self.assertEqual(status, 1)
+        self.assertIn("RUN ERROR: tests/b.test.ts failed outside its tests: no message", problems)
+
+        report = {"errors": [{"message": " \n"}, {}], "suites": []}
+        status, _, problems = self.run_check(json.dumps(report), 1, "playwright-json", "playwright.json")
+        self.assertEqual(status, 1)
+        self.assertEqual(problems.count("RUN ERROR: error outside any test: no message"), 2)
 
     def test_vitest_failure_is_named_with_its_file(self):
         report = {"testResults": [{"name": "/repo/market-web/bff-tests/bff.test.ts", "status": "failed", "message": "",
@@ -112,14 +134,24 @@ class Check(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertIn("NEW FAILURE: bff-tests/bff.test.ts > 1. the allowlist refuses", problems)
 
-    def test_playwright_names_tests_by_project_and_counts_flaky_ones_as_passed(self):
+    def test_playwright_names_tests_by_project(self):
         report = {"errors": [], "suites": [{"title": "journeys.spec.ts", "specs": [
             {"title": "signs in", "tests": [{"projectName": "desktop", "status": "expected"}, {"projectName": "phone", "status": "flaky"}]},
         ], "suites": [{"title": "purchase", "specs": [{"title": "buys", "tests": [{"projectName": "desktop", "status": "unexpected"}]}]}]}]}
         status, detail, problems = self.run_check(json.dumps(report), 1, "playwright-json", "playwright.json")
         self.assertEqual(status, 1)
-        self.assertEqual(detail, "2 passed, 1 failed, 1 flaky (passed on retry)")
+        self.assertEqual(detail, "1 passed, 1 failed, 1 flaky (passed only on a retry)")
         self.assertIn("NEW FAILURE: [desktop] journeys.spec.ts > purchase > buys", problems)
+
+    def test_a_playwright_test_that_passed_only_on_a_retry_fails_and_is_named(self):
+        self.known_file.write_text("")
+        report = {"errors": [], "suites": [{"title": "journeys.spec.ts", "specs": [
+            {"title": "signs in", "tests": [{"projectName": "desktop", "status": "expected"}, {"projectName": "phone", "status": "flaky"}]},
+        ]}]}
+        status, detail, problems = self.run_check(json.dumps(report), 0, "playwright-json", "playwright.json")
+        self.assertEqual(status, 1)
+        self.assertEqual(detail, "1 passed, 1 flaky (passed only on a retry)")
+        self.assertEqual(problems, "GATE: suite: FLAKY (failed, then passed on a retry): [phone] journeys.spec.ts > signs in\n")
 
     def test_playwright_error_outside_any_test_fails(self):
         report = {"errors": [{"message": "Error: global setup failed\nat x"}], "suites": []}
@@ -127,6 +159,20 @@ class Check(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertIn("RUN ERROR: error outside any test: Error: global setup failed", problems)
         self.assertNotIn("no tests ran", problems)
+
+
+class Redact(unittest.TestCase):
+    def test_secret_env_values_and_config_passwords_are_redacted_and_nothing_else(self):
+        directory = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, directory)
+        env = directory / "docker.env"
+        env.write_text('MYSQL_USER=acedev\nMYSQL_PASSWORD="hunter2-db"\nMARKET_SERVICE_KEY=abcdef0123456789\nDB_HOST_PORT=3310\n')
+        config = directory / "Config.js"
+        config.write_text('{ "Database": { "Password": "cfg-pass" } }')
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), unittest.mock.patch("sys.stdin", io.StringIO("acedev:hunter2-db on 3310, key abcdef0123456789, cfg-pass\n")):
+            status = gate_results.main(["redact", "--secrets", str(env), "--secrets", str(config), "--secrets", str(directory / "missing.env")])
+        self.assertEqual((status, out.getvalue()), (0, "acedev:[redacted] on 3310, key [redacted], [redacted]\n"))
 
 
 class KnownFailuresFile(unittest.TestCase):

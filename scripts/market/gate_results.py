@@ -5,14 +5,19 @@ Used by gate.sh; tested by test_gate_results.py. A suite passes only when:
 - its results file exists and lists at least one test;
 - every failed test is on the known-failures list for that suite;
 - every test on that list is in the results and still fails (a known failure that passes, or is gone, means the list needs updating);
+- no test passed only on a retry (Playwright's "flaky");
 - its exit status agrees with the results: 0 with no failures, non-zero only with failures.
+Skipped tests don't fail the suite; they are named for the summary.
 
 Formats: trx (dotnet test --logger trx), vitest-json (Vitest's json reporter), playwright-json (Playwright's json reporter).
+
+Also redacts secret values (from env files and Config.js files) out of text, for the summary gate.sh prints.
 """
 
 import argparse
 import json
 import os
+import re
 import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -28,6 +33,7 @@ class SuiteResults:
     passed: set = field(default_factory=set)
     failed: set = field(default_factory=set)
     skipped: set = field(default_factory=set)
+    # failed at first, then passed on a retry (Playwright); also in passed
     flaky: set = field(default_factory=set)
     # failures that belong to no single test: a file that didn't load, an error outside any test
     run_errors: list = field(default_factory=list)
@@ -43,9 +49,16 @@ class Verdict:
     detail: str
     problems: list
     known_failures: list
+    skipped: list
 
 
-def read_trx(path, root=None):
+def first_line(message):
+    """The first non-blank line of a report's message, or 'no message'."""
+    lines = [line.strip() for line in (message or "").splitlines() if line.strip()]
+    return lines[0] if lines else "no message"
+
+
+def read_trx(path):
     """dotnet test results. Names are the fully qualified ones: <class>.<test name>, data rows included."""
     document = ET.parse(path).getroot()
     classes = {}
@@ -66,7 +79,7 @@ def read_trx(path, root=None):
     return results
 
 
-def read_vitest_json(path, root=None):
+def read_vitest_json(path, root):
     """Vitest results. Names are <file relative to root> > <describe blocks and title>."""
     document = json.loads(Path(path).read_text())
     results = SuiteResults()
@@ -83,12 +96,11 @@ def read_vitest_json(path, root=None):
             else:
                 results.skipped.add(name)
         if test_file.get("status") == "failed" and len(results.failed) == failed_before:
-            message = (test_file.get("message") or "no message").strip().splitlines()[0]
-            results.run_errors.append(f"{file_name} failed outside its tests: {message}")
+            results.run_errors.append(f"{file_name} failed outside its tests: {first_line(test_file.get('message'))}")
     return results
 
 
-def read_playwright_json(path, root=None):
+def read_playwright_json(path):
     """Playwright results. Names are [<project>] <file> > <describe blocks> > <title>; no project prefix when the config has none."""
     document = json.loads(Path(path).read_text())
     results = SuiteResults()
@@ -114,12 +126,21 @@ def read_playwright_json(path, root=None):
     for suite in document.get("suites", []):
         visit(suite, [])
     for error in document.get("errors", []):
-        message = (error.get("message") or "no message").strip().splitlines()[0]
-        results.run_errors.append(f"error outside any test: {message}")
+        results.run_errors.append(f"error outside any test: {first_line(error.get('message'))}")
     return results
 
 
-READERS = {"trx": read_trx, "vitest-json": read_vitest_json, "playwright-json": read_playwright_json}
+def read_results(format, path, root=None):
+    if format == "trx":
+        return read_trx(path)
+    if format == "vitest-json":
+        return read_vitest_json(path, root)
+    if format == "playwright-json":
+        return read_playwright_json(path)
+    raise ValueError(f"unknown format {format}")
+
+
+FORMATS = ("playwright-json", "trx", "vitest-json")
 
 
 def read_known_failures(path, suite):
@@ -142,6 +163,8 @@ def reconcile(results, exit_status, known, known_failures_file=KNOWN_FAILURES_FI
 
     for name in sorted(results.failed - known):
         problems.append(f"NEW FAILURE: {name}")
+    for name in sorted(results.flaky):
+        problems.append(f"FLAKY (failed, then passed on a retry): {name}")
     problems.extend(f"RUN ERROR: {error}" for error in results.run_errors)
     for name in sorted(known - results.failed):
         if name in results.passed:
@@ -155,22 +178,27 @@ def reconcile(results, exit_status, known, known_failures_file=KNOWN_FAILURES_FI
     any_failure = bool(results.failed or results.run_errors)
     if exit_status == 0 and any_failure:
         problems.append("the suite exited 0, but its results hold failures")
-    if exit_status != 0 and not any_failure:
+    if exit_status != 0 and not any_failure and not results.flaky:
         problems.append(f"the suite exited {exit_status}, but no test failed in its results (a build error or a crash?)")
 
-    passed = len(results.passed)
-    parts = [f"{passed} passed"]
+    parts = [f"{len(results.passed - results.flaky)} passed"]
     known_seen = sorted(results.failed & known)
     if known_seen:
         parts.append(f"{len(known_seen)} known failures")
     other_failed = len(results.failed - known)
     if other_failed:
         parts.append(f"{other_failed} failed")
+    if results.flaky:
+        parts.append(f"{len(results.flaky)} flaky (passed only on a retry)")
     if results.skipped:
         parts.append(f"{len(results.skipped)} skipped")
-    if results.flaky:
-        parts.append(f"{len(results.flaky)} flaky (passed on retry)")
-    return Verdict(ok=not problems, detail=", ".join(parts), problems=problems, known_failures=known_seen)
+    return Verdict(ok=not problems, detail=", ".join(parts), problems=problems, known_failures=known_seen, skipped=sorted(results.skipped))
+
+
+def append_listing(path, suite, names):
+    if path:
+        with open(path, "a") as out:
+            out.writelines(f"{suite}\t{name}\n" for name in names)
 
 
 def check(arguments):
@@ -180,7 +208,7 @@ def check(arguments):
         print(f"GATE: {arguments.suite}: no results file at {arguments.results}; the suite exited {arguments.exit_status}.", file=sys.stderr)
         return 1
     try:
-        results = READERS[arguments.format](arguments.results, arguments.root)
+        results = read_results(arguments.format, arguments.results, arguments.root)
     except (ET.ParseError, json.JSONDecodeError, KeyError) as error:
         print("unreadable results", end="")
         print(f"GATE: {arguments.suite}: can't read {arguments.results}: {error}", file=sys.stderr)
@@ -188,12 +216,38 @@ def check(arguments):
 
     verdict = reconcile(results, arguments.exit_status, known, arguments.known or KNOWN_FAILURES_FILE)
     print(verdict.detail, end="")
-    if arguments.known_out:
-        with open(arguments.known_out, "a") as out:
-            out.writelines(f"{arguments.suite}\t{name}\n" for name in verdict.known_failures)
+    append_listing(arguments.known_out, arguments.suite, verdict.known_failures)
+    append_listing(arguments.skipped_out, arguments.suite, verdict.skipped)
     for problem in verdict.problems:
         print(f"GATE: {arguments.suite}: {problem}", file=sys.stderr)
     return 0 if verdict.ok else 1
+
+
+SECRET_NAME = re.compile(r"(PASSWORD|SECRET|KEY|TOKEN)", re.IGNORECASE)
+CONFIG_PASSWORD = re.compile(r'"Password"\s*:\s*"([^"]+)"')
+
+
+def secret_values(paths):
+    """The secret values in env files (NAME=value where the name holds PASSWORD, SECRET, KEY or TOKEN) and Config.js files ("Password")."""
+    secrets = set()
+    for path in paths:
+        try:
+            text = Path(path).read_text()
+        except OSError:
+            continue
+        secrets.update(CONFIG_PASSWORD.findall(text))
+        for line in text.splitlines():
+            name, separator, value = line.strip().partition("=")
+            value = value.strip().strip('"').strip("'")
+            if separator and SECRET_NAME.search(name) and value:
+                secrets.add(value)
+    return sorted(secrets, key=len, reverse=True)
+
+
+def redact(text, paths):
+    for value in secret_values(paths):
+        text = text.replace(value, "[redacted]")
+    return text
 
 
 def main(argv=None):
@@ -201,13 +255,19 @@ def main(argv=None):
     commands = parser.add_subparsers(dest="command", required=True)
     check_parser = commands.add_parser("check", help="reconcile one suite; prints a one-line detail, problems on stderr, exits 1 on any")
     check_parser.add_argument("--suite", required=True, help="the suite's name in the known-failures file")
-    check_parser.add_argument("--format", required=True, choices=sorted(READERS))
+    check_parser.add_argument("--format", required=True, choices=FORMATS)
     check_parser.add_argument("--results", required=True, help="the suite's results file")
     check_parser.add_argument("--exit-status", required=True, type=int, help="the suite's own exit status")
     check_parser.add_argument("--known", help="the known-failures file (none: no failure is known)")
     check_parser.add_argument("--root", help="directory test file paths are shown relative to (Vitest)")
     check_parser.add_argument("--known-out", help="append '<suite>\\t<test>' for each known failure seen")
+    check_parser.add_argument("--skipped-out", help="append '<suite>\\t<test>' for each skipped test")
+    redact_parser = commands.add_parser("redact", help="copy stdin to stdout with the secret values of the given files replaced")
+    redact_parser.add_argument("--secrets", action="append", default=[], help="an env or Config.js file holding secrets (repeatable; missing files are skipped)")
     arguments = parser.parse_args(argv)
+    if arguments.command == "redact":
+        sys.stdout.write(redact(sys.stdin.read(), arguments.secrets))
+        return 0
     return check(arguments)
 
 
