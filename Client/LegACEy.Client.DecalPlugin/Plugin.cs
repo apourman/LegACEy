@@ -56,6 +56,7 @@ public sealed class Plugin : FilterBase
     private ThemeGalleryControl? _themeGallery;
     private BreakoutGame? _breakout;
     private ScreenSurface? _barSurface;
+    private RetailSurfaceRenderer? _barRenderer;
     private ScreenSurface? _inputTestSurface;
     private ScreenSurface? _themeGallerySurface;
     private ScreenSurface? _breakoutSurface;
@@ -195,6 +196,7 @@ public sealed class Plugin : FilterBase
         var size = IndicatorBar.MeasureFor(slots.Length);
         var barPanel = AvaloniaPanel.Create(() => _bar = new IndicatorBar(slots, _portal.ReadImage), size.Width, size.Height);
         _barSurface = new ScreenSurface(_device, barPanel);
+        _barRenderer = new RetailSurfaceRenderer(_barSurface.Prepare, _barSurface.DrawNow);
         _barTakeover = new RetailTakeoverLifecycle(new NativeBarPort(NativeUi.Indicators), new SurfaceTakeoverPort(_barSurface));
 
         var inputPanel = AvaloniaPanel.Create(() =>
@@ -226,6 +228,7 @@ public sealed class Plugin : FilterBase
         }, BreakoutWindowWidth, BreakoutWindowHeight);
         _breakoutSurface = new ScreenSurface(_device, breakoutPanel);
         ApplyCurrentTheme();
+        EnsurePostUiDrawHook();
         Log("Indicator bar replacement ready.");
     }
 
@@ -233,20 +236,26 @@ public sealed class Plugin : FilterBase
     {
         if (_device == null) return;
         _windows = new WindowManager(new Size(_device.Viewport.Width, _device.Viewport.Height), new FileWindowPositionStore(IOPath.Combine(PluginDirectory, "window-positions.txt")), SessionServer(), SessionCharacter());
-        _postUiDrawHook ??= new PostUiDrawHook(DrawWindowsAfterRetailUi, DisableWindows);
+        _windowsEnabled = EnsurePostUiDrawHook();
+    }
+
+    private bool EnsurePostUiDrawHook()
+    {
+        // Entry rendering needs this before LoginComplete creates character windows.
+        _postUiDrawHook ??= new PostUiDrawHook(DrawAfterRetailUi, DisableWindows);
         try
         {
-            _windowsEnabled = _postUiDrawHook.Install();
+            if (_postUiDrawHook.Install()) return true;
         }
         catch (Exception exception)
         {
             _postUiDrawHook.Dispose();
             _postUiDrawHook = null;
             DisableWindows(exception);
-            return;
+            return false;
         }
-        if (!_windowsEnabled)
-            Log("LegACEy windows disabled: checked retail EndScene hook could not be installed.");
+        Log("Post-UI drawing unavailable: checked retail EndScene hook could not be installed. Retail replacements use pre-UI drawing.");
+        return false;
     }
 
     private void ToggleThemeGallery()
@@ -364,7 +373,7 @@ public sealed class Plugin : FilterBase
                 CreateUi();
             }
             TakeOverNativeBar();
-            _barSurface!.Render();
+            _barRenderer!.RenderFrame(_inGame, _postUiDrawHook?.IsInstalled == true);
         });
 
         if (_failed || !_inGame || !_windowsEnabled)
@@ -401,9 +410,11 @@ public sealed class Plugin : FilterBase
     }
 
     /// <summary>Called by IDirect3DDevice9.EndScene after retail and Decal UI drawing.</summary>
-    private void DrawWindowsAfterRetailUi()
+    private void DrawAfterRetailUi()
     {
-        if (!_windowsEnabled || _windows == null)
+        if (_failed) return;
+        Guard(() => _barRenderer?.DrawAfterRetailUi());
+        if (_failed || !_windowsEnabled || _windows == null)
             return;
         foreach (var window in _windows.ZOrder.Reverse())
         {
@@ -725,6 +736,7 @@ public sealed class Plugin : FilterBase
         _hovered = null;
         _barSurface?.Dispose();
         _barSurface = null;
+        _barRenderer = null;
         _inputTestSurface?.Dispose();
         _inputTestSurface = null;
         _themeGallerySurface?.Dispose();
