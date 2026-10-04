@@ -33,6 +33,8 @@ public sealed class Plugin : FilterBase
     private ScreenSurface? _breakoutSurface;
     private ScreenSurface? _hovered;
     private ScreenSurface? _captured;
+    private Point _pointer;
+    private Size? _dragOffset;
     private Rectangle? _nativeBarBounds;
     private bool _inGame;
     private bool _failed;
@@ -116,6 +118,7 @@ public sealed class Plugin : FilterBase
         _nativeBarBounds = null;
         _hovered = null;
         _captured = null;
+        _dragOffset = null;
         if (_barSurface != null) _barSurface.Visible = false;
         if (_breakoutSurface != null) _breakoutSurface.Visible = false;
     }
@@ -128,6 +131,7 @@ public sealed class Plugin : FilterBase
 
         var slots = new[]
         {
+            new IndicatorSlot("Move", 0x060074C9, BeginBarDrag),
             new IndicatorSlot("Link status", 0x06007498, () => NativeUi.ToggleRootElement(NativeUi.LinkStatus)),
             new IndicatorSlot("Positive effects", 0x0600749C, () => NativeUi.ToggleRootElement(NativeUi.PositiveEffects)),
             new IndicatorSlot("Negative effects", 0x0600749F, () => NativeUi.ToggleRootElement(NativeUi.NegativeEffects)),
@@ -159,6 +163,40 @@ public sealed class Plugin : FilterBase
             PlaceBreakout();
         else if (_hovered == _breakoutSurface)
             _hovered = null;
+    }
+
+    /// <summary>The handle was pressed: the bar follows the pointer until the button goes up.</summary>
+    private void BeginBarDrag()
+    {
+        var location = _barSurface!.Location;
+        _dragOffset = new Size(_pointer.X - location.X, _pointer.Y - location.Y);
+    }
+
+    private void DragBar(Point pointer)
+    {
+        var screen = _device!.Viewport;
+        var size = _barSurface!.Bounds.Size;
+        _barSurface.Location = new Point(
+            Math.Max(0, Math.Min(screen.Width - size.Width, pointer.X - _dragOffset!.Value.Width)),
+            Math.Max(0, Math.Min(screen.Height - size.Height, pointer.Y - _dragOffset.Value.Height)));
+        if (_breakoutSurface is { Visible: true })
+            PlaceBreakout();
+    }
+
+    /// <summary>
+    /// Move the hidden retail bar to where ours was dropped, so the client keeps the position
+    /// (and saves it) as if the player had dragged the retail bar.
+    /// </summary>
+    private void EndBarDrag()
+    {
+        _dragOffset = null;
+        var native = NativeUi.GetElement(NativeUi.Indicators);
+        if (native == IntPtr.Zero)
+            return;
+
+        NativeUi.MoveTo(native, _barSurface!.Location);
+        _nativeBarBounds = NativeUi.GetBounds(native);
+        Log($"Moved the retail indicators bar to {_nativeBarBounds}.");
     }
 
     /// <summary>Open Breakout just below the bar, or above it when there's no room below.</summary>
@@ -251,11 +289,15 @@ public sealed class Plugin : FilterBase
             return;
 
         var point = new Point((short)(e.LParam & 0xFFFF), (short)((e.LParam >> 16) & 0xFFFF));
+        _pointer = point;
         Guard(() =>
         {
             var target = _captured ?? SurfaceAt(point);
             switch (e.Msg)
             {
+                case MouseMove when _dragOffset != null:
+                    DragBar(point);
+                    break;
                 case MouseMove:
                     if (target != _hovered)
                     {
@@ -275,6 +317,8 @@ public sealed class Plugin : FilterBase
                     if (_captured == null) return;
                     _captured = null;
                     target!.Panel.PointerUp(point.X - target.Location.X, point.Y - target.Location.Y);
+                    if (_dragOffset != null)
+                        EndBarDrag();
                     e.Eat = true;
                     break;
                 case RightDown:

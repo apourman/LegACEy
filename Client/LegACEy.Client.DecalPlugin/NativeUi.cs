@@ -36,6 +36,9 @@ internal static class NativeUi
     private delegate void SetVisibleFn(IntPtr element, byte visible);
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void MoveToFn(IntPtr element, int x, int y);
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void GetCurrentPositionFn(IntPtr element, out Box2D position, out int zLevel);
 
     [StructLayout(LayoutKind.Sequential)]
@@ -51,6 +54,7 @@ internal static class NativeUi
     private static readonly IsVisibleFn IsVisibleNative = Function<IsVisibleFn>(0x004603A0);
     private static readonly SetVisibleFn SetVisibleNative = Function<SetVisibleFn>(0x00462390);
     private static readonly GetCurrentPositionFn GetCurrentPosition = Function<GetCurrentPositionFn>(0x00460180);
+    private static readonly MoveToFn MoveToNative = Function<MoveToFn>(0x004634C0);
 
     /// <summary>The client's UI element with this id, or zero if the UI or the element doesn't exist.</summary>
     public static IntPtr GetElement(uint id)
@@ -69,6 +73,9 @@ internal static class NativeUi
         GetCurrentPosition(element, out var box, out _);
         return Rectangle.FromLTRB(box.X0, box.Y0, box.X1, box.Y1);
     }
+
+    /// <summary>Move an element's top-left corner to a point; for a root element, in screen pixels.</summary>
+    public static void MoveTo(IntPtr element, Point location) => MoveToNative(element, location.X, location.Y);
 
     /// <summary>Show a hidden root element or hide a shown one, as its retail indicator button does.</summary>
     public static void ToggleRootElement(uint id)
