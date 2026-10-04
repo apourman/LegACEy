@@ -26,7 +26,7 @@ public sealed class PerformanceListPanel : UserControl
         ItemsList = new ListBox
         {
             ItemsSource = items,
-            ItemTemplate = new FuncDataTemplate<PackItem>((item, _) => new StackPanel
+            ItemTemplate = new FuncDataTemplate<PackItem>((item, _) => item == null ? null : new StackPanel
             {
                 Orientation = Orientation.Horizontal,
                 Spacing = 8,
