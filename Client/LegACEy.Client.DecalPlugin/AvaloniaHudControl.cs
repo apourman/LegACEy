@@ -25,6 +25,24 @@ internal sealed class AvaloniaHudControl : HudControl
         _panel = panel;
     }
 
+    /// <summary>The pointer moved over the panel; the point is in panel pixels.</summary>
+    public event Action<Point>? PointerMoved;
+
+    /// <summary>The left button went down over the panel; the point is in panel pixels.</summary>
+    public event Action<Point>? PointerPressed;
+
+    public override void MouseMove(Point pt)
+    {
+        base.MouseMove(pt);
+        PointerMoved?.Invoke(ToPanel(pt));
+    }
+
+    public override void MouseDown(Point pt)
+    {
+        base.MouseDown(pt);
+        PointerPressed?.Invoke(ToPanel(pt));
+    }
+
     public override void DrawNow(DxTexture iSavedTarget)
     {
         base.DrawNow(iSavedTarget);
@@ -51,6 +69,8 @@ internal sealed class AvaloniaHudControl : HudControl
         _staging?.Dispose();
         _staging = null;
     }
+
+    private Point ToPanel(Point pt) => new(pt.X - ClipRegion.Left, pt.Y - ClipRegion.Top);
 
     /// <summary>
     /// Copy the BGRA frame into a system-memory surface and send it to the default-pool texture,

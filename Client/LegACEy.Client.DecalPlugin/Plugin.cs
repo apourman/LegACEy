@@ -1,12 +1,7 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
-using Avalonia;
-using Avalonia.Controls;
-using Avalonia.Media;
-using Avalonia.Threading;
-using AvaloniaColor = Avalonia.Media.Color;
-using AvaloniaBrushes = Avalonia.Media.Brushes;
 using DrawingColor = System.Drawing.Color;
 using IOPath = System.IO.Path;
 using Decal.Adapter;
@@ -19,9 +14,11 @@ namespace LegACEy.Client.DecalPlugin;
 public sealed class Plugin : FilterBase
 {
     private const int PanelWidth = 360;
-    private const int PanelHeight = 220;
+    private const int PanelHeight = 260;
     private static readonly string PluginDirectory = IOPath.GetDirectoryName(typeof(Plugin).Assembly.Location)!;
 
+    private readonly Stopwatch _frameClock = new();
+    private BreakoutGame? _game;
     private AvaloniaPanel? _panel;
     private HudView? _view;
     private AvaloniaHudControl? _control;
@@ -80,7 +77,7 @@ public sealed class Plugin : FilterBase
         CoreManager.Current.FilterInitComplete -= OnFilterInitComplete;
         Guard(() =>
         {
-            _panel = AvaloniaPanel.Create(CreateDemoControl, PanelWidth, PanelHeight);
+            _panel = AvaloniaPanel.Create(() => _game = new BreakoutGame(PanelWidth, PanelHeight), PanelWidth, PanelHeight);
             CoreManager.Current.CharacterFilter.LoginComplete += OnLoginComplete;
             CoreManager.Current.CharacterFilter.Logoff += OnLogoff;
             CoreManager.Current.RenderFrame += OnRenderFrame;
@@ -95,11 +92,13 @@ public sealed class Plugin : FilterBase
 
         Guard(() =>
         {
-            _view = new HudView("LegACEy Avalonia", PanelWidth, PanelHeight, new ACImage(DrawingColor.FromArgb(0x32, 0x75, 0x8d)))
+            _view = new HudView("LegACEy Breakout", PanelWidth, PanelHeight, new ACImage(DrawingColor.FromArgb(0x32, 0x75, 0x8d)))
             {
                 UserResizeable = false
             };
             _control = new AvaloniaHudControl(_panel);
+            _control.PointerMoved += point => Guard(() => _game?.PointAt(point.X));
+            _control.PointerPressed += _ => Guard(() => _game?.Click());
             _view.Controls.HeadControl = _control;
         });
     }
@@ -112,65 +111,24 @@ public sealed class Plugin : FilterBase
     }
 
     /// <summary>
-    /// Tick Avalonia on the game's render thread while the window is open, and redraw the control
-    /// only when its pixels changed.
+    /// Step the game and tick Avalonia on the game's render thread while the window is open, and
+    /// redraw the control only when its pixels changed. The game pauses while the window is closed.
     /// </summary>
     private void OnRenderFrame(object? sender, EventArgs e)
     {
         if (_failed || _panel == null || _view is not { Visible: true })
+        {
+            _frameClock.Reset();
             return;
+        }
 
         Guard(() =>
         {
+            _game?.Step(_frameClock.Elapsed);
+            _frameClock.Restart();
             if (_panel.Tick())
                 _control?.Invalidate();
         });
-    }
-
-    private static Control CreateDemoControl()
-    {
-        var clock = new TextBlock { Foreground = AvaloniaBrushes.White, FontSize = 16 };
-        var started = DateTime.Now;
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        timer.Tick += (_, _) => clock.Text = $"Live for {DateTime.Now - started:hh\\:mm\\:ss}";
-        timer.Start();
-        clock.Text = "Live for 00:00:00";
-
-        return new Border
-        {
-            Background = new SolidColorBrush(AvaloniaColor.FromRgb(0x19, 0x27, 0x36)),
-            Padding = new Thickness(18),
-            Child = new StackPanel
-            {
-                Spacing = 14,
-                Children =
-                {
-                    new TextBlock
-                    {
-                        Text = "LegACEy Avalonia",
-                        FontSize = 22,
-                        Foreground = AvaloniaBrushes.White
-                    },
-                    new Border
-                    {
-                        Background = new SolidColorBrush(AvaloniaColor.FromRgb(0x32, 0x75, 0x8d)),
-                        Padding = new Thickness(10),
-                        Child = new TextBlock
-                        {
-                            Text = "Hosted in Virindi View Service, no UtilityBelt",
-                            TextWrapping = TextWrapping.Wrap,
-                            Foreground = AvaloniaBrushes.White
-                        }
-                    },
-                    clock,
-                    new Button
-                    {
-                        Content = "Demo button",
-                        HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left
-                    }
-                }
-            }
-        };
     }
 
     /// <summary>Run panel work from a game callback; any exception disables the panel instead of escaping.</summary>
