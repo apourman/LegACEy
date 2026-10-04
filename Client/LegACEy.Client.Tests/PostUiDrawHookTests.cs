@@ -38,11 +38,14 @@ public sealed class PostUiDrawHookTests
             Marshal.WriteIntPtr(device, vtable);
             Marshal.WriteIntPtr(slot, originalPointer);
             Assert.True(hook.Install(device));
+            // Installation alone must not allow an invisible window to intercept input.
+            Assert.False(hook.HasRun);
             var callbackPointer = Marshal.ReadIntPtr(slot);
             var callback = Marshal.GetDelegateForFunctionPointer<PostUiDrawHook.EndSceneDelegate>(callbackPointer);
 
             if (!drawFails) hook.Dispose();
             Assert.Equal(123, callback(device));
+            Assert.Equal(drawFails, hook.HasRun);
             Assert.False(hook.IsInstalled);
             Assert.False(hook.Install(device));
             Assert.Equal(callbackPointer, Marshal.ReadIntPtr(slot));

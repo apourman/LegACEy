@@ -21,6 +21,7 @@ internal sealed class PostUiDrawHook : IDisposable
     private EndSceneDelegate? _original;
     private bool _installed;
     private bool _inside;
+    private bool _hasRun;
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     internal delegate int EndSceneDelegate(IntPtr device);
@@ -39,6 +40,9 @@ internal sealed class PostUiDrawHook : IDisposable
     }
 
     public bool IsInstalled => _installed;
+
+    /// <summary>Whether the client has actually called this draw hook since installation.</summary>
+    public bool HasRun => _hasRun;
 
     public bool Install(IntPtr nativeDevice)
     {
@@ -62,6 +66,7 @@ internal sealed class PostUiDrawHook : IDisposable
             _original = null;
             return false;
         }
+        _hasRun = false;
         _installed = true;
         return true;
     }
@@ -71,6 +76,7 @@ internal sealed class PostUiDrawHook : IDisposable
         var original = _original;
         if (!_inside && _installed)
         {
+            _hasRun = true;
             _inside = true;
             try
             {
