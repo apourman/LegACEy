@@ -27,6 +27,7 @@ internal static class NativeUiCatalogue
         Function("UIElement::IsVisible", 0x004603A0, "A1 3C E0 83 00 85 C0 56 8B F1 75 04 32 C0", "ThisCall"),
         Function("UIElement::SetVisible", 0x00462390, "51 53 56 57 8B 3D 3C E0 83 00 8B F1", "ThisCall"),
         Function("UIElement::GetCurrentPosition", 0x00460180, "8B 54 24 04 8D 41 7C 3B D0 74 27 56 8B 30", "ThisCall"),
+        new("UIElement::SetSaveLocation", 0x0045FA10, Bytes("0F B6 44 24 04 8B 91 54 05 00 00 C1 E0 04 33 C2 83 E0 10 33 D0 89 91 54 05 00 00 C2 04 00"), "https://actypes.utilitybelt.me/type/UIElement; our disassembly of installed end-of-retail acclient.exe", "ThisCall"),
         Function("UIElement::MoveTo", 0x004634C0, "83 EC 30 53 56 57 8B F1 E8 33 C9 23 00 8B CE", "ThisCall"),
         Function("CM_UI::SendNotice_EndCharacterSession", 0x00479F40, "E8 CB 08 00 00 8B 10 68 E2 D1 4D 00 8B C8 FF 52 10", "Cdecl"),
         new("PlayerModule::LockUI receiver adjustment", 0x004D0213, Bytes("E8 B8 DF 08 00 8D 48 34 E8 10 41 10 00"), "Our disassembly of installed end-of-retail acclient.exe: retail UI lock handler gets CPlayerSystem, adds 0x34, calls LockUI", "ThisCall receiver reference"),

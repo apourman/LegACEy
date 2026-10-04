@@ -68,6 +68,7 @@ internal static class NativeUi
     private static readonly IsVisibleFn IsVisibleNative = Function<IsVisibleFn>(0x004603A0);
     private static readonly SetVisibleFn SetVisibleNative = Function<SetVisibleFn>(0x00462390);
     private static readonly GetCurrentPositionFn GetCurrentPosition = Function<GetCurrentPositionFn>(0x00460180);
+    private static readonly SetVisibleFn SetSaveLocationNative = Function<SetVisibleFn>(0x0045FA10);
     private static readonly MoveToFn MoveToNative = Function<MoveToFn>(0x004634C0);
     private static readonly SendNoticeEndCharacterSessionFn SendNoticeEndCharacterSession = Function<SendNoticeEndCharacterSessionFn>(0x00479F40);
     private static readonly LockUiFn LockUiNative = Function<LockUiFn>(0x005D4330);
@@ -114,6 +115,9 @@ internal static class NativeUi
         GetCurrentPosition(element, out var box, out _);
         return Rectangle.FromLTRB(box.X0, box.Y0, box.X1, box.Y1);
     }
+
+    /// <summary>Enable retail layout saving before moving a replacement's native element.</summary>
+    public static void SetSaveLocation(IntPtr element, bool save) { EnsureReady(); SetSaveLocationNative(element, save ? (byte)1 : (byte)0); }
 
     /// <summary>Move an element's top-left corner to a point; for a root element, in screen pixels.</summary>
     public static void MoveTo(IntPtr element, Point location) { EnsureReady(); MoveToNative(element, location.X, location.Y); }
