@@ -63,6 +63,10 @@ public sealed class Plugin : FilterBase
     private PostUiDrawHook? _postUiDrawHook;
     private IntPtr _nativeDevice;
     private bool _windowsEnabled;
+    private bool _debugPostUiSeen;
+    private bool _debugWindowPrepared;
+    private bool _debugWindowDrawn;
+    private int _debugInputRemaining;
     private DateTime _lastBreakoutStep = DateTime.UtcNow;
     private ScreenSurface? _hovered;
     private readonly InputRouterService _inputRouter = new();
@@ -236,6 +240,7 @@ public sealed class Plugin : FilterBase
         try
         {
             _windowsEnabled = _postUiDrawHook.Install(_nativeDevice);
+            Log($"[DEBUG-ticket04] Hook installed={_windowsEnabled}.");
         }
         catch (Exception exception)
         {
@@ -293,6 +298,10 @@ public sealed class Plugin : FilterBase
         surface.Location = window.Location;
         surface.Visible = true;
         _bar?.SetOpen(slot!, true);
+        _debugWindowPrepared = false;
+        _debugWindowDrawn = false;
+        _debugInputRemaining = 8;
+        Log($"[DEBUG-ticket04] Open {id}: window={window.Bounds}, bar={_barSurface?.Bounds}, postUiSeen={_debugPostUiSeen}.");
     }
 
     private void CloseWindow(string id)
@@ -378,19 +387,38 @@ public sealed class Plugin : FilterBase
         });
     }
 
-    private static void PrepareWindow(ScreenSurface? surface)
+    private void PrepareWindow(ScreenSurface? surface)
     {
         if (surface is { Visible: true })
+        {
             surface.Prepare();
+            if (!_debugWindowPrepared)
+            {
+                _debugWindowPrepared = true;
+                Log("[DEBUG-ticket04] First window texture prepared.");
+            }
+        }
     }
 
     /// <summary>Called by IDirect3DDevice9.EndScene after retail and Decal UI drawing.</summary>
     private void DrawWindowsAfterRetailUi()
     {
+        if (!_debugPostUiSeen)
+        {
+            _debugPostUiSeen = true;
+            Log("[DEBUG-ticket04] First EndScene callback reached.");
+        }
         if (!_windowsEnabled || _windows == null)
             return;
         foreach (var window in _windows.ZOrder.Reverse())
+        {
             SurfaceById(window.Id)?.DrawNow();
+            if (!_debugWindowDrawn)
+            {
+                _debugWindowDrawn = true;
+                Log($"[DEBUG-ticket04] First window draw returned: {window.Id}, prepared={_debugWindowPrepared}.");
+            }
+        }
     }
 
     /// <summary>
@@ -452,6 +480,11 @@ public sealed class Plugin : FilterBase
         var route = _inputRouter.Route(
             new NativeInputMessage(e.Msg, new IntPtr(e.WParam), new IntPtr(lParam)),
             GetInputSurfaces());
+        if (_debugInputRemaining > 0 && (e.Msg == InputRouterService.WmLButtonDown || e.Msg == InputRouterService.WmLButtonUp))
+        {
+            _debugInputRemaining--;
+            Log($"[DEBUG-ticket04] Input msg={e.Msg:X}: action={route.Action}, target={route.SurfaceId}, eat={route.Eat}, point={route.X},{route.Y}.");
+        }
         GuardInput(route, () =>
         {
             var target = route.SurfaceId == null ? null : SurfaceById(route.SurfaceId);
