@@ -22,6 +22,26 @@ async function openBravoListing(
     await checkA11y(page);
 }
 
+async function openUntouchedListing(
+    page: import("@playwright/test").Page,
+    project: string,
+) {
+    await signIn(page, seededAccount(project));
+    await page.goto("/");
+    const sellerRow = page
+        .locator("tbody tr")
+        .filter({
+            has: page.getByRole("button", {
+                name: "website desktop Bravo",
+                exact: true,
+            }),
+        })
+        .first();
+    await expect(sellerRow).toBeVisible();
+    await sellerRow.locator('a[href^="/listing/"]').click();
+    await checkA11y(page);
+}
+
 test("sign in and explain a rejected password", async ({ page }) => {
     await page.goto("/signin");
     await checkA11y(page);
@@ -522,7 +542,7 @@ test("an open purchase is disabled when a pause refresh arrives", async ({
         body.paused = paused;
         await route.fulfill({ response, body: JSON.stringify(body) });
     });
-    await openBravoListing(page, test.info().project.name);
+    await openUntouchedListing(page, test.info().project.name);
     await page.getByRole("button", { name: "Buy" }).click();
     paused = true;
     await page.evaluate(() =>
