@@ -6,6 +6,7 @@ namespace LegACEy.Client.DecalPlugin;
 /// <summary>Small native/UI boundary used by the retail takeover state machine.</summary>
 internal interface IRetailTakeoverPort
 {
+    bool Exists { get; }
     bool IsVisible { get; }
     Rectangle GetBounds();
     void SetVisible(bool visible);
@@ -35,35 +36,51 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
         _surface = surface ?? throw new ArgumentNullException(nameof(surface));
     }
 
-    public bool CanDrag => !_disposed && !_native.IsUiLocked;
+    public static RetailTakeoverLifecycle StartSession(RetailTakeoverLifecycle? previous, IRetailTakeoverPort native, IRetailTakeoverSurface surface)
+    {
+        previous?.Dispose();
+        return new RetailTakeoverLifecycle(native, surface);
+    }
 
-    public void Tick()
+    public bool CanDrag
+    {
+        get
+        {
+            try { return !_disposed && _captured && _native.Exists && !_native.IsUiLocked; }
+            catch { Fail(); throw; }
+        }
+    }
+
+    public void Tick(bool isDragging = false)
     {
         if (_disposed) return;
         try
         {
-            if (!_native.IsVisible)
+            if (!_native.Exists)
             {
-                if (!_captured)
-                {
-                    _originalVisible = false;
-                    _surface.Visible = false;
-                }
-                // When captured, false is the visibility state this lifecycle set itself.
+                _captured = false;
+                _surface.Visible = false;
                 return;
             }
-            var bounds = _native.GetBounds();
-            _captured = true;
-            _originalVisible = true;
-            _native.SetVisible(false);
-            _surface.SetLocation(bounds.Location);
+            if (_native.IsVisible)
+            {
+                _captured = true;
+                _originalVisible = true;
+                _native.SetVisible(false);
+            }
+            if (!_captured)
+            {
+                _surface.Visible = false;
+                return;
+            }
+            // Keep provisional drag coordinates until MoveTo commits them to retail.
+            if (!isDragging)
+                _surface.SetLocation(_native.GetBounds().Location);
             _surface.Visible = true;
         }
         catch
         {
-            _disposed = true;
-            try { Restore(); }
-            catch { /* Keep the captured state so Dispose can retry restoration. */ }
+            Fail();
             throw;
         }
     }
@@ -78,9 +95,7 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
         }
         catch
         {
-            _disposed = true;
-            try { Restore(); }
-            catch { /* Keep the captured state so Dispose can retry restoration. */ }
+            Fail();
             throw;
         }
     }
@@ -92,11 +107,22 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
         Restore();
     }
 
+    private void Fail()
+    {
+        _disposed = true;
+        try { Restore(); }
+        catch { /* Keep the captured state so Dispose can retry restoration. */ }
+    }
+
     private void Restore()
     {
         if (!_captured) return;
-        _surface.Visible = false;
-        _native.SetVisible(_originalVisible);
-        _captured = false;
+        try { _surface.Visible = false; }
+        finally
+        {
+            if (_native.Exists)
+                _native.SetVisible(_originalVisible);
+            _captured = false;
+        }
     }
 }
