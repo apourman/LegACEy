@@ -147,7 +147,7 @@ public sealed class Plugin : FilterBase
                 CreateUi();
             else if (_windows == null)
                 CreateWindowManager();
-            _barTakeover ??= new RetailTakeoverLifecycle(new NativeBarPort(NativeUi.Indicators), new SurfaceTakeoverPort(_barSurface!));
+            _barTakeover = RetailTakeoverLifecycle.StartSession(_barTakeover, new NativeBarPort(NativeUi.Indicators), new SurfaceTakeoverPort(_barSurface!));
             _inGame = true;
         });
     }
@@ -418,7 +418,7 @@ public sealed class Plugin : FilterBase
     /// </summary>
     private void TakeOverNativeBar()
     {
-        _barTakeover?.Tick();
+        _barTakeover?.Tick(_dragOffset != null);
     }
 
     private void RestoreNativeBar()
@@ -693,6 +693,7 @@ public sealed class Plugin : FilterBase
         private readonly uint _rootId;
         public NativeBarPort(uint rootId) => _rootId = rootId;
         private IntPtr Element => NativeUi.GetElement(_rootId);
+        public bool Exists => Element != IntPtr.Zero;
         public bool IsVisible { get { var element = Element; return element != IntPtr.Zero && NativeUi.IsVisible(element); } }
         public Rectangle GetBounds() { var element = Element; if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared."); return NativeUi.GetBounds(element); }
         public void SetVisible(bool visible) { var element = Element; if (element != IntPtr.Zero) NativeUi.SetVisible(element, visible); }

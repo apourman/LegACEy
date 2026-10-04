@@ -32,6 +32,7 @@ internal static class NativeUiCatalogue
         new("PlayerModule::LockUI", 0x005D4330, Bytes("33 C0 8A 81 93 00 00 00 83 E0 01 C3"), "https://actypes.utilitybelt.me/type/PlayerModule; verified against installed acclient.exe", "ThisCall"),
         new("RenderDeviceD3D::EndScene", 0x005A0E10, PostUiDrawHook.Signature, "Our capstone read of end-of-retail acclient.exe; unique executable-section signature", "MicrosoftThiscall; signature scan; expected RVA 0x1A0E10"),
         new("UIElementManager::s_pInstance reference", 0x004603A1, new byte[] { 0x3C, 0xE0, 0x83, 0x00 }, Chorizite, "data reference (absolute VA)"),
+        new("CPlayerSystem::s_pPlayerSystem reference", 0x0055E1D0, Bytes("A1 9C 11 87 00 C3"), "Our disassembly of installed end-of-retail acclient.exe: player-system getter", "data reference (absolute VA)"),
         new("CPlayerSystem::s_pPlayerSystem", 0x0087119C, Array.Empty<byte>(), "https://actypes.utilitybelt.me/type/CPlayerSystem", "runtime pointer; expected readable 4-byte slot"),
         Root("Indicators", 0x10000611), Root("CharacterInfo", 0x10000183), Root("PositiveEffects", 0x10000184),
         Root("NegativeEffects", 0x10000185), Root("LinkStatus", 0x10000187), Root("MiniGame", 0x10000188), Root("Vitae", 0x1000018A)
