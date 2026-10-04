@@ -7,7 +7,8 @@ const port = process.env.MARKET_WEB_TEST_PORT ?? '5173';
 process.env.MARKET_WEB_TEST_API_PORT ??= String(Number(port) + 1);
 
 export default defineConfig({
-  testDir: './tests', workers: 1,
+  // tests/ also holds Vitest's *.test.ts(x) and the end-to-end suite (tests/e2e, playwright.e2e.config.ts).
+  testDir: './tests', testIgnore: ['**/*.test.ts', '**/*.test.tsx', '**/e2e/**'], workers: 1,
   use: { baseURL: `http://127.0.0.1:${port}`, hasTouch: true },
   webServer: {
     command: `node server.js --port ${port}`, url: `http://127.0.0.1:${port}/health`, reuseExistingServer: false,
