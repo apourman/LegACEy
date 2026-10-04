@@ -97,16 +97,17 @@ public sealed class BreakoutGame : Control
     }
 
     /// <summary>Advance the ball by real elapsed time, in small steps so it can't pass through a brick.</summary>
-    public void Step(TimeSpan elapsed)
+    public bool Step(TimeSpan elapsed)
     {
         if (!_launched)
-            return;
+            return false;
 
         var seconds = Math.Min(elapsed.TotalSeconds, 0.05);
         var steps = Math.Max(1, (int)Math.Ceiling(BallSpeed * seconds / MaxStep));
         for (var i = 0; i < steps && _launched; i++)
             Move(seconds / steps);
         InvalidateVisual();
+        return true;
     }
 
     public override void Render(DrawingContext context)

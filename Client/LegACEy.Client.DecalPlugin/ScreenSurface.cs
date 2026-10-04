@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using LegACEy.Client.PanelHost;
@@ -22,6 +23,9 @@ internal sealed class ScreenSurface : IDisposable
     private readonly Device _device;
     private Texture? _texture;
     private bool _uploaded;
+    private int _textureWidth;
+    private int _textureHeight;
+    private readonly PanelFailureBudget _failureBudget = new();
 
     public ScreenSurface(Device device, AvaloniaPanel panel)
     {
@@ -35,13 +39,22 @@ internal sealed class ScreenSurface : IDisposable
 
     public bool Visible { get; set; }
 
+    public double LastTickMilliseconds { get; private set; }
+
+    public double LastUploadMilliseconds { get; private set; }
+
+    public int LastDirtyRectangleCount { get; private set; }
+
     public Rectangle Bounds => new(Location, new Size(Panel.Frame.Width, Panel.Frame.Height));
 
     /// <summary>Tick Avalonia, upload the frame if it changed, and draw it.</summary>
     public void Render()
     {
         if (!Visible)
+        {
+            Prepare();
             return;
+        }
 
         Prepare();
         DrawNow();
@@ -51,8 +64,19 @@ internal sealed class ScreenSurface : IDisposable
     public void Prepare()
     {
         if (!Visible)
+        {
+            Panel.DrainDispatcher();
             return;
+        }
+        var timer = Stopwatch.StartNew();
         var changed = Panel.Tick();
+        timer.Stop();
+        LastTickMilliseconds = timer.Elapsed.TotalMilliseconds;
+        LastDirtyRectangleCount = Panel.Frame.DirtyRectangles.Count;
+        if (Panel.LastError != null)
+            return;
+        if (_failureBudget.Record(timer.Elapsed))
+            throw new TimeoutException($"Panel tick exceeded 50 ms for {_failureBudget.ConsecutiveSlowTicks} consecutive frames ({timer.Elapsed.TotalMilliseconds:F1} ms).");
         var frame = Panel.Frame;
         if (changed || !_uploaded || _texture == null)
             Upload(frame);
@@ -75,18 +99,45 @@ internal sealed class ScreenSurface : IDisposable
 
     private void Upload(PanelFrame frame)
     {
+        if (_texture != null && (_textureWidth != frame.Width || _textureHeight != frame.Height))
+        {
+            _texture.Dispose();
+            _texture = null;
+            _uploaded = false;
+        }
         if (_texture == null)
+        {
             _texture = new Texture(_device, frame.Width, frame.Height, 1, Usage.None, Format.A8R8G8B8, Pool.Managed);
+            _textureWidth = frame.Width;
+            _textureHeight = frame.Height;
+        }
 
-        var bits = _texture.LockRectangle(0, LockFlags.None, out var pitch);
+        var timer = Stopwatch.StartNew();
         try
         {
-            for (var row = 0; row < frame.Height; row++)
-                Marshal.Copy(frame.Pixels, row * frame.Stride, IntPtr.Add(bits.InternalData, row * pitch), frame.Stride);
+            var dirty = _uploaded ? frame.DirtyRectangles : new[] { new Rectangle(0, 0, frame.Width, frame.Height) };
+            foreach (var rect in dirty)
+            {
+                if (rect.Width <= 0 || rect.Height <= 0) continue;
+                var bits = _texture.LockRectangle(0, rect, LockFlags.None, out var pitch);
+                try
+                {
+                    for (var row = 0; row < rect.Height; row++)
+                    {
+                        var sourceOffset = ((rect.Y + row) * frame.Stride) + (rect.X * 4);
+                        Marshal.Copy(frame.Pixels, sourceOffset, IntPtr.Add(bits.InternalData, row * pitch), rect.Width * 4);
+                    }
+                }
+                finally
+                {
+                    _texture.UnlockRectangle(0);
+                }
+            }
         }
         finally
         {
-            _texture.UnlockRectangle(0);
+            timer.Stop();
+            LastUploadMilliseconds = timer.Elapsed.TotalMilliseconds;
         }
         _uploaded = true;
     }
