@@ -1,18 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { ApiError, getListing, purchase, type Detail, type Me, type PurchaseRequest } from './api';
+import { ApiError, getListing, purchase, type Detail } from './api';
+import { makePurchaseAttempt, type PurchaseAttempt } from './purchase-attempt';
 import { useSession } from './session';
 
-interface Attempt { item: Detail; request: PurchaseRequest; characterName: string; balanceAfter: number }
-function makeAttempt(item: Detail, account: Me, characterId: number): Attempt {
-  const character = account.characters.find(c => c.id === characterId);
-  if (!character) throw new ApiError('invalid_character', 400);
-  return { item, characterName: character.name, balanceAfter: account.balance - item.price,
-    request: { count: item.quantity, expectedPrice: item.price, characterId: character.id, idempotencyKey: crypto.randomUUID() } };
-}
 export function PurchaseDialog({ item, close }: { item: Detail; close: () => void }) {
   const session = useSession();
-  const [attempt, setAttempt] = useState<Attempt>(() => makeAttempt(item, session.me!, session.characterId!));
+  const [attempt, setAttempt] = useState<PurchaseAttempt>(() => makePurchaseAttempt(item, session.me!, session.characterId!));
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
   const [error, setError] = useState<ApiError | null>(null);
@@ -36,7 +30,7 @@ export function PurchaseDialog({ item, close }: { item: Detail; close: () => voi
     inFlight.current = true; setBusy(true);
     try {
       const fresh = await getListing(item.id);
-      setAttempt(makeAttempt(fresh, session.me, session.characterId));
+      setAttempt(makePurchaseAttempt(fresh, session.me, session.characterId));
       setError(null);
     } catch (e) { setError(e instanceof ApiError ? e : new ApiError('network', 0)); }
     finally { inFlight.current = false; setBusy(false); }

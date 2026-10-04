@@ -14,7 +14,7 @@ function SpellList({ spells }: { spells: Spell[] }) {
 export function Appraisal({ item }: { item: Detail }) {
   return <div className="appraisal">
     <p className="muted">{item.itemType} · {item.material ?? 'Unknown material'} · {item.wield ?? 'No wield requirement'}</p>
-    <h3>Appraisal · as of listing</h3>
+    <h2>Appraisal · as of listing</h2>
     <ul className="appraisal-lines">{item.lines.map((line, i) => <li key={i}>{line}</li>)}</ul>
     <SpellList spells={item.spells} />
   </div>;

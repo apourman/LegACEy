@@ -1,35 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { getTickets, ticketProgress, type Ticket } from './api';
+import { getTickets, type Ticket } from './api';
 import { useSession } from './session';
 import { announceTicketFinished, onTicketCreated } from './tickets';
-
-const isUnfinished = (ticket: Ticket) => ticket.status === 'WAITING' || ticket.status === 'CLAIMED';
-
-function countdown(until: string | null, now: number) {
-  if (!until) return null;
-  const seconds = Math.ceil((Date.parse(until) - now) / 1000);
-  if (seconds <= 0) return 'Finishing…';
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} left`;
-}
-
-function statusText(ticket: Ticket, now: number) {
-  if (ticket.status === 'WAITING') return 'Waiting for the game server';
-  if (ticket.status === 'CLAIMED') {
-    if (ticket.progress === ticketProgress.awaitingConfirmation) return `Confirm in game · ${countdown(ticket.progressUntil, now) ?? 'waiting for you'}`;
-    if (ticket.progress === ticketProgress.channelling) return `Channelling · ${countdown(ticket.progressUntil, now) ?? 'in progress'}`;
-    return 'Working';
-  }
-  if (ticket.status === 'DONE') return ticket.resultMessage || 'Done';
-  return [ticket.resultMessage || 'Failed', ticket.resultCode && `(${ticket.resultCode})`].filter(Boolean).join(' ');
-}
-
-function description(ticket: Ticket) {
-  if (ticket.kind === 'mmd_withdraw') return `Withdraw ${ticket.amount ?? ''} MMD`;
-  if (ticket.kind === 'vault_withdraw') return ticket.itemGuid === null ? 'Withdraw a Vault item' : `Withdraw Vault item #${ticket.itemGuid}`;
-  if (ticket.kind === 'vault_deposit') return ticket.itemGuid === null ? 'Deposit a pack item' : `Deposit item #${ticket.itemGuid}`;
-  if (ticket.kind === 'inventory_snapshot') return 'Read in-game inventory';
-  return `Market request #${ticket.id}`;
-}
+import { isUnfinishedTicket, ticketDescription, ticketStatusText } from './ticket-presentation';
+import { pollingDelay } from './ticket-polling';
 
 /**
  * The account's market requests, on every page while any is unfinished: then it shows every ticket GET /api/tickets returns, so it rebuilds
@@ -59,8 +33,8 @@ export function TicketStatusPanel() {
 
     const schedule = () => {
       clearTimeout(timer);
-      if (active && [...watched.current.values()].some(isUnfinished))
-        timer = setTimeout(() => void poll(), document.visibilityState === 'hidden' ? 10_000 : 2_000);
+      if (active && [...watched.current.values()].some(isUnfinishedTicket))
+        timer = setTimeout(() => void poll(), pollingDelay(document.visibilityState));
     };
 
     const poll = async () => {
@@ -71,10 +45,10 @@ export function TicketStatusPanel() {
         const latest = await getTickets();
         if (!active) return;
         const finishedTickets: Ticket[] = [];
-        const anyUnfinished = latest.some(isUnfinished);
+        const anyUnfinished = latest.some(isUnfinishedTicket);
         for (const ticket of latest) {
           const shown = watched.current.get(ticket.id);
-          if (shown && isUnfinished(shown) && !isUnfinished(ticket)) finishedTickets.push(ticket);
+          if (shown && isUnfinishedTicket(shown) && !isUnfinishedTicket(ticket)) finishedTickets.push(ticket);
           // with nothing unfinished, only tickets already shown stay (with their results); nothing new appears
           if (shown || (anyUnfinished && !cleared.current.has(ticket.id))) watched.current.set(ticket.id, ticket);
         }
@@ -111,7 +85,7 @@ export function TicketStatusPanel() {
 
   function clearFinished() {
     for (const ticket of [...watched.current.values()]) {
-      if (isUnfinished(ticket)) continue;
+      if (isUnfinishedTicket(ticket)) continue;
       watched.current.delete(ticket.id);
       cleared.current.add(ticket.id);
     }
@@ -121,11 +95,11 @@ export function TicketStatusPanel() {
   if (!session.me || (tickets.length === 0 && !error)) return null;
   return <section className="ticket-panel" aria-label="Market requests" aria-live="polite">
     <h2>Market requests</h2>
-    {tickets.some(ticket => !isUnfinished(ticket)) && <button className="secondary" onClick={clearFinished}>Clear finished</button>}
+    {tickets.some(ticket => !isUnfinishedTicket(ticket)) && <button className="secondary" onClick={clearFinished}>Clear finished</button>}
     {error && <p role="alert" className="ticket-error">{error}</p>}
     <ul>{tickets.map(ticket => <li key={ticket.id}>
-      <span><strong>{description(ticket)}</strong><small>Request #{ticket.id}</small></span>
-      <span className={`ticket-status ticket-status--${ticket.status.toLowerCase()}`}>{statusText(ticket, now)}</span>
+      <span><strong>{ticketDescription(ticket)}</strong><small>Request #{ticket.id}</small></span>
+      <span className={`ticket-status ticket-status--${ticket.status.toLowerCase()}`}>{ticketStatusText(ticket, now)}</span>
     </li>)}</ul>
   </section>;
 }

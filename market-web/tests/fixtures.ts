@@ -1,4 +1,5 @@
 import { test as base, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 import { startFakeApi, type FakeApi } from '../bff-tests/fake-api';
 
 // The browser checks run the real BFF (server.js, started by playwright.config.ts) against a fake Market API that each check scripts.
@@ -40,6 +41,13 @@ export const test = base.extend<{ api: FakeApi; signIn: () => Promise<void> }, {
       expect((await page.context().cookies()).some(c => c.name === 'market_session' && c.httpOnly)).toBe(true);
     });
   },
+});
+
+// Every browser journey checks the rendered page, including pages reached after navigation.
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status === 'skipped') return;
+  const results = await new AxeBuilder({ page }).analyze();
+  expect(results.violations, results.violations.map(v => `${v.id}: ${v.help}`).join('\n')).toEqual([]);
 });
 
 export { expect };
