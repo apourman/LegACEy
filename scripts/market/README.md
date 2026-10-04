@@ -142,6 +142,28 @@ holds the application login's password and is created mode 600.
 The BFF production image builds the framework output in a Node build stage and runs it with production dependencies as the unprivileged
 `node` user. API address and both BFF secrets are passed at runtime through the environment; no secrets enter either image.
 
+## Pull-request checks and the local gate
+
+Every pull request into `master`, `marketplace` or a `marketplace-*` branch runs `.github/workflows/pull-request.yml`: the .NET
+solution build, the website's `npm ci`, type check and production build, `npm run test:bff` (the BFF's request tests, the unit tests and
+the component tests) and `scripts/market/openapi-drift.sh`, which rebuilds the OpenAPI document and the generated client and fails when
+either differs from the checkout. None of it needs DATs, MySQL or game data.
+
+Before opening the pull request, run the local gate from the repository root:
+
+```bash
+./scripts/market/gate.sh                # everything the workflow runs, the .NET test suites, the fake-API browser checks, the e2e suite
+./scripts/market/gate.sh --play-test    # also the automated play-test (needs the game server running)
+```
+
+It stops at the first failure and ends with a Markdown summary to paste into the pull request (also saved as `summary.md` beside the
+per-test results, under `~/.local/state/legacey/market-gate/<UTC time>`, or `--results-dir`). The end-to-end stack is taken down even when
+a step fails. The fake-API browser checks run on `MARKET_WEB_TEST_PORT` (default 5187, beside the dev BFF on 5173). Each test suite's
+per-test results are reconciled with its exit status and the exact list in `gate-known-failures.txt`: a failure not on the list stops the
+gate and names the test, and so does a listed failure that starts passing (remove it from the list). The play-test step is off unless
+asked for (`--play-test` or `MARKET_GATE_PLAY_TEST=1`); `play-test.sh` is a placeholder that reports "not implemented" and fails until
+the automated play-test lands.
+
 ## Starting over
 
 ```bash
