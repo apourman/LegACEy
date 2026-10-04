@@ -14,7 +14,8 @@ namespace LegACEy.Client.DecalPlugin;
 /// <remarks>
 /// The texture lives in the managed pool, so Direct3D keeps a system-memory copy and restores it
 /// after a device reset; there is nothing to recreate. It is drawn from Decal's RenderFrame, which
-/// fires inside the game's scene just before the retail UI draws, so retail windows stay on top.
+/// Retail surfaces are rendered from Decal's pre-UI frame callback; LegACEy windows prepare their
+/// frame there and draw it later from the post-UI EndScene seam.
 /// </remarks>
 internal sealed class ScreenSurface : IDisposable
 {
@@ -42,11 +43,27 @@ internal sealed class ScreenSurface : IDisposable
         if (!Visible)
             return;
 
+        Prepare();
+        DrawNow();
+    }
+
+    /// <summary>Tick Avalonia and upload the frame without drawing it.</summary>
+    public void Prepare()
+    {
+        if (!Visible)
+            return;
         var changed = Panel.Tick();
         var frame = Panel.Frame;
         if (changed || !_uploaded || _texture == null)
             Upload(frame);
-        Draw(frame.Width, frame.Height);
+    }
+
+    /// <summary>Draw the prepared frame at its current location.</summary>
+    public void DrawNow()
+    {
+        if (!Visible || _texture == null)
+            return;
+        Draw(Panel.Frame.Width, Panel.Frame.Height);
     }
 
     public void Dispose()
