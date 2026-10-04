@@ -363,6 +363,76 @@ public sealed class NativeUiLifecycleTests
         Assert.Equal(new Point(550, 570), persisted.Position);
     }
 
+    [Fact]
+    public void ReplacementStaysActiveThroughLogoutUntilNativeElementDisappears()
+    {
+        var port = new FakePort { Visible = true };
+        var surface = new FakeSurface();
+        using var lifecycle = new RetailTakeoverLifecycle(port, surface);
+        lifecycle.Tick();
+        // Retail shows its element again during the logout transition.
+        port.Visible = true;
+        lifecycle.Tick();
+        Assert.False(port.Visible);
+        Assert.True(surface.Visible);
+        port.Exists = false;
+        lifecycle.Tick();
+        Assert.False(surface.Visible);
+        port.Exists = true;
+        port.Instance = new IntPtr(2);
+        port.Visible = true;
+        port.Bounds = new Rectangle(620, 517, 149, 29);
+        lifecycle.Tick();
+        Assert.False(port.Visible);
+        Assert.True(surface.Visible);
+        Assert.Equal(new Point(620, 517), surface.Location);
+    }
+
+    [Fact]
+    public void NewHiddenElementDoesNotInheritCaptureFromPreviousCharacter()
+    {
+        var port = new FakePort { Visible = true };
+        var surface = new FakeSurface();
+        using var lifecycle = new RetailTakeoverLifecycle(port, surface);
+        lifecycle.Tick();
+        port.Instance = new IntPtr(2);
+        port.Visible = false;
+        lifecycle.Tick();
+        Assert.False(surface.Visible);
+        Assert.False(lifecycle.CanDrag);
+    }
+
+    [Fact]
+    public void NewElementDoesNotInheritResizeRecoveryFromPreviousCharacter()
+    {
+        var port = new FakePort { Visible = true, Bounds = new Rectangle(620, 517, 149, 29) };
+        var surface = new FakeSurface();
+        using var lifecycle = new RetailTakeoverLifecycle(port, surface);
+        lifecycle.Tick(viewport: new Size(1920, 1080));
+        port.Exists = false;
+        lifecycle.Tick(viewport: new Size(800, 600));
+        port.Exists = true;
+        port.Instance = new IntPtr(2);
+        port.Visible = true;
+        port.Bounds = new Rectangle(100, 120, 149, 29);
+        lifecycle.Tick(viewport: new Size(800, 600));
+        Assert.Equal(new Point(100, 120), surface.Location);
+        Assert.Empty(port.Moves);
+    }
+
+    [Fact]
+    public void UnloadDoesNotRestoreAnUncapturedReplacementNativeInstance()
+    {
+        var port = new FakePort { Visible = true };
+        var lifecycle = new RetailTakeoverLifecycle(port, new FakeSurface());
+        lifecycle.Tick();
+        port.Instance = new IntPtr(2);
+        port.Visible = false;
+        Assert.False(lifecycle.CanDrag);
+        lifecycle.Dispose();
+        Assert.False(port.Visible);
+    }
+
     private sealed class FakeNativeLayout
     {
         public Point Position { get; set; }
@@ -371,6 +441,8 @@ public sealed class NativeUiLifecycleTests
     private sealed class FakePort : IRetailTakeoverPort
     {
         public bool Exists { get; set; } = true;
+        public IntPtr Instance { get; set; } = new IntPtr(1);
+        public IntPtr ElementIdentity => Exists ? Instance : IntPtr.Zero;
         public bool Visible { get; set; }
         public Rectangle Bounds { get; set; }
         public bool Locked { get; set; }
