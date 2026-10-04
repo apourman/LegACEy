@@ -14,9 +14,9 @@ public sealed class NineSliceBorder : Control
 {
     public static readonly uint[] DefaultPieceIds =
     {
-        0x060074BF, 0x060074C0, 0x060074C1,
-        0x060074C2, AcClientTheme.WindowChromeCenterId, 0x060074C3,
-        0x060074C4, 0x060074C5, 0x060074C6
+        0x060074C3, 0x060074BF, 0x060074C4,
+        0x060074C0, AcClientTheme.WindowChromeCenterId, 0x060074C2,
+        0x060074C5, 0x060074C1, 0x060074C6
     };
 
     private IImage?[] _pieces;
@@ -49,44 +49,35 @@ public sealed class NineSliceBorder : Control
     {
         base.Render(context);
         var bounds = new Rect(Bounds.Size);
+        using var clip = context.PushClip(bounds);
         context.DrawRectangle(_fallback, null, bounds);
-        var left = Math.Max(_pieces[0]?.Size.Width ?? _edgeSize, _pieces[6]?.Size.Width ?? _edgeSize);
-        var right = Math.Max(_pieces[2]?.Size.Width ?? _edgeSize, _pieces[8]?.Size.Width ?? _edgeSize);
-        var top = Math.Max(_pieces[0]?.Size.Height ?? _edgeSize, _pieces[2]?.Size.Height ?? _edgeSize);
-        var bottom = Math.Max(_pieces[6]?.Size.Height ?? _edgeSize, _pieces[8]?.Size.Height ?? _edgeSize);
+        var left = _pieces[3]?.Size.Width ?? _edgeSize;
+        var right = _pieces[5]?.Size.Width ?? _edgeSize;
+        var top = _pieces[1]?.Size.Height ?? _edgeSize;
+        var bottom = _pieces[7]?.Size.Height ?? _edgeSize;
         if (Bounds.Width <= left + right || Bounds.Height <= top + bottom) return;
 
-        var xs = new[] { 0d, left, Bounds.Width - right, Bounds.Width };
-        var ys = new[] { 0d, top, Bounds.Height - bottom, Bounds.Height };
-        for (var row = 0; row < 3; row++)
-        for (var column = 0; column < 3; column++)
-        {
-            var index = row * 3 + column;
-            var image = _pieces[index];
-            if (image == null) continue;
-            var destination = new Rect(xs[column], ys[row], xs[column + 1] - xs[column], ys[row + 1] - ys[row]);
-            if (row == 1 && column is 0 or 2)
-                Tile(context, image, destination, horizontal: false);
-            else if (column == 1 && row is 0 or 2)
-                Tile(context, image, destination, horizontal: true);
-            else if (row == 1 && column == 1)
-                Tile(context, image, destination, horizontal: true, vertical: true);
-            else
-                context.DrawImage(image, new Rect(image.Size), destination);
-        }
-    }
+        // Retail corners extend along the frame farther than the edge's thickness.
+        // Draw the interior and native-thickness edges first, then the native-size corners.
+        Draw(4, new Rect(left, top, Bounds.Width - left - right, Bounds.Height - top - bottom), true, true);
+        var tl = _pieces[0]?.Size ?? new Size(left, top);
+        var tr = _pieces[2]?.Size ?? new Size(right, top);
+        var bl = _pieces[6]?.Size ?? new Size(left, bottom);
+        var br = _pieces[8]?.Size ?? new Size(right, bottom);
+        Draw(1, new Rect(tl.Width, 0, Math.Max(0, Bounds.Width - tl.Width - tr.Width), top), true, false);
+        Draw(7, new Rect(bl.Width, Bounds.Height - bottom, Math.Max(0, Bounds.Width - bl.Width - br.Width), bottom), true, false);
+        Draw(3, new Rect(0, tl.Height, left, Math.Max(0, Bounds.Height - tl.Height - bl.Height)), false, true);
+        Draw(5, new Rect(Bounds.Width - right, tr.Height, right, Math.Max(0, Bounds.Height - tr.Height - br.Height)), false, true);
+        Draw(0, new Rect(0, 0, tl.Width, tl.Height), false, false);
+        Draw(2, new Rect(Bounds.Width - tr.Width, 0, tr.Width, tr.Height), false, false);
+        Draw(6, new Rect(0, Bounds.Height - bl.Height, bl.Width, bl.Height), false, false);
+        Draw(8, new Rect(Bounds.Width - br.Width, Bounds.Height - br.Height, br.Width, br.Height), false, false);
 
-    private static void Tile(DrawingContext context, IImage image, Rect destination, bool horizontal, bool vertical = false)
-    {
-        var tileWidth = horizontal ? Math.Max(1, image.Size.Width) : destination.Width;
-        var tileHeight = vertical ? Math.Max(1, image.Size.Height) : destination.Height;
-        if (horizontal && !vertical) tileHeight = destination.Height;
-        if (vertical && !horizontal) tileWidth = destination.Width;
-        for (var y = destination.Y; y < destination.Bottom; y += tileHeight)
-        for (var x = destination.X; x < destination.Right; x += tileWidth)
+        void Draw(int index, Rect destination, bool horizontal, bool vertical)
         {
-            var target = new Rect(x, y, Math.Min(tileWidth, destination.Right - x), Math.Min(tileHeight, destination.Bottom - y));
-            context.DrawImage(image, new Rect(image.Size), target);
+            var image = _pieces[index];
+            if (image != null)
+                GameArtDrawing.Tile(context, image, new Rect(image.Size), destination, horizontal, vertical);
         }
     }
 

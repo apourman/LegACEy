@@ -86,18 +86,18 @@ public sealed class SimpleClientTheme : IClientTheme
         AddDisabledStyle<CheckBox>(styles);
         AddDisabledStyle<ProgressBar>(styles);
         AddDisabledStyle<ScrollBar>(styles);
-        AddSampleState<Button>(styles, "sample-hover", accent, text);
-        AddSampleState<Button>(styles, "sample-pressed", Color.FromRgb(0x18, 0x1b, 0x21), text);
-        AddSampleState<TextBox>(styles, "sample-hover", surface, text, accent);
-        AddSampleState<TextBox>(styles, "sample-focused", surface, text, accent);
-        AddSampleState<ListBoxItem>(styles, "sample-hover", accent, text);
-        AddSampleState<ListBoxItem>(styles, "sample-selected", accent, text);
-        AddSampleState<TabItem>(styles, "sample-hover", accent, text);
-        AddSampleState<TabItem>(styles, "sample-selected", surface, text);
-        AddSampleState<ScrollBar>(styles, "sample-hover", accent, text, accent);
-        AddSampleState<ScrollBar>(styles, "sample-pressed", Color.FromRgb(0x18, 0x1b, 0x21), text, accent);
-        AddSampleState<CheckBox>(styles, "sample-hover", accent, text);
-        AddSampleState<CheckBox>(styles, "sample-pressed", Color.FromRgb(0x18, 0x1b, 0x21), text);
+        AddStateStyle<Button>(styles, "sample-hover", accent, text);
+        AddStateStyle<Button>(styles, "sample-pressed", Color.FromRgb(0x18, 0x1b, 0x21), text);
+        AddStateStyle<TextBox>(styles, "sample-hover", surface, text, accent);
+        AddStateStyle<TextBox>(styles, "sample-focused", surface, text, accent);
+        AddStateStyle<ListBoxItem>(styles, "sample-hover", accent, text);
+        AddStateStyle<ListBoxItem>(styles, "sample-selected", accent, text);
+        AddStateStyle<TabItem>(styles, "sample-hover", accent, text);
+        AddStateStyle<TabItem>(styles, "sample-selected", surface, text);
+        AddStateStyle<ScrollBar>(styles, "sample-hover", accent, text, accent);
+        AddStateStyle<ScrollBar>(styles, "sample-pressed", Color.FromRgb(0x18, 0x1b, 0x21), text, accent);
+        AddStateStyle<CheckBox>(styles, "sample-hover", accent, text);
+        AddStateStyle<CheckBox>(styles, "sample-pressed", Color.FromRgb(0x18, 0x1b, 0x21), text);
         AddMatrixStates<Button>(styles, surface, text, accent);
         AddMatrixStates<TextBox>(styles, surface, text, accent);
         AddMatrixStates<ListBox>(styles, surface, text, accent);
@@ -138,21 +138,11 @@ public sealed class SimpleClientTheme : IClientTheme
         styles.Add(style);
     }
 
-    private static void AddSampleState<T>(Styles styles, string className, Color background, Color foreground, Color? border = null) where T : TemplatedControl
-    {
-        var style = new Style(x => x.OfType<T>().Class(className));
-        style.Setters.Add(new Setter(TemplatedControl.BackgroundProperty, Brush(background)));
-        style.Setters.Add(new Setter(TemplatedControl.ForegroundProperty, Brush(foreground)));
-        if (border.HasValue)
-            style.Setters.Add(new Setter(TemplatedControl.BorderBrushProperty, Brush(border.Value)));
-        styles.Add(style);
-    }
-
     private static void AddMatrixStates<T>(Styles styles, Color surface, Color text, Color accent) where T : TemplatedControl
     {
-        AddSampleState<T>(styles, "sample-normal", surface, text, accent);
-        AddSampleState<T>(styles, "sample-hover", accent, text, accent);
-        AddSampleState<T>(styles, "sample-pressed", Color.FromRgb(0x18, 0x1b, 0x21), text, accent);
+        AddStateStyle<T>(styles, "sample-normal", surface, text, accent);
+        AddStateStyle<T>(styles, "sample-hover", accent, text, accent);
+        AddStateStyle<T>(styles, "sample-pressed", Color.FromRgb(0x18, 0x1b, 0x21), text, accent);
         var disabled = new Style(x => x.OfType<T>().Class("sample-disabled"));
         disabled.Setters.Add(new Setter(TemplatedControl.OpacityProperty, 0.5));
         styles.Add(disabled);

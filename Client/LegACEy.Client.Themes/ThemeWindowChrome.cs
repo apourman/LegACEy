@@ -24,6 +24,7 @@ public sealed class ThemeWindowChrome : UserControl
         CloseButton = new Button
         {
             Content = "×",
+            Classes = { "theme-window-close" },
             Width = 25,
             Height = 23,
             HorizontalAlignment = HorizontalAlignment.Center,

@@ -5,6 +5,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
@@ -109,6 +110,7 @@ internal sealed class PreviewWindow : Window
         IClientTheme theme = _themePicker.SelectedIndex == 0
             ? new AcClientTheme(_art)
             : new SimpleClientTheme();
+        RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.None);
         _appliedTheme = theme.CreateStyles();
         Styles.Add(_appliedTheme);
         foreach (var chrome in _workspace.GetVisualDescendants().OfType<ThemeWindowChrome>())

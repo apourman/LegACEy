@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Themes.Simple;
 using Avalonia.VisualTree;
@@ -228,6 +229,7 @@ public sealed class AvaloniaPanel : IDisposable
         VerifyUsable();
         if (_themeStyles != null)
             _window.Styles.Remove(_themeStyles);
+        RenderOptions.SetBitmapInterpolationMode(_window, BitmapInterpolationMode.None);
         _themeStyles = theme.CreateStyles();
         _window.Styles.Add(_themeStyles);
         if (Content is ThemeWindowChrome rootChrome)
