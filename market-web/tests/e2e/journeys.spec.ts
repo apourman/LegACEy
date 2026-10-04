@@ -7,34 +7,17 @@ function seededAccount(project: string) {
     return `journeys-${project}-alpha`;
 }
 
-async function openBravoListing(
+async function openListing(
     page: import("@playwright/test").Page,
     project: string,
-) {
-    await signIn(page, `journeys-${project}-alpha`);
-    await page.goto("/");
-    const sellerRow = page
-        .locator("tbody tr")
-        .filter({ hasText: `journeys ${project} Bravo` })
-        .first();
-    await expect(sellerRow).toBeVisible();
-    await sellerRow.locator('a[href^="/listing/"]').click();
-    await checkA11y(page);
-}
-
-async function openUntouchedListing(
-    page: import("@playwright/test").Page,
-    project: string,
+    seller: string,
 ) {
     await signIn(page, seededAccount(project));
     await page.goto("/");
     const sellerRow = page
         .locator("tbody tr")
         .filter({
-            has: page.getByRole("button", {
-                name: "website desktop Bravo",
-                exact: true,
-            }),
+            has: page.getByRole("button", { name: seller, exact: true }),
         })
         .first();
     await expect(sellerRow).toBeVisible();
@@ -267,7 +250,11 @@ test("a purchase retry preserves the frozen attempt after an unreadable network 
     page,
 }) => {
     const attempts: unknown[] = [];
-    await openBravoListing(page, test.info().project.name);
+    await openListing(
+        page,
+        test.info().project.name,
+        `journeys ${test.info().project.name} Bravo`,
+    );
     await page.route("**/api/listings/*/purchase", async (route) => {
         attempts.push(route.request().postDataJSON());
         if (attempts.length === 1) await route.abort("failed");
@@ -291,7 +278,11 @@ test("a price_changed answer requires fresh price and idempotency key", async ({
     const attempts: Array<{ expectedPrice: number; idempotencyKey: string }> =
         [];
     let changed = false;
-    await openBravoListing(page, test.info().project.name);
+    await openListing(
+        page,
+        test.info().project.name,
+        `journeys ${test.info().project.name} Bravo`,
+    );
     await page.route("**/api/listings/*", async (route) => {
         if (changed) {
             const response = await route.fetch();
@@ -337,7 +328,11 @@ test("a price_changed answer requires fresh price and idempotency key", async ({
 test("an unreadable purchase answer is reported as a server problem", async ({
     page,
 }) => {
-    await openBravoListing(page, test.info().project.name);
+    await openListing(
+        page,
+        test.info().project.name,
+        `journeys ${test.info().project.name} Bravo`,
+    );
     await page.route("**/api/listings/*/purchase", (route) =>
         route.fulfill({
             status: 200,
@@ -362,7 +357,11 @@ test("an account without characters cannot buy and gets the game next step", asy
         body.characters = [];
         await route.fulfill({ response, body: JSON.stringify(body) });
     });
-    await openBravoListing(page, test.info().project.name);
+    await openListing(
+        page,
+        test.info().project.name,
+        `journeys ${test.info().project.name} Bravo`,
+    );
     await page.evaluate(() =>
         document.dispatchEvent(new Event("visibilitychange")),
     );
@@ -542,7 +541,7 @@ test("an open purchase is disabled when a pause refresh arrives", async ({
         body.paused = paused;
         await route.fulfill({ response, body: JSON.stringify(body) });
     });
-    await openUntouchedListing(page, test.info().project.name);
+    await openListing(page, test.info().project.name, "website desktop Bravo");
     await page.getByRole("button", { name: "Buy" }).click();
     paused = true;
     await page.evaluate(() =>
@@ -563,7 +562,7 @@ test("an open purchase is disabled when a pause refresh arrives", async ({
 });
 
 test("a purchase dialog keeps keyboard focus inside", async ({ page }) => {
-    await openBravoListing(page, test.info().project.name);
+    await openListing(page, test.info().project.name, "website desktop Bravo");
     await page.getByRole("button", { name: "Buy" }).click();
     for (let i = 0; i < 5; i++) {
         await page.keyboard.press("Tab");
