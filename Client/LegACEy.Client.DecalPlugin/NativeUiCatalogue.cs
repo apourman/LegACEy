@@ -6,13 +6,15 @@ namespace LegACEy.Client.DecalPlugin;
 
 internal sealed class NativeUiEntry
 {
-    public NativeUiEntry(string name, uint? address, byte[] expectedBytes, string source, string callingConvention)
-    { Name = name; Address = address; ExpectedBytes = expectedBytes; Source = source; CallingConvention = callingConvention; }
+    public NativeUiEntry(string name, uint? address, byte[] expectedBytes, string source, string callingConvention, uint? constantValue = null)
+    { Name = name; Address = address; ExpectedBytes = expectedBytes; Source = source; CallingConvention = callingConvention; ConstantValue = constantValue; }
     public string Name { get; }
     public uint? Address { get; }
     public byte[] ExpectedBytes { get; }
     public string Source { get; }
     public string CallingConvention { get; }
+    /// <summary>Compile-time identifier value. It is not a process address and is not byte-checked.</summary>
+    public uint? ConstantValue { get; }
 }
 
 /// <summary>Version gate for every fixed native UI entry used by this plugin.</summary>
@@ -61,5 +63,5 @@ internal static class NativeUiCatalogue
     private static byte[] Bytes(string bytes) => bytes.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Select(value => Convert.ToByte(value, 16)).ToArray();
 
     private static NativeUiEntry Root(string name, uint id) =>
-        new($"RootElementId::{name}", null, BitConverter.GetBytes(id), "Chorizite.Common RootElementId", "constant; not called");
+        new($"RootElementId::{name}", null, Array.Empty<byte>(), "Chorizite.Common RootElementId", "compile-time constant; not called", id);
 }

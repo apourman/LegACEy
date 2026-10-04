@@ -17,6 +17,20 @@ public sealed class NativeUiLifecycleTests
     }
 
     [Fact]
+    public void RootElementIdsAreConstantsRatherThanRuntimeAddresses()
+    {
+        var roots = NativeUiCatalogue.Entries.Where(entry => entry.Name.StartsWith("RootElementId::", StringComparison.Ordinal)).ToArray();
+        Assert.NotEmpty(roots);
+        Assert.All(roots, entry =>
+        {
+            Assert.Null(entry.Address);
+            Assert.Empty(entry.ExpectedBytes);
+            Assert.NotNull(entry.ConstantValue);
+            Assert.Contains("constant", entry.CallingConvention);
+        });
+    }
+
+    [Fact]
     public void FrameTakesOverVisibleElementAndTracksBounds()
     {
         var port = new FakePort { Visible = true, Bounds = new Rectangle(10, 20, 80, 30) };
@@ -33,6 +47,21 @@ public sealed class NativeUiLifecycleTests
         lifecycle.Tick();
         Assert.False(port.Visible);
         Assert.Equal(new Point(40, 50), surface.Location);
+    }
+
+    [Fact]
+    public void LifecycleKeepsReplacementVisibleWhileRetailElementIsHiddenByTakeover()
+    {
+        var port = new FakePort { Visible = true, Bounds = new Rectangle(10, 20, 80, 30) };
+        var surface = new FakeSurface();
+        using var lifecycle = new RetailTakeoverLifecycle(port, surface);
+
+        lifecycle.Tick();
+        lifecycle.Tick();
+
+        Assert.False(port.Visible);
+        Assert.True(surface.Visible);
+        Assert.True(lifecycle.MoveTo(new Point(100, 120)));
     }
 
     [Fact]
@@ -62,6 +91,22 @@ public sealed class NativeUiLifecycleTests
     }
 
     [Fact]
+    public void DisposeCanRetryTransientNativeRestoreFailure()
+    {
+        var port = new FakePort { Visible = true, Bounds = new Rectangle(10, 20, 80, 30), FailShowCount = 1 };
+        var surface = new FakeSurface();
+        var lifecycle = new RetailTakeoverLifecycle(port, surface);
+        lifecycle.Tick();
+
+        Assert.Throws<InvalidOperationException>(() => lifecycle.Dispose());
+        Assert.False(port.Visible);
+        Assert.False(surface.Visible);
+
+        lifecycle.Dispose();
+        Assert.True(port.Visible);
+    }
+
+    [Fact]
     public void FailureRestoresNativeElement()
     {
         var port = new FakePort { Visible = true, Bounds = new Rectangle(10, 20, 80, 30) };
@@ -76,10 +121,19 @@ public sealed class NativeUiLifecycleTests
         public bool Visible { get; set; }
         public Rectangle Bounds { get; set; }
         public bool Locked { get; set; }
+        public int FailShowCount { get; set; }
         public List<Point> Moves { get; } = new();
         public bool IsVisible => Visible;
         public Rectangle GetBounds() => Bounds;
-        public void SetVisible(bool visible) => Visible = visible;
+        public void SetVisible(bool visible)
+        {
+            if (visible && FailShowCount > 0)
+            {
+                FailShowCount--;
+                throw new InvalidOperationException("Transient visibility failure.");
+            }
+            Visible = visible;
+        }
         public void MoveTo(Point location) => Moves.Add(location);
         public bool IsUiLocked => Locked;
     }

@@ -26,6 +26,7 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
     private readonly IRetailTakeoverPort _native;
     private readonly IRetailTakeoverSurface _surface;
     private bool _captured;
+    private bool _originalVisible;
     private bool _disposed;
 
     public RetailTakeoverLifecycle(IRetailTakeoverPort native, IRetailTakeoverSurface surface)
@@ -41,17 +42,28 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
         if (_disposed) return;
         try
         {
-            if (!_native.IsVisible) return;
+            if (!_native.IsVisible)
+            {
+                if (!_captured)
+                {
+                    _originalVisible = false;
+                    _surface.Visible = false;
+                }
+                // When captured, false is the visibility state this lifecycle set itself.
+                return;
+            }
             var bounds = _native.GetBounds();
             _captured = true;
+            _originalVisible = true;
             _native.SetVisible(false);
             _surface.SetLocation(bounds.Location);
             _surface.Visible = true;
         }
         catch
         {
-            Restore();
             _disposed = true;
+            try { Restore(); }
+            catch { /* Keep the captured state so Dispose can retry restoration. */ }
             throw;
         }
     }
@@ -66,15 +78,16 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
         }
         catch
         {
-            Restore();
             _disposed = true;
+            try { Restore(); }
+            catch { /* Keep the captured state so Dispose can retry restoration. */ }
             throw;
         }
     }
 
     public void Dispose()
     {
-        if (_disposed) return;
+        if (_disposed && !_captured) return;
         _disposed = true;
         Restore();
     }
@@ -82,8 +95,8 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
     private void Restore()
     {
         if (!_captured) return;
-        _captured = false;
         _surface.Visible = false;
-        _native.SetVisible(true);
+        _native.SetVisible(_originalVisible);
+        _captured = false;
     }
 }

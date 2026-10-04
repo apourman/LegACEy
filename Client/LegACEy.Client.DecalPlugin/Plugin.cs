@@ -352,6 +352,8 @@ public sealed class Plugin : FilterBase
     /// </summary>
     private void OnRenderFrame(object? sender, EventArgs e)
     {
+        if (_barTakeover != null && (_failed || !_inGame))
+            RestoreNativeBar();
         if (_failed || !_inGame || _barSurface == null)
             return;
 
@@ -428,6 +430,7 @@ public sealed class Plugin : FilterBase
         catch (Exception exception)
         {
             Log($"Could not restore the retail indicators bar: {exception}");
+            return;
         }
         _barTakeover = null;
     }
