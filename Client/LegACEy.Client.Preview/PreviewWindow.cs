@@ -8,6 +8,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
+using Avalonia.Threading;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
@@ -27,6 +28,9 @@ internal sealed class PreviewWindow : Window
     private PortalDat? _portal;
     private IGameArtSource _art = new MissingArtSource();
     private IStyle? _appliedTheme;
+    private readonly FakeGameState _gameState = new();
+    private readonly DispatcherTimer _dataTimer;
+    private LiveGameDataPanel? _livePanel;
 
     public PreviewWindow()
     {
@@ -46,13 +50,21 @@ internal sealed class PreviewWindow : Window
             Width = 180
         };
         _themePicker.SelectionChanged += (_, _) => ApplySelectedTheme();
+        var changingData = new CheckBox { Content = "Changing fake data" };
+        _dataTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _dataTimer.Tick += (_, _) => _gameState.Advance();
+        changingData.IsCheckedChanged += (_, _) =>
+        {
+            if (changingData.IsChecked == true) _dataTimer.Start();
+            else _dataTimer.Stop();
+        };
         var header = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = 8,
             Margin = new Thickness(10),
             Children = { new TextBlock { Text = "Portal data", VerticalAlignment = VerticalAlignment.Center }, _pathBox, loadButton,
-                new TextBlock { Text = "Theme", VerticalAlignment = VerticalAlignment.Center }, _themePicker }
+                new TextBlock { Text = "Theme", VerticalAlignment = VerticalAlignment.Center }, _themePicker, changingData }
         };
         _workspace = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 14, Margin = new Thickness(10) };
         Content = new DockPanel { Children = { header, new ScrollViewer { Content = _workspace } } };
@@ -89,6 +101,7 @@ internal sealed class PreviewWindow : Window
 
     private void ShowGalleryAndTestPanel()
     {
+        _livePanel?.Dispose();
         _workspace.Children.Clear();
         var gallery = new ThemeGalleryControl();
         gallery.ThemeSwitchRequested += (_, _) =>
@@ -101,6 +114,10 @@ internal sealed class PreviewWindow : Window
         var inputChrome = new ThemeWindowChrome(_art, "Input test", new InputTestPanel(360, 520)) { Width = 580, Height = 590, Margin = new Thickness(0, 0, 12, 0) };
         inputChrome.CloseAndRemoveFrom(_workspace);
         _workspace.Children.Add(inputChrome);
+        _livePanel = new LiveGameDataPanel(_gameState);
+        var dataChrome = new ThemeWindowChrome(_art, "Live game data", _livePanel) { Width = 360, Height = 260, Margin = new Thickness(0, 0, 12, 0) };
+        dataChrome.CloseAndRemoveFrom(_workspace);
+        _workspace.Children.Add(dataChrome);
     }
 
     private void ApplySelectedTheme()
@@ -119,6 +136,9 @@ internal sealed class PreviewWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _dataTimer.Stop();
+        _livePanel?.Dispose();
+        _livePanel = null;
         _portal?.Dispose();
         _portal = null;
         GameArtImageExtension.CurrentSource = null;

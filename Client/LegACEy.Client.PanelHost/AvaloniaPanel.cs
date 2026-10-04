@@ -11,6 +11,7 @@ using Avalonia.Themes.Simple;
 using Avalonia.VisualTree;
 using Avalonia.Threading;
 using Avalonia.Styling;
+using System.Threading;
 using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.PanelHost;
@@ -28,6 +29,7 @@ public sealed class AvaloniaPanel : IDisposable
 {
     private static bool _runtimeInitialized;
     private readonly Window _window;
+    private readonly int _ownerThreadId;
     private PanelFrame _frame;
     private bool _disposed;
     private IStyle? _themeStyles;
@@ -35,6 +37,7 @@ public sealed class AvaloniaPanel : IDisposable
 
     private AvaloniaPanel(Control content, int width, int height)
     {
+        _ownerThreadId = Thread.CurrentThread.ManagedThreadId;
         _window = new Window
         {
             Width = width,
@@ -119,7 +122,7 @@ public sealed class AvaloniaPanel : IDisposable
     public unsafe bool Tick()
     {
         if (_disposed) throw new ObjectDisposedException(nameof(AvaloniaPanel));
-        Dispatcher.UIThread.VerifyAccess();
+        VerifyThreadAccess();
 
         // CaptureRenderedFrame runs the dispatcher jobs and forces one render-timer tick itself.
         using var bitmap = _window.CaptureRenderedFrame();
@@ -251,6 +254,13 @@ public sealed class AvaloniaPanel : IDisposable
     private void VerifyUsable()
     {
         if (_disposed) throw new ObjectDisposedException(nameof(AvaloniaPanel));
+        VerifyThreadAccess();
+    }
+
+    private void VerifyThreadAccess()
+    {
+        if (Thread.CurrentThread.ManagedThreadId != _ownerThreadId)
+            throw new InvalidOperationException("An Avalonia panel must be used on the thread that created it.");
         Dispatcher.UIThread.VerifyAccess();
     }
 
