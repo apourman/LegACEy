@@ -699,6 +699,7 @@ public sealed class Plugin : FilterBase
         public bool IsVisible { get { var element = Element; return element != IntPtr.Zero && NativeUi.IsVisible(element); } }
         public Rectangle GetBounds() { var element = Element; if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared."); return NativeUi.GetBounds(element); }
         public void SetVisible(bool visible) { var element = Element; if (element != IntPtr.Zero) NativeUi.SetVisible(element, visible); }
+        public void SetSaveLocation(bool save) { var element = Element; if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared."); NativeUi.SetSaveLocation(element, save); }
         public void MoveTo(Point location) { var element = Element; if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared."); NativeUi.MoveTo(element, location); }
         public bool IsUiLocked => NativeUi.IsUiLocked;
     }

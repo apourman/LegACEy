@@ -74,6 +74,7 @@ public sealed class NativeUiLifecycleTests
         Assert.False(lifecycle.CanDrag);
         Assert.False(lifecycle.MoveTo(new Point(100, 120)));
         Assert.Empty(port.Moves);
+        Assert.False(port.SaveLocation);
         port.Locked = false;
         Assert.True(lifecycle.CanDrag);
         Assert.True(lifecycle.MoveTo(new Point(100, 120)));
@@ -327,6 +328,46 @@ public sealed class NativeUiLifecycleTests
         Assert.False(lifecycle.CanDrag);
     }
 
+    [Fact]
+    public void RelogRestoresDraggedBarPositionThroughNativeLocationSaving()
+    {
+        var persisted = new FakeNativeLayout();
+        var port = new FakePort { Visible = true, Bounds = new Rectangle(0, 0, 149, 29), Layout = persisted };
+        var surface = new FakeSurface();
+        var lifecycle = new RetailTakeoverLifecycle(port, surface);
+        lifecycle.Tick();
+        Assert.True(lifecycle.MoveTo(new Point(1381, 1028)));
+        lifecycle.Dispose();
+
+        // Retail constructs a new element from its saved layout on the next login.
+        var nextPort = new FakePort { Visible = true, Bounds = new Rectangle(persisted.Position, port.Bounds.Size), Layout = persisted };
+        using var nextSession = RetailTakeoverLifecycle.StartSession(lifecycle, nextPort, new FakeSurface());
+        nextSession.Tick();
+        Assert.Equal(new Point(1381, 1028), nextPort.Bounds.Location);
+        Assert.True(nextSession.MoveTo(new Point(500, 300)));
+        nextSession.Dispose();
+        Assert.Equal(new Point(500, 300), persisted.Position);
+    }
+
+    [Fact]
+    public void ResolutionRecoverySavesClampedNativePositionForNextLogin()
+    {
+        var persisted = new FakeNativeLayout();
+        var port = new FakePort { Visible = true, Bounds = new Rectangle(100, 120, 149, 29), Layout = persisted };
+        var surface = new FakeSurface { Size = new Size(250, 30) };
+        using var lifecycle = new RetailTakeoverLifecycle(port, surface);
+        lifecycle.Tick(viewport: new Size(1920, 1080));
+        Assert.True(lifecycle.MoveTo(new Point(1381, 1028)));
+        port.Bounds = new Rectangle(Point.Empty, port.Bounds.Size);
+        lifecycle.Tick(viewport: new Size(800, 600));
+        Assert.Equal(new Point(550, 570), persisted.Position);
+    }
+
+    private sealed class FakeNativeLayout
+    {
+        public Point Position { get; set; }
+    }
+
     private sealed class FakePort : IRetailTakeoverPort
     {
         public bool Exists { get; set; } = true;
@@ -346,12 +387,17 @@ public sealed class NativeUiLifecycleTests
             }
             Visible = visible;
         }
+        public FakeNativeLayout? Layout { get; set; }
+        public bool SaveLocation { get; private set; }
+        public void SetSaveLocation(bool save) => SaveLocation = save;
         public bool ThrowOnMove { get; set; }
         public void MoveTo(Point location)
         {
             if (ThrowOnMove) throw new InvalidOperationException("Native move failed.");
             Moves.Add(location);
             Bounds = new Rectangle(location, Bounds.Size);
+            // Retail MoveTo emits its layout-save notification only with SaveLocation enabled.
+            if (SaveLocation && Layout != null) Layout.Position = location;
         }
         public bool ThrowOnLock { get; set; }
         public bool IsUiLocked => ThrowOnLock ? throw new InvalidOperationException("Lock read failed.") : Locked;

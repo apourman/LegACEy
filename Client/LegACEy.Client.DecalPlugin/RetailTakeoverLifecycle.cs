@@ -10,6 +10,7 @@ internal interface IRetailTakeoverPort
     bool IsVisible { get; }
     Rectangle GetBounds();
     void SetVisible(bool visible);
+    void SetSaveLocation(bool save);
     void MoveTo(Point location);
     bool IsUiLocked { get; }
 }
@@ -92,8 +93,7 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
                 var location = new Point(
                     Math.Max(0, Math.Min(screen.Width - Math.Max(size.Width, bounds.Width), saved.X)),
                     Math.Max(0, Math.Min(screen.Height - Math.Max(size.Height, bounds.Height), saved.Y)));
-                _native.MoveTo(location);
-                bounds = _native.GetBounds();
+                bounds = MoveNative(location);
                 // RenderFrame precedes retail layout: also recover on the following frame
                 // in case the layout reset happens after this frame's viewport observation.
                 if (!viewportChanged)
@@ -119,8 +119,7 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
         if (!CanDrag || !_captured) return false;
         try
         {
-            _native.MoveTo(location);
-            _lastNativeLocation = _native.GetBounds().Location;
+            _lastNativeLocation = MoveNative(location).Location;
             _resizeLocation = null;
             return true;
         }
@@ -129,6 +128,15 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
             Fail();
             throw;
         }
+    }
+
+    private Rectangle MoveNative(Point location)
+    {
+        // Retail MoveTo notifies layout saving only when this flag is enabled.
+        // Leave it enabled so retail can retain the player's position after unload.
+        _native.SetSaveLocation(true);
+        _native.MoveTo(location);
+        return _native.GetBounds();
     }
 
     public void Dispose()
