@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -83,15 +82,16 @@ public sealed class AvaloniaPanel : IDisposable
     }
 
     /// <summary>Drain queued Avalonia work, run one render-timer tick, and capture the frame.</summary>
+    /// <returns>True when the captured pixels differ from the previous frame.</returns>
     /// <exception cref="InvalidOperationException">Called from a thread other than the one that initialized Avalonia.</exception>
-    public void Tick()
+    public unsafe bool Tick()
     {
         if (_disposed) throw new ObjectDisposedException(nameof(AvaloniaPanel));
         Dispatcher.UIThread.VerifyAccess();
 
         // CaptureRenderedFrame runs the dispatcher jobs and forces one render-timer tick itself.
         using var bitmap = _window.CaptureRenderedFrame();
-        if (bitmap == null) return;
+        if (bitmap == null) return false;
 
         using var locked = bitmap.Lock();
         if (locked.Format != PixelFormat.Bgra8888)
@@ -99,11 +99,22 @@ public sealed class AvaloniaPanel : IDisposable
 
         var width = locked.Size.Width;
         var height = locked.Size.Height;
+        var changed = false;
         if (width != _frame.Width || height != _frame.Height)
+        {
             _frame = new PanelFrame(width, height);
+            changed = true;
+        }
 
         for (var row = 0; row < height; row++)
-            Marshal.Copy(IntPtr.Add(locked.Address, row * locked.RowBytes), _frame.Pixels, row * _frame.Stride, _frame.Stride);
+        {
+            var source = new ReadOnlySpan<byte>((byte*)locked.Address + (row * locked.RowBytes), _frame.Stride);
+            var target = new Span<byte>(_frame.Pixels, row * _frame.Stride, _frame.Stride);
+            if (source.SequenceEqual(target)) continue;
+            source.CopyTo(target);
+            changed = true;
+        }
+        return changed;
     }
 
     public void Dispose()

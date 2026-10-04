@@ -6,15 +6,20 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <DecalInstallDir Condition="'$(DecalInstallDir)' == ''">C:\Program Files (x86)\Decal 3.0</DecalInstallDir>
+    <VirindiViewServiceDir Condition="'$(VirindiViewServiceDir)' == ''">C:\Games\VirindiPlugins\VirindiViewService</VirindiViewServiceDir>
     <ManagedDirectXDir Condition="'$(ManagedDirectXDir)' == ''">C:\Windows\Microsoft.NET\DirectX for Managed Code\1.0.2902.0</ManagedDirectXDir>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="UtilityBelt.Service" Version="[3.0.15]" ExcludeAssets="runtime" />
     <Reference Include="Decal.Adapter">
       <HintPath>$(DecalInstallDir)\Decal.Adapter.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="VirindiViewService">
+      <HintPath>$(VirindiViewServiceDir)\VirindiViewService.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="System.Drawing" />
     <Reference Include="Microsoft.DirectX">
       <HintPath>$(ManagedDirectXDir)\Microsoft.DirectX.dll</HintPath>
       <Private>false</Private>

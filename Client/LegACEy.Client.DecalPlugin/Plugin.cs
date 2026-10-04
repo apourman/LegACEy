@@ -1,21 +1,17 @@
 using System;
 using System.IO;
-using System.Numerics;
 using System.Reflection;
-using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Avalonia.Threading;
 using AvaloniaColor = Avalonia.Media.Color;
 using AvaloniaBrushes = Avalonia.Media.Brushes;
-using Bitmap = System.Drawing.Bitmap;
+using DrawingColor = System.Drawing.Color;
 using IOPath = System.IO.Path;
 using Decal.Adapter;
-using ImGuiNET;
 using LegACEy.Client.PanelHost;
-using Microsoft.DirectX.Direct3D;
-using UtilityBelt.Service;
-using UtilityBelt.Service.Views;
+using VirindiViewService;
 
 namespace LegACEy.Client.DecalPlugin;
 
@@ -23,12 +19,12 @@ namespace LegACEy.Client.DecalPlugin;
 public sealed class Plugin : FilterBase
 {
     private const int PanelWidth = 360;
-    private const int PanelHeight = 180;
+    private const int PanelHeight = 220;
     private static readonly string PluginDirectory = IOPath.GetDirectoryName(typeof(Plugin).Assembly.Location)!;
 
-    private Hud? _hud;
     private AvaloniaPanel? _panel;
-    private ManagedTexture? _texture;
+    private HudView? _view;
+    private AvaloniaHudControl? _control;
     private bool _failed;
 
     protected override void Startup()
@@ -40,6 +36,9 @@ public sealed class Plugin : FilterBase
     protected override void Shutdown()
     {
         CoreManager.Current.FilterInitComplete -= OnFilterInitComplete;
+        CoreManager.Current.CharacterFilter.LoginComplete -= OnLoginComplete;
+        CoreManager.Current.CharacterFilter.Logoff -= OnLogoff;
+        CoreManager.Current.RenderFrame -= OnRenderFrame;
         TearDown();
         AppDomain.CurrentDomain.AssemblyResolve -= ResolveFromPluginDirectory;
     }
@@ -82,91 +81,96 @@ public sealed class Plugin : FilterBase
         Guard(() =>
         {
             _panel = AvaloniaPanel.Create(CreateDemoControl, PanelWidth, PanelHeight);
-            _hud = UBService.Huds.CreateHud("LegACEy Avalonia");
-            _hud.Title = "LegACEy Avalonia";
-            _hud.OnRender += OnRender;
+            CoreManager.Current.CharacterFilter.LoginComplete += OnLoginComplete;
+            CoreManager.Current.CharacterFilter.Logoff += OnLogoff;
+            CoreManager.Current.RenderFrame += OnRenderFrame;
         });
     }
 
-    private static Control CreateDemoControl() => new Border
+    /// <summary>Create the VVS window, with its sidebar icon, once a character is in the world.</summary>
+    private void OnLoginComplete(object? sender, EventArgs e)
     {
-        Background = new SolidColorBrush(AvaloniaColor.FromRgb(0x19, 0x27, 0x36)),
-        Padding = new Thickness(18),
-        Child = new StackPanel
-        {
-            Spacing = 14,
-            Children =
-            {
-                new TextBlock
-                {
-                    Text = "LegACEy Avalonia",
-                    FontSize = 22,
-                    Foreground = AvaloniaBrushes.White
-                },
-                new Border
-                {
-                    Background = new SolidColorBrush(AvaloniaColor.FromRgb(0x32, 0x75, 0x8d)),
-                    Padding = new Thickness(10),
-                    Child = new TextBlock
-                    {
-                        Text = "Rendered with Avalonia and CPU Skia",
-                        Foreground = AvaloniaBrushes.White
-                    }
-                },
-                new Button
-                {
-                    Content = "Demo button",
-                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left
-                }
-            }
-        }
-    };
-
-    private void OnRender(object? sender, EventArgs e)
-    {
-        if (_failed || _panel == null)
+        if (_failed || _panel == null || _view != null)
             return;
 
         Guard(() =>
         {
-            // UtilityBelt has no Direct3D device until the game renders, so the texture is created
-            // on first render. UtilityBelt then releases and recreates it from this bitmap around
-            // device resets, leaving Texture null in between; the next render re-uploads the frame.
-            if (_texture == null)
+            _view = new HudView("LegACEy Avalonia", PanelWidth, PanelHeight, new ACImage(DrawingColor.FromArgb(0x32, 0x75, 0x8d)))
             {
-                using var blank = new Bitmap(PanelWidth, PanelHeight);
-                _texture = new ManagedTexture(blank);
-            }
-            if (_texture.Texture == null)
-                return;
-
-            _panel.Tick();
-            Upload(_panel.Frame, _texture.Texture);
-            ImGui.Image(_texture.TexturePtr, new Vector2(PanelWidth, PanelHeight));
+                UserResizeable = false
+            };
+            _control = new AvaloniaHudControl(_panel);
+            _view.Controls.HeadControl = _control;
         });
     }
 
-    /// <summary>Copy the whole BGRA frame into the dynamic A8R8G8B8 texture, honouring its pitch.</summary>
-    private static void Upload(PanelFrame frame, Texture texture)
+    private void OnLogoff(object? sender, EventArgs e)
     {
-        var level = texture.GetLevelDescription(0);
-        if (level.Width != frame.Width || level.Height != frame.Height || level.Format != Format.A8R8G8B8)
-            throw new InvalidOperationException(
-                $"The panel frame ({frame.Width}x{frame.Height} BGRA) does not match the texture ({level.Width}x{level.Height} {level.Format}).");
+        _view?.Dispose();
+        _view = null;
+        _control = null;
+    }
 
-        var bits = texture.LockRectangle(0, LockFlags.Discard, out var pitch);
-        try
-        {
-            if (bits.InternalData == IntPtr.Zero || pitch < frame.Stride)
-                throw new InvalidOperationException($"The dynamic D3D texture returned an invalid lock (pitch {pitch}, row {frame.Stride}).");
+    /// <summary>
+    /// Tick Avalonia on the game's render thread while the window is open, and redraw the control
+    /// only when its pixels changed.
+    /// </summary>
+    private void OnRenderFrame(object? sender, EventArgs e)
+    {
+        if (_failed || _panel == null || _view is not { Visible: true })
+            return;
 
-            for (var row = 0; row < frame.Height; row++)
-                Marshal.Copy(frame.Pixels, row * frame.Stride, IntPtr.Add(bits.InternalData, row * pitch), frame.Stride);
-        }
-        finally
+        Guard(() =>
         {
-            texture.UnlockRectangle(0);
-        }
+            if (_panel.Tick())
+                _control?.Invalidate();
+        });
+    }
+
+    private static Control CreateDemoControl()
+    {
+        var clock = new TextBlock { Foreground = AvaloniaBrushes.White, FontSize = 16 };
+        var started = DateTime.Now;
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        timer.Tick += (_, _) => clock.Text = $"Live for {DateTime.Now - started:hh\\:mm\\:ss}";
+        timer.Start();
+        clock.Text = "Live for 00:00:00";
+
+        return new Border
+        {
+            Background = new SolidColorBrush(AvaloniaColor.FromRgb(0x19, 0x27, 0x36)),
+            Padding = new Thickness(18),
+            Child = new StackPanel
+            {
+                Spacing = 14,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = "LegACEy Avalonia",
+                        FontSize = 22,
+                        Foreground = AvaloniaBrushes.White
+                    },
+                    new Border
+                    {
+                        Background = new SolidColorBrush(AvaloniaColor.FromRgb(0x32, 0x75, 0x8d)),
+                        Padding = new Thickness(10),
+                        Child = new TextBlock
+                        {
+                            Text = "Hosted in Virindi View Service, no UtilityBelt",
+                            TextWrapping = TextWrapping.Wrap,
+                            Foreground = AvaloniaBrushes.White
+                        }
+                    },
+                    clock,
+                    new Button
+                    {
+                        Content = "Demo button",
+                        HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left
+                    }
+                }
+            }
+        };
     }
 
     /// <summary>Run panel work from a game callback; any exception disables the panel instead of escaping.</summary>
@@ -186,27 +190,14 @@ public sealed class Plugin : FilterBase
     {
         _failed = true;
         TearDown();
-        try
-        {
-            UBService.LogException(exception);
-        }
-        catch
-        {
-            // Logging must not let a panel failure escape into the client render callback.
-        }
+        Log($"Panel disabled: {exception}");
     }
 
     private void TearDown()
     {
-        if (_hud != null)
-        {
-            _hud.OnRender -= OnRender;
-            _hud.Dispose();
-            _hud = null;
-        }
-
-        _texture?.Dispose();
-        _texture = null;
+        _view?.Dispose();
+        _view = null;
+        _control = null;
         _panel?.Dispose();
         _panel = null;
     }

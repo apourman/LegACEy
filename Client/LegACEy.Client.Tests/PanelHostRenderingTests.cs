@@ -50,6 +50,20 @@ public sealed class PanelHostRenderingTests
     });
 
     [Fact]
+    public void Tick_reports_whether_the_frame_changed() => RenderThread.Run(() =>
+    {
+        var border = default(Border);
+        using var panel = AvaloniaPanel.Create(() => border = new Border { Background = Brushes.Black }, 8, 8);
+
+        Assert.False(panel.Tick());
+
+        border!.Background = Brushes.White;
+        Assert.True(panel.Tick());
+        Assert.Equal(0xff, panel.Frame.Pixels[0]);
+        Assert.False(panel.Tick());
+    });
+
+    [Fact]
     public void Tick_from_another_thread_is_rejected()
     {
         var panel = RenderThread.Run(() => AvaloniaPanel.Create(() => new Border(), 4, 4));
