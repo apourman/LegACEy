@@ -5,6 +5,8 @@ using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Platform;
+using Avalonia.Themes.Simple;
+using Avalonia.VisualTree;
 using Avalonia.Threading;
 
 namespace LegACEy.Client.PanelHost;
@@ -24,6 +26,7 @@ public sealed class AvaloniaPanel : IDisposable
     private readonly Window _window;
     private PanelFrame _frame;
     private bool _disposed;
+    private Point _pointerPosition = new(-1, -1);
 
     private AvaloniaPanel(Control content, int width, int height)
     {
@@ -44,6 +47,28 @@ public sealed class AvaloniaPanel : IDisposable
 
     /// <summary>The latest rendered BGRA frame. Its pixel buffer is reused across ticks.</summary>
     public PanelFrame Frame => _frame;
+
+    /// <summary>The control tree hosted by this panel.</summary>
+    public Control Content => (Control)_window.Content!;
+
+    /// <summary>True while Avalonia focus belongs to a text entry control.</summary>
+    public bool WantsKeyboard => _window.FocusManager?.GetFocusedElement() is TextBox textBox && textBox.IsEffectivelyVisible && textBox.IsEnabled;
+
+    /// <summary>The active standard cursor, if a control requested one.</summary>
+    public Cursor? CursorKind
+    {
+        get
+        {
+            var visual = _window.GetVisualAt(_pointerPosition);
+            while (visual != null)
+            {
+                if (visual is Control control && control.Cursor != null)
+                    return control.Cursor;
+                visual = visual.GetVisualParent();
+            }
+            return _window.Cursor;
+        }
+    }
 
     /// <summary>Initialize Avalonia if needed, then build the content and show it in a new panel.</summary>
     /// <param name="createContent">
@@ -78,6 +103,7 @@ public sealed class AvaloniaPanel : IDisposable
                 UseHeadlessDrawing = false,
                 FrameBufferFormat = PixelFormat.Bgra8888
             })
+            .AfterSetup(_ => ((PanelApplication)Application.Current!).Styles.Add(new SimpleTheme()))
             .SetupWithoutStarting();
         _runtimeInitialized = true;
     }
@@ -122,6 +148,7 @@ public sealed class AvaloniaPanel : IDisposable
     public void PointerMove(double x, double y)
     {
         VerifyUsable();
+        _pointerPosition = new Point(x, y);
         _window.MouseMove(new Point(x, y));
     }
 
@@ -129,6 +156,7 @@ public sealed class AvaloniaPanel : IDisposable
     public void PointerDown(double x, double y)
     {
         VerifyUsable();
+        _pointerPosition = new Point(x, y);
         _window.MouseMove(new Point(x, y));
         _window.MouseDown(new Point(x, y), MouseButton.Left);
     }
@@ -137,6 +165,7 @@ public sealed class AvaloniaPanel : IDisposable
     public void PointerUp(double x, double y)
     {
         VerifyUsable();
+        _pointerPosition = new Point(x, y);
         _window.MouseUp(new Point(x, y), MouseButton.Left);
     }
 
@@ -144,7 +173,58 @@ public sealed class AvaloniaPanel : IDisposable
     public void PointerLeave()
     {
         VerifyUsable();
+        _pointerPosition = new Point(-1, -1);
         _window.MouseMove(new Point(-1, -1));
+    }
+
+    /// <summary>Send a wheel event in panel pixels through Avalonia.Headless.</summary>
+    public void MouseWheel(double x, double y, double horizontalDelta, double verticalDelta, KeyModifiers modifiers = KeyModifiers.None)
+    {
+        VerifyUsable();
+        var point = new Point(x, y);
+        _pointerPosition = point;
+        var rawModifiers = ToRawModifiers(modifiers);
+        _window.MouseMove(point, rawModifiers);
+        _window.MouseWheel(point, new Vector(horizontalDelta, verticalDelta), rawModifiers);
+    }
+
+    /// <summary>Send a key-down event through Avalonia.Headless with current modifiers.</summary>
+    public void KeyDown(Key key, KeyModifiers modifiers = KeyModifiers.None)
+    {
+        VerifyUsable();
+        _window.KeyPress(key, ToRawModifiers(modifiers));
+    }
+
+    /// <summary>Send a key-up event through Avalonia.Headless with current modifiers.</summary>
+    public void KeyUp(Key key, KeyModifiers modifiers = KeyModifiers.None)
+    {
+        VerifyUsable();
+        _window.KeyRelease(key, ToRawModifiers(modifiers));
+    }
+
+    /// <summary>Send committed text through Avalonia.Headless's text-input path.</summary>
+    public void TextInput(string text)
+    {
+        if (text == null) throw new ArgumentNullException(nameof(text));
+        VerifyUsable();
+        _window.KeyTextInput(text);
+    }
+
+    /// <summary>Clear Avalonia keyboard focus, for example after a press outside all surfaces.</summary>
+    public void ClearFocus()
+    {
+        VerifyUsable();
+        _window.FocusManager?.ClearFocus();
+    }
+
+    private static RawInputModifiers ToRawModifiers(KeyModifiers modifiers)
+    {
+        var raw = RawInputModifiers.None;
+        if ((modifiers & KeyModifiers.Shift) != 0) raw |= RawInputModifiers.Shift;
+        if ((modifiers & KeyModifiers.Control) != 0) raw |= RawInputModifiers.Control;
+        if ((modifiers & KeyModifiers.Alt) != 0) raw |= RawInputModifiers.Alt;
+        if ((modifiers & KeyModifiers.Meta) != 0) raw |= RawInputModifiers.Meta;
+        return raw;
     }
 
     private void VerifyUsable()
