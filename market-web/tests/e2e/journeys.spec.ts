@@ -541,7 +541,11 @@ test("an open purchase is disabled when a pause refresh arrives", async ({
         body.paused = paused;
         await route.fulfill({ response, body: JSON.stringify(body) });
     });
-    await openListing(page, test.info().project.name, "website desktop Bravo");
+    await openListing(
+        page,
+        test.info().project.name,
+        `website ${test.info().project.name} Bravo`,
+    );
     await page.getByRole("button", { name: "Buy" }).click();
     paused = true;
     await page.evaluate(() =>
@@ -562,7 +566,11 @@ test("an open purchase is disabled when a pause refresh arrives", async ({
 });
 
 test("a purchase dialog keeps keyboard focus inside", async ({ page }) => {
-    await openListing(page, test.info().project.name, "website desktop Bravo");
+    await openListing(
+        page,
+        test.info().project.name,
+        `website ${test.info().project.name} Bravo`,
+    );
     await page.getByRole("button", { name: "Buy" }).click();
     for (let i = 0; i < 5; i++) {
         await page.keyboard.press("Tab");
