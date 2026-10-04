@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Runtime.InteropServices;
+using System.Diagnostics;
 
 namespace LegACEy.Client.DecalPlugin;
 
@@ -25,6 +26,13 @@ internal static class NativeUi
     public const uint Vitae = 0x1000018A;
 
     private static readonly IntPtr ManagerInstance = new(0x0083E03C);
+    private static bool _ready;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GetCurrentProcess();
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ReadProcessMemory(IntPtr process, IntPtr address, byte[] buffer, int size, out IntPtr read);
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate IntPtr GetElementFn(IntPtr manager, uint id);
@@ -44,6 +52,9 @@ internal static class NativeUi
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void GetCurrentPositionFn(IntPtr element, out Box2D position, out int zLevel);
 
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate byte LockUiFn(IntPtr playerModule);
+
     [StructLayout(LayoutKind.Sequential)]
     private struct Box2D
     {
@@ -59,27 +70,53 @@ internal static class NativeUi
     private static readonly GetCurrentPositionFn GetCurrentPosition = Function<GetCurrentPositionFn>(0x00460180);
     private static readonly MoveToFn MoveToNative = Function<MoveToFn>(0x004634C0);
     private static readonly SendNoticeEndCharacterSessionFn SendNoticeEndCharacterSession = Function<SendNoticeEndCharacterSessionFn>(0x00479F40);
+    private static readonly LockUiFn LockUiNative = Function<LockUiFn>(0x005D4330);
+
+    public static bool Ready => _ready;
+
+    public static bool Initialize(Action<string> log)
+    {
+        try
+        {
+            var module = Process.GetCurrentProcess().MainModule!;
+            if (IntPtr.Size != 4 || module.BaseAddress.ToInt32() != 0x00400000)
+            {
+                log("Retail takeover disabled: unsupported acclient architecture or image base.");
+                return _ready = false;
+            }
+            _ready = NativeUiCatalogue.Validate(ReadMemory, log);
+            return _ready;
+        }
+        catch (Exception exception)
+        {
+            _ready = false;
+            log($"Retail takeover disabled: native UI validation could not complete: {exception.Message}");
+            return false;
+        }
+    }
 
     /// <summary>The client's UI element with this id, or zero if the UI or the element doesn't exist.</summary>
     public static IntPtr GetElement(uint id)
     {
+        EnsureReady();
         var manager = Marshal.ReadIntPtr(ManagerInstance);
         return manager == IntPtr.Zero ? IntPtr.Zero : GetElementNative(manager, id);
     }
 
-    public static bool IsVisible(IntPtr element) => IsVisibleNative(element) != 0;
+    public static bool IsVisible(IntPtr element) { EnsureReady(); return IsVisibleNative(element) != 0; }
 
-    public static void SetVisible(IntPtr element, bool visible) => SetVisibleNative(element, visible ? (byte)1 : (byte)0);
+    public static void SetVisible(IntPtr element, bool visible) { EnsureReady(); SetVisibleNative(element, visible ? (byte)1 : (byte)0); }
 
     /// <summary>The element's rectangle in screen pixels.</summary>
     public static Rectangle GetBounds(IntPtr element)
     {
+        EnsureReady();
         GetCurrentPosition(element, out var box, out _);
         return Rectangle.FromLTRB(box.X0, box.Y0, box.X1, box.Y1);
     }
 
     /// <summary>Move an element's top-left corner to a point; for a root element, in screen pixels.</summary>
-    public static void MoveTo(IntPtr element, Point location) => MoveToNative(element, location.X, location.Y);
+    public static void MoveTo(IntPtr element, Point location) { EnsureReady(); MoveToNative(element, location.X, location.Y); }
 
     /// <summary>Show a hidden root element or hide a shown one, as its retail indicator button does.</summary>
     public static void ToggleRootElement(uint id)
@@ -94,7 +131,31 @@ internal static class NativeUi
     /// on element 0x100000FA by calling CM_UI::SendNotice_EndCharacterSession(1), and the game-play
     /// UI answers that notice with the retail log out confirmation dialog.
     /// </summary>
-    public static void RequestLogOut() => SendNoticeEndCharacterSession(1);
+    public static void RequestLogOut() { EnsureReady(); SendNoticeEndCharacterSession(1); }
+
+    public static bool IsUiLocked
+    {
+        get
+        {
+            EnsureReady();
+            var playerSystem = Marshal.ReadIntPtr(new IntPtr(0x0087119C));
+            if (playerSystem == IntPtr.Zero) return false;
+            return LockUiNative(IntPtr.Add(playerSystem, 0x30)) != 0;
+        }
+    }
+
+    private static void EnsureReady()
+    {
+        if (!_ready) throw new InvalidOperationException("The retail native UI catalogue has not passed validation.");
+    }
+
+    private static byte[] ReadMemory(uint address, int count)
+    {
+        var bytes = new byte[count];
+        if (!ReadProcessMemory(GetCurrentProcess(), new IntPtr(unchecked((int)address)), bytes, count, out var read) || read.ToInt32() != count)
+            throw new InvalidOperationException($"Could not read native address 0x{address:X8}.");
+        return bytes;
+    }
 
     private static T Function<T>(int address) where T : Delegate =>
         (T)Marshal.GetDelegateForFunctionPointer(new IntPtr(address), typeof(T));

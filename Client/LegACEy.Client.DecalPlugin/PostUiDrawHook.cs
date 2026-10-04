@@ -37,7 +37,7 @@ internal sealed class PostUiDrawHook : IDisposable
         if (_installed) return true;
         var module = Process.GetCurrentProcess().MainModule!;
         var rva = FindEndSceneRva(File.ReadAllBytes(module.FileName));
-        return rva.HasValue && InstallAt(IntPtr.Add(module.BaseAddress, rva.Value));
+        return rva == 0x1A0E10 && InstallAt(IntPtr.Add(module.BaseAddress, rva.Value));
     }
 
     internal bool InstallAt(IntPtr entry)

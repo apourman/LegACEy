@@ -68,7 +68,7 @@ public sealed class Plugin : FilterBase
     private readonly InputRouterService _inputRouter = new();
     private Point _pointer;
     private Size? _dragOffset;
-    private Rectangle? _nativeBarBounds;
+    private RetailTakeoverLifecycle? _barTakeover;
     private bool _inGame;
     private bool _failed;
     private bool _acThemeActive = true;
@@ -76,6 +76,7 @@ public sealed class Plugin : FilterBase
     protected override void Startup()
     {
         AppDomain.CurrentDomain.AssemblyResolve += ResolveFromPluginDirectory;
+        NativeUi.Initialize(Log);
         CoreManager.Current.FilterInitComplete += OnFilterInitComplete;
     }
 
@@ -137,7 +138,7 @@ public sealed class Plugin : FilterBase
     /// <summary>Build the bar and input test panel the first time a character is in the world.</summary>
     private void OnLoginComplete(object? sender, EventArgs e)
     {
-        if (_failed)
+        if (_failed || !NativeUi.Ready)
             return;
 
         Guard(() =>
@@ -146,6 +147,7 @@ public sealed class Plugin : FilterBase
                 CreateUi();
             else if (_windows == null)
                 CreateWindowManager();
+            _barTakeover ??= new RetailTakeoverLifecycle(new NativeBarPort(NativeUi.Indicators), new SurfaceTakeoverPort(_barSurface!));
             _inGame = true;
         });
     }
@@ -155,10 +157,10 @@ public sealed class Plugin : FilterBase
         Guard(() => ApplyReset(_inputRouter.Route(new NativeInputMessage(InputRouterService.WmLogoff, IntPtr.Zero, IntPtr.Zero), GetInputSurfaces())));
         Guard(() => _hovered?.Panel.PointerLeave());
         _inGame = false;
+        RestoreNativeBar();
         foreach (var window in _windows?.ZOrder.ToArray() ?? Array.Empty<ManagedWindow>())
             _windows!.Close(window.Id);
         _windows = null;
-        _nativeBarBounds = null;
         _hovered = null;
         _dragOffset = null;
         if (_barSurface != null) _barSurface.Visible = false;
@@ -195,6 +197,7 @@ public sealed class Plugin : FilterBase
         var size = IndicatorBar.MeasureFor(slots.Length);
         var barPanel = AvaloniaPanel.Create(() => _bar = new IndicatorBar(slots, _portal.ReadImage), size.Width, size.Height);
         _barSurface = new ScreenSurface(_device, barPanel);
+        _barTakeover = new RetailTakeoverLifecycle(new NativeBarPort(NativeUi.Indicators), new SurfaceTakeoverPort(_barSurface));
 
         var inputPanel = AvaloniaPanel.Create(() =>
         {
@@ -312,12 +315,19 @@ public sealed class Plugin : FilterBase
     /// <summary>The handle was pressed: the bar follows the pointer until the button goes up.</summary>
     private void BeginBarDrag()
     {
+        if (_barTakeover?.CanDrag != true)
+            return;
         var location = _barSurface!.Location;
         _dragOffset = new Size(_pointer.X - location.X, _pointer.Y - location.Y);
     }
 
     private void DragBar(Point pointer)
     {
+        if (_barTakeover?.CanDrag != true)
+        {
+            _dragOffset = null;
+            return;
+        }
         var screen = _device!.Viewport;
         var size = _barSurface!.Bounds.Size;
         _barSurface.Location = new Point(
@@ -332,13 +342,8 @@ public sealed class Plugin : FilterBase
     private void EndBarDrag()
     {
         _dragOffset = null;
-        var native = NativeUi.GetElement(NativeUi.Indicators);
-        if (native == IntPtr.Zero)
-            return;
-
-        NativeUi.MoveTo(native, _barSurface!.Location);
-        _nativeBarBounds = NativeUi.GetBounds(native);
-        Log($"Moved the retail indicators bar to {_nativeBarBounds}.");
+        if (_barTakeover?.MoveTo(_barSurface!.Location) == true)
+            Log($"Moved the retail indicators bar to {_barSurface.Location}.");
     }
 
     /// <summary>
@@ -411,35 +416,20 @@ public sealed class Plugin : FilterBase
     /// </summary>
     private void TakeOverNativeBar()
     {
-        var native = NativeUi.GetElement(NativeUi.Indicators);
-        if (native == IntPtr.Zero || !NativeUi.IsVisible(native))
-            return;
-
-        var bounds = NativeUi.GetBounds(native);
-        NativeUi.SetVisible(native, false);
-        if (_nativeBarBounds != bounds)
-            Log($"Replaced the retail indicators bar at {bounds}.");
-        _nativeBarBounds = bounds;
-        _barSurface!.Location = bounds.Location;
-        _barSurface.Visible = true;
+        _barTakeover?.Tick();
     }
 
     private void RestoreNativeBar()
     {
-        if (!_inGame || _nativeBarBounds == null)
-            return;
-
         try
         {
-            var native = NativeUi.GetElement(NativeUi.Indicators);
-            if (native != IntPtr.Zero)
-                NativeUi.SetVisible(native, true);
+            _barTakeover?.Dispose();
         }
         catch (Exception exception)
         {
             Log($"Could not restore the retail indicators bar: {exception}");
         }
-        _nativeBarBounds = null;
+        _barTakeover = null;
     }
 
     /// <summary>Translate Decal's raw messages into router decisions and Avalonia.Headless input.</summary>
@@ -693,6 +683,27 @@ public sealed class Plugin : FilterBase
         {
             return null;
         }
+    }
+
+    private sealed class NativeBarPort : IRetailTakeoverPort
+    {
+        private readonly uint _rootId;
+        public NativeBarPort(uint rootId) => _rootId = rootId;
+        private IntPtr Element => NativeUi.GetElement(_rootId);
+        public bool IsVisible { get { var element = Element; return element != IntPtr.Zero && NativeUi.IsVisible(element); } }
+        public Rectangle GetBounds() { var element = Element; if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared."); return NativeUi.GetBounds(element); }
+        public void SetVisible(bool visible) { var element = Element; if (element != IntPtr.Zero) NativeUi.SetVisible(element, visible); }
+        public void MoveTo(Point location) { var element = Element; if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared."); NativeUi.MoveTo(element, location); }
+        public bool IsUiLocked => NativeUi.IsUiLocked;
+    }
+
+    private sealed class SurfaceTakeoverPort : IRetailTakeoverSurface
+    {
+        private readonly ScreenSurface _surface;
+        public SurfaceTakeoverPort(ScreenSurface surface) => _surface = surface;
+        public Point Location => _surface.Location;
+        public bool Visible { get => _surface.Visible; set => _surface.Visible = value; }
+        public void SetLocation(Point location) => _surface.Location = location;
     }
 
     private void TearDown()
