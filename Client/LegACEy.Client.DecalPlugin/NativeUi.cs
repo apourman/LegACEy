@@ -140,7 +140,9 @@ internal static class NativeUi
             EnsureReady();
             var playerSystem = Marshal.ReadIntPtr(new IntPtr(0x0087119C));
             if (playerSystem == IntPtr.Zero) return false;
-            return LockUiNative(IntPtr.Add(playerSystem, 0x30)) != 0;
+            // CPlayerModule starts at +0x30, but its PlayerModule base starts four bytes later.
+            // Retail drag handlers pass playerSystem +0x34 to PlayerModule::LockUI.
+            return LockUiNative(IntPtr.Add(playerSystem, 0x34)) != 0;
         }
     }
 

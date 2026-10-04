@@ -29,6 +29,7 @@ internal static class NativeUiCatalogue
         Function("UIElement::GetCurrentPosition", 0x00460180, "8B 54 24 04 8D 41 7C 3B D0 74 27 56 8B 30", "ThisCall"),
         Function("UIElement::MoveTo", 0x004634C0, "83 EC 30 53 56 57 8B F1 E8 33 C9 23 00 8B CE", "ThisCall"),
         Function("CM_UI::SendNotice_EndCharacterSession", 0x00479F40, "E8 CB 08 00 00 8B 10 68 E2 D1 4D 00 8B C8 FF 52 10", "Cdecl"),
+        new("PlayerModule::LockUI receiver adjustment", 0x004D0213, Bytes("E8 B8 DF 08 00 8D 48 34 E8 10 41 10 00"), "Our disassembly of installed end-of-retail acclient.exe: retail UI lock handler gets CPlayerSystem, adds 0x34, calls LockUI", "ThisCall receiver reference"),
         new("PlayerModule::LockUI", 0x005D4330, Bytes("33 C0 8A 81 93 00 00 00 83 E0 01 C3"), "https://actypes.utilitybelt.me/type/PlayerModule; verified against installed acclient.exe", "ThisCall"),
         new("RenderDeviceD3D::EndScene", 0x005A0E10, PostUiDrawHook.Signature, "Our capstone read of end-of-retail acclient.exe; unique executable-section signature", "MicrosoftThiscall; signature scan; expected RVA 0x1A0E10"),
         new("UIElementManager::s_pInstance reference", 0x004603A1, new byte[] { 0x3C, 0xE0, 0x83, 0x00 }, Chorizite, "data reference (absolute VA)"),
