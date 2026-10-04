@@ -17,6 +17,7 @@ internal interface IRetailTakeoverPort
 internal interface IRetailTakeoverSurface
 {
     Point Location { get; }
+    Size Size { get; }
     void SetLocation(Point location);
     bool Visible { get; set; }
 }
@@ -29,6 +30,9 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
     private bool _captured;
     private bool _originalVisible;
     private bool _disposed;
+    private Size? _viewport;
+    private Point _lastNativeLocation;
+    private Point? _resizeLocation;
 
     public RetailTakeoverLifecycle(IRetailTakeoverPort native, IRetailTakeoverSurface surface)
     {
@@ -51,16 +55,24 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
         }
     }
 
-    public void Tick(bool isDragging = false)
+    /// <summary>Returns true when a viewport change requires cancelling the active drag.</summary>
+    public bool Tick(bool isDragging = false, Size? viewport = null)
     {
-        if (_disposed) return;
+        if (_disposed) return false;
+        // Device transitions can briefly supply an empty viewport; retain the previous layout.
+        if (viewport is Size empty && (empty.Width <= 0 || empty.Height <= 0)) return false;
+        var viewportChanged = viewport.HasValue && _viewport.HasValue && viewport != _viewport;
+        if (viewportChanged && _captured)
+            _resizeLocation = _lastNativeLocation;
+        if (viewport.HasValue)
+            _viewport = viewport;
         try
         {
             if (!_native.Exists)
             {
                 _captured = false;
                 _surface.Visible = false;
-                return;
+                return viewportChanged;
             }
             if (_native.IsVisible)
             {
@@ -71,12 +83,29 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
             if (!_captured)
             {
                 _surface.Visible = false;
-                return;
+                return viewportChanged;
             }
+            var bounds = _native.GetBounds();
+            if (_resizeLocation is Point saved && _viewport is Size screen)
+            {
+                var size = _surface.Size;
+                var location = new Point(
+                    Math.Max(0, Math.Min(screen.Width - Math.Max(size.Width, bounds.Width), saved.X)),
+                    Math.Max(0, Math.Min(screen.Height - Math.Max(size.Height, bounds.Height), saved.Y)));
+                _native.MoveTo(location);
+                bounds = _native.GetBounds();
+                // RenderFrame precedes retail layout: also recover on the following frame
+                // in case the layout reset happens after this frame's viewport observation.
+                if (!viewportChanged)
+                    _resizeLocation = null;
+                isDragging = false;
+            }
+            _lastNativeLocation = bounds.Location;
             // Keep provisional drag coordinates until MoveTo commits them to retail.
             if (!isDragging)
-                _surface.SetLocation(_native.GetBounds().Location);
+                _surface.SetLocation(bounds.Location);
             _surface.Visible = true;
+            return viewportChanged;
         }
         catch
         {
@@ -91,6 +120,8 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
         try
         {
             _native.MoveTo(location);
+            _lastNativeLocation = _native.GetBounds().Location;
+            _resizeLocation = null;
             return true;
         }
         catch

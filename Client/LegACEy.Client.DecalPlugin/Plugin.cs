@@ -418,7 +418,9 @@ public sealed class Plugin : FilterBase
     /// </summary>
     private void TakeOverNativeBar()
     {
-        _barTakeover?.Tick(_dragOffset != null);
+        var viewport = _device!.Viewport;
+        if (_barTakeover?.Tick(_dragOffset != null, new Size(viewport.Width, viewport.Height)) == true)
+            _dragOffset = null;
     }
 
     private void RestoreNativeBar()
@@ -706,6 +708,7 @@ public sealed class Plugin : FilterBase
         private readonly ScreenSurface _surface;
         public SurfaceTakeoverPort(ScreenSurface surface) => _surface = surface;
         public Point Location => _surface.Location;
+        public Size Size => _surface.Bounds.Size;
         public bool Visible { get => _surface.Visible; set => _surface.Visible = value; }
         public void SetLocation(Point location) => _surface.Location = location;
     }

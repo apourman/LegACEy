@@ -217,6 +217,116 @@ public sealed class NativeUiLifecycleTests
         Assert.Contains(messages, message => message.Contains(reference.Name));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ResolutionChangeRestoresRetailResetBeforeOrAfterFrame(bool delayedReset)
+    {
+        var original = new Point(407, 357);
+        var port = new FakePort { Visible = true, Bounds = new Rectangle(original, new Size(149, 29)), Locked = true };
+        var surface = new FakeSurface();
+        using var lifecycle = new RetailTakeoverLifecycle(port, surface);
+        lifecycle.Tick(viewport: new Size(1024, 768));
+        if (!delayedReset) port.Bounds = new Rectangle(Point.Empty, port.Bounds.Size);
+        lifecycle.Tick(viewport: new Size(1280, 960));
+        if (delayedReset) port.Bounds = new Rectangle(Point.Empty, port.Bounds.Size);
+        lifecycle.Tick(viewport: new Size(1280, 960));
+        Assert.Equal(original, port.Bounds.Location);
+        Assert.Equal(original, surface.Location);
+        Assert.False(lifecycle.CanDrag);
+        lifecycle.Dispose();
+        Assert.True(port.Visible);
+        Assert.Equal(original, port.Bounds.Location);
+    }
+
+    [Fact]
+    public void ResolutionShrinkClampsBothRetailAndReplacementToNewScreen()
+    {
+        var port = new FakePort { Visible = true, Bounds = new Rectangle(900, 700, 149, 29) };
+        var surface = new FakeSurface { Size = new Size(250, 30) };
+        using var lifecycle = new RetailTakeoverLifecycle(port, surface);
+        lifecycle.Tick(viewport: new Size(1280, 960));
+        port.Bounds = new Rectangle(Point.Empty, port.Bounds.Size);
+        lifecycle.Tick(viewport: new Size(800, 600));
+        Assert.Equal(new Point(550, 570), surface.Location);
+        Assert.Equal(surface.Location, port.Bounds.Location);
+    }
+
+    [Fact]
+    public void ResolutionDuringDragRestoresCommittedPositionRatherThanPreview()
+    {
+        var port = new FakePort { Visible = true, Bounds = new Rectangle(100, 120, 149, 29) };
+        var surface = new FakeSurface();
+        using var lifecycle = new RetailTakeoverLifecycle(port, surface);
+        lifecycle.Tick(viewport: new Size(1024, 768));
+        Assert.True(lifecycle.MoveTo(new Point(300, 320)));
+        surface.SetLocation(new Point(500, 520));
+        port.Bounds = new Rectangle(Point.Empty, port.Bounds.Size);
+        Assert.True(lifecycle.Tick(isDragging: true, viewport: new Size(1280, 960)));
+        Assert.Equal(new Point(300, 320), port.Bounds.Location);
+        Assert.Equal(port.Bounds.Location, surface.Location);
+    }
+
+    [Fact]
+    public void ResolutionRecoveryWaitsForMissingElementToReturn()
+    {
+        var port = new FakePort { Visible = true, Bounds = new Rectangle(200, 220, 149, 29) };
+        var surface = new FakeSurface();
+        using var lifecycle = new RetailTakeoverLifecycle(port, surface);
+        lifecycle.Tick(viewport: new Size(1024, 768));
+        port.Exists = false;
+        lifecycle.Tick(viewport: new Size(1280, 960));
+        Assert.False(surface.Visible);
+        port.Exists = true;
+        port.Visible = true;
+        port.Bounds = new Rectangle(Point.Empty, port.Bounds.Size);
+        lifecycle.Tick(viewport: new Size(1280, 960));
+        Assert.Equal(new Point(200, 220), surface.Location);
+        Assert.Equal(surface.Location, port.Bounds.Location);
+    }
+
+    [Fact]
+    public void NativeMovementToOriginOutsideResizeStillControlsPosition()
+    {
+        var port = new FakePort { Visible = true, Bounds = new Rectangle(200, 220, 149, 29) };
+        var surface = new FakeSurface();
+        using var lifecycle = new RetailTakeoverLifecycle(port, surface);
+        lifecycle.Tick(viewport: new Size(1024, 768));
+        lifecycle.Tick(viewport: new Size(1280, 960));
+        lifecycle.Tick(viewport: new Size(1280, 960));
+        port.Bounds = new Rectangle(Point.Empty, port.Bounds.Size);
+        lifecycle.Tick(viewport: new Size(1280, 960));
+        Assert.Equal(Point.Empty, surface.Location);
+    }
+
+    [Fact]
+    public void EmptyViewportDuringTransitionDoesNotOverwriteSavedNativePosition()
+    {
+        var port = new FakePort { Visible = true, Bounds = new Rectangle(407, 357, 149, 29) };
+        var surface = new FakeSurface();
+        using var lifecycle = new RetailTakeoverLifecycle(port, surface);
+        lifecycle.Tick(viewport: new Size(1024, 768));
+        port.Bounds = new Rectangle(Point.Empty, port.Bounds.Size);
+        lifecycle.Tick(viewport: Size.Empty);
+        Assert.Equal(new Point(407, 357), surface.Location);
+        lifecycle.Tick(viewport: new Size(1280, 960));
+        Assert.Equal(surface.Location, port.Bounds.Location);
+    }
+
+    [Fact]
+    public void FailedResolutionWritebackRestoresRetailVisibilityAndDisablesTakeover()
+    {
+        var port = new FakePort { Visible = true, Bounds = new Rectangle(407, 357, 149, 29) };
+        var surface = new FakeSurface();
+        using var lifecycle = new RetailTakeoverLifecycle(port, surface);
+        lifecycle.Tick(viewport: new Size(1024, 768));
+        port.ThrowOnMove = true;
+        Assert.Throws<InvalidOperationException>(() => lifecycle.Tick(viewport: new Size(1280, 960)));
+        Assert.True(port.Visible);
+        Assert.False(surface.Visible);
+        Assert.False(lifecycle.CanDrag);
+    }
+
     private sealed class FakePort : IRetailTakeoverPort
     {
         public bool Exists { get; set; } = true;
@@ -236,7 +346,13 @@ public sealed class NativeUiLifecycleTests
             }
             Visible = visible;
         }
-        public void MoveTo(Point location) => Moves.Add(location);
+        public bool ThrowOnMove { get; set; }
+        public void MoveTo(Point location)
+        {
+            if (ThrowOnMove) throw new InvalidOperationException("Native move failed.");
+            Moves.Add(location);
+            Bounds = new Rectangle(location, Bounds.Size);
+        }
         public bool ThrowOnLock { get; set; }
         public bool IsUiLocked => ThrowOnLock ? throw new InvalidOperationException("Lock read failed.") : Locked;
     }
@@ -244,6 +360,7 @@ public sealed class NativeUiLifecycleTests
     private sealed class FakeSurface : IRetailTakeoverSurface
     {
         public Point Location { get; private set; }
+        public Size Size { get; set; } = new Size(149, 29);
         private bool _visible;
         public bool ThrowOnHide { get; set; }
         public bool Visible
