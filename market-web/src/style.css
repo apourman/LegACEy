@@ -4,7 +4,7 @@ body { margin: 0; }
 a { color: #d5b983; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 a:hover { color: #f4d99f; }
 button, input, select { font: inherit; }
-button, .button { background: #d4b071; color: #151716; border: 1px solid #d4b071; border-radius: 5px; padding: .55rem .9rem; cursor: pointer; font-weight: 650; }
+button, .button { background: #d4b071; color: #151716; border: 1px solid #d4b071; border-radius: 5px; padding: .55rem .9rem; cursor: pointer; font-weight: 650; }.button:hover { color: #151716; }
 button:disabled { opacity: .55; cursor: wait; }
 .secondary { background: transparent; color: #e4d8c2; border-color: #59615c; }
 input, select { width: 100%; min-width: 0; padding: .55rem; border: 1px solid #53605b; border-radius: 4px; background: #191e1d; color: #f3eee3; }

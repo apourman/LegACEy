@@ -4,6 +4,7 @@ import { delistVaultItem, depositVaultItem, getTicket, getVault, listVaultItem, 
 import { Icon, VaultAppraisalPopover } from './Appraisal';
 import { useSession } from './session';
 import { announceTicketCreated, clearTicketAttempt, onTicketFinished, ticketAttempt } from './tickets';
+import { checkMmdAmount } from './mmd';
 
 export function Vault() {
   const session = useSession();
@@ -87,10 +88,12 @@ export function Vault() {
   async function withdrawNotes(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (busyMmd || session.characterId === null || !session.me) return;
-    if (!/^\d+$/.test(mmdAmount)) { setError('Enter a whole number of MMD.'); return; }
-    const amount = Number(mmdAmount);
-    if (!Number.isSafeInteger(amount) || amount < 1) { setError('Enter at least 1 whole MMD.'); return; }
-    if (amount > session.me.balance) { setError('The amount cannot exceed your MMD balance.'); return; }
+    const checked = checkMmdAmount(mmdAmount, session.me.balance);
+    if (!checked.ok) {
+      setError(checked.reason === 'whole' ? 'Enter a whole number of MMD.' : checked.reason === 'positive' ? 'Enter at least 1 whole MMD.' : 'The amount cannot exceed your MMD balance.');
+      return;
+    }
+    const amount = checked.amount;
     setBusyMmd(true); setError(''); setNotice('');
     const accountId = session.me.accountId;
     const attemptKey = 'mmd';

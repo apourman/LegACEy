@@ -69,6 +69,9 @@ namespace ACE.MarketDev
         {
             new SeedPair("website", "desktop"),
             new SeedPair("website", "phone"),
+            new SeedPair("journeys", "desktop"),
+            new SeedPair("journeys", "phone"),
+            new SeedPair("global-state", "global"),
         };
 
         private static SeedAccount[] E2EAccounts() => E2EPairs.SelectMany(pair => new[]
