@@ -209,6 +209,11 @@ test("the browse page exposes paging and appraisal on a touch tap", async ({
     page,
 }) => {
     await page.goto("/");
+    expect(
+        await page.evaluate(
+            () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+    ).toBe(true);
     await checkA11y(page);
     const appraisal = page.getByRole("button", { name: /Appraise/ }).first();
     await appraisal.click();
@@ -534,6 +539,24 @@ test("an open purchase is disabled when a pause refresh arrives", async ({
     await expect(
         page.getByRole("button", { name: "Confirm purchase" }),
     ).toBeEnabled();
+    await checkA11y(page);
+});
+
+test("a purchase dialog keeps keyboard focus inside", async ({ page }) => {
+    await openBravoListing(page, test.info().project.name);
+    await page.getByRole("button", { name: "Buy" }).click();
+    for (let i = 0; i < 5; i++) {
+        await page.keyboard.press("Tab");
+        expect(
+            await page.evaluate(() =>
+                document
+                    .querySelector("dialog")
+                    ?.contains(document.activeElement),
+            ),
+        ).toBe(true);
+    }
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await checkA11y(page);
 });
 
