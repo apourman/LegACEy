@@ -253,8 +253,15 @@ describe("global-state restoration", () => {
     it("restores pause, bans and settings after a forced failure", async () => {
         const original = {
             paused: false,
-            bannedDetails: { "seed-bravo": "original" },
-            settings: { listingLimit: "200" },
+            bannedDetails: {
+                "seed-bravo": {
+                    bannedAt: "original",
+                    bannedByAccountId: null,
+                    expiresAt: null,
+                    reason: null,
+                },
+            },
+            settings: { listingLimit: { value: 200, description: "" } },
         };
         let state: GlobalStateSnapshot = {
             paused: original.paused,
@@ -264,7 +271,7 @@ describe("global-state restoration", () => {
         const restore = vi.fn(async (snapshot: GlobalStateSnapshot) => {
             state = {
                 paused: snapshot.paused,
-                    bannedDetails: { ...snapshot.bannedDetails },
+                bannedDetails: { ...snapshot.bannedDetails },
                 settings: { ...snapshot.settings },
             };
         });
@@ -276,9 +283,17 @@ describe("global-state restoration", () => {
                         paused: true,
                         bannedDetails: {
                             ...state.bannedDetails,
-                            "seed-alpha": "forced",
+                            "seed-alpha": {
+                                bannedAt: "forced",
+                                bannedByAccountId: null,
+                                expiresAt: null,
+                                reason: null,
+                            },
                         },
-                        settings: { ...state.settings, listingLimit: "1" },
+                        settings: {
+                            ...state.settings,
+                            listingLimit: { value: 1, description: "" },
+                        },
                     };
                     throw new Error("forced midway failure");
                 },

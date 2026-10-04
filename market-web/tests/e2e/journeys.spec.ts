@@ -287,7 +287,14 @@ test("a price_changed answer requires fresh price and idempotency key", async ({
         return route.fulfill({
             status: 200,
             contentType: "application/json",
-            body: JSON.stringify({ status: "ok", listingId: 1, itemGuid: 1, price: 150, fee: 0, balance: 850 }),
+            body: JSON.stringify({
+                status: "ok",
+                listingId: 1,
+                itemGuid: 1,
+                price: 150,
+                fee: 0,
+                balance: 850,
+            }),
         });
     });
     await page.getByRole("button", { name: "Buy" }).click();
@@ -331,7 +338,9 @@ test("an account without characters cannot buy and gets the game next step", asy
         await route.fulfill({ response, body: JSON.stringify(body) });
     });
     await openBravoListing(page, test.info().project.name);
-    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await page.evaluate(() =>
+        document.dispatchEvent(new Event("visibilitychange")),
+    );
     await expect(
         page.getByText("Create a character in game first."),
     ).toBeVisible();
@@ -349,7 +358,8 @@ test("a character selected before the BFF migrates from local storage to its coo
             credentials: "same-origin",
             headers: { "X-Market-Request": "1" },
         });
-        if (!response.ok) throw new Error(`GET /api/me failed: ${response.status}`);
+        if (!response.ok)
+            throw new Error(`GET /api/me failed: ${response.status}`);
         return response.json();
     });
     const characterKey = `market-character-${me.accountId}`;
@@ -369,13 +379,18 @@ test("a character selected before the BFF migrates from local storage to its coo
     );
     expect(
         await page.evaluate(
-            (key) => document.cookie.split("; ").some((cookie) => cookie.startsWith(`${key}=`)),
+            (key) =>
+                document.cookie
+                    .split("; ")
+                    .some((cookie) => cookie.startsWith(`${key}=`)),
             characterKey,
         ),
     ).toBe(false);
     await page.reload();
     await page.waitForSelector("html[data-hydrated]");
-    await expect(page.getByLabel("Acting character")).toHaveValue(secondCharacter!);
+    await expect(page.getByLabel("Acting character")).toHaveValue(
+        secondCharacter!,
+    );
     expect(
         await page.evaluate((key) => localStorage.getItem(key), characterKey),
     ).toBeNull();
@@ -418,7 +433,10 @@ test("a buyer sees both balances change after purchasing from another seeded acc
     const buyerAfter = amount(await page.locator(".balance").innerText());
     expect(buyerAfter).toBe(buyerBefore - listedPrice);
     await checkA11y(page);
-    await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
+    await page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Close", exact: true })
+        .click();
     await page.getByRole("button", { name: "Sign out" }).click();
     await signIn(page, `journeys-${project}-bravo`);
     await page.goto("/");
@@ -431,4 +449,110 @@ test("a buyer sees both balances change after purchasing from another seeded acc
             expect.objectContaining({ name: "market_session" }),
         ]),
     );
+});
+
+test("a delayed account refresh cannot restore the account after sign-out", async ({
+    page,
+}) => {
+    let calls = 0;
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    await page.route("**/api/me", async (route) => {
+        if (++calls >= 1) await pending;
+        await route.continue();
+    });
+    await signIn(page, seededAccount(test.info().project.name));
+    await page.goto("/");
+    await expect(page.locator("header")).toContainText(
+        seededAccount(test.info().project.name),
+    );
+    await page.evaluate(() =>
+        document.dispatchEvent(new Event("visibilitychange")),
+    );
+    await expect.poll(() => calls).toBe(1);
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(
+        page.getByRole("link", { name: "Sign in", exact: true }),
+    ).toBeVisible();
+    release();
+    await page.waitForTimeout(100);
+    await expect(page.locator("header")).not.toContainText(
+        seededAccount(test.info().project.name),
+    );
+    await checkA11y(page);
+});
+
+test("sign-in stays on the form when loading the account fails", async ({
+    page,
+}) => {
+    await page.route("**/api/me", (route) =>
+        route.fulfill({
+            status: 503,
+            contentType: "application/json",
+            body: JSON.stringify({ error: "server" }),
+        }),
+    );
+    await page.goto("/signin");
+    await page
+        .getByLabel("Account name")
+        .fill(seededAccount(test.info().project.name));
+    await page.getByLabel("Password", { exact: true }).fill("marketdev");
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    await expect(page.locator(".signin [role=alert]")).toContainText(
+        "The server is unavailable.",
+    );
+    await checkA11y(page);
+});
+
+test("an open purchase is disabled when a pause refresh arrives", async ({
+    page,
+}) => {
+    let paused = false;
+    await page.route("**/api/me", async (route) => {
+        const response = await route.fetch();
+        const body = await response.json();
+        body.paused = paused;
+        await route.fulfill({ response, body: JSON.stringify(body) });
+    });
+    await openBravoListing(page, test.info().project.name);
+    await page.getByRole("button", { name: "Buy" }).click();
+    paused = true;
+    await page.evaluate(() =>
+        document.dispatchEvent(new Event("visibilitychange")),
+    );
+    await expect(
+        page.getByRole("button", { name: "Confirm purchase" }),
+    ).toBeDisabled();
+    await checkA11y(page);
+    paused = false;
+    await page.evaluate(() =>
+        document.dispatchEvent(new Event("visibilitychange")),
+    );
+    await expect(
+        page.getByRole("button", { name: "Confirm purchase" }),
+    ).toBeEnabled();
+    await checkA11y(page);
+});
+
+test("Escape dismisses an appraisal after focus moves to its close button", async ({
+    page,
+}) => {
+    await page.goto("/");
+    const appraisal = page.getByRole("button", { name: /Appraise/ }).first();
+    await appraisal.focus();
+    await expect(
+        page.getByRole("region", { name: /appraisal/i }),
+    ).toBeVisible();
+    await page.keyboard.press("Tab");
+    await expect(
+        page.getByRole("button", { name: "Close appraisal" }),
+    ).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("region", { name: /appraisal/i })).toHaveCount(
+        0,
+    );
+    await checkA11y(page);
 });

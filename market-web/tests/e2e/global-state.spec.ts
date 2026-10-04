@@ -32,11 +32,13 @@ test("shows the paused banner while restoring the live setting", async ({
     await withRestoredGlobalState(
         before,
         async () => {
-            await mutateGlobalState(accounts.slice(0, 1), { pause: true });
+            await mutateGlobalState(accounts.slice(0, 1), ["pause"]);
             await page.reload();
             await checkA11y(page);
             await expect(
-                page.getByRole("status").filter({ hasText: "The market is paused" }),
+                page
+                    .getByRole("status")
+                    .filter({ hasText: "The market is paused" }),
             ).toBeVisible();
         },
         (state) => restoreGlobalState(state, accounts),
@@ -54,7 +56,7 @@ test("ends a browser session when its account is banned, then restores the ban",
     await withRestoredGlobalState(
         before,
         async () => {
-            await mutateGlobalState(accounts.slice(0, 1), { bans: true });
+            await mutateGlobalState(accounts.slice(0, 1), ["bans"]);
             await page.reload();
             await expect(
                 page.getByRole("link", { name: "Sign in", exact: true }),

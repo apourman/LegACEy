@@ -1,5 +1,9 @@
 import { execFileSync } from "node:child_process";
-import type { GlobalStateSnapshot } from "../../src/global-state";
+import type {
+    BanSnapshot,
+    GlobalSettingSnapshot,
+    GlobalStateSnapshot,
+} from "../../src/global-state";
 
 const container = process.env.MARKET_DB_CONTAINER ?? "docker-ace-db-1";
 const shard = process.env.MARKET_E2E_SHARD_DATABASE ?? "ace_market_e2e_shard";
@@ -34,23 +38,41 @@ export async function readGlobalState(
             shard,
             "SELECT `value`, IFNULL(`description`, '') FROM config_properties_boolean WHERE `key` = 'market_paused'",
         )[0]?.split("\t") ?? [];
-    const settings = Object.fromEntries(
-        settingKeys.map((key) => {
-            const row = sql(
-                shard,
-                `SELECT \`value\`, IFNULL(\`description\`, '') FROM config_properties_long WHERE \`key\` = ${quote(key)}`,
-            )[0];
-            return [key, row ?? "ABSENT"];
-        }),
-    );
-    const bannedDetails: Record<string, string> = {};
+    const settings: Record<string, GlobalSettingSnapshot | null> =
+        Object.fromEntries(
+            settingKeys.map((key) => {
+                const row = sql(
+                    shard,
+                    `SELECT \`value\`, IFNULL(\`description\`, '') FROM config_properties_long WHERE \`key\` = ${quote(key)}`,
+                )[0];
+                const [value, description] = row?.split("\t") ?? [];
+                return [
+                    key,
+                    value === undefined
+                        ? null
+                        : {
+                              value: Number(value),
+                              description: description ?? "",
+                          },
+                ];
+            }),
+        );
+    const bannedDetails: Record<string, BanSnapshot> = {};
     for (const account of accounts) {
         const row =
             sql(
                 auth,
                 `SELECT IFNULL(DATE_FORMAT(banned_Time, '%Y-%m-%d %H:%i:%s'), 'NULL'), IFNULL(CAST(banned_By_Account_Id AS CHAR), 'NULL'), IFNULL(DATE_FORMAT(ban_Expire_Time, '%Y-%m-%d %H:%i:%s'), 'NULL'), IFNULL(ban_Reason, 'NULL') FROM account WHERE accountName = ${quote(account)}`,
             )[0] ?? "NULL\tNULL\tNULL\tNULL";
-        bannedDetails[account] = row;
+        const [bannedAt, bannedByAccountId, expiresAt, reason] =
+            row.split("\t");
+        bannedDetails[account] = {
+            bannedAt: bannedAt === "NULL" ? null : bannedAt,
+            bannedByAccountId:
+                bannedByAccountId === "NULL" ? null : bannedByAccountId,
+            expiresAt: expiresAt === "NULL" ? null : expiresAt,
+            reason: reason === "NULL" ? null : reason,
+        };
     }
     return {
         paused: pause[0] === "1",
@@ -61,28 +83,31 @@ export async function readGlobalState(
     };
 }
 
-export interface GlobalStateMutation {
-    pause?: boolean;
-    settings?: boolean;
-    bans?: boolean;
-}
+export type GlobalStateConcern = "pause" | "settings" | "bans";
+
+const allGlobalStateConcerns: readonly GlobalStateConcern[] = [
+    "pause",
+    "settings",
+    "bans",
+];
 
 export async function mutateGlobalState(
     accounts: readonly string[],
-    mutation: GlobalStateMutation = { pause: true, settings: true, bans: true },
+    concerns: readonly GlobalStateConcern[] = allGlobalStateConcerns,
 ) {
+    const mutation = new Set(concerns);
     const accountList = accounts.map(quote).join(",");
-    if (mutation.pause)
+    if (mutation.has("pause"))
         sql(
             shard,
             "INSERT INTO config_properties_boolean (`key`, `value`, `description`) VALUES ('market_paused', 1, 'E2E forced pause') ON DUPLICATE KEY UPDATE `value` = 1, `description` = 'E2E forced pause'",
         );
-    if (mutation.settings)
+    if (mutation.has("settings"))
         sql(
             shard,
             "REPLACE INTO config_properties_long (`key`, `value`, `description`) VALUES ('market_active_listings', 1, 'E2E forced setting'), ('market_purchases_per_minute', 1, 'E2E forced setting')",
         );
-    if (mutation.bans)
+    if (mutation.has("bans"))
         sql(
             auth,
             `UPDATE account SET banned_Time = UTC_TIMESTAMP(), banned_By_Account_Id = 1, ban_Expire_Time = UTC_TIMESTAMP() + INTERVAL 1 DAY, ban_Reason = 'E2E forced ban' WHERE accountName IN (${accountList})`,
@@ -106,31 +131,31 @@ export async function restoreGlobalState(
             `INSERT INTO config_properties_boolean (\`key\`, \`value\`, \`description\`) VALUES ('market_paused', ${pauseValue}, ${quote(pauseDescription)}) ON DUPLICATE KEY UPDATE \`value\` = ${pauseValue}, \`description\` = ${quote(pauseDescription)}`,
         );
     for (const key of settingKeys) {
-        const value = snapshot.settings[key] ?? "ABSENT";
-        if (value === "ABSENT")
+        const setting = snapshot.settings[key];
+        if (setting === null || setting === undefined)
             sql(
                 shard,
                 `DELETE FROM config_properties_long WHERE \`key\` = ${quote(key)}`,
             );
         else {
-            const [number, description] = value.split("\t");
             sql(
                 shard,
-                `REPLACE INTO config_properties_long (\`key\`, \`value\`, \`description\`) VALUES (${quote(key)}, ${Number(number)}, ${quote(description ?? "")})`,
+                `REPLACE INTO config_properties_long (\`key\`, \`value\`, \`description\`) VALUES (${quote(key)}, ${setting.value}, ${quote(setting.description)})`,
             );
         }
     }
     for (const account of accounts) {
-        const [banned, by, expires, reason] = (
-            snapshot.bannedDetails?.[account] ?? "NULL\tNULL\tNULL\tNULL"
-        )
-            .split("\t")
-            .map((value) => (value === "NULL" ? null : value));
+        const ban = snapshot.bannedDetails[account] ?? {
+            bannedAt: null,
+            bannedByAccountId: null,
+            expiresAt: null,
+            reason: null,
+        };
         const value = (part: string | null) =>
             part === null ? "NULL" : quote(part);
         sql(
             auth,
-            `UPDATE account SET banned_Time = ${value(banned)}, banned_By_Account_Id = ${value(by)}, ban_Expire_Time = ${value(expires)}, ban_Reason = ${value(reason)} WHERE accountName = ${quote(account)}`,
+            `UPDATE account SET banned_Time = ${value(ban.bannedAt)}, banned_By_Account_Id = ${value(ban.bannedByAccountId)}, ban_Expire_Time = ${value(ban.expiresAt)}, ban_Reason = ${value(ban.reason)} WHERE accountName = ${quote(account)}`,
         );
     }
 }

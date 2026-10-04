@@ -14,8 +14,7 @@ export default function globalSetup() {
             "market-e2e",
         );
     const config =
-        process.env.MARKET_DEV_CONFIG ??
-        join(runDirectory, "Config.js");
+        process.env.MARKET_DEV_CONFIG ?? join(runDirectory, "Config.js");
     for (const character of [
         "journeys desktop Alpha",
         "journeys phone Alpha",
