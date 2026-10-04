@@ -127,6 +127,20 @@ public sealed class ThemeTests
         Assert.Contains(controls.OfType<ScrollViewer>(), item => !item.IsEnabled);
         Assert.NotNull(chrome!.CloseButton);
 
+        var sampleTypes = new[]
+        {
+            typeof(Button), typeof(TextBox), typeof(ListBox), typeof(TabControl),
+            typeof(ScrollViewer), typeof(ScrollBar), typeof(CheckBox), typeof(ProgressBar), typeof(ToolTip), typeof(TextBlock)
+        };
+        foreach (var sampleType in sampleTypes)
+        foreach (var state in new[] { "sample-normal", "sample-hover", "sample-pressed", "sample-disabled" })
+            Assert.True(controls.Any(control => sampleType.IsInstanceOfType(control) && control.Classes.Contains(state)), $"Missing {state} sample for {sampleType.Name}.");
+        foreach (var state in new[] { "sample-normal", "sample-hover", "sample-pressed", "sample-disabled" })
+        {
+            Assert.Contains(controls.OfType<ListBox>(), list => list.Items.OfType<ListBoxItem>().Any(item => item.Classes.Contains(state)));
+            Assert.Contains(controls.OfType<TabControl>(), tabs => tabs.Items.OfType<TabItem>().Any(item => item.Classes.Contains(state)));
+        }
+
         var switched = false;
         var gallery = controls.OfType<ThemeGalleryControl>().Single();
         gallery.ThemeSwitchRequested += (_, _) => switched = true;

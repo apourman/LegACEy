@@ -98,6 +98,18 @@ public sealed class SimpleClientTheme : IClientTheme
         AddSampleState<ScrollBar>(styles, "sample-pressed", Color.FromRgb(0x18, 0x1b, 0x21), text, accent);
         AddSampleState<CheckBox>(styles, "sample-hover", accent, text);
         AddSampleState<CheckBox>(styles, "sample-pressed", Color.FromRgb(0x18, 0x1b, 0x21), text);
+        AddMatrixStates<Button>(styles, surface, text, accent);
+        AddMatrixStates<TextBox>(styles, surface, text, accent);
+        AddMatrixStates<ListBox>(styles, surface, text, accent);
+        AddMatrixStates<ListBoxItem>(styles, surface, text, accent);
+        AddMatrixStates<TabControl>(styles, surface, text, accent);
+        AddMatrixStates<TabItem>(styles, surface, text, accent);
+        AddMatrixStates<ScrollViewer>(styles, surface, text, accent);
+        AddMatrixStates<ScrollBar>(styles, surface, text, accent);
+        AddMatrixStates<CheckBox>(styles, surface, text, accent);
+        AddMatrixStates<ProgressBar>(styles, surface, text, accent);
+        AddMatrixStates<ToolTip>(styles, surface, text, accent);
+        AddTextMatrixStates(styles, surface, text, accent);
     }
 
     private static void AddControl<T>(Styles styles, Color surface, Color text, Color accent) where T : TemplatedControl
@@ -133,6 +145,34 @@ public sealed class SimpleClientTheme : IClientTheme
         style.Setters.Add(new Setter(TemplatedControl.ForegroundProperty, Brush(foreground)));
         if (border.HasValue)
             style.Setters.Add(new Setter(TemplatedControl.BorderBrushProperty, Brush(border.Value)));
+        styles.Add(style);
+    }
+
+    private static void AddMatrixStates<T>(Styles styles, Color surface, Color text, Color accent) where T : TemplatedControl
+    {
+        AddSampleState<T>(styles, "sample-normal", surface, text, accent);
+        AddSampleState<T>(styles, "sample-hover", accent, text, accent);
+        AddSampleState<T>(styles, "sample-pressed", Color.FromRgb(0x18, 0x1b, 0x21), text, accent);
+        var disabled = new Style(x => x.OfType<T>().Class("sample-disabled"));
+        disabled.Setters.Add(new Setter(TemplatedControl.OpacityProperty, 0.5));
+        styles.Add(disabled);
+    }
+
+    private static void AddTextMatrixStates(Styles styles, Color surface, Color text, Color accent)
+    {
+        AddTextSampleState(styles, "sample-normal", surface, text);
+        AddTextSampleState(styles, "sample-hover", accent, text);
+        AddTextSampleState(styles, "sample-pressed", Color.FromRgb(0x18, 0x1b, 0x21), text);
+        var disabled = new Style(x => x.OfType<TextBlock>().Class("sample-disabled"));
+        disabled.Setters.Add(new Setter(Control.OpacityProperty, 0.5));
+        styles.Add(disabled);
+    }
+
+    private static void AddTextSampleState(Styles styles, string className, Color background, Color foreground)
+    {
+        var style = new Style(x => x.OfType<TextBlock>().Class(className));
+        style.Setters.Add(new Setter(TextBlock.BackgroundProperty, Brush(background)));
+        style.Setters.Add(new Setter(TextBlock.ForegroundProperty, Brush(foreground)));
         styles.Add(style);
     }
 

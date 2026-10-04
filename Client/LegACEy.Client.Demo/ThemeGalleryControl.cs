@@ -10,6 +10,8 @@ namespace LegACEy.Client.Demo;
 /// <summary>Interactive catalogue of themed controls and the visual states relevant to each.</summary>
 public sealed class ThemeGalleryControl : UserControl
 {
+    private static readonly string[] MatrixStates = { "Normal", "Hover", "Pressed", "Disabled" };
+
     public event EventHandler? ThemeSwitchRequested;
 
     public ThemeGalleryControl()
@@ -31,6 +33,7 @@ public sealed class ThemeGalleryControl : UserControl
         stack.Children.Add(Section("ProgressBar · normal / disabled", ProgressSamples()));
         stack.Children.Add(Section("ToolTip · hover the label", ToolTipSample()));
         stack.Children.Add(Section("TextBlock · normal / disabled", TextSamples()));
+        stack.Children.Add(Section("Visual state matrix · hover and pressed samples pin their appearance for comparison", BuildStateMatrix()));
         var switchButton = new Button { Content = "Switch theme while this gallery stays open" };
         switchButton.Click += (_, _) => ThemeSwitchRequested?.Invoke(this, EventArgs.Empty);
         stack.Children.Add(switchButton);
@@ -174,6 +177,90 @@ public sealed class ThemeGalleryControl : UserControl
         row.Children.Add(new TextBlock { Text = "Disabled text", IsEnabled = false });
         return row;
     }
+
+    private static Control BuildStateMatrix()
+    {
+        var matrix = new StackPanel { Spacing = 5 };
+        matrix.Children.Add(new TextBlock { Text = "Disabled specimens are disabled. Hover and pressed specimens show fixed state styling; interactive examples above respond to input." });
+        AddMatrixRow(matrix, "Button", state => new Button { Content = state, Width = 100 });
+        AddMatrixRow(matrix, "TextBox", state => new TextBox { Text = state, Width = 100 });
+        AddMatrixRow(matrix, "ListBox", state => new ListBox { Items = { state }, Width = 100, Height = 34 });
+        AddStateRow(matrix, "ListBox row", ListRowMatrix());
+        AddMatrixRow(matrix, "TabControl", CreateTabSample);
+        AddStateRow(matrix, "TabItem", TabItemMatrix());
+        AddMatrixRow(matrix, "ScrollViewer", state => new ScrollViewer { Content = new TextBlock { Text = state }, Width = 100, Height = 34 });
+        AddMatrixRow(matrix, "ScrollBar", _ => CreateScrollBar());
+        AddMatrixRow(matrix, "CheckBox", state => new CheckBox { Content = state });
+        AddMatrixRow(matrix, "ProgressBar", _ => CreateProgressBar());
+        AddMatrixRow(matrix, "ToolTip", state => new ToolTip { Content = state });
+        AddMatrixRow(matrix, "TextBlock", state => new TextBlock { Text = state, Margin = new Thickness(4) });
+        return matrix;
+    }
+
+    private static void AddMatrixRow<T>(StackPanel matrix, string name, Func<string, T> createSample) where T : Control
+    {
+        var row = new WrapPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        row.Children.Add(new TextBlock { Text = name, Width = 100, VerticalAlignment = VerticalAlignment.Center });
+        foreach (var state in MatrixStates)
+            row.Children.Add(StateSample(createSample(state), state));
+        matrix.Children.Add(row);
+    }
+
+    private static void AddStateRow(StackPanel matrix, string name, Control sample)
+    {
+        var row = new WrapPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        row.Children.Add(new TextBlock { Text = name, Width = 100, VerticalAlignment = VerticalAlignment.Center });
+        row.Children.Add(sample);
+        matrix.Children.Add(row);
+    }
+
+    private static T StateSample<T>(T control, string state) where T : Control
+    {
+        control.Classes.Add($"sample-{state.ToLowerInvariant()}");
+        if (state == "Disabled")
+            control.IsEnabled = false;
+        return control;
+    }
+
+    private static TabControl CreateTabSample(string text)
+    {
+        var tabs = new TabControl { Width = 100, Height = 48 };
+        tabs.Items.Add(new TabItem { Header = text, Content = new TextBlock { Text = text } });
+        return tabs;
+    }
+
+    private static Control TabItemMatrix()
+    {
+        var tabs = new TabControl { Width = 420, Height = 56 };
+        foreach (var state in MatrixStates)
+        {
+            var item = StateSample(new TabItem { Header = state, Content = new TextBlock { Text = state } }, state);
+            tabs.Items.Add(item);
+        }
+        tabs.SelectedIndex = 0;
+        return tabs;
+    }
+
+    private static Control ListRowMatrix()
+    {
+        var list = new ListBox { Width = 420, Height = 100 };
+        foreach (var state in MatrixStates)
+            list.Items.Add(StateSample(new ListBoxItem { Content = state }, state));
+        return list;
+    }
+
+    private static ScrollBar CreateScrollBar() => new()
+    {
+        Orientation = Orientation.Horizontal,
+        Minimum = 0,
+        Maximum = 100,
+        Value = 50,
+        Width = 100,
+        Height = 18,
+        Margin = new Thickness(2)
+    };
+
+    private static ProgressBar CreateProgressBar() => new() { Minimum = 0, Maximum = 100, Value = 50, Width = 100, Height = 18, Margin = new Thickness(2) };
 
     private static Control Section(string title, Control child)
     {
