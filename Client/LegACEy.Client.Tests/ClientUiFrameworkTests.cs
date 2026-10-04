@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using LegACEy.Client.PanelHost;
 using LegACEy.Client.Demo;
 using LegACEy.Client.Themes;
 
@@ -45,7 +46,7 @@ public sealed class ClientUiFrameworkTests
         var disposals = 0;
         var inspector = new ElementInspectorControl(
             new[] { new RetailRootDescriptor("one", 1), new RetailRootDescriptor("two", 2) },
-            _ => true, _ => new System.Drawing.Rectangle(4, 8, 40, 20), (_, _) => { }, (_, _) => { },
+            _ => true, _ => new System.Drawing.Rectangle(4, 8, 40, 20), _ => new Callback(() => disposals++), (_, _) => { },
             _ => new Callback(() => disposals++));
 
         inspector.TakeOver(1);
@@ -71,6 +72,57 @@ public sealed class ClientUiFrameworkTests
         Assert.Equal(0, ui.TakeoverCount);
     });
 
+    [Fact]
+    public void Theme_failure_cleans_up_windows_and_hidden_roots() => RenderThread.Run(() =>
+    {
+        var host = new FakeHost { ThrowOnTheme = true };
+        var ui = new ClientUiFramework(host, new FakeGameState(), new SimpleClientTheme());
+        ui.OpenWindow(new WindowDefinition("sample", "Sample", 100, 80), new Border());
+        ui.HideRoot(42);
+        Assert.Throws<InvalidOperationException>(() => ui.SetTheme(new SimpleClientTheme()));
+        Assert.Equal(2, host.Disposed);
+        Assert.Throws<ObjectDisposedException>(() => ui.SetTheme(new SimpleClientTheme()));
+    });
+
+    [Fact]
+    public void Inspector_hide_is_restored_on_close_and_when_switched_to_placeholder() => RenderThread.Run(() =>
+    {
+        var visible = true;
+        var replacements = 0;
+        using var inspector = new ElementInspectorControl(
+            new[] { new RetailRootDescriptor("one", 1) }, _ => visible,
+            _ => new System.Drawing.Rectangle(4, 8, 40, 20),
+            _ => { var original = visible; visible = false; return new Callback(() => visible = original); },
+            (_, _) => { }, _ => { Assert.True(visible); replacements++; return new Callback(() => replacements--); });
+        inspector.Hide(1);
+        Assert.False(visible);
+        inspector.TakeOver(1);
+        Assert.True(visible);
+        Assert.Equal(1, replacements);
+        inspector.Hide(1);
+        Assert.Equal(0, replacements);
+        Assert.False(visible);
+        inspector.Dispose();
+        Assert.True(visible);
+    });
+
+    [Fact]
+    public void Closing_the_inspector_panel_restores_hidden_roots() => RenderThread.Run(() =>
+    {
+        var visible = true;
+        var inspector = new ElementInspectorControl(
+            new[] { new RetailRootDescriptor("one", 1) }, _ => visible,
+            _ => new System.Drawing.Rectangle(4, 8, 40, 20),
+            _ => { visible = false; return new Callback(() => visible = true); },
+            (_, _) => { }, _ => new Callback(() => { }));
+        inspector.DetachedFromVisualTree += (_, _) => inspector.Dispose();
+        using var panel = AvaloniaPanel.Create(() => inspector, 320, 220);
+        inspector.Hide(1);
+        Assert.False(visible);
+        panel.Dispose();
+        Assert.True(visible);
+    });
+
     private sealed class FakeHost : IClientUiHost
     {
         public bool ThrowOnWindow { get; set; }
@@ -83,8 +135,14 @@ public sealed class ClientUiFrameworkTests
             return Registration();
         }
         public IDisposable TakeOverRoot(uint rootElementId, Control content) => Registration();
+        public IDisposable HideRoot(uint rootElementId) => Registration();
         public bool MoveRoot(uint rootElementId, System.Drawing.Point location) => true;
-        public void ApplyTheme(IClientTheme theme) => ThemeUpdates++;
+        public bool ThrowOnTheme { get; set; }
+        public void ApplyTheme(IClientTheme theme)
+        {
+            if (ThrowOnTheme) throw new InvalidOperationException("Theme failed.");
+            ThemeUpdates++;
+        }
         private IDisposable Registration() => new Callback(() =>
         {
             if (FailDisposeCount > 0)

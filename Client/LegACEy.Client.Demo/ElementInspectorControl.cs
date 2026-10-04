@@ -19,7 +19,7 @@ public sealed class ElementInspectorControl : UserControl, IDisposable
     private readonly IReadOnlyList<RetailRootDescriptor> _roots;
     private readonly Func<uint, bool> _isVisible;
     private readonly Func<uint, Rectangle> _getBounds;
-    private readonly Action<uint, bool> _setVisible;
+    private readonly Func<uint, IDisposable> _hide;
     private readonly Action<uint, Point> _move;
     private readonly Func<uint, IDisposable> _takeOver;
     private readonly StackPanel _rows = new() { Spacing = 6, Margin = new Avalonia.Thickness(10) };
@@ -27,12 +27,12 @@ public sealed class ElementInspectorControl : UserControl, IDisposable
     private bool _disposed;
 
     public ElementInspectorControl(IReadOnlyList<RetailRootDescriptor> roots, Func<uint, bool> isVisible,
-        Func<uint, Rectangle> getBounds, Action<uint, bool> setVisible, Action<uint, Point> move, Func<uint, IDisposable> takeOver)
+        Func<uint, Rectangle> getBounds, Func<uint, IDisposable> hide, Action<uint, Point> move, Func<uint, IDisposable> takeOver)
     {
         _roots = roots ?? throw new ArgumentNullException(nameof(roots));
         _isVisible = isVisible ?? throw new ArgumentNullException(nameof(isVisible));
         _getBounds = getBounds ?? throw new ArgumentNullException(nameof(getBounds));
-        _setVisible = setVisible ?? throw new ArgumentNullException(nameof(setVisible));
+        _hide = hide ?? throw new ArgumentNullException(nameof(hide));
         _move = move ?? throw new ArgumentNullException(nameof(move));
         _takeOver = takeOver ?? throw new ArgumentNullException(nameof(takeOver));
         var root = new DockPanel();
@@ -55,9 +55,9 @@ public sealed class ElementInspectorControl : UserControl, IDisposable
             row.Children.Add(new TextBlock { Text = $"{item.Name} · visible: {_isVisible(item.Id)} · bounds: {bounds.X},{bounds.Y} {bounds.Width}×{bounds.Height}" });
             var buttons = new WrapPanel { Orientation = Orientation.Horizontal };
             var hide = new Button { Content = "Hide" };
-            hide.Click += (_, _) => { RestoreTakeover(item.Id); _setVisible(item.Id, false); RefreshRows(); };
+            hide.Click += (_, _) => { Hide(item.Id); RefreshRows(); };
             var restore = new Button { Content = "Restore" };
-            restore.Click += (_, _) => { RestoreTakeover(item.Id); _setVisible(item.Id, true); RefreshRows(); };
+            restore.Click += (_, _) => { RestoreTakeover(item.Id); RefreshRows(); };
             var move = new Button { Content = "Move +20,+20" };
             move.Click += (_, _) => { _move(item.Id, new Point(bounds.X + 20, bounds.Y + 20)); RefreshRows(); };
             var takeover = new Button { Content = "Replace with placeholder" };
@@ -71,8 +71,16 @@ public sealed class ElementInspectorControl : UserControl, IDisposable
     public void TakeOver(uint rootElementId)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(ElementInspectorControl));
-        if (_takeovers.Exists(entry => entry.RootElementId == rootElementId)) return;
-        _takeovers.Add(new TakeoverEntry(rootElementId, _takeOver(rootElementId)));
+        if (_takeovers.Exists(entry => entry.RootElementId == rootElementId && entry.IsPlaceholder)) return;
+        RestoreTakeover(rootElementId);
+        _takeovers.Add(new TakeoverEntry(rootElementId, _takeOver(rootElementId), true));
+    }
+
+    public void Hide(uint rootElementId)
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(ElementInspectorControl));
+        RestoreTakeover(rootElementId);
+        _takeovers.Add(new TakeoverEntry(rootElementId, _hide(rootElementId), false));
     }
 
     public void RestoreTakeover(uint rootElementId)
@@ -97,8 +105,9 @@ public sealed class ElementInspectorControl : UserControl, IDisposable
 
     private sealed class TakeoverEntry
     {
-        public TakeoverEntry(uint rootElementId, IDisposable registration)
-        { RootElementId = rootElementId; Registration = registration; }
+        public TakeoverEntry(uint rootElementId, IDisposable registration, bool isPlaceholder)
+        { RootElementId = rootElementId; Registration = registration; IsPlaceholder = isPlaceholder; }
+        public bool IsPlaceholder { get; }
         public uint RootElementId { get; }
         public IDisposable Registration { get; }
     }
