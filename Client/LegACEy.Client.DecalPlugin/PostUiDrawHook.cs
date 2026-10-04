@@ -4,17 +4,16 @@ using System.Runtime.InteropServices;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
-/// Installs the one post-UI draw seam used by LegACEy windows. IDirect3DDevice9.EndScene is
-/// called after the game's retail UI and Decal's RenderFrame subscribers have drawn. The vtable
-/// slot is restored on dispose, and a callback exception disables this seam only.
+/// Intercepts Decal's exported EndSceneO forwarding slot, which its EndScene wrapper calls
+/// after the game's retail UI and Decal's pre-EndScene subscribers have drawn. The slot is
+/// restored on dispose, and a callback exception disables this seam only.
 /// </summary>
 internal sealed class PostUiDrawHook : IDisposable
 {
-    private const int EndSceneVtableIndex = 42;
     private readonly Action _draw;
     private readonly Action<Exception> _failed;
     private readonly EndSceneDelegate _callback;
-    private readonly Func<IntPtr, IntPtr, bool> _writeVtable;
+    private readonly Func<IntPtr, IntPtr, bool> _writeSlot;
     private GCHandle _callbackRoot;
     private IntPtr _slot;
     private IntPtr _originalPointer;
@@ -29,14 +28,20 @@ internal sealed class PostUiDrawHook : IDisposable
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool VirtualProtect(IntPtr address, UIntPtr size, uint newProtect, out uint oldProtect);
 
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr GetModuleHandle(string moduleName);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Ansi, ExactSpelling = true)]
+    private static extern IntPtr GetProcAddress(IntPtr module, string exportName);
+
     private const uint PageExecuteReadWrite = 0x40;
 
-    public PostUiDrawHook(Action draw, Action<Exception> failed, Func<IntPtr, IntPtr, bool>? writeVtable = null)
+    public PostUiDrawHook(Action draw, Action<Exception> failed, Func<IntPtr, IntPtr, bool>? writeSlot = null)
     {
         _draw = draw ?? throw new ArgumentNullException(nameof(draw));
         _failed = failed ?? throw new ArgumentNullException(nameof(failed));
         _callback = OnEndScene;
-        _writeVtable = writeVtable ?? WriteVtable;
+        _writeSlot = writeSlot ?? WriteSlot;
     }
 
     public bool IsInstalled => _installed;
@@ -44,22 +49,26 @@ internal sealed class PostUiDrawHook : IDisposable
     /// <summary>Whether the client has actually called this draw hook since installation.</summary>
     public bool HasRun => _hasRun;
 
-    public bool Install(IntPtr nativeDevice)
+    public bool Install()
+    {
+        if (_installed) return true;
+        var inject = GetModuleHandle("Inject.dll");
+        return inject != IntPtr.Zero && InstallForwardingSlot(GetProcAddress(inject, "EndSceneO"));
+    }
+
+    internal bool InstallForwardingSlot(IntPtr slot)
     {
         if (_installed) return true;
         // A failed removal must keep forwarding through the existing hook.
         if (_callbackRoot.IsAllocated) return false;
-        if (nativeDevice == IntPtr.Zero) return false;
-        var vtable = Marshal.ReadIntPtr(nativeDevice);
-        if (vtable == IntPtr.Zero) return false;
-
-        _slot = IntPtr.Add(vtable, EndSceneVtableIndex * IntPtr.Size);
+        if (slot == IntPtr.Zero) return false;
+        _slot = slot;
         _originalPointer = Marshal.ReadIntPtr(_slot);
         if (_originalPointer == IntPtr.Zero) return false;
         _original = (EndSceneDelegate)Marshal.GetDelegateForFunctionPointer(_originalPointer, typeof(EndSceneDelegate));
         var callback = Marshal.GetFunctionPointerForDelegate(_callback);
         _callbackRoot = GCHandle.Alloc(_callback);
-        if (!_writeVtable(_slot, callback))
+        if (!_writeSlot(_slot, callback))
         {
             _callbackRoot.Free();
             _slot = IntPtr.Zero;
@@ -93,7 +102,7 @@ internal sealed class PostUiDrawHook : IDisposable
                 {
                     // Failure reporting must never escape the unmanaged callback.
                 }
-                RestoreVtable();
+                RestoreSlot();
             }
             finally
             {
@@ -101,7 +110,7 @@ internal sealed class PostUiDrawHook : IDisposable
             }
         }
         // Retry a failed removal on later frames, while still forwarding EndScene.
-        if (!_installed && _callbackRoot.IsAllocated) RestoreVtable();
+        if (!_installed && _callbackRoot.IsAllocated) RestoreSlot();
         return original == null ? 0 : original(device);
     }
 
@@ -109,16 +118,18 @@ internal sealed class PostUiDrawHook : IDisposable
     {
         if (!_installed && _slot == IntPtr.Zero) return;
         _installed = false;
-        RestoreVtable();
+        RestoreSlot();
         GC.KeepAlive(_callback);
     }
 
-    private void RestoreVtable()
+    private void RestoreSlot()
     {
         if (!_callbackRoot.IsAllocated) return;
         try
         {
-            if (!_writeVtable(_slot, _originalPointer)) return;
+            // Another hook may now chain through ours; do not overwrite it or release our callback.
+            if (Marshal.ReadIntPtr(_slot) != Marshal.GetFunctionPointerForDelegate(_callback)) return;
+            if (!_writeSlot(_slot, _originalPointer)) return;
         }
         catch
         {
@@ -130,7 +141,7 @@ internal sealed class PostUiDrawHook : IDisposable
         _callbackRoot.Free();
     }
 
-    private static bool WriteVtable(IntPtr slot, IntPtr value)
+    private static bool WriteSlot(IntPtr slot, IntPtr value)
     {
         if (!VirtualProtect(slot, (UIntPtr)IntPtr.Size, PageExecuteReadWrite, out var oldProtect))
             return false;

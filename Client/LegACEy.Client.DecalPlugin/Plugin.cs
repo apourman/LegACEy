@@ -61,8 +61,8 @@ public sealed class Plugin : FilterBase
     private ScreenSurface? _breakoutSurface;
     private WindowManager? _windows;
     private PostUiDrawHook? _postUiDrawHook;
-    private IntPtr _nativeDevice;
     private bool _windowsEnabled;
+    private bool _firstPostUiWindow = true;
     private DateTime _lastBreakoutStep = DateTime.UtcNow;
     private ScreenSurface? _hovered;
     private readonly InputRouterService _inputRouter = new();
@@ -172,7 +172,7 @@ public sealed class Plugin : FilterBase
 
     private void CreateUi()
     {
-        _device = GameDevice.Open(out _nativeDevice);
+        _device = GameDevice.Open();
         CreateWindowManager();
         var acclient = Process.GetCurrentProcess().MainModule!.FileName;
         _portal = new PortalDat(IOPath.Combine(IOPath.GetDirectoryName(acclient)!, "client_portal.dat"));
@@ -235,7 +235,7 @@ public sealed class Plugin : FilterBase
         _postUiDrawHook ??= new PostUiDrawHook(DrawWindowsAfterRetailUi, DisableWindows);
         try
         {
-            _windowsEnabled = _postUiDrawHook.Install(_nativeDevice);
+            _windowsEnabled = _postUiDrawHook.Install();
         }
         catch (Exception exception)
         {
@@ -245,7 +245,7 @@ public sealed class Plugin : FilterBase
             return;
         }
         if (!_windowsEnabled)
-            Log("LegACEy windows disabled: IDirect3DDevice9.EndScene hook could not be installed.");
+            Log("LegACEy windows disabled: Decal EndSceneO forwarding hook could not be installed.");
     }
 
     private void ToggleThemeGallery()
@@ -282,7 +282,7 @@ public sealed class Plugin : FilterBase
             return;
         if (_postUiDrawHook?.HasRun != true)
         {
-            Log("LegACEy windows unavailable: the installed EndScene hook has not run. Keeping the indicator bar interactive.");
+            Log("LegACEy windows unavailable: the installed Decal EndSceneO hook has not run. Keeping the indicator bar interactive.");
             return;
         }
         var (surface, slot) = SurfaceRegistrationById(id);
@@ -395,7 +395,14 @@ public sealed class Plugin : FilterBase
         if (!_windowsEnabled || _windows == null)
             return;
         foreach (var window in _windows.ZOrder.Reverse())
+        {
             SurfaceById(window.Id)?.DrawNow();
+            if (_firstPostUiWindow)
+            {
+                _firstPostUiWindow = false;
+                Log("LegACEy post-UI window draw reached through Decal EndSceneO.");
+            }
+        }
     }
 
     /// <summary>
