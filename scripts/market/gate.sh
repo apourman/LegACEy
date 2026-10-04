@@ -45,9 +45,8 @@ summary="$run_dir/summary.md"
 known_seen="$run_dir/known-failures.tsv"
 : > "$known_seen"
 
-step_names=()
-step_results=()
-step_details=()
+# by step name; the summary lists them in the planned order
+declare -A step_results=() step_details=()
 stopped_at=
 stop_problems=
 e2e_up=0
@@ -60,9 +59,8 @@ log_for() {
 }
 
 record() {
-    step_names+=("$1")
-    step_results+=("$2")
-    step_details+=("${3:-}")
+    step_results["$1"]="$2"
+    step_details["$1"]="${3:-}"
 }
 
 banner() {
@@ -127,7 +125,7 @@ e2e_down() {
 }
 
 print_summary() {
-    local verdict=PASS commit dirty index name
+    local verdict=PASS commit dirty name detail
     [[ -n "$stopped_at" ]] && verdict=FAIL
     commit="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
     dirty=
@@ -139,8 +137,9 @@ print_summary() {
         echo
         echo "| Step | Result | Details |"
         echo "| --- | --- | --- |"
-        for index in "${!step_names[@]}"; do
-            echo "| ${step_names[$index]} | ${step_results[$index]} | ${step_details[$index]//|/\\|} |"
+        for name in "${planned[@]}"; do
+            detail="${step_details[$name]:-}"
+            echo "| $name | ${step_results[$name]:-not run} | ${detail//|/\\|} |"
         done
         if [[ -s "$known_seen" ]]; then
             echo
@@ -178,9 +177,6 @@ finish() {
         e2e_down || true
     fi
     [[ -z "$stopped_at" && $status -ne 0 ]] && { stopped_at="(interrupted)"; stop_problems="The gate stopped with status $status."; }
-    for name in "${planned[@]}"; do
-        printf '%s\n' "${step_names[@]}" | grep -qxF -- "$name" || record "$name" "not run"
-    done
     print_summary
     [[ -z "$stopped_at" ]] || exit 1
     exit 0
