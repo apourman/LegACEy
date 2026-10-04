@@ -21,13 +21,13 @@ dotnet build "$ROOT/Source/ACE.MarketApi" -p:Platform=x64 -p:UpdateOpenApi=true
 drift=0
 for pair in "openapi.json:$DOCUMENT" "api-schema.ts:$CLIENT"; do
     if ! git --no-pager diff --no-index --exit-code -- "$before/${pair%%:*}" "$ROOT/${pair#*:}"; then
-        echo "OpenAPI drift: $ROOT/${pair#*:} differs from the checked-in file (diff above)." >&2
+        echo "OpenAPI drift: the regenerated ${pair#*:} differs from the checked-in one (diff above: checked-in, then regenerated)." >&2
         drift=1
     fi
 done
 
 if (( drift )); then
-    echo "To refresh: dotnet build Source/ACE.MarketApi -p:Platform=x64 -p:UpdateOpenApi=true && (cd market-web && npm run generate:api), then commit both files." >&2
+    echo "The regenerated files are left in place: review them and commit them. (In CI, run this script locally to get them.)" >&2
     exit 1
 fi
 echo "OpenAPI drift check: $DOCUMENT and $CLIENT match what the build generates."
