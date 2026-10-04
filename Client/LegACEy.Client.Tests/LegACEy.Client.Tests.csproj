@@ -22,6 +22,8 @@
     <!-- Exercise the plugin's key translation without requiring Windows-only Decal assemblies. -->
     <Compile Include="..\LegACEy.Client.DecalPlugin\Win32KeyMap.cs" Link="Win32KeyMap.cs" />
     <Compile Include="..\LegACEy.Client.DecalPlugin\PostUiDrawHook.cs" Link="PostUiDrawHook.cs" />
+    <Compile Include="..\LegACEy.Client.DecalPlugin\RetailTakeoverLifecycle.cs" Link="RetailTakeoverLifecycle.cs" />
+    <Compile Include="..\LegACEy.Client.DecalPlugin\NativeUiCatalogue.cs" Link="NativeUiCatalogue.cs" />
   </ItemGroup>
 
   <ItemGroup>
