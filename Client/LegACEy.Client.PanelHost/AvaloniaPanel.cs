@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -229,6 +230,10 @@ public sealed class AvaloniaPanel : IDisposable
             _window.Styles.Remove(_themeStyles);
         _themeStyles = theme.CreateStyles();
         _window.Styles.Add(_themeStyles);
+        if (Content is ThemeWindowChrome rootChrome)
+            rootChrome.ApplyTheme(theme);
+        foreach (var chrome in Content.GetVisualDescendants().OfType<ThemeWindowChrome>())
+            chrome.ApplyTheme(theme);
     }
 
     private static RawInputModifiers ToRawModifiers(KeyModifiers modifiers)

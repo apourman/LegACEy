@@ -19,17 +19,30 @@ public sealed class NineSliceBorder : Control
         0x060074C4, 0x060074C5, 0x060074C6
     };
 
-    private readonly IImage?[] _pieces;
+    private IImage?[] _pieces;
     private readonly IBrush _fallback;
     private readonly double _edgeSize;
+    private IGameArtSource _artSource;
 
     public NineSliceBorder(IGameArtSource source, double edgeSize = 8, IBrush? fallback = null)
     {
         if (source == null) throw new ArgumentNullException(nameof(source));
+        _artSource = source;
         _edgeSize = edgeSize;
         _fallback = fallback ?? new SolidColorBrush(Color.FromRgb(0x23, 0x20, 0x19));
-        _pieces = DefaultPieceIds.Select(id => (IImage?)GameArtImageExtension.CreateBitmap(source, id)).ToArray();
+        _pieces = LoadPieces(source);
         RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.None);
+    }
+
+    public void SetArtSource(IGameArtSource source)
+    {
+        if (source == null) throw new ArgumentNullException(nameof(source));
+        if (ReferenceEquals(source, _artSource)) return;
+        foreach (var bitmap in _pieces.OfType<IDisposable>())
+            bitmap.Dispose();
+        _artSource = source;
+        _pieces = LoadPieces(source);
+        InvalidateVisual();
     }
 
     public override void Render(DrawingContext context)
@@ -76,4 +89,7 @@ public sealed class NineSliceBorder : Control
             context.DrawImage(image, new Rect(image.Size), target);
         }
     }
+
+    private static IImage?[] LoadPieces(IGameArtSource source) =>
+        DefaultPieceIds.Select(id => (IImage?)GameArtImageExtension.CreateBitmap(source, id)).ToArray();
 }

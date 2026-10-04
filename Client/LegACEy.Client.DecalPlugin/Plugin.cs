@@ -39,6 +39,8 @@ public sealed class Plugin : FilterBase
 
     private const int InputTestWidth = 360;
     private const int InputTestHeight = 300;
+    private const int InputWindowWidth = 380;
+    private const int InputWindowHeight = 350;
     private const string InputTestSlot = "Input test";
     private const string ThemeGallerySlot = "Theme gallery";
     private static readonly string PluginDirectory = IOPath.GetDirectoryName(typeof(Plugin).Assembly.Location)!;
@@ -170,13 +172,31 @@ public sealed class Plugin : FilterBase
         var barPanel = AvaloniaPanel.Create(() => _bar = new IndicatorBar(slots, _portal.ReadImage), size.Width, size.Height);
         _barSurface = new ScreenSurface(_device, barPanel);
 
-        var inputPanel = AvaloniaPanel.Create(() => _inputTest = new InputTestPanel(InputTestWidth, InputTestHeight), InputTestWidth, InputTestHeight);
+        var inputPanel = AvaloniaPanel.Create(() =>
+        {
+            _inputTest = new InputTestPanel(InputTestWidth, InputTestHeight);
+            var chrome = new ThemeWindowChrome(_portal, "Input test", _inputTest);
+            chrome.CloseRequested += (_, _) =>
+            {
+                if (_inputTestSurface != null) _inputTestSurface.Visible = false;
+                _bar?.SetOpen(InputTestSlot, false);
+                if (_hovered == _inputTestSurface) _hovered = null;
+            };
+            return chrome;
+        }, InputWindowWidth, InputWindowHeight);
         _inputTestSurface = new ScreenSurface(_device, inputPanel);
         var galleryPanel = AvaloniaPanel.Create(() =>
         {
-            _themeGallery = new ThemeGalleryControl(_portal);
+            _themeGallery = new ThemeGalleryControl();
             _themeGallery.ThemeSwitchRequested += (_, _) => SwitchTheme();
-            return _themeGallery;
+            var chrome = new ThemeWindowChrome(_portal, "Theme gallery", _themeGallery);
+            chrome.CloseRequested += (_, _) =>
+            {
+                if (_themeGallerySurface != null) _themeGallerySurface.Visible = false;
+                _bar?.SetOpen(ThemeGallerySlot, false);
+                if (_hovered == _themeGallerySurface) _hovered = null;
+            };
+            return chrome;
         }, 580, 560);
         _themeGallerySurface = new ScreenSurface(_device, galleryPanel);
         ApplyCurrentTheme();
@@ -268,8 +288,8 @@ public sealed class Plugin : FilterBase
     {
         var bar = _barSurface!.Bounds;
         var screen = _device!.Viewport;
-        var x = Math.Max(0, Math.Min(bar.Left, screen.Width - InputTestWidth));
-        var y = bar.Bottom + 4 + InputTestHeight <= screen.Height ? bar.Bottom + 4 : Math.Max(0, bar.Top - 4 - InputTestHeight);
+        var x = Math.Max(0, Math.Min(bar.Left, screen.Width - InputWindowWidth));
+        var y = bar.Bottom + 4 + InputWindowHeight <= screen.Height ? bar.Bottom + 4 : Math.Max(0, bar.Top - 4 - InputWindowHeight);
         _inputTestSurface!.Location = new Point(x, y);
     }
 

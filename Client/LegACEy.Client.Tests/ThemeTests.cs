@@ -17,17 +17,28 @@ public sealed class ThemeTests
     [Fact]
     public void Switching_theme_restyles_an_open_panel_without_recreating_its_content() => RenderThread.Run(() =>
     {
-        Button? button = null;
-        using var panel = AvaloniaPanel.Create(() => button = new Button { Content = "Theme" }, 120, 50);
-        var originalButton = button;
+        ThemeWindowChrome? chrome = null;
+        using var panel = AvaloniaPanel.Create(() =>
+        {
+            var button = new Button { Content = "Theme" };
+            return chrome = new ThemeWindowChrome(new SolidColorArtSource(), "Test", button);
+        }, 120, 80);
+        var originalChrome = chrome;
         var plainTheme = new SimpleClientTheme();
         var acTheme = new AcClientTheme(new SolidColorArtSource());
 
         panel.ApplyTheme(plainTheme);
+        var windowChrome = chrome!;
+        var artFrame = windowChrome.GetVisualDescendants().OfType<NineSliceBorder>().Single();
+        var plainFrame = windowChrome.GetVisualDescendants().OfType<Border>().Single(border => border.Classes.Contains("theme-window-frame"));
+        Assert.False(artFrame.IsVisible);
+        Assert.True(plainFrame.IsVisible);
         panel.Tick();
         var plainPixels = panel.Frame.Pixels.ToArray();
         panel.ApplyTheme(acTheme);
-        Assert.Same(originalButton, panel.Content);
+        Assert.Same(originalChrome, panel.Content);
+        Assert.True(artFrame.IsVisible);
+        Assert.False(plainFrame.IsVisible);
         Assert.True(panel.Tick());
 
         Assert.NotEqual(plainPixels, panel.Frame.Pixels);
@@ -77,16 +88,26 @@ public sealed class ThemeTests
         for (var y = 2; y < 11; y++)
         for (var x = 2; x < 11; x++)
             Assert.Contains(Convert.ToHexString(Pixel(panel.Frame, x, y)), pattern);
+        Assert.Equal(new byte[] { 0, 255, 0, 255 }, Pixel(panel.Frame, 3, 2));
+        Assert.Equal(new byte[] { 0, 0, 255, 255 }, Pixel(panel.Frame, 4, 2));
+        Assert.Equal(new byte[] { 255, 0, 0, 255 }, Pixel(panel.Frame, 2, 3));
+        Assert.Equal(new byte[] { 0, 0, 255, 255 }, Pixel(panel.Frame, 2, 4));
     });
 
     [Fact]
     public void Theme_gallery_contains_the_control_catalogue_and_requests_a_live_switch() => RenderThread.Run(() =>
     {
-        ThemeGalleryControl? gallery = null;
-        using var panel = AvaloniaPanel.Create(() => gallery = new ThemeGalleryControl(new PatternArtSource()), 580, 560);
+        ThemeWindowChrome? chrome = null;
+        using var panel = AvaloniaPanel.Create(() =>
+        {
+            var gallery = new ThemeGalleryControl();
+            return chrome = new ThemeWindowChrome(new PatternArtSource(), "Gallery", gallery);
+        }, 580, 560);
         panel.ApplyTheme(new AcClientTheme(new PatternArtSource()));
         panel.Tick();
-        var controls = panel.Content.GetVisualDescendants().ToArray();
+        var content = panel.Content!;
+        var controls = content.GetVisualDescendants().ToArray();
+        Assert.Same(chrome, content);
         Assert.Contains(controls, item => item is NineSliceBorder);
         Assert.Contains(controls, item => item is TextBox);
         Assert.Contains(controls, item => item is ListBox);
@@ -94,12 +115,29 @@ public sealed class ThemeTests
         Assert.Contains(controls, item => item is ScrollBar);
         Assert.Contains(controls, item => item is CheckBox);
         Assert.Contains(controls, item => item is ProgressBar);
+        Assert.Contains(controls.OfType<Button>(), button => button.Classes.Contains("sample-hover"));
+        Assert.Contains(controls.OfType<Button>(), button => button.Classes.Contains("sample-pressed"));
+        Assert.Contains(controls.OfType<ListBoxItem>(), item => item.Classes.Contains("sample-hover"));
+        Assert.Contains(controls.OfType<ListBoxItem>(), item => item.Classes.Contains("sample-selected"));
+        Assert.Contains(controls.OfType<TabItem>(), item => item.Classes.Contains("sample-hover"));
+        Assert.Contains(controls.OfType<TabItem>(), item => item.Classes.Contains("sample-selected"));
+        Assert.Contains(controls.OfType<ScrollBar>(), item => item.Classes.Contains("sample-hover"));
+        Assert.Contains(controls.OfType<ScrollBar>(), item => item.Classes.Contains("sample-pressed"));
+        Assert.Contains(controls.OfType<ScrollBar>(), item => !item.IsEnabled);
+        Assert.Contains(controls.OfType<ScrollViewer>(), item => !item.IsEnabled);
+        Assert.NotNull(chrome!.CloseButton);
 
         var switched = false;
-        gallery!.ThemeSwitchRequested += (_, _) => switched = true;
+        var gallery = controls.OfType<ThemeGalleryControl>().Single();
+        gallery.ThemeSwitchRequested += (_, _) => switched = true;
         var switchButton = controls.OfType<Button>().Single(button => Equals(button.Content, "Switch theme while this gallery stays open"));
         switchButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         Assert.True(switched);
+
+        var closeRequested = false;
+        chrome.CloseRequested += (_, _) => closeRequested = true;
+        chrome.CloseButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Assert.True(closeRequested);
     });
 
     private static byte[] Pixel(PanelFrame frame, int x, int y) =>

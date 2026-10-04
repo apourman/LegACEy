@@ -6,5 +6,6 @@ namespace LegACEy.Client.Themes;
 public interface IClientTheme
 {
     string Name { get; }
+    bool UsesAcChrome { get; }
     IStyle CreateStyles();
 }

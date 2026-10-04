@@ -1,10 +1,12 @@
 using System;
 using System.IO;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
@@ -87,13 +89,13 @@ internal sealed class PreviewWindow : Window
     private void ShowGalleryAndTestPanel()
     {
         _workspace.Children.Clear();
-        var gallery = new ThemeGalleryControl(_art);
+        var gallery = new ThemeGalleryControl();
         gallery.ThemeSwitchRequested += (_, _) =>
         {
             _themePicker.SelectedIndex = _themePicker.SelectedIndex == 0 ? 1 : 0;
         };
-        _workspace.Children.Add(gallery);
-        _workspace.Children.Add(new InputTestPanel(360, 520) { Margin = new Thickness(0, 0, 12, 0) });
+        _workspace.Children.Add(new ThemeWindowChrome(_art, "Theme gallery", gallery) { Width = 580, Height = 560 });
+        _workspace.Children.Add(new ThemeWindowChrome(_art, "Input test", new InputTestPanel(360, 520)) { Width = 580, Height = 590, Margin = new Thickness(0, 0, 12, 0) });
     }
 
     private void ApplySelectedTheme()
@@ -105,6 +107,8 @@ internal sealed class PreviewWindow : Window
             : new SimpleClientTheme();
         _appliedTheme = theme.CreateStyles();
         Styles.Add(_appliedTheme);
+        foreach (var chrome in _workspace.GetVisualDescendants().OfType<ThemeWindowChrome>())
+            chrome.ApplyTheme(theme);
     }
 
     protected override void OnClosed(EventArgs e)
