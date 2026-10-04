@@ -711,6 +711,7 @@ public sealed class Plugin : FilterBase
 
     private void TearDown()
     {
+        RestoreNativeBar();
         _hovered = null;
         _barSurface?.Dispose();
         _barSurface = null;
