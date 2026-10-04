@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections;
+using System.Collections.Specialized;
 using Rectangle = System.Drawing.Rectangle;
 using System.Linq;
 using Avalonia;
@@ -13,6 +15,7 @@ using Avalonia.Themes.Simple;
 using Avalonia.VisualTree;
 using Avalonia.Threading;
 using Avalonia.Styling;
+using Avalonia.Rendering;
 using System.Threading;
 using LegACEy.Client.Themes;
 
@@ -29,26 +32,6 @@ namespace LegACEy.Client.PanelHost;
 /// </remarks>
 public sealed class AvaloniaPanel : IDisposable
 {
-    private static readonly HashSet<string> RenderAffectingPropertyNames = new(StringComparer.Ordinal)
-    {
-        "Background", "Foreground", "BorderBrush", "BorderThickness", "CornerRadius", "Opacity",
-        "IsVisible", "IsEnabled", "Visibility", "Text", "Content", "Source", "Stretch",
-        "FontFamily", "FontSize", "FontStyle", "FontWeight", "FontStretch", "LineHeight", "LetterSpacing",
-        "MaxLines", "TextAlignment", "TextDecorations", "TextWrapping", "TextTrimming", "IsChecked",
-        "IsPressed", "IsPointerOver", "IsFocused",
-        "IsSelected", "Value", "Minimum", "Maximum", "Orientation", "ItemsSource", "SelectedItem",
-        "SelectedIndex", "SelectedValue", "Offset", "Data", "Template", "BoxShadow", "Clip",
-        "ClipToBounds", "RenderTransform", "RenderTransformOrigin", "ZIndex"
-    };
-
-    private static readonly HashSet<string> LayoutAffectingPropertyNames = new(StringComparer.Ordinal)
-    {
-        "Bounds", "Width", "Height", "MinWidth", "MinHeight", "MaxWidth", "MaxHeight",
-        "Margin", "Padding", "HorizontalAlignment", "VerticalAlignment",
-        "HorizontalContentAlignment", "VerticalContentAlignment", "FlowDirection",
-        "Row", "Column", "RowSpan", "ColumnSpan", "Dock", "Left", "Top", "Right", "Bottom"
-    };
-
     private static bool _runtimeInitialized;
     private Window _window;
     private readonly int _ownerThreadId;
@@ -56,8 +39,11 @@ public sealed class AvaloniaPanel : IDisposable
     private bool _disposed;
     private bool _forceFullFrame = true;
     private bool _hasInvalidation;
+    private bool _renderingSuspended;
     internal int FrameCaptureCount { get; private set; }
-    private readonly HashSet<Control> _observedControls = new();
+    private RendererInvalidationObserver _rendererObserver;
+    private readonly HashSet<AvaloniaObject> _renderResources = new();
+    private readonly HashSet<INotifyCollectionChanged> _renderCollections = new();
     private IStyle? _themeStyles;
     private IClientTheme? _theme;
     private Point _pointerPosition = new(-1, -1);
@@ -67,7 +53,7 @@ public sealed class AvaloniaPanel : IDisposable
         _ownerThreadId = Thread.CurrentThread.ManagedThreadId;
         _window = CreateWindow(content, width, height);
         _frame = new PanelFrame(width, height);
-        ObserveDescendants(Content);
+        _rendererObserver = new RendererInvalidationObserver(_window, () => _hasInvalidation = true);
         Tick();
     }
 
@@ -166,6 +152,21 @@ public sealed class AvaloniaPanel : IDisposable
 
         try
         {
+            if (_renderingSuspended)
+            {
+                _renderingSuspended = false;
+                _window.Show();
+                Content.InvalidateVisual();
+                _forceFullFrame = true;
+                // Showing the headless window first commits its composition target;
+                // advance that commit before the normal tick paints its latest content.
+                Dispatcher.UIThread.RunJobs();
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            }
+            Dispatcher.UIThread.RunJobs();
+            // Let Avalonia process layout and drawing invalidations before deciding
+            // whether the rendered frame needs to be copied into our pixel buffer.
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             Dispatcher.UIThread.RunJobs();
             if (!_forceFullFrame && !_hasInvalidation)
             {
@@ -173,9 +174,9 @@ public sealed class AvaloniaPanel : IDisposable
                 return false;
             }
 
-            // CaptureRenderedFrame drives the headless renderer once after dispatcher work.
+            // Read the frame produced by the timer without requesting another render.
             FrameCaptureCount++;
-            using var bitmap = _window.CaptureRenderedFrame();
+            using var bitmap = _window.GetLastRenderedFrame();
             if (bitmap == null) return false;
 
             using var locked = bitmap.Lock();
@@ -190,8 +191,7 @@ public sealed class AvaloniaPanel : IDisposable
                 _forceFullFrame = true;
             }
 
-            var resized = width != _frame.Width || height != _frame.Height;
-            var dirty = _forceFullFrame || resized
+            var dirty = _forceFullFrame
                 ? new[] { new Rectangle(0, 0, width, height) }
                 : Array.Empty<Rectangle>();
             if (dirty.Length == 0)
@@ -230,6 +230,7 @@ public sealed class AvaloniaPanel : IDisposable
                 _frame.DirtyRectangles = dirty;
             else
                 _frame.DirtyRectangles = actualDirtyRectangles;
+            ObserveRenderResources();
             _hasInvalidation = false;
             _forceFullFrame = false;
             return dirty.Length != 0 || changed;
@@ -246,6 +247,8 @@ public sealed class AvaloniaPanel : IDisposable
     {
         if (_disposed) throw new ObjectDisposedException(nameof(AvaloniaPanel));
         VerifyThreadAccess();
+        _window.Hide();
+        _renderingSuspended = true;
         try { Dispatcher.UIThread.RunJobs(); }
         catch (Exception exception) { ReportError(exception); }
     }
@@ -257,7 +260,8 @@ public sealed class AvaloniaPanel : IDisposable
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
         if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
         _forceFullFrame = true;
-        StopObservingControls();
+        StopObservingRenderResources();
+        _rendererObserver.Dispose();
         var content = Content;
         _window.Content = null;
         _window.Close();
@@ -265,7 +269,7 @@ public sealed class AvaloniaPanel : IDisposable
         _frame = new PanelFrame(width, height);
         if (_theme != null)
             ApplyTheme(_theme);
-        ObserveDescendants(content);
+        _rendererObserver = new RendererInvalidationObserver(_window, () => _hasInvalidation = true);
     }
 
     /// <summary>Tell the host that the backing texture was lost and needs a complete upload.</summary>
@@ -403,47 +407,60 @@ public sealed class AvaloniaPanel : IDisposable
             chrome.ApplyTheme(theme);
     }
 
-    private void ObserveDescendants(Control root)
+    private void ObserveRenderResources()
     {
-        ObserveControl(root);
-        foreach (var descendant in root.GetVisualDescendants().OfType<Control>())
-            ObserveControl(descendant);
-    }
+        // Composition can update mutable brushes without a SceneInvalidated event.
+        // Follow their nested resources (including gradient stops), releasing old trees.
+        var current = new HashSet<AvaloniaObject>();
+        var collections = new HashSet<INotifyCollectionChanged>();
+        foreach (var visual in _window.GetVisualDescendants().Prepend(_window))
+            foreach (var property in AvaloniaPropertyRegistry.Instance.GetRegistered(visual.GetType()))
+                CollectRenderResource(visual.GetValue(property), current, collections);
 
-    private void ObserveControl(Control control)
-    {
-        if (!_observedControls.Add(control)) return;
-        control.PropertyChanged += OnControlPropertyChanged;
-        control.AttachedToVisualTree += OnControlAttachedToVisualTree;
-    }
-
-    private void OnControlAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
-    {
-        if (sender is Control control)
-            ObserveDescendants(control);
-    }
-
-    private void OnControlPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
-    {
-        if (sender is not Control control) return;
-        if (!RenderAffectingPropertyNames.Contains(e.Property.Name) &&
-            !LayoutAffectingPropertyNames.Contains(e.Property.Name)) return;
-
-        var origin = control.TranslatePoint(new Point(0, 0), Content);
-        if (origin == null || control.Bounds.Width <= 0 || control.Bounds.Height <= 0)
+        foreach (var removed in _renderResources.Except(current).ToArray())
         {
-            _hasInvalidation = true;
-            return;
+            removed.PropertyChanged -= OnRenderResourceInvalidated;
+            _renderResources.Remove(removed);
         }
+        foreach (var added in current)
+            if (_renderResources.Add(added))
+                added.PropertyChanged += OnRenderResourceInvalidated;
+        foreach (var removed in _renderCollections.Except(collections).ToArray())
+        {
+            removed.CollectionChanged -= OnRenderCollectionInvalidated;
+            _renderCollections.Remove(removed);
+        }
+        foreach (var added in collections)
+            if (_renderCollections.Add(added))
+                added.CollectionChanged += OnRenderCollectionInvalidated;
+    }
 
-        var left = (int)Math.Floor(origin.Value.X);
-        var top = (int)Math.Floor(origin.Value.Y);
-        var right = (int)Math.Ceiling(origin.Value.X + control.Bounds.Width);
-        var bottom = (int)Math.Ceiling(origin.Value.Y + control.Bounds.Height);
-        var clipped = Rectangle.Intersect(new Rectangle(left, top, right - left, bottom - top),
-            new Rectangle(0, 0, _frame.Width, _frame.Height));
-        if (clipped.Width > 0 && clipped.Height > 0)
-            _hasInvalidation = true;
+    private static void CollectRenderResource(object? value, HashSet<AvaloniaObject> resources,
+        HashSet<INotifyCollectionChanged> collections)
+    {
+        if (value is AvaloniaObject resource && resource is not StyledElement && resources.Add(resource))
+        {
+            foreach (var property in AvaloniaPropertyRegistry.Instance.GetRegistered(resource.GetType()))
+                CollectRenderResource(resource.GetValue(property), resources, collections);
+        }
+        else if (value is INotifyCollectionChanged collection && collections.Add(collection) && value is IEnumerable items)
+        {
+            foreach (var item in items)
+                CollectRenderResource(item, resources, collections);
+        }
+    }
+
+    private void OnRenderResourceInvalidated(object? sender, AvaloniaPropertyChangedEventArgs e) => _hasInvalidation = true;
+    private void OnRenderCollectionInvalidated(object? sender, NotifyCollectionChangedEventArgs e) => _hasInvalidation = true;
+
+    private void StopObservingRenderResources()
+    {
+        foreach (var resource in _renderResources)
+            resource.PropertyChanged -= OnRenderResourceInvalidated;
+        _renderResources.Clear();
+        foreach (var collection in _renderCollections)
+            collection.CollectionChanged -= OnRenderCollectionInvalidated;
+        _renderCollections.Clear();
     }
 
     private void RunInput(Action action)
@@ -486,19 +503,12 @@ public sealed class AvaloniaPanel : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        StopObservingControls();
+        StopObservingRenderResources();
+        _rendererObserver.Dispose();
         _window.Close();
     }
 
-    private void StopObservingControls()
-    {
-        foreach (var control in _observedControls)
-        {
-            control.PropertyChanged -= OnControlPropertyChanged;
-            control.AttachedToVisualTree -= OnControlAttachedToVisualTree;
-        }
-        _observedControls.Clear();
-    }
+
 }
 
 internal sealed class PanelApplication : Application
