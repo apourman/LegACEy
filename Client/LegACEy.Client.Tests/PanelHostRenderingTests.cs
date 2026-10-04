@@ -3,7 +3,9 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Rectangle = System.Drawing.Rectangle;
 using LegACEy.Client.Demo;
 using LegACEy.Client.PanelHost;
 using Xunit;
@@ -78,6 +80,9 @@ public sealed class PanelHostRenderingTests
         panel.MouseWheel(40, 30, 0, -120);
 
         Assert.True(scrollViewer.Offset.Y > 0);
+        Assert.True(panel.Tick());
+        Assert.NotEmpty(panel.Frame.DirtyRectangles);
+        Assert.All(panel.Frame.DirtyRectangles, rect => Assert.True(rect.Width < 160 || rect.Height < 60));
     });
 
     [Fact]
@@ -165,6 +170,99 @@ public sealed class PanelHostRenderingTests
     });
 
     [Fact]
+    public void Tick_reports_dirty_rectangles_and_leaves_them_empty_when_idle() => RenderThread.Run(() =>
+    {
+        var control = default(RenderCountControl);
+        using var panel = AvaloniaPanel.Create(() =>
+        {
+            control = new RenderCountControl { Width = 10, Height = 10 };
+            return new StackPanel { Children = { control } };
+        }, 40, 30);
+
+        Assert.Contains(new Rectangle(0, 0, 40, 30), panel.Frame.DirtyRectangles);
+        Assert.False(panel.Tick());
+        Assert.Empty(panel.Frame.DirtyRectangles);
+
+        var idleRenderCount = control!.RenderCount;
+        var idleCaptureCount = panel.FrameCaptureCount;
+        control.Tag = "updated-without-visual-change";
+        Assert.False(panel.Tick());
+        Assert.Equal(idleCaptureCount, panel.FrameCaptureCount);
+        Assert.Equal(idleRenderCount, control.RenderCount);
+        Assert.Empty(panel.Frame.DirtyRectangles);
+
+        control.Opacity = 0.5;
+        Assert.True(panel.Tick());
+        Assert.Equal(idleCaptureCount + 1, panel.FrameCaptureCount);
+        Assert.True(control.RenderCount > idleRenderCount);
+        Assert.NotEmpty(panel.Frame.DirtyRectangles);
+        Assert.All(panel.Frame.DirtyRectangles, rect => Assert.True(rect.Width < 40 || rect.Height < 30));
+    });
+
+    [Fact]
+    public void Drain_dispatcher_runs_queued_work_without_rendering() => RenderThread.Run(() =>
+    {
+        using var panel = AvaloniaPanel.Create(() => new Border { Background = Brushes.Black }, 8, 8);
+        Assert.False(panel.Tick());
+        var drained = false;
+        Dispatcher.UIThread.Post(() => drained = true);
+
+        panel.DrainDispatcher();
+
+        Assert.True(drained);
+        Assert.Empty(panel.Frame.DirtyRectangles);
+    });
+
+    [Fact]
+    public void Resize_and_content_loss_force_full_frame_uploads() => RenderThread.Run(() =>
+    {
+        using var panel = AvaloniaPanel.Create(() => new Border { Background = Brushes.Black }, 8, 6);
+
+        panel.Resize(12, 10);
+        Assert.True(panel.Tick());
+        Assert.Equal(12, panel.Frame.Width);
+        Assert.Equal(10, panel.Frame.Height);
+        Assert.Contains(new Rectangle(0, 0, 12, 10), panel.Frame.DirtyRectangles);
+
+        Assert.True(panel.ContentLost());
+        Assert.True(panel.Tick());
+        Assert.Contains(new Rectangle(0, 0, 12, 10), panel.Frame.DirtyRectangles);
+    });
+
+    [Fact]
+    public void Handler_exception_is_reported_by_the_panel_instead_of_escaping() => RenderThread.Run(() =>
+    {
+        using var panel = AvaloniaPanel.Create(() => new Button { Content = "Fail" }, 80, 40);
+        var button = (Button)panel.Content;
+        button.Click += (_, _) => throw new InvalidOperationException("deliberate test failure");
+
+        panel.PointerDown(20, 20);
+        var error = Record.Exception(() => panel.PointerUp(20, 20));
+
+        Assert.Null(error);
+        Assert.IsType<InvalidOperationException>(panel.LastError);
+        Assert.Equal("deliberate test failure", panel.LastError!.Message);
+    });
+
+    [Fact]
+    public void Input_test_panel_exposes_a_real_throwing_button_for_failure_play_test() => RenderThread.Run(() =>
+    {
+        using var panel = AvaloniaPanel.Create(() => new InputTestPanel(360, 300), 360, 300);
+        var throwingButton = panel.Content.GetVisualDescendants().OfType<Button>()
+            .Single(button => Equals(button.Content, "Trigger UI failure"));
+        Exception? reported = null;
+        panel.Error += error => reported = error;
+        var point = throwingButton.TranslatePoint(new Avalonia.Point(throwingButton.Bounds.Width / 2,
+            throwingButton.Bounds.Height / 2), panel.Content)!.Value;
+
+        panel.PointerDown(point.X, point.Y);
+        panel.PointerUp(point.X, point.Y);
+
+        Assert.IsType<InvalidOperationException>(reported);
+        Assert.Equal("Deliberate test failure from the input panel.", reported!.Message);
+    });
+
+    [Fact]
     public void Tick_from_another_thread_is_rejected()
     {
         var panel = RenderThread.Run(() => AvaloniaPanel.Create(() => new Border(), 4, 4));
@@ -176,5 +274,16 @@ public sealed class PanelHostRenderingTests
         {
             RenderThread.Run(panel.Dispose);
         }
+    }
+}
+
+internal sealed class RenderCountControl : Control
+{
+    public int RenderCount { get; private set; }
+
+    public override void Render(DrawingContext context)
+    {
+        RenderCount++;
+        context.FillRectangle(Brushes.Black, new Rect(Bounds.Size));
     }
 }

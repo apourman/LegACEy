@@ -22,6 +22,8 @@ public sealed class InputTestPanel : Border
         var clickCount = 0;
         var button = new Button { Content = "Click count: 0", HorizontalAlignment = HorizontalAlignment.Left };
         button.Click += (_, _) => button.Content = $"Click count: {++clickCount}";
+        var throwingButton = new Button { Content = "Trigger UI failure", HorizontalAlignment = HorizontalAlignment.Left };
+        throwingButton.Click += (_, _) => throw new System.InvalidOperationException("Deliberate test failure from the input panel.");
 
         var textBox = new TextBox { Watermark = "Type here", HorizontalAlignment = HorizontalAlignment.Stretch };
         var label = new TextBlock { Name = "InputTextLabel", Foreground = Brushes.White, Text = "Text appears here" };
@@ -37,7 +39,7 @@ public sealed class InputTestPanel : Border
         Child = new StackPanel
         {
             Spacing = 6,
-            Children = { button, textBox, label, list }
+            Children = { button, throwingButton, textBox, label, list }
         };
     }
 }

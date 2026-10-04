@@ -43,9 +43,12 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private const int InputWindowHeight = 350;
     private const int BreakoutWindowWidth = 500;
     private const int BreakoutWindowHeight = 390;
+    private const int PerformanceWindowWidth = 620;
+    private const int PerformanceWindowHeight = 460;
     private const string InputTestSlot = "Input test";
     private const string ThemeGallerySlot = "Theme gallery";
     private const string BreakoutSlot = "Breakout";
+    private const string PerformanceListSlot = "Performance list";
     private const string LiveDataWindowId = "live-game-data";
     private const string ElementInspectorWindowId = "element-inspector";
     private static readonly string PluginDirectory = IOPath.GetDirectoryName(typeof(ClientUiRuntime).Assembly.Location)!;
@@ -61,6 +64,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private bool _windowsEnabled;
     private bool _firstPostUiWindow = true;
     private DateTime _lastBreakoutStep = DateTime.UtcNow;
+    private DateTime _lastMeasurementLog = DateTime.UtcNow;
     private ScreenSurface? _hovered;
     private readonly InputRouterService _inputRouter = new();
     private Point _pointer;
@@ -173,7 +177,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
         _windows = null;
         _hovered = null;
         _dragOffset = null;
-        foreach (var slot in new[] { InputTestSlot, ThemeGallerySlot, BreakoutSlot })
+        foreach (var slot in new[] { InputTestSlot, ThemeGallerySlot, BreakoutSlot, PerformanceListSlot })
             _bar?.SetOpen(slot, false);
     }
 
@@ -196,12 +200,13 @@ internal sealed class ClientUiRuntime : IClientUiHost
             new IndicatorSlot(InputTestSlot, 0x06004D20, ToggleInputTest, "B"),
             new IndicatorSlot(ThemeGallerySlot, AcClientTheme.WindowChromeCenterId, ToggleThemeGallery, "T"),
             new IndicatorSlot(BreakoutSlot, 0x06004D20, ToggleBreakout, "R"),
+            new IndicatorSlot(PerformanceListSlot, 0x06007498, TogglePerformanceList, "P"),
             new IndicatorSlot("Live data", 0x06004D20, ToggleLiveData, "V"),
             new IndicatorSlot("Element inspector", 0x06004D20, ToggleElementInspector, "I"),
             new IndicatorSlot("Log out", 0x060074B1, NativeUi.RequestLogOut)
         };
         var size = IndicatorBar.MeasureFor(slots.Length);
-        var barPanel = AvaloniaPanel.Create(() => _bar = new IndicatorBar(slots, _portal.ReadImage), size.Width, size.Height);
+        var barPanel = ObservePanel(AvaloniaPanel.Create(() => _bar = new IndicatorBar(slots, _portal.ReadImage), size.Width, size.Height));
         _barSurface = new ScreenSurface(_device, barPanel);
         _barRenderer = new RetailSurfaceRenderer(_barSurface.Prepare, _barSurface.DrawNow);
         _barTakeover = new RetailTakeoverLifecycle(new NativeBarPort(NativeUi.Indicators), new SurfaceTakeoverPort(_barSurface));
@@ -221,7 +226,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private bool EnsurePostUiDrawHook()
     {
         // Entry rendering needs this before LoginComplete creates character windows.
-        _postUiDrawHook ??= new PostUiDrawHook(DrawAfterRetailUi, DisableWindows);
+        _postUiDrawHook ??= new PostUiDrawHook(DrawAfterRetailUi, Disable);
         try
         {
             if (_postUiDrawHook.Install()) return true;
@@ -308,6 +313,8 @@ internal sealed class ClientUiRuntime : IClientUiHost
 
     private void ToggleBreakout() => ToggleWindow("breakout", BreakoutWindowWidth, BreakoutWindowHeight, new Point(180, 80));
 
+    private void TogglePerformanceList() => ToggleWindow("performance-list", PerformanceWindowWidth, PerformanceWindowHeight, new Point(200, 90));
+
     private void ToggleWindow(string id, int width, int height, Point defaultLocation)
     {
         if (!_windowsEnabled || _windows == null || _clientUi == null)
@@ -344,6 +351,9 @@ internal sealed class ClientUiRuntime : IClientUiHost
                 _breakout = new BreakoutGame(BreakoutWindowWidth - 16, BreakoutWindowHeight - 42);
                 content = _breakout;
                 break;
+            case "performance-list":
+                content = new PerformanceListPanel(_portal!);
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(id), id, "Unknown feature window.");
         }
@@ -361,6 +371,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
         "input-test" => InputTestSlot,
         "theme-gallery" => ThemeGallerySlot,
         "breakout" => BreakoutSlot,
+        "performance-list" => PerformanceListSlot,
         _ => id
     };
 
@@ -402,6 +413,17 @@ internal sealed class ClientUiRuntime : IClientUiHost
     /// Replace the native bar on its first visible frame, including world entry and logout.
     /// </summary>
     private void OnRenderFrame(object? sender, EventArgs e)
+    {
+        var timer = Stopwatch.StartNew();
+        try { OnRenderFrameCore(sender, e); }
+        finally
+        {
+            timer.Stop();
+            RecordPerformanceMeasurement(timer.Elapsed);
+        }
+    }
+
+    private void OnRenderFrameCore(object? sender, EventArgs e)
     {
         if (_barTakeover != null && _failed)
             RestoreNativeBar();
@@ -447,15 +469,39 @@ internal sealed class ClientUiRuntime : IClientUiHost
             if (_breakout is { } breakout)
             {
                 var now = DateTime.UtcNow;
-                breakout.Step(now - _lastBreakoutStep);
+                if (breakout.Step(now - _lastBreakoutStep))
+                    SurfaceById("breakout")?.Panel.Invalidate();
                 _lastBreakoutStep = now;
             }
         });
     }
 
+    private void RecordPerformanceMeasurement(TimeSpan uiFrame)
+    {
+        var now = DateTime.UtcNow;
+        if (now - _lastMeasurementLog < TimeSpan.FromSeconds(30)) return;
+        _lastMeasurementLog = now;
+        try
+        {
+            var surfaces = new List<ScreenSurface>();
+            if (_barSurface != null) surfaces.Add(_barSurface);
+            surfaces.AddRange(_featureSurfaces.Values);
+            surfaces.AddRange(_featureTakeovers.Select(takeover => takeover.Surface).OfType<ScreenSurface>());
+            using var process = Process.GetCurrentProcess();
+            var maxTick = surfaces.Count == 0 ? 0 : surfaces.Max(surface => surface.LastTickMilliseconds);
+            var maxUpload = surfaces.Count == 0 ? 0 : surfaces.Max(surface => surface.LastUploadMilliseconds);
+            var dirtyRectangles = surfaces.Sum(surface => surface.LastDirtyRectangleCount);
+            Log($"UI performance sample: uiFrame={uiFrame.TotalMilliseconds:F2}ms surfaces={surfaces.Count} maxPanelTick={maxTick:F2}ms maxTextureUpload={maxUpload:F2}ms dirtyRects={dirtyRectangles} privateBytes={process.PrivateMemorySize64} virtualBytes={process.VirtualMemorySize64}.");
+        }
+        catch (Exception exception)
+        {
+            Log($"Could not collect a UI performance sample: {exception.Message}");
+        }
+    }
+
     private static void PrepareWindow(ScreenSurface? surface)
     {
-        if (surface is { Visible: true })
+        if (surface != null)
             surface.Prepare();
     }
 
@@ -501,7 +547,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
             throw new InvalidOperationException("LegACEy windows are unavailable until the post-UI renderer is ready.");
         if (_featureSurfaces.ContainsKey(definition.Id))
             throw new InvalidOperationException($"A feature window named '{definition.Id}' is already registered.");
-        var panel = AvaloniaPanel.Create(() => content, definition.Width, definition.Height);
+        var panel = ObservePanel(AvaloniaPanel.Create(() => content, definition.Width, definition.Height));
         var surface = new ScreenSurface(_device, panel);
         var opened = false;
         try
@@ -537,7 +583,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
         {
             if (content != null)
             {
-                var panel = AvaloniaPanel.Create(() => content, 280, 120);
+                var panel = ObservePanel(AvaloniaPanel.Create(() => content, 280, 120));
                 surface = new ScreenSurface(_device, panel);
                 panel.ApplyTheme(_clientUi?.Theme ?? CurrentTheme());
             }
@@ -716,17 +762,19 @@ internal sealed class ClientUiRuntime : IClientUiHost
         }
         catch (Exception exception)
         {
-            var id = route.SurfaceId ?? route.ClearFocusSurfaceId ?? route.ReleaseCaptureSurfaceId;
-            var windowFailure = id != "bar" && (id != null || (_hovered != null && _hovered != _barSurface));
-            if (windowFailure)
-            {
-                _postUiDrawHook?.Dispose();
-                _postUiDrawHook = null;
-                DisableWindows(exception);
-            }
-            else
-                Disable(exception);
+            Disable(exception);
         }
+    }
+
+    private AvaloniaPanel ObservePanel(AvaloniaPanel panel)
+    {
+        panel.Error += Disable;
+        if (panel.LastError is { } initialError)
+        {
+            panel.Dispose();
+            throw initialError;
+        }
+        return panel;
     }
 
     private InputSurface[] GetInputSurfaces()
@@ -809,9 +857,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
         }
         catch (Exception exception)
         {
-            _postUiDrawHook?.Dispose();
-            _postUiDrawHook = null;
-            DisableWindows(exception);
+            Disable(exception);
         }
     }
 
@@ -829,7 +875,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
     {
         _windowsEnabled = false;
         Log($"LegACEy windows disabled: {exception}");
-        foreach (var slot in new[] { InputTestSlot, ThemeGallerySlot, BreakoutSlot, "Live data", "Element inspector" })
+        foreach (var slot in new[] { InputTestSlot, ThemeGallerySlot, BreakoutSlot, PerformanceListSlot, "Live data", "Element inspector" })
             _bar?.SetOpen(slot, false);
         foreach (var window in _windows?.ZOrder.ToArray() ?? Array.Empty<ManagedWindow>())
             _windows!.Close(window.Id);
