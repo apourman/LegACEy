@@ -7,5 +7,3 @@ export function checkMmdAmount(text: string, balance: number): MmdAmountCheck {
   if (amount > balance) return { ok: false, reason: 'balance' };
   return { ok: true, amount };
 }
-
-export const validateMmdAmount = checkMmdAmount;

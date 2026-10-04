@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
 import { expect, test as base, type Page } from '@playwright/test';
+import { checkA11y } from '../a11y';
 
 export const password = process.env.MARKET_SEED_PASSWORD ?? 'marketdev';
 
@@ -14,8 +14,7 @@ export async function signIn(page: Page, account: string) {
 export const test = base;
 test.afterEach(async ({ page }, testInfo) => {
   if (testInfo.status === 'skipped') return;
-  const results = await new AxeBuilder({ page }).analyze();
-  expect(results.violations, results.violations.map(v => `${v.id}: ${v.help}`).join('\n')).toEqual([]);
+  await checkA11y(page);
 });
 
 export { expect };

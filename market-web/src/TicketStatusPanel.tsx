@@ -3,7 +3,7 @@ import { getTickets, type Ticket } from './api';
 import { useSession } from './session';
 import { announceTicketFinished, onTicketCreated } from './tickets';
 import { isUnfinishedTicket, ticketDescription, ticketStatusText } from './ticket-presentation';
-import { pollingDelay } from './ticket-polling';
+import { mergeTicketResults, pollingDelay, shouldPollTickets } from './ticket-polling';
 
 /**
  * The account's market requests, on every page while any is unfinished: then it shows every ticket GET /api/tickets returns, so it rebuilds
@@ -33,7 +33,7 @@ export function TicketStatusPanel() {
 
     const schedule = () => {
       clearTimeout(timer);
-      if (active && [...watched.current.values()].some(isUnfinishedTicket))
+      if (active && shouldPollTickets([...watched.current.values()]))
         timer = setTimeout(() => void poll(), pollingDelay(document.visibilityState));
     };
 
@@ -44,14 +44,12 @@ export function TicketStatusPanel() {
       try {
         const latest = await getTickets();
         if (!active) return;
-        const finishedTickets: Ticket[] = [];
-        const anyUnfinished = latest.some(isUnfinishedTicket);
-        for (const ticket of latest) {
-          const shown = watched.current.get(ticket.id);
-          if (shown && isUnfinishedTicket(shown) && !isUnfinishedTicket(ticket)) finishedTickets.push(ticket);
-          // with nothing unfinished, only tickets already shown stay (with their results); nothing new appears
-          if (shown || (anyUnfinished && !cleared.current.has(ticket.id))) watched.current.set(ticket.id, ticket);
-        }
+        const previous = watched.current;
+        const finishedTickets = latest.filter(ticket => {
+          const shown = previous.get(ticket.id);
+          return shown && isUnfinishedTicket(shown) && !isUnfinishedTicket(ticket);
+        });
+        watched.current = mergeTicketResults(previous, latest, cleared.current);
         publish();
         setError('');
         if (finishedTickets.length > 0) {

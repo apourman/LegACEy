@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Me } from '../src/api';
+import { ApiError, messages, type Me } from '../src/api';
 import { chooseCharacter } from '../src/character';
 import { checkMmdAmount } from '../src/mmd';
 import { makePurchaseAttempt } from '../src/purchase-attempt';
@@ -20,6 +20,13 @@ const detail = {
 } as unknown as import('../src/api').Detail;
 
 describe('purchase attempts', () => {
+  const purchaseAnswerCodes = ['ok', 'price_changed', 'gone', 'not_found', 'insufficient_funds', 'own_listing', 'rate_limited', 'paused', 'busy', 'key_reused', 'invalid_price', 'invalid_count', 'invalid_character', 'invalid_fee', 'bad_request', 'unauthorized', 'csrf', 'network', 'server'] as const;
+
+  it.each(purchaseAnswerCodes)('has a player-facing message for purchase answer %s', code => {
+    expect(messages[code]).toBeTruthy();
+    expect(new ApiError(code, 400).message).toBe(messages[code]);
+  });
+
   it('snapshots character, whole stack, price, balance and key', () => {
     const attempt = makePurchaseAttempt(detail, me, 12, 'fixed-key');
     expect(attempt).toMatchObject({ characterId: 12, characterName: 'Second', count: 3, price: 120, balanceAfter: 380, idempotencyKey: 'fixed-key' });

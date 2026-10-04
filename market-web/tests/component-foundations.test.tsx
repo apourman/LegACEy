@@ -75,6 +75,10 @@ describe('foundation component wiring', () => {
     expect(await screen.findByRole('region', { name: 'Bone Slicer appraisal' })).toBeInTheDocument();
     fireEvent.keyDown(button.parentElement!, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Bone Slicer appraisal' })).not.toBeInTheDocument());
+    fireEvent.pointerDown(button, { pointerType: 'touch' });
+    fireEvent.click(button);
+    expect(await screen.findByRole('region', { name: 'Bone Slicer appraisal' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close appraisal' }));
     fireEvent.focus(button);
     expect(await screen.findByRole('region', { name: 'Bone Slicer appraisal' })).toBeInTheDocument();
   });

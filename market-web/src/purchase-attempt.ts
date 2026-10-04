@@ -33,5 +33,3 @@ export function makePurchaseAttempt(item: Detail, account: Me, characterId: numb
     request,
   };
 }
-
-export const createPurchaseAttempt = makePurchaseAttempt;
