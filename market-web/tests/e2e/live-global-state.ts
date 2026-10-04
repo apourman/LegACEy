@@ -26,7 +26,7 @@ export async function readGlobalState(accounts: readonly string[]): Promise<Glob
     bannedDetails[account] = row;
     if (!row.startsWith('NULL\t')) bannedAccounts.push(account);
   }
-  return { paused: pause[0] === '1', pauseReason: pause[1] ?? null, bannedAccounts, bannedDetails, settings };
+  return { paused: pause[0] === '1', pausePresent: pause.length > 0, pauseReason: pause[1] ?? null, bannedAccounts, bannedDetails, settings };
 }
 
 export async function mutateGlobalState(accounts: readonly string[]) {
@@ -39,7 +39,8 @@ export async function mutateGlobalState(accounts: readonly string[]) {
 export async function restoreGlobalState(snapshot: GlobalStateSnapshot, accounts: readonly string[]) {
   const pauseValue = snapshot.paused ? 1 : 0;
   const pauseDescription = snapshot.pauseReason ?? '';
-  sql(shard, `INSERT INTO config_properties_boolean (\`key\`, \`value\`, \`description\`) VALUES ('market_paused', ${pauseValue}, ${quote(pauseDescription)}) ON DUPLICATE KEY UPDATE \`value\` = ${pauseValue}, \`description\` = ${quote(pauseDescription)}`);
+  if (snapshot.pausePresent === false) sql(shard, "DELETE FROM config_properties_boolean WHERE `key` = 'market_paused'");
+  else sql(shard, `INSERT INTO config_properties_boolean (\`key\`, \`value\`, \`description\`) VALUES ('market_paused', ${pauseValue}, ${quote(pauseDescription)}) ON DUPLICATE KEY UPDATE \`value\` = ${pauseValue}, \`description\` = ${quote(pauseDescription)}`);
   for (const key of settingKeys) {
     const value = snapshot.settings[key] ?? 'ABSENT';
     if (value === 'ABSENT') sql(shard, `DELETE FROM config_properties_long WHERE \`key\` = ${quote(key)}`);
