@@ -1,19 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
-
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="[11.3.22]" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\LegACEy.Client.GameArt\LegACEy.Client.GameArt.csproj" />
-    <ProjectReference Include="..\LegACEy.Client.Themes\LegACEy.Client.Themes.csproj" />
+    <AvaloniaResource Include="Assets\LiberationSans-Regular.ttf" />
   </ItemGroup>
-
 </Project>
