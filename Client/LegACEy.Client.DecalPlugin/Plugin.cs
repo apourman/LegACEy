@@ -250,7 +250,7 @@ public sealed class Plugin : FilterBase
 
     private void ToggleThemeGallery()
     {
-        ToggleWindow("theme-gallery", ThemeGallerySlot, 580, 560, new Point(120, 70));
+        ToggleWindow("theme-gallery", 580, 560, new Point(120, 70));
     }
 
     private void SwitchTheme()
@@ -266,20 +266,21 @@ public sealed class Plugin : FilterBase
         _barSurface.Panel.ApplyTheme(theme);
         _inputTestSurface.Panel.ApplyTheme(theme);
         _themeGallerySurface.Panel.ApplyTheme(theme);
+        _breakoutSurface?.Panel.ApplyTheme(theme);
     }
 
     private void ToggleInputTest()
     {
-        ToggleWindow("input-test", InputTestSlot, InputWindowWidth, InputWindowHeight, new Point(120, 70));
+        ToggleWindow("input-test", InputWindowWidth, InputWindowHeight, new Point(120, 70));
     }
 
-    private void ToggleBreakout() => ToggleWindow("breakout", BreakoutSlot, BreakoutWindowWidth, BreakoutWindowHeight, new Point(180, 80));
+    private void ToggleBreakout() => ToggleWindow("breakout", BreakoutWindowWidth, BreakoutWindowHeight, new Point(180, 80));
 
-    private void ToggleWindow(string id, string slot, int width, int height, Point defaultLocation)
+    private void ToggleWindow(string id, int width, int height, Point defaultLocation)
     {
         if (!_windowsEnabled || _windows == null)
             return;
-        var surface = SurfaceById(id);
+        var (surface, slot) = SurfaceRegistrationById(id);
         if (surface == null)
             return;
         if (surface.Visible)
@@ -291,18 +292,16 @@ public sealed class Plugin : FilterBase
         var window = _windows.Open(new WindowDefinition(id, id, width, height), defaultLocation);
         surface.Location = window.Location;
         surface.Visible = true;
-        _bar?.SetOpen(slot, true);
+        _bar?.SetOpen(slot!, true);
     }
 
     private void CloseWindow(string id)
     {
-        var surface = SurfaceById(id);
+        var (surface, slot) = SurfaceRegistrationById(id);
         if (surface != null) surface.Visible = false;
         _windows?.Close(id);
         if (_hovered == surface) _hovered = null;
-        if (id == "input-test") _bar?.SetOpen(InputTestSlot, false);
-        if (id == "theme-gallery") _bar?.SetOpen(ThemeGallerySlot, false);
-        if (id == "breakout") _bar?.SetOpen(BreakoutSlot, false);
+        if (slot != null) _bar?.SetOpen(slot, false);
     }
 
     /// <summary>The handle was pressed: the bar follows the pointer until the button goes up.</summary>
@@ -568,13 +567,15 @@ public sealed class Plugin : FilterBase
         return surfaces.ToArray();
     }
 
-    private ScreenSurface? SurfaceById(string? id) => id switch
+    private ScreenSurface? SurfaceById(string? id) => SurfaceRegistrationById(id).Surface;
+
+    private (ScreenSurface? Surface, string? Slot) SurfaceRegistrationById(string? id) => id switch
     {
-        "bar" => _barSurface,
-        "input-test" => _inputTestSurface,
-        "theme-gallery" => _themeGallerySurface,
-        "breakout" => _breakoutSurface,
-        _ => null
+        "bar" => (_barSurface, null),
+        "input-test" => (_inputTestSurface, InputTestSlot),
+        "theme-gallery" => (_themeGallerySurface, ThemeGallerySlot),
+        "breakout" => (_breakoutSurface, BreakoutSlot),
+        _ => (null, null)
     };
 
     private void ApplyReset(InputRoute route)
