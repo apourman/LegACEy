@@ -36,6 +36,7 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
     private Size? _viewport;
     private Point _lastNativeLocation;
     private Point? _resizeLocation;
+    private Point? _preferredLocation;
 
     public RetailTakeoverLifecycle(IRetailTakeoverPort native, IRetailTakeoverSurface surface)
     {
@@ -73,6 +74,7 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
                 _elementIdentity = identity;
                 _captured = false;
                 _resizeLocation = null;
+                _preferredLocation = null;
                 _viewport = null;
                 _surface.Visible = false;
                 isDragging = false;
@@ -81,7 +83,7 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
             if (viewport is Size empty && (empty.Width <= 0 || empty.Height <= 0)) return instanceChanged;
             var viewportChanged = viewport.HasValue && _viewport.HasValue && viewport != _viewport;
             if (viewportChanged && _captured)
-                _resizeLocation = _lastNativeLocation;
+                _resizeLocation = _preferredLocation ?? _lastNativeLocation;
             if (viewport.HasValue)
                 _viewport = viewport;
             if (!_native.Exists)
@@ -102,6 +104,7 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
                 return viewportChanged || instanceChanged;
             }
             var bounds = _native.GetBounds();
+            var recoveringResize = _resizeLocation.HasValue;
             if (_resizeLocation is Point saved && _viewport is Size screen)
             {
                 var size = _surface.Size;
@@ -115,6 +118,10 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
                     _resizeLocation = null;
                 isDragging = false;
             }
+            // A clamped resize is temporary. Only ordinary native movement or a
+            // deliberate drag replaces the preferred position for the next resize.
+            if (!recoveringResize && (!_preferredLocation.HasValue || bounds.Location != _lastNativeLocation))
+                _preferredLocation = bounds.Location;
             _lastNativeLocation = bounds.Location;
             // Keep provisional drag coordinates until MoveTo commits them to retail.
             if (!isDragging)
@@ -135,6 +142,7 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
         try
         {
             _lastNativeLocation = MoveNative(location).Location;
+            _preferredLocation = _lastNativeLocation;
             _resizeLocation = null;
             return true;
         }

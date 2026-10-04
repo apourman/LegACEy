@@ -254,6 +254,40 @@ public sealed class NativeUiLifecycleTests
     }
 
     [Fact]
+    public void ResolutionRoundTripRestoresPreferredNativeAndReplacementPosition()
+    {
+        var original = new Point(1381, 1028);
+        var port = new FakePort { Visible = true, Bounds = new Rectangle(original, new Size(149, 29)) };
+        var surface = new FakeSurface { Size = new Size(250, 30) };
+        using var lifecycle = new RetailTakeoverLifecycle(port, surface);
+        lifecycle.Tick(viewport: new Size(1920, 1080));
+        lifecycle.Tick(viewport: new Size(800, 600));
+        lifecycle.Tick(viewport: new Size(800, 600));
+        Assert.Equal(new Point(550, 570), surface.Location);
+        lifecycle.Tick(viewport: new Size(1024, 768));
+        lifecycle.Tick(viewport: new Size(1024, 768));
+        lifecycle.Tick(viewport: new Size(1920, 1080));
+        lifecycle.Tick(viewport: new Size(1920, 1080));
+        Assert.Equal(original, surface.Location);
+        Assert.Equal(original, port.Bounds.Location);
+    }
+
+    [Fact]
+    public void DragWhileSmallReplacesPreferredNativePosition()
+    {
+        var port = new FakePort { Visible = true, Bounds = new Rectangle(1381, 1028, 149, 29) };
+        var surface = new FakeSurface();
+        using var lifecycle = new RetailTakeoverLifecycle(port, surface);
+        lifecycle.Tick(viewport: new Size(1920, 1080));
+        lifecycle.Tick(viewport: new Size(800, 600));
+        lifecycle.Tick(viewport: new Size(800, 600));
+        Assert.True(lifecycle.MoveTo(new Point(100, 120)));
+        lifecycle.Tick(viewport: new Size(1920, 1080));
+        lifecycle.Tick(viewport: new Size(1920, 1080));
+        Assert.Equal(new Point(100, 120), surface.Location);
+    }
+
+    [Fact]
     public void ResolutionDuringDragRestoresCommittedPositionRatherThanPreview()
     {
         var port = new FakePort { Visible = true, Bounds = new Rectangle(100, 120, 149, 29) };

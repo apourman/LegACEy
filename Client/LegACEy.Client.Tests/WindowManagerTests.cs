@@ -86,6 +86,36 @@ public sealed class WindowManagerTests
         Assert.Equal(new Point(90, 90), store.Get("server", "character", "one"));
     }
 
+    [Fact]
+    public void Resize_round_trip_restores_preferred_position_even_after_closing_while_small()
+    {
+        var store = new MemoryWindowPositionStore();
+        var manager = new WindowManager(new Size(1920, 1080), store, "server", "character");
+        var original = new Point(1500, 900);
+        var definition = new WindowDefinition("one", "One", 300, 150);
+        manager.Open(definition, original);
+        manager.ResizeScreen(new Size(800, 600));
+        Assert.Equal(new Point(500, 450), manager.Get("one")!.Location);
+        manager.Close("one");
+        Assert.Equal(original, store.Get("server", "character", "one"));
+        manager.Open(definition, Point.Empty);
+        manager.ResizeScreen(new Size(1920, 1080));
+        Assert.Equal(original, manager.Get("one")!.Location);
+    }
+
+    [Fact]
+    public void Drag_while_small_replaces_the_preferred_position()
+    {
+        var manager = NewManager(1920, 1080);
+        manager.Open(new WindowDefinition("one", "One", 300, 150), new Point(1500, 900));
+        manager.ResizeScreen(new Size(800, 600));
+        Assert.True(manager.Press(new Point(510, 460)));
+        manager.Move(new Point(110, 110));
+        manager.Release();
+        manager.ResizeScreen(new Size(1920, 1080));
+        Assert.Equal(new Point(100, 100), manager.Get("one")!.Location);
+    }
+
     private static WindowManager NewManager(int width = 800, int height = 600) =>
         new(new Size(width, height), new MemoryWindowPositionStore(), "server", "character");
 }
