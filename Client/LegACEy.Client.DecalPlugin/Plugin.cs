@@ -135,7 +135,9 @@ public sealed class Plugin : FilterBase
             new IndicatorSlot("Character info", 0x060074A2, () => NativeUi.ToggleRootElement(NativeUi.CharacterInfo)),
             new IndicatorSlot("Mini-game", 0x060074A6, () => NativeUi.ToggleRootElement(NativeUi.MiniGame)),
             new IndicatorSlot(BreakoutSlot, 0x06004D20, ToggleBreakout, "B"),
-            new IndicatorSlot("Log out", 0x060074B1, NativeUi.RequestLogOut)
+            // UIElementManager::DoVisibilityToggleAction(ClientAction.LOGOUT), which Chorizite uses, did
+            // nothing in game, so log out the way /logout does, through Decal.
+            new IndicatorSlot("Log out", 0x060074B1, () => CoreManager.Current.Actions.Logout())
         };
         var size = IndicatorBar.MeasureFor(slots.Length);
         var barPanel = AvaloniaPanel.Create(() => _bar = new IndicatorBar(slots, _portal.ReadImage), size.Width, size.Height);

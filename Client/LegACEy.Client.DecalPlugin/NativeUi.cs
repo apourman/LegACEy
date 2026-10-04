@@ -24,16 +24,10 @@ internal static class NativeUi
     public const uint MiniGame = 0x10000188;
     public const uint Vitae = 0x1000018A;
 
-    /// <summary>The client action that opens the log out confirmation (ClientAction.LOGOUT).</summary>
-    private const uint LogOutAction = 0x10000026;
-
     private static readonly IntPtr ManagerInstance = new(0x0083E03C);
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate IntPtr GetElementFn(IntPtr manager, uint id);
-
-    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-    private delegate byte DoVisibilityToggleActionFn(IntPtr manager, uint action);
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate byte IsVisibleFn(IntPtr element);
@@ -54,7 +48,6 @@ internal static class NativeUi
     }
 
     private static readonly GetElementFn GetElementNative = Function<GetElementFn>(0x00459A00);
-    private static readonly DoVisibilityToggleActionFn DoVisibilityToggleAction = Function<DoVisibilityToggleActionFn>(0x0045B740);
     private static readonly IsVisibleFn IsVisibleNative = Function<IsVisibleFn>(0x004603A0);
     private static readonly SetVisibleFn SetVisibleNative = Function<SetVisibleFn>(0x00462390);
     private static readonly GetCurrentPositionFn GetCurrentPosition = Function<GetCurrentPositionFn>(0x00460180);
@@ -83,14 +76,6 @@ internal static class NativeUi
         var element = GetElement(id);
         if (element != IntPtr.Zero)
             SetVisible(element, !IsVisible(element));
-    }
-
-    /// <summary>Open the client's own log out confirmation.</summary>
-    public static void RequestLogOut()
-    {
-        var manager = Marshal.ReadIntPtr(ManagerInstance);
-        if (manager != IntPtr.Zero)
-            DoVisibilityToggleAction(manager, LogOutAction);
     }
 
     private static T Function<T>(int address) where T : Delegate =>
