@@ -172,19 +172,29 @@ public sealed class PanelHostRenderingTests
     [Fact]
     public void Tick_reports_dirty_rectangles_and_leaves_them_empty_when_idle() => RenderThread.Run(() =>
     {
-        var border = default(Border);
+        var control = default(RenderCountControl);
         using var panel = AvaloniaPanel.Create(() =>
         {
-            border = new Border { Width = 10, Height = 10, Background = Brushes.Black };
-            return new StackPanel { Children = { border } };
+            control = new RenderCountControl { Width = 10, Height = 10 };
+            return new StackPanel { Children = { control } };
         }, 40, 30);
 
         Assert.Contains(new Rectangle(0, 0, 40, 30), panel.Frame.DirtyRectangles);
         Assert.False(panel.Tick());
         Assert.Empty(panel.Frame.DirtyRectangles);
 
-        border!.Background = Brushes.White;
+        var idleRenderCount = control!.RenderCount;
+        var idleCaptureCount = panel.FrameCaptureCount;
+        control.Tag = "updated-without-visual-change";
+        Assert.False(panel.Tick());
+        Assert.Equal(idleCaptureCount, panel.FrameCaptureCount);
+        Assert.Equal(idleRenderCount, control.RenderCount);
+        Assert.Empty(panel.Frame.DirtyRectangles);
+
+        control.Opacity = 0.5;
         Assert.True(panel.Tick());
+        Assert.Equal(idleCaptureCount + 1, panel.FrameCaptureCount);
+        Assert.True(control.RenderCount > idleRenderCount);
         Assert.NotEmpty(panel.Frame.DirtyRectangles);
         Assert.All(panel.Frame.DirtyRectangles, rect => Assert.True(rect.Width < 40 || rect.Height < 30));
     });
@@ -264,5 +274,16 @@ public sealed class PanelHostRenderingTests
         {
             RenderThread.Run(panel.Dispose);
         }
+    }
+}
+
+internal sealed class RenderCountControl : Control
+{
+    public int RenderCount { get; private set; }
+
+    public override void Render(DrawingContext context)
+    {
+        RenderCount++;
+        context.FillRectangle(Brushes.Black, new Rect(Bounds.Size));
     }
 }

@@ -29,6 +29,26 @@ namespace LegACEy.Client.PanelHost;
 /// </remarks>
 public sealed class AvaloniaPanel : IDisposable
 {
+    private static readonly HashSet<string> RenderAffectingPropertyNames = new(StringComparer.Ordinal)
+    {
+        "Background", "Foreground", "BorderBrush", "BorderThickness", "CornerRadius", "Opacity",
+        "IsVisible", "IsEnabled", "Visibility", "Text", "Content", "Source", "Stretch",
+        "FontFamily", "FontSize", "FontStyle", "FontWeight", "FontStretch", "LineHeight", "LetterSpacing",
+        "MaxLines", "TextAlignment", "TextDecorations", "TextWrapping", "TextTrimming", "IsChecked",
+        "IsPressed", "IsPointerOver", "IsFocused",
+        "IsSelected", "Value", "Minimum", "Maximum", "Orientation", "ItemsSource", "SelectedItem",
+        "SelectedIndex", "SelectedValue", "Offset", "Data", "Template", "BoxShadow", "Clip",
+        "ClipToBounds", "RenderTransform", "RenderTransformOrigin", "ZIndex"
+    };
+
+    private static readonly HashSet<string> LayoutAffectingPropertyNames = new(StringComparer.Ordinal)
+    {
+        "Bounds", "Width", "Height", "MinWidth", "MinHeight", "MaxWidth", "MaxHeight",
+        "Margin", "Padding", "HorizontalAlignment", "VerticalAlignment",
+        "HorizontalContentAlignment", "VerticalContentAlignment", "FlowDirection",
+        "Row", "Column", "RowSpan", "ColumnSpan", "Dock", "Left", "Top", "Right", "Bottom"
+    };
+
     private static bool _runtimeInitialized;
     private Window _window;
     private readonly int _ownerThreadId;
@@ -36,6 +56,7 @@ public sealed class AvaloniaPanel : IDisposable
     private bool _disposed;
     private bool _forceFullFrame = true;
     private bool _hasInvalidation;
+    internal int FrameCaptureCount { get; private set; }
     private readonly HashSet<Control> _observedControls = new();
     private IStyle? _themeStyles;
     private IClientTheme? _theme;
@@ -153,6 +174,7 @@ public sealed class AvaloniaPanel : IDisposable
             }
 
             // CaptureRenderedFrame drives the headless renderer once after dispatcher work.
+            FrameCaptureCount++;
             using var bitmap = _window.CaptureRenderedFrame();
             if (bitmap == null) return false;
 
@@ -255,7 +277,12 @@ public sealed class AvaloniaPanel : IDisposable
         return true;
     }
 
-    /// <summary>Request a render after a custom control invalidates through its own drawing logic.</summary>
+    /// <summary>
+    /// Request a render after a custom control invalidates through its own drawing logic.
+    /// The optional rectangle limits whether the request intersects this panel. Incremental dirty
+    /// rectangles are derived from full-frame pixel differences; resize and content loss can force
+    /// a full-frame upload.
+    /// </summary>
     public void Invalidate(Rectangle? dirtyRegion = null)
     {
         VerifyUsable();
@@ -399,11 +426,8 @@ public sealed class AvaloniaPanel : IDisposable
     private void OnControlPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
     {
         if (sender is not Control control) return;
-        if (e.Property.Name == "Bounds" || e.Property.Name == "Width" || e.Property.Name == "Height")
-        {
-            _hasInvalidation = true;
-            return;
-        }
+        if (!RenderAffectingPropertyNames.Contains(e.Property.Name) &&
+            !LayoutAffectingPropertyNames.Contains(e.Property.Name)) return;
 
         var origin = control.TranslatePoint(new Point(0, 0), Content);
         if (origin == null || control.Bounds.Width <= 0 || control.Bounds.Height <= 0)
