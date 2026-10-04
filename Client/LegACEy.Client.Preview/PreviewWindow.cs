@@ -94,8 +94,12 @@ internal sealed class PreviewWindow : Window
         {
             _themePicker.SelectedIndex = _themePicker.SelectedIndex == 0 ? 1 : 0;
         };
-        _workspace.Children.Add(new ThemeWindowChrome(_art, "Theme gallery", gallery) { Width = 580, Height = 560 });
-        _workspace.Children.Add(new ThemeWindowChrome(_art, "Input test", new InputTestPanel(360, 520)) { Width = 580, Height = 590, Margin = new Thickness(0, 0, 12, 0) });
+        var galleryChrome = new ThemeWindowChrome(_art, "Theme gallery", gallery) { Width = 580, Height = 560 };
+        galleryChrome.CloseAndRemoveFrom(_workspace);
+        _workspace.Children.Add(galleryChrome);
+        var inputChrome = new ThemeWindowChrome(_art, "Input test", new InputTestPanel(360, 520)) { Width = 580, Height = 590, Margin = new Thickness(0, 0, 12, 0) };
+        inputChrome.CloseAndRemoveFrom(_workspace);
+        _workspace.Children.Add(inputChrome);
     }
 
     private void ApplySelectedTheme()

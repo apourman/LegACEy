@@ -140,6 +140,19 @@ public sealed class ThemeTests
         Assert.True(closeRequested);
     });
 
+    [Fact]
+    public void Closing_a_preview_chrome_removes_that_surface_from_its_workspace() => RenderThread.Run(() =>
+    {
+        var workspace = new StackPanel();
+        var chrome = new ThemeWindowChrome(new SolidColorArtSource(), "Preview", new TextBlock { Text = "Surface" });
+        workspace.Children.Add(chrome);
+
+        chrome.CloseAndRemoveFrom(workspace);
+        chrome.CloseButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+        Assert.DoesNotContain(chrome, workspace.Children);
+    });
+
     private static byte[] Pixel(PanelFrame frame, int x, int y) =>
         frame.Pixels.Skip((y * frame.Stride) + (x * 4)).Take(4).ToArray();
 

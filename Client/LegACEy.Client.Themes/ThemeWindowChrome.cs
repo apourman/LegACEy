@@ -59,6 +59,13 @@ public sealed class ThemeWindowChrome : UserControl
 
     public Button CloseButton { get; }
 
+    /// <summary>Remove this chrome surface from its owner when its close button is clicked.</summary>
+    public void CloseAndRemoveFrom(Panel owner)
+    {
+        if (owner == null) throw new ArgumentNullException(nameof(owner));
+        CloseRequested += (_, _) => owner.Children.Remove(this);
+    }
+
     public void ApplyTheme(IClientTheme theme)
     {
         if (theme is AcClientTheme acTheme)
