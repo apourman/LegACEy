@@ -47,9 +47,6 @@ internal static class NativeUi
     private delegate byte SendNoticeEndCharacterSessionFn(int confirm);
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-    private delegate void MoveToFn(IntPtr element, int x, int y);
-
-    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void GetCurrentPositionFn(IntPtr element, out Box2D position, out int zLevel);
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
@@ -69,7 +66,6 @@ internal static class NativeUi
     private static readonly SetVisibleFn SetVisibleNative = Function<SetVisibleFn>(0x00462390);
     private static readonly GetCurrentPositionFn GetCurrentPosition = Function<GetCurrentPositionFn>(0x00460180);
     private static readonly SetVisibleFn SetSaveLocationNative = Function<SetVisibleFn>(0x0045FA10);
-    private static readonly MoveToFn MoveToNative = Function<MoveToFn>(0x004634C0);
     private static readonly SendNoticeEndCharacterSessionFn SendNoticeEndCharacterSession = Function<SendNoticeEndCharacterSessionFn>(0x00479F40);
     private static readonly LockUiFn LockUiNative = Function<LockUiFn>(0x005D4330);
 
@@ -119,8 +115,8 @@ internal static class NativeUi
     /// <summary>Enable retail layout saving before moving a replacement's native element.</summary>
     public static void SetSaveLocation(IntPtr element, bool save) { EnsureReady(); SetSaveLocationNative(element, save ? (byte)1 : (byte)0); }
 
-    /// <summary>Move an element's top-left corner to a point; for a root element, in screen pixels.</summary>
-    public static void MoveTo(IntPtr element, Point location) { EnsureReady(); MoveToNative(element, location.X, location.Y); }
+    /// <summary>Move through the element's retail override, including its native saved-position writeback.</summary>
+    public static void MoveTo(IntPtr element, Point location) { EnsureReady(); NativeUiMovement.MoveTo(element, location); }
 
     /// <summary>Show a hidden root element or hide a shown one, as its retail indicator button does.</summary>
     public static void ToggleRootElement(uint id)
