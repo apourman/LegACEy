@@ -37,6 +37,7 @@ public sealed class ManagedWindow
     {
         Definition = definition;
         Location = location;
+        PreferredLocation = location;
     }
 
     public WindowDefinition Definition { get; }
@@ -46,6 +47,7 @@ public sealed class ManagedWindow
     public int Height => Definition.Height;
     public int TitleBarHeight => Definition.TitleBarHeight;
     public Point Location { get; internal set; }
+    internal Point PreferredLocation { get; set; }
     public Rectangle Bounds => new(Location, new Size(Width, Height));
 }
 
@@ -180,7 +182,7 @@ public sealed class WindowManager
         if (existing != null) return existing;
         var saved = _positions.Load(_server, _character, definition.Id);
         var location = Clamp(saved ?? requestedLocation, definition.Width, definition.Height);
-        var window = new ManagedWindow(definition, location);
+        var window = new ManagedWindow(definition, location) { PreferredLocation = saved ?? requestedLocation };
         _windows.Insert(0, window);
         return window;
     }
@@ -191,7 +193,7 @@ public sealed class WindowManager
     {
         var window = Get(id);
         if (window == null) return false;
-        _positions.Save(_server, _character, window.Id, window.Location);
+        _positions.Save(_server, _character, window.Id, window.PreferredLocation);
         if (_dragging == window) _dragging = null;
         return _windows.Remove(window);
     }
@@ -217,12 +219,13 @@ public sealed class WindowManager
     {
         if (_dragging == null) return;
         _dragging.Location = Clamp(new Point(point.X - _dragOffset.X, point.Y - _dragOffset.Y), _dragging.Width, _dragging.Height);
+        _dragging.PreferredLocation = _dragging.Location;
     }
 
     public void Release()
     {
         if (_dragging != null)
-            _positions.Save(_server, _character, _dragging.Id, _dragging.Location);
+            _positions.Save(_server, _character, _dragging.Id, _dragging.PreferredLocation);
         _dragging = null;
     }
 
@@ -238,9 +241,10 @@ public sealed class WindowManager
     public void ResizeScreen(Size screen)
     {
         if (screen.Width <= 0 || screen.Height <= 0) throw new ArgumentOutOfRangeException(nameof(screen));
+        Release();
         _screen = screen;
         foreach (var window in _windows)
-            window.Location = Clamp(window.Location, window.Width, window.Height, screen);
+            window.Location = Clamp(window.PreferredLocation, window.Width, window.Height, screen);
     }
 
     private Point Clamp(Point location, int width, int height, Size? screen = null)
