@@ -233,7 +233,17 @@ public sealed class Plugin : FilterBase
         if (_device == null) return;
         _windows = new WindowManager(new Size(_device.Viewport.Width, _device.Viewport.Height), new FileWindowPositionStore(IOPath.Combine(PluginDirectory, "window-positions.txt")), SessionServer(), SessionCharacter());
         _postUiDrawHook ??= new PostUiDrawHook(DrawWindowsAfterRetailUi, DisableWindows);
-        _windowsEnabled = _postUiDrawHook.Install(_nativeDevice);
+        try
+        {
+            _windowsEnabled = _postUiDrawHook.Install(_nativeDevice);
+        }
+        catch (Exception exception)
+        {
+            _postUiDrawHook.Dispose();
+            _postUiDrawHook = null;
+            DisableWindows(exception);
+            return;
+        }
         if (!_windowsEnabled)
             Log("LegACEy windows disabled: IDirect3DDevice9.EndScene hook could not be installed.");
     }

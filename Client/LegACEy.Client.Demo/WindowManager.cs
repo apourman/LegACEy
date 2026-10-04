@@ -176,7 +176,8 @@ public sealed class WindowManager
     public ManagedWindow Open(WindowDefinition definition, Point requestedLocation)
     {
         if (definition == null) throw new ArgumentNullException(nameof(definition));
-        if (Get(definition.Id) != null) return Get(definition.Id)!;
+        var existing = Get(definition.Id);
+        if (existing != null) return existing;
         var saved = _positions.Load(_server, _character, definition.Id);
         var location = Clamp(saved ?? requestedLocation, definition.Width, definition.Height);
         var window = new ManagedWindow(definition, location);
