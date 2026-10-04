@@ -32,6 +32,7 @@
       <Private>false</Private>
     </Reference>
     <ProjectReference Include="..\LegACEy.Client.PanelHost\LegACEy.Client.PanelHost.csproj" />
+    <ProjectReference Include="..\LegACEy.Client.InputRouter\LegACEy.Client.InputRouter.csproj" />
     <ProjectReference Include="..\LegACEy.Client.GameArt\LegACEy.Client.GameArt.csproj" />
     <ProjectReference Include="..\LegACEy.Client.Demo\LegACEy.Client.Demo.csproj" />
   </ItemGroup>

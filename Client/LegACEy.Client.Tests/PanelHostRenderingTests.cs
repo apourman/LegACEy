@@ -1,5 +1,10 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.VisualTree;
+using LegACEy.Client.Demo;
 using LegACEy.Client.PanelHost;
 using Xunit;
 
@@ -7,6 +12,103 @@ namespace LegACEy.Client.Tests;
 
 public sealed class PanelHostRenderingTests
 {
+    [Fact]
+    public void Headless_input_clicks_button_and_exposes_cursor_kind() => RenderThread.Run(() =>
+    {
+        var clicks = 0;
+        using var panel = AvaloniaPanel.Create(() => new Button
+        {
+            Content = "Click",
+            Width = 100,
+            Height = 40,
+            Cursor = new Cursor(StandardCursorType.Hand)
+        }, 120, 60);
+
+        var button = (Button)panel.Content;
+        button.Click += (_, _) => clicks++;
+        var restingPixels = panel.Frame.Pixels.ToArray();
+        panel.PointerMove(30, 20);
+        Assert.True(button.IsPointerOver);
+        Assert.True(panel.Tick());
+        var hoverPixels = panel.Frame.Pixels.ToArray();
+        Assert.False(restingPixels.SequenceEqual(hoverPixels));
+        panel.PointerDown(30, 20);
+        Assert.True(button.IsPressed);
+        Assert.True(panel.Tick());
+        Assert.False(hoverPixels.SequenceEqual(panel.Frame.Pixels));
+        panel.PointerUp(30, 20);
+        Assert.False(button.IsPressed);
+
+        Assert.Equal(1, clicks);
+        Assert.Same(button.Cursor, panel.CursorKind);
+    });
+
+    [Fact]
+    public void Text_input_and_keyboard_focus_follow_the_focused_text_box() => RenderThread.Run(() =>
+    {
+        TextBox? textBox = null;
+        using var panel = AvaloniaPanel.Create(() => textBox = new TextBox { Width = 180 }, 200, 60);
+
+        Assert.False(panel.WantsKeyboard);
+        panel.PointerDown(20, 20);
+        panel.PointerUp(20, 20);
+        Assert.True(panel.WantsKeyboard);
+
+        panel.KeyDown(Key.A, KeyModifiers.Control);
+        panel.KeyUp(Key.A, KeyModifiers.Control);
+        panel.TextInput("hello");
+        Assert.Equal("hello", textBox!.Text);
+
+        panel.ClearFocus();
+        Assert.False(panel.WantsKeyboard);
+    });
+
+    [Fact]
+    public void Wheel_input_scrolls_a_list_box() => RenderThread.Run(() =>
+    {
+        ListBox? listBox = null;
+        using var panel = AvaloniaPanel.Create(() => listBox = new ListBox
+        {
+            Height = 50,
+            ItemsSource = Enumerable.Range(0, 30).Select(i => $"Item {i}")
+        }, 160, 60);
+        panel.Tick();
+        var scrollViewer = listBox!.GetVisualDescendants().OfType<ScrollViewer>().First();
+
+        panel.MouseWheel(40, 30, 0, -120);
+
+        Assert.True(scrollViewer.Offset.Y > 0);
+    });
+
+    [Fact]
+    public void Input_test_panel_button_text_binding_and_list_scrolling_use_headless_input() => RenderThread.Run(() =>
+    {
+        using var panel = AvaloniaPanel.Create(() => new InputTestPanel(360, 300), 360, 300);
+        panel.Tick();
+        var controls = panel.Content.GetVisualDescendants().ToArray();
+        var button = controls.OfType<Button>().First(control => Equals(control.Content, "Click count: 0"));
+        var textBox = controls.OfType<TextBox>().Single();
+        var label = controls.OfType<TextBlock>().First(control => control.Name == "InputTextLabel");
+        var listBox = controls.OfType<ListBox>().Single();
+
+        var buttonPoint = button.TranslatePoint(new Avalonia.Point(button.Bounds.Width / 2, button.Bounds.Height / 2), panel.Content)!.Value;
+        panel.PointerDown(buttonPoint.X, buttonPoint.Y);
+        panel.PointerUp(buttonPoint.X, buttonPoint.Y);
+        Assert.Equal("Click count: 1", button.Content);
+
+        var textPoint = textBox.TranslatePoint(new Avalonia.Point(12, 12), panel.Content)!.Value;
+        panel.PointerDown(textPoint.X, textPoint.Y);
+        panel.PointerUp(textPoint.X, textPoint.Y);
+        panel.TextInput("typed");
+        Assert.Equal("typed", label.Text);
+        Assert.True(panel.WantsKeyboard);
+
+        var scrollViewer = listBox.GetVisualDescendants().OfType<ScrollViewer>().First();
+        var listPoint = listBox.TranslatePoint(new Avalonia.Point(30, 30), panel.Content)!.Value;
+        panel.MouseWheel(listPoint.X, listPoint.Y, 0, -120);
+        Assert.True(scrollViewer.Offset.Y > 0);
+    });
+
     [Fact]
     public void Tick_renders_a_control_to_a_bgra_frame() => RenderThread.Run(() =>
     {

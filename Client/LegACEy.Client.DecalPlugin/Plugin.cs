@@ -3,10 +3,13 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
+using Avalonia.Input;
 using IOPath = System.IO.Path;
 using Decal.Adapter;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
+using LegACEy.Client.InputRouter;
 using LegACEy.Client.PanelHost;
 using Microsoft.DirectX.Direct3D;
 
@@ -14,25 +17,38 @@ namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
 /// Proof of concept: replace the retail floating indicators bar with an Avalonia bar drawn
-/// straight onto the game's device. It keeps the retail buttons and adds a Breakout slot.
+/// straight onto the game's device. It keeps the retail buttons and adds an input test slot.
 /// </summary>
 [FriendlyName("LegACEy Avalonia Panel")]
 public sealed class Plugin : FilterBase
 {
-    private const int BreakoutWidth = 360;
-    private const int BreakoutHeight = 260;
-    private const string BreakoutSlot = "Breakout";
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ScreenToClient(IntPtr window, ref NativePoint point);
+
+    private const int InputTestWidth = 360;
+    private const int InputTestHeight = 300;
+    private const string InputTestSlot = "Input test";
     private static readonly string PluginDirectory = IOPath.GetDirectoryName(typeof(Plugin).Assembly.Location)!;
 
-    private readonly Stopwatch _frameClock = new();
     private Device? _device;
     private PortalDat? _portal;
     private IndicatorBar? _bar;
-    private BreakoutGame? _game;
+    private InputTestPanel? _inputTest;
     private ScreenSurface? _barSurface;
-    private ScreenSurface? _breakoutSurface;
+    private ScreenSurface? _inputTestSurface;
     private ScreenSurface? _hovered;
-    private ScreenSurface? _captured;
+    private readonly InputRouterService _inputRouter = new();
     private Point _pointer;
     private Size? _dragOffset;
     private Rectangle? _nativeBarBounds;
@@ -98,7 +114,7 @@ public sealed class Plugin : FilterBase
         CoreManager.Current.WindowMessage += OnWindowMessage;
     }
 
-    /// <summary>Build the bar and the Breakout panel the first time a character is in the world.</summary>
+    /// <summary>Build the bar and input test panel the first time a character is in the world.</summary>
     private void OnLoginComplete(object? sender, EventArgs e)
     {
         if (_failed)
@@ -114,20 +130,14 @@ public sealed class Plugin : FilterBase
 
     private void OnLogoff(object? sender, EventArgs e)
     {
-        // Let go of anything Avalonia still holds, or a pointer captured mid-click would keep
-        // sending every later click to that one slot.
-        Guard(() =>
-        {
-            _captured?.Panel.PointerUp(-1, -1);
-            _hovered?.Panel.PointerLeave();
-        });
+        Guard(() => ApplyReset(_inputRouter.Route(new NativeInputMessage(InputRouterService.WmLogoff, IntPtr.Zero, IntPtr.Zero), GetInputSurfaces())));
+        Guard(() => _hovered?.Panel.PointerLeave());
         _inGame = false;
         _nativeBarBounds = null;
         _hovered = null;
-        _captured = null;
         _dragOffset = null;
         if (_barSurface != null) _barSurface.Visible = false;
-        if (_breakoutSurface != null) _breakoutSurface.Visible = false;
+        if (_inputTestSurface != null) _inputTestSurface.Visible = false;
     }
 
     private void CreateUi()
@@ -145,28 +155,28 @@ public sealed class Plugin : FilterBase
             new IndicatorSlot("Vitae", 0x060074A1, () => NativeUi.ToggleRootElement(NativeUi.Vitae)),
             new IndicatorSlot("Character info", 0x060074A2, () => NativeUi.ToggleRootElement(NativeUi.CharacterInfo)),
             new IndicatorSlot("Mini-game", 0x060074A6, () => NativeUi.ToggleRootElement(NativeUi.MiniGame)),
-            new IndicatorSlot(BreakoutSlot, 0x06004D20, ToggleBreakout, "B"),
+            new IndicatorSlot(InputTestSlot, 0x06004D20, ToggleInputTest, "B"),
             new IndicatorSlot("Log out", 0x060074B1, NativeUi.RequestLogOut)
         };
         var size = IndicatorBar.MeasureFor(slots.Length);
         var barPanel = AvaloniaPanel.Create(() => _bar = new IndicatorBar(slots, _portal.ReadImage), size.Width, size.Height);
         _barSurface = new ScreenSurface(_device, barPanel);
 
-        var breakoutPanel = AvaloniaPanel.Create(() => _game = new BreakoutGame(BreakoutWidth, BreakoutHeight), BreakoutWidth, BreakoutHeight);
-        _breakoutSurface = new ScreenSurface(_device, breakoutPanel);
+        var inputPanel = AvaloniaPanel.Create(() => _inputTest = new InputTestPanel(InputTestWidth, InputTestHeight), InputTestWidth, InputTestHeight);
+        _inputTestSurface = new ScreenSurface(_device, inputPanel);
         Log("Indicator bar replacement ready.");
     }
 
-    private void ToggleBreakout()
+    private void ToggleInputTest()
     {
-        if (_breakoutSurface == null || _barSurface == null)
+        if (_inputTestSurface == null || _barSurface == null)
             return;
 
-        _breakoutSurface.Visible = !_breakoutSurface.Visible;
-        _bar?.SetOpen(BreakoutSlot, _breakoutSurface.Visible);
-        if (_breakoutSurface.Visible)
-            PlaceBreakout();
-        else if (_hovered == _breakoutSurface)
+        _inputTestSurface.Visible = !_inputTestSurface.Visible;
+        _bar?.SetOpen(InputTestSlot, _inputTestSurface.Visible);
+        if (_inputTestSurface.Visible)
+            PlaceInputTest();
+        else if (_hovered == _inputTestSurface)
             _hovered = null;
     }
 
@@ -184,8 +194,8 @@ public sealed class Plugin : FilterBase
         _barSurface.Location = new Point(
             Math.Max(0, Math.Min(screen.Width - size.Width, pointer.X - _dragOffset!.Value.Width)),
             Math.Max(0, Math.Min(screen.Height - size.Height, pointer.Y - _dragOffset.Value.Height)));
-        if (_breakoutSurface is { Visible: true })
-            PlaceBreakout();
+        if (_inputTestSurface is { Visible: true })
+            PlaceInputTest();
     }
 
     /// <summary>
@@ -204,19 +214,19 @@ public sealed class Plugin : FilterBase
         Log($"Moved the retail indicators bar to {_nativeBarBounds}.");
     }
 
-    /// <summary>Open Breakout just below the bar, or above it when there's no room below.</summary>
-    private void PlaceBreakout()
+    /// <summary>Open the input test panel just below the bar, or above it when there's no room below.</summary>
+    private void PlaceInputTest()
     {
         var bar = _barSurface!.Bounds;
         var screen = _device!.Viewport;
-        var x = Math.Max(0, Math.Min(bar.Left, screen.Width - BreakoutWidth));
-        var y = bar.Bottom + 4 + BreakoutHeight <= screen.Height ? bar.Bottom + 4 : Math.Max(0, bar.Top - 4 - BreakoutHeight);
-        _breakoutSurface!.Location = new Point(x, y);
+        var x = Math.Max(0, Math.Min(bar.Left, screen.Width - InputTestWidth));
+        var y = bar.Bottom + 4 + InputTestHeight <= screen.Height ? bar.Bottom + 4 : Math.Max(0, bar.Top - 4 - InputTestHeight);
+        _inputTestSurface!.Location = new Point(x, y);
     }
 
     /// <summary>
     /// Each frame in game: take over the retail bar if the client is showing it, then draw our
-    /// surfaces. Breakout steps by real elapsed time and pauses while closed.
+    /// surfaces.
     /// </summary>
     private void OnRenderFrame(object? sender, EventArgs e)
     {
@@ -228,16 +238,8 @@ public sealed class Plugin : FilterBase
             TakeOverNativeBar();
             _barSurface.Render();
 
-            if (_breakoutSurface is { Visible: true })
-            {
-                _game?.Step(_frameClock.Elapsed);
-                _frameClock.Restart();
-                _breakoutSurface.Render();
-            }
-            else
-            {
-                _frameClock.Reset();
-            }
+            if (_inputTestSurface is { Visible: true })
+                _inputTestSurface.Render();
         });
     }
 
@@ -258,8 +260,8 @@ public sealed class Plugin : FilterBase
         _nativeBarBounds = bounds;
         _barSurface!.Location = bounds.Location;
         _barSurface.Visible = true;
-        if (_breakoutSurface is { Visible: true })
-            PlaceBreakout();
+        if (_inputTestSurface is { Visible: true })
+            PlaceInputTest();
     }
 
     private void RestoreNativeBar()
@@ -280,67 +282,148 @@ public sealed class Plugin : FilterBase
         _nativeBarBounds = null;
     }
 
-    /// <summary>
-    /// Route the left mouse button and pointer moves to our surfaces. A press on a surface is eaten
-    /// so the world behind it doesn't get the click, and the matching release goes to the same surface.
-    /// </summary>
+    /// <summary>Translate Decal's raw messages into router decisions and Avalonia.Headless input.</summary>
     private void OnWindowMessage(object? sender, WindowMessageEventArgs e)
     {
         if (_failed || !_inGame || _barSurface == null)
             return;
 
-        const short MouseMove = 0x0200, LeftDown = 0x0201, LeftUp = 0x0202, LeftDoubleClick = 0x0203, RightDown = 0x0204, RightUp = 0x0205;
-        if (e.Msg < MouseMove || e.Msg > RightUp)
-            return;
+        var lParam = e.LParam;
+        if (e.Msg == InputRouterService.WmMouseWheel)
+        {
+            var point = new NativePoint
+            {
+                X = unchecked((short)(lParam & 0xffff)),
+                Y = unchecked((short)((lParam >> 16) & 0xffff))
+            };
+            var window = GetForegroundWindow();
+            if (window != IntPtr.Zero && ScreenToClient(window, ref point))
+                lParam = (point.X & 0xffff) | (point.Y << 16);
+        }
 
-        var point = new Point((short)(e.LParam & 0xFFFF), (short)((e.LParam >> 16) & 0xFFFF));
-        _pointer = point;
+        var route = _inputRouter.Route(
+            new NativeInputMessage(e.Msg, new IntPtr(e.WParam), new IntPtr(lParam)),
+            GetInputSurfaces());
         Guard(() =>
         {
-            var target = _captured ?? SurfaceAt(point);
-            switch (e.Msg)
+            var target = route.SurfaceId == null ? null : SurfaceById(route.SurfaceId);
+            switch (route.Action)
             {
-                case MouseMove when _dragOffset != null:
-                    DragBar(point);
-                    break;
-                case MouseMove:
+                case InputAction.PointerMove:
+                    var point = new Point((short)(e.LParam & 0xffff), (short)((e.LParam >> 16) & 0xffff));
+                    _pointer = point;
                     if (target != _hovered)
                     {
                         _hovered?.Panel.PointerLeave();
                         _hovered = target;
                     }
-                    target?.Panel.PointerMove(point.X - target.Location.X, point.Y - target.Location.Y);
+                    if (_dragOffset != null)
+                        DragBar(point);
+                    else
+                        target?.Panel.PointerMove(route.X, route.Y);
                     break;
-                case LeftDown:
-                case LeftDoubleClick:
-                    if (target == null) return;
-                    _captured = target;
-                    target.Panel.PointerDown(point.X - target.Location.X, point.Y - target.Location.Y);
-                    e.Eat = true;
+                case InputAction.PointerDown:
+                    _pointer = new Point(route.X + target!.Location.X, route.Y + target.Location.Y);
+                    target.Panel.PointerDown(route.X, route.Y);
+                    e.Eat = route.Eat;
                     break;
-                case LeftUp:
-                    if (_captured == null) return;
-                    _captured = null;
-                    target!.Panel.PointerUp(point.X - target.Location.X, point.Y - target.Location.Y);
+                case InputAction.PointerUp:
+                    target!.Panel.PointerUp(route.X, route.Y);
                     if (_dragOffset != null)
                         EndBarDrag();
-                    e.Eat = true;
+                    e.Eat = route.Eat;
                     break;
-                case RightDown:
-                case RightUp:
-                    if (target != null) e.Eat = true;
+                case InputAction.MouseWheel:
+                    target!.Panel.MouseWheel(route.X, route.Y, 0, route.WheelDelta / 120.0, ToKeyModifiers(route.Modifiers));
+                    e.Eat = route.Eat;
+                    break;
+                case InputAction.KeyDown:
+                    target!.Panel.KeyDown(ToAvaloniaKey(route.KeyCode), ToKeyModifiers(route.Modifiers));
+                    e.Eat = route.Eat;
+                    break;
+                case InputAction.KeyUp:
+                    target!.Panel.KeyUp(ToAvaloniaKey(route.KeyCode), ToKeyModifiers(route.Modifiers));
+                    e.Eat = route.Eat;
+                    break;
+                case InputAction.TextInput:
+                    target!.Panel.TextInput(((char)route.KeyCode).ToString());
+                    e.Eat = route.Eat;
+                    break;
+                case InputAction.ClearFocus:
+                    SurfaceById(route.ClearFocusSurfaceId)?.Panel.ClearFocus();
+                    break;
+                case InputAction.Reset:
+                    ApplyReset(route);
+                    break;
+                case InputAction.None when e.Msg == InputRouterService.WmMouseMove:
+                    _hovered?.Panel.PointerLeave();
+                    _hovered = null;
                     break;
             }
+            if (route.Eat)
+                e.Eat = true;
         });
     }
 
-    private ScreenSurface? SurfaceAt(Point point)
+    private InputSurface[] GetInputSurfaces()
     {
-        if (_breakoutSurface is { Visible: true } && _breakoutSurface.Bounds.Contains(point))
-            return _breakoutSurface;
-        if (_barSurface is { Visible: true } && _barSurface.Bounds.Contains(point))
-            return _barSurface;
-        return null;
+        var surfaces = new System.Collections.Generic.List<InputSurface>(2);
+        if (_barSurface is { Visible: true })
+            surfaces.Add(new InputSurface("bar", _barSurface.Location.X, _barSurface.Location.Y, _barSurface.Bounds.Width, _barSurface.Bounds.Height, 0, _barSurface.Panel.WantsKeyboard));
+        if (_inputTestSurface is { Visible: true })
+            surfaces.Add(new InputSurface("input-test", _inputTestSurface.Location.X, _inputTestSurface.Location.Y, _inputTestSurface.Bounds.Width, _inputTestSurface.Bounds.Height, 1, _inputTestSurface.Panel.WantsKeyboard));
+        return surfaces.ToArray();
+    }
+
+    private ScreenSurface? SurfaceById(string? id) => id switch
+    {
+        "bar" => _barSurface,
+        "input-test" => _inputTestSurface,
+        _ => null
+    };
+
+    private void ApplyReset(InputRoute route)
+    {
+        SurfaceById(route.ReleaseCaptureSurfaceId)?.Panel.PointerUp(-1, -1);
+        SurfaceById(route.ClearFocusSurfaceId)?.Panel.ClearFocus();
+        _hovered?.Panel.PointerLeave();
+        _hovered = null;
+        _dragOffset = null;
+    }
+
+    private static Key ToAvaloniaKey(int virtualKey)
+    {
+        if (virtualKey >= 'A' && virtualKey <= 'Z')
+            return (Key)((int)Key.A + virtualKey - 'A');
+        if (virtualKey >= '0' && virtualKey <= '9')
+            return (Key)((int)Key.D0 + virtualKey - '0');
+        return virtualKey switch
+        {
+            0x08 => Key.Back,
+            0x09 => Key.Tab,
+            0x0d => Key.Enter,
+            0x1b => Key.Escape,
+            0x20 => Key.Space,
+            0x25 => Key.Left,
+            0x26 => Key.Up,
+            0x27 => Key.Right,
+            0x28 => Key.Down,
+            0x2e => Key.Delete,
+            0x10 or 0xA0 or 0xA1 => Key.LeftShift,
+            0x11 or 0xA2 or 0xA3 => Key.LeftCtrl,
+            0x12 or 0xA4 or 0xA5 => Key.LeftAlt,
+            _ => Key.None
+        };
+    }
+
+    private static KeyModifiers ToKeyModifiers(InputModifiers modifiers)
+    {
+        var result = KeyModifiers.None;
+        if ((modifiers & InputModifiers.Shift) != 0) result |= KeyModifiers.Shift;
+        if ((modifiers & InputModifiers.Control) != 0) result |= KeyModifiers.Control;
+        if ((modifiers & InputModifiers.Alt) != 0) result |= KeyModifiers.Alt;
+        if ((modifiers & InputModifiers.Meta) != 0) result |= KeyModifiers.Meta;
+        return result;
     }
 
     /// <summary>Run UI work from a game callback; any exception disables the replacement instead of escaping.</summary>
@@ -368,14 +451,13 @@ public sealed class Plugin : FilterBase
     private void TearDown()
     {
         _hovered = null;
-        _captured = null;
         _barSurface?.Dispose();
         _barSurface = null;
-        _breakoutSurface?.Dispose();
-        _breakoutSurface = null;
+        _inputTestSurface?.Dispose();
+        _inputTestSurface = null;
         _portal?.Dispose();
         _portal = null;
         _bar = null;
-        _game = null;
+        _inputTest = null;
     }
 }
