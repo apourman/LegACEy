@@ -51,7 +51,12 @@ public sealed class InputRouterService
         if (code == WmChar || code == WmSysChar)
         {
             var target = FindFocusedKeyboardSurface(surfaces);
-            return target == null ? new InputRoute() : new InputRoute(InputAction.TextInput, target.Id, true,
+            if (target == null) return new InputRoute();
+            // Editing keys and shortcuts are handled by key-down; their character messages
+            // must still be eaten, but must not insert control characters into the text.
+            if (char.IsControl(unchecked((char)message.WParam.ToInt64())))
+                return new InputRoute(eat: true);
+            return new InputRoute(InputAction.TextInput, target.Id, true,
                 keyCode: unchecked((int)message.WParam.ToInt64()), modifiers: _modifiers);
         }
 

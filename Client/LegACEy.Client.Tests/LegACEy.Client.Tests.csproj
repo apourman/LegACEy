@@ -18,6 +18,8 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <!-- Exercise the plugin's key translation without requiring Windows-only Decal assemblies. -->
+    <Compile Include="..\LegACEy.Client.DecalPlugin\Win32KeyMap.cs" Link="Win32KeyMap.cs" />
   </ItemGroup>
 
   <ItemGroup>
