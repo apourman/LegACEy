@@ -452,7 +452,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
         if (_failed || !_inGame || !_windowsEnabled)
             return;
 
-        GuardWindows(() =>
+        Guard(() =>
         {
             if (_windows != null)
             {
@@ -838,18 +838,6 @@ internal sealed class ClientUiRuntime : IClientUiHost
 
     /// <summary>Run UI work from a game callback; any exception disables the replacement instead of escaping.</summary>
     private void Guard(Action action)
-    {
-        try
-        {
-            action();
-        }
-        catch (Exception exception)
-        {
-            Disable(exception);
-        }
-    }
-
-    private void GuardWindows(Action action)
     {
         try
         {

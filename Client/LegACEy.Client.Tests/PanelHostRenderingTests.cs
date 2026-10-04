@@ -200,6 +200,104 @@ public sealed class PanelHostRenderingTests
     });
 
     [Fact]
+    public void Replacing_a_child_and_updating_it_repaints_without_input() => RenderThread.Run(() =>
+    {
+        using var panel = AvaloniaPanel.Create(() => new Border
+        {
+            Child = new Border { Background = Brushes.Black }
+        }, 8, 8);
+        Assert.False(panel.Tick());
+        var replacement = new Border { Background = Brushes.White };
+        ((Border)panel.Content).Child = replacement;
+        Assert.True(panel.Tick());
+        Assert.Equal(0xff, panel.Frame.Pixels[0]);
+        replacement.Background = Brushes.Red;
+        Assert.True(panel.Tick());
+        Assert.Equal(0, panel.Frame.Pixels[0]);
+        Assert.False(panel.Tick());
+    });
+
+    [Fact]
+    public void Moving_a_control_outside_the_panel_clears_its_old_pixels() => RenderThread.Run(() =>
+    {
+        Border? child = null;
+        using var panel = AvaloniaPanel.Create(() => new Canvas
+        {
+            Background = Brushes.Black,
+            Children = { (child = new Border { Width = 4, Height = 4, Background = Brushes.White }) }
+        }, 8, 8);
+        Assert.False(panel.Tick());
+        child!.RenderTransform = new TranslateTransform(20, 0);
+        Assert.True(panel.Tick());
+        Assert.Equal(0, panel.Frame.Pixels[0]);
+        Assert.False(panel.Tick());
+    });
+
+    [Fact]
+    public void Custom_visual_invalidation_repaints_without_a_host_request() => RenderThread.Run(() =>
+    {
+        using var panel = AvaloniaPanel.Create(() => new RenderCountControl(), 8, 8);
+        Assert.False(panel.Tick());
+        var control = (RenderCountControl)panel.Content;
+        control.Brush = Brushes.White;
+        control.InvalidateVisual();
+        Assert.True(panel.Tick());
+        Assert.Equal(0xff, panel.Frame.Pixels[0]);
+        Assert.False(panel.Tick());
+    });
+
+    [Fact]
+    public void Mutating_a_background_brush_repaints_without_replacing_the_property() => RenderThread.Run(() =>
+    {
+        var brush = new SolidColorBrush(Colors.Black);
+        using var panel = AvaloniaPanel.Create(() => new Border { Background = brush }, 8, 8);
+        Assert.False(panel.Tick());
+        Assert.Null(panel.LastError);
+        brush.Color = Colors.White;
+        Assert.True(panel.Tick());
+        Assert.Equal(0xff, panel.Frame.Pixels[0]);
+        Assert.False(panel.Tick());
+    });
+
+    [Fact]
+    public void Mutating_a_nested_gradient_stop_repaints() => RenderThread.Run(() =>
+    {
+        var brush = new LinearGradientBrush
+        {
+            GradientStops = { new GradientStop(Colors.Black, 0), new GradientStop(Colors.Black, 1) }
+        };
+        using var panel = AvaloniaPanel.Create(() => new Border { Background = brush }, 8, 8);
+        Assert.False(panel.Tick());
+        Assert.Null(panel.LastError);
+        brush.GradientStops[0].Color = Colors.White;
+        Assert.True(panel.Tick());
+        Assert.NotEqual(0, panel.Frame.Pixels[0]);
+        Assert.False(panel.Tick());
+    });
+
+    [Fact]
+    public void Hidden_panel_drains_work_without_capturing_when_another_panel_ticks() => RenderThread.Run(() =>
+    {
+        using var hidden = AvaloniaPanel.Create(() => new RenderCountControl(), 8, 8);
+        using var visible = AvaloniaPanel.Create(() => new Border { Background = Brushes.Black }, 8, 8);
+        var control = (RenderCountControl)hidden.Content;
+        var captures = hidden.FrameCaptureCount;
+        Dispatcher.UIThread.Post(() =>
+        {
+            control.Brush = Brushes.White;
+            control.InvalidateVisual();
+        });
+        hidden.DrainDispatcher();
+        visible.Tick();
+        Assert.Same(Brushes.White, control.Brush);
+        Assert.Equal(captures, hidden.FrameCaptureCount);
+        Assert.Equal(0, hidden.Frame.Pixels[0]);
+        Assert.True(hidden.Tick());
+        Assert.Equal(0xff, hidden.Frame.Pixels[0]);
+        Assert.False(hidden.Tick());
+    });
+
+    [Fact]
     public void Drain_dispatcher_runs_queued_work_without_rendering() => RenderThread.Run(() =>
     {
         using var panel = AvaloniaPanel.Create(() => new Border { Background = Brushes.Black }, 8, 8);
@@ -280,10 +378,11 @@ public sealed class PanelHostRenderingTests
 internal sealed class RenderCountControl : Control
 {
     public int RenderCount { get; private set; }
+    public IBrush Brush { get; set; } = Brushes.Black;
 
     public override void Render(DrawingContext context)
     {
         RenderCount++;
-        context.FillRectangle(Brushes.Black, new Rect(Bounds.Size));
+        context.FillRectangle(Brush, new Rect(Bounds.Size));
     }
 }
