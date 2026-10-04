@@ -114,6 +114,13 @@ public sealed class Plugin : FilterBase
 
     private void OnLogoff(object? sender, EventArgs e)
     {
+        // Let go of anything Avalonia still holds, or a pointer captured mid-click would keep
+        // sending every later click to that one slot.
+        Guard(() =>
+        {
+            _captured?.Panel.PointerUp(-1, -1);
+            _hovered?.Panel.PointerLeave();
+        });
         _inGame = false;
         _nativeBarBounds = null;
         _hovered = null;
@@ -131,7 +138,7 @@ public sealed class Plugin : FilterBase
 
         var slots = new[]
         {
-            new IndicatorSlot("Move", 0x060074C9, BeginBarDrag),
+            new IndicatorSlot("Move", 0x060074C9, BeginBarDrag, actOnPress: true),
             new IndicatorSlot("Link status", 0x06007498, () => NativeUi.ToggleRootElement(NativeUi.LinkStatus)),
             new IndicatorSlot("Positive effects", 0x0600749C, () => NativeUi.ToggleRootElement(NativeUi.PositiveEffects)),
             new IndicatorSlot("Negative effects", 0x0600749F, () => NativeUi.ToggleRootElement(NativeUi.NegativeEffects)),
@@ -139,9 +146,7 @@ public sealed class Plugin : FilterBase
             new IndicatorSlot("Character info", 0x060074A2, () => NativeUi.ToggleRootElement(NativeUi.CharacterInfo)),
             new IndicatorSlot("Mini-game", 0x060074A6, () => NativeUi.ToggleRootElement(NativeUi.MiniGame)),
             new IndicatorSlot(BreakoutSlot, 0x06004D20, ToggleBreakout, "B"),
-            // UIElementManager::DoVisibilityToggleAction(ClientAction.LOGOUT), which Chorizite uses, did
-            // nothing in game, so log out the way /logout does, through Decal.
-            new IndicatorSlot("Log out", 0x060074B1, () => CoreManager.Current.Actions.Logout())
+            new IndicatorSlot("Log out", 0x060074B1, NativeUi.RequestLogOut)
         };
         var size = IndicatorBar.MeasureFor(slots.Length);
         var barPanel = AvaloniaPanel.Create(() => _bar = new IndicatorBar(slots, _portal.ReadImage), size.Width, size.Height);

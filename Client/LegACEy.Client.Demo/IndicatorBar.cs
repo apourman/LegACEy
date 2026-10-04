@@ -14,12 +14,13 @@ namespace LegACEy.Client.Demo;
 /// <summary>One button on the indicator bar: its game art, and what it does when clicked.</summary>
 public sealed class IndicatorSlot
 {
-    public IndicatorSlot(string name, uint icon, Action clicked, string? label = null)
+    public IndicatorSlot(string name, uint icon, Action clicked, string? label = null, bool actOnPress = false)
     {
         Name = name;
         Icon = icon;
         Clicked = clicked;
         Label = label;
+        ActOnPress = actOnPress;
     }
 
     public string Name { get; }
@@ -31,6 +32,12 @@ public sealed class IndicatorSlot
     public string? Label { get; }
 
     public Action Clicked { get; }
+
+    /// <summary>
+    /// Run <see cref="Clicked"/> as soon as the button goes down, for a drag handle. Other slots
+    /// act like buttons: on release, and only if the pointer is still over the slot.
+    /// </summary>
+    public bool ActOnPress { get; }
 }
 
 /// <summary>
@@ -102,7 +109,15 @@ public sealed class IndicatorBar : Border
         panel.PointerPressed += (_, e) =>
         {
             e.Handled = true;
-            slot.Clicked();
+            if (slot.ActOnPress)
+                slot.Clicked();
+        };
+        panel.PointerReleased += (_, e) =>
+        {
+            e.Handled = true;
+            var point = e.GetPosition(panel);
+            if (!slot.ActOnPress && e.InitialPressMouseButton == MouseButton.Left && new Rect(panel.Bounds.Size).Contains(point))
+                slot.Clicked();
         };
         return panel;
     }

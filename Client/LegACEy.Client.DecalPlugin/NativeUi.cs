@@ -35,6 +35,9 @@ internal static class NativeUi
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void SetVisibleFn(IntPtr element, byte visible);
 
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate byte SendNoticeEndCharacterSessionFn(int confirm);
+
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void MoveToFn(IntPtr element, int x, int y);
 
@@ -55,6 +58,7 @@ internal static class NativeUi
     private static readonly SetVisibleFn SetVisibleNative = Function<SetVisibleFn>(0x00462390);
     private static readonly GetCurrentPositionFn GetCurrentPosition = Function<GetCurrentPositionFn>(0x00460180);
     private static readonly MoveToFn MoveToNative = Function<MoveToFn>(0x004634C0);
+    private static readonly SendNoticeEndCharacterSessionFn SendNoticeEndCharacterSession = Function<SendNoticeEndCharacterSessionFn>(0x00479F40);
 
     /// <summary>The client's UI element with this id, or zero if the UI or the element doesn't exist.</summary>
     public static IntPtr GetElement(uint id)
@@ -84,6 +88,13 @@ internal static class NativeUi
         if (element != IntPtr.Zero)
             SetVisible(element, !IsVisible(element));
     }
+
+    /// <summary>
+    /// Ask to log out the way the retail bar's X button does: gmFloatyIndicatorsUI handles a click
+    /// on element 0x100000FA by calling CM_UI::SendNotice_EndCharacterSession(1), and the game-play
+    /// UI answers that notice with the retail log out confirmation dialog.
+    /// </summary>
+    public static void RequestLogOut() => SendNoticeEndCharacterSession(1);
 
     private static T Function<T>(int address) where T : Delegate =>
         (T)Marshal.GetDelegateForFunctionPointer(new IntPtr(address), typeof(T));

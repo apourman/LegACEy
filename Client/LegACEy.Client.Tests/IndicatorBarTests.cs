@@ -35,6 +35,50 @@ public sealed class IndicatorBarTests
     });
 
     [Fact]
+    public void A_slot_acts_on_release_and_not_when_the_pointer_is_released_elsewhere() => RenderThread.Run(() =>
+    {
+        using var panel = CreateBar(out var clicks, out _);
+        panel.Tick();
+
+        panel.PointerDown(SlotCentre(1), 12);
+        Assert.Empty(clicks);
+        panel.PointerUp(SlotCentre(0), 12);
+
+        Assert.Empty(clicks);
+    });
+
+    [Fact]
+    public void Releasing_off_the_panel_frees_a_held_slot_so_later_clicks_reach_other_slots() => RenderThread.Run(() =>
+    {
+        using var panel = CreateBar(out var clicks, out _);
+        panel.Tick();
+
+        // A press with no matching release, as when the click logged the character out.
+        panel.PointerDown(SlotCentre(1), 12);
+        panel.PointerUp(-1, -1);
+
+        panel.PointerDown(SlotCentre(0), 12);
+        panel.PointerUp(SlotCentre(0), 12);
+
+        Assert.Equal(new[] { "Red" }, clicks);
+    });
+
+    [Fact]
+    public void A_press_slot_acts_immediately() => RenderThread.Run(() =>
+    {
+        var clicks = new List<string>();
+        var slots = new[] { new IndicatorSlot("Handle", RedIcon, () => clicks.Add("Handle"), actOnPress: true) };
+        var size = IndicatorBar.MeasureFor(slots.Length);
+        using var panel = AvaloniaPanel.Create(() => new IndicatorBar(slots, FakeArt), size.Width, size.Height);
+        panel.Tick();
+
+        panel.PointerDown(SlotCentre(0), 12);
+        Assert.Equal(new[] { "Handle" }, clicks);
+        panel.PointerUp(SlotCentre(0), 12);
+        Assert.Equal(new[] { "Handle" }, clicks);
+    });
+
+    [Fact]
     public void Hovering_a_slot_highlights_it_until_the_pointer_leaves() => RenderThread.Run(() =>
     {
         using var panel = CreateBar(out _, out _);
