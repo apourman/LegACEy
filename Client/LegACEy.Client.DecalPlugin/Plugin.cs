@@ -135,7 +135,7 @@ public sealed class Plugin : FilterBase
         CoreManager.Current.WindowMessage += OnWindowMessage;
     }
 
-    /// <summary>Build the bar and input test panel the first time a character is in the world.</summary>
+    /// <summary>Enable character-specific windows once Decal has finished loading character identity.</summary>
     private void OnLoginComplete(object? sender, EventArgs e)
     {
         if (_failed || !NativeUi.Ready)
@@ -145,9 +145,8 @@ public sealed class Plugin : FilterBase
         {
             if (_barSurface == null)
                 CreateUi();
-            else if (_windows == null)
+            if (_windows == null)
                 CreateWindowManager();
-            _barTakeover = RetailTakeoverLifecycle.StartSession(_barTakeover, new NativeBarPort(NativeUi.Indicators), new SurfaceTakeoverPort(_barSurface!));
             _inGame = true;
         });
     }
@@ -157,13 +156,13 @@ public sealed class Plugin : FilterBase
         Guard(() => ApplyReset(_inputRouter.Route(new NativeInputMessage(InputRouterService.WmLogoff, IntPtr.Zero, IntPtr.Zero), GetInputSurfaces())));
         Guard(() => _hovered?.Panel.PointerLeave());
         _inGame = false;
-        RestoreNativeBar();
+        // Keep replacing retail roots through logout. RenderFrame hides any native
+        // re-show until the element disappears; only unload or failure gives it back.
         foreach (var window in _windows?.ZOrder.ToArray() ?? Array.Empty<ManagedWindow>())
             _windows!.Close(window.Id);
         _windows = null;
         _hovered = null;
         _dragOffset = null;
-        if (_barSurface != null) _barSurface.Visible = false;
         if (_inputTestSurface != null) _inputTestSurface.Visible = false;
         if (_themeGallerySurface != null) _themeGallerySurface.Visible = false;
         if (_breakoutSurface != null) _breakoutSurface.Visible = false;
@@ -175,7 +174,6 @@ public sealed class Plugin : FilterBase
     private void CreateUi()
     {
         _device = GameDevice.Open();
-        CreateWindowManager();
         var acclient = Process.GetCurrentProcess().MainModule!.FileName;
         _portal = new PortalDat(IOPath.Combine(IOPath.GetDirectoryName(acclient)!, "client_portal.dat"));
         GameArtImageExtension.CurrentSource = _portal;
@@ -347,23 +345,29 @@ public sealed class Plugin : FilterBase
     }
 
     /// <summary>
-    /// Each frame in game: take over the retail bar if the client is showing it, then draw our
-    /// surfaces.
+    /// Replace the native bar on its first visible frame, including world entry and logout.
     /// </summary>
     private void OnRenderFrame(object? sender, EventArgs e)
     {
-        if (_barTakeover != null && (_failed || !_inGame))
+        if (_barTakeover != null && _failed)
             RestoreNativeBar();
-        if (_failed || !_inGame || _barSurface == null)
+        if (_failed || !NativeUi.Ready)
             return;
 
         Guard(() =>
         {
+            if (_barSurface == null)
+            {
+                var element = NativeUi.GetElement(NativeUi.Indicators);
+                if (element == IntPtr.Zero || !NativeUi.IsVisible(element))
+                    return;
+                CreateUi();
+            }
             TakeOverNativeBar();
-            _barSurface.Render();
+            _barSurface!.Render();
         });
 
-        if (_failed || !_windowsEnabled)
+        if (_failed || !_inGame || !_windowsEnabled)
             return;
 
         GuardWindows(() =>
@@ -696,6 +700,7 @@ public sealed class Plugin : FilterBase
         public NativeBarPort(uint rootId) => _rootId = rootId;
         private IntPtr Element => NativeUi.GetElement(_rootId);
         public bool Exists => Element != IntPtr.Zero;
+        public IntPtr ElementIdentity => Element;
         public bool IsVisible { get { var element = Element; return element != IntPtr.Zero && NativeUi.IsVisible(element); } }
         public Rectangle GetBounds() { var element = Element; if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared."); return NativeUi.GetBounds(element); }
         public void SetVisible(bool visible) { var element = Element; if (element != IntPtr.Zero) NativeUi.SetVisible(element, visible); }

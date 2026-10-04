@@ -7,6 +7,7 @@ namespace LegACEy.Client.DecalPlugin;
 internal interface IRetailTakeoverPort
 {
     bool Exists { get; }
+    IntPtr ElementIdentity { get; }
     bool IsVisible { get; }
     Rectangle GetBounds();
     void SetVisible(bool visible);
@@ -31,6 +32,7 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
     private bool _captured;
     private bool _originalVisible;
     private bool _disposed;
+    private IntPtr _elementIdentity;
     private Size? _viewport;
     private Point _lastNativeLocation;
     private Point? _resizeLocation;
@@ -51,29 +53,42 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
     {
         get
         {
-            try { return !_disposed && _captured && _native.Exists && !_native.IsUiLocked; }
+            try { return !_disposed && _captured && _native.Exists && _native.ElementIdentity == _elementIdentity && !_native.IsUiLocked; }
             catch { Fail(); throw; }
         }
     }
 
-    /// <summary>Returns true when a viewport change requires cancelling the active drag.</summary>
+    /// <summary>Returns true when a viewport or native instance change requires cancelling the active drag.</summary>
     public bool Tick(bool isDragging = false, Size? viewport = null)
     {
         if (_disposed) return false;
-        // Device transitions can briefly supply an empty viewport; retain the previous layout.
-        if (viewport is Size empty && (empty.Width <= 0 || empty.Height <= 0)) return false;
-        var viewportChanged = viewport.HasValue && _viewport.HasValue && viewport != _viewport;
-        if (viewportChanged && _captured)
-            _resizeLocation = _lastNativeLocation;
-        if (viewport.HasValue)
-            _viewport = viewport;
         try
         {
+            var identity = _native.ElementIdentity;
+            var instanceChanged = identity != IntPtr.Zero && identity != _elementIdentity;
+            if (instanceChanged)
+            {
+                // Native recreates roots across characters; do not transfer capture or resize
+                // recovery to a new instance, even if no missing-element frame was observed.
+                _elementIdentity = identity;
+                _captured = false;
+                _resizeLocation = null;
+                _viewport = null;
+                _surface.Visible = false;
+                isDragging = false;
+            }
+            // Device transitions can briefly supply an empty viewport; retain the previous layout.
+            if (viewport is Size empty && (empty.Width <= 0 || empty.Height <= 0)) return instanceChanged;
+            var viewportChanged = viewport.HasValue && _viewport.HasValue && viewport != _viewport;
+            if (viewportChanged && _captured)
+                _resizeLocation = _lastNativeLocation;
+            if (viewport.HasValue)
+                _viewport = viewport;
             if (!_native.Exists)
             {
                 _captured = false;
                 _surface.Visible = false;
-                return viewportChanged;
+                return viewportChanged || isDragging;
             }
             if (_native.IsVisible)
             {
@@ -84,7 +99,7 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
             if (!_captured)
             {
                 _surface.Visible = false;
-                return viewportChanged;
+                return viewportChanged || instanceChanged;
             }
             var bounds = _native.GetBounds();
             if (_resizeLocation is Point saved && _viewport is Size screen)
@@ -105,7 +120,7 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
             if (!isDragging)
                 _surface.SetLocation(bounds.Location);
             _surface.Visible = true;
-            return viewportChanged;
+            return viewportChanged || instanceChanged;
         }
         catch
         {
@@ -159,7 +174,7 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
         try { _surface.Visible = false; }
         finally
         {
-            if (_native.Exists)
+            if (_native.Exists && _native.ElementIdentity == _elementIdentity)
                 _native.SetVisible(_originalVisible);
             _captured = false;
         }
