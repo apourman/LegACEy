@@ -39,6 +39,15 @@ internal sealed class ScreenSurface : IDisposable
 
     public bool Visible { get; set; }
 
+    public string ProfileId { get; set; } = "surface";
+    public Action<string, double>? TimingObserver { get; set; }
+
+    private void ReportTiming(string stage, double milliseconds)
+    {
+        try { TimingObserver?.Invoke(stage, milliseconds); }
+        catch { /* Diagnostics must not affect rendering. */ }
+    }
+
     public double LastTickMilliseconds { get; private set; }
 
     public double LastUploadMilliseconds { get; private set; }
@@ -87,7 +96,13 @@ internal sealed class ScreenSurface : IDisposable
     {
         if (!Visible || _texture == null)
             return;
-        Draw(Panel.Frame.Width, Panel.Frame.Height);
+        var start = TimingObserver == null ? 0 : Stopwatch.GetTimestamp();
+        try { Draw(Panel.Frame.Width, Panel.Frame.Height); }
+        finally
+        {
+            if (TimingObserver != null)
+                ReportTiming("draw", (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency);
+        }
     }
 
     public void Dispose()
@@ -138,6 +153,7 @@ internal sealed class ScreenSurface : IDisposable
         {
             timer.Stop();
             LastUploadMilliseconds = timer.Elapsed.TotalMilliseconds;
+            ReportTiming("texture-upload", LastUploadMilliseconds);
         }
         _uploaded = true;
     }

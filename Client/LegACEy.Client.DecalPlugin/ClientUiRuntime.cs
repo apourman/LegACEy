@@ -79,6 +79,13 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private bool _failed;
     private bool _acThemeActive = true;
 
+    private readonly ScrollProfile _scrollProfile = new();
+    private ScrollProfileLog? _scrollProfileLog;
+    private bool _scrollProfiling;
+    private long _profileIntervalStart;
+    private long _previousProfileFrame;
+    private int _profileProcessId;
+
     public ClientUiRuntime() => _gameStatePoller = new GameStatePoller(_gameState, ReadGameState,
         error => Log($"Character stats temporarily unavailable; keeping UI active and retrying: {error.Message}"));
 
@@ -100,6 +107,9 @@ internal sealed class ClientUiRuntime : IClientUiHost
         _postUiDrawHook = null;
         RestoreNativeBar();
         TearDown();
+        SetScrollProfiling(false);
+        _scrollProfileLog?.Dispose();
+        _scrollProfileLog = null;
         AppDomain.CurrentDomain.AssemblyResolve -= ResolveFromPluginDirectory;
     }
 
@@ -207,7 +217,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
         };
         var size = IndicatorBar.MeasureFor(slots.Length);
         var barPanel = ObservePanel(AvaloniaPanel.Create(() => _bar = new IndicatorBar(slots, _portal.ReadImage), size.Width, size.Height));
-        _barSurface = new ScreenSurface(_device, barPanel);
+        _barSurface = ProfileSurface(new ScreenSurface(_device, barPanel), "indicators");
         _barRenderer = new RetailSurfaceRenderer(_barSurface.Prepare, _barSurface.DrawNow);
         _barTakeover = new RetailTakeoverLifecycle(new NativeBarPort(NativeUi.Indicators), new SurfaceTakeoverPort(_barSurface));
 
@@ -414,13 +424,88 @@ internal sealed class ClientUiRuntime : IClientUiHost
     /// </summary>
     private void OnRenderFrame(object? sender, EventArgs e)
     {
+        UpdateScrollProfiling();
         var timer = Stopwatch.StartNew();
         try { OnRenderFrameCore(sender, e); }
         finally
         {
-            timer.Stop();
+            var loggingStart = Stopwatch.GetTimestamp();
             RecordPerformanceMeasurement(timer.Elapsed);
+            if (_scrollProfiling)
+                _scrollProfile.Record("runtime", "periodic-log", ElapsedMilliseconds(loggingStart));
+            timer.Stop();
+            if (_scrollProfiling)
+            {
+                _scrollProfile.Record("runtime", "render-callback", timer.Elapsed.TotalMilliseconds);
+                FlushScrollProfile();
+            }
         }
+    }
+
+    private static double ElapsedMilliseconds(long start) =>
+        (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+
+    private ScreenSurface ProfileSurface(ScreenSurface surface, string id)
+    {
+        surface.ProfileId = id;
+        ConfigureScrollProfiling(surface);
+        return surface;
+    }
+
+    private void ConfigureScrollProfiling(ScreenSurface surface)
+    {
+        Action<string, double>? observer = _scrollProfiling
+            ? (stage, elapsed) => _scrollProfile.Record(surface.ProfileId, stage, elapsed)
+            : null;
+        surface.TimingObserver = observer;
+        surface.Panel.TimingObserver = observer;
+    }
+
+    private void UpdateScrollProfiling()
+    {
+        SetScrollProfiling(!_failed && _inGame && _featureSurfaces.ContainsKey("performance-list"));
+        if (!_scrollProfiling) return;
+        var now = Stopwatch.GetTimestamp();
+        if (_previousProfileFrame != 0)
+            _scrollProfile.Record("runtime", "render-callback-gap", (now - _previousProfileFrame) * 1000.0 / Stopwatch.Frequency);
+        _previousProfileFrame = now;
+    }
+
+    private void SetScrollProfiling(bool enabled)
+    {
+        if (_scrollProfiling == enabled) return;
+        if (!enabled) FlushScrollProfile(force: true);
+        _scrollProfiling = enabled;
+        if (enabled)
+        {
+            using var process = Process.GetCurrentProcess();
+            _profileProcessId = process.Id;
+            _scrollProfileLog ??= new ScrollProfileLog(IOPath.Combine(PluginDirectory,
+                "scroll-profile-" + process.Id + "-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + ".log"),
+                error => Log(ScrollProfile.Prefix + " diagnostic writer failed: " + error.GetType().Name));
+            _profileIntervalStart = Stopwatch.GetTimestamp();
+        }
+        _previousProfileFrame = 0;
+        _scrollProfileLog?.Enqueue(ScrollProfile.Prefix + " utc=" + DateTime.UtcNow.ToString("O")
+            + " pid=" + _profileProcessId + " capture=" + (enabled ? "start" : "stop")
+            + " viewport=" + (_device == null ? "unknown" : _device.Viewport.Width + "x" + _device.Viewport.Height)
+            + " assembly=" + typeof(ClientUiRuntime).Assembly.GetName().Version + Environment.NewLine);
+        if (_barSurface != null) ConfigureScrollProfiling(_barSurface);
+        foreach (var surface in _featureSurfaces.Values) ConfigureScrollProfiling(surface);
+        foreach (var takeover in _featureTakeovers)
+            if (takeover.Surface != null) ConfigureScrollProfiling(takeover.Surface);
+    }
+
+    private void FlushScrollProfile(bool force = false)
+    {
+        if (!_scrollProfiling) return;
+        var now = Stopwatch.GetTimestamp();
+        var seconds = (now - _profileIntervalStart) / (double)Stopwatch.Frequency;
+        if (!force && seconds < 1) return;
+        var start = Stopwatch.GetTimestamp();
+        _scrollProfileLog?.Enqueue(_scrollProfile.Snapshot(_profileProcessId, seconds, DateTime.UtcNow));
+        _profileIntervalStart = now;
+        if (!force) _scrollProfile.Record("runtime", "diagnostic-flush", ElapsedMilliseconds(start));
     }
 
     private void OnRenderFrameCore(object? sender, EventArgs e)
@@ -548,7 +633,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
         if (_featureSurfaces.ContainsKey(definition.Id))
             throw new InvalidOperationException($"A feature window named '{definition.Id}' is already registered.");
         var panel = ObservePanel(AvaloniaPanel.Create(() => content, definition.Width, definition.Height));
-        var surface = new ScreenSurface(_device, panel);
+        var surface = ProfileSurface(new ScreenSurface(_device, panel), definition.Id);
         var opened = false;
         try
         {
@@ -584,7 +669,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
             if (content != null)
             {
                 var panel = ObservePanel(AvaloniaPanel.Create(() => content, 280, 120));
-                surface = new ScreenSurface(_device, panel);
+                surface = ProfileSurface(new ScreenSurface(_device, panel), "root-" + rootElementId.ToString("X8"));
                 panel.ApplyTheme(_clientUi?.Theme ?? CurrentTheme());
             }
             // Give the inspector exclusive ownership of the bar's retail root.
@@ -658,6 +743,18 @@ internal sealed class ClientUiRuntime : IClientUiHost
 
     /// <summary>Translate Decal's raw messages into router decisions and Avalonia.Headless input.</summary>
     private void OnWindowMessage(object? sender, WindowMessageEventArgs e)
+    {
+        var active = _scrollProfiling;
+        var start = active ? Stopwatch.GetTimestamp() : 0;
+        try { OnWindowMessageCore(sender, e); }
+        finally
+        {
+            if (active)
+                _scrollProfile.Record("runtime", e.Msg == InputRouterService.WmMouseWheel ? "wheel-callback" : "window-message", ElapsedMilliseconds(start));
+        }
+    }
+
+    private void OnWindowMessageCore(object? sender, WindowMessageEventArgs e)
     {
         if (_failed || !_inGame || _barSurface == null)
             return;
