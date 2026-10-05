@@ -1,0 +1,60 @@
+name: Release LegACEy components
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    concurrency:
+      group: legacey-release-please
+      cancel-in-progress: false
+    if: github.repository == 'apourman/LegACEy' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      sha: ${{ steps.release.outputs.sha }}
+      plugin_release_created: ${{ steps.release.outputs['decal-plugin--release_created'] }}
+      plugin_tag: ${{ steps.release.outputs['decal-plugin--tag_name'] }}
+      plugin_sha: ${{ steps.release.outputs['decal-plugin--sha'] }}
+      plugin_version: ${{ steps.release.outputs['decal-plugin--version'] }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          target-branch: master
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  release-plugin:
+    needs: release-please
+    if: github.repository == 'apourman/LegACEy' && github.ref == 'refs/heads/master' && needs.release-please.outputs.plugin_release_created == 'true'
+    uses: ./.github/workflows/release-decal-plugin.yml
+    permissions:
+      contents: write
+    with:
+      release_tag: ${{ needs.release-please.outputs.plugin_tag }}
+      release_sha: ${{ needs.release-please.outputs.plugin_sha }}
+      release_version: ${{ needs.release-please.outputs.plugin_version }}
+
+  release-server:
+    needs: release-please
+    if: github.repository == 'apourman/LegACEy' && github.ref == 'refs/heads/master' && needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/deploy-main.yml
+    permissions:
+      actions: read
+      contents: write
+    secrets: inherit
+    with:
+      release_tag: ${{ needs.release-please.outputs.tag_name }}
+      release_sha: ${{ needs.release-please.outputs.sha }}

@@ -61,18 +61,104 @@ inspect the UI outside the game, and the [Windows hook check](LegACEy.Client.Hoo
 for the native hook regression exercise. Automated checks do not replace
 in-game validation.
 
-## Release boundary
+## Releases
 
-The agreed release policy is one independent plugin release for each push or
-merge into `master` that changes any file in `decal-plugin/`, including tests
-and documentation. Work on other branches produces no official plugin release.
-Changes outside this directory do not trigger a plugin release, and plugin-only
-changes do not release or deploy the server.
+Release-please manages the server and plugin as separate packages, with separate
+release PRs, versions, tags, and changelogs. Its shared configuration is in
+[`release-please-config.json`](../release-please-config.json).
 
-Official publishing is restricted to `apourman/LegACEy`. Release and deployment
-jobs must check the repository identity so they are skipped in forks, even if
-the fork owner enables GitHub Actions or manually starts a workflow.
+1. Merge plugin work into `master`. Release-please creates or updates the plugin
+   release PR with its next version and [CHANGELOG.md](CHANGELOG.md).
+2. Merge that plugin release PR when ready to publish. It commits the new
+   [VERSION](VERSION) and changelog, then release-please creates a draft release
+   tagged `decal-plugin-v<version>`.
+3. The [plugin publishing workflow](../.github/workflows/release-decal-plugin.yml)
+   builds and tests that exact release commit, attaches the DLL and runtime ZIP,
+   then publishes the draft.
 
-Plugin releases will use `decal-plugin-v<version>` tags and publish the built
-plugin DLL. This policy describes the planned automation; the repository's
-existing release workflow currently builds and deploys the ACE server only.
+Work on other branches creates no official release. Only changes under
+`decal-plugin/` contribute to the plugin release PR. The root/server package
+excludes `Client/`, `decal-plugin/`, and `.github/`. Changes confined to those directories
+cannot generate a server release PR. Release-please's generated plugin release
+PR uses a `chore` title, which does not generate server release notes even though
+it also updates the shared root manifest. The server package still covers other
+repository paths: a qualifying `fix` or `feat` change to a root file, such as the
+root README or release configuration, can update the server release PR. Use
+`docs`, `ci`, or `chore` titles for documentation or release configuration work.
+Plugin workflow changes under `.github/` do not independently bump the plugin;
+release-please tracks that package only under `decal-plugin/`. A change affecting both
+products can update both release PRs; each release PR is merged independently.
+
+Use conventional commit messages for plugin changes, such as `fix: correct UI
+input`, `feat: add a window`, `docs: update plugin instructions`, or `test: cover
+scrolling`. The plugin includes documentation, tests, build, CI, refactoring,
+maintenance, style, and revert commits in its changelog rather than hiding them.
+Unstructured commit messages are not release-please release entries; use a
+conventional title when squashing a PR. Versions start at `0.1.0` and advance
+by one patch version per plugin release PR, even when several changes accumulate.
+
+Official release jobs run only in `apourman/LegACEy` on `master` and are skipped
+in forks. The [component release workflow](../.github/workflows/release-components.yml)
+runs release-please once and routes its package-specific outputs to the plugin
+publisher and the existing ACE deployment workflow. Only a server release
+enters the `ace-production` queue; plugin work cannot occupy that queue.
+Plugin publishing uses only the `decal-plugin` outputs; server publishing uses
+only the root package outputs.
+The plugin's publishing job leaves release-please's release notes intact and
+keeps the server as GitHub's repository-wide latest release.
+
+The Windows build extracts Decal 2.9.8.3 and Managed DirectX 1.1 references from
+official downloads, checks their pinned SHA-256 hashes, and builds the x86
+plugin. No game installation or DAT files are needed for the build. Automated
+plugin tests, asset publishing checks, and the Windows native hook check must
+pass before publishing.
+
+Each release contains:
+
+- `LegACEy.Client.DecalPlugin.dll`, for an existing installation with matching
+  companion libraries.
+- `LegACEy-decal-plugin-v<version>-windows-x86.zip`, containing the main DLL,
+  companion managed DLLs, x86 rendering libraries, and license notices.
+- `SHA256SUMS.txt`, covering the DLL and ZIP.
+
+For a fresh installation, extract the ZIP and register its
+`LegACEy.Client.DecalPlugin.dll` in Decal. Keep the companion files in place.
+Players still need Decal, .NET Framework 4.8, and Managed DirectX installed;
+those external references are not bundled. Updating companion libraries
+requires the ZIP rather than replacing just the main DLL.
+
+A failed build or upload leaves the release as a draft. Use **Re-run failed jobs**
+on the original workflow run to retry the plugin build/publish jobs with the
+original release-please outputs. The plugin has no manual dispatch recovery;
+its saved build artifact is retained for seven days. Retry failed publishing
+while that artifact is available. An expired artifact needs a separate recovery
+procedure; **Re-run all jobs** can lose the original release-please outputs and is not a
+reliable publishing retry. Re-running a completed publishing job leaves
+its published assets unchanged. There is no custom version allocator or
+post-release changelog PR: release-please updates the changelog before publishing.
+
+### Verify release isolation locally
+
+The offline regression check uses release-please 17.3.0, matching the pinned
+GitHub action. It simulates plugin-only, server-only, mixed, and merged release
+PR histories without making GitHub requests. It also checks the initial plugin
+version, patch increments, separate release PRs/tags, and each configured commit
+type. Install its dependency outside the checkout and run from the repository root:
+
+```sh
+validation_dir=$(mktemp -d)
+npm install --prefix "$validation_dir" --no-audit --no-fund release-please@17.3.0
+NODE_PATH="$validation_dir/node_modules" node decal-plugin/build/test_release_please.cjs
+```
+
+The server's build provenance and publishing verification checks run directly
+against its workflow scripts:
+
+```sh
+python3 -m unittest discover -s .github/tests -p 'test_*.py'
+python3 -m unittest discover -s decal-plugin/build -p 'test_*.py'
+```
+
+The server checks require Linux with Bash and jq, and also run in the server
+build job. They cover delayed releases, manual retries, commit/tag mismatches,
+corrupt archives, missing provenance, and failed build recovery attempts.
