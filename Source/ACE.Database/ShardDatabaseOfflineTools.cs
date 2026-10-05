@@ -327,6 +327,24 @@ namespace ACE.Database
                 return PurgeBiota(context, id, reason);
         }
 
+        /// <summary>
+        /// The GUIDs of items held in the Vault. Empty if the market tables aren't installed, since nothing can be in escrow then.
+        /// Any other failure is thrown, so the purge stops rather than deleting items it can't check.
+        /// </summary>
+        private static HashSet<uint> GetVaultItemGuids(ShardDbContext context)
+        {
+            try
+            {
+                return context.MarketVaultItems.AsNoTracking().Select(r => r.ItemGuid).ToHashSet();
+            }
+            catch (MySqlConnector.MySqlException ex) when (ex.ErrorCode == MySqlConnector.MySqlErrorCode.NoSuchTable)
+            {
+                log.Warn($"[DATABASE][PURGE] market_vault_item not found, so no items are in escrow: {ex.Message}");
+
+                return new HashSet<uint>();
+            }
+        }
+
         public static void PurgeOrphanedBiotasInParallel(ShardDbContext context, out int numberOfBiotasPurged)
         {
             int totalNumberOfBiotasPurged = 0;
@@ -508,12 +526,18 @@ namespace ACE.Database
             {
                 var locationPointers = context.BiotaPropertiesPosition.AsNoTracking().Where(i => i.PositionType == (ushort)PositionType.Location).Select(i => i.ObjectId).ToHashSet();
 
+                var vaultItemGuids = GetVaultItemGuids(context);
+
                 var results = new List<uint>();
 
                 foreach (var kvp in biotas)
                 {
                     // exclude allegiances
                     if (kvp.Value == WeenieType.Allegiance)
+                        continue;
+
+                    // exclude items in escrow: no container, wielder or location is how the Vault holds them
+                    if (vaultItemGuids.Contains(kvp.Key))
                         continue;
 
                     // exclude objects that have either a container, wielder, or location

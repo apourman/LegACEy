@@ -1,0 +1,48 @@
+services:
+  market-api:
+    build:
+      context: ../Source
+      dockerfile: ../docker/market-api/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: E2E
+      Market__DatabaseUsername: ${MARKET_E2E_API_DB_USER:?E2E API database login must be provisioned by scripts/market/e2e.sh}
+      Market__DatabasePassword: ${MARKET_E2E_API_DB_PASSWORD:?E2E API database login must be provisioned by scripts/market/e2e.sh}
+      Market__ServiceKey: ${MARKET_SERVICE_KEY:?MARKET_SERVICE_KEY must be set in the docker env file}
+    networks:
+      - database
+      - app
+    volumes:
+      - ./market-api/appsettings.E2E.json:/app/appsettings.E2E.json:ro
+      - ../Source/ACE.Server/Config.js.docker:/ace/Config/Config.js:ro
+      - ${ACE_HOST_DAT_DIRECTORY:-${HOME}/ace_dats/retail}:/ace/Dats:ro
+
+  market-bff:
+    build:
+      context: ..
+      dockerfile: docker/market-web/Dockerfile.production
+    depends_on:
+      market-api:
+        condition: service_healthy
+    environment:
+      PORT: 5174
+      HOST: 0.0.0.0
+      MARKET_API_URL: http://market-api:8080
+      MARKET_SERVICE_KEY: ${MARKET_SERVICE_KEY:?MARKET_SERVICE_KEY must be set in the docker env file}
+      MARKET_COOKIE_SECRET: ${MARKET_COOKIE_SECRET:?MARKET_COOKIE_SECRET must be set in the docker env file}
+      # as in docker-compose.local.yml: no reverse proxy, so no trusted proxy. The port is published on the host's 127.0.0.1 only, and
+      # Docker delivers those connections from the network's gateway, which therefore counts as 127.0.0.1.
+      MARKET_TRUSTED_PROXY: ""
+      MARKET_GATEWAY_IS_LOOPBACK: "true"
+    networks:
+      - app
+      - edge
+    ports:
+      - "127.0.0.1:5174:5174"
+
+networks:
+  app:
+    internal: true
+  edge:
+  database:
+    external: true
+    name: docker_default

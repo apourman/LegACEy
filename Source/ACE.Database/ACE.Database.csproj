@@ -23,6 +23,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- the escrow tests drive the save-queue jobs through SerializedShardDatabase, whose constructor is internal -->
+    <InternalsVisibleTo Include="ACE.Database.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\ACE.Entity\ACE.Entity.csproj" />
   </ItemGroup>
 
@@ -36,5 +41,10 @@
     <ItemGroup>
       <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-4f7c-pmjv-c25w" />
     </ItemGroup>
+
+  <ItemGroup>
+    <!-- the development marker's one SQL source, shared with scripts/market/bootstrap.sh (absent from the Market API image build, which never marks) -->
+    <EmbeddedResource Include="..\..\scripts\market\dev-marker.sql" LogicalName="ACE.Database.Market.dev-marker.sql" Condition="Exists('..\..\scripts\market\dev-marker.sql')" />
+  </ItemGroup>
 
 </Project>

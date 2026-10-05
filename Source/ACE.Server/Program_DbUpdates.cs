@@ -290,7 +290,7 @@ namespace ACE.Server
                         database = worldDB;
                         break;
                 }
-                var sqlConnect = new MySqlConnector.MySqlConnection($"server={host};port={port};user={username};password={password};database={database};DefaultCommandTimeout=120;SslMode=None;AllowPublicKeyRetrieval=true");
+                var sqlConnect = new MySqlConnector.MySqlConnection($"server={host};port={port};user={username};password={password};database={database};DefaultCommandTimeout=120;SslMode=None;AllowPublicKeyRetrieval=true;AllowUserVariables=true");
                 sqlDBFile = sqlDBFile.Replace("ace_auth", authDB);
                 sqlDBFile = sqlDBFile.Replace("ace_shard", shardDB);
                 sqlDBFile = sqlDBFile.Replace("ace_world", worldDB);

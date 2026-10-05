@@ -14,7 +14,7 @@ namespace ACE.Server.Network.GameAction.Actions
         {
             //Console.WriteLine($"{session.Player.Name}.MoveToState");
 
-            if (session.Player.PKLogout) return;
+            if (session.Player.PKLogout || session.Player.IsVaultChannelling) return;
 
             var moveToState = new MoveToState(session.Player, message.Payload);
             session.Player.CurrentMoveToState = moveToState;

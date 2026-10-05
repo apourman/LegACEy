@@ -86,6 +86,13 @@ namespace ACE.Server.WorldObjects
                 return;
             }
 
+            if (IsVaultChannelling)
+            {
+                SendWeenieError(WeenieError.YoureTooBusy);
+                OnAttackDone();
+                return;
+            }
+
             // verify input
             powerLevel = Math.Clamp(powerLevel, 0.0f, 1.0f);
 

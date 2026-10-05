@@ -4,6 +4,8 @@ services:
   ace-db:
     image: mysql:8.0
     container_name: ace-db
+    # the market's append-only ledger triggers are created by the shard update runner's non-SUPER user while binary logging is on
+    command: --log-bin-trust-function-creators=1
     env_file:
       - docker.env
     volumes:

@@ -7,6 +7,9 @@ namespace ACE.Server.Network.GameAction.Actions
         [GameAction(GameActionType.Jump)]
         public static void Handle(ClientMessage message, Session session)
         {
+            // frozen while channelling to the Vault
+            if (session.Player.IsVaultChannelling) return;
+
             var jumpPack = new JumpPack(message.Payload);
 
             var objectGuid = message.Payload.ReadUInt32();

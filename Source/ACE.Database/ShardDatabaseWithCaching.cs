@@ -194,6 +194,30 @@ namespace ACE.Database
             return false;
         }
 
+        /// <summary>
+        /// Removes the biota's cache entry and disposes the context it holds, so no later save can write the old copy back.
+        /// Only call this from a job on the serialized shard save queue: saves run there, so none can be using the context.
+        /// </summary>
+        public override bool EvictBiota(uint id)
+        {
+            CacheObject<Biota> cachedBiota;
+            bool contextShared;
+
+            lock (biotaCacheMutex)
+            {
+                if (!biotaCache.Remove(id, out cachedBiota))
+                    return false;
+
+                // GetBiota(context, id) can cache several biotas under a caller's context; leave that context to its owner
+                contextShared = biotaCache.Values.Any(r => r.Context == cachedBiota.Context);
+            }
+
+            if (!contextShared)
+                cachedBiota.Context?.Dispose();
+
+            return true;
+        }
+
         public override bool RemoveBiota(uint id)
         {
             lock (biotaCacheMutex)

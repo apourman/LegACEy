@@ -13,7 +13,9 @@ From the repository root:
 ```
 
 The host runner expects compatible client DAT files in `~/ace_dats/retail`; override that with
-`ACE_DAT_FILES_DIRECTORY`. Runtime configuration and logs are kept under
+`ACE_HOST_DAT_DIRECTORY` (or `ACE_DAT_FILES_DIRECTORY` set in your shell; the one in `docker.env` is the game
+container's path and is ignored). `ACE_HOST_AUTH_DATABASE` and `ACE_HOST_SHARD_DATABASE` replace the `ace_auth` and
+`ace_shard` names; the local market stack uses them (see `scripts/market/README.md`). Runtime configuration and logs are kept under
 `~/.local/state/legacey` and mods under `~/.local/share/legacey`. Override those locations with
 `ACE_HOST_RUN_DIR`, `ACE_HOST_LOG_DIR`, and `ACE_MODS_DIRECTORY`.
 
