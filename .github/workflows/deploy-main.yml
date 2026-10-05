@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   release-please:
-    if: github.event_name == 'push'
+    if: github.repository == 'apourman/LegACEy' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -41,7 +41,7 @@ jobs:
 
   build:
     needs: release-please
-    if: github.event_name == 'push' && needs.release-please.outputs.release_created == 'true'
+    if: github.repository == 'apourman/LegACEy' && github.event_name == 'push' && needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -82,7 +82,7 @@ jobs:
 
   publish-release:
     if: >-
-      always() && (
+      always() && github.repository == 'apourman/LegACEy' && (
         (github.event_name == 'push' && needs.release-please.outputs.release_created == 'true' && needs.build.result == 'success') ||
         (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master' && inputs.release_tag != '' && inputs.source_run_id != '')
       )
@@ -152,7 +152,7 @@ jobs:
           gh release edit "$RELEASE_TAG" --draft=false --repo "$REPOSITORY"
 
   deploy:
-    if: always() && needs.publish-release.result == 'success' && (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/master')
+    if: always() && github.repository == 'apourman/LegACEy' && needs.publish-release.result == 'success' && (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/master')
     needs: [release-please, build, publish-release]
     runs-on: ubuntu-latest
     environment: production

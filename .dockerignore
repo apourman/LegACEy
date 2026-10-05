@@ -25,4 +25,4 @@ Dockerfile*
 **/*.zip
 
 # client solution (built separately, never part of the server image)
-Client/
+decal-plugin/
