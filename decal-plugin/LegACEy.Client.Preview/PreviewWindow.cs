@@ -31,6 +31,7 @@ internal sealed class PreviewWindow : Window
     private readonly FakeGameState _gameState = new();
     private readonly DispatcherTimer _dataTimer;
     private LiveGameDataPanel? _livePanel;
+    private VaultShellPanel? _vaultPanel;
 
     public PreviewWindow()
     {
@@ -102,7 +103,20 @@ internal sealed class PreviewWindow : Window
     private void ShowGalleryAndTestPanel()
     {
         _livePanel?.Dispose();
+        _vaultPanel?.Dispose();
         _workspace.Children.Clear();
+        _vaultPanel = new VaultShellPanel(_art);
+        var vaultChrome = new VaultShellWindow(_vaultPanel)
+        {
+            Width = VaultShellPanel.WindowWidth, Height = VaultShellPanel.WindowHeight
+        };
+        var vaultPanel = _vaultPanel;
+        vaultChrome.CloseRequested += (_, _) =>
+        {
+            _workspace.Children.Remove(vaultChrome);
+            vaultPanel.Dispose();
+        };
+        _workspace.Children.Add(vaultChrome);
         var gallery = new ThemeGalleryControl();
         gallery.ThemeSwitchRequested += (_, _) =>
         {
@@ -139,6 +153,8 @@ internal sealed class PreviewWindow : Window
         _dataTimer.Stop();
         _livePanel?.Dispose();
         _livePanel = null;
+        _vaultPanel?.Dispose();
+        _vaultPanel = null;
         _portal?.Dispose();
         _portal = null;
         GameArtImageExtension.CurrentSource = null;

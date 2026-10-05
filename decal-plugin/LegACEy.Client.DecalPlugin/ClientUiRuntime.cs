@@ -49,6 +49,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private const string ThemeGallerySlot = "Theme gallery";
     private const string BreakoutSlot = "Breakout";
     private const string PerformanceListSlot = "Performance list";
+    private const string VaultSlot = "Vault preview";
     private const string LiveDataWindowId = "live-game-data";
     private const string ElementInspectorWindowId = "element-inspector";
     private static readonly string PluginDirectory = IOPath.GetDirectoryName(typeof(ClientUiRuntime).Assembly.Location)!;
@@ -187,7 +188,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
         _windows = null;
         _hovered = null;
         _dragOffset = null;
-        foreach (var slot in new[] { InputTestSlot, ThemeGallerySlot, BreakoutSlot, PerformanceListSlot })
+        foreach (var slot in new[] { InputTestSlot, ThemeGallerySlot, BreakoutSlot, PerformanceListSlot, VaultSlot })
             _bar?.SetOpen(slot, false);
     }
 
@@ -211,6 +212,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
             new IndicatorSlot(ThemeGallerySlot, AcClientTheme.WindowChromeCenterId, ToggleThemeGallery, "T"),
             new IndicatorSlot(BreakoutSlot, 0x06004D20, ToggleBreakout, "R"),
             new IndicatorSlot(PerformanceListSlot, 0x06007498, TogglePerformanceList, "P"),
+            new IndicatorSlot(VaultSlot, 0x06001020, () => ToggleWindow("vault-preview", VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight, new Point(240, 100)), "K"),
             new IndicatorSlot("Live data", 0x06004D20, ToggleLiveData, "V"),
             new IndicatorSlot("Element inspector", 0x06004D20, ToggleElementInspector, "I"),
             new IndicatorSlot("Log out", 0x060074B1, NativeUi.RequestLogOut)
@@ -364,8 +366,22 @@ internal sealed class ClientUiRuntime : IClientUiHost
             case "performance-list":
                 content = new PerformanceListPanel(_portal!);
                 break;
+            case "vault-preview":
+                content = new VaultShellPanel(_portal!);
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(id), id, "Unknown feature window.");
+        }
+        if (content is VaultShellPanel vault)
+        {
+            var vaultChrome = new VaultShellWindow(vault);
+            vaultChrome.DetachedFromVisualTree += (_, _) => vault.Dispose();
+            vaultChrome.CloseRequested += (_, _) =>
+            {
+                _clientUi?.CloseWindow(id);
+                _bar?.SetOpen(SlotByWindowId(id), false);
+            };
+            return vaultChrome;
         }
         var chrome = new ThemeWindowChrome(_portal!, id, content);
         chrome.CloseRequested += (_, _) =>
@@ -382,6 +398,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
         "theme-gallery" => ThemeGallerySlot,
         "breakout" => BreakoutSlot,
         "performance-list" => PerformanceListSlot,
+        "vault-preview" => VaultSlot,
         _ => id
     };
 
@@ -960,7 +977,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
     {
         _windowsEnabled = false;
         Log($"LegACEy windows disabled: {exception}");
-        foreach (var slot in new[] { InputTestSlot, ThemeGallerySlot, BreakoutSlot, PerformanceListSlot, "Live data", "Element inspector" })
+        foreach (var slot in new[] { InputTestSlot, ThemeGallerySlot, BreakoutSlot, PerformanceListSlot, VaultSlot, "Live data", "Element inspector" })
             _bar?.SetOpen(slot, false);
         foreach (var window in _windows?.ZOrder.ToArray() ?? Array.Empty<ManagedWindow>())
             _windows!.Close(window.Id);
