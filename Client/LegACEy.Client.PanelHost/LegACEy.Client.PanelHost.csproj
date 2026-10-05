@@ -5,6 +5,9 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Raw platform input avoids Headless helpers rendering in game input callbacks.
+         Keep Avalonia pinned exactly; revalidate this seam before any upgrade. -->
+    <AvaloniaAccessUnstablePrivateApis>true</AvaloniaAccessUnstablePrivateApis>
   </PropertyGroup>
 
   <ItemGroup>

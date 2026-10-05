@@ -8,6 +8,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.Input.Raw;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
@@ -47,6 +48,12 @@ public sealed class AvaloniaPanel : IDisposable
     private readonly HashSet<INotifyCollectionChanged> _renderCollections = new();
     private IStyle? _themeStyles;
     private IClientTheme? _theme;
+    // Use one mouse device per window so implicit capture and click state survive
+    // successive events. The pinned headless helper renders around every event;
+    // raw delivery leaves dispatcher/render work to Tick instead.
+    private MouseDevice _mouseDevice = new();
+    private RawInputModifiers _mouseButtons;
+    private readonly Stopwatch _inputClock = Stopwatch.StartNew();
     private Point _pointerPosition = new(-1, -1);
 
     private AvaloniaPanel(Control content, int width, int height)
@@ -297,6 +304,9 @@ public sealed class AvaloniaPanel : IDisposable
         var content = Content;
         _window.Content = null;
         _window.Close();
+        _mouseDevice.Dispose();
+        _mouseDevice = new MouseDevice();
+        _mouseButtons = RawInputModifiers.None;
         _window = CreateWindow(content, width, height);
         _frame = new PanelFrame(width, height);
         if (_theme != null)
@@ -337,7 +347,7 @@ public sealed class AvaloniaPanel : IDisposable
         {
             Invalidate();
             _pointerPosition = new Point(x, y);
-            _window.MouseMove(new Point(x, y));
+            SendPointer(RawPointerEventType.Move, new Point(x, y));
         });
     }
 
@@ -349,8 +359,9 @@ public sealed class AvaloniaPanel : IDisposable
         {
             Invalidate();
             _pointerPosition = new Point(x, y);
-            _window.MouseMove(new Point(x, y));
-            _window.MouseDown(new Point(x, y), MouseButton.Left);
+            SendPointer(RawPointerEventType.Move, new Point(x, y));
+            _mouseButtons |= RawInputModifiers.LeftMouseButton;
+            SendPointer(RawPointerEventType.LeftButtonDown, new Point(x, y));
         });
     }
 
@@ -362,7 +373,8 @@ public sealed class AvaloniaPanel : IDisposable
         {
             Invalidate();
             _pointerPosition = new Point(x, y);
-            _window.MouseUp(new Point(x, y), MouseButton.Left);
+            _mouseButtons &= ~RawInputModifiers.LeftMouseButton;
+            SendPointer(RawPointerEventType.LeftButtonUp, new Point(x, y));
         });
     }
 
@@ -374,7 +386,7 @@ public sealed class AvaloniaPanel : IDisposable
         {
             Invalidate();
             _pointerPosition = new Point(-1, -1);
-            _window.MouseMove(new Point(-1, -1));
+            SendPointer(RawPointerEventType.Move, new Point(-1, -1));
         });
     }
 
@@ -388,8 +400,10 @@ public sealed class AvaloniaPanel : IDisposable
             var point = new Point(x, y);
             _pointerPosition = point;
             var rawModifiers = ToRawModifiers(modifiers);
-            _window.MouseMove(point, rawModifiers);
-            _window.MouseWheel(point, new Vector(horizontalDelta, verticalDelta), rawModifiers);
+            SendPointer(RawPointerEventType.Move, point, rawModifiers);
+            _window.PlatformImpl!.Input?.Invoke(new RawMouseWheelEventArgs(_mouseDevice,
+                (ulong)_inputClock.ElapsedMilliseconds, _window, point,
+                new Vector(horizontalDelta, verticalDelta), rawModifiers | _mouseButtons));
         }, "wheel-input");
     }
 
@@ -495,6 +509,16 @@ public sealed class AvaloniaPanel : IDisposable
         _renderCollections.Clear();
     }
 
+    private void SendPointer(RawPointerEventType type, Point point, RawInputModifiers modifiers = RawInputModifiers.None)
+    {
+        // Track adjusts a captured thumb's drag origin during arrange. Flush layout
+        // before the next event so rapid reversals use the latest geometry, without
+        // pumping dispatcher jobs or painting a frame for each mouse movement.
+        _window.UpdateLayout();
+        _window.PlatformImpl!.Input?.Invoke(new RawPointerEventArgs(_mouseDevice,
+            (ulong)_inputClock.ElapsedMilliseconds, _window, type, point, modifiers | _mouseButtons));
+    }
+
     private void RunInput(Action action, string stage = "input")
     {
         var observer = TimingObserver;
@@ -541,6 +565,7 @@ public sealed class AvaloniaPanel : IDisposable
         StopObservingRenderResources();
         _rendererObserver.Dispose();
         _window.Close();
+        _mouseDevice.Dispose();
     }
 
 

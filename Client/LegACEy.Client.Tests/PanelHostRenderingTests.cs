@@ -333,6 +333,9 @@ public sealed class PanelHostRenderingTests
         using var panel = AvaloniaPanel.Create(() => new Button { Content = "Fail" }, 80, 40);
         var button = (Button)panel.Content;
         button.Click += (_, _) => throw new InvalidOperationException("deliberate test failure");
+        IPointer? pointer = null;
+        button.AddHandler(InputElement.PointerPressedEvent, (_, e) => pointer = e.Pointer,
+            Avalonia.Interactivity.RoutingStrategies.Bubble, handledEventsToo: true);
 
         panel.PointerDown(20, 20);
         var error = Record.Exception(() => panel.PointerUp(20, 20));
@@ -340,6 +343,8 @@ public sealed class PanelHostRenderingTests
         Assert.Null(error);
         Assert.IsType<InvalidOperationException>(panel.LastError);
         Assert.Equal("deliberate test failure", panel.LastError!.Message);
+        Assert.NotNull(pointer);
+        Assert.Null(pointer!.Captured);
     });
 
     [Fact]
