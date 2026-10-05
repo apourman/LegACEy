@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Reloaded.Hooks" Version="4.3.3" />
+    <PackageReference Include="coverlet.collector" Version="6.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="xunit" Version="2.5.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <!-- Exercise the plugin's key translation without requiring Windows-only Decal assemblies. -->
+    <Compile Include="..\LegACEy.Client.DecalPlugin\Win32KeyMap.cs" Link="Win32KeyMap.cs" />
+    <Compile Include="..\LegACEy.Client.DecalPlugin\PostUiDrawHook.cs" Link="PostUiDrawHook.cs" />
+    <Compile Include="..\LegACEy.Client.DecalPlugin\RetailTakeoverLifecycle.cs" Link="RetailTakeoverLifecycle.cs" />
+    <Compile Include="..\LegACEy.Client.DecalPlugin\RetailSurfaceRenderer.cs" Link="RetailSurfaceRenderer.cs" />
+    <Compile Include="..\LegACEy.Client.DecalPlugin\ScrollProfile.cs" Link="ScrollProfile.cs" />
+    <Compile Include="..\LegACEy.Client.DecalPlugin\ScrollProfileLog.cs" Link="ScrollProfileLog.cs" />
+    <Compile Include="..\LegACEy.Client.DecalPlugin\GameStatePoller.cs" Link="GameStatePoller.cs" />
+    <Compile Include="..\LegACEy.Client.DecalPlugin\NativeUiCatalogue.cs" Link="NativeUiCatalogue.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LegACEy.Client.PanelHost\LegACEy.Client.PanelHost.csproj" />
+    <ProjectReference Include="..\LegACEy.Client.InputRouter\LegACEy.Client.InputRouter.csproj" />
+    <ProjectReference Include="..\LegACEy.Client.Demo\LegACEy.Client.Demo.csproj" />
+    <ProjectReference Include="..\LegACEy.Client.Themes\LegACEy.Client.Themes.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -28,6 +28,15 @@ Extended documentation can be found on the project [Wiki](https://github.com/ACE
 
 Versioned LegACEy server builds are published on the [GitHub Releases page](https://github.com/apourman/LegACEy/releases). The Linux x64 archive requires the .NET 10 runtime and a separately configured DAT directory and database.
 
+## LegACEy components
+
+The ACE server and shared libraries stay in `Source/`, with database schemas and
+updates in `Database/`, preserving the upstream ACE layout.
+
+- [LegACEy Decal Plugin](decal-plugin/README.md): the Windows Decal plugin and its
+  UI libraries, preview app, and tests.
+- [Server scripts](scripts/ace-server/README.md): local server setup and operation.
+
 ## Contributions
 * Contributions in the form of issues and pull requests are welcomed and encouraged.
 * The preferred way to contribute is to fork the repo and submit a pull request on GitHub.

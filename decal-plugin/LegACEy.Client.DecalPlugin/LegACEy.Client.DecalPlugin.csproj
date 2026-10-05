@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x86</PlatformTarget>
+    <Prefer32Bit>true</Prefer32Bit>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <DecalInstallDir Condition="'$(DecalInstallDir)' == ''">C:\Program Files (x86)\Decal 3.0</DecalInstallDir>
+    <DecalInteropDir Condition="'$(DecalInteropDir)' == ''">C:\Windows\Microsoft.NET\assembly\GAC_MSIL\Decal.Interop.Core\v4.0_2.9.8.3__481f17d392f1fb65</DecalInteropDir>
+    <ManagedDirectXDir Condition="'$(ManagedDirectXDir)' == ''">C:\Windows\Microsoft.NET\DirectX for Managed Code\1.0.2902.0</ManagedDirectXDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Reloaded.Hooks" Version="4.3.3" />
+    <Reference Include="Decal.Adapter">
+      <HintPath>$(DecalInstallDir)\Decal.Adapter.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Decal.Interop.Core">
+      <HintPath>$(DecalInteropDir)\Decal.Interop.Core.dll</HintPath>
+      <Private>false</Private>
+      <EmbedInteropTypes>false</EmbedInteropTypes>
+    </Reference>
+    <Reference Include="System.Drawing" />
+    <!-- Managed DirectX signatures use C++/CLI modifiers defined here. -->
+    <Reference Include="Microsoft.VisualC" />
+    <Reference Include="Microsoft.DirectX">
+      <HintPath>$(ManagedDirectXDir)\Microsoft.DirectX.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Microsoft.DirectX.Direct3D">
+      <HintPath>$(ManagedDirectXDir)\Microsoft.DirectX.Direct3D.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <ProjectReference Include="..\LegACEy.Client.PanelHost\LegACEy.Client.PanelHost.csproj" />
+    <ProjectReference Include="..\LegACEy.Client.InputRouter\LegACEy.Client.InputRouter.csproj" />
+    <ProjectReference Include="..\LegACEy.Client.GameArt\LegACEy.Client.GameArt.csproj" />
+    <ProjectReference Include="..\LegACEy.Client.Demo\LegACEy.Client.Demo.csproj" />
+    <ProjectReference Include="..\LegACEy.Client.Themes\LegACEy.Client.Themes.csproj" />
+  </ItemGroup>
+
+  <Target Name="VerifyAvaloniaX86NativeAssets" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
+    <Error Condition="!Exists('$(TargetDir)x86\libSkiaSharp.dll')" Text="The x86 SkiaSharp native library must ship in the plugin output." />
+    <Error Condition="!Exists('$(TargetDir)x86\libHarfBuzzSharp.dll')" Text="The x86 HarfBuzz native library must ship in the plugin output." />
+  </Target>
+</Project>

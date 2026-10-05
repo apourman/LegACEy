@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Raw platform input avoids Headless helpers rendering in game input callbacks.
+         Keep Avalonia pinned exactly; revalidate this seam before any upgrade. -->
+    <AvaloniaAccessUnstablePrivateApis>true</AvaloniaAccessUnstablePrivateApis>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="[11.3.22]" />
+    <PackageReference Include="Avalonia.Headless" Version="[11.3.22]" />
+    <PackageReference Include="Avalonia.Skia" Version="[11.3.22]" />
+    <PackageReference Include="Avalonia.Themes.Simple" Version="[11.3.22]" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LegACEy.Client.Themes\LegACEy.Client.Themes.csproj" />
+  </ItemGroup>
+
+</Project>
