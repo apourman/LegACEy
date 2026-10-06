@@ -174,20 +174,69 @@ public sealed class VaultDragDropTests
         }
     });
 
+    [Fact]
+    public void Lifted_item_hover_works_when_the_drag_icon_is_its_own_panel_as_in_game() => RenderThread.Run(() =>
+    {
+        var icons = new PanelDragHost();
+        using var vault = new LiveVault(dragHost: icons);
+        var start = vault.Center(vault.Cells[0]);
+        var target = vault.Center(vault.Cells[4]);
+        var empty = vault.Center(vault.Cells[15]);
+
+        vault.Host.PointerDown(start.X, start.Y);
+        vault.Host.PointerMove(start.X + 20, start.Y);
+        Assert.NotNull(icons.Panel);
+        vault.Host.PointerMove(target.X, target.Y);
+        HostFrame();
+        Assert.Same(vault.Cells[4], Assert.Single(vault.VisibleIndicators()).Parent);
+
+        vault.Host.PointerMove(empty.X, empty.Y);
+        HostFrame();
+        Assert.Same(vault.Cells[15], Assert.Single(vault.VisibleIndicators()).Parent);
+
+        vault.Host.PointerUp(empty.X, empty.Y);
+        Assert.Null(icons.Panel);
+
+        // What the plugin does every render frame: report that no retail drag is in progress.
+        void HostFrame()
+        {
+            vault.Window.RetailDragOver(0, string.Empty, null);
+            vault.Host.Tick();
+        }
+    });
+
+    /// <summary>Like the plugin's drag host: the icon is a separate Avalonia panel created when the drag starts.</summary>
+    private sealed class PanelDragHost : IItemDragHost
+    {
+        public AvaloniaPanel? Panel { get; private set; }
+        public IDisposable ShowDragIcon(IReadOnlyList<uint> iconLayers)
+        {
+            Panel = AvaloniaPanel.Create(() => new Grid { Width = 32, Height = 32 }, 32, 32);
+            return new Icon(this);
+        }
+        public ItemDropTarget DropTargetAtPointer() => ItemDropTarget.Elsewhere;
+        private sealed class Icon : IDisposable
+        {
+            private readonly PanelDragHost _owner;
+            public Icon(PanelDragHost owner) => _owner = owner;
+            public void Dispose() { _owner.Panel?.Dispose(); _owner.Panel = null; }
+        }
+    }
+
     private sealed class LiveVault : IDisposable
     {
         private DateTime _now = new(2026, 10, 5, 12, 0, 0, DateTimeKind.Utc);
         private readonly VaultShellPanel _panel;
         private readonly ServerChannelClient _channel;
 
-        public LiveVault(int height = VaultShellPanel.WindowHeight)
+        public LiveVault(int height = VaultShellPanel.WindowHeight, IItemDragHost? dragHost = null)
         {
             Server = new FakeVaultServer(() => _now) { Latency = TimeSpan.FromMilliseconds(30) };
             _channel = new ServerChannelClient(Server, () => _now);
             Server.Deliver = _channel.Receive;
             Client = new VaultClient(_channel);
             VaultShellPanel? panel = null;
-            Host = AvaloniaPanel.Create(() => new VaultShellWindow(panel = new VaultShellPanel(new NoArt(), Client, Drag)),
+            Host = AvaloniaPanel.Create(() => new VaultShellWindow(panel = new VaultShellPanel(new NoArt(), Client, dragHost ?? Drag)),
                 VaultShellPanel.WindowWidth, height);
             _panel = panel!;
             Step(TimeSpan.FromMilliseconds(30));

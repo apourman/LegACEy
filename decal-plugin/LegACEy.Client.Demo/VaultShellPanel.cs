@@ -23,7 +23,7 @@ namespace LegACEy.Client.Demo;
 public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropTarget
 {
     // Increment with each visual iteration; the assembly's source revision identifies the actual build.
-    public const string PreviewVersion = "11";
+    public const string PreviewVersion = "12";
     public static string BuildRevision { get; } = ReadBuildRevision();
 
     private static string ReadBuildRevision()
@@ -316,6 +316,12 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     {
         if (_client == null || _disposed) return;
         var over = itemId != 0 && position != null;
+        // The host reports "no retail drag" every frame; that must not touch the frame of a vault item being lifted.
+        if (!over && !_retailOver)
+        {
+            _retailItem = itemId;
+            return;
+        }
         var cell = over && _client.Connection == VaultConnection.Live ? CellAt(position!.Value) : -1;
         if (itemId == _retailItem && over == _retailOver && cell == _dropCell) return;
         // A new drag over the window: ask the server whether this item may go in, so the drop can show as invalid.
