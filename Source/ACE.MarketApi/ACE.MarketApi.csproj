@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Platforms>x64</Platforms>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Authors>ACEmulator Contributors</Authors>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/ACEmulator/ACE</RepositoryUrl>
+    <PackageProjectUrl>https://emulator.ac</PackageProjectUrl>
+    <Copyright>© 2017-2026 ACEmulator Team and Contributors</Copyright>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <Description>The LegACEy Market API: the marketplace's web service, sharing ACE's configuration and database</Description>
+    <Company>ACEmulator</Company>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ACE.Common\ACE.Common.csproj" />
+    <ProjectReference Include="..\ACE.Database\ACE.Database.csproj" />
+    <ProjectReference Include="..\ACE.DatLoader\ACE.DatLoader.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.8" />
+    <!-- OpenAPI.NET 2.7.5 contains the fix for GHSA-v5pm-xwqc-g5wc; ASP.NET OpenAPI 10.0.8 depends on 2.0.0. -->
+    <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
+    <!-- icons are encoded with SkiaSharp, not Windows-only System.Drawing; the NoDependencies native build needs no fontconfig in a slim Linux container -->
+    <PackageReference Include="SkiaSharp" Version="3.119.4" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.4" />
+  </ItemGroup>
+
+  <!--
+    The OpenAPI document. Every build writes it to obj/openapi.json and leaves the committed openapi.json alone;
+    MarketApiOpenApiTests fails when the two differ. To refresh the committed file:
+      dotnet build Source/ACE.MarketApi -p:Platform=x64 -p:UpdateOpenApi=true
+    then regenerate the website's client: npm run generate:api in market-web.
+  -->
+  <PropertyGroup>
+    <MarketOpenApiOutput>$(MSBuildProjectDirectory)/obj/openapi.json</MarketOpenApiOutput>
+  </PropertyGroup>
+
+  <Target Name="GenerateMarketOpenApi" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Exec Command="dotnet &quot;$(TargetPath)&quot; --generate-openapi &quot;$(MarketOpenApiOutput)&quot;" />
+    <Copy Condition="'$(UpdateOpenApi)' == 'true'" SourceFiles="$(MarketOpenApiOutput)" DestinationFiles="$(MSBuildProjectDirectory)/openapi.json" />
+  </Target>
+
+  <ItemGroup>
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-4f7c-pmjv-c25w" />
+  </ItemGroup>
+
+</Project>

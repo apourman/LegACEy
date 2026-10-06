@@ -8,6 +8,7 @@ using System.Timers;
 using log4net;
 
 using ACE.Database;
+using ACE.Database.Market;
 
 namespace ACE.Server.Managers
 {
@@ -50,7 +51,8 @@ namespace ACE.Server.Managers
         /// </summary>
         private static void LoadPropertiesFromDB()
         {
-            foreach (var i in DatabaseManager.ShardConfig.GetAllBools())
+            // the market pause is the market's own row: a cached copy marked modified (by /modifypropertydesc) would be written back over a newer pause
+            foreach (var i in DatabaseManager.ShardConfig.GetAllBools().Where(i => i.Key != MarketPause.Key))
                 CachedBooleanSettings[i.Key] = new ConfigurationEntry<bool>(false, i.Value, i.Description);
 
             foreach (var i in DatabaseManager.ShardConfig.GetAllLongs())
@@ -568,6 +570,7 @@ namespace ACE.Server.Managers
                 ("item_dispel", new Property<bool>(false, "if enabled, allows players to dispel items. defaults to end of retail, where item dispels could only target creatures")),
                 ("lifestone_broadcast_death", new Property<bool>(true, "if true, player deaths are additionally broadcast to other players standing near the destination lifestone")),
                 ("loot_quality_mod", new Property<bool>(true, "if FALSE then the loot quality modifier of a Death Treasure profile does not affect loot generation")),
+                ("market_enabled", new Property<bool>(false, "if TRUE, opens the marketplace: trade notes in the Vault (MMD), the game bridge's web requests and plugin sign-in. The Vault's items work either way")),
                 ("npc_hairstyle_fullrange", new Property<bool>(false, "if TRUE, allows generated creatures to use full range of hairstyles. Retail only allowed first nine (0-8) out of 51")),
                 ("offline_xp_passup_limit", new Property<bool>(true, "if FALSE, allows unlimited xp to passup to offline characters in allegiances")),
                 ("olthoi_play_disabled", new Property<bool>(false, "if false, allows players to create and play as olthoi characters")),

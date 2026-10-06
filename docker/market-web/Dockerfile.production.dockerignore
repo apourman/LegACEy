@@ -1,0 +1,10 @@
+# Build context: the repository root (docker/docker-compose.e2e.yml). Only market-web's sources reach the image, never the host's
+# node_modules or build output, which would overwrite what the build stage installs and builds.
+*
+!market-web/
+market-web/node_modules/
+market-web/build/
+market-web/dist/
+market-web/.react-router/
+market-web/test-results/
+market-web/playwright-report/

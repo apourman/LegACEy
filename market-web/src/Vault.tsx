@@ -1,0 +1,235 @@
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Link } from 'react-router';
+import { delistVaultItem, depositVaultItem, getTicket, getVault, listVaultItem, messages, requestInventorySnapshot, withdrawMmd, withdrawVaultItem, type InventorySnapshot, type VaultItem } from './api';
+import { Icon, VaultAppraisalPopover } from './Appraisal';
+import { useSession } from './session';
+import { announceTicketCreated, clearTicketAttempt, onTicketFinished, ticketAttempt } from './tickets';
+import { checkMmdAmount } from './mmd';
+
+export function Vault() {
+  const session = useSession();
+  const [items, setItems] = useState<VaultItem[]>([]);
+  const [prices, setPrices] = useState<Record<number, string>>({});
+  // signed in, the page that arrives from the server says it is loading, not that the Vault is empty: the items load in the browser
+  const [loading, setLoading] = useState(session.me !== null);
+  const [busyItem, setBusyItem] = useState<number | null>(null);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [mmdAmount, setMmdAmount] = useState('');
+  const [busyMmd, setBusyMmd] = useState(false);
+  const [snapshot, setSnapshot] = useState<InventorySnapshot | null>(null);
+  const [snapshotBusy, setSnapshotBusy] = useState(false);
+  const [depositBusyItem, setDepositBusyItem] = useState<number | null>(null);
+  const generation = useRef(0);
+
+  async function refresh() {
+    const version = ++generation.current;
+    setLoading(true);
+    setError('');
+    try {
+      const result = await getVault();
+      if (version === generation.current) setItems(result.items);
+    } catch (e) {
+      if (version === generation.current) setError(e instanceof Error ? e.message : 'Could not load your Vault.');
+    } finally {
+      if (version === generation.current) setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!session.me) return;
+    void refresh();
+    const visible = () => {
+      if (document.visibilityState === 'visible') {
+        void refresh();
+        void session.refresh();
+      }
+    };
+    document.addEventListener('visibilitychange', visible);
+    return () => { generation.current++; document.removeEventListener('visibilitychange', visible); };
+  }, [session.me?.accountId]);
+
+  useEffect(() => onTicketFinished(ticket => {
+    if (ticket.kind === 'vault_deposit') setSnapshot(null);
+    if (session.me) void refresh();
+  }), [session.me?.accountId]);
+
+  const characterName = (id: number | null) => session.me?.characters.find(c => c.id === id)?.name;
+
+  async function list(item: VaultItem) {
+    const characterId = session.characterId;
+    if (busyItem !== null || characterId === null) return;
+    const text = prices[item.itemGuid] ?? '';
+    const price = Number(text);
+    if (!/^\d+$/.test(text) || !Number.isSafeInteger(price) || price < 1) {
+      setError('The price must be a positive whole number of MMD.');
+      return;
+    }
+    await act(item, () => listVaultItem(item.itemGuid, price, characterId), `${item.name} is listed for ${price} MMD.`, 'Could not list this item.');
+  }
+
+  async function delist(item: VaultItem) {
+    if (busyItem !== null || item.listingId === null) return;
+    const listingId = item.listingId;
+    await act(item, () => delistVaultItem(listingId), `${item.name} has been delisted.`, 'Could not delist this item.');
+  }
+
+  async function withdraw(item: VaultItem) {
+    const characterId = session.characterId;
+    if (busyItem !== null || characterId === null || item.state !== 'held' || !session.me) return;
+    const attemptKey = `vault:${item.itemGuid}`;
+    const key = ticketAttempt(session.me.accountId, attemptKey, { characterId, itemGuid: item.itemGuid });
+    const succeeded = await act(item, async () => announceTicketCreated(await withdrawVaultItem(characterId, item.itemGuid, key)),
+      `Withdrawal requested for ${item.name}. Keep ${characterName(characterId) ?? 'your character'} online.`,
+      'Could not request this withdrawal.');
+    if (succeeded) clearTicketAttempt(session.me.accountId, attemptKey);
+  }
+
+  async function withdrawNotes(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (busyMmd || session.characterId === null || !session.me) return;
+    const checked = checkMmdAmount(mmdAmount, session.me.balance);
+    if (!checked.ok) {
+      setError(checked.reason === 'whole' ? 'Enter a whole number of MMD.' : checked.reason === 'positive' ? 'Enter at least 1 whole MMD.' : 'The amount cannot exceed your MMD balance.');
+      return;
+    }
+    const amount = checked.amount;
+    setBusyMmd(true); setError(''); setNotice('');
+    const accountId = session.me.accountId;
+    const attemptKey = 'mmd';
+    const key = ticketAttempt(accountId, attemptKey, { characterId: session.characterId, amount });
+    try {
+      announceTicketCreated(await withdrawMmd(session.characterId, amount, key));
+      clearTicketAttempt(accountId, attemptKey);
+      setNotice(`Withdrawal requested. Keep ${characterName(session.characterId) ?? 'your character'} online.`);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not request an MMD withdrawal.'); }
+    finally { setBusyMmd(false); }
+  }
+
+  async function refreshInventory() {
+    const characterId = session.characterId;
+    if (snapshotBusy || characterId === null || !session.me) return;
+    const accountId = session.me.accountId;
+    const actionKey = 'inventory-snapshot';
+    const key = ticketAttempt(accountId, actionKey, { characterId });
+    setSnapshotBusy(true); setError(''); setNotice('');
+    try {
+      const created = await requestInventorySnapshot(characterId, key);
+      clearTicketAttempt(accountId, actionKey);
+      announceTicketCreated(created);
+
+      let current = created;
+      const deadline = Date.now() + 30_000;
+      while ((current.status === 'WAITING' || current.status === 'CLAIMED') && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 750));
+        current = await getTicket(created.id);
+      }
+      if (current.status === 'FAILED') throw new Error(current.resultMessage || 'The game could not read your inventory.');
+      if (current.status !== 'DONE' || !current.result) throw new Error('The snapshot is still waiting. Check Market requests, then refresh again.');
+      setSnapshot(current.result);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not read your in-game inventory.');
+    } finally {
+      setSnapshotBusy(false);
+    }
+  }
+
+  async function deposit(itemGuid: number) {
+    const characterId = session.characterId;
+    if (depositBusyItem !== null || characterId === null || !session.me) return;
+    const accountId = session.me.accountId;
+    const actionKey = `vault-deposit:${itemGuid}`;
+    const key = ticketAttempt(accountId, actionKey, { characterId, itemGuid });
+    setDepositBusyItem(itemGuid); setError(''); setNotice('');
+    try {
+      const ticket = await depositVaultItem(characterId, itemGuid, key);
+      clearTicketAttempt(accountId, actionKey);
+      announceTicketCreated(ticket);
+      setNotice('Confirm in game within 30 seconds.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not request this deposit.');
+    } finally {
+      setDepositBusyItem(null);
+    }
+  }
+
+  // Refreshes whether or not the action succeeds: a refusal such as not_held means the Vault changed under the page.
+  async function act(item: VaultItem, action: () => Promise<unknown>, success: string, fallback: string): Promise<boolean> {
+    setBusyItem(item.itemGuid); setError(''); setNotice('');
+    let failure = '';
+    try {
+      await action();
+    } catch (e) { failure = e instanceof Error ? e.message : fallback; }
+    try {
+      await Promise.all([refresh(), session.refresh()]);
+    } finally {
+      // set after the refresh, which clears the error it starts with
+      if (failure) setError(failure); else setNotice(success);
+      setBusyItem(null);
+    }
+    return failure === '';
+  }
+
+  if (session.loading) return <p role="status">Loading your account…</p>;
+  if (!session.me) return <section className="empty"><h1>Your Vault</h1><p>Sign in to see and manage your Vault.</p><Link to="/signin" state={{ returnTo: '/vault' }}>Sign in</Link></section>;
+
+  return <>
+    <div className="page-title"><p className="eyebrow">YOUR ITEMS</p><h1>Vault</h1>
+      <p className="muted">{session.me.vaultCount} / {session.me.vaultCap} items · {session.me.listingCount} / {session.me.listingCap} active listings</p>
+      <p className="muted">Choose a held item to list it as your acting character. Only held items can be listed.</p>
+      <p className="muted">For item or MMD withdrawals, your acting character must be online in game.</p>
+      {session.characterId === null && <p>Create a character in game first.</p>}
+    </div>
+    {error && <p role="alert" className="notice">{error}</p>}
+    {notice && <p role="status" className="notice">{notice}</p>}
+    <section className="withdraw-panel" aria-labelledby="withdraw-mmd-heading">
+      <div><h2 id="withdraw-mmd-heading">Withdraw MMD</h2><p className="muted">Trade notes go to your acting character. If their pack has no room for the notes, nothing moves: free some pack space and try again.</p></div>
+      <form onSubmit={e => void withdrawNotes(e)}>
+        <label>Whole MMD amount<input type="number" min="1" step="1" inputMode="numeric" value={mmdAmount} onChange={e => setMmdAmount(e.target.value)} /></label>
+        <button disabled={busyMmd || session.characterId === null || session.me.paused}>{busyMmd ? 'Requesting…' : 'Withdraw MMD'}</button>
+      </form>
+    </section>
+    <section className="inventory-panel" aria-labelledby="inventory-heading">
+      <div className="inventory-panel-heading">
+        <div><h2 id="inventory-heading">Deposit from your pack</h2><p className="muted">Your acting character must be online. The game asks you to confirm before the 60-second channel begins.</p></div>
+        <button className="secondary" disabled={snapshotBusy || session.characterId === null} onClick={() => void refreshInventory()}>
+          {snapshotBusy ? 'Reading pack…' : snapshot ? 'Refresh inventory' : 'Choose an item'}
+        </button>
+      </div>
+      {snapshot && <>
+        <p className="muted snapshot-time">Inventory captured {new Date(snapshot.snapshotTime).toLocaleString()}</p>
+        {snapshot.items.length === 0 ? <p className="muted">Your pack is empty.</p> : <ul className="inventory-picker">
+          {snapshot.items.map(item => <li key={item.itemGuid} className={item.refusalCode ? 'inventory-item inventory-item--refused' : 'inventory-item'}>
+            <Icon icon={item.icon} />
+            <span className="inventory-item-copy"><strong>{item.name}<small> × {item.stackSize}</small></strong>
+              {item.refusalCode && <small className="muted">{messages[item.refusalCode] ?? 'This item cannot be deposited.'}</small>}
+            </span>
+            <button disabled={!!item.refusalCode || depositBusyItem !== null || session.characterId === null}
+              onClick={() => void deposit(item.itemGuid)}>
+              {depositBusyItem === item.itemGuid ? 'Requesting…' : 'Deposit'}
+            </button>
+          </li>)}
+        </ul>}
+      </>}
+    </section>
+    {loading && <p role="status">Refreshing Vault…</p>}
+    {!loading && items.length === 0 && <div className="empty"><h2>Your Vault is empty</h2><p>Items bought from the market and deposited in game appear here.</p></div>}
+    {items.length > 0 && <div className="table-scroll"><table className="listing-table vault-table"><caption className="sr-only">Your Vault items</caption><thead><tr>
+      <th><span className="sr-only">Appraisal</span></th><th>Item</th><th>State</th><th>Deposited by</th><th>Listed price</th><th>Action</th>
+    </tr></thead><tbody>{items.map(item => {
+      const character = characterName(item.characterId) ?? 'Unknown character';
+      return <tr key={item.itemGuid}>
+        <td><VaultAppraisalPopover item={item} /></td>
+        <td><span className="vault-item-name"><Icon icon={item.icon} />{item.name}<span className="stack">× {item.stackSize}</span></span></td>
+        <td><span className={`vault-state vault-state--${item.state}`}>{item.state}</span>{item.ticketId !== null && <small className="muted">Ticket #{item.ticketId}</small>}</td>
+        <td>{character}</td>
+        <td>{item.price === null ? '—' : <><span className="price">{item.price} MMD</span>{item.expiresTime && <small className="muted">Expires {new Date(item.expiresTime).toLocaleDateString()}</small>}</>}</td>
+        <td>{item.state === 'held' ? <div className="vault-actions"><div className="vault-action"><label>Whole MMD price<input type="number" min="1" step="1" inputMode="numeric" value={prices[item.itemGuid] ?? ''}
+          onChange={e => setPrices(old => ({ ...old, [item.itemGuid]: e.target.value }))} /></label><button disabled={busyItem !== null || session.characterId === null} onClick={() => void list(item)}>{busyItem === item.itemGuid ? 'Listing…' : 'List item'}</button></div>
+          <button className="secondary" disabled={busyItem !== null || session.characterId === null} onClick={() => void withdraw(item)}>{busyItem === item.itemGuid ? 'Requesting…' : 'Withdraw'}</button></div>
+          : item.state === 'listed' ? <button className="secondary" disabled={busyItem !== null || item.listingId === null} onClick={() => void delist(item)}>{busyItem === item.itemGuid ? 'Delisting…' : 'Delist'}</button>
+          : <span className="muted">Withdrawal in progress</span>}</td>
+      </tr>;
+    })}</tbody></table></div>}
+  </>;
+}

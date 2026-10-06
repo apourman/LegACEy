@@ -21,7 +21,7 @@ using ACE.Entity.Enum.Properties;
 
 namespace ACE.Database
 {
-    public class ShardDatabase
+    public partial class ShardDatabase
     {
         private static readonly ILog log = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
@@ -223,6 +223,14 @@ namespace ACE.Database
         }
 
         public virtual Biota GetBiota(ShardDbContext context, uint id, bool doNotAddToCache = false)
+        {
+            return GetBiotaFromDatabase(context, id);
+        }
+
+        /// <summary>
+        /// Loads the biota and its populated collections through this context, never from a cache
+        /// </summary>
+        protected Biota GetBiotaFromDatabase(ShardDbContext context, uint id)
         {
             var biota = context.Biota
                 .FirstOrDefault(r => r.Id == id);

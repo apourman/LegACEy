@@ -7,7 +7,9 @@ using System.Threading.Tasks;
 using log4net;
 
 using ACE.Database.Entity;
+using ACE.Database.Market;
 using ACE.Database.Models.Shard;
+using ACE.Database.Models.Shard.Market;
 using ACE.Entity.Enum;
 
 namespace ACE.Database
@@ -131,6 +133,169 @@ namespace ACE.Database
             _queue.Add(new Task(() =>
             {
                 var result = BaseDatabase.SaveBiotasInParallel(biotas, doNotAddToCache);
+                callback?.Invoke(result);
+            }));
+        }
+
+        /// <summary>
+        /// Queues the deposit job: the item change, the Vault row and a deposit event, saved once (see ShardDatabase.DepositToVault)
+        /// </summary>
+        public void DepositToVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, VaultItem vaultItem, Action<MarketJobResult> callback)
+        {
+            DepositToVault(biota, rwLock, vaultItem, int.MaxValue, callback);
+        }
+
+        /// <summary>
+        /// Queues the deposit job, which also refuses when the account's Vault already holds maxItems (see ShardDatabase.DepositToVault)
+        /// </summary>
+        public void DepositToVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, VaultItem vaultItem, int maxItems, Action<MarketJobResult> callback, TicketCompletion ticket = null)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = RunMarketJob(nameof(DepositToVault), () => BaseDatabase.DepositToVault(biota, rwLock, vaultItem, maxItems, ticket));
+                callback?.Invoke(result);
+            }));
+        }
+
+        /// <summary>
+        /// Queues the withdraw job: the item change, the Vault row removal and a withdraw event, saved once (see ShardDatabase.WithdrawFromVault).
+        /// A game bridge ticket passed as ticket is marked done in the same save.
+        /// </summary>
+        public void WithdrawFromVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, uint accountId, uint characterId, uint expectedRowVersion, Action<MarketJobResult> callback, TicketCompletion ticket = null)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = RunMarketJob(nameof(WithdrawFromVault), () => BaseDatabase.WithdrawFromVault(biota, rwLock, accountId, characterId, expectedRowVersion, ticket));
+                callback?.Invoke(result);
+            }));
+        }
+
+        /// <summary>
+        /// Queues the note deposit job: the note rows deleted and a note_deposit transfer, saved once (see ShardDatabase.DepositNotes).
+        /// The callback gets the result and the balance after it.
+        /// </summary>
+        public void DepositNotes(uint accountId, uint characterId, IReadOnlyList<NoteStack> notes, Action<MarketJobResult, long> callback)
+        {
+            _queue.Add(new Task(() =>
+            {
+                long balanceAfter = 0;
+                var result = RunMarketJob(nameof(DepositNotes), () => BaseDatabase.DepositNotes(accountId, characterId, notes, out balanceAfter));
+                callback?.Invoke(result, balanceAfter);
+            }));
+        }
+
+        /// <summary>
+        /// Queues the note withdrawal job: a note_withdraw transfer and the new note rows, saved once (see ShardDatabase.WithdrawNotes).
+        /// The callback gets the result and the balance after it (the current balance on a refusal). A game bridge ticket passed as ticket is marked done in the same save.
+        /// </summary>
+        public void WithdrawNotes(uint accountId, uint characterId, IReadOnlyList<(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock)> notes, long amount, Action<MarketJobResult, long> callback, TicketCompletion ticket = null)
+        {
+            _queue.Add(new Task(() =>
+            {
+                long balanceAfter = 0;
+                var result = RunMarketJob(nameof(WithdrawNotes), () => BaseDatabase.WithdrawNotes(accountId, characterId, notes, amount, out balanceAfter, ticket));
+                callback?.Invoke(result, balanceAfter);
+            }));
+        }
+
+        /// <summary>
+        /// The market jobs catch their own failures. This is the backstop that keeps the caller's callback running if one ever throws:
+        /// DoWork would swallow the exception and the callback would never run, leaving the player's Vault busy and the item out of the world.
+        /// Whether such a job saved can't be known, so it answers Unknown and the caller puts nothing back into the world.
+        /// </summary>
+        private static MarketJobResult RunMarketJob(string job, Func<MarketJobResult> run)
+        {
+            try
+            {
+                return run();
+            }
+            catch (Exception ex)
+            {
+                log.Error($"[DATABASE][VAULT] {job} threw: {ex}");
+                return MarketJobResult.Unknown;
+            }
+        }
+
+        /// <summary>
+        /// Queues a game bridge poll: claims up to limit waiting tickets (see ShardDatabase.ClaimTickets)
+        /// </summary>
+        public void ClaimTickets(int limit, Action<List<Ticket>> callback)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = BaseDatabase.ClaimTickets(limit);
+                callback?.Invoke(result);
+            }));
+        }
+
+        /// <summary>
+        /// Queues failing claimed tickets this server isn't working on any more (see ShardDatabase.FailAbandonedTickets)
+        /// </summary>
+        public void FailAbandonedTickets(IReadOnlyCollection<long> running, TimeSpan claimedFor, string message, Action<int> callback)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = BaseDatabase.FailAbandonedTickets(running, claimedFor, message);
+                callback?.Invoke(result);
+            }));
+        }
+
+        /// <summary>
+        /// Queues marking a claimed ticket FAILED (see ShardDatabase.FailTicket)
+        /// </summary>
+        public void FailTicket(long ticketId, string resultCode, string message, Action<bool> callback)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = BaseDatabase.FailTicket(ticketId, resultCode, message);
+                callback?.Invoke(result);
+            }));
+        }
+
+        /// <summary>
+        /// Queues completing a claimed ticket with optional structured result data.
+        /// </summary>
+        public void CompleteTicket(TicketCompletion completion, Action<bool> callback)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = BaseDatabase.CompleteTicket(completion);
+                callback?.Invoke(result);
+            }));
+        }
+
+        /// <summary>
+        /// Queues a claimed ticket's progress update (see ShardDatabase.SetTicketProgress)
+        /// </summary>
+        public void SetTicketProgress(long ticketId, string progress, DateTime progressTime, DateTime progressUntil, Action<bool> callback)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = BaseDatabase.SetTicketProgress(ticketId, progress, progressTime, progressUntil);
+                callback?.Invoke(result);
+            }));
+        }
+
+        /// <summary>
+        /// Queues deleting long-finished tickets (see ShardDatabase.DeleteFinishedTickets)
+        /// </summary>
+        public void DeleteFinishedTickets(Action<int> callback)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = BaseDatabase.DeleteFinishedTickets();
+                callback?.Invoke(result);
+            }));
+        }
+
+        /// <summary>
+        /// Queues deleting market rows nothing reads any more (see ShardDatabase.DeleteExpiredMarketRows)
+        /// </summary>
+        public void DeleteExpiredMarketRows(Action<MarketCleanupReport> callback)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = BaseDatabase.DeleteExpiredMarketRows();
                 callback?.Invoke(result);
             }));
         }

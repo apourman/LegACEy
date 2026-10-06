@@ -265,6 +265,9 @@ namespace ACE.Server
             log.Info("Initializing GuidManager...");
             GuidManager.Initialize();
 
+            log.Info("Checking the market schema...");
+            ACE.Server.Market.Vault.Initialize();
+
             if (ConfigManager.Config.Server.ServerPerformanceMonitorAutoStart)
             {
                 log.Info("Server Performance Monitor auto starting...");

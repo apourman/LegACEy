@@ -35,8 +35,21 @@ namespace ACE.Server.WorldObjects
                 return;
             }
 
+            if (IsVaultChannelling)
+            {
+                Session.Network.EnqueueSend(new GameEventWeenieError(Session, WeenieError.YoureTooBusy));
+                return;
+            }
+
             var tradePartner = PlayerManager.GetOnlinePlayer(tradePartnerGuid);
             if (tradePartner == null) return;
+
+            // nobody trades with a player channelling to the Vault
+            if (tradePartner.IsVaultChannelling)
+            {
+                Session.Network.EnqueueSend(new GameEventWeenieError(Session, WeenieError.TradeAlreadyTrading));
+                return;
+            }
 
             //Check to see if potential trading partner is an Olthoi player
             if (initiator && tradePartner.IsOlthoiPlayer)
@@ -117,6 +130,12 @@ namespace ACE.Server.WorldObjects
         {
             if (TradeTransferInProgress)
                 return;
+
+            if (IsVaultChannelling)
+            {
+                Session.Network.EnqueueSend(new GameEventTradeFailure(Session, itemGuid, WeenieError.YoureTooBusy));
+                return;
+            }
 
             TradeAccepted = false;
 
