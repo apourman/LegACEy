@@ -94,7 +94,7 @@ namespace ACE.Server.Market
         /// </summary>
         public static void Tick()
         {
-            if (!Vault.Available || polling)
+            if (!Vault.Available || !Vault.MarketEnabled || polling)
                 return;
 
             var now = DateTime.UtcNow;
@@ -171,6 +171,7 @@ namespace ACE.Server.Market
             VaultOutcome.InvalidAmount => "invalid_amount",
             VaultOutcome.InsufficientFunds => "insufficient_funds",
             VaultOutcome.Paused => "paused",
+            VaultOutcome.MarketClosed => "market_closed",
             _ => "failed",
         };
 

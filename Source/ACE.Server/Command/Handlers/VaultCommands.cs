@@ -14,7 +14,14 @@ namespace ACE.Server.Command.Handlers
     /// </summary>
     public static class VaultCommands
     {
-        private const string Usage = "/vault deposit  (the last item you appraised)\n/vault withdraw <id>\n/vault list\n/vault deposit mmd  (all your trade notes)\n/vault withdraw mmd <amount>\n/vault balance\n/vault link  (a code for the UtilityBelt plugin)\n/vault tokens\n/vault tokens revoke <id>";
+        private const string ItemUsage = "/vault deposit  (the last item you appraised)\n/vault withdraw <id>\n/vault list";
+
+        private const string MarketUsage = "\n/vault deposit mmd  (all your trade notes)\n/vault withdraw mmd <amount>\n/vault balance\n/vault link  (a code for the UtilityBelt plugin)\n/vault tokens\n/vault tokens revoke <id>";
+
+        /// <summary>
+        /// The trade note and plugin lines only while the marketplace is open
+        /// </summary>
+        private static string Usage => Vault.MarketEnabled ? ItemUsage + MarketUsage : ItemUsage;
 
         [CommandHandler("vault", AccessLevel.Player, CommandHandlerFlag.RequiresWorld, 0,
             "Move items between your pack and your account's Vault",
@@ -85,6 +92,12 @@ namespace ACE.Server.Command.Handlers
                         return;
                     }
 
+                    if (!Vault.MarketEnabled)
+                    {
+                        Tell(session, VaultMessages.For(VaultOutcome.MarketClosed, null));
+                        return;
+                    }
+
                     Tell(session, VaultMessages.Balance(Vault.Balance(player)));
                     break;
 
@@ -95,6 +108,12 @@ namespace ACE.Server.Command.Handlers
                         return;
                     }
 
+                    if (!Vault.MarketEnabled)
+                    {
+                        Tell(session, VaultMessages.For(VaultOutcome.MarketClosed, null));
+                        return;
+                    }
+
                     Tell(session, VaultMessages.LinkCode(VaultPlugin.NewLinkCode(player, out var minutes), minutes));
                     break;
 
@@ -102,6 +121,12 @@ namespace ACE.Server.Command.Handlers
                     if (!Vault.Available)
                     {
                         Tell(session, VaultMessages.For(VaultOutcome.NotAvailable, null));
+                        return;
+                    }
+
+                    if (!Vault.MarketEnabled)
+                    {
+                        Tell(session, VaultMessages.For(VaultOutcome.MarketClosed, null));
                         return;
                     }
 

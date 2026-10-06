@@ -40,6 +40,7 @@ namespace ACE.Server.Market
                 VaultOutcome.SaveFailed => $"The Vault could not save {item}. Nothing was changed.",
                 VaultOutcome.Unconfirmed => $"The Vault could not confirm whether {item} moved. Log out and back in: it will be in your pack or in your Vault.",
                 VaultOutcome.Banned => "Your account is banned, so its Vault is frozen.",
+                VaultOutcome.MarketClosed => "The marketplace is not open yet.",
 
                 VaultOutcome.RecentPlayerFight => "You have been in a player fight too recently to use the Vault. Try again in a couple of minutes.",
                 VaultOutcome.Trading => "Close the trade window before you use the Vault.",

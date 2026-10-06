@@ -28,5 +28,6 @@ done
 for database in "$AUTH_DATABASE" "$SHARD_DATABASE"; do
   db_sql "$database" < "$ROOT/scripts/market/dev-marker.sql"
 done
+db_sql "$SHARD_DATABASE" < "$ROOT/scripts/market/dev-settings.sql"
 
 echo "End-to-end database schemas and development markers are ready."

@@ -14,6 +14,7 @@ using ACE.Database.Tests.Market;
 using ACE.Entity.Enum;
 using ACE.Entity.Enum.Properties;
 using ACE.Server.Entity;
+using ACE.Server.Managers;
 using ACE.Server.Market;
 using ACE.Server.WorldObjects;
 
@@ -323,6 +324,28 @@ namespace ACE.Server.Tests.Market
                 Assert.IsNotNull(player.GetInventoryItem(attuned.Guid.Full), "a refused item stays in the pack");
                 Assert.AreEqual(0, VaultStore.Count(player.Character.AccountId));
             }
+        }
+
+        [TestMethod]
+        public void Bridge_MarketClosed_LeavesTicketsWaitingUntilItOpens()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+
+            PropertyManager.ModifyBool(Vault.MarketEnabledKey, false);
+            long ticket;
+            try
+            {
+                ticket = NewTicket(player, TicketKind.InventorySnapshot, new TicketPayload());
+                System.Threading.Thread.Sleep(GameBridge.PollInterval * 3);
+
+                Assert.AreEqual(TicketStatus.Waiting, TicketStatusOf(ticket), "a closed market claims nothing");
+            }
+            finally
+            {
+                PropertyManager.ModifyBool(Vault.MarketEnabledKey, true);
+            }
+
+            Assert.AreEqual($"{TicketStatus.Failed}|{GameBridge.Offline}", WaitForTicket(ticket));
         }
 
         [TestMethod]

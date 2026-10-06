@@ -52,6 +52,9 @@ namespace ACE.Server.Market
 
         // the market is paused (a failed ledger audit): MMD withdrawals are refused until /market resume
         Paused,
+
+        // market_enabled is off: the Vault holds items, but trade notes, web requests and plugin sign-in wait for the marketplace to open
+        MarketClosed,
     }
 
     public sealed class VaultResult

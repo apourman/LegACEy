@@ -34,6 +34,13 @@ namespace ACE.Server.Market
         public static bool Available { get; private set; }
 
         /// <summary>
+        /// The market_enabled server setting, off by default. The Vault's items work either way; trade notes, the game bridge and plugin sign-in need it on.
+        /// </summary>
+        public static bool MarketEnabled => PropertyManager.GetBool(MarketEnabledKey).Item;
+
+        public const string MarketEnabledKey = "market_enabled";
+
+        /// <summary>
         /// Players with a deposit or withdrawal in flight. One at a time each, so that two queued withdrawals can't both pass the pack-space and unique checks
         /// before either has reached the pack. Only the world thread touches it.
         /// </summary>

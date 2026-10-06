@@ -80,6 +80,7 @@ namespace ACE.Server.Tests.Market
             DatabaseManager.Start();
 
             PropertyManager.Initialize();
+            PropertyManager.ModifyBool(Vault.MarketEnabledKey, true); // off by default on a server; these tests cover the open market
             GuidManager.Initialize();
 
             PlayerManager.Initialize();

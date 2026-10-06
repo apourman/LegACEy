@@ -45,6 +45,12 @@ namespace ACE.Server.Market
                 return;
             }
 
+            if (!MarketEnabled)
+            {
+                FinishNotes(player, VaultOutcome.MarketClosed, 0, 0, completed);
+                return;
+            }
+
             if (inFlight.Contains(player.Guid.Full))
             {
                 FinishNotes(player, VaultOutcome.Busy, 0, 0, completed);
@@ -101,6 +107,12 @@ namespace ACE.Server.Market
             if (!Available)
             {
                 FinishNotes(player, VaultOutcome.NotAvailable, amount, 0, completed);
+                return;
+            }
+
+            if (!MarketEnabled)
+            {
+                FinishNotes(player, VaultOutcome.MarketClosed, amount, 0, completed);
                 return;
             }
 

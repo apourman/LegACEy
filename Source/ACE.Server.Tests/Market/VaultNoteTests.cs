@@ -10,6 +10,7 @@ using ACE.Database.Market;
 using ACE.Database.Models.Shard.Market;
 using ACE.Database.Tests.Market;
 using ACE.Entity.Enum.Properties;
+using ACE.Server.Managers;
 using ACE.Server.Market;
 using ACE.Server.WorldObjects;
 
@@ -87,6 +88,32 @@ namespace ACE.Server.Tests.Market
 
             Assert.AreEqual(VaultOutcome.NoNotes, result.Outcome, result.Message);
             Assert.IsFalse(string.IsNullOrWhiteSpace(result.Message));
+            Assert.AreEqual(0, Count($"SELECT COUNT(*) FROM market_ledger_entry WHERE account_Id = {account};"));
+        }
+
+        [TestMethod]
+        public void Notes_MarketClosed_AreRefusedAndNothingMoves()
+        {
+            var account = VaultTestWorld.NewAccountId();
+            var player = VaultTestWorld.NewPlayer(account);
+            GiveNotes(player, 5);
+
+            PropertyManager.ModifyBool(Vault.MarketEnabledKey, false);
+            try
+            {
+                var deposit = VaultTestWorld.DepositNotes(player);
+                var withdraw = VaultTestWorld.WithdrawNotes(player, 1);
+
+                Assert.AreEqual(VaultOutcome.MarketClosed, deposit.Outcome, deposit.Message);
+                Assert.AreEqual(VaultOutcome.MarketClosed, withdraw.Outcome, withdraw.Message);
+                Assert.IsFalse(string.IsNullOrWhiteSpace(deposit.Message));
+            }
+            finally
+            {
+                PropertyManager.ModifyBool(Vault.MarketEnabledKey, true);
+            }
+
+            Assert.AreEqual(5, NotesInPacks(player), "the notes stay in the pack");
             Assert.AreEqual(0, Count($"SELECT COUNT(*) FROM market_ledger_entry WHERE account_Id = {account};"));
         }
 

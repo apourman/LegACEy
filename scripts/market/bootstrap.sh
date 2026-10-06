@@ -54,6 +54,8 @@ elif [[ "$progress_columns" != "4" ]]; then
 fi
 # the API's web sessions (CREATE TABLE IF NOT EXISTS, so it's safe to apply on every run)
 db_sql "$MARKET_SHARD_DATABASE" < "$ROOT/Database/Updates/Shard/2026-10-02-00-Market-Web-Sessions.sql"
+# market_enabled is off on a server; open the market here (INSERT IGNORE, so a value changed since is kept)
+db_sql "$MARKET_SHARD_DATABASE" < "$ROOT/scripts/market/dev-settings.sql"
 
 for database in "$MARKET_AUTH_DATABASE" "$MARKET_SHARD_DATABASE"; do
   if [[ "$(db_sql -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '$database' AND table_name = 'legacey_dev_marker';")" != "1" ]]; then
