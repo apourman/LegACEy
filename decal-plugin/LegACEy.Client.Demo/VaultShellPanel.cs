@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -15,6 +16,19 @@ namespace LegACEy.Client.Demo;
 /// <summary>A static vault concept with its own styling and sample icons read from the player's DAT.</summary>
 public sealed class VaultShellPanel : UserControl, IDisposable
 {
+    // Increment with each visual iteration; the assembly's source revision identifies the actual build.
+    public const string PreviewVersion = "4";
+    public static string BuildRevision { get; } = ReadBuildRevision();
+
+    private static string ReadBuildRevision()
+    {
+        var version = typeof(VaultShellPanel).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        var separator = version?.IndexOf('+') ?? -1;
+        if (separator < 0 || separator == version!.Length - 1) return "local";
+        var revision = version.Substring(separator + 1);
+        return revision.Substring(0, Math.Min(8, revision.Length));
+    }
+
     // Retail contents-list empty face and selection overlay (32px RenderSurfaces).
     public const uint InventoryCellArtId = 0x06004D20;
     public const uint InventorySelectionArtId = 0x06004D21;
@@ -132,7 +146,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable
         footer.Children.Add(Rule());
         var footerRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 12 };
         footerRow.Children.Add(ActionFace("Deposit item", false));
-        var status = Label("Sample vault · Preview only", Muted, 11);
+        var status = Label($"Sample vault · Preview v{PreviewVersion} · {BuildRevision}", Gold, 11);
         status.VerticalAlignment = VerticalAlignment.Center;
         Grid.SetColumn(status, 2);
         footerRow.Children.Add(status);
@@ -228,12 +242,17 @@ public sealed class VaultShellWindow : UserControl
     {
         if (panel == null) throw new ArgumentNullException(nameof(panel));
         var layout = new Grid { RowDefinitions = new RowDefinitions("64,*") };
-        var title = new Grid { ColumnDefinitions = new ColumnDefinitions("*,32"), Margin = new Thickness(20, 6, 16, 0) };
+        var title = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,32"), Margin = new Thickness(20, 6, 16, 0) };
         title.Children.Add(new StackPanel
         {
             VerticalAlignment = VerticalAlignment.Center, Spacing = 3,
             Children = { new TextBlock { Text = "Account Vault", Foreground = VaultShellPanel.Text, FontSize = 23, FontFamily = new FontFamily("Georgia, Liberation Serif") }, VaultShellPanel.Label("Shared across your account", VaultShellPanel.Muted, 11) }
         });
+        var version = VaultShellPanel.Label($"Preview v{VaultShellPanel.PreviewVersion}", VaultShellPanel.Gold, 12);
+        version.VerticalAlignment = VerticalAlignment.Center;
+        version.Margin = new Thickness(0, 0, 12, 0);
+        Grid.SetColumn(version, 1);
+        title.Children.Add(version);
         var close = new Button
         {
             Content = "×", Width = 28, Height = 28, VerticalAlignment = VerticalAlignment.Center,
@@ -248,7 +267,7 @@ public sealed class VaultShellWindow : UserControl
         };
         ToolTip.SetTip(close, "Close vault preview");
         close.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
-        Grid.SetColumn(close, 1);
+        Grid.SetColumn(close, 2);
         title.Children.Add(close);
         layout.Children.Add(title);
         Grid.SetRow(panel, 1);

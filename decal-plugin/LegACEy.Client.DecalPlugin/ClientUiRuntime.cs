@@ -212,7 +212,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
             new IndicatorSlot(ThemeGallerySlot, AcClientTheme.WindowChromeCenterId, ToggleThemeGallery, "T"),
             new IndicatorSlot(BreakoutSlot, 0x06004D20, ToggleBreakout, "R"),
             new IndicatorSlot(PerformanceListSlot, 0x06007498, TogglePerformanceList, "P"),
-            new IndicatorSlot(VaultSlot, 0x06001020, () => ToggleWindow("vault-preview", VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight, new Point(240, 100)), "K"),
+            new IndicatorSlot(VaultSlot, 0x06001020, () => ToggleWindow("vault-preview", VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight, new Point(240, 100)), "K" + VaultShellPanel.PreviewVersion),
             new IndicatorSlot("Live data", 0x06004D20, ToggleLiveData, "V"),
             new IndicatorSlot("Element inspector", 0x06004D20, ToggleElementInspector, "I"),
             new IndicatorSlot("Log out", 0x060074B1, NativeUi.RequestLogOut)
