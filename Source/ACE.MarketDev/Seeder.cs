@@ -242,6 +242,11 @@ namespace ACE.MarketDev
             player.Character.Name = name;
             player.Location = new Position(StartLocation);
 
+            // as character creation does (PlayerFactory): without them a real client walks by default, with no tooltips or chat channels
+            player.SetCharacterOption(CharacterOption.CharacterOptions1Default, true);
+            player.SetCharacterOption(CharacterOption.CharacterOptions2Default, true);
+            player.SetCharacterOption(CharacterOption.ListenToPKDeathMessages, true);
+
             if (!DatabaseManager.Shard.BaseDatabase.AddCharacterInParallel(player.Biota, player.BiotaDatabaseLock, Array.Empty<(ACE.Entity.Models.Biota, ReaderWriterLockSlim)>(), player.Character, player.CharacterDatabaseLock))
                 throw new InvalidOperationException($"saving character {name} failed");
 
