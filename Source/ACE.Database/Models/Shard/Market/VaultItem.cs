@@ -32,6 +32,11 @@ public class VaultItem
     /// </summary>
     public uint RowVersion { get; set; }
 
+    /// <summary>
+    /// Where the player put the item in the Vault; null sorts after the arranged items, oldest deposit first. Not a concurrency change.
+    /// </summary>
+    public int? Position { get; set; }
+
     public uint Wcid { get; set; }
 
     public string Name { get; set; }

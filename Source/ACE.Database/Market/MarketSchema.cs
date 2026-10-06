@@ -73,6 +73,7 @@ namespace ACE.Database.Market
             "market_ticket.progress_Time",
             "market_ticket.progress_Until",
             "market_ticket.result",
+            "market_vault_item.position",
         };
 
         /// <summary>
@@ -98,7 +99,7 @@ namespace ACE.Database.Market
                 .ToList();
 
             var columns = context.Database
-                .SqlQueryRaw<string>("SELECT CONCAT(TABLE_NAME, '.', COLUMN_NAME) AS `Value` FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'market_ticket'")
+                .SqlQueryRaw<string>("SELECT CONCAT(TABLE_NAME, '.', COLUMN_NAME) AS `Value` FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'market%'")
                 .ToList();
 
             var missing = Tables.Where(t => !tables.Contains(t))

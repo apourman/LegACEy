@@ -21,12 +21,45 @@ namespace ACE.Database.Market
         public const int MaxBlockReasonLength = 255;
 
         /// <summary>
-        /// Every item in the account's Vault, oldest deposit first
+        /// Moves an item to an index in the account's Vault order and numbers every item from 0, in one transaction.
+        /// An index past the end moves it to the end. False if the item isn't in the account's Vault.
+        /// Positions are presentation only: row_Version is not changed, so a withdrawal's mark is unaffected.
+        /// </summary>
+        public static bool Move(uint accountId, uint itemGuid, int toIndex)
+        {
+            using (var context = new ShardDbContext())
+            {
+                // the shard context retries on transient failures, so the transaction runs as one retriable unit
+                return context.Database.CreateExecutionStrategy().Execute(() =>
+                {
+                    using (var transaction = context.Database.BeginTransaction())
+                    {
+                        var order = context.MarketVaultItems.AsNoTracking().Where(r => r.AccountId == accountId)
+                            .OrderBy(r => r.Position == null).ThenBy(r => r.Position).ThenBy(r => r.DepositedTime).ThenBy(r => r.ItemGuid)
+                            .Select(r => r.ItemGuid).ToList();
+
+                        if (!order.Remove(itemGuid))
+                            return false;
+
+                        order.Insert(Math.Max(0, Math.Min(toIndex, order.Count)), itemGuid);
+
+                        for (var position = 0; position < order.Count; position++)
+                            context.Database.ExecuteSqlRaw("UPDATE market_vault_item SET position = {0} WHERE item_Guid = {1} AND account_Id = {2}", position, order[position], accountId);
+
+                        transaction.Commit();
+                        return true;
+                    }
+                });
+            }
+        }
+
+        /// <summary>
+        /// Every item in the account's Vault in the player's order: arranged items first, then the rest oldest deposit first
         /// </summary>
         public static List<VaultItem> List(uint accountId)
         {
             using (var context = new ShardDbContext())
-                return context.MarketVaultItems.AsNoTracking().Where(r => r.AccountId == accountId).OrderBy(r => r.DepositedTime).ThenBy(r => r.ItemGuid).ToList();
+                return context.MarketVaultItems.AsNoTracking().Where(r => r.AccountId == accountId).OrderBy(r => r.Position == null).ThenBy(r => r.Position).ThenBy(r => r.DepositedTime).ThenBy(r => r.ItemGuid).ToList();
         }
 
         /// <summary>

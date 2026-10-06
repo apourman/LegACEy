@@ -54,6 +54,7 @@ elif [[ "$progress_columns" != "4" ]]; then
 fi
 # the API's web sessions (CREATE TABLE IF NOT EXISTS, so it's safe to apply on every run)
 db_sql "$MARKET_SHARD_DATABASE" < "$ROOT/Database/Updates/Shard/2026-10-02-00-Market-Web-Sessions.sql"
+db_sql "$MARKET_SHARD_DATABASE" < "$ROOT/Database/Updates/Shard/2026-10-05-00-Market-Vault-Position.sql"
 # market_enabled is off on a server; open the market here (INSERT IGNORE, so a value changed since is kept)
 db_sql "$MARKET_SHARD_DATABASE" < "$ROOT/scripts/market/dev-settings.sql"
 

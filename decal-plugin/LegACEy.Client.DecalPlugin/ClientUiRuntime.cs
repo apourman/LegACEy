@@ -49,6 +49,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private const string ThemeGallerySlot = "Theme gallery";
     private const string BreakoutSlot = "Breakout";
     private const string PerformanceListSlot = "Performance list";
+    private const string VaultSlot = "Vault preview";
     private const string LiveDataWindowId = "live-game-data";
     private const string ElementInspectorWindowId = "element-inspector";
     private static readonly string PluginDirectory = IOPath.GetDirectoryName(typeof(ClientUiRuntime).Assembly.Location)!;
@@ -73,6 +74,17 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private readonly GameStatePort _gameState = new(new GameStateSnapshot("unknown-character", "unknown-server", 0, 0, 0, 0, 0, 0));
     private readonly GameStatePoller _gameStatePoller;
     private ClientUiFramework? _clientUi;
+    private GameChannelTransport? _channelTransport;
+    private ServerChannelClient? _serverChannel;
+    private RetailItemDrag? _retailDrag;
+    private uint _retailDragItem;
+    private string _retailDragName = string.Empty;
+    private int _loggedDrops;
+    private ScreenSurface? _dragIconSurface;
+    // our copy of the retail drag icon, drawn while the item is over a LegACEy window (the client draws its own below them)
+    private IDisposable? _retailDragIcon;
+    // a LegACEy item being dragged out of a window: the inventory cell under it shows the client's drop indicator
+    private bool _itemDragActive;
     private readonly Dictionary<string, ScreenSurface> _featureSurfaces = new(StringComparer.Ordinal);
     private readonly List<FeatureTakeover> _featureTakeovers = new();
     private bool _inGame;
@@ -93,6 +105,14 @@ internal sealed class ClientUiRuntime : IClientUiHost
     {
         AppDomain.CurrentDomain.AssemblyResolve += ResolveFromPluginDirectory;
         NativeUi.Initialize(Log);
+        try
+        {
+            _channelTransport = new GameChannelTransport(NativeUi.ReadMemory, () => _inGame, Log);
+            _serverChannel = new ServerChannelClient(_channelTransport);
+        }
+        catch (Exception exception) { Log($"LegACEy server channel disabled: {exception.Message}"); }
+        try { _retailDrag = new RetailItemDrag(NativeUi.ReadMemory, Log); }
+        catch (Exception exception) { Log($"Vault drag and drop disabled: {exception.Message}"); }
         CoreManager.Current.FilterInitComplete += OnFilterInitComplete;
     }
 
@@ -103,10 +123,13 @@ internal sealed class ClientUiRuntime : IClientUiHost
         CoreManager.Current.CharacterFilter.Logoff -= OnLogoff;
         CoreManager.Current.RenderFrame -= OnRenderFrame;
         CoreManager.Current.WindowMessage -= OnWindowMessage;
+        CoreManager.Current.EchoFilter.ServerDispatch -= OnServerDispatch;
         _postUiDrawHook?.Dispose();
         _postUiDrawHook = null;
         RestoreNativeBar();
         TearDown();
+        _serverChannel?.Dispose();
+        _serverChannel = null;
         SetScrollProfiling(false);
         _scrollProfileLog?.Dispose();
         _scrollProfileLog = null;
@@ -152,6 +175,23 @@ internal sealed class ClientUiRuntime : IClientUiHost
         CoreManager.Current.CharacterFilter.Logoff += OnLogoff;
         CoreManager.Current.RenderFrame += OnRenderFrame;
         CoreManager.Current.WindowMessage += OnWindowMessage;
+        CoreManager.Current.EchoFilter.ServerDispatch += OnServerDispatch;
+    }
+
+    /// <summary>LegACEy channel replies and pushes arrive on the game thread with every other server message.</summary>
+    private void OnServerDispatch(object? sender, NetworkMessageEventArgs e)
+    {
+        if (_failed || _serverChannel == null || _channelTransport == null)
+            return;
+        byte[]? payload;
+        try { payload = _channelTransport.ReadEvent(e); }
+        catch (Exception exception)
+        {
+            Log($"Could not read a server channel event: {exception}");
+            return;
+        }
+        if (payload != null)
+            Guard(() => _serverChannel.Receive(payload));
     }
 
     /// <summary>Enable character-specific windows once Decal has finished loading character identity.</summary>
@@ -166,7 +206,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
                 CreateUi();
             if (_windows == null)
                 CreateWindowManager();
-            _clientUi ??= new ClientUiFramework(this, _gameState, CurrentTheme());
+            _clientUi ??= new ClientUiFramework(this, _gameState, CurrentTheme(), _serverChannel);
             _inGame = true;
             PublishGameState();
         });
@@ -180,6 +220,8 @@ internal sealed class ClientUiRuntime : IClientUiHost
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up client UI at logoff: {exception}"); }
         _clientUi = null;
+        // Windows released their requests above; anything still outstanding fails as disconnected.
+        Guard(() => _serverChannel?.Reset());
         // Keep replacing retail roots through logout. RenderFrame hides any native
         // re-show until the element disappears; only unload or failure gives it back.
         foreach (var window in _windows?.ZOrder.ToArray() ?? Array.Empty<ManagedWindow>())
@@ -187,7 +229,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
         _windows = null;
         _hovered = null;
         _dragOffset = null;
-        foreach (var slot in new[] { InputTestSlot, ThemeGallerySlot, BreakoutSlot, PerformanceListSlot })
+        foreach (var slot in new[] { InputTestSlot, ThemeGallerySlot, BreakoutSlot, PerformanceListSlot, VaultSlot })
             _bar?.SetOpen(slot, false);
     }
 
@@ -211,6 +253,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
             new IndicatorSlot(ThemeGallerySlot, AcClientTheme.WindowChromeCenterId, ToggleThemeGallery, "T"),
             new IndicatorSlot(BreakoutSlot, 0x06004D20, ToggleBreakout, "R"),
             new IndicatorSlot(PerformanceListSlot, 0x06007498, TogglePerformanceList, "P"),
+            new IndicatorSlot(VaultSlot, 0x06001020, () => ToggleWindow("vault-preview", VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight, new Point(240, 100)), "K" + VaultShellPanel.PreviewVersion),
             new IndicatorSlot("Live data", 0x06004D20, ToggleLiveData, "V"),
             new IndicatorSlot("Element inspector", 0x06004D20, ToggleElementInspector, "I"),
             new IndicatorSlot("Log out", 0x060074B1, NativeUi.RequestLogOut)
@@ -364,8 +407,22 @@ internal sealed class ClientUiRuntime : IClientUiHost
             case "performance-list":
                 content = new PerformanceListPanel(_portal!);
                 break;
+            case "vault-preview":
+                content = new VaultShellPanel(_portal!, new VaultClient(_clientUi!.ServerChannel, CurrentSelection), new ItemDragHost(this));
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(id), id, "Unknown feature window.");
+        }
+        if (content is VaultShellPanel vault)
+        {
+            var vaultChrome = new VaultShellWindow(vault);
+            vaultChrome.DetachedFromVisualTree += (_, _) => vault.Dispose();
+            vaultChrome.CloseRequested += (_, _) =>
+            {
+                _clientUi?.CloseWindow(id);
+                _bar?.SetOpen(SlotByWindowId(id), false);
+            };
+            return vaultChrome;
         }
         var chrome = new ThemeWindowChrome(_portal!, id, content);
         chrome.CloseRequested += (_, _) =>
@@ -382,6 +439,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
         "theme-gallery" => ThemeGallerySlot,
         "breakout" => BreakoutSlot,
         "performance-list" => PerformanceListSlot,
+        "vault-preview" => VaultSlot,
         _ => id
     };
 
@@ -518,6 +576,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
         Guard(() =>
         {
             PublishGameState();
+            _serverChannel?.Tick();
             if (_barSurface == null)
             {
                 var element = NativeUi.GetElement(NativeUi.Indicators);
@@ -549,8 +608,16 @@ internal sealed class ClientUiRuntime : IClientUiHost
                 }
             }
 
+            UpdateRetailDrag();
+            if (_itemDragActive)
+                _retailDrag?.UpdateDropIndicator();
             foreach (var surface in _featureSurfaces.Values)
                 PrepareWindow(surface);
+            if (_dragIconSurface != null)
+            {
+                _dragIconSurface.Location = new Point(_pointer.X - 16, _pointer.Y - 16);
+                _dragIconSurface.Prepare();
+            }
             if (_breakout is { } breakout)
             {
                 var now = DateTime.UtcNow;
@@ -610,6 +677,173 @@ internal sealed class ClientUiRuntime : IClientUiHost
                 _firstPostUiWindow = false;
                 Log("LegACEy post-UI window draw reached through retail RenderDeviceD3D.EndScene.");
             }
+        }
+        // An item dragged out of a LegACEy window draws above everything.
+        Guard(() => _dragIconSurface?.DrawNow());
+    }
+
+    /// <summary>Tells LegACEy drop targets about a drag in the retail UI, and where the pointer is over them.</summary>
+    private void UpdateRetailDrag()
+    {
+        var item = _retailDrag?.CurrentItem() ?? 0;
+        if (item != _retailDragItem)
+        {
+            _retailDragItem = item;
+            _retailDragName = item == 0 ? string.Empty : ObjectName(item);
+        }
+        var top = item == 0 ? null : TopSurfaceAt(_pointer);
+        if (top != null && _retailDragIcon == null)
+            _retailDragIcon = ShowDragIcon(ObjectIcon(item));
+        else if (top == null && _retailDragIcon != null)
+        {
+            _retailDragIcon.Dispose();
+            _retailDragIcon = null;
+        }
+        foreach (var pair in _featureSurfaces)
+        {
+            if (pair.Value.Panel.Content is not IRetailItemDropTarget target) continue;
+            var surface = pair.Value;
+            target.RetailDragOver(item, _retailDragName, top == pair.Key
+                ? new Avalonia.Point(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y)
+                : null);
+        }
+    }
+
+    /// <summary>
+    /// A retail drag released over a LegACEy window: end the drag without delivering it, so the item never drops
+    /// onto whatever retail element or world is under the window, then offer it to the window. The button-up still
+    /// reaches the client, which now sees an ordinary release with no drag in progress.
+    /// </summary>
+    private void HandleRetailDrop(Point point)
+    {
+        var item = _retailDrag?.CurrentItem() ?? 0;
+        if (item == 0) return;
+        var id = TopSurfaceAt(point);
+        if (id == null) return;
+        _retailDrag!.Cancel();
+        var surface = SurfaceById(id);
+        var accepted = surface?.Panel.Content is IRetailItemDropTarget target &&
+            target.RetailDrop(item, ObjectName(item), new Avalonia.Point(point.X - surface.Location.X, point.Y - surface.Location.Y));
+        if (_loggedDrops++ < 5)
+            Log($"Retail item 0x{item:X8} dropped on LegACEy window '{id}'; retail drag cancelled; accepted: {accepted}.");
+        _retailDragItem = 0;
+        UpdateRetailDrag();
+    }
+
+    private string? TopSurfaceAt(Point point)
+    {
+        InputSurface? top = null;
+        foreach (var surface in GetInputSurfaces())
+            if (point.X >= surface.X && point.Y >= surface.Y && point.X < surface.X + surface.Width && point.Y < surface.Y + surface.Height &&
+                (top == null || surface.ZOrder > top.ZOrder))
+                top = surface;
+        return top?.Id;
+    }
+
+    private static string ObjectName(uint id)
+    {
+        try { return CoreManager.Current.WorldFilter[unchecked((int)id)]?.Name ?? string.Empty; }
+        catch (COMException) { return string.Empty; }
+    }
+
+    /// <summary>The object's icon layers as the client stacks them: item-type plate, underlay, icon, overlay.</summary>
+    private static IReadOnlyList<uint> ObjectIcon(uint id)
+    {
+        try
+        {
+            var item = CoreManager.Current.WorldFilter[unchecked((int)id)];
+            if (item == null) return Array.Empty<uint>();
+            // Decal reports portal texture ids without their 0x06 prefix.
+            static uint Texture(int value) => value == 0 ? 0 : (value & 0xFF000000) == 0 ? unchecked((uint)value) | 0x06000000 : unchecked((uint)value);
+            var layers = new List<uint> { Plate(unchecked((uint)item.Category)) };
+            foreach (var layer in new[] { Texture(item.Values(Decal.Adapter.Wrappers.LongValueKey.IconUnderlay)), Texture(item.Icon),
+                         Texture(item.Values(Decal.Adapter.Wrappers.LongValueKey.IconOverlay)) })
+                if (layer != 0) layers.Add(layer);
+            return layers;
+        }
+        catch (COMException) { return Array.Empty<uint>(); }
+    }
+
+    /// <summary>The plate under an icon by ACE ItemType flags, as the server's vault list and the Market API choose it.</summary>
+    private static uint Plate(uint itemType) =>
+        (itemType & 0x8101) != 0 ? 0x060011D2u : (itemType & 0x2) != 0 ? 0x060011CFu : (itemType & 0x4) != 0 ? 0x060011F3u :
+        (itemType & 0x8) != 0 ? 0x060011D5u : (itemType & 0x800) != 0 ? 0x060011D3u : 0x060011D4u;
+
+    /// <summary>Drag services for LegACEy windows: the floating icon and what lies under the pointer in the retail UI.</summary>
+    private sealed class ItemDragHost : IItemDragHost
+    {
+        private readonly ClientUiRuntime _owner;
+        public ItemDragHost(ClientUiRuntime owner) => _owner = owner;
+
+        public IDisposable ShowDragIcon(IReadOnlyList<uint> iconLayers)
+        {
+            var icon = _owner.ShowDragIcon(iconLayers);
+            _owner._itemDragActive = true;
+            return new ItemDrag(_owner, icon);
+        }
+
+        private sealed class ItemDrag : IDisposable
+        {
+            private ClientUiRuntime? _owner;
+            private readonly IDisposable _icon;
+            public ItemDrag(ClientUiRuntime owner, IDisposable icon) { _owner = owner; _icon = icon; }
+            public void Dispose()
+            {
+                if (_owner == null) return;
+                _owner._itemDragActive = false;
+                _owner.Guard(() => _owner._retailDrag?.ClearDropIndicator());
+                _icon.Dispose();
+                _owner = null;
+            }
+        }
+
+        public ItemDropTarget DropTargetAtPointer()
+        {
+            var drag = _owner._retailDrag;
+            if (drag == null) return ItemDropTarget.Inventory;
+            var over = drag.IsPointerOverInventory(out var exists, out var open, out var element);
+            // Without the panel element, any drop outside LegACEy windows withdraws to the pack.
+            var target = !exists ? ItemDropTarget.Inventory : !open ? ItemDropTarget.InventoryClosed : over ? ItemDropTarget.Inventory : ItemDropTarget.Elsewhere;
+            if (_owner._loggedDrops++ < 5)
+                Log($"Vault item dropped at {_owner._pointer}: retail element under pointer 0x{element:X8}, inventory open: {open}, target: {target}.");
+            return target;
+        }
+    }
+
+    private IDisposable ShowDragIcon(IReadOnlyList<uint> iconLayers)
+    {
+        HideDragIcon();
+        if (_device == null || _portal == null) return new DragIcon(this);
+        var bitmaps = new List<Avalonia.Media.Imaging.WriteableBitmap>();
+        var layers = new Grid { Width = 32, Height = 32 };
+        foreach (var id in iconLayers)
+        {
+            var bitmap = GameArtImageExtension.CreateBitmap(_portal, id);
+            if (bitmap == null) continue;
+            bitmaps.Add(bitmap);
+            layers.Children.Add(new Avalonia.Controls.Image { Source = bitmap, Width = 32, Height = 32, Stretch = Stretch.None });
+        }
+        RenderOptions.SetBitmapInterpolationMode(layers, Avalonia.Media.Imaging.BitmapInterpolationMode.None);
+        layers.DetachedFromVisualTree += (_, _) => { foreach (var bitmap in bitmaps) bitmap.Dispose(); };
+        var panel = ObservePanel(AvaloniaPanel.Create(() => layers, 32, 32));
+        _dragIconSurface = new ScreenSurface(_device, panel) { Visible = true, Location = new Point(_pointer.X - 16, _pointer.Y - 16) };
+        return new DragIcon(this);
+    }
+
+    private void HideDragIcon()
+    {
+        _dragIconSurface?.Dispose();
+        _dragIconSurface = null;
+    }
+
+    private sealed class DragIcon : IDisposable
+    {
+        private ClientUiRuntime? _owner;
+        public DragIcon(ClientUiRuntime owner) => _owner = owner;
+        public void Dispose()
+        {
+            _owner?.HideDragIcon();
+            _owner = null;
         }
     }
 
@@ -760,6 +994,10 @@ internal sealed class ClientUiRuntime : IClientUiHost
             return;
 
         var lParam = e.LParam;
+        if (e.Msg == InputRouterService.WmMouseMove)
+            _pointer = new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff));
+        if (e.Msg == InputRouterService.WmLButtonUp && _inputRouter.CapturedSurfaceId == null)
+            Guard(() => HandleRetailDrop(new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff))));
         if (e.Msg == InputRouterService.WmMouseWheel)
         {
             var point = new NativePoint
@@ -960,7 +1198,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
     {
         _windowsEnabled = false;
         Log($"LegACEy windows disabled: {exception}");
-        foreach (var slot in new[] { InputTestSlot, ThemeGallerySlot, BreakoutSlot, PerformanceListSlot, "Live data", "Element inspector" })
+        foreach (var slot in new[] { InputTestSlot, ThemeGallerySlot, BreakoutSlot, PerformanceListSlot, VaultSlot, "Live data", "Element inspector" })
             _bar?.SetOpen(slot, false);
         foreach (var window in _windows?.ZOrder.ToArray() ?? Array.Empty<ManagedWindow>())
             _windows!.Close(window.Id);
@@ -968,6 +1206,9 @@ internal sealed class ClientUiRuntime : IClientUiHost
         catch (Exception cleanupError) { Log($"Could not clean up feature UI after window failure: {cleanupError}"); }
         _clientUi = null;
     }
+
+    /// <summary>The object selected in the game, for "Deposit item"; zero for none.</summary>
+    private static uint CurrentSelection() => unchecked((uint)CoreManager.Current.Actions.CurrentSelection);
 
     private static string SessionCharacter() => CoreManager.Current.CharacterFilter.Name;
     private static string SessionServer() => CoreManager.Current.CharacterFilter.Server;
@@ -1057,9 +1298,16 @@ internal sealed class ClientUiRuntime : IClientUiHost
 
     private void TearDown()
     {
+        if (_itemDragActive)
+            try { _retailDrag?.ClearDropIndicator(); } catch (Exception exception) { Log($"Could not clear the inventory drop indicator: {exception.Message}"); }
+        _itemDragActive = false;
+        _retailDragIcon = null;
+        HideDragIcon();
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up feature UI during unload: {exception}"); }
         _clientUi = null;
+        try { _serverChannel?.Reset(); }
+        catch (Exception exception) { Log($"Could not fail outstanding server channel requests: {exception}"); }
         RestoreNativeBar();
         _hovered = null;
         _barSurface?.Dispose();

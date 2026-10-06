@@ -55,6 +55,9 @@ namespace ACE.Server.Market
 
             Available = check.Status == MarketSchemaStatus.Ok;
 
+            // the LegACEy client's Vault window; the actions answer "not available" while the market is disabled
+            VaultChannelActions.Register();
+
             if (Available)
             {
                 log.Info($"[VAULT] Market schema check: {check.Report}");
@@ -448,6 +451,8 @@ namespace ACE.Server.Market
             var result = new VaultResult(outcome, VaultMessages.For(outcome, itemName), itemGuid);
 
             player.Session?.Network.EnqueueSend(new GameMessageSystemChat(result.Message, ChatMessageType.Broadcast));
+
+            VaultChannelActions.PushChanged(player, result);
 
             completed?.Invoke(result);
         }

@@ -151,7 +151,7 @@ internal static class NativeUi
         if (!_ready) throw new InvalidOperationException("The retail native UI catalogue has not passed validation.");
     }
 
-    private static byte[] ReadMemory(uint address, int count)
+    internal static byte[] ReadMemory(uint address, int count)
     {
         var bytes = new byte[count];
         if (!ReadProcessMemory(GetCurrentProcess(), new IntPtr(unchecked((int)address)), bytes, count, out var read) || read.ToInt32() != count)

@@ -28,14 +28,17 @@ public sealed class ClientUiFramework : IDisposable
     private IClientTheme _theme;
     private bool _ended;
 
-    public ClientUiFramework(IClientUiHost host, IGameStatePort gameState, IClientTheme theme)
+    public ClientUiFramework(IClientUiHost host, IGameStatePort gameState, IClientTheme theme, IServerChannel? serverChannel = null)
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         GameState = gameState ?? throw new ArgumentNullException(nameof(gameState));
         _theme = theme ?? throw new ArgumentNullException(nameof(theme));
+        ServerChannel = serverChannel ?? UnavailableServerChannel.Instance;
     }
 
     public IGameStatePort GameState { get; }
+    /// <summary>The in-band LegACEy server channel. Requests and subscriptions belong to the feature that made them.</summary>
+    public IServerChannel ServerChannel { get; }
     public IClientTheme Theme => _theme;
     public int OpenWindowCount => _windows.Count;
     public int TakeoverCount => _takeovers.Count;
