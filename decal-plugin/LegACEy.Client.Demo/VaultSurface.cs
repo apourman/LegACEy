@@ -13,11 +13,21 @@ internal sealed class VaultSurface : Decorator
     private readonly bool _ornate;
     private readonly IBrush _fill;
     private readonly Pen _edge;
-    private static readonly IBrush Rivet = VaultShellPanel.Brush("#171D20");
-    private static readonly Pen Shadow = new(VaultShellPanel.Brush("#090D10"));
-    private static readonly Pen Highlight = new(VaultShellPanel.Brush("#A78B5C"));
-    private static readonly Pen Grain = new(VaultShellPanel.Brush("#0CFFFFFF"));
-    private static readonly Pen DarkGrain = new(VaultShellPanel.Brush("#18000000"));
+    private static readonly IBrush Rivet = VaultShellPanel.Brush("#171715");
+    private static readonly Pen Shadow = new(VaultShellPanel.Brush("#050607"));
+    private readonly Pen _highlight;
+    private static readonly Pen Grain = new(VaultShellPanel.Brush("#04FFFFFF"));
+    private static readonly Pen DarkGrain = new(VaultShellPanel.Brush("#14000000"));
+
+    private static readonly IBrush Mottle = new RadialGradientBrush
+    {
+        GradientStops =
+        {
+            new GradientStop(Color.Parse("#06FFFFFF"), 0),
+            new GradientStop(Color.Parse("#03FFFFFF"), 0.5),
+            new GradientStop(Colors.Transparent, 1)
+        }
+    };
 
     public VaultSurface(VaultMaterial material = VaultMaterial.Slate, bool ornate = false)
     {
@@ -31,12 +41,13 @@ internal sealed class VaultSurface : Decorator
             EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
             GradientStops =
             {
-                new GradientStop(Color.Parse(blue ? "#30495B" : socket ? "#101619" : "#22292B"), 0),
-                new GradientStop(Color.Parse(blue ? "#152737" : "#13191D"), 0.55),
-                new GradientStop(Color.Parse(blue ? "#203747" : socket ? "#252B2C" : "#1A2225"), 1)
+                new GradientStop(Color.Parse(blue ? "#263B60" : socket ? "#080A0B" : "#181918"), 0),
+                new GradientStop(Color.Parse(blue ? "#101B32" : "#0C0D0E"), 0.55),
+                new GradientStop(Color.Parse(blue ? "#1A2B48" : socket ? "#191C1D" : "#171817"), 1)
             }
         };
-        _edge = new Pen(VaultShellPanel.Brush(material == VaultMaterial.SelectedSocket ? "#E4BA69" : "#786345"));
+        _edge = new Pen(VaultShellPanel.Brush(material == VaultMaterial.SelectedSocket ? "#DDB968" : socket ? "#484B4B" : "#A68A55"));
+        _highlight = new Pen(VaultShellPanel.Brush(socket ? "#646868" : "#C4AA71"));
     }
 
     public override void Render(DrawingContext context)
@@ -45,9 +56,21 @@ internal sealed class VaultSurface : Decorator
         if (Bounds.Width < 10 || Bounds.Height < 10) return;
         var rect = new Rect(Bounds.Size).Deflate(0.5);
         context.DrawRectangle(_fill, Shadow, rect);
-        // Fixed, subtle grain: no random animation, bitmap allocation, or runtime asset loading.
+        // Fixed mottling and fine grain evoke retail charcoal without external textures.
         using (context.PushClip(rect.Deflate(3)))
         {
+            if (_material == VaultMaterial.Slate)
+            {
+                for (var y = 8; y < Bounds.Height; y += 29)
+                for (var x = 8; x < Bounds.Width; x += 37)
+                {
+                    var seed = unchecked((uint)(x * 374761393 + y * 668265263));
+                    seed = (seed ^ (seed >> 13)) * 1274126177u;
+                    context.DrawEllipse(Mottle, null,
+                        new Point(x + seed % 19, y + (seed >> 8) % 13),
+                        26 + (seed >> 16) % 24, 14 + (seed >> 24) % 18);
+                }
+            }
             for (var y = 4; y < Bounds.Height - 3; y += 4)
             for (var x = 4; x < Bounds.Width - 3; x += 5)
             {
@@ -62,7 +85,7 @@ internal sealed class VaultSurface : Decorator
         context.DrawRectangle(null, Shadow, rect.Deflate(2));
         var inset = _ornate ? 6 : 4;
         var inner = rect.Deflate(inset);
-        context.DrawLine(Highlight, inner.TopLeft, inner.TopRight);
+        context.DrawLine(_highlight, inner.TopLeft, inner.TopRight);
         context.DrawLine(_edge, inner.TopLeft, inner.BottomLeft);
         context.DrawLine(Shadow, inner.BottomLeft, inner.BottomRight);
         context.DrawLine(Shadow, inner.TopRight, inner.BottomRight);
@@ -77,7 +100,7 @@ internal sealed class VaultSurface : Decorator
                 context.DrawLine(_edge, point, point + new Vector(dx * 6, dy * 6));
                 if (_ornate)
                 {
-                    context.DrawLine(Highlight, point + new Vector(dx * 3, dy * 3), point + new Vector(dx * 15, dy * 3));
+                    context.DrawLine(_highlight, point + new Vector(dx * 3, dy * 3), point + new Vector(dx * 15, dy * 3));
                     context.DrawLine(_edge, point + new Vector(dx * 3, dy * 3), point + new Vector(dx * 3, dy * 15));
                     context.DrawEllipse(Rivet, _edge,
                         point + new Vector(dx * 3, dy * 3), 2, 2);
