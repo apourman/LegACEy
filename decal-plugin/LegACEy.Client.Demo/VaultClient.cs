@@ -44,7 +44,9 @@ public sealed class VaultSnapshot
     public VaultSnapshot(bool available, long balance, int capacity, IReadOnlyList<VaultItemView> items)
     { Available = available; Balance = balance; Capacity = capacity; Items = items; }
     public bool Available { get; }
+    /// <summary>The account's MMD; negative while the server's marketplace is closed</summary>
     public long Balance { get; }
+    public bool HasBalance => Balance >= 0;
     public int Capacity { get; }
     public IReadOnlyList<VaultItemView> Items { get; }
 }

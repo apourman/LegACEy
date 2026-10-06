@@ -147,6 +147,7 @@ namespace ACE.Server.Market
 
             var player = context.Player;
             var capacity = (int)MarketSettings.Get(MarketSettings.VaultSize);
+            var marketOpen = Vault.MarketEnabled;
 
             // database reads: off the world thread, replying when done
             Task.Run(() =>
@@ -154,7 +155,8 @@ namespace ACE.Server.Market
                 try
                 {
                     var items = Vault.List(player);
-                    var balance = Vault.Balance(player);
+                    // NoBalance while the marketplace is closed: the window shows no MMD
+                    var balance = marketOpen ? Vault.Balance(player) : NoBalance;
                     context.Reply(ListBody(items, balance, capacity));
                 }
                 catch (Exception ex)
@@ -164,6 +166,11 @@ namespace ACE.Server.Market
                 }
             });
         }
+
+        /// <summary>
+        /// The balance vault.list sends while market_enabled is off
+        /// </summary>
+        public const long NoBalance = -1;
 
         internal static byte[] ListBody(IReadOnlyList<VaultItem> items, long balance, int capacity)
         {

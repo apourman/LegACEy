@@ -213,7 +213,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         var snapshot = client.Snapshot;
         var items = snapshot?.Items ?? Array.Empty<VaultItemView>();
         if (snapshot is { Available: true })
-            _summary.Content = SummaryRow($"{items.Count:N0} item{(items.Count == 1 ? "" : "s")}  /  {snapshot.Capacity:N0} capacity", $"{snapshot.Balance:N0} MMD");
+            _summary.Content = SummaryRow($"{items.Count:N0} item{(items.Count == 1 ? "" : "s")}  /  {snapshot.Capacity:N0} capacity", snapshot.HasBalance ? $"{snapshot.Balance:N0} MMD" : string.Empty);
         else
             _summary.Content = SummaryRow(client.Connection == VaultConnection.Connecting ? "Connecting to the server…" : "Vault unavailable", string.Empty);
 

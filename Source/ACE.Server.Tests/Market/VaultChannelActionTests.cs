@@ -10,6 +10,7 @@ using ACE.Database.Market;
 using ACE.Entity.Enum;
 using ACE.Server.ClientChannel;
 using ACE.Server.Command.Handlers;
+using ACE.Server.Managers;
 using ACE.Server.Market;
 using ACE.Server.Network.GameEvent.Events;
 using ACE.Server.Network.GameMessages;
@@ -38,6 +39,31 @@ namespace ACE.Server.Tests.Market
             Assert.AreEqual(1, body.ReadInt32(), "count");
             Assert.AreEqual(guid, body.ReadUInt32());
             Assert.AreEqual(VaultStore.Get(guid).Name, ChannelWire.ReadString(body));
+        }
+
+        [TestMethod]
+        public void ChannelList_MarketClosed_SendsNoBalance()
+        {
+            var (player, _) = DepositedItem();
+            VaultTestWorld.TakeSent(player);
+
+            PropertyManager.ModifyBool(Vault.MarketEnabledKey, false);
+            ChannelEvent reply;
+            try
+            {
+                reply = Request(player, VaultChannelActions.List, Array.Empty<byte>());
+            }
+            finally
+            {
+                PropertyManager.ModifyBool(Vault.MarketEnabledKey, true);
+            }
+
+            Assert.AreEqual(ChannelStatus.Ok, reply.Status);
+            var body = new BinaryReader(new MemoryStream(reply.Body), Encoding.UTF8);
+            Assert.AreEqual(1, body.ReadByte(), "the Vault itself stays available");
+            Assert.AreEqual(VaultChannelActions.NoBalance, body.ReadInt64(), "balance");
+            Assert.AreEqual((int)MarketSettings.Get(MarketSettings.VaultSize), body.ReadInt32());
+            Assert.AreEqual(1, body.ReadInt32(), "count");
         }
 
         [TestMethod]
