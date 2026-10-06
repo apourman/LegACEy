@@ -37,6 +37,12 @@ internal sealed class RetailItemDrag
         new NativeUiEntry("UIElementManager::MouseUpEvent reads m_bDragStarted and m_dragElement", 0x0045DEFB,
             Bytes("8A 86 24 03 00 00 84 C0 74 46 8B 86 1C 03 00 00"), Source, "offset reference (+0x324, +0x31C)"),
         new NativeUiEntry("UIElementManager::MouseUpEvent reads m_pElementLastOver", 0x0045DF23, Bytes("8B 8E 44 02 00 00"), Source, "offset reference (+0x244)"),
+        new NativeUiEntry("UIElement_UIItem::SetDragAcceptState", 0x004E1F20, Bytes(
+            "8B 89 88 06 00 00 85 C9 74 18 8B 44 24 04 3B 81 00 04 00 00 74 0C 8B 11 89 44 24 04 FF A2 9C 00 00 00 C2"), Source,
+            "ThisCall (uint state); 0x1000003F none, 0x10000040 reject, 0x10000041 accept (the green circle)"),
+        new NativeUiEntry("UIElement_UIItem::DynamicCast", 0x004E1D40, Bytes("8B C1 8B 4C 24 04 81 F9 32 00 00 10 74 0B 33 D2 83 F9 03 0F 95 C2 4A 23 C2 C2 04"), Source,
+            "virtual ThisCall (uint type) -> UIElement_UIItem* for type 0x10000032"),
+        new NativeUiEntry("DynamicCast to UIItem through vtable +0x94", 0x0048B762, Bytes("68 32 00 00 10 8B C8 FF 92 94 00 00 00"), Source, "virtual slot reference"),
         new NativeUiEntry("UIElement::IsAncestorOfMe", 0x0045FBB0, Bytes("8B 01 FF 90 A0 00 00 00 85 C0 74 1A 56 8B 74 24 08 3B C6 74 0E 8B 10 8B C8 FF"), Source,
             "ThisCall (UIElement* ancestor) -> bool"),
         new NativeUiEntry("UIElement_ItemList::InqDropIconInfo", 0x004E3380, Bytes("8B 44 24 10 83 EC 3C 53 55 8B 6C 24 50 56 8B 74"), Source,
@@ -47,12 +53,26 @@ internal sealed class RetailItemDrag
     private delegate void StopDragFn(IntPtr manager);
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate byte IsAncestorOfMeFn(IntPtr element, IntPtr ancestor);
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void SetDragAcceptStateFn(IntPtr item, uint state);
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate IntPtr DynamicCastFn(IntPtr element, uint type);
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate IntPtr GetParentFn(IntPtr element);
+
+    private const uint UiItemType = 0x10000032;
+    private const uint DragAcceptNone = 0x1000003F;
+    private const uint DragAcceptYes = 0x10000041;
+    private const int DynamicCastSlot = 0x94;
+    private const int GetParentSlot = 0xA0;
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate void InqDropIconInfoFn(IntPtr dropIcon, out uint itemId, out uint spellId, out uint flags);
 
     private readonly Action<string> _log;
     private readonly StopDragFn? _stop;
     private readonly IsAncestorOfMeFn? _isAncestorOfMe;
+    private readonly SetDragAcceptStateFn? _setDragAccept;
+    private IntPtr _acceptCell;
     private readonly InqDropIconInfoFn? _inquire;
     private bool _loggedInventory;
 
@@ -67,6 +87,7 @@ internal sealed class RetailItemDrag
         }
         _stop = Function<StopDragFn>(0x00459880);
         _isAncestorOfMe = Function<IsAncestorOfMeFn>(0x0045FBB0);
+        _setDragAccept = Function<SetDragAcceptStateFn>(0x004E1F20);
         _inquire = Function<InqDropIconInfoFn>(0x004E3380);
     }
 
@@ -120,6 +141,49 @@ internal sealed class RetailItemDrag
         elementOver = unchecked((uint)Marshal.ReadInt32(over, ElementIdOffset));
         return over == panel || _isAncestorOfMe!(over, panel) != 0;
     }
+
+    /// <summary>
+    /// Shows the client's own drop indicator (the green circle) on the inventory cell under the pointer, as a retail
+    /// drag over the inventory does, and clears it from the cell it was on. Call every frame of a LegACEy item drag;
+    /// call <see cref="ClearDropIndicator"/> when it ends.
+    /// </summary>
+    public void UpdateDropIndicator()
+    {
+        var cell = Available ? InventoryCellUnderPointer() : IntPtr.Zero;
+        if (cell == _acceptCell) return;
+        ClearDropIndicator();
+        if (cell == IntPtr.Zero) return;
+        _setDragAccept!(cell, DragAcceptYes);
+        _acceptCell = cell;
+    }
+
+    public void ClearDropIndicator()
+    {
+        // The cell was under the pointer on the last frame; inventory cells outlive a drag unless the inventory rebuilds.
+        if (_acceptCell != IntPtr.Zero) _setDragAccept!(_acceptCell, DragAcceptNone);
+        _acceptCell = IntPtr.Zero;
+    }
+
+    /// <summary>The inventory cell (UIElement_UIItem) under the pointer, by the client's hit test, or zero.</summary>
+    private IntPtr InventoryCellUnderPointer()
+    {
+        var manager = Marshal.ReadIntPtr(ManagerInstance);
+        var over = manager == IntPtr.Zero ? IntPtr.Zero : Marshal.ReadIntPtr(manager, ElementLastOverOffset);
+        if (over == IntPtr.Zero) return IntPtr.Zero;
+        var panel = NativeUi.GetElement(InventoryPanel);
+        if (panel == IntPtr.Zero || !NativeUi.IsVisible(panel) || (over != panel && _isAncestorOfMe!(over, panel) == 0)) return IntPtr.Zero;
+        // The hit element is usually a part of the cell (its icon); walk up to the cell itself.
+        var element = over;
+        for (var depth = 0; depth < 16 && element != IntPtr.Zero && element != panel; depth++, element = Virtual<GetParentFn>(element, GetParentSlot)(element))
+        {
+            var item = Virtual<DynamicCastFn>(element, DynamicCastSlot)(element, UiItemType);
+            if (item != IntPtr.Zero) return item;
+        }
+        return IntPtr.Zero;
+    }
+
+    private static T Virtual<T>(IntPtr instance, int slot) where T : Delegate =>
+        (T)Marshal.GetDelegateForFunctionPointer(Marshal.ReadIntPtr(Marshal.ReadIntPtr(instance), slot), typeof(T));
 
     private static T Function<T>(uint address) where T : Delegate =>
         (T)Marshal.GetDelegateForFunctionPointer(new IntPtr(address), typeof(T));

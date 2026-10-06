@@ -83,6 +83,8 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private ScreenSurface? _dragIconSurface;
     // our copy of the retail drag icon, drawn while the item is over a LegACEy window (the client draws its own below them)
     private IDisposable? _retailDragIcon;
+    // a LegACEy item being dragged out of a window: the inventory cell under it shows the client's drop indicator
+    private bool _itemDragActive;
     private readonly Dictionary<string, ScreenSurface> _featureSurfaces = new(StringComparer.Ordinal);
     private readonly List<FeatureTakeover> _featureTakeovers = new();
     private bool _inGame;
@@ -607,6 +609,8 @@ internal sealed class ClientUiRuntime : IClientUiHost
             }
 
             UpdateRetailDrag();
+            if (_itemDragActive)
+                _retailDrag?.UpdateDropIndicator();
             foreach (var surface in _featureSurfaces.Values)
                 PrepareWindow(surface);
             if (_dragIconSurface != null)
@@ -771,7 +775,27 @@ internal sealed class ClientUiRuntime : IClientUiHost
         private readonly ClientUiRuntime _owner;
         public ItemDragHost(ClientUiRuntime owner) => _owner = owner;
 
-        public IDisposable ShowDragIcon(IReadOnlyList<uint> iconLayers) => _owner.ShowDragIcon(iconLayers);
+        public IDisposable ShowDragIcon(IReadOnlyList<uint> iconLayers)
+        {
+            var icon = _owner.ShowDragIcon(iconLayers);
+            _owner._itemDragActive = true;
+            return new ItemDrag(_owner, icon);
+        }
+
+        private sealed class ItemDrag : IDisposable
+        {
+            private ClientUiRuntime? _owner;
+            private readonly IDisposable _icon;
+            public ItemDrag(ClientUiRuntime owner, IDisposable icon) { _owner = owner; _icon = icon; }
+            public void Dispose()
+            {
+                if (_owner == null) return;
+                _owner._itemDragActive = false;
+                _owner.Guard(() => _owner._retailDrag?.ClearDropIndicator());
+                _icon.Dispose();
+                _owner = null;
+            }
+        }
 
         public ItemDropTarget DropTargetAtPointer()
         {
@@ -1274,6 +1298,9 @@ internal sealed class ClientUiRuntime : IClientUiHost
 
     private void TearDown()
     {
+        if (_itemDragActive)
+            try { _retailDrag?.ClearDropIndicator(); } catch (Exception exception) { Log($"Could not clear the inventory drop indicator: {exception.Message}"); }
+        _itemDragActive = false;
         _retailDragIcon = null;
         HideDragIcon();
         try { _clientUi?.EndSession(); }
