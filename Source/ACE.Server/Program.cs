@@ -41,6 +41,8 @@ namespace ACE.Server
 
         public static readonly bool IsRunningInContainer = Convert.ToBoolean(Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"));
 
+        private static PosixSignalRegistration sigTermRegistration;
+
         public static void Main(string[] args)
         {
             var consoleTitle = $"ACEmulator - v{ServerBuildInfo.FullVersion}";
@@ -49,6 +51,8 @@ namespace ACE.Server
 
             AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
             AppDomain.CurrentDomain.ProcessExit += new EventHandler(OnProcessExit);
+            // .NET 10 no longer turns SIGTERM into ProcessExit, so shut down (logging out and saving players) ourselves
+            sigTermRegistration = PosixSignalRegistration.Create(PosixSignal.SIGTERM, context => { context.Cancel = true; ServerManager.DoShutdownNow(); });
 
             // Typically, you wouldn't force the current culture on an entire application unless you know sure your application is used in a specific region (which ACE is not)
             // We do this because almost all of the client/user input/output code does not take culture into account, and assumes en-US formatting.
@@ -374,7 +378,8 @@ namespace ACE.Server
                     log.Error(ex.ToString());
                 }
             }
-            else
+            // a shutdown already under way ends in Environment.Exit, which runs this handler; starting another would deadlock
+            else if (!ServerManager.ShutdownInitiated)
             {
                 ServerManager.DoShutdownNow();
                 DatabaseManager.Stop();
