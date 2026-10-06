@@ -151,13 +151,36 @@ public sealed class VaultDragDropTests
         Assert.All(vault.Cells, cell => Assert.Equal(1, cell.Opacity));
     });
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(12)] // taller in-game fonts leave the grid area shorter
+    public void Drop_frame_on_the_top_row_is_fully_visible_without_scrolling(int heightLost) => RenderThread.Run(() =>
+    {
+        using var vault = new LiveVault(VaultShellPanel.WindowHeight - heightLost);
+        var scroller = vault.Host.Content.GetVisualDescendants().OfType<ScrollViewer>().Single();
+        Assert.True(scroller.Extent.Height <= scroller.Viewport.Height + 0.5, $"extent {scroller.Extent.Height} > viewport {scroller.Viewport.Height}");
+        Assert.Equal(0, scroller.Offset.Y);
+
+        for (var column = 0; column < 6; column++)
+        {
+            vault.Window.RetailDragOver(5, "Gem", vault.Center(vault.Cells[column]));
+            vault.Host.Tick();
+            var indicator = Assert.Single(vault.VisibleIndicators());
+            // The space the grid area is given: a scroll area taller than it is centred and clipped by it.
+            var area = (Visual)scroller.GetVisualParent()!;
+            var top = indicator.TranslatePoint(default, area)!.Value;
+            Assert.True(top.Y >= 1, $"frame top {top.Y} is at or above the grid area's edge");
+            Assert.True(scroller.Bounds.Height <= area.Bounds.Height + 0.5, $"scroll area {scroller.Bounds.Height} is taller than its space {area.Bounds.Height}");
+        }
+    });
+
     private sealed class LiveVault : IDisposable
     {
         private DateTime _now = new(2026, 10, 5, 12, 0, 0, DateTimeKind.Utc);
         private readonly VaultShellPanel _panel;
         private readonly ServerChannelClient _channel;
 
-        public LiveVault()
+        public LiveVault(int height = VaultShellPanel.WindowHeight)
         {
             Server = new FakeVaultServer(() => _now) { Latency = TimeSpan.FromMilliseconds(30) };
             _channel = new ServerChannelClient(Server, () => _now);
@@ -165,7 +188,7 @@ public sealed class VaultDragDropTests
             Client = new VaultClient(_channel);
             VaultShellPanel? panel = null;
             Host = AvaloniaPanel.Create(() => new VaultShellWindow(panel = new VaultShellPanel(new NoArt(), Client, Drag)),
-                VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight);
+                VaultShellPanel.WindowWidth, height);
             _panel = panel!;
             Step(TimeSpan.FromMilliseconds(30));
             Step(TimeSpan.FromMilliseconds(30));

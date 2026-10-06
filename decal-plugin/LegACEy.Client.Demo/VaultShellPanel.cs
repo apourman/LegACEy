@@ -23,7 +23,7 @@ namespace LegACEy.Client.Demo;
 public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropTarget
 {
     // Increment with each visual iteration; the assembly's source revision identifies the actual build.
-    public const string PreviewVersion = "10";
+    public const string PreviewVersion = "11";
     public static string BuildRevision { get; } = ReadBuildRevision();
 
     private static string ReadBuildRevision()
@@ -224,10 +224,12 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         if (snapshot is { Available: true })
         {
             var cells = Math.Max(MinimumCells, (items.Count + Columns - 1) / Columns * Columns);
-            var slots = new UniformGrid { Columns = Columns, Rows = cells / Columns };
+            // Compact rows and a top inset leave room for the drop frame whatever the text metrics give the grid area
+            // (Tahoma in game is taller than the preview's fallback font).
+            var slots = new UniformGrid { Columns = Columns, Rows = cells / Columns, Margin = new Thickness(0, 4, 0, 0) };
             for (var index = 0; index < cells; index++)
             {
-                var slot = new Grid { Height = 48, Margin = new Thickness(0, 0, 6, 6), Background = Brushes.Transparent };
+                var slot = new Grid { Height = 46, Margin = new Thickness(0, 0, 6, 4), Background = Brushes.Transparent };
                 if (index < items.Count)
                 {
                     var item = items[index];
@@ -250,7 +252,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
             ShowDropIndicator(_dropCell);
             _contents.Content = _liveScroller = new ScrollViewer
             {
-                Content = slots, Height = 216, Background = Brushes.Transparent,
+                Content = slots, Background = Brushes.Transparent,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 VerticalScrollBarVisibility = cells > MinimumCells ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled
             };
