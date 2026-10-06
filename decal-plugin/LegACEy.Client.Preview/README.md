@@ -18,8 +18,16 @@ display-only placeholders. The vault keeps its styling when switching gallery
 themes. The window skin is drawn by Avalonia and ships in the demo assembly; retail
 cell and item artwork is read from the player's DAT rather than bundled. Nothing
 is connected to an account, inventory or server.
-In game, the **Vault preview** indicator (chest icon, K overlay or fallback label)
+In game, the **Vault preview** indicator (chest icon, K4 overlay or fallback label)
 opens the same shell.
 
-The K overlay identifies the indicator; it is not a keyboard shortcut. Close
+The K4 overlay identifies the indicator; it is not a keyboard shortcut. Close
 the game before rebuilding or replacing loaded plugin assemblies.
+
+The current shell displays **Preview v4** beside the close button and in its
+footer, followed by the demo assembly's source commit (or `local` when source
+metadata is unavailable). The indicator displays **K4**. These markers identify
+the vault preview revision separately from the plugin's official release version.
+If the markers are absent, the loaded assemblies predate this revision. Close the
+game, pull and rebuild, and update the plugin's companion DLLs as well as its main
+DLL if Decal loads a separate installation folder.
