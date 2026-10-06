@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.0](https://github.com/apourman/LegACEy/compare/v0.1.0...v0.2.0) (2026-10-06)
+
+
+### Features
+
+* add the in-game Vault window ([#14](https://github.com/apourman/LegACEy/issues/14)) ([42b6f94](https://github.com/apourman/LegACEy/commit/42b6f94f6047debda5233c5271cc3329f56388ab))
+* add the marketplace and Vault ([#11](https://github.com/apourman/LegACEy/issues/11)) ([3f2841b](https://github.com/apourman/LegACEy/commit/3f2841be9d429d438f9e73dd76d25dfa5168ebb5))
+
 ## 0.1.0 (2026-09-30)
 
 
