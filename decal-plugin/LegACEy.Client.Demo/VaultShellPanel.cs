@@ -17,9 +17,9 @@ public sealed class VaultShellPanel : UserControl, IDisposable
 {
     public const int WindowWidth = 620;
     public const int WindowHeight = 460;
-    internal static readonly IBrush Text = Brush("#E8DDC7");
-    internal static readonly IBrush Muted = Brush("#ACA89D");
-    internal static readonly IBrush Gold = Brush("#CDA569");
+    internal static readonly IBrush Text = Brush("#E6E3D8");
+    internal static readonly IBrush Muted = Brush("#AAA79F");
+    internal static readonly IBrush Gold = Brush("#D6BB76");
     private readonly Dictionary<uint, WriteableBitmap?> _images = new();
     private readonly IGameArtSource _art;
 
@@ -55,7 +55,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable
         summary.Children.Add(balance);
         root.Children.Add(new Border
         {
-            BorderBrush = Brush("#68563D"), BorderThickness = new Thickness(0, 0, 0, 1),
+            BorderBrush = Brush("#655B43"), BorderThickness = new Thickness(0, 0, 0, 1),
             Padding = new Thickness(0, 0, 0, 8), Child = summary
         });
 
@@ -116,7 +116,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable
         details.Children.Add(Label("Appraise item", Gold));
         var detailPane = new Border
         {
-            BorderBrush = Brush("#68563D"), BorderThickness = new Thickness(1, 0, 0, 0),
+            BorderBrush = Brush("#655B43"), BorderThickness = new Thickness(1, 0, 0, 0),
             Padding = new Thickness(14, 0, 0, 0), Child = details
         };
         Grid.SetColumn(detailPane, 1);
@@ -147,7 +147,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable
         FontSize = size, FontFamily = new FontFamily("Tahoma, avares://LegACEy.Client.Themes/Assets#Liberation Sans")
     };
 
-    private static Border Rule() => new() { Height = 1, Background = Brush("#68563D") };
+    private static Border Rule() => new() { Height = 1, Background = Brush("#655B43") };
 
     // Deliberately a display-only face rather than an actionable transfer control.
     private static VaultSurface ActionFace(string text, bool primary) => new(VaultMaterial.BlueSteel)
