@@ -165,5 +165,8 @@ namespace ACE.Server.Network.GameAction
         AutonomousPosition                   = 0xF753,
         ApplyVisualEffect                    = 0xF755,
         JumpNonAutonomous                    = 0xF7C9,
+
+        // LegACEy: a request on the in-band server channel (ACE.Server.ClientChannel). Retail clients never send it.
+        LegaceyChannel                       = 0x4C47,
     }
 }

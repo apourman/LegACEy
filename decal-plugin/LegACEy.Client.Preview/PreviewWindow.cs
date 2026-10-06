@@ -32,6 +32,10 @@ internal sealed class PreviewWindow : Window
     private readonly DispatcherTimer _dataTimer;
     private LiveGameDataPanel? _livePanel;
     private VaultShellPanel? _vaultPanel;
+    // The vault talks to an in-process fake of ACE's channel actions through the real client channel.
+    private readonly FakeVaultServer _vaultServer = new();
+    private readonly ServerChannelClient _serverChannel;
+    private readonly DispatcherTimer _channelTimer;
 
     public PreviewWindow()
     {
@@ -52,6 +56,11 @@ internal sealed class PreviewWindow : Window
         };
         _themePicker.SelectionChanged += (_, _) => ApplySelectedTheme();
         var changingData = new CheckBox { Content = "Changing fake data" };
+        _serverChannel = new ServerChannelClient(_vaultServer);
+        _vaultServer.Deliver = _serverChannel.Receive;
+        _channelTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(20) };
+        _channelTimer.Tick += (_, _) => { _vaultServer.Pump(); _serverChannel.Tick(); };
+        _channelTimer.Start();
         _dataTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _dataTimer.Tick += (_, _) => _gameState.Advance();
         changingData.IsCheckedChanged += (_, _) =>
@@ -105,7 +114,8 @@ internal sealed class PreviewWindow : Window
         _livePanel?.Dispose();
         _vaultPanel?.Dispose();
         _workspace.Children.Clear();
-        _vaultPanel = new VaultShellPanel(_art);
+        // The preview has no game selection, so Deposit item deposits a stand-in pack item.
+        _vaultPanel = new VaultShellPanel(_art, new VaultClient(_serverChannel, () => 0x50000001));
         var vaultChrome = new VaultShellWindow(_vaultPanel)
         {
             Width = VaultShellPanel.WindowWidth, Height = VaultShellPanel.WindowHeight
@@ -155,6 +165,8 @@ internal sealed class PreviewWindow : Window
         _livePanel = null;
         _vaultPanel?.Dispose();
         _vaultPanel = null;
+        _channelTimer.Stop();
+        _serverChannel.Dispose();
         _portal?.Dispose();
         _portal = null;
         GameArtImageExtension.CurrentSource = null;

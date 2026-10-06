@@ -74,6 +74,8 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private readonly GameStatePort _gameState = new(new GameStateSnapshot("unknown-character", "unknown-server", 0, 0, 0, 0, 0, 0));
     private readonly GameStatePoller _gameStatePoller;
     private ClientUiFramework? _clientUi;
+    private GameChannelTransport? _channelTransport;
+    private ServerChannelClient? _serverChannel;
     private readonly Dictionary<string, ScreenSurface> _featureSurfaces = new(StringComparer.Ordinal);
     private readonly List<FeatureTakeover> _featureTakeovers = new();
     private bool _inGame;
@@ -94,6 +96,12 @@ internal sealed class ClientUiRuntime : IClientUiHost
     {
         AppDomain.CurrentDomain.AssemblyResolve += ResolveFromPluginDirectory;
         NativeUi.Initialize(Log);
+        try
+        {
+            _channelTransport = new GameChannelTransport(NativeUi.ReadMemory, () => _inGame, Log);
+            _serverChannel = new ServerChannelClient(_channelTransport);
+        }
+        catch (Exception exception) { Log($"LegACEy server channel disabled: {exception.Message}"); }
         CoreManager.Current.FilterInitComplete += OnFilterInitComplete;
     }
 
@@ -104,10 +112,13 @@ internal sealed class ClientUiRuntime : IClientUiHost
         CoreManager.Current.CharacterFilter.Logoff -= OnLogoff;
         CoreManager.Current.RenderFrame -= OnRenderFrame;
         CoreManager.Current.WindowMessage -= OnWindowMessage;
+        CoreManager.Current.EchoFilter.ServerDispatch -= OnServerDispatch;
         _postUiDrawHook?.Dispose();
         _postUiDrawHook = null;
         RestoreNativeBar();
         TearDown();
+        _serverChannel?.Dispose();
+        _serverChannel = null;
         SetScrollProfiling(false);
         _scrollProfileLog?.Dispose();
         _scrollProfileLog = null;
@@ -153,6 +164,23 @@ internal sealed class ClientUiRuntime : IClientUiHost
         CoreManager.Current.CharacterFilter.Logoff += OnLogoff;
         CoreManager.Current.RenderFrame += OnRenderFrame;
         CoreManager.Current.WindowMessage += OnWindowMessage;
+        CoreManager.Current.EchoFilter.ServerDispatch += OnServerDispatch;
+    }
+
+    /// <summary>LegACEy channel replies and pushes arrive on the game thread with every other server message.</summary>
+    private void OnServerDispatch(object? sender, NetworkMessageEventArgs e)
+    {
+        if (_failed || _serverChannel == null || _channelTransport == null)
+            return;
+        byte[]? payload;
+        try { payload = _channelTransport.ReadEvent(e); }
+        catch (Exception exception)
+        {
+            Log($"Could not read a server channel event: {exception}");
+            return;
+        }
+        if (payload != null)
+            Guard(() => _serverChannel.Receive(payload));
     }
 
     /// <summary>Enable character-specific windows once Decal has finished loading character identity.</summary>
@@ -167,7 +195,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
                 CreateUi();
             if (_windows == null)
                 CreateWindowManager();
-            _clientUi ??= new ClientUiFramework(this, _gameState, CurrentTheme());
+            _clientUi ??= new ClientUiFramework(this, _gameState, CurrentTheme(), _serverChannel);
             _inGame = true;
             PublishGameState();
         });
@@ -181,6 +209,8 @@ internal sealed class ClientUiRuntime : IClientUiHost
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up client UI at logoff: {exception}"); }
         _clientUi = null;
+        // Windows released their requests above; anything still outstanding fails as disconnected.
+        Guard(() => _serverChannel?.Reset());
         // Keep replacing retail roots through logout. RenderFrame hides any native
         // re-show until the element disappears; only unload or failure gives it back.
         foreach (var window in _windows?.ZOrder.ToArray() ?? Array.Empty<ManagedWindow>())
@@ -367,7 +397,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
                 content = new PerformanceListPanel(_portal!);
                 break;
             case "vault-preview":
-                content = new VaultShellPanel(_portal!);
+                content = new VaultShellPanel(_portal!, new VaultClient(_clientUi!.ServerChannel, CurrentSelection));
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(id), id, "Unknown feature window.");
@@ -535,6 +565,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
         Guard(() =>
         {
             PublishGameState();
+            _serverChannel?.Tick();
             if (_barSurface == null)
             {
                 var element = NativeUi.GetElement(NativeUi.Indicators);
@@ -986,6 +1017,9 @@ internal sealed class ClientUiRuntime : IClientUiHost
         _clientUi = null;
     }
 
+    /// <summary>The object selected in the game, for "Deposit item"; zero for none.</summary>
+    private static uint CurrentSelection() => unchecked((uint)CoreManager.Current.Actions.CurrentSelection);
+
     private static string SessionCharacter() => CoreManager.Current.CharacterFilter.Name;
     private static string SessionServer() => CoreManager.Current.CharacterFilter.Server;
 
@@ -1077,6 +1111,8 @@ internal sealed class ClientUiRuntime : IClientUiHost
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up feature UI during unload: {exception}"); }
         _clientUi = null;
+        try { _serverChannel?.Reset(); }
+        catch (Exception exception) { Log($"Could not fail outstanding server channel requests: {exception}"); }
         RestoreNativeBar();
         _hovered = null;
         _barSurface?.Dispose();

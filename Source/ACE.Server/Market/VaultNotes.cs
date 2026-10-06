@@ -295,6 +295,8 @@ namespace ACE.Server.Market
 
             player.Session?.Network.EnqueueSend(new GameMessageSystemChat(result.Message, ChatMessageType.Broadcast));
 
+            VaultChannelActions.PushChanged(player, result);
+
             completed?.Invoke(result);
         }
     }

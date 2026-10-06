@@ -13,11 +13,15 @@ using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.Demo;
 
-/// <summary>A static vault concept with its own styling and sample icons read from the player's DAT.</summary>
+/// <summary>
+/// The account Vault window. With a <see cref="VaultClient"/> it shows the live Vault from the LegACEy server channel:
+/// real items and balance, selection, withdrawal and deposit of the game's selected item, refreshed by server pushes.
+/// Without one it is the static sample shell, with sample icons read from the player's DAT.
+/// </summary>
 public sealed class VaultShellPanel : UserControl, IDisposable
 {
     // Increment with each visual iteration; the assembly's source revision identifies the actual build.
-    public const string PreviewVersion = "4";
+    public const string PreviewVersion = "5";
     public static string BuildRevision { get; } = ReadBuildRevision();
 
     private static string ReadBuildRevision()
@@ -34,11 +38,22 @@ public sealed class VaultShellPanel : UserControl, IDisposable
     public const uint InventorySelectionArtId = 0x06004D21;
     public const int WindowWidth = 620;
     public const int WindowHeight = 460;
+    private const int Columns = 6;
+    private const int MinimumCells = 24;
     internal static readonly IBrush Text = Brush("#E6E3D8");
     internal static readonly IBrush Muted = Brush("#AAA79F");
     internal static readonly IBrush Gold = Brush("#D6BB76");
+    internal static readonly IBrush Warning = Brush("#E0A070");
     private readonly Dictionary<uint, WriteableBitmap?> _images = new();
     private readonly IGameArtSource _art;
+    private readonly VaultClient? _client;
+    private readonly ContentControl _summary = new();
+    private readonly ContentControl _contents = new();
+    private readonly ContentControl _details = new();
+    private readonly ContentControl _footerStatus = new();
+    private readonly Button? _deposit;
+    private uint _selected;
+    private bool _disposed;
 
     private static readonly (string Name, uint Icon, uint Plate)[] Samples =
     {
@@ -56,86 +71,45 @@ public sealed class VaultShellPanel : UserControl, IDisposable
         ("Silver goblet", 0x0600101F, 0x060011D4)
     };
 
-    public VaultShellPanel(IGameArtSource art)
+    /// <param name="client">The live Vault; the panel owns it and disposes it. Null shows the static sample.</param>
+    public VaultShellPanel(IGameArtSource art, VaultClient? client = null)
     {
         _art = art ?? throw new ArgumentNullException(nameof(art));
+        _client = client;
         RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.None);
         var root = new Grid
         {
             RowDefinitions = new RowDefinitions("Auto,*,Auto"),
             RowSpacing = 10, Margin = new Thickness(20, 8, 20, 18)
         };
-        var summary = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        summary.Children.Add(Label("12 items  /  1,000 capacity", Text));
-        var balance = Label("245 MMD", Gold);
-        Grid.SetColumn(balance, 1);
-        summary.Children.Add(balance);
         root.Children.Add(new Border
         {
             BorderBrush = Brush("#655B43"), BorderThickness = new Thickness(0, 0, 0, 1),
-            Padding = new Thickness(0, 0, 0, 8), Child = summary
+            Padding = new Thickness(0, 0, 0, 8), Child = _summary
         });
 
         var body = new Grid { ColumnDefinitions = new ColumnDefinitions("330,*"), ColumnSpacing = 22 };
-        var inventory = new StackPanel { Spacing = 12 };
-        // Static presentation surfaces: no search, filter or inventory behavior is connected.
-        var search = new VaultSurface
+        var inventory = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), RowSpacing = 12 };
+        // Static presentation surfaces: search and sorting are not connected yet.
+        inventory.Children.Add(new VaultSurface
         {
             Padding = new Thickness(12, 9), Child = Label("Search your vault…", Muted)
-        };
-        inventory.Children.Add(search);
+        });
         var categories = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         categories.Children.Add(Label("All items", Gold));
         var sort = Label("Name  ↓", Muted);
         Grid.SetColumn(sort, 1);
         categories.Children.Add(sort);
+        Grid.SetRow(categories, 1);
         inventory.Children.Add(categories);
-        var slots = new UniformGrid { Columns = 6, Rows = 4 };
-        for (var index = 0; index < 24; index++)
-        {
-            var slot = new Border
-            {
-                Height = 48, Margin = new Thickness(0, 0, 6, 6)
-            };
-            if (index < Samples.Length)
-            {
-                var sample = Samples[index];
-                slot.Child = InventoryCell(sample.Icon, sample.Plate, index == 0);
-                ToolTip.SetTip(slot, sample.Name + " — sample item");
-            }
-            else slot.Child = InventoryCell();
-            slots.Children.Add(slot);
-        }
-        inventory.Children.Add(slots);
+        Grid.SetRow(_contents, 2);
+        inventory.Children.Add(_contents);
         body.Children.Add(inventory);
 
-        var selected = Samples[0];
-        var details = new StackPanel { Spacing = 10 };
-        details.Children.Add(Label("SELECTED ITEM", Gold, 11));
-        var identity = new StackPanel { Spacing = 12, Orientation = Orientation.Horizontal };
-        identity.Children.Add(new Border
-        {
-            Padding = new Thickness(9),
-            Child = InventoryCell(selected.Icon, selected.Plate)
-        });
-        identity.Children.Add(new StackPanel
-        {
-            Spacing = 4, VerticalAlignment = VerticalAlignment.Center,
-            Children = { Label("Chainmail\nshirt", Text, 15), Label("Armor · Stored", Muted, 11) }
-        });
-        details.Children.Add(identity);
-        details.Children.Add(Rule());
-        details.Children.Add(Label("Deposited by", Muted, 11));
-        details.Children.Add(Label("Arwic Wanderer"));
-        details.Children.Add(Label("Withdraw to", Muted, 11));
-        details.Children.Add(Label("Current character"));
-        details.Children.Add(Label("60-second transfer", Muted, 11));
-        details.Children.Add(ActionFace("Withdraw item", true));
-        details.Children.Add(Label("Appraise item", Gold));
         var detailPane = new Border
         {
             BorderBrush = Brush("#655B43"), BorderThickness = new Thickness(1, 0, 0, 0),
-            Padding = new Thickness(14, 0, 0, 0), Child = details
+            Padding = new Thickness(14, 0, 0, 0), Child = _details
         };
         Grid.SetColumn(detailPane, 1);
         body.Children.Add(detailPane);
@@ -144,17 +118,198 @@ public sealed class VaultShellPanel : UserControl, IDisposable
 
         var footer = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto"), RowSpacing = 12 };
         footer.Children.Add(Rule());
-        var footerRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 12 };
-        footerRow.Children.Add(ActionFace("Deposit item", false));
-        var status = Label($"Sample vault · Preview v{PreviewVersion} · {BuildRevision}", Gold, 11);
-        status.VerticalAlignment = VerticalAlignment.Center;
-        Grid.SetColumn(status, 2);
-        footerRow.Children.Add(status);
+        var footerRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 12 };
+        if (_client == null) footerRow.Children.Add(ActionFace("Deposit item", false));
+        else
+        {
+            _deposit = ActionButton("Deposit item", false, () => _client.DepositSelection());
+            ToolTip.SetTip(_deposit, "Deposit the item selected in the game");
+            footerRow.Children.Add(_deposit);
+        }
+        _footerStatus.HorizontalAlignment = HorizontalAlignment.Right;
+        _footerStatus.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(_footerStatus, 1);
+        footerRow.Children.Add(_footerStatus);
         Grid.SetRow(footerRow, 1);
         footer.Children.Add(footerRow);
         Grid.SetRow(footer, 2);
         root.Children.Add(footer);
         Content = root;
+
+        if (_client == null) ShowSample();
+        else
+        {
+            _client.Changed += OnClientChanged;
+            ShowLive();
+            _client.Start();
+        }
+    }
+
+    private void ShowSample()
+    {
+        _summary.Content = SummaryRow("12 items  /  1,000 capacity", "245 MMD");
+        var slots = new UniformGrid { Columns = Columns, Rows = 4 };
+        for (var index = 0; index < MinimumCells; index++)
+        {
+            var slot = new Border { Height = 48, Margin = new Thickness(0, 0, 6, 6) };
+            if (index < Samples.Length)
+            {
+                var sample = Samples[index];
+                slot.Child = InventoryCell(new[] { sample.Plate, sample.Icon }, index == 0);
+                ToolTip.SetTip(slot, sample.Name + " — sample item");
+            }
+            else slot.Child = InventoryCell();
+            slots.Children.Add(slot);
+        }
+        _contents.Content = slots;
+
+        var selected = Samples[0];
+        var details = new StackPanel { Spacing = 10 };
+        details.Children.Add(Label("SELECTED ITEM", Gold, 11));
+        details.Children.Add(Identity(new[] { selected.Plate, selected.Icon }, "Chainmail\nshirt", "Armor · Stored"));
+        details.Children.Add(Rule());
+        details.Children.Add(Label("Deposited by", Muted, 11));
+        details.Children.Add(Label("Arwic Wanderer"));
+        details.Children.Add(Label("Withdraw to", Muted, 11));
+        details.Children.Add(Label("Current character"));
+        details.Children.Add(Label("60-second transfer", Muted, 11));
+        details.Children.Add(ActionFace("Withdraw item", true));
+        details.Children.Add(Label("Appraise item", Gold));
+        _details.Content = details;
+        _footerStatus.Content = Label($"Sample vault · Preview v{PreviewVersion} · {BuildRevision}", Gold, 11);
+    }
+
+    private void OnClientChanged(object? sender, EventArgs e)
+    {
+        if (!_disposed) ShowLive();
+    }
+
+    private void ShowLive()
+    {
+        var client = _client!;
+        var snapshot = client.Snapshot;
+        var items = snapshot?.Items ?? Array.Empty<VaultItemView>();
+        if (snapshot is { Available: true })
+            _summary.Content = SummaryRow($"{items.Count:N0} item{(items.Count == 1 ? "" : "s")}  /  {snapshot.Capacity:N0} capacity", $"{snapshot.Balance:N0} MMD");
+        else
+            _summary.Content = SummaryRow(client.Connection == VaultConnection.Connecting ? "Connecting to the server…" : "Vault unavailable", string.Empty);
+
+        if (items.Count > 0 && FindItem(items, _selected) == null) _selected = items[0].Guid;
+        if (snapshot is { Available: true })
+        {
+            var cells = Math.Max(MinimumCells, (items.Count + Columns - 1) / Columns * Columns);
+            var slots = new UniformGrid { Columns = Columns, Rows = cells / Columns };
+            for (var index = 0; index < cells; index++)
+            {
+                var slot = new Border { Height = 48, Margin = new Thickness(0, 0, 6, 6) };
+                if (index < items.Count)
+                {
+                    var item = items[index];
+                    slot.Child = SelectableCell(item, item.Guid == _selected);
+                    ToolTip.SetTip(slot, Describe(item));
+                }
+                else slot.Child = InventoryCell();
+                slots.Children.Add(slot);
+            }
+            _contents.Content = new ScrollViewer
+            {
+                Content = slots, Height = 216, Background = Brushes.Transparent,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = cells > MinimumCells ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled
+            };
+        }
+        else
+        {
+            var message = Label(client.Connection == VaultConnection.Connecting ? "Asking the server for your Vault…" : client.Notice, Muted);
+            message.Margin = new Thickness(0, 24, 0, 0);
+            _contents.Content = message;
+        }
+
+        _details.Content = Details(client, FindItem(items, _selected));
+        if (_deposit != null) _deposit.IsEnabled = client.Connection == VaultConnection.Live && !client.TransferPending;
+        var roundTrip = client.LastRoundTrip is { } time ? $" · {time.TotalMilliseconds:N0} ms" : string.Empty;
+        var state = client.Connection switch
+        {
+            VaultConnection.Live => $"Live{roundTrip} · {client.PushesReceived} push{(client.PushesReceived == 1 ? "" : "es")}",
+            VaultConnection.Connecting => "Connecting",
+            VaultConnection.Unavailable => "Unavailable",
+            _ => "Server error"
+        };
+        _footerStatus.Content = Label($"{state} · Preview v{PreviewVersion} · {BuildRevision}", Gold, 11);
+    }
+
+    private Control Details(VaultClient client, VaultItemView? item)
+    {
+        var details = new StackPanel { Spacing = 10 };
+        details.Children.Add(Label("SELECTED ITEM", Gold, 11));
+        if (item == null)
+            details.Children.Add(Label(client.Snapshot is { Available: true } ? "Your Vault is empty. Select an item in your pack and press Deposit item." : "No item selected.", Muted));
+        else
+        {
+            details.Children.Add(Identity(item.IconLayers, item.Name + (item.StackSize > 1 ? $" ×{item.StackSize:N0}" : string.Empty),
+                $"{TypeName(item.ItemType)} · {StateName(item.State)}"));
+            details.Children.Add(Rule());
+            details.Children.Add(Label("Deposited by", Muted, 11));
+            details.Children.Add(Label(item.DepositedBy.Length == 0 ? "Unknown character" : $"{item.DepositedBy}, {item.DepositedAt.LocalDateTime:d MMM}"));
+            details.Children.Add(Label("Withdraw to", Muted, 11));
+            details.Children.Add(Label(client.ServerCharacter.Length == 0 ? "Current character" : client.ServerCharacter));
+            var withdraw = ActionButton("Withdraw item", true, () => client.Withdraw(item.Guid));
+            withdraw.IsEnabled = item.State == "held" && !client.TransferPending;
+            details.Children.Add(withdraw);
+        }
+        if (client.Notice.Length != 0)
+        {
+            var notice = Label(client.Notice, client.Connection == VaultConnection.Live ? Gold : Warning, 11);
+            details.Children.Add(notice);
+        }
+        return details;
+    }
+
+    private static VaultItemView? FindItem(IReadOnlyList<VaultItemView> items, uint guid)
+    {
+        foreach (var item in items)
+            if (item.Guid == guid) return item;
+        return null;
+    }
+
+    private static string Describe(VaultItemView item) =>
+        $"{item.Name}{(item.StackSize > 1 ? $" ×{item.StackSize:N0}" : string.Empty)} — {StateName(item.State)}, 0x{item.Guid:X8}";
+
+    private static string StateName(string state) => state switch
+    {
+        "held" => "Stored",
+        "listed" => "Listed for sale",
+        "withdrawing" => "Withdrawing",
+        _ => state
+    };
+
+    // ACE.Entity.Enum.ItemType flags, most specific first, as the server's icon plate does.
+    private static string TypeName(uint type) =>
+        (type & 0x8101) != 0 ? "Weapon" : (type & 0x2) != 0 ? "Armor" : (type & 0x4) != 0 ? "Clothing" : (type & 0x8) != 0 ? "Jewelry" :
+        (type & 0x800) != 0 ? "Gem" : (type & 0x80) != 0 ? "Consumable" : (type & 0x200) != 0 ? "Container" : "Item";
+
+    private static Grid SummaryRow(string left, string right)
+    {
+        var summary = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        summary.Children.Add(Label(left, Text));
+        var balance = Label(right, Gold);
+        Grid.SetColumn(balance, 1);
+        summary.Children.Add(balance);
+        return summary;
+    }
+
+    private StackPanel Identity(IEnumerable<uint> layers, string name, string subtitle)
+    {
+        var identity = new StackPanel { Spacing = 12, Orientation = Orientation.Horizontal };
+        identity.Children.Add(new Border { Padding = new Thickness(9), Child = InventoryCell(layers) });
+        var title = Label(name, Text, 15);
+        title.MaxWidth = 150;
+        identity.Children.Add(new StackPanel
+        {
+            Spacing = 4, VerticalAlignment = VerticalAlignment.Center,
+            Children = { title, Label(subtitle, Muted, 11) }
+        });
+        return identity;
     }
 
     internal static IBrush Brush(string color) => new SolidColorBrush(Color.Parse(color));
@@ -167,14 +322,51 @@ public sealed class VaultShellPanel : UserControl, IDisposable
 
     private static Border Rule() => new() { Height = 1, Background = Brush("#655B43") };
 
-    // Deliberately a display-only face rather than an actionable transfer control.
+    // The sample shell's display-only face.
     private static VaultSurface ActionFace(string text, bool primary) => new(VaultMaterial.BlueSteel)
     {
         Padding = new Thickness(14, 9),
         Child = Label(text, Text, primary ? 13 : 12)
     };
 
-    private Grid InventoryCell(uint? iconId = null, uint plateId = 0, bool selected = false)
+    private static Button ActionButton(string text, bool primary, Action clicked)
+    {
+        var button = new Button
+        {
+            Content = text, HorizontalAlignment = HorizontalAlignment.Left,
+            Template = new FuncControlTemplate<Button>((owner, _) =>
+            {
+                var label = Label(text, owner.IsEnabled ? Text : Muted, primary ? 13 : 12);
+                var face = new VaultSurface(VaultMaterial.BlueSteel) { Padding = new Thickness(14, 9), Child = label, Opacity = owner.IsEnabled ? 1 : 0.55 };
+                owner.PropertyChanged += (_, change) =>
+                {
+                    if (change.Property != IsEnabledProperty) return;
+                    label.Foreground = owner.IsEnabled ? Text : Muted;
+                    face.Opacity = owner.IsEnabled ? 1 : 0.55;
+                };
+                return face;
+            })
+        };
+        button.Click += (_, _) => clicked();
+        return button;
+    }
+
+    private Button SelectableCell(VaultItemView item, bool selected)
+    {
+        var button = new Button
+        {
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+            Template = new FuncControlTemplate<Button>((_, _) => new Border { Background = Brushes.Transparent, Child = InventoryCell(item.IconLayers, selected) })
+        };
+        button.Click += (_, _) =>
+        {
+            _selected = item.Guid;
+            ShowLive();
+        };
+        return button;
+    }
+
+    private Grid InventoryCell(IEnumerable<uint>? layers = null, bool selected = false)
     {
         var cell = new Grid
         {
@@ -185,7 +377,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable
         cell.Children.Add(background != null
             ? (Control)new Image { Source = background, Width = 32, Height = 32, Stretch = Stretch.None }
             : new Border { Background = Brush("#0C0D0E"), BorderBrush = Brush("#484B4B"), BorderThickness = new Thickness(1) });
-        if (iconId.HasValue) cell.Children.Add(Icon(iconId.Value, plateId));
+        if (layers != null) cell.Children.Add(Icon(layers));
         if (selected)
         {
             var overlay = Bitmap(InventorySelectionArtId);
@@ -203,14 +395,14 @@ public sealed class VaultShellPanel : UserControl, IDisposable
         return bitmap;
     }
 
-    private Grid Icon(uint iconId, uint plateId)
+    private Grid Icon(IEnumerable<uint> ids)
     {
         var layers = new Grid
         {
             Width = 32, Height = 32,
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
         };
-        foreach (var id in new[] { plateId, iconId })
+        foreach (var id in ids)
         {
             var bitmap = Bitmap(id);
             if (bitmap != null)
@@ -228,6 +420,13 @@ public sealed class VaultShellPanel : UserControl, IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
+        if (_client != null)
+        {
+            _client.Changed -= OnClientChanged;
+            _client.Dispose();
+        }
         foreach (var image in _images.Values) image?.Dispose();
         _images.Clear();
     }

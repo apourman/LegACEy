@@ -106,5 +106,9 @@ namespace ACE.Server.Network.GameEvent
         MagicPurgeBadEnchantments              = 0x0312,
         SendClientContractTrackerTable         = 0x0314,
         SendClientContractTracker              = 0x0315,
+
+        // LegACEy: a reply or push on the in-band server channel (ACE.Server.ClientChannel).
+        // Retail acclient drops event types it doesn't know (UIQueueManager::ProcessNetBlobData's default case), but it is only sent to clients that used the channel.
+        LegaceyChannel                         = 0x4C47,
     }
 }
