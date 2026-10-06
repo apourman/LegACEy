@@ -30,6 +30,8 @@ public sealed class FakeVaultServer : IServerChannelTransport
     public long Balance { get; set; } = 245;
     public int Capacity { get; set; } = 1000;
     public List<string> Received { get; } = new();
+    /// <summary>Pack items the fake refuses to deposit, with the reason.</summary>
+    public Dictionary<uint, string> Refused { get; } = new();
     public IReadOnlyList<VaultItemView> Items => _items;
 
     public bool Send(byte[] requestPayload)
@@ -44,11 +46,29 @@ public sealed class FakeVaultServer : IServerChannelTransport
             case VaultProtocol.List:
                 Reply(id, action, ChannelStatus.Ok, VaultProtocol.WriteList(new VaultSnapshot(true, Balance, Capacity, _items.ToArray())));
                 break;
+            case VaultProtocol.Check:
+                var checkedGuid = ChannelWire.Reader(body).ReadUInt32();
+                var refusedBecause = Refused.TryGetValue(checkedGuid, out var reason) ? reason : null;
+                Reply(id, action, ChannelStatus.Ok, VaultProtocol.WriteCheck(checkedGuid, refusedBecause == null, refusedBecause ?? string.Empty));
+                break;
+            case VaultProtocol.Move:
+                var moveReader = ChannelWire.Reader(body);
+                var movedGuid = moveReader.ReadUInt32();
+                var toIndex = moveReader.ReadInt32();
+                var movedItem = _items.FirstOrDefault(item => item.Guid == movedGuid);
+                if (movedItem != null)
+                {
+                    _items.Remove(movedItem);
+                    _items.Insert(Math.Max(0, Math.Min(toIndex, _items.Count)), movedItem);
+                }
+                Reply(id, action, ChannelStatus.Ok, VaultProtocol.WriteTransfer(movedItem != null, movedItem != null ? string.Empty : "That item is no longer in your Vault."));
+                break;
             case VaultProtocol.Withdraw:
             case VaultProtocol.Deposit:
                 var guid = ChannelWire.Reader(body).ReadUInt32();
                 var deposit = action == VaultProtocol.Deposit;
-                var refusal = deposit ? null : _items.Any(item => item.Guid == guid) ? null : "That item is not in your Vault.";
+                var refusal = deposit ? (Refused.TryGetValue(guid, out var depositRefusal) ? depositRefusal : null)
+                    : _items.Any(item => item.Guid == guid) ? null : "That item is not in your Vault.";
                 if (refusal == null) _transfers.Add((_clock() + TransferTime, deposit, guid));
                 Reply(id, action, ChannelStatus.Ok, VaultProtocol.WriteTransfer(refusal == null, refusal ?? string.Empty));
                 break;

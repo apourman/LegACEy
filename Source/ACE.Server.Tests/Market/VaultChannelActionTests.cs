@@ -7,6 +7,7 @@ using System.Text;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 using ACE.Database.Market;
+using ACE.Entity.Enum;
 using ACE.Server.ClientChannel;
 using ACE.Server.Command.Handlers;
 using ACE.Server.Market;
@@ -67,6 +68,40 @@ namespace ACE.Server.Tests.Market
                 VaultTestWorld.WaitUntil(() => bystander.GetInventoryItem(otherGuid) != null, "the bystander's withdrawal");
                 Assert.IsFalse(VaultTestWorld.TakeSent(bystander).OfType<GameEventLegaceyChannel>().Any());
             }
+        }
+
+        [TestMethod]
+        public void ChannelCheck_RefusesAnAttunedItemWithTheDepositMessage_AndAcceptsAPlainOne()
+        {
+            var (player, attuned) = NewItem(i => i.Attuned = AttunedStatus.Attuned);
+            var plain = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+
+            var refused = new BinaryReader(new MemoryStream(Request(player, VaultChannelActions.Check, BitConverter.GetBytes(attuned.Guid.Full)).Body), Encoding.UTF8);
+            Assert.AreEqual(attuned.Guid.Full, refused.ReadUInt32());
+            Assert.AreEqual(0, refused.ReadByte(), "attuned items can't be deposited");
+            Assert.AreEqual(VaultMessages.For(VaultOutcome.Attuned, attuned.Name), ChannelWire.ReadString(refused));
+
+            var accepted = new BinaryReader(new MemoryStream(Request(player, VaultChannelActions.Check, BitConverter.GetBytes(plain.Guid.Full)).Body), Encoding.UTF8);
+            accepted.ReadUInt32();
+            Assert.AreEqual(1, accepted.ReadByte());
+            Assert.IsNotNull(player.GetInventoryItem(attuned.Guid.Full), "a check moves nothing");
+        }
+
+        [TestMethod]
+        public void ChannelMove_PutsTheItemAtTheIndex_AndTheListKeepsThatOrder()
+        {
+            var (player, first) = DepositedItem();
+            var second = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+            Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, second.Guid.Full).Outcome);
+            CollectionAssert.AreEqual(new[] { first, second.Guid.Full }, Vault.List(player).Select(i => i.ItemGuid).ToArray());
+            var versionBefore = VaultStore.Get(first).RowVersion;
+
+            var reply = Request(player, VaultChannelActions.Move, ChannelWire.Body(w => { w.Write(first); w.Write(1); }));
+
+            Assert.AreEqual(ChannelStatus.Ok, reply.Status, Text(reply.Body));
+            Assert.AreEqual(1, reply.Body[0], "moved");
+            CollectionAssert.AreEqual(new[] { second.Guid.Full, first }, Vault.List(player).Select(i => i.ItemGuid).ToArray());
+            Assert.AreEqual(versionBefore, VaultStore.Get(first).RowVersion, "a move is not a concurrency change");
         }
 
         [TestMethod]

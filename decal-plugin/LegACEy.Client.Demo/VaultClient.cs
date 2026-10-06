@@ -57,6 +57,18 @@ public static class VaultProtocol
     public const string Deposit = "vault.deposit";
     public const string Withdraw = "vault.withdraw";
     public const string Changed = "vault.changed";
+    public const string Check = "vault.check";
+    public const string Move = "vault.move";
+
+    public static byte[] MoveRequest(uint guid, int index) => ChannelWire.Body(w => { w.Write(guid); w.Write(index); });
+
+    public static (uint Guid, bool Ok, string Message) ReadCheck(byte[] body)
+    {
+        var reader = ChannelWire.Reader(body);
+        return (reader.ReadUInt32(), reader.ReadByte() != 0, ChannelWire.ReadString(reader));
+    }
+
+    public static byte[] WriteCheck(uint guid, bool ok, string message) => ChannelWire.Body(w => { w.Write(guid); w.Write((byte)(ok ? 1 : 0)); ChannelWire.WriteString(w, message); });
 
     public static VaultSnapshot ReadList(byte[] body)
     {
@@ -171,6 +183,9 @@ public sealed class VaultClient : IDisposable
     public int PushesReceived { get; private set; }
     public bool TransferPending { get; private set; }
     public event EventHandler? Changed;
+    /// <summary>A deposit check finished; read it with <see cref="DepositCheck"/>.</summary>
+    public event EventHandler? DepositCheckChanged;
+    private readonly Dictionary<uint, (bool Ok, string Message)> _checks = new();
 
     /// <summary>Greets the server, then loads the Vault.</summary>
     public void Start()
@@ -207,6 +222,48 @@ public sealed class VaultClient : IDisposable
     public void Deposit(uint guid) => Transfer(VaultProtocol.Deposit, guid);
 
     public void Withdraw(uint guid) => Transfer(VaultProtocol.Withdraw, guid);
+
+    /// <summary>
+    /// Asks the server whether the item could be deposited now (attuned, worn, too busy…), replacing any earlier answer for it.
+    /// The window asks when an item starts being dragged over it.
+    /// </summary>
+    public void CheckDeposit(uint guid)
+    {
+        _checks.Remove(guid);
+        Send(VaultProtocol.Check, VaultProtocol.ItemRequest(guid), reply =>
+        {
+            if (!reply.Ok) return;
+            var (checkedGuid, ok, message) = VaultProtocol.ReadCheck(reply.Body);
+            _checks[checkedGuid] = (ok, message);
+            DepositCheckChanged?.Invoke(this, EventArgs.Empty);
+        });
+    }
+
+    /// <summary>The server's answer for the item, or null while it is unknown.</summary>
+    public (bool Ok, string Message)? DepositCheck(uint guid) => _checks.TryGetValue(guid, out var check) ? check : null;
+
+    /// <summary>Moves an item to an index in the Vault order: at once on screen, then on the server.</summary>
+    public void Move(uint guid, int index)
+    {
+        if (Snapshot is not { Available: true } snapshot) return;
+        var items = new List<VaultItemView>(snapshot.Items);
+        var from = items.FindIndex(item => item.Guid == guid);
+        if (from < 0) return;
+        index = Math.Max(0, Math.Min(index, items.Count - 1));
+        if (index == from) return;
+        var moved = items[from];
+        items.RemoveAt(from);
+        items.Insert(index, moved);
+        Snapshot = new VaultSnapshot(true, snapshot.Balance, snapshot.Capacity, items);
+        Changed?.Invoke(this, EventArgs.Empty);
+        Send(VaultProtocol.Move, VaultProtocol.MoveRequest(guid, index), reply =>
+        {
+            var (accepted, message) = reply.Ok ? VaultProtocol.ReadTransfer(reply.Body) : (false, reply.Message);
+            if (!accepted) Notice = message;
+            // The server's order wins either way.
+            Refresh();
+        });
+    }
 
     /// <summary>Shows a message to the player without contacting the server.</summary>
     public void Tell(string notice) => Set(Connection, notice);
@@ -266,5 +323,6 @@ public sealed class VaultClient : IDisposable
         foreach (var request in _requests.ToArray()) request.Dispose();
         _requests.Clear();
         Changed = null;
+        DepositCheckChanged = null;
     }
 }

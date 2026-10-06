@@ -23,7 +23,7 @@ namespace LegACEy.Client.Demo;
 public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropTarget
 {
     // Increment with each visual iteration; the assembly's source revision identifies the actual build.
-    public const string PreviewVersion = "9";
+    public const string PreviewVersion = "10";
     public static string BuildRevision { get; } = ReadBuildRevision();
 
     private static string ReadBuildRevision()
@@ -46,6 +46,9 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     internal static readonly IBrush Muted = Brush("#AAA79F");
     internal static readonly IBrush Gold = Brush("#D6BB76");
     internal static readonly IBrush Warning = Brush("#E0A070");
+    private static readonly IBrush Invalid = Brush("#D9584A");
+    private static readonly IBrush ValidFill = Brush("#40D6BB76");
+    private static readonly IBrush InvalidFill = Brush("#40D9584A");
     private readonly Dictionary<uint, WriteableBitmap?> _images = new();
     private readonly IGameArtSource _art;
     private readonly VaultClient? _client;
@@ -159,6 +162,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         else
         {
             _client.Changed += OnClientChanged;
+            _client.DepositCheckChanged += OnDepositCheckChanged;
             ShowLive();
             _client.Start();
         }
@@ -235,14 +239,15 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
                 var indicator = new Border
                 {
                     Width = 38, Height = 38, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-                    BorderBrush = Gold, BorderThickness = new Thickness(2), Background = Brush("#40D6BB76"), CornerRadius = new CornerRadius(2),
-                    IsHitTestVisible = false, IsVisible = index == _dropCell
+                    BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(2), IsHitTestVisible = false
                 };
                 slot.Children.Add(indicator);
+                if (_dragItem != null && index < items.Count && items[index].Guid == _dragItem.Guid) slot.Opacity = 0.4;
                 _dropIndicators.Add(indicator);
                 _liveSlots.Add(slot);
                 slots.Children.Add(slot);
             }
+            ShowDropIndicator(_dropCell);
             _contents.Content = _liveScroller = new ScrollViewer
             {
                 Content = slots, Height = 216, Background = Brushes.Transparent,
@@ -268,7 +273,15 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         if (_retailOver && client.Connection == VaultConnection.Live)
         {
             var name = _retailName.Length == 0 ? "this item" : _retailName;
-            _footerStatus.Content = Label(_dropCell >= 0 ? $"Release to deposit {name}" : $"Drop {name} on a vault cell to deposit it", Gold, 12);
+            var check = client.DepositCheck(_retailItem);
+            _footerStatus.Content = check is { Ok: false } refused
+                ? Label(refused.Message, Invalid, 12)
+                : Label(_dropCell >= 0 ? $"Release to deposit {name}" : $"Drop {name} on a vault cell to deposit it", Gold, 12);
+            return;
+        }
+        if (_dragItem != null && client.Connection == VaultConnection.Live)
+        {
+            _footerStatus.Content = Label(_dropCell >= 0 ? $"Release to move {_dragItem.Name} here" : $"Drop {_dragItem.Name} on your inventory to withdraw it", Gold, 12);
             return;
         }
         var roundTrip = client.LastRoundTrip is { } time ? $" · {time.TotalMilliseconds:N0} ms" : string.Empty;
@@ -303,12 +316,12 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         var over = itemId != 0 && position != null;
         var cell = over && _client.Connection == VaultConnection.Live ? CellAt(position!.Value) : -1;
         if (itemId == _retailItem && over == _retailOver && cell == _dropCell) return;
+        // A new drag over the window: ask the server whether this item may go in, so the drop can show as invalid.
+        if (over && (itemId != _retailItem || !_retailOver) && _client.Connection == VaultConnection.Live) _client.CheckDeposit(itemId);
         _retailItem = itemId;
         _retailName = itemName ?? string.Empty;
         _retailOver = over;
-        for (var index = 0; index < _dropIndicators.Count; index++)
-            _dropIndicators[index].IsVisible = index == cell;
-        _dropCell = cell;
+        ShowDropIndicator(cell);
         ShowFooter();
     }
 
@@ -316,14 +329,41 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     {
         if (_client == null || _disposed) return false;
         var cell = _client.Connection == VaultConnection.Live ? CellAt(position) : -1;
+        var check = _client.DepositCheck(itemId);
         RetailDragOver(0, string.Empty, null);
         if (cell < 0)
         {
             if (_client.Connection == VaultConnection.Live) _client.Tell("Drop the item on a vault cell to deposit it.");
             return false;
         }
+        if (check is { Ok: false } refused)
+        {
+            _client.Tell(refused.Message);
+            return false;
+        }
         _client.Deposit(itemId);
         return true;
+    }
+
+    private void OnDepositCheckChanged(object? sender, EventArgs e)
+    {
+        if (_disposed || !_retailOver) return;
+        ShowDropIndicator(_dropCell);
+        ShowFooter();
+    }
+
+    /// <summary>Frames the cell an item would land in: gold, or red when the server refuses a dragged retail item.</summary>
+    private void ShowDropIndicator(int cell)
+    {
+        _dropCell = cell;
+        var refused = _retailOver && _client?.DepositCheck(_retailItem) is { Ok: false };
+        for (var index = 0; index < _dropIndicators.Count; index++)
+        {
+            var indicator = _dropIndicators[index];
+            indicator.IsVisible = index == cell;
+            indicator.BorderBrush = refused ? Invalid : Gold;
+            indicator.Background = refused ? InvalidFill : ValidFill;
+        }
     }
 
     private void OnCellPressed(VaultItemView item, PointerPressedEventArgs e)
@@ -335,7 +375,12 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
 
     private void OnCellMoved(VaultItemView item, PointerEventArgs e)
     {
-        if (_dragHost == null || _client == null || _pressItem != item || _dragItem != null) return;
+        if (_dragItem != null)
+        {
+            UpdateLiftedHover(e);
+            return;
+        }
+        if (_dragHost == null || _client == null || _pressItem != item) return;
         var delta = e.GetPosition(this) - _pressPoint;
         if (Math.Abs(delta.X) < DragThreshold && Math.Abs(delta.Y) < DragThreshold) return;
         _pressItem = null;
@@ -346,16 +391,42 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         }
         _dragItem = item;
         _dragIcon = _dragHost.ShowDragIcon(new List<uint>(item.IconLayers));
+        // The lifted item's own cell dims, as the retail inventory ghosts a dragged item.
+        var from = IndexOf(item.Guid);
+        if (from >= 0 && from < _liveSlots.Count) _liveSlots[from].Opacity = 0.4;
+        UpdateLiftedHover(e);
+    }
+
+    private void UpdateLiftedHover(PointerEventArgs e)
+    {
+        var cell = CellAt(e.GetPosition(this));
+        if (cell == _dropCell) return;
+        ShowDropIndicator(cell);
+        ShowFooter();
+    }
+
+    private int IndexOf(uint guid)
+    {
+        var items = _client?.Snapshot?.Items;
+        if (items == null) return -1;
+        for (var index = 0; index < items.Count; index++)
+            if (items[index].Guid == guid) return index;
+        return -1;
     }
 
     private void OnCellReleased(PointerReleasedEventArgs e)
     {
         var item = _dragItem;
+        var cell = item == null ? -1 : CellAt(e.GetPosition(this));
         EndWithdrawDrag();
         if (item == null || _client == null || _dragHost == null) return;
-        // Released over this window: no withdrawal.
+        // Released over this window: onto a cell moves the item there; anywhere else puts it back.
         var top = TopLevel.GetTopLevel(this);
-        if (top != null && new Rect(top.Bounds.Size).Contains(e.GetPosition(top))) return;
+        if (top != null && new Rect(top.Bounds.Size).Contains(e.GetPosition(top)))
+        {
+            if (cell >= 0) _client.Move(item.Guid, cell);
+            return;
+        }
         switch (_dragHost.DropTargetAtPointer())
         {
             case ItemDropTarget.Inventory:
@@ -372,10 +443,15 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
 
     private void EndWithdrawDrag()
     {
+        var wasDragging = _dragItem != null;
         _pressItem = null;
         _dragItem = null;
         _dragIcon?.Dispose();
         _dragIcon = null;
+        if (!wasDragging || _disposed) return;
+        foreach (var slot in _liveSlots) slot.Opacity = 1;
+        ShowDropIndicator(-1);
+        if (_client != null) ShowFooter();
     }
 
     private Control Details(VaultClient client, VaultItemView? item)
@@ -572,6 +648,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         if (_client != null)
         {
             _client.Changed -= OnClientChanged;
+            _client.DepositCheckChanged -= OnDepositCheckChanged;
             _client.Dispose();
         }
         foreach (var image in _images.Values) image?.Dispose();

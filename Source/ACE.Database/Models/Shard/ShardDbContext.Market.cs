@@ -51,6 +51,7 @@ public partial class ShardDbContext
             entity.Property(e => e.State).IsRequired().HasMaxLength(16).HasColumnName("state");
             entity.Property(e => e.DepositedTime).HasColumnType("datetime(6)").HasColumnName("deposited_Time");
             entity.Property(e => e.RowVersion).HasColumnName("row_Version").IsConcurrencyToken();
+            entity.Property(e => e.Position).HasColumnName("position");
             entity.Property(e => e.Wcid).HasColumnName("wcid");
             entity.Property(e => e.Name).IsRequired().HasMaxLength(255).HasColumnName("name");
             entity.Property(e => e.ItemType).HasColumnName("item_Type");

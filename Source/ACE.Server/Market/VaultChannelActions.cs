@@ -26,13 +26,15 @@ namespace ACE.Server.Market
         public const string List = "vault.list";
         public const string Deposit = "vault.deposit";
         public const string Withdraw = "vault.withdraw";
+        public const string Check = "vault.check";
+        public const string Move = "vault.move";
 
         /// <summary>
         /// Pushed after every Vault deposit, withdrawal or trade note change, whatever started it: this window, a /vault command or the website
         /// </summary>
         public const string Changed = "vault.changed";
 
-        private static readonly string[] actions = { Hello, List, Deposit, Withdraw };
+        private static readonly string[] actions = { Hello, List, Deposit, Withdraw, Check, Move };
 
         public static void Register()
         {
@@ -40,6 +42,87 @@ namespace ACE.Server.Market
             ServerChannel.Register(List, HandleList);
             ServerChannel.Register(Deposit, context => HandleTransfer(context, deposit: true));
             ServerChannel.Register(Withdraw, context => HandleTransfer(context, deposit: false));
+            ServerChannel.Register(Check, HandleCheck);
+            ServerChannel.Register(Move, HandleMove);
+        }
+
+        /// <summary>
+        /// Whether a deposit of the item would start now, and if not why: the same checks a deposit makes, without moving anything.
+        /// The window asks while an item is dragged over it, to show the drop as invalid.
+        /// </summary>
+        private static void HandleCheck(ChannelContext context)
+        {
+            if (!TryReadGuid(context, out var itemGuid))
+                return;
+
+            WorldObject item = null;
+            var refusal = Vault.Available ? VaultChannel.CheckStart(context.Player) ?? Vault.CheckDeposit(context.Player, itemGuid, out item) : VaultOutcome.NotAvailable;
+
+            context.Reply(ChannelWire.Body(w =>
+            {
+                w.Write(itemGuid);
+                w.Write((byte)(refusal == null ? 1 : 0));
+                ChannelWire.WriteString(w, refusal == null ? string.Empty : VaultMessages.For(refusal.Value, item?.Name));
+            }));
+        }
+
+        /// <summary>
+        /// Moves an item to another place in the account's Vault order (body: item guid, index). Presentation only; any item state.
+        /// </summary>
+        private static void HandleMove(ChannelContext context)
+        {
+            uint itemGuid;
+            int toIndex;
+
+            try
+            {
+                using (var body = context.Body())
+                {
+                    itemGuid = body.ReadUInt32();
+                    toIndex = body.ReadInt32();
+                }
+            }
+            catch (EndOfStreamException)
+            {
+                context.Fail(ChannelStatus.BadRequest, "An item id and a position are required.");
+                return;
+            }
+
+            var accountId = context.Player.Character.AccountId;
+
+            Task.Run(() =>
+            {
+                try
+                {
+                    var moved = Vault.Available && VaultStore.Move(accountId, itemGuid, toIndex);
+                    context.Reply(ChannelWire.Body(w =>
+                    {
+                        w.Write((byte)(moved ? 1 : 0));
+                        ChannelWire.WriteString(w, moved ? string.Empty : "That item is no longer in your Vault.");
+                    }));
+                }
+                catch (Exception ex)
+                {
+                    log.Error($"[VAULT] Channel move of 0x{itemGuid:X8} for account {accountId} failed: {ex}");
+                    context.Fail(ChannelStatus.Error, "Your Vault could not be rearranged.");
+                }
+            });
+        }
+
+        private static bool TryReadGuid(ChannelContext context, out uint itemGuid)
+        {
+            try
+            {
+                using (var body = context.Body())
+                    itemGuid = body.ReadUInt32();
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                itemGuid = 0;
+                context.Fail(ChannelStatus.BadRequest, "An item id is required.");
+                return false;
+            }
         }
 
         private static void HandleHello(ChannelContext context)
@@ -116,18 +199,8 @@ namespace ACE.Server.Market
         /// </summary>
         private static void HandleTransfer(ChannelContext context, bool deposit)
         {
-            uint itemGuid;
-
-            try
-            {
-                using (var body = context.Body())
-                    itemGuid = body.ReadUInt32();
-            }
-            catch (EndOfStreamException)
-            {
-                context.Fail(ChannelStatus.BadRequest, "An item id is required.");
+            if (!TryReadGuid(context, out var itemGuid))
                 return;
-            }
 
             // a refusal is reported through the callback before Start returns; a channel that started reports when it ends
             var starting = true;

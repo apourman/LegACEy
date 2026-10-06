@@ -86,7 +86,8 @@ public sealed class VaultDragDropTests
 
         vault.Host.PointerDown(start.X, start.Y);
         vault.Host.PointerMove(start.X + 40, start.Y + 40);
-        vault.Host.PointerUp(start.X + 40, start.Y + 40);
+        vault.Host.PointerUp(start.X + 40, start.Y + 40); // onto another vault cell: a move, not a withdrawal
+        vault.Step(TimeSpan.FromMilliseconds(30));
 
         vault.Drag.Target = ItemDropTarget.InventoryClosed;
         start = vault.Center(vault.Cells[0]);
@@ -98,6 +99,56 @@ public sealed class VaultDragDropTests
         Assert.DoesNotContain(VaultProtocol.Withdraw, vault.Server.Received);
         Assert.Equal(0, vault.Drag.IconsOpen);
         Assert.Contains("Open your inventory, then drop the item on it to withdraw it.", vault.Texts());
+    });
+
+    [Fact]
+    public void Refused_retail_item_shows_a_red_indicator_with_the_reason_and_is_not_deposited() => RenderThread.Run(() =>
+    {
+        using var vault = new LiveVault();
+        vault.Server.Refused[0x50000077] = "Attuned items can't go in the Vault.";
+        var over = vault.Center(vault.Cells[0]);
+
+        vault.Window.RetailDragOver(0x50000077, "Bound Ring", over);
+        vault.Step(TimeSpan.FromMilliseconds(30)); // the deposit check comes back
+
+        var indicator = Assert.Single(vault.VisibleIndicators());
+        Assert.Equal(Avalonia.Media.Color.Parse("#D9584A"), ((Avalonia.Media.ISolidColorBrush)indicator.BorderBrush!).Color);
+        Assert.Contains("Attuned items can't go in the Vault.", vault.Texts());
+
+        Assert.False(vault.Window.RetailDrop(0x50000077, "Bound Ring", over));
+        vault.Step(TimeSpan.FromMilliseconds(30));
+        Assert.DoesNotContain(VaultProtocol.Deposit, vault.Server.Received);
+    });
+
+    [Fact]
+    public void Lifting_a_vault_item_onto_another_cell_moves_it_there_with_the_hover_indicator() => RenderThread.Run(() =>
+    {
+        using var vault = new LiveVault();
+        var first = vault.Client.Snapshot!.Items[0];
+        var start = vault.Center(vault.Cells[0]);
+        var target = vault.Center(vault.Cells[4]);
+
+        vault.Host.PointerDown(start.X, start.Y);
+        vault.Host.PointerMove(start.X + 20, start.Y);
+        vault.Host.PointerMove(target.X, target.Y);
+        vault.Host.Tick();
+
+        Assert.Equal(0.4, vault.Cells[0].Opacity);
+        var indicator = Assert.Single(vault.VisibleIndicators());
+        Assert.Same(vault.Cells[4], indicator.Parent);
+        Assert.Contains($"Release to move {first.Name} here", vault.Texts());
+
+        vault.Host.PointerUp(target.X, target.Y);
+        Assert.Equal(first.Guid, vault.Client.Snapshot.Items[4].Guid); // at once, before the server answers
+        vault.Step(TimeSpan.FromMilliseconds(30));
+        vault.Step(TimeSpan.FromMilliseconds(30));
+
+        Assert.Contains(VaultProtocol.Move, vault.Server.Received);
+        Assert.Equal(first.Guid, vault.Server.Items[4].Guid);
+        Assert.Equal(first.Guid, vault.Client.Snapshot!.Items[4].Guid);
+        Assert.DoesNotContain(VaultProtocol.Withdraw, vault.Server.Received);
+        Assert.Empty(vault.VisibleIndicators());
+        Assert.All(vault.Cells, cell => Assert.Equal(1, cell.Opacity));
     });
 
     private sealed class LiveVault : IDisposable
