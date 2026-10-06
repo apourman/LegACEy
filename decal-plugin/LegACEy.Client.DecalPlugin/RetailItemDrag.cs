@@ -39,7 +39,7 @@ internal sealed class RetailItemDrag
         new NativeUiEntry("UIElementManager::MouseUpEvent reads m_pElementLastOver", 0x0045DF23, Bytes("8B 8E 44 02 00 00"), Source, "offset reference (+0x244)"),
         new NativeUiEntry("UIElement_UIItem::SetDragAcceptState", 0x004E1F20, Bytes(
             "8B 89 88 06 00 00 85 C9 74 18 8B 44 24 04 3B 81 00 04 00 00 74 0C 8B 11 89 44 24 04 FF A2 9C 00 00 00 C2"), Source,
-            "ThisCall (uint state); 0x1000003F none, 0x10000040 reject, 0x10000041 accept (the green circle)"),
+            "ThisCall (uint state); 0x1000003F none, 0x10000040 accept (green circle), 0x10000041 reject (showed red in game)"),
         new NativeUiEntry("UIElement_UIItem::DynamicCast", 0x004E1D40, Bytes("8B C1 8B 4C 24 04 81 F9 32 00 00 10 74 0B 33 D2 83 F9 03 0F 95 C2 4A 23 C2 C2 04"), Source,
             "virtual ThisCall (uint type) -> UIElement_UIItem* for type 0x10000032"),
         new NativeUiEntry("DynamicCast to UIItem through vtable +0x94", 0x0048B762, Bytes("68 32 00 00 10 8B C8 FF 92 94 00 00 00"), Source, "virtual slot reference"),
@@ -62,7 +62,7 @@ internal sealed class RetailItemDrag
 
     private const uint UiItemType = 0x10000032;
     private const uint DragAcceptNone = 0x1000003F;
-    private const uint DragAcceptYes = 0x10000041;
+    private const uint DragAcceptYes = 0x10000040;
     private const int DynamicCastSlot = 0x94;
     private const int GetParentSlot = 0xA0;
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
