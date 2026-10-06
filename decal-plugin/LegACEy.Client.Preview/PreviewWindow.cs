@@ -115,7 +115,7 @@ internal sealed class PreviewWindow : Window
         _vaultPanel?.Dispose();
         _workspace.Children.Clear();
         // The preview has no game selection, so Deposit item deposits a stand-in pack item.
-        _vaultPanel = new VaultShellPanel(_art, new VaultClient(_serverChannel, () => 0x50000001));
+        _vaultPanel = new VaultShellPanel(_art, new VaultClient(_serverChannel, () => 0x50000001), new FakeItemDragHost());
         var vaultChrome = new VaultShellWindow(_vaultPanel)
         {
             Width = VaultShellPanel.WindowWidth, Height = VaultShellPanel.WindowHeight

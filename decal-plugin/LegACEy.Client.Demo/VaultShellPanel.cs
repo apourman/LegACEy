@@ -5,6 +5,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -18,10 +20,10 @@ namespace LegACEy.Client.Demo;
 /// real items and balance, selection, withdrawal and deposit of the game's selected item, refreshed by server pushes.
 /// Without one it is the static sample shell, with sample icons read from the player's DAT.
 /// </summary>
-public sealed class VaultShellPanel : UserControl, IDisposable
+public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropTarget
 {
     // Increment with each visual iteration; the assembly's source revision identifies the actual build.
-    public const string PreviewVersion = "5";
+    public const string PreviewVersion = "6";
     public static string BuildRevision { get; } = ReadBuildRevision();
 
     private static string ReadBuildRevision()
@@ -52,8 +54,23 @@ public sealed class VaultShellPanel : UserControl, IDisposable
     private readonly ContentControl _details = new();
     private readonly ContentControl _footerStatus = new();
     private readonly Button? _deposit;
+    private readonly IItemDragHost? _dragHost;
+    private readonly List<Control> _liveSlots = new();
+    private readonly List<Border> _dropIndicators = new();
+    private ScrollViewer? _liveScroller;
     private uint _selected;
     private bool _disposed;
+    // a retail item being dragged over the window, and the cell it would land in
+    private uint _retailItem;
+    private string _retailName = string.Empty;
+    private bool _retailOver;
+    private int _dropCell = -1;
+    // an item being dragged out of the window to withdraw it
+    private VaultItemView? _pressItem;
+    private Point _pressPoint;
+    private VaultItemView? _dragItem;
+    private IDisposable? _dragIcon;
+    private const double DragThreshold = 4;
 
     private static readonly (string Name, uint Icon, uint Plate)[] Samples =
     {
@@ -72,10 +89,12 @@ public sealed class VaultShellPanel : UserControl, IDisposable
     };
 
     /// <param name="client">The live Vault; the panel owns it and disposes it. Null shows the static sample.</param>
-    public VaultShellPanel(IGameArtSource art, VaultClient? client = null)
+    /// <param name="dragHost">Lets items be dragged out of the window onto the retail inventory to withdraw them.</param>
+    public VaultShellPanel(IGameArtSource art, VaultClient? client = null, IItemDragHost? dragHost = null)
     {
         _art = art ?? throw new ArgumentNullException(nameof(art));
         _client = client;
+        _dragHost = dragHost;
         RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.None);
         var root = new Grid
         {
@@ -195,23 +214,36 @@ public sealed class VaultShellPanel : UserControl, IDisposable
             _summary.Content = SummaryRow(client.Connection == VaultConnection.Connecting ? "Connecting to the server…" : "Vault unavailable", string.Empty);
 
         if (items.Count > 0 && FindItem(items, _selected) == null) _selected = items[0].Guid;
+        _liveSlots.Clear();
+        _dropIndicators.Clear();
+        _liveScroller = null;
         if (snapshot is { Available: true })
         {
             var cells = Math.Max(MinimumCells, (items.Count + Columns - 1) / Columns * Columns);
             var slots = new UniformGrid { Columns = Columns, Rows = cells / Columns };
             for (var index = 0; index < cells; index++)
             {
-                var slot = new Border { Height = 48, Margin = new Thickness(0, 0, 6, 6) };
+                var slot = new Grid { Height = 48, Margin = new Thickness(0, 0, 6, 6), Background = Brushes.Transparent };
                 if (index < items.Count)
                 {
                     var item = items[index];
-                    slot.Child = SelectableCell(item, item.Guid == _selected);
+                    slot.Children.Add(SelectableCell(item, item.Guid == _selected));
                     ToolTip.SetTip(slot, Describe(item));
                 }
-                else slot.Child = InventoryCell();
+                else slot.Children.Add(InventoryCell());
+                // Shown on the cell a dragged retail item would be deposited into.
+                var indicator = new Border
+                {
+                    Width = 38, Height = 38, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+                    BorderBrush = Gold, BorderThickness = new Thickness(2), Background = Brush("#40D6BB76"), CornerRadius = new CornerRadius(2),
+                    IsHitTestVisible = false, IsVisible = index == _dropCell
+                };
+                slot.Children.Add(indicator);
+                _dropIndicators.Add(indicator);
+                _liveSlots.Add(slot);
                 slots.Children.Add(slot);
             }
-            _contents.Content = new ScrollViewer
+            _contents.Content = _liveScroller = new ScrollViewer
             {
                 Content = slots, Height = 216, Background = Brushes.Transparent,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
@@ -227,6 +259,18 @@ public sealed class VaultShellPanel : UserControl, IDisposable
 
         _details.Content = Details(client, FindItem(items, _selected));
         if (_deposit != null) _deposit.IsEnabled = client.Connection == VaultConnection.Live && !client.TransferPending;
+        ShowFooter();
+    }
+
+    private void ShowFooter()
+    {
+        var client = _client!;
+        if (_retailOver && client.Connection == VaultConnection.Live)
+        {
+            var name = _retailName.Length == 0 ? "this item" : _retailName;
+            _footerStatus.Content = Label(_dropCell >= 0 ? $"Release to deposit {name}" : $"Drop {name} on a vault cell to deposit it", Gold, 12);
+            return;
+        }
         var roundTrip = client.LastRoundTrip is { } time ? $" · {time.TotalMilliseconds:N0} ms" : string.Empty;
         var state = client.Connection switch
         {
@@ -236,6 +280,102 @@ public sealed class VaultShellPanel : UserControl, IDisposable
             _ => "Server error"
         };
         _footerStatus.Content = Label($"{state} · Preview v{PreviewVersion} · {BuildRevision}", Gold, 11);
+    }
+
+    /// <summary>The index of the vault cell under a point in this panel's coordinates, or -1.</summary>
+    private int CellAt(Point position)
+    {
+        if (_liveScroller == null) return -1;
+        var viewport = _liveScroller.TranslatePoint(default, this);
+        if (viewport == null || !new Rect(viewport.Value, _liveScroller.Bounds.Size).Contains(position)) return -1;
+        for (var index = 0; index < _liveSlots.Count; index++)
+        {
+            var slot = _liveSlots[index];
+            var origin = slot.TranslatePoint(default, this);
+            if (origin != null && new Rect(origin.Value, slot.Bounds.Size).Contains(position)) return index;
+        }
+        return -1;
+    }
+
+    public void RetailDragOver(uint itemId, string itemName, Point? position)
+    {
+        if (_client == null || _disposed) return;
+        var over = itemId != 0 && position != null;
+        var cell = over && _client.Connection == VaultConnection.Live ? CellAt(position!.Value) : -1;
+        if (itemId == _retailItem && over == _retailOver && cell == _dropCell) return;
+        _retailItem = itemId;
+        _retailName = itemName ?? string.Empty;
+        _retailOver = over;
+        for (var index = 0; index < _dropIndicators.Count; index++)
+            _dropIndicators[index].IsVisible = index == cell;
+        _dropCell = cell;
+        ShowFooter();
+    }
+
+    public bool RetailDrop(uint itemId, string itemName, Point position)
+    {
+        if (_client == null || _disposed) return false;
+        var cell = _client.Connection == VaultConnection.Live ? CellAt(position) : -1;
+        RetailDragOver(0, string.Empty, null);
+        if (cell < 0)
+        {
+            if (_client.Connection == VaultConnection.Live) _client.Tell("Drop the item on a vault cell to deposit it.");
+            return false;
+        }
+        _client.Deposit(itemId);
+        return true;
+    }
+
+    private void OnCellPressed(VaultItemView item, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
+        _pressItem = item;
+        _pressPoint = e.GetPosition(this);
+    }
+
+    private void OnCellMoved(VaultItemView item, PointerEventArgs e)
+    {
+        if (_dragHost == null || _client == null || _pressItem != item || _dragItem != null) return;
+        var delta = e.GetPosition(this) - _pressPoint;
+        if (Math.Abs(delta.X) < DragThreshold && Math.Abs(delta.Y) < DragThreshold) return;
+        _pressItem = null;
+        if (item.State != "held" || _client.TransferPending)
+        {
+            _client.Tell(item.State == "held" ? "Wait for the current transfer to finish." : $"{item.Name} is {StateName(item.State).ToLowerInvariant()} and can't be withdrawn.");
+            return;
+        }
+        _dragItem = item;
+        _dragIcon = _dragHost.ShowDragIcon(new List<uint>(item.IconLayers));
+    }
+
+    private void OnCellReleased(PointerReleasedEventArgs e)
+    {
+        var item = _dragItem;
+        EndWithdrawDrag();
+        if (item == null || _client == null || _dragHost == null) return;
+        // Released over this window: no withdrawal.
+        var top = TopLevel.GetTopLevel(this);
+        if (top != null && new Rect(top.Bounds.Size).Contains(e.GetPosition(top))) return;
+        switch (_dragHost.DropTargetAtPointer())
+        {
+            case ItemDropTarget.Inventory:
+                _client.Withdraw(item.Guid);
+                break;
+            case ItemDropTarget.InventoryClosed:
+                _client.Tell("Open your inventory, then drop the item on it to withdraw it.");
+                break;
+            default:
+                _client.Tell("Drop the item on your inventory to withdraw it.");
+                break;
+        }
+    }
+
+    private void EndWithdrawDrag()
+    {
+        _pressItem = null;
+        _dragItem = null;
+        _dragIcon?.Dispose();
+        _dragIcon = null;
     }
 
     private Control Details(VaultClient client, VaultItemView? item)
@@ -358,11 +498,17 @@ public sealed class VaultShellPanel : UserControl, IDisposable
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
             Template = new FuncControlTemplate<Button>((_, _) => new Border { Background = Brushes.Transparent, Child = InventoryCell(item.IconLayers, selected) })
         };
+        button.Classes.Add("vault-cell");
         button.Click += (_, _) =>
         {
             _selected = item.Guid;
             ShowLive();
         };
+        // Dragging an item out of the window and onto the retail inventory withdraws it.
+        button.AddHandler(PointerPressedEvent, (_, e) => OnCellPressed(item, e), RoutingStrategies.Tunnel, handledEventsToo: true);
+        button.AddHandler(PointerMovedEvent, (_, e) => OnCellMoved(item, e), RoutingStrategies.Tunnel, handledEventsToo: true);
+        button.AddHandler(PointerReleasedEvent, (_, e) => OnCellReleased(e), RoutingStrategies.Tunnel, handledEventsToo: true);
+        button.AddHandler(PointerCaptureLostEvent, (_, _) => EndWithdrawDrag(), handledEventsToo: true);
         return button;
     }
 
@@ -422,6 +568,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        EndWithdrawDrag();
         if (_client != null)
         {
             _client.Changed -= OnClientChanged;
@@ -433,13 +580,20 @@ public sealed class VaultShellPanel : UserControl, IDisposable
 }
 
 /// <summary>Vault-specific chrome; independent of the theme gallery's retail control styling.</summary>
-public sealed class VaultShellWindow : UserControl
+public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget
 {
+    private readonly VaultShellPanel _panel;
     public event EventHandler? CloseRequested;
+
+    public void RetailDragOver(uint itemId, string itemName, Point? position) =>
+        _panel.RetailDragOver(itemId, itemName, position is { } point ? this.TranslatePoint(point, _panel) : null);
+
+    public bool RetailDrop(uint itemId, string itemName, Point position) =>
+        this.TranslatePoint(position, _panel) is { } point && _panel.RetailDrop(itemId, itemName, point);
 
     public VaultShellWindow(VaultShellPanel panel)
     {
-        if (panel == null) throw new ArgumentNullException(nameof(panel));
+        _panel = panel ?? throw new ArgumentNullException(nameof(panel));
         var layout = new Grid { RowDefinitions = new RowDefinitions("64,*") };
         var title = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,32"), Margin = new Thickness(20, 6, 16, 0) };
         title.Children.Add(new StackPanel

@@ -134,7 +134,7 @@ public sealed class ServerChannelTests
         Assert.Contains(Texts(), text => text.StartsWith("Live · 30 ms", StringComparison.Ordinal));
 
         // Selecting the second item and withdrawing it goes to the server for that item.
-        var cells = host.Content.GetVisualDescendants().OfType<Button>().Where(button => button.Parent is Border).ToArray();
+        var cells = host.Content.GetVisualDescendants().OfType<Button>().Where(button => button.Classes.Contains("vault-cell")).ToArray();
         Assert.Equal(9, cells.Length);
         Click(cells[1]);
         Assert.Contains("Leather Boots", Texts());

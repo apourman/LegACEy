@@ -76,6 +76,11 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private ClientUiFramework? _clientUi;
     private GameChannelTransport? _channelTransport;
     private ServerChannelClient? _serverChannel;
+    private RetailItemDrag? _retailDrag;
+    private uint _retailDragItem;
+    private string _retailDragName = string.Empty;
+    private bool _loggedRetailDrop;
+    private ScreenSurface? _dragIconSurface;
     private readonly Dictionary<string, ScreenSurface> _featureSurfaces = new(StringComparer.Ordinal);
     private readonly List<FeatureTakeover> _featureTakeovers = new();
     private bool _inGame;
@@ -102,6 +107,8 @@ internal sealed class ClientUiRuntime : IClientUiHost
             _serverChannel = new ServerChannelClient(_channelTransport);
         }
         catch (Exception exception) { Log($"LegACEy server channel disabled: {exception.Message}"); }
+        try { _retailDrag = new RetailItemDrag(NativeUi.ReadMemory, Log); }
+        catch (Exception exception) { Log($"Vault drag and drop disabled: {exception.Message}"); }
         CoreManager.Current.FilterInitComplete += OnFilterInitComplete;
     }
 
@@ -397,7 +404,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
                 content = new PerformanceListPanel(_portal!);
                 break;
             case "vault-preview":
-                content = new VaultShellPanel(_portal!, new VaultClient(_clientUi!.ServerChannel, CurrentSelection));
+                content = new VaultShellPanel(_portal!, new VaultClient(_clientUi!.ServerChannel, CurrentSelection), new ItemDragHost(this));
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(id), id, "Unknown feature window.");
@@ -597,8 +604,14 @@ internal sealed class ClientUiRuntime : IClientUiHost
                 }
             }
 
+            UpdateRetailDrag();
             foreach (var surface in _featureSurfaces.Values)
                 PrepareWindow(surface);
+            if (_dragIconSurface != null)
+            {
+                _dragIconSurface.Location = new Point(_pointer.X - 16, _pointer.Y - 16);
+                _dragIconSurface.Prepare();
+            }
             if (_breakout is { } breakout)
             {
                 var now = DateTime.UtcNow;
@@ -658,6 +671,125 @@ internal sealed class ClientUiRuntime : IClientUiHost
                 _firstPostUiWindow = false;
                 Log("LegACEy post-UI window draw reached through retail RenderDeviceD3D.EndScene.");
             }
+        }
+        // An item dragged out of a LegACEy window draws above everything.
+        Guard(() => _dragIconSurface?.DrawNow());
+    }
+
+    /// <summary>Tells LegACEy drop targets about a drag in the retail UI, and where the pointer is over them.</summary>
+    private void UpdateRetailDrag()
+    {
+        var item = _retailDrag?.CurrentItem() ?? 0;
+        if (item != _retailDragItem)
+        {
+            _retailDragItem = item;
+            _retailDragName = item == 0 ? string.Empty : ObjectName(item);
+        }
+        var top = item == 0 ? null : TopSurfaceAt(_pointer);
+        foreach (var pair in _featureSurfaces)
+        {
+            if (pair.Value.Panel.Content is not IRetailItemDropTarget target) continue;
+            var surface = pair.Value;
+            target.RetailDragOver(item, _retailDragName, top == pair.Key
+                ? new Avalonia.Point(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y)
+                : null);
+        }
+    }
+
+    /// <summary>
+    /// A retail drag released over a LegACEy window: end the drag without delivering it, so the item never drops
+    /// onto whatever retail element or world is under the window, then offer it to the window. The button-up still
+    /// reaches the client, which now sees an ordinary release with no drag in progress.
+    /// </summary>
+    private void HandleRetailDrop(Point point)
+    {
+        var item = _retailDrag?.CurrentItem() ?? 0;
+        if (item == 0) return;
+        var id = TopSurfaceAt(point);
+        if (id == null) return;
+        _retailDrag!.Cancel();
+        var surface = SurfaceById(id);
+        var accepted = surface?.Panel.Content is IRetailItemDropTarget target &&
+            target.RetailDrop(item, ObjectName(item), new Avalonia.Point(point.X - surface.Location.X, point.Y - surface.Location.Y));
+        if (!_loggedRetailDrop)
+        {
+            _loggedRetailDrop = true;
+            Log($"Retail item 0x{item:X8} dropped on LegACEy window '{id}'; retail drag cleared; accepted: {accepted}.");
+        }
+        _retailDragItem = 0;
+        UpdateRetailDrag();
+    }
+
+    private string? TopSurfaceAt(Point point)
+    {
+        InputSurface? top = null;
+        foreach (var surface in GetInputSurfaces())
+            if (point.X >= surface.X && point.Y >= surface.Y && point.X < surface.X + surface.Width && point.Y < surface.Y + surface.Height &&
+                (top == null || surface.ZOrder > top.ZOrder))
+                top = surface;
+        return top?.Id;
+    }
+
+    private static string ObjectName(uint id)
+    {
+        try { return CoreManager.Current.WorldFilter[unchecked((int)id)]?.Name ?? string.Empty; }
+        catch (COMException) { return string.Empty; }
+    }
+
+    /// <summary>Drag services for LegACEy windows: the floating icon and what lies under the pointer in the retail UI.</summary>
+    private sealed class ItemDragHost : IItemDragHost
+    {
+        private readonly ClientUiRuntime _owner;
+        public ItemDragHost(ClientUiRuntime owner) => _owner = owner;
+
+        public IDisposable ShowDragIcon(IReadOnlyList<uint> iconLayers) => _owner.ShowDragIcon(iconLayers);
+
+        public ItemDropTarget DropTargetAtPointer()
+        {
+            var drag = _owner._retailDrag;
+            if (drag == null) return ItemDropTarget.Inventory;
+            var bounds = drag.InventoryBounds(out var exists);
+            // Without the panel element, any drop outside LegACEy windows withdraws to the pack.
+            if (!exists) return ItemDropTarget.Inventory;
+            if (bounds == null) return ItemDropTarget.InventoryClosed;
+            return bounds.Value.Contains(_owner._pointer) ? ItemDropTarget.Inventory : ItemDropTarget.Elsewhere;
+        }
+    }
+
+    private IDisposable ShowDragIcon(IReadOnlyList<uint> iconLayers)
+    {
+        HideDragIcon();
+        if (_device == null || _portal == null) return new DragIcon(this);
+        var bitmaps = new List<Avalonia.Media.Imaging.WriteableBitmap>();
+        var layers = new Grid { Width = 32, Height = 32 };
+        foreach (var id in iconLayers)
+        {
+            var bitmap = GameArtImageExtension.CreateBitmap(_portal, id);
+            if (bitmap == null) continue;
+            bitmaps.Add(bitmap);
+            layers.Children.Add(new Avalonia.Controls.Image { Source = bitmap, Width = 32, Height = 32, Stretch = Stretch.None });
+        }
+        RenderOptions.SetBitmapInterpolationMode(layers, Avalonia.Media.Imaging.BitmapInterpolationMode.None);
+        layers.DetachedFromVisualTree += (_, _) => { foreach (var bitmap in bitmaps) bitmap.Dispose(); };
+        var panel = ObservePanel(AvaloniaPanel.Create(() => layers, 32, 32));
+        _dragIconSurface = new ScreenSurface(_device, panel) { Visible = true, Location = new Point(_pointer.X - 16, _pointer.Y - 16) };
+        return new DragIcon(this);
+    }
+
+    private void HideDragIcon()
+    {
+        _dragIconSurface?.Dispose();
+        _dragIconSurface = null;
+    }
+
+    private sealed class DragIcon : IDisposable
+    {
+        private ClientUiRuntime? _owner;
+        public DragIcon(ClientUiRuntime owner) => _owner = owner;
+        public void Dispose()
+        {
+            _owner?.HideDragIcon();
+            _owner = null;
         }
     }
 
@@ -808,6 +940,10 @@ internal sealed class ClientUiRuntime : IClientUiHost
             return;
 
         var lParam = e.LParam;
+        if (e.Msg == InputRouterService.WmMouseMove)
+            _pointer = new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff));
+        if (e.Msg == InputRouterService.WmLButtonUp && _inputRouter.CapturedSurfaceId == null)
+            Guard(() => HandleRetailDrop(new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff))));
         if (e.Msg == InputRouterService.WmMouseWheel)
         {
             var point = new NativePoint
@@ -1108,6 +1244,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
 
     private void TearDown()
     {
+        HideDragIcon();
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up feature UI during unload: {exception}"); }
         _clientUi = null;

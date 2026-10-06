@@ -201,10 +201,15 @@ public sealed class VaultClient : IDisposable
     {
         var guid = _currentSelection();
         if (guid == 0) { Set(Connection, "Select an item in your pack, then press Deposit."); return; }
-        Transfer(VaultProtocol.Deposit, guid);
+        Deposit(guid);
     }
 
+    public void Deposit(uint guid) => Transfer(VaultProtocol.Deposit, guid);
+
     public void Withdraw(uint guid) => Transfer(VaultProtocol.Withdraw, guid);
+
+    /// <summary>Shows a message to the player without contacting the server.</summary>
+    public void Tell(string notice) => Set(Connection, notice);
 
     private void Transfer(string action, uint guid)
     {
