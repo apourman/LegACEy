@@ -15,6 +15,9 @@ namespace LegACEy.Client.Demo;
 /// <summary>A static vault concept with its own styling and sample icons read from the player's DAT.</summary>
 public sealed class VaultShellPanel : UserControl, IDisposable
 {
+    // Retail contents-list empty face and selection overlay (32px RenderSurfaces).
+    public const uint InventoryCellArtId = 0x06004D20;
+    public const uint InventorySelectionArtId = 0x06004D21;
     public const int WindowWidth = 620;
     public const int WindowHeight = 460;
     internal static readonly IBrush Text = Brush("#E6E3D8");
@@ -76,16 +79,17 @@ public sealed class VaultShellPanel : UserControl, IDisposable
         var slots = new UniformGrid { Columns = 6, Rows = 4 };
         for (var index = 0; index < 24; index++)
         {
-            var slot = new VaultSurface(index == 0 ? VaultMaterial.SelectedSocket : VaultMaterial.Socket)
+            var slot = new Border
             {
                 Height = 48, Margin = new Thickness(0, 0, 6, 6)
             };
             if (index < Samples.Length)
             {
                 var sample = Samples[index];
-                slot.Child = Icon(sample.Icon, sample.Plate);
+                slot.Child = InventoryCell(sample.Icon, sample.Plate, index == 0);
                 ToolTip.SetTip(slot, sample.Name + " — sample item");
             }
+            else slot.Child = InventoryCell();
             slots.Children.Add(slot);
         }
         inventory.Children.Add(slots);
@@ -95,10 +99,10 @@ public sealed class VaultShellPanel : UserControl, IDisposable
         var details = new StackPanel { Spacing = 10 };
         details.Children.Add(Label("SELECTED ITEM", Gold, 11));
         var identity = new StackPanel { Spacing = 12, Orientation = Orientation.Horizontal };
-        identity.Children.Add(new VaultSurface(VaultMaterial.Socket)
+        identity.Children.Add(new Border
         {
             Padding = new Thickness(9),
-            Child = Icon(selected.Icon, selected.Plate)
+            Child = InventoryCell(selected.Icon, selected.Plate)
         });
         identity.Children.Add(new StackPanel
         {
@@ -156,6 +160,35 @@ public sealed class VaultShellPanel : UserControl, IDisposable
         Child = Label(text, Text, primary ? 13 : 12)
     };
 
+    private Grid InventoryCell(uint? iconId = null, uint plateId = 0, bool selected = false)
+    {
+        var cell = new Grid
+        {
+            Width = 32, Height = 32,
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+        };
+        var background = Bitmap(InventoryCellArtId);
+        cell.Children.Add(background != null
+            ? (Control)new Image { Source = background, Width = 32, Height = 32, Stretch = Stretch.None }
+            : new Border { Background = Brush("#0C0D0E"), BorderBrush = Brush("#484B4B"), BorderThickness = new Thickness(1) });
+        if (iconId.HasValue) cell.Children.Add(Icon(iconId.Value, plateId));
+        if (selected)
+        {
+            var overlay = Bitmap(InventorySelectionArtId);
+            cell.Children.Add(overlay != null
+                ? (Control)new Image { Source = overlay, Width = 32, Height = 32, Stretch = Stretch.None, IsHitTestVisible = false }
+                : new Border { BorderBrush = Gold, BorderThickness = new Thickness(1), IsHitTestVisible = false });
+        }
+        return cell;
+    }
+
+    private WriteableBitmap? Bitmap(uint id)
+    {
+        if (!_images.TryGetValue(id, out var bitmap))
+            _images.Add(id, bitmap = GameArtImageExtension.CreateBitmap(_art, id));
+        return bitmap;
+    }
+
     private Grid Icon(uint iconId, uint plateId)
     {
         var layers = new Grid
@@ -165,8 +198,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable
         };
         foreach (var id in new[] { plateId, iconId })
         {
-            if (!_images.TryGetValue(id, out var bitmap))
-                _images.Add(id, bitmap = GameArtImageExtension.CreateBitmap(_art, id));
+            var bitmap = Bitmap(id);
             if (bitmap != null)
                 layers.Children.Add(new Image { Source = bitmap, Width = 32, Height = 32, Stretch = Stretch.None });
         }

@@ -4,7 +4,7 @@ using Avalonia.Media;
 
 namespace LegACEy.Client.Demo;
 
-internal enum VaultMaterial { Slate, Socket, SelectedSocket, BlueSteel }
+internal enum VaultMaterial { Slate, BlueSteel }
 
 /// <summary>Resolution-independent vault skin, shipped as drawing code with no external skin files.</summary>
 internal sealed class VaultSurface : Decorator
@@ -34,20 +34,19 @@ internal sealed class VaultSurface : Decorator
         _material = material;
         _ornate = ornate;
         var blue = material == VaultMaterial.BlueSteel;
-        var socket = material == VaultMaterial.Socket || material == VaultMaterial.SelectedSocket;
         _fill = new LinearGradientBrush
         {
             StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
             EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
             GradientStops =
             {
-                new GradientStop(Color.Parse(blue ? "#263B60" : socket ? "#080A0B" : "#181918"), 0),
+                new GradientStop(Color.Parse(blue ? "#263B60" : "#181918"), 0),
                 new GradientStop(Color.Parse(blue ? "#101B32" : "#0C0D0E"), 0.55),
-                new GradientStop(Color.Parse(blue ? "#1A2B48" : socket ? "#191C1D" : "#171817"), 1)
+                new GradientStop(Color.Parse(blue ? "#1A2B48" : "#171817"), 1)
             }
         };
-        _edge = new Pen(VaultShellPanel.Brush(material == VaultMaterial.SelectedSocket ? "#DDB968" : socket ? "#484B4B" : "#A68A55"));
-        _highlight = new Pen(VaultShellPanel.Brush(socket ? "#646868" : "#C4AA71"));
+        _edge = new Pen(VaultShellPanel.Brush("#A68A55"));
+        _highlight = new Pen(VaultShellPanel.Brush("#C4AA71"));
     }
 
     public override void Render(DrawingContext context)
