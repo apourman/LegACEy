@@ -79,8 +79,10 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private RetailItemDrag? _retailDrag;
     private uint _retailDragItem;
     private string _retailDragName = string.Empty;
-    private bool _loggedRetailDrop;
+    private int _loggedDrops;
     private ScreenSurface? _dragIconSurface;
+    // our copy of the retail drag icon, drawn while the item is over a LegACEy window (the client draws its own below them)
+    private IDisposable? _retailDragIcon;
     private readonly Dictionary<string, ScreenSurface> _featureSurfaces = new(StringComparer.Ordinal);
     private readonly List<FeatureTakeover> _featureTakeovers = new();
     private bool _inGame;
@@ -686,6 +688,13 @@ internal sealed class ClientUiRuntime : IClientUiHost
             _retailDragName = item == 0 ? string.Empty : ObjectName(item);
         }
         var top = item == 0 ? null : TopSurfaceAt(_pointer);
+        if (top != null && _retailDragIcon == null)
+            _retailDragIcon = ShowDragIcon(ObjectIcon(item));
+        else if (top == null && _retailDragIcon != null)
+        {
+            _retailDragIcon.Dispose();
+            _retailDragIcon = null;
+        }
         foreach (var pair in _featureSurfaces)
         {
             if (pair.Value.Panel.Content is not IRetailItemDropTarget target) continue;
@@ -711,11 +720,8 @@ internal sealed class ClientUiRuntime : IClientUiHost
         var surface = SurfaceById(id);
         var accepted = surface?.Panel.Content is IRetailItemDropTarget target &&
             target.RetailDrop(item, ObjectName(item), new Avalonia.Point(point.X - surface.Location.X, point.Y - surface.Location.Y));
-        if (!_loggedRetailDrop)
-        {
-            _loggedRetailDrop = true;
-            Log($"Retail item 0x{item:X8} dropped on LegACEy window '{id}'; retail drag cleared; accepted: {accepted}.");
-        }
+        if (_loggedDrops++ < 5)
+            Log($"Retail item 0x{item:X8} dropped on LegACEy window '{id}'; retail drag cancelled; accepted: {accepted}.");
         _retailDragItem = 0;
         UpdateRetailDrag();
     }
@@ -736,6 +742,29 @@ internal sealed class ClientUiRuntime : IClientUiHost
         catch (COMException) { return string.Empty; }
     }
 
+    /// <summary>The object's icon layers as the client stacks them: item-type plate, underlay, icon, overlay.</summary>
+    private static IReadOnlyList<uint> ObjectIcon(uint id)
+    {
+        try
+        {
+            var item = CoreManager.Current.WorldFilter[unchecked((int)id)];
+            if (item == null) return Array.Empty<uint>();
+            // Decal reports portal texture ids without their 0x06 prefix.
+            static uint Texture(int value) => value == 0 ? 0 : (value & 0xFF000000) == 0 ? unchecked((uint)value) | 0x06000000 : unchecked((uint)value);
+            var layers = new List<uint> { Plate(unchecked((uint)item.Category)) };
+            foreach (var layer in new[] { Texture(item.Values(Decal.Adapter.Wrappers.LongValueKey.IconUnderlay)), Texture(item.Icon),
+                         Texture(item.Values(Decal.Adapter.Wrappers.LongValueKey.IconOverlay)) })
+                if (layer != 0) layers.Add(layer);
+            return layers;
+        }
+        catch (COMException) { return Array.Empty<uint>(); }
+    }
+
+    /// <summary>The plate under an icon by ACE ItemType flags, as the server's vault list and the Market API choose it.</summary>
+    private static uint Plate(uint itemType) =>
+        (itemType & 0x8101) != 0 ? 0x060011D2u : (itemType & 0x2) != 0 ? 0x060011CFu : (itemType & 0x4) != 0 ? 0x060011F3u :
+        (itemType & 0x8) != 0 ? 0x060011D5u : (itemType & 0x800) != 0 ? 0x060011D3u : 0x060011D4u;
+
     /// <summary>Drag services for LegACEy windows: the floating icon and what lies under the pointer in the retail UI.</summary>
     private sealed class ItemDragHost : IItemDragHost
     {
@@ -748,11 +777,12 @@ internal sealed class ClientUiRuntime : IClientUiHost
         {
             var drag = _owner._retailDrag;
             if (drag == null) return ItemDropTarget.Inventory;
-            var bounds = drag.InventoryBounds(out var exists);
+            var over = drag.IsPointerOverInventory(out var exists, out var open, out var element);
             // Without the panel element, any drop outside LegACEy windows withdraws to the pack.
-            if (!exists) return ItemDropTarget.Inventory;
-            if (bounds == null) return ItemDropTarget.InventoryClosed;
-            return bounds.Value.Contains(_owner._pointer) ? ItemDropTarget.Inventory : ItemDropTarget.Elsewhere;
+            var target = !exists ? ItemDropTarget.Inventory : !open ? ItemDropTarget.InventoryClosed : over ? ItemDropTarget.Inventory : ItemDropTarget.Elsewhere;
+            if (_owner._loggedDrops++ < 5)
+                Log($"Vault item dropped at {_owner._pointer}: retail element under pointer 0x{element:X8}, inventory open: {open}, target: {target}.");
+            return target;
         }
     }
 
@@ -1244,6 +1274,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
 
     private void TearDown()
     {
+        _retailDragIcon = null;
         HideDragIcon();
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up feature UI during unload: {exception}"); }

@@ -23,7 +23,7 @@ namespace LegACEy.Client.Demo;
 public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropTarget
 {
     // Increment with each visual iteration; the assembly's source revision identifies the actual build.
-    public const string PreviewVersion = "6";
+    public const string PreviewVersion = "7";
     public static string BuildRevision { get; } = ReadBuildRevision();
 
     private static string ReadBuildRevision()
