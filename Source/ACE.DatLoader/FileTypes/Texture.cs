@@ -82,39 +82,112 @@ namespace ACE.DatLoader.FileTypes
         }
 
         /// <summary>
-        /// Reads RenderSurface to bitmap structure
+        /// The decoded pixels as straight (not premultiplied) RGBA, 4 bytes per pixel, rows top to bottom. Plain C#, no System.Drawing, so it runs on any platform.
         /// </summary>
-        public Bitmap GetBitmap()
+        /// <param name="palette">for palette-indexed formats (P8, INDEX16): the palette to use. Without one, the texture's default palette is read from DatManager.PortalDat.
+        /// CustomPaletteColors are applied on top of it, and the palette itself is left unchanged.</param>
+        /// <exception cref="NotSupportedException">JPEG textures, which are stored compressed and need an image decoder</exception>
+        public byte[] GetPixels(Palette palette = null)
         {
+            var pixels = new byte[Width * Height * 4];
+
+            void Set(int index, int a, int r, int g, int b)
+            {
+                pixels[index * 4] = (byte)r;
+                pixels[index * 4 + 1] = (byte)g;
+                pixels[index * 4 + 2] = (byte)b;
+                pixels[index * 4 + 3] = (byte)a;
+            }
+
             switch (Format)
             {
                 case SurfacePixelFormat.PFID_CUSTOM_RAW_JPEG:
-                    {
-                        var stream = new MemoryStream(SourceData);
-                        var image = Image.FromStream(stream);
-                        return new Bitmap(image);
-                    }
+                    throw new NotSupportedException($"Texture {Id:X8} is a JPEG");
+
+                // DxtUtil already decodes to RGBA
                 case SurfacePixelFormat.PFID_DXT1:
-                    {
-                        var image = DxtUtil.DecompressDxt1(SourceData, Width, Height);
-                        return GetBitmap(image);
-                    }
+                    return DxtUtil.DecompressDxt1(SourceData, Width, Height);
                 case SurfacePixelFormat.PFID_DXT3:
-                    {
-                        var image = DxtUtil.DecompressDxt3(SourceData, Width, Height);
-                        return GetBitmap(image);
-                    }
+                    return DxtUtil.DecompressDxt3(SourceData, Width, Height);
                 case SurfacePixelFormat.PFID_DXT5:
-                    {
-                        var image = DxtUtil.DecompressDxt5(SourceData, Width, Height);
-                        return GetBitmap(image);
-                    }
-                default:
-                    {
-                        List<int> colors = GetImageColorArray();
-                        return GetBitmap(colors);
-                    }
+                    return DxtUtil.DecompressDxt5(SourceData, Width, Height);
             }
+
+            List<int> colorArray = GetImageColorArray();
+            if (colorArray.Count == 0)
+                return pixels;
+
+            switch (Format)
+            {
+                case SurfacePixelFormat.PFID_R8G8B8:
+                case SurfacePixelFormat.PFID_CUSTOM_LSCAPE_R8G8B8:
+                    for (int i = 0; i < Width * Height; i++)
+                        Set(i, 0xFF, (colorArray[i] & 0xFF0000) >> 16, (colorArray[i] & 0xFF00) >> 8, colorArray[i] & 0xFF);
+                    break;
+                case SurfacePixelFormat.PFID_A8R8G8B8:
+                    for (int i = 0; i < Width * Height; i++)
+                        Set(i, (int)((colorArray[i] & 0xFF000000) >> 24), (colorArray[i] & 0xFF0000) >> 16, (colorArray[i] & 0xFF00) >> 8, colorArray[i] & 0xFF);
+                    break;
+                case SurfacePixelFormat.PFID_INDEX16:
+                case SurfacePixelFormat.PFID_P8:
+                    {
+                        palette = palette ?? DatManager.PortalDat?.ReadFromDat<Palette>((uint)DefaultPaletteId)
+                            ?? throw new InvalidOperationException($"Texture {Id:X8} is palette-indexed: pass its palette, or initialize DatManager");
+
+                        // a copy, so custom colors never change the (cached) palette
+                        var colors = new List<uint>(palette.Colors);
+                        foreach (KeyValuePair<int, uint> entry in CustomPaletteColors)
+                            if (entry.Key >= 0 && entry.Key < colors.Count)
+                                colors[entry.Key] = entry.Value;
+
+                        for (int i = 0; i < Width * Height; i++)
+                        {
+                            var color = colors[colorArray[i]];
+                            Set(i, (int)(color >> 24), (int)(color >> 16) & 0xFF, (int)(color >> 8) & 0xFF, (int)color & 0xFF);
+                        }
+                    }
+                    break;
+                case SurfacePixelFormat.PFID_A8:
+                case SurfacePixelFormat.PFID_CUSTOM_LSCAPE_ALPHA:
+                    for (int i = 0; i < Width * Height; i++)
+                        Set(i, 0xFF, colorArray[i], colorArray[i], colorArray[i]);
+                    break;
+                case SurfacePixelFormat.PFID_R5G6B5: // 16-bit RGB
+                    for (int i = 0; i < Width * Height; i++)
+                        Set(i, 0xFF, colorArray[3 * i], colorArray[3 * i + 1], colorArray[3 * i + 2]);
+                    break;
+                case SurfacePixelFormat.PFID_A4R4G4B4:
+                    for (int i = 0; i < Width * Height; i++)
+                        Set(i, colorArray[4 * i], colorArray[4 * i + 1], colorArray[4 * i + 2], colorArray[4 * i + 3]);
+                    break;
+            }
+
+            return pixels;
+        }
+
+        /// <summary>
+        /// Reads RenderSurface to bitmap structure. Windows only (System.Drawing); GetPixels works everywhere.
+        /// </summary>
+        public Bitmap GetBitmap()
+        {
+            if (Format == SurfacePixelFormat.PFID_CUSTOM_RAW_JPEG)
+            {
+                var stream = new MemoryStream(SourceData);
+                var image = Image.FromStream(stream);
+                return new Bitmap(image);
+            }
+
+            var pixels = GetPixels();
+
+            Bitmap bitmap = new Bitmap(Width, Height);
+            for (int i = 0; i < Height; i++)
+                for (int j = 0; j < Width; j++)
+                {
+                    int idx = 4 * ((i * Width) + j);
+                    bitmap.SetPixel(j, i, Color.FromArgb(pixels[idx + 3], pixels[idx], pixels[idx + 1], pixels[idx + 2]));
+                }
+
+            return bitmap;
         }
 
         /// <summary>
@@ -244,118 +317,6 @@ namespace ACE.DatLoader.FileTypes
                         colors.Add(reader.ReadInt16());
             }
             return colors;
-        }
-
-        /// <summary>
-        /// Generates Bitmap data from colorArray.
-        /// </summary>
-        private Bitmap GetBitmap(List<int> colorArray)
-        {
-            Bitmap image = new Bitmap(Width, Height);
-            switch (this.Format)
-            {
-                case SurfacePixelFormat.PFID_R8G8B8:
-                case SurfacePixelFormat.PFID_CUSTOM_LSCAPE_R8G8B8:
-                    for (int i = 0; i < Height; i++)
-                        for (int j = 0; j < Width; j++)
-                        {
-                            int idx = (i * Width) + j;
-                            int r = (colorArray[idx] & 0xFF0000) >> 16;
-                            int g = (colorArray[idx] & 0xFF00) >> 8;
-                            int b = colorArray[idx] & 0xFF;
-                            image.SetPixel(j, i, Color.FromArgb(r, g, b));
-                        }
-                    break;
-                case SurfacePixelFormat.PFID_A8R8G8B8:
-                    for (int i = 0; i < Height; i++)
-                        for (int j = 0; j < Width; j++)
-                        {
-                            int idx = (i * Width) + j;
-                            int a = (int)((colorArray[idx] & 0xFF000000) >> 24);
-                            int r = (colorArray[idx] & 0xFF0000) >> 16;
-                            int g = (colorArray[idx] & 0xFF00) >> 8;
-                            int b = colorArray[idx] & 0xFF;
-                            image.SetPixel(j, i, Color.FromArgb(a, r, g, b));
-                        }
-                    break;
-                case SurfacePixelFormat.PFID_INDEX16:
-                case SurfacePixelFormat.PFID_P8:
-                    Palette pal = DatManager.PortalDat.ReadFromDat<Palette>((uint)DefaultPaletteId);
-
-                    // Apply any custom palette colors, if any, to our loaded palette (note, this may be all of them!)
-                    if (CustomPaletteColors.Count > 0)
-                        foreach (KeyValuePair<int, uint> entry in CustomPaletteColors)
-                            if (entry.Key <= pal.Colors.Count)
-                                pal.Colors[entry.Key] = entry.Value;
-
-                    for (int i = 0; i < Height; i++)
-                        for (int j = 0; j < Width; j++)
-                        {
-                            int idx = (i * Width) + j;
-                            int a = (int)((pal.Colors[colorArray[idx]] & 0xFF000000) >> 24);
-                            int r = (int)(pal.Colors[colorArray[idx]] & 0xFF0000) >> 16;
-                            int g = (int)(pal.Colors[colorArray[idx]] & 0xFF00) >> 8;
-                            int b = (int)pal.Colors[colorArray[idx]] & 0xFF;
-                            image.SetPixel(j, i, Color.FromArgb(a, r, g, b));
-                        }
-                    break;
-                case SurfacePixelFormat.PFID_A8:
-                case SurfacePixelFormat.PFID_CUSTOM_LSCAPE_ALPHA:
-                    for (int i = 0; i < Height; i++)
-                        for (int j = 0; j < Width; j++)
-                        {
-                            int idx = (i * Width) + j;
-                            int r = colorArray[idx];
-                            int g = colorArray[idx];
-                            int b = colorArray[idx];
-                            image.SetPixel(j, i, Color.FromArgb(r, g, b));
-                        }
-                    break;
-                case SurfacePixelFormat.PFID_R5G6B5: // 16-bit RGB
-                    for (int i = 0; i < Height; i++)
-                        for (int j = 0; j < Width; j++)
-                        {
-                            int idx = 3 * ((i * Width) + j);
-                            int r = (int)(colorArray[idx]);
-                            int g = (int)(colorArray[idx + 1]);
-                            int b = (int)(colorArray[idx + 2]);
-                            image.SetPixel(j, i, Color.FromArgb(r, g, b));
-                        }
-                    break;
-                case SurfacePixelFormat.PFID_A4R4G4B4:
-                    for (int i = 0; i < Height; i++)
-                        for (int j = 0; j < Width; j++)
-                        {
-                            int idx = 4 * ((i * Width) + j);
-                            int a = (colorArray[idx]);
-                            int r = (colorArray[idx + 1]);
-                            int g = (colorArray[idx + 2]);
-                            int b = (colorArray[idx + 3]);
-                            image.SetPixel(j, i, Color.FromArgb(a, r, g, b));
-                        }
-                    break;
-            }
-            return image;
-        }
-
-        /// <summary>
-        /// Generates Bitmap data from byteArray, generated by DXT1, DXT3, and DXT5 image foramts.
-        /// </summary>
-        private Bitmap GetBitmap(byte[] byteArray)
-        {
-            Bitmap image = new Bitmap(Width, Height);
-            for (int i = 0; i < Height; i++)
-                for (int j = 0; j < Width; j++)
-                {
-                    int idx = 4 * ((i * Width) + j);
-                    int r = (int)(byteArray[idx]);
-                    int g = (int)(byteArray[idx + 1]);
-                    int b = (int)(byteArray[idx + 2]);
-                    int a = (int)(byteArray[idx + 3]);
-                    image.SetPixel(j, i, Color.FromArgb(a, r, g, b));
-                }
-
-            return image;
         }
 
         // https://docs.microsoft.com/en-us/windows/desktop/DirectShow/working-with-16-bit-rgb

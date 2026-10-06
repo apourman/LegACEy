@@ -151,6 +151,9 @@ namespace ACE.Server.WorldObjects
         {
             IsInDeathProcess = true;
 
+            // the item never left the pack, so it drops under the normal rules
+            CancelVaultChannel();
+
             if (topDamager?.Guid == Guid && IsPKType)
             {
                 var topDamagerOther = DamageHistory.GetTopDamager(false);

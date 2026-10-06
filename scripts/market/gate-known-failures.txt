@@ -1,0 +1,12 @@
+# Failures the local gate (gate.sh) accepts, one per line: <suite> <test name as the gate prints it>. Exactly these: the gate
+# fails on any other failure, and also when one of these passes, is skipped or disappears, so the list never outlives a fix.
+#
+# database: under Linux these read Source/ACE.Server/Config.js through a Windows-relative path from the test output and fail
+# before reaching MySQL (5 AccountTests, 2 WeenieSearchTests).
+database ACE.Database.Tests.AccountTests.CreateAccount_GetAccountByName_ReturnsAccount
+database ACE.Database.Tests.AccountTests.GetAccountByName_TestPassword_ReturnsMatch
+database ACE.Database.Tests.AccountTests.GetAccountByName_TestPassword_ReturnsNoMatch
+database ACE.Database.Tests.AccountTests.GetAccountIdByName_ReturnsAccount
+database ACE.Database.Tests.AccountTests.UpdateAccountAccessLevelToSentinelAndBackToPlayer_ReturnsAccount
+database ACE.Database.Tests.WeenieSearchTests.GetWeenie_Pyreal_ById_ReturnsObject
+database ACE.Database.Tests.WeenieSearchTests.GetWeenie_Pyreal_ByName_ReturnsObject

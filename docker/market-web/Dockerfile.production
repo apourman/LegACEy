@@ -1,0 +1,23 @@
+# Build context: the repository root, filtered by Dockerfile.production.dockerignore next to this file.
+# Build the React Router server and browser bundle with the complete toolchain.
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+COPY market-web/package.json market-web/package-lock.json ./
+RUN npm ci
+COPY market-web/ ./
+RUN npm run build
+
+# Keep the runtime image to the built app and its production dependencies.
+FROM node:22-bookworm-slim AS runtime
+ENV NODE_ENV=production PORT=5174 HOST=0.0.0.0
+WORKDIR /app
+COPY --from=build --chown=node:node /app/package.json /app/package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+COPY --from=build --chown=node:node /app/server.js ./server.js
+COPY --from=build --chown=node:node /app/build ./build
+USER node
+EXPOSE 5174
+HEALTHCHECK --interval=5s --timeout=3s --start-period=20s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:5174/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+# npm rather than node as PID 1: server.js has no SIGTERM handler, and npm passes docker stop's signal on to it
+CMD ["npm", "start"]

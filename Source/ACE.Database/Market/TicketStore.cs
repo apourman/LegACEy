@@ -1,0 +1,321 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
+
+using Microsoft.EntityFrameworkCore;
+
+using ACE.Database.Models.Shard;
+using ACE.Database.Models.Shard.Market;
+
+namespace ACE.Database.Market
+{
+    public enum TicketCreateOutcome
+    {
+        Created,
+
+        // the account already used the key for a ticket of this kind: that ticket is the answer, and nothing new was written
+        Existing,
+
+        // the account already used the key for a ticket of another kind
+        KeyReused,
+    }
+
+    public sealed record TicketCreateResult(TicketCreateOutcome Outcome, Ticket Ticket);
+
+    /// <summary>
+    /// What a ticket asks for, stored as its JSON payload: the item for an item withdrawal, the MMD for a note withdrawal
+    /// </summary>
+    public sealed record TicketPayload(uint? ItemGuid = null, long? Amount = null)
+    {
+        private static readonly JsonSerializerOptions json = new JsonSerializerOptions(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
+
+        public string ToJson() => JsonSerializer.Serialize(this, json);
+
+        /// <summary>
+        /// Null when the text isn't a payload
+        /// </summary>
+        public static TicketPayload FromJson(string text)
+        {
+            try
+            {
+                return text == null ? null : JsonSerializer.Deserialize<TicketPayload>(text, json);
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// A claimed ticket to mark done in the same save as its work, so a crash can never leave the work saved and the ticket unfinished
+    /// </summary>
+    /// <param name="Message">what the player is told</param>
+    /// <param name="Result">optional structured JSON result, for example a live inventory snapshot</param>
+    public sealed record TicketCompletion(long TicketId, string Message, string Result = null);
+
+    /// <summary>
+    /// The game bridge's queue (market_ticket). The Market API creates tickets; the game server claims them, does the work, and writes the result.
+    /// Each change is one statement or one SaveChanges, never an explicit transaction.
+    /// </summary>
+    public static class TicketStore
+    {
+        /// <summary>
+        /// The result code of a ticket whose work was done
+        /// </summary>
+        public const string Ok = "ok";
+
+        /// <summary>
+        /// The result code of a ticket the game server had claimed when it stopped
+        /// </summary>
+        public const string ServerRestart = "server_restart";
+
+        /// <summary>
+        /// Finished tickets are deleted after this many days
+        /// </summary>
+        public const int KeepDays = 30;
+
+        /// <summary>
+        /// The result message column's length
+        /// </summary>
+        public const int MaxMessageLength = 512;
+
+        /// <summary>
+        /// Creates a WAITING ticket, unless the account already used the key: a ticket of the same kind is returned as it is, and one of another kind is refused.
+        /// Two requests racing with one key both end up with the one ticket that was saved.
+        /// </summary>
+        public static TicketCreateResult Create(ShardDbContext context, uint accountId, uint characterId, string kind, TicketPayload payload, string idempotencyKey, DateTime now)
+        {
+            var existing = FindByKey(context, accountId, idempotencyKey, kind);
+
+            if (existing != null)
+                return existing;
+
+            var ticket = new Ticket
+            {
+                Kind = kind,
+                AccountId = accountId,
+                CharacterId = characterId,
+                Payload = payload.ToJson(),
+                Status = TicketStatus.Waiting,
+                IdempotencyKey = idempotencyKey,
+                CreatedTime = ListingStore.Truncate(now),
+            };
+
+            context.MarketTickets.Add(ticket);
+
+            try
+            {
+                context.SaveChanges();
+
+                return new TicketCreateResult(TicketCreateOutcome.Created, ticket);
+            }
+            catch (DbUpdateException ex) when (Ledger.IsLostRace(ex))
+            {
+                // a parallel request with the same key saved first: its ticket is the answer
+                context.ChangeTracker.Clear();
+
+                return FindByKey(context, accountId, idempotencyKey, kind) ?? throw new InvalidOperationException($"ticket key {idempotencyKey} of account {accountId} lost a race but no ticket has it", ex);
+            }
+        }
+
+        /// <summary>
+        /// The account's ticket, or null if there's none with the id (another account's tickets are never found)
+        /// </summary>
+        public static Ticket Find(ShardDbContext context, uint accountId, long ticketId)
+        {
+            return context.MarketTickets.AsNoTracking().FirstOrDefault(t => t.Id == ticketId && t.AccountId == accountId);
+        }
+
+        /// <summary>
+        /// The most tickets VisibleToPlayer returns, unless the unfinished ones alone are more
+        /// </summary>
+        public const int MaxVisible = 100;
+
+        /// <summary>
+        /// Unfinished tickets regardless of age, plus tickets finished in the last 24 hours, newest first.
+        /// At most MaxVisible, filled with the newest finished tickets after every unfinished one, which are all kept even if they alone are more.
+        /// </summary>
+        public static List<Ticket> VisibleToPlayer(ShardDbContext context, uint accountId, DateTime now)
+        {
+            var recent = now - TimeSpan.FromHours(24);
+            var unfinished = context.MarketTickets.AsNoTracking()
+                .Where(t => t.AccountId == accountId && (t.Status == TicketStatus.Waiting || t.Status == TicketStatus.Claimed))
+                .OrderByDescending(t => t.Id)
+                .ToList();
+
+            var finished = context.MarketTickets.AsNoTracking()
+                .Where(t => t.AccountId == accountId && (t.Status == TicketStatus.Done || t.Status == TicketStatus.Failed) && t.FinishedTime >= recent)
+                .OrderByDescending(t => t.Id)
+                .Take(Math.Max(0, MaxVisible - unfinished.Count))
+                .ToList();
+
+            return unfinished.Concat(finished).OrderByDescending(t => t.Id).ToList();
+        }
+
+        /// <summary>
+        /// The result code of a ticket left CLAIMED that the server running is no longer working on (its claim or its work stopped on an error)
+        /// </summary>
+        public const string Abandoned = "abandoned";
+
+        /// <summary>
+        /// Claims up to limit WAITING tickets, oldest first, and returns the ones this caller claimed.
+        /// Each is claimed with its own conditional update from WAITING: one row changed means this caller owns it, so two pollers never both claim one.
+        /// Each claim commits on its own, so claimed collects the ids as they are claimed: if a later statement throws, the caller knows which tickets it holds (see Unclaim).
+        /// </summary>
+        public static List<Ticket> Claim(ShardDbContext context, int limit, DateTime now, List<long> claimed = null)
+        {
+            now = ListingStore.Truncate(now);
+
+            var waiting = context.MarketTickets.AsNoTracking().Where(t => t.Status == TicketStatus.Waiting).OrderBy(t => t.Id).Select(t => t.Id).Take(limit).ToList();
+
+            claimed ??= new List<long>();
+
+            foreach (var id in waiting)
+            {
+                // false: another poller claimed it first
+                if (ClaimOne(context, id, now))
+                    claimed.Add(id);
+            }
+
+            if (claimed.Count == 0)
+                return new List<Ticket>();
+
+            return context.MarketTickets.AsNoTracking().Where(t => claimed.Contains(t.Id)).OrderBy(t => t.Id).ToList();
+        }
+
+        /// <summary>
+        /// Claims one WAITING ticket with a conditional update. False if it isn't WAITING (another caller claimed it, or it finished).
+        /// </summary>
+        public static bool ClaimOne(ShardDbContext context, long ticketId, DateTime now)
+        {
+            now = ListingStore.Truncate(now);
+
+            return context.MarketTickets
+                .Where(t => t.Id == ticketId && t.Status == TicketStatus.Waiting)
+                .ExecuteUpdate(s => s.SetProperty(t => t.Status, TicketStatus.Claimed).SetProperty(t => t.ClaimedTime, now)) == 1;
+        }
+
+        /// <summary>
+        /// Puts tickets this caller claimed back to WAITING, for a claim that failed before the caller could run them. Returns how many.
+        /// </summary>
+        public static int Unclaim(ShardDbContext context, IReadOnlyCollection<long> ids)
+        {
+            if (ids.Count == 0)
+                return 0;
+
+            return context.MarketTickets
+                .Where(t => ids.Contains(t.Id) && t.Status == TicketStatus.Claimed)
+                .ExecuteUpdate(s => s.SetProperty(t => t.Status, TicketStatus.Waiting).SetProperty(t => t.ClaimedTime, (DateTime?)null));
+        }
+
+        /// <summary>
+        /// While the server runs: fails every ticket CLAIMED before claimedBefore that isn't in running (the tickets the server is working on now).
+        /// Such a ticket was claimed but never run, or its work stopped without an answer, and no work of it was saved (finished work marks its ticket DONE in the same save,
+        /// and a save attempted after this fails on the ticket's status). Returns how many.
+        /// </summary>
+        public static int FailAbandoned(ShardDbContext context, IReadOnlyCollection<long> running, DateTime claimedBefore, string message, DateTime now)
+        {
+            claimedBefore = ListingStore.Truncate(claimedBefore);
+
+            return MarkFailed(context.MarketTickets.Where(t => t.Status == TicketStatus.Claimed && t.ClaimedTime < claimedBefore && !running.Contains(t.Id)), Abandoned, message, now);
+        }
+
+        /// <summary>
+        /// Marks a claimed ticket FAILED with a result code and message. False if it isn't CLAIMED (already finished, or never claimed).
+        /// </summary>
+        public static bool Fail(ShardDbContext context, long ticketId, string resultCode, string message, DateTime now)
+        {
+            return MarkFailed(context.MarketTickets.Where(t => t.Id == ticketId && t.Status == TicketStatus.Claimed), resultCode, message, now) == 1;
+        }
+
+        /// <summary>
+        /// Updates the presentation stage of a claimed ticket without changing the work or ticket state.
+        /// </summary>
+        public static bool SetProgress(ShardDbContext context, long ticketId, string progress, DateTime progressTime, DateTime progressUntil)
+        {
+            progressTime = ListingStore.Truncate(progressTime);
+            progressUntil = ListingStore.Truncate(progressUntil);
+
+            return context.MarketTickets
+                .Where(t => t.Id == ticketId && t.Status == TicketStatus.Claimed)
+                .ExecuteUpdate(s => s
+                    .SetProperty(t => t.Progress, progress)
+                    .SetProperty(t => t.ProgressTime, progressTime)
+                    .SetProperty(t => t.ProgressUntil, progressUntil)) == 1;
+        }
+
+        /// <summary>
+        /// Startup: every CLAIMED ticket was being worked on by a server that stopped, and that work was never saved
+        /// (finished work marks its ticket DONE in the same save), so each becomes FAILED. Returns how many.
+        /// </summary>
+        public static int FailAllClaimed(ShardDbContext context, string message, DateTime now)
+        {
+            return MarkFailed(context.MarketTickets.Where(t => t.Status == TicketStatus.Claimed), ServerRestart, message, now);
+        }
+
+        /// <summary>
+        /// Deletes DONE and FAILED tickets that finished more than KeepDays ago. Returns how many.
+        /// </summary>
+        public static int DeleteFinished(ShardDbContext context, DateTime now)
+        {
+            var before = now - TimeSpan.FromDays(KeepDays);
+
+            return context.MarketTickets
+                .Where(t => (t.Status == TicketStatus.Done || t.Status == TicketStatus.Failed) && t.FinishedTime < before)
+                .ExecuteDelete();
+        }
+
+        /// <summary>
+        /// Adds marking a claimed ticket DONE to the caller's context, to be saved with the caller's other changes.
+        /// The update only matches a ticket that is still CLAIMED (the status is a concurrency token), so otherwise the whole save fails.
+        /// </summary>
+        public static void Complete(ShardDbContext context, TicketCompletion completion, DateTime now)
+        {
+            var ticket = new Ticket { Id = completion.TicketId, Status = TicketStatus.Claimed };
+
+            context.MarketTickets.Attach(ticket);
+
+            ticket.Status = TicketStatus.Done;
+            ticket.ResultCode = Ok;
+            ticket.ResultMessage = Cap(completion.Message);
+            ticket.Result = completion.Result;
+            ticket.FinishedTime = ListingStore.Truncate(now);
+        }
+
+        /// <summary>
+        /// What the account's key already made: Existing with its ticket when that ticket is of this kind, KeyReused when it is of another kind,
+        /// or null when the key is unused. Ticket-creating endpoints call this before any other check, so a retry always gets its ticket.
+        /// </summary>
+        public static TicketCreateResult FindByKey(ShardDbContext context, uint accountId, string idempotencyKey, string kind)
+        {
+            var existing = context.MarketTickets.AsNoTracking().FirstOrDefault(t => t.AccountId == accountId && t.IdempotencyKey == idempotencyKey);
+
+            if (existing == null)
+                return null;
+
+            return new TicketCreateResult(existing.Kind == kind ? TicketCreateOutcome.Existing : TicketCreateOutcome.KeyReused, existing);
+        }
+
+        /// <summary>
+        /// One conditional update of the matching tickets to FAILED
+        /// </summary>
+        private static int MarkFailed(IQueryable<Ticket> tickets, string resultCode, string message, DateTime now)
+        {
+            now = ListingStore.Truncate(now);
+            message = Cap(message);
+
+            return tickets.ExecuteUpdate(s => s
+                .SetProperty(t => t.Status, TicketStatus.Failed)
+                .SetProperty(t => t.ResultCode, resultCode)
+                .SetProperty(t => t.ResultMessage, message)
+                .SetProperty(t => t.Progress, (string)null)
+                .SetProperty(t => t.ProgressTime, (DateTime?)null)
+                .SetProperty(t => t.ProgressUntil, (DateTime?)null)
+                .SetProperty(t => t.FinishedTime, now));
+        }
+
+        private static string Cap(string message) => message != null && message.Length > MaxMessageLength ? message.Substring(0, MaxMessageLength) : message;
+    }
+}

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 
 using ACE.Entity.Enum;
 using ACE.Server.Entity;
@@ -26,20 +27,39 @@ namespace ACE.Server.WorldObjects.Managers
             Player = player;
         }
 
+        internal uint? PendingContext(ConfirmationType confirmationType) =>
+            confirmations.TryGetValue(confirmationType, out var confirmation) ? confirmation.ContextId : null;
+
         /// <summary>
         /// Builds a new confirmation request on the server,
         /// and sends the request to the client
         /// </summary>
         public bool EnqueueSend(Confirmation confirmation, string text)
         {
+            return EnqueueSend(confirmation, text, enqueueTimeout: true);
+        }
+
+        /// <summary>
+        /// Sends a confirmation whose caller owns its deadline, allowing it to expire even if the player leaves the world.
+        /// </summary>
+        public bool EnqueueSendWithoutTimeout(Confirmation confirmation, string text)
+        {
+            return EnqueueSend(confirmation, text, enqueueTimeout: false);
+        }
+
+        private bool EnqueueSend(Confirmation confirmation, string text, bool enqueueTimeout)
+        {
             confirmation.ContextId = contextSequence.NextValue;
             if (confirmations.TryAdd(confirmation.ConfirmationType, confirmation))
             {
                 Player.Session.Network.EnqueueSend(new GameEventConfirmationRequest(Player.Session, confirmation.ConfirmationType, confirmation.ContextId, text));
-                var timeoutConfirmation = new ActionChain();
-                timeoutConfirmation.AddDelaySeconds(confirmationTimeout);
-                timeoutConfirmation.AddAction(Player, () => EnqueueAbort(confirmation.ConfirmationType, confirmation.ContextId));
-                timeoutConfirmation.EnqueueChain();
+                if (enqueueTimeout)
+                {
+                    var timeoutConfirmation = new ActionChain();
+                    timeoutConfirmation.AddDelaySeconds(confirmationTimeout);
+                    timeoutConfirmation.AddAction(Player, () => EnqueueAbort(confirmation.ConfirmationType, confirmation.ContextId));
+                    timeoutConfirmation.EnqueueChain();
+                }
             }
             else
             {
@@ -47,6 +67,19 @@ namespace ACE.Server.WorldObjects.Managers
                 return false;
             }
 
+            return true;
+        }
+
+        /// <summary>
+        /// Expires exactly the matching confirmation, dismisses it on the client, and processes its timeout response.
+        /// </summary>
+        public bool Timeout(ConfirmationType confirmationType, uint contextId)
+        {
+            if (!confirmations.TryGetValue(confirmationType, out var confirm) || confirm.ContextId != contextId || !TryRemove(confirmationType, confirm))
+                return false;
+
+            Player.Session?.Network?.EnqueueSend(new GameEventConfirmationDone(Player.Session, confirmationType, contextId));
+            confirm.ProcessConfirmation(false, timeout: true);
             return true;
         }
 
@@ -88,7 +121,7 @@ namespace ACE.Server.WorldObjects.Managers
         /// </summary>
         public bool HandleResponse(ConfirmationType confirmType, uint contextId, bool response, bool timeout = false)
         {
-            if (!confirmations.TryRemove(confirmType, out var confirm))
+            if (!confirmations.TryGetValue(confirmType, out var confirm))
             {
                 switch (confirmType)
                 {
@@ -113,9 +146,6 @@ namespace ACE.Server.WorldObjects.Managers
                 if (confirm.ConfirmationType == ConfirmationType.Fellowship)
                 {
                     // dialog box does not dismiss on ConfirmationDone, unlike on all other types, so we must let the player know when they click either yes or no, nothing occured because the offer has already expired.
-                    if (!confirmations.TryAdd(confirm.ConfirmationType, confirm))
-                        log.Error($"{Player.Name}.ConfirmationManager.HandleResponse({confirm.ConfirmationType}, {confirm.ContextId}) - Unable to re-add confirmation, duplicate confirmation type");
-
                     Player.SendMessage("That offer of fellowship has expired."); // still looking for pcap accurate response
 
                     return false;
@@ -123,15 +153,19 @@ namespace ACE.Server.WorldObjects.Managers
 
                 log.Error($"{Player.Name}.ConfirmationManager.HandleResponse({confirmType}, {contextId}, {response}, {timeout}) - contextId != confirm.ContextId");
 
-                if (!confirmations.TryAdd(confirm.ConfirmationType, confirm))
-                    log.Error($"{Player.Name}.ConfirmationManager.HandleResponse({confirm.ConfirmationType}, {confirm.ContextId}) - Unable to re-add confirmation, duplicate confirmation type");
-
                 return false;
             }
+
+            if (!TryRemove(confirmType, confirm))
+                return false;
 
             confirm.ProcessConfirmation(response, timeout);
 
             return true;
         }
+
+        private bool TryRemove(ConfirmationType confirmationType, Confirmation confirmation) =>
+            ((ICollection<KeyValuePair<ConfirmationType, Confirmation>>)confirmations)
+                .Remove(new KeyValuePair<ConfirmationType, Confirmation>(confirmationType, confirmation));
     }
 }

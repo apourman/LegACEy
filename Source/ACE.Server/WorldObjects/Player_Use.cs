@@ -34,6 +34,12 @@ namespace ACE.Server.WorldObjects
                 return;
             }
 
+            if (IsVaultChannelling)
+            {
+                SendUseDoneEvent(WeenieError.YoureTooBusy);
+                return;
+            }
+
             StopExistingMoveToChains();
 
             // source item is always in our possession
@@ -178,6 +184,12 @@ namespace ACE.Server.WorldObjects
             if (PKLogout)
             {
                 SendUseDoneEvent(WeenieError.YouHaveBeenInPKBattleTooRecently);
+                return;
+            }
+
+            if (IsVaultChannelling)
+            {
+                SendUseDoneEvent(WeenieError.YoureTooBusy);
                 return;
             }
 

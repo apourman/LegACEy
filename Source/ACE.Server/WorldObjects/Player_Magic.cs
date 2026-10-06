@@ -114,6 +114,12 @@ namespace ACE.Server.WorldObjects
                 return;
             }
 
+            if (IsVaultChannelling)
+            {
+                SendUseDoneEvent(WeenieError.YoureTooBusy);
+                return;
+            }
+
             if (IsBusy && MagicState.CanQueue)
             {
                 MagicState.CastQueue = new CastQueue(CastQueueType.Targeted, targetGuid, spellId, casterItem);
@@ -302,6 +308,12 @@ namespace ACE.Server.WorldObjects
             if (PKLogout)
             {
                 SendUseDoneEvent(WeenieError.YouHaveBeenInPKBattleTooRecently);
+                return;
+            }
+
+            if (IsVaultChannelling)
+            {
+                SendUseDoneEvent(WeenieError.YoureTooBusy);
                 return;
             }
 
