@@ -278,6 +278,7 @@ namespace ACE.Server
 
             log.Info("Checking the market schema...");
             ACE.Server.Market.Vault.Initialize();
+            ACE.Server.ClientChannel.PaperdollChannelActions.Register();
 
             if (ConfigManager.Config.Server.ServerPerformanceMonitorAutoStart)
             {

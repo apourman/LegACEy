@@ -24,6 +24,7 @@ public sealed class PortalDat : IDisposable, IGameArtSource
 
     public PortalDat(string path)
     {
+        Path = path;
         _stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         var header = new byte[40];
         _stream.Seek(HeaderOffset, SeekOrigin.Begin);
@@ -31,6 +32,8 @@ public sealed class PortalDat : IDisposable, IGameArtSource
         _blockSize = BitConverter.ToUInt32(header, 4);
         _rootDirectory = BitConverter.ToUInt32(header, 32);
     }
+
+    public string Path { get; }
 
     /// <summary>Decode an interface image to premultiplied BGRA, or return null if it is missing or in an unsupported format.</summary>
     public GameImage? ReadImage(uint id)
@@ -81,7 +84,7 @@ public sealed class PortalDat : IDisposable, IGameArtSource
 
     public void Dispose() => _stream.Dispose();
 
-    private uint[]? ReadPalette(uint id)
+    internal uint[]? ReadPalette(uint id)
     {
         var data = ReadFile(id);
         if (data == null || data.Length < 8) return null;
@@ -94,7 +97,7 @@ public sealed class PortalDat : IDisposable, IGameArtSource
     }
 
     /// <summary>Find a file in the B-tree and read its blocks.</summary>
-    private byte[]? ReadFile(uint id)
+    internal byte[]? ReadFile(uint id)
     {
         var node = _rootDirectory;
         while (node != 0)

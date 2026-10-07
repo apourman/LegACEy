@@ -13,6 +13,10 @@ namespace ACE.Server.Network.GameMessages.Messages
             : base(GameMessageOpcode.ObjDescEvent, GameMessageGroup.SmartboxQueue)
         {
             worldObject.SerializeUpdateModelData(this.Writer);
+
+            // every appearance change is broadcast through here; the LegACEy paperdoll redraws on it
+            if (worldObject is Player player)
+                ClientChannel.PaperdollChannelActions.PushChanged(player);
         }
     }
 }

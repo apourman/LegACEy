@@ -50,6 +50,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private const string BreakoutSlot = "Breakout";
     private const string PerformanceListSlot = "Performance list";
     private const string VaultSlot = "Vault preview";
+    private const string PaperdollSlot = "Paperdoll";
     private const string LiveDataWindowId = "live-game-data";
     private const string ElementInspectorWindowId = "element-inspector";
     private static readonly string PluginDirectory = IOPath.GetDirectoryName(typeof(ClientUiRuntime).Assembly.Location)!;
@@ -58,6 +59,9 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private PortalDat? _portal;
     private IndicatorBar? _bar;
     private BreakoutGame? _breakout;
+    private PaperdollPanel? _paperdoll;
+    private PaperdollRenderer? _paperdollRenderer;
+    private bool _paperdollFailed;
     private ScreenSurface? _barSurface;
     private RetailSurfaceRenderer? _barRenderer;
     private WindowManager? _windows;
@@ -229,7 +233,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
         _windows = null;
         _hovered = null;
         _dragOffset = null;
-        foreach (var slot in new[] { InputTestSlot, ThemeGallerySlot, BreakoutSlot, PerformanceListSlot, VaultSlot })
+        foreach (var slot in new[] { InputTestSlot, ThemeGallerySlot, BreakoutSlot, PerformanceListSlot, VaultSlot, PaperdollSlot })
             _bar?.SetOpen(slot, false);
     }
 
@@ -254,6 +258,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
             new IndicatorSlot(BreakoutSlot, 0x06004D20, ToggleBreakout, "R"),
             new IndicatorSlot(PerformanceListSlot, 0x06007498, TogglePerformanceList, "P"),
             new IndicatorSlot(VaultSlot, 0x06001020, () => ToggleWindow("vault-preview", VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight, new Point(240, 100)), "K" + VaultShellPanel.PreviewVersion),
+            new IndicatorSlot(PaperdollSlot, 0x06004D20, () => ToggleWindow("paperdoll", PaperdollPanel.WindowWidth, PaperdollPanel.WindowHeight, new Point(260, 120)), "D"),
             new IndicatorSlot("Live data", 0x06004D20, ToggleLiveData, "V"),
             new IndicatorSlot("Element inspector", 0x06004D20, ToggleElementInspector, "I"),
             new IndicatorSlot("Log out", 0x060074B1, NativeUi.RequestLogOut)
@@ -410,6 +415,18 @@ internal sealed class ClientUiRuntime : IClientUiHost
             case "vault-preview":
                 content = new VaultShellPanel(_portal!, new VaultClient(_clientUi!.ServerChannel, CurrentSelection), new ItemDragHost(this));
                 break;
+            case "paperdoll":
+                var paperdoll = _paperdoll = new PaperdollPanel(_clientUi!.ServerChannel, _portal!.Path);
+                paperdoll.DetachedFromVisualTree += (_, _) =>
+                {
+                    paperdoll.Dispose();
+                    if (_paperdoll != paperdoll) return;
+                    _paperdoll = null;
+                    _paperdollRenderer?.Dispose();
+                    _paperdollRenderer = null;
+                };
+                content = paperdoll;
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(id), id, "Unknown feature window.");
         }
@@ -440,6 +457,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
         "breakout" => BreakoutSlot,
         "performance-list" => PerformanceListSlot,
         "vault-preview" => VaultSlot,
+        "paperdoll" => PaperdollSlot,
         _ => id
     };
 
@@ -672,6 +690,8 @@ internal sealed class ClientUiRuntime : IClientUiHost
         foreach (var window in _windows.ZOrder.Reverse())
         {
             SurfaceById(window.Id)?.DrawNow();
+            if (window.Id == "paperdoll")
+                DrawPaperdoll(SurfaceById(window.Id));
             if (_firstPostUiWindow)
             {
                 _firstPostUiWindow = false;
@@ -680,6 +700,28 @@ internal sealed class ClientUiRuntime : IClientUiHost
         }
         // An item dragged out of a LegACEy window draws above everything.
         Guard(() => _dragIconSurface?.DrawNow());
+    }
+
+    /// <summary>
+    /// The 3D model goes on top of its window's frame, before any window above it. A failure turns off only the model.
+    /// </summary>
+    private void DrawPaperdoll(ScreenSurface? surface)
+    {
+        if (_paperdoll?.Model is not { } model || surface == null || _device == null || surface.Panel.Content is not Avalonia.Visual window || _paperdollFailed) return;
+        try
+        {
+            var origin = Avalonia.VisualExtensions.TranslatePoint(_paperdoll.Viewport, default, window);
+            if (origin == null) return;
+            var bounds = _paperdoll.Viewport.Bounds;
+            var area = new Rectangle(surface.Location.X + (int)origin.Value.X, surface.Location.Y + (int)origin.Value.Y, (int)bounds.Width, (int)bounds.Height);
+            _paperdollRenderer ??= new PaperdollRenderer(_device);
+            _paperdollRenderer.Draw(model, area, _paperdoll.Yaw, _paperdoll.Zoom);
+        }
+        catch (Exception exception)
+        {
+            _paperdollFailed = true;
+            Log($"Paperdoll drawing failed; the model stays off until the plugin reloads: {exception}");
+        }
     }
 
     /// <summary>Tells LegACEy drop targets about a drag in the retail UI, and where the pointer is over them.</summary>
@@ -1198,7 +1240,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
     {
         _windowsEnabled = false;
         Log($"LegACEy windows disabled: {exception}");
-        foreach (var slot in new[] { InputTestSlot, ThemeGallerySlot, BreakoutSlot, PerformanceListSlot, VaultSlot, "Live data", "Element inspector" })
+        foreach (var slot in new[] { InputTestSlot, ThemeGallerySlot, BreakoutSlot, PerformanceListSlot, VaultSlot, PaperdollSlot, "Live data", "Element inspector" })
             _bar?.SetOpen(slot, false);
         foreach (var window in _windows?.ZOrder.ToArray() ?? Array.Empty<ManagedWindow>())
             _windows!.Close(window.Id);
@@ -1328,6 +1370,9 @@ internal sealed class ClientUiRuntime : IClientUiHost
         _portal = null;
         _bar = null;
         _breakout = null;
+        _paperdollRenderer?.Dispose();
+        _paperdollRenderer = null;
+        _paperdoll = null;
         GameArtImageExtension.CurrentSource = null;
     }
 }
