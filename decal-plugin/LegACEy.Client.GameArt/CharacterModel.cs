@@ -102,6 +102,10 @@ public sealed class CharacterModel
             if (change.Part < parts.Length)
                 parts[change.Part] = change.Model;
         var recolor = Recolor(dat, appearance);
+        // one swap per part and original texture; a later item (ACE lists outer layers last) replaces an earlier one, not chained onto it
+        var swaps = new Dictionary<(int Part, uint Old), uint>();
+        foreach (var change in appearance.TextureChanges)
+            swaps[(change.Part, change.OldTexture)] = change.NewTexture;
 
         var meshes = new Dictionary<(uint Surface, uint Texture), ModelMesh?>();
         var ordered = new List<ModelMesh>();
@@ -140,10 +144,7 @@ public sealed class CharacterModel
         {
             var surface = DatModels.ReadSurface(dat, surfaceId);
             if (surface == null) return null;
-            var texture = surface.Texture;
-            foreach (var change in appearance.TextureChanges)
-                if (change.Part == part && change.OldTexture == texture)
-                    texture = change.NewTexture;
+            var texture = swaps.TryGetValue((part, surface.Texture), out var swapped) ? swapped : surface.Texture;
             var key = (surfaceId, texture);
             if (meshes.TryGetValue(key, out var existing)) return existing;
 

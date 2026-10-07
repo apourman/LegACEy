@@ -21,18 +21,24 @@ public static class PaperdollProtocol
     {
         var reader = ChannelWire.Reader(body);
         var setup = reader.ReadUInt32();
-        var palette = reader.ReadUInt32();
+        var palette = Known(reader.ReadUInt32(), 0x04000000);
         var palettes = new List<SubPalette>();
         for (int i = 0, count = reader.ReadUInt16(); i < count; i++)
-            palettes.Add(new SubPalette(reader.ReadUInt32(), reader.ReadUInt16(), reader.ReadUInt16()));
+            palettes.Add(new SubPalette(Known(reader.ReadUInt32(), 0x04000000), reader.ReadUInt16(), reader.ReadUInt16()));
         var textures = new List<TextureChange>();
         for (int i = 0, count = reader.ReadUInt16(); i < count; i++)
-            textures.Add(new TextureChange(reader.ReadByte(), reader.ReadUInt32(), reader.ReadUInt32()));
+            textures.Add(new TextureChange(reader.ReadByte(), Known(reader.ReadUInt32(), 0x05000000), Known(reader.ReadUInt32(), 0x05000000)));
         var parts = new List<PartChange>();
         for (int i = 0, count = reader.ReadUInt16(); i < count; i++)
-            parts.Add(new PartChange(reader.ReadByte(), reader.ReadUInt32()));
+            parts.Add(new PartChange(reader.ReadByte(), Known(reader.ReadUInt32(), 0x01000000)));
         return new CharacterAppearance(setup, palette, palettes, textures, parts);
     }
+
+    /// <summary>
+    /// ACE keeps some ids without their file type (clothing palettes are cut to 16 bits); the retail wire's
+    /// "packed dword of known type" puts it back, and so does this.
+    /// </summary>
+    private static uint Known(uint id, uint type) => id != 0 && (id & 0xFF000000) == 0 ? id | type : id;
 }
 
 /// <summary>
