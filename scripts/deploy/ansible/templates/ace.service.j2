@@ -1,0 +1,37 @@
+[Unit]
+Description=LegACEy ACE game server
+After=network-online.target mysql.service
+Wants=network-online.target
+Requires=mysql.service
+
+[Service]
+Type=simple
+User={{ ace_service_user }}
+Group={{ ace_service_user }}
+WorkingDirectory={{ ace_install_root }}
+ExecStart=/usr/bin/dotnet {{ ace_install_root }}/ACE.Server.dll
+Restart=on-failure
+RestartSec=10
+# Longer than the shutdown's 5-minute wait for players to log out and save.
+TimeoutStopSec=330
+Environment=ACE_NONINTERACTIVE_CONSOLE=true
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateDevices=true
+CapabilityBoundingSet=
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallFilter=@system-service
+# no MemoryDenyWriteExecute: the .NET JIT needs writable executable memory
+ReadWritePaths=-{{ ace_install_root }} {{ ace_dat_directory }} {{ ace_mods_directory }}
+ReadWritePaths=-{{ ace_shared_directory }}/Authentication_applied_updates.txt -{{ ace_shared_directory }}/Shard_applied_updates.txt -{{ ace_shared_directory }}/World_applied_updates.txt
+
+[Install]
+WantedBy=multi-user.target
