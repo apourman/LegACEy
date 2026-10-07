@@ -151,6 +151,7 @@
         salt: LegACEyVPS2026Salt!!
         priv: "ace_auth.*:ALL/ace_shard.*:ALL/ace_world.*:ALL"
         login_unix_socket: /var/run/mysqld/mysqld.sock
+      no_log: true  # the module logs its arguments, password included
 
     - name: Copy the base schemas
       ansible.builtin.copy:
@@ -169,7 +170,8 @@
         for f in AuthenticationBase.sql ShardBase.sql WorldBase.sql; do mysql < "$f"; done
         zip=ACE-World-Database-{{ ace_world_release_tag }}.sql.zip
         curl -fsSL -o "$zip" "https://github.com/ACEmulator/ACE-World-16PY-Patches/releases/download/{{ ace_world_release_tag }}/$zip"
-        unzip -p "$zip" | mysql ace_world
+        echo "{{ ace_world_release_sha256 }}  $zip" | sha256sum -c
+        unzip -p "$zip" | mysql --system-command=OFF ace_world
         rm "$zip"
         touch databases-created
       args:
@@ -182,6 +184,7 @@
         dest: "{{ ace_shared_directory }}/Config.js"
         group: "{{ ace_service_user }}"
         mode: "0640"
+      diff: false  # holds the database password
 
     - name: Install the logging config
       ansible.builtin.copy:
@@ -268,7 +271,10 @@
           ansible.builtin.shell: |
             set -euo pipefail
             tag=$(gh api repos/{{ ace_github_repository }}/releases/latest --jq .tag_name)
-            echo "$tag $(gh api repos/{{ ace_github_repository }}/commits/$tag --jq .sha)"
+            sha=$(gh api "repos/{{ ace_github_repository }}/commits/$tag" --jq .sha)
+            # these end up in a root shell on the server
+            [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && $sha =~ ^[0-9a-f]{40}$ ]] || { echo "Unexpected release: $tag $sha" >&2; exit 1; }
+            echo "$tag $sha"
           args:
             executable: /bin/bash
           delegate_to: localhost
@@ -279,7 +285,6 @@
         - name: Download, unpack and deploy it
           ansible.builtin.shell: |
             set -euo pipefail
-            read -r tag sha <<< "{{ ace_latest.stdout }}"
             asset="LegACEy-$tag-linux-x64.tar.gz"
             cd "$(mktemp -d)"
             curl -fsSLO "https://github.com/{{ ace_github_repository }}/releases/download/$tag/$asset"
@@ -291,6 +296,9 @@
             /usr/local/sbin/legacey-cd-deploy "$sha"
           args:
             executable: /bin/bash
+          environment:
+            tag: "{{ ace_latest.stdout.split()[0] }}"
+            sha: "{{ ace_latest.stdout.split()[1] }}"
 
   handlers:
     - name: Restart SSH

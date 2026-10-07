@@ -17,5 +17,6 @@ ace_dat_directory: /var/lib/ace/Dats
 ace_mods_directory: /var/lib/ace/Mods
 ace_backup_directory: /var/backups/legacey/mysql
 ace_world_release_tag: v0.9.295
+ace_world_release_sha256: fd35cff8b2cea8408ae13839b9b1862c30452a1013f43eb62ec83c25349bd148
 # Generated on the first run and kept in the untracked secrets/ directory.
 ace_mysql_app_password: "{{ lookup('ansible.builtin.password', playbook_dir + '/secrets/ace_mysql_app_password length=48 chars=ascii_letters,digits') }}"
