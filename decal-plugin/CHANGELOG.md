@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.0...decal-plugin-v0.1.1) (2026-10-07)
+
+
+### Features
+
+* add the 3D paperdoll window ([#17](https://github.com/apourman/LegACEy/issues/17)) ([4129b3e](https://github.com/apourman/LegACEy/commit/4129b3ecbd2a47852b8060d67c5e4ea6638fdf96))
+
 ## 0.1.0 (2026-10-06)
 
 
