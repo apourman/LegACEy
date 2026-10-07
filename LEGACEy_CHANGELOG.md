@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/apourman/LegACEy/compare/v0.2.0...v0.2.1) (2026-10-07)
+
+
+### Bug Fixes
+
+* save players on shutdown and add server provisioning ([#15](https://github.com/apourman/LegACEy/issues/15)) ([33f795c](https://github.com/apourman/LegACEy/commit/33f795cd1bbee712bec0ff9db075cd9adc2e3b58))
+
 ## [0.2.0](https://github.com/apourman/LegACEy/compare/v0.1.0...v0.2.0) (2026-10-06)
 
 
