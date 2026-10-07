@@ -45,7 +45,6 @@ internal sealed class DatGfxObj
 internal sealed class DatSurface
 {
     public uint Texture;
-    public uint Palette;
     public uint Color;
     public bool Clipped;
     public float Translucency;
@@ -131,7 +130,7 @@ internal static class DatModels
         if ((type & (SurfaceBase1Image | SurfaceBase1ClipMap)) != 0)
         {
             surface.Texture = reader.ReadUInt32();
-            surface.Palette = reader.ReadUInt32();
+            reader.ReadUInt32(); // the surface's palette: unused, the texture's own default is the base
         }
         else
             surface.Color = reader.ReadUInt32();
@@ -141,9 +140,9 @@ internal static class DatModels
 
     /// <summary>
     /// Decode a SurfaceTexture's first image to straight-alpha BGRA. Palette-indexed images use the character's
-    /// palette when it has one, else the surface's, else their own.
+    /// default palette recoloured for the character, as ACViewer does; in a clip map, indices 0-7 are transparent.
     /// </summary>
-    public static GameImage? ReadTexture(PortalDat dat, uint surfaceTextureId, uint[]? characterPalette, uint surfacePalette)
+    public static GameImage? ReadTexture(PortalDat dat, uint surfaceTextureId, Func<uint[], uint[]> recolor, bool clipped)
     {
         var reader = Open(dat, surfaceTextureId);
         if (reader == null) return null;
@@ -153,13 +152,13 @@ internal static class DatModels
         var count = reader.ReadInt32();
         for (var i = 0; i < count; i++)
         {
-            var image = DecodeImage(dat, reader.ReadUInt32(), characterPalette, surfacePalette);
+            var image = DecodeImage(dat, reader.ReadUInt32(), recolor, clipped);
             if (image != null) return image;
         }
         return null;
     }
 
-    private static GameImage? DecodeImage(PortalDat dat, uint id, uint[]? characterPalette, uint surfacePalette)
+    private static GameImage? DecodeImage(PortalDat dat, uint id, Func<uint[], uint[]> recolor, bool clipped)
     {
         var data = dat.ReadFile(id);
         if (data == null || data.Length < 24) return null;
@@ -183,12 +182,13 @@ internal static class DatModels
             case 101: // INDEX16
             case 41: // P8
                 {
-                    var palette = characterPalette ?? dat.ReadPalette(surfacePalette != 0 ? surfacePalette : BitConverter.ToUInt32(data, source + length));
-                    if (palette == null) return null;
+                    var own = dat.ReadPalette(BitConverter.ToUInt32(data, source + length));
+                    if (own == null) return null;
+                    var palette = recolor(own);
                     for (var i = 0; i < width * height; i++)
                     {
                         int index = format == 101 ? BitConverter.ToUInt16(data, source + (i * 2)) : data[source + i];
-                        var color = index < palette.Length ? palette[index] : 0u;
+                        var color = (clipped && index < 8) || index >= palette.Length ? 0u : palette[index];
                         Set(pixels, i, (byte)color, (byte)(color >> 8), (byte)(color >> 16), (byte)(color >> 24));
                     }
                 }

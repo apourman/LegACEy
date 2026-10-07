@@ -101,7 +101,7 @@ public sealed class CharacterModel
         foreach (var change in appearance.PartChanges)
             if (change.Part < parts.Length)
                 parts[change.Part] = change.Model;
-        var palette = Composite(dat, appearance);
+        var recolor = Recolor(dat, appearance);
 
         var meshes = new Dictionary<(uint Surface, uint Texture), ModelMesh?>();
         var ordered = new List<ModelMesh>();
@@ -150,7 +150,7 @@ public sealed class CharacterModel
             ModelMesh? mesh = null;
             if (surface.Translucency < 0.99f)
             {
-                var image = texture == 0 ? Solid(surface.Color) : DatModels.ReadTexture(dat, texture, palette, surface.Palette) ?? Solid(0xFF808080);
+                var image = texture == 0 ? Solid(surface.Color) : DatModels.ReadTexture(dat, texture, recolor, surface.Clipped) ?? Solid(0xFF808080);
                 mesh = new ModelMesh(image, surface.Clipped);
                 ordered.Add(mesh);
             }
@@ -159,22 +159,25 @@ public sealed class CharacterModel
         }
     }
 
-    /// <summary>The character's palette: the base palette with each sub-palette's range copied over it. Null if it has none.</summary>
-    private static uint[]? Composite(PortalDat dat, CharacterAppearance appearance)
+    /// <summary>
+    /// The character's recolouring: each sub-palette's range copied over a texture's own palette (the surface's, else the
+    /// texture's default), as the client does. The appearance's base palette is not the starting point.
+    /// </summary>
+    private static Func<uint[], uint[]> Recolor(PortalDat dat, CharacterAppearance appearance)
     {
-        if (appearance.SubPalettes.Count == 0) return null;
-        var colors = dat.ReadPalette(appearance.PaletteId);
-        if (colors == null) return null;
-        colors = (uint[])colors.Clone();
+        var ranges = new List<(uint[] Source, int Start, int End)>();
         foreach (var sub in appearance.SubPalettes)
+            if (dat.ReadPalette(sub.PaletteId) is { } source)
+                ranges.Add((source, sub.Offset * 8, (sub.Offset + (sub.Length == 0 ? 256 : sub.Length)) * 8));
+        return palette =>
         {
-            var source = dat.ReadPalette(sub.PaletteId);
-            if (source == null) continue;
-            var length = sub.Length == 0 ? 256 : sub.Length;
-            for (var i = sub.Offset * 8; i < (sub.Offset + length) * 8 && i < colors.Length && i < source.Length; i++)
-                colors[i] = source[i];
-        }
-        return colors;
+            if (ranges.Count == 0) return palette;
+            var colors = (uint[])palette.Clone();
+            foreach (var (source, start, end) in ranges)
+                for (var i = start; i < end && i < colors.Length && i < source.Length; i++)
+                    colors[i] = source[i];
+            return colors;
+        };
     }
 
     private static ModelVertex Place(DatVertex vertex, int uvIndex, Frame frame, Vec3 scale, bool flipNormal)
