@@ -1,0 +1,26 @@
+[Unit]
+Description=LegACEy ACE game server
+After=network-online.target mysql.service
+Wants=network-online.target
+Requires=mysql.service
+
+[Service]
+Type=simple
+User={{ ace_service_user }}
+Group={{ ace_service_user }}
+WorkingDirectory={{ ace_install_root }}
+ExecStart=/usr/bin/dotnet {{ ace_install_root }}/ACE.Server.dll
+Restart=on-failure
+RestartSec=10
+# Long enough for the SIGTERM shutdown to log out and save every player.
+TimeoutStopSec=120
+Environment=ACE_NONINTERACTIVE_CONSOLE=true
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=-{{ ace_install_root }} {{ ace_dat_directory }} {{ ace_mods_directory }}
+ReadWritePaths=-{{ ace_shared_directory }}/Authentication_applied_updates.txt -{{ ace_shared_directory }}/Shard_applied_updates.txt -{{ ace_shared_directory }}/World_applied_updates.txt
+
+[Install]
+WantedBy=multi-user.target

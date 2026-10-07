@@ -1,0 +1,3 @@
+inventory.yml
+group_vars/all/local.yml
+secrets/

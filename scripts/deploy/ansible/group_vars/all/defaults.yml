@@ -1,0 +1,21 @@
+---
+# Override any of these in group_vars/all/local.yml (untracked).
+ace_admin_user: gameadmin
+ace_admin_ssh_public_key_path: "{{ lookup('env', 'HOME') }}/.ssh/id_ed25519.pub"
+# Must be the key whose private half is the ACE_DEPLOY_SSH_PRIVATE_KEY GitHub secret.
+ace_cd_deploy_public_key_path: "{{ lookup('env', 'HOME') }}/.ssh/legacey-cd_ed25519.pub"
+ace_dat_source: "{{ lookup('env', 'HOME') }}/ace_dats/retail/"
+ace_game_udp_ports: [9000, 9001]
+ace_github_repository: apourman/LegACEy
+
+ace_service_user: ace
+ace_cd_deploy_user: ace-deploy
+ace_root: /opt/legacey
+ace_install_root: "{{ ace_root }}/ace"
+ace_shared_directory: "{{ ace_root }}/shared"
+ace_dat_directory: /var/lib/ace/Dats
+ace_mods_directory: /var/lib/ace/Mods
+ace_backup_directory: /var/backups/legacey/mysql
+ace_world_release_tag: v0.9.295
+# Generated on the first run and kept in the untracked secrets/ directory.
+ace_mysql_app_password: "{{ lookup('ansible.builtin.password', playbook_dir + '/secrets/ace_mysql_app_password length=48 chars=ascii_letters,digits') }}"

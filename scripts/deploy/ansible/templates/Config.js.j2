@@ -1,0 +1,29 @@
+{
+  "Server": {
+    "WorldName": "LegACEy",
+    "Network": { "Host": "0.0.0.0", "Port": 9000, "MaximumAllowedSessions": 128, "DefaultSessionTimeout": 60, "MaximumAllowedSessionsPerIPAddress": -1, "AllowUnlimitedSessionsFromIPAddresses": [] },
+    "Accounts": { "OverrideCharacterPermissions": true, "DefaultAccessLevel": 0, "AllowAutoAccountCreation": true, "PasswordHashWorkFactor": 8, "ForceWorkFactorMigration": true },
+    "DatFilesDirectory": "{{ ace_dat_directory }}",
+    "ModsDirectory": "{{ ace_mods_directory }}",
+    "ServerPerformanceMonitorAutoStart": false,
+    "Threading": { "WorldThreadCountMultiplier": 0.34, "DatabaseThreadCountMultiplier": 0.66, "MultiThreadedLandblockGroupPhysicsTicking": true, "MultiThreadedLandblockGroupTicking": true },
+    "WorldDatabasePrecaching": false,
+    "LandblockPreloading": true,
+    "PreloadedLandblocks": [{ "Id": "E74EFFFF", "Description": "Hebian-To (Global Events)", "Permaload": true, "IncludeAdjacents": false, "Enabled": true }]
+  },
+  "MySql": {
+    "Authentication": { "Host": "127.0.0.1", "Port": 3306, "Database": "ace_auth", "Username": "ace_app", "Password": "{{ ace_mysql_app_password }}", "EnableDetailedErrors": false, "EnableSensitiveDataLogging": false },
+    "Shard": { "Host": "127.0.0.1", "Port": 3306, "Database": "ace_shard", "Username": "ace_app", "Password": "{{ ace_mysql_app_password }}", "EnableDetailedErrors": false, "EnableSensitiveDataLogging": false },
+    "World": { "Host": "127.0.0.1", "Port": 3306, "Database": "ace_world", "Username": "ace_app", "Password": "{{ ace_mysql_app_password }}", "EnableDetailedErrors": false, "EnableSensitiveDataLogging": false }
+  },
+  "Offline": {
+    "PurgeDeletedCharacters": false,
+    "PurgeOrphanedBiotas": false,
+    "PruneDeletedCharactersFromFriendLists": true,
+    "AutoApplyDatabaseUpdates": true,
+    "AutoUpdateWorldDatabase": true,
+    "AutoApplyWorldCustomizations": true,
+    "WorldCustomizationAddedPaths": [],
+    "RecurseWorldCustomizationPaths": true
+  }
+}

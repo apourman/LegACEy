@@ -1,0 +1,299 @@
+---
+# Provision a fresh Ubuntu server for LegACEy. Idempotent: rerun it whenever this file changes.
+# ACE itself arrives later through the normal CI deploy (.github/workflows/deploy-main.yml).
+
+- name: Create the administrator account
+  hosts: game_servers
+  become: true
+  gather_facts: false
+  tasks:
+    # After the first run SSH only admits the administrator, so prefer it when it already works.
+    - name: Check whether the administrator account can log in
+      ansible.builtin.ping:
+      vars:
+        ansible_user: "{{ ace_admin_user }}"
+      become: false
+      ignore_unreachable: true
+      register: ace_admin_probe
+
+    - name: Connect as the administrator
+      ansible.builtin.set_fact:
+        ansible_user: "{{ ace_admin_user }}"
+      when: ace_admin_probe is not unreachable
+
+    - name: Gather facts
+      ansible.builtin.setup:
+
+    - name: Require Ubuntu
+      ansible.builtin.assert:
+        that: ansible_distribution == "Ubuntu"
+
+    - name: Create the administrator
+      ansible.builtin.user:
+        name: "{{ ace_admin_user }}"
+        groups: sudo
+        append: true
+        shell: /bin/bash
+        password_lock: true
+
+    - name: Install the administrator's SSH key
+      ansible.posix.authorized_key:
+        user: "{{ ace_admin_user }}"
+        key: "{{ lookup('file', ace_admin_ssh_public_key_path) }}"
+
+    - name: Give the administrator passwordless sudo
+      ansible.builtin.copy:
+        dest: "/etc/sudoers.d/90-{{ ace_admin_user }}"
+        mode: "0440"
+        content: "{{ ace_admin_user }} ALL=(ALL:ALL) NOPASSWD:ALL\n"
+        validate: /usr/sbin/visudo -cf %s
+
+- name: Set up MySQL, the ACE service and the CI deploy account
+  hosts: game_servers
+  become: true
+  vars:
+    ansible_user: "{{ ace_admin_user }}"
+  tasks:
+    - name: Install packages
+      ansible.builtin.apt:
+        name: [ufw, unattended-upgrades, rsync, mysql-server, python3-pymysql, aspnetcore-runtime-10.0, unzip]
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Allow SSH through the firewall
+      community.general.ufw:
+        rule: allow
+        port: "{{ ansible_port | default(22) | string }}"
+        proto: tcp
+
+    - name: Allow the game ports through the firewall
+      community.general.ufw:
+        rule: allow
+        port: "{{ item | string }}"
+        proto: udp
+      loop: "{{ ace_game_udp_ports }}"
+
+    - name: Enable the firewall, denying everything else incoming
+      community.general.ufw:
+        state: enabled
+        policy: deny
+        direction: incoming
+
+    - name: Configure MySQL
+      ansible.builtin.copy:
+        dest: /etc/mysql/mysql.conf.d/99-legacey-server.cnf
+        mode: "0644"
+        content: |
+          [mysqld]
+          bind-address = 127.0.0.1
+          log_bin_trust_function_creators = 1
+      register: ace_mysql_config
+
+    - name: Start MySQL
+      ansible.builtin.systemd:
+        name: mysql
+        enabled: true
+        state: "{{ 'restarted' if ace_mysql_config is changed else 'started' }}"
+
+    - name: Create the ACE service account
+      ansible.builtin.user:
+        name: "{{ ace_service_user }}"
+        system: true
+        home: /var/lib/ace
+        shell: /usr/sbin/nologin
+        password_lock: true
+
+    - name: Create the CI deploy account
+      ansible.builtin.user:
+        name: "{{ ace_cd_deploy_user }}"
+        system: true
+        home: "/var/lib/{{ ace_cd_deploy_user }}"
+        shell: /bin/sh
+        password_lock: true
+
+    - name: Install the CI deploy key
+      ansible.posix.authorized_key:
+        user: "{{ ace_cd_deploy_user }}"
+        key: "{{ lookup('file', ace_cd_deploy_public_key_path) }}"
+        key_options: restrict
+        exclusive: true
+
+    - name: Create directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner }}"
+        group: "{{ item.group }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: "{{ ace_root }}", owner: root, group: root, mode: "0755" }
+        - { path: "{{ ace_root }}/releases", owner: "{{ ace_cd_deploy_user }}", group: "{{ ace_cd_deploy_user }}", mode: "0755" }
+        - { path: "{{ ace_shared_directory }}", owner: root, group: "{{ ace_service_user }}", mode: "0750" }
+        - { path: "{{ ace_dat_directory }}", owner: "{{ ace_service_user }}", group: "{{ ace_service_user }}", mode: "0750" }
+        - { path: "{{ ace_mods_directory }}", owner: "{{ ace_service_user }}", group: "{{ ace_service_user }}", mode: "0750" }
+        - { path: "{{ ace_backup_directory }}", owner: root, group: root, mode: "0700" }
+
+    - name: Copy the retail DAT files
+      ansible.posix.synchronize:
+        src: "{{ ace_dat_source }}"
+        dest: "{{ ace_dat_directory }}/"
+        checksum: true
+        rsync_path: sudo -n rsync
+        rsync_opts: ["--chown={{ ace_service_user }}:{{ ace_service_user }}", "--chmod=D750,F640"]
+      become: false
+
+    - name: Create the ACE database account
+      community.mysql.mysql_user:
+        name: ace_app
+        host: 127.0.0.1
+        plugin: caching_sha2_password
+        plugin_auth_string: "{{ ace_mysql_app_password }}"
+        salt: LegACEyVPS2026Salt!!
+        priv: "ace_auth.*:ALL/ace_shard.*:ALL/ace_world.*:ALL"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+
+    - name: Copy the base schemas
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../../Database/Base/"
+        dest: /var/lib/legacey-base-schemas/
+        mode: "0600"
+
+    - name: Create the databases (base schemas plus the stock world release)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if [[ -n $(mysql -N -e "SHOW DATABASES LIKE 'ace\_%'") ]]; then
+          echo 'ACE databases exist but were not created by this playbook; refusing to touch them' >&2
+          exit 1
+        fi
+        cd /var/lib/legacey-base-schemas
+        for f in AuthenticationBase.sql ShardBase.sql WorldBase.sql; do mysql < "$f"; done
+        zip=ACE-World-Database-{{ ace_world_release_tag }}.sql.zip
+        curl -fsSL -o "$zip" "https://github.com/ACEmulator/ACE-World-16PY-Patches/releases/download/{{ ace_world_release_tag }}/$zip"
+        unzip -p "$zip" | mysql ace_world
+        rm "$zip"
+        touch databases-created
+      args:
+        executable: /bin/bash
+        creates: /var/lib/legacey-base-schemas/databases-created
+
+    - name: Install Config.js
+      ansible.builtin.template:
+        src: Config.js.j2
+        dest: "{{ ace_shared_directory }}/Config.js"
+        group: "{{ ace_service_user }}"
+        mode: "0640"
+
+    - name: Install the logging config
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../../Source/ACE.Server/log4net.config.docker"
+        dest: "{{ ace_shared_directory }}/log4net.config"
+        group: "{{ ace_service_user }}"
+        mode: "0640"
+
+    - name: Install the ACE unit
+      ansible.builtin.template:
+        src: ace.service.j2
+        dest: /etc/systemd/system/legacey-ace.service
+        mode: "0644"
+
+    - name: Start ACE at boot
+      ansible.builtin.systemd:
+        name: legacey-ace.service
+        enabled: true
+        daemon_reload: true
+
+    - name: Install the backup script
+      ansible.builtin.template:
+        src: backup-mysql.sh.j2
+        dest: /usr/local/sbin/legacey-backup-mysql
+        mode: "0750"
+
+    - name: Back up MySQL daily
+      ansible.builtin.copy:
+        dest: /etc/cron.d/legacey-mysql-backup
+        mode: "0644"
+        content: "17 03 * * * root /usr/local/sbin/legacey-backup-mysql\n"
+
+    - name: Install the deploy helper
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../legacey-cd-deploy.sh"
+        dest: /usr/local/sbin/legacey-cd-deploy
+        mode: "0750"
+
+    - name: Let CI run only the deploy helper as root
+      ansible.builtin.copy:
+        dest: "/etc/sudoers.d/91-{{ ace_cd_deploy_user }}"
+        mode: "0440"
+        content: "{{ ace_cd_deploy_user }} ALL=(root) NOPASSWD: /usr/local/sbin/legacey-cd-deploy\n"
+        validate: /usr/sbin/visudo -cf %s
+
+    # This play already logged in as the administrator, so locking SSH down to it cannot lock us out.
+    - name: Harden SSH
+      ansible.builtin.copy:
+        dest: /etc/ssh/sshd_config.d/00-legacey-hardening.conf
+        mode: "0644"
+        content: |
+          PubkeyAuthentication yes
+          PasswordAuthentication no
+          KbdInteractiveAuthentication no
+          PermitRootLogin no
+          AllowUsers {{ ace_admin_user }} {{ ace_cd_deploy_user }}
+        validate: /usr/sbin/sshd -t -f %s
+      notify: Restart SSH
+
+    - name: Read the server's SSH host key
+      ansible.builtin.slurp:
+        src: /etc/ssh/ssh_host_ed25519_key.pub
+      register: ace_host_key
+
+    # A reinstalled server has a new host key, which CI must trust before it can deploy.
+    - name: Give CI the server's host key
+      ansible.builtin.command:
+        argv: [gh, secret, set, ACE_DEPLOY_KNOWN_HOSTS, --env, production, --repo, "{{ ace_github_repository }}",
+               --body, "{{ ansible_host }} {{ (ace_host_key.content | b64decode).split()[:2] | join(' ') }}"]
+      delegate_to: localhost
+      become: false
+      changed_when: false
+
+    - name: Check for a deployed release
+      ansible.builtin.stat:
+        path: "{{ ace_install_root }}"
+      register: ace_current
+
+    # CI build artifacts expire after a day, so a fresh server starts from the latest published release.
+    - name: Deploy the latest published release on a fresh server
+      when: not ace_current.stat.exists
+      block:
+        - name: Find the latest release
+          ansible.builtin.shell: |
+            set -euo pipefail
+            tag=$(gh api repos/{{ ace_github_repository }}/releases/latest --jq .tag_name)
+            echo "$tag $(gh api repos/{{ ace_github_repository }}/commits/$tag --jq .sha)"
+          args:
+            executable: /bin/bash
+          delegate_to: localhost
+          become: false
+          changed_when: false
+          register: ace_latest
+
+        - name: Download, unpack and deploy it
+          ansible.builtin.shell: |
+            set -euo pipefail
+            read -r tag sha <<< "{{ ace_latest.stdout }}"
+            asset="LegACEy-$tag-linux-x64.tar.gz"
+            cd "$(mktemp -d)"
+            curl -fsSLO "https://github.com/{{ ace_github_repository }}/releases/download/$tag/$asset"
+            curl -fsSLO "https://github.com/{{ ace_github_repository }}/releases/download/$tag/$asset.sha256"
+            sha256sum -c "$asset.sha256"
+            release={{ ace_root }}/releases/$sha
+            runuser -u {{ ace_cd_deploy_user }} -- mkdir -p "$release"
+            runuser -u {{ ace_cd_deploy_user }} -- tar -xzf "$asset" -C "$release"
+            /usr/local/sbin/legacey-cd-deploy "$sha"
+          args:
+            executable: /bin/bash
+
+  handlers:
+    - name: Restart SSH
+      ansible.builtin.systemd:
+        name: ssh
+        state: restarted

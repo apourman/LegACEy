@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+backup_dir={{ ace_backup_directory | quote }}
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+tmp="$backup_dir/.mysql-$stamp.sql"
+out="$backup_dir/mysql-$stamp.sql.gz"
+umask 077
+mkdir -p "$backup_dir"
+mysqldump --protocol=socket --single-transaction --routines --events --all-databases | gzip -9 > "$tmp.gz"
+mv "$tmp.gz" "$out"
+find "$backup_dir" -type f -name 'mysql-*.sql.gz' -mtime +14 -delete
