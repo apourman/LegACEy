@@ -5,8 +5,6 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.VisualTree;
-using LegACEy.Client.DecalPlugin;
-using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.PanelHost;
 using LegACEy.Client.Themes;
@@ -89,38 +87,6 @@ public sealed class ScrollbarDragTests
         Assert.Equal(expected, Drag(false), precision: 3);
     });
 
-    [Fact]
-    public void Repeated_themed_thumb_drag_can_produce_a_stage_capture() => RenderThread.Run(() =>
-    {
-        using var fixture = new DragFixture();
-        var panel = fixture.Panel;
-        var profile = new ScrollProfile();
-        panel.TimingObserver = (stage, elapsed) => profile.Record("drag", stage, elapsed);
-        var timer = System.Diagnostics.Stopwatch.StartNew();
-        var point = fixture.ThumbCenter;
-        panel.PointerDown(point.X, point.Y);
-        for (var frame = 0; frame < 120; frame++)
-        {
-            // Four moves per game frame, with repeated direction reversals.
-            for (var move = 0; move < 4; move++)
-            {
-                var step = (frame * 4 + move) % 80;
-                var distance = step <= 40 ? step : 80 - step;
-                panel.PointerMove(point.X, point.Y + distance * 5);
-            }
-            panel.Tick();
-            Assert.Null(panel.LastError);
-        }
-        panel.PointerUp(point.X, point.Y + 5);
-        panel.Tick();
-        Assert.True(fixture.Viewer.Offset.Y > 0);
-        var report = profile.Snapshot(Environment.ProcessId, timer.Elapsed.TotalSeconds, DateTime.UtcNow);
-        Assert.Contains("stage=input count=482", report);
-        Assert.Contains("stage=pixel-diff-copy", report);
-        var output = Environment.GetEnvironmentVariable("LEGACEY_SCROLL_PROFILE_OUTPUT");
-        if (!string.IsNullOrEmpty(output)) File.WriteAllText(output, report);
-    });
-
     private sealed class DragFixture : IDisposable
     {
         private readonly PortalDat? _dat;
@@ -142,7 +108,7 @@ public sealed class ScrollbarDragTests
             IGameArtSource art = _dat is null ? new NoArt() : _dat;
             Panel = AvaloniaPanel.Create(() => new Grid
             {
-                Children = { new ThemeWindowChrome(art, "performance-list", new PerformanceListPanel(art)), Marker }
+                Children = { new ThemeWindowChrome(art, "drag-list", new ScrollViewer { Content = Rows() }), Marker }
             }, 620, 460);
             Panel.ApplyTheme(new AcClientTheme(art));
             for (var i = 0; i < 10; i++) Panel.Tick();
@@ -156,6 +122,14 @@ public sealed class ScrollbarDragTests
                 RoutingStrategies.Bubble, handledEventsToo: true);
         }
         public void Dispose() { Panel.Dispose(); _dat?.Dispose(); }
+
+        private static StackPanel Rows()
+        {
+            var rows = new StackPanel();
+            for (var i = 0; i < 200; i++)
+                rows.Children.Add(new TextBlock { Text = "Row " + i, Height = 20 });
+            return rows;
+        }
     }
 
     private sealed class NoArt : IGameArtSource

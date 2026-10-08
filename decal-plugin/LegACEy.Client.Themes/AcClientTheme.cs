@@ -95,9 +95,7 @@ public sealed class AcClientTheme : IClientTheme
         };
         Add(styles, x => x.Is<Control>(), ClientToolTips.ThemeProperty, toolTipTheme);
         AddState<ListBoxItem>(styles, ":selected", selectedRow);
-        AddState<ListBoxItem>(styles, "sample-selected", selectedRow);
         AddState<TabItem>(styles, ":selected", pressed);
-        AddState<TabItem>(styles, "sample-selected", pressed);
         AddSurface<TextBox>(styles, panel);
         AddSurface<ListBox>(styles, panel);
         AddSurface<TabControl>(styles, panel);
@@ -107,9 +105,7 @@ public sealed class AcClientTheme : IClientTheme
         AddSurface<CheckBox>(styles, checkOff);
         var checkHover = Icon(Art(0x06004D16, accent));
         AddState<CheckBox>(styles, ":pointerover", checkHover);
-        AddState<CheckBox>(styles, "sample-hover", checkHover);
         AddState<CheckBox>(styles, ":pressed", checkOn);
-        AddState<CheckBox>(styles, "sample-pressed", checkOn);
         AddState<CheckBox>(styles, ":checked", checkOn);
         AddState<CheckBox>(styles, ":indeterminate", Icon(Art(0x06004D16, accent)));
         if (checkOff is ImageBrush && checkOn is ImageBrush)
@@ -130,8 +126,6 @@ public sealed class AcClientTheme : IClientTheme
             uint thumb = horizontal ? 0x06004C83u : 0x06004C63u;
             AddSurface<ScrollBar>(styles, Art(track, surface), orientation);
             Add(styles, x => x.OfType<ScrollBar>().Class(orientation).Template().OfType<Border>(), Border.BackgroundProperty, Art(track, surface));
-            foreach (var sample in new[] { "sample-normal", "sample-hover", "sample-pressed" })
-                AddState<ScrollBar>(styles, sample, Art(track, surface));
             for (var state = 0; state < 3; state++)
             {
                 var pseudoClass = state == 0 ? null : state == 1 ? ":pointerover" : ":pressed";
@@ -140,11 +134,6 @@ public sealed class AcClientTheme : IClientTheme
                     var selector = x.OfType<ScrollBar>().Class(orientation).Template().OfType<Thumb>();
                     return pseudoClass == null ? selector : selector.Class(pseudoClass);
                 }, TemplatedControl.BackgroundProperty, Art(thumb + (uint)state, accent));
-                if (state > 0)
-                {
-                    var sample = state == 1 ? "sample-hover" : "sample-pressed";
-                    Add(styles, x => x.OfType<ScrollBar>().Class(orientation).Class(sample).Template().OfType<Thumb>(), TemplatedControl.BackgroundProperty, Art(thumb + (uint)state, accent));
-                }
                 foreach (var decrement in new[] { true, false })
                 {
                     uint arrow = horizontal ? (decrement ? 0x06004C8Cu : 0x06004C89u) : (decrement ? 0x06004C6Cu : 0x06004C69u);
@@ -180,9 +169,7 @@ public sealed class AcClientTheme : IClientTheme
         Add(styles, x => x.OfType<T>(), TemplatedControl.CornerRadiusProperty, new CornerRadius(0));
         Add(styles, x => x.OfType<T>(), TemplatedControl.TemplateProperty, CreateFaceTemplate<T>(contentProperty));
         AddState<T>(styles, ":pointerover", hover);
-        AddState<T>(styles, "sample-hover", hover);
         AddState<T>(styles, ":pressed", pressed);
-        AddState<T>(styles, "sample-pressed", pressed);
     }
 
     private static FuncControlTemplate<T> CreateFaceTemplate<T>(AvaloniaProperty contentProperty) where T : ContentControl =>
@@ -212,11 +199,10 @@ public sealed class AcClientTheme : IClientTheme
     private static void AddSurface<T>(Styles styles, IBrush brush, string? state = null) where T : TemplatedControl
     {
         Add(styles, x => state == null ? x.OfType<T>() : x.OfType<T>().Class(state), TemplatedControl.BackgroundProperty, brush);
-        // Gallery specimens use the same faces as interactive controls.
         if (state == null)
         {
-            foreach (var sample in new[] { "sample-normal", "sample-hover", "sample-pressed", "sample-focused", ":pointerover", ":pressed", ":focus" })
-                AddState<T>(styles, sample, brush);
+            foreach (var pseudo in new[] { ":pointerover", ":pressed", ":focus" })
+                AddState<T>(styles, pseudo, brush);
         }
     }
 

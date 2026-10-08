@@ -95,76 +95,20 @@ public sealed class ThemeTests
     });
 
     [Fact]
-    public void Theme_gallery_contains_the_control_catalogue_and_requests_a_live_switch() => RenderThread.Run(() =>
+    public void Chrome_close_button_requests_close_under_the_ac_theme() => RenderThread.Run(() =>
     {
+        var art = new PatternArtSource();
         ThemeWindowChrome? chrome = null;
-        using var panel = AvaloniaPanel.Create(() =>
-        {
-            var gallery = new ThemeGalleryControl();
-            return chrome = new ThemeWindowChrome(new PatternArtSource(), "Gallery", gallery);
-        }, 580, 560);
-        panel.ApplyTheme(new AcClientTheme(new PatternArtSource()));
+        using var panel = AvaloniaPanel.Create(() => chrome = new ThemeWindowChrome(art, "Fixture", new TextBlock { Text = "Surface" }), 580, 560);
+        panel.ApplyTheme(new AcClientTheme(art));
         panel.Tick();
-        var content = panel.Content!;
-        var controls = content.GetVisualDescendants().ToArray();
-        Assert.Same(chrome, content);
-        Assert.Contains(controls, item => item is NineSliceBorder);
-        Assert.Contains(controls, item => item is TextBox);
-        Assert.Contains(controls, item => item is ListBox);
-        Assert.Contains(controls, item => item is TabControl);
-        Assert.Contains(controls, item => item is ScrollBar);
-        Assert.Contains(controls, item => item is CheckBox);
-        Assert.Contains(controls, item => item is ProgressBar);
-        Assert.Contains(controls.OfType<Button>(), button => button.Classes.Contains("sample-hover"));
-        Assert.Contains(controls.OfType<Button>(), button => button.Classes.Contains("sample-pressed"));
-        Assert.Contains(controls.OfType<ListBoxItem>(), item => item.Classes.Contains("sample-hover"));
-        Assert.Contains(controls.OfType<ListBoxItem>(), item => item.Classes.Contains("sample-selected"));
-        Assert.Contains(controls.OfType<TabItem>(), item => item.Classes.Contains("sample-hover"));
-        Assert.Contains(controls.OfType<TabItem>(), item => item.Classes.Contains("sample-selected"));
-        Assert.Contains(controls.OfType<ScrollBar>(), item => item.Classes.Contains("sample-hover"));
-        Assert.Contains(controls.OfType<ScrollBar>(), item => item.Classes.Contains("sample-pressed"));
-        Assert.Contains(controls.OfType<ScrollBar>(), item => !item.IsEnabled);
-        Assert.Contains(controls.OfType<ScrollViewer>(), item => !item.IsEnabled);
         Assert.NotNull(chrome!.CloseButton);
-
-        var sampleTypes = new[]
-        {
-            typeof(Button), typeof(TextBox), typeof(ListBox), typeof(TabControl),
-            typeof(ScrollViewer), typeof(ScrollBar), typeof(CheckBox), typeof(ProgressBar), typeof(ToolTip), typeof(TextBlock)
-        };
-        foreach (var sampleType in sampleTypes)
-        foreach (var state in new[] { "sample-normal", "sample-hover", "sample-pressed", "sample-disabled" })
-            Assert.True(controls.Any(control => sampleType.IsInstanceOfType(control) && control.Classes.Contains(state)), $"Missing {state} sample for {sampleType.Name}.");
-        foreach (var state in new[] { "sample-normal", "sample-hover", "sample-pressed", "sample-disabled" })
-        {
-            Assert.Contains(controls.OfType<ListBox>(), list => list.Items.OfType<ListBoxItem>().Any(item => item.Classes.Contains(state)));
-            Assert.Contains(controls.OfType<TabControl>(), tabs => tabs.Items.OfType<TabItem>().Any(item => item.Classes.Contains(state)));
-        }
-
-        var switched = false;
-        var gallery = controls.OfType<ThemeGalleryControl>().Single();
-        gallery.ThemeSwitchRequested += (_, _) => switched = true;
-        var switchButton = controls.OfType<Button>().Single(button => Equals(button.Content, "Switch theme while this gallery stays open"));
-        switchButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-        Assert.True(switched);
 
         var closeRequested = false;
         chrome.CloseRequested += (_, _) => closeRequested = true;
         chrome.CloseButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
         Assert.True(closeRequested);
-    });
-
-    [Fact]
-    public void Closing_a_preview_chrome_removes_that_surface_from_its_workspace() => RenderThread.Run(() =>
-    {
-        var workspace = new StackPanel();
-        var chrome = new ThemeWindowChrome(new SolidColorArtSource(), "Preview", new TextBlock { Text = "Surface" });
-        workspace.Children.Add(chrome);
-
-        chrome.CloseAndRemoveFrom(workspace);
-        chrome.CloseButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-
-        Assert.DoesNotContain(chrome, workspace.Children);
     });
 
     [Fact]
@@ -329,27 +273,6 @@ public sealed class ThemeTests
             return new GameImage(width, height, Enumerable.Range(0, width * height).SelectMany(_ => color).ToArray());
         }
     }
-
-    [Fact]
-    public void Scrollbar_gallery_samples_show_the_same_thumb_art_as_live_states() => RenderThread.Run(() =>
-    {
-        var bars = new[] { "sample-normal", "sample-hover", "sample-pressed", "sample-disabled" }
-            .Select(state => new ScrollBar { Width = 200, Height = 20, Maximum = 100, ViewportSize = 10, Value = 30,
-                Orientation = Avalonia.Layout.Orientation.Horizontal, Classes = { state }, IsEnabled = state != "sample-disabled" }).ToArray();
-        using var panel = AvaloniaPanel.Create(() => new StackPanel { Spacing = 4, Children = { bars[0], bars[1], bars[2], bars[3] } }, 220, 100);
-        panel.ApplyTheme(new AcClientTheme(new ControlArtSource()));
-        panel.Tick();
-        byte[] ThumbPixel(ScrollBar bar)
-        {
-            var thumb = bar.GetVisualDescendants().OfType<Thumb>().Single();
-            var point = thumb.TranslatePoint(new Point(thumb.Bounds.Width / 2, thumb.Bounds.Height / 2), panel.Content)!.Value;
-            return Pixel(panel.Frame, (int)point.X, (int)point.Y);
-        }
-        Assert.Equal(ControlArtSource.Normal, ThumbPixel(bars[0]));
-        Assert.Equal(ControlArtSource.Hover, ThumbPixel(bars[1]));
-        Assert.Equal(ControlArtSource.Pressed, ThumbPixel(bars[2]));
-        Assert.NotEqual(ControlArtSource.Normal, ThumbPixel(bars[3]));
-    });
 
     [Theory]
     [InlineData(false)]

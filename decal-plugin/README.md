@@ -18,7 +18,6 @@ and database remain in the repository's upstream-compatible `Source/` and
 | `LegACEy.Client.GameArt` | Game DAT art loading |
 | `LegACEy.Client.Themes` | Shared UI themes and controls |
 | `LegACEy.Client.Demo` | In-game demo windows and controls |
-| `LegACEy.Client.Preview` | Desktop UI preview without running the game |
 | `LegACEy.Client.Tests` | Automated tests without an installed Decal runtime |
 | `LegACEy.Client.HookSmoke` | Windows native hook regression check |
 
@@ -48,7 +47,7 @@ output. Keep those dependencies available beside the plugin; the main DLL is
 not a standalone executable. If Decal is registered against a previous checkout
 path, update that registration after moving the directory.
 
-## Tests and preview
+## Tests
 
 Run the automated tests from the repository root:
 
@@ -56,8 +55,7 @@ Run the automated tests from the repository root:
 dotnet test decal-plugin/LegACEy.Client.Tests/LegACEy.Client.Tests.csproj --configuration Release
 ```
 
-See the [desktop preview instructions](LegACEy.Client.Preview/README.md) to
-inspect the UI outside the game, and the [Windows hook check](LegACEy.Client.HookSmoke/README.md)
+See the [Windows hook check](LegACEy.Client.HookSmoke/README.md)
 for the native hook regression exercise. Automated checks do not replace
 in-game validation.
 

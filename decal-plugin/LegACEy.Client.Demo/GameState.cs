@@ -38,7 +38,7 @@ public interface IGameStatePort
     event EventHandler? Changed;
 }
 
-/// <summary>Mutable port used by the Decal adapter and preview fake.</summary>
+/// <summary>Mutable port used by the Decal adapter and the test fake.</summary>
 public sealed class GameStatePort : IGameStatePort
 {
     public GameStatePort(GameStateSnapshot initial) => Current = initial ?? throw new ArgumentNullException(nameof(initial));
@@ -54,11 +54,10 @@ public sealed class GameStatePort : IGameStatePort
     }
 }
 
-/// <summary>Deterministic game-state fake. Advance changes the data without depending on a game client.</summary>
+/// <summary>Fixed game-state fake for framework tests.</summary>
 public sealed class FakeGameState : IGameStatePort
 {
     private readonly GameStatePort _port;
-    private int _step;
 
     public FakeGameState(string characterName = "Preview Character", string serverName = "Thistledown")
     {
@@ -67,14 +66,4 @@ public sealed class FakeGameState : IGameStatePort
 
     public GameStateSnapshot Current => _port.Current;
     public event EventHandler? Changed { add => _port.Changed += value; remove => _port.Changed -= value; }
-    public void Set(GameStateSnapshot value) => _port.Publish(value);
-
-    public void Advance()
-    {
-        _step++;
-        _port.Publish(new GameStateSnapshot(Current.CharacterName, Current.ServerName,
-            55 + (_step * 7 % 46), Current.MaxHealth,
-            45 + (_step * 11 % 56), Current.MaxStamina,
-            30 + (_step * 13 % 71), Current.MaxMana));
-    }
 }
