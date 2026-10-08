@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/apourman/LegACEy/compare/v0.3.0...v0.4.0) (2026-10-08)
+
+
+### Features
+
+* **decal-plugin:** load client plugins ([#23](https://github.com/apourman/LegACEy/issues/23)) ([19f8c32](https://github.com/apourman/LegACEy/commit/19f8c32617734f2ea199be995bebef14088d595d))
+
 ## [0.3.0](https://github.com/apourman/LegACEy/compare/v0.2.1...v0.3.0) (2026-10-07)
 
 
