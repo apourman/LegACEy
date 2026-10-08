@@ -13,7 +13,7 @@ namespace LegACEy.Client.DecalPlugin;
 /// from the post-UI hook. Textures go to the card once per model (managed pool, so they survive a device reset);
 /// each frame is a handful of draw calls, and every device state is put back afterwards.
 /// </summary>
-internal sealed class PaperdollRenderer : IDisposable
+internal sealed class ModelRenderer : IDisposable
 {
     private const float FieldOfView = (float)(Math.PI / 6);
 
@@ -21,7 +21,7 @@ internal sealed class PaperdollRenderer : IDisposable
     private readonly List<Mesh> _meshes = new();
     private CharacterModel? _model;
 
-    public PaperdollRenderer(Device device) => _device = device;
+    public ModelRenderer(Device device) => _device = device;
 
     public void Draw(CharacterModel model, Rectangle area, float yaw, float zoom)
     {
