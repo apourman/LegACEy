@@ -27,10 +27,19 @@ public interface ILegACEyClient
     IServerChannel ServerChannel { get; }
     /// <summary>The client's portal.dat path, for game art and model building.</summary>
     string PortalPath { get; }
+    /// <summary>Drag services for items between the retail inventory and a LegACEy window.</summary>
+    IItemDragHost ItemDrag { get; }
+    /// <summary>The object selected in the game; zero for none.</summary>
+    uint CurrentSelection { get; }
     /// <summary>Adds an entry to the LegACEy menu. Its action runs when the player picks it.</summary>
     void AddMenuEntry(string title, uint iconId, Action action);
     /// <summary>Opens the plugin's window around the content it builds, or closes that window when it is open.</summary>
     void ToggleWindow(string id, string title, int width, int height, Point defaultLocation, Func<Control> createContent);
+    /// <summary>
+    /// Like <see cref="ToggleWindow"/>, but the plugin builds the whole window, with its own chrome. The function gets the action
+    /// that closes the window; the client adds no chrome of its own.
+    /// </summary>
+    void ToggleWindowWithChrome(string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow);
 }
 
 /// <summary>The client's side of plugin hosting. ClientUiRuntime implements it; tests fake it.</summary>
@@ -38,12 +47,15 @@ public interface ILegACEyPluginHost
 {
     IServerChannel ServerChannel { get; }
     string PortalPath { get; }
+    IItemDragHost ItemDrag { get; }
+    uint CurrentSelection { get; }
     bool IsWindowOpen(string id);
     /// <summary>
-    /// Opens a LegACEy window around the content. Returns false when windows are unavailable right now. An error from the
-    /// window or its panel is passed to <paramref name="failed"/>.
+    /// Opens a LegACEy window. <paramref name="createContent"/> runs only when the window will open, and gets the action that
+    /// closes it. Without <paramref name="ownChrome"/> the client wraps the content in its theme chrome. Returns false when
+    /// windows are unavailable right now. An error from the window or its panel is passed to <paramref name="failed"/>.
     /// </summary>
-    bool OpenWindow(WindowDefinition definition, Point location, Control content, Action<Exception> failed);
+    bool OpenWindow(WindowDefinition definition, Point location, Func<Action, Control> createContent, Action<Exception> failed, bool ownChrome);
     /// <summary>Closes the window if it is open.</summary>
     void CloseWindow(string id);
 }

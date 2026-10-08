@@ -5,6 +5,7 @@ using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.PanelHost;
+using LegACEy.Plugin.Vault;
 
 namespace LegACEy.Client.Tests;
 

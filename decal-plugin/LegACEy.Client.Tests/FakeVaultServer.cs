@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using LegACEy.Client.Demo;
+using LegACEy.Plugin.Vault;
 
-namespace LegACEy.Client.Demo;
+namespace LegACEy.Client.Tests;
 
 /// <summary>
 /// An in-process stand-in for ACE's channel and Vault actions, for tests. It decodes real
@@ -40,8 +42,8 @@ public sealed class FakeVaultServer : IServerChannelTransport
         Received.Add(action);
         switch (action)
         {
-            case VaultProtocol.Hello:
-                Reply(id, action, ChannelStatus.Ok, VaultProtocol.WriteHello("Preview Character", new[] { VaultProtocol.Hello, VaultProtocol.List, VaultProtocol.Deposit, VaultProtocol.Withdraw }));
+            case ChannelHello.Action:
+                Reply(id, action, ChannelStatus.Ok, ChannelHello.Write("Preview Character", new[] { ChannelHello.Action, VaultProtocol.List, VaultProtocol.Deposit, VaultProtocol.Withdraw, VaultProtocol.Check, VaultProtocol.Move }));
                 break;
             case VaultProtocol.List:
                 Reply(id, action, ChannelStatus.Ok, VaultProtocol.WriteList(new VaultSnapshot(true, Balance, Capacity, _items.ToArray())));

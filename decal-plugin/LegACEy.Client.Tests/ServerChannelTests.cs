@@ -4,6 +4,7 @@ using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.PanelHost;
+using LegACEy.Plugin.Vault;
 
 namespace LegACEy.Client.Tests;
 
@@ -125,7 +126,7 @@ public sealed class ServerChannelTests
         Step(TimeSpan.FromMilliseconds(30)); // hello
         Step(TimeSpan.FromMilliseconds(30)); // list
         Assert.Equal(VaultConnection.Live, client.Connection);
-        Assert.Equal(new[] { VaultProtocol.Hello, VaultProtocol.List }, server.Received);
+        Assert.Equal(new[] { ChannelHello.Action, VaultProtocol.List }, server.Received);
         Assert.Equal(9, client.Snapshot!.Items.Count);
         Assert.Contains("9 items  /  1,000 capacity", Texts());
         Assert.Contains("1,234 MMD", Texts());

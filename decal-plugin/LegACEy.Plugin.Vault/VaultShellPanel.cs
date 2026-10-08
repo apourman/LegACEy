@@ -10,10 +10,11 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
 
-namespace LegACEy.Client.Demo;
+namespace LegACEy.Plugin.Vault;
 
 /// <summary>
 /// The account Vault window. With a <see cref="VaultClient"/> it shows the live Vault from the LegACEy server channel:

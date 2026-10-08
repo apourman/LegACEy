@@ -37,11 +37,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ScreenToClient(IntPtr window, ref NativePoint point);
 
-    private const string VaultSlot = "Vault preview";
     private const string MenuSlot = "LegACEy";
     private const string MenuWindowId = "plugin-menu";
     private const uint MenuIcon = 0x06004D20;
-    private static readonly string[] FeatureSlots = { VaultSlot, MenuSlot };
+    private static readonly string[] FeatureSlots = { MenuSlot };
     private static readonly string PluginDirectory = IOPath.GetDirectoryName(typeof(ClientUiRuntime).Assembly.Location)!;
 
     private Device? _device;
@@ -215,13 +214,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private void RequestServerActions()
     {
         _plugins?.SetServerActions(null);
-        _serverChannel?.Request(VaultProtocol.Hello, Array.Empty<byte>(), reply => _plugins?.SetServerActions(ServerActionsFrom(reply)));
+        _serverChannel?.Request(ChannelHello.Action, Array.Empty<byte>(), reply => _plugins?.SetServerActions(ServerActionsFrom(reply)));
     }
 
     private static IEnumerable<string> ServerActionsFrom(ChannelReply reply)
     {
         if (!reply.Ok) return Array.Empty<string>();
-        try { return VaultProtocol.ReadHello(reply.Body).Actions; }
+        try { return ChannelHello.Read(reply.Body).Actions; }
         catch (Exception exception)
         {
             Log($"Could not read the server's action list; plugins that need the server stay hidden: {exception.Message}");
@@ -268,7 +267,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             new IndicatorSlot("Vitae", 0x060074A1, () => NativeUi.ToggleRootElement(NativeUi.Vitae)),
             new IndicatorSlot("Character info", 0x060074A2, () => NativeUi.ToggleRootElement(NativeUi.CharacterInfo)),
             new IndicatorSlot("Mini-game", 0x060074A6, () => NativeUi.ToggleRootElement(NativeUi.MiniGame)),
-            new IndicatorSlot(VaultSlot, 0x06001020, () => ToggleWindow("vault-preview", VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight, new Point(240, 100)), "K" + VaultShellPanel.PreviewVersion),
             new IndicatorSlot(MenuSlot, MenuIcon, () => ToggleWindow(MenuWindowId, PluginMenuPanel.WindowWidth, PluginMenuPanel.WindowHeight, new Point(260, 120)), "L"),
             new IndicatorSlot("Log out", 0x060074B1, NativeUi.RequestLogOut)
         };
@@ -332,31 +330,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
 
     private Control CreateFeatureWindowContent(string id)
     {
-        Control content;
-        switch (id)
-        {
-            case "vault-preview":
-                content = new VaultShellPanel(_portal!, new VaultClient(_clientUi!.ServerChannel, CurrentSelection), new ItemDragHost(this));
-                break;
-            case MenuWindowId:
-                content = new PluginMenuPanel(_plugins!, _portal);
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(id), id, "Unknown feature window.");
-        }
-        if (content is VaultShellPanel vault)
-        {
-            var vaultChrome = new VaultShellWindow(vault);
-            vaultChrome.DetachedFromVisualTree += (_, _) => vault.Dispose();
-            vaultChrome.CloseRequested += (_, _) =>
-            {
-                _clientUi?.CloseWindow(id);
-                _bar?.SetOpen(SlotByWindowId(id), false);
-            };
-            return vaultChrome;
-        }
-        // The only window reaching this point is the LegACEy menu.
-        var chrome = new ThemeWindowChrome(_portal!, MenuSlot, content);
+        if (id != MenuWindowId)
+            throw new ArgumentOutOfRangeException(nameof(id), id, "Unknown feature window.");
+        var chrome = new ThemeWindowChrome(_portal!, MenuSlot, new PluginMenuPanel(_plugins!, _portal));
         chrome.CloseRequested += (_, _) =>
         {
             _clientUi?.CloseWindow(id);
@@ -367,7 +343,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
 
     private static string SlotByWindowId(string id) => id switch
     {
-        "vault-preview" => VaultSlot,
         MenuWindowId => MenuSlot,
         _ => id
     };
@@ -779,17 +754,26 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         }
     }
 
-    bool ILegACEyPluginHost.OpenWindow(WindowDefinition definition, Point location, Control content, Action<Exception> failed)
+    bool ILegACEyPluginHost.OpenWindow(WindowDefinition definition, Point location, Func<Action, Control> createContent, Action<Exception> failed, bool ownChrome)
     {
         if (!CanOpenWindows) return false;
-        var chrome = new ThemeWindowChrome(_portal!, definition.Title, content);
-        chrome.CloseRequested += (_, _) => ReleaseFeatureWindow(definition.Id);
-        OpenWindowCore(definition, chrome, location, failed);
+        Action close = () => ReleaseFeatureWindow(definition.Id);
+        var content = createContent(close);
+        if (ownChrome)
+            OpenWindowCore(definition, content, location, failed);
+        else
+        {
+            var chrome = new ThemeWindowChrome(_portal!, definition.Title, content);
+            chrome.CloseRequested += (_, _) => close();
+            OpenWindowCore(definition, chrome, location, failed);
+        }
         return true;
     }
 
     IServerChannel ILegACEyPluginHost.ServerChannel => (IServerChannel?)_serverChannel ?? UnavailableServerChannel.Instance;
     string ILegACEyPluginHost.PortalPath => _portal?.Path ?? string.Empty;
+    IItemDragHost ILegACEyPluginHost.ItemDrag => new ItemDragHost(this);
+    uint ILegACEyPluginHost.CurrentSelection => CurrentSelection();
     bool ILegACEyPluginHost.IsWindowOpen(string id) => _featureSurfaces.ContainsKey(id);
     void ILegACEyPluginHost.CloseWindow(string id) => ReleaseFeatureWindow(id);
 
