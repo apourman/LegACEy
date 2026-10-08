@@ -3082,6 +3082,15 @@ namespace ACE.Server.WorldObjects
             get => GetProperty(PropertyString.TinkerLog);
             set { if (value == null) RemoveProperty(PropertyString.TinkerLog); else SetProperty(PropertyString.TinkerLog, value); }
         }
+
+        /// <summary>
+        /// The LegACEy station this object opens for a player who uses it, or null
+        /// </summary>
+        public string LegaceyStation
+        {
+            get => GetProperty(PropertyString.LegaceyStation);
+            set { if (string.IsNullOrEmpty(value)) RemoveProperty(PropertyString.LegaceyStation); else SetProperty(PropertyString.LegaceyStation, value); }
+        }
         
         public int? CreatureKills
         {

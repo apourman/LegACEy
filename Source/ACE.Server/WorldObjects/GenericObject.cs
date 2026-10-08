@@ -46,6 +46,9 @@ namespace ACE.Server.WorldObjects
 
             if (UseSound > 0)
                 player.Session.Network.EnqueueSend(new GameMessageSound(player.Guid, UseSound));
+
+            if (LegaceyStation != null)
+                player.StartStation(this);
         }
     }
 }

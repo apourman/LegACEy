@@ -13,11 +13,12 @@ namespace ACE.Server.Tests.ClientChannel
     public class ChannelHelloTests
     {
         [TestMethod]
-        public void Hello_ListsPaperdollVaultAndHelloActions()
+        public void Hello_ListsPaperdollVaultStationAndHelloActions()
         {
             ChannelHelloActions.Register();
             PaperdollChannelActions.Register();
             VaultChannelActions.Register();
+            StationChannelActions.Register();
 
             var reader = new BinaryReader(new MemoryStream(ChannelHelloActions.Body("Tester")), Encoding.UTF8);
 
@@ -36,6 +37,7 @@ namespace ACE.Server.Tests.ClientChannel
                     VaultChannelActions.Withdraw,
                     VaultChannelActions.Check,
                     VaultChannelActions.Move,
+                    StationChannelActions.Leave,
                 },
                 names);
         }
