@@ -34,7 +34,7 @@ The ACE server and shared libraries stay in `Source/`, with database schemas and
 updates in `Database/`, preserving the upstream ACE layout.
 
 - [LegACEy Decal Plugin](decal-plugin/README.md): the Windows Decal plugin and its
-  UI libraries, preview app, and tests.
+  UI libraries and tests.
 - [Server scripts](scripts/ace-server/README.md): local server setup and operation.
 
 ## Contributions
