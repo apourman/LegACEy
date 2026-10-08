@@ -155,7 +155,10 @@ public sealed class PluginRegistry
         foreach (var pair in _windowOwners.Where(pair => pair.Value == entry).ToArray())
         {
             _windowOwners.Remove(pair.Key);
+            // An open station window still holds its session on the server; a hidden one already sent station.leave.
+            var endsStation = _host.IsWindowOpen(pair.Key) && _stations.Values.Any(station => station.Window.Id == pair.Key);
             _host.CloseWindow(pair.Key);
+            if (endsStation) LeaveStation();
         }
         foreach (var subscription in entry.Subscriptions.ToArray())
             subscription.Dispose();
@@ -190,7 +193,12 @@ public sealed class PluginRegistry
         Guarded(registered.Owner, () =>
         {
             // The server must still serve the plugin's actions, as for its menu entries. An open window stays as it is.
-            if (!IsVisible(registered.Owner) || _host.IsWindowOpen(registered.Window.Id)) return;
+            if (!IsVisible(registered.Owner))
+            {
+                _log($"Station '{station}' did not open: the server does not list every action plugin '{registered.Owner.Name}' needs.");
+                return;
+            }
+            if (_host.IsWindowOpen(registered.Window.Id)) return;
             // Closing the window ends the station session on the server.
             if (_host.OpenWindow(registered.Window, registered.Location, close => registered.CreateWindow(() => { close(); LeaveStation(); }),
                     reason => Fail(registered.Owner, reason), ownChrome: true))
@@ -214,7 +222,7 @@ public sealed class PluginRegistry
     private string? StationName(byte[] body)
     {
         try { return ChannelWire.ReadString(ChannelWire.Reader(body)); }
-        catch (EndOfStreamException)
+        catch (Exception error) when (error is EndOfStreamException || error is InvalidDataException)
         {
             _log("A station push was skipped: its body is malformed.");
             return null;
