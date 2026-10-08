@@ -39,6 +39,12 @@
     <ProjectReference Include="..\LegACEy.Client.Themes\LegACEy.Client.Themes.csproj" />
   </ItemGroup>
 
+  <!-- Plugins are built with this client but not referenced by it: each one builds into Plugins\<Name>\ beside the client. -->
+  <ItemGroup>
+    <ProjectReference Include="..\LegACEy.Plugin.Paperdoll\LegACEy.Plugin.Paperdoll.csproj" ReferenceOutputAssembly="false"
+                      AdditionalProperties="LegACEyPluginOutDir=$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(OutDir)', 'Plugins', 'Paperdoll'))" />
+  </ItemGroup>
+
   <Target Name="VerifyAvaloniaX86NativeAssets" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
     <Error Condition="!Exists('$(TargetDir)x86\libSkiaSharp.dll')" Text="The x86 SkiaSharp native library must ship in the plugin output." />
     <Error Condition="!Exists('$(TargetDir)x86\libHarfBuzzSharp.dll')" Text="The x86 HarfBuzz native library must ship in the plugin output." />

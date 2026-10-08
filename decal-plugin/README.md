@@ -116,11 +116,13 @@ Each release contains:
 - `LegACEy.Client.DecalPlugin.dll`, for an existing installation with matching
   companion libraries.
 - `LegACEy-decal-plugin-v<version>-windows-x86.zip`, containing the main DLL,
-  companion managed DLLs, x86 rendering libraries, and license notices.
+  companion managed DLLs, x86 rendering libraries, the `Plugins` folder with the
+  bundled LegACEy plugins, and license notices.
 - `SHA256SUMS.txt`, covering the DLL and ZIP.
 
 For a fresh installation, extract the ZIP and register its
-`LegACEy.Client.DecalPlugin.dll` in Decal. Keep the companion files in place.
+`LegACEy.Client.DecalPlugin.dll` in Decal. Keep the companion files and the
+`Plugins` folder in place.
 Players still need Decal, .NET Framework 4.8, and Managed DirectX installed;
 those external references are not bundled. Updating companion libraries
 requires the ZIP rather than replacing just the main DLL.

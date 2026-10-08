@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <!-- The folder under Plugins/ and this DLL's name must match: Plugins/Paperdoll/Paperdoll.dll. -->
+    <AssemblyName>Paperdoll</AssemblyName>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- The client loads plugins by path; a deps.json beside the DLL is never read. -->
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+  </PropertyGroup>
+
+  <!-- Built by the client's project into its Plugins\<Name>\ folder, rather than beside the plugin's own build output. -->
+  <PropertyGroup Condition="'$(LegACEyPluginOutDir)' != ''">
+    <OutDir>$(LegACEyPluginOutDir)</OutDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The client already ships Avalonia and the framework beside itself; the plugin compiles against them but copies neither. -->
+    <PackageReference Include="Avalonia" Version="[11.3.22]" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LegACEy.Client.Demo\LegACEy.Client.Demo.csproj" Private="false" />
+    <ProjectReference Include="..\LegACEy.Client.GameArt\LegACEy.Client.GameArt.csproj" Private="false" />
+    <ProjectReference Include="..\LegACEy.Client.Themes\LegACEy.Client.Themes.csproj" Private="false" />
+  </ItemGroup>
+
+</Project>
