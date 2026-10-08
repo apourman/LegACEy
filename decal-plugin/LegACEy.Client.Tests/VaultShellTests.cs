@@ -6,6 +6,7 @@ using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.PanelHost;
 using LegACEy.Client.Themes;
+using LegACEy.Plugin.Vault;
 
 namespace LegACEy.Client.Tests;
 

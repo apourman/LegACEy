@@ -24,8 +24,6 @@
     <Compile Include="..\LegACEy.Client.DecalPlugin\PostUiDrawHook.cs" Link="PostUiDrawHook.cs" />
     <Compile Include="..\LegACEy.Client.DecalPlugin\RetailTakeoverLifecycle.cs" Link="RetailTakeoverLifecycle.cs" />
     <Compile Include="..\LegACEy.Client.DecalPlugin\RetailSurfaceRenderer.cs" Link="RetailSurfaceRenderer.cs" />
-    <Compile Include="..\LegACEy.Client.DecalPlugin\ScrollProfile.cs" Link="ScrollProfile.cs" />
-    <Compile Include="..\LegACEy.Client.DecalPlugin\ScrollProfileLog.cs" Link="ScrollProfileLog.cs" />
     <Compile Include="..\LegACEy.Client.DecalPlugin\GameStatePoller.cs" Link="GameStatePoller.cs" />
     <Compile Include="..\LegACEy.Client.DecalPlugin\NativeUiCatalogue.cs" Link="NativeUiCatalogue.cs" />
   </ItemGroup>
@@ -34,6 +32,8 @@
     <ProjectReference Include="..\LegACEy.Client.PanelHost\LegACEy.Client.PanelHost.csproj" />
     <ProjectReference Include="..\LegACEy.Client.InputRouter\LegACEy.Client.InputRouter.csproj" />
     <ProjectReference Include="..\LegACEy.Client.Demo\LegACEy.Client.Demo.csproj" />
+    <ProjectReference Include="..\LegACEy.Plugin.Paperdoll\LegACEy.Plugin.Paperdoll.csproj" />
+    <ProjectReference Include="..\LegACEy.Plugin.Vault\LegACEy.Plugin.Vault.csproj" />
     <ProjectReference Include="..\LegACEy.Client.Themes\LegACEy.Client.Themes.csproj" />
   </ItemGroup>
 

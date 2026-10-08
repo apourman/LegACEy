@@ -68,17 +68,6 @@ public sealed class AvaloniaPanel : IDisposable
     /// <summary>The latest rendered BGRA frame. Its pixel buffer is reused across ticks.</summary>
     public PanelFrame Frame => _frame;
 
-    /// <summary>Optional diagnostic observer. Stages run on the panel owner thread; observer failures are ignored.</summary>
-    public Action<string, double>? TimingObserver { get; set; }
-
-    private static void ReportTiming(Action<string, double>? observer, string stage, long start)
-    {
-        if (observer == null) return;
-        var elapsed = (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
-        try { observer(stage, elapsed); }
-        catch { /* Diagnostic observers must not affect UI behavior. */ }
-    }
-
     /// <summary>The most recent exception raised while processing panel input or rendering.</summary>
     public Exception? LastError { get; private set; }
 
@@ -168,9 +157,6 @@ public sealed class AvaloniaPanel : IDisposable
     {
         if (_disposed) throw new ObjectDisposedException(nameof(AvaloniaPanel));
         VerifyThreadAccess();
-        var observer = TimingObserver;
-        var tickStart = observer == null ? 0 : Stopwatch.GetTimestamp();
-        var stageStart = tickStart;
 
         try
         {
@@ -184,19 +170,12 @@ public sealed class AvaloniaPanel : IDisposable
                 // advance that commit before the normal tick paints its latest content.
                 Dispatcher.UIThread.RunJobs();
                 AvaloniaHeadlessPlatform.ForceRenderTimerTick();
-                ReportTiming(observer, "resume", stageStart);
-                stageStart = observer == null ? 0 : Stopwatch.GetTimestamp();
             }
             Dispatcher.UIThread.RunJobs();
-            ReportTiming(observer, "dispatcher-before", stageStart);
-            stageStart = observer == null ? 0 : Stopwatch.GetTimestamp();
             // Let Avalonia process layout and drawing invalidations before deciding
             // whether the rendered frame needs to be copied into our pixel buffer.
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
-            ReportTiming(observer, "render-timer", stageStart);
-            stageStart = observer == null ? 0 : Stopwatch.GetTimestamp();
             Dispatcher.UIThread.RunJobs();
-            ReportTiming(observer, "dispatcher-after", stageStart);
             if (!_forceFullFrame && !_hasInvalidation)
             {
                 _frame.DirtyRectangles = Array.Empty<Rectangle>();
@@ -204,7 +183,6 @@ public sealed class AvaloniaPanel : IDisposable
             }
 
             // Read the frame produced by the timer without requesting another render.
-            stageStart = observer == null ? 0 : Stopwatch.GetTimestamp();
             FrameCaptureCount++;
             using var bitmap = _window.GetLastRenderedFrame();
             if (bitmap == null) return false;
@@ -221,8 +199,6 @@ public sealed class AvaloniaPanel : IDisposable
                 _forceFullFrame = true;
             }
 
-            ReportTiming(observer, "capture-lock", stageStart);
-            stageStart = observer == null ? 0 : Stopwatch.GetTimestamp();
             var dirty = _forceFullFrame
                 ? new[] { new Rectangle(0, 0, width, height) }
                 : Array.Empty<Rectangle>();
@@ -262,10 +238,7 @@ public sealed class AvaloniaPanel : IDisposable
                 _frame.DirtyRectangles = dirty;
             else
                 _frame.DirtyRectangles = actualDirtyRectangles;
-            ReportTiming(observer, "pixel-diff-copy", stageStart);
-            stageStart = observer == null ? 0 : Stopwatch.GetTimestamp();
             ObserveRenderResources();
-            ReportTiming(observer, "resource-observation", stageStart);
             _hasInvalidation = false;
             _forceFullFrame = false;
             return dirty.Length != 0 || changed;
@@ -275,7 +248,6 @@ public sealed class AvaloniaPanel : IDisposable
             ReportError(exception);
             return false;
         }
-        finally { ReportTiming(observer, "panel-tick", tickStart); }
     }
 
     /// <summary>Drain dispatcher work without rendering, for a surface hidden from the player.</summary>
@@ -285,11 +257,8 @@ public sealed class AvaloniaPanel : IDisposable
         VerifyThreadAccess();
         _window.Hide();
         _renderingSuspended = true;
-        var observer = TimingObserver;
-        var start = observer == null ? 0 : Stopwatch.GetTimestamp();
         try { Dispatcher.UIThread.RunJobs(); }
         catch (Exception exception) { ReportError(exception); }
-        finally { ReportTiming(observer, "hidden-dispatcher", start); }
     }
 
     /// <summary>Resize the panel's framebuffer and request a full repaint.</summary>
@@ -404,7 +373,7 @@ public sealed class AvaloniaPanel : IDisposable
             _window.PlatformImpl!.Input?.Invoke(new RawMouseWheelEventArgs(_mouseDevice,
                 (ulong)_inputClock.ElapsedMilliseconds, _window, point,
                 new Vector(horizontalDelta, verticalDelta), rawModifiers | _mouseButtons));
-        }, "wheel-input");
+        });
     }
 
     /// <summary>Send a key-down event through Avalonia.Headless with current modifiers.</summary>
@@ -519,13 +488,10 @@ public sealed class AvaloniaPanel : IDisposable
             (ulong)_inputClock.ElapsedMilliseconds, _window, type, point, modifiers | _mouseButtons));
     }
 
-    private void RunInput(Action action, string stage = "input")
+    private void RunInput(Action action)
     {
-        var observer = TimingObserver;
-        var start = observer == null ? 0 : Stopwatch.GetTimestamp();
         try { action(); }
         catch (Exception exception) { ReportError(exception); }
-        finally { ReportTiming(observer, stage, start); }
     }
 
     private void ReportError(Exception exception)

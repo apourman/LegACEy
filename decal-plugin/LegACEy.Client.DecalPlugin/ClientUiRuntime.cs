@@ -21,7 +21,7 @@ using Microsoft.DirectX.Direct3D;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>Decal-facing runtime that wires game callbacks to the netstandard client UI framework.</summary>
-internal sealed class ClientUiRuntime : IClientUiHost
+internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
 {
     [StructLayout(LayoutKind.Sequential)]
     private struct NativePoint
@@ -37,28 +37,17 @@ internal sealed class ClientUiRuntime : IClientUiHost
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ScreenToClient(IntPtr window, ref NativePoint point);
 
-    private const int InputTestWidth = 360;
-    private const int InputTestHeight = 300;
-    private const int InputWindowWidth = 380;
-    private const int InputWindowHeight = 350;
-    private const int BreakoutWindowWidth = 500;
-    private const int BreakoutWindowHeight = 390;
-    private const int PerformanceWindowWidth = 620;
-    private const int PerformanceWindowHeight = 460;
-    private const string InputTestSlot = "Input test";
-    private const string ThemeGallerySlot = "Theme gallery";
-    private const string BreakoutSlot = "Breakout";
-    private const string PerformanceListSlot = "Performance list";
-    private const string VaultSlot = "Vault preview";
-    private const string PaperdollSlot = "Paperdoll";
-    private const string LiveDataWindowId = "live-game-data";
-    private const string ElementInspectorWindowId = "element-inspector";
+    private const string MenuSlot = "LegACEy";
+    private const string MenuWindowId = "plugin-menu";
+    private const uint MenuIcon = 0x06004D20;
+    private const string TestFailureFile = "fail-post-ui-draw";
     private static readonly string PluginDirectory = IOPath.GetDirectoryName(typeof(ClientUiRuntime).Assembly.Location)!;
+    // Every client appends to the same log beside the DLL; the process id tells their lines apart.
+    private static readonly int ProcessId = Process.GetCurrentProcess().Id;
 
     private Device? _device;
     private PortalDat? _portal;
     private IndicatorBar? _bar;
-    private BreakoutGame? _breakout;
     private readonly Dictionary<ModelView, ModelRenderer> _modelRenderers = new();
     private readonly HashSet<ModelView> _failedModelViews = new();
     private readonly HashSet<ModelView> _drawnModelViews = new();
@@ -68,8 +57,10 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private PostUiDrawHook? _postUiDrawHook;
     private bool _windowsEnabled;
     private bool _firstPostUiWindow = true;
-    private DateTime _lastBreakoutStep = DateTime.UtcNow;
     private DateTime _lastMeasurementLog = DateTime.UtcNow;
+    private DateTime _lastTestFailureCheck;
+    private TimeSpan _maxUiFrame;
+    private TimeSpan _maxPostUiDraw;
     private ScreenSurface? _hovered;
     private readonly InputRouterService _inputRouter = new();
     private Point _pointer;
@@ -90,17 +81,15 @@ internal sealed class ClientUiRuntime : IClientUiHost
     // a LegACEy item being dragged out of a window: the inventory cell under it shows the client's drop indicator
     private bool _itemDragActive;
     private readonly Dictionary<string, ScreenSurface> _featureSurfaces = new(StringComparer.Ordinal);
-    private readonly List<FeatureTakeover> _featureTakeovers = new();
+    // Plugin windows the player closed: kept, texture and all, so reopening skips building the content again.
+    // ponytail: kept until logoff, still subscribed and running (the paperdoll rebuilds on equip changes); add a cap,
+    // or tell plugins when they are shown and hidden, once more plugins arrive
+    private readonly Dictionary<string, ScreenSurface> _hiddenSurfaces = new(StringComparer.Ordinal);
+    // Error handlers of windows opened by plugins; a failure in one turns off its plugin, not the client.
+    private readonly Dictionary<string, Action<Exception>> _windowFailures = new(StringComparer.Ordinal);
+    private PluginRegistry? _plugins;
     private bool _inGame;
     private bool _failed;
-    private bool _acThemeActive = true;
-
-    private readonly ScrollProfile _scrollProfile = new();
-    private ScrollProfileLog? _scrollProfileLog;
-    private bool _scrollProfiling;
-    private long _profileIntervalStart;
-    private long _previousProfileFrame;
-    private int _profileProcessId;
 
     public ClientUiRuntime() => _gameStatePoller = new GameStatePoller(_gameState, ReadGameState,
         error => Log($"Character stats temporarily unavailable; keeping UI active and retrying: {error.Message}"));
@@ -116,8 +105,21 @@ internal sealed class ClientUiRuntime : IClientUiHost
         }
         catch (Exception exception) { Log($"LegACEy server channel disabled: {exception.Message}"); }
         try { _retailDrag = new RetailItemDrag(NativeUi.ReadMemory, Log); }
-        catch (Exception exception) { Log($"Vault drag and drop disabled: {exception.Message}"); }
+        catch (Exception exception) { Log($"Item drag and drop disabled: {exception.Message}"); }
+        LoadPlugins();
         CoreManager.Current.FilterInitComplete += OnFilterInitComplete;
+    }
+
+    /// <summary>Starts the plugins in Plugins/ beside the client. Each plugin's failures stay with that plugin.</summary>
+    private void LoadPlugins()
+    {
+        _plugins = new PluginRegistry(this, Log);
+        try
+        {
+            foreach (var plugin in PluginLoader.Load(IOPath.Combine(PluginDirectory, "Plugins"), Log))
+                _plugins.Add(plugin);
+        }
+        catch (Exception exception) { Log($"LegACEy plugins unavailable: {exception}"); }
     }
 
     public void Shutdown()
@@ -134,9 +136,6 @@ internal sealed class ClientUiRuntime : IClientUiHost
         TearDown();
         _serverChannel?.Dispose();
         _serverChannel = null;
-        SetScrollProfiling(false);
-        _scrollProfileLog?.Dispose();
-        _scrollProfileLog = null;
         AppDomain.CurrentDomain.AssemblyResolve -= ResolveFromPluginDirectory;
     }
 
@@ -164,7 +163,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
     {
         try
         {
-            File.AppendAllText(IOPath.Combine(PluginDirectory, "legacey-avalonia.log"), $"{DateTime.Now:O} {message}{Environment.NewLine}");
+            File.AppendAllText(IOPath.Combine(PluginDirectory, "legacey-avalonia.log"), $"{DateTime.Now:O} [pid {ProcessId}] {message}{Environment.NewLine}");
         }
         catch
         {
@@ -213,7 +212,29 @@ internal sealed class ClientUiRuntime : IClientUiHost
             _clientUi ??= new ClientUiFramework(this, _gameState, CurrentTheme(), _serverChannel);
             _inGame = true;
             PublishGameState();
+            RequestServerActions();
         });
+    }
+
+    /// <summary>
+    /// Asks the server which actions it has. Until the answer arrives, and when there is none, every plugin that needs
+    /// a server action stays hidden.
+    /// </summary>
+    private void RequestServerActions()
+    {
+        _plugins?.SetServerActions(null);
+        _serverChannel?.Request(ChannelHello.Action, Array.Empty<byte>(), reply => _plugins?.SetServerActions(ServerActionsFrom(reply)));
+    }
+
+    private static IEnumerable<string> ServerActionsFrom(ChannelReply reply)
+    {
+        if (!reply.Ok) return Array.Empty<string>();
+        try { return ChannelHello.Read(reply.Body).Actions; }
+        catch (Exception exception)
+        {
+            Log($"Could not read the server's action list; plugins that need the server stay hidden: {exception.Message}");
+            return Array.Empty<string>();
+        }
     }
 
     private void OnLogoff(object? sender, EventArgs e)
@@ -224,17 +245,18 @@ internal sealed class ClientUiRuntime : IClientUiHost
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up client UI at logoff: {exception}"); }
         _clientUi = null;
+        try { _plugins?.EndSession(); }
+        catch (Exception exception) { Log($"Could not close plugin windows at logoff: {exception}"); }
         // Windows released their requests above; anything still outstanding fails as disconnected.
         Guard(() => _serverChannel?.Reset());
-        // Keep replacing retail roots through logout. RenderFrame hides any native
+        // Keep replacing the retail indicators bar through logout. RenderFrame hides any native
         // re-show until the element disappears; only unload or failure gives it back.
         foreach (var window in _windows?.ZOrder.ToArray() ?? Array.Empty<ManagedWindow>())
             _windows!.Close(window.Id);
         _windows = null;
         _hovered = null;
         _dragOffset = null;
-        foreach (var slot in new[] { InputTestSlot, ThemeGallerySlot, BreakoutSlot, PerformanceListSlot, VaultSlot, PaperdollSlot })
-            _bar?.SetOpen(slot, false);
+        _bar?.SetOpen(MenuSlot, false);
     }
 
     private void CreateUi()
@@ -253,23 +275,16 @@ internal sealed class ClientUiRuntime : IClientUiHost
             new IndicatorSlot("Vitae", 0x060074A1, () => NativeUi.ToggleRootElement(NativeUi.Vitae)),
             new IndicatorSlot("Character info", 0x060074A2, () => NativeUi.ToggleRootElement(NativeUi.CharacterInfo)),
             new IndicatorSlot("Mini-game", 0x060074A6, () => NativeUi.ToggleRootElement(NativeUi.MiniGame)),
-            new IndicatorSlot(InputTestSlot, 0x06004D20, ToggleInputTest, "B"),
-            new IndicatorSlot(ThemeGallerySlot, AcClientTheme.WindowChromeCenterId, ToggleThemeGallery, "T"),
-            new IndicatorSlot(BreakoutSlot, 0x06004D20, ToggleBreakout, "R"),
-            new IndicatorSlot(PerformanceListSlot, 0x06007498, TogglePerformanceList, "P"),
-            new IndicatorSlot(VaultSlot, 0x06001020, () => ToggleWindow("vault-preview", VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight, new Point(240, 100)), "K" + VaultShellPanel.PreviewVersion),
-            new IndicatorSlot(PaperdollSlot, 0x06004D20, () => ToggleWindow("paperdoll", PaperdollPanel.WindowWidth, PaperdollPanel.WindowHeight, new Point(260, 120)), "D"),
-            new IndicatorSlot("Live data", 0x06004D20, ToggleLiveData, "V"),
-            new IndicatorSlot("Element inspector", 0x06004D20, ToggleElementInspector, "I"),
+            new IndicatorSlot(MenuSlot, MenuIcon, ToggleMenuWindow, "L"),
             new IndicatorSlot("Log out", 0x060074B1, NativeUi.RequestLogOut)
         };
         var size = IndicatorBar.MeasureFor(slots.Length);
         var barPanel = ObservePanel(AvaloniaPanel.Create(() => _bar = new IndicatorBar(slots, _portal.ReadImage), size.Width, size.Height));
-        _barSurface = ProfileSurface(new ScreenSurface(_device, barPanel), "indicators");
+        _barSurface = new ScreenSurface(_device, barPanel);
         _barRenderer = new RetailSurfaceRenderer(_barSurface.Prepare, _barSurface.DrawNow);
         _barTakeover = new RetailTakeoverLifecycle(new NativeBarPort(NativeUi.Indicators), new SurfaceTakeoverPort(_barSurface));
 
-        ApplyCurrentTheme();
+        _barSurface.Panel.ApplyTheme(CurrentTheme());
         EnsurePostUiDrawHook();
         Log("Indicator bar replacement ready.");
     }
@@ -284,7 +299,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private bool EnsurePostUiDrawHook()
     {
         // Entry rendering needs this before LoginComplete creates character windows.
-        _postUiDrawHook ??= new PostUiDrawHook(DrawAfterRetailUi, Disable);
+        _postUiDrawHook ??= new PostUiDrawHook(DrawAfterRetailUi, Disable, Log);
         try
         {
             if (_postUiDrawHook.Install()) return true;
@@ -300,80 +315,10 @@ internal sealed class ClientUiRuntime : IClientUiHost
         return false;
     }
 
-    private void ToggleThemeGallery()
-    {
-        ToggleWindow("theme-gallery", 580, 560, new Point(120, 70));
-    }
+    private IClientTheme CurrentTheme() => _portal != null ? new AcClientTheme(_portal) : new SimpleClientTheme();
 
-    private void SwitchTheme()
-    {
-        _acThemeActive = !_acThemeActive;
-        if (_clientUi != null) _clientUi.SetTheme(CurrentTheme());
-        else ApplyCurrentTheme();
-    }
-
-    private void ApplyCurrentTheme()
-    {
-        ApplyTheme(CurrentTheme());
-    }
-
-    void IClientUiHost.ApplyTheme(IClientTheme theme) => ApplyTheme(theme);
-
-    private void ApplyTheme(IClientTheme theme)
-    {
-        _barSurface?.Panel.ApplyTheme(theme);
-        foreach (var surface in _featureSurfaces.Values)
-            surface.Panel.ApplyTheme(theme);
-        foreach (var takeover in _featureTakeovers)
-            takeover.Surface?.Panel.ApplyTheme(theme);
-    }
-
-    private IClientTheme CurrentTheme() => _acThemeActive && _portal != null ? new AcClientTheme(_portal) : new SimpleClientTheme();
-
-    private void ToggleLiveData()
-    {
-        if (_clientUi == null || _windows == null || !_windowsEnabled) return;
-        if (_windows.Get(LiveDataWindowId) != null) { _clientUi.CloseWindow(LiveDataWindowId); return; }
-        var panel = new LiveGameDataPanel(_gameState);
-        var chrome = new ThemeWindowChrome(_portal!, "Live game data", panel);
-        chrome.CloseRequested += (_, _) => _clientUi?.CloseWindow(LiveDataWindowId);
-        chrome.DetachedFromVisualTree += (_, _) => panel.Dispose();
-        _clientUi.OpenWindow(new WindowDefinition(LiveDataWindowId, "Live game data", 360, 260), chrome);
-        ApplyCurrentTheme();
-    }
-
-    private void ToggleElementInspector()
-    {
-        if (_clientUi == null || _windows == null || !_windowsEnabled) return;
-        if (_windows.Get(ElementInspectorWindowId) != null) { _clientUi.CloseWindow(ElementInspectorWindowId); return; }
-        var prefix = "RootElementId::";
-        var roots = NativeUiCatalogue.Entries
-            .Where(entry => entry.ConstantValue.HasValue && entry.Name.StartsWith(prefix, StringComparison.Ordinal))
-            .Select(entry => new RetailRootDescriptor(entry.Name.Substring(prefix.Length), entry.ConstantValue!.Value))
-            .ToArray();
-        var inspector = new ElementInspectorControl(roots,
-            id => { var element = NativeUi.GetElement(id); return element != IntPtr.Zero && NativeUi.IsVisible(element); },
-            id => { var element = NativeUi.GetElement(id); return element == IntPtr.Zero ? Rectangle.Empty : NativeUi.GetBounds(element); },
-            id => _clientUi!.HideRoot(id),
-            (id, location) => _clientUi!.MoveRoot(id, location),
-            id => _clientUi!.TakeOverRoot(id, new Border { Background = Avalonia.Media.Brushes.Black, Child = new TextBlock { Text = "LegACEy placeholder surface", Margin = new Avalonia.Thickness(12), Foreground = Avalonia.Media.Brushes.White } }));
-        var chrome = new ThemeWindowChrome(_portal!, "Element inspector", inspector);
-        chrome.CloseRequested += (_, _) => _clientUi?.CloseWindow(ElementInspectorWindowId);
-        chrome.DetachedFromVisualTree += (_, _) => inspector.Dispose();
-        _clientUi.OpenWindow(new WindowDefinition(ElementInspectorWindowId, "Element inspector", 660, 480), chrome);
-        ApplyCurrentTheme();
-    }
-
-    private void ToggleInputTest()
-    {
-        ToggleWindow("input-test", InputWindowWidth, InputWindowHeight, new Point(120, 70));
-    }
-
-    private void ToggleBreakout() => ToggleWindow("breakout", BreakoutWindowWidth, BreakoutWindowHeight, new Point(180, 80));
-
-    private void TogglePerformanceList() => ToggleWindow("performance-list", PerformanceWindowWidth, PerformanceWindowHeight, new Point(200, 90));
-
-    private void ToggleWindow(string id, int width, int height, Point defaultLocation)
+    /// <summary>Opens or closes the LegACEy menu window.</summary>
+    private void ToggleMenuWindow()
     {
         if (!_windowsEnabled || _windows == null || _clientUi == null)
             return;
@@ -382,77 +327,21 @@ internal sealed class ClientUiRuntime : IClientUiHost
             Log("LegACEy windows unavailable: the installed retail EndScene hook has not run. Keeping the indicator bar interactive.");
             return;
         }
-        if (_windows.Get(id) != null)
+        if (_windows.Get(MenuWindowId) != null)
         {
-            _clientUi.CloseWindow(id);
-            _bar?.SetOpen(SlotByWindowId(id), false);
+            _clientUi.CloseWindow(MenuWindowId);
+            _bar?.SetOpen(MenuSlot, false);
             return;
         }
-        _clientUi.OpenWindow(new WindowDefinition(id, id, width, height), CreateFeatureWindowContent(id), defaultLocation);
-        _bar?.SetOpen(SlotByWindowId(id), true);
-    }
-
-    private Control CreateFeatureWindowContent(string id)
-    {
-        Control content;
-        switch (id)
-        {
-            case "input-test":
-                content = new InputTestPanel(InputTestWidth, InputTestHeight);
-                break;
-            case "theme-gallery":
-                var gallery = new ThemeGalleryControl();
-                gallery.ThemeSwitchRequested += (_, _) => SwitchTheme();
-                content = gallery;
-                break;
-            case "breakout":
-                _breakout = new BreakoutGame(BreakoutWindowWidth - 16, BreakoutWindowHeight - 42);
-                content = _breakout;
-                break;
-            case "performance-list":
-                content = new PerformanceListPanel(_portal!);
-                break;
-            case "vault-preview":
-                content = new VaultShellPanel(_portal!, new VaultClient(_clientUi!.ServerChannel, CurrentSelection), new ItemDragHost(this));
-                break;
-            case "paperdoll":
-                var paperdoll = new PaperdollPanel(_clientUi!.ServerChannel, _portal!.Path);
-                paperdoll.DetachedFromVisualTree += (_, _) => paperdoll.Dispose();
-                content = paperdoll;
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(id), id, "Unknown feature window.");
-        }
-        if (content is VaultShellPanel vault)
-        {
-            var vaultChrome = new VaultShellWindow(vault);
-            vaultChrome.DetachedFromVisualTree += (_, _) => vault.Dispose();
-            vaultChrome.CloseRequested += (_, _) =>
-            {
-                _clientUi?.CloseWindow(id);
-                _bar?.SetOpen(SlotByWindowId(id), false);
-            };
-            return vaultChrome;
-        }
-        var chrome = new ThemeWindowChrome(_portal!, id, content);
+        var chrome = new ThemeWindowChrome(_portal!, MenuSlot, new PluginMenuPanel(_plugins!, _portal));
         chrome.CloseRequested += (_, _) =>
         {
-            _clientUi?.CloseWindow(id);
-            _bar?.SetOpen(SlotByWindowId(id), false);
+            _clientUi?.CloseWindow(MenuWindowId);
+            _bar?.SetOpen(MenuSlot, false);
         };
-        return chrome;
+        _clientUi.OpenWindow(new WindowDefinition(MenuWindowId, MenuWindowId, PluginMenuPanel.WindowWidth, PluginMenuPanel.WindowHeight), chrome, new Point(260, 120));
+        _bar?.SetOpen(MenuSlot, true);
     }
-
-    private static string SlotByWindowId(string id) => id switch
-    {
-        "input-test" => InputTestSlot,
-        "theme-gallery" => ThemeGallerySlot,
-        "breakout" => BreakoutSlot,
-        "performance-list" => PerformanceListSlot,
-        "vault-preview" => VaultSlot,
-        "paperdoll" => PaperdollSlot,
-        _ => id
-    };
 
     /// <summary>The handle was pressed: the bar follows the pointer until the button goes up.</summary>
     private void BeginBarDrag()
@@ -493,88 +382,13 @@ internal sealed class ClientUiRuntime : IClientUiHost
     /// </summary>
     private void OnRenderFrame(object? sender, EventArgs e)
     {
-        UpdateScrollProfiling();
         var timer = Stopwatch.StartNew();
         try { OnRenderFrameCore(sender, e); }
         finally
         {
-            var loggingStart = Stopwatch.GetTimestamp();
-            RecordPerformanceMeasurement(timer.Elapsed);
-            if (_scrollProfiling)
-                _scrollProfile.Record("runtime", "periodic-log", ElapsedMilliseconds(loggingStart));
-            timer.Stop();
-            if (_scrollProfiling)
-            {
-                _scrollProfile.Record("runtime", "render-callback", timer.Elapsed.TotalMilliseconds);
-                FlushScrollProfile();
-            }
+            if (timer.Elapsed > _maxUiFrame) _maxUiFrame = timer.Elapsed;
+            RecordPerformanceMeasurement();
         }
-    }
-
-    private static double ElapsedMilliseconds(long start) =>
-        (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
-
-    private ScreenSurface ProfileSurface(ScreenSurface surface, string id)
-    {
-        surface.ProfileId = id;
-        ConfigureScrollProfiling(surface);
-        return surface;
-    }
-
-    private void ConfigureScrollProfiling(ScreenSurface surface)
-    {
-        Action<string, double>? observer = _scrollProfiling
-            ? (stage, elapsed) => _scrollProfile.Record(surface.ProfileId, stage, elapsed)
-            : null;
-        surface.TimingObserver = observer;
-        surface.Panel.TimingObserver = observer;
-    }
-
-    private void UpdateScrollProfiling()
-    {
-        SetScrollProfiling(!_failed && _inGame && _featureSurfaces.ContainsKey("performance-list"));
-        if (!_scrollProfiling) return;
-        var now = Stopwatch.GetTimestamp();
-        if (_previousProfileFrame != 0)
-            _scrollProfile.Record("runtime", "render-callback-gap", (now - _previousProfileFrame) * 1000.0 / Stopwatch.Frequency);
-        _previousProfileFrame = now;
-    }
-
-    private void SetScrollProfiling(bool enabled)
-    {
-        if (_scrollProfiling == enabled) return;
-        if (!enabled) FlushScrollProfile(force: true);
-        _scrollProfiling = enabled;
-        if (enabled)
-        {
-            using var process = Process.GetCurrentProcess();
-            _profileProcessId = process.Id;
-            _scrollProfileLog ??= new ScrollProfileLog(IOPath.Combine(PluginDirectory,
-                "scroll-profile-" + process.Id + "-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + ".log"),
-                error => Log(ScrollProfile.Prefix + " diagnostic writer failed: " + error.GetType().Name));
-            _profileIntervalStart = Stopwatch.GetTimestamp();
-        }
-        _previousProfileFrame = 0;
-        _scrollProfileLog?.Enqueue(ScrollProfile.Prefix + " utc=" + DateTime.UtcNow.ToString("O")
-            + " pid=" + _profileProcessId + " capture=" + (enabled ? "start" : "stop")
-            + " viewport=" + (_device == null ? "unknown" : _device.Viewport.Width + "x" + _device.Viewport.Height)
-            + " assembly=" + typeof(ClientUiRuntime).Assembly.GetName().Version + Environment.NewLine);
-        if (_barSurface != null) ConfigureScrollProfiling(_barSurface);
-        foreach (var surface in _featureSurfaces.Values) ConfigureScrollProfiling(surface);
-        foreach (var takeover in _featureTakeovers)
-            if (takeover.Surface != null) ConfigureScrollProfiling(takeover.Surface);
-    }
-
-    private void FlushScrollProfile(bool force = false)
-    {
-        if (!_scrollProfiling) return;
-        var now = Stopwatch.GetTimestamp();
-        var seconds = (now - _profileIntervalStart) / (double)Stopwatch.Frequency;
-        if (!force && seconds < 1) return;
-        var start = Stopwatch.GetTimestamp();
-        _scrollProfileLog?.Enqueue(_scrollProfile.Snapshot(_profileProcessId, seconds, DateTime.UtcNow));
-        _profileIntervalStart = now;
-        if (!force) _scrollProfile.Record("runtime", "diagnostic-flush", ElapsedMilliseconds(start));
     }
 
     private void OnRenderFrameCore(object? sender, EventArgs e)
@@ -596,11 +410,6 @@ internal sealed class ClientUiRuntime : IClientUiHost
                 CreateUi();
             }
             TakeOverNativeBar();
-            foreach (var takeover in _featureTakeovers.ToArray())
-            {
-                takeover.Lifecycle.Tick(viewport: new Size(_device!.Viewport.Width, _device.Viewport.Height));
-                takeover.Renderer?.RenderFrame(_inGame, _postUiDrawHook?.IsInstalled == true);
-            }
             _barRenderer!.RenderFrame(_inGame, _postUiDrawHook?.IsInstalled == true);
         });
 
@@ -622,39 +431,35 @@ internal sealed class ClientUiRuntime : IClientUiHost
             UpdateRetailDrag();
             if (_itemDragActive)
                 _retailDrag?.UpdateDropIndicator();
-            foreach (var surface in _featureSurfaces.Values)
-                PrepareWindow(surface);
+            PrepareFeatureWindows();
             if (_dragIconSurface != null)
             {
                 _dragIconSurface.Location = new Point(_pointer.X - 16, _pointer.Y - 16);
                 _dragIconSurface.Prepare();
             }
-            if (_breakout is { } breakout)
-            {
-                var now = DateTime.UtcNow;
-                if (breakout.Step(now - _lastBreakoutStep))
-                    SurfaceById("breakout")?.Panel.Invalidate();
-                _lastBreakoutStep = now;
-            }
         });
     }
 
-    private void RecordPerformanceMeasurement(TimeSpan uiFrame)
+    /// <summary>Logs the longest frame and post-UI draw since the last sample, then starts counting again.</summary>
+    private void RecordPerformanceMeasurement()
     {
         var now = DateTime.UtcNow;
         if (now - _lastMeasurementLog < TimeSpan.FromSeconds(30)) return;
         _lastMeasurementLog = now;
+        var uiFrame = _maxUiFrame;
+        var postUiDraw = _maxPostUiDraw;
+        _maxUiFrame = TimeSpan.Zero;
+        _maxPostUiDraw = TimeSpan.Zero;
         try
         {
             var surfaces = new List<ScreenSurface>();
             if (_barSurface != null) surfaces.Add(_barSurface);
             surfaces.AddRange(_featureSurfaces.Values);
-            surfaces.AddRange(_featureTakeovers.Select(takeover => takeover.Surface).OfType<ScreenSurface>());
             using var process = Process.GetCurrentProcess();
             var maxTick = surfaces.Count == 0 ? 0 : surfaces.Max(surface => surface.LastTickMilliseconds);
             var maxUpload = surfaces.Count == 0 ? 0 : surfaces.Max(surface => surface.LastUploadMilliseconds);
             var dirtyRectangles = surfaces.Sum(surface => surface.LastDirtyRectangleCount);
-            Log($"UI performance sample: uiFrame={uiFrame.TotalMilliseconds:F2}ms surfaces={surfaces.Count} maxPanelTick={maxTick:F2}ms maxTextureUpload={maxUpload:F2}ms dirtyRects={dirtyRectangles} privateBytes={process.PrivateMemorySize64} virtualBytes={process.VirtualMemorySize64}.");
+            Log($"UI performance sample: maxUiFrame={uiFrame.TotalMilliseconds:F2}ms maxPostUiDraw={postUiDraw.TotalMilliseconds:F2}ms surfaces={surfaces.Count} maxPanelTick={maxTick:F2}ms maxTextureUpload={maxUpload:F2}ms dirtyRects={dirtyRectangles} privateBytes={process.PrivateMemorySize64} virtualBytes={process.VirtualMemorySize64}.");
         }
         catch (Exception exception)
         {
@@ -662,22 +467,34 @@ internal sealed class ClientUiRuntime : IClientUiHost
         }
     }
 
-    private static void PrepareWindow(ScreenSurface? surface)
+    /// <summary>
+    /// Ticks each LegACEy window. A failure, including a panel over its tick budget, goes to the window's error handler:
+    /// a plugin's window turns off that plugin, a client window disables the client UI.
+    /// </summary>
+    private void PrepareFeatureWindows()
     {
-        if (surface != null)
-            surface.Prepare();
+        foreach (var pair in _featureSurfaces.ToArray())
+        {
+            // An earlier failure in this loop may have closed the window.
+            if (!_featureSurfaces.ContainsKey(pair.Key)) continue;
+            try { pair.Value.Prepare(); }
+            catch (Exception exception) { _windowFailures[pair.Key](exception); }
+        }
     }
 
     /// <summary>Called by IDirect3DDevice9.EndScene after retail and Decal UI drawing.</summary>
     private void DrawAfterRetailUi()
     {
+        var timer = Stopwatch.StartNew();
+        try { DrawAfterRetailUiCore(); }
+        finally { if (timer.Elapsed > _maxPostUiDraw) _maxPostUiDraw = timer.Elapsed; }
+    }
+
+    private void DrawAfterRetailUiCore()
+    {
         if (_failed) return;
-        Guard(() =>
-        {
-            _barRenderer?.DrawAfterRetailUi();
-            foreach (var takeover in _featureTakeovers.ToArray())
-                takeover.Renderer?.DrawAfterRetailUi();
-        });
+        ThrowIfTestFailureRequested();
+        Guard(() => _barRenderer?.DrawAfterRetailUi());
         if (_failed || !_windowsEnabled || _windows == null)
             return;
         _drawnModelViews.Clear();
@@ -695,6 +512,22 @@ internal sealed class ClientUiRuntime : IClientUiHost
         ReleaseModelRenderers(_drawnModelViews);
         // An item dragged out of a LegACEy window draws above everything.
         Guard(() => _dragIconSurface?.DrawNow());
+    }
+
+    /// <summary>
+    /// A tester creates a file named fail-post-ui-draw beside the DLL to make the next post-UI draw fail in game,
+    /// exercising the real EndScene failure path. Checked at most once a second, not every frame.
+    /// </summary>
+    private void ThrowIfTestFailureRequested()
+    {
+        var now = DateTime.UtcNow;
+        if (now - _lastTestFailureCheck < TimeSpan.FromSeconds(1)) return;
+        _lastTestFailureCheck = now;
+        var marker = IOPath.Combine(PluginDirectory, TestFailureFile);
+        if (!File.Exists(marker)) return;
+        File.Delete(marker);
+        Log($"Test failure requested by {TestFailureFile}; throwing from the post-UI draw.");
+        throw new InvalidOperationException($"Test failure requested by {TestFailureFile}.");
     }
 
     /// <summary>
@@ -755,13 +588,18 @@ internal sealed class ClientUiRuntime : IClientUiHost
             _retailDragIcon.Dispose();
             _retailDragIcon = null;
         }
-        foreach (var pair in _featureSurfaces)
+        foreach (var pair in _featureSurfaces.ToArray())
         {
-            if (pair.Value.Panel.Content is not IRetailItemDropTarget target) continue;
+            // An earlier failure in this loop may have closed the window.
+            if (!_featureSurfaces.ContainsKey(pair.Key) || pair.Value.Panel.Content is not IRetailItemDropTarget target) continue;
             var surface = pair.Value;
-            target.RetailDragOver(item, _retailDragName, top == pair.Key
-                ? new Avalonia.Point(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y)
-                : null);
+            try
+            {
+                target.RetailDragOver(item, _retailDragName, top == pair.Key
+                    ? new Avalonia.Point(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y)
+                    : null);
+            }
+            catch (Exception exception) { _windowFailures[pair.Key](exception); }
         }
     }
 
@@ -778,8 +616,15 @@ internal sealed class ClientUiRuntime : IClientUiHost
         if (id == null) return;
         _retailDrag!.Cancel();
         var surface = SurfaceById(id);
-        var accepted = surface?.Panel.Content is IRetailItemDropTarget target &&
-            target.RetailDrop(item, ObjectName(item), new Avalonia.Point(point.X - surface.Location.X, point.Y - surface.Location.Y));
+        var accepted = false;
+        if (surface?.Panel.Content is IRetailItemDropTarget target)
+        {
+            try
+            {
+                accepted = target.RetailDrop(item, ObjectName(item), new Avalonia.Point(point.X - surface.Location.X, point.Y - surface.Location.Y));
+            }
+            catch (Exception exception) { _windowFailures[id](exception); }
+        }
         if (_loggedDrops++ < 5)
             Log($"Retail item 0x{item:X8} dropped on LegACEy window '{id}'; retail drag cancelled; accepted: {accepted}.");
         _retailDragItem = 0;
@@ -861,7 +706,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
             // Without the panel element, any drop outside LegACEy windows withdraws to the pack.
             var target = !exists ? ItemDropTarget.Inventory : !open ? ItemDropTarget.InventoryClosed : over ? ItemDropTarget.Inventory : ItemDropTarget.Elsewhere;
             if (_owner._loggedDrops++ < 5)
-                Log($"Vault item dropped at {_owner._pointer}: retail element under pointer 0x{element:X8}, inventory open: {open}, target: {target}.");
+                Log($"Item dropped at {_owner._pointer}: retail element under pointer 0x{element:X8}, inventory open: {open}, target: {target}.");
             return target;
         }
     }
@@ -909,7 +754,6 @@ internal sealed class ClientUiRuntime : IClientUiHost
     /// </summary>
     private void TakeOverNativeBar()
     {
-        if (_featureTakeovers.Any(takeover => takeover.RootElementId == NativeUi.Indicators)) return;
         _barTakeover ??= new RetailTakeoverLifecycle(new NativeBarPort(NativeUi.Indicators), new SurfaceTakeoverPort(_barSurface!));
         var viewport = _device!.Viewport;
         if (_barTakeover?.Tick(_dragOffset != null, new Size(viewport.Width, viewport.Height)) == true)
@@ -918,103 +762,114 @@ internal sealed class ClientUiRuntime : IClientUiHost
 
     IDisposable IClientUiHost.OpenWindow(WindowDefinition definition, Control content, Point requestedLocation)
     {
-        if (!_windowsEnabled || _windows == null || _device == null || _postUiDrawHook?.HasRun != true)
+        if (!CanOpenWindows)
             throw new InvalidOperationException("LegACEy windows are unavailable until the post-UI renderer is ready.");
+        OpenWindowCore(definition, content, requestedLocation, Disable);
+        return new FeatureWindow(this, definition.Id);
+    }
+
+    private bool CanOpenWindows => _windowsEnabled && _windows != null && _device != null && _postUiDrawHook?.HasRun == true;
+
+    private void OpenWindowCore(WindowDefinition definition, Control content, Point requestedLocation, Action<Exception> failed)
+    {
         if (_featureSurfaces.ContainsKey(definition.Id))
             throw new InvalidOperationException($"A feature window named '{definition.Id}' is already registered.");
-        var panel = ObservePanel(AvaloniaPanel.Create(() => content, definition.Width, definition.Height));
-        var surface = ProfileSurface(new ScreenSurface(_device, panel), definition.Id);
+        var panel = ObservePanel(AvaloniaPanel.Create(() => content, definition.Width, definition.Height), failed);
+        var surface = new ScreenSurface(_device!, panel);
+        ShowSurface(definition, surface, requestedLocation, failed);
+    }
+
+    private void ShowSurface(WindowDefinition definition, ScreenSurface surface, Point requestedLocation, Action<Exception> failed)
+    {
         var opened = false;
         try
         {
-            var window = _windows.Open(definition, requestedLocation);
+            var window = _windows!.Open(definition, requestedLocation);
             opened = true;
             surface.Location = window.Location;
             surface.Visible = true;
-            panel.ApplyTheme(_clientUi?.Theme ?? CurrentTheme());
+            surface.Panel.ApplyTheme(_clientUi?.Theme ?? CurrentTheme());
             _featureSurfaces.Add(definition.Id, surface);
-            return new FeatureWindow(this, definition.Id);
+            _windowFailures[definition.Id] = failed;
         }
         catch
         {
             try { surface.Dispose(); }
-            finally { if (opened) _windows.Close(definition.Id); }
+            finally { if (opened) _windows!.Close(definition.Id); }
             throw;
         }
     }
 
-    IDisposable IClientUiHost.TakeOverRoot(uint rootElementId, Control content) => RegisterRoot(rootElementId, content);
-    IDisposable IClientUiHost.HideRoot(uint rootElementId) => RegisterRoot(rootElementId, null);
-
-    private IDisposable RegisterRoot(uint rootElementId, Control? content)
+    bool ILegACEyPluginHost.OpenWindow(WindowDefinition definition, Point location, Func<Action, Control> createContent, Action<Exception> failed, bool ownChrome)
     {
-        if (_device == null)
-            throw new InvalidOperationException("The game rendering device is unavailable.");
-        if (_featureTakeovers.Any(takeover => takeover.RootElementId == rootElementId))
-            throw new InvalidOperationException("The retail root already has a feature owner.");
-        ScreenSurface? surface = null;
-        RetailTakeoverLifecycle? lifecycle = null;
+        if (!CanOpenWindows) return false;
+        if (_hiddenSurfaces.TryGetValue(definition.Id, out var hidden))
+        {
+            _hiddenSurfaces.Remove(definition.Id);
+            // Hiding runs inside the window's own click, so its hover and focus are cleared here instead. A focused
+            // field left behind would take keys again after the next click in the window.
+            hidden.Panel.PointerLeave();
+            hidden.Panel.ClearFocus();
+            ShowSurface(definition, hidden, location, failed);
+            return true;
+        }
+        Action close = () => HideFeatureWindow(definition.Id);
+        var content = createContent(close);
         try
         {
-            if (content != null)
+            if (ownChrome)
+                OpenWindowCore(definition, content, location, failed);
+            else
             {
-                var panel = ObservePanel(AvaloniaPanel.Create(() => content, 280, 120));
-                surface = ProfileSurface(new ScreenSurface(_device, panel), "root-" + rootElementId.ToString("X8"));
-                panel.ApplyTheme(_clientUi?.Theme ?? CurrentTheme());
+                var chrome = new ThemeWindowChrome(_portal!, definition.Title, content);
+                chrome.CloseRequested += (_, _) => close();
+                OpenWindowCore(definition, chrome, location, failed);
             }
-            // Give the inspector exclusive ownership of the bar's retail root.
-            if (rootElementId == NativeUi.Indicators)
-            {
-                RestoreNativeBar();
-                if (_barTakeover != null) throw new InvalidOperationException("Could not release the indicators bar.");
-                _barSurface!.Visible = false;
-            }
-            lifecycle = new RetailTakeoverLifecycle(new NativeElementPort(rootElementId),
-                surface == null ? new MoveOnlySurface() : new SurfaceTakeoverPort(surface));
-            lifecycle.Tick();
-            var registration = new FeatureTakeover(this, rootElementId, lifecycle, surface);
-            _featureTakeovers.Add(registration);
-            return registration;
         }
         catch
         {
-            try { lifecycle?.Dispose(); }
-            finally { surface?.Dispose(); }
+            // The window never opened, so nothing else releases the content the plugin built for it.
+            (content as IDisposable)?.Dispose();
             throw;
         }
+        return true;
     }
 
-    bool IClientUiHost.MoveRoot(uint rootElementId, Point location)
+    IServerChannel ILegACEyPluginHost.ServerChannel => (IServerChannel?)_serverChannel ?? UnavailableServerChannel.Instance;
+    string ILegACEyPluginHost.PortalPath => _portal?.Path ?? string.Empty;
+    IGameArtSource ILegACEyPluginHost.Art => (IGameArtSource?)_portal ?? throw new InvalidOperationException("Game art is unavailable until the client UI is ready.");
+    IItemDragHost ILegACEyPluginHost.ItemDrag => new ItemDragHost(this);
+    uint ILegACEyPluginHost.CurrentSelection => CurrentSelection();
+    bool ILegACEyPluginHost.IsWindowOpen(string id) => _featureSurfaces.ContainsKey(id);
+    void ILegACEyPluginHost.HideWindow(string id) => HideFeatureWindow(id);
+    void ILegACEyPluginHost.CloseWindow(string id) => ReleaseFeatureWindow(id);
+
+    private void HideFeatureWindow(string id)
     {
-        var active = _featureTakeovers.LastOrDefault(takeover => takeover.RootElementId == rootElementId);
-        if (active != null)
-            return active.Lifecycle.MoveTo(location);
-
-        if (rootElementId == NativeUi.Indicators && _barTakeover != null)
-            return _barTakeover.MoveTo(location);
-
-        using var lifecycle = new RetailTakeoverLifecycle(new NativeElementPort(rootElementId), new MoveOnlySurface());
-        lifecycle.Tick();
-        return lifecycle.MoveTo(location);
+        if (!_featureSurfaces.TryGetValue(id, out var surface)) return;
+        RemoveFeatureWindow(id, surface);
+        _hiddenSurfaces[id] = surface;
     }
 
     private void ReleaseFeatureWindow(string id)
     {
+        if (_hiddenSurfaces.TryGetValue(id, out var hidden))
+        {
+            _hiddenSurfaces.Remove(id);
+            hidden.Dispose();
+        }
         if (!_featureSurfaces.TryGetValue(id, out var surface)) return;
-        if (_hovered == surface) _hovered = null;
-        surface.Visible = false;
+        RemoveFeatureWindow(id, surface);
         surface.Dispose();
-        _featureSurfaces.Remove(id);
-        _windows?.Close(id);
     }
 
-    private void ReleaseFeatureTakeover(FeatureTakeover registration)
+    private void RemoveFeatureWindow(string id, ScreenSurface surface)
     {
-        if (!_featureTakeovers.Contains(registration)) return;
-        registration.Lifecycle.Dispose();
-        if (_hovered == registration.Surface) _hovered = null;
-        registration.Surface?.Dispose();
-        _featureTakeovers.Remove(registration);
+        if (_hovered == surface) _hovered = null;
+        surface.Visible = false;
+        _featureSurfaces.Remove(id);
+        _windowFailures.Remove(id);
+        _windows?.Close(id);
     }
 
     private void RestoreNativeBar()
@@ -1033,18 +888,6 @@ internal sealed class ClientUiRuntime : IClientUiHost
 
     /// <summary>Translate Decal's raw messages into router decisions and Avalonia.Headless input.</summary>
     private void OnWindowMessage(object? sender, WindowMessageEventArgs e)
-    {
-        var active = _scrollProfiling;
-        var start = active ? Stopwatch.GetTimestamp() : 0;
-        try { OnWindowMessageCore(sender, e); }
-        finally
-        {
-            if (active)
-                _scrollProfile.Record("runtime", e.Msg == InputRouterService.WmMouseWheel ? "wheel-callback" : "window-message", ElapsedMilliseconds(start));
-        }
-    }
-
-    private void OnWindowMessageCore(object? sender, WindowMessageEventArgs e)
     {
         if (_failed || !_inGame || _barSurface == null)
             return;
@@ -1157,9 +1000,9 @@ internal sealed class ClientUiRuntime : IClientUiHost
         }
     }
 
-    private AvaloniaPanel ObservePanel(AvaloniaPanel panel)
+    private AvaloniaPanel ObservePanel(AvaloniaPanel panel, Action<Exception>? failed = null)
     {
-        panel.Error += Disable;
+        panel.Error += failed ?? new Action<Exception>(Disable);
         if (panel.LastError is { } initialError)
         {
             panel.Dispose();
@@ -1183,13 +1026,6 @@ internal sealed class ClientUiRuntime : IClientUiHost
                 surfaces.Add(new InputSurface(window.Id, window.Location.X, window.Location.Y, window.Width, window.Height, z--, surface.Panel.WantsKeyboard));
             }
         }
-        foreach (var takeover in _featureTakeovers)
-        {
-            var surface = takeover.Surface;
-            if (surface is not { Visible: true }) continue;
-            surfaces.Add(new InputSurface(takeover.InputId, surface.Location.X, surface.Location.Y,
-                surface.Bounds.Width, surface.Bounds.Height, 0, surface.Panel.WantsKeyboard));
-        }
         return surfaces.ToArray();
     }
 
@@ -1197,7 +1033,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
     {
         if (id == "bar") return _barSurface;
         if (id != null && _featureSurfaces.TryGetValue(id, out var surface)) return surface;
-        return _featureTakeovers.FirstOrDefault(takeover => takeover.InputId == id)?.Surface;
+        return null;
     }
 
     private void ApplyReset(InputRoute route)
@@ -1243,6 +1079,8 @@ internal sealed class ClientUiRuntime : IClientUiHost
     /// <summary>Stop drawing, give the player the retail bar back, and log why.</summary>
     private void Disable(Exception exception)
     {
+        // Every panel drains the shared Avalonia dispatcher, so a plugin's failure can surface on another panel.
+        if (_plugins?.TryFailOwner(exception) == true) return;
         _failed = true;
         Log($"Indicator bar replacement disabled: {exception}");
         RestoreNativeBar();
@@ -1254,13 +1092,20 @@ internal sealed class ClientUiRuntime : IClientUiHost
     {
         _windowsEnabled = false;
         Log($"LegACEy windows disabled: {exception}");
-        foreach (var slot in new[] { InputTestSlot, ThemeGallerySlot, BreakoutSlot, PerformanceListSlot, VaultSlot, PaperdollSlot, "Live data", "Element inspector" })
-            _bar?.SetOpen(slot, false);
+        _bar?.SetOpen(MenuSlot, false);
         foreach (var window in _windows?.ZOrder.ToArray() ?? Array.Empty<ManagedWindow>())
             _windows!.Close(window.Id);
         try { _clientUi?.EndSession(); }
         catch (Exception cleanupError) { Log($"Could not clean up feature UI after window failure: {cleanupError}"); }
         _clientUi = null;
+        // Plugin windows are not in the client UI framework; release them here too.
+        ReleaseFeatureWindows();
+    }
+
+    private void ReleaseFeatureWindows()
+    {
+        foreach (var id in _featureSurfaces.Keys.Concat(_hiddenSurfaces.Keys).ToArray())
+            ReleaseFeatureWindow(id);
     }
 
     /// <summary>The object selected in the game, for "Deposit item"; zero for none.</summary>
@@ -1280,51 +1125,12 @@ internal sealed class ClientUiRuntime : IClientUiHost
             filter.Mana, filter.EffectiveVital[Decal.Adapter.Wrappers.CharFilterVitalType.Mana]);
     }
 
-    private sealed class NativeElementPort : IRetailTakeoverPort
-    {
-        private readonly uint _id;
-        public NativeElementPort(uint id) => _id = id;
-        private IntPtr Element => NativeUi.GetElement(_id);
-        public bool Exists => Element != IntPtr.Zero;
-        public IntPtr ElementIdentity => Element;
-        public bool IsVisible { get { var element = Element; return element != IntPtr.Zero && NativeUi.IsVisible(element); } }
-        public Rectangle GetBounds() { var element = Element; return element == IntPtr.Zero ? Rectangle.Empty : NativeUi.GetBounds(element); }
-        public void SetVisible(bool visible) { var element = Element; if (element != IntPtr.Zero) NativeUi.SetVisible(element, visible); }
-        public void SetSaveLocation(bool save) { var element = Element; if (element != IntPtr.Zero) NativeUi.SetSaveLocation(element, save); }
-        public void MoveTo(Point location) { var element = Element; if (element != IntPtr.Zero) NativeUi.MoveTo(element, location); }
-        public bool IsUiLocked => NativeUi.IsUiLocked;
-    }
-
     private sealed class FeatureWindow : IDisposable
     {
         private readonly ClientUiRuntime _owner;
         private readonly string _id;
         public FeatureWindow(ClientUiRuntime owner, string id) { _owner = owner; _id = id; }
         public void Dispose() => _owner.ReleaseFeatureWindow(_id);
-    }
-
-    private sealed class FeatureTakeover : IDisposable
-    {
-        private readonly ClientUiRuntime _owner;
-        public FeatureTakeover(ClientUiRuntime owner, uint rootElementId, RetailTakeoverLifecycle lifecycle, ScreenSurface? surface)
-        {
-            _owner = owner; RootElementId = rootElementId; Lifecycle = lifecycle; Surface = surface;
-            if (surface != null) Renderer = new RetailSurfaceRenderer(surface.Prepare, surface.DrawNow);
-        }
-        public uint RootElementId { get; }
-        public RetailTakeoverLifecycle Lifecycle { get; }
-        public ScreenSurface? Surface { get; }
-        public RetailSurfaceRenderer? Renderer { get; }
-        public string InputId => "retail-root-" + RootElementId;
-        public void Dispose() => _owner.ReleaseFeatureTakeover(this);
-    }
-
-    private sealed class MoveOnlySurface : IRetailTakeoverSurface
-    {
-        public Point Location { get; private set; }
-        public Size Size => Size.Empty;
-        public bool Visible { get; set; }
-        public void SetLocation(Point location) => Location = location;
     }
 
     private sealed class NativeBarPort : IRetailTakeoverPort
@@ -1372,18 +1178,12 @@ internal sealed class ClientUiRuntime : IClientUiHost
         _postUiDrawHook?.Dispose();
         _postUiDrawHook = null;
         _windows = null;
-        foreach (var surface in _featureSurfaces.Values) surface.Dispose();
-        _featureSurfaces.Clear();
-        foreach (var takeover in _featureTakeovers.ToArray())
-        {
-            try { takeover.Dispose(); }
-            catch (Exception exception) { Log($"Could not restore an inspected retail root: {exception}"); }
-        }
+        ReleaseFeatureWindows();
+        _windowFailures.Clear();
         _windowsEnabled = false;
         _portal?.Dispose();
         _portal = null;
         _bar = null;
-        _breakout = null;
         _drawnModelViews.Clear();
         ReleaseModelRenderers(_drawnModelViews);
         GameArtImageExtension.CurrentSource = null;

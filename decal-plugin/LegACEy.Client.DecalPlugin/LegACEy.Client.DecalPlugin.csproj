@@ -39,6 +39,20 @@
     <ProjectReference Include="..\LegACEy.Client.Themes\LegACEy.Client.Themes.csproj" />
   </ItemGroup>
 
+  <!-- Plugins are built with this client (same global properties, so one build of each shared project) but not referenced
+       by it. Each plugin's DLL is then copied to Plugins\<Name>\ beside the client. -->
+  <ItemGroup>
+    <ProjectReference Include="..\LegACEy.Plugin.Paperdoll\LegACEy.Plugin.Paperdoll.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\LegACEy.Plugin.Vault\LegACEy.Plugin.Vault.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <Target Name="CopyLegACEyPlugins" AfterTargets="Build">
+    <MSBuild Projects="..\LegACEy.Plugin.Paperdoll\LegACEy.Plugin.Paperdoll.csproj;..\LegACEy.Plugin.Vault\LegACEy.Plugin.Vault.csproj" Targets="GetTargetPath">
+      <Output TaskParameter="TargetOutputs" ItemName="LegACEyPluginAssembly" />
+    </MSBuild>
+    <Copy SourceFiles="@(LegACEyPluginAssembly);@(LegACEyPluginAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" DestinationFolder="$(OutDir)Plugins\%(Filename)" />
+  </Target>
+
   <Target Name="VerifyAvaloniaX86NativeAssets" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
     <Error Condition="!Exists('$(TargetDir)x86\libSkiaSharp.dll')" Text="The x86 SkiaSharp native library must ship in the plugin output." />
     <Error Condition="!Exists('$(TargetDir)x86\libHarfBuzzSharp.dll')" Text="The x86 HarfBuzz native library must ship in the plugin output." />

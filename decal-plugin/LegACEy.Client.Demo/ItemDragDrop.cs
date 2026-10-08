@@ -38,7 +38,7 @@ public interface IItemDragHost
     ItemDropTarget DropTargetAtPointer();
 }
 
-/// <summary>Drag host for the preview app and tests: no icon, and a drop target the caller chooses.</summary>
+/// <summary>Drag host for tests: no icon, and a drop target the caller chooses.</summary>
 public sealed class FakeItemDragHost : IItemDragHost
 {
     public ItemDropTarget Target { get; set; } = ItemDropTarget.Inventory;

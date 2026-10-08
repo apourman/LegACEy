@@ -6,9 +6,10 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 
-namespace LegACEy.Client.Demo;
+namespace LegACEy.Plugin.Paperdoll;
 
 /// <summary>Bodies of the paperdoll's channel actions; they must match ACE.Server.ClientChannel.PaperdollChannelActions.</summary>
 public static class PaperdollProtocol

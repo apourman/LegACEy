@@ -10,10 +10,11 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
 
-namespace LegACEy.Client.Demo;
+namespace LegACEy.Plugin.Vault;
 
 /// <summary>
 /// The account Vault window. With a <see cref="VaultClient"/> it shows the live Vault from the LegACEy server channel:
@@ -225,7 +226,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         {
             var cells = Math.Max(MinimumCells, (items.Count + Columns - 1) / Columns * Columns);
             // Compact rows and a top inset leave room for the drop frame whatever the text metrics give the grid area
-            // (Tahoma in game is taller than the preview's fallback font).
+            // (Tahoma in game is taller than fallback fonts).
             var slots = new UniformGrid { Columns = Columns, Rows = cells / Columns, Margin = new Thickness(0, 4, 0, 0) };
             for (var index = 0; index < cells; index++)
             {
@@ -664,10 +665,11 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     }
 }
 
-/// <summary>Vault-specific chrome; independent of the theme gallery's retail control styling.</summary>
-public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget
+/// <summary>Vault-specific chrome; independent of the theme's retail control styling.</summary>
+public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget, IDisposable
 {
     private readonly VaultShellPanel _panel;
+    private bool _disposed;
     public event EventHandler? CloseRequested;
 
     public void RetailDragOver(uint itemId, string itemName, Point? position) =>
@@ -675,6 +677,13 @@ public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget
 
     public bool RetailDrop(uint itemId, string itemName, Point position) =>
         this.TranslatePoint(position, _panel) is { } point && _panel.RetailDrop(itemId, itemName, point);
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _panel.Dispose();
+    }
 
     public VaultShellWindow(VaultShellPanel panel)
     {
