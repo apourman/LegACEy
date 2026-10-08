@@ -46,6 +46,11 @@ public interface ILegACEyClient
     /// that closes the window; the client adds no chrome of its own.
     /// </summary>
     void ToggleWindowWithChrome(string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow);
+    /// <summary>
+    /// Registers the plugin's window for a station. The window opens when the server pushes station.open for it and
+    /// closes on station.close. Closing it sends station.leave. Takes the same arguments as <see cref="ToggleWindowWithChrome"/>.
+    /// </summary>
+    void RegisterStationWindow(string station, string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow);
 }
 
 /// <summary>The client's side of plugin hosting. ClientUiRuntime implements it; tests fake it.</summary>
