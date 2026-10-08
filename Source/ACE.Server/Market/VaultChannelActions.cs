@@ -22,7 +22,6 @@ namespace ACE.Server.Market
     {
         private static readonly ILog log = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
-        public const string Hello = "channel.hello";
         public const string List = "vault.list";
         public const string Deposit = "vault.deposit";
         public const string Withdraw = "vault.withdraw";
@@ -34,11 +33,8 @@ namespace ACE.Server.Market
         /// </summary>
         public const string Changed = "vault.changed";
 
-        private static readonly string[] actions = { Hello, List, Deposit, Withdraw, Check, Move };
-
         public static void Register()
         {
-            ServerChannel.Register(Hello, HandleHello);
             ServerChannel.Register(List, HandleList);
             ServerChannel.Register(Deposit, context => HandleTransfer(context, deposit: true));
             ServerChannel.Register(Withdraw, context => HandleTransfer(context, deposit: false));
@@ -123,18 +119,6 @@ namespace ACE.Server.Market
                 context.Fail(ChannelStatus.BadRequest, "An item id is required.");
                 return false;
             }
-        }
-
-        private static void HandleHello(ChannelContext context)
-        {
-            context.Reply(ChannelWire.Body(w =>
-            {
-                w.Write(ChannelWire.Version);
-                ChannelWire.WriteString(w, context.Player.Name);
-                w.Write(actions.Length);
-                foreach (var action in actions)
-                    ChannelWire.WriteString(w, action);
-            }));
         }
 
         private static void HandleList(ChannelContext context)

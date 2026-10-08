@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
@@ -46,6 +48,11 @@ namespace ACE.Server.ClientChannel
 
             handlers[action] = handler ?? throw new ArgumentNullException(nameof(handler));
         }
+
+        /// <summary>
+        /// The names of every registered action, in ordinal order
+        /// </summary>
+        public static IReadOnlyList<string> ActionNames() => handlers.Keys.OrderBy(action => action, StringComparer.Ordinal).ToArray();
 
         /// <summary>
         /// A channel game action from the client, on the world thread
