@@ -15,7 +15,7 @@ using ACE.Server.WorldObjects;
 namespace ACE.Server.Market
 {
     /// <summary>
-    /// The Vault's actions on the in-band server channel, for the LegACEy client's Vault window. They call the same entry points as the /vault commands,
+    /// The Vault's actions on the in-band server channel, for the LegACEy client's Vault window. They call the Vault's own entry points,
     /// so every rule, the transfer channel and the chat messages are unchanged. Bodies are written with ChannelWire; the plugin's VaultProtocol reads them.
     /// </summary>
     public static class VaultChannelActions
@@ -34,7 +34,7 @@ namespace ACE.Server.Market
         public const string Station = "vault";
 
         /// <summary>
-        /// Pushed after every Vault deposit, withdrawal or trade note change, whatever started it: this window, a /vault command or the website
+        /// Pushed after every Vault deposit, withdrawal or trade note change, whatever started it: this window's channel, a /vault trade note command or the website
         /// </summary>
         public const string Changed = "vault.changed";
 

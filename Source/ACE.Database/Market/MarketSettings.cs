@@ -61,7 +61,7 @@ namespace ACE.Database.Market
 
         public static readonly MarketSetting WebSessionAbsoluteDays = new("market_web_session_absolute_days", 30, "the number of days after sign-in that a web session ends, however much it's used");
 
-        public static readonly MarketSetting ChannelSeconds = new("vault_channel_seconds", 60, "the number of seconds a /vault deposit or withdrawal channels before it completes");
+        public static readonly MarketSetting ChannelSeconds = new("vault_channel_seconds", 60, "the number of seconds a Vault deposit or withdrawal at the chest channels before it completes");
 
         public static readonly IReadOnlyList<MarketSetting> All = new[]
         {

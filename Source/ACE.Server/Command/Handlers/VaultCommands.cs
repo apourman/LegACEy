@@ -38,28 +38,19 @@ namespace ACE.Server.Command.Handlers
 
             switch (parameters[0].ToLowerInvariant())
             {
-                case "deposit":
-                    if (parameters.Length >= 2 && IsMmd(parameters[1]))
-                        Vault.DepositNotes(player);
-                    else
-                        Tell(session, Usage);
+                case "deposit" when parameters.Length >= 2 && IsMmd(parameters[1]):
+                    Vault.DepositNotes(player);
                     break;
 
-                case "withdraw":
-                    if (parameters.Length >= 2 && IsMmd(parameters[1]))
+                case "withdraw" when parameters.Length >= 2 && IsMmd(parameters[1]):
+                    if (parameters.Length < 3 || !long.TryParse(parameters[2], NumberStyles.None, CultureInfo.InvariantCulture, out var amount))
                     {
-                        if (parameters.Length < 3 || !long.TryParse(parameters[2], NumberStyles.None, CultureInfo.InvariantCulture, out var amount))
-                        {
-                            Tell(session, "Usage: /vault withdraw mmd <amount>, a whole number of trade notes.");
-                            return;
-                        }
-
-                        Vault.WithdrawNotes(player, amount);
+                        Tell(session, "Usage: /vault withdraw mmd <amount>, a whole number of trade notes.");
                         return;
                     }
 
-                    Tell(session, Usage);
-                    break;
+                    Vault.WithdrawNotes(player, amount);
+                    return;
 
                 case "balance":
                     if (!Vault.Available)
