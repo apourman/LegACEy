@@ -31,7 +31,23 @@ namespace ACE.Server.ClientChannel
 
         public static readonly TimeSpan RateLimitWindow = TimeSpan.FromSeconds(10);
 
-        private static readonly ConcurrentDictionary<string, Action<ChannelContext>> handlers = new ConcurrentDictionary<string, Action<ChannelContext>>(StringComparer.Ordinal);
+        private sealed class Registration
+        {
+            public Registration(Action<ChannelContext> handler, string station)
+            {
+                Handler = handler;
+                Station = station;
+            }
+
+            public Action<ChannelContext> Handler { get; }
+
+            /// <summary>
+            /// The station the player must have an open session at, or null
+            /// </summary>
+            public string Station { get; }
+        }
+
+        private static readonly ConcurrentDictionary<string, Registration> handlers = new ConcurrentDictionary<string, Registration>(StringComparer.Ordinal);
 
         /// <summary>
         /// Sessions that have sent at least one channel request. Only they are sent pushes, so retail clients and other tools never see LegACEy events.
@@ -39,14 +55,14 @@ namespace ACE.Server.ClientChannel
         private static readonly ConditionalWeakTable<Session, SessionState> sessions = new ConditionalWeakTable<Session, SessionState>();
 
         /// <summary>
-        /// Registers the handler for an action, replacing any earlier one
+        /// Registers the handler for an action, replacing any earlier one. With a station, the action is refused unless the player has an open session at that station.
         /// </summary>
-        public static void Register(string action, Action<ChannelContext> handler)
+        public static void Register(string action, Action<ChannelContext> handler, string station = null)
         {
             if (string.IsNullOrEmpty(action) || Encoding.UTF8.GetByteCount(action) > ChannelWire.MaxNameBytes)
                 throw new ArgumentException("Channel action names are 1 to 64 UTF-8 bytes.", nameof(action));
 
-            handlers[action] = handler ?? throw new ArgumentNullException(nameof(handler));
+            handlers[action] = new Registration(handler ?? throw new ArgumentNullException(nameof(handler)), station);
         }
 
         /// <summary>
@@ -80,15 +96,21 @@ namespace ACE.Server.ClientChannel
 
             var context = new ChannelContext(session, player, request);
 
-            if (!handlers.TryGetValue(request.Action, out var handler))
+            if (!handlers.TryGetValue(request.Action, out var registration))
             {
                 context.Fail(ChannelStatus.UnknownAction, $"The server has no '{request.Action}' action.");
                 return;
             }
 
+            if (registration.Station != null && !player.HasStation(registration.Station))
+            {
+                context.Fail(ChannelStatus.NoStation, $"Use the {registration.Station} station to do that.");
+                return;
+            }
+
             try
             {
-                handler(context);
+                registration.Handler(context);
             }
             catch (Exception ex)
             {

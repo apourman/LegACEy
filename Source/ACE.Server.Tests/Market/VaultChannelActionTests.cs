@@ -9,12 +9,14 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using ACE.Database.Market;
 using ACE.Entity.Enum;
 using ACE.Server.ClientChannel;
-using ACE.Server.Command.Handlers;
 using ACE.Server.Managers;
 using ACE.Server.Market;
 using ACE.Server.Network.GameEvent.Events;
 using ACE.Server.Network.GameMessages;
+using ACE.Server.Tests.ClientChannel;
 using ACE.Server.WorldObjects;
+
+using static ACE.Server.Tests.ClientChannel.ChannelTestClient;
 
 namespace ACE.Server.Tests.Market
 {
@@ -27,6 +29,7 @@ namespace ACE.Server.Tests.Market
         public void ChannelList_RepliesWithTheAccountsItemsBalanceAndIcons()
         {
             var (player, guid) = DepositedItem();
+            AtTheVault(player);
             VaultTestWorld.TakeSent(player);
 
             var reply = Request(player, VaultChannelActions.List, Array.Empty<byte>());
@@ -45,6 +48,7 @@ namespace ACE.Server.Tests.Market
         public void ChannelList_MarketClosed_SendsNoBalance()
         {
             var (player, _) = DepositedItem();
+            AtTheVault(player);
             VaultTestWorld.TakeSent(player);
 
             PropertyManager.ModifyBool(Vault.MarketEnabledKey, false);
@@ -71,6 +75,7 @@ namespace ACE.Server.Tests.Market
         {
             var (player, guid) = DepositedItem();
             var (bystander, otherGuid) = DepositedItem();
+            AtTheVault(player);
 
             using (ChannelSeconds(1))
             {
@@ -88,12 +93,47 @@ namespace ACE.Server.Tests.Market
                 Assert.AreEqual(guid, changed.ReadUInt32());
                 Assert.IsNotNull(player.GetInventoryItem(guid));
 
-                // a client that never used the channel gets no LegACEy events from a /vault withdrawal
+                // a client that never used the channel gets no LegACEy events from a withdrawal that doesn't come over it
                 VaultTestWorld.TakeSent(bystander);
-                VaultTestWorld.OnWorldThread(() => VaultCommands.HandleVault(bystander.Session, "withdraw", $"0x{otherGuid:X8}"));
+                VaultTestWorld.OnWorldThread(() => VaultChannel.StartWithdraw(bystander, otherGuid));
                 VaultTestWorld.WaitUntil(() => bystander.GetInventoryItem(otherGuid) != null, "the bystander's withdrawal");
                 Assert.IsFalse(VaultTestWorld.TakeSent(bystander).OfType<GameEventLegaceyChannel>().Any());
             }
+        }
+
+        [TestMethod]
+        public void ChannelDeposit_AtTheVault_ThenListAndWithdraw_BringTheItemBack()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+            var guid = item.Guid.Full;
+            AtTheVault(player);
+
+            using (ChannelSeconds(1))
+            {
+                Assert.AreEqual(1, Request(player, VaultChannelActions.Deposit, BitConverter.GetBytes(guid)).Body[0], "the deposit started");
+                AssertChanged(WaitForEvent(player, e => e.Kind == ChannelEventKind.Push), nameof(VaultOutcome.Deposited));
+                Assert.IsNull(player.GetInventoryItem(guid), "the deposit took the item");
+
+                var body = new BinaryReader(new MemoryStream(Request(player, VaultChannelActions.List, Array.Empty<byte>()).Body), Encoding.UTF8);
+                body.ReadByte();
+                body.ReadInt64();
+                body.ReadInt32();
+                Assert.AreEqual(1, body.ReadInt32(), "count");
+                Assert.AreEqual(guid, body.ReadUInt32(), "the Vault lists it");
+
+                Assert.AreEqual(1, Request(player, VaultChannelActions.Withdraw, BitConverter.GetBytes(guid)).Body[0], "the withdrawal started");
+                AssertChanged(WaitForEvent(player, e => e.Kind == ChannelEventKind.Push), nameof(VaultOutcome.Withdrawn));
+                Assert.IsNotNull(player.GetInventoryItem(guid), "the withdrawal brought it back");
+            }
+        }
+
+        private static void AssertChanged(ChannelEvent push, string outcome)
+        {
+            Assert.AreEqual(VaultChannelActions.Changed, push.Topic);
+            var changed = new BinaryReader(new MemoryStream(push.Body), Encoding.UTF8);
+            Assert.AreEqual(1, changed.ReadByte(), "success");
+            Assert.AreEqual(outcome, ChannelWire.ReadString(changed));
         }
 
         [TestMethod]
@@ -101,6 +141,7 @@ namespace ACE.Server.Tests.Market
         {
             var (player, attuned) = NewItem(i => i.Attuned = AttunedStatus.Attuned);
             var plain = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+            AtTheVault(player);
 
             var refused = new BinaryReader(new MemoryStream(Request(player, VaultChannelActions.Check, BitConverter.GetBytes(attuned.Guid.Full)).Body), Encoding.UTF8);
             Assert.AreEqual(attuned.Guid.Full, refused.ReadUInt32());
@@ -121,6 +162,7 @@ namespace ACE.Server.Tests.Market
             Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, second.Guid.Full).Outcome);
             CollectionAssert.AreEqual(new[] { first, second.Guid.Full }, Vault.List(player).Select(i => i.ItemGuid).ToArray());
             var versionBefore = VaultStore.Get(first).RowVersion;
+            AtTheVault(player);
 
             var reply = Request(player, VaultChannelActions.Move, ChannelWire.Body(w => { w.Write(first); w.Write(1); }));
 
@@ -139,62 +181,6 @@ namespace ACE.Server.Tests.Market
 
             Assert.AreEqual(ChannelStatus.UnknownAction, reply.Status);
             StringAssert.Contains(ChannelWire.ReadString(new BinaryReader(new MemoryStream(reply.Body), Encoding.UTF8)), "no.such.action");
-        }
-
-        private static string Text(byte[] body) => body.Length >= 2 ? ChannelWire.ReadString(new BinaryReader(new MemoryStream(body), Encoding.UTF8)) : string.Empty;
-
-        private sealed class ChannelEvent
-        {
-            public ChannelEventKind Kind;
-            public ChannelStatus Status;
-            public uint RequestId;
-            public string Topic;
-            public byte[] Body;
-        }
-
-        private static uint nextRequestId;
-
-        private static ChannelEvent Request(Player player, string action, byte[] body)
-        {
-            var id = ++nextRequestId;
-            var payload = ChannelWire.Body(w =>
-            {
-                w.Write(ChannelWire.Version);
-                w.Write(id);
-                ChannelWire.WriteString(w, action);
-                w.Write((uint)body.Length);
-                w.Write(body);
-            });
-
-            VaultTestWorld.OnWorldThread(() => ServerChannel.Receive(player.Session, new BinaryReader(new MemoryStream(payload))));
-
-            return WaitForEvent(player, e => e.Kind == ChannelEventKind.Reply && e.RequestId == id);
-        }
-
-        private static ChannelEvent WaitForEvent(Player player, Func<ChannelEvent, bool> match)
-        {
-            ChannelEvent found = null;
-            var seen = new List<ChannelEvent>();
-
-            VaultTestWorld.WaitUntil(() =>
-            {
-                seen.AddRange(VaultTestWorld.TakeSent(player).OfType<GameEventLegaceyChannel>().Select(Decode));
-                found = seen.FirstOrDefault(match);
-                return found != null;
-            }, "a LegACEy channel event");
-
-            return found;
-        }
-
-        private static ChannelEvent Decode(GameMessage message)
-        {
-            // opcode, character, event sequence, event type, then the channel payload
-            var reader = new BinaryReader(new MemoryStream(message.Data.ToArray()), Encoding.UTF8);
-            reader.ReadBytes(16);
-            Assert.AreEqual(ChannelWire.Version, reader.ReadUInt16());
-            var e = new ChannelEvent { Kind = (ChannelEventKind)reader.ReadByte(), Status = (ChannelStatus)reader.ReadByte(), RequestId = reader.ReadUInt32(), Topic = ChannelWire.ReadString(reader) };
-            e.Body = reader.ReadBytes((int)reader.ReadUInt32());
-            return e;
         }
     }
 }

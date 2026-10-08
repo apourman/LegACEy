@@ -18,7 +18,7 @@ namespace ACE.Server.Market
 {
     /// <summary>
     /// The game server's side of the game bridge. About once a second the save thread claims waiting tickets (market_ticket), and the world thread
-    /// runs each through the same Vault entry point as the /vault commands: an item withdrawal takes the channel, so the character must be online.
+    /// runs each through the same Vault entry point as the Vault chest: an item withdrawal takes the channel, so the character must be online.
     /// Finished work marks its ticket DONE in the same save; anything that stops it marks the ticket FAILED with a result code and the player's message.
     /// </summary>
     public static class GameBridge

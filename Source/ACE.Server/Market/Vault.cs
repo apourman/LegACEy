@@ -20,7 +20,7 @@ using ACE.Server.WorldObjects;
 namespace ACE.Server.Market
 {
     /// <summary>
-    /// The game side of the Vault: the one entry point the /vault commands and the game bridge use to move an item between a pack and the account's Vault.
+    /// The game side of the Vault: the one entry point the Vault chest's channel actions and the game bridge use to move an item between a pack and the account's Vault.
     /// Call Deposit and Withdraw on the world thread. The result is reported once through the callback:
     /// at once for a refusal, on the world thread after the save for a deposit or withdrawal.
     /// </summary>

@@ -179,8 +179,11 @@ namespace ACE.Server
         private static void AutoApplyWorldCustomizations()
         {
             var content_folders_search_option = ConfigManager.Config.Offline.RecurseWorldCustomizationPaths ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-            var content_folders = new List<string> { GetContentFolder() };
+            // Content is the repository's tracked world content, copied beside ACE.Server.dll and re-applied on every start.
+            // In the container it is also the content_folder, so the same folder is searched once.
+            var content_folders = new List<string> { GetContentFolder(), Path.Combine(AppContext.BaseDirectory, "Content") };
             content_folders.AddRange(ConfigManager.Config.Offline.WorldCustomizationAddedPaths);
+            content_folders = content_folders.Select(path => Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar)).Distinct().ToList();
             content_folders.Sort();
 
             Console.WriteLine($"Searching for World Customization SQL scripts .... ");
