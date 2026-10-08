@@ -81,6 +81,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     // a LegACEy item being dragged out of a window: the inventory cell under it shows the client's drop indicator
     private bool _itemDragActive;
     private readonly Dictionary<string, ScreenSurface> _featureSurfaces = new(StringComparer.Ordinal);
+    // Plugin windows the player closed: kept, texture and all, so reopening skips building the content again.
+    private readonly Dictionary<string, ScreenSurface> _hiddenSurfaces = new(StringComparer.Ordinal);
     // Error handlers of windows opened by plugins; a failure in one turns off its plugin, not the client.
     private readonly Dictionary<string, Action<Exception>> _windowFailures = new(StringComparer.Ordinal);
     private PluginRegistry? _plugins;
@@ -772,6 +774,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             throw new InvalidOperationException($"A feature window named '{definition.Id}' is already registered.");
         var panel = ObservePanel(AvaloniaPanel.Create(() => content, definition.Width, definition.Height), failed);
         var surface = new ScreenSurface(_device!, panel);
+        ShowSurface(definition, surface, requestedLocation, failed);
+    }
+
+    private void ShowSurface(WindowDefinition definition, ScreenSurface surface, Point requestedLocation, Action<Exception> failed)
+    {
         var opened = false;
         try
         {
@@ -779,7 +786,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             opened = true;
             surface.Location = window.Location;
             surface.Visible = true;
-            panel.ApplyTheme(_clientUi?.Theme ?? CurrentTheme());
+            surface.Panel.ApplyTheme(_clientUi?.Theme ?? CurrentTheme());
             _featureSurfaces.Add(definition.Id, surface);
             _windowFailures[definition.Id] = failed;
         }
@@ -794,7 +801,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     bool ILegACEyPluginHost.OpenWindow(WindowDefinition definition, Point location, Func<Action, Control> createContent, Action<Exception> failed, bool ownChrome)
     {
         if (!CanOpenWindows) return false;
-        Action close = () => ReleaseFeatureWindow(definition.Id);
+        if (_hiddenSurfaces.TryGetValue(definition.Id, out var hidden))
+        {
+            _hiddenSurfaces.Remove(definition.Id);
+            ShowSurface(definition, hidden, location, failed);
+            return true;
+        }
+        Action close = () => HideFeatureWindow(definition.Id);
         var content = createContent(close);
         try
         {
@@ -818,17 +831,36 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
 
     IServerChannel ILegACEyPluginHost.ServerChannel => (IServerChannel?)_serverChannel ?? UnavailableServerChannel.Instance;
     string ILegACEyPluginHost.PortalPath => _portal?.Path ?? string.Empty;
+    IGameArtSource ILegACEyPluginHost.Art => (IGameArtSource?)_portal ?? throw new InvalidOperationException("Game art is unavailable until the client UI is ready.");
     IItemDragHost ILegACEyPluginHost.ItemDrag => new ItemDragHost(this);
     uint ILegACEyPluginHost.CurrentSelection => CurrentSelection();
     bool ILegACEyPluginHost.IsWindowOpen(string id) => _featureSurfaces.ContainsKey(id);
+    void ILegACEyPluginHost.HideWindow(string id) => HideFeatureWindow(id);
     void ILegACEyPluginHost.CloseWindow(string id) => ReleaseFeatureWindow(id);
+
+    private void HideFeatureWindow(string id)
+    {
+        if (!_featureSurfaces.TryGetValue(id, out var surface)) return;
+        RemoveFeatureWindow(id, surface);
+        _hiddenSurfaces[id] = surface;
+    }
 
     private void ReleaseFeatureWindow(string id)
     {
+        if (_hiddenSurfaces.TryGetValue(id, out var hidden))
+        {
+            _hiddenSurfaces.Remove(id);
+            hidden.Dispose();
+        }
         if (!_featureSurfaces.TryGetValue(id, out var surface)) return;
+        RemoveFeatureWindow(id, surface);
+        surface.Dispose();
+    }
+
+    private void RemoveFeatureWindow(string id, ScreenSurface surface)
+    {
         if (_hovered == surface) _hovered = null;
         surface.Visible = false;
-        surface.Dispose();
         _featureSurfaces.Remove(id);
         _windowFailures.Remove(id);
         _windows?.Close(id);
@@ -1061,7 +1093,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         catch (Exception cleanupError) { Log($"Could not clean up feature UI after window failure: {cleanupError}"); }
         _clientUi = null;
         // Plugin windows are not in the client UI framework; release them here too.
-        foreach (var id in _featureSurfaces.Keys.ToArray())
+        foreach (var id in _featureSurfaces.Keys.Concat(_hiddenSurfaces.Keys).ToArray())
             ReleaseFeatureWindow(id);
     }
 
@@ -1137,6 +1169,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         _windows = null;
         foreach (var surface in _featureSurfaces.Values) surface.Dispose();
         _featureSurfaces.Clear();
+        foreach (var surface in _hiddenSurfaces.Values) surface.Dispose();
+        _hiddenSurfaces.Clear();
         _windowFailures.Clear();
         _windowsEnabled = false;
         _portal?.Dispose();

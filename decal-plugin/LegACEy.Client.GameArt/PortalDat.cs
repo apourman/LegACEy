@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace LegACEy.Client.GameArt;
@@ -21,6 +22,8 @@ public sealed class PortalDat : IDisposable, IGameArtSource
     private readonly FileStream _stream;
     private readonly uint _blockSize;
     private readonly uint _rootDirectory;
+    // ponytail: unbounded, but UI art is a few hundred small images at most; add eviction if item icons ever grow it
+    private readonly Dictionary<uint, GameImage?> _images = new();
 
     public PortalDat(string path)
     {
@@ -35,8 +38,18 @@ public sealed class PortalDat : IDisposable, IGameArtSource
 
     public string Path { get; }
 
-    /// <summary>Decode an interface image to premultiplied BGRA, or return null if it is missing or in an unsupported format.</summary>
+    /// <summary>
+    /// Decode an interface image to premultiplied BGRA, or return null if it is missing or in an unsupported format.
+    /// Each id is decoded once; callers share the result and must not change its pixels.
+    /// </summary>
     public GameImage? ReadImage(uint id)
+    {
+        if (!_images.TryGetValue(id, out var image))
+            _images.Add(id, image = DecodeImage(id));
+        return image;
+    }
+
+    private GameImage? DecodeImage(uint id)
     {
         var data = ReadFile(id);
         if (data == null || data.Length < 24) return null;

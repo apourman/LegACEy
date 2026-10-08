@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using Avalonia.Controls;
+using LegACEy.Client.GameArt;
 
 namespace LegACEy.Client.Demo;
 
@@ -25,15 +26,20 @@ public interface ILegACEyPlugin
 public interface ILegACEyClient
 {
     IServerChannel ServerChannel { get; }
-    /// <summary>The client's portal.dat path, for game art and model building.</summary>
+    /// <summary>The client's portal.dat path, for reading models off the game thread.</summary>
     string PortalPath { get; }
+    /// <summary>The client's interface art, read on the game thread. Images are decoded once and shared.</summary>
+    IGameArtSource Art { get; }
     /// <summary>Drag services for items between the retail inventory and a LegACEy window.</summary>
     IItemDragHost ItemDrag { get; }
     /// <summary>The object selected in the game; zero for none.</summary>
     uint CurrentSelection { get; }
     /// <summary>Adds an entry to the LegACEy menu. Its action runs when the player picks it.</summary>
     void AddMenuEntry(string title, uint iconId, Action action);
-    /// <summary>Opens the plugin's window around the content it builds, or closes that window when it is open.</summary>
+    /// <summary>
+    /// Opens the plugin's window around the content it builds, or hides that window when it is open. A hidden window keeps its
+    /// content and comes back as it was; the content is built once per session.
+    /// </summary>
     void ToggleWindow(string id, string title, int width, int height, Point defaultLocation, Func<Control> createContent);
     /// <summary>
     /// Like <see cref="ToggleWindow"/>, but the plugin builds the whole window, with its own chrome. The function gets the action
@@ -47,16 +53,19 @@ public interface ILegACEyPluginHost
 {
     IServerChannel ServerChannel { get; }
     string PortalPath { get; }
+    IGameArtSource Art { get; }
     IItemDragHost ItemDrag { get; }
     uint CurrentSelection { get; }
     bool IsWindowOpen(string id);
     /// <summary>
-    /// Opens a LegACEy window. <paramref name="createContent"/> runs only when the window will open, and gets the action that
-    /// closes it. Without <paramref name="ownChrome"/> the client wraps the content in its theme chrome. Returns false when
+    /// Opens a LegACEy window, or shows it again as it was if it is hidden. <paramref name="createContent"/> runs only when a new
+    /// window will open, and gets the action that hides it. Without <paramref name="ownChrome"/> the client wraps the content in its theme chrome. Returns false when
     /// windows are unavailable right now. An error from the window or its panel is passed to <paramref name="failed"/>.
     /// </summary>
     bool OpenWindow(WindowDefinition definition, Point location, Func<Action, Control> createContent, Action<Exception> failed, bool ownChrome);
-    /// <summary>Closes the window if it is open.</summary>
+    /// <summary>Hides the window if it is open, keeping it for the next <see cref="OpenWindow"/> with the same id.</summary>
+    void HideWindow(string id);
+    /// <summary>Closes the window, open or hidden, and releases it.</summary>
     void CloseWindow(string id);
 }
 
