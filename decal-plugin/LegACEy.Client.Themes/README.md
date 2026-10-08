@@ -7,7 +7,7 @@ styles and uses the stock Avalonia templates again.
 
 Control faces use native-size corner slices and cropped final edge tiles.
 Fields, lists, scroll content and vital meters tile native textures. PanelHost
-and the desktop preview set nearest-neighbour bitmap drawing on their root so
+and the panel root set nearest-neighbour bitmap drawing on their root so
 nested controls inherit it. Standard text entry, selection, checkbox and
 scrollbar behavior remains Avalonia's behavior. Tooltip themes are carried to
 their native popup roots and updated when the owning surface switches theme;

@@ -58,7 +58,7 @@ public interface IWindowPositionStore
     void Save(string server, string character, string windowId, Point location);
 }
 
-/// <summary>In-memory position store for tests and the preview app.</summary>
+/// <summary>In-memory position store for tests.</summary>
 public sealed class MemoryWindowPositionStore : IWindowPositionStore
 {
     private readonly Dictionary<string, Point> _positions = new(StringComparer.Ordinal);

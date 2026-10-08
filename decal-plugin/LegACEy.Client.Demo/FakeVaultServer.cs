@@ -5,7 +5,7 @@ using System.Linq;
 namespace LegACEy.Client.Demo;
 
 /// <summary>
-/// An in-process stand-in for ACE's channel and Vault actions, for the preview app and tests. It decodes real
+/// An in-process stand-in for ACE's channel and Vault actions, for tests. It decodes real
 /// request payloads and answers with real event payloads, so the client channel is exercised end to end.
 /// Replies wait in a queue until Pump; a started transfer completes, and is pushed, on the pump after its delay.
 /// </summary>

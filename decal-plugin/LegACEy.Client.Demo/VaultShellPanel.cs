@@ -225,7 +225,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         {
             var cells = Math.Max(MinimumCells, (items.Count + Columns - 1) / Columns * Columns);
             // Compact rows and a top inset leave room for the drop frame whatever the text metrics give the grid area
-            // (Tahoma in game is taller than the preview's fallback font).
+            // (Tahoma in game is taller than fallback fonts).
             var slots = new UniformGrid { Columns = Columns, Rows = cells / Columns, Margin = new Thickness(0, 4, 0, 0) };
             for (var index = 0; index < cells; index++)
             {

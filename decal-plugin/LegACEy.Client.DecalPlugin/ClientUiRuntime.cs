@@ -199,7 +199,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
         _clientUi = null;
         // Windows released their requests above; anything still outstanding fails as disconnected.
         Guard(() => _serverChannel?.Reset());
-        // Keep replacing retail roots through logout. RenderFrame hides any native
+        // Keep replacing the retail indicators bar through logout. RenderFrame hides any native
         // re-show until the element disappears; only unload or failure gives it back.
         foreach (var window in _windows?.ZOrder.ToArray() ?? Array.Empty<ManagedWindow>())
             _windows!.Close(window.Id);
@@ -236,7 +236,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
         _barRenderer = new RetailSurfaceRenderer(_barSurface.Prepare, _barSurface.DrawNow);
         _barTakeover = new RetailTakeoverLifecycle(new NativeBarPort(NativeUi.Indicators), new SurfaceTakeoverPort(_barSurface));
 
-        ApplyTheme(CurrentTheme());
+        _barSurface.Panel.ApplyTheme(CurrentTheme());
         EnsurePostUiDrawHook();
         Log("Indicator bar replacement ready.");
     }
@@ -265,13 +265,6 @@ internal sealed class ClientUiRuntime : IClientUiHost
         }
         Log("Post-UI drawing unavailable: checked retail EndScene hook could not be installed. Retail replacements use pre-UI drawing.");
         return false;
-    }
-
-    private void ApplyTheme(IClientTheme theme)
-    {
-        _barSurface?.Panel.ApplyTheme(theme);
-        foreach (var surface in _featureSurfaces.Values)
-            surface.Panel.ApplyTheme(theme);
     }
 
     private IClientTheme CurrentTheme() => _portal != null ? new AcClientTheme(_portal) : new SimpleClientTheme();

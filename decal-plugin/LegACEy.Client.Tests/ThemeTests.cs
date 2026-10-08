@@ -112,19 +112,6 @@ public sealed class ThemeTests
     });
 
     [Fact]
-    public void Closing_a_preview_chrome_removes_that_surface_from_its_workspace() => RenderThread.Run(() =>
-    {
-        var workspace = new StackPanel();
-        var chrome = new ThemeWindowChrome(new SolidColorArtSource(), "Preview", new TextBlock { Text = "Surface" });
-        workspace.Children.Add(chrome);
-
-        chrome.CloseAndRemoveFrom(workspace);
-        chrome.CloseButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-
-        Assert.DoesNotContain(chrome, workspace.Children);
-    });
-
-    [Fact]
     public void Nine_slice_edges_repeat_native_pixels_and_crop_the_final_partial_tile() => RenderThread.Run(() =>
     {
         using var panel = AvaloniaPanel.Create(() => new NineSliceBorder(new PatternArtSource(), 2), 13, 13);
@@ -286,27 +273,6 @@ public sealed class ThemeTests
             return new GameImage(width, height, Enumerable.Range(0, width * height).SelectMany(_ => color).ToArray());
         }
     }
-
-    [Fact]
-    public void Scrollbar_state_samples_show_the_same_thumb_art_as_live_states() => RenderThread.Run(() =>
-    {
-        var bars = new[] { "sample-normal", "sample-hover", "sample-pressed", "sample-disabled" }
-            .Select(state => new ScrollBar { Width = 200, Height = 20, Maximum = 100, ViewportSize = 10, Value = 30,
-                Orientation = Avalonia.Layout.Orientation.Horizontal, Classes = { state }, IsEnabled = state != "sample-disabled" }).ToArray();
-        using var panel = AvaloniaPanel.Create(() => new StackPanel { Spacing = 4, Children = { bars[0], bars[1], bars[2], bars[3] } }, 220, 100);
-        panel.ApplyTheme(new AcClientTheme(new ControlArtSource()));
-        panel.Tick();
-        byte[] ThumbPixel(ScrollBar bar)
-        {
-            var thumb = bar.GetVisualDescendants().OfType<Thumb>().Single();
-            var point = thumb.TranslatePoint(new Point(thumb.Bounds.Width / 2, thumb.Bounds.Height / 2), panel.Content)!.Value;
-            return Pixel(panel.Frame, (int)point.X, (int)point.Y);
-        }
-        Assert.Equal(ControlArtSource.Normal, ThumbPixel(bars[0]));
-        Assert.Equal(ControlArtSource.Hover, ThumbPixel(bars[1]));
-        Assert.Equal(ControlArtSource.Pressed, ThumbPixel(bars[2]));
-        Assert.NotEqual(ControlArtSource.Normal, ThumbPixel(bars[3]));
-    });
 
     [Theory]
     [InlineData(false)]

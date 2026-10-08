@@ -388,7 +388,7 @@ internal sealed class InputFixture : StackPanel
         ClickButton = new Button { Content = "Click count: 0" };
         ClickButton.Click += (_, _) => ClickButton.Content = $"Click count: {++clicks}";
         Input = new TextBox { Width = 200 };
-        Echo = new TextBlock { Name = "InputTextLabel" };
+        Echo = new TextBlock();
         Input.TextChanged += (_, _) => Echo.Text = Input.Text;
         Items = new ListBox { Height = 80, ItemsSource = Enumerable.Range(1, 40).Select(i => "Row " + i).ToArray() };
         FailButton = new Button { Content = "Trigger UI failure" };
