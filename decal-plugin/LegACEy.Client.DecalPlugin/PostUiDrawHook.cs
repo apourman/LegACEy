@@ -20,7 +20,10 @@ internal sealed class PostUiDrawHook : IDisposable
     private bool _installed;
     private bool _inside;
     private bool _hasRun;
-    private bool _removalReported;
+    // Each flag keeps one line per installed hook; they reset in InstallAt.
+    private bool _removedLogged;
+    private bool _removalFailureLogged;
+    private bool _lateCallLogged;
 
     [Function(CallingConventions.MicrosoftThiscall)]
     internal delegate void EndSceneDelegate(IntPtr renderDevice);
@@ -54,7 +57,9 @@ internal sealed class PostUiDrawHook : IDisposable
             _hook = ReloadedHooks.Instance.CreateHook<EndSceneDelegate>(OnEndScene, entry.ToInt64());
             _installed = true;
             _hasRun = false;
-            _removalReported = false;
+            _removedLogged = false;
+            _removalFailureLogged = false;
+            _lateCallLogged = false;
             _hook.Activate();
             return true;
         }
@@ -68,6 +73,11 @@ internal sealed class PostUiDrawHook : IDisposable
     private void OnEndScene(IntPtr renderDevice)
     {
         var original = _hook!.OriginalFunction;
+        if (!_installed && _removedLogged && !_lateCallLogged)
+        {
+            _lateCallLogged = true;
+            Report("Retail EndScene hook still called after removal.");
+        }
         if (!_inside && _installed)
         {
             _inside = true;
@@ -96,19 +106,27 @@ internal sealed class PostUiDrawHook : IDisposable
         catch (Exception exception)
         {
             // A still-callable managed callback must remain rooted and keep forwarding.
-            ReportRemoval($"Retail EndScene hook could not be removed; it stays rooted and forwards to retail: {exception.Message}");
+            // Dispose runs several times on the same path, so the failure is reported once; a later success still logs.
+            if (_hook != null && !_removalFailureLogged)
+            {
+                _removalFailureLogged = true;
+                Report($"Retail EndScene hook could not be removed; it stays rooted and forwards to retail: {exception.Message}");
+            }
             return;
         }
         if (_root.IsAllocated) _root.Free();
-        ReportRemoval("Retail EndScene hook removed.");
+        if (_hook != null && !_removedLogged)
+        {
+            _removedLogged = true;
+            Report("Retail EndScene hook removed.");
+        }
     }
 
-    /// <summary>Logs the outcome of removing the installed hook once; Dispose runs several times on the same path.</summary>
-    private void ReportRemoval(string message)
+    /// <summary>Reporting can run inside the native callback, so it must never throw.</summary>
+    private void Report(string message)
     {
-        if (_hook == null || _removalReported) return;
-        _removalReported = true;
-        _log(message);
+        try { _log(message); }
+        catch { /* Reporting must never escape the native callback. */ }
     }
 
     /// <summary>Require one signature in executable PE sections; never trust a PDB address.</summary>

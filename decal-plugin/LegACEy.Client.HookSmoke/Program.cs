@@ -14,8 +14,8 @@ class Program {
   code[35]=0xff;code[36]=0x06;code[37]=0x5e;code[38]=0xc3;
   Marshal.Copy(code,0,entry,64);
   var call=(Invoke)Marshal.GetDelegateForFunctionPointer(entry,typeof(Invoke));
-  var draws=0;var failures=0;var fail=false;
-  using(var hook=new PostUiDrawHook(()=>{draws++;if(fail)throw new Exception("draw failure");},_=>{failures++;throw new Exception("report failure");},_=>{})) {
+  var draws=0;var failures=0;var fail=false;var removedLogs=0;
+  using(var hook=new PostUiDrawHook(()=>{draws++;if(fail)throw new Exception("draw failure");},_=>{failures++;throw new Exception("report failure");},message=>{if(message=="Retail EndScene hook removed.")removedLogs++;})) {
    if(!hook.InstallAt(entry)||hook.HasRun)throw new Exception("install/readiness");
    call(device);
    if(!hook.HasRun||draws!=1||Marshal.ReadInt32(device)!=1)throw new Exception("callback/forwarding");
@@ -24,6 +24,7 @@ class Program {
    call(device);
    if(draws!=2||Marshal.ReadInt32(device)!=3)throw new Exception("disabled forwarding");
   }
+  if(removedLogs!=1)throw new Exception("removal logged once");
   call(device);
   if(Marshal.ReadInt32(device)!=4)throw new Exception("unload forwarding");
   Console.WriteLine("PASS: native x86 callback, thiscall forwarding, draw/report failure isolation, disable and unload.");

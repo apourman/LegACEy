@@ -40,6 +40,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private const string MenuSlot = "LegACEy";
     private const string MenuWindowId = "plugin-menu";
     private const uint MenuIcon = 0x06004D20;
+    private const string TestFailureFile = "fail-post-ui-draw";
     private static readonly string PluginDirectory = IOPath.GetDirectoryName(typeof(ClientUiRuntime).Assembly.Location)!;
     // Every client appends to the same log beside the DLL; the process id tells their lines apart.
     private static readonly int ProcessId = Process.GetCurrentProcess().Id;
@@ -58,6 +59,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private bool _firstPostUiWindow = true;
     private DateTime _lastMeasurementLog = DateTime.UtcNow;
     private DateTime _lastTestFailureCheck;
+    private TimeSpan _maxUiFrame;
+    private TimeSpan _maxPostUiDraw;
     private ScreenSurface? _hovered;
     private readonly InputRouterService _inputRouter = new();
     private Point _pointer;
@@ -377,7 +380,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     {
         var timer = Stopwatch.StartNew();
         try { OnRenderFrameCore(sender, e); }
-        finally { RecordPerformanceMeasurement(timer.Elapsed); }
+        finally
+        {
+            if (timer.Elapsed > _maxUiFrame) _maxUiFrame = timer.Elapsed;
+            RecordPerformanceMeasurement();
+        }
     }
 
     private void OnRenderFrameCore(object? sender, EventArgs e)
@@ -429,11 +436,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         });
     }
 
-    private void RecordPerformanceMeasurement(TimeSpan uiFrame)
+    /// <summary>Logs the longest frame and post-UI draw since the last sample, then starts counting again.</summary>
+    private void RecordPerformanceMeasurement()
     {
         var now = DateTime.UtcNow;
         if (now - _lastMeasurementLog < TimeSpan.FromSeconds(30)) return;
         _lastMeasurementLog = now;
+        var uiFrame = _maxUiFrame;
+        var postUiDraw = _maxPostUiDraw;
+        _maxUiFrame = TimeSpan.Zero;
+        _maxPostUiDraw = TimeSpan.Zero;
         try
         {
             var surfaces = new List<ScreenSurface>();
@@ -443,7 +455,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             var maxTick = surfaces.Count == 0 ? 0 : surfaces.Max(surface => surface.LastTickMilliseconds);
             var maxUpload = surfaces.Count == 0 ? 0 : surfaces.Max(surface => surface.LastUploadMilliseconds);
             var dirtyRectangles = surfaces.Sum(surface => surface.LastDirtyRectangleCount);
-            Log($"UI performance sample: uiFrame={uiFrame.TotalMilliseconds:F2}ms surfaces={surfaces.Count} maxPanelTick={maxTick:F2}ms maxTextureUpload={maxUpload:F2}ms dirtyRects={dirtyRectangles} privateBytes={process.PrivateMemorySize64} virtualBytes={process.VirtualMemorySize64}.");
+            Log($"UI performance sample: maxUiFrame={uiFrame.TotalMilliseconds:F2}ms maxPostUiDraw={postUiDraw.TotalMilliseconds:F2}ms surfaces={surfaces.Count} maxPanelTick={maxTick:F2}ms maxTextureUpload={maxUpload:F2}ms dirtyRects={dirtyRectangles} privateBytes={process.PrivateMemorySize64} virtualBytes={process.VirtualMemorySize64}.");
         }
         catch (Exception exception)
         {
@@ -468,6 +480,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
 
     /// <summary>Called by IDirect3DDevice9.EndScene after retail and Decal UI drawing.</summary>
     private void DrawAfterRetailUi()
+    {
+        var timer = Stopwatch.StartNew();
+        try { DrawAfterRetailUiCore(); }
+        finally { if (timer.Elapsed > _maxPostUiDraw) _maxPostUiDraw = timer.Elapsed; }
+    }
+
+    private void DrawAfterRetailUiCore()
     {
         if (_failed) return;
         ThrowIfTestFailureRequested();
@@ -500,11 +519,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         var now = DateTime.UtcNow;
         if (now - _lastTestFailureCheck < TimeSpan.FromSeconds(1)) return;
         _lastTestFailureCheck = now;
-        var marker = IOPath.Combine(PluginDirectory, "fail-post-ui-draw");
+        var marker = IOPath.Combine(PluginDirectory, TestFailureFile);
         if (!File.Exists(marker)) return;
         File.Delete(marker);
-        Log("Test failure requested by fail-post-ui-draw; throwing from the post-UI draw.");
-        throw new InvalidOperationException("Test failure requested by fail-post-ui-draw.");
+        Log($"Test failure requested by {TestFailureFile}; throwing from the post-UI draw.");
+        throw new InvalidOperationException($"Test failure requested by {TestFailureFile}.");
     }
 
     /// <summary>

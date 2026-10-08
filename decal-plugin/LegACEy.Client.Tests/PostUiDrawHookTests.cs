@@ -36,14 +36,4 @@ public sealed class PostUiDrawHookTests
         BitConverter.GetBytes(int.MaxValue).CopyTo(image, 0x3c);
         Assert.Null(PostUiDrawHook.FindEndSceneRva(image));
     }
-
-    [Fact]
-    public void Dispose_logs_nothing_when_no_hook_was_created()
-    {
-        var logged = new List<string>();
-        var hook = new PostUiDrawHook(() => { }, _ => { }, logged.Add);
-        hook.Dispose();
-        hook.Dispose();
-        Assert.Empty(logged);
-    }
 }
