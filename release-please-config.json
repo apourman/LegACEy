@@ -87,5 +87,6 @@
       ]
     }
   },
-  "separate-pull-requests": true
+  "separate-pull-requests": true,
+  "always-update": true
 }
