@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.1...decal-plugin-v0.1.2) (2026-10-08)
+
+
+### Features
+
+* **decal-plugin:** draw 3D views in any LegACEy window ([#21](https://github.com/apourman/LegACEy/issues/21)) ([4247146](https://github.com/apourman/LegACEy/commit/424714626df4948288e38ae3b6dc0b99de3ae11d))
+
 ## [0.1.1](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.0...decal-plugin-v0.1.1) (2026-10-07)
 
 
