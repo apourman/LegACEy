@@ -669,7 +669,6 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
 public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget, IDisposable
 {
     private readonly VaultShellPanel _panel;
-    private readonly IDisposable? _resources;
     private bool _disposed;
     public event EventHandler? CloseRequested;
 
@@ -684,14 +683,11 @@ public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget, IDisp
         if (_disposed) return;
         _disposed = true;
         _panel.Dispose();
-        _resources?.Dispose();
     }
 
-    /// <param name="resources">Released with the panel when the window is disposed, for example the portal the panel reads icons from.</param>
-    public VaultShellWindow(VaultShellPanel panel, IDisposable? resources = null)
+    public VaultShellWindow(VaultShellPanel panel)
     {
         _panel = panel ?? throw new ArgumentNullException(nameof(panel));
-        _resources = resources;
         var layout = new Grid { RowDefinitions = new RowDefinitions("64,*") };
         var title = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,32"), Margin = new Thickness(20, 6, 16, 0) };
         title.Children.Add(new StackPanel

@@ -1,6 +1,7 @@
 using System.Drawing;
 using Avalonia.Controls;
 using LegACEy.Client.Demo;
+using LegACEy.Client.GameArt;
 using LegACEy.Plugin.Paperdoll;
 using Xunit;
 
@@ -137,6 +138,27 @@ public sealed class PluginRegistryTests
         Assert.False(host.IsWindowOpen("Owner/window"));
     });
 
+    [Fact]
+    public void A_toggled_off_window_comes_back_without_rebuilding_and_logoff_still_releases_it() => RenderThread.Run(() =>
+    {
+        var host = new FakeHost();
+        var registry = new PluginRegistry(host, host.Log.Add);
+        registry.Add(new FakePlugin("Owner") { OnStart = client => client.AddMenuEntry("Owner", 0,
+            () => client.ToggleWindow("window", "Owner", 100, 80, new Point(0, 0), () => new Border())) });
+        var entry = registry.VisibleMenuEntries.Single();
+
+        registry.RunMenuEntry(entry);
+        registry.RunMenuEntry(entry);
+        Assert.False(host.IsWindowOpen("Owner/window"));
+        registry.RunMenuEntry(entry);
+        Assert.True(host.IsWindowOpen("Owner/window"));
+        Assert.Equal(1, host.Built);
+
+        registry.RunMenuEntry(entry);
+        registry.EndSession();
+        Assert.Empty(host.Content);
+    });
+
     private static string[] Titles(PluginRegistry registry) => registry.VisibleMenuEntries.Select(entry => entry.Title).ToArray();
 
     private sealed class FakeHost : ILegACEyPluginHost
@@ -148,17 +170,27 @@ public sealed class PluginRegistryTests
 
         public IServerChannel ServerChannel { get; init; } = UnavailableServerChannel.Instance;
         public string PortalPath => string.Empty;
+        public IGameArtSource Art => throw new NotSupportedException();
         public IItemDragHost ItemDrag => new FakeItemDragHost();
         public uint CurrentSelection => 0;
         public bool IsWindowOpen(string id) => Errors.ContainsKey(id);
 
+        public int Built { get; private set; }
+
         public bool OpenWindow(WindowDefinition definition, Point location, Func<Action, Control> createContent, Action<Exception> failed, bool ownChrome)
         {
-            Content[definition.Id] = createContent(() => CloseWindow(definition.Id));
+            // Like the client: a hidden window comes back as it was; only a new one builds its content.
+            if (!Content.ContainsKey(definition.Id))
+            {
+                Content[definition.Id] = createContent(() => HideWindow(definition.Id));
+                Built++;
+            }
             Errors[definition.Id] = failed;
             OwnChrome[definition.Id] = ownChrome;
             return true;
         }
+
+        public void HideWindow(string id) => Errors.Remove(id);
 
         public void CloseWindow(string id)
         {

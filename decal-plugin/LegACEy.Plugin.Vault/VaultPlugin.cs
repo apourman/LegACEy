@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Drawing;
 using Avalonia.Controls;
 using LegACEy.Client.Demo;
-using LegACEy.Client.GameArt;
 
 namespace LegACEy.Plugin.Vault;
 
@@ -30,16 +29,14 @@ public sealed class VaultPlugin : ILegACEyPlugin
 
     private static Control CreateWindow(ILegACEyClient client, Action close)
     {
-        // The panel reads item icons from the portal while it is open, so the window owns its own portal and releases it
-        // with the panel. If the window is never shown, the host disposes it; if building fails, nothing here leaks.
-        var portal = new PortalDat(client.PortalPath);
+        // The client keeps a closed window hidden and shows it again, so this runs once per session.
         VaultClient? vaultClient = null;
         VaultShellPanel? vault = null;
         try
         {
             vaultClient = new VaultClient(client.ServerChannel, () => client.CurrentSelection);
-            vault = new VaultShellPanel(portal, vaultClient, client.ItemDrag);
-            var window = new VaultShellWindow(vault, portal);
+            vault = new VaultShellPanel(client.Art, vaultClient, client.ItemDrag);
+            var window = new VaultShellWindow(vault);
             window.CloseRequested += (_, _) => close();
             window.DetachedFromVisualTree += (_, _) => window.Dispose();
             return window;
@@ -48,7 +45,6 @@ public sealed class VaultPlugin : ILegACEyPlugin
         {
             vault?.Dispose();
             vaultClient?.Dispose();
-            portal.Dispose();
             throw;
         }
     }

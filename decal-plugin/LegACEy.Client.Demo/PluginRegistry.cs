@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Linq;
 using System.Reflection;
 using Avalonia.Controls;
+using LegACEy.Client.GameArt;
 
 namespace LegACEy.Client.Demo;
 
@@ -154,10 +155,10 @@ public sealed class PluginRegistry
     {
         // Window ids are namespaced by plugin, so a plugin can never open or close another plugin's window or a client window.
         var windowId = entry.Name + "/" + id;
+        // A hidden window stays owned, so logoff or the plugin's failure still releases it.
         if (_host.IsWindowOpen(windowId))
         {
-            _windowOwners.Remove(windowId);
-            _host.CloseWindow(windowId);
+            _host.HideWindow(windowId);
             return;
         }
 
@@ -179,6 +180,7 @@ public sealed class PluginRegistry
 
         public IServerChannel ServerChannel { get; }
         public string PortalPath => _registry._host.PortalPath;
+        public IGameArtSource Art => _registry._host.Art;
         public IItemDragHost ItemDrag => _registry._host.ItemDrag;
         public uint CurrentSelection => _registry._host.CurrentSelection;
 
