@@ -22,7 +22,8 @@ public sealed class PortalDat : IDisposable, IGameArtSource
     private readonly FileStream _stream;
     private readonly uint _blockSize;
     private readonly uint _rootDirectory;
-    // ponytail: unbounded, but UI art is a few hundred small images at most; add eviction if item icons ever grow it
+    // ponytail: unbounded; holds the window art and every item icon shown this session. Add eviction if a session's
+    // icons ever reach a few MB.
     private readonly Dictionary<uint, GameImage?> _images = new();
 
     public PortalDat(string path)
