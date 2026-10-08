@@ -32,7 +32,7 @@ namespace ACE.Server.Market
                 VaultOutcome.ContainerNotEmpty => $"Empty {item} before you put it in the Vault.",
                 VaultOutcome.BlockedWcid => $"{item} cannot go in the Vault.",
                 VaultOutcome.VaultFull => "Your Vault is full. List or withdraw something first.",
-                VaultOutcome.NotInVault => "That item is not in your Vault. Use /vault list to see its id.",
+                VaultOutcome.NotInVault => "That item is not in your Vault.",
                 VaultOutcome.Listed => $"{item} is listed for sale. Delist it before you withdraw it.",
                 VaultOutcome.Withdrawing => $"{item} is already being withdrawn.",
                 VaultOutcome.NoPackSpace => $"You do not have room in your pack for {item}.",

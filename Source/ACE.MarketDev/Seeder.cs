@@ -254,7 +254,7 @@ namespace ACE.MarketDev
         }
 
         /// <summary>
-        /// A new item from the weenie, saved as a new item is, then escrowed through the deposit job, as /vault deposit does:
+        /// A new item from the weenie, saved as a new item is, then escrowed through the deposit job, as a Vault chest deposit does:
         /// the item row (no container, owner or location), its Vault row and the deposit event in one save
         /// </summary>
         private static void Deposit(SeedItem seedItem, uint guid, uint accountId, uint characterId)

@@ -9,7 +9,6 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using ACE.Database.Market;
 using ACE.Entity.Enum;
 using ACE.Server.ClientChannel;
-using ACE.Server.Command.Handlers;
 using ACE.Server.Managers;
 using ACE.Server.Market;
 using ACE.Server.Network.GameEvent.Events;
@@ -30,6 +29,7 @@ namespace ACE.Server.Tests.Market
         public void ChannelList_RepliesWithTheAccountsItemsBalanceAndIcons()
         {
             var (player, guid) = DepositedItem();
+            AtTheVault(player);
             VaultTestWorld.TakeSent(player);
 
             var reply = Request(player, VaultChannelActions.List, Array.Empty<byte>());
@@ -48,6 +48,7 @@ namespace ACE.Server.Tests.Market
         public void ChannelList_MarketClosed_SendsNoBalance()
         {
             var (player, _) = DepositedItem();
+            AtTheVault(player);
             VaultTestWorld.TakeSent(player);
 
             PropertyManager.ModifyBool(Vault.MarketEnabledKey, false);
@@ -74,6 +75,7 @@ namespace ACE.Server.Tests.Market
         {
             var (player, guid) = DepositedItem();
             var (bystander, otherGuid) = DepositedItem();
+            AtTheVault(player);
 
             using (ChannelSeconds(1))
             {
@@ -91,12 +93,47 @@ namespace ACE.Server.Tests.Market
                 Assert.AreEqual(guid, changed.ReadUInt32());
                 Assert.IsNotNull(player.GetInventoryItem(guid));
 
-                // a client that never used the channel gets no LegACEy events from a /vault withdrawal
+                // a client that never used the channel gets no LegACEy events from a withdrawal that doesn't come over it
                 VaultTestWorld.TakeSent(bystander);
-                VaultTestWorld.OnWorldThread(() => VaultCommands.HandleVault(bystander.Session, "withdraw", $"0x{otherGuid:X8}"));
+                VaultTestWorld.OnWorldThread(() => VaultChannel.StartWithdraw(bystander, otherGuid));
                 VaultTestWorld.WaitUntil(() => bystander.GetInventoryItem(otherGuid) != null, "the bystander's withdrawal");
                 Assert.IsFalse(VaultTestWorld.TakeSent(bystander).OfType<GameEventLegaceyChannel>().Any());
             }
+        }
+
+        [TestMethod]
+        public void ChannelDeposit_AtTheVault_ThenListAndWithdraw_BringTheItemBack()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+            var guid = item.Guid.Full;
+            AtTheVault(player);
+
+            using (ChannelSeconds(1))
+            {
+                Assert.AreEqual(1, Request(player, VaultChannelActions.Deposit, BitConverter.GetBytes(guid)).Body[0], "the deposit started");
+                AssertChanged(WaitForEvent(player, e => e.Kind == ChannelEventKind.Push), nameof(VaultOutcome.Deposited));
+                Assert.IsNull(player.GetInventoryItem(guid), "the deposit took the item");
+
+                var body = new BinaryReader(new MemoryStream(Request(player, VaultChannelActions.List, Array.Empty<byte>()).Body), Encoding.UTF8);
+                body.ReadByte();
+                body.ReadInt64();
+                body.ReadInt32();
+                Assert.AreEqual(1, body.ReadInt32(), "count");
+                Assert.AreEqual(guid, body.ReadUInt32(), "the Vault lists it");
+
+                Assert.AreEqual(1, Request(player, VaultChannelActions.Withdraw, BitConverter.GetBytes(guid)).Body[0], "the withdrawal started");
+                AssertChanged(WaitForEvent(player, e => e.Kind == ChannelEventKind.Push), nameof(VaultOutcome.Withdrawn));
+                Assert.IsNotNull(player.GetInventoryItem(guid), "the withdrawal brought it back");
+            }
+        }
+
+        private static void AssertChanged(ChannelEvent push, string outcome)
+        {
+            Assert.AreEqual(VaultChannelActions.Changed, push.Topic);
+            var changed = new BinaryReader(new MemoryStream(push.Body), Encoding.UTF8);
+            Assert.AreEqual(1, changed.ReadByte(), "success");
+            Assert.AreEqual(outcome, ChannelWire.ReadString(changed));
         }
 
         [TestMethod]
@@ -104,6 +141,7 @@ namespace ACE.Server.Tests.Market
         {
             var (player, attuned) = NewItem(i => i.Attuned = AttunedStatus.Attuned);
             var plain = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+            AtTheVault(player);
 
             var refused = new BinaryReader(new MemoryStream(Request(player, VaultChannelActions.Check, BitConverter.GetBytes(attuned.Guid.Full)).Body), Encoding.UTF8);
             Assert.AreEqual(attuned.Guid.Full, refused.ReadUInt32());
@@ -124,6 +162,7 @@ namespace ACE.Server.Tests.Market
             Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, second.Guid.Full).Outcome);
             CollectionAssert.AreEqual(new[] { first, second.Guid.Full }, Vault.List(player).Select(i => i.ItemGuid).ToArray());
             var versionBefore = VaultStore.Get(first).RowVersion;
+            AtTheVault(player);
 
             var reply = Request(player, VaultChannelActions.Move, ChannelWire.Body(w => { w.Write(first); w.Write(1); }));
 

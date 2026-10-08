@@ -407,35 +407,6 @@ namespace ACE.Server.Tests.Market
             AssertDepositRefused(carried, VaultOutcome.InTrade);
         }
 
-        // ---- commands
-
-        [TestMethod]
-        public void VaultCommands_DepositLastAppraised_ListAndWithdrawById()
-        {
-            var account = VaultTestWorld.NewAccountId();
-            var player = VaultTestWorld.NewPlayer(account);
-            var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
-            var guid = item.Guid.Full;
-            player.CurrentAppraisalTarget = guid;
-
-            // the commands channel first (ticket 04); keep the channel short here
-            using var channel = ChannelSeconds(1);
-
-            VaultTestWorld.OnWorldThread(() => Command.Handlers.VaultCommands.HandleVault(player.Session, "deposit"));
-            VaultTestWorld.WaitUntil(() => VaultStore.Get(guid) != null, "the deposit command's job");
-            VaultTestWorld.OnWorldThread(() => { });
-
-            Assert.IsNull(player.GetInventoryItem(guid), "/vault deposit took the last appraised item");
-            Assert.AreEqual(1, Vault.List(player).Count(r => r.ItemGuid == guid));
-
-            VaultTestWorld.OnWorldThread(() => Command.Handlers.VaultCommands.HandleVault(player.Session, "list"));
-            VaultTestWorld.OnWorldThread(() => Command.Handlers.VaultCommands.HandleVault(player.Session, "withdraw", $"0x{guid:X8}"));
-            VaultTestWorld.WaitUntil(() => VaultStore.Get(guid) == null, "the withdraw command's job");
-            VaultTestWorld.OnWorldThread(() => { });
-
-            Assert.IsNotNull(player.GetInventoryItem(guid), "/vault withdraw <id> brought it back");
-        }
-
         // ---- helpers
 
         private static (Player player, uint guid) DepositedItem()

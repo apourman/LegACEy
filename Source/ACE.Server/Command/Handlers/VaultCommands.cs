@@ -9,23 +9,23 @@ using ACE.Server.Network.GameMessages.Messages;
 namespace ACE.Server.Command.Handlers
 {
     /// <summary>
-    /// The /vault commands. Item deposits and withdrawals take the Vault channel, which then calls the Vault entry point the game bridge will use.
+    /// The /vault commands for trade notes, balance, plugin links and tokens. Items move at the Vault chest in Yaraq, over the Vault channel.
     /// Trade notes (MMD) go in and out of the account balance instantly, never through the channel.
     /// </summary>
     public static class VaultCommands
     {
-        private const string ItemUsage = "/vault deposit  (the last item you appraised)\n/vault withdraw <id>\n/vault list";
+        private const string ChestUsage = "Move items in and out of your Vault at the Vault chest in Yaraq.";
 
-        private const string MarketUsage = "\n/vault deposit mmd  (all your trade notes)\n/vault withdraw mmd <amount>\n/vault balance\n/vault link  (a code for the UtilityBelt plugin)\n/vault tokens\n/vault tokens revoke <id>";
+        private const string MarketUsage = "/vault deposit mmd  (all your trade notes)\n/vault withdraw mmd <amount>\n/vault balance\n/vault link  (a code for the UtilityBelt plugin)\n/vault tokens\n/vault tokens revoke <id>";
 
         /// <summary>
         /// The trade note and plugin lines only while the marketplace is open
         /// </summary>
-        private static string Usage => Vault.MarketEnabled ? ItemUsage + MarketUsage : ItemUsage;
+        private static string Usage => Vault.MarketEnabled ? ChestUsage + "\n" + MarketUsage : ChestUsage;
 
         [CommandHandler("vault", AccessLevel.Player, CommandHandlerFlag.RequiresWorld, 0,
-            "Move items between your pack and your account's Vault",
-            "deposit | withdraw <id> | list | deposit mmd | withdraw mmd <amount> | balance | link | tokens | tokens revoke <id>")]
+            "Vault trade notes, balance, plugin link and tokens. Items move at the Vault chest in Yaraq",
+            "deposit mmd | withdraw mmd <amount> | balance | link | tokens | tokens revoke <id>")]
         public static void HandleVault(Session session, params string[] parameters)
         {
             var player = session.Player;
@@ -38,52 +38,19 @@ namespace ACE.Server.Command.Handlers
 
             switch (parameters[0].ToLowerInvariant())
             {
-                case "deposit":
-                    // the outcome is told to the player by the channel and the Vault
-                    if (parameters.Length >= 2 && IsMmd(parameters[1]))
-                        Vault.DepositNotes(player);
-                    else
-                        VaultChannel.StartDeposit(player, player.CurrentAppraisalTarget ?? 0);
+                case "deposit" when parameters.Length >= 2 && IsMmd(parameters[1]):
+                    Vault.DepositNotes(player);
                     break;
 
-                case "withdraw":
-                    if (parameters.Length >= 2 && IsMmd(parameters[1]))
+                case "withdraw" when parameters.Length >= 2 && IsMmd(parameters[1]):
+                    if (parameters.Length < 3 || !long.TryParse(parameters[2], NumberStyles.None, CultureInfo.InvariantCulture, out var amount))
                     {
-                        if (parameters.Length < 3 || !long.TryParse(parameters[2], NumberStyles.None, CultureInfo.InvariantCulture, out var amount))
-                        {
-                            Tell(session, "Usage: /vault withdraw mmd <amount>, a whole number of trade notes.");
-                            return;
-                        }
-
-                        Vault.WithdrawNotes(player, amount);
+                        Tell(session, "Usage: /vault withdraw mmd <amount>, a whole number of trade notes.");
                         return;
                     }
 
-                    if (parameters.Length < 2 || !TryParseId(parameters[1], out var itemGuid))
-                    {
-                        Tell(session, "Usage: /vault withdraw <id>. /vault list shows each item's id.");
-                        return;
-                    }
-
-                    VaultChannel.StartWithdraw(player, itemGuid);
-                    break;
-
-                case "list":
-                {
-                    if (!Vault.Available)
-                    {
-                        Tell(session, VaultMessages.For(VaultOutcome.NotAvailable, null));
-                        return;
-                    }
-
-                    var items = Vault.List(player);
-
-                    Tell(session, items.Count == 0 ? "Your Vault is empty." : $"Your Vault holds {items.Count:N0} item{(items.Count == 1 ? "" : "s")}:");
-
-                    foreach (var item in items)
-                        Tell(session, $"0x{item.ItemGuid:X8}  {item.Name}{(item.StackSize > 1 ? $" x{item.StackSize:N0}" : "")}  [{item.State}]");
-                    break;
-                }
+                    Vault.WithdrawNotes(player, amount);
+                    return;
 
                 case "balance":
                     if (!Vault.Available)
@@ -153,14 +120,6 @@ namespace ACE.Server.Command.Handlers
         }
 
         private static bool IsMmd(string text) => text.Equals("mmd", StringComparison.OrdinalIgnoreCase);
-
-        private static bool TryParseId(string text, out uint id)
-        {
-            if (text.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-                return uint.TryParse(text.Substring(2), NumberStyles.HexNumber, null, out id);
-
-            return uint.TryParse(text, out id);
-        }
 
         private static void Tell(Session session, string message)
         {

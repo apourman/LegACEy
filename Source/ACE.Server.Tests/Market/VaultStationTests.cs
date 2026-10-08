@@ -11,6 +11,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using ACE.Entity;
 using ACE.Server.ClientChannel;
 using ACE.Server.Entity;
+using ACE.Server.Market;
 using ACE.Server.Network.GameEvent.Events;
 using ACE.Server.Tests.ClientChannel;
 using ACE.Server.WorldObjects;
@@ -174,6 +175,39 @@ namespace ACE.Server.Tests.Market
             CollectionAssert.AreEqual(new byte[] { 7 }, ran.Body);
         }
 
+        [TestMethod]
+        public void VaultActions_NeedTheVaultStation_AndRunWithIt()
+        {
+            var player = ConnectedPlayer();
+            var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+            // an item id and an index: the body every vault action reads the start of
+            var body = ChannelWire.Body(w => { w.Write(item.Guid.Full); w.Write(0); });
+            var actions = new[] { VaultChannelActions.List, VaultChannelActions.Deposit, VaultChannelActions.Withdraw, VaultChannelActions.Check, VaultChannelActions.Move };
+
+            foreach (var action in actions)
+                Assert.AreEqual(ChannelStatus.NoStation, Request(player, action, body).Status, action);
+            Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full), "a refused deposit moved nothing");
+            Assert.IsFalse(player.IsVaultChannelling, "a refused deposit started no channel");
+
+            Use(player, NewStation(player, "other"));
+            WaitForPushes(player, 1);
+            foreach (var action in actions)
+                Assert.AreEqual(ChannelStatus.NoStation, Request(player, action, body).Status, $"{action}: a session at another station isn't enough");
+
+            using (ChannelSeconds(1))
+            {
+                AtTheVault(player);
+                foreach (var action in actions)
+                {
+                    var reply = Request(player, action, body);
+                    Assert.AreEqual(ChannelStatus.Ok, reply.Status, $"{action}: {Text(reply.Body)}");
+                }
+
+                // the deposit above started a channel: wait for its outcome, so its save isn't still running when the test's database goes
+                WaitForEvent(player, e => e.Kind == ChannelEventKind.Push && e.Topic == VaultChannelActions.Changed);
+            }
+        }
+
         /// <summary>
         /// A player whose client has used the channel, so it is sent pushes
         /// </summary>
@@ -205,6 +239,11 @@ namespace ACE.Server.Tests.Market
         {
             VaultTestWorld.OnWorldThread(() => station.OnActivate(player));
         }
+
+        /// <summary>
+        /// Starts the player's session at the Vault, as using the chest does
+        /// </summary>
+        private static void AtTheVault(Player player) => Use(player, NewStation(player, VaultStation));
 
         /// <summary>
         /// Moves the player along x, physics included
