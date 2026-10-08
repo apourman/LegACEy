@@ -41,6 +41,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private const string MenuWindowId = "plugin-menu";
     private const uint MenuIcon = 0x06004D20;
     private static readonly string PluginDirectory = IOPath.GetDirectoryName(typeof(ClientUiRuntime).Assembly.Location)!;
+    // Every client appends to the same log beside the DLL; the process id tells their lines apart.
+    private static readonly int ProcessId = Process.GetCurrentProcess().Id;
 
     private Device? _device;
     private PortalDat? _portal;
@@ -55,6 +57,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private bool _windowsEnabled;
     private bool _firstPostUiWindow = true;
     private DateTime _lastMeasurementLog = DateTime.UtcNow;
+    private DateTime _lastTestFailureCheck;
     private ScreenSurface? _hovered;
     private readonly InputRouterService _inputRouter = new();
     private Point _pointer;
@@ -153,7 +156,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     {
         try
         {
-            File.AppendAllText(IOPath.Combine(PluginDirectory, "legacey-avalonia.log"), $"{DateTime.Now:O} {message}{Environment.NewLine}");
+            File.AppendAllText(IOPath.Combine(PluginDirectory, "legacey-avalonia.log"), $"{DateTime.Now:O} [pid {ProcessId}] {message}{Environment.NewLine}");
         }
         catch
         {
@@ -289,7 +292,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private bool EnsurePostUiDrawHook()
     {
         // Entry rendering needs this before LoginComplete creates character windows.
-        _postUiDrawHook ??= new PostUiDrawHook(DrawAfterRetailUi, Disable);
+        _postUiDrawHook ??= new PostUiDrawHook(DrawAfterRetailUi, Disable, Log);
         try
         {
             if (_postUiDrawHook.Install()) return true;
@@ -467,6 +470,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private void DrawAfterRetailUi()
     {
         if (_failed) return;
+        ThrowIfTestFailureRequested();
         Guard(() => _barRenderer?.DrawAfterRetailUi());
         if (_failed || !_windowsEnabled || _windows == null)
             return;
@@ -485,6 +489,22 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         ReleaseModelRenderers(_drawnModelViews);
         // An item dragged out of a LegACEy window draws above everything.
         Guard(() => _dragIconSurface?.DrawNow());
+    }
+
+    /// <summary>
+    /// A tester creates a file named fail-post-ui-draw beside the DLL to make the next post-UI draw fail in game,
+    /// exercising the real EndScene failure path. Checked at most once a second, not every frame.
+    /// </summary>
+    private void ThrowIfTestFailureRequested()
+    {
+        var now = DateTime.UtcNow;
+        if (now - _lastTestFailureCheck < TimeSpan.FromSeconds(1)) return;
+        _lastTestFailureCheck = now;
+        var marker = IOPath.Combine(PluginDirectory, "fail-post-ui-draw");
+        if (!File.Exists(marker)) return;
+        File.Delete(marker);
+        Log("Test failure requested by fail-post-ui-draw; throwing from the post-UI draw.");
+        throw new InvalidOperationException("Test failure requested by fail-post-ui-draw.");
     }
 
     /// <summary>

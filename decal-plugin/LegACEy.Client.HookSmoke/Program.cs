@@ -15,7 +15,7 @@ class Program {
   Marshal.Copy(code,0,entry,64);
   var call=(Invoke)Marshal.GetDelegateForFunctionPointer(entry,typeof(Invoke));
   var draws=0;var failures=0;var fail=false;
-  using(var hook=new PostUiDrawHook(()=>{draws++;if(fail)throw new Exception("draw failure");},_=>{failures++;throw new Exception("report failure");})) {
+  using(var hook=new PostUiDrawHook(()=>{draws++;if(fail)throw new Exception("draw failure");},_=>{failures++;throw new Exception("report failure");},_=>{})) {
    if(!hook.InstallAt(entry)||hook.HasRun)throw new Exception("install/readiness");
    call(device);
    if(!hook.HasRun||draws!=1||Marshal.ReadInt32(device)!=1)throw new Exception("callback/forwarding");

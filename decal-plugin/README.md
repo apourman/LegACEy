@@ -51,6 +51,8 @@ the client loads those at startup. Keep the `Plugins` folder beside the main DLL
 not a standalone executable. If Decal is registered against a previous checkout
 path, update that registration after moving the directory.
 
+Creating an empty file named `fail-post-ui-draw` beside the main DLL makes the next post-UI draw fail in game (the file is deleted and the failure is logged to `legacey-avalonia.log`), which exercises the retail EndScene removal path.
+
 ## Tests
 
 Run the automated tests from the repository root:
