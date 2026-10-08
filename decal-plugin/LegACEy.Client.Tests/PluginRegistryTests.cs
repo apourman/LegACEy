@@ -1,6 +1,7 @@
 using System.Drawing;
 using Avalonia.Controls;
 using LegACEy.Client.Demo;
+using LegACEy.Plugin.Paperdoll;
 using Xunit;
 
 namespace LegACEy.Client.Tests;
@@ -61,18 +62,62 @@ public sealed class PluginRegistryTests
         var host = new FakeHost();
         var registry = new PluginRegistry(host, host.Log.Add);
         registry.Add(new FakePlugin("Owner") { OnStart = client => client.AddMenuEntry("Owner", 0,
-            () => client.ToggleWindow("owner-window", "Owner", 100, 80, new Point(0, 0), () => new Border())) });
+            () => client.ToggleWindow("window", "Owner", 100, 80, new Point(0, 0), () => new Border())) });
         registry.Add(new FakePlugin("Other") { OnStart = client => client.AddMenuEntry("Other", 0,
-            () => client.ToggleWindow("other-window", "Other", 100, 80, new Point(0, 0), () => new Border())) });
+            () => client.ToggleWindow("window", "Other", 100, 80, new Point(0, 0), () => new Border())) });
         registry.RunMenuEntry(registry.VisibleMenuEntries.First(entry => entry.Title == "Owner"));
         registry.RunMenuEntry(registry.VisibleMenuEntries.First(entry => entry.Title == "Other"));
+        Assert.True(host.IsWindowOpen("Owner/window"));
+        Assert.True(host.IsWindowOpen("Other/window"));
 
-        host.Errors["owner-window"](new InvalidOperationException("content failed"));
+        host.Errors["Owner/window"](new InvalidOperationException("content failed"));
 
-        Assert.False(host.IsWindowOpen("owner-window"));
-        Assert.True(host.IsWindowOpen("other-window"));
+        Assert.False(host.IsWindowOpen("Owner/window"));
+        Assert.True(host.IsWindowOpen("Other/window"));
         Assert.Equal(new[] { "Other" }, Titles(registry));
     });
+
+    [Fact]
+    public void A_reply_or_push_handler_that_throws_turns_off_only_its_plugin()
+    {
+        var channel = new FakeChannel();
+        var host = new FakeHost { ServerChannel = channel };
+        var registry = new PluginRegistry(host, host.Log.Add);
+        registry.Add(new FakePlugin("Reader")
+        {
+            OnStart = client =>
+            {
+                client.AddMenuEntry("Reader", 0, () => { });
+                client.ServerChannel.Subscribe("paperdoll.changed", _ => throw new InvalidDataException("malformed body"));
+            },
+        });
+        registry.Add(new FakePlugin("Other"));
+
+        channel.Push("paperdoll.changed", Array.Empty<byte>());
+
+        Assert.Equal(new[] { "Other" }, Titles(registry));
+        Assert.Contains(host.Log, line => line.Contains("'Reader'") && line.Contains("malformed body"));
+    }
+
+    [Fact]
+    public void An_error_through_a_plugin_assembly_turns_that_plugin_off_and_an_error_without_one_does_not()
+    {
+        // The Paperdoll assembly is a real plugin assembly; the test assembly hosts the fake plugin.
+        var host = new FakeHost();
+        var registry = new PluginRegistry(host, host.Log.Add);
+        registry.Add(new PaperdollPlugin());
+        registry.Add(new FakePlugin("Other"));
+        registry.SetServerActions(new[] { PaperdollProtocol.Look });
+        Exception? thrown = null;
+        try { PaperdollProtocol.ReadLook(Array.Empty<byte>()); }
+        catch (Exception exception) { thrown = exception; }
+
+        Assert.False(registry.TryFailOwner(new InvalidOperationException("no frames: never thrown")));
+        Assert.Equal(new[] { "Paperdoll", "Other" }, Titles(registry));
+
+        Assert.True(registry.TryFailOwner(thrown!));
+        Assert.Equal(new[] { "Other" }, Titles(registry));
+    }
 
     private static string[] Titles(PluginRegistry registry) => registry.VisibleMenuEntries.Select(entry => entry.Title).ToArray();
 
@@ -81,7 +126,7 @@ public sealed class PluginRegistryTests
         public List<string> Log { get; } = new();
         public Dictionary<string, Action<Exception>> Errors { get; } = new(StringComparer.Ordinal);
 
-        public IServerChannel ServerChannel => UnavailableServerChannel.Instance;
+        public IServerChannel ServerChannel { get; init; } = UnavailableServerChannel.Instance;
         public string PortalPath => string.Empty;
         public bool IsWindowOpen(string id) => Errors.ContainsKey(id);
 
@@ -92,6 +137,34 @@ public sealed class PluginRegistryTests
         }
 
         public void CloseWindow(string id) => Errors.Remove(id);
+    }
+
+    /// <summary>Holds subscriptions and delivers pushes to them, as the host's channel would.</summary>
+    private sealed class FakeChannel : IServerChannel
+    {
+        private readonly List<(string Topic, Action<byte[]> Handler)> _subscriptions = new();
+
+        public bool IsAvailable => true;
+
+        public IDisposable Request(string action, byte[] body, Action<ChannelReply> completed, TimeSpan? timeout = null) => new Handle(() => { });
+
+        public IDisposable Subscribe(string topic, Action<byte[]> handler)
+        {
+            var subscription = (topic, handler);
+            _subscriptions.Add(subscription);
+            return new Handle(() => _subscriptions.Remove(subscription));
+        }
+
+        public void Push(string topic, byte[] body)
+        {
+            foreach (var (subscribed, handler) in _subscriptions.ToArray())
+                if (subscribed == topic) handler(body);
+        }
+
+        private sealed class Handle(Action release) : IDisposable
+        {
+            public void Dispose() => release();
+        }
     }
 
     private sealed class FakePlugin : ILegACEyPlugin

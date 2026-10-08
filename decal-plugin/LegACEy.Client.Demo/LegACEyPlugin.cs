@@ -68,18 +68,21 @@ public sealed class PluginMenuEntry
 
 internal sealed class PluginEntry
 {
-    public PluginEntry(string name, string version, IReadOnlyList<string> requiredActions)
+    public PluginEntry(string name, Assembly assembly, IReadOnlyList<string> requiredActions)
     {
         Name = name;
-        Version = version;
+        Assembly = assembly;
         RequiredActions = requiredActions;
     }
 
     public string Name { get; }
-    public string Version { get; }
+    /// <summary>The plugin's own assembly; errors whose stack passes through it belong to the plugin.</summary>
+    public Assembly Assembly { get; }
     public IReadOnlyList<string> RequiredActions { get; }
     public bool Enabled { get; set; } = true;
     public List<PluginMenuEntry> MenuEntries { get; } = new();
+    /// <summary>Channel subscriptions the plugin holds; disposed when it is turned off.</summary>
+    public List<IDisposable> Subscriptions { get; } = new();
 }
 
 /// <summary>Finds the plugins beside the client: Plugins/&lt;Name&gt;/&lt;Name&gt;.dll, one class implementing <see cref="ILegACEyPlugin"/>.</summary>

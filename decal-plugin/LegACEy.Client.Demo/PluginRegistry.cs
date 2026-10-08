@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
+using System.Reflection;
 using Avalonia.Controls;
 
 namespace LegACEy.Client.Demo;
@@ -40,11 +42,13 @@ public sealed class PluginRegistry
         if (plugin == null) throw new ArgumentNullException(nameof(plugin));
         string name, version;
         string[] requiredActions;
+        Assembly assembly;
         try
         {
             name = plugin.Name ?? string.Empty;
             version = plugin.Version ?? string.Empty;
             requiredActions = (plugin.RequiredActions ?? Array.Empty<string>()).ToArray();
+            assembly = plugin.GetType().Assembly;
         }
         catch (Exception exception)
         {
@@ -62,7 +66,7 @@ public sealed class PluginRegistry
             return;
         }
 
-        var entry = new PluginEntry(name, version, requiredActions);
+        var entry = new PluginEntry(name, assembly, requiredActions);
         _entries.Add(entry);
         try
         {
@@ -97,13 +101,39 @@ public sealed class PluginRegistry
     public void RunMenuEntry(PluginMenuEntry item)
     {
         if (item == null) throw new ArgumentNullException(nameof(item));
-        try { item.Action(); }
-        catch (Exception exception) { Fail(item.Owner, exception); }
+        Guarded(item.Owner, item.Action);
+    }
+
+    /// <summary>
+    /// Attributes an error that surfaced on the shared Avalonia dispatcher or render timer to the plugin whose code is on its
+    /// stack. Returns false when no loaded plugin's code is on the stack, so the error belongs to the client.
+    /// </summary>
+    public bool TryFailOwner(Exception exception)
+    {
+        if (exception == null) throw new ArgumentNullException(nameof(exception));
+        for (var error = exception; error != null; error = error.InnerException)
+            foreach (var frame in new StackTrace(error).GetFrames() ?? Array.Empty<StackFrame>())
+            {
+                var assembly = frame.GetMethod()?.DeclaringType?.Assembly;
+                var owner = assembly == null ? null : _entries.FirstOrDefault(entry => entry.Enabled && entry.Assembly == assembly);
+                if (owner == null) continue;
+                Fail(owner, exception);
+                return true;
+            }
+        return false;
     }
 
     private bool IsVisible(PluginEntry entry) => entry.Enabled && entry.RequiredActions.All(_serverActions.Contains);
 
-    /// <summary>Turns one plugin off: its windows close, its menu entries go, and the reason is logged with its name.</summary>
+    /// <summary>Runs one of a plugin's actions. An error from it turns that plugin off; a plugin that is already off is ignored.</summary>
+    private void Guarded(PluginEntry entry, Action action)
+    {
+        if (!entry.Enabled) return;
+        try { action(); }
+        catch (Exception exception) { Fail(entry, exception); }
+    }
+
+    /// <summary>Turns one plugin off: its windows close, its menu entries and channel subscriptions go, and the reason is logged with its name.</summary>
     private void Fail(PluginEntry entry, Exception reason)
     {
         if (!entry.Enabled) return;
@@ -114,23 +144,26 @@ public sealed class PluginRegistry
             _windowOwners.Remove(pair.Key);
             _host.CloseWindow(pair.Key);
         }
+        foreach (var subscription in entry.Subscriptions)
+            subscription.Dispose();
+        entry.Subscriptions.Clear();
         MenuChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void ToggleWindow(PluginEntry entry, string id, string title, int width, int height, Point location, Func<Control> createContent)
     {
-        if (_host.IsWindowOpen(id))
+        // Window ids are namespaced by plugin, so a plugin can never open or close another plugin's window or a client window.
+        var windowId = entry.Name + "/" + id;
+        if (_host.IsWindowOpen(windowId))
         {
-            if (!_windowOwners.TryGetValue(id, out var owner) || owner != entry)
-                throw new InvalidOperationException($"The window '{id}' is not one {entry.Name} opened.");
-            _windowOwners.Remove(id);
-            _host.CloseWindow(id);
+            _windowOwners.Remove(windowId);
+            _host.CloseWindow(windowId);
             return;
         }
 
         var content = createContent();
-        if (_host.OpenWindow(new WindowDefinition(id, title, width, height), location, content, reason => Fail(entry, reason)))
-            _windowOwners[id] = entry;
+        if (_host.OpenWindow(new WindowDefinition(windowId, title, width, height), location, content, reason => Fail(entry, reason)))
+            _windowOwners[windowId] = entry;
         else
             (content as IDisposable)?.Dispose();
     }
@@ -144,9 +177,10 @@ public sealed class PluginRegistry
         {
             _registry = registry;
             _entry = entry;
+            ServerChannel = new GuardedChannel(registry, entry);
         }
 
-        public IServerChannel ServerChannel => _registry._host.ServerChannel;
+        public IServerChannel ServerChannel { get; }
         public string PortalPath => _registry._host.PortalPath;
 
         public void AddMenuEntry(string title, uint iconId, Action action)
@@ -160,6 +194,37 @@ public sealed class PluginRegistry
         {
             if (createContent == null) throw new ArgumentNullException(nameof(createContent));
             _registry.ToggleWindow(_entry, id, title, width, height, defaultLocation, createContent);
+        }
+    }
+
+    /// <summary>The shared server channel as one plugin sees it: each callback runs under that plugin's guard.</summary>
+    private sealed class GuardedChannel : IServerChannel
+    {
+        private readonly PluginRegistry _registry;
+        private readonly PluginEntry _entry;
+
+        public GuardedChannel(PluginRegistry registry, PluginEntry entry)
+        {
+            _registry = registry;
+            _entry = entry;
+        }
+
+        private IServerChannel Channel => _registry._host.ServerChannel;
+
+        public bool IsAvailable => Channel.IsAvailable;
+
+        public IDisposable Request(string action, byte[] body, Action<ChannelReply> completed, TimeSpan? timeout = null)
+        {
+            if (completed == null) throw new ArgumentNullException(nameof(completed));
+            return Channel.Request(action, body, reply => _registry.Guarded(_entry, () => completed(reply)), timeout);
+        }
+
+        public IDisposable Subscribe(string topic, Action<byte[]> handler)
+        {
+            if (handler == null) throw new ArgumentNullException(nameof(handler));
+            var subscription = Channel.Subscribe(topic, body => _registry.Guarded(_entry, () => handler(body)));
+            _entry.Subscriptions.Add(subscription);
+            return subscription;
         }
     }
 }

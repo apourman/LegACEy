@@ -12,7 +12,7 @@ public sealed class PaperdollPlugin : ILegACEyPlugin
     private const uint MenuIcon = 0x06004D20;
 
     public string Name => "Paperdoll";
-    public string Version => "0.1.0";
+    public string Version => typeof(PaperdollPlugin).Assembly.GetName().Version.ToString(3);
     public IReadOnlyCollection<string> RequiredActions { get; } = new[] { PaperdollProtocol.Look };
 
     public void Start(ILegACEyClient client) =>

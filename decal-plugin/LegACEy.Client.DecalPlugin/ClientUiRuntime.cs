@@ -355,7 +355,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             };
             return vaultChrome;
         }
-        var chrome = new ThemeWindowChrome(_portal!, id == MenuWindowId ? MenuSlot : id, content);
+        // The only window reaching this point is the LegACEy menu.
+        var chrome = new ThemeWindowChrome(_portal!, MenuSlot, content);
         chrome.CloseRequested += (_, _) =>
         {
             _clientUi?.CloseWindow(id);
@@ -487,8 +488,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     }
 
     /// <summary>
-    /// Ticks each LegACEy window. A plugin window's failure, including a panel over its tick budget, turns off only that
-    /// plugin; a failure in a client window reaches the global guard.
+    /// Ticks each LegACEy window. A failure, including a panel over its tick budget, goes to the window's error handler:
+    /// a plugin's window turns off that plugin, a client window disables the client UI.
     /// </summary>
     private void PrepareFeatureWindows()
     {
@@ -496,13 +497,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         {
             // An earlier failure in this loop may have closed the window.
             if (!_featureSurfaces.ContainsKey(pair.Key)) continue;
-            if (!_windowFailures.TryGetValue(pair.Key, out var failed))
-            {
-                pair.Value.Prepare();
-                continue;
-            }
             try { pair.Value.Prepare(); }
-            catch (Exception exception) { failed(exception); }
+            catch (Exception exception) { _windowFailures[pair.Key](exception); }
         }
     }
 
@@ -1015,6 +1011,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     /// <summary>Stop drawing, give the player the retail bar back, and log why.</summary>
     private void Disable(Exception exception)
     {
+        // Every panel drains the shared Avalonia dispatcher, so a plugin's failure can surface on another panel.
+        if (_plugins?.TryFailOwner(exception) == true) return;
         _failed = true;
         Log($"Indicator bar replacement disabled: {exception}");
         RestoreNativeBar();
