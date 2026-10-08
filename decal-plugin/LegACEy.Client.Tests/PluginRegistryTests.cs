@@ -159,6 +159,66 @@ public sealed class PluginRegistryTests
         Assert.Empty(host.Content);
     });
 
+    [Fact]
+    public void A_station_open_opens_the_station_window_and_a_second_open_leaves_it_and_station_close_closes_it() => RenderThread.Run(() =>
+    {
+        var channel = new FakeChannel();
+        var host = new FakeHost { ServerChannel = channel };
+        var registry = new PluginRegistry(host, host.Log.Add);
+        registry.Add(new FakePlugin("Vault") { OnStart = client => client.RegisterStationWindow("vault", "window", "Vault", 100, 80, new Point(0, 0), _ => new Border()) });
+
+        channel.Push(StationProtocol.Open, StationBody("vault"));
+        Assert.True(host.IsWindowOpen("Vault/window"));
+        Assert.True(host.OwnChrome["Vault/window"]);
+
+        channel.Push(StationProtocol.Open, StationBody("vault"));
+        Assert.True(host.IsWindowOpen("Vault/window"));
+        Assert.Equal(1, host.Built);
+
+        channel.Push(StationProtocol.Close, StationBody("vault"));
+        Assert.False(host.IsWindowOpen("Vault/window"));
+        Assert.Empty(host.Content);
+    });
+
+    [Fact]
+    public void Closing_a_station_window_sends_station_leave() => RenderThread.Run(() =>
+    {
+        var channel = new FakeChannel();
+        var host = new FakeHost { ServerChannel = channel };
+        var registry = new PluginRegistry(host, host.Log.Add);
+        Action? close = null;
+        registry.Add(new FakePlugin("Vault") { OnStart = client => client.RegisterStationWindow("vault", "window", "Vault", 100, 80, new Point(0, 0),
+            closeWindow => { close = closeWindow; return new Border(); }) });
+        channel.Push(StationProtocol.Open, StationBody("vault"));
+
+        close!();
+
+        Assert.False(host.IsWindowOpen("Vault/window"));
+        Assert.Equal(new[] { StationProtocol.Leave }, channel.Requested);
+    });
+
+    [Fact]
+    public void A_station_window_that_throws_while_opening_turns_off_only_its_plugin()
+    {
+        var channel = new FakeChannel();
+        var host = new FakeHost { ServerChannel = channel };
+        var registry = new PluginRegistry(host, host.Log.Add);
+        registry.Add(new FakePlugin("Broken") { OnStart = client => client.RegisterStationWindow("vault", "window", "Broken", 100, 80, new Point(0, 0), _ => throw new InvalidOperationException("window failed")) });
+        registry.Add(new FakePlugin("Other"));
+
+        channel.Push(StationProtocol.Open, StationBody("vault"));
+
+        Assert.False(host.IsWindowOpen("Broken/window"));
+        Assert.Equal(new[] { "Other" }, Titles(registry));
+        Assert.Contains(host.Log, line => line.Contains("'Broken'") && line.Contains("window failed"));
+    }
+
+    private static byte[] StationBody(string station) => ChannelWire.Body(writer =>
+    {
+        ChannelWire.WriteString(writer, station);
+        writer.Write(1234u);
+    });
+
     private static string[] Titles(PluginRegistry registry) => registry.VisibleMenuEntries.Select(entry => entry.Title).ToArray();
 
     private sealed class FakeHost : ILegACEyPluginHost
@@ -204,9 +264,14 @@ public sealed class PluginRegistryTests
     {
         private readonly List<(string Topic, Action<byte[]> Handler)> _subscriptions = new();
 
+        public List<string> Requested { get; } = new();
         public bool IsAvailable => true;
 
-        public IDisposable Request(string action, byte[] body, Action<ChannelReply> completed, TimeSpan? timeout = null) => new Handle(() => { });
+        public IDisposable Request(string action, byte[] body, Action<ChannelReply> completed, TimeSpan? timeout = null)
+        {
+            Requested.Add(action);
+            return new Handle(() => { });
+        }
 
         public IDisposable Subscribe(string topic, Action<byte[]> handler)
         {

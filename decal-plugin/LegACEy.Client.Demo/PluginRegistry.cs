@@ -2,12 +2,21 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using Avalonia.Controls;
 using LegACEy.Client.GameArt;
 
 namespace LegACEy.Client.Demo;
+
+/// <summary>The server's station channel: the pushes name a station, and the client answers with station.leave.</summary>
+public static class StationProtocol
+{
+    public const string Open = "station.open";
+    public const string Close = "station.close";
+    public const string Leave = "station.leave";
+}
 
 /// <summary>
 /// The client's plugin state: which plugins started, which server actions the server reported, what the LegACEy menu
@@ -20,12 +29,15 @@ public sealed class PluginRegistry
     private readonly Action<string> _log;
     private readonly List<PluginEntry> _entries = new();
     private readonly Dictionary<string, PluginEntry> _windowOwners = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (PluginEntry Owner, WindowDefinition Window, Point Location, Func<Action, Control> CreateWindow)> _stations = new(StringComparer.Ordinal);
     private HashSet<string> _serverActions = new(StringComparer.Ordinal);
 
     public PluginRegistry(ILegACEyPluginHost host, Action<string> log)
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _log = log ?? throw new ArgumentNullException(nameof(log));
+        host.ServerChannel.Subscribe(StationProtocol.Open, body => { if (StationName(body) is { } station) OpenStation(station); });
+        host.ServerChannel.Subscribe(StationProtocol.Close, body => { if (StationName(body) is { } station) CloseStation(station); });
     }
 
     /// <summary>Raised when the menu may have changed: a server answer, a plugin turned off, a menu entry added, or a session change.</summary>
@@ -166,6 +178,49 @@ public sealed class PluginRegistry
             _windowOwners[windowId] = entry;
     }
 
+    private void RegisterStation(PluginEntry entry, string station, string id, string title, int width, int height, Point location, Func<Action, Control> createWindow)
+    {
+        if (_stations.ContainsKey(station)) throw new InvalidOperationException($"The station '{station}' already has a window.");
+        _stations[station] = (entry, new WindowDefinition(entry.Name + "/" + id, title, width, height), location, createWindow);
+    }
+
+    private void OpenStation(string station)
+    {
+        if (!_stations.TryGetValue(station, out var registered)) return;
+        Guarded(registered.Owner, () =>
+        {
+            // The server must still serve the plugin's actions, as for its menu entries. An open window stays as it is.
+            if (!IsVisible(registered.Owner) || _host.IsWindowOpen(registered.Window.Id)) return;
+            // Closing the window ends the station session on the server.
+            if (_host.OpenWindow(registered.Window, registered.Location, close => registered.CreateWindow(() => { close(); LeaveStation(); }),
+                    reason => Fail(registered.Owner, reason), ownChrome: true))
+                _windowOwners[registered.Window.Id] = registered.Owner;
+        });
+    }
+
+    private void CloseStation(string station)
+    {
+        if (!_stations.TryGetValue(station, out var registered)) return;
+        Guarded(registered.Owner, () =>
+        {
+            _windowOwners.Remove(registered.Window.Id);
+            _host.CloseWindow(registered.Window.Id);
+        });
+    }
+
+    private void LeaveStation() => _host.ServerChannel.Request(StationProtocol.Leave, Array.Empty<byte>(), _ => { });
+
+    /// <summary>The station name at the start of a station push; null, with a log line, when the body is malformed.</summary>
+    private string? StationName(byte[] body)
+    {
+        try { return ChannelWire.ReadString(ChannelWire.Reader(body)); }
+        catch (EndOfStreamException)
+        {
+            _log("A station push was skipped: its body is malformed.");
+            return null;
+        }
+    }
+
     private sealed class PluginClient : ILegACEyClient
     {
         private readonly PluginRegistry _registry;
@@ -201,6 +256,12 @@ public sealed class PluginRegistry
         {
             if (createWindow == null) throw new ArgumentNullException(nameof(createWindow));
             _registry.ToggleWindow(_entry, id, title, width, height, defaultLocation, createWindow, ownChrome: true);
+        }
+
+        public void RegisterStationWindow(string station, string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow)
+        {
+            if (createWindow == null) throw new ArgumentNullException(nameof(createWindow));
+            _registry.RegisterStation(_entry, station, id, title, width, height, defaultLocation, createWindow);
         }
     }
 

@@ -14,6 +14,7 @@ public enum ChannelStatus : byte
     RateLimited = 3,
     BadRequest = 4,
     Unavailable = 5,
+    NoStation = 6,
     TimedOut = 100,
     Disconnected = 101,
     NotSent = 102
