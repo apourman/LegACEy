@@ -212,7 +212,7 @@ public sealed class AcClientTheme : IClientTheme
     private static void AddSurface<T>(Styles styles, IBrush brush, string? state = null) where T : TemplatedControl
     {
         Add(styles, x => state == null ? x.OfType<T>() : x.OfType<T>().Class(state), TemplatedControl.BackgroundProperty, brush);
-        // Gallery specimens use the same faces as interactive controls.
+        // Sample states use the same faces as interactive controls.
         if (state == null)
         {
             foreach (var sample in new[] { "sample-normal", "sample-hover", "sample-pressed", "sample-focused", ":pointerover", ":pressed", ":focus" })

@@ -86,15 +86,15 @@ public sealed class PanelHostRenderingTests
     });
 
     [Fact]
-    public void Input_test_panel_button_text_binding_and_list_scrolling_use_headless_input() => RenderThread.Run(() =>
+    public void Headless_input_clicks_a_button_types_into_a_text_box_and_scrolls_a_list() => RenderThread.Run(() =>
     {
-        using var panel = AvaloniaPanel.Create(() => new InputTestPanel(360, 300), 360, 300);
+        using var panel = AvaloniaPanel.Create(() => new InputFixture(), 360, 300);
         panel.Tick();
-        var controls = panel.Content.GetVisualDescendants().ToArray();
-        var button = controls.OfType<Button>().First(control => Equals(control.Content, "Click count: 0"));
-        var textBox = controls.OfType<TextBox>().Single();
-        var label = controls.OfType<TextBlock>().First(control => control.Name == "InputTextLabel");
-        var listBox = controls.OfType<ListBox>().Single();
+        var fixture = (InputFixture)panel.Content;
+        var button = fixture.ClickButton;
+        var textBox = fixture.Input;
+        var label = fixture.Echo;
+        var listBox = fixture.Items;
 
         var buttonPoint = button.TranslatePoint(new Avalonia.Point(button.Bounds.Width / 2, button.Bounds.Height / 2), panel.Content)!.Value;
         panel.PointerDown(buttonPoint.X, buttonPoint.Y);
@@ -348,21 +348,20 @@ public sealed class PanelHostRenderingTests
     });
 
     [Fact]
-    public void Input_test_panel_exposes_a_real_throwing_button_for_failure_play_test() => RenderThread.Run(() =>
+    public void Throwing_button_in_a_panel_raises_the_error_event() => RenderThread.Run(() =>
     {
-        using var panel = AvaloniaPanel.Create(() => new InputTestPanel(360, 300), 360, 300);
-        var throwingButton = panel.Content.GetVisualDescendants().OfType<Button>()
-            .Single(button => Equals(button.Content, "Trigger UI failure"));
+        using var panel = AvaloniaPanel.Create(() => new InputFixture(), 360, 300);
+        var failButton = ((InputFixture)panel.Content).FailButton;
         Exception? reported = null;
         panel.Error += error => reported = error;
-        var point = throwingButton.TranslatePoint(new Avalonia.Point(throwingButton.Bounds.Width / 2,
-            throwingButton.Bounds.Height / 2), panel.Content)!.Value;
+        var point = failButton.TranslatePoint(new Avalonia.Point(failButton.Bounds.Width / 2,
+            failButton.Bounds.Height / 2), panel.Content)!.Value;
 
         panel.PointerDown(point.X, point.Y);
         panel.PointerUp(point.X, point.Y);
 
         Assert.IsType<InvalidOperationException>(reported);
-        Assert.Equal("Deliberate test failure from the input panel.", reported!.Message);
+        Assert.Equal("Deliberate test failure from the input fixture.", reported!.Message);
     });
 
     [Fact]
@@ -378,6 +377,34 @@ public sealed class PanelHostRenderingTests
             RenderThread.Run(panel.Dispose);
         }
     }
+}
+
+/// <summary>A button that counts its clicks, a text box echoed into a label, a scrollable list, and a button that throws.</summary>
+internal sealed class InputFixture : StackPanel
+{
+    public InputFixture()
+    {
+        var clicks = 0;
+        ClickButton = new Button { Content = "Click count: 0" };
+        ClickButton.Click += (_, _) => ClickButton.Content = $"Click count: {++clicks}";
+        Input = new TextBox { Width = 200 };
+        Echo = new TextBlock { Name = "InputTextLabel" };
+        Input.TextChanged += (_, _) => Echo.Text = Input.Text;
+        Items = new ListBox { Height = 80, ItemsSource = Enumerable.Range(1, 40).Select(i => "Row " + i).ToArray() };
+        FailButton = new Button { Content = "Trigger UI failure" };
+        FailButton.Click += (_, _) => throw new InvalidOperationException("Deliberate test failure from the input fixture.");
+        Children.Add(ClickButton);
+        Children.Add(Input);
+        Children.Add(Echo);
+        Children.Add(Items);
+        Children.Add(FailButton);
+    }
+
+    public Button ClickButton { get; }
+    public TextBox Input { get; }
+    public TextBlock Echo { get; }
+    public ListBox Items { get; }
+    public Button FailButton { get; }
 }
 
 internal sealed class RenderCountControl : Control

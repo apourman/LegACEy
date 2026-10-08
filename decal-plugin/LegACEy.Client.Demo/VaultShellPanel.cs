@@ -664,7 +664,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     }
 }
 
-/// <summary>Vault-specific chrome; independent of the theme gallery's retail control styling.</summary>
+/// <summary>Vault-specific chrome; independent of the theme's retail control styling.</summary>
 public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget
 {
     private readonly VaultShellPanel _panel;

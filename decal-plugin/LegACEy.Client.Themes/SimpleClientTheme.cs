@@ -6,7 +6,7 @@ using Avalonia.Styling;
 
 namespace LegACEy.Client.Themes;
 
-/// <summary>A neutral second theme for previewing and verifying runtime theme changes.</summary>
+/// <summary>A neutral fallback theme, used when the game's art is unavailable.</summary>
 public sealed class SimpleClientTheme : IClientTheme
 {
     public string Name => "Simple";
