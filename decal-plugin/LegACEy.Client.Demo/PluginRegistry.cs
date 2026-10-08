@@ -144,7 +144,7 @@ public sealed class PluginRegistry
             _windowOwners.Remove(pair.Key);
             _host.CloseWindow(pair.Key);
         }
-        foreach (var subscription in entry.Subscriptions)
+        foreach (var subscription in entry.Subscriptions.ToArray())
             subscription.Dispose();
         entry.Subscriptions.Clear();
         MenuChanged?.Invoke(this, EventArgs.Empty);
@@ -228,8 +228,30 @@ public sealed class PluginRegistry
         {
             if (handler == null) throw new ArgumentNullException(nameof(handler));
             var subscription = Channel.Subscribe(topic, body => _registry.Guarded(_entry, () => handler(body)));
-            _entry.Subscriptions.Add(subscription);
-            return subscription;
+            return new TrackedSubscription(_entry.Subscriptions, subscription);
+        }
+    }
+
+    /// <summary>A subscription the plugin holds. Disposing it removes it from the plugin's list, so the list does not grow.</summary>
+    private sealed class TrackedSubscription : IDisposable
+    {
+        private readonly List<IDisposable> _held;
+        private IDisposable? _subscription;
+
+        public TrackedSubscription(List<IDisposable> held, IDisposable subscription)
+        {
+            _held = held;
+            _subscription = subscription;
+            held.Add(this);
+        }
+
+        public void Dispose()
+        {
+            var subscription = _subscription;
+            if (subscription == null) return;
+            _subscription = null;
+            _held.Remove(this);
+            subscription.Dispose();
         }
     }
 }

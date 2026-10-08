@@ -40,7 +40,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private const string MenuSlot = "LegACEy";
     private const string MenuWindowId = "plugin-menu";
     private const uint MenuIcon = 0x06004D20;
-    private static readonly string[] FeatureSlots = { MenuSlot };
     private static readonly string PluginDirectory = IOPath.GetDirectoryName(typeof(ClientUiRuntime).Assembly.Location)!;
 
     private Device? _device;
@@ -96,7 +95,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         }
         catch (Exception exception) { Log($"LegACEy server channel disabled: {exception.Message}"); }
         try { _retailDrag = new RetailItemDrag(NativeUi.ReadMemory, Log); }
-        catch (Exception exception) { Log($"Vault drag and drop disabled: {exception.Message}"); }
+        catch (Exception exception) { Log($"Item drag and drop disabled: {exception.Message}"); }
         LoadPlugins();
         CoreManager.Current.FilterInitComplete += OnFilterInitComplete;
     }
@@ -247,8 +246,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         _windows = null;
         _hovered = null;
         _dragOffset = null;
-        foreach (var slot in FeatureSlots)
-            _bar?.SetOpen(slot, false);
+        _bar?.SetOpen(MenuSlot, false);
     }
 
     private void CreateUi()
@@ -267,7 +265,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             new IndicatorSlot("Vitae", 0x060074A1, () => NativeUi.ToggleRootElement(NativeUi.Vitae)),
             new IndicatorSlot("Character info", 0x060074A2, () => NativeUi.ToggleRootElement(NativeUi.CharacterInfo)),
             new IndicatorSlot("Mini-game", 0x060074A6, () => NativeUi.ToggleRootElement(NativeUi.MiniGame)),
-            new IndicatorSlot(MenuSlot, MenuIcon, () => ToggleWindow(MenuWindowId, PluginMenuPanel.WindowWidth, PluginMenuPanel.WindowHeight, new Point(260, 120)), "L"),
+            new IndicatorSlot(MenuSlot, MenuIcon, ToggleMenuWindow, "L"),
             new IndicatorSlot("Log out", 0x060074B1, NativeUi.RequestLogOut)
         };
         var size = IndicatorBar.MeasureFor(slots.Length);
@@ -309,7 +307,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
 
     private IClientTheme CurrentTheme() => _portal != null ? new AcClientTheme(_portal) : new SimpleClientTheme();
 
-    private void ToggleWindow(string id, int width, int height, Point defaultLocation)
+    /// <summary>Opens or closes the LegACEy menu window.</summary>
+    private void ToggleMenuWindow()
     {
         if (!_windowsEnabled || _windows == null || _clientUi == null)
             return;
@@ -318,34 +317,21 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             Log("LegACEy windows unavailable: the installed retail EndScene hook has not run. Keeping the indicator bar interactive.");
             return;
         }
-        if (_windows.Get(id) != null)
+        if (_windows.Get(MenuWindowId) != null)
         {
-            _clientUi.CloseWindow(id);
-            _bar?.SetOpen(SlotByWindowId(id), false);
+            _clientUi.CloseWindow(MenuWindowId);
+            _bar?.SetOpen(MenuSlot, false);
             return;
         }
-        _clientUi.OpenWindow(new WindowDefinition(id, id, width, height), CreateFeatureWindowContent(id), defaultLocation);
-        _bar?.SetOpen(SlotByWindowId(id), true);
-    }
-
-    private Control CreateFeatureWindowContent(string id)
-    {
-        if (id != MenuWindowId)
-            throw new ArgumentOutOfRangeException(nameof(id), id, "Unknown feature window.");
         var chrome = new ThemeWindowChrome(_portal!, MenuSlot, new PluginMenuPanel(_plugins!, _portal));
         chrome.CloseRequested += (_, _) =>
         {
-            _clientUi?.CloseWindow(id);
-            _bar?.SetOpen(SlotByWindowId(id), false);
+            _clientUi?.CloseWindow(MenuWindowId);
+            _bar?.SetOpen(MenuSlot, false);
         };
-        return chrome;
+        _clientUi.OpenWindow(new WindowDefinition(MenuWindowId, MenuWindowId, PluginMenuPanel.WindowWidth, PluginMenuPanel.WindowHeight), chrome, new Point(260, 120));
+        _bar?.SetOpen(MenuSlot, true);
     }
-
-    private static string SlotByWindowId(string id) => id switch
-    {
-        MenuWindowId => MenuSlot,
-        _ => id
-    };
 
     /// <summary>The handle was pressed: the bar follows the pointer until the button goes up.</summary>
     private void BeginBarDrag()
@@ -559,13 +545,18 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             _retailDragIcon.Dispose();
             _retailDragIcon = null;
         }
-        foreach (var pair in _featureSurfaces)
+        foreach (var pair in _featureSurfaces.ToArray())
         {
-            if (pair.Value.Panel.Content is not IRetailItemDropTarget target) continue;
+            // An earlier failure in this loop may have closed the window.
+            if (!_featureSurfaces.ContainsKey(pair.Key) || pair.Value.Panel.Content is not IRetailItemDropTarget target) continue;
             var surface = pair.Value;
-            target.RetailDragOver(item, _retailDragName, top == pair.Key
-                ? new Avalonia.Point(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y)
-                : null);
+            try
+            {
+                target.RetailDragOver(item, _retailDragName, top == pair.Key
+                    ? new Avalonia.Point(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y)
+                    : null);
+            }
+            catch (Exception exception) { _windowFailures[pair.Key](exception); }
         }
     }
 
@@ -582,8 +573,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         if (id == null) return;
         _retailDrag!.Cancel();
         var surface = SurfaceById(id);
-        var accepted = surface?.Panel.Content is IRetailItemDropTarget target &&
-            target.RetailDrop(item, ObjectName(item), new Avalonia.Point(point.X - surface.Location.X, point.Y - surface.Location.Y));
+        var accepted = false;
+        if (surface?.Panel.Content is IRetailItemDropTarget target)
+        {
+            try
+            {
+                accepted = target.RetailDrop(item, ObjectName(item), new Avalonia.Point(point.X - surface.Location.X, point.Y - surface.Location.Y));
+            }
+            catch (Exception exception) { _windowFailures[id](exception); }
+        }
         if (_loggedDrops++ < 5)
             Log($"Retail item 0x{item:X8} dropped on LegACEy window '{id}'; retail drag cancelled; accepted: {accepted}.");
         _retailDragItem = 0;
@@ -665,7 +663,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             // Without the panel element, any drop outside LegACEy windows withdraws to the pack.
             var target = !exists ? ItemDropTarget.Inventory : !open ? ItemDropTarget.InventoryClosed : over ? ItemDropTarget.Inventory : ItemDropTarget.Elsewhere;
             if (_owner._loggedDrops++ < 5)
-                Log($"Vault item dropped at {_owner._pointer}: retail element under pointer 0x{element:X8}, inventory open: {open}, target: {target}.");
+                Log($"Item dropped at {_owner._pointer}: retail element under pointer 0x{element:X8}, inventory open: {open}, target: {target}.");
             return target;
         }
     }
@@ -759,13 +757,22 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         if (!CanOpenWindows) return false;
         Action close = () => ReleaseFeatureWindow(definition.Id);
         var content = createContent(close);
-        if (ownChrome)
-            OpenWindowCore(definition, content, location, failed);
-        else
+        try
         {
-            var chrome = new ThemeWindowChrome(_portal!, definition.Title, content);
-            chrome.CloseRequested += (_, _) => close();
-            OpenWindowCore(definition, chrome, location, failed);
+            if (ownChrome)
+                OpenWindowCore(definition, content, location, failed);
+            else
+            {
+                var chrome = new ThemeWindowChrome(_portal!, definition.Title, content);
+                chrome.CloseRequested += (_, _) => close();
+                OpenWindowCore(definition, chrome, location, failed);
+            }
+        }
+        catch
+        {
+            // The window never opened, so nothing else releases the content the plugin built for it.
+            (content as IDisposable)?.Dispose();
+            throw;
         }
         return true;
     }
@@ -1008,8 +1015,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     {
         _windowsEnabled = false;
         Log($"LegACEy windows disabled: {exception}");
-        foreach (var slot in FeatureSlots)
-            _bar?.SetOpen(slot, false);
+        _bar?.SetOpen(MenuSlot, false);
         foreach (var window in _windows?.ZOrder.ToArray() ?? Array.Empty<ManagedWindow>())
             _windows!.Close(window.Id);
         try { _clientUi?.EndSession(); }

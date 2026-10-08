@@ -30,16 +30,26 @@ public sealed class VaultPlugin : ILegACEyPlugin
 
     private static Control CreateWindow(ILegACEyClient client, Action close)
     {
-        // The panel reads item icons from the portal while it is open, so it holds its own portal until the window detaches.
+        // The panel reads item icons from the portal while it is open, so the window owns its own portal and releases it
+        // with the panel. If the window is never shown, the host disposes it; if building fails, nothing here leaks.
         var portal = new PortalDat(client.PortalPath);
-        var vault = new VaultShellPanel(portal, new VaultClient(client.ServerChannel, () => client.CurrentSelection), client.ItemDrag);
-        var window = new VaultShellWindow(vault);
-        window.CloseRequested += (_, _) => close();
-        window.DetachedFromVisualTree += (_, _) =>
+        VaultClient? vaultClient = null;
+        VaultShellPanel? vault = null;
+        try
         {
-            vault.Dispose();
+            vaultClient = new VaultClient(client.ServerChannel, () => client.CurrentSelection);
+            vault = new VaultShellPanel(portal, vaultClient, client.ItemDrag);
+            var window = new VaultShellWindow(vault, portal);
+            window.CloseRequested += (_, _) => close();
+            window.DetachedFromVisualTree += (_, _) => window.Dispose();
+            return window;
+        }
+        catch
+        {
+            vault?.Dispose();
+            vaultClient?.Dispose();
             portal.Dispose();
-        };
-        return window;
+            throw;
+        }
     }
 }
