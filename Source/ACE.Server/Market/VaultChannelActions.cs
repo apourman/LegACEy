@@ -29,17 +29,22 @@ namespace ACE.Server.Market
         public const string Move = "vault.move";
 
         /// <summary>
+        /// The station every action above requires: the Vault chest in Yaraq
+        /// </summary>
+        public const string Station = "vault";
+
+        /// <summary>
         /// Pushed after every Vault deposit, withdrawal or trade note change, whatever started it: this window, a /vault command or the website
         /// </summary>
         public const string Changed = "vault.changed";
 
         public static void Register()
         {
-            ServerChannel.Register(List, HandleList);
-            ServerChannel.Register(Deposit, context => HandleTransfer(context, deposit: true));
-            ServerChannel.Register(Withdraw, context => HandleTransfer(context, deposit: false));
-            ServerChannel.Register(Check, HandleCheck);
-            ServerChannel.Register(Move, HandleMove);
+            ServerChannel.Register(List, HandleList, Station);
+            ServerChannel.Register(Deposit, context => HandleTransfer(context, deposit: true), Station);
+            ServerChannel.Register(Withdraw, context => HandleTransfer(context, deposit: false), Station);
+            ServerChannel.Register(Check, HandleCheck, Station);
+            ServerChannel.Register(Move, HandleMove, Station);
         }
 
         /// <summary>

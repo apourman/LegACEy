@@ -9,7 +9,7 @@ namespace ACE.Server.WorldObjects
         private VaultChannel vaultChannel;
 
         /// <summary>
-        /// The /vault deposit or withdrawal this player is channelling, or null
+        /// The Vault deposit or withdrawal this player is channelling, or null
         /// </summary>
         public VaultChannel ActiveVaultChannel => Volatile.Read(ref vaultChannel);
 
