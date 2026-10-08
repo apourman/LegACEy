@@ -82,6 +82,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private bool _itemDragActive;
     private readonly Dictionary<string, ScreenSurface> _featureSurfaces = new(StringComparer.Ordinal);
     // Plugin windows the player closed: kept, texture and all, so reopening skips building the content again.
+    // ponytail: kept until logoff, still subscribed and running (the paperdoll rebuilds on equip changes); add a cap,
+    // or tell plugins when they are shown and hidden, once more plugins arrive
     private readonly Dictionary<string, ScreenSurface> _hiddenSurfaces = new(StringComparer.Ordinal);
     // Error handlers of windows opened by plugins; a failure in one turns off its plugin, not the client.
     private readonly Dictionary<string, Action<Exception>> _windowFailures = new(StringComparer.Ordinal);
@@ -804,6 +806,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         if (_hiddenSurfaces.TryGetValue(definition.Id, out var hidden))
         {
             _hiddenSurfaces.Remove(definition.Id);
+            // Hiding runs inside the window's own click, so its hover and focus are cleared here instead. A focused
+            // field left behind would take keys again after the next click in the window.
+            hidden.Panel.PointerLeave();
+            hidden.Panel.ClearFocus();
             ShowSurface(definition, hidden, location, failed);
             return true;
         }
@@ -1093,6 +1099,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         catch (Exception cleanupError) { Log($"Could not clean up feature UI after window failure: {cleanupError}"); }
         _clientUi = null;
         // Plugin windows are not in the client UI framework; release them here too.
+        ReleaseFeatureWindows();
+    }
+
+    private void ReleaseFeatureWindows()
+    {
         foreach (var id in _featureSurfaces.Keys.Concat(_hiddenSurfaces.Keys).ToArray())
             ReleaseFeatureWindow(id);
     }
@@ -1167,10 +1178,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         _postUiDrawHook?.Dispose();
         _postUiDrawHook = null;
         _windows = null;
-        foreach (var surface in _featureSurfaces.Values) surface.Dispose();
-        _featureSurfaces.Clear();
-        foreach (var surface in _hiddenSurfaces.Values) surface.Dispose();
-        _hiddenSurfaces.Clear();
+        ReleaseFeatureWindows();
         _windowFailures.Clear();
         _windowsEnabled = false;
         _portal?.Dispose();

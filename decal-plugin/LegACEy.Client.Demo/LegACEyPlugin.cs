@@ -58,9 +58,9 @@ public interface ILegACEyPluginHost
     uint CurrentSelection { get; }
     bool IsWindowOpen(string id);
     /// <summary>
-    /// Opens a LegACEy window, or shows it again as it was if it is hidden. <paramref name="createContent"/> runs only when a new
-    /// window will open, and gets the action that hides it. Without <paramref name="ownChrome"/> the client wraps the content in its theme chrome. Returns false when
-    /// windows are unavailable right now. An error from the window or its panel is passed to <paramref name="failed"/>.
+    /// Opens a LegACEy window, or shows it again as it was if it is hidden. <paramref name="createContent"/> runs
+    /// only when a new window will open, and gets the action that hides it. Without <paramref name="ownChrome"/> the
+    /// client wraps the content in its theme chrome. Returns false when windows are unavailable right now. An error from the window or its panel is passed to <paramref name="failed"/>.
     /// </summary>
     bool OpenWindow(WindowDefinition definition, Point location, Func<Action, Control> createContent, Action<Exception> failed, bool ownChrome);
     /// <summary>Hides the window if it is open, keeping it for the next <see cref="OpenWindow"/> with the same id.</summary>
