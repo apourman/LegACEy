@@ -14,19 +14,25 @@ internal sealed class PostUiDrawHook : IDisposable
     internal static readonly byte[] Signature = { 0x56, 0x8b, 0xf1, 0x8a, 0x86, 0xac, 0, 0, 0, 0x84, 0xc0, 0x74, 0x16 };
     private readonly Action _draw;
     private readonly Action<Exception> _failed;
+    private readonly Action<string> _log;
     private IHook<EndSceneDelegate>? _hook;
     private GCHandle _root;
     private bool _installed;
     private bool _inside;
     private bool _hasRun;
+    // Each flag keeps one line per installed hook; they reset in InstallAt.
+    private bool _removedLogged;
+    private bool _removalFailureLogged;
+    private bool _lateCallLogged;
 
     [Function(CallingConventions.MicrosoftThiscall)]
     internal delegate void EndSceneDelegate(IntPtr renderDevice);
 
-    public PostUiDrawHook(Action draw, Action<Exception> failed)
+    public PostUiDrawHook(Action draw, Action<Exception> failed, Action<string> log)
     {
         _draw = draw ?? throw new ArgumentNullException(nameof(draw));
         _failed = failed ?? throw new ArgumentNullException(nameof(failed));
+        _log = log ?? throw new ArgumentNullException(nameof(log));
     }
 
     public bool IsInstalled => _installed;
@@ -51,6 +57,9 @@ internal sealed class PostUiDrawHook : IDisposable
             _hook = ReloadedHooks.Instance.CreateHook<EndSceneDelegate>(OnEndScene, entry.ToInt64());
             _installed = true;
             _hasRun = false;
+            _removedLogged = false;
+            _removalFailureLogged = false;
+            _lateCallLogged = false;
             _hook.Activate();
             return true;
         }
@@ -64,6 +73,11 @@ internal sealed class PostUiDrawHook : IDisposable
     private void OnEndScene(IntPtr renderDevice)
     {
         var original = _hook!.OriginalFunction;
+        if (!_installed && _removedLogged && !_lateCallLogged)
+        {
+            _lateCallLogged = true;
+            Report("Retail EndScene hook still called after removal.");
+        }
         if (!_inside && _installed)
         {
             _inside = true;
@@ -89,12 +103,30 @@ internal sealed class PostUiDrawHook : IDisposable
             // Disable redirects entirely through native code, preserving other detour chains.
             _hook?.Disable();
         }
-        catch
+        catch (Exception exception)
         {
             // A still-callable managed callback must remain rooted and keep forwarding.
+            // Dispose runs several times on the same path, so the failure is reported once; a later success still logs.
+            if (_hook != null && !_removalFailureLogged)
+            {
+                _removalFailureLogged = true;
+                Report($"Retail EndScene hook could not be removed; it stays rooted and forwards to retail: {exception.Message}");
+            }
             return;
         }
         if (_root.IsAllocated) _root.Free();
+        if (_hook != null && !_removedLogged)
+        {
+            _removedLogged = true;
+            Report("Retail EndScene hook removed.");
+        }
+    }
+
+    /// <summary>Reporting can run inside the native callback, so it must never throw.</summary>
+    private void Report(string message)
+    {
+        try { _log(message); }
+        catch { /* Reporting must never escape the native callback. */ }
     }
 
     /// <summary>Require one signature in executable PE sections; never trust a PDB address.</summary>
