@@ -43,10 +43,11 @@
        by it. Each plugin's DLL is then copied to Plugins\<Name>\ beside the client. -->
   <ItemGroup>
     <ProjectReference Include="..\LegACEy.Plugin.Paperdoll\LegACEy.Plugin.Paperdoll.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\LegACEy.Plugin.Vault\LegACEy.Plugin.Vault.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <Target Name="CopyLegACEyPlugins" AfterTargets="Build">
-    <MSBuild Projects="..\LegACEy.Plugin.Paperdoll\LegACEy.Plugin.Paperdoll.csproj" Targets="GetTargetPath">
+    <MSBuild Projects="..\LegACEy.Plugin.Paperdoll\LegACEy.Plugin.Paperdoll.csproj;..\LegACEy.Plugin.Vault\LegACEy.Plugin.Vault.csproj" Targets="GetTargetPath">
       <Output TaskParameter="TargetOutputs" ItemName="LegACEyPluginAssembly" />
     </MSBuild>
     <Copy SourceFiles="@(LegACEyPluginAssembly);@(LegACEyPluginAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" DestinationFolder="$(OutDir)Plugins\%(Filename)" />

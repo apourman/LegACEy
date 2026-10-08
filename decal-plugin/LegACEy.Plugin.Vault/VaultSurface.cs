@@ -2,7 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 
-namespace LegACEy.Client.Demo;
+namespace LegACEy.Plugin.Vault;
 
 internal enum VaultMaterial { Slate, BlueSteel }
 

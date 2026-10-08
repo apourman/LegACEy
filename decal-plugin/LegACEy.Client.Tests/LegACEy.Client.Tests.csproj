@@ -33,6 +33,7 @@
     <ProjectReference Include="..\LegACEy.Client.InputRouter\LegACEy.Client.InputRouter.csproj" />
     <ProjectReference Include="..\LegACEy.Client.Demo\LegACEy.Client.Demo.csproj" />
     <ProjectReference Include="..\LegACEy.Plugin.Paperdoll\LegACEy.Plugin.Paperdoll.csproj" />
+    <ProjectReference Include="..\LegACEy.Plugin.Vault\LegACEy.Plugin.Vault.csproj" />
     <ProjectReference Include="..\LegACEy.Client.Themes\LegACEy.Client.Themes.csproj" />
   </ItemGroup>
 

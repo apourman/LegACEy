@@ -10,10 +10,11 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
 
-namespace LegACEy.Client.Demo;
+namespace LegACEy.Plugin.Vault;
 
 /// <summary>
 /// The account Vault window. With a <see cref="VaultClient"/> it shows the live Vault from the LegACEy server channel:
@@ -665,9 +666,11 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
 }
 
 /// <summary>Vault-specific chrome; independent of the theme's retail control styling.</summary>
-public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget
+public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget, IDisposable
 {
     private readonly VaultShellPanel _panel;
+    private readonly IDisposable? _resources;
+    private bool _disposed;
     public event EventHandler? CloseRequested;
 
     public void RetailDragOver(uint itemId, string itemName, Point? position) =>
@@ -676,9 +679,19 @@ public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget
     public bool RetailDrop(uint itemId, string itemName, Point position) =>
         this.TranslatePoint(position, _panel) is { } point && _panel.RetailDrop(itemId, itemName, point);
 
-    public VaultShellWindow(VaultShellPanel panel)
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _panel.Dispose();
+        _resources?.Dispose();
+    }
+
+    /// <param name="resources">Released with the panel when the window is disposed, for example the portal the panel reads icons from.</param>
+    public VaultShellWindow(VaultShellPanel panel, IDisposable? resources = null)
     {
         _panel = panel ?? throw new ArgumentNullException(nameof(panel));
+        _resources = resources;
         var layout = new Grid { RowDefinitions = new RowDefinitions("64,*") };
         var title = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,32"), Margin = new Thickness(20, 6, 16, 0) };
         title.Children.Add(new StackPanel

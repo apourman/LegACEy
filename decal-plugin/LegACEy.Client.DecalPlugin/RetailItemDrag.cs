@@ -82,7 +82,7 @@ internal sealed class RetailItemDrag
         Available = NativeUiCatalogue.Validate(readMemory, log, Entries);
         if (!Available)
         {
-            log("Vault drag and drop disabled: the running client does not match its native drag entries.");
+            log("Item drag and drop disabled: the running client does not match its native drag entries.");
             return;
         }
         _stop = Function<StopDragFn>(0x00459880);
@@ -132,7 +132,7 @@ internal sealed class RetailItemDrag
         if (!_loggedInventory)
         {
             _loggedInventory = true;
-            _log(exists ? "Vault drag: retail inventory panel found." : "Vault drag: retail inventory panel not found; drops outside the vault withdraw.");
+            _log(exists ? "Item drag: retail inventory panel found." : "Item drag: retail inventory panel not found; drops outside LegACEy windows withdraw.");
         }
         if (!open || !Available) return false;
         var manager = Marshal.ReadIntPtr(ManagerInstance);

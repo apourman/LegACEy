@@ -144,13 +144,13 @@ public sealed class PluginRegistry
             _windowOwners.Remove(pair.Key);
             _host.CloseWindow(pair.Key);
         }
-        foreach (var subscription in entry.Subscriptions)
+        foreach (var subscription in entry.Subscriptions.ToArray())
             subscription.Dispose();
         entry.Subscriptions.Clear();
         MenuChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void ToggleWindow(PluginEntry entry, string id, string title, int width, int height, Point location, Func<Control> createContent)
+    private void ToggleWindow(PluginEntry entry, string id, string title, int width, int height, Point location, Func<Action, Control> createContent, bool ownChrome)
     {
         // Window ids are namespaced by plugin, so a plugin can never open or close another plugin's window or a client window.
         var windowId = entry.Name + "/" + id;
@@ -161,11 +161,8 @@ public sealed class PluginRegistry
             return;
         }
 
-        var content = createContent();
-        if (_host.OpenWindow(new WindowDefinition(windowId, title, width, height), location, content, reason => Fail(entry, reason)))
+        if (_host.OpenWindow(new WindowDefinition(windowId, title, width, height), location, createContent, reason => Fail(entry, reason), ownChrome))
             _windowOwners[windowId] = entry;
-        else
-            (content as IDisposable)?.Dispose();
     }
 
     private sealed class PluginClient : ILegACEyClient
@@ -182,6 +179,8 @@ public sealed class PluginRegistry
 
         public IServerChannel ServerChannel { get; }
         public string PortalPath => _registry._host.PortalPath;
+        public IItemDragHost ItemDrag => _registry._host.ItemDrag;
+        public uint CurrentSelection => _registry._host.CurrentSelection;
 
         public void AddMenuEntry(string title, uint iconId, Action action)
         {
@@ -193,7 +192,13 @@ public sealed class PluginRegistry
         public void ToggleWindow(string id, string title, int width, int height, Point defaultLocation, Func<Control> createContent)
         {
             if (createContent == null) throw new ArgumentNullException(nameof(createContent));
-            _registry.ToggleWindow(_entry, id, title, width, height, defaultLocation, createContent);
+            _registry.ToggleWindow(_entry, id, title, width, height, defaultLocation, _ => createContent(), ownChrome: false);
+        }
+
+        public void ToggleWindowWithChrome(string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow)
+        {
+            if (createWindow == null) throw new ArgumentNullException(nameof(createWindow));
+            _registry.ToggleWindow(_entry, id, title, width, height, defaultLocation, createWindow, ownChrome: true);
         }
     }
 
@@ -223,8 +228,30 @@ public sealed class PluginRegistry
         {
             if (handler == null) throw new ArgumentNullException(nameof(handler));
             var subscription = Channel.Subscribe(topic, body => _registry.Guarded(_entry, () => handler(body)));
-            _entry.Subscriptions.Add(subscription);
-            return subscription;
+            return new TrackedSubscription(_entry.Subscriptions, subscription);
+        }
+    }
+
+    /// <summary>A subscription the plugin holds. Disposing it removes it from the plugin's list, so the list does not grow.</summary>
+    private sealed class TrackedSubscription : IDisposable
+    {
+        private readonly List<IDisposable> _held;
+        private IDisposable? _subscription;
+
+        public TrackedSubscription(List<IDisposable> held, IDisposable subscription)
+        {
+            _held = held;
+            _subscription = subscription;
+            held.Add(this);
+        }
+
+        public void Dispose()
+        {
+            var subscription = _subscription;
+            if (subscription == null) return;
+            _subscription = null;
+            _held.Remove(this);
+            subscription.Dispose();
         }
     }
 }

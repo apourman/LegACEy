@@ -19,6 +19,7 @@ and database remain in the repository's upstream-compatible `Source/` and
 | `LegACEy.Client.Themes` | Shared UI themes and controls |
 | `LegACEy.Client.Demo` | Framework windows and controls, and the plugin API (`ILegACEyPlugin`, `ILegACEyClient`) |
 | `LegACEy.Plugin.Paperdoll` | The 3D paperdoll plugin, built into `Plugins/Paperdoll/` |
+| `LegACEy.Plugin.Vault` | The account Vault plugin, built into `Plugins/Vault/` |
 | `LegACEy.Client.Tests` | Automated tests without an installed Decal runtime |
 | `LegACEy.Client.HookSmoke` | Windows native hook regression check |
 
@@ -45,7 +46,7 @@ The main output is
 relative to this directory. It loads through Decal and requires its companion
 managed libraries and the `x86/` native rendering libraries from the build
 output. Each LegACEy plugin is copied beside it as
-`Plugins/<Name>/<Name>.dll`, for example `Plugins/Paperdoll/Paperdoll.dll`;
+`Plugins/<Name>/<Name>.dll`, for example `Plugins/Paperdoll/Paperdoll.dll` and `Plugins/Vault/Vault.dll`;
 the client loads those at startup. Keep the `Plugins` folder beside the main DLL. Keep those dependencies available beside the plugin; the main DLL is
 not a standalone executable. If Decal is registered against a previous checkout
 path, update that registration after moving the directory.

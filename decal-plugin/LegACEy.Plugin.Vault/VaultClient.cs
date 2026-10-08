@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using LegACEy.Client.Demo;
 
-namespace LegACEy.Client.Demo;
+namespace LegACEy.Plugin.Vault;
 
 /// <summary>One Vault item as the server describes it, with the icon layers the client draws bottom to top.</summary>
 public sealed class VaultItemView
@@ -54,7 +55,6 @@ public sealed class VaultSnapshot
 /// <summary>Bodies of the Vault's channel actions; they must match ACE.Server.Market.VaultChannelActions.</summary>
 public static class VaultProtocol
 {
-    public const string Hello = "channel.hello";
     public const string List = "vault.list";
     public const string Deposit = "vault.deposit";
     public const string Withdraw = "vault.withdraw";
@@ -134,25 +134,6 @@ public static class VaultProtocol
         w.Write(itemGuid);
     });
 
-    public static (ushort Version, string Character, IReadOnlyList<string> Actions) ReadHello(byte[] body)
-    {
-        var reader = ChannelWire.Reader(body);
-        var version = reader.ReadUInt16();
-        var character = ChannelWire.ReadString(reader);
-        var count = reader.ReadInt32();
-        var actions = new List<string>();
-        for (var i = 0; i < count && i < 256; i++) actions.Add(ChannelWire.ReadString(reader));
-        return (version, character, actions);
-    }
-
-    public static byte[] WriteHello(string character, IEnumerable<string> actions) => ChannelWire.Body(w =>
-    {
-        var list = new List<string>(actions);
-        w.Write(ChannelWire.Version);
-        ChannelWire.WriteString(w, character);
-        w.Write(list.Count);
-        foreach (var action in list) ChannelWire.WriteString(w, action);
-    });
 }
 
 public enum VaultConnection { Connecting, Live, Unavailable, Failed }
@@ -197,10 +178,10 @@ public sealed class VaultClient : IDisposable
             Set(VaultConnection.Unavailable, "The LegACEy server channel is not available in this client.");
             return;
         }
-        Send(VaultProtocol.Hello, null, reply =>
+        Send(ChannelHello.Action, null, reply =>
         {
             if (!reply.Ok) { Set(VaultConnection.Failed, reply.Message); return; }
-            ServerCharacter = VaultProtocol.ReadHello(reply.Body).Character;
+            ServerCharacter = ChannelHello.Read(reply.Body).Character;
             Refresh();
         });
     }

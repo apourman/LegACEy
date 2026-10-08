@@ -119,24 +119,52 @@ public sealed class PluginRegistryTests
         Assert.Equal(new[] { "Other" }, Titles(registry));
     }
 
+    [Fact]
+    public void A_window_with_its_own_chrome_opens_without_the_client_chrome_and_its_close_action_closes_it() => RenderThread.Run(() =>
+    {
+        var host = new FakeHost();
+        var registry = new PluginRegistry(host, host.Log.Add);
+        var root = new Border();
+        Action? close = null;
+        registry.Add(new FakePlugin("Owner") { OnStart = client => client.AddMenuEntry("Owner", 0,
+            () => client.ToggleWindowWithChrome("window", "Owner", 100, 80, new Point(0, 0), closeWindow => { close = closeWindow; return root; })) });
+        registry.RunMenuEntry(registry.VisibleMenuEntries.Single());
+
+        Assert.True(host.IsWindowOpen("Owner/window"));
+        Assert.True(host.OwnChrome["Owner/window"]);
+        Assert.Same(root, host.Content["Owner/window"]);
+        close!();
+        Assert.False(host.IsWindowOpen("Owner/window"));
+    });
+
     private static string[] Titles(PluginRegistry registry) => registry.VisibleMenuEntries.Select(entry => entry.Title).ToArray();
 
     private sealed class FakeHost : ILegACEyPluginHost
     {
         public List<string> Log { get; } = new();
         public Dictionary<string, Action<Exception>> Errors { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, Control> Content { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, bool> OwnChrome { get; } = new(StringComparer.Ordinal);
 
         public IServerChannel ServerChannel { get; init; } = UnavailableServerChannel.Instance;
         public string PortalPath => string.Empty;
+        public IItemDragHost ItemDrag => new FakeItemDragHost();
+        public uint CurrentSelection => 0;
         public bool IsWindowOpen(string id) => Errors.ContainsKey(id);
 
-        public bool OpenWindow(WindowDefinition definition, Point location, Control content, Action<Exception> failed)
+        public bool OpenWindow(WindowDefinition definition, Point location, Func<Action, Control> createContent, Action<Exception> failed, bool ownChrome)
         {
+            Content[definition.Id] = createContent(() => CloseWindow(definition.Id));
             Errors[definition.Id] = failed;
+            OwnChrome[definition.Id] = ownChrome;
             return true;
         }
 
-        public void CloseWindow(string id) => Errors.Remove(id);
+        public void CloseWindow(string id)
+        {
+            Errors.Remove(id);
+            Content.Remove(id);
+        }
     }
 
     /// <summary>Holds subscriptions and delivers pushes to them, as the host's channel would.</summary>
