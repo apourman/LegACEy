@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.2...decal-plugin-v0.1.3) (2026-10-08)
+
+
+### Features
+
+* **decal-plugin:** load client plugins ([#23](https://github.com/apourman/LegACEy/issues/23)) ([19f8c32](https://github.com/apourman/LegACEy/commit/19f8c32617734f2ea199be995bebef14088d595d))
+
 ## [0.1.2](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.1...decal-plugin-v0.1.2) (2026-10-08)
 
 
