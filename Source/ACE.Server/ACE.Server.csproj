@@ -289,6 +289,7 @@
     <None Include="..\..\Database\Base\**" CopyToOutputDirectory="PreserveNewest" LinkBase="DatabaseSetupScripts\Base\" />
     <None Include="..\..\Database\Updates\**" CopyToOutputDirectory="PreserveNewest" LinkBase="DatabaseSetupScripts\Updates\" />
     <None Include="..\..\Database\Optional\**" CopyToOutputDirectory="PreserveNewest" LinkBase="DatabaseSetupScripts\Optional\" />
+    <None Include="..\..\Content\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Content\" />
   </ItemGroup>
 
   <Target Name="PreBuild" BeforeTargets="PreBuildEvent">

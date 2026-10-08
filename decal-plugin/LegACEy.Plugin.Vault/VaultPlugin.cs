@@ -15,13 +15,13 @@ public sealed class VaultPlugin : ILegACEyPlugin
     public string Name => "Vault";
     public string Version => typeof(VaultPlugin).Assembly.GetName().Version.ToString(3);
     /// <summary>
-    /// The actions the Vault client requests, and station.leave, which closing its window sends. vault.changed is not
+    /// The actions the Vault client requests (the client requires station.leave for every station window). vault.changed is not
     /// listed: it is a push from the server, and the server lists only the actions it registers, so requiring it would
     /// hide the Vault.
     /// </summary>
     public IReadOnlyCollection<string> RequiredActions { get; } = new[]
     {
-        VaultProtocol.List, VaultProtocol.Deposit, VaultProtocol.Withdraw, VaultProtocol.Check, VaultProtocol.Move, StationProtocol.Leave
+        VaultProtocol.List, VaultProtocol.Deposit, VaultProtocol.Withdraw, VaultProtocol.Check, VaultProtocol.Move
     };
 
     public void Start(ILegACEyClient client) =>

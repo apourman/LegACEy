@@ -22,7 +22,7 @@ namespace ACE.Server.Tests.Market
 {
     /// <summary>
     /// Seam 2: the game bridge. Each ticket is written with the store the Market API uses, and the world's own poller claims it,
-    /// runs it through the Vault entry point the /vault commands use, and writes the result back.
+    /// runs it through the Vault entry point the Vault chest uses, and writes the result back.
     /// </summary>
     public partial class VaultTests
     {

@@ -166,6 +166,7 @@ public sealed class PluginRegistryTests
         var host = new FakeHost { ServerChannel = channel };
         var registry = new PluginRegistry(host, host.Log.Add);
         registry.Add(new FakePlugin("Vault") { OnStart = client => client.RegisterStationWindow("vault", "window", "Vault", 100, 80, new Point(0, 0), _ => new Border()) });
+        registry.SetServerActions(new[] { StationProtocol.Leave });
 
         channel.Push(StationProtocol.Open, StationBody("vault"));
         Assert.True(host.IsWindowOpen("Vault/window"));
@@ -178,6 +179,12 @@ public sealed class PluginRegistryTests
         channel.Push(StationProtocol.Close, StationBody("vault"));
         Assert.False(host.IsWindowOpen("Vault/window"));
         Assert.Empty(host.Content);
+
+        // Logoff closes an open station window; the server ends the session itself.
+        channel.Push(StationProtocol.Open, StationBody("vault"));
+        registry.EndSession();
+        Assert.False(host.IsWindowOpen("Vault/window"));
+        Assert.Empty(channel.Requested);
     });
 
     [Fact]
@@ -189,6 +196,7 @@ public sealed class PluginRegistryTests
         Action? close = null;
         registry.Add(new FakePlugin("Vault") { OnStart = client => client.RegisterStationWindow("vault", "window", "Vault", 100, 80, new Point(0, 0),
             closeWindow => { close = closeWindow; return new Border(); }) });
+        registry.SetServerActions(new[] { StationProtocol.Leave });
         channel.Push(StationProtocol.Open, StationBody("vault"));
 
         close!();
@@ -205,13 +213,32 @@ public sealed class PluginRegistryTests
         var registry = new PluginRegistry(host, host.Log.Add);
         registry.Add(new FakePlugin("Broken") { OnStart = client => client.RegisterStationWindow("vault", "window", "Broken", 100, 80, new Point(0, 0), _ => throw new InvalidOperationException("window failed")) });
         registry.Add(new FakePlugin("Other"));
+        registry.SetServerActions(new[] { StationProtocol.Leave });
 
         channel.Push(StationProtocol.Open, StationBody("vault"));
 
         Assert.False(host.IsWindowOpen("Broken/window"));
         Assert.Equal(new[] { "Other" }, Titles(registry));
         Assert.Contains(host.Log, line => line.Contains("'Broken'") && line.Contains("window failed"));
+        // The window never opened, so the client leaves the station the server opened.
+        Assert.Equal(new[] { StationProtocol.Leave }, channel.Requested);
     }
+
+    [Fact]
+    public void An_open_station_window_that_fails_turns_off_its_plugin_and_leaves_the_station() => RenderThread.Run(() =>
+    {
+        var channel = new FakeChannel();
+        var host = new FakeHost { ServerChannel = channel };
+        var registry = new PluginRegistry(host, host.Log.Add);
+        registry.Add(new FakePlugin("Vault") { OnStart = client => client.RegisterStationWindow("vault", "window", "Vault", 100, 80, new Point(0, 0), _ => new Border()) });
+        registry.SetServerActions(new[] { StationProtocol.Leave });
+        channel.Push(StationProtocol.Open, StationBody("vault"));
+
+        host.Errors["Vault/window"](new InvalidOperationException("content failed"));
+
+        Assert.False(host.IsWindowOpen("Vault/window"));
+        Assert.Equal(new[] { StationProtocol.Leave }, channel.Requested);
+    });
 
     private static byte[] StationBody(string station) => ChannelWire.Body(writer =>
     {

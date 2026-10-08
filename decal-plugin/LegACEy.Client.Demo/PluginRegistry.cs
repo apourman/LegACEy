@@ -10,14 +10,6 @@ using LegACEy.Client.GameArt;
 
 namespace LegACEy.Client.Demo;
 
-/// <summary>The server's station channel: the pushes name a station, and the client answers with station.leave.</summary>
-public static class StationProtocol
-{
-    public const string Open = "station.open";
-    public const string Close = "station.close";
-    public const string Leave = "station.leave";
-}
-
 /// <summary>
 /// The client's plugin state: which plugins started, which server actions the server reported, what the LegACEy menu
 /// lists, and which windows each plugin owns. A failure turns off only the plugin that caused it. Like the rest of the
@@ -190,20 +182,27 @@ public sealed class PluginRegistry
     private void OpenStation(string station)
     {
         if (!_stations.TryGetValue(station, out var registered)) return;
-        Guarded(registered.Owner, () =>
+        var owner = registered.Owner;
+        // The server must still serve the plugin's actions and station.leave, as for menu entries.
+        // A window that can't open leaves the station, so the server doesn't hold the session for nothing.
+        if (!IsVisible(owner) || !_serverActions.Contains(StationProtocol.Leave))
         {
-            // The server must still serve the plugin's actions, as for its menu entries. An open window stays as it is.
-            if (!IsVisible(registered.Owner))
-            {
-                _log($"Station '{station}' did not open: the server does not list every action plugin '{registered.Owner.Name}' needs.");
-                return;
-            }
-            if (_host.IsWindowOpen(registered.Window.Id)) return;
+            _log(owner.Enabled
+                ? $"Station '{station}' did not open: the server does not list every action plugin '{owner.Name}' needs."
+                : $"Station '{station}' did not open: plugin '{owner.Name}' is off.");
+            LeaveStation();
+            return;
+        }
+        // An open window stays as it is.
+        if (_host.IsWindowOpen(registered.Window.Id)) return;
+        Guarded(owner, () =>
+        {
             // Closing the window ends the station session on the server.
             if (_host.OpenWindow(registered.Window, registered.Location, close => registered.CreateWindow(() => { close(); LeaveStation(); }),
-                    reason => Fail(registered.Owner, reason), ownChrome: true))
-                _windowOwners[registered.Window.Id] = registered.Owner;
+                    reason => Fail(owner, reason), ownChrome: true))
+                _windowOwners[registered.Window.Id] = owner;
         });
+        if (!owner.Enabled && !_host.IsWindowOpen(registered.Window.Id)) LeaveStation();
     }
 
     private void CloseStation(string station)

@@ -29,8 +29,7 @@ public sealed class VaultPluginTests
 
         var requested = server.Received.Where(action => action != ChannelHello.Action).Distinct().ToArray();
         Assert.Equal(new[] { VaultProtocol.List, VaultProtocol.Deposit, VaultProtocol.Withdraw, VaultProtocol.Check, VaultProtocol.Move }.Order(), requested.Order());
-        // Closing the Vault window sends station.leave, which is not a request this test makes.
-        Assert.Equal(requested.Append(StationProtocol.Leave).Order(), new VaultPlugin().RequiredActions.Order());
+        Assert.Equal(requested.Order(), new VaultPlugin().RequiredActions.Order());
         // The Vault's push is not a request; the server never lists it, so requiring it would hide the Vault.
         Assert.DoesNotContain(VaultProtocol.Changed, new VaultPlugin().RequiredActions);
     }

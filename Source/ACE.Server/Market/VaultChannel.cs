@@ -14,7 +14,7 @@ using ACE.Server.WorldObjects;
 namespace ACE.Server.Market
 {
     /// <summary>
-    /// The frozen channel every /vault item deposit and withdrawal takes (vault_channel_seconds, default 60), so the Vault is never a way out of a PK fight.
+    /// The frozen channel every Vault item deposit and withdrawal at the chest takes (vault_channel_seconds, default 60), so the Vault is never a way out of a PK fight.
     /// It is its own state, not the PK logout flag: that flag makes every physical attack on the player a critical hit.
     /// A landed player attack (the PK timer update), death and logout cancel it. When the time is up it calls the Vault, which re-checks every rule.
     /// MMD notes don't channel.

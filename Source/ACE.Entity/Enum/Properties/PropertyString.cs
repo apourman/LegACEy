@@ -95,6 +95,7 @@ namespace ACE.Entity.Enum.Properties
         AllegianceCastellanTitle       = 9005,
         GodState                       = 9006,
         TinkerLog                      = 9007,
-        LegaceyStation                 = 9008,
+        // LegACEy ids start at 9500, clear of ACE's own 9001+ run
+        LegaceyStation                 = 9500,
     }
 }

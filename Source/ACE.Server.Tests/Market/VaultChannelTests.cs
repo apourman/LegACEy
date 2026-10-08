@@ -21,7 +21,7 @@ using ACE.Server.WorldObjects;
 namespace ACE.Server.Tests.Market
 {
     /// <summary>
-    /// Seam 2: the channel that every /vault item deposit and withdrawal goes through, driven with test players in the started world
+    /// Seam 2: the channel that every Vault item deposit and withdrawal goes through, driven with test players in the started world
     /// </summary>
     public partial class VaultTests
     {

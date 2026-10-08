@@ -17,7 +17,7 @@ using EntityEnchantment = ACE.Entity.Models.PropertiesEnchantmentRegistry;
 namespace ACE.Server.Tests.Market
 {
     /// <summary>
-    /// Seam 2: the game-side Vault. Every test drives the one Vault entry point (the one the /vault commands use) with a test player in a started world.
+    /// Seam 2: the game-side Vault. Every test drives the one Vault entry point (the one the Vault chest uses) with a test player in a started world.
     /// </summary>
     [TestClass]
     public partial class VaultTests

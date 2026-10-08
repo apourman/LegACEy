@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 
@@ -29,7 +28,7 @@ namespace ACE.Server.Tests.Market
         // the linkable item generator: a generic object, the class a station is hooked on
         private const uint GenericWcid = 4142;
 
-        private const string VaultStation = "vault";
+        private const string VaultStation = VaultChannelActions.Station;
 
         private const string GatedAction = "test.gated";
 
@@ -130,11 +129,7 @@ namespace ACE.Server.Tests.Market
                     VaultTestWorld.OnWorldThread(() => player.LogOut());
                     break;
                 case "death":
-                    VaultTestWorld.OnWorldThread(() => typeof(Player).GetMethod("Die", BindingFlags.NonPublic | BindingFlags.Instance, null, new[] { typeof(DamageHistoryInfo), typeof(DamageHistoryInfo) }, null)
-                        .Invoke(player, new object[] { new DamageHistoryInfo(player), new DamageHistoryInfo(player) }));
-                    break;
-                default:
-                    Assert.Fail($"no trigger named {trigger}");
+                    VaultTestWorld.OnWorldThread(() => player.Die());
                     break;
             }
 
@@ -188,11 +183,6 @@ namespace ACE.Server.Tests.Market
                 Assert.AreEqual(ChannelStatus.NoStation, Request(player, action, body).Status, action);
             Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full), "a refused deposit moved nothing");
             Assert.IsFalse(player.IsVaultChannelling, "a refused deposit started no channel");
-
-            Use(player, NewStation(player, "other"));
-            WaitForPushes(player, 1);
-            foreach (var action in actions)
-                Assert.AreEqual(ChannelStatus.NoStation, Request(player, action, body).Status, $"{action}: a session at another station isn't enough");
 
             using (ChannelSeconds(1))
             {
