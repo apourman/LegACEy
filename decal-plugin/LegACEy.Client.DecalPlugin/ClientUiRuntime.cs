@@ -59,9 +59,9 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private PortalDat? _portal;
     private IndicatorBar? _bar;
     private BreakoutGame? _breakout;
-    private PaperdollPanel? _paperdoll;
-    private PaperdollRenderer? _paperdollRenderer;
-    private bool _paperdollFailed;
+    private readonly Dictionary<ModelView, ModelRenderer> _modelRenderers = new();
+    private readonly HashSet<ModelView> _failedModelViews = new();
+    private readonly HashSet<ModelView> _drawnModelViews = new();
     private ScreenSurface? _barSurface;
     private RetailSurfaceRenderer? _barRenderer;
     private WindowManager? _windows;
@@ -416,15 +416,8 @@ internal sealed class ClientUiRuntime : IClientUiHost
                 content = new VaultShellPanel(_portal!, new VaultClient(_clientUi!.ServerChannel, CurrentSelection), new ItemDragHost(this));
                 break;
             case "paperdoll":
-                var paperdoll = _paperdoll = new PaperdollPanel(_clientUi!.ServerChannel, _portal!.Path);
-                paperdoll.DetachedFromVisualTree += (_, _) =>
-                {
-                    paperdoll.Dispose();
-                    if (_paperdoll != paperdoll) return;
-                    _paperdoll = null;
-                    _paperdollRenderer?.Dispose();
-                    _paperdollRenderer = null;
-                };
+                var paperdoll = new PaperdollPanel(_clientUi!.ServerChannel, _portal!.Path);
+                paperdoll.DetachedFromVisualTree += (_, _) => paperdoll.Dispose();
                 content = paperdoll;
                 break;
             default:
@@ -687,41 +680,62 @@ internal sealed class ClientUiRuntime : IClientUiHost
         });
         if (_failed || !_windowsEnabled || _windows == null)
             return;
+        _drawnModelViews.Clear();
         foreach (var window in _windows.ZOrder.Reverse())
         {
-            SurfaceById(window.Id)?.DrawNow();
-            if (window.Id == "paperdoll")
-                DrawPaperdoll(SurfaceById(window.Id));
+            var surface = SurfaceById(window.Id);
+            surface?.DrawNow();
+            DrawModelViews(surface);
             if (_firstPostUiWindow)
             {
                 _firstPostUiWindow = false;
                 Log("LegACEy post-UI window draw reached through retail RenderDeviceD3D.EndScene.");
             }
         }
+        ReleaseModelRenderers(_drawnModelViews);
         // An item dragged out of a LegACEy window draws above everything.
         Guard(() => _dragIconSurface?.DrawNow());
     }
 
     /// <summary>
-    /// The 3D model goes on top of its window's frame, before any window above it. A failure turns off only the model.
+    /// Every 3D view in a window goes on top of that window's frame, before any window above it. A failure turns off
+    /// only that view, until its window closes.
     /// </summary>
-    private void DrawPaperdoll(ScreenSurface? surface)
+    private void DrawModelViews(ScreenSurface? surface)
     {
-        if (_paperdoll?.Model is not { } model || surface == null || _device == null || surface.Panel.Content is not Avalonia.Visual window || _paperdollFailed) return;
-        try
+        if (surface is not { Visible: true } || _device == null || surface.Panel.Content is not Avalonia.Visual window) return;
+        // ponytail: walks the window's visual tree every frame; cache the views per window if a big window makes it show up in the frame budget
+        foreach (var view in Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<ModelView>())
         {
-            var origin = Avalonia.VisualExtensions.TranslatePoint(_paperdoll.Viewport, default, window);
-            if (origin == null) return;
-            var bounds = _paperdoll.Viewport.Bounds;
-            var area = new Rectangle(surface.Location.X + (int)origin.Value.X, surface.Location.Y + (int)origin.Value.Y, (int)bounds.Width, (int)bounds.Height);
-            _paperdollRenderer ??= new PaperdollRenderer(_device);
-            _paperdollRenderer.Draw(model, area, _paperdoll.Yaw, _paperdoll.Zoom);
+            _drawnModelViews.Add(view);
+            if (view.Model is not { } model || !view.IsEffectivelyVisible || _failedModelViews.Contains(view)) continue;
+            try
+            {
+                var origin = Avalonia.VisualExtensions.TranslatePoint(view, default, window);
+                if (origin == null) continue;
+                var bounds = view.Bounds;
+                var area = new Rectangle(surface.Location.X + (int)origin.Value.X, surface.Location.Y + (int)origin.Value.Y, (int)bounds.Width, (int)bounds.Height);
+                if (!_modelRenderers.TryGetValue(view, out var renderer))
+                    _modelRenderers[view] = renderer = new ModelRenderer(_device);
+                renderer.Draw(model, area, view.Yaw, view.Zoom);
+            }
+            catch (Exception exception)
+            {
+                _failedModelViews.Add(view);
+                Log($"A 3D view failed to draw; it stays off until its window closes: {exception}");
+            }
         }
-        catch (Exception exception)
+    }
+
+    /// <summary>Frees the GPU resources of 3D views that are no longer in an open window (all of them for an empty set).</summary>
+    private void ReleaseModelRenderers(ISet<ModelView> keep)
+    {
+        foreach (var view in _modelRenderers.Keys.Where(view => !keep.Contains(view)).ToList())
         {
-            _paperdollFailed = true;
-            Log($"Paperdoll drawing failed; the model stays off until the plugin reloads: {exception}");
+            _modelRenderers[view].Dispose();
+            _modelRenderers.Remove(view);
         }
+        _failedModelViews.IntersectWith(keep);
     }
 
     /// <summary>Tells LegACEy drop targets about a drag in the retail UI, and where the pointer is over them.</summary>
@@ -1370,9 +1384,8 @@ internal sealed class ClientUiRuntime : IClientUiHost
         _portal = null;
         _bar = null;
         _breakout = null;
-        _paperdollRenderer?.Dispose();
-        _paperdollRenderer = null;
-        _paperdoll = null;
+        _drawnModelViews.Clear();
+        ReleaseModelRenderers(_drawnModelViews);
         GameArtImageExtension.CurrentSource = null;
     }
 }

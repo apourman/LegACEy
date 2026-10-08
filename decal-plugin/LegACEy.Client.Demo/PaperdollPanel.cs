@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -43,7 +42,7 @@ public static class PaperdollProtocol
 
 /// <summary>
 /// The 3D paperdoll prototype: asks the server how the player looks, builds the model from portal.dat off the game
-/// thread, and turns and zooms it with the mouse. The host draws the model on the game device over <see cref="Viewport"/>.
+/// thread, and shows it in a <see cref="ModelView"/>.
 /// </summary>
 public sealed class PaperdollPanel : UserControl, IDisposable
 {
@@ -54,7 +53,7 @@ public sealed class PaperdollPanel : UserControl, IDisposable
     private readonly string _portalPath;
     private readonly IDisposable _changed;
     private readonly TextBlock _status;
-    private Point? _dragFrom;
+    private readonly ModelView _view;
     private int _build;
     private bool _disposed;
 
@@ -63,39 +62,18 @@ public sealed class PaperdollPanel : UserControl, IDisposable
         _channel = channel ?? throw new ArgumentNullException(nameof(channel));
         _portalPath = portalPath;
         _status = new TextBlock { Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
-        Viewport = new Border { Background = Brushes.Transparent, ClipToBounds = true, Child = _status };
-        Viewport.PointerPressed += (_, e) => { _dragFrom = e.GetPosition(Viewport); e.Pointer.Capture(Viewport); e.Handled = true; };
-        Viewport.PointerMoved += (_, e) =>
-        {
-            if (_dragFrom is not { } from) return;
-            var point = e.GetPosition(Viewport);
-            Yaw += (float)(point.X - from.X) * 0.01f;
-            _dragFrom = point;
-        };
-        Viewport.PointerReleased += (_, e) => { _dragFrom = null; e.Pointer.Capture(null); };
-        Viewport.PointerWheelChanged += (_, e) => { Zoom = Math.Max(0.6f, Math.Min(3f, Zoom * (e.Delta.Y > 0 ? 1.1f : 1 / 1.1f))); e.Handled = true; };
+        _view = new ModelView { Child = _status };
 
         var hint = new TextBlock { Text = "Drag to turn · wheel to zoom", Foreground = Brushes.Gray, FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) };
         var layout = new DockPanel();
         DockPanel.SetDock(hint, Dock.Bottom);
         layout.Children.Add(hint);
-        layout.Children.Add(Viewport);
+        layout.Children.Add(_view);
         Content = layout;
 
         _changed = _channel.Subscribe(PaperdollProtocol.Changed, _ => Refresh());
         Refresh();
     }
-
-    /// <summary>Where the model is drawn.</summary>
-    public Control Viewport { get; }
-
-    /// <summary>The model to draw, or null while it loads. Replaced as a whole, from the UI thread.</summary>
-    public CharacterModel? Model { get; private set; }
-
-    /// <summary>Turn around Z, in radians. Starts facing the viewer (models face +Y; the camera looks along +Y).</summary>
-    public float Yaw { get; private set; } = (float)Math.PI;
-
-    public float Zoom { get; private set; } = 1f;
 
     public void Refresh()
     {
@@ -105,7 +83,7 @@ public sealed class PaperdollPanel : UserControl, IDisposable
             _status.Text = "The LegACEy server channel is not available in this client.";
             return;
         }
-        if (Model == null) _status.Text = "Loading…";
+        if (_view.Model == null) _status.Text = "Loading…";
         _channel.Request(PaperdollProtocol.Look, Array.Empty<byte>(), reply =>
         {
             if (_disposed) return;
@@ -129,7 +107,7 @@ public sealed class PaperdollPanel : UserControl, IDisposable
                     _status.Text = $"Could not build the model: {task.Exception.GetBaseException().Message}";
                     return;
                 }
-                Model = task.Result;
+                _view.Model = task.Result;
                 _status.Text = string.Empty;
             }), TaskScheduler.Default);
         });
