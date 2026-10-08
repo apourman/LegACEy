@@ -21,6 +21,18 @@ foreach ($name in @('LegACEy.Client.DecalPlugin.dll', 'LegACEy.Client.PanelHost.
 foreach ($name in @('Decal.Adapter.dll', 'Decal.Interop.Core.dll', 'Microsoft.DirectX.dll', 'Microsoft.DirectX.Direct3D.dll')) {
     if (Test-Path (Join-Path $runtime $name)) { throw "Build reference must not ship: $name" }
 }
+# LegACEy plugins: Plugins\<Name>\<Name>.dll beside the client. Each folder ships only its own DLL.
+$pluginRoot = Join-Path $BuildOutput 'Plugins'
+if (!(Test-Path (Join-Path $pluginRoot 'Paperdoll\Paperdoll.dll'))) { throw 'Missing plugin assembly: Plugins\Paperdoll\Paperdoll.dll' }
+$pluginDestination = Join-Path $runtime 'Plugins'
+New-Item -ItemType Directory -Path $pluginDestination | Out-Null
+foreach ($folder in Get-ChildItem $pluginRoot -Directory) {
+    $dlls = @(Get-ChildItem $folder.FullName -File -Filter '*.dll')
+    if ($dlls.Count -ne 1 -or $dlls[0].Name -ne "$($folder.Name).dll") { throw "Plugin folder $($folder.Name) must hold only $($folder.Name).dll" }
+    $target = Join-Path $pluginDestination $folder.Name
+    New-Item -ItemType Directory -Path $target | Out-Null
+    Copy-Item $dlls[0].FullName $target
+}
 Copy-Item (Join-Path $PSScriptRoot '../../LICENSE') (Join-Path $runtime 'LICENSE')
 Copy-Item (Join-Path $PSScriptRoot '../LegACEy.Client.Themes/Assets/LiberationFonts-LICENSE.txt') $runtime
 $dll = Join-Path $Destination 'LegACEy.Client.DecalPlugin.dll'

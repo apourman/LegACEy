@@ -21,7 +21,7 @@ using Microsoft.DirectX.Direct3D;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>Decal-facing runtime that wires game callbacks to the netstandard client UI framework.</summary>
-internal sealed class ClientUiRuntime : IClientUiHost
+internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
 {
     [StructLayout(LayoutKind.Sequential)]
     private struct NativePoint
@@ -38,8 +38,10 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private static extern bool ScreenToClient(IntPtr window, ref NativePoint point);
 
     private const string VaultSlot = "Vault preview";
-    private const string PaperdollSlot = "Paperdoll";
-    private static readonly string[] FeatureSlots = { VaultSlot, PaperdollSlot };
+    private const string MenuSlot = "LegACEy";
+    private const string MenuWindowId = "plugin-menu";
+    private const uint MenuIcon = 0x06004D20;
+    private static readonly string[] FeatureSlots = { VaultSlot, MenuSlot };
     private static readonly string PluginDirectory = IOPath.GetDirectoryName(typeof(ClientUiRuntime).Assembly.Location)!;
 
     private Device? _device;
@@ -75,6 +77,9 @@ internal sealed class ClientUiRuntime : IClientUiHost
     // a LegACEy item being dragged out of a window: the inventory cell under it shows the client's drop indicator
     private bool _itemDragActive;
     private readonly Dictionary<string, ScreenSurface> _featureSurfaces = new(StringComparer.Ordinal);
+    // Error handlers of windows opened by plugins; a failure in one turns off its plugin, not the client.
+    private readonly Dictionary<string, Action<Exception>> _windowFailures = new(StringComparer.Ordinal);
+    private PluginRegistry? _plugins;
     private bool _inGame;
     private bool _failed;
 
@@ -93,7 +98,20 @@ internal sealed class ClientUiRuntime : IClientUiHost
         catch (Exception exception) { Log($"LegACEy server channel disabled: {exception.Message}"); }
         try { _retailDrag = new RetailItemDrag(NativeUi.ReadMemory, Log); }
         catch (Exception exception) { Log($"Vault drag and drop disabled: {exception.Message}"); }
+        LoadPlugins();
         CoreManager.Current.FilterInitComplete += OnFilterInitComplete;
+    }
+
+    /// <summary>Starts the plugins in Plugins/ beside the client. Each plugin's failures stay with that plugin.</summary>
+    private void LoadPlugins()
+    {
+        _plugins = new PluginRegistry(this, Log);
+        try
+        {
+            foreach (var plugin in PluginLoader.Load(IOPath.Combine(PluginDirectory, "Plugins"), Log))
+                _plugins.Add(plugin);
+        }
+        catch (Exception exception) { Log($"LegACEy plugins unavailable: {exception}"); }
     }
 
     public void Shutdown()
@@ -186,7 +204,29 @@ internal sealed class ClientUiRuntime : IClientUiHost
             _clientUi ??= new ClientUiFramework(this, _gameState, CurrentTheme(), _serverChannel);
             _inGame = true;
             PublishGameState();
+            RequestServerActions();
         });
+    }
+
+    /// <summary>
+    /// Asks the server which actions it has. Until the answer arrives, and when there is none, every plugin that needs
+    /// a server action stays hidden.
+    /// </summary>
+    private void RequestServerActions()
+    {
+        _plugins?.SetServerActions(null);
+        _serverChannel?.Request(VaultProtocol.Hello, Array.Empty<byte>(), reply => _plugins?.SetServerActions(ServerActionsFrom(reply)));
+    }
+
+    private static IEnumerable<string> ServerActionsFrom(ChannelReply reply)
+    {
+        if (!reply.Ok) return Array.Empty<string>();
+        try { return VaultProtocol.ReadHello(reply.Body).Actions; }
+        catch (Exception exception)
+        {
+            Log($"Could not read the server's action list; plugins that need the server stay hidden: {exception.Message}");
+            return Array.Empty<string>();
+        }
     }
 
     private void OnLogoff(object? sender, EventArgs e)
@@ -197,6 +237,8 @@ internal sealed class ClientUiRuntime : IClientUiHost
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up client UI at logoff: {exception}"); }
         _clientUi = null;
+        try { _plugins?.EndSession(); }
+        catch (Exception exception) { Log($"Could not close plugin windows at logoff: {exception}"); }
         // Windows released their requests above; anything still outstanding fails as disconnected.
         Guard(() => _serverChannel?.Reset());
         // Keep replacing the retail indicators bar through logout. RenderFrame hides any native
@@ -227,7 +269,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
             new IndicatorSlot("Character info", 0x060074A2, () => NativeUi.ToggleRootElement(NativeUi.CharacterInfo)),
             new IndicatorSlot("Mini-game", 0x060074A6, () => NativeUi.ToggleRootElement(NativeUi.MiniGame)),
             new IndicatorSlot(VaultSlot, 0x06001020, () => ToggleWindow("vault-preview", VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight, new Point(240, 100)), "K" + VaultShellPanel.PreviewVersion),
-            new IndicatorSlot(PaperdollSlot, 0x06004D20, () => ToggleWindow("paperdoll", PaperdollPanel.WindowWidth, PaperdollPanel.WindowHeight, new Point(260, 120)), "D"),
+            new IndicatorSlot(MenuSlot, MenuIcon, () => ToggleWindow(MenuWindowId, PluginMenuPanel.WindowWidth, PluginMenuPanel.WindowHeight, new Point(260, 120)), "L"),
             new IndicatorSlot("Log out", 0x060074B1, NativeUi.RequestLogOut)
         };
         var size = IndicatorBar.MeasureFor(slots.Length);
@@ -296,10 +338,8 @@ internal sealed class ClientUiRuntime : IClientUiHost
             case "vault-preview":
                 content = new VaultShellPanel(_portal!, new VaultClient(_clientUi!.ServerChannel, CurrentSelection), new ItemDragHost(this));
                 break;
-            case "paperdoll":
-                var paperdoll = new PaperdollPanel(_clientUi!.ServerChannel, _portal!.Path);
-                paperdoll.DetachedFromVisualTree += (_, _) => paperdoll.Dispose();
-                content = paperdoll;
+            case MenuWindowId:
+                content = new PluginMenuPanel(_plugins!, _portal);
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(id), id, "Unknown feature window.");
@@ -315,7 +355,8 @@ internal sealed class ClientUiRuntime : IClientUiHost
             };
             return vaultChrome;
         }
-        var chrome = new ThemeWindowChrome(_portal!, id, content);
+        // The only window reaching this point is the LegACEy menu.
+        var chrome = new ThemeWindowChrome(_portal!, MenuSlot, content);
         chrome.CloseRequested += (_, _) =>
         {
             _clientUi?.CloseWindow(id);
@@ -327,7 +368,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
     private static string SlotByWindowId(string id) => id switch
     {
         "vault-preview" => VaultSlot,
-        "paperdoll" => PaperdollSlot,
+        MenuWindowId => MenuSlot,
         _ => id
     };
 
@@ -415,8 +456,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
             UpdateRetailDrag();
             if (_itemDragActive)
                 _retailDrag?.UpdateDropIndicator();
-            foreach (var surface in _featureSurfaces.Values)
-                PrepareWindow(surface);
+            PrepareFeatureWindows();
             if (_dragIconSurface != null)
             {
                 _dragIconSurface.Location = new Point(_pointer.X - 16, _pointer.Y - 16);
@@ -447,10 +487,19 @@ internal sealed class ClientUiRuntime : IClientUiHost
         }
     }
 
-    private static void PrepareWindow(ScreenSurface? surface)
+    /// <summary>
+    /// Ticks each LegACEy window. A failure, including a panel over its tick budget, goes to the window's error handler:
+    /// a plugin's window turns off that plugin, a client window disables the client UI.
+    /// </summary>
+    private void PrepareFeatureWindows()
     {
-        if (surface != null)
-            surface.Prepare();
+        foreach (var pair in _featureSurfaces.ToArray())
+        {
+            // An earlier failure in this loop may have closed the window.
+            if (!_featureSurfaces.ContainsKey(pair.Key)) continue;
+            try { pair.Value.Prepare(); }
+            catch (Exception exception) { _windowFailures[pair.Key](exception); }
+        }
     }
 
     /// <summary>Called by IDirect3DDevice9.EndScene after retail and Decal UI drawing.</summary>
@@ -697,30 +746,52 @@ internal sealed class ClientUiRuntime : IClientUiHost
 
     IDisposable IClientUiHost.OpenWindow(WindowDefinition definition, Control content, Point requestedLocation)
     {
-        if (!_windowsEnabled || _windows == null || _device == null || _postUiDrawHook?.HasRun != true)
+        if (!CanOpenWindows)
             throw new InvalidOperationException("LegACEy windows are unavailable until the post-UI renderer is ready.");
+        OpenWindowCore(definition, content, requestedLocation, Disable);
+        return new FeatureWindow(this, definition.Id);
+    }
+
+    private bool CanOpenWindows => _windowsEnabled && _windows != null && _device != null && _postUiDrawHook?.HasRun == true;
+
+    private void OpenWindowCore(WindowDefinition definition, Control content, Point requestedLocation, Action<Exception> failed)
+    {
         if (_featureSurfaces.ContainsKey(definition.Id))
             throw new InvalidOperationException($"A feature window named '{definition.Id}' is already registered.");
-        var panel = ObservePanel(AvaloniaPanel.Create(() => content, definition.Width, definition.Height));
-        var surface = new ScreenSurface(_device, panel);
+        var panel = ObservePanel(AvaloniaPanel.Create(() => content, definition.Width, definition.Height), failed);
+        var surface = new ScreenSurface(_device!, panel);
         var opened = false;
         try
         {
-            var window = _windows.Open(definition, requestedLocation);
+            var window = _windows!.Open(definition, requestedLocation);
             opened = true;
             surface.Location = window.Location;
             surface.Visible = true;
             panel.ApplyTheme(_clientUi?.Theme ?? CurrentTheme());
             _featureSurfaces.Add(definition.Id, surface);
-            return new FeatureWindow(this, definition.Id);
+            _windowFailures[definition.Id] = failed;
         }
         catch
         {
             try { surface.Dispose(); }
-            finally { if (opened) _windows.Close(definition.Id); }
+            finally { if (opened) _windows!.Close(definition.Id); }
             throw;
         }
     }
+
+    bool ILegACEyPluginHost.OpenWindow(WindowDefinition definition, Point location, Control content, Action<Exception> failed)
+    {
+        if (!CanOpenWindows) return false;
+        var chrome = new ThemeWindowChrome(_portal!, definition.Title, content);
+        chrome.CloseRequested += (_, _) => ReleaseFeatureWindow(definition.Id);
+        OpenWindowCore(definition, chrome, location, failed);
+        return true;
+    }
+
+    IServerChannel ILegACEyPluginHost.ServerChannel => (IServerChannel?)_serverChannel ?? UnavailableServerChannel.Instance;
+    string ILegACEyPluginHost.PortalPath => _portal?.Path ?? string.Empty;
+    bool ILegACEyPluginHost.IsWindowOpen(string id) => _featureSurfaces.ContainsKey(id);
+    void ILegACEyPluginHost.CloseWindow(string id) => ReleaseFeatureWindow(id);
 
     private void ReleaseFeatureWindow(string id)
     {
@@ -729,6 +800,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
         surface.Visible = false;
         surface.Dispose();
         _featureSurfaces.Remove(id);
+        _windowFailures.Remove(id);
         _windows?.Close(id);
     }
 
@@ -860,9 +932,9 @@ internal sealed class ClientUiRuntime : IClientUiHost
         }
     }
 
-    private AvaloniaPanel ObservePanel(AvaloniaPanel panel)
+    private AvaloniaPanel ObservePanel(AvaloniaPanel panel, Action<Exception>? failed = null)
     {
-        panel.Error += Disable;
+        panel.Error += failed ?? new Action<Exception>(Disable);
         if (panel.LastError is { } initialError)
         {
             panel.Dispose();
@@ -939,6 +1011,8 @@ internal sealed class ClientUiRuntime : IClientUiHost
     /// <summary>Stop drawing, give the player the retail bar back, and log why.</summary>
     private void Disable(Exception exception)
     {
+        // Every panel drains the shared Avalonia dispatcher, so a plugin's failure can surface on another panel.
+        if (_plugins?.TryFailOwner(exception) == true) return;
         _failed = true;
         Log($"Indicator bar replacement disabled: {exception}");
         RestoreNativeBar();
@@ -957,6 +1031,9 @@ internal sealed class ClientUiRuntime : IClientUiHost
         try { _clientUi?.EndSession(); }
         catch (Exception cleanupError) { Log($"Could not clean up feature UI after window failure: {cleanupError}"); }
         _clientUi = null;
+        // Plugin windows are not in the client UI framework; release them here too.
+        foreach (var id in _featureSurfaces.Keys.ToArray())
+            ReleaseFeatureWindow(id);
     }
 
     /// <summary>The object selected in the game, for "Deposit item"; zero for none.</summary>
@@ -1031,6 +1108,7 @@ internal sealed class ClientUiRuntime : IClientUiHost
         _windows = null;
         foreach (var surface in _featureSurfaces.Values) surface.Dispose();
         _featureSurfaces.Clear();
+        _windowFailures.Clear();
         _windowsEnabled = false;
         _portal?.Dispose();
         _portal = null;

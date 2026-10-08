@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LegACEy.Client.InputRouter"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LegACEy.Client.Themes", "LegACEy.Client.Themes\LegACEy.Client.Themes.csproj", "{948D10D7-A562-4991-8F1A-D2A2DE7B6103}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LegACEy.Plugin.Paperdoll", "LegACEy.Plugin.Paperdoll\LegACEy.Plugin.Paperdoll.csproj", "{E592680E-BB88-4BC3-81BE-4AE4702AAC2E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -87,6 +89,18 @@ Global
 		{F5363C41-F19C-438F-8189-AF083E15722F}.Release|x64.Build.0 = Release|Any CPU
 		{F5363C41-F19C-438F-8189-AF083E15722F}.Release|x86.ActiveCfg = Release|Any CPU
 		{F5363C41-F19C-438F-8189-AF083E15722F}.Release|x86.Build.0 = Release|Any CPU
+		{E592680E-BB88-4BC3-81BE-4AE4702AAC2E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E592680E-BB88-4BC3-81BE-4AE4702AAC2E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E592680E-BB88-4BC3-81BE-4AE4702AAC2E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{E592680E-BB88-4BC3-81BE-4AE4702AAC2E}.Debug|x64.Build.0 = Debug|Any CPU
+		{E592680E-BB88-4BC3-81BE-4AE4702AAC2E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{E592680E-BB88-4BC3-81BE-4AE4702AAC2E}.Debug|x86.Build.0 = Debug|Any CPU
+		{E592680E-BB88-4BC3-81BE-4AE4702AAC2E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E592680E-BB88-4BC3-81BE-4AE4702AAC2E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E592680E-BB88-4BC3-81BE-4AE4702AAC2E}.Release|x64.ActiveCfg = Release|Any CPU
+		{E592680E-BB88-4BC3-81BE-4AE4702AAC2E}.Release|x64.Build.0 = Release|Any CPU
+		{E592680E-BB88-4BC3-81BE-4AE4702AAC2E}.Release|x86.ActiveCfg = Release|Any CPU
+		{E592680E-BB88-4BC3-81BE-4AE4702AAC2E}.Release|x86.Build.0 = Release|Any CPU
 		{8E30B5CD-C1A8-4F94-A287-586101204E68}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{8E30B5CD-C1A8-4F94-A287-586101204E68}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8E30B5CD-C1A8-4F94-A287-586101204E68}.Debug|x64.ActiveCfg = Debug|Any CPU

@@ -17,7 +17,8 @@ and database remain in the repository's upstream-compatible `Source/` and
 | `LegACEy.Client.InputRouter` | Mouse and keyboard routing |
 | `LegACEy.Client.GameArt` | Game DAT art loading |
 | `LegACEy.Client.Themes` | Shared UI themes and controls |
-| `LegACEy.Client.Demo` | In-game demo windows and controls |
+| `LegACEy.Client.Demo` | Framework windows and controls, and the plugin API (`ILegACEyPlugin`, `ILegACEyClient`) |
+| `LegACEy.Plugin.Paperdoll` | The 3D paperdoll plugin, built into `Plugins/Paperdoll/` |
 | `LegACEy.Client.Tests` | Automated tests without an installed Decal runtime |
 | `LegACEy.Client.HookSmoke` | Windows native hook regression check |
 
@@ -43,7 +44,9 @@ The main output is
 `LegACEy.Client.DecalPlugin/bin/Release/net48/LegACEy.Client.DecalPlugin.dll`
 relative to this directory. It loads through Decal and requires its companion
 managed libraries and the `x86/` native rendering libraries from the build
-output. Keep those dependencies available beside the plugin; the main DLL is
+output. Each LegACEy plugin is copied beside it as
+`Plugins/<Name>/<Name>.dll`, for example `Plugins/Paperdoll/Paperdoll.dll`;
+the client loads those at startup. Keep the `Plugins` folder beside the main DLL. Keep those dependencies available beside the plugin; the main DLL is
 not a standalone executable. If Decal is registered against a previous checkout
 path, update that registration after moving the directory.
 
@@ -116,11 +119,13 @@ Each release contains:
 - `LegACEy.Client.DecalPlugin.dll`, for an existing installation with matching
   companion libraries.
 - `LegACEy-decal-plugin-v<version>-windows-x86.zip`, containing the main DLL,
-  companion managed DLLs, x86 rendering libraries, and license notices.
+  companion managed DLLs, x86 rendering libraries, the `Plugins` folder with the
+  bundled LegACEy plugins, and license notices.
 - `SHA256SUMS.txt`, covering the DLL and ZIP.
 
 For a fresh installation, extract the ZIP and register its
-`LegACEy.Client.DecalPlugin.dll` in Decal. Keep the companion files in place.
+`LegACEy.Client.DecalPlugin.dll` in Decal. Keep the companion files and the
+`Plugins` folder in place.
 Players still need Decal, .NET Framework 4.8, and Managed DirectX installed;
 those external references are not bundled. Updating companion libraries
 requires the ZIP rather than replacing just the main DLL.
