@@ -142,6 +142,7 @@ namespace ACE.Server.ClientChannel
         RateLimited = 3,
         BadRequest = 4,
         Unavailable = 5,
+        NoStation = 6,
     }
 
     public sealed class ChannelRequest

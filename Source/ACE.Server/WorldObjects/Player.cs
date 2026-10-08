@@ -530,6 +530,7 @@ namespace ACE.Server.WorldObjects
         public void LogOut_Inner(bool clientSessionTerminatedAbruptly = false)
         {
             CancelVaultChannel();
+            EndStation();
 
             IsBusy = true;
             IsLoggingOut = true;

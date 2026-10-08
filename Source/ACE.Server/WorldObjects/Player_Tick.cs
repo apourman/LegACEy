@@ -65,6 +65,8 @@ namespace ACE.Server.WorldObjects
 
             actionQueue.RunActions();
 
+            CheckStationRange();
+
             if (nextAgeUpdateTime <= currentUnixTime)
             {
                 nextAgeUpdateTime = currentUnixTime + ageUpdateInterval;

@@ -14,7 +14,10 @@ using ACE.Server.Managers;
 using ACE.Server.Market;
 using ACE.Server.Network.GameEvent.Events;
 using ACE.Server.Network.GameMessages;
+using ACE.Server.Tests.ClientChannel;
 using ACE.Server.WorldObjects;
+
+using static ACE.Server.Tests.ClientChannel.ChannelTestClient;
 
 namespace ACE.Server.Tests.Market
 {
@@ -139,62 +142,6 @@ namespace ACE.Server.Tests.Market
 
             Assert.AreEqual(ChannelStatus.UnknownAction, reply.Status);
             StringAssert.Contains(ChannelWire.ReadString(new BinaryReader(new MemoryStream(reply.Body), Encoding.UTF8)), "no.such.action");
-        }
-
-        private static string Text(byte[] body) => body.Length >= 2 ? ChannelWire.ReadString(new BinaryReader(new MemoryStream(body), Encoding.UTF8)) : string.Empty;
-
-        private sealed class ChannelEvent
-        {
-            public ChannelEventKind Kind;
-            public ChannelStatus Status;
-            public uint RequestId;
-            public string Topic;
-            public byte[] Body;
-        }
-
-        private static uint nextRequestId;
-
-        private static ChannelEvent Request(Player player, string action, byte[] body)
-        {
-            var id = ++nextRequestId;
-            var payload = ChannelWire.Body(w =>
-            {
-                w.Write(ChannelWire.Version);
-                w.Write(id);
-                ChannelWire.WriteString(w, action);
-                w.Write((uint)body.Length);
-                w.Write(body);
-            });
-
-            VaultTestWorld.OnWorldThread(() => ServerChannel.Receive(player.Session, new BinaryReader(new MemoryStream(payload))));
-
-            return WaitForEvent(player, e => e.Kind == ChannelEventKind.Reply && e.RequestId == id);
-        }
-
-        private static ChannelEvent WaitForEvent(Player player, Func<ChannelEvent, bool> match)
-        {
-            ChannelEvent found = null;
-            var seen = new List<ChannelEvent>();
-
-            VaultTestWorld.WaitUntil(() =>
-            {
-                seen.AddRange(VaultTestWorld.TakeSent(player).OfType<GameEventLegaceyChannel>().Select(Decode));
-                found = seen.FirstOrDefault(match);
-                return found != null;
-            }, "a LegACEy channel event");
-
-            return found;
-        }
-
-        private static ChannelEvent Decode(GameMessage message)
-        {
-            // opcode, character, event sequence, event type, then the channel payload
-            var reader = new BinaryReader(new MemoryStream(message.Data.ToArray()), Encoding.UTF8);
-            reader.ReadBytes(16);
-            Assert.AreEqual(ChannelWire.Version, reader.ReadUInt16());
-            var e = new ChannelEvent { Kind = (ChannelEventKind)reader.ReadByte(), Status = (ChannelStatus)reader.ReadByte(), RequestId = reader.ReadUInt32(), Topic = ChannelWire.ReadString(reader) };
-            e.Body = reader.ReadBytes((int)reader.ReadUInt32());
-            return e;
         }
     }
 }

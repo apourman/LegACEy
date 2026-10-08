@@ -153,6 +153,7 @@ namespace ACE.Server.WorldObjects
 
             // the item never left the pack, so it drops under the normal rules
             CancelVaultChannel();
+            EndStation();
 
             if (topDamager?.Guid == Guid && IsPKType)
             {
