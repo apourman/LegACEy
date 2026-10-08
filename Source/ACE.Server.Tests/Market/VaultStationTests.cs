@@ -66,6 +66,21 @@ namespace ACE.Server.Tests.Market
         }
 
         [TestMethod]
+        public void UsingTheSameStationAgain_PushesOpenAgain_WithoutClose()
+        {
+            var player = ConnectedPlayer();
+            var station = NewStation(player, VaultStation);
+            Use(player, station);
+            WaitForPushes(player, 1);
+
+            Use(player, station);
+
+            // a close would be queued before the open, so the first push back is the open
+            AssertStationPush(WaitForPushes(player, 1).First(), StationChannelActions.Open, VaultStation, station);
+            Assert.IsTrue(player.HasStation(VaultStation));
+        }
+
+        [TestMethod]
         public void StationLeave_EndsTheSession_AndPushesStationClose()
         {
             var player = ConnectedPlayer();

@@ -14,14 +14,14 @@ namespace ACE.Server.WorldObjects
         private StationSession stationSession;
 
         /// <summary>
-        /// Starts the player's session at the station, ending any session they already have first
+        /// Starts the player's session at the station, ending any session at another station first. Using the same station again only opens it again.
         /// </summary>
         public void StartStation(WorldObject station)
         {
             var session = new StationSession(station);
             var previous = Interlocked.Exchange(ref stationSession, session);
 
-            if (previous != null)
+            if (previous != null && previous.StationGuid != session.StationGuid)
                 PushStationClose(previous);
 
             ServerChannel.Push(this, StationChannelActions.Open, StationChannelActions.Body(session.Name, session.StationGuid));
@@ -60,6 +60,7 @@ namespace ACE.Server.WorldObjects
 
             var station = session.Station;
 
+            // 0.6f is IsWithinUseRadiusOf's default for an object without a UseRadius
             if (station.CurrentLandblock != null && IsWithinUseRadiusOf(station, (station.UseRadius ?? 0.6f) + StationRangeMargin))
                 return;
 

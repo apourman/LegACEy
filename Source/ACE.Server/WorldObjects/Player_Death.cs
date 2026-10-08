@@ -153,6 +153,8 @@ namespace ACE.Server.WorldObjects
 
             // the item never left the pack, so it drops under the normal rules
             CancelVaultChannel();
+
+            // a dead player is no longer at the station
             EndStation();
 
             if (topDamager?.Guid == Guid && IsPKType)

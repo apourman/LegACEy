@@ -503,6 +503,7 @@ namespace ACE.Server.WorldObjects
         public bool LogOut(bool clientSessionTerminatedAbruptly = false, bool forceImmediate = false)
         {
             CancelVaultChannel();
+            EndStation();
 
             if (PKLogoutActive && !forceImmediate)
             {
