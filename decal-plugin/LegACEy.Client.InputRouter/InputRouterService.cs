@@ -139,6 +139,9 @@ public sealed class InputRouterService
     private static InputSurface? HitTest(int x, int y, IReadOnlyList<InputSurface> surfaces) =>
         surfaces.Where(surface => surface.Contains(x, y)).OrderByDescending(surface => surface.ZOrder).FirstOrDefault();
 
+    /// <summary>The id of the surface a point routes to when nothing has captured the pointer, or null over no surface.</summary>
+    public static string? SurfaceAt(int x, int y, IReadOnlyList<InputSurface> surfaces) => HitTest(x, y, surfaces)?.Id;
+
     private static InputSurface? Find(string id, IReadOnlyList<InputSurface> surfaces) =>
         surfaces.FirstOrDefault(surface => string.Equals(surface.Id, id, StringComparison.Ordinal));
 

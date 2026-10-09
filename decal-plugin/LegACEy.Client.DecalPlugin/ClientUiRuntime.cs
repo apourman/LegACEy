@@ -1064,7 +1064,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private IntPtr ResizeCursorAt(Point point)
     {
         if (_windows == null) return IntPtr.Zero;
-        var resource = CursorResourceId(_windows.HoverAt(point).Edges);
+        var hover = _windows.HoverAt(point);
+        // The pointer goes to a capture, else to the topmost surface under it, as the router decides. Only the window that owns
+        // it gets the resize cursor, so the retail bar and any other surface keep the game's cursor.
+        var owner = _inputRouter.CapturedSurfaceId ?? InputRouterService.SurfaceAt(point.X, point.Y, GetInputSurfaces());
+        if (hover.WindowId == null || owner != hover.WindowId) return IntPtr.Zero;
+        var resource = CursorResourceId(hover.Edges);
         if (resource == 0) return IntPtr.Zero;
         if (!_resizeCursors.TryGetValue(resource, out var cursor))
             _resizeCursors.Add(resource, cursor = LoadCursor(IntPtr.Zero, (IntPtr)resource));
