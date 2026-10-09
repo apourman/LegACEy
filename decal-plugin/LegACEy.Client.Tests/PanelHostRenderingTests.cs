@@ -66,6 +66,23 @@ public sealed class PanelHostRenderingTests
     });
 
     [Fact]
+    public void A_press_outside_the_focused_text_box_leaves_it() => RenderThread.Run(() =>
+    {
+        using var panel = AvaloniaPanel.Create(() => new StackPanel
+        {
+            Children = { new TextBox { Width = 180, Height = 30 }, new Border { Height = 30, Background = Brushes.Gray } }
+        }, 200, 60);
+
+        panel.PointerDown(20, 10);
+        panel.PointerUp(20, 10);
+        Assert.True(panel.WantsKeyboard);
+
+        panel.PointerDown(20, 45);
+        panel.PointerUp(20, 45);
+        Assert.False(panel.WantsKeyboard);
+    });
+
+    [Fact]
     public void Wheel_input_scrolls_a_list_box() => RenderThread.Run(() =>
     {
         ListBox? listBox = null;

@@ -328,6 +328,10 @@ public sealed class AvaloniaPanel : IDisposable
         {
             Invalidate();
             _pointerPosition = new Point(x, y);
+            // A press outside the focused text box leaves it, as a click elsewhere on a desktop does; a press on another box focuses that one.
+            if (_window.FocusManager?.GetFocusedElement() is TextBox focused
+                && !(_window.InputHitTest(new Point(x, y)) is Visual hit && (hit == focused || focused.IsVisualAncestorOf(hit))))
+                _window.FocusManager?.ClearFocus();
             SendPointer(RawPointerEventType.Move, new Point(x, y), ToRawModifiers(modifiers));
             _mouseButtons |= RawInputModifiers.LeftMouseButton;
             SendPointer(RawPointerEventType.LeftButtonDown, new Point(x, y), ToRawModifiers(modifiers));

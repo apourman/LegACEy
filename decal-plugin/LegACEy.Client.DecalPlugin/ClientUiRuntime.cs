@@ -1048,6 +1048,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                         target?.Panel.PointerMove(route.X, route.Y);
                     break;
                 case InputAction.PointerDown:
+                    // The window that had focus loses it to this one.
+                    SurfaceById(route.ClearFocusSurfaceId)?.Panel.ClearFocus();
                     _pointer = new Point(route.X + target!.Location.X, route.Y + target.Location.Y);
                     if (route.SurfaceId != null && _windows?.Get(route.SurfaceId) != null)
                     {

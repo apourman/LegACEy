@@ -94,9 +94,11 @@ public sealed class InputRouterService
             }
             if (message.Message == WmRButtonDown)
                 return new InputRoute(eat: true);
+            var left = _focusedSurfaceId != target.Id ? _focusedSurfaceId : null;
             _capturedSurfaceId = target.Id;
             _focusedSurfaceId = target.Id;
-            return new InputRoute(InputAction.PointerDown, target.Id, true, x - target.X, y - target.Y, modifiers: RouteModifiers(message.WParam));
+            return new InputRoute(InputAction.PointerDown, target.Id, true, x - target.X, y - target.Y, modifiers: RouteModifiers(message.WParam),
+                clearFocusSurfaceId: left);
         }
 
         if (message.Message == WmLButtonUp)
