@@ -129,6 +129,22 @@ public sealed class InputRouterTests
     }
 
     [Fact]
+    public void A_missed_key_up_does_not_leave_Ctrl_on_later_clicks()
+    {
+        var router = new InputRouterService();
+        var surfaces = new[] { Surface("panel", 0, wantsKeyboard: true) };
+        router.Route(new NativeInputMessage(InputRouterService.WmLButtonDown, 0, Pack(10, 10)), surfaces);
+        router.Route(new NativeInputMessage(InputRouterService.WmLButtonUp, 0, Pack(10, 10)), surfaces);
+        // Control goes down, and its key-up never reaches the router.
+        router.Route(new NativeInputMessage(InputRouterService.WmKeyDown, (nint)0x11, 0), surfaces);
+
+        // A plain click: the mouse message's key state holds no Control.
+        var press = router.Route(new NativeInputMessage(InputRouterService.WmLButtonDown, 0, Pack(10, 10)), surfaces);
+
+        Assert.Equal(InputModifiers.None, press.Modifiers);
+    }
+
+    [Fact]
     public void Logoff_releases_a_captured_pointer_and_clears_keyboard_focus()
     {
         var router = new InputRouterService();
