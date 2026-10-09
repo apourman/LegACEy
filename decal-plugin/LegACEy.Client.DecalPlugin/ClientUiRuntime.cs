@@ -55,6 +55,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private const string MenuWindowId = "plugin-menu";
     private const uint MenuIcon = 0x06004D20;
     private const string TestFailureFile = "fail-post-ui-draw";
+    // ponytail: A/B switch between the two resize modes; delete the losing mode and this file check once one is chosen.
+    private const string LiveResizeFile = "live-resize";
+    private static readonly TimeSpan LiveResizeInterval = TimeSpan.FromMilliseconds(100);
     private static readonly string PluginDirectory = IOPath.GetDirectoryName(typeof(ClientUiRuntime).Assembly.Location)!;
     // Every client appends to the same log beside the DLL; the process id tells their lines apart.
     private static readonly int ProcessId = Process.GetCurrentProcess().Id;
@@ -78,6 +81,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private bool _firstPostUiWindow = true;
     private DateTime _lastMeasurementLog = DateTime.UtcNow;
     private DateTime _lastTestFailureCheck;
+    private bool _liveResize;
+    private readonly Stopwatch _sinceLiveResize = Stopwatch.StartNew();
     private TimeSpan _maxUiFrame;
     private TimeSpan _maxPostUiDraw;
     private ScreenSurface? _hovered;
@@ -548,7 +553,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             }
         }
         ReleaseModelRenderers(_drawnModelViews);
-        if (_windows.Resizing is { } resizing && _device != null)
+        if (_windows.Resizing is { } resizing && !_liveResize && _device != null)
             Guard(() => ScreenSurface.DrawOutline(_device, resizing.Bounds, ResizeOutline));
         // An item dragged out of a LegACEy window draws above everything.
         Guard(() => _dragIconSurface?.DrawNow());
@@ -1008,6 +1013,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                     if (route.SurfaceId != null && _windows?.Get(route.SurfaceId) != null)
                     {
                         _windows.Press(_pointer);
+                        if (_windows.Resizing != null)
+                            _liveResize = File.Exists(IOPath.Combine(PluginDirectory, LiveResizeFile));
                         SyncWindowLocations();
                     }
                     target.Panel.PointerDown(route.X, route.Y, ToKeyModifiers(route.Modifiers));
@@ -1179,11 +1186,17 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private void SyncWindowLocations()
     {
         if (_windows == null) return;
-        // A window being resized keeps its surface until release: relaying it out on every mouse move stalls the game,
-        // so an outline shows the new bounds meanwhile.
+        // Relaying a window out on every mouse move of a resize stalls the game. By default the window keeps its surface until
+        // release and an outline shows the new bounds; with the live-resize file beside the DLL it relays out at most every 100 ms.
         foreach (var window in _windows.ZOrder)
-            if (window != _windows.Resizing)
-                FitSurface(SurfaceById(window.Id)!, window);
+        {
+            if (window == _windows.Resizing)
+            {
+                if (!_liveResize || _sinceLiveResize.Elapsed < LiveResizeInterval) continue;
+                _sinceLiveResize.Restart();
+            }
+            FitSurface(SurfaceById(window.Id)!, window);
+        }
     }
 
     /// <summary>Puts a window's surface where the window manager has it, at the window's size. A new size re-lays out the panel.</summary>
