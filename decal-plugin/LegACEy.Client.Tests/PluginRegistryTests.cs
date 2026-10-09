@@ -25,6 +25,62 @@ public sealed class PluginRegistryTests
     }
 
     [Fact]
+    public void SupportsAction_follows_the_servers_last_list_and_the_plugin_gets_the_host_inventory()
+    {
+        var host = new FakeHost();
+        var registry = new PluginRegistry(host, host.Log.Add);
+        ILegACEyClient? client = null;
+        registry.Add(new FakePlugin("Local") { OnStart = started => client = started });
+
+        Assert.False(client!.SupportsAction("paperdoll.look"));
+
+        registry.SetServerActions(new[] { "paperdoll.look" });
+        Assert.True(client.SupportsAction("paperdoll.look"));
+        Assert.False(client.SupportsAction("vault.list"));
+
+        registry.SetServerActions(null);
+        Assert.False(client.SupportsAction("paperdoll.look"));
+    }
+
+    [Fact]
+    public void A_throwing_inventory_handler_turns_off_only_its_plugin_and_a_turned_off_plugin_hears_no_more_changes()
+    {
+        var host = new FakeHost();
+        var registry = new PluginRegistry(host, host.Log.Add);
+        var inventory = (FakeInventoryPort)host.Inventory;
+        var quietChanges = 0;
+        var offChanges = 0;
+        registry.Add(new FakePlugin("Broken") { OnStart = client =>
+        {
+            client.AddMenuEntry("Broken", 0, () => { });
+            client.Inventory.Changed += () => throw new InvalidOperationException("handler failed");
+        } });
+        registry.Add(new FakePlugin("Quiet") { OnStart = client =>
+        {
+            client.AddMenuEntry("Quiet", 0, () => { });
+            client.Inventory.Changed += () => quietChanges++;
+        } });
+        registry.Add(new FakePlugin("Off") { OnStart = client =>
+        {
+            client.AddMenuEntry("Off", 0, () => throw new InvalidOperationException("menu failed"));
+            client.Inventory.Changed += () => offChanges++;
+        } });
+
+        inventory.Push(InventorySnapshot.Empty);
+
+        Assert.Equal(new[] { "Quiet", "Off" }, Titles(registry));
+        Assert.Equal(1, quietChanges);
+        Assert.Equal(1, offChanges);
+
+        registry.RunMenuEntry(registry.VisibleMenuEntries.Single(entry => entry.Title == "Off"));
+        inventory.Push(InventorySnapshot.Empty);
+
+        Assert.Equal(new[] { "Quiet" }, Titles(registry));
+        Assert.Equal(2, quietChanges);
+        Assert.Equal(1, offChanges);
+    }
+
+    [Fact]
     public void Without_a_server_reply_server_backed_plugins_stay_hidden_and_a_plugin_needing_none_shows()
     {
         var host = new FakeHost();
@@ -275,6 +331,7 @@ public sealed class PluginRegistryTests
         public string PortalPath => string.Empty;
         public IGameArtSource Art => throw new NotSupportedException();
         public IItemDragHost ItemDrag => new FakeItemDragHost();
+        public IInventoryPort Inventory { get; } = new FakeInventoryPort();
         public bool IsWindowOpen(string id) => Errors.ContainsKey(id);
 
         public int Built { get; private set; }

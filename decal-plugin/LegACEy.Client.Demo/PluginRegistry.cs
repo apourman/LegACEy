@@ -129,7 +129,10 @@ public sealed class PluginRegistry
         return false;
     }
 
-    private bool IsVisible(PluginEntry entry) => entry.Enabled && entry.RequiredActions.All(_serverActions.Contains);
+    /// <summary>Whether the server's last channel.hello registered the action. Nothing registered before the first answer.</summary>
+    private bool SupportsAction(string action) => _serverActions.Contains(action);
+
+    private bool IsVisible(PluginEntry entry) => entry.Enabled && entry.RequiredActions.All(SupportsAction);
 
     /// <summary>Runs one of a plugin's actions. An error from it turns that plugin off; a plugin that is already off is ignored.</summary>
     private void Guarded(PluginEntry entry, Action action)
@@ -239,12 +242,15 @@ public sealed class PluginRegistry
             _registry = registry;
             _entry = entry;
             ServerChannel = new GuardedChannel(registry, entry);
+            Inventory = new GuardedInventory(registry, entry, registry._host.Inventory);
         }
 
         public IServerChannel ServerChannel { get; }
         public string PortalPath => _registry._host.PortalPath;
         public IGameArtSource Art => _registry._host.Art;
         public IItemDragHost ItemDrag => _registry._host.ItemDrag;
+        public IInventoryPort Inventory { get; }
+        public bool SupportsAction(string action) => _registry.SupportsAction(action);
 
         public void AddMenuEntry(string title, uint iconId, Action action)
         {
@@ -305,6 +311,60 @@ public sealed class PluginRegistry
         {
             if (action == null) throw new ArgumentNullException(nameof(action));
             return Channel.Schedule(delay, () => _registry.Guarded(_entry, action));
+        }
+    }
+
+    /// <summary>The inventory as one plugin sees it: its Changed handlers and its commands run under that plugin's guard.</summary>
+    private sealed class GuardedInventory : IInventoryPort
+    {
+        private readonly PluginRegistry _registry;
+        private readonly PluginEntry _entry;
+        private readonly IInventoryPort _inner;
+        private readonly List<(Action Handler, IDisposable Subscription)> _handlers = new();
+
+        public GuardedInventory(PluginRegistry registry, PluginEntry entry, IInventoryPort inner)
+        {
+            _registry = registry;
+            _entry = entry;
+            _inner = inner;
+        }
+
+        public InventorySnapshot Snapshot => _inner.Snapshot;
+
+        public event Action? Changed
+        {
+            add
+            {
+                if (value == null) return;
+                Action handler = value;
+                Action guarded = () => _registry.Guarded(_entry, handler);
+                _inner.Changed += guarded;
+                var subscription = new TrackedSubscription(_entry.Subscriptions, new Release(() => _inner.Changed -= guarded));
+                _handlers.Add((handler, subscription));
+            }
+            remove
+            {
+                var index = _handlers.FindIndex(pair => pair.Handler == value);
+                if (index < 0) return;
+                _handlers[index].Subscription.Dispose();
+                _handlers.RemoveAt(index);
+            }
+        }
+
+        public void OpenContainer(uint containerId) => _registry.Guarded(_entry, () => _inner.OpenContainer(containerId));
+        public void Select(uint itemId) => _registry.Guarded(_entry, () => _inner.Select(itemId));
+        public void Use(uint itemId) => _registry.Guarded(_entry, () => _inner.Use(itemId));
+        public void MoveToContainer(uint itemId, uint containerId, int slotIndex) =>
+            _registry.Guarded(_entry, () => _inner.MoveToContainer(itemId, containerId, slotIndex));
+        public void Wield(uint itemId, PaperdollSlot slot) => _registry.Guarded(_entry, () => _inner.Wield(itemId, slot));
+        public void MergeStack(uint itemId, uint targetStackId) => _registry.Guarded(_entry, () => _inner.MergeStack(itemId, targetStackId));
+
+        /// <summary>Runs an action once, when disposed.</summary>
+        private sealed class Release : IDisposable
+        {
+            private readonly Action _release;
+            public Release(Action release) => _release = release;
+            public void Dispose() => _release();
         }
     }
 
