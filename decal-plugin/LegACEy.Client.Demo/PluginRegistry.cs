@@ -300,6 +300,12 @@ public sealed class PluginRegistry
             var subscription = Channel.Subscribe(topic, body => _registry.Guarded(_entry, () => handler(body)));
             return new TrackedSubscription(_entry.Subscriptions, subscription);
         }
+
+        public IDisposable Schedule(TimeSpan delay, Action action)
+        {
+            if (action == null) throw new ArgumentNullException(nameof(action));
+            return Channel.Schedule(delay, () => _registry.Guarded(_entry, action));
+        }
     }
 
     /// <summary>A subscription the plugin holds. Disposing it removes it from the plugin's list, so the list does not grow.</summary>

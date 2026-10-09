@@ -10,6 +10,11 @@ using ACE.Database.Models.Shard.Market;
 namespace ACE.Database.Market
 {
     /// <summary>
+    /// One page of a Vault listing: the page's items, how many items match the search, and how many the Vault holds in all
+    /// </summary>
+    public sealed record VaultPage(IReadOnlyList<VaultItem> Items, int Total, int VaultCount);
+
+    /// <summary>
     /// Reads of the Vault tables, through the configured shard database or a context the caller gives. Item moves go through the deposit and withdraw save-queue jobs;
     /// the only writes here never touch an item: the withdrawal channel's marks on a Vault row, the admin's search-column refresh, and the WCID blocklist.
     /// </summary>
@@ -60,6 +65,20 @@ namespace ACE.Database.Market
         {
             using (var context = new ShardDbContext())
                 return context.MarketVaultItems.AsNoTracking().Where(r => r.AccountId == accountId).OrderBy(r => r.Position == null).ThenBy(r => r.Position).ThenBy(r => r.DepositedTime).ThenBy(r => r.ItemGuid).ToList();
+        }
+
+        /// <summary>
+        /// One page of the account's Vault in the player's order. A search is a case-insensitive substring match on the item name over every item,
+        /// so Total counts the matches and the page is taken from them. The Vault is read whole, then filtered and paged in memory; it is capped in size.
+        /// </summary>
+        public static VaultPage Page(uint accountId, string search, int offset, int count)
+        {
+            var all = List(accountId);
+            var matches = string.IsNullOrEmpty(search)
+                ? all
+                : all.Where(item => (item.Name ?? string.Empty).Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
+
+            return new VaultPage(matches.Skip(offset).Take(count).ToList(), matches.Count, all.Count);
         }
 
         /// <summary>
