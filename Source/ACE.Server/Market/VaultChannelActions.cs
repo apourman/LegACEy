@@ -17,7 +17,8 @@ namespace ACE.Server.Market
 {
     /// <summary>
     /// The Vault's actions on the in-band server channel, for the LegACEy client's Vault window. They call the Vault's own entry points,
-    /// so every rule, the transfer channel and the chat messages are unchanged. Bodies are written with ChannelWire; the plugin's VaultProtocol reads them.
+    /// so every rule and the chat messages are unchanged. A single deposit or withdrawal goes through the transfer channel; a batch withdrawal skips it,
+    /// as it is instant. Bodies are written with ChannelWire; the plugin's VaultProtocol reads them.
     /// </summary>
     public static class VaultChannelActions
     {
@@ -65,12 +66,17 @@ namespace ACE.Server.Market
             if (!TryReadGuids(context, out var itemGuids))
                 return;
 
-            Vault.WithdrawMany(context.Player, itemGuids, result => context.Reply(ChannelWire.Body(w =>
-            {
-                w.Write((byte)(result.Success ? 1 : 0));
-                ChannelWire.WriteString(w, result.Message);
-            })));
+            Vault.WithdrawMany(context.Player, itemGuids, result => context.Reply(TransferBody(result.Success, result.Message)));
         }
+
+        /// <summary>
+        /// A reply that says whether the action went ahead, and the message the player is told: the reason when it did not
+        /// </summary>
+        private static byte[] TransferBody(bool accepted, string message) => ChannelWire.Body(w =>
+        {
+            w.Write((byte)(accepted ? 1 : 0));
+            ChannelWire.WriteString(w, message);
+        });
 
         /// <summary>
         /// Reads a batch withdrawal's guids: a count from 1 to PageSize, then that many distinct guids. Anything else is a bad request.
@@ -155,11 +161,7 @@ namespace ACE.Server.Market
                 try
                 {
                     var moved = Vault.Available && VaultStore.Move(accountId, itemGuid, toIndex);
-                    context.Reply(ChannelWire.Body(w =>
-                    {
-                        w.Write((byte)(moved ? 1 : 0));
-                        ChannelWire.WriteString(w, moved ? string.Empty : "That item is no longer in your Vault.");
-                    }));
+                    context.Reply(TransferBody(moved, moved ? string.Empty : "That item is no longer in your Vault."));
                 }
                 catch (Exception ex)
                 {
@@ -306,11 +308,7 @@ namespace ACE.Server.Market
 
             starting = false;
 
-            context.Reply(ChannelWire.Body(w =>
-            {
-                w.Write((byte)(refusal == null ? 1 : 0));
-                ChannelWire.WriteString(w, refusal?.Message ?? string.Empty);
-            }));
+            context.Reply(TransferBody(refusal == null, refusal?.Message ?? string.Empty));
         }
 
         /// <summary>

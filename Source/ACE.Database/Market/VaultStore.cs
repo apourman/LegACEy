@@ -100,6 +100,17 @@ namespace ACE.Database.Market
         }
 
         /// <summary>
+        /// The Vault rows of the given items that are the account's, in one query, by item guid. An item that is not the account's has no entry.
+        /// </summary>
+        public static Dictionary<uint, VaultItem> Owned(uint accountId, IReadOnlyList<uint> itemGuids)
+        {
+            var guids = itemGuids.ToList();
+
+            using (var context = new ShardDbContext())
+                return context.MarketVaultItems.AsNoTracking().Where(r => r.AccountId == accountId && guids.Contains(r.ItemGuid)).ToDictionary(r => r.ItemGuid);
+        }
+
+        /// <summary>
         /// True if an admin has blocked the weenie class id from the Vault
         /// </summary>
         public static bool IsWcidBlocked(uint wcid)

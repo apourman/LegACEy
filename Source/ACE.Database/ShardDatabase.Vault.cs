@@ -69,7 +69,7 @@ namespace ACE.Database
                 rwLock.ExitReadLock();
             }
 
-            return SaveVaultJob(nameof(DepositToVault), biota, rwLock, ItemEventKind.Deposit, context =>
+            return SaveVaultJob(nameof(DepositToVault), new[] { (biota, rwLock) }, ItemEventKind.Deposit, context =>
             {
                 if (context.MarketVaultItems.Count(r => r.AccountId == vaultItem.AccountId) >= maxItems)
                 {
@@ -118,7 +118,7 @@ namespace ACE.Database
                 {
                     if (biota.PropertiesIID == null || !biota.PropertiesIID.ContainsKey(PropertyInstanceId.Container))
                     {
-                        log.Warn($"[DATABASE][VAULT] WithdrawFromVault 0x{biota.Id:X8} refused: the item has no container");
+                        log.Warn($"[DATABASE][VAULT] WithdrawManyFromVault 0x{biota.Id:X8} refused: the item has no container");
                         return MarketJobResult.Refused;
                     }
                 }
@@ -128,7 +128,7 @@ namespace ACE.Database
                 }
             }
 
-            return SaveVaultJob(nameof(WithdrawFromVault), items.Select(item => (item.biota, item.rwLock)).ToList(), ItemEventKind.Withdraw, context =>
+            return SaveVaultJob(nameof(WithdrawManyFromVault), items.Select(item => (item.biota, item.rwLock)).ToList(), ItemEventKind.Withdraw, context =>
             {
                 // every row is checked before any is removed, so one refusal refuses the set
                 var vaultItems = new List<VaultItem>(items.Count);
@@ -139,7 +139,7 @@ namespace ACE.Database
 
                     if (vaultItem == null || vaultItem.AccountId != accountId || vaultItem.State == VaultItemState.Listed || vaultItem.RowVersion != expectedRowVersion)
                     {
-                        log.Warn($"[DATABASE][VAULT] WithdrawFromVault 0x{biota.Id:X8} refused for account {accountId}: Vault row {(vaultItem == null ? "missing" : $"account {vaultItem.AccountId}, state {vaultItem.State}, version {vaultItem.RowVersion}, expected {expectedRowVersion}")}");
+                        log.Warn($"[DATABASE][VAULT] WithdrawManyFromVault 0x{biota.Id:X8} refused for account {accountId}: Vault row {(vaultItem == null ? "missing" : $"account {vaultItem.AccountId}, state {vaultItem.State}, version {vaultItem.RowVersion}, expected {expectedRowVersion}")}");
                         return MarketJobResult.Refused;
                     }
 
@@ -149,7 +149,7 @@ namespace ACE.Database
                 // a ban freezes the Vault. It may have landed after the channel started or the ticket was written, so it is read here, just before the save.
                 if (IsAccountBanned(accountId))
                 {
-                    log.Warn($"[DATABASE][VAULT] WithdrawFromVault 0x{items[0].biota.Id:X8} refused: account {accountId} is banned");
+                    log.Warn($"[DATABASE][VAULT] WithdrawManyFromVault 0x{items[0].biota.Id:X8} refused: account {accountId} is banned");
                     return MarketJobResult.Banned;
                 }
 
@@ -170,21 +170,12 @@ namespace ACE.Database
         }
 
         /// <summary>
-        /// The body both jobs share: evict, load a fresh copy through a new context (never the cache, which another thread could have refilled),
-        /// apply the in-memory item, let vaultChange change the Vault row and add the item event, and save once.
-        /// vaultChange returns anything but Saved to refuse, and then nothing is saved.
+        /// The body the jobs share, for one item or a set saved together: evict, load fresh copies through a new context (never the cache, which another
+        /// thread could have refilled), let vaultChange change the Vault rows and add the item events, apply the in-memory items, and save once.
+        /// One SaveChanges is one transaction, so a set is saved entirely or not at all. vaultChange returns anything but Saved to refuse, and then nothing is saved.
         /// No exception escapes, so the caller's callback always runs. A failure before SaveChanges saved nothing. A failure in SaveChanges may still have
         /// committed (the commit's acknowledgement can be lost, and a retry then fails on the rows the first try wrote), so the database is asked whether
-        /// the job's item event is there: the event is written in the same save as everything else.
-        /// </summary>
-        private MarketJobResult SaveVaultJob(string job, ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, string eventKind, Func<ShardDbContext, MarketJobResult> vaultChange)
-        {
-            return SaveVaultJob(job, new[] { (biota, rwLock) }, eventKind, vaultChange);
-        }
-
-        /// <summary>
-        /// The body the jobs share, for one item or a set saved together: evict, load fresh copies through a new context, let vaultChange change the Vault rows
-        /// and add the item events, apply the in-memory items, and save once. One SaveChanges is one transaction, so a set is saved entirely or not at all.
+        /// the job's item events are there: they are written in the same save as everything else.
         /// </summary>
         private MarketJobResult SaveVaultJob(string job, IReadOnlyList<(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock)> items, string eventKind, Func<ShardDbContext, MarketJobResult> vaultChange)
         {

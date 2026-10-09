@@ -407,7 +407,7 @@ namespace ACE.Server.Tests.Market
             burden.EncumbranceVal = burden.GetEncumbranceCapacity() * 3 - 15;
             AtTheVault(burden);
 
-            AssertBatchRefusedAndNothingMoved(burden, burdenGuids, "room in your pack");
+            AssertBatchRefusedAndNothingMoved(burden, burdenGuids, "too heavy to carry all");
         }
 
         [TestMethod]
