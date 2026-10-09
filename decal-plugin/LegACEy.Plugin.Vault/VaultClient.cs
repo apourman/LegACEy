@@ -171,6 +171,8 @@ public sealed class VaultClient : IDisposable
     public VaultConnection Connection { get; private set; } = VaultConnection.Connecting;
     /// <summary>The one page the window holds: its items and the counts around them.</summary>
     public VaultSnapshot? Snapshot { get; private set; }
+    /// <summary>The items selected in the page on screen. A page the window loads clears it.</summary>
+    public VaultSelection Selection { get; } = new();
     /// <summary>Shown instead of a move while a search filters the page on screen.</summary>
     public const string SearchBlocksMove = "Clear the search to rearrange items.";
     /// <summary>The page on screen starts at this match of the search; it is the position in the whole Vault order too.</summary>
@@ -273,6 +275,7 @@ public sealed class VaultClient : IDisposable
             Offset = offset;
             Search = search;
             Snapshot = page;
+            Selection.Clear();
             PageLoaded?.Invoke(this, EventArgs.Empty);
             Set(page.Available ? VaultConnection.Live : VaultConnection.Unavailable,
                 page.Available ? Notice : "The Vault is not available on this server.");

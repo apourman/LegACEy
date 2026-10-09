@@ -27,11 +27,14 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     private const int MinimumCells = 24;
     private const int SampleCount = 317;
     private const double DragThreshold = 4;
+    /// <summary>How far the cells the selection doesn't hold fade while two or more are selected, or while one is lifted.</summary>
+    private const double DimmedOpacity = 0.4;
     private static readonly IBrush GoldBrush = DerethPalette.GoldBrush;
     private static readonly IBrush TextBrush = DerethPalette.TextBrush;
     private static readonly IBrush MutedBrush = DerethPalette.MutedBrush;
     private static readonly IBrush Invalid = DerethPalette.InvalidBrush;
     private static readonly IBrush ShadowBrush = DerethPalette.Brush(Colors.Black);
+    private static readonly IBrush SelectedBrush = DerethPalette.Brush(DerethPalette.TealText);
     private static readonly IBrush ValidFill = DerethPalette.Brush(Color.FromArgb(0x40, DerethPalette.Gold.R, DerethPalette.Gold.G, DerethPalette.Gold.B));
     private static readonly IBrush InvalidFill = DerethPalette.Brush(Color.FromArgb(0x40, DerethPalette.Invalid.R, DerethPalette.Invalid.G, DerethPalette.Invalid.B));
 
@@ -73,8 +76,20 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         Margin = new Thickness(4, 6, 4, 0), IsVisible = false
     };
     private readonly DerethSlotGrid _grid = new();
-    private readonly List<Grid> _liveSlots = new();
+    private readonly List<DerethSlot> _liveSlots = new();
     private readonly List<Border> _dropIndicators = new();
+    // The header line: "Items: n / capacity" and the balance, or "N selected" with the selection's buttons instead.
+    private readonly StackPanel _itemsLine = new() { Orientation = Orientation.Horizontal, Spacing = 4 };
+    private readonly TextBlock _selectedLabel = Label(string.Empty, SelectedBrush, 13);
+    private readonly TextBlock _withdrawText = Label(string.Empty, GoldBrush, 12);
+    // ponytail: Withdraw N is ticket 05's batch withdrawal; until it is wired the button shows dimmed and disabled.
+    private readonly DerethButton _withdrawSelection = new() { Height = 24, IsEnabled = false, Opacity = DimmedOpacity };
+    private readonly DerethButton _clearSelection = new() { Height = 24, Content = Label("Clear", MutedBrush, 12) };
+    private readonly StackPanel _selectionLine = new() { Orientation = Orientation.Horizontal, Spacing = 6, IsVisible = false };
+    // The selection: the live Vault's when there is one, so the sample Vault selects too.
+    private readonly VaultSelection _selection;
+    // How the press on a cell was made, so its click selects by the same modifiers.
+    private KeyModifiers _pressModifiers;
     private bool _disposed;
     // a retail item being dragged over the window, and the cell it would land in
     private uint _retailItem;
@@ -94,13 +109,28 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         _art = art ?? throw new ArgumentNullException(nameof(art));
         _client = client;
         _dragHost = dragHost;
+        _selection = client?.Selection ?? new VaultSelection();
+        _itemsLine.Children.Add(_itemsLabel);
+        _itemsLine.Children.Add(_items);
+        _withdrawSelection.Content = _withdrawText;
+        _selectionLine.Children.Add(_selectedLabel);
+        _selectionLine.Children.Add(_withdrawSelection);
+        _selectionLine.Children.Add(_clearSelection);
         _sample = client == null ? SampleSnapshot() : null;
         RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.None);
 
         var summary = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(2, 10, 2, 8) };
-        summary.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { _itemsLabel, _items } });
+        summary.Children.Add(_itemsLine);
         Grid.SetColumn(_balance, 1);
         summary.Children.Add(_balance);
+        // The selection's line takes the whole header line, so its label and buttons share it.
+        Grid.SetColumnSpan(_selectionLine, 2);
+        summary.Children.Add(_selectionLine);
+        _clearSelection.Click += (_, _) =>
+        {
+            _selection.Clear();
+            ShowSelection();
+        };
         Grid.SetRow(_search, 1);
         _search.TextChanged += (_, _) => _client?.SetSearch(_search.Text);
         Grid.SetRow(_grid, 2);
@@ -166,13 +196,11 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
             _itemsLabel.Text = "Items:";
             _items.Text = $"{snapshot!.VaultCount:N0} / {snapshot.Capacity:N0}";
             _balance.Text = snapshot.HasBalance ? $"{snapshot.Balance:N0} MMD" : string.Empty;
-            _balance.IsVisible = snapshot.HasBalance;
         }
         else
         {
             _itemsLabel.Text = _client?.Connection == VaultConnection.Connecting ? "Connecting to the server…" : "Vault unavailable";
             _items.Text = string.Empty;
-            _balance.IsVisible = false;
         }
 
         _liveSlots.Clear();
@@ -190,7 +218,6 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
                 {
                     ToolTip.SetTip(cell, Describe(item));
                     if (item.StackSize > 1) cell.Children.Add(StackCount(item.StackSize));
-                    if (_dragItem != null && item.Guid == _dragItem.Guid) cell.Opacity = 0.4;
                     ConnectCell(cell, item);
                 }
                 // Shown on the cell a dragged item would be dropped into.
@@ -210,7 +237,36 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         _pagerText.Text = available ? PagerText(_client?.Offset ?? 0, items.Count, snapshot!.Total) : string.Empty;
         _previous.IsEnabled = available && _client?.CanPageBack == true;
         _next.IsEnabled = available && _client?.CanPageForward == true;
+        ShowSelection();
         ShowStatus();
+    }
+
+    /// <summary>
+    /// Shows the selection on the cells and in the header line. Two or more selected make the line "N selected" with its buttons
+    /// and fade the cells that aren't selected; a lifted item's cell fades for the drag.
+    /// </summary>
+    private void ShowSelection()
+    {
+        var multi = _selection.Count >= 2;
+        var lifted = _dragItem == null ? -1 : IndexOf(_dragItem.Guid);
+        for (var index = 0; index < _liveSlots.Count; index++)
+        {
+            var selected = _selection.Contains(index);
+            var slot = _liveSlots[index];
+            slot.Selected = selected;
+            slot.Opacity = index == lifted || (multi && !selected) ? DimmedOpacity : 1;
+        }
+        ShowHeader(multi);
+    }
+
+    private void ShowHeader(bool multi)
+    {
+        var snapshot = Snapshot;
+        _itemsLine.IsVisible = !multi;
+        _balance.IsVisible = !multi && snapshot is { Available: true, HasBalance: true };
+        _selectionLine.IsVisible = multi;
+        _selectedLabel.Text = $"{_selection.Count:N0} selected";
+        _withdrawText.Text = $"Withdraw {_selection.Count:N0}";
     }
 
     /// <summary>"1 – 100 of 317" for the page on screen, or "0 of 0" when nothing matches.</summary>
@@ -323,12 +379,12 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         }
     }
 
-    private void ConnectCell(Grid cell, VaultItemView item)
+    private void ConnectCell(DerethSlot cell, VaultItemView item)
     {
-        // Dragging an item out of the window and onto the retail inventory withdraws it.
+        // A press selects its item on release, unless it becomes a drag; dragging an item out of the window onto the retail inventory withdraws it.
         cell.AddHandler(InputElement.PointerPressedEvent, (_, e) => OnCellPressed(item, e), RoutingStrategies.Tunnel, handledEventsToo: true);
         cell.AddHandler(InputElement.PointerMovedEvent, (_, e) => OnCellMoved(item, e), RoutingStrategies.Tunnel, handledEventsToo: true);
-        cell.AddHandler(InputElement.PointerReleasedEvent, (_, e) => OnCellReleased(e), RoutingStrategies.Tunnel, handledEventsToo: true);
+        cell.AddHandler(InputElement.PointerReleasedEvent, (_, e) => OnCellReleased(item, e), RoutingStrategies.Tunnel, handledEventsToo: true);
         cell.AddHandler(InputElement.PointerCaptureLostEvent, (_, _) => EndWithdrawDrag(), handledEventsToo: true);
     }
 
@@ -337,6 +393,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
         _pressItem = item;
         _pressPoint = e.GetPosition(this);
+        _pressModifiers = e.KeyModifiers;
     }
 
     private void OnCellMoved(VaultItemView item, PointerEventArgs e)
@@ -356,10 +413,11 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
             return;
         }
         _dragItem = item;
+        // ponytail: a drag from a selection still moves only the item pressed, and drops the selection; ticket 05 makes it the batch.
+        _selection.Clear();
         _dragIcon = _dragHost.ShowDragIcon(ItemImage(item));
         // The lifted item's own cell dims, as the retail inventory ghosts a dragged item.
-        var from = IndexOf(item.Guid);
-        if (from >= 0 && from < _liveSlots.Count) _liveSlots[from].Opacity = 0.4;
+        ShowSelection();
         UpdateLiftedHover(e);
     }
 
@@ -380,8 +438,20 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         return -1;
     }
 
-    private void OnCellReleased(PointerReleasedEventArgs e)
+    private void OnCellReleased(VaultItemView pressed, PointerReleasedEventArgs e)
     {
+        // A press released on its own item without a drag is a click: it selects by the modifiers held when it went down.
+        if (_dragItem == null && _pressItem == pressed)
+        {
+            _pressItem = null;
+            var place = IndexOf(pressed.Guid);
+            if (place >= 0)
+            {
+                _selection.Press(place, (_pressModifiers & KeyModifiers.Control) != 0, (_pressModifiers & KeyModifiers.Shift) != 0);
+                ShowSelection();
+            }
+            return;
+        }
         var item = _dragItem;
         var cell = item == null ? -1 : CellAt(e.GetPosition(this));
         EndWithdrawDrag();
@@ -415,7 +485,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         _dragIcon?.Dispose();
         _dragIcon = null;
         if (!wasDragging || _disposed) return;
-        foreach (var slot in _liveSlots) slot.Opacity = 1;
+        ShowSelection();
         ShowDropIndicator(-1);
         if (_client != null) ShowStatus();
     }

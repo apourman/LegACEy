@@ -23,6 +23,10 @@ public static class DerethPalette
     public static readonly Color Groove = Color.Parse("#05080C");
     public static readonly Color GrooveEdge = Color.Parse("#2A3542");
     public static readonly Color Navy = Color.Parse("#15202B");
+    /// <summary>The selection colour: a selected slot's wash, border and glow.</summary>
+    public static readonly Color Teal = Color.Parse("#3FB3AE");
+    /// <summary>Teal text, such as the "N selected" line.</summary>
+    public static readonly Color TealText = Color.Parse("#5FC9C4");
     public static readonly FontFamily Title = new("Palatino Linotype, Palatino, Georgia, serif");
     public static readonly FontFamily Body = new("Segoe UI, Tahoma, avares://LegACEy.Client.Themes/Assets#Liberation Sans");
 
@@ -33,6 +37,7 @@ public static class DerethPalette
     public static readonly IBrush InvalidBrush = Brush(Invalid);
     public static readonly IBrush GrooveBrush = Brush(Groove);
     public static readonly IBrush GrooveEdgeBrush = Brush(GrooveEdge);
+    public static readonly IBrush TealBrush = Brush(Teal);
 
     public static IBrush Brush(Color color) => new SolidColorBrush(color);
 }
@@ -332,11 +337,56 @@ public sealed class DerethSlotGrid : UserControl
     /// <summary>The cells in reading order. Each one is a <see cref="Cell"/> or any control sized to the pitch.</summary>
     public Controls Cells => _cells.Children;
 
-    /// <summary>A slot holding the content: a 46 px framed well, left-aligned in its pitch.</summary>
-    public static Grid Cell(Control? content = null)
+    /// <summary>A slot holding the content: a 46 px framed well, left-aligned in its pitch, with a selected state.</summary>
+    public static DerethSlot Cell(Control? content = null) => new(content);
+}
+
+/// <summary>
+/// A slot: a framed well around its content. Selected, it shows a teal wash behind the content, a 2 px teal border and a glow
+/// inset inside the slot, so the glow never spills into a neighbouring slot.
+/// </summary>
+public sealed class DerethSlot : Grid
+{
+    private static readonly IBrush WashBrush = new RadialGradientBrush
     {
-        var cell = new Grid { Width = CellSize, Height = CellSize, HorizontalAlignment = HorizontalAlignment.Left, Background = Brushes.Transparent };
-        cell.Children.Add(new DerethFrame(DerethFrameArt.Slot) { Child = content });
-        return cell;
+        GradientStops =
+        {
+            new GradientStop(Color.FromArgb(0x70, DerethPalette.Teal.R, DerethPalette.Teal.G, DerethPalette.Teal.B), 0),
+            new GradientStop(Color.FromArgb(0x30, DerethPalette.Teal.R, DerethPalette.Teal.G, DerethPalette.Teal.B), 1)
+        }
+    };
+
+    private readonly Border _wash;
+    private readonly Border _outline;
+
+    internal DerethSlot(Control? content)
+    {
+        Width = DerethSlotGrid.CellSize;
+        Height = DerethSlotGrid.CellSize;
+        HorizontalAlignment = HorizontalAlignment.Left;
+        Background = Brushes.Transparent;
+        _wash = new Border { Margin = new Thickness(2), CornerRadius = new CornerRadius(3), Background = WashBrush, IsVisible = false, IsHitTestVisible = false };
+        var inner = new Grid();
+        inner.Children.Add(_wash);
+        if (content != null) inner.Children.Add(content);
+        Children.Add(new DerethFrame(DerethFrameArt.Slot) { Child = inner });
+        _outline = new Border
+        {
+            BorderBrush = DerethPalette.TealBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(3),
+            BoxShadow = new BoxShadows(new BoxShadow { IsInset = true, Blur = 10, Color = Color.FromArgb(0xB0, DerethPalette.Teal.R, DerethPalette.Teal.G, DerethPalette.Teal.B) }),
+            IsVisible = false, IsHitTestVisible = false
+        };
+        Children.Add(_outline);
+    }
+
+    /// <summary>Whether the slot shows its selected state.</summary>
+    public bool Selected
+    {
+        get => _outline.IsVisible;
+        set
+        {
+            _wash.IsVisible = value;
+            _outline.IsVisible = value;
+        }
     }
 }
