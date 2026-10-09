@@ -931,13 +931,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     void ILegACEyPluginHost.HideWindow(string id) => HideFeatureWindow(id);
     void ILegACEyPluginHost.CloseWindow(string id) => ReleaseFeatureWindow(id);
 
-    // A plugin's settings are two integers kept in the placements file under a key no window id can take.
-    Point? ILegACEyPluginHost.LoadPluginSettings(string plugin) =>
-        _positionStore?.Load(SessionServer(), SessionCharacter(), SettingsKey(plugin))?.Location;
+    // A plugin's one settings value is kept as the X of a placement row in the placements file, with no size.
+    int? ILegACEyPluginHost.LoadPluginSettings(string plugin) =>
+        _positionStore?.Load(SessionServer(), SessionCharacter(), SettingsKey(plugin))?.Location.X;
 
-    void ILegACEyPluginHost.SavePluginSettings(string plugin, Point settings) =>
-        _positionStore?.Save(SessionServer(), SessionCharacter(), SettingsKey(plugin), (settings, null));
+    void ILegACEyPluginHost.SavePluginSettings(string plugin, int value) =>
+        _positionStore?.Save(SessionServer(), SessionCharacter(), SettingsKey(plugin), (new Point(value, 0), null));
 
+    // ponytail: the key relies on window ids always containing "/" (PluginRegistry names them plugin/id), so "settings:" can never
+    // collide with a window. Revisit if window ids ever stop carrying the plugin prefix.
     private static string SettingsKey(string plugin) => "settings:" + plugin;
 
     private void HideFeatureWindow(string id)

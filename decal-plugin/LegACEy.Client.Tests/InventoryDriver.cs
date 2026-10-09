@@ -1,4 +1,3 @@
-using System;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
@@ -33,15 +32,20 @@ internal static class InventoryDriver
 
     public static void PressLayout(AvaloniaPanel host, InventoryLayout layout) => Press(host, LayoutToggle(host, layout));
 
-    /// <summary>The Dereth button under the doll that toggles the armour slots.</summary>
-    public static DerethButton SlotsToggle(AvaloniaPanel host) =>
-        host.Content.GetVisualDescendants().OfType<DerethButton>().Single(button => button.GetVisualDescendants().OfType<TextBlock>().Any(label => label.Text == "Slots"));
+    /// <summary>The Slots toggle under the doll.</summary>
+    public static Border SlotsToggle(AvaloniaPanel host) => host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "SlotsToggle");
 
     /// <summary>The header button that switches to a layout.</summary>
     public static DerethButton LayoutToggle(AvaloniaPanel host, InventoryLayout layout) =>
         host.Content.GetVisualDescendants().OfType<DerethButton>().Single(button => button.Tag is InventoryLayout tagged && tagged == layout);
 
+    /// <summary>Every slot the window draws, each identified by its <see cref="InventorySlotId"/> tag.</summary>
+    public static DerethSlot[] Slots(AvaloniaPanel host) =>
+        host.Content.GetVisualDescendants().OfType<DerethSlot>().Where(slot => slot.Tag is InventorySlotId).ToArray();
+
+    public static InventorySlotId Id(DerethSlot slot) => (InventorySlotId)slot.Tag!;
+
     /// <summary>The paperdoll slot for an equipment slot, or null when the slot is not drawn (the armour slots while Slots is off).</summary>
-    public static InventorySlot? SlotOrNull(AvaloniaPanel host, PaperdollSlot slot) =>
-        host.Content.GetVisualDescendants().OfType<InventorySlot>().SingleOrDefault(candidate => candidate.Place == SlotPlace.Paperdoll && candidate.Equipment == slot);
+    public static DerethSlot? SlotOrNull(AvaloniaPanel host, PaperdollSlot slot) =>
+        Slots(host).SingleOrDefault(candidate => Id(candidate).Place == SlotPlace.Paperdoll && Id(candidate).Equipment == slot);
 }

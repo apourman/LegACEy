@@ -344,10 +344,10 @@ public sealed class PluginRegistryTests
         public Dictionary<string, bool> OwnChrome { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, IClientTheme?> Themes { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, WindowDefinition> Definitions { get; } = new(StringComparer.Ordinal);
-        public Dictionary<string, Point> Settings { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, int> Settings { get; } = new(StringComparer.Ordinal);
 
-        public Point? LoadPluginSettings(string plugin) => Settings.TryGetValue(plugin, out var saved) ? saved : null;
-        public void SavePluginSettings(string plugin, Point settings) => Settings[plugin] = settings;
+        public int? LoadPluginSettings(string plugin) => Settings.TryGetValue(plugin, out var saved) ? saved : null;
+        public void SavePluginSettings(string plugin, int value) => Settings[plugin] = value;
 
         public IServerChannel ServerChannel { get; init; } = UnavailableServerChannel.Instance;
         public string PortalPath => string.Empty;

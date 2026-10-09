@@ -304,6 +304,12 @@ public sealed class DerethButton : Button
 /// <summary>A window with the Dereth frame, a header of icon, title and close box, the title rule and content.</summary>
 public sealed class DerethWindow : UserControl
 {
+    /// <summary>
+    /// The strip from a Dereth window's top that drags it: the 8 px frame edge and the 40 px header. A window passes it as its
+    /// title-bar height.
+    /// </summary>
+    public const int TitleBarHeight = 48;
+
     /// <param name="headerActions">Controls for the header, left of the close box. Null when the header has none.</param>
     public DerethWindow(string title, Control? icon, Control content, Control? headerActions = null)
     {
@@ -392,7 +398,7 @@ public sealed class DerethSlotGrid : UserControl
 /// A slot: a framed well around its content. Selected, it shows a teal wash behind the content, a 2 px teal border and a glow
 /// inset inside the slot, so the glow never spills into a neighbouring slot.
 /// </summary>
-public class DerethSlot : Grid
+public sealed class DerethSlot : Grid
 {
     private static readonly IBrush WashBrush = new RadialGradientBrush
     {

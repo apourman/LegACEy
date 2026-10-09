@@ -26,7 +26,7 @@ internal static class InventorySample
     private const uint SackIcon = 0x0600101E;
 
     /// <summary>The whole sample: main pack open or a side pack open, with one item selected.</summary>
-    public static InventorySnapshot Snapshot(uint openContainer = Character, uint selected = 0)
+    public static InventorySnapshot Snapshot(uint openContainer = Character, uint selected = 0, int burden = 4212)
     {
         var main = new InventoryPack(Character, "Main Pack", BackpackIcon, 96);
         var sides = new List<InventoryPack>
@@ -41,9 +41,14 @@ internal static class InventorySample
             Item(Apple, "Apple", Character, 0, 0x06001049, stack: 20),
             Item(Scroll, "Scroll", Character, 4, 0x06001065),
             Item(Sword, "Sword", Character, 7, 0x060010DA),
-            Item(BluePotion, "Blue potion", Potions, 0, 0x06001012, stack: 12),
-            Item(YellowPotion, "Yellow potion", Potions, 5, 0x06001013, stack: 3),
         };
+        // Seventeen potions in the potions pack, so its grid reads "17 / 24".
+        for (var slot = 0; slot < 17; slot++)
+        {
+            if (slot == 0) items.Add(Item(BluePotion, "Blue potion", Potions, slot, 0x06001012, stack: 12));
+            else if (slot == 5) items.Add(Item(YellowPotion, "Yellow potion", Potions, slot, 0x06001013, stack: 3));
+            else items.Add(Item(0x80000100u + (uint)slot, "Vial", Potions, slot, 0x06001013));
+        }
 
         var worn = new List<WieldedItem>
         {
@@ -56,7 +61,7 @@ internal static class InventorySample
             Wielded(WieldedSword, "Sword", 0x060010DA, 0x00100000, PaperdollSlot.Weapon),
         };
 
-        return new InventorySnapshot(main, sides, items, worn, 4212, 5400, 25000, openContainer, selected);
+        return new InventorySnapshot(main, sides, items, worn, burden, 5400, 25000, openContainer, selected);
     }
 
     private static InventoryItem Item(uint id, string name, uint container, int slot, uint icon, int stack = 1) =>

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using LegACEy.Client.Demo;
@@ -64,10 +65,15 @@ internal sealed class InventoryPaperdoll : Canvas
         SetLeft(DollArea, Scale(RetailDollLeft));
         Children.Add(DollArea);
 
+        // A plain row, not a framed button: the toggle reads as text under the doll, as the retail checkbox does. It acts on release.
         var label = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
         label.Children.Add(_slotsMark);
         label.Children.Add(_slotsLabel);
-        SlotsToggle = new DerethButton { Content = label, Padding = new Thickness(2, 0) };
+        SlotsToggle = new Border { Name = "SlotsToggle", Background = Brushes.Transparent, Padding = new Thickness(2, 0), Child = label };
+        SlotsToggle.PointerReleased += (_, e) =>
+        {
+            if (e.InitialPressMouseButton == MouseButton.Left) SlotsPressed?.Invoke();
+        };
         SetLeft(SlotsToggle, Scale(RetailToggleLeft));
         SetTop(SlotsToggle, Scale(RetailToggleTop) + 6);
         Children.Add(SlotsToggle);
@@ -76,8 +82,11 @@ internal sealed class InventoryPaperdoll : Canvas
     /// <summary>The doll area: empty while the armour slots show, and the 3D character once a doll is put in it.</summary>
     public Border DollArea { get; }
 
-    /// <summary>The Slots toggle under the doll. The window handles its click and shows its state with <see cref="SetSlotsOn"/>.</summary>
-    public DerethButton SlotsToggle { get; }
+    /// <summary>The Slots toggle under the doll. Its state shows through <see cref="SetSlotsOn"/>.</summary>
+    public Border SlotsToggle { get; }
+
+    /// <summary>Raised when the Slots toggle is pressed and released with the left button.</summary>
+    public event Action? SlotsPressed;
 
     /// <summary>Sets the Slots toggle's lit state.</summary>
     public void SetSlotsOn(bool on)

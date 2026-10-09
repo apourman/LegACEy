@@ -38,11 +38,12 @@ public interface ILegACEyClient
     /// <summary>True when the server registered the action (the list from channel.hello). Plugins use it for optional features.</summary>
     bool SupportsAction(string action);
     /// <summary>
-    /// The plugin's saved settings for this character: two integers, kept beside its window placements. Null when none are saved.
+    /// The plugin's own saved value for this character: one integer that only the plugin reads and writes, so the client does not
+    /// interpret it. Null when none is saved.
     /// </summary>
-    Point? LoadSettings();
-    /// <summary>Saves the plugin's two settings integers for this character.</summary>
-    void SaveSettings(Point settings);
+    int? LoadSettings();
+    /// <summary>Saves the plugin's one settings value for this character. See <see cref="LoadSettings"/>.</summary>
+    void SaveSettings(int value);
     /// <summary>Adds an entry to the LegACEy menu. Its action runs when the player picks it.</summary>
     void AddMenuEntry(string title, uint iconId, Action action);
     /// <summary>
@@ -87,10 +88,10 @@ public interface ILegACEyPluginHost
     void HideWindow(string id);
     /// <summary>Closes the window, open or hidden, and releases it.</summary>
     void CloseWindow(string id);
-    /// <summary>A plugin's saved settings for the current character, or null when none are saved.</summary>
-    Point? LoadPluginSettings(string plugin);
-    /// <summary>Saves a plugin's settings for the current character.</summary>
-    void SavePluginSettings(string plugin, Point settings);
+    /// <summary>A plugin's one saved settings value for the current character, or null when none is saved.</summary>
+    int? LoadPluginSettings(string plugin);
+    /// <summary>Saves a plugin's one settings value for the current character.</summary>
+    void SavePluginSettings(string plugin, int value);
 }
 
 /// <summary>One row of the LegACEy menu.</summary>

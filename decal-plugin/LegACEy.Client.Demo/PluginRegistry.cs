@@ -274,8 +274,8 @@ public sealed class PluginRegistry
             _registry.ToggleWindow(_entry, id, title, width, height, defaultLocation, createWindow, ownChrome: true, theme, resizing, titleBarHeight);
         }
 
-        public Point? LoadSettings() => _registry._host.LoadPluginSettings(_entry.Name);
-        public void SaveSettings(Point settings) => _registry._host.SavePluginSettings(_entry.Name, settings);
+        public int? LoadSettings() => _registry._host.LoadPluginSettings(_entry.Name);
+        public void SaveSettings(int value) => _registry._host.SavePluginSettings(_entry.Name, value);
 
         public void RegisterStationWindow(string station, string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow, IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28)
         {

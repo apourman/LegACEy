@@ -11,11 +11,13 @@ using Avalonia.Media.Imaging;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
+using static LegACEy.Client.Themes.DerethItemCells;
 
 namespace LegACEy.Plugin.Inventory;
 
 /// <summary>
-/// The inventory in one layout, drawn with the Dereth parts from the port's snapshot. It re-renders when the port changes.
+/// The inventory in one layout, drawn with the Dereth parts from the port's snapshot. It re-renders when the port changes, and
+/// not while the owner has it <see cref="Suspend"/>ed (hidden); <see cref="Resume"/> draws the current state once.
 /// Its own toggles (layout and Slots) are local and report through <see cref="SettingsChanged"/>; the owner decides what a layout
 /// change does. Selection, use and moves are not handled yet: every slot carries its item, container and slot index for them.
 /// </summary>
@@ -55,6 +57,7 @@ public sealed class InventoryWindow : UserControl, IDisposable
     private readonly TextBlock _burdenText = Label(string.Empty, TextBrush, 12);
     private readonly TextBlock _pyrealCount = Label(string.Empty, GoldBrush, 12);
     private bool _showSlots;
+    private bool _suspended;
     private bool _disposed;
 
     /// <param name="port">The character's inventory. The window reads its snapshot and re-renders on its change event.</param>
@@ -75,10 +78,11 @@ public sealed class InventoryWindow : UserControl, IDisposable
         _frame.CloseRequested += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
         Content = _frame;
 
-        _paperdoll.SlotsToggle.Click += (_, _) => ToggleSlots();
+        _paperdoll.SlotsPressed += ToggleSlots;
         _paperdoll.SetSlotsOn(_showSlots);
-        _port.Changed += OnChanged;
+        // Subscribe only once the first render has worked, so a failing render leaves no subscriber behind.
         Render(_port.Snapshot);
+        _port.Changed += OnChanged;
     }
 
     /// <summary>The window's current settings: its layout, and the Slots toggle.</summary>
@@ -93,18 +97,15 @@ public sealed class InventoryWindow : UserControl, IDisposable
     /// <summary>The doll area under the paperdoll, which the 3D character fills. Its content is the owner's to set.</summary>
     public Border DollArea => _paperdoll.DollArea;
 
-    public void Dispose()
+    /// <summary>Stops redrawing for port changes, while the window is hidden.</summary>
+    public void Suspend() => _suspended = true;
+
+    /// <summary>Draws the port's current state once, and redraws on each change again. Called when the window is shown.</summary>
+    public void Resume()
     {
         if (_disposed) return;
-        _disposed = true;
-        _port.Changed -= OnChanged;
-        foreach (var image in _images.Values) image?.Dispose();
-        _images.Clear();
-    }
-
-    private void OnChanged()
-    {
-        if (!_disposed) Render(_port.Snapshot);
+        _suspended = false;
+        Render(_port.Snapshot);
     }
 
     /// <summary>
@@ -117,6 +118,20 @@ public sealed class InventoryWindow : UserControl, IDisposable
         _showSlots = show;
         _paperdoll.SetSlotsOn(show);
         Render(_port.Snapshot);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _port.Changed -= OnChanged;
+        foreach (var image in _images.Values) image?.Dispose();
+        _images.Clear();
+    }
+
+    private void OnChanged()
+    {
+        if (!_disposed && !_suspended) Render(_port.Snapshot);
     }
 
     private void ToggleSlots()
@@ -150,14 +165,11 @@ public sealed class InventoryWindow : UserControl, IDisposable
         snapshot.OpenContainer == snapshot.MainPack.Id ? snapshot.MainPack
             : snapshot.SidePacks.FirstOrDefault(pack => pack.Id != 0 && pack.Id == snapshot.OpenContainer) ?? snapshot.MainPack;
 
-    private InventorySlot WornSlot(InventorySnapshot snapshot, Dictionary<PaperdollSlot, WieldedItem> worn, PaperdollSlot slot)
+    private DerethSlot WornSlot(InventorySnapshot snapshot, Dictionary<PaperdollSlot, WieldedItem> worn, PaperdollSlot slot)
     {
         if (!worn.TryGetValue(slot, out var item))
-            return new InventorySlot(SlotPlace.Paperdoll, 0, 0, -1, slot, InventoryGlyphs.For(slot));
-        return new InventorySlot(SlotPlace.Paperdoll, item.Id, 0, -1, slot, Layers(item.Visual, item.StackCount))
-        {
-            Selected = item.Id == snapshot.Selected,
-        };
+            return new DerethSlot(InventoryGlyphs.For(slot)) { Tag = new InventorySlotId(SlotPlace.Paperdoll, 0, 0, -1, slot) };
+        return Slot(new InventorySlotId(SlotPlace.Paperdoll, item.Id, 0, -1, slot), Layers(item.Visual, item.StackCount), item.Id == snapshot.Selected);
     }
 
     private void RenderPacks(InventorySnapshot snapshot, InventoryPack open)
@@ -176,17 +188,13 @@ public sealed class InventoryWindow : UserControl, IDisposable
     }
 
     /// <summary>A pack in the vertical column: its icon, with a fill bar along the foot. An empty side-pack slot is a placeholder.</summary>
-    private InventorySlot PackColumnSlot(InventorySnapshot snapshot, InventoryPack pack, InventoryPack open)
+    private DerethSlot PackColumnSlot(InventorySnapshot snapshot, InventoryPack pack, InventoryPack open)
     {
-        if (pack.Id == 0)
-            return new InventorySlot(SlotPlace.Pack, 0, 0, -1, null, null) { Opacity = EmptyOpacity, HorizontalAlignment = HorizontalAlignment.Center };
+        if (pack.Id == 0) return Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, -1, null));
         var layers = new Grid();
         layers.Children.Add(Icon(new ItemVisual(pack.Icon, 0, 0, 0)));
         layers.Children.Add(FillBar(ItemsIn(snapshot, pack.Id), pack.Capacity));
-        return new InventorySlot(SlotPlace.Pack, 0, pack.Id, -1, null, layers)
-        {
-            Selected = pack.Id == open.Id, HorizontalAlignment = HorizontalAlignment.Center,
-        };
+        return Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, -1, null), layers, pack.Id == open.Id);
     }
 
     /// <summary>A pack in the horizontal strip: its icon, with "n/cap" under it. An empty side-pack slot is a placeholder.</summary>
@@ -195,11 +203,11 @@ public sealed class InventoryWindow : UserControl, IDisposable
         var stack = new StackPanel { Spacing = 2, Width = DerethSlotGrid.Pitch };
         if (pack.Id == 0)
         {
-            stack.Children.Add(new InventorySlot(SlotPlace.Pack, 0, 0, -1, null, null) { Opacity = EmptyOpacity });
+            stack.Children.Add(Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, -1, null)));
             return stack;
         }
         var selected = pack.Id == open.Id;
-        stack.Children.Add(new InventorySlot(SlotPlace.Pack, 0, pack.Id, -1, null, Icon(new ItemVisual(pack.Icon, 0, 0, 0))) { Selected = selected });
+        stack.Children.Add(Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, -1, null), Icon(new ItemVisual(pack.Icon, 0, 0, 0)), selected));
         var count = Label($"{ItemsIn(snapshot, pack.Id)}/{pack.Capacity}", selected ? TealTextBrush : MutedBrush, 10);
         count.HorizontalAlignment = HorizontalAlignment.Center;
         stack.Children.Add(count);
@@ -222,13 +230,14 @@ public sealed class InventoryWindow : UserControl, IDisposable
         }
     }
 
-    private InventorySlot Cell(InventorySnapshot snapshot, uint container, int index, InventoryItem? item) =>
+    private DerethSlot Cell(InventorySnapshot snapshot, uint container, int index, InventoryItem? item) =>
         item == null
-            ? new InventorySlot(SlotPlace.Cell, 0, container, index, null, null) { Opacity = EmptyOpacity }
-            : new InventorySlot(SlotPlace.Cell, item.Id, container, index, null, Layers(item.Visual, item.StackCount))
-            {
-                Selected = item.Id == snapshot.Selected,
-            };
+            ? Empty(new InventorySlotId(SlotPlace.Cell, 0, container, index, null))
+            : Slot(new InventorySlotId(SlotPlace.Cell, item.Id, container, index, null), Layers(item.Visual, item.StackCount), item.Id == snapshot.Selected);
+
+    private static DerethSlot Slot(InventorySlotId id, Control content, bool selected) => new(content) { Tag = id, Selected = selected };
+
+    private static DerethSlot Empty(InventorySlotId id) => new(null) { Tag = id, Opacity = EmptyOpacity };
 
     private void RenderBurden(InventorySnapshot snapshot)
     {
@@ -297,17 +306,7 @@ public sealed class InventoryWindow : UserControl, IDisposable
         return layers;
     }
 
-    /// <summary>An icon at native size; a question mark when the art is missing.</summary>
-    private Grid Icon(ItemVisual visual)
-    {
-        var layers = new Grid { Width = 32, Height = 32, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        var bitmap = Bitmap(visual);
-        if (bitmap != null)
-            layers.Children.Add(new Image { Source = bitmap, Width = 32, Height = 32, Stretch = Stretch.None });
-        else
-            layers.Children.Add(Centred(Label("?", MutedBrush, 12)));
-        return layers;
-    }
+    private Grid Icon(ItemVisual visual) => DerethItemCells.Icon(Bitmap(visual));
 
     /// <summary>The drawn icon, cached per look. The grid redraws on every change, so the bitmaps are kept.</summary>
     private WriteableBitmap? Bitmap(ItemVisual visual)
@@ -315,21 +314,6 @@ public sealed class InventoryWindow : UserControl, IDisposable
         if (!_images.TryGetValue(visual, out var bitmap))
             _images.Add(visual, bitmap = GameArtImageExtension.CreateBitmap(ItemIcon.Draw(_art, visual.Underlay, visual.Icon, visual.Overlay, 0, visual.UiEffects)));
         return bitmap;
-    }
-
-    private static Control StackCount(int count)
-    {
-        var text = count >= 10000 ? $"{count / 1000}k" : count.ToString();
-        var panel = new Panel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 3, 1) };
-        var shadow = Label(text, Brushes.Black, 11);
-        shadow.FontWeight = FontWeight.SemiBold;
-        shadow.Margin = new Thickness(1, 1, 0, 0);
-        var front = Label(text, TextBrush, 11);
-        front.FontWeight = FontWeight.SemiBold;
-        front.Margin = new Thickness(0, 0, 1, 1);
-        panel.Children.Add(shadow);
-        panel.Children.Add(front);
-        return panel;
     }
 
     private Control VerticalBody()
@@ -450,9 +434,4 @@ public sealed class InventoryWindow : UserControl, IDisposable
         control.VerticalAlignment = VerticalAlignment.Center;
         return control;
     }
-
-    private static TextBlock Label(string text, IBrush brush, double size) => new()
-    {
-        Text = text, Foreground = brush, FontSize = size, FontFamily = DerethPalette.Body, VerticalAlignment = VerticalAlignment.Center,
-    };
 }

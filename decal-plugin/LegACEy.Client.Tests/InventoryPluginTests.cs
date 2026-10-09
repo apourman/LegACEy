@@ -1,40 +1,36 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.PanelHost;
 using LegACEy.Client.Themes;
 using LegACEy.Plugin.Inventory;
 using Xunit;
+using static LegACEy.Client.Tests.PanelFrameAssert;
 using Point = System.Drawing.Point;
 using Size = System.Drawing.Size;
 
 namespace LegACEy.Client.Tests;
 
 /// <summary>
-/// The inventory plugin on a fake client. The client's window placement is the real <see cref="WindowManager"/> over a memory store,
-/// so the sizes and positions each layout keeps are the ones the client keeps. The windows are real headless panels.
+/// The inventory plugin on a fake client. The client's window placement is the real <see cref="WindowManager"/> over a placements
+/// store, so the sizes and positions each layout keeps are the ones the client keeps. The windows are real headless panels.
 /// </summary>
 public sealed class InventoryPluginTests
 {
     private const string Vertical = "inventory-vertical";
     private const string Horizontal = "inventory-horizontal";
 
-    [Fact]
-    public void The_first_open_uses_each_layouts_default_size_and_the_menu_entry_is_the_inventory() => RenderThread.Run(() =>
-    {
-        using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
-        new InventoryPlugin().Start(client);
-        var entry = Assert.Single(client.MenuEntries);
-        Assert.Equal("Inventory", entry.Title);
-
-        entry.Action();
-        Assert.Equal(new Size(360, 530), client.Windows.Get(Vertical)!.Size);
-        InventoryDriver.PressLayout(client.Panel(Vertical), InventoryLayout.Horizontal);
-        Assert.Equal(new Size(640, 400), client.Windows.Get(Horizontal)!.Size);
-    });
+    // Vertical is 0 and horizontal is 1 in the plugin's settings value; the Slots toggle adds 2.
+    private const int VerticalSlotsOff = 0;
+    private const int HorizontalSlotsOn = 3;
+    private const int VerticalSlotsOn = 2;
+    private const int HorizontalSlotsOff = 1;
 
     [Fact]
     public void Switching_layout_hides_one_window_and_opens_the_other_at_its_own_saved_size() => RenderThread.Run(() =>
@@ -50,69 +46,140 @@ public sealed class InventoryPluginTests
         InventoryDriver.PressLayout(client.Panel(Vertical), InventoryLayout.Horizontal);
         Assert.Null(client.Windows.Get(Vertical));
         Assert.Equal(new Size(700, 500), client.Windows.Get(Horizontal)!.Size);
-        Assert.Equal(new Point(1, 1), client.Settings);
+        Assert.Equal(HorizontalSlotsOn, client.Settings);
 
         // Hiding kept the vertical window's size; it comes back at that size.
         InventoryDriver.PressLayout(client.Panel(Horizontal), InventoryLayout.Vertical);
         Assert.Null(client.Windows.Get(Horizontal));
         Assert.Equal(new Size(380, 600), client.Windows.Get(Vertical)!.Size);
-        Assert.Equal(new Point(0, 1), client.Settings);
+        Assert.Equal(VerticalSlotsOn, client.Settings);
     });
 
     [Fact]
-    public void The_layout_and_slots_choice_round_trip_through_the_store() => RenderThread.Run(() =>
+    public void The_layout_and_slots_choice_come_back_from_the_placements_file_after_a_restart() => RenderThread.Run(() =>
     {
-        var positions = new MemoryWindowPositionStore();
-        using (var first = new FakeInventoryClient(positions))
+        var path = Path.Combine(Path.GetTempPath(), "legacey-inventory-" + Guid.NewGuid().ToString("N") + ".txt");
+        try
         {
-            new InventoryPlugin().Start(first);
-            first.MenuEntries.Single().Action();
-            InventoryDriver.PressSlots(first.Panel(Vertical));
-            Assert.Equal(new Point(0, 0), first.Settings);
-            InventoryDriver.PressLayout(first.Panel(Vertical), InventoryLayout.Horizontal);
-            Assert.Equal(new Point(1, 0), first.Settings);
-        }
+            using (var first = new FakeInventoryClient(new FileWindowPositionStore(path)))
+            {
+                new InventoryPlugin().Start(first);
+                first.MenuEntries.Single().Action();
+                InventoryDriver.PressSlots(first.Panel(Vertical));
+                InventoryDriver.PressLayout(first.Panel(Vertical), InventoryLayout.Horizontal);
+                Assert.Equal(HorizontalSlotsOff, first.Settings);
+            }
 
-        // A new session reads the same store: it opens the horizontal layout with the Slots toggle still off.
-        using var second = new FakeInventoryClient(positions, savedSettings: new Point(1, 0));
-        new InventoryPlugin().Start(second);
-        second.MenuEntries.Single().Action();
-        var horizontal = second.Panel(Horizontal);
-        Assert.Null(second.Windows.Get(Vertical));
-        Assert.Null(InventoryDriver.SlotOrNull(horizontal, PaperdollSlot.Head));
-        Assert.NotNull(InventoryDriver.SlotOrNull(horizontal, PaperdollSlot.Neck));
+            // A new session reads the same file: the horizontal layout opens with the Slots toggle still off.
+            using var second = new FakeInventoryClient(new FileWindowPositionStore(path));
+            new InventoryPlugin().Start(second);
+            second.MenuEntries.Single().Action();
+            var horizontal = second.Panel(Horizontal);
+            Assert.Null(second.Windows.Get(Vertical));
+            Assert.Null(InventoryDriver.SlotOrNull(horizontal, PaperdollSlot.Head));
+            Assert.NotNull(InventoryDriver.SlotOrNull(horizontal, PaperdollSlot.Neck));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     });
 
     [Fact]
-    public void A_hidden_layout_takes_the_slots_choice_made_in_the_other_layout() => RenderThread.Run(() =>
+    public void A_hidden_layout_takes_the_slots_choice_made_in_the_other_layout_and_draws_what_changed_meanwhile() => RenderThread.Run(() =>
     {
         using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
         new InventoryPlugin().Start(client);
         client.MenuEntries.Single().Action();
         InventoryDriver.PressLayout(client.Panel(Vertical), InventoryLayout.Horizontal);
 
-        // Slots goes off in the horizontal window; the vertical one is hidden and keeps its content.
+        // Slots goes off in the horizontal window, and the port opens a pack while the vertical one is hidden.
         InventoryDriver.PressSlots(client.Panel(Horizontal));
+        client.Port.Push(InventorySample.Snapshot(openContainer: InventorySample.Potions));
         InventoryDriver.PressLayout(client.Panel(Horizontal), InventoryLayout.Vertical);
-        Assert.Equal(new Point(0, 0), client.Settings);
+        Assert.Equal(VerticalSlotsOff, client.Settings);
         Assert.Null(InventoryDriver.SlotOrNull(client.Panel(Vertical), PaperdollSlot.Head));
+        // Back on screen, the vertical window shows the pack that was opened while it was hidden.
+        var cells = InventoryDriver.Slots(client.Panel(Vertical)).Where(slot => InventoryDriver.Id(slot).Place == SlotPlace.Cell).ToArray();
+        Assert.Equal(24, cells.Length);
+        Assert.All(cells, cell => Assert.Equal(InventorySample.Potions, InventoryDriver.Id(cell).Container));
+
+        // Once more with the Slots choice unchanged, so only the redraw on showing can bring the grid up to date.
+        InventoryDriver.PressLayout(client.Panel(Vertical), InventoryLayout.Horizontal);
+        client.Port.Push(InventorySample.Snapshot(openContainer: InventorySample.Character));
+        InventoryDriver.PressLayout(client.Panel(Horizontal), InventoryLayout.Vertical);
+        cells = InventoryDriver.Slots(client.Panel(Vertical)).Where(slot => InventoryDriver.Id(slot).Place == SlotPlace.Cell).ToArray();
+        Assert.Equal(96, cells.Length);
     });
+
+    /// <summary>
+    /// Every visible control lies inside the window at the minimum and default sizes the plugin asks for, with the full sample drawn,
+    /// and the pack grid shows at least one row. At its minimum the horizontal pack strip stays on one row. Run it again with the
+    /// Windows fonts (FONTCONFIG_FILE) to check the taller text.
+    /// </summary>
+    [Theory]
+    [InlineData(InventoryLayout.Vertical)]
+    [InlineData(InventoryLayout.Horizontal)]
+    public void Nothing_spills_outside_the_window_at_the_minimum_and_default_sizes_in_both_layouts(InventoryLayout layout) => RenderThread.Run(() =>
+    {
+        using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
+        client.Port.Push(InventorySample.Snapshot(openContainer: InventorySample.Potions, selected: InventorySample.BluePotion));
+        client.SaveSettings(new InventorySettings(layout, showSlots: true).ToInt());
+        new InventoryPlugin().Start(client);
+        client.MenuEntries.Single().Action();
+
+        var id = layout == InventoryLayout.Horizontal ? Horizontal : Vertical;
+        var requested = client.Requested[id];
+        var panel = client.Panel(id);
+        Assert.Equal(new Size(requested.Width, requested.Height), client.Windows.Get(id)!.Size);
+        AssertFitsWithOneGridRow(panel);
+
+        var minimum = requested.Resizing!.Minimum;
+        panel.Resize(minimum.Width, minimum.Height);
+        InventoryDriver.Tick(panel);
+        AssertFitsWithOneGridRow(panel);
+        if (layout == InventoryLayout.Horizontal) AssertPackTabsOnOneRow(panel);
+    });
+
+    private static void AssertFitsWithOneGridRow(AvaloniaPanel panel)
+    {
+        Assert.Null(panel.LastError);
+        AssertNothingOutsideFrame(panel);
+        var grid = Assert.Single(panel.Content.GetVisualDescendants().OfType<DerethSlotGrid>());
+        Assert.True(grid.Bounds.Height >= DerethSlotGrid.CellSize, $"The grid is {grid.Bounds.Height} px tall, less than one row.");
+    }
+
+    /// <summary>The main pack, the divider and the seven side packs are eight pack tabs, and they all sit on one row.</summary>
+    private static void AssertPackTabsOnOneRow(AvaloniaPanel panel)
+    {
+        var tabs = InventoryDriver.Slots(panel).Where(slot => InventoryDriver.Id(slot).Place == SlotPlace.Pack).ToArray();
+        Assert.Equal(8, tabs.Length);
+        var rows = tabs.Select(tab => tab.TranslatePoint(default, panel.Content)!.Value.Y).Distinct().Count();
+        Assert.Equal(1, rows);
+    }
 
     /// <summary>A client for the inventory plugin: a real <see cref="WindowManager"/> places its windows, and each window's panel is kept across hiding.</summary>
     private sealed class FakeInventoryClient : ILegACEyClient, IDisposable
     {
+        // The client keeps the plugin's one settings value under this key, as ClientUiRuntime does.
+        private const string SettingsKey = "settings:Inventory";
+        private readonly IWindowPositionStore _store;
         private readonly Dictionary<string, AvaloniaPanel> _panels = new(StringComparer.Ordinal);
 
-        public FakeInventoryClient(IWindowPositionStore positions, Point? savedSettings = null)
+        public FakeInventoryClient(IWindowPositionStore store)
         {
-            Windows = new WindowManager(new Size(1920, 1080), positions, "Server", "Character");
-            Settings = savedSettings;
+            _store = store;
+            Windows = new WindowManager(new Size(1920, 1080), store, "Server", "Character");
         }
 
         public WindowManager Windows { get; }
-        public Point? Settings { get; private set; }
         public FakeInventoryPort Port { get; } = new();
         public List<(string Title, uint Icon, Action Action)> MenuEntries { get; } = new();
+        /// <summary>The size and minimum each window was asked for, by id.</summary>
+        public Dictionary<string, (int Width, int Height, WindowResizing? Resizing)> Requested { get; } = new(StringComparer.Ordinal);
+
+        /// <summary>The plugin's saved settings value, as the store holds it.</summary>
+        public int? Settings => _store.Load("Server", "Character", SettingsKey)?.Location.X;
 
         /// <summary>The panel of a window, open or hidden.</summary>
         public AvaloniaPanel Panel(string id) => _panels[id];
@@ -123,8 +190,8 @@ public sealed class InventoryPluginTests
         public IItemDragHost ItemDrag => throw new NotSupportedException();
         public IInventoryPort Inventory => Port;
         public bool SupportsAction(string action) => false;
-        public Point? LoadSettings() => Settings;
-        public void SaveSettings(Point settings) => Settings = settings;
+        public int? LoadSettings() => Settings;
+        public void SaveSettings(int value) => _store.Save("Server", "Character", SettingsKey, (new Point(value, 0), null));
         public void AddMenuEntry(string title, uint iconId, Action action) => MenuEntries.Add((title, iconId, action));
         public void ToggleWindow(string id, string title, int width, int height, Point defaultLocation, Func<Control> createContent) =>
             throw new NotSupportedException();
@@ -132,6 +199,7 @@ public sealed class InventoryPluginTests
         public void ToggleWindowWithChrome(string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow,
             IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28)
         {
+            Requested[id] = (width, height, resizing);
             if (Windows.Get(id) != null)
             {
                 Windows.Close(id);
