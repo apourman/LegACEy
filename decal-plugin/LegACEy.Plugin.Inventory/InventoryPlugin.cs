@@ -43,6 +43,7 @@ public sealed class InventoryPlugin : ILegACEyPlugin
             // A kept window takes the Slots choice made since it was hidden, and draws what changed while it was hidden.
             if (_windows.TryGetValue(layout, out var kept))
             {
+                GiveDoll(client, kept);
                 kept.SetShowSlots(Current(client).ShowSlots);
                 kept.Resume();
             }
@@ -53,6 +54,15 @@ public sealed class InventoryPlugin : ILegACEyPlugin
         }
         _shown = opening ? layout : null;
         Show(client, layout);
+    }
+
+    /// <summary>
+    /// Gives a window its 3D character when the server lists the look action. The list can arrive after a window was built (the
+    /// window opens before channel.hello), so every open asks again, and a window that already has its character is left alone.
+    /// </summary>
+    private static void GiveDoll(ILegACEyClient client, InventoryWindow window)
+    {
+        if (!window.HasDoll && client.SupportsAction(PaperdollProtocol.Look)) window.SetDoll(new PaperdollView(client.ServerChannel, client.PortalPath));
     }
 
     /// <summary>Opens the window of a layout, or hides it when the client has it open.</summary>
@@ -66,8 +76,8 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     private Control CreateWindow(ILegACEyClient client, InventoryLayout layout, Action close)
     {
         // The client keeps a closed window hidden and shows it again, so this runs once per session for each layout.
-        var doll = client.SupportsAction(PaperdollProtocol.Look) ? new PaperdollView(client.ServerChannel, client.PortalPath) : null;
-        var window = new InventoryWindow(client.Inventory, client.Art, new InventorySettings(layout, Current(client).ShowSlots), doll);
+        var window = new InventoryWindow(client.Inventory, client.Art, new InventorySettings(layout, Current(client).ShowSlots));
+        GiveDoll(client, window);
         _windows[layout] = window;
         window.CloseRequested += (_, _) => Hide(layout, close);
         window.SettingsChanged += settings =>

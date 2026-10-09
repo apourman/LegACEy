@@ -144,12 +144,55 @@ public sealed class InventoryPluginTests
         client.MenuEntries.Single().Action();
 
         var panel = client.Panel(Vertical);
-        Assert.Single(ModelViews(panel));
+        var model = Assert.Single(ModelViews(panel));
         Assert.Equal(new[] { PaperdollProtocol.Look }, transport.Actions);
+
+        // The model stays clear of the aetheria row above it and the Slots toggle below it, which the host draws over the model.
+        InventoryDriver.Tick(panel);
+        var bounds = OnPanel(model, panel);
+        Assert.False(bounds.Intersects(OnPanel(InventoryDriver.SlotOrNull(panel, PaperdollSlot.AetheriaOne)!, panel)));
+        Assert.False(bounds.Intersects(OnPanel(InventoryDriver.SlotsToggle(panel), panel)));
 
         // The server says the look changed, as it does when the player equips something: the doll asks again.
         channel.Receive(LookChanged());
         Assert.Equal(new[] { PaperdollProtocol.Look, PaperdollProtocol.Look }, transport.Actions);
+    });
+
+    [Fact]
+    public void A_window_opened_before_the_server_lists_the_look_gets_its_doll_on_the_next_open() => RenderThread.Run(() =>
+    {
+        var transport = new LookTransport();
+        var channel = new ServerChannelClient(transport);
+        using var client = new FakeInventoryClient(new MemoryWindowPositionStore()) { ServerChannel = channel };
+        client.SaveSettings(VerticalSlotsOff);
+        new InventoryPlugin().Start(client);
+        client.MenuEntries.Single().Action();
+        Assert.Empty(ModelViews(client.Panel(Vertical)));
+
+        // channel.hello lands after the window opened; the next open gives the doll and asks for the look.
+        client.ServerActions.Add(PaperdollProtocol.Look);
+        client.MenuEntries.Single().Action();
+        client.MenuEntries.Single().Action();
+        Assert.Single(ModelViews(client.Panel(Vertical)));
+        Assert.Equal(new[] { PaperdollProtocol.Look }, transport.Actions);
+    });
+
+    [Fact]
+    public void A_reply_that_arrives_after_the_doll_left_the_window_changes_nothing() => RenderThread.Run(() =>
+    {
+        var transport = new LookTransport();
+        var channel = new ServerChannelClient(transport);
+        using var client = new FakeInventoryClient(new MemoryWindowPositionStore()) { ServerChannel = channel };
+        client.ServerActions.Add(PaperdollProtocol.Look);
+        client.SaveSettings(VerticalSlotsOff);
+        new InventoryPlugin().Start(client);
+        client.MenuEntries.Single().Action();
+        var status = (TextBlock)ModelViews(client.Panel(Vertical)).Single().Child!;
+
+        client.MenuEntries.Single().Action();   // hides the window, and with it the doll
+        // A reply the server sent before the hide, with a body this client cannot read: it must not reach the status line.
+        channel.Receive(ChannelWire.EncodeEvent(ChannelEventKind.Reply, ChannelStatus.Ok, transport.Ids.Single(), PaperdollProtocol.Look, new byte[] { 1 }));
+        Assert.Equal("Loading…", status.Text);
     });
 
     [Fact]
@@ -263,6 +306,9 @@ public sealed class InventoryPluginTests
 
     private static IEnumerable<ModelView> ModelViews(AvaloniaPanel panel) => panel.Content.GetVisualDescendants().OfType<ModelView>();
 
+    /// <summary>A control's bounds in the panel's coordinates.</summary>
+    private static Rect OnPanel(Visual visual, AvaloniaPanel panel) => new(visual.TranslatePoint(default, panel.Content)!.Value, visual.Bounds.Size);
+
     /// <summary>The paperdoll.changed push, as the server sends it after an equipment change.</summary>
     private static byte[] LookChanged() => ChannelWire.EncodeEvent(ChannelEventKind.Push, ChannelStatus.Ok, 0, PaperdollProtocol.Changed, Array.Empty<byte>());
 
@@ -270,11 +316,13 @@ public sealed class InventoryPluginTests
     private sealed class LookTransport : IServerChannelTransport
     {
         public List<string> Actions { get; } = new();
+        public List<uint> Ids { get; } = new();
         public bool IsAvailable => true;
 
         public bool Send(byte[] requestPayload)
         {
-            ChannelWire.TryDecodeRequest(requestPayload, out _, out var action, out _);
+            ChannelWire.TryDecodeRequest(requestPayload, out var id, out var action, out _);
+            Ids.Add(id);
             Actions.Add(action);
             return true;
         }

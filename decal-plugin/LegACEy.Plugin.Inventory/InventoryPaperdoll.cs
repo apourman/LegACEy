@@ -37,6 +37,10 @@ internal sealed class InventoryPaperdoll : Canvas
         (PaperdollSlot.Cloak, 192, 44), (PaperdollSlot.Shirt, 192, 80), (PaperdollSlot.Pants, 192, 116),
     };
 
+    // The panel keeps its full size, and whatever is put in it (the 3D character) is inset to clear the rows around it: the aetheria
+    // cells end at y 44 and the Slots toggle starts at y 220. With the 1 px border, the inside runs from y 46 to y 219.
+    private static readonly Thickness DollInset = new(0, 45, 0, 21);
+
     /// <summary>The armour slots, which sit over the doll and show only while the Slots toggle is on.</summary>
     private static readonly HashSet<PaperdollSlot> Armour = new()
     {
@@ -58,7 +62,7 @@ internal sealed class InventoryPaperdoll : Canvas
         Height = Scale(RetailHeight);
         DollArea = new Border
         {
-            Width = Scale(RetailDollWidth), Height = Height, CornerRadius = new CornerRadius(3),
+            Width = Scale(RetailDollWidth), Height = Height, CornerRadius = new CornerRadius(3), Padding = DollInset,
             BorderBrush = DerethPalette.GrooveEdgeBrush, BorderThickness = new Thickness(1),
             Background = new RadialGradientBrush { GradientStops = { new GradientStop(Color.Parse("#16222C"), 0), new GradientStop(Color.Parse("#05090D"), 1) } },
         };
@@ -113,12 +117,6 @@ internal sealed class InventoryPaperdoll : Canvas
             Children.Add(cell);
             _placed.Add(cell);
         }
-    }
-
-    /// <summary>Puts a control in the doll area, or takes the one there out. Taking it out is what stops the 3D look's requests.</summary>
-    public void ShowDoll(Control? doll)
-    {
-        if (DollArea.Child != doll) DollArea.Child = doll;
     }
 
     /// <summary>Retail's position, scaled to the pitch and rounded to whole pixels.</summary>
