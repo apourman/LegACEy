@@ -14,6 +14,17 @@ namespace LegACEy.Client.Tests;
 public sealed class VaultPagingTests
 {
     [Fact]
+    public void The_default_size_shows_a_whole_page_of_a_hundred_items() => RenderThread.Run(() =>
+    {
+        using var vault = new PagedVault(317);
+        var grid = vault.Host.Content.GetVisualDescendants().OfType<ScrollViewer>().Single(viewer => viewer.FindAncestorOfType<DerethSlotGrid>() != null);
+        Assert.Equal(100, vault.Client.Snapshot!.Items.Count);
+        // Ten columns by ten rows, beside the scrollbar that the extra empty drop cell brings.
+        Assert.True(grid.Viewport.Width >= 10 * DerethSlotGrid.Pitch, $"viewport {grid.Viewport}");
+        Assert.True(grid.Viewport.Height >= 10 * DerethSlotGrid.Pitch, $"viewport {grid.Viewport}");
+    });
+
+    [Fact]
     public void Arrows_page_the_vault_a_hundred_at_a_time_and_are_disabled_at_either_end() => RenderThread.Run(() =>
     {
         using var vault = new PagedVault(317);

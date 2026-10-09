@@ -134,7 +134,7 @@ public sealed class VaultShellTests
         using var disposeVault = vault!;
         host.ApplyTheme(new DerethClientTheme());
         host.Tick();
-        Assert.Equal(6, Columns(host));
+        Assert.Equal(10, Columns(host));
 
         host.Resize(594, VaultShellPanel.WindowHeight);
         host.Tick();

@@ -20,8 +20,8 @@ namespace LegACEy.Plugin.Vault;
 /// </summary>
 public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropTarget
 {
-    public const int WindowWidth = 344;
-    public const int WindowHeight = 606;
+    public const int WindowWidth = 546;
+    public const int WindowHeight = 689;
     /// <summary>The header's chest icon, from the DAT.</summary>
     public const uint ChestIconId = 0x06001020;
     private const int MinimumCells = 24;
