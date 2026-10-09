@@ -37,6 +37,20 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ScreenToClient(IntPtr window, ref NativePoint point);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr LoadCursor(IntPtr instance, IntPtr cursorName);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetCursor(IntPtr cursor);
+
+    // WM_SETCURSOR, the hit-test code for the client area, and the standard size cursors' resource ids (MAKEINTRESOURCE).
+    private const int WmSetCursor = 0x0020;
+    private const int HtClient = 1;
+    private const int IdcSizeWE = 32644;
+    private const int IdcSizeNS = 32645;
+    private const int IdcSizeNWSE = 32642;
+    private const int IdcSizeNESW = 32643;
+
     private const string MenuSlot = "LegACEy";
     private const string MenuWindowId = "plugin-menu";
     private const uint MenuIcon = 0x06004D20;
@@ -54,6 +68,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private ScreenSurface? _barSurface;
     private RetailSurfaceRenderer? _barRenderer;
     private WindowManager? _windows;
+    // The window whose frame shows a hovered corner, and the corner it shows.
+    private string? _cornerWindowId;
+    private DerethCorner _cornerApplied;
+    private readonly Dictionary<int, IntPtr> _resizeCursors = new();
     private PostUiDrawHook? _postUiDrawHook;
     private bool _windowsEnabled;
     private bool _firstPostUiWindow = true;
@@ -775,7 +793,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         {
             var window = _windows!.Open(definition, requestedLocation);
             opened = true;
-            surface.Location = window.Location;
+            FitSurface(surface, window);
             surface.Visible = true;
             surface.Panel.ApplyTheme(definition.Theme ?? _clientUi?.Theme ?? CurrentTheme());
             _featureSurfaces.Add(definition.Id, surface);
@@ -854,6 +872,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private void RemoveFeatureWindow(string id, ScreenSurface surface)
     {
         if (_hovered == surface) _hovered = null;
+        // A hidden or closed window must not reopen with its corner lit.
+        if (_cornerWindowId == id)
+        {
+            SetWindowCorner(id, DerethCorner.None);
+            _cornerWindowId = null;
+            _cornerApplied = DerethCorner.None;
+        }
         surface.Visible = false;
         _featureSurfaces.Remove(id);
         _windowFailures.Remove(id);
@@ -881,6 +906,19 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             return;
 
         var lParam = e.LParam;
+        if (e.Msg == WmSetCursor)
+        {
+            // Over a resize edge in the client area, the resize cursor replaces the game's; the eaten message keeps the game from resetting it.
+            if ((lParam & 0xffff) == HtClient)
+                Guard(() =>
+                {
+                    var cursor = ResizeCursorAt(_pointer);
+                    if (cursor == IntPtr.Zero) return;
+                    SetCursor(cursor);
+                    e.Eat = true;
+                });
+            return;
+        }
         if (e.Msg == InputRouterService.WmMouseMove)
             _pointer = new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff));
         if (e.Msg == InputRouterService.WmLButtonUp && _inputRouter.CapturedSurfaceId == null)
@@ -971,9 +1009,71 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                     _hovered = null;
                     break;
             }
+            if (e.Msg == InputRouterService.WmMouseMove)
+                UpdateWindowCorner(route.SurfaceId, _pointer);
             if (route.Eat)
                 e.Eat = true;
         });
+    }
+
+    /// <summary>
+    /// Brightens the corner under the pointer on its window's frame. The resize cursor itself is set on WM_SETCURSOR, which
+    /// the game sends before each mouse move, so the game's own handler cannot put its cursor back over an edge.
+    /// </summary>
+    private void UpdateWindowCorner(string? surfaceId, Point point)
+    {
+        if (_windows == null) return;
+        var hover = surfaceId == "bar" ? default : _windows.HoverAt(point);
+        var corner = CornerOf(hover.Edges);
+        if (hover.WindowId == _cornerWindowId && corner == _cornerApplied) return;
+        SetWindowCorner(_cornerWindowId, DerethCorner.None);
+        SetWindowCorner(hover.WindowId, corner);
+        _cornerWindowId = hover.WindowId;
+        _cornerApplied = corner;
+    }
+
+    private void SetWindowCorner(string? windowId, DerethCorner corner)
+    {
+        var surface = SurfaceById(windowId);
+        if (surface == null) return;
+        foreach (var frame in Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(surface.Panel.Content).OfType<DerethFrame>())
+            frame.HoveredCorner = corner;
+    }
+
+    private static DerethCorner CornerOf(WindowEdges edges)
+    {
+        if (edges == (WindowEdges.Left | WindowEdges.Top)) return DerethCorner.TopLeft;
+        if (edges == (WindowEdges.Right | WindowEdges.Top)) return DerethCorner.TopRight;
+        if (edges == (WindowEdges.Left | WindowEdges.Bottom)) return DerethCorner.BottomLeft;
+        if (edges == (WindowEdges.Right | WindowEdges.Bottom)) return DerethCorner.BottomRight;
+        return DerethCorner.None;
+    }
+
+    /// <summary>The resize cursor over the window edge or corner under a point, or zero where the game's own cursor stands.</summary>
+    private IntPtr ResizeCursorAt(Point point)
+    {
+        if (_windows == null) return IntPtr.Zero;
+        var hover = _windows.HoverAt(point);
+        // The pointer goes to a capture, else to the topmost surface under it, as the router decides. Only the window that owns
+        // it gets the resize cursor, so the retail bar and any other surface keep the game's cursor.
+        var owner = _inputRouter.CapturedSurfaceId ?? InputRouterService.SurfaceAt(point.X, point.Y, GetInputSurfaces());
+        if (hover.WindowId == null || owner != hover.WindowId) return IntPtr.Zero;
+        var resource = CursorResourceId(hover.Edges);
+        if (resource == 0) return IntPtr.Zero;
+        if (!_resizeCursors.TryGetValue(resource, out var cursor))
+            _resizeCursors.Add(resource, cursor = LoadCursor(IntPtr.Zero, (IntPtr)resource));
+        return cursor;
+    }
+
+    /// <summary>The standard size cursor for a set of edges: IDC_SIZEWE, IDC_SIZENS, IDC_SIZENWSE or IDC_SIZENESW. Zero means none.</summary>
+    private static int CursorResourceId(WindowEdges edges)
+    {
+        var horizontal = edges & (WindowEdges.Left | WindowEdges.Right);
+        var vertical = edges & (WindowEdges.Top | WindowEdges.Bottom);
+        if (horizontal == WindowEdges.None && vertical == WindowEdges.None) return 0;
+        if (vertical == WindowEdges.None) return IdcSizeWE;
+        if (horizontal == WindowEdges.None) return IdcSizeNS;
+        return edges == (WindowEdges.Left | WindowEdges.Top) || edges == (WindowEdges.Right | WindowEdges.Bottom) ? IdcSizeNWSE : IdcSizeNESW;
     }
 
     private void GuardInput(InputRoute route, Action action)
@@ -1038,7 +1138,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     {
         if (_windows == null) return;
         foreach (var window in _windows.ZOrder)
-            SurfaceById(window.Id)!.Location = window.Location;
+            FitSurface(SurfaceById(window.Id)!, window);
+    }
+
+    /// <summary>Puts a window's surface where the window manager has it, at the window's size. A new size re-lays out the panel.</summary>
+    private static void FitSurface(ScreenSurface surface, ManagedWindow window)
+    {
+        surface.Location = window.Location;
+        if (surface.Panel.Frame.Width != window.Width || surface.Panel.Frame.Height != window.Height)
+            surface.Panel.Resize(window.Width, window.Height);
     }
 
     private static KeyModifiers ToKeyModifiers(InputModifiers modifiers)

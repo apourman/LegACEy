@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -13,9 +15,11 @@ namespace LegACEy.Client.Tests;
 public sealed class VaultShellTests
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Dereth_window_renders_without_errors_and_nothing_lies_outside_its_frame(bool withArt) => RenderThread.Run(() =>
+    [InlineData(false, 344, 606)]
+    [InlineData(true, 344, 606)]
+    [InlineData(false, 294, 306)]
+    [InlineData(true, 294, 306)]
+    public void Dereth_window_renders_without_errors_and_nothing_lies_outside_its_frame(bool withArt, int width, int height) => RenderThread.Run(() =>
     {
         IGameArtSource art = withArt ? new CellArt() : new MissingArt();
         VaultShellPanel? vault = null;
@@ -23,28 +27,34 @@ public sealed class VaultShellTests
             VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight);
         using var disposeVault = vault!;
         host.ApplyTheme(new DerethClientTheme());
+        if (width != VaultShellPanel.WindowWidth || height != VaultShellPanel.WindowHeight) host.Resize(width, height);
         host.Tick();
         Assert.Null(host.LastError);
+        AssertNothingOutsideFrame(host);
 
-        var window = new Rect(host.Content.Bounds.Size);
-        foreach (var visual in host.Content.GetVisualDescendants().OfType<Visual>())
-        {
-            // Scrolled-out cells sit beyond the grid's viewport on purpose; the viewport clips them.
-            if (!visual.IsEffectivelyVisible || visual.GetVisualAncestors().OfType<ScrollViewer>().Any()) continue;
-            var origin = visual.TranslatePoint(default, host.Content);
-            if (origin == null) continue;
-            var bounds = new Rect(origin.Value, visual.Bounds.Size);
-            Assert.True(window.Contains(bounds), $"{visual.GetType().Name} at {bounds} lies outside the window {window}");
-        }
-
-        // The Dereth scrollbar is nine pixels across; the stock bar is not. The search field's text box has scrollbars of its own, so this is the grid's.
-        var scrollBar = host.Content.GetVisualDescendants().OfType<ScrollBar>()
-            .Single(bar => bar.Orientation == Avalonia.Layout.Orientation.Vertical && bar.GetVisualAncestors().OfType<DerethSlotGrid>().Any());
+        // The Dereth scrollbar is nine pixels across; the stock bar is not.
+        var scrollBar = VerticalBar(host);
         Assert.Equal(9, scrollBar.Width);
         Assert.NotNull(scrollBar.GetVisualDescendants().OfType<Thumb>().SingleOrDefault());
         // The header's chest icon is the game's own art, requested from the DAT.
         if (art is CellArt cellArt) Assert.Contains(VaultShellPanel.ChestIconId, cellArt.Reads.Keys);
         Assert.False(host.Tick());
+    });
+
+    [Fact]
+    public void At_the_minimum_size_with_the_status_line_shown_one_grid_row_fits_and_nothing_spills() => RenderThread.Run(() =>
+    {
+        using var vault = new LiveVaultHost(width: 294, height: 306);
+        // A retail item dragged over the window's header, not a cell, shows its drop hint on the status line.
+        vault.Window.RetailDragOver(0x50000099, "Fine Sword", new Point(40, 20));
+        vault.Step();
+
+        Assert.Contains(vault.Host.Content.GetVisualDescendants().OfType<TextBlock>(),
+            text => text.IsVisible && (text.Text ?? string.Empty).StartsWith("Drop Fine Sword", StringComparison.Ordinal));
+        var grid = Assert.Single(vault.Host.Content.GetVisualDescendants().OfType<DerethSlotGrid>());
+        Assert.True(grid.Bounds.Height >= DerethSlotGrid.CellSize, $"The grid is {grid.Bounds.Height} px tall, less than one {DerethSlotGrid.CellSize} px row.");
+        AssertNothingOutsideFrame(vault.Host);
+        Assert.Null(vault.Host.LastError);
     });
 
     [Fact]
@@ -113,6 +123,113 @@ public sealed class VaultShellTests
         Assert.Equal(1, art.Reads[0x06000FC7u]);
         Assert.Null(host.LastError);
     });
+
+    [Fact]
+    public void The_grid_reflows_its_columns_when_the_window_is_resized() => RenderThread.Run(() =>
+    {
+        VaultShellPanel? vault = null;
+        using var host = AvaloniaPanel.Create(() => new VaultShellWindow(vault = new VaultShellPanel(new MissingArt())),
+            VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight);
+        using var disposeVault = vault!;
+        host.ApplyTheme(new DerethClientTheme());
+        host.Tick();
+        Assert.Equal(6, Columns(host));
+
+        host.Resize(594, VaultShellPanel.WindowHeight);
+        host.Tick();
+        Assert.Equal(11, Columns(host));
+
+        host.Resize(294, VaultShellPanel.WindowHeight);
+        host.Tick();
+        Assert.Equal(5, Columns(host));
+        Assert.Null(host.LastError);
+    });
+
+    [Fact]
+    public void The_scrollbar_is_hidden_when_the_page_fits_and_shown_when_it_does_not() => RenderThread.Run(() =>
+    {
+        // Nine items fit the default window's grid, which keeps at least 24 slots.
+        using (var few = new LiveVaultHost())
+            Assert.False(VerticalBar(few.Host).IsVisible);
+
+        // The sample Vault has 317 items, far more than one window shows.
+        VaultShellPanel? vault = null;
+        using var many = AvaloniaPanel.Create(() => new VaultShellWindow(vault = new VaultShellPanel(new MissingArt())),
+            VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight);
+        using var disposeVault = vault!;
+        many.ApplyTheme(new DerethClientTheme());
+        many.Tick();
+        Assert.True(VerticalBar(many).IsVisible);
+        Assert.Null(many.LastError);
+    });
+
+    /// <summary>The live Vault from the FakeVaultServer over the real channel wire, with the Dereth theme.</summary>
+    private sealed class LiveVaultHost : IDisposable
+    {
+        private DateTime _now = new(2026, 10, 5, 12, 0, 0, DateTimeKind.Utc);
+        private readonly ServerChannelClient _channel;
+        private readonly VaultShellPanel _panel;
+
+        public LiveVaultHost(int width = VaultShellPanel.WindowWidth, int height = VaultShellPanel.WindowHeight)
+        {
+            Server = new FakeVaultServer(() => _now) { Latency = TimeSpan.FromMilliseconds(30) };
+            _channel = new ServerChannelClient(Server, () => _now);
+            Server.Deliver = _channel.Receive;
+            var client = new VaultClient(_channel);
+            VaultShellPanel? panel = null;
+            Host = AvaloniaPanel.Create(() => new VaultShellWindow(panel = new VaultShellPanel(new MissingArt(), client)),
+                VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight);
+            _panel = panel!;
+            Host.ApplyTheme(new DerethClientTheme());
+            if (width != VaultShellPanel.WindowWidth || height != VaultShellPanel.WindowHeight) Host.Resize(width, height);
+            Step();
+            Step();
+            Assert.Equal(VaultConnection.Live, client.Connection);
+        }
+
+        public FakeVaultServer Server { get; }
+        public AvaloniaPanel Host { get; }
+        public VaultShellWindow Window => (VaultShellWindow)Host.Content;
+
+        public void Step()
+        {
+            _now += TimeSpan.FromMilliseconds(30);
+            Server.Pump();
+            _channel.Tick();
+            Host.Tick();
+        }
+
+        public void Dispose()
+        {
+            _panel.Dispose();
+            Host.Dispose();
+        }
+    }
+
+    /// <summary>Every visible control lies inside the window, except scrolled-out cells, which the grid's viewport clips.</summary>
+    private static void AssertNothingOutsideFrame(AvaloniaPanel host)
+    {
+        var window = new Rect(host.Content.Bounds.Size);
+        foreach (var visual in host.Content.GetVisualDescendants().OfType<Visual>())
+        {
+            if (!visual.IsEffectivelyVisible || visual.GetVisualAncestors().OfType<ScrollViewer>().Any()) continue;
+            var origin = visual.TranslatePoint(default, host.Content);
+            if (origin == null) continue;
+            var bounds = new Rect(origin.Value, visual.Bounds.Size);
+            Assert.True(window.Contains(bounds), $"{visual.GetType().Name} at {bounds} lies outside the window {window}");
+        }
+    }
+
+    private static int Columns(AvaloniaPanel host)
+    {
+        var cells = Assert.Single(host.Content.GetVisualDescendants().OfType<WrapPanel>()).Children;
+        return cells.Count(cell => cell.Bounds.Y == cells[0].Bounds.Y);
+    }
+
+    /// <summary>The grid's bar. The search field's text box has scrollbars of its own.</summary>
+    private static ScrollBar VerticalBar(AvaloniaPanel host) =>
+        host.Content.GetVisualDescendants().OfType<ScrollBar>()
+            .Single(bar => bar.Orientation == Avalonia.Layout.Orientation.Vertical && bar.GetVisualAncestors().OfType<DerethSlotGrid>().Any());
 
     private sealed class CellArt : IGameArtSource
     {
