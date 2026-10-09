@@ -320,17 +320,17 @@ public sealed class AvaloniaPanel : IDisposable
         });
     }
 
-    /// <summary>The left button went down at a point in panel pixels.</summary>
-    public void PointerDown(double x, double y)
+    /// <summary>The left button went down at a point in panel pixels, with the keyboard modifiers held.</summary>
+    public void PointerDown(double x, double y, KeyModifiers modifiers = KeyModifiers.None)
     {
         VerifyUsable();
         RunInput(() =>
         {
             Invalidate();
             _pointerPosition = new Point(x, y);
-            SendPointer(RawPointerEventType.Move, new Point(x, y));
+            SendPointer(RawPointerEventType.Move, new Point(x, y), ToRawModifiers(modifiers));
             _mouseButtons |= RawInputModifiers.LeftMouseButton;
-            SendPointer(RawPointerEventType.LeftButtonDown, new Point(x, y));
+            SendPointer(RawPointerEventType.LeftButtonDown, new Point(x, y), ToRawModifiers(modifiers));
         });
     }
 

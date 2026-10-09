@@ -67,8 +67,9 @@ public sealed class VaultShellTests
         var chrome = (VaultShellWindow)host.Content;
         var closes = 0;
         chrome.CloseRequested += (_, _) => closes++;
-        // The header's close box is the only Dereth button in the header; the paging arrows are buttons too, and the scrollbars' repeat buttons are internal parts.
-        var close = Assert.Single(chrome.GetVisualDescendants().OfType<DerethButton>());
+        // The header's close box is the only Dereth button shown in the header: the selection's buttons are hidden until two items are selected.
+        // The paging arrows are buttons too, and the scrollbars' repeat buttons are internal parts.
+        var close = Assert.Single(chrome.GetVisualDescendants().OfType<DerethButton>().Where(button => button.IsEffectivelyVisible));
         var point = close.TranslatePoint(new Point(close.Bounds.Width / 2, close.Bounds.Height / 2), chrome)!.Value;
         host.PointerDown(point.X, point.Y);
         host.PointerUp(point.X, point.Y);

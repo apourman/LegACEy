@@ -117,6 +117,34 @@ public sealed class InputRouterTests
     }
 
     [Fact]
+    public void A_left_press_carries_the_Ctrl_and_Shift_held_with_it()
+    {
+        var router = new InputRouterService();
+        var surfaces = new[] { Surface("panel", 0) };
+        // The press's low word is the mouse key state: MK_SHIFT (0x4) and MK_CONTROL (0x8).
+        var press = router.Route(new NativeInputMessage(InputRouterService.WmLButtonDown, (nint)0x0c, Pack(10, 10)), surfaces);
+
+        Assert.Equal(InputAction.PointerDown, press.Action);
+        Assert.Equal(InputModifiers.Shift | InputModifiers.Control, press.Modifiers);
+    }
+
+    [Fact]
+    public void A_missed_key_up_does_not_leave_Ctrl_on_later_clicks()
+    {
+        var router = new InputRouterService();
+        var surfaces = new[] { Surface("panel", 0, wantsKeyboard: true) };
+        router.Route(new NativeInputMessage(InputRouterService.WmLButtonDown, 0, Pack(10, 10)), surfaces);
+        router.Route(new NativeInputMessage(InputRouterService.WmLButtonUp, 0, Pack(10, 10)), surfaces);
+        // Control goes down, and its key-up never reaches the router.
+        router.Route(new NativeInputMessage(InputRouterService.WmKeyDown, (nint)0x11, 0), surfaces);
+
+        // A plain click: the mouse message's key state holds no Control.
+        var press = router.Route(new NativeInputMessage(InputRouterService.WmLButtonDown, 0, Pack(10, 10)), surfaces);
+
+        Assert.Equal(InputModifiers.None, press.Modifiers);
+    }
+
+    [Fact]
     public void Logoff_releases_a_captured_pointer_and_clears_keyboard_focus()
     {
         var router = new InputRouterService();

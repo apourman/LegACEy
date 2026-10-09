@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
@@ -51,6 +52,26 @@ public class VaultFixture : IDisposable
     public string[] Texts() => Host.Content.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text ?? string.Empty).ToArray();
 
     public Point Center(Control control) => control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), Host.Content)!.Value;
+
+    /// <summary>Presses the control at its centre with the modifiers held, and lets go there. The press lands on what the last frame drew.</summary>
+    public void Press(Control control, KeyModifiers modifiers = KeyModifiers.None)
+    {
+        Host.Tick();
+        var point = Center(control);
+        Host.PointerDown(point.X, point.Y, modifiers);
+        Host.PointerUp(point.X, point.Y);
+    }
+
+    /// <summary>The Vault's items in order: even numbers are gold rings, the rest steel swords.</summary>
+    public static IEnumerable<VaultItemView> Vault(int count)
+    {
+        var deposited = new DateTimeOffset(2026, 10, 1, 18, 0, 0, TimeSpan.Zero);
+        for (var number = 1; number <= count; number++)
+        {
+            var name = number % 2 == 0 ? "Gold Ring" : "Steel Sword";
+            yield return new VaultItemView(0x80100000u + (uint)number, name, 0x2, 1, 120, "held", "Arwic Wanderer", deposited, 0x060011CF, 0, 0x06000FC7, 0, 0, 0);
+        }
+    }
 
     public void Step(TimeSpan time)
     {
