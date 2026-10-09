@@ -27,7 +27,7 @@ public sealed class VaultDragDropTests
         Assert.Contains("Release to deposit Fine Sword", vault.Texts());
 
         // Over the window but not over a cell: no indicator, and the hint says where to drop.
-        window.RetailDragOver(0x50000099, "Fine Sword", new Point(30, 440));
+        window.RetailDragOver(0x50000099, "Fine Sword", new Point(30, 80));
         vault.Host.Tick();
         Assert.Empty(vault.VisibleIndicators());
         Assert.Contains("Drop Fine Sword on a vault cell to deposit it", vault.Texts());
@@ -53,7 +53,7 @@ public sealed class VaultDragDropTests
         vault.Host.Tick();
         Assert.Empty(vault.VisibleIndicators());
 
-        Assert.False(vault.Window.RetailDrop(7, "Gem", new Point(30, 440)));
+        Assert.False(vault.Window.RetailDrop(7, "Gem", new Point(30, 80)));
         vault.Step(TimeSpan.FromMilliseconds(30));
         Assert.DoesNotContain(VaultProtocol.Deposit, vault.Server.Received);
         Assert.Contains("Drop the item on a vault cell to deposit it.", vault.Texts());
@@ -163,7 +163,6 @@ public sealed class VaultDragDropTests
     {
         using var vault = new LiveVault(VaultShellPanel.WindowHeight - heightLost);
         var scroller = VaultFixture.GridScroller(vault.Host.Content);
-        Assert.True(scroller.Extent.Height <= scroller.Viewport.Height + 0.5, $"extent {scroller.Extent.Height} > viewport {scroller.Viewport.Height}");
         Assert.Equal(0, scroller.Offset.Y);
 
         for (var column = 0; column < 6; column++)

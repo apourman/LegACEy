@@ -14,6 +14,14 @@ namespace LegACEy.Client.Tests;
 public sealed class VaultPagingTests
 {
     [Fact]
+    public void A_small_vault_still_shows_a_whole_page_of_empty_slots() => RenderThread.Run(() =>
+    {
+        using var vault = new PagedVault(3);
+        var grid = vault.Host.Content.GetVisualDescendants().OfType<DerethSlotGrid>().Single();
+        Assert.Equal(100, grid.Cells.Count);
+    });
+
+    [Fact]
     public void The_default_size_shows_a_whole_page_of_a_hundred_items() => RenderThread.Run(() =>
     {
         using var vault = new PagedVault(317);

@@ -24,7 +24,8 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     public const int WindowHeight = 689;
     /// <summary>The header's chest icon, from the DAT.</summary>
     public const uint ChestIconId = 0x06001020;
-    private const int MinimumCells = 24;
+    // A whole page of slots, so the grid looks the same however many items the page holds.
+    private const int MinimumCells = VaultProtocol.PageSize;
     private const int SampleCount = 317;
     private const double DragThreshold = 4;
     /// <summary>How far the cells the selection doesn't hold fade while two or more are selected, or while one is lifted.</summary>
