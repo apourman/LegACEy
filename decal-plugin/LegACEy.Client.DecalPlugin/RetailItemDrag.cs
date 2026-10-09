@@ -46,7 +46,15 @@ internal sealed class RetailItemDrag
         new NativeUiEntry("UIElement::IsAncestorOfMe", 0x0045FBB0, Bytes("8B 01 FF 90 A0 00 00 00 85 C0 74 1A 56 8B 74 24 08 3B C6 74 0E 8B 10 8B C8 FF"), Source,
             "ThisCall (UIElement* ancestor) -> bool"),
         new NativeUiEntry("UIElement_ItemList::InqDropIconInfo", 0x004E3380, Bytes("8B 44 24 10 83 EC 3C 53 55 8B 6C 24 50 56 8B 74"), Source,
-            "Cdecl (UIElement* dropIcon, uint* itemId, uint* spellId, DropItemFlags* flags)")
+            "Cdecl (UIElement* dropIcon, uint* itemId, uint* spellId, DropItemFlags* flags)"),
+        // Starting a drag from a retail item, as UIElement_ItemList::ItemList_BeginDrag does: the element is the source
+        // (a UIItem's drag icon, or the press element) and x, y are the grab offset. The client records the drag and
+        // hands the pointer to its own drop catchers. Ends with ret 0xC.
+        new NativeUiEntry("UIElementManager::StartDragandDrop", 0x0045E120, Bytes(
+            "83 EC 34 53 55 56 57 8B 7C 24 48 85 FF 8B F1 0F 84 52 01 00 00"), Source, "ThisCall (UIElement* element, int x, int y) -> bool; ret 0xC"),
+        // Prepares the drag icon of a retail item (UIItem +0x69C) from the item, as ItemList_BeginDrag does before it starts the drag.
+        new NativeUiEntry("UIElement_ItemList::PrepareDragIcon", 0x004E36E0, Bytes(
+            "55 8B EC 83 E4 F8 83 EC 34 53 56 57 8B 7D 08 8B B7 9C 06 00 00 85 F6 89"), Source, "ThisCall (UIElement_UIItem* item) -> bool; ret 4")
     };
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
