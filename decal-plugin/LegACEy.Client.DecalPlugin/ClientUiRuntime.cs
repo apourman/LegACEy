@@ -100,6 +100,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private ScreenSurface? _barSurface;
     private RetailSurfaceRenderer? _barRenderer;
     private WindowManager? _windows;
+    // The placements file, which also holds plugin settings (see LoadPluginSettings).
+    private IWindowPositionStore? _positionStore;
     // The window whose frame shows a hovered corner, and the corner it shows.
     private string? _cornerWindowId;
     private DerethCorner _cornerApplied;
@@ -367,7 +369,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private void CreateWindowManager()
     {
         if (_device == null) return;
-        _windows = new WindowManager(new Size(_device.Viewport.Width, _device.Viewport.Height), new FileWindowPositionStore(IOPath.Combine(PluginDirectory, "window-positions.txt")), SessionServer(), SessionCharacter());
+        _positionStore = new FileWindowPositionStore(IOPath.Combine(PluginDirectory, "window-positions.txt"));
+        _windows = new WindowManager(new Size(_device.Viewport.Width, _device.Viewport.Height), _positionStore, SessionServer(), SessionCharacter());
         _windowsEnabled = EnsurePostUiDrawHook();
     }
 
@@ -927,6 +930,17 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     bool ILegACEyPluginHost.IsWindowOpen(string id) => _featureSurfaces.ContainsKey(id);
     void ILegACEyPluginHost.HideWindow(string id) => HideFeatureWindow(id);
     void ILegACEyPluginHost.CloseWindow(string id) => ReleaseFeatureWindow(id);
+
+    // A plugin's one settings value is kept as the X of a placement row in the placements file, with no size.
+    int? ILegACEyPluginHost.LoadPluginSettings(string plugin) =>
+        _positionStore?.Load(SessionServer(), SessionCharacter(), SettingsKey(plugin))?.Location.X;
+
+    void ILegACEyPluginHost.SavePluginSettings(string plugin, int value) =>
+        _positionStore?.Save(SessionServer(), SessionCharacter(), SettingsKey(plugin), (new Point(value, 0), null));
+
+    // ponytail: the key relies on window ids always containing "/" (PluginRegistry names them plugin/id), so "settings:" can never
+    // collide with a window. Revisit if window ids ever stop carrying the plugin prefix.
+    private static string SettingsKey(string plugin) => "settings:" + plugin;
 
     private void HideFeatureWindow(string id)
     {

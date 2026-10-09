@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <!-- The folder under Plugins/ and this DLL's name must match: Plugins/Inventory/Inventory.dll. -->
+    <AssemblyName>Inventory</AssemblyName>
+    <Version>0.1.0</Version>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <!-- The client loads plugins by path, so a deps.json beside the DLL is never read. -->
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <!-- Build under this project's own bin folder even when the client is built with the output option, which would
+         otherwise write this DLL into the client's output root. The client copies it into Plugins\<Name>\. -->
+    <OutDir>$(MSBuildProjectDirectory)/bin/$(Configuration)/$(TargetFramework)/</OutDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The client already ships Avalonia, the framework and its themes beside itself. Private="false" keeps those
+         DLLs out of the plugin folder; Avalonia comes through the framework reference. -->
+    <ProjectReference Include="..\LegACEy.Client.Demo\LegACEy.Client.Demo.csproj" Private="false" />
+    <ProjectReference Include="..\LegACEy.Client.GameArt\LegACEy.Client.GameArt.csproj" Private="false" />
+    <!-- Demo's public API names Themes types, so the plugin compiles against Themes too. -->
+    <ProjectReference Include="..\LegACEy.Client.Themes\LegACEy.Client.Themes.csproj" Private="false" />
+  </ItemGroup>
+
+</Project>

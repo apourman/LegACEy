@@ -10,6 +10,7 @@ using Avalonia.Media.Imaging;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
+using static LegACEy.Client.Themes.DerethItemCells;
 
 namespace LegACEy.Plugin.Vault;
 
@@ -518,27 +519,6 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         _ => state
     };
 
-    private static TextBlock Label(string text, IBrush brush, double size) => new()
-    {
-        Text = text, Foreground = brush, FontSize = size, FontFamily = DerethPalette.Body,
-        VerticalAlignment = VerticalAlignment.Center
-    };
-
-    /// <summary>A stack count in the cell's corner, with a one-pixel dark shadow.</summary>
-    private static Control StackCount(int count)
-    {
-        var panel = new Panel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 3, 1) };
-        var shadow = Label(count.ToString(), ShadowBrush, 10);
-        shadow.FontWeight = FontWeight.SemiBold;
-        shadow.Margin = new Thickness(1, 1, 0, 0);
-        var text = Label(count.ToString(), TextBrush, 10);
-        text.FontWeight = FontWeight.SemiBold;
-        text.Margin = new Thickness(0, 0, 1, 1);
-        panel.Children.Add(shadow);
-        panel.Children.Add(text);
-        return panel;
-    }
-
     /// <summary>A picture that isn't an item (the header's chest): its outline is black, as retail draws it.</summary>
     private WriteableBitmap? Bitmap(uint id)
     {
@@ -558,25 +538,6 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
 
     private GameImage? ItemImage(VaultItemView item) =>
         ItemIcon.Draw(_art, item.Underlay, item.Icon, item.Overlay, item.OverlaySecondary, unchecked((uint)item.UiEffects));
-
-    /// <summary>An item's icon at native size. Missing art shows a question mark.</summary>
-    private Grid Icon(WriteableBitmap? bitmap)
-    {
-        var layers = new Grid
-        {
-            Width = 32, Height = 32,
-            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
-        };
-        if (bitmap != null)
-            layers.Children.Add(new Image { Source = bitmap, Width = 32, Height = 32, Stretch = Stretch.None });
-        if (layers.Children.Count == 0)
-        {
-            var fallback = Label("?", MutedBrush, 12);
-            fallback.HorizontalAlignment = HorizontalAlignment.Center;
-            layers.Children.Add(fallback);
-        }
-        return layers;
-    }
 
     public void Dispose()
     {

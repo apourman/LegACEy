@@ -25,6 +25,7 @@ foreach ($name in @('Decal.Adapter.dll', 'Decal.Interop.Core.dll', 'Microsoft.Di
 $pluginRoot = Join-Path $BuildOutput 'Plugins'
 if (!(Test-Path (Join-Path $pluginRoot 'Paperdoll\Paperdoll.dll'))) { throw 'Missing plugin assembly: Plugins\Paperdoll\Paperdoll.dll' }
 if (!(Test-Path (Join-Path $pluginRoot 'Vault\Vault.dll'))) { throw 'Missing plugin assembly: Plugins\Vault\Vault.dll' }
+if (!(Test-Path (Join-Path $pluginRoot 'Inventory\Inventory.dll'))) { throw 'Missing plugin assembly: Plugins\Inventory\Inventory.dll' }
 $pluginDestination = Join-Path $runtime 'Plugins'
 New-Item -ItemType Directory -Path $pluginDestination | Out-Null
 foreach ($folder in Get-ChildItem $pluginRoot -Directory) {
