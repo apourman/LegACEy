@@ -33,7 +33,6 @@ public sealed class PluginRegistryTests
         registry.Add(new FakePlugin("Local") { OnStart = started => client = started });
 
         Assert.False(client!.SupportsAction("paperdoll.look"));
-        Assert.Same(host.Inventory, client.Inventory);
 
         registry.SetServerActions(new[] { "paperdoll.look" });
         Assert.True(client.SupportsAction("paperdoll.look"));
@@ -41,6 +40,44 @@ public sealed class PluginRegistryTests
 
         registry.SetServerActions(null);
         Assert.False(client.SupportsAction("paperdoll.look"));
+    }
+
+    [Fact]
+    public void A_throwing_inventory_handler_turns_off_only_its_plugin_and_a_turned_off_plugin_hears_no_more_changes()
+    {
+        var host = new FakeHost();
+        var registry = new PluginRegistry(host, host.Log.Add);
+        var inventory = (FakeInventoryPort)host.Inventory;
+        var quietChanges = 0;
+        var offChanges = 0;
+        registry.Add(new FakePlugin("Broken") { OnStart = client =>
+        {
+            client.AddMenuEntry("Broken", 0, () => { });
+            client.Inventory.Changed += () => throw new InvalidOperationException("handler failed");
+        } });
+        registry.Add(new FakePlugin("Quiet") { OnStart = client =>
+        {
+            client.AddMenuEntry("Quiet", 0, () => { });
+            client.Inventory.Changed += () => quietChanges++;
+        } });
+        registry.Add(new FakePlugin("Off") { OnStart = client =>
+        {
+            client.AddMenuEntry("Off", 0, () => throw new InvalidOperationException("menu failed"));
+            client.Inventory.Changed += () => offChanges++;
+        } });
+
+        inventory.Push(InventorySnapshot.Empty);
+
+        Assert.Equal(new[] { "Quiet", "Off" }, Titles(registry));
+        Assert.Equal(1, quietChanges);
+        Assert.Equal(1, offChanges);
+
+        registry.RunMenuEntry(registry.VisibleMenuEntries.Single(entry => entry.Title == "Off"));
+        inventory.Push(InventorySnapshot.Empty);
+
+        Assert.Equal(new[] { "Quiet" }, Titles(registry));
+        Assert.Equal(2, quietChanges);
+        Assert.Equal(1, offChanges);
     }
 
     [Fact]

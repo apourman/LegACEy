@@ -732,12 +732,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         {
             var item = CoreManager.Current.WorldFilter[unchecked((int)id)];
             if (item == null || _portal == null) return null;
-            // Decal reports portal texture ids without their 0x06 prefix.
-            static uint Texture(int value) => value == 0 ? 0 : (value & 0xFF000000) == 0 ? unchecked((uint)value) | 0x06000000 : unchecked((uint)value);
-            // Decal names the UI-effects value IconOutline (checked in Decal.Adapter.dll). Decal has no secondary overlay key, so none is drawn.
-            return ItemIcon.Draw(_portal, Texture(item.Values(Decal.Adapter.Wrappers.LongValueKey.IconUnderlay)), Texture(item.Icon),
-                Texture(item.Values(Decal.Adapter.Wrappers.LongValueKey.IconOverlay)), 0,
-                unchecked((uint)item.Values(Decal.Adapter.Wrappers.LongValueKey.IconOutline)));
+            var visual = DecalIcons.Visual(item);
+            // Decal has no secondary overlay key, so none is drawn.
+            return ItemIcon.Draw(_portal, visual.Underlay, visual.Icon, visual.Overlay, 0, visual.UiEffects);
         }
         catch (COMException) { return null; }
     }
