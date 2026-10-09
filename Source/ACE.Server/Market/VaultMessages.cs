@@ -52,6 +52,27 @@ namespace ACE.Server.Market
         }
 
         /// <summary>
+        /// What a player is told for a batch withdrawal. A refusal of one item names it; a refusal of the set names the set, as nothing in it moved.
+        /// </summary>
+        public static string ForBatch(VaultOutcome outcome, string firstName, int count)
+        {
+            if (count == 1)
+                return For(outcome, firstName);
+
+            var items = $"{count:N0} items";
+
+            return outcome switch
+            {
+                VaultOutcome.Withdrawn => $"{items} are back in your pack.",
+                VaultOutcome.WithdrawnAtLogin => $"{items} are yours, but your pack has no room for all of them right now. The rest will be in your pack when you next log in.",
+                VaultOutcome.NoPackSpace => $"You do not have room in your pack for all {items}. Nothing was withdrawn.",
+                VaultOutcome.UniqueLimit => $"You cannot carry all {items}. Nothing was withdrawn.",
+                VaultOutcome.SaveFailed or VaultOutcome.Unconfirmed or VaultOutcome.Banned => For(outcome, items),
+                _ => For(outcome, firstName),
+            };
+        }
+
+        /// <summary>
         /// What a player is told for a trade note (MMD) outcome
         /// </summary>
         public static string ForNotes(VaultOutcome outcome, long amount, long balance)

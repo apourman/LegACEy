@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 
 using log4net;
@@ -27,9 +28,11 @@ namespace ACE.Server.Market
         public const string Withdraw = "vault.withdraw";
         public const string Check = "vault.check";
         public const string Move = "vault.move";
+        public const string WithdrawBatch = "vault.withdraw_batch";
 
         /// <summary>
         /// The most items one vault.list reply holds. Must match VaultProtocol.PageSize in the LegACEy Vault client.
+        /// It is also the most one batch withdrawal names.
         /// </summary>
         public const int PageSize = 100;
 
@@ -50,6 +53,57 @@ namespace ACE.Server.Market
             ServerChannel.Register(Withdraw, context => HandleTransfer(context, deposit: false), Station);
             ServerChannel.Register(Check, HandleCheck, Station);
             ServerChannel.Register(Move, HandleMove, Station);
+            ServerChannel.Register(WithdrawBatch, HandleWithdrawBatch, Station);
+        }
+
+        /// <summary>
+        /// Withdraws a set of items at once, instantly and all or none (body: a count, then the item guids). The reply is the outcome: a byte for
+        /// withdrawn, then the message, which is the first refusal's reason when nothing moved.
+        /// </summary>
+        private static void HandleWithdrawBatch(ChannelContext context)
+        {
+            if (!TryReadGuids(context, out var itemGuids))
+                return;
+
+            Vault.WithdrawMany(context.Player, itemGuids, result => context.Reply(ChannelWire.Body(w =>
+            {
+                w.Write((byte)(result.Success ? 1 : 0));
+                ChannelWire.WriteString(w, result.Message);
+            })));
+        }
+
+        /// <summary>
+        /// Reads a batch withdrawal's guids: a count from 1 to PageSize, then that many distinct guids. Anything else is a bad request.
+        /// </summary>
+        private static bool TryReadGuids(ChannelContext context, out uint[] itemGuids)
+        {
+            try
+            {
+                using (var body = context.Body())
+                {
+                    var count = body.ReadInt32();
+                    if (count >= 1 && count <= PageSize)
+                    {
+                        var guids = new uint[count];
+                        for (var index = 0; index < count; index++)
+                            guids[index] = body.ReadUInt32();
+
+                        if (guids.Distinct().Count() == count)
+                        {
+                            itemGuids = guids;
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch (EndOfStreamException)
+            {
+                // a body cut short is the same bad request as one with bad bounds
+            }
+
+            itemGuids = null;
+            context.Fail(ChannelStatus.BadRequest, $"Withdraw between 1 and {PageSize} different items.");
+            return false;
         }
 
         /// <summary>

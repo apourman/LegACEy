@@ -7,7 +7,9 @@ using System.Text;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 using ACE.Database.Market;
+using ACE.Database.Tests.Market;
 using ACE.Entity.Enum;
+using ACE.Entity.Enum.Properties;
 using ACE.Server.ClientChannel;
 using ACE.Server.Managers;
 using ACE.Server.Market;
@@ -209,18 +211,57 @@ namespace ACE.Server.Tests.Market
         /// <summary>
         /// Deposits <paramref name="count"/> swords, named by <paramref name="name"/>, in order; returns their guids in that order
         /// </summary>
-        private static uint[] DepositedNamed(Player player, int count, Func<int, string> name)
+        private static uint[] DepositedNamed(Player player, int count, Func<int, string> name, Action<WorldObject> configure = null)
         {
             var guids = new uint[count];
             for (var number = 1; number <= count; number++)
             {
                 var item = VaultTestWorld.NewItem(VaultTestWorld.SwordWcid);
                 item.Name = name(number);
+                configure?.Invoke(item);
                 VaultTestWorld.Give(player, item);
                 Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, item.Guid.Full).Outcome);
                 guids[number - 1] = item.Guid.Full;
             }
             return guids;
+        }
+
+        /// <summary>
+        /// The body of a vault.withdraw_batch request: a count, then the item guids
+        /// </summary>
+        private static byte[] WithdrawBatchBody(params uint[] guids) => ChannelWire.Body(w =>
+        {
+            w.Write(guids.Length);
+            foreach (var guid in guids)
+                w.Write(guid);
+        });
+
+        /// <summary>
+        /// A transfer-style reply (a byte for accepted, then the message), read back
+        /// </summary>
+        private static (bool Accepted, string Message) TransferReply(ChannelEvent reply)
+        {
+            Assert.AreEqual(ChannelStatus.Ok, reply.Status);
+            var reader = new BinaryReader(new MemoryStream(reply.Body), Encoding.UTF8);
+            return (reader.ReadByte() != 0, ChannelWire.ReadString(reader));
+        }
+
+        /// <summary>
+        /// Sends a batch withdrawal and asserts it is refused with a message containing <paramref name="reason"/>. Then asserts that every
+        /// one of the guids is still in the Vault, not in the pack, and has no container in the database (as the Vault keeps it).
+        /// </summary>
+        private static void AssertBatchRefusedAndNothingMoved(Player player, uint[] guids, string reason)
+        {
+            var (accepted, message) = TransferReply(Request(player, VaultChannelActions.WithdrawBatch, WithdrawBatchBody(guids)));
+
+            Assert.IsFalse(accepted, "refused: " + message);
+            StringAssert.Contains(message, reason);
+            foreach (var guid in guids)
+            {
+                Assert.IsNotNull(VaultStore.Get(guid), "still in the Vault");
+                Assert.IsNull(player.GetInventoryItem(guid), "not in the pack");
+                Assert.AreEqual(0, Count($"SELECT COUNT(*) FROM biota_properties_i_i_d WHERE object_Id = {guid} AND type = {(int)PropertyInstanceId.Container};"), "the database still has it in the Vault");
+            }
         }
 
         /// <summary>
@@ -321,6 +362,115 @@ namespace ACE.Server.Tests.Market
             Assert.AreEqual(1, reply.Body[0], "moved");
             CollectionAssert.AreEqual(new[] { second.Guid.Full, first }, VaultStore.List(player.Character.AccountId).Select(i => i.ItemGuid).ToArray());
             Assert.AreEqual(versionBefore, VaultStore.Get(first).RowVersion, "a move is not a concurrency change");
+        }
+
+        [TestMethod]
+        public void ChannelBatchWithdraw_MovesEveryItemAtOnce_WithNoChannelWait_AndPushesChanged()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var guids = DepositedNamed(player, 3, n => $"Batch item {n}");
+            AtTheVault(player);
+
+            // a single withdrawal would channel for a minute; the batch doesn't
+            using (ChannelSeconds(60))
+            {
+                var sent = Send(player, VaultChannelActions.WithdrawBatch, WithdrawBatchBody(guids));
+                var events = WaitForEvents(player, e => e.Kind == ChannelEventKind.Reply && e.RequestId == sent);
+
+                var reply = events.Last();
+                Assert.AreEqual(ChannelStatus.Ok, reply.Status);
+                Assert.AreEqual(1, reply.Body[0], "accepted");
+                Assert.IsFalse(player.IsVaultChannelling, "no channel");
+                foreach (var guid in guids)
+                    Assert.IsNotNull(player.GetInventoryItem(guid), "in the pack");
+
+                // the outcome is pushed before the reply that answers the request
+                AssertChanged(events.Single(e => e.Kind == ChannelEventKind.Push), nameof(VaultOutcome.Withdrawn));
+            }
+        }
+
+        [TestMethod]
+        public void ChannelBatchWithdraw_IfTheSetDoesNotFit_MovesNothingAndSaysWhy()
+        {
+            // the pack has room for one of the two items: each fits alone, but not together
+            var slots = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var slotGuids = DepositedNamed(slots, 2, n => $"Batch item {n}");
+            slots.ItemCapacity = (byte)(slots.ItemCapacity!.Value - slots.GetFreeInventorySlots() + 1);
+            Assert.AreEqual(1, slots.GetFreeInventorySlots());
+            AtTheVault(slots);
+
+            AssertBatchRefusedAndNothingMoved(slots, slotGuids, "room in your pack");
+
+            // the slots are there, but the two (10 burden each) are over what is left of the burden
+            var burden = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var burdenGuids = DepositedNamed(burden, 2, n => $"Heavy item {n}", item => item.EncumbranceVal = 10);
+            burden.EncumbranceVal = burden.GetEncumbranceCapacity() * 3 - 15;
+            AtTheVault(burden);
+
+            AssertBatchRefusedAndNothingMoved(burden, burdenGuids, "room in your pack");
+        }
+
+        [TestMethod]
+        public void ChannelBatchWithdraw_WhileATransferIsActive_IsRefusedAndMovesNothing()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var channelling = DepositedNamed(player, 1, n => "Channelled item")[0];
+            var guids = DepositedNamed(player, 2, n => $"Batch item {n}");
+            AtTheVault(player);
+
+            using (ChannelSeconds(60))
+            {
+                Assert.AreEqual(1, Request(player, VaultChannelActions.Withdraw, BitConverter.GetBytes(channelling)).Body[0], "the single withdrawal started");
+                Assert.IsTrue(player.IsVaultChannelling);
+
+                var (accepted, message) = TransferReply(Request(player, VaultChannelActions.WithdrawBatch, WithdrawBatchBody(guids)));
+
+                Assert.IsFalse(accepted, "refused");
+                StringAssert.Contains(message, "already moving");
+                foreach (var guid in guids)
+                    Assert.IsNotNull(VaultStore.Get(guid), "still in the Vault");
+                Assert.IsTrue(player.IsVaultChannelling, "the single withdrawal is still channelling");
+
+                VaultTestWorld.OnWorldThread(() => VaultChannel.Cancel(player));
+            }
+        }
+
+        [TestMethod]
+        public void ChannelBatchWithdraw_ABadList_IsBadOrRefusedAndMovesNothing()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var guids = DepositedNamed(player, 2, n => $"Batch item {n}");
+            var (_, stranger) = DepositedItem();
+            AtTheVault(player);
+
+            // an empty list, a duplicate and more than a page are bad requests
+            Assert.AreEqual(ChannelStatus.BadRequest, Request(player, VaultChannelActions.WithdrawBatch, WithdrawBatchBody()).Status, "empty");
+            Assert.AreEqual(ChannelStatus.BadRequest, Request(player, VaultChannelActions.WithdrawBatch, WithdrawBatchBody(guids[0], guids[0])).Status, "duplicate");
+            var tooMany = ChannelWire.Body(w => w.Write(VaultChannelActions.PageSize + 1));
+            Assert.AreEqual(ChannelStatus.BadRequest, Request(player, VaultChannelActions.WithdrawBatch, tooMany).Status, "over a page");
+
+            // another account's item is refused by the item rules, and the batch moves none of its items
+            AssertBatchRefusedAndNothingMoved(player, new[] { guids[0], stranger }, "not in your Vault");
+        }
+
+        [TestMethod]
+        public void ChannelBatchWithdraw_WhenTheSaveFailsPartWay_MovesNothing()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var guids = DepositedNamed(player, 3, n => $"Batch item {n}");
+            AtTheVault(player);
+
+            // the last item's withdraw event fails, after the first two items were written in the same save: the save must roll all of them back
+            var trigger = "test_fail_last_batch_event";
+            MarketTestDatabase.Execute(Db, $"CREATE TRIGGER `{trigger}` BEFORE INSERT ON `market_item_event` FOR EACH ROW IF NEW.item_Guid = {guids[2]} THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'injected failure'; END IF;");
+            try
+            {
+                AssertBatchRefusedAndNothingMoved(player, guids, "could not save");
+            }
+            finally
+            {
+                MarketTestDatabase.Execute(Db, $"DROP TRIGGER IF EXISTS `{trigger}`;");
+            }
         }
 
         [TestMethod]
