@@ -1009,6 +1009,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                 lParam = (point.X & 0xffff) | (point.Y << 16);
         }
 
+        if ((e.Msg == InputRouterService.WmKeyDown || e.Msg == InputRouterService.WmRButtonDown) && OfferToWindow(e.Msg, e.WParam, lParam))
+        {
+            e.Eat = true;
+            return;
+        }
+
         var route = _inputRouter.Route(
             new NativeInputMessage(e.Msg, new IntPtr(e.WParam), new IntPtr(lParam)),
             GetInputSurfaces());
@@ -1088,6 +1094,41 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             if (route.Eat)
                 e.Eat = true;
         });
+    }
+
+    /// <summary>
+    /// Offers a key-down to the focused window, unless a text box in it has focus, or a right-click to the window under the
+    /// pointer, when that window is an <see cref="IGameInputTarget"/>. True if the window took it. A held key's repeats are not offered.
+    /// </summary>
+    private bool OfferToWindow(int msg, int wParam, int lParam)
+    {
+        string? id;
+        IGameInputTarget? target;
+        if (msg == InputRouterService.WmKeyDown)
+        {
+            id = _inputRouter.FocusedSurfaceId;
+            var focused = SurfaceById(id);
+            if ((lParam & 0x40000000) != 0 || focused is not { Visible: true } || focused.Panel.WantsKeyboard) return false;
+            target = focused.Panel.Content as IGameInputTarget;
+        }
+        else
+        {
+            id = TopSurfaceAt(_pointer = new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff)));
+            target = SurfaceById(id)?.Panel.Content as IGameInputTarget;
+        }
+        if (target == null) return false;
+        try
+        {
+            if (msg == InputRouterService.WmKeyDown) return target.GameKeyDown(Win32KeyMap.ToAvaloniaKey(wParam));
+            var surface = SurfaceById(id)!;
+            target.RightClick(new Avalonia.Point(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y));
+            return true;
+        }
+        catch (Exception exception)
+        {
+            _windowFailures[id!](exception);
+            return true;
+        }
     }
 
     /// <summary>

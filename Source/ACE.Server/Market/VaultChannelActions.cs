@@ -9,8 +9,13 @@ using log4net;
 using ACE.Database.Market;
 using ACE.Database.Models.Shard.Market;
 using ACE.Entity.Enum;
+using ACE.Database;
 using ACE.Server.ClientChannel;
+using ACE.Server.Entity.Actions;
+using ACE.Server.Factories;
 using ACE.Server.Managers;
+using ACE.Server.Network.GameEvent.Events;
+using ACE.Server.Network.GameMessages.Messages;
 using ACE.Server.WorldObjects;
 
 namespace ACE.Server.Market
@@ -30,6 +35,7 @@ namespace ACE.Server.Market
         public const string Check = "vault.check";
         public const string Move = "vault.move";
         public const string WithdrawBatch = "vault.withdraw_batch";
+        public const string Inspect = "vault.inspect";
 
         /// <summary>
         /// The most items one vault.list reply holds. Must match VaultProtocol.PageSize in the LegACEy Vault client.
@@ -55,6 +61,48 @@ namespace ACE.Server.Market
             ServerChannel.Register(Check, HandleCheck, Station);
             ServerChannel.Register(Move, HandleMove, Station);
             ServerChannel.Register(WithdrawBatch, HandleWithdrawBatch, Station);
+            ServerChannel.Register(Inspect, HandleInspect, Station);
+        }
+
+        /// <summary>
+        /// Shows one of the account's Vault items in the game's appraisal window (body: item guid): the client is told about the item, which stays
+        /// in the Vault, then sent its appraisal. The reply is empty; a refusal fails it.
+        /// </summary>
+        private static void HandleInspect(ChannelContext context)
+        {
+            if (!TryReadGuid(context, out var itemGuid))
+                return;
+
+            var player = context.Player;
+            var accountId = player.Character.AccountId;
+
+            Task.Run(() =>
+            {
+                try
+                {
+                    var row = Vault.Available ? VaultStore.Get(itemGuid) : null;
+                    var biota = row?.AccountId == accountId ? DatabaseManager.Shard.BaseDatabase.GetBiota(itemGuid, doNotAddToCache: true) : null;
+
+                    WorldManager.EnqueueAction(new ActionEventDelegate(() =>
+                    {
+                        var item = biota == null ? null : WorldObjectFactory.CreateWorldObject(biota);
+
+                        if (item == null)
+                        {
+                            context.Fail(ChannelStatus.Error, "That item is no longer in your Vault.");
+                            return;
+                        }
+
+                        player.Session.Network.EnqueueSend(new GameMessageCreateObject(item), new GameEventIdentifyObjectResponse(player.Session, item, true));
+                        context.Reply(Array.Empty<byte>());
+                    }));
+                }
+                catch (Exception ex)
+                {
+                    log.Error($"[VAULT] Channel inspect of 0x{itemGuid:X8} for account {accountId} failed: {ex}");
+                    context.Fail(ChannelStatus.Error, "That item could not be inspected.");
+                }
+            });
         }
 
         /// <summary>

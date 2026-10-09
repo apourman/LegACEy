@@ -453,6 +453,28 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         return -1;
     }
 
+    /// <summary>E inspects the selected item, when exactly one is selected.</summary>
+    public bool GameKeyDown(Key key)
+    {
+        if (key != Key.E || _client?.Connection != VaultConnection.Live || _selection.Count != 1) return false;
+        _client.Inspect(_client.SelectedGuids()[0]);
+        return true;
+    }
+
+    /// <summary>A right-click on an item selects it alone and inspects it, unless several items are selected.</summary>
+    public void RightClick(Point position)
+    {
+        var cell = CellAt(position);
+        var items = Snapshot?.Items;
+        if (_client?.Connection != VaultConnection.Live || items == null || cell < 0 || cell >= items.Count || _selection.Count > 1) return;
+        if (!_selection.Contains(cell))
+        {
+            _selection.Press(cell, ctrl: false, shift: false);
+            ShowSelection();
+        }
+        _client.Inspect(items[cell].Guid);
+    }
+
     private void OnCellReleased(VaultItemView pressed, PointerReleasedEventArgs e)
     {
         // A press released on its own item without a drag is a click: it selects by the modifiers held when it went down.
@@ -597,7 +619,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
 }
 
 /// <summary>The Vault window: the Dereth frame, its header and close box, around the Vault panel.</summary>
-public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget, IDisposable
+public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget, IGameInputTarget, IDisposable
 {
     private readonly VaultShellPanel _panel;
     private bool _disposed;
@@ -616,6 +638,13 @@ public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget, IDisp
 
     public bool RetailDrop(uint itemId, string itemName, Point position) =>
         this.TranslatePoint(position, _panel) is { } point && _panel.RetailDrop(itemId, itemName, point);
+
+    public bool GameKeyDown(Key key) => _panel.GameKeyDown(key);
+
+    public void RightClick(Point position)
+    {
+        if (this.TranslatePoint(position, _panel) is { } point) _panel.RightClick(point);
+    }
 
     public void Dispose()
     {

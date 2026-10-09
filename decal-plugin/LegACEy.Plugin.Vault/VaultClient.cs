@@ -61,6 +61,7 @@ public static class VaultProtocol
     public const string Check = "vault.check";
     public const string Move = "vault.move";
     public const string WithdrawBatch = "vault.withdraw_batch";
+    public const string Inspect = "vault.inspect";
 
     /// <summary>The items the window asks for at a time. Must match ACE.Server.Market.VaultChannelActions.PageSize.</summary>
     public const int PageSize = 100;
@@ -296,6 +297,12 @@ public sealed class VaultClient : IDisposable
     public void Deposit(uint guid) => Transfer(VaultProtocol.Deposit, guid);
 
     public void Withdraw(uint guid) => Transfer(VaultProtocol.Withdraw, guid);
+
+    /// <summary>Asks the server to show the item in the game's own appraisal window. Only a refusal comes back, as a notice.</summary>
+    public void Inspect(uint guid) => Send(VaultProtocol.Inspect, VaultProtocol.ItemRequest(guid), reply =>
+    {
+        if (!reply.Ok) Set(Connection, reply.Message);
+    });
 
     /// <summary>The ids of the items selected on the page on screen, in the page's order.</summary>
     public IReadOnlyList<uint> SelectedGuids() =>
