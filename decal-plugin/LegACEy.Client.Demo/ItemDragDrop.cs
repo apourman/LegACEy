@@ -34,9 +34,9 @@ public interface IItemDragHost
 {
     /// <summary>
     /// Shows the item's icon, already drawn (see ItemIcon.Draw), under the pointer, above every window, until disposed.
-    /// <paramref name="stack"/> is how many items the drag carries: above one, the icon carries a "×stack" count badge.
+    /// <paramref name="count"/> is how many items the drag carries: above one, the icon carries a "×count" badge.
     /// </summary>
-    IDisposable ShowDragIcon(GameImage? icon, int stack);
+    IDisposable ShowDragIcon(GameImage? icon, int count);
 
     /// <summary>What is under the pointer now, outside LegACEy windows.</summary>
     ItemDropTarget DropTargetAtPointer();
@@ -47,14 +47,14 @@ public sealed class FakeItemDragHost : IItemDragHost
 {
     public ItemDropTarget Target { get; set; } = ItemDropTarget.Inventory;
     public List<GameImage?> IconsShown { get; } = new();
-    /// <summary>The stack count of each icon shown, as the host was asked to badge it.</summary>
-    public List<int> StacksShown { get; } = new();
+    /// <summary>The count each icon was shown with, as the host was asked to badge it.</summary>
+    public List<int> CountsShown { get; } = new();
     public int IconsOpen { get; private set; }
 
-    public IDisposable ShowDragIcon(GameImage? icon, int stack)
+    public IDisposable ShowDragIcon(GameImage? icon, int count)
     {
         IconsShown.Add(icon);
-        StacksShown.Add(stack);
+        CountsShown.Add(count);
         IconsOpen++;
         return new Icon(this);
     }

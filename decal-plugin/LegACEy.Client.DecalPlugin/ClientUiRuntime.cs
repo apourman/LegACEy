@@ -688,9 +688,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         private readonly ClientUiRuntime _owner;
         public ItemDragHost(ClientUiRuntime owner) => _owner = owner;
 
-        public IDisposable ShowDragIcon(GameImage? image, int stack)
+        public IDisposable ShowDragIcon(GameImage? image, int count)
         {
-            var icon = _owner.ShowDragIcon(image, stack);
+            var icon = _owner.ShowDragIcon(image, count);
             _owner._itemDragActive = true;
             return new ItemDrag(_owner, icon);
         }
@@ -723,7 +723,24 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         }
     }
 
-    private IDisposable ShowDragIcon(GameImage? image, int stack)
+    /// <summary>The "×count" badge for a drag icon's corner: the count over a dark shadow, as the Vault draws its stack counts.</summary>
+    private static Avalonia.Controls.Control CountBadge(int count)
+    {
+        static Avalonia.Controls.TextBlock Line(string text, Avalonia.Media.IBrush brush, Avalonia.Thickness margin) => new()
+        {
+            Text = text, FontSize = 11, FontWeight = Avalonia.Media.FontWeight.SemiBold, FontFamily = DerethPalette.Body, Foreground = brush, Margin = margin
+        };
+        var badge = new Avalonia.Controls.Panel
+        {
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Bottom,
+            Margin = new Avalonia.Thickness(0, 0, 3, 1)
+        };
+        badge.Children.Add(Line($"×{count}", Avalonia.Media.Brushes.Black, new Avalonia.Thickness(1, 1, 0, 0)));
+        badge.Children.Add(Line($"×{count}", DerethPalette.TextBrush, new Avalonia.Thickness(0, 0, 1, 1)));
+        return badge;
+    }
+
+    private IDisposable ShowDragIcon(GameImage? image, int count)
     {
         HideDragIcon();
         if (_device == null || _portal == null) return new DragIcon(this);
@@ -732,13 +749,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         if (bitmap != null)
             layers.Children.Add(new Avalonia.Controls.Image { Source = bitmap, Width = 32, Height = 32, Stretch = Stretch.None });
         // a selection's drag carries its count in the icon's corner
-        if (stack > 1)
-            layers.Children.Add(new TextBlock
-            {
-                Text = $"×{stack}", FontSize = 11, FontWeight = Avalonia.Media.FontWeight.Bold, Foreground = Avalonia.Media.Brushes.White,
-                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Bottom,
-                Margin = new Avalonia.Thickness(0, 0, 2, 0)
-            });
+        if (count > 1)
+            layers.Children.Add(CountBadge(count));
         RenderOptions.SetBitmapInterpolationMode(layers, Avalonia.Media.Imaging.BitmapInterpolationMode.None);
         layers.DetachedFromVisualTree += (_, _) => bitmap?.Dispose();
         var panel = ObservePanel(AvaloniaPanel.Create(() => layers, 32, 32));

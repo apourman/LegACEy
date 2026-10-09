@@ -51,6 +51,10 @@ public class VaultFixture : IDisposable
 
     public string[] Texts() => Host.Content.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text ?? string.Empty).ToArray();
 
+    /// <summary>The window's Dereth button whose label reads <paramref name="text"/>.</summary>
+    public Button ButtonLabelled(string text) =>
+        Window.GetVisualDescendants().OfType<DerethButton>().Single(button => button.Content is TextBlock label && label.Text == text);
+
     public Point Center(Control control) => control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), Host.Content)!.Value;
 
     /// <summary>Presses the control at its centre with the modifiers held, and lets go there. The press lands on what the last frame drew.</summary>

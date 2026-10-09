@@ -130,6 +130,8 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         // The selection's line takes the whole header line.
         Grid.SetColumnSpan(_selectionLine, 2);
         summary.Children.Add(_selectionLine);
+        // Sample mode has no server to withdraw from: its button stays disabled.
+        _withdrawSelection.IsEnabled = _client != null;
         _withdrawSelection.Click += (_, _) => _client?.WithdrawMany(_client.SelectedGuids());
         _clearSelection.Click += (_, _) =>
         {
@@ -301,7 +303,9 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
                     ? ($"Drop {_dragGuids.Count:N0} items on your inventory to withdraw them", false)
                     : ($"Drop {_dragItem.Name} on your inventory to withdraw it", false);
             // A filtered page can't be rearranged, so the move would be refused: say so instead of offering it.
-            return client.Search.Length > 0 ? (VaultClient.SearchBlocksMove, false) : ($"Release to move {_dragItem.Name} here", false);
+            // A selection dragged over a cell moves only the item grabbed: the others stay where they are.
+            var only = _dragGuids.Count > 1 ? " (only this item)" : string.Empty;
+            return client.Search.Length > 0 ? (VaultClient.SearchBlocksMove, false) : ($"Release to move {_dragItem.Name} here{only}", false);
         }
         return (client.Notice, false);
     }

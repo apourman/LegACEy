@@ -225,9 +225,6 @@ public sealed class VaultSelectionTests
         /// <summary>Clicks the cell at a place of the page on screen, with Ctrl or Shift held.</summary>
         public void Click(int index, KeyModifiers modifiers = KeyModifiers.None) => Press(Cells[index], modifiers);
 
-        public Button ButtonLabelled(string text) =>
-            Window.GetVisualDescendants().OfType<DerethButton>().Single(button => button.Content is TextBlock label && label.Text == text);
-
         public Point OriginIn(Control control) => control.TranslatePoint(default, Host.Content)!.Value;
 
         /// <summary>The text the player can see: a collapsed or hidden line is left out.</summary>

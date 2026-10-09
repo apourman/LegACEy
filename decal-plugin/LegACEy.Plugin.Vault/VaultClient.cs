@@ -308,12 +308,17 @@ public sealed class VaultClient : IDisposable
     /// </summary>
     public void WithdrawMany(IReadOnlyList<uint> guids)
     {
+        // A transfer already running keeps its own pending state; a batch would clear it on refusal, so it waits.
+        if (TransferPending)
+        {
+            Tell("Wait for the current transfer to finish.");
+            return;
+        }
         if (guids.Count == 1)
         {
             Withdraw(guids[0]);
             return;
         }
-        if (guids.Count == 0) return;
 
         TransferPending = true;
         Set(Connection, $"Asking the server to withdraw {guids.Count:N0} items…");
@@ -322,9 +327,8 @@ public sealed class VaultClient : IDisposable
             TransferPending = false;
             if (!reply.Ok) { Set(Connection, reply.Message); return; }
             var (accepted, message) = VaultProtocol.ReadTransfer(reply.Body);
-            if (!accepted) { Set(Connection, message); return; }
-            Notice = message;
-            Refresh();
+            // An accepted batch is instant: its push (always sent for an accepted one) reloads the page and clears the selection.
+            if (!accepted) Set(Connection, message);
         });
     }
 

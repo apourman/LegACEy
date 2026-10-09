@@ -1,8 +1,5 @@
 using System.Linq;
-using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.VisualTree;
-using LegACEy.Client.Themes;
 using LegACEy.Plugin.Vault;
 using Xunit;
 
@@ -54,7 +51,7 @@ public sealed class VaultBatchWithdrawTests
         var start = vault.Center(vault.Cells[4]);
         vault.Host.PointerDown(start.X, start.Y);
         vault.Host.PointerMove(start.X + 30, start.Y);
-        Assert.Equal(3, Assert.Single(vault.Drag.StacksShown));
+        Assert.Equal(3, Assert.Single(vault.Drag.CountsShown));
 
         vault.Host.PointerMove(VaultShellPanel.WindowWidth + 80, start.Y);
         vault.Host.PointerUp(VaultShellPanel.WindowWidth + 80, start.Y);
@@ -99,6 +96,25 @@ public sealed class VaultBatchWithdrawTests
         Assert.Null(vault.Host.LastError);
     });
 
+    [Fact]
+    public void Dragging_a_single_selected_item_sends_one_withdraw_with_no_badge() => RenderThread.Run(() =>
+    {
+        using var vault = new BatchVault();
+        vault.Press(vault.Cells[4]); // a selection of one
+
+        var start = vault.Center(vault.Cells[4]);
+        vault.Host.PointerDown(start.X, start.Y);
+        vault.Host.PointerMove(start.X + 30, start.Y);
+        Assert.Equal(new[] { 1 }, vault.Drag.CountsShown);
+        vault.Host.PointerMove(VaultShellPanel.WindowWidth + 80, start.Y);
+        vault.Host.PointerUp(VaultShellPanel.WindowWidth + 80, start.Y);
+        vault.Settle();
+
+        Assert.Equal(VaultProtocol.Withdraw, vault.Server.Received.Last());
+        Assert.Empty(vault.Server.Batches);
+        Assert.Null(vault.Host.LastError);
+    });
+
     /// <summary>Selects places 2, 4 and 7 of the page: a click, then two Ctrl-clicks. Returns the three ids, read before anything is withdrawn.</summary>
     private static uint[] SelectThree(BatchVault vault)
     {
@@ -112,8 +128,5 @@ public sealed class VaultBatchWithdrawTests
     private sealed class BatchVault : VaultFixture
     {
         public BatchVault() : base(Vault(317)) { }
-
-        public Button ButtonLabelled(string text) =>
-            Window.GetVisualDescendants().OfType<DerethButton>().Single(button => button.Content is TextBlock label && label.Text == text);
     }
 }
