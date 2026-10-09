@@ -20,9 +20,9 @@ namespace LegACEy.Plugin.Vault;
 /// </summary>
 public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropTarget
 {
-    public const int WindowWidth = 450;
+    public const int WindowWidth = 410;
     // Room for ten rows with Windows fonts, whose lines are taller than the Linux test fonts'.
-    public const int WindowHeight = 580;
+    public const int WindowHeight = 540;
     /// <summary>The header's chest icon, from the DAT.</summary>
     public const uint ChestIconId = 0x06001020;
     // A whole page of slots, so the grid looks the same however many items the page holds.
@@ -229,10 +229,9 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
                     if (item.StackSize > 1) cell.Children.Add(StackCount(item.StackSize));
                     ConnectCell(cell, item);
                 }
-                // Shown on the cell a dragged item would be dropped into.
+                // Shown on the cell a dragged item would be dropped into, over the whole slot.
                 var indicator = new Border
                 {
-                    Width = 38, Height = 38, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
                     BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(2), IsHitTestVisible = false
                 };
                 cell.Children.Add(indicator);

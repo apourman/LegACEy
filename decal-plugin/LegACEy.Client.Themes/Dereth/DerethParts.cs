@@ -343,14 +343,14 @@ public sealed class DerethWindow : UserControl
 }
 
 /// <summary>
-/// A scrolling grid of fixed slots: 38 px cells on a 40 px pitch, as many columns as the width holds, centred, scrolling
+/// A scrolling grid of fixed slots: 34 px cells on a 36 px pitch, as many columns as the width holds, centred, scrolling
 /// vertically. It takes cells and knows nothing about what they show. It wraps a plain ScrollViewer, because a subclass
 /// gets no template from the base theme.
 /// </summary>
 public sealed class DerethSlotGrid : UserControl
 {
-    public const double CellSize = 38;
-    public const double Pitch = 40;
+    public const double CellSize = 34;
+    public const double Pitch = 36;
 
     private readonly WrapPanel _cells = new()
     {
@@ -389,7 +389,7 @@ public sealed class DerethSlot : Grid
     private readonly Border _wash;
     private readonly Border _outline;
 
-    /// <summary>A slot holding the content: a 38 px framed well, left-aligned in its pitch, with a selected state.</summary>
+    /// <summary>A slot holding the content: a 34 px framed well, left-aligned in its pitch, with a selected state.</summary>
     public DerethSlot(Control? content)
     {
         Width = DerethSlotGrid.CellSize;
