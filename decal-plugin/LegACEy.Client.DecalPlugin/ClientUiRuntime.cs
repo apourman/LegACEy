@@ -305,6 +305,25 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         _barSurface.Panel.ApplyTheme(CurrentTheme());
         EnsurePostUiDrawHook();
         Log("Indicator bar replacement ready.");
+        WarmUpDerethTheme();
+    }
+
+    /// <summary>Lays out a throwaway Dereth window at login, so the first real one opens without a long frame.</summary>
+    private static void WarmUpDerethTheme()
+    {
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            using var panel = AvaloniaPanel.Create(DerethWarmUp.Sample, DerethWarmUp.Width, DerethWarmUp.Height);
+            panel.ApplyTheme(new DerethClientTheme());
+            panel.Tick();
+        }
+        catch (Exception exception)
+        {
+            Log($"Dereth warm-up failed: {exception.Message}");
+            return;
+        }
+        Log($"Dereth warm-up took {stopwatch.ElapsedMilliseconds} ms.");
     }
 
     private void CreateWindowManager()

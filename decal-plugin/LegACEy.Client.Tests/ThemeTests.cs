@@ -15,6 +15,15 @@ namespace LegACEy.Client.Tests;
 public sealed class ThemeTests
 {
     [Fact]
+    public void The_dereth_warm_up_window_renders_without_errors() => RenderThread.Run(() =>
+    {
+        using var panel = AvaloniaPanel.Create(DerethWarmUp.Sample, DerethWarmUp.Width, DerethWarmUp.Height);
+        panel.ApplyTheme(new DerethClientTheme());
+        panel.Tick();
+        Assert.Null(panel.LastError);
+    });
+
+    [Fact]
     public void Switching_theme_restyles_an_open_panel_without_recreating_its_content() => RenderThread.Run(() =>
     {
         ThemeWindowChrome? chrome = null;
