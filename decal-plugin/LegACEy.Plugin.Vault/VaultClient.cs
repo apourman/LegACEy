@@ -30,14 +30,6 @@ public sealed class VaultItemView
     public uint Overlay { get; }
     public uint OverlaySecondary { get; }
     public int UiEffects { get; }
-    public IEnumerable<uint> IconLayers
-    {
-        get
-        {
-            foreach (var id in new[] { Plate, Underlay, Icon, Overlay, OverlaySecondary })
-                if (id != 0) yield return id;
-        }
-    }
 }
 
 public sealed class VaultSnapshot

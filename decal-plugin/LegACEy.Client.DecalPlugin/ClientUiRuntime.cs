@@ -647,28 +647,22 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         catch (COMException) { return string.Empty; }
     }
 
-    /// <summary>The object's icon layers as the client stacks them: item-type plate, underlay, icon, overlay.</summary>
-    private static IReadOnlyList<uint> ObjectIcon(uint id)
+    /// <summary>The object's icon layers as the retail UI draws them: underlay, then the icon with its UI-effect outline (no plate).</summary>
+    private IReadOnlyList<GameImage> ObjectIcon(uint id)
     {
         try
         {
             var item = CoreManager.Current.WorldFilter[unchecked((int)id)];
-            if (item == null) return Array.Empty<uint>();
+            if (item == null || _portal == null) return Array.Empty<GameImage>();
             // Decal reports portal texture ids without their 0x06 prefix.
             static uint Texture(int value) => value == 0 ? 0 : (value & 0xFF000000) == 0 ? unchecked((uint)value) | 0x06000000 : unchecked((uint)value);
-            var layers = new List<uint> { Plate(unchecked((uint)item.Category)) };
-            foreach (var layer in new[] { Texture(item.Values(Decal.Adapter.Wrappers.LongValueKey.IconUnderlay)), Texture(item.Icon),
-                         Texture(item.Values(Decal.Adapter.Wrappers.LongValueKey.IconOverlay)) })
-                if (layer != 0) layers.Add(layer);
-            return layers;
+            // UNVERIFIED: LongValueKey.UiEffects is not referenced anywhere else in the repo; check it against Decal.Adapter on Windows.
+            return ItemIcon.Layers(_portal, Texture(item.Values(Decal.Adapter.Wrappers.LongValueKey.IconUnderlay)), Texture(item.Icon),
+                Texture(item.Values(Decal.Adapter.Wrappers.LongValueKey.IconOverlay)), 0,
+                unchecked((uint)item.Values(Decal.Adapter.Wrappers.LongValueKey.UiEffects)));
         }
-        catch (COMException) { return Array.Empty<uint>(); }
+        catch (COMException) { return Array.Empty<GameImage>(); }
     }
-
-    /// <summary>The plate under an icon by ACE ItemType flags, as the server's vault list and the Market API choose it.</summary>
-    private static uint Plate(uint itemType) =>
-        (itemType & 0x8101) != 0 ? 0x060011D2u : (itemType & 0x2) != 0 ? 0x060011CFu : (itemType & 0x4) != 0 ? 0x060011F3u :
-        (itemType & 0x8) != 0 ? 0x060011D5u : (itemType & 0x800) != 0 ? 0x060011D3u : 0x060011D4u;
 
     /// <summary>Drag services for LegACEy windows: the floating icon and what lies under the pointer in the retail UI.</summary>
     private sealed class ItemDragHost : IItemDragHost
@@ -676,7 +670,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         private readonly ClientUiRuntime _owner;
         public ItemDragHost(ClientUiRuntime owner) => _owner = owner;
 
-        public IDisposable ShowDragIcon(IReadOnlyList<uint> iconLayers)
+        public IDisposable ShowDragIcon(IReadOnlyList<GameImage> iconLayers)
         {
             var icon = _owner.ShowDragIcon(iconLayers);
             _owner._itemDragActive = true;
@@ -711,15 +705,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         }
     }
 
-    private IDisposable ShowDragIcon(IReadOnlyList<uint> iconLayers)
+    private IDisposable ShowDragIcon(IReadOnlyList<GameImage> iconLayers)
     {
         HideDragIcon();
         if (_device == null || _portal == null) return new DragIcon(this);
         var bitmaps = new List<Avalonia.Media.Imaging.WriteableBitmap>();
         var layers = new Grid { Width = 32, Height = 32 };
-        foreach (var id in iconLayers)
+        foreach (var image in iconLayers)
         {
-            var bitmap = GameArtImageExtension.CreateBitmap(_portal, id);
+            var bitmap = GameArtImageExtension.CreateBitmap(image);
             if (bitmap == null) continue;
             bitmaps.Add(bitmap);
             layers.Children.Add(new Avalonia.Controls.Image { Source = bitmap, Width = 32, Height = 32, Stretch = Stretch.None });
