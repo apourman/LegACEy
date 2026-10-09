@@ -261,26 +261,22 @@ public sealed class AvaloniaPanel : IDisposable
         catch (Exception exception) { ReportError(exception); }
     }
 
-    /// <summary>Resize the panel's framebuffer and request a full repaint.</summary>
+    /// <summary>
+    /// Resize the panel's window and framebuffer and request a full repaint. The window is resized in place: a new window
+    /// would detach the content, and a content that hears its detach (a plugin's window disposes its client then) would be lost.
+    /// </summary>
     public void Resize(int width, int height)
     {
         VerifyUsable();
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
         if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
         _forceFullFrame = true;
-        StopObservingRenderResources();
-        _rendererObserver.Dispose();
-        var content = Content;
-        _window.Content = null;
-        _window.Close();
-        _mouseDevice.Dispose();
-        _mouseDevice = new MouseDevice();
-        _mouseButtons = RawInputModifiers.None;
-        _window = CreateWindow(content, width, height);
+        _window.Width = width;
+        _window.Height = height;
+        // Lay out and render the new size now, so the next capture is the new size and not the last frame of the old one.
+        Dispatcher.UIThread.RunJobs();
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
         _frame = new PanelFrame(width, height);
-        if (_theme != null)
-            ApplyTheme(_theme);
-        _rendererObserver = new RendererInvalidationObserver(_window, () => _hasInvalidation = true);
     }
 
     /// <summary>Tell the host that the backing texture was lost and needs a complete upload.</summary>

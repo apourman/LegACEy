@@ -328,6 +328,21 @@ public sealed class PanelHostRenderingTests
     });
 
     [Fact]
+    public void Resize_keeps_the_content_attached_so_its_owner_does_not_see_a_detach() => RenderThread.Run(() =>
+    {
+        var content = new Border { Background = Brushes.Black };
+        var detaches = 0;
+        content.DetachedFromVisualTree += (_, _) => detaches++;
+        using var panel = AvaloniaPanel.Create(() => content, 8, 6);
+
+        panel.Resize(12, 10);
+        panel.Tick();
+
+        Assert.Same(content, panel.Content);
+        Assert.Equal(0, detaches);
+    });
+
+    [Fact]
     public void Handler_exception_is_reported_by_the_panel_instead_of_escaping() => RenderThread.Run(() =>
     {
         using var panel = AvaloniaPanel.Create(() => new Button { Content = "Fail" }, 80, 40);
