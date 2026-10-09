@@ -36,6 +36,9 @@ public sealed class VaultSelectionTests
 
         vault.Click(9);
         Assert.Equal(new[] { 9 }, vault.Selected);
+
+        vault.Click(9); // the only one selected: a plain click clears it
+        Assert.Empty(vault.Selected);
         Assert.Null(vault.Host.LastError);
     });
 

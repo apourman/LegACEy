@@ -4,8 +4,8 @@ using System.Collections.Generic;
 namespace LegACEy.Plugin.Vault;
 
 /// <summary>
-/// The items selected in the page on screen, held by their place in the page's order. A plain click selects one item; Ctrl
-/// toggles one; Shift selects the range from the anchor; Ctrl+Shift adds that range. The anchor is the last item that was
+/// The items selected in the page on screen, held by their place in the page's order. A plain click selects one item, or
+/// clears it when it is the only one selected; Ctrl toggles one; Shift selects the range from the anchor; Ctrl+Shift adds that range. The anchor is the last item that was
 /// plain-clicked or Ctrl-clicked.
 /// </summary>
 public sealed class VaultSelection
@@ -37,7 +37,13 @@ public sealed class VaultSelection
         }
         else
         {
+            var only = _indices.Count == 1 && _indices.Contains(index);
             _indices.Clear();
+            if (only)
+            {
+                Anchor = -1;
+                return;
+            }
             _indices.Add(index);
         }
         Anchor = index;
