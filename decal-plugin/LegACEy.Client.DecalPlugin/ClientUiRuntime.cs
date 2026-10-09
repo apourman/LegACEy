@@ -60,6 +60,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private static readonly int ProcessId = Process.GetCurrentProcess().Id;
 
     private Device? _device;
+    private static readonly System.Drawing.Color ResizeOutline = System.Drawing.Color.FromArgb(0xC9, 0xA4, 0x5C);
     private PortalDat? _portal;
     private IndicatorBar? _bar;
     private readonly Dictionary<ModelView, ModelRenderer> _modelRenderers = new();
@@ -547,6 +548,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             }
         }
         ReleaseModelRenderers(_drawnModelViews);
+        if (_windows.Resizing is { } resizing && _device != null)
+            Guard(() => ScreenSurface.DrawOutline(_device, resizing.Bounds, ResizeOutline));
         // An item dragged out of a LegACEy window draws above everything.
         Guard(() => _dragIconSurface?.DrawNow());
     }
@@ -1176,8 +1179,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private void SyncWindowLocations()
     {
         if (_windows == null) return;
+        // A window being resized keeps its surface until release: relaying it out on every mouse move stalls the game,
+        // so an outline shows the new bounds meanwhile.
         foreach (var window in _windows.ZOrder)
-            FitSurface(SurfaceById(window.Id)!, window);
+            if (window != _windows.Resizing)
+                FitSurface(SurfaceById(window.Id)!, window);
     }
 
     /// <summary>Puts a window's surface where the window manager has it, at the window's size. A new size re-lays out the panel.</summary>

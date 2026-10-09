@@ -221,6 +221,8 @@ public sealed class WindowManager
     public Size Screen => _screen;
     public IReadOnlyList<ManagedWindow> ZOrder => _windows;
     public bool IsDragging => _dragging != null;
+    /// <summary>The window an edge or corner drag is resizing, or null.</summary>
+    public ManagedWindow? Resizing => _resizeEdges == WindowEdges.None ? null : _dragging;
 
     public ManagedWindow Open(WindowDefinition definition, Point requestedLocation)
     {

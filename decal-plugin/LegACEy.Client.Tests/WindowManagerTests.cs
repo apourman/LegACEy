@@ -128,7 +128,9 @@ public sealed class WindowManagerTests
 
         Assert.True(manager.Press(new Point(443, 300)));
         manager.Move(new Point(473, 300));
+        Assert.Same(manager.Get("vault"), manager.Resizing);
         manager.Release();
+        Assert.Null(manager.Resizing);
 
         var window = manager.Get("vault")!;
         Assert.Equal(new Size(374, 606), window.Size);
