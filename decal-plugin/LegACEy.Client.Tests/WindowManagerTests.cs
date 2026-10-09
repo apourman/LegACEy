@@ -190,7 +190,10 @@ public sealed class WindowManagerTests
 
         Assert.True(manager.Press(new Point(200, 110)));
         manager.Move(new Point(260, 150));
+        Assert.Same(manager.Get("vault"), manager.Moving);
+        Assert.Null(manager.Resizing);
         manager.Release();
+        Assert.Null(manager.Moving);
 
         var window = manager.Get("vault")!;
         Assert.Equal(new Point(160, 140), window.Location);

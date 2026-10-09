@@ -223,6 +223,8 @@ public sealed class WindowManager
     public bool IsDragging => _dragging != null;
     /// <summary>The window an edge or corner drag is resizing, or null.</summary>
     public ManagedWindow? Resizing => _resizeEdges == WindowEdges.None ? null : _dragging;
+    /// <summary>The window a title-bar drag is moving, or null.</summary>
+    public ManagedWindow? Moving => _resizeEdges == WindowEdges.None ? _dragging : null;
 
     public ManagedWindow Open(WindowDefinition definition, Point requestedLocation)
     {

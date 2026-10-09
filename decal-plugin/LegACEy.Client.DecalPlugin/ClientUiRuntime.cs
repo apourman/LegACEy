@@ -43,6 +43,30 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     [DllImport("user32.dll")]
     private static extern IntPtr SetCursor(IntPtr cursor);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr CreateIconIndirect(ref IconInfo info);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DestroyCursor(IntPtr cursor);
+
+    [DllImport("gdi32.dll")]
+    private static extern IntPtr CreateBitmap(int width, int height, uint planes, uint bitsPerPixel, byte[] bits);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DeleteObject(IntPtr gdiObject);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct IconInfo
+    {
+        [MarshalAs(UnmanagedType.Bool)] public bool IsIcon;
+        public int HotspotX;
+        public int HotspotY;
+        public IntPtr Mask;
+        public IntPtr Color;
+    }
+
     // WM_SETCURSOR, the hit-test code for the client area, and the standard size cursors' resource ids (MAKEINTRESOURCE).
     private const int WmSetCursor = 0x0020;
     private const int HtClient = 1;
@@ -50,6 +74,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private const int IdcSizeNS = 32645;
     private const int IdcSizeNWSE = 32642;
     private const int IdcSizeNESW = 32643;
+    private const int IdcSizeAll = 32646;
+    // The retail cursors in the portal DAT, all 32×32 with the hotspot in the middle.
+    private const uint DatCursorNS = 0x06005E66;
+    private const uint DatCursorWE = 0x06006128;
+    private const uint DatCursorNWSE = 0x06006126;
+    private const uint DatCursorNESW = 0x06006127;
+    private const uint DatCursorMove = 0x06006119;
 
     private const string MenuSlot = "LegACEy";
     private const string MenuWindowId = "plugin-menu";
@@ -72,7 +103,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     // The window whose frame shows a hovered corner, and the corner it shows.
     private string? _cornerWindowId;
     private DerethCorner _cornerApplied;
-    private readonly Dictionary<int, IntPtr> _resizeCursors = new();
+    private readonly Dictionary<uint, IntPtr> _datCursors = new();
+    private readonly Dictionary<int, IntPtr> _systemCursors = new();
     private PostUiDrawHook? _postUiDrawHook;
     private bool _windowsEnabled;
     private bool _firstPostUiWindow = true;
@@ -950,11 +982,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         var lParam = e.LParam;
         if (e.Msg == WmSetCursor)
         {
-            // Over a resize edge in the client area, the resize cursor replaces the game's; the eaten message keeps the game from resetting it.
+            // Over a resize edge, or while moving a window, our cursor replaces the game's; the eaten message keeps the game from resetting it.
             if ((lParam & 0xffff) == HtClient)
                 Guard(() =>
                 {
-                    var cursor = ResizeCursorAt(_pointer);
+                    var cursor = WindowCursorAt(_pointer);
                     if (cursor == IntPtr.Zero) return;
                     SetCursor(cursor);
                     e.Eat = true;
@@ -1091,31 +1123,64 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         return DerethCorner.None;
     }
 
-    /// <summary>The resize cursor over the window edge or corner under a point, or zero where the game's own cursor stands.</summary>
-    private IntPtr ResizeCursorAt(Point point)
+    /// <summary>
+    /// The cursor for a point: the move cursor while a window is being moved, the resize cursor over a window edge or corner,
+    /// or zero where the game's own cursor stands.
+    /// </summary>
+    private IntPtr WindowCursorAt(Point point)
     {
         if (_windows == null) return IntPtr.Zero;
+        if (_windows.Moving != null) return RetailCursor(DatCursorMove, IdcSizeAll);
         var hover = _windows.HoverAt(point);
         // The pointer goes to a capture, else to the topmost surface under it, as the router decides. Only the window that owns
         // it gets the resize cursor, so the retail bar and any other surface keep the game's cursor.
         var owner = _inputRouter.CapturedSurfaceId ?? InputRouterService.SurfaceAt(point.X, point.Y, GetInputSurfaces());
         if (hover.WindowId == null || owner != hover.WindowId) return IntPtr.Zero;
-        var resource = CursorResourceId(hover.Edges);
-        if (resource == 0) return IntPtr.Zero;
-        if (!_resizeCursors.TryGetValue(resource, out var cursor))
-            _resizeCursors.Add(resource, cursor = LoadCursor(IntPtr.Zero, (IntPtr)resource));
+        var horizontal = hover.Edges & (WindowEdges.Left | WindowEdges.Right);
+        var vertical = hover.Edges & (WindowEdges.Top | WindowEdges.Bottom);
+        if (horizontal == WindowEdges.None && vertical == WindowEdges.None) return IntPtr.Zero;
+        if (vertical == WindowEdges.None) return RetailCursor(DatCursorWE, IdcSizeWE);
+        if (horizontal == WindowEdges.None) return RetailCursor(DatCursorNS, IdcSizeNS);
+        return hover.Edges == (WindowEdges.Left | WindowEdges.Top) || hover.Edges == (WindowEdges.Right | WindowEdges.Bottom)
+            ? RetailCursor(DatCursorNWSE, IdcSizeNWSE)
+            : RetailCursor(DatCursorNESW, IdcSizeNESW);
+    }
+
+    /// <summary>A retail cursor from the DAT, made once; the standard Windows cursor if the DAT image can't be read.</summary>
+    private IntPtr RetailCursor(uint imageId, int fallback)
+    {
+        if (!_datCursors.TryGetValue(imageId, out var cursor))
+        {
+            try { cursor = _portal?.ReadImage(imageId) is { } image ? CreateCursor(image) : IntPtr.Zero; }
+            catch (Exception exception)
+            {
+                Log($"Cursor 0x{imageId:X8} could not be made from the DAT: {exception.Message}");
+                cursor = IntPtr.Zero;
+            }
+            _datCursors.Add(imageId, cursor);
+        }
+        if (cursor != IntPtr.Zero) return cursor;
+        if (!_systemCursors.TryGetValue(fallback, out cursor))
+            _systemCursors.Add(fallback, cursor = LoadCursor(IntPtr.Zero, (IntPtr)fallback));
         return cursor;
     }
 
-    /// <summary>The standard size cursor for a set of edges: IDC_SIZEWE, IDC_SIZENS, IDC_SIZENWSE or IDC_SIZENESW. Zero means none.</summary>
-    private static int CursorResourceId(WindowEdges edges)
+    /// <summary>An alpha cursor from a premultiplied BGRA image, its hotspot in the middle.</summary>
+    private static IntPtr CreateCursor(GameImage image)
     {
-        var horizontal = edges & (WindowEdges.Left | WindowEdges.Right);
-        var vertical = edges & (WindowEdges.Top | WindowEdges.Bottom);
-        if (horizontal == WindowEdges.None && vertical == WindowEdges.None) return 0;
-        if (vertical == WindowEdges.None) return IdcSizeWE;
-        if (horizontal == WindowEdges.None) return IdcSizeNS;
-        return edges == (WindowEdges.Left | WindowEdges.Top) || edges == (WindowEdges.Right | WindowEdges.Bottom) ? IdcSizeNWSE : IdcSizeNESW;
+        // The colour bitmap carries the alpha; the 1-bit mask is all zero, so it adds nothing.
+        var color = CreateBitmap(image.Width, image.Height, 1, 32, image.Pixels);
+        var mask = CreateBitmap(image.Width, image.Height, 1, 1, new byte[(image.Width + 15) / 16 * 2 * image.Height]);
+        try
+        {
+            var info = new IconInfo { IsIcon = false, HotspotX = image.Width / 2, HotspotY = image.Height / 2, Mask = mask, Color = color };
+            return CreateIconIndirect(ref info);
+        }
+        finally
+        {
+            DeleteObject(color);
+            DeleteObject(mask);
+        }
     }
 
     private void GuardInput(InputRoute route, Action action)
@@ -1321,6 +1386,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         _windowsEnabled = false;
         _portal?.Dispose();
         _portal = null;
+        foreach (var cursor in _datCursors.Values)
+            if (cursor != IntPtr.Zero) DestroyCursor(cursor);
+        _datCursors.Clear();
         _bar = null;
         _drawnModelViews.Clear();
         ReleaseModelRenderers(_drawnModelViews);
