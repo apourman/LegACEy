@@ -116,19 +116,38 @@ public sealed class DerethRule : DerethThreeSlice
     public DerethRule() : base(DerethSheet.RuleLeft, DerethSheet.RuleMiddle, DerethSheet.RuleRight) => Height = 5;
 }
 
-/// <summary>The search field: the sheet's field with a placeholder. It is drawn only; nothing reads it yet.</summary>
+/// <summary>
+/// The search field: the sheet's field around a text box that shows its placeholder while empty. <see cref="Text"/> is read and set
+/// by the owner, and <see cref="TextChanged"/> fires on every edit. It knows nothing of what the text filters.
+/// </summary>
 public sealed class DerethSearchField : DerethThreeSlice
 {
+    private readonly TextBox _input;
+
     public DerethSearchField(string placeholder)
         : base(DerethSheet.SearchLeft, DerethSheet.SearchMiddle, DerethSheet.SearchRight)
     {
         Height = 25;
-        Child = new TextBlock
+        // The box is bare: the sheet's field is its frame, so the box's own border, fill and minimum height are cleared.
+        _input = new TextBox
         {
-            Text = placeholder, Foreground = DerethPalette.MutedBrush, FontFamily = DerethPalette.Body,
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(36, 0, 0, 0)
+            Watermark = placeholder,
+            Foreground = DerethPalette.TextBrush, CaretBrush = DerethPalette.GoldBrush, FontFamily = DerethPalette.Body, FontSize = 12,
+            Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(0), MinHeight = 0,
+            VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(36, 0, 6, 0)
         };
+        _input.TextChanged += (_, _) => TextChanged?.Invoke(this, EventArgs.Empty);
+        Child = _input;
     }
+
+    public string Text
+    {
+        get => _input.Text ?? string.Empty;
+        set => _input.Text = value;
+    }
+
+    /// <summary>The text changed, by typing or by <see cref="Text"/>.</summary>
+    public event EventHandler? TextChanged;
 }
 
 /// <summary>The sheet's paging arrows.</summary>
@@ -146,6 +165,29 @@ public sealed class DerethSprite : Control
     }
 
     public override void Render(DrawingContext context) => DerethSheet.Draw(context, _source, new Rect(Bounds.Size));
+}
+
+/// <summary>
+/// A paging arrow: the sheet's arrow as a button, dimmed while it is disabled. The sheet has no hover or pressed arrow,
+/// so every state draws the same art.
+/// </summary>
+public sealed class DerethPagerButton : Button
+{
+    private const double DisabledOpacity = 0.4;
+
+    static DerethPagerButton()
+    {
+        IsEnabledProperty.Changed.AddClassHandler<DerethPagerButton>((button, _) => button.Opacity = button.IsEnabled ? 1 : DisabledOpacity);
+    }
+
+    public DerethPagerButton(DerethSpriteArt art)
+    {
+        // A transparent face is still hit-tested, so the arrow takes the pointer.
+        Background = Brushes.Transparent;
+        BorderThickness = new Thickness(0);
+        Padding = new Thickness(0);
+        Template = new FuncControlTemplate<Button>((_, _) => new DerethSprite(art));
+    }
 }
 
 /// <summary>

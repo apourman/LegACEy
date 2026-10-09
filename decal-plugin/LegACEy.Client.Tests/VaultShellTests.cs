@@ -37,8 +37,9 @@ public sealed class VaultShellTests
             Assert.True(window.Contains(bounds), $"{visual.GetType().Name} at {bounds} lies outside the window {window}");
         }
 
-        // The Dereth scrollbar is nine pixels across; the stock bar is not.
-        var scrollBar = host.Content.GetVisualDescendants().OfType<ScrollBar>().Single(bar => bar.Orientation == Avalonia.Layout.Orientation.Vertical);
+        // The Dereth scrollbar is nine pixels across; the stock bar is not. The search field's text box has scrollbars of its own, so this is the grid's.
+        var scrollBar = host.Content.GetVisualDescendants().OfType<ScrollBar>()
+            .Single(bar => bar.Orientation == Avalonia.Layout.Orientation.Vertical && bar.GetVisualAncestors().OfType<DerethSlotGrid>().Any());
         Assert.Equal(9, scrollBar.Width);
         Assert.NotNull(scrollBar.GetVisualDescendants().OfType<Thumb>().SingleOrDefault());
         // The header's chest icon is the game's own art, requested from the DAT.
@@ -47,7 +48,7 @@ public sealed class VaultShellTests
     });
 
     [Fact]
-    public void Close_is_the_only_action_and_remains_clickable_without_a_dat() => RenderThread.Run(() =>
+    public void Close_remains_clickable_without_a_dat() => RenderThread.Run(() =>
     {
         VaultShellPanel? vault = null;
         using var host = AvaloniaPanel.Create(() => new VaultShellWindow(vault = new VaultShellPanel(new MissingArt())),
@@ -56,9 +57,8 @@ public sealed class VaultShellTests
         var chrome = (VaultShellWindow)host.Content;
         var closes = 0;
         chrome.CloseRequested += (_, _) => closes++;
-        // The scrollbars' own repeat buttons are internal parts, not actions.
-        var close = Assert.Single(chrome.GetVisualDescendants().OfType<Button>()
-            .Where(button => !button.GetVisualAncestors().OfType<ScrollBar>().Any()));
+        // The header's close box is the only Dereth button in the header; the paging arrows are buttons too, and the scrollbars' repeat buttons are internal parts.
+        var close = Assert.Single(chrome.GetVisualDescendants().OfType<DerethButton>());
         var point = close.TranslatePoint(new Point(close.Bounds.Width / 2, close.Bounds.Height / 2), chrome)!.Value;
         host.PointerDown(point.X, point.Y);
         host.PointerUp(point.X, point.Y);
@@ -76,8 +76,10 @@ public sealed class VaultShellTests
         using var disposeVault = vault!;
         host.ApplyTheme(new DerethClientTheme());
         host.Tick();
-        var viewer = host.Content.GetVisualDescendants().OfType<ScrollViewer>().Single();
-        var bar = host.Content.GetVisualDescendants().OfType<ScrollBar>().Single(control => control.Orientation == Avalonia.Layout.Orientation.Vertical);
+        // The grid's viewer and bar: the search field's text box has a viewer and bars of its own.
+        var viewer = host.Content.GetVisualDescendants().OfType<ScrollViewer>().Single(v => v.GetVisualAncestors().OfType<DerethSlotGrid>().Any());
+        var bar = host.Content.GetVisualDescendants().OfType<ScrollBar>()
+            .Single(control => control.Orientation == Avalonia.Layout.Orientation.Vertical && control.GetVisualAncestors().OfType<DerethSlotGrid>().Any());
         var thumb = bar.GetVisualDescendants().OfType<Thumb>().Single();
         var groove = thumb.TranslatePoint(new Point(thumb.Bounds.Width / 2, thumb.Bounds.Height + 4), host.Content)!.Value;
         Assert.Equal(0, viewer.Offset.Y);

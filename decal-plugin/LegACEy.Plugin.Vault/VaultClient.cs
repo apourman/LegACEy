@@ -40,15 +40,21 @@ public sealed class VaultItemView
     }
 }
 
+/// <summary>One page of the Vault as the server answered it, with the counts around the page.</summary>
 public sealed class VaultSnapshot
 {
-    public VaultSnapshot(bool available, long balance, int capacity, IReadOnlyList<VaultItemView> items)
-    { Available = available; Balance = balance; Capacity = capacity; Items = items; }
+    public VaultSnapshot(bool available, long balance, int capacity, int vaultCount, int total, IReadOnlyList<VaultItemView> items)
+    { Available = available; Balance = balance; Capacity = capacity; VaultCount = vaultCount; Total = total; Items = items; }
     public bool Available { get; }
     /// <summary>The account's MMD; negative while the server's marketplace is closed</summary>
     public long Balance { get; }
     public bool HasBalance => Balance >= 0;
     public int Capacity { get; }
+    /// <summary>Every item in the Vault, whatever the search</summary>
+    public int VaultCount { get; }
+    /// <summary>How many items match the search, across every page</summary>
+    public int Total { get; }
+    /// <summary>This page's items, in the Vault's order</summary>
     public IReadOnlyList<VaultItemView> Items { get; }
 }
 
@@ -61,6 +67,17 @@ public static class VaultProtocol
     public const string Changed = "vault.changed";
     public const string Check = "vault.check";
     public const string Move = "vault.move";
+
+    /// <summary>The items the window asks for at a time; the server's page size.</summary>
+    public const int PageSize = 100;
+
+    /// <summary>A page request: the search text (empty for none), the offset of the page's first match and the count.</summary>
+    public static byte[] ListRequest(string search, int offset, int count) => ChannelWire.Body(w =>
+    {
+        ChannelWire.WriteString(w, search);
+        w.Write(offset);
+        w.Write(count);
+    });
 
     public static byte[] MoveRequest(uint guid, int index) => ChannelWire.Body(w => { w.Write(guid); w.Write(index); });
 
@@ -75,17 +92,19 @@ public static class VaultProtocol
     public static VaultSnapshot ReadList(byte[] body)
     {
         var reader = ChannelWire.Reader(body);
-        if (reader.ReadByte() == 0) return new VaultSnapshot(false, 0, 0, Array.Empty<VaultItemView>());
+        if (reader.ReadByte() == 0) return new VaultSnapshot(false, 0, 0, 0, 0, Array.Empty<VaultItemView>());
         var balance = reader.ReadInt64();
         var capacity = reader.ReadInt32();
+        var vaultCount = reader.ReadInt32();
+        var total = reader.ReadInt32();
         var count = reader.ReadInt32();
-        if (count < 0 || count > 100_000) throw new InvalidDataException($"Vault item count {count} is not plausible.");
+        if (count < 0 || count > PageSize) throw new InvalidDataException($"Vault page of {count} items is not plausible.");
         var items = new List<VaultItemView>(count);
         for (var i = 0; i < count; i++)
             items.Add(new VaultItemView(reader.ReadUInt32(), ChannelWire.ReadString(reader), reader.ReadUInt32(), reader.ReadInt32(), reader.ReadInt32(),
                 ChannelWire.ReadString(reader), ChannelWire.ReadString(reader), DateTimeOffset.FromUnixTimeSeconds(reader.ReadInt64()),
                 reader.ReadUInt32(), reader.ReadUInt32(), reader.ReadUInt32(), reader.ReadUInt32(), reader.ReadUInt32(), reader.ReadInt32()));
-        return new VaultSnapshot(true, balance, capacity, items);
+        return new VaultSnapshot(true, balance, capacity, vaultCount, total, items);
     }
 
     public static byte[] WriteList(VaultSnapshot snapshot) => ChannelWire.Body(w =>
@@ -94,6 +113,8 @@ public static class VaultProtocol
         if (!snapshot.Available) return;
         w.Write(snapshot.Balance);
         w.Write(snapshot.Capacity);
+        w.Write(snapshot.VaultCount);
+        w.Write(snapshot.Total);
         w.Write(snapshot.Items.Count);
         foreach (var item in snapshot.Items)
         {
@@ -156,7 +177,16 @@ public sealed class VaultClient : IDisposable
     }
 
     public VaultConnection Connection { get; private set; } = VaultConnection.Connecting;
+    /// <summary>The one page the window holds: its items and the counts around them.</summary>
     public VaultSnapshot? Snapshot { get; private set; }
+    /// <summary>The page on screen starts at this match of the search; it is the position in the whole Vault order too.</summary>
+    public int Offset { get; private set; }
+    /// <summary>The trimmed search text the page was asked with; empty for the whole Vault.</summary>
+    public string Search { get; private set; } = string.Empty;
+    public bool CanPageBack => Offset > 0;
+    public bool CanPageForward => Snapshot is { Available: true } page && Offset + VaultProtocol.PageSize < page.Total;
+    /// <summary>Numbers the page requests, so that only the newest one's reply is shown.</summary>
+    private int _pageRequest;
     /// <summary>The latest thing to tell the player: a transfer result, refusal or error.</summary>
     public string Notice { get; private set; } = string.Empty;
     public TimeSpan? LastRoundTrip { get; private set; }
@@ -184,13 +214,49 @@ public sealed class VaultClient : IDisposable
         });
     }
 
-    public void Refresh() => Send(VaultProtocol.List, null, reply =>
+    /// <summary>Loads the page on screen again: after a push, or after a move.</summary>
+    public void Refresh() => RequestPage(Offset, Search);
+
+    public void NextPage()
     {
-        if (!reply.Ok) { Set(VaultConnection.Failed, reply.Message); return; }
-        Snapshot = VaultProtocol.ReadList(reply.Body);
-        Set(Snapshot.Available ? VaultConnection.Live : VaultConnection.Unavailable,
-            Snapshot.Available ? Notice : "The Vault is not available on this server.");
-    });
+        if (CanPageForward) RequestPage(Offset + VaultProtocol.PageSize, Search);
+    }
+
+    public void PreviousPage()
+    {
+        if (CanPageBack) RequestPage(Math.Max(0, Offset - VaultProtocol.PageSize), Search);
+    }
+
+    /// <summary>Filters the Vault by item name, from its first match. Blank text shows the whole Vault.</summary>
+    public void SetSearch(string text)
+    {
+        var search = (text ?? string.Empty).Trim();
+        if (search != Search) RequestPage(0, search);
+    }
+
+    private void RequestPage(int offset, string search)
+    {
+        Offset = offset;
+        Search = search;
+        var request = ++_pageRequest;
+        Send(VaultProtocol.List, VaultProtocol.ListRequest(search, offset, VaultProtocol.PageSize), reply =>
+        {
+            if (request != _pageRequest) return;
+            if (!reply.Ok) { Set(VaultConnection.Failed, reply.Message); return; }
+            var page = VaultProtocol.ReadList(reply.Body);
+            // The page is past the end because items were taken out: the last page is the one to show.
+            if (page.Available && Offset > 0 && Offset >= page.Total)
+            {
+                RequestPage(LastPageOffset(page.Total), Search);
+                return;
+            }
+            Snapshot = page;
+            Set(page.Available ? VaultConnection.Live : VaultConnection.Unavailable,
+                page.Available ? Notice : "The Vault is not available on this server.");
+        });
+    }
+
+    private static int LastPageOffset(int total) => total <= 0 ? 0 : (total - 1) / VaultProtocol.PageSize * VaultProtocol.PageSize;
 
     public void Deposit(uint guid) => Transfer(VaultProtocol.Deposit, guid);
 
@@ -215,10 +281,18 @@ public sealed class VaultClient : IDisposable
     /// <summary>The server's answer for the item, or null while it is unknown.</summary>
     public (bool Ok, string Message)? DepositCheck(uint guid) => _checks.TryGetValue(guid, out var check) ? check : null;
 
-    /// <summary>Moves an item to an index in the Vault order: at once on screen, then on the server.</summary>
+    /// <summary>
+    /// Moves an item to a cell of the page on screen: at once on screen, then on the server. The server numbers the whole Vault,
+    /// so the cell is offset by the page's start. A filtered page has no place in the whole order, so a search blocks the move.
+    /// </summary>
     public void Move(uint guid, int index)
     {
         if (Snapshot is not { Available: true } snapshot) return;
+        if (Search.Length > 0)
+        {
+            Tell("Clear the search to rearrange items.");
+            return;
+        }
         var items = new List<VaultItemView>(snapshot.Items);
         var from = items.FindIndex(item => item.Guid == guid);
         if (from < 0) return;
@@ -227,9 +301,9 @@ public sealed class VaultClient : IDisposable
         var moved = items[from];
         items.RemoveAt(from);
         items.Insert(index, moved);
-        Snapshot = new VaultSnapshot(true, snapshot.Balance, snapshot.Capacity, items);
+        Snapshot = new VaultSnapshot(true, snapshot.Balance, snapshot.Capacity, snapshot.VaultCount, snapshot.Total, items);
         Changed?.Invoke(this, EventArgs.Empty);
-        Send(VaultProtocol.Move, VaultProtocol.MoveRequest(guid, index), reply =>
+        Send(VaultProtocol.Move, VaultProtocol.MoveRequest(guid, Offset + index), reply =>
         {
             var (accepted, message) = reply.Ok ? VaultProtocol.ReadTransfer(reply.Body) : (false, reply.Message);
             if (!accepted) Notice = message;

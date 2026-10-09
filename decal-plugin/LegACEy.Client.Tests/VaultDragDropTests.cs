@@ -5,6 +5,7 @@ using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.PanelHost;
+using LegACEy.Client.Themes;
 using LegACEy.Plugin.Vault;
 
 namespace LegACEy.Client.Tests;
@@ -158,7 +159,8 @@ public sealed class VaultDragDropTests
     public void Drop_frame_on_the_top_row_is_fully_visible_without_scrolling(int heightLost) => RenderThread.Run(() =>
     {
         using var vault = new LiveVault(VaultShellPanel.WindowHeight - heightLost);
-        var scroller = vault.Host.Content.GetVisualDescendants().OfType<ScrollViewer>().Single();
+        // The grid's viewer: the search field's text box has a viewer of its own.
+        var scroller = vault.Host.Content.GetVisualDescendants().OfType<ScrollViewer>().Single(v => v.GetVisualAncestors().OfType<DerethSlotGrid>().Any());
         Assert.True(scroller.Extent.Height <= scroller.Viewport.Height + 0.5, $"extent {scroller.Extent.Height} > viewport {scroller.Viewport.Height}");
         Assert.Equal(0, scroller.Offset.Y);
 

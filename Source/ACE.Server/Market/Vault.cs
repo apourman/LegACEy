@@ -84,6 +84,14 @@ namespace ACE.Server.Market
         }
 
         /// <summary>
+        /// One page of the player's account Vault, with a search, and the counts around it (see VaultStore.Page)
+        /// </summary>
+        public static VaultPage Page(Player player, string search, int offset, int count)
+        {
+            return Available ? VaultStore.Page(player.Character.AccountId, search, offset, count) : new VaultPage(new List<VaultItem>(), 0, 0);
+        }
+
+        /// <summary>
         /// Moves an item from the player's pack into their account's Vault.
         /// The item is taken out of the pack in memory only. The networking removal saves an ownerless item, and destroying the item would delete its row.
         /// The deposit job then saves the item and the Vault row together. On success the object is forgotten; on a failure that saved nothing it goes back to the pack.

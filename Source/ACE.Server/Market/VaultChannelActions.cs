@@ -29,6 +29,11 @@ namespace ACE.Server.Market
         public const string Move = "vault.move";
 
         /// <summary>
+        /// The most items one vault.list reply holds. The client asks for this many, one page at a time.
+        /// </summary>
+        public const int PageSize = 100;
+
+        /// <summary>
         /// The station every action above requires: the Vault chest in Yaraq
         /// </summary>
         public const string Station = "vault";
@@ -126,6 +131,39 @@ namespace ACE.Server.Market
             }
         }
 
+        private readonly record struct ListRequest(string Search, int Offset, int Count);
+
+        /// <summary>
+        /// Reads what vault.list asks for: a search (empty for none), an offset and a count, in that order. The count is kept to 1..PageSize.
+        /// An empty body is the first page of the whole Vault, as the list was before it paged. Fields after the count are for a later version and ignored.
+        /// </summary>
+        private static bool TryReadListRequest(ChannelContext context, out ListRequest request)
+        {
+            if (context.Request.Body.Length == 0)
+            {
+                request = new ListRequest(string.Empty, 0, PageSize);
+                return true;
+            }
+
+            try
+            {
+                using (var body = context.Body())
+                {
+                    var search = ChannelWire.ReadString(body);
+                    var offset = body.ReadInt32();
+                    var count = body.ReadInt32();
+                    request = new ListRequest(search, Math.Max(0, offset), Math.Clamp(count, 1, PageSize));
+                    return true;
+                }
+            }
+            catch (EndOfStreamException)
+            {
+                request = default;
+                context.Fail(ChannelStatus.BadRequest, "A search, an offset and a count are required.");
+                return false;
+            }
+        }
+
         private static void HandleList(ChannelContext context)
         {
             if (!Vault.Available)
@@ -133,6 +171,9 @@ namespace ACE.Server.Market
                 context.Reply(ChannelWire.Body(w => w.Write((byte)0)));
                 return;
             }
+
+            if (!TryReadListRequest(context, out var request))
+                return;
 
             var player = context.Player;
             var capacity = (int)MarketSettings.Get(MarketSettings.VaultSize);
@@ -143,10 +184,10 @@ namespace ACE.Server.Market
             {
                 try
                 {
-                    var items = Vault.List(player);
+                    var page = Vault.Page(player, request.Search, request.Offset, request.Count);
                     // NoBalance while the marketplace is closed: the window shows no MMD
                     var balance = marketOpen ? Vault.Balance(player) : NoBalance;
-                    context.Reply(ListBody(items, balance, capacity));
+                    context.Reply(ListBody(page, balance, capacity));
                 }
                 catch (Exception ex)
                 {
@@ -161,16 +202,18 @@ namespace ACE.Server.Market
         /// </summary>
         public const long NoBalance = -1;
 
-        internal static byte[] ListBody(IReadOnlyList<VaultItem> items, long balance, int capacity)
+        internal static byte[] ListBody(VaultPage page, long balance, int capacity)
         {
             return ChannelWire.Body(w =>
             {
                 w.Write((byte)1);
                 w.Write(balance);
                 w.Write(capacity);
-                w.Write(items.Count);
+                w.Write(page.VaultCount);
+                w.Write(page.Total);
+                w.Write(page.Items.Count);
 
-                foreach (var item in items)
+                foreach (var item in page.Items)
                 {
                     w.Write(item.ItemGuid);
                     ChannelWire.WriteString(w, item.Name);

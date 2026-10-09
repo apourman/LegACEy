@@ -189,7 +189,8 @@ namespace ACE.Server.Tests.Market
                 AtTheVault(player);
                 foreach (var action in actions)
                 {
-                    var reply = Request(player, action, body);
+                    // vault.list takes a page request; an empty body is the first page
+                    var reply = Request(player, action, action == VaultChannelActions.List ? Array.Empty<byte>() : body);
                     Assert.AreEqual(ChannelStatus.Ok, reply.Status, $"{action}: {Text(reply.Body)}");
                 }
 

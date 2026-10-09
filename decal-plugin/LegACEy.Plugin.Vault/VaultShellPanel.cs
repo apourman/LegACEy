@@ -60,6 +60,9 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     private readonly TextBlock _items = Label(string.Empty, TextBrush, 13);
     private readonly TextBlock _balance = Label(string.Empty, GoldBrush, 13);
     private readonly TextBlock _pagerText = Label(string.Empty, MutedBrush, 12);
+    private readonly DerethSearchField _search = new("Search vault…") { Margin = new Thickness(2, 0, 2, 10) };
+    private readonly DerethPagerButton _previous = new(DerethSpriteArt.PagerPrevious) { Width = 34, Height = 32, IsEnabled = false };
+    private readonly DerethPagerButton _next = new(DerethSpriteArt.PagerNext) { Width = 34, Height = 32, IsEnabled = false };
     // The message line above the pager: wraps rather than trims, so a long refusal reason stays whole.
     private readonly TextBlock _status = new()
     {
@@ -95,24 +98,24 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         summary.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { _itemsLabel, _items } });
         Grid.SetColumn(_balance, 1);
         summary.Children.Add(_balance);
-        var search = new DerethSearchField("Search vault…") { Margin = new Thickness(2, 0, 2, 10) };
-        Grid.SetRow(search, 1);
+        Grid.SetRow(_search, 1);
+        _search.TextChanged += (_, _) => _client?.SetSearch(_search.Text);
         Grid.SetRow(_grid, 2);
-        // ponytail: paging is drawn but inactive; the range covers the whole Vault until the server pages it (ticket 03).
         var pager = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Margin = new Thickness(4, 10, 4, 0) };
-        pager.Children.Add(new DerethSprite(DerethSpriteArt.PagerPrevious) { Width = 34, Height = 32, Opacity = 0.45 });
+        _previous.Click += (_, _) => _client?.PreviousPage();
+        pager.Children.Add(_previous);
         _pagerText.HorizontalAlignment = HorizontalAlignment.Center;
         Grid.SetColumn(_pagerText, 1);
         pager.Children.Add(_pagerText);
-        var next = new DerethSprite(DerethSpriteArt.PagerNext) { Width = 34, Height = 32, Opacity = 0.45 };
-        Grid.SetColumn(next, 2);
-        pager.Children.Add(next);
+        _next.Click += (_, _) => _client?.NextPage();
+        Grid.SetColumn(_next, 2);
+        pager.Children.Add(_next);
         Grid.SetRow(_status, 3);
         Grid.SetRow(pager, 4);
 
         var content = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto,Auto") };
         content.Children.Add(summary);
-        content.Children.Add(search);
+        content.Children.Add(_search);
         content.Children.Add(_grid);
         content.Children.Add(_status);
         content.Children.Add(pager);
@@ -140,7 +143,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
             items.Add(new VaultItemView((uint)index + 1, sample.Name, 0, sample.Count, 0, "held", string.Empty,
                 DateTimeOffset.FromUnixTimeSeconds(0), sample.Plate, 0, sample.Icon, 0, 0, 0));
         }
-        return new VaultSnapshot(true, 245, 1000, items);
+        return new VaultSnapshot(true, 245, 1000, SampleCount, SampleCount, items);
     }
 
     private VaultSnapshot? Snapshot => _client == null ? _sample : _client.Snapshot;
@@ -158,7 +161,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         if (available)
         {
             _itemsLabel.Text = "Items:";
-            _items.Text = $"{items.Count:N0} / {snapshot!.Capacity:N0}";
+            _items.Text = $"{snapshot!.VaultCount:N0} / {snapshot.Capacity:N0}";
             _balance.Text = snapshot.HasBalance ? $"{snapshot.Balance:N0} MMD" : string.Empty;
             _balance.IsVisible = snapshot.HasBalance;
         }
@@ -201,9 +204,15 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
             ShowDropIndicator(_dropCell);
         }
 
-        _pagerText.Text = available ? (items.Count == 0 ? "No items" : $"1 – {items.Count:N0} of {items.Count:N0}") : string.Empty;
+        _pagerText.Text = available ? PagerText(_client?.Offset ?? 0, items.Count, snapshot!.Total) : string.Empty;
+        _previous.IsEnabled = available && _client?.CanPageBack == true;
+        _next.IsEnabled = available && _client?.CanPageForward == true;
         ShowStatus();
     }
+
+    /// <summary>"1 – 100 of 317" for the page on screen, or "0 of 0" when nothing matches.</summary>
+    private static string PagerText(int offset, int shown, int total) =>
+        total == 0 ? "0 of 0" : $"{offset + 1:N0} – {offset + shown:N0} of {total:N0}";
 
     /// <summary>The message line above the pager: the latest message or drag hint, shown only while there is one.</summary>
     private void ShowStatus()
