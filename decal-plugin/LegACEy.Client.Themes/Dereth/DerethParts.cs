@@ -40,6 +40,9 @@ public static class DerethPalette
     public static readonly IBrush TealBrush = Brush(Teal);
 
     public static IBrush Brush(Color color) => new SolidColorBrush(color);
+
+    /// <summary>The same colour at another alpha.</summary>
+    public static Color WithAlpha(this Color color, byte alpha) => Color.FromArgb(alpha, color.R, color.G, color.B);
 }
 
 /// <summary>Which sheet art a <see cref="DerethFrame"/> is drawn with.</summary>
@@ -238,7 +241,14 @@ public sealed class DerethPagerButton : Button
 /// </summary>
 public sealed class DerethButton : Button
 {
+    private const double DisabledOpacity = 0.4;
     private DerethFrame? _frame;
+
+    static DerethButton()
+    {
+        // A disabled button dims, as the pager arrows do: the sheet has no disabled art.
+        IsEnabledProperty.Changed.AddClassHandler<DerethButton>((button, _) => button.Opacity = button.IsEnabled ? 1 : DisabledOpacity);
+    }
 
     public DerethButton()
     {
@@ -334,11 +344,8 @@ public sealed class DerethSlotGrid : UserControl
         };
     }
 
-    /// <summary>The cells in reading order. Each one is a <see cref="Cell"/> or any control sized to the pitch.</summary>
+    /// <summary>The cells in reading order. Each one is a <see cref="DerethSlot"/> or any control sized to the pitch.</summary>
     public Controls Cells => _cells.Children;
-
-    /// <summary>A slot holding the content: a 46 px framed well, left-aligned in its pitch, with a selected state.</summary>
-    public static DerethSlot Cell(Control? content = null) => new(content);
 }
 
 /// <summary>
@@ -351,15 +358,16 @@ public sealed class DerethSlot : Grid
     {
         GradientStops =
         {
-            new GradientStop(Color.FromArgb(0x70, DerethPalette.Teal.R, DerethPalette.Teal.G, DerethPalette.Teal.B), 0),
-            new GradientStop(Color.FromArgb(0x30, DerethPalette.Teal.R, DerethPalette.Teal.G, DerethPalette.Teal.B), 1)
+            new GradientStop(DerethPalette.Teal.WithAlpha(0x70), 0),
+            new GradientStop(DerethPalette.Teal.WithAlpha(0x30), 1)
         }
     };
 
     private readonly Border _wash;
     private readonly Border _outline;
 
-    internal DerethSlot(Control? content)
+    /// <summary>A slot holding the content: a 46 px framed well, left-aligned in its pitch, with a selected state.</summary>
+    public DerethSlot(Control? content)
     {
         Width = DerethSlotGrid.CellSize;
         Height = DerethSlotGrid.CellSize;
@@ -373,7 +381,7 @@ public sealed class DerethSlot : Grid
         _outline = new Border
         {
             BorderBrush = DerethPalette.TealBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(3),
-            BoxShadow = new BoxShadows(new BoxShadow { IsInset = true, Blur = 10, Color = Color.FromArgb(0xB0, DerethPalette.Teal.R, DerethPalette.Teal.G, DerethPalette.Teal.B) }),
+            BoxShadow = new BoxShadows(new BoxShadow { IsInset = true, Blur = 10, Color = DerethPalette.Teal.WithAlpha(0xB0) }),
             IsVisible = false, IsHitTestVisible = false
         };
         Children.Add(_outline);

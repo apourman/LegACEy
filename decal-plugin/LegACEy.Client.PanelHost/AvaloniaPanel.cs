@@ -320,7 +320,7 @@ public sealed class AvaloniaPanel : IDisposable
         });
     }
 
-    /// <summary>The left button went down at a point in panel pixels, with the keyboard modifiers held (Ctrl and Shift select Vault items).</summary>
+    /// <summary>The left button went down at a point in panel pixels, with the keyboard modifiers held.</summary>
     public void PointerDown(double x, double y, KeyModifiers modifiers = KeyModifiers.None)
     {
         VerifyUsable();

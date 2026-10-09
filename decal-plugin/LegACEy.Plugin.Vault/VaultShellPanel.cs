@@ -82,10 +82,12 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     private readonly StackPanel _itemsLine = new() { Orientation = Orientation.Horizontal, Spacing = 4 };
     private readonly TextBlock _selectedLabel = Label(string.Empty, SelectedBrush, 13);
     private readonly TextBlock _withdrawText = Label(string.Empty, GoldBrush, 12);
-    // ponytail: Withdraw N is ticket 05's batch withdrawal; until it is wired the button shows dimmed and disabled.
-    private readonly DerethButton _withdrawSelection = new() { Height = 24, IsEnabled = false, Opacity = DimmedOpacity };
+    // ponytail: Withdraw N is ticket 05's batch withdrawal; until it is wired the button is disabled, and dims with it.
+    private readonly DerethButton _withdrawSelection = new() { Height = 24, IsEnabled = false };
     private readonly DerethButton _clearSelection = new() { Height = 24, Content = Label("Clear", MutedBrush, 12) };
-    private readonly StackPanel _selectionLine = new() { Orientation = Orientation.Horizontal, Spacing = 6, IsVisible = false };
+    // The selection's line takes the header line: the label on the left, its buttons on the right.
+    private readonly Grid _selectionLine = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto"), IsVisible = false };
+    private readonly StackPanel _selectionButtons = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
     // The selection: the live Vault's when there is one, so the sample Vault selects too.
     private readonly VaultSelection _selection;
     // How the press on a cell was made, so its click selects by the same modifiers.
@@ -113,9 +115,11 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         _itemsLine.Children.Add(_itemsLabel);
         _itemsLine.Children.Add(_items);
         _withdrawSelection.Content = _withdrawText;
+        _selectionButtons.Children.Add(_withdrawSelection);
+        _selectionButtons.Children.Add(_clearSelection);
         _selectionLine.Children.Add(_selectedLabel);
-        _selectionLine.Children.Add(_withdrawSelection);
-        _selectionLine.Children.Add(_clearSelection);
+        Grid.SetColumn(_selectionButtons, 1);
+        _selectionLine.Children.Add(_selectionButtons);
         _sample = client == null ? SampleSnapshot() : null;
         RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.None);
 
@@ -123,7 +127,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         summary.Children.Add(_itemsLine);
         Grid.SetColumn(_balance, 1);
         summary.Children.Add(_balance);
-        // The selection's line takes the whole header line, so its label and buttons share it.
+        // The selection's line takes the whole header line.
         Grid.SetColumnSpan(_selectionLine, 2);
         summary.Children.Add(_selectionLine);
         _clearSelection.Click += (_, _) =>
@@ -213,7 +217,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
             for (var index = 0; index < cells; index++)
             {
                 var item = index < items.Count ? items[index] : null;
-                var cell = DerethSlotGrid.Cell(item == null ? null : Icon(ItemBitmap(item)));
+                var cell = new DerethSlot(item == null ? null : Icon(ItemBitmap(item)));
                 if (item != null)
                 {
                     ToolTip.SetTip(cell, Describe(item));
@@ -256,11 +260,6 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
             slot.Selected = selected;
             slot.Opacity = index == lifted || (multi && !selected) ? DimmedOpacity : 1;
         }
-        ShowHeader(multi);
-    }
-
-    private void ShowHeader(bool multi)
-    {
         var snapshot = Snapshot;
         _itemsLine.IsVisible = !multi;
         _balance.IsVisible = !multi && snapshot is { Available: true, HasBalance: true };
@@ -403,10 +402,12 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
             UpdateLiftedHover(e);
             return;
         }
-        if (_dragHost == null || _client == null || _pressItem != item) return;
+        if (_pressItem != item) return;
         var delta = e.GetPosition(this) - _pressPoint;
         if (Math.Abs(delta.X) < DragThreshold && Math.Abs(delta.Y) < DragThreshold) return;
+        // Past the threshold the press is a drag or nothing, so it is never a click, even when no host can take the drag.
         _pressItem = null;
+        if (_dragHost == null || _client == null) return;
         if (item.State != "held" || _client.TransferPending)
         {
             _client.Tell(item.State == "held" ? "Wait for the current transfer to finish." : $"{item.Name} is {StateName(item.State).ToLowerInvariant()} and can't be withdrawn.");

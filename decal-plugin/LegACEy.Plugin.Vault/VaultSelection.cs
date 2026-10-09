@@ -22,7 +22,7 @@ public sealed class VaultSelection
 
     public bool Contains(int index) => _indices.Contains(index);
 
-    /// <summary>Applies a press on the item at <paramref name="index"/>. A Shift press with no anchor is a plain click.</summary>
+    /// <summary>Applies a press on the item at <paramref name="index"/>. Shift or Ctrl+Shift with no anchor acts as a plain or Ctrl click.</summary>
     public void Press(int index, bool ctrl, bool shift)
     {
         if (shift && Anchor >= 0)

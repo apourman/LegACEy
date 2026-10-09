@@ -6,13 +6,15 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
+using LegACEy.Client.GameArt;
+using LegACEy.Client.PanelHost;
 using LegACEy.Client.Themes;
 using LegACEy.Plugin.Vault;
 using Xunit;
 
 namespace LegACEy.Client.Tests;
 
-/// <summary>Selecting Vault items with the mouse: clicks with Ctrl and Shift, the header line and the dimming, over the sample Vault.</summary>
+/// <summary>Selecting Vault items with the mouse over a live Vault of 317 items: clicks with Ctrl and Shift, the selected slots, the header line and the dimming.</summary>
 public sealed class VaultSelectionTests
 {
     private const KeyModifiers Ctrl = KeyModifiers.Control;
@@ -79,9 +81,11 @@ public sealed class VaultSelectionTests
         vault.Host.Resize(294, VaultShellPanel.WindowHeight); // five columns now: the same items, in the same order
         vault.Host.Tick();
         Assert.Equal(Enumerable.Range(1, 8), vault.Selected);
+        Assert.Equal(Enumerable.Range(1, 8), vault.SelectedSlots());
 
         vault.Click(11, Shift);
         Assert.Equal(Enumerable.Range(1, 11), vault.Selected);
+        Assert.Equal(Enumerable.Range(1, 11), vault.SelectedSlots());
         Assert.Null(vault.Host.LastError);
     });
 
@@ -105,8 +109,11 @@ public sealed class VaultSelectionTests
         var clear = vault.ButtonLabelled("Clear");
         Assert.Equal(vault.OriginIn(withdraw).Y, vault.OriginIn(clear).Y);
         Assert.True(vault.OriginIn(clear).X + clear.Bounds.Width <= vault.Host.Content.Bounds.Width, "The Clear button runs past the window.");
+        // Withdraw N is ticket 05's: disabled for now, and dimmed by the shared button.
+        Assert.False(withdraw.IsEnabled);
+        Assert.Equal(0.4, withdraw.Opacity);
 
-        vault.ClickButton(clear);
+        vault.Press(clear);
         Assert.Empty(vault.Selected);
         Assert.Contains("Items:", vault.VisibleTexts());
         Assert.Contains("317 / 1,000", vault.VisibleTexts());
@@ -137,16 +144,16 @@ public sealed class VaultSelectionTests
         using var vault = new SelectionVault();
         vault.Click(2);
         vault.Click(4, Ctrl);
-        vault.ClickButton(vault.Next);
+        vault.Press(vault.Next);
         vault.Settle();
         Assert.Equal(100, vault.Server.ListRequests[^1].Offset);
         Assert.Empty(vault.Selected);
 
         vault.Click(2);
         vault.Click(4, Ctrl);
-        vault.SearchBox.Text = "Blue";
+        vault.SearchBox.Text = "Ring";
         vault.Settle();
-        Assert.Equal("Blue", vault.Server.ListRequests[^1].Search);
+        Assert.Equal("Ring", vault.Server.ListRequests[^1].Search);
         Assert.Empty(vault.Selected);
 
         vault.Click(2);
@@ -164,8 +171,8 @@ public sealed class VaultSelectionTests
         vault.Click(2);
         vault.Click(4, Ctrl);
 
-        // Still a single-item drag for now: the batch from a selection is ticket 05.
-        var start = vault.Center(vault.Cells[4]);
+        // An unselected item: the drag drops the selection and moves that one item, as a stray drag always has (story 45).
+        var start = vault.Center(vault.Cells[6]);
         vault.Host.PointerDown(start.X, start.Y);
         vault.Host.PointerMove(start.X + 30, start.Y);
         vault.Host.PointerMove(VaultShellPanel.WindowWidth + 80, start.Y);
@@ -177,7 +184,32 @@ public sealed class VaultSelectionTests
         Assert.Null(vault.Host.LastError);
     });
 
-    /// <summary>A Vault of 317 items, a third of them blue potions, in its default window, with the mouse helpers the selection tests need.</summary>
+    [Fact]
+    public void A_press_dragged_past_the_threshold_is_not_a_click_even_with_no_drag_host() => RenderThread.Run(() =>
+    {
+        // The sample Vault has neither a client nor a drag host, so nothing takes the drag. Released over another cell, it must not select the item pressed.
+        VaultShellPanel? panel = null;
+        using var host = AvaloniaPanel.Create(() => new VaultShellWindow(panel = new VaultShellPanel(new NoArt())),
+            VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight);
+        using var disposePanel = panel!;
+        host.Tick();
+        var cells = host.Content.GetVisualDescendants().OfType<DerethSlot>().ToArray();
+        var start = CentreIn(host, cells[2]);
+        var end = CentreIn(host, cells[5]);
+
+        host.PointerDown(start.X, start.Y);
+        host.PointerMove(end.X, end.Y);
+        host.PointerUp(end.X, end.Y);
+        host.Tick();
+
+        Assert.DoesNotContain(cells, cell => cell.Selected);
+        Assert.Null(host.LastError);
+    });
+
+    private static Point CentreIn(AvaloniaPanel host, Visual cell) =>
+        cell.TranslatePoint(new Point(cell.Bounds.Width / 2, cell.Bounds.Height / 2), host.Content)!.Value;
+
+    /// <summary>A live Vault of 317 items in the default window, with the helpers the selection tests need.</summary>
     private sealed class SelectionVault : VaultFixture
     {
         public SelectionVault() : base(Vault(317)) { }
@@ -191,9 +223,7 @@ public sealed class VaultSelectionTests
         public TextBox SearchBox => Window.GetVisualDescendants().OfType<TextBox>().Single();
 
         /// <summary>Clicks the cell at a place of the page on screen, with Ctrl or Shift held.</summary>
-        public void Click(int index, KeyModifiers modifiers = KeyModifiers.None) => ClickAt(Cells[index], modifiers);
-
-        public void ClickButton(Control button) => ClickAt(button, KeyModifiers.None);
+        public void Click(int index, KeyModifiers modifiers = KeyModifiers.None) => Press(Cells[index], modifiers);
 
         public Button ButtonLabelled(string text) =>
             Window.GetVisualDescendants().OfType<DerethButton>().Single(button => button.Content is TextBlock label && label.Text == text);
@@ -204,22 +234,13 @@ public sealed class VaultSelectionTests
         public List<string> VisibleTexts() =>
             Host.Content.GetVisualDescendants().OfType<TextBlock>().Where(text => text.IsEffectivelyVisible).Select(text => text.Text ?? string.Empty).ToList();
 
-        private void ClickAt(Control control, KeyModifiers modifiers)
-        {
-            Host.Tick(); // a press lands on what the last frame drew
-            var point = Center(control);
-            Host.PointerDown(point.X, point.Y, modifiers);
-            Host.PointerUp(point.X, point.Y);
-        }
+        /// <summary>The places of the page whose slots draw as selected.</summary>
+        public int[] SelectedSlots() =>
+            Enumerable.Range(0, Cells.Length).Where(index => ((DerethSlot)Cells[index]).Selected).ToArray();
+    }
 
-        private static IEnumerable<VaultItemView> Vault(int count)
-        {
-            var deposited = new DateTimeOffset(2026, 10, 1, 18, 0, 0, TimeSpan.Zero);
-            for (var number = 1; number <= count; number++)
-            {
-                var name = number % 3 == 0 ? "Blue Potion" : number % 2 == 0 ? "Gold Ring" : "Steel Sword";
-                yield return new VaultItemView(0x80100000u + (uint)number, name, 0x2, 1, 120, "held", "Arwic Wanderer", deposited, 0x060011CF, 0, 0x06000FC7, 0, 0, 0);
-            }
-        }
+    private sealed class NoArt : IGameArtSource
+    {
+        public GameImage? ReadImage(uint id) => null;
     }
 }

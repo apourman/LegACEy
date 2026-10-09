@@ -237,15 +237,4 @@ public sealed class VaultPagingTests
             Host.PointerUp(target.X, target.Y);
         }
     }
-
-    /// <summary>The Vault's items in order: even numbers are rings.</summary>
-    private static IEnumerable<VaultItemView> Vault(int count)
-    {
-        var deposited = new DateTimeOffset(2026, 10, 1, 18, 0, 0, TimeSpan.Zero);
-        for (var number = 1; number <= count; number++)
-        {
-            var name = number % 2 == 0 ? "Gold Ring" : "Steel Sword";
-            yield return new VaultItemView(0x80100000u + (uint)number, name, 0x2, 1, 120, "held", "Arwic Wanderer", deposited, 0x060011CF, 0, 0x06000FC7, 0, 0, 0);
-        }
-    }
 }
