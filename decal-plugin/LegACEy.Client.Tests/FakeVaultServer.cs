@@ -38,6 +38,10 @@ public sealed class FakeVaultServer : IServerChannelTransport
     public ChannelStatus? ListStatus { get; set; }
     /// <summary>Pack items the fake refuses to deposit, with the reason.</summary>
     public Dictionary<uint, string> Refused { get; } = new();
+    /// <summary>Every batch withdrawal's item ids, as the client sent them, refused or not.</summary>
+    public List<uint[]> Batches { get; } = new();
+    /// <summary>When set, every batch withdrawal is refused with this reason and moves nothing, as a server whose pack has no room for the set would answer.</summary>
+    public string? BatchRefusal { get; set; }
     public IReadOnlyList<VaultItemView> Items => _items;
 
     /// <summary>Changes the Vault the way something outside the window would (a /vault command, the website). Nothing is pushed: the test pushes it.</summary>
@@ -50,7 +54,7 @@ public sealed class FakeVaultServer : IServerChannelTransport
         switch (action)
         {
             case ChannelHello.Action:
-                Reply(id, action, ChannelStatus.Ok, ChannelHello.Write("Preview Character", new[] { ChannelHello.Action, VaultProtocol.List, VaultProtocol.Deposit, VaultProtocol.Withdraw, VaultProtocol.Check, VaultProtocol.Move }));
+                Reply(id, action, ChannelStatus.Ok, ChannelHello.Write("Preview Character", new[] { ChannelHello.Action, VaultProtocol.List, VaultProtocol.Deposit, VaultProtocol.Withdraw, VaultProtocol.Check, VaultProtocol.Move, VaultProtocol.WithdrawBatch }));
                 break;
             case VaultProtocol.List:
                 var listReader = ChannelWire.Reader(body);
@@ -83,6 +87,21 @@ public sealed class FakeVaultServer : IServerChannelTransport
                     _items.Insert(Math.Max(0, Math.Min(toIndex, _items.Count)), movedItem);
                 }
                 Reply(id, action, ChannelStatus.Ok, VaultProtocol.WriteTransfer(movedItem != null, movedItem != null ? string.Empty : "That item is no longer in your Vault."));
+                break;
+            case VaultProtocol.WithdrawBatch:
+                var batchReader = ChannelWire.Reader(body);
+                var batch = new uint[batchReader.ReadInt32()];
+                for (var index = 0; index < batch.Length; index++)
+                    batch[index] = batchReader.ReadUInt32();
+                Batches.Add(batch);
+                var batchRefusal = BatchRefusal ?? (batch.All(guid => _items.Any(item => item.Guid == guid)) ? null : "That item is not in your Vault.");
+                if (batchRefusal == null)
+                {
+                    // as the server does: the push, then the answer
+                    _items.RemoveAll(item => batch.Contains(item.Guid));
+                    Push(VaultProtocol.Changed, VaultProtocol.WriteChanged(true, "Withdrawn", $"{batch.Length} items are back in your pack.", batch[0]));
+                }
+                Reply(id, action, ChannelStatus.Ok, VaultProtocol.WriteTransfer(batchRefusal == null, batchRefusal ?? $"{batch.Length} items are back in your pack."));
                 break;
             case VaultProtocol.Withdraw:
             case VaultProtocol.Deposit:

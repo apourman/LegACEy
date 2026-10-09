@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using LegACEy.Client.Demo;
 
 namespace LegACEy.Plugin.Vault;
@@ -59,9 +60,17 @@ public static class VaultProtocol
     public const string Changed = "vault.changed";
     public const string Check = "vault.check";
     public const string Move = "vault.move";
+    public const string WithdrawBatch = "vault.withdraw_batch";
 
     /// <summary>The items the window asks for at a time. Must match ACE.Server.Market.VaultChannelActions.PageSize.</summary>
     public const int PageSize = 100;
+
+    /// <summary>A batch withdrawal: a count, then the item ids.</summary>
+    public static byte[] WithdrawBatchRequest(IReadOnlyList<uint> guids) => ChannelWire.Body(w =>
+    {
+        w.Write(guids.Count);
+        foreach (var guid in guids) w.Write(guid);
+    });
 
     /// <summary>A page request: the search text (empty for none), the offset of the page's first match and the count.</summary>
     public static byte[] ListRequest(string search, int offset, int count) => ChannelWire.Body(w =>
@@ -288,6 +297,37 @@ public sealed class VaultClient : IDisposable
 
     public void Withdraw(uint guid) => Transfer(VaultProtocol.Withdraw, guid);
 
+    /// <summary>The ids of the items selected on the page on screen, in the page's order.</summary>
+    public IReadOnlyList<uint> SelectedGuids() =>
+        Snapshot is { Available: true } page ? Selection.Indices.Select(index => page.Items[index].Guid).ToList() : Array.Empty<uint>();
+
+    /// <summary>
+    /// Withdraws the given items. One is withdrawn as <see cref="Withdraw"/> always has been; two or more go as one batch, which moves all of them or none.
+    /// A refused batch keeps the page and the selection and shows the server's reason. An accepted one is instant, so the page is loaded again,
+    /// and the selection clears with the page.
+    /// </summary>
+    public void WithdrawMany(IReadOnlyList<uint> guids)
+    {
+        if (guids.Count == 1)
+        {
+            Withdraw(guids[0]);
+            return;
+        }
+        if (guids.Count == 0) return;
+
+        TransferPending = true;
+        Set(Connection, $"Asking the server to withdraw {guids.Count:N0} items…");
+        Send(VaultProtocol.WithdrawBatch, VaultProtocol.WithdrawBatchRequest(guids), reply =>
+        {
+            TransferPending = false;
+            if (!reply.Ok) { Set(Connection, reply.Message); return; }
+            var (accepted, message) = VaultProtocol.ReadTransfer(reply.Body);
+            if (!accepted) { Set(Connection, message); return; }
+            Notice = message;
+            Refresh();
+        });
+    }
+
     /// <summary>
     /// Asks the server whether the item could be deposited now (attuned, worn, too busy…), replacing any earlier answer for it.
     /// The window asks when an item starts being dragged over it.
@@ -328,6 +368,8 @@ public sealed class VaultClient : IDisposable
         items.RemoveAt(from);
         items.Insert(index, moved);
         Snapshot = new VaultSnapshot(true, snapshot.Balance, snapshot.Capacity, snapshot.VaultCount, snapshot.Total, items);
+        // The selection holds places in the page's order, which the move just changed.
+        Selection.Clear();
         Changed?.Invoke(this, EventArgs.Empty);
         Send(VaultProtocol.Move, VaultProtocol.MoveRequest(guid, Offset + index), reply =>
         {

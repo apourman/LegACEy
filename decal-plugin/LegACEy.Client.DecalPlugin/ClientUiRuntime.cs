@@ -600,7 +600,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         }
         var top = item == 0 ? null : TopSurfaceAt(_pointer);
         if (top != null && _retailDragIcon == null)
-            _retailDragIcon = ShowDragIcon(ObjectIcon(item));
+            _retailDragIcon = ShowDragIcon(ObjectIcon(item), 1);
         else if (top == null && _retailDragIcon != null)
         {
             _retailDragIcon.Dispose();
@@ -688,9 +688,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         private readonly ClientUiRuntime _owner;
         public ItemDragHost(ClientUiRuntime owner) => _owner = owner;
 
-        public IDisposable ShowDragIcon(GameImage? image)
+        public IDisposable ShowDragIcon(GameImage? image, int stack)
         {
-            var icon = _owner.ShowDragIcon(image);
+            var icon = _owner.ShowDragIcon(image, stack);
             _owner._itemDragActive = true;
             return new ItemDrag(_owner, icon);
         }
@@ -723,7 +723,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         }
     }
 
-    private IDisposable ShowDragIcon(GameImage? image)
+    private IDisposable ShowDragIcon(GameImage? image, int stack)
     {
         HideDragIcon();
         if (_device == null || _portal == null) return new DragIcon(this);
@@ -731,6 +731,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         var layers = new Grid { Width = 32, Height = 32 };
         if (bitmap != null)
             layers.Children.Add(new Avalonia.Controls.Image { Source = bitmap, Width = 32, Height = 32, Stretch = Stretch.None });
+        // a selection's drag carries its count in the icon's corner
+        if (stack > 1)
+            layers.Children.Add(new TextBlock
+            {
+                Text = $"×{stack}", FontSize = 11, FontWeight = Avalonia.Media.FontWeight.Bold, Foreground = Avalonia.Media.Brushes.White,
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Bottom,
+                Margin = new Avalonia.Thickness(0, 0, 2, 0)
+            });
         RenderOptions.SetBitmapInterpolationMode(layers, Avalonia.Media.Imaging.BitmapInterpolationMode.None);
         layers.DetachedFromVisualTree += (_, _) => bitmap?.Dispose();
         var panel = ObservePanel(AvaloniaPanel.Create(() => layers, 32, 32));
