@@ -316,7 +316,7 @@ public sealed class DerethWindow : UserControl
         }
         var name = new TextBlock
         {
-            Text = title, Foreground = DerethPalette.CreamBrush, FontSize = 18, FontFamily = DerethPalette.Title,
+            Text = title, Foreground = DerethPalette.CreamBrush, FontSize = 16, FontFamily = DerethPalette.Title,
             VerticalAlignment = VerticalAlignment.Center
         };
         Grid.SetColumn(name, 1);
