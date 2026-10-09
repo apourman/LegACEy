@@ -455,14 +455,6 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         return -1;
     }
 
-    /// <summary>E inspects the selected item, when exactly one is selected.</summary>
-    public bool GameKeyDown(Key key)
-    {
-        if (key != Key.E || _client?.Connection != VaultConnection.Live || _dragHost == null || _selection.Count != 1) return false;
-        _client.Inspect(_client.SelectedGuids()[0], _dragHost.Appraise);
-        return true;
-    }
-
     /// <summary>A right-click on an item selects it alone and inspects it, unless several items are selected.</summary>
     public void RightClick(Point position)
     {
@@ -488,6 +480,9 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
             {
                 _selection.Press(place, (_pressModifiers & KeyModifiers.Control) != 0, (_pressModifiers & KeyModifiers.Shift) != 0);
                 ShowSelection();
+                // One item selected is the game's selection too, so the game's E appraises it.
+                if (_selection.Count == 1 && _client?.Connection == VaultConnection.Live && _dragHost != null)
+                    _client.Inspect(_client.SelectedGuids()[0], _dragHost.Select);
             }
             return;
         }
@@ -640,8 +635,6 @@ public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget, IGame
 
     public bool RetailDrop(uint itemId, string itemName, Point position) =>
         this.TranslatePoint(position, _panel) is { } point && _panel.RetailDrop(itemId, itemName, point);
-
-    public bool GameKeyDown(Key key) => _panel.GameKeyDown(key);
 
     public void RightClick(Point position)
     {

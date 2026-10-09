@@ -299,12 +299,12 @@ public sealed class VaultClient : IDisposable
     public void Withdraw(uint guid) => Transfer(VaultProtocol.Withdraw, guid);
 
     /// <summary>
-    /// Inspects a Vault item: the server tells the game about the item, then <paramref name="appraise"/> asks the game to appraise
-    /// it, as E does. A refusal shows as a notice.
+    /// Tells the game about a Vault item, which the server sends as in the Vault chest, then runs <paramref name="then"/> with its id:
+    /// selecting or appraising it in the game. A refusal shows as a notice.
     /// </summary>
-    public void Inspect(uint guid, Action<uint> appraise) => Send(VaultProtocol.Inspect, VaultProtocol.ItemRequest(guid), reply =>
+    public void Inspect(uint guid, Action<uint> then) => Send(VaultProtocol.Inspect, VaultProtocol.ItemRequest(guid), reply =>
     {
-        if (reply.Ok) appraise(guid);
+        if (reply.Ok) then(guid);
         else Set(Connection, reply.Message);
     });
 

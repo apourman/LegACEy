@@ -38,6 +38,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private static extern bool ScreenToClient(IntPtr window, ref NativePoint point);
 
     [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
     private static extern IntPtr LoadCursor(IntPtr instance, IntPtr cursorName);
 
     [DllImport("user32.dll")]
@@ -764,10 +768,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             }
         }
 
+        public void Select(uint objectId) => CoreManager.Current.Actions.SelectItem(unchecked((int)objectId));
+
         public void Appraise(uint objectId)
         {
-            Log($"Appraisal requested for 0x{objectId:X8}.");
-            CoreManager.Current.Actions.RequestId(unchecked((int)objectId));
+            Log($"Appraising 0x{objectId:X8}; known to the client: {CoreManager.Current.WorldFilter[unchecked((int)objectId)] != null}.");
+            Select(objectId);
+            // The game's examine key, E by default: the game opens its appraisal window for the selection, as when the player presses it.
+            var window = GetForegroundWindow();
+            PostMessage(window, InputRouterService.WmKeyDown, new IntPtr('E'), new IntPtr(0x00120001));
+            PostMessage(window, InputRouterService.WmKeyUp, new IntPtr('E'), new IntPtr(unchecked((int)0xC0120001)));
         }
 
         public ItemDropTarget DropTargetAtPointer()
@@ -1015,7 +1025,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                 lParam = (point.X & 0xffff) | (point.Y << 16);
         }
 
-        if ((e.Msg == InputRouterService.WmKeyDown || e.Msg == InputRouterService.WmRButtonDown) && OfferToWindow(e.Msg, e.WParam, lParam))
+        if (e.Msg == InputRouterService.WmRButtonDown && OfferRightClick(lParam))
         {
             e.Eat = true;
             return;
@@ -1104,45 +1114,19 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         });
     }
 
-    /// <summary>
-    /// Offers a key-down to the focused window, unless a text box in it has focus, or a right-click to the window under the
-    /// pointer, when that window is an <see cref="IGameInputTarget"/>. True if the window took it. A held key's repeats are not offered.
-    /// </summary>
-    private bool OfferToWindow(int msg, int wParam, int lParam)
+    /// <summary>Offers a right-click to the window under the pointer, when it is an <see cref="IGameInputTarget"/>. True if it took it.</summary>
+    private bool OfferRightClick(int lParam)
     {
-        string? id;
-        IGameInputTarget? target;
-        if (msg == InputRouterService.WmKeyDown)
-        {
-            id = _inputRouter.FocusedSurfaceId;
-            var focused = SurfaceById(id);
-            if ((lParam & 0x40000000) != 0 || focused is not { Visible: true } || focused.Panel.WantsKeyboard) return false;
-            target = focused.Panel.Content as IGameInputTarget;
-        }
-        else
-        {
-            id = TopSurfaceAt(_pointer = new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff)));
-            target = SurfaceById(id)?.Panel.Content as IGameInputTarget;
-        }
-        if (target == null) return false;
+        _pointer = new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff));
+        var id = TopSurfaceAt(_pointer);
+        var surface = SurfaceById(id);
+        if (surface?.Panel.Content is not IGameInputTarget target) return false;
         try
         {
-            if (msg == InputRouterService.WmKeyDown)
-            {
-                var taken = target.GameKeyDown(Win32KeyMap.ToAvaloniaKey(wParam));
-                if (taken) Log($"Window '{id}' took key 0x{wParam:X2}.");
-                return taken;
-            }
-            var surface = SurfaceById(id)!;
-            Log($"Window '{id}' got a right-click.");
             target.RightClick(new Avalonia.Point(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y));
-            return true;
         }
-        catch (Exception exception)
-        {
-            _windowFailures[id!](exception);
-            return true;
-        }
+        catch (Exception exception) { _windowFailures[id!](exception); }
+        return true;
     }
 
     /// <summary>

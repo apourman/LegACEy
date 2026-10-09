@@ -64,8 +64,8 @@ namespace ACE.Server.Market
         }
 
         /// <summary>
-        /// Lets the client appraise one of the account's Vault items (body: item guid): the client is told about the item, which stays in the Vault,
-        /// and the player's next appraisal of it is answered from it (see Player.HandleActionIdentifyObject). The reply is empty; a refusal fails it.
+        /// Lets the client appraise one of the account's Vault items (body: item guid): the client is told the item is in the Vault chest, though it stays
+        /// in the Vault, and the player's next appraisal of it is answered from it (see Player.HandleActionIdentifyObject). The reply is empty; a refusal fails it.
         /// </summary>
         private static void HandleInspect(ChannelContext context)
         {
@@ -93,8 +93,14 @@ namespace ACE.Server.Market
                             return;
                         }
 
-                        log.Info($"[VAULT] {player.Name} inspects 0x{itemGuid:X8} {item.Name}");
-                        player.VaultInspected = item;
+                        // The client appraises only objects that are somewhere, so it is told the item is in the Vault chest. Only the client
+                        // is told: this object is never saved, and the Vault row is the only record of where the item is.
+                        var chest = player.Station;
+                        if (chest != null)
+                            item.ContainerId = chest.Guid.Full;
+
+                        log.Info($"[VAULT] {player.Name} inspects 0x{itemGuid:X8} {item.Name} in 0x{item.ContainerId ?? 0:X8}");
+                        player.RememberVaultInspected(item);
                         player.Session.Network.EnqueueSend(new GameMessageCreateObject(item));
                         context.Reply(Array.Empty<byte>());
                     }));

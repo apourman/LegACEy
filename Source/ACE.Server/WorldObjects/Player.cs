@@ -269,8 +269,11 @@ namespace ACE.Server.WorldObjects
             var wo = FindObject(objectGuid, SearchLocations.Everywhere, out _, out _, out _);
 
             // a Vault item the player is inspecting from the Vault window
-            if (wo == null && VaultInspected?.Guid.Full == objectGuid)
-                wo = VaultInspected;
+            if (wo == null)
+            {
+                wo = VaultInspected(objectGuid);
+                log.Info($"[VAULT] {Name} appraises 0x{objectGuid:X8}: {(wo == null ? "nowhere" : "a Vault item")}");
+            }
 
             if (wo == null)
             {
