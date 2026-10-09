@@ -918,41 +918,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/icons/glow.css": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/css": string;
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/icons/{file}": {
         parameters: {
             query?: never;
@@ -1500,7 +1465,6 @@ export interface components {
         };
         IconResponse: {
             layers: components["schemas"]["IconLayerResponse"][];
-            glow: null | string;
         };
         InventorySnapshotItemResponse: {
             /** Format: uint32 */

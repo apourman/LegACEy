@@ -323,6 +323,8 @@ public sealed class PluginRegistryTests
             return new Handle(() => _subscriptions.Remove(subscription));
         }
 
+        public IDisposable Schedule(TimeSpan delay, Action action) => new Handle(() => { });
+
         public void Push(string topic, byte[] body)
         {
             foreach (var (subscribed, handler) in _subscriptions.ToArray())

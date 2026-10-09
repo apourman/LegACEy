@@ -27,6 +27,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- the item icon outline rule, shared with the client (Source/Shared, also linked by LegACEy.Client.GameArt) -->
+    <Compile Include="..\Shared\ItemIconOutline.cs" Link="ItemIconOutline.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.8" />
     <!-- OpenAPI.NET 2.7.5 contains the fix for GHSA-v5pm-xwqc-g5wc; ASP.NET OpenAPI 10.0.8 depends on 2.0.0. -->
     <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />

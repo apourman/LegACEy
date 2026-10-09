@@ -69,7 +69,11 @@ public sealed class VaultDragDropTests
         vault.Host.PointerDown(start.X, start.Y);
         vault.Host.PointerMove(start.X + 30, start.Y);
         Assert.Equal(1, vault.Drag.IconsOpen);
-        Assert.Equal(new uint[] { 0x060011F3, 0x06000FAD }, vault.Drag.IconsShown.Single());
+        // the drag icon is the item's composed icon, one 32×32 image: the flat art passes through unchanged, with no plate
+        var icon = Assert.Single(vault.Drag.IconsShown);
+        Assert.NotNull(icon);
+        Assert.Equal((32, 32), (icon!.Width, icon.Height));
+        Assert.Equal(FlatArt.Pixels, icon.Pixels);
         vault.Host.PointerMove(VaultShellPanel.WindowWidth + 80, start.Y);
         vault.Host.PointerUp(VaultShellPanel.WindowWidth + 80, start.Y);
         vault.Step(TimeSpan.FromMilliseconds(30));
@@ -158,7 +162,7 @@ public sealed class VaultDragDropTests
     public void Drop_frame_on_the_top_row_is_fully_visible_without_scrolling(int heightLost) => RenderThread.Run(() =>
     {
         using var vault = new LiveVault(VaultShellPanel.WindowHeight - heightLost);
-        var scroller = vault.Host.Content.GetVisualDescendants().OfType<ScrollViewer>().Single();
+        var scroller = VaultFixture.GridScroller(vault.Host.Content);
         Assert.True(scroller.Extent.Height <= scroller.Viewport.Height + 0.5, $"extent {scroller.Extent.Height} > viewport {scroller.Viewport.Height}");
         Assert.Equal(0, scroller.Offset.Y);
 
@@ -210,7 +214,7 @@ public sealed class VaultDragDropTests
     private sealed class PanelDragHost : IItemDragHost
     {
         public AvaloniaPanel? Panel { get; private set; }
-        public IDisposable ShowDragIcon(IReadOnlyList<uint> iconLayers)
+        public IDisposable ShowDragIcon(LegACEy.Client.GameArt.GameImage? icon)
         {
             Panel = AvaloniaPanel.Create(() => new Grid { Width = 32, Height = 32 }, 32, 32);
             return new Icon(this);
@@ -224,58 +228,20 @@ public sealed class VaultDragDropTests
         }
     }
 
-    private sealed class LiveVault : IDisposable
+    /// <summary>The Vault window over the fake server with its sample items: the cells, the drop indicators and the drag host.</summary>
+    private sealed class LiveVault : VaultFixture
     {
-        private DateTime _now = new(2026, 10, 5, 12, 0, 0, DateTimeKind.Utc);
-        private readonly VaultShellPanel _panel;
-        private readonly ServerChannelClient _channel;
+        public LiveVault(int height = VaultShellPanel.WindowHeight, IItemDragHost? dragHost = null) : base(null, height, dragHost, new FlatArt()) { }
 
-        public LiveVault(int height = VaultShellPanel.WindowHeight, IItemDragHost? dragHost = null)
-        {
-            Server = new FakeVaultServer(() => _now) { Latency = TimeSpan.FromMilliseconds(30) };
-            _channel = new ServerChannelClient(Server, () => _now);
-            Server.Deliver = _channel.Receive;
-            Client = new VaultClient(_channel);
-            VaultShellPanel? panel = null;
-            Host = AvaloniaPanel.Create(() => new VaultShellWindow(panel = new VaultShellPanel(new NoArt(), Client, dragHost ?? Drag)),
-                VaultShellPanel.WindowWidth, height);
-            _panel = panel!;
-            Step(TimeSpan.FromMilliseconds(30));
-            Step(TimeSpan.FromMilliseconds(30));
-            Assert.Equal(VaultConnection.Live, Client.Connection);
-        }
-
-        public FakeVaultServer Server { get; }
-        public VaultClient Client { get; }
-        public FakeItemDragHost Drag { get; } = new();
-        public AvaloniaPanel Host { get; }
-        public VaultShellWindow Window => (VaultShellWindow)Host.Content;
-
-        public Control[] Cells => Host.Content.GetVisualDescendants().OfType<WrapPanel>().Single().Children.OfType<Control>().ToArray();
         public Control SlotOf(Control cell) => cell;
         public Border[] VisibleIndicators() => Cells.SelectMany(cell => ((Grid)cell).Children.OfType<Border>()).Where(border => border.IsVisible).ToArray();
-        public string[] Texts() => Host.Content.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text ?? string.Empty).ToArray();
-
-        public Point Center(Control control) =>
-            control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), Host.Content)!.Value;
-
-        public void Step(TimeSpan time)
-        {
-            _now += time;
-            Server.Pump();
-            _channel.Tick();
-            Host.Tick();
-        }
-
-        public void Dispose()
-        {
-            _panel.Dispose();
-            Host.Dispose();
-        }
     }
 
-    private sealed class NoArt : IGameArtSource
+    /// <summary>Every texture is one flat opaque 32×32 image, except id 0 (no layer)</summary>
+    private sealed class FlatArt : IGameArtSource
     {
-        public GameImage? ReadImage(uint id) => null;
+        public static readonly byte[] Pixels = Enumerable.Range(0, 32 * 32).SelectMany(_ => new byte[] { 10, 20, 30, 255 }).ToArray();
+
+        public GameImage? ReadImage(uint id) => id == 0 ? null : new GameImage(32, 32, Pixels);
     }
 }

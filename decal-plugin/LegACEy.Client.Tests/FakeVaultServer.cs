@@ -32,9 +32,16 @@ public sealed class FakeVaultServer : IServerChannelTransport
     public long Balance { get; set; } = 245;
     public int Capacity { get; set; } = 1000;
     public List<string> Received { get; } = new();
+    /// <summary>Every page request, as the client sent it.</summary>
+    public List<(string Search, int Offset, int Count)> ListRequests { get; } = new();
+    /// <summary>When set, every list request gets this failure instead of a page, as a server that is refusing requests does.</summary>
+    public ChannelStatus? ListStatus { get; set; }
     /// <summary>Pack items the fake refuses to deposit, with the reason.</summary>
     public Dictionary<uint, string> Refused { get; } = new();
     public IReadOnlyList<VaultItemView> Items => _items;
+
+    /// <summary>Changes the Vault the way something outside the window would (a /vault command, the website). Nothing is pushed: the test pushes it.</summary>
+    public void Edit(Action<List<VaultItemView>> edit) => edit(_items);
 
     public bool Send(byte[] requestPayload)
     {
@@ -46,7 +53,19 @@ public sealed class FakeVaultServer : IServerChannelTransport
                 Reply(id, action, ChannelStatus.Ok, ChannelHello.Write("Preview Character", new[] { ChannelHello.Action, VaultProtocol.List, VaultProtocol.Deposit, VaultProtocol.Withdraw, VaultProtocol.Check, VaultProtocol.Move }));
                 break;
             case VaultProtocol.List:
-                Reply(id, action, ChannelStatus.Ok, VaultProtocol.WriteList(new VaultSnapshot(true, Balance, Capacity, _items.ToArray())));
+                var listReader = ChannelWire.Reader(body);
+                var search = ChannelWire.ReadString(listReader);
+                var offset = listReader.ReadInt32();
+                var count = listReader.ReadInt32();
+                ListRequests.Add((search, offset, count));
+                if (ListStatus is { } failure)
+                {
+                    Reply(id, action, failure, ChannelWire.Body(w => ChannelWire.WriteString(w, "The server is busy.")));
+                    break;
+                }
+                var matches = _items.Where(item => item.Name.Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
+                var page = matches.Skip(offset).Take(count).ToArray();
+                Reply(id, action, ChannelStatus.Ok, VaultProtocol.WriteList(new VaultSnapshot(true, Balance, Capacity, _items.Count, matches.Count, page)));
                 break;
             case VaultProtocol.Check:
                 var checkedGuid = ChannelWire.Reader(body).ReadUInt32();

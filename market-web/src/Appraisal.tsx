@@ -2,7 +2,7 @@ import { useEffect, useId, useState } from 'react';
 import { ApiError, getListing, getVaultAppraisal, type Detail, type Icon as IconData, type Listing, type Spell, type VaultAppraisal, type VaultItem } from './api';
 
 export function Icon({ icon }: { icon: IconData }) {
-  return <span aria-hidden="true" className={`item-icon ${icon.glow ?? ''}`}>
+  return <span aria-hidden="true" className="item-icon">
     {icon.layers.map((layer, index) => <img key={`${layer.kind}-${index}`} src={layer.url} alt="" />)}
   </span>;
 }
