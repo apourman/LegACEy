@@ -117,6 +117,18 @@ public sealed class InputRouterTests
     }
 
     [Fact]
+    public void A_left_press_carries_the_Ctrl_and_Shift_held_with_it()
+    {
+        var router = new InputRouterService();
+        var surfaces = new[] { Surface("panel", 0) };
+        // The press's low word is the mouse key state: MK_SHIFT (0x4) and MK_CONTROL (0x8).
+        var press = router.Route(new NativeInputMessage(InputRouterService.WmLButtonDown, (nint)0x0c, Pack(10, 10)), surfaces);
+
+        Assert.Equal(InputAction.PointerDown, press.Action);
+        Assert.Equal(InputModifiers.Shift | InputModifiers.Control, press.Modifiers);
+    }
+
+    [Fact]
     public void Logoff_releases_a_captured_pointer_and_clears_keyboard_focus()
     {
         var router = new InputRouterService();

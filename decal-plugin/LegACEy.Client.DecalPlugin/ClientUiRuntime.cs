@@ -968,7 +968,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                         _windows.Press(_pointer);
                         SyncWindowLocations();
                     }
-                    target.Panel.PointerDown(route.X, route.Y);
+                    target.Panel.PointerDown(route.X, route.Y, ToKeyModifiers(route.Modifiers));
                     e.Eat = route.Eat;
                     break;
                 case InputAction.PointerUp:

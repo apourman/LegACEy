@@ -78,7 +78,7 @@ public sealed class InputRouterService
         {
             var delta = HighSigned(message.WParam);
             return target == null ? new InputRoute() : new InputRoute(InputAction.MouseWheel, target.Id, true,
-                x - target.X, y - target.Y, delta, modifiers: _modifiers | WheelModifiers(message.WParam));
+                x - target.X, y - target.Y, delta, modifiers: _modifiers | MouseKeyModifiers(message.WParam));
         }
 
         if (message.Message == WmMouseMove)
@@ -96,7 +96,7 @@ public sealed class InputRouterService
                 return new InputRoute(eat: true);
             _capturedSurfaceId = target.Id;
             _focusedSurfaceId = target.Id;
-            return new InputRoute(InputAction.PointerDown, target.Id, true, x - target.X, y - target.Y);
+            return new InputRoute(InputAction.PointerDown, target.Id, true, x - target.X, y - target.Y, modifiers: _modifiers | MouseKeyModifiers(message.WParam));
         }
 
         if (message.Message == WmLButtonUp)
@@ -162,7 +162,8 @@ public sealed class InputRouterService
     private static int LowSigned(IntPtr packed) => unchecked((short)(packed.ToInt64() & 0xffff));
     private static int HighSigned(IntPtr packed) => unchecked((short)((packed.ToInt64() >> 16) & 0xffff));
 
-    private static InputModifiers WheelModifiers(IntPtr wParam)
+    /// <summary>The Shift and Control held, from a mouse message's key state (MK_SHIFT and MK_CONTROL in the low word).</summary>
+    private static InputModifiers MouseKeyModifiers(IntPtr wParam)
     {
         var keyState = unchecked((int)wParam.ToInt64()) & 0xffff;
         var modifiers = InputModifiers.None;
