@@ -123,6 +123,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private GameChannelTransport? _channelTransport;
     private ServerChannelClient? _serverChannel;
     private RetailItemDrag? _retailDrag;
+    private readonly DecalInventoryPort _inventory = new();
     private uint _retailDragItem;
     private string _retailDragName = string.Empty;
     private int _loggedDrops;
@@ -181,6 +182,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         CoreManager.Current.RenderFrame -= OnRenderFrame;
         CoreManager.Current.WindowMessage -= OnWindowMessage;
         CoreManager.Current.EchoFilter.ServerDispatch -= OnServerDispatch;
+        _inventory.Detach();
         _postUiDrawHook?.Dispose();
         _postUiDrawHook = null;
         RestoreNativeBar();
@@ -230,6 +232,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         CoreManager.Current.RenderFrame += OnRenderFrame;
         CoreManager.Current.WindowMessage += OnWindowMessage;
         CoreManager.Current.EchoFilter.ServerDispatch += OnServerDispatch;
+        _inventory.Attach();
     }
 
     /// <summary>LegACEy channel replies and pushes arrive on the game thread with every other server message.</summary>
@@ -262,6 +265,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                 CreateWindowManager();
             _clientUi ??= new ClientUiFramework(this, _gameState, CurrentTheme(), _serverChannel);
             _inGame = true;
+            _inventory.MarkStale();
             PublishGameState();
             RequestServerActions();
         });
@@ -293,6 +297,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         Guard(() => ApplyReset(_inputRouter.Route(new NativeInputMessage(InputRouterService.WmLogoff, IntPtr.Zero, IntPtr.Zero), GetInputSurfaces())));
         Guard(() => _hovered?.Panel.PointerLeave());
         _inGame = false;
+        _inventory.Clear();
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up client UI at logoff: {exception}"); }
         _clientUi = null;
@@ -471,6 +476,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         Guard(() =>
         {
             PublishGameState();
+            _inventory.Flush(_inGame);
             _serverChannel?.Tick();
             if (_barSurface == null)
             {
@@ -920,6 +926,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     string ILegACEyPluginHost.PortalPath => _portal?.Path ?? string.Empty;
     IGameArtSource ILegACEyPluginHost.Art => (IGameArtSource?)_portal ?? throw new InvalidOperationException("Game art is unavailable until the client UI is ready.");
     IItemDragHost ILegACEyPluginHost.ItemDrag => new ItemDragHost(this);
+    IInventoryPort ILegACEyPluginHost.Inventory => _inventory;
     bool ILegACEyPluginHost.IsWindowOpen(string id) => _featureSurfaces.ContainsKey(id);
     void ILegACEyPluginHost.HideWindow(string id) => HideFeatureWindow(id);
     void ILegACEyPluginHost.CloseWindow(string id) => ReleaseFeatureWindow(id);

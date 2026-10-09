@@ -33,6 +33,10 @@ public interface ILegACEyClient
     IGameArtSource Art { get; }
     /// <summary>Drag services for items between the retail inventory and a LegACEy window.</summary>
     IItemDragHost ItemDrag { get; }
+    /// <summary>The character's inventory: a read-only snapshot, a change event and the retail-call commands.</summary>
+    IInventoryPort Inventory { get; }
+    /// <summary>True when the server registered the action (the list from channel.hello). Plugins use it for optional features.</summary>
+    bool SupportsAction(string action);
     /// <summary>Adds an entry to the LegACEy menu. Its action runs when the player picks it.</summary>
     void AddMenuEntry(string title, uint iconId, Action action);
     /// <summary>
@@ -62,6 +66,7 @@ public interface ILegACEyPluginHost
     string PortalPath { get; }
     IGameArtSource Art { get; }
     IItemDragHost ItemDrag { get; }
+    IInventoryPort Inventory { get; }
     bool IsWindowOpen(string id);
     /// <summary>
     /// Opens a LegACEy window, or shows it again as it was if it is hidden. <paramref name="createContent"/> runs

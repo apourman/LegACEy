@@ -129,7 +129,10 @@ public sealed class PluginRegistry
         return false;
     }
 
-    private bool IsVisible(PluginEntry entry) => entry.Enabled && entry.RequiredActions.All(_serverActions.Contains);
+    /// <summary>Whether the server's last channel.hello registered the action. Nothing registered before the first answer.</summary>
+    private bool SupportsAction(string action) => _serverActions.Contains(action);
+
+    private bool IsVisible(PluginEntry entry) => entry.Enabled && entry.RequiredActions.All(SupportsAction);
 
     /// <summary>Runs one of a plugin's actions. An error from it turns that plugin off; a plugin that is already off is ignored.</summary>
     private void Guarded(PluginEntry entry, Action action)
@@ -245,6 +248,8 @@ public sealed class PluginRegistry
         public string PortalPath => _registry._host.PortalPath;
         public IGameArtSource Art => _registry._host.Art;
         public IItemDragHost ItemDrag => _registry._host.ItemDrag;
+        public IInventoryPort Inventory => _registry._host.Inventory;
+        public bool SupportsAction(string action) => _registry.SupportsAction(action);
 
         public void AddMenuEntry(string title, uint iconId, Action action)
         {
