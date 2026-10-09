@@ -76,14 +76,6 @@ namespace ACE.Server.Market
         }
 
         /// <summary>
-        /// The player's account Vault, oldest deposit first
-        /// </summary>
-        public static List<VaultItem> List(Player player)
-        {
-            return Available ? VaultStore.List(player.Character.AccountId) : new List<VaultItem>();
-        }
-
-        /// <summary>
         /// One page of the player's account Vault, with a search, and the counts around it (see VaultStore.Page)
         /// </summary>
         public static VaultPage Page(Player player, string search, int offset, int count)

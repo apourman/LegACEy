@@ -32,7 +32,7 @@ namespace ACE.Server.Tests.Market
             AtTheVault(player);
             VaultTestWorld.TakeSent(player);
 
-            var reply = Request(player, VaultChannelActions.List, Array.Empty<byte>());
+            var reply = Request(player, VaultChannelActions.List, ListRequestBody(string.Empty, 0, VaultChannelActions.PageSize));
 
             Assert.AreEqual(ChannelStatus.Ok, reply.Status, Text(reply.Body));
             var body = new BinaryReader(new MemoryStream(reply.Body), Encoding.UTF8);
@@ -79,6 +79,43 @@ namespace ACE.Server.Tests.Market
             var matches = ListPage(player, "VAULT ITEM", 100, 100);
             Assert.AreEqual(104, matches.Total, "the total counts every match, not the page");
             CollectionAssert.AreEqual(new[] { guids[100], guids[101], guids[103], guids[104] }, matches.Guids);
+
+            // a substring from the middle of the name: "item 10" is in 100, 101, 102, 104 and 105 (not the needle)
+            var middle = ListPage(player, "item 10", 0, 100);
+            Assert.AreEqual(5, middle.Total, "a substring from inside the name matches");
+            CollectionAssert.AreEqual(new[] { guids[99], guids[100], guids[101], guids[103], guids[104] }, middle.Guids);
+        }
+
+        [TestMethod]
+        public void ChannelList_ClampsTheCountAndOffset_AndIgnoresBytesAfterTheCount()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var guids = DepositedNamed(player, 105, n => $"Vault item {n:000}");
+            AtTheVault(player);
+
+            CollectionAssert.AreEqual(guids.Take(1).ToArray(), ListPage(player, string.Empty, 0, 0).Guids, "a count under 1 is 1");
+            Assert.AreEqual(VaultChannelActions.PageSize, ListPage(player, string.Empty, 0, 500).Guids.Length, "a count over the page size is the page size");
+            CollectionAssert.AreEqual(guids.Take(1).ToArray(), ListPage(player, string.Empty, -5, 1).Guids, "a negative offset is the first item");
+
+            var trailing = ListRequestBody(string.Empty, 0, 1).Concat(new byte[] { 1, 2, 3 }).ToArray();
+            CollectionAssert.AreEqual(guids.Take(1).ToArray(), ListReply(player, trailing).Guids, "bytes after the count are for a later version");
+        }
+
+        [TestMethod]
+        public void ChannelList_ATruncatedRequest_IsBadRequest()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            AtTheVault(player);
+
+            var noCount = ChannelWire.Body(w =>
+            {
+                ChannelWire.WriteString(w, "item");
+                w.Write(0);
+            });
+            var searchCutShort = new byte[] { 0x05, 0x00, (byte)'i' };
+
+            foreach (var body in new[] { noCount, searchCutShort })
+                Assert.AreEqual(ChannelStatus.BadRequest, Request(player, VaultChannelActions.List, body).Status);
         }
 
         [TestMethod]
@@ -92,7 +129,7 @@ namespace ACE.Server.Tests.Market
             ChannelEvent reply;
             try
             {
-                reply = Request(player, VaultChannelActions.List, Array.Empty<byte>());
+                reply = Request(player, VaultChannelActions.List, ListRequestBody(string.Empty, 0, VaultChannelActions.PageSize));
             }
             finally
             {
@@ -154,7 +191,7 @@ namespace ACE.Server.Tests.Market
                 AssertChanged(WaitForEvent(player, e => e.Kind == ChannelEventKind.Push), nameof(VaultOutcome.Deposited));
                 Assert.IsNull(player.GetInventoryItem(guid), "the deposit took the item");
 
-                var body = new BinaryReader(new MemoryStream(Request(player, VaultChannelActions.List, Array.Empty<byte>()).Body), Encoding.UTF8);
+                var body = new BinaryReader(new MemoryStream(Request(player, VaultChannelActions.List, ListRequestBody(string.Empty, 0, VaultChannelActions.PageSize)).Body), Encoding.UTF8);
                 body.ReadByte();
                 body.ReadInt64();
                 body.ReadInt32();
@@ -189,15 +226,14 @@ namespace ACE.Server.Tests.Market
         /// <summary>
         /// vault.list for a page: the Vault's count, the search's total, and the page's item guids
         /// </summary>
-        private static (int VaultCount, int Total, uint[] Guids) ListPage(Player player, string search, int offset, int count)
-        {
-            var body = ChannelWire.Body(w =>
-            {
-                ChannelWire.WriteString(w, search);
-                w.Write(offset);
-                w.Write(count);
-            });
+        private static (int VaultCount, int Total, uint[] Guids) ListPage(Player player, string search, int offset, int count) =>
+            ListReply(player, ListRequestBody(search, offset, count));
 
+        /// <summary>
+        /// The reply to a vault.list request body, read as <see cref="ListPage"/> reads it
+        /// </summary>
+        private static (int VaultCount, int Total, uint[] Guids) ListReply(Player player, byte[] body)
+        {
             var reply = Request(player, VaultChannelActions.List, body);
 
             Assert.AreEqual(ChannelStatus.Ok, reply.Status, Text(reply.Body));
@@ -213,6 +249,16 @@ namespace ACE.Server.Tests.Market
                 guids[index] = ReadListedGuid(reader);
             return (vaultCount, total, guids);
         }
+
+        /// <summary>
+        /// The body of a vault.list request: the search, the offset and the count
+        /// </summary>
+        private static byte[] ListRequestBody(string search, int offset, int count) => ChannelWire.Body(w =>
+        {
+            ChannelWire.WriteString(w, search);
+            w.Write(offset);
+            w.Write(count);
+        });
 
         /// <summary>
         /// Reads one listed item, returning its guid and skipping the rest of its fields
@@ -265,7 +311,7 @@ namespace ACE.Server.Tests.Market
             var (player, first) = DepositedItem();
             var second = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
             Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, second.Guid.Full).Outcome);
-            CollectionAssert.AreEqual(new[] { first, second.Guid.Full }, Vault.List(player).Select(i => i.ItemGuid).ToArray());
+            CollectionAssert.AreEqual(new[] { first, second.Guid.Full }, VaultStore.List(player.Character.AccountId).Select(i => i.ItemGuid).ToArray());
             var versionBefore = VaultStore.Get(first).RowVersion;
             AtTheVault(player);
 
@@ -273,7 +319,7 @@ namespace ACE.Server.Tests.Market
 
             Assert.AreEqual(ChannelStatus.Ok, reply.Status, Text(reply.Body));
             Assert.AreEqual(1, reply.Body[0], "moved");
-            CollectionAssert.AreEqual(new[] { second.Guid.Full, first }, Vault.List(player).Select(i => i.ItemGuid).ToArray());
+            CollectionAssert.AreEqual(new[] { second.Guid.Full, first }, VaultStore.List(player.Character.AccountId).Select(i => i.ItemGuid).ToArray());
             Assert.AreEqual(versionBefore, VaultStore.Get(first).RowVersion, "a move is not a concurrency change");
         }
 

@@ -29,7 +29,7 @@ namespace ACE.Server.Market
         public const string Move = "vault.move";
 
         /// <summary>
-        /// The most items one vault.list reply holds. The client asks for this many, one page at a time.
+        /// The most items one vault.list reply holds. Must match VaultProtocol.PageSize in the LegACEy Vault client.
         /// </summary>
         public const int PageSize = 100;
 
@@ -134,17 +134,11 @@ namespace ACE.Server.Market
         private readonly record struct ListRequest(string Search, int Offset, int Count);
 
         /// <summary>
-        /// Reads what vault.list asks for: a search (empty for none), an offset and a count, in that order. The count is kept to 1..PageSize.
-        /// An empty body is the first page of the whole Vault, as the list was before it paged. Fields after the count are for a later version and ignored.
+        /// Reads what vault.list asks for: a search (empty for none), an offset and a count, in that order. The offset is kept at 0 or more and the count
+        /// to 1..PageSize. Fields after the count are for a later version and ignored.
         /// </summary>
         private static bool TryReadListRequest(ChannelContext context, out ListRequest request)
         {
-            if (context.Request.Body.Length == 0)
-            {
-                request = new ListRequest(string.Empty, 0, PageSize);
-                return true;
-            }
-
             try
             {
                 using (var body = context.Body())
