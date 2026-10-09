@@ -311,6 +311,8 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         return (client.Notice, false);
     }
 
+    private const double Gap = DerethSlotGrid.Pitch - DerethSlotGrid.CellSize;
+
     /// <summary>The index of the vault cell under a point in this panel's coordinates, or -1.</summary>
     private int CellAt(Point position)
     {
@@ -319,8 +321,9 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         for (var index = 0; index < _liveSlots.Count; index++)
         {
             var slot = _liveSlots[index];
+            // Each cell owns half the gap around it, so a drop between two cells lands on the nearer one.
             var origin = slot.TranslatePoint(default, this);
-            if (origin != null && new Rect(origin.Value, slot.Bounds.Size).Contains(position)) return index;
+            if (origin != null && new Rect(origin.Value, slot.Bounds.Size).Inflate(Gap / 2).Contains(position)) return index;
         }
         return -1;
     }
