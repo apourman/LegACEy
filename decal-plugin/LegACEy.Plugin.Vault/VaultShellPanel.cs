@@ -82,8 +82,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     private readonly StackPanel _itemsLine = new() { Orientation = Orientation.Horizontal, Spacing = 4 };
     private readonly TextBlock _selectedLabel = Label(string.Empty, SelectedBrush, 13);
     private readonly TextBlock _withdrawText = Label(string.Empty, GoldBrush, 12);
-    // ponytail: Withdraw N is ticket 05's batch withdrawal; until it is wired the button is disabled, and dims with it.
-    private readonly DerethButton _withdrawSelection = new() { Height = 24, IsEnabled = false };
+    private readonly DerethButton _withdrawSelection = new() { Height = 24 };
     private readonly DerethButton _clearSelection = new() { Height = 24, Content = Label("Clear", MutedBrush, 12) };
     // The selection's line takes the header line: the label on the left, its buttons on the right.
     private readonly Grid _selectionLine = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto"), IsVisible = false };
@@ -98,10 +97,11 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     private string _retailName = string.Empty;
     private bool _retailOver;
     private int _dropCell = -1;
-    // an item being dragged out of the window to withdraw it
+    // an item being dragged out of the window to withdraw it, and the items the drag carries: the selection when the item is selected
     private VaultItemView? _pressItem;
     private Point _pressPoint;
     private VaultItemView? _dragItem;
+    private IReadOnlyList<uint> _dragGuids = Array.Empty<uint>();
     private IDisposable? _dragIcon;
 
     /// <param name="client">The live Vault; the panel owns it and disposes it. Null shows the sample Vault.</param>
@@ -130,6 +130,9 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         // The selection's line takes the whole header line.
         Grid.SetColumnSpan(_selectionLine, 2);
         summary.Children.Add(_selectionLine);
+        // Sample mode has no server to withdraw from: its button stays disabled.
+        _withdrawSelection.IsEnabled = _client != null;
+        _withdrawSelection.Click += (_, _) => _client?.WithdrawMany(_client.SelectedGuids());
         _clearSelection.Click += (_, _) =>
         {
             _selection.Clear();
@@ -295,9 +298,14 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         }
         if (_dragItem != null && client.Connection == VaultConnection.Live)
         {
-            if (_dropCell < 0) return ($"Drop {_dragItem.Name} on your inventory to withdraw it", false);
+            if (_dropCell < 0)
+                return _dragGuids.Count > 1
+                    ? ($"Drop {_dragGuids.Count:N0} items on your inventory to withdraw them", false)
+                    : ($"Drop {_dragItem.Name} on your inventory to withdraw it", false);
             // A filtered page can't be rearranged, so the move would be refused: say so instead of offering it.
-            return client.Search.Length > 0 ? (VaultClient.SearchBlocksMove, false) : ($"Release to move {_dragItem.Name} here", false);
+            // A selection dragged over a cell moves only the item grabbed: the others stay where they are.
+            var only = _dragGuids.Count > 1 ? " (only this item)" : string.Empty;
+            return client.Search.Length > 0 ? (VaultClient.SearchBlocksMove, false) : ($"Release to move {_dragItem.Name} here{only}", false);
         }
         return (client.Notice, false);
     }
@@ -414,9 +422,11 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
             return;
         }
         _dragItem = item;
-        // ponytail: a drag from a selection still moves only the item pressed, and drops the selection; ticket 05 makes it the batch.
-        _selection.Clear();
-        _dragIcon = _dragHost.ShowDragIcon(ItemImage(item));
+        // A selected item drags the whole selection, which stays selected; an unselected one drops the selection and drags only itself.
+        var selected = _selection.Contains(IndexOf(item.Guid));
+        if (!selected) _selection.Clear();
+        _dragGuids = selected ? _client.SelectedGuids() : new[] { item.Guid };
+        _dragIcon = _dragHost.ShowDragIcon(ItemImage(item), _dragGuids.Count);
         // The lifted item's own cell dims, as the retail inventory ghosts a dragged item.
         ShowSelection();
         UpdateLiftedHover(e);
@@ -454,6 +464,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
             return;
         }
         var item = _dragItem;
+        var guids = _dragGuids;
         var cell = item == null ? -1 : CellAt(e.GetPosition(this));
         EndWithdrawDrag();
         if (item == null || _client == null || _dragHost == null) return;
@@ -467,7 +478,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         switch (_dragHost.DropTargetAtPointer())
         {
             case ItemDropTarget.Inventory:
-                _client.Withdraw(item.Guid);
+                _client.WithdrawMany(guids);
                 break;
             case ItemDropTarget.InventoryClosed:
                 _client.Tell("Open your inventory, then drop the item on it to withdraw it.");
@@ -483,6 +494,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         var wasDragging = _dragItem != null;
         _pressItem = null;
         _dragItem = null;
+        _dragGuids = Array.Empty<uint>();
         _dragIcon?.Dispose();
         _dragIcon = null;
         if (!wasDragging || _disposed) return;

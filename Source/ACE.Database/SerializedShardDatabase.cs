@@ -171,6 +171,18 @@ namespace ACE.Database
         }
 
         /// <summary>
+        /// Queues the batch withdraw job: every item's change, Vault row removal and withdraw event, saved in one save (see ShardDatabase.WithdrawManyFromVault).
+        /// </summary>
+        public void WithdrawManyFromVault(IReadOnlyList<(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, uint expectedRowVersion)> items, uint accountId, uint characterId, Action<MarketJobResult> callback)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = RunMarketJob(nameof(WithdrawManyFromVault), () => BaseDatabase.WithdrawManyFromVault(items, accountId, characterId));
+                callback?.Invoke(result);
+            }));
+        }
+
+        /// <summary>
         /// Queues the note deposit job: the note rows deleted and a note_deposit transfer, saved once (see ShardDatabase.DepositNotes).
         /// The callback gets the result and the balance after it.
         /// </summary>

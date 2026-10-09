@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 
 using log4net;
@@ -16,7 +17,8 @@ namespace ACE.Server.Market
 {
     /// <summary>
     /// The Vault's actions on the in-band server channel, for the LegACEy client's Vault window. They call the Vault's own entry points,
-    /// so every rule, the transfer channel and the chat messages are unchanged. Bodies are written with ChannelWire; the plugin's VaultProtocol reads them.
+    /// so every rule and the chat messages are unchanged. A single deposit or withdrawal goes through the transfer channel; a batch withdrawal skips it,
+    /// as it is instant. Bodies are written with ChannelWire; the plugin's VaultProtocol reads them.
     /// </summary>
     public static class VaultChannelActions
     {
@@ -27,9 +29,11 @@ namespace ACE.Server.Market
         public const string Withdraw = "vault.withdraw";
         public const string Check = "vault.check";
         public const string Move = "vault.move";
+        public const string WithdrawBatch = "vault.withdraw_batch";
 
         /// <summary>
         /// The most items one vault.list reply holds. Must match VaultProtocol.PageSize in the LegACEy Vault client.
+        /// It is also the most one batch withdrawal names.
         /// </summary>
         public const int PageSize = 100;
 
@@ -50,6 +54,62 @@ namespace ACE.Server.Market
             ServerChannel.Register(Withdraw, context => HandleTransfer(context, deposit: false), Station);
             ServerChannel.Register(Check, HandleCheck, Station);
             ServerChannel.Register(Move, HandleMove, Station);
+            ServerChannel.Register(WithdrawBatch, HandleWithdrawBatch, Station);
+        }
+
+        /// <summary>
+        /// Withdraws a set of items at once, instantly and all or none (body: a count, then the item guids). The reply is the outcome: a byte for
+        /// withdrawn, then the message, which is the first refusal's reason when nothing moved.
+        /// </summary>
+        private static void HandleWithdrawBatch(ChannelContext context)
+        {
+            if (!TryReadGuids(context, out var itemGuids))
+                return;
+
+            Vault.WithdrawMany(context.Player, itemGuids, result => context.Reply(TransferBody(result.Success, result.Message)));
+        }
+
+        /// <summary>
+        /// A reply that says whether the action went ahead, and the message the player is told: the reason when it did not
+        /// </summary>
+        private static byte[] TransferBody(bool accepted, string message) => ChannelWire.Body(w =>
+        {
+            w.Write((byte)(accepted ? 1 : 0));
+            ChannelWire.WriteString(w, message);
+        });
+
+        /// <summary>
+        /// Reads a batch withdrawal's guids: a count from 1 to PageSize, then that many distinct guids. Anything else is a bad request.
+        /// </summary>
+        private static bool TryReadGuids(ChannelContext context, out uint[] itemGuids)
+        {
+            try
+            {
+                using (var body = context.Body())
+                {
+                    var count = body.ReadInt32();
+                    if (count >= 1 && count <= PageSize)
+                    {
+                        var guids = new uint[count];
+                        for (var index = 0; index < count; index++)
+                            guids[index] = body.ReadUInt32();
+
+                        if (guids.Distinct().Count() == count)
+                        {
+                            itemGuids = guids;
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch (EndOfStreamException)
+            {
+                // a body cut short is the same bad request as one with bad bounds
+            }
+
+            itemGuids = null;
+            context.Fail(ChannelStatus.BadRequest, $"Withdraw between 1 and {PageSize} different items.");
+            return false;
         }
 
         /// <summary>
@@ -101,11 +161,7 @@ namespace ACE.Server.Market
                 try
                 {
                     var moved = Vault.Available && VaultStore.Move(accountId, itemGuid, toIndex);
-                    context.Reply(ChannelWire.Body(w =>
-                    {
-                        w.Write((byte)(moved ? 1 : 0));
-                        ChannelWire.WriteString(w, moved ? string.Empty : "That item is no longer in your Vault.");
-                    }));
+                    context.Reply(TransferBody(moved, moved ? string.Empty : "That item is no longer in your Vault."));
                 }
                 catch (Exception ex)
                 {
@@ -252,11 +308,7 @@ namespace ACE.Server.Market
 
             starting = false;
 
-            context.Reply(ChannelWire.Body(w =>
-            {
-                w.Write((byte)(refusal == null ? 1 : 0));
-                ChannelWire.WriteString(w, refusal?.Message ?? string.Empty);
-            }));
+            context.Reply(TransferBody(refusal == null, refusal?.Message ?? string.Empty));
         }
 
         /// <summary>

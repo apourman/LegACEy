@@ -24,7 +24,11 @@ namespace ACE.Server.Market
         Listed,
         Withdrawing,
         NoPackSpace,
+        TooHeavy,
         UniqueLimit,
+
+        // a batch withdrawal that is not one to a page of different items
+        BadSelection,
 
         // the channel
         RecentPlayerFight,

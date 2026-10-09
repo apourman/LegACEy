@@ -109,9 +109,9 @@ public sealed class VaultSelectionTests
         var clear = vault.ButtonLabelled("Clear");
         Assert.Equal(vault.OriginIn(withdraw).Y, vault.OriginIn(clear).Y);
         Assert.True(vault.OriginIn(clear).X + clear.Bounds.Width <= vault.Host.Content.Bounds.Width, "The Clear button runs past the window.");
-        // Withdraw N is ticket 05's: disabled for now, and dimmed by the shared button.
-        Assert.False(withdraw.IsEnabled);
-        Assert.Equal(0.4, withdraw.Opacity);
+        // Withdraw N is live: enabled, and not dimmed by the shared button.
+        Assert.True(withdraw.IsEnabled);
+        Assert.Equal(1, withdraw.Opacity);
 
         vault.Press(clear);
         Assert.Empty(vault.Selected);
@@ -224,9 +224,6 @@ public sealed class VaultSelectionTests
 
         /// <summary>Clicks the cell at a place of the page on screen, with Ctrl or Shift held.</summary>
         public void Click(int index, KeyModifiers modifiers = KeyModifiers.None) => Press(Cells[index], modifiers);
-
-        public Button ButtonLabelled(string text) =>
-            Window.GetVisualDescendants().OfType<DerethButton>().Single(button => button.Content is TextBlock label && label.Text == text);
 
         public Point OriginIn(Control control) => control.TranslatePoint(default, Host.Content)!.Value;
 

@@ -159,6 +159,8 @@ namespace ACE.Server.Market
             VaultOutcome.Listed => "listed",
             VaultOutcome.Withdrawing => "withdrawing",
             VaultOutcome.NoPackSpace => "no_pack_space",
+            VaultOutcome.TooHeavy => "too_heavy",
+            VaultOutcome.BadSelection => "bad_selection",
             VaultOutcome.UniqueLimit => "unique_limit",
             VaultOutcome.RecentPlayerFight => "recent_player_fight",
             VaultOutcome.Trading => "trading",

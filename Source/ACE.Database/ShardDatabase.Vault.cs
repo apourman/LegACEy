@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 
@@ -68,7 +69,7 @@ namespace ACE.Database
                 rwLock.ExitReadLock();
             }
 
-            return SaveVaultJob(nameof(DepositToVault), biota, rwLock, ItemEventKind.Deposit, context =>
+            return SaveVaultJob(nameof(DepositToVault), new[] { (biota, rwLock) }, ItemEventKind.Deposit, context =>
             {
                 if (context.MarketVaultItems.Count(r => r.AccountId == vaultItem.AccountId) >= maxItems)
                 {
@@ -98,77 +99,112 @@ namespace ACE.Database
         /// </summary>
         public MarketJobResult WithdrawFromVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, uint accountId, uint characterId, uint expectedRowVersion, TicketCompletion ticket = null)
         {
-            rwLock.EnterReadLock();
-            try
+            return WithdrawManyFromVault(new[] { (biota, rwLock, expectedRowVersion) }, accountId, characterId, ticket);
+        }
+
+        /// <summary>
+        /// Saves items the world thread has pointed back at a character's pack out of the Vault, as one save: every Vault row is removed, every item is saved
+        /// and every withdraw item event written, or none of it. Refuses, saving nothing, if an item has no container, if an item's Vault row is missing,
+        /// belongs to another account, is listed, or no longer has its expected row version. Banned, saving nothing, if the account is banned just before the save.
+        /// Failed means nothing was saved; Unknown means the save may have committed.
+        /// A game bridge ticket passed as ticket is marked done in the same save, so the item can't move without its ticket finishing.
+        /// </summary>
+        public MarketJobResult WithdrawManyFromVault(IReadOnlyList<(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, uint expectedRowVersion)> items, uint accountId, uint characterId, TicketCompletion ticket = null)
+        {
+            foreach (var (biota, rwLock, _) in items)
             {
-                if (biota.PropertiesIID == null || !biota.PropertiesIID.ContainsKey(PropertyInstanceId.Container))
+                rwLock.EnterReadLock();
+                try
                 {
-                    log.Warn($"[DATABASE][VAULT] WithdrawFromVault 0x{biota.Id:X8} refused: the item has no container");
-                    return MarketJobResult.Refused;
+                    if (biota.PropertiesIID == null || !biota.PropertiesIID.ContainsKey(PropertyInstanceId.Container))
+                    {
+                        log.Warn($"[DATABASE][VAULT] WithdrawManyFromVault 0x{biota.Id:X8} refused: the item has no container");
+                        return MarketJobResult.Refused;
+                    }
+                }
+                finally
+                {
+                    rwLock.ExitReadLock();
                 }
             }
-            finally
-            {
-                rwLock.ExitReadLock();
-            }
 
-            return SaveVaultJob(nameof(WithdrawFromVault), biota, rwLock, ItemEventKind.Withdraw, context =>
+            return SaveVaultJob(nameof(WithdrawManyFromVault), items.Select(item => (item.biota, item.rwLock)).ToList(), ItemEventKind.Withdraw, context =>
             {
-                var vaultItem = context.MarketVaultItems.FirstOrDefault(r => r.ItemGuid == biota.Id);
+                // every row is checked before any is removed, so one refusal refuses the set
+                var vaultItems = new List<VaultItem>(items.Count);
 
-                if (vaultItem == null || vaultItem.AccountId != accountId || vaultItem.State == VaultItemState.Listed || vaultItem.RowVersion != expectedRowVersion)
+                foreach (var (biota, _, expectedRowVersion) in items)
                 {
-                    log.Warn($"[DATABASE][VAULT] WithdrawFromVault 0x{biota.Id:X8} refused for account {accountId}: Vault row {(vaultItem == null ? "missing" : $"account {vaultItem.AccountId}, state {vaultItem.State}, version {vaultItem.RowVersion}, expected {expectedRowVersion}")}");
-                    return MarketJobResult.Refused;
+                    var vaultItem = context.MarketVaultItems.FirstOrDefault(r => r.ItemGuid == biota.Id);
+
+                    if (vaultItem == null || vaultItem.AccountId != accountId || vaultItem.State == VaultItemState.Listed || vaultItem.RowVersion != expectedRowVersion)
+                    {
+                        log.Warn($"[DATABASE][VAULT] WithdrawManyFromVault 0x{biota.Id:X8} refused for account {accountId}: Vault row {(vaultItem == null ? "missing" : $"account {vaultItem.AccountId}, state {vaultItem.State}, version {vaultItem.RowVersion}, expected {expectedRowVersion}")}");
+                        return MarketJobResult.Refused;
+                    }
+
+                    vaultItems.Add(vaultItem);
                 }
 
                 // a ban freezes the Vault. It may have landed after the channel started or the ticket was written, so it is read here, just before the save.
                 if (IsAccountBanned(accountId))
                 {
-                    log.Warn($"[DATABASE][VAULT] WithdrawFromVault 0x{biota.Id:X8} refused: account {accountId} is banned");
+                    log.Warn($"[DATABASE][VAULT] WithdrawManyFromVault 0x{items[0].biota.Id:X8} refused: account {accountId} is banned");
                     return MarketJobResult.Banned;
                 }
 
                 // the row version is a concurrency token: the delete only succeeds if nobody changed the row since it was read here
-                context.MarketVaultItems.Remove(vaultItem);
+                foreach (var vaultItem in vaultItems)
+                    context.MarketVaultItems.Remove(vaultItem);
 
                 var now = DateTime.UtcNow;
 
                 if (ticket != null)
                     TicketStore.Complete(context, ticket, now);
 
-                context.MarketItemEvents.Add(NewItemEvent(biota.Id, accountId, characterId, ItemEventKind.Withdraw, now));
+                foreach (var (biota, _, _) in items)
+                    context.MarketItemEvents.Add(NewItemEvent(biota.Id, accountId, characterId, ItemEventKind.Withdraw, now));
 
                 return MarketJobResult.Saved;
             });
         }
 
         /// <summary>
-        /// The body both jobs share: evict, load a fresh copy through a new context (never the cache, which another thread could have refilled),
-        /// apply the in-memory item, let vaultChange change the Vault row and add the item event, and save once.
-        /// vaultChange returns anything but Saved to refuse, and then nothing is saved.
+        /// The body the jobs share, for one item or a set saved together: evict, load fresh copies through a new context (never the cache, which another
+        /// thread could have refilled), let vaultChange change the Vault rows and add the item events, apply the in-memory items, and save once.
+        /// One SaveChanges is one transaction, so a set is saved entirely or not at all. vaultChange returns anything but Saved to refuse, and then nothing is saved.
         /// No exception escapes, so the caller's callback always runs. A failure before SaveChanges saved nothing. A failure in SaveChanges may still have
         /// committed (the commit's acknowledgement can be lost, and a retry then fails on the rows the first try wrote), so the database is asked whether
-        /// the job's item event is there: the event is written in the same save as everything else.
+        /// the job's item events are there: they are written in the same save as everything else.
         /// </summary>
-        private MarketJobResult SaveVaultJob(string job, ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, string eventKind, Func<ShardDbContext, MarketJobResult> vaultChange)
+        private MarketJobResult SaveVaultJob(string job, IReadOnlyList<(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock)> items, string eventKind, Func<ShardDbContext, MarketJobResult> vaultChange)
         {
-            // the job's own event is the only one of its kind for this item written at or after this time
+            // the job's own events are the only ones of their kind for these items written at or after this time
             var started = ListingStore.Truncate(DateTime.UtcNow);
+            var ids = items.Select(item => item.biota.Id).ToList();
+            var subject = items.Count == 1 ? $"0x{ids[0]:X8}" : $"{items.Count} items";
             var saving = false;
 
             try
             {
-                EvictBiota(biota.Id);
+                foreach (var id in ids)
+                    EvictBiota(id);
 
                 using (var context = new ShardDbContext())
                 {
-                    var existingBiota = GetBiotaFromDatabase(context, biota.Id);
+                    var existingBiotas = new List<ACE.Database.Models.Shard.Biota>(items.Count);
 
-                    if (existingBiota == null)
+                    foreach (var (biota, _) in items)
                     {
-                        log.Warn($"[DATABASE][VAULT] {job} 0x{biota.Id:X8} refused: the item is not in the database");
-                        return MarketJobResult.Refused;
+                        var existingBiota = GetBiotaFromDatabase(context, biota.Id);
+
+                        if (existingBiota == null)
+                        {
+                            log.Warn($"[DATABASE][VAULT] {job} 0x{biota.Id:X8} refused: the item is not in the database");
+                            return MarketJobResult.Refused;
+                        }
+
+                        existingBiotas.Add(existingBiota);
                     }
 
                     var change = vaultChange(context);
@@ -176,17 +212,22 @@ namespace ACE.Database
                     if (change != MarketJobResult.Saved)
                         return change;
 
-                    rwLock.EnterReadLock();
-                    try
+                    for (var index = 0; index < items.Count; index++)
                     {
-                        ACE.Database.Adapter.BiotaUpdater.UpdateDatabaseBiota(context, biota, existingBiota);
-                    }
-                    finally
-                    {
-                        rwLock.ExitReadLock();
-                    }
+                        var (biota, rwLock) = items[index];
 
-                    SetBiotaPopulatedCollections(existingBiota);
+                        rwLock.EnterReadLock();
+                        try
+                        {
+                            ACE.Database.Adapter.BiotaUpdater.UpdateDatabaseBiota(context, biota, existingBiotas[index]);
+                        }
+                        finally
+                        {
+                            rwLock.ExitReadLock();
+                        }
+
+                        SetBiotaPopulatedCollections(existingBiotas[index]);
+                    }
 
                     // Unlike DoSaveBiota there's no second attempt: the context's retry-on-failure strategy already retries transient errors,
                     // and anything else (a constraint, a concurrency conflict) would fail the same way again.
@@ -198,14 +239,14 @@ namespace ACE.Database
             }
             catch (Exception ex) when (!saving)
             {
-                log.Error($"[DATABASE][VAULT] {job} 0x{biota.Id:X8} failed before saving, nothing was saved: {ex.GetFullMessage()}");
+                log.Error($"[DATABASE][VAULT] {job} {subject} failed before saving, nothing was saved: {ex.GetFullMessage()}");
                 return MarketJobResult.Failed;
             }
             catch (Exception ex)
             {
-                log.Error($"[DATABASE][VAULT] {job} 0x{biota.Id:X8} failed while saving: {ex.GetFullMessage()}");
+                log.Error($"[DATABASE][VAULT] {job} {subject} failed while saving: {ex.GetFullMessage()}");
 
-                return Reconcile(job, $"0x{biota.Id:X8}", context => context.MarketItemEvents.Any(e => e.ItemGuid == biota.Id && e.Kind == eventKind && e.EventTime >= started));
+                return Reconcile(job, subject, context => context.MarketItemEvents.Any(e => ids.Contains(e.ItemGuid) && e.Kind == eventKind && e.EventTime >= started));
             }
         }
 
