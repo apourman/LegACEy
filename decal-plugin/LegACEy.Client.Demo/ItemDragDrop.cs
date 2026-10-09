@@ -40,6 +40,9 @@ public interface IItemDragHost
 
     /// <summary>What is under the pointer now, outside LegACEy windows.</summary>
     ItemDropTarget DropTargetAtPointer();
+
+    /// <summary>Asks the game to appraise the object, as E does, and show it in the game's appraisal window.</summary>
+    void Appraise(uint objectId);
 }
 
 /// <summary>Drag host for tests: no icon, and a drop target the caller chooses.</summary>
@@ -60,6 +63,11 @@ public sealed class FakeItemDragHost : IItemDragHost
     }
 
     public ItemDropTarget DropTargetAtPointer() => Target;
+
+    /// <summary>The objects the game was asked to appraise, in order.</summary>
+    public List<uint> Appraised { get; } = new();
+
+    public void Appraise(uint objectId) => Appraised.Add(objectId);
 
     private sealed class Icon : IDisposable
     {

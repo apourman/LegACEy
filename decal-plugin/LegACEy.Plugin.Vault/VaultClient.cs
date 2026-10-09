@@ -298,10 +298,14 @@ public sealed class VaultClient : IDisposable
 
     public void Withdraw(uint guid) => Transfer(VaultProtocol.Withdraw, guid);
 
-    /// <summary>Asks the server to show the item in the game's own appraisal window. Only a refusal comes back, as a notice.</summary>
-    public void Inspect(uint guid) => Send(VaultProtocol.Inspect, VaultProtocol.ItemRequest(guid), reply =>
+    /// <summary>
+    /// Inspects a Vault item: the server tells the game about the item, then <paramref name="appraise"/> asks the game to appraise
+    /// it, as E does. A refusal shows as a notice.
+    /// </summary>
+    public void Inspect(uint guid, Action<uint> appraise) => Send(VaultProtocol.Inspect, VaultProtocol.ItemRequest(guid), reply =>
     {
-        if (!reply.Ok) Set(Connection, reply.Message);
+        if (reply.Ok) appraise(guid);
+        else Set(Connection, reply.Message);
     });
 
     /// <summary>The ids of the items selected on the page on screen, in the page's order.</summary>

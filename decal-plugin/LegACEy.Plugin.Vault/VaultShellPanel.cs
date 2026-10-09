@@ -458,8 +458,8 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     /// <summary>E inspects the selected item, when exactly one is selected.</summary>
     public bool GameKeyDown(Key key)
     {
-        if (key != Key.E || _client?.Connection != VaultConnection.Live || _selection.Count != 1) return false;
-        _client.Inspect(_client.SelectedGuids()[0]);
+        if (key != Key.E || _client?.Connection != VaultConnection.Live || _dragHost == null || _selection.Count != 1) return false;
+        _client.Inspect(_client.SelectedGuids()[0], _dragHost.Appraise);
         return true;
     }
 
@@ -468,13 +468,13 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     {
         var cell = CellAt(position);
         var items = Snapshot?.Items;
-        if (_client?.Connection != VaultConnection.Live || items == null || cell < 0 || cell >= items.Count || _selection.Count > 1) return;
+        if (_client?.Connection != VaultConnection.Live || _dragHost == null || items == null || cell < 0 || cell >= items.Count || _selection.Count > 1) return;
         if (!_selection.Contains(cell))
         {
             _selection.Press(cell, ctrl: false, shift: false);
             ShowSelection();
         }
-        _client.Inspect(items[cell].Guid);
+        _client.Inspect(items[cell].Guid, _dragHost.Appraise);
     }
 
     private void OnCellReleased(VaultItemView pressed, PointerReleasedEventArgs e)

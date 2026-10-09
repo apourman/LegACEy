@@ -764,6 +764,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             }
         }
 
+        public void Appraise(uint objectId)
+        {
+            Log($"Appraisal requested for 0x{objectId:X8}.");
+            CoreManager.Current.Actions.RequestId(unchecked((int)objectId));
+        }
+
         public ItemDropTarget DropTargetAtPointer()
         {
             var drag = _owner._retailDrag;
@@ -1119,8 +1125,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         if (target == null) return false;
         try
         {
-            if (msg == InputRouterService.WmKeyDown) return target.GameKeyDown(Win32KeyMap.ToAvaloniaKey(wParam));
+            if (msg == InputRouterService.WmKeyDown)
+            {
+                var taken = target.GameKeyDown(Win32KeyMap.ToAvaloniaKey(wParam));
+                if (taken) Log($"Window '{id}' took key 0x{wParam:X2}.");
+                return taken;
+            }
             var surface = SurfaceById(id)!;
+            Log($"Window '{id}' got a right-click.");
             target.RightClick(new Avalonia.Point(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y));
             return true;
         }

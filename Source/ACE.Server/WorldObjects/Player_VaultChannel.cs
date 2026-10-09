@@ -9,6 +9,11 @@ namespace ACE.Server.WorldObjects
         private VaultChannel vaultChannel;
 
         /// <summary>
+        /// The Vault item the player last inspected, created from its row but in no container or landblock. Their appraisal of it is answered from this.
+        /// </summary>
+        public WorldObject VaultInspected { get; set; }
+
+        /// <summary>
         /// The Vault deposit or withdrawal this player is channelling, or null
         /// </summary>
         public VaultChannel ActiveVaultChannel => Volatile.Read(ref vaultChannel);

@@ -14,7 +14,6 @@ using ACE.Server.ClientChannel;
 using ACE.Server.Entity.Actions;
 using ACE.Server.Factories;
 using ACE.Server.Managers;
-using ACE.Server.Network.GameEvent.Events;
 using ACE.Server.Network.GameMessages.Messages;
 using ACE.Server.WorldObjects;
 
@@ -65,8 +64,8 @@ namespace ACE.Server.Market
         }
 
         /// <summary>
-        /// Shows one of the account's Vault items in the game's appraisal window (body: item guid): the client is told about the item, which stays
-        /// in the Vault, then sent its appraisal. The reply is empty; a refusal fails it.
+        /// Lets the client appraise one of the account's Vault items (body: item guid): the client is told about the item, which stays in the Vault,
+        /// and the player's next appraisal of it is answered from it (see Player.HandleActionIdentifyObject). The reply is empty; a refusal fails it.
         /// </summary>
         private static void HandleInspect(ChannelContext context)
         {
@@ -89,11 +88,14 @@ namespace ACE.Server.Market
 
                         if (item == null)
                         {
+                            log.Info($"[VAULT] {player.Name} inspect of 0x{itemGuid:X8} refused: not in their Vault");
                             context.Fail(ChannelStatus.Error, "That item is no longer in your Vault.");
                             return;
                         }
 
-                        player.Session.Network.EnqueueSend(new GameMessageCreateObject(item), new GameEventIdentifyObjectResponse(player.Session, item, true));
+                        log.Info($"[VAULT] {player.Name} inspects 0x{itemGuid:X8} {item.Name}");
+                        player.VaultInspected = item;
+                        player.Session.Network.EnqueueSend(new GameMessageCreateObject(item));
                         context.Reply(Array.Empty<byte>());
                     }));
                 }
