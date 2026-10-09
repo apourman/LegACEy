@@ -359,13 +359,24 @@ public sealed class DerethSlotGrid : UserControl
 
     public DerethSlotGrid()
     {
-        Content = new ScrollViewer
+        var scroll = new ScrollViewer
         {
             Content = _cells,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto
         };
+        // The width a whole column doesn't use widens the gaps between columns, so the grid reaches both sides at any width.
+        scroll.PropertyChanged += (_, e) =>
+        {
+            if (e.Property != ScrollViewer.ViewportProperty) return;
+            var width = scroll.Viewport.Width;
+            _cells.ItemWidth = width < Pitch ? Pitch : Math.Floor(width / Math.Floor(width / Pitch));
+        };
+        Content = scroll;
     }
+
+    /// <summary>The distance between the left edges of neighbouring columns: the pitch, widened to share the spare width.</summary>
+    public double ColumnPitch => _cells.ItemWidth;
 
     /// <summary>The cells in reading order. Each one is a <see cref="DerethSlot"/> or any control sized to the pitch.</summary>
     public Controls Cells => _cells.Children;
@@ -389,12 +400,12 @@ public sealed class DerethSlot : Grid
     private readonly Border _wash;
     private readonly Border _outline;
 
-    /// <summary>A slot holding the content: a 34 px framed well, left-aligned in its pitch, with a selected state.</summary>
+    /// <summary>A slot holding the content: a 34 px framed well, centred in its pitch, with a selected state.</summary>
     public DerethSlot(Control? content)
     {
         Width = DerethSlotGrid.CellSize;
         Height = DerethSlotGrid.CellSize;
-        HorizontalAlignment = HorizontalAlignment.Left;
+        HorizontalAlignment = HorizontalAlignment.Center;
         Background = Brushes.Transparent;
         _wash = new Border { Margin = new Thickness(2), CornerRadius = new CornerRadius(3), Background = WashBrush, IsVisible = false, IsHitTestVisible = false };
         var inner = new Grid();
