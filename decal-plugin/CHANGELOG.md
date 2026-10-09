@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.4...decal-plugin-v0.1.5) (2026-10-09)
+
+
+### Features
+
+* Dereth theme for the Vault ([#29](https://github.com/apourman/LegACEy/issues/29)) ([271b0b8](https://github.com/apourman/LegACEy/commit/271b0b8908722d92764f16d70051492e086674a6))
+
 ## [0.1.4](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.3...decal-plugin-v0.1.4) (2026-10-08)
 
 
