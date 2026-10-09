@@ -30,10 +30,10 @@ internal static class DerethSheet
     public static readonly Rect FrameTop = new(46, 6, 120, 16);
     public static readonly Rect FrameLeft = new(172, 6, 16, 120);
 
-    // Slot frame, 46 DIP cells. Corner 8 DIP, edges 7 DIP.
+    // Slot frame, 38 DIP cells: a 32 px icon inside 3 DIP edges. Corner 8 DIP.
     public static readonly Rect SlotCorner = new(194, 6, 16, 16);
-    public static readonly Rect SlotTop = new(216, 6, 6, 14);
-    public static readonly Rect SlotLeft = new(228, 6, 14, 6);
+    public static readonly Rect SlotTop = new(216, 6, 6, 6);
+    public static readonly Rect SlotLeft = new(228, 6, 6, 6);
 
     // Title rule: left cap, stretched middle, right cap. 5 DIP tall.
     public static readonly Rect RuleLeft = new(20, 132, 8, 10);
@@ -45,9 +45,9 @@ internal static class DerethSheet
         [(DerethFrameArt.Window, DerethState.Normal)] = new NineSlice(FrameCorner, FrameTop, FrameLeft, Color.Parse("#081016")),
         [(DerethFrameArt.Slot, DerethState.Normal)] = new NineSlice(SlotCorner, SlotTop, SlotLeft, Color.Parse("#02070B")),
         // Button frame: close box, text buttons and the header icon. Corner 8 DIP, edges 4 DIP.
-        [(DerethFrameArt.Button, DerethState.Normal)] = new NineSlice(new(248, 6, 16, 16), new(270, 6, 8, 8), new(284, 6, 8, 8), Color.Parse("#071016")),
-        [(DerethFrameArt.Button, DerethState.Hover)] = new NineSlice(new(298, 6, 16, 16), new(320, 6, 8, 8), new(334, 6, 8, 8), Color.Parse("#0E1923")),
-        [(DerethFrameArt.Button, DerethState.Pressed)] = new NineSlice(new(348, 6, 16, 16), new(370, 6, 8, 8), new(6, 132, 8, 8), Color.Parse("#03070A")),
+        [(DerethFrameArt.Button, DerethState.Normal)] = new NineSlice(new(240, 6, 16, 16), new(262, 6, 8, 8), new(276, 6, 8, 8), Color.Parse("#071016")),
+        [(DerethFrameArt.Button, DerethState.Hover)] = new NineSlice(new(290, 6, 16, 16), new(312, 6, 8, 8), new(326, 6, 8, 8), Color.Parse("#0E1923")),
+        [(DerethFrameArt.Button, DerethState.Pressed)] = new NineSlice(new(340, 6, 16, 16), new(362, 6, 8, 8), new(6, 132, 8, 8), Color.Parse("#03070A")),
     };
 
     // Search field per state: left cap (carries the magnifier), stretched middle, right cap. 25 DIP tall.

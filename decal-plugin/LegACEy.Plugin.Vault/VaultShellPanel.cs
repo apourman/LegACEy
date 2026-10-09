@@ -20,9 +20,9 @@ namespace LegACEy.Plugin.Vault;
 /// </summary>
 public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropTarget
 {
-    public const int WindowWidth = 566;
-    // Room for ten rows with Windows fonts, whose taller lines take 12 px more than the Linux test fonts.
-    public const int WindowHeight = 706;
+    public const int WindowWidth = 450;
+    // Room for ten rows with Windows fonts, whose lines are taller than the Linux test fonts'.
+    public const int WindowHeight = 580;
     /// <summary>The header's chest icon, from the DAT.</summary>
     public const uint ChestIconId = 0x06001020;
     // A whole page of slots, so the grid looks the same however many items the page holds.
@@ -64,11 +64,11 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     private readonly VaultClient? _client;
     private readonly VaultSnapshot? _sample;
     private readonly IItemDragHost? _dragHost;
-    private readonly TextBlock _itemsLabel = Label(string.Empty, MutedBrush, 13);
-    private readonly TextBlock _items = Label(string.Empty, TextBrush, 13);
-    private readonly TextBlock _balance = Label(string.Empty, GoldBrush, 13);
+    private readonly TextBlock _itemsLabel = Label(string.Empty, MutedBrush, 12);
+    private readonly TextBlock _items = Label(string.Empty, TextBrush, 12);
+    private readonly TextBlock _balance = Label(string.Empty, GoldBrush, 12);
     private readonly TextBlock _pagerText = Label(string.Empty, MutedBrush, 12);
-    private readonly DerethSearchField _search = new("Search vault…") { Margin = new Thickness(2, 0, 2, 10) };
+    private readonly DerethSearchField _search = new("Search vault…") { Margin = new Thickness(0, 0, 0, 6) };
     private readonly DerethPagerButton _previous = new(DerethSpriteArt.PagerPrevious) { Width = 34, Height = 32, IsEnabled = false };
     private readonly DerethPagerButton _next = new(DerethSpriteArt.PagerNext) { Width = 34, Height = 32, IsEnabled = false };
     // The message line above the pager: wraps rather than trims, so a long refusal reason stays whole.
@@ -82,7 +82,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     private readonly List<Border> _dropIndicators = new();
     // The header line: "Items: n / capacity" and the balance, or "N selected" with the selection's buttons instead.
     private readonly StackPanel _itemsLine = new() { Orientation = Orientation.Horizontal, Spacing = 4 };
-    private readonly TextBlock _selectedLabel = Label(string.Empty, SelectedBrush, 13);
+    private readonly TextBlock _selectedLabel = Label(string.Empty, SelectedBrush, 12);
     private readonly TextBlock _withdrawText = Label(string.Empty, GoldBrush, 12);
     private readonly DerethButton _withdrawSelection = new() { Height = 24 };
     private readonly DerethButton _clearSelection = new() { Height = 24, Content = Label("Clear", MutedBrush, 12) };
@@ -125,7 +125,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         _sample = client == null ? SampleSnapshot() : null;
         RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.None);
 
-        var summary = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(2, 10, 2, 8) };
+        var summary = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(2, 6, 2, 6) };
         summary.Children.Add(_itemsLine);
         Grid.SetColumn(_balance, 1);
         summary.Children.Add(_balance);
@@ -143,9 +143,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         Grid.SetRow(_search, 1);
         _search.TextChanged += (_, _) => _client?.SetSearch(_search.Text);
         Grid.SetRow(_grid, 2);
-        // Inset from the search field above it, which stays the window's widest line.
-        _grid.Margin = new Thickness(10, 0, 10, 0);
-        var pager = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Margin = new Thickness(4, 10, 4, 0) };
+        var pager = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Margin = new Thickness(0, 6, 0, 0) };
         _previous.Click += (_, _) => _client?.PreviousPage();
         pager.Children.Add(_previous);
         _pagerText.HorizontalAlignment = HorizontalAlignment.Center;
@@ -531,10 +529,10 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     private static Control StackCount(int count)
     {
         var panel = new Panel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 3, 1) };
-        var shadow = Label(count.ToString(), ShadowBrush, 11);
+        var shadow = Label(count.ToString(), ShadowBrush, 10);
         shadow.FontWeight = FontWeight.SemiBold;
         shadow.Margin = new Thickness(1, 1, 0, 0);
-        var text = Label(count.ToString(), TextBrush, 11);
+        var text = Label(count.ToString(), TextBrush, 10);
         text.FontWeight = FontWeight.SemiBold;
         text.Margin = new Thickness(0, 0, 1, 1);
         panel.Children.Add(shadow);
