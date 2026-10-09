@@ -5,7 +5,7 @@ using LegACEy.Client.Demo;
 
 namespace LegACEy.Plugin.Vault;
 
-/// <summary>One Vault item as the server describes it, with the icon layers the client draws bottom to top.</summary>
+/// <summary>One Vault item as the server describes it, with the fields that draw its icon.</summary>
 public sealed class VaultItemView
 {
     public VaultItemView(uint guid, string name, uint itemType, int stackSize, int value, string state, string depositedBy,

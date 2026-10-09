@@ -32,8 +32,8 @@ public enum ItemDropTarget
 /// <summary>Host services for dragging an item out of a LegACEy window and onto the retail UI.</summary>
 public interface IItemDragHost
 {
-    /// <summary>Shows the item's icon under the pointer, above every window, until disposed. Layers are bottom to top, already drawn (see ItemIcon.Layers).</summary>
-    IDisposable ShowDragIcon(IReadOnlyList<GameImage> iconLayers);
+    /// <summary>Shows the item's icon, already drawn (see ItemIcon.Draw), under the pointer, above every window, until disposed.</summary>
+    IDisposable ShowDragIcon(GameImage? icon);
 
     /// <summary>What is under the pointer now, outside LegACEy windows.</summary>
     ItemDropTarget DropTargetAtPointer();
@@ -43,12 +43,12 @@ public interface IItemDragHost
 public sealed class FakeItemDragHost : IItemDragHost
 {
     public ItemDropTarget Target { get; set; } = ItemDropTarget.Inventory;
-    public List<GameImage[]> IconsShown { get; } = new();
+    public List<GameImage?> IconsShown { get; } = new();
     public int IconsOpen { get; private set; }
 
-    public IDisposable ShowDragIcon(IReadOnlyList<GameImage> iconLayers)
+    public IDisposable ShowDragIcon(GameImage? icon)
     {
-        IconsShown.Add(new List<GameImage>(iconLayers).ToArray());
+        IconsShown.Add(icon);
         IconsOpen++;
         return new Icon(this);
     }

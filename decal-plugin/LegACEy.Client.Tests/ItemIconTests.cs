@@ -19,7 +19,7 @@ public sealed class ItemIconTests
 
         using var dat = new PortalDat(path);
         var icon = dat.ReadImage(Icon)!;
-        var composed = ItemIcon.Compose(dat, Icon, 0, uiEffects)!;
+        var composed = ItemIcon.Draw(dat, 0, Icon, 0, 0, uiEffects)!;
         var outline = uiEffects == 0 ? null : dat.ReadImage(FireOutline)!.Pixels;
 
         var outlinePixels = 0;

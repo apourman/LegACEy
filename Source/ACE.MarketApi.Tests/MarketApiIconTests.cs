@@ -19,13 +19,13 @@ using ACE.MarketApi.Tests.Support;
 namespace ACE.MarketApi.Tests
 {
     /// <summary>
-    /// Icons: PNGs made from the server's own portal DAT on first request and cached on disk, and the layers, plates and glow in listing responses.
+    /// Icons: PNGs made from the server's own portal DAT on first request and cached on disk, and the base icon with its outline and the layers in listing responses.
     /// The reference is market.acdreamweave.com (/icons/0x06003237_p19.png is its Nariyid Breastplate, Listing?id=1099).
     /// </summary>
     [TestClass]
     public class MarketApiIconTests
     {
-        // the plates the client draws under an icon, by item type
+        // plate textures in the DAT: the raw icon endpoint still serves them, though listings no longer draw them
         private const uint WeaponPlate = 0x060011D2;
         private const uint ArmorPlate = 0x060011CF;
 
@@ -111,8 +111,6 @@ namespace ACE.MarketApi.Tests
             icon.GetProperty("layers").EnumerateArray()
                 .Select(l => (l.GetProperty("kind").GetString(), l.GetProperty("id").GetUInt32(), l.GetProperty("url").GetString()))
                 .ToList();
-
-        private static string Glow(JsonElement icon) => icon.GetProperty("glow").ValueKind == JsonValueKind.Null ? null : icon.GetProperty("glow").GetString();
 
         /// <summary>
         /// Decodes a PNG to straight (not premultiplied) RGBA, so pixel values compare exactly
@@ -300,7 +298,7 @@ namespace ACE.MarketApi.Tests
             Assert.IsFalse(Directory.Exists(cache) && Directory.EnumerateFiles(cache).Any(), "nothing cached");
         }
 
-        // ---- layers and plates in listing responses
+        // ---- layers in listing responses
 
         [TestMethod]
         public async Task Listing_IconLayers_UnderlayThenTheComposedBaseThenTheSecondaryOverlay_AndNoPlate()
@@ -399,6 +397,8 @@ namespace ACE.MarketApi.Tests
                 ("ui_Effects = 32", 0x06001B2E),
                 // Magical and Lightning: the lowest effect's texture
                 ("ui_Effects = 65", 0x060011CA),
+                // Nether has no outline texture: black
+                ("ui_Effects = 4096", 0),
             };
             foreach (var (columns, outline) in cases)
             {
@@ -406,6 +406,22 @@ namespace ACE.MarketApi.Tests
                 using var bitmap = DecodePng(await GetPngAsync(host, url));
                 AssertSamePixels(OutlinedPixels(NariyidIconPalette20, outline), bitmap, columns);
             }
+        }
+
+        [TestMethod]
+        public async Task Composite_names_no_listing_gives_are_not_found()
+        {
+            await using var host = await StartAsync(NewCacheDirectory());
+
+            foreach (var name in new[]
+            {
+                "0x00000001_o00000000_e00000000.png",                                       // not a texture
+                $"0x{NariyidIconPalette20:X8}_p99_o00000000_e00000000.png",                 // no clothing table gives that palette
+                $"0x{NariyidIconPalette20:X8}_o00000000.png",                               // an overlay without an effect
+                $"0x{NariyidIconPalette20:X8}_o00000000_e00000041.png",                     // Magical and Poisoned: not one effect
+                $"0x{NariyidIconPalette20:X8}_o00000000_e00001000.png",                     // Nether: the listing names it as 0
+            })
+                Assert.AreEqual(HttpStatusCode.NotFound, (await host.GetAsync($"/api/icons/{name}")).StatusCode, name);
         }
     }
 }

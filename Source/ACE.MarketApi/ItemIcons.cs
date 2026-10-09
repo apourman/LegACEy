@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text.Json.Serialization;
 
 using ACE.Database.Models.Shard.Market;
+using LegACEy.GameArt;
 
 namespace ACE.MarketApi
 {
@@ -56,7 +57,7 @@ namespace ACE.MarketApi
             var baseIcon = clothingIcon != 0 ? clothingIcon : item.Icon ?? 0;
             var baseTemplate = clothingIcon != 0 ? item.PaletteTemplate : null;
             var overlay = item.IconOverlay ?? 0;
-            var uiEffects = unchecked((uint)(item.UiEffects ?? 0));
+            var uiEffects = ItemIconOutline.LowestEffect(unchecked((uint)(item.UiEffects ?? 0)));
             if (baseIcon != 0)
                 Add("base", baseIcon, baseTemplate, CompositeFileName(baseIcon, baseTemplate, overlay, uiEffects));
 
@@ -72,7 +73,8 @@ namespace ACE.MarketApi
         public static string FileName(uint id, int? paletteTemplate) => $"0x{id:X8}{Palette(paletteTemplate)}.png";
 
         /// <summary>
-        /// The base icon with its overlay and UI effects composed in: "0x06003237_p19_o060026D5_e00000001.png". Made on request, not kept on disk.
+        /// The base icon with its overlay and UI effect composed in: "0x06003237_p19_o060026D5_e00000001.png". The effect is the item's lowest
+        /// (ItemIconOutline.LowestEffect), or 0 for none; the name's effect is one of those, so it's bounded.
         /// </summary>
         public static string CompositeFileName(uint id, int? paletteTemplate, uint overlay, uint uiEffects) =>
             $"0x{id:X8}{Palette(paletteTemplate)}_o{overlay:X8}_e{uiEffects:X8}.png";

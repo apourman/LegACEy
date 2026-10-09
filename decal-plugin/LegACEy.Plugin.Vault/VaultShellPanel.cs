@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -36,25 +35,26 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     private static readonly IBrush ValidFill = DerethPalette.Brush(Color.FromArgb(0x40, DerethPalette.Gold.R, DerethPalette.Gold.G, DerethPalette.Gold.B));
     private static readonly IBrush InvalidFill = DerethPalette.Brush(Color.FromArgb(0x40, DerethPalette.Invalid.R, DerethPalette.Invalid.G, DerethPalette.Invalid.B));
 
-    private static readonly (string Name, uint Icon, uint Plate, int Count)[] Samples =
+    // icon, UiEffects (the sample's outline: BoostMana, BoostStamina, Frost, Magical, Lightning, Fire, Poisoned, as the prototype draws them), count
+    private static readonly (string Name, uint Icon, int Effects, int Count)[] Samples =
     {
-        ("Chainmail shirt", 0x06000FC7, 0x060011CF, 1),
-        ("Leather boots", 0x06000FAD, 0x060011F3, 1),
-        ("Gold ring", 0x06000FB5, 0x060011D5, 1),
-        ("Pendant", 0x06000FBE, 0x060011D5, 1),
-        ("Steel shield", 0x06000FCB, 0x060011CF, 1),
-        ("Leather cap", 0x06000FAA, 0x060011F3, 1),
-        ("Blue potion", 0x06001012, 0x060011D4, 12),
-        ("Yellow potion", 0x06001013, 0x060011D4, 3),
-        ("Treasure chest", ChestIconId, 0x060011D4, 1),
-        ("Small pouch", 0x06001031, 0x060011D4, 25),
-        ("Green bottle", 0x06001030, 0x060011D4, 8),
-        ("Silver goblet", 0x0600101F, 0x060011D4, 1)
+        ("Chainmail shirt", 0x06000FC7, 0, 1),
+        ("Leather boots", 0x06000FAD, 0x80, 1),
+        ("Gold ring", 0x06000FB5, 0x1, 1),
+        ("Pendant", 0x06000FBE, 0x40, 1),
+        ("Steel shield", 0x06000FCB, 0x20, 1),
+        ("Leather cap", 0x06000FAA, 0, 1),
+        ("Blue potion", 0x06001012, 0x8, 12),
+        ("Yellow potion", 0x06001013, 0x10, 3),
+        ("Treasure chest", ChestIconId, 0, 1),
+        ("Small pouch", 0x06001031, 0, 25),
+        ("Green bottle", 0x06001030, 0x2, 8),
+        ("Silver goblet", 0x0600101F, 0x1, 1)
     };
 
     private readonly Dictionary<uint, WriteableBitmap?> _images = new();
-    // an item's layers as drawn, by the fields that decide them
-    private readonly Dictionary<(uint Underlay, uint Icon, uint Overlay, uint OverlaySecondary, uint UiEffects), List<WriteableBitmap>> _itemImages = new();
+    // an item's icon as drawn, by the fields that decide it
+    private readonly Dictionary<(uint Underlay, uint Icon, uint Overlay, uint OverlaySecondary, uint UiEffects), WriteableBitmap?> _itemImages = new();
     private readonly IGameArtSource _art;
     private readonly VaultClient? _client;
     private readonly VaultSnapshot? _sample;
@@ -132,7 +132,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     }
 
     /// <summary>The header's chest icon, drawn from the DAT.</summary>
-    internal Control HeaderIcon() => Icon(new[] { Bitmap(ChestIconId) });
+    internal Control HeaderIcon() => Icon(Bitmap(ChestIconId));
 
     private static VaultSnapshot SampleSnapshot()
     {
@@ -141,7 +141,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         {
             var sample = Samples[(index * 7) % Samples.Length];
             items.Add(new VaultItemView((uint)index + 1, sample.Name, 0, sample.Count, 0, "held", string.Empty,
-                DateTimeOffset.FromUnixTimeSeconds(0), sample.Plate, 0, sample.Icon, 0, 0, 0));
+                DateTimeOffset.FromUnixTimeSeconds(0), 0, 0, sample.Icon, 0, 0, sample.Effects));
         }
         return new VaultSnapshot(true, 245, 1000, items);
     }
@@ -182,7 +182,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
             for (var index = 0; index < cells; index++)
             {
                 var item = index < items.Count ? items[index] : null;
-                var cell = DerethSlotGrid.Cell(item == null ? null : Icon(ItemBitmaps(item)));
+                var cell = DerethSlotGrid.Cell(item == null ? null : Icon(ItemBitmap(item)));
                 if (item != null)
                 {
                     ToolTip.SetTip(cell, Describe(item));
@@ -343,7 +343,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
             return;
         }
         _dragItem = item;
-        _dragIcon = _dragHost.ShowDragIcon(ItemLayers(item));
+        _dragIcon = _dragHost.ShowDragIcon(ItemImage(item));
         // The lifted item's own cell dims, as the retail inventory ghosts a dragged item.
         var from = IndexOf(item.Guid);
         if (from >= 0 && from < _liveSlots.Count) _liveSlots[from].Opacity = 0.4;
@@ -443,35 +443,32 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     private WriteableBitmap? Bitmap(uint id)
     {
         if (!_images.TryGetValue(id, out var bitmap))
-            _images.Add(id, bitmap = GameArtImageExtension.CreateBitmap(ItemIcon.Compose(_art, id, 0, 0)));
+            _images.Add(id, bitmap = GameArtImageExtension.CreateBitmap(ItemIcon.Draw(_art, 0, id, 0, 0, 0)));
         return bitmap;
     }
 
-    /// <summary>An item's layers, drawn the retail way (outline from its UI effect, no plate), bottom to top. The grid redraws on every change, so the bitmaps are kept.</summary>
-    private List<WriteableBitmap> ItemBitmaps(VaultItemView item)
+    /// <summary>An item's icon as drawn: outline from its UI effect, no plate. The grid redraws on every change, so the bitmap is kept per look.</summary>
+    private WriteableBitmap? ItemBitmap(VaultItemView item)
     {
         var key = (item.Underlay, item.Icon, item.Overlay, item.OverlaySecondary, unchecked((uint)item.UiEffects));
-        if (!_itemImages.TryGetValue(key, out var bitmaps))
-            _itemImages.Add(key, bitmaps = ItemLayers(item).Select(layer => GameArtImageExtension.CreateBitmap(layer)).OfType<WriteableBitmap>().ToList());
-        return bitmaps;
+        if (!_itemImages.TryGetValue(key, out var bitmap))
+            _itemImages.Add(key, bitmap = GameArtImageExtension.CreateBitmap(ItemImage(item)));
+        return bitmap;
     }
 
-    private IReadOnlyList<GameImage> ItemLayers(VaultItemView item) =>
-        ItemIcon.Layers(_art, item.Underlay, item.Icon, item.Overlay, item.OverlaySecondary, unchecked((uint)item.UiEffects));
+    private GameImage? ItemImage(VaultItemView item) =>
+        ItemIcon.Draw(_art, item.Underlay, item.Icon, item.Overlay, item.OverlaySecondary, unchecked((uint)item.UiEffects));
 
-    /// <summary>An item's icon layers at native size, stacked bottom to top. Missing art shows a question mark.</summary>
-    private Grid Icon(IEnumerable<WriteableBitmap?> bitmaps)
+    /// <summary>An item's icon at native size. Missing art shows a question mark.</summary>
+    private Grid Icon(WriteableBitmap? bitmap)
     {
         var layers = new Grid
         {
             Width = 32, Height = 32,
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
         };
-        foreach (var bitmap in bitmaps)
-        {
-            if (bitmap != null)
-                layers.Children.Add(new Image { Source = bitmap, Width = 32, Height = 32, Stretch = Stretch.None });
-        }
+        if (bitmap != null)
+            layers.Children.Add(new Image { Source = bitmap, Width = 32, Height = 32, Stretch = Stretch.None });
         if (layers.Children.Count == 0)
         {
             var fallback = Label("?", MutedBrush, 12);
@@ -494,7 +491,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         }
         foreach (var image in _images.Values) image?.Dispose();
         _images.Clear();
-        foreach (var layers in _itemImages.Values) foreach (var image in layers) image.Dispose();
+        foreach (var image in _itemImages.Values) image?.Dispose();
         _itemImages.Clear();
     }
 }

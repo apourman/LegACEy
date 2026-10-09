@@ -27,8 +27,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- the item icon outline rule, shared with the client (decal-plugin/LegACEy.Client.GameArt) -->
-    <Compile Include="..\..\decal-plugin\LegACEy.Client.GameArt\ItemIconOutline.cs" Link="ItemIconOutline.cs" />
+    <!-- the item icon outline rule, shared with the client (Source/Shared, also linked by LegACEy.Client.GameArt) -->
+    <Compile Include="..\Shared\ItemIconOutline.cs" Link="ItemIconOutline.cs" />
   </ItemGroup>
 
   <ItemGroup>

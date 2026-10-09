@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 
-using LegACEy.Client.GameArt;
+using LegACEy.GameArt;
 using SkiaSharp;
 
 namespace ACE.MarketApi
@@ -39,7 +39,9 @@ namespace ACE.MarketApi
     }
 
     /// <summary>
-    /// Makes an icon PNG from the portal DAT on its first request and keeps it on disk, keyed by texture id plus palette template
+    /// Makes icon PNGs from the portal DAT on their first request and keeps them on disk under their file names: plain icons, and composites
+    /// with no overlay (their names are bounded, since the effect is one a listing gives). A composite with an overlay is made on each request,
+    /// since the overlay in its name isn't bounded.
     /// </summary>
     public sealed class IconStore
     {
@@ -56,7 +58,8 @@ namespace ACE.MarketApi
         }
 
         /// <summary>
-        /// The PNG, or null when the name isn't a 32×32 texture in the DAT, or names a palette template that no clothing table gives that icon
+        /// The PNG, or null when the name isn't a 32×32 texture in the DAT, names a palette template that no clothing table gives that icon,
+        /// or names an effect other than the canonical one (0, or one bit up to 0x800)
         /// </summary>
         public byte[] Get(string file)
         {
@@ -64,18 +67,33 @@ namespace ACE.MarketApi
             if (!match.Success)
                 return null;
 
-            var id = uint.Parse(match.Groups["id"].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+            var id = ParseHex(match.Groups["id"].Value);
             int? template = match.Groups["template"].Success ? int.Parse(match.Groups["template"].Value, CultureInfo.InvariantCulture) : null;
 
             // only names a listing can give out, so requests can't fill the cache with variants
             if (template is int paletteTemplate && !gameData.IsClothingIcon(id, paletteTemplate))
                 return null;
 
-            // composed names are made on each request and not kept: the overlay and effect in a name aren't bounded by a listing
-            if (match.Groups["effects"].Success)
-                return Composite(id, ParseHex(match.Groups["overlay"].Value), ParseHex(match.Groups["effects"].Value));
+            if (!match.Groups["effects"].Success)
+                return Cached(ItemIcons.FileName(id, template), () => Plain(id));
 
-            var path = Path.Combine(directory, ItemIcons.FileName(id, template));
+            var overlay = ParseHex(match.Groups["overlay"].Value);
+            var uiEffects = ParseHex(match.Groups["effects"].Value);
+            if (ItemIconOutline.LowestEffect(uiEffects) != uiEffects)
+                return null;
+
+            if (overlay != 0)
+                return Composite(id, overlay, uiEffects);
+
+            return Cached(ItemIcons.CompositeFileName(id, template, 0, uiEffects), () => Composite(id, 0, uiEffects));
+        }
+
+        private static uint ParseHex(string value) => uint.Parse(value, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+
+        /// <summary>The PNG kept on disk under <paramref name="name"/>, made once by <paramref name="make"/>; null when it can't be made</summary>
+        private byte[] Cached(string name, Func<byte[]> make)
+        {
+            var path = Path.Combine(directory, name);
 
             try
             {
@@ -87,13 +105,9 @@ namespace ACE.MarketApi
                 // another request is moving the same icon into place (Windows locks it): make it again
             }
 
-            // The clothing table's icon for the palette is already drawn in that palette's colors: every icon a clothing table names is A8R8G8B8,
-            // so there is no palette left to apply. A palette-indexed icon gets its own default palette.
-            var pixels = gameData.IconPixels(id);
-            if (pixels == null)
+            var png = make();
+            if (png == null)
                 return null;
-
-            var png = EncodePng(pixels, GameData.IconSize, GameData.IconSize);
 
             // written aside and moved in, so a concurrent request never reads half a file
             Directory.CreateDirectory(directory);
@@ -115,36 +129,34 @@ namespace ACE.MarketApi
             return png;
         }
 
-        private static uint ParseHex(string value) => uint.Parse(value, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+        private byte[] Plain(uint id)
+        {
+            // The clothing table's icon for the palette is already drawn in that palette's colors: every icon a clothing table names is A8R8G8B8,
+            // so there is no palette left to apply. A palette-indexed icon gets its own default palette.
+            var pixels = gameData.IconPixels(id);
+            return pixels == null ? null : EncodePng(pixels, GameData.IconSize, GameData.IconSize);
+        }
 
         /// <summary>
-        /// A base icon with its overlay and UI-effect outline composed in, as the client draws it (ItemIconOutline). The icon is composed premultiplied,
-        /// as the client's images are, so a partly transparent overlay blends the same way.
+        /// A base icon with its overlay and UI-effect outline composed in, as the client draws it (ItemIconOutline), premultiplied so a partly
+        /// transparent overlay blends the same way. ponytail: an overlay's composite is read from the DAT on each request; keep it on disk too if
+        /// reads show up in profiles.
         /// </summary>
         private byte[] Composite(uint id, uint overlay, uint uiEffects)
         {
-            // ponytail: the DAT is read on each request; keep composed PNGs on disk if reads show up in profiles
             var icon = gameData.IconPixels(id);
             if (icon == null)
                 return null;
 
             var overlayPixels = overlay == 0 ? null : gameData.IconPixels(overlay);
-            // the outline textures are opaque, so their straight colors are the premultiplied ones; a null texture is black
+            // a null outline texture is black
             var outline = gameData.IconPixels(ItemIconOutline.TextureFor(uiEffects));
 
-            var pixels = ItemIconOutline.Compose(GameData.IconSize, GameData.IconSize, Premultiply(icon),
-                overlayPixels == null ? null : Premultiply(overlayPixels), outline);
+            var pixels = ItemIconOutline.Compose(GameData.IconSize, GameData.IconSize, ItemIconOutline.Premultiply(icon),
+                overlayPixels == null ? null : ItemIconOutline.Premultiply(overlayPixels),
+                outline == null ? null : ItemIconOutline.Premultiply(outline));
 
             return Encode(pixels, GameData.IconSize, GameData.IconSize, SKAlphaType.Premul);
-        }
-
-        private static byte[] Premultiply(byte[] rgba)
-        {
-            var pixels = (byte[])rgba.Clone();
-            for (var i = 0; i < pixels.Length; i += 4)
-                for (var c = 0; c < 3; c++)
-                    pixels[i + c] = (byte)(pixels[i + c] * pixels[i + 3] / 255);
-            return pixels;
         }
 
         /// <summary>
