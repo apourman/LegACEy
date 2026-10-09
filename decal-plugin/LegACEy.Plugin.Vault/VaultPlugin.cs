@@ -12,9 +12,13 @@ public sealed class VaultPlugin : ILegACEyPlugin
 {
     private const string WindowId = "vault";
     private const string Station = "vault";
-    // Whole 50 px cells: the default 344 × 606 sits on the grid (44 px and 6 px past it), and the narrowest step is 294,
-    // the first width at or above the 290 px that fits "N selected", Withdraw N and Clear on one line.
-    private static readonly WindowResizing Sizing = new(new Size(290, 256), new Size(50, 50), new Size(44, 6));
+    // Snapping works in 50 px cells on a chrome offset. The offset is the default size's remainder: 344 = 44 + 6 × 50, 606 = 6 + 12 × 50.
+    // Width: 44 is the 28 px frame and margins, the 9 px scrollbar, and 7 px so the default lands on the grid. Only the width snaps to
+    // whole cells exactly: with the scrollbar shown the grid holds 6 cells and 7 px spare. The minimum is 294, the first width at or
+    // above the 290 px that fits "N selected", Withdraw N and Clear on one line.
+    // Height: everything but the grid is 189 px (measured), which is not a multiple of 50, so the grid's bottom row is partial by design,
+    // as in the agreed v11 render (8 full rows and 17 px at 606). 306 is the minimum: one row still fits with the status line shown.
+    private static readonly WindowResizing Sizing = new(new Size(290, 306), new Size(50, 50), new Size(44, 6));
 
     public string Name => "Vault";
     public string Version => typeof(VaultPlugin).Assembly.GetName().Version.ToString(3);
