@@ -16,8 +16,7 @@ internal static class InventoryDriver
     /// <summary>Presses the control at its centre, and lets go there. The press lands on what the last frame drew.</summary>
     public static void Press(AvaloniaPanel host, Control control)
     {
-        Tick(host);
-        var point = control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), host.Content)!.Value;
+        var point = Centre(host, control);
         host.PointerDown(point.X, point.Y, KeyModifiers.None);
         host.PointerUp(point.X, point.Y);
         Tick(host);
@@ -73,7 +72,15 @@ internal static class InventoryDriver
         Tick(host);
     }
 
-    private static Point Centre(AvaloniaPanel host, Control control)
+    /// <summary>A plain drag: presses the source, moves to the target and lets go there.</summary>
+    public static void Drop(AvaloniaPanel host, Control from, Control to)
+    {
+        DragTo(host, from, to);
+        Release(host, to);
+    }
+
+    /// <summary>The point at a control's centre, in panel pixels, after the last frame was drawn.</summary>
+    public static Point Centre(AvaloniaPanel host, Control control)
     {
         Tick(host);
         return control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), host.Content)!.Value;

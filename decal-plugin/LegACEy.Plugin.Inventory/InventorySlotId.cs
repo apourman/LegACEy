@@ -19,7 +19,7 @@ public sealed record InventorySlotId
     /// <param name="place">The kind of slot.</param>
     /// <param name="itemId">The item the slot shows; zero when it is empty or a pack slot.</param>
     /// <param name="container">The pack a cell sits in, or the pack a pack slot stands for; zero for the paperdoll and empty pack slots.</param>
-    /// <param name="slotIndex">The container slot index of a cell; -1 otherwise.</param>
+    /// <param name="slotIndex">The container slot index of a cell; a side pack's position in the side-pack list for a pack tile; -1 otherwise.</param>
     /// <param name="equipment">The paperdoll slot of a paperdoll slot; null otherwise.</param>
     public InventorySlotId(SlotPlace place, uint itemId, uint container, int slotIndex, PaperdollSlot? equipment)
     {

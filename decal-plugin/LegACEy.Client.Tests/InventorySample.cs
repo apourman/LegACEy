@@ -40,10 +40,11 @@ internal static class InventorySample
 
         var items = new List<InventoryItem>
         {
-            Item(Apple, "Apple", Character, 0, 0x06001049, stack: 20),
-            Item(Scroll, "Scroll", Character, 4, 0x06001065),
+            // Apple and scroll are stackable, so a stack dropped on the other is a merge or, for another kind, a move.
+            Item(Apple, "Apple", Character, 0, 0x06001049, stack: 20, stackMax: 100),
+            Item(Scroll, "Scroll", Character, 4, 0x06001065, stackMax: 100),
             Item(Sword, "Sword", Character, 7, 0x060010DA),
-            new(Cap, "Cap", Character, 9, new ItemVisual(0x06000FAA, 0, 0, 0), 1, 1, 0, 0x00000001),
+            Item(Cap, "Cap", Character, 9, 0x06000FAA, valid: 0x00000001),
         };
         // Seventeen potions in the potions pack, so its grid reads "17 / 24".
         for (var slot = 0; slot < 17; slot++)
@@ -67,8 +68,10 @@ internal static class InventorySample
         return new InventorySnapshot(main, sides, items, worn, burden, 5400, 25000, openContainer, selected);
     }
 
-    private static InventoryItem Item(uint id, string name, uint container, int slot, uint icon, int stack = 1) =>
-        new(id, name, container, slot, new ItemVisual(icon, 0, 0, 0), stack, 0, 0, 0);
+    /// <param name="valid">The wield locations the item can take; zero for an item that is not worn.</param>
+    /// <param name="stackMax">The most the item stacks to; zero for a non-stacking item.</param>
+    private static InventoryItem Item(uint id, string name, uint container, int slot, uint icon, int stack = 1, uint valid = 0, int stackMax = 0) =>
+        new(id, name, container, slot, new ItemVisual(icon, 0, 0, 0), stack, stackMax, 0, valid);
 
     private static WieldedItem Wielded(uint id, string name, uint icon, uint validLocations, params PaperdollSlot[] slots) =>
         new(id, name, new ItemVisual(icon, 0, 0, 0), 1, 1, 0, validLocations, slots);
