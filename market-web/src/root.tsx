@@ -8,7 +8,6 @@ import { TicketStatusPanel } from './TicketStatusPanel';
 import styles from './style.css?url';
 
 export const links: Route.LinksFunction = () => [
-  { rel: 'stylesheet', href: '/api/icons/glow.css' },
   { rel: 'stylesheet', href: styles },
 ];
 

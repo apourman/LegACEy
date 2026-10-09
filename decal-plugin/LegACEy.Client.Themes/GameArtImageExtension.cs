@@ -20,9 +20,10 @@ public sealed class GameArtImageExtension : MarkupExtension
         CreateBitmap(CurrentSource, Id) ?? CreateFallbackBitmap();
 
     /// <summary>Build a nearest-neighbour Avalonia bitmap; null ids remain a supported case.</summary>
-    public static WriteableBitmap? CreateBitmap(IGameArtSource? source, uint id)
+    public static WriteableBitmap? CreateBitmap(IGameArtSource? source, uint id) => CreateBitmap(source?.ReadImage(id));
+
+    public static WriteableBitmap? CreateBitmap(GameImage? image)
     {
-        var image = source?.ReadImage(id);
         if (image == null || image.Width <= 0 || image.Height <= 0 || image.Pixels.Length < image.Width * image.Height * 4)
             return null;
 

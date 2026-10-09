@@ -69,7 +69,11 @@ public sealed class VaultDragDropTests
         vault.Host.PointerDown(start.X, start.Y);
         vault.Host.PointerMove(start.X + 30, start.Y);
         Assert.Equal(1, vault.Drag.IconsOpen);
-        Assert.Equal(new uint[] { 0x060011F3, 0x06000FAD }, vault.Drag.IconsShown.Single());
+        // the drag icon is the item's composed icon, one 32×32 image: the flat art passes through unchanged, with no plate
+        var icon = Assert.Single(vault.Drag.IconsShown);
+        Assert.NotNull(icon);
+        Assert.Equal((32, 32), (icon!.Width, icon.Height));
+        Assert.Equal(FlatArt.Pixels, icon.Pixels);
         vault.Host.PointerMove(VaultShellPanel.WindowWidth + 80, start.Y);
         vault.Host.PointerUp(VaultShellPanel.WindowWidth + 80, start.Y);
         vault.Step(TimeSpan.FromMilliseconds(30));
@@ -210,7 +214,7 @@ public sealed class VaultDragDropTests
     private sealed class PanelDragHost : IItemDragHost
     {
         public AvaloniaPanel? Panel { get; private set; }
-        public IDisposable ShowDragIcon(IReadOnlyList<uint> iconLayers)
+        public IDisposable ShowDragIcon(LegACEy.Client.GameArt.GameImage? icon)
         {
             Panel = AvaloniaPanel.Create(() => new Grid { Width = 32, Height = 32 }, 32, 32);
             return new Icon(this);
@@ -237,7 +241,7 @@ public sealed class VaultDragDropTests
             Server.Deliver = _channel.Receive;
             Client = new VaultClient(_channel);
             VaultShellPanel? panel = null;
-            Host = AvaloniaPanel.Create(() => new VaultShellWindow(panel = new VaultShellPanel(new NoArt(), Client, dragHost ?? Drag)),
+            Host = AvaloniaPanel.Create(() => new VaultShellWindow(panel = new VaultShellPanel(new FlatArt(), Client, dragHost ?? Drag)),
                 VaultShellPanel.WindowWidth, height);
             _panel = panel!;
             Step(TimeSpan.FromMilliseconds(30));
@@ -274,8 +278,11 @@ public sealed class VaultDragDropTests
         }
     }
 
-    private sealed class NoArt : IGameArtSource
+    /// <summary>Every texture is one flat opaque 32×32 image, except id 0 (no layer)</summary>
+    private sealed class FlatArt : IGameArtSource
     {
-        public GameImage? ReadImage(uint id) => null;
+        public static readonly byte[] Pixels = Enumerable.Range(0, 32 * 32).SelectMany(_ => new byte[] { 10, 20, 30, 255 }).ToArray();
+
+        public GameImage? ReadImage(uint id) => id == 0 ? null : new GameImage(32, 32, Pixels);
     }
 }

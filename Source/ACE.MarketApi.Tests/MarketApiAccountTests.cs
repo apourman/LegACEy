@@ -167,7 +167,7 @@ namespace ACE.MarketApi.Tests
             var items = vault.GetProperty("items").EnumerateArray().ToDictionary(item => item.GetProperty("itemGuid").GetUInt32());
 
             Assert.IsTrue(items[held].GetProperty("icon").GetProperty("layers").EnumerateArray()
-                .Any(layer => layer.GetProperty("url").GetString() == "/api/icons/0x06000E78.png"));
+                .Any(layer => layer.GetProperty("url").GetString() == "/api/icons/0x06000E78_o00000000_e00000000.png"));
             Assert.AreEqual(listingId, items[listed].GetProperty("listingId").GetInt64());
             Assert.AreEqual(321, items[listed].GetProperty("price").GetInt64());
             using (var shard = MarketApiTestData.Shard())
