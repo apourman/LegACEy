@@ -21,7 +21,8 @@ namespace LegACEy.Plugin.Vault;
 public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropTarget
 {
     public const int WindowWidth = 566;
-    public const int WindowHeight = 694;
+    // Room for ten rows with Windows fonts, whose taller lines take 12 px more than the Linux test fonts.
+    public const int WindowHeight = 706;
     /// <summary>The header's chest icon, from the DAT.</summary>
     public const uint ChestIconId = 0x06001020;
     // A whole page of slots, so the grid looks the same however many items the page holds.
