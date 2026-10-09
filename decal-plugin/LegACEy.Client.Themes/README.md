@@ -33,3 +33,10 @@ art; the game images themselves continue to come from the user's data file.
 The theme tests check rendered art through the panel host, native frame geometry,
 partial-tile cropping, live button states, switching, and themed input behavior.
 In-game visual matching and coexistence still require the Windows Decal play-test.
+
+## Dereth
+
+The Dereth theme (`Dereth/`) draws its chrome from one sprite sheet, `Assets/dereth-sheet.png`, with named regions in
+`Dereth/DerethSheet.cs`. The first sheet is cut from the concept art; a hi-res sheet replaces the PNG and that region
+table only. It does not use AC chrome, so its windows are opened without the retail theme over them. Its shared parts
+(frame, slot grid, scrollbar template, button, search field) take data in and raise events out; the Vault builds on them.

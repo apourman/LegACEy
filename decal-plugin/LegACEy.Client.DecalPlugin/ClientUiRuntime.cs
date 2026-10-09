@@ -788,7 +788,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             opened = true;
             surface.Location = window.Location;
             surface.Visible = true;
-            surface.Panel.ApplyTheme(_clientUi?.Theme ?? CurrentTheme());
+            surface.Panel.ApplyTheme(definition.Theme ?? _clientUi?.Theme ?? CurrentTheme());
             _featureSurfaces.Add(definition.Id, surface);
             _windowFailures[definition.Id] = failed;
         }

@@ -4,13 +4,15 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text;
+using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.Demo;
 
 /// <summary>Dimensions and identity for a LegACEy window.</summary>
 public sealed class WindowDefinition
 {
-    public WindowDefinition(string id, string title, int width, int height, int titleBarHeight = 28)
+    /// <param name="theme">The window's own theme, such as Dereth. Null uses the client's theme, which a window with its own theme does not get.</param>
+    public WindowDefinition(string id, string title, int width, int height, int titleBarHeight = 28, IClientTheme? theme = null)
     {
         if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("A window id is required.", nameof(id));
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
@@ -21,6 +23,7 @@ public sealed class WindowDefinition
         Width = width;
         Height = height;
         TitleBarHeight = titleBarHeight;
+        Theme = theme;
     }
 
     public string Id { get; }
@@ -28,6 +31,7 @@ public sealed class WindowDefinition
     public int Width { get; }
     public int Height { get; }
     public int TitleBarHeight { get; }
+    public IClientTheme? Theme { get; }
 }
 
 /// <summary>The live state of one LegACEy window.</summary>

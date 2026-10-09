@@ -117,8 +117,9 @@ public sealed class ServerChannelTests
         var channel = new ServerChannelClient(server, clock.Now);
         server.Deliver = channel.Receive;
         var client = new VaultClient(channel);
+        var drag = new FakeItemDragHost();
         VaultShellPanel? vault = null;
-        using var host = AvaloniaPanel.Create(() => new VaultShellWindow(vault = new VaultShellPanel(new NoArt(), client)),
+        using var host = AvaloniaPanel.Create(() => new VaultShellWindow(vault = new VaultShellPanel(new NoArt(), client, drag)),
             VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight);
         using var disposeVault = vault!;
 
@@ -128,21 +129,25 @@ public sealed class ServerChannelTests
         Assert.Equal(VaultConnection.Live, client.Connection);
         Assert.Equal(new[] { ChannelHello.Action, VaultProtocol.List }, server.Received);
         Assert.Equal(9, client.Snapshot!.Items.Count);
-        Assert.Contains("9 items  /  1,000 capacity", Texts());
+        Assert.Contains("Items: 9 / 1,000", Texts());
         Assert.Contains("1,234 MMD", Texts());
-        Assert.Contains("Chainmail Shirt", Texts());
-        Assert.Contains("Preview Character", Texts());
-        Assert.Contains(Texts(), text => text.StartsWith("Live · 30 ms", StringComparison.Ordinal));
+        Assert.Equal("Preview Character", client.ServerCharacter);
+        Assert.Equal(TimeSpan.FromMilliseconds(30), client.LastRoundTrip);
 
-        // Selecting the second item and withdrawing it goes to the server for that item.
-        var cells = host.Content.GetVisualDescendants().OfType<Button>().Where(button => button.Classes.Contains("vault-cell")).ToArray();
+        // Nine items fill nine slots that carry a tooltip; the rest are empty drop slots.
+        var cells = host.Content.GetVisualDescendants().OfType<WrapPanel>().Single().Children.OfType<Control>()
+            .Where(cell => ToolTip.GetTip(cell) != null).ToArray();
         Assert.Equal(9, cells.Length);
-        Click(cells[1]);
-        Assert.Contains("Leather Boots", Texts());
-        Click(Button("Withdraw item"));
+        Assert.StartsWith("Chainmail Shirt", (string)ToolTip.GetTip(cells[0])!, StringComparison.Ordinal);
+
+        // Dragging the second item out of the window onto the inventory withdraws it.
+        var start = Center(cells[1]);
+        host.PointerDown(start.X, start.Y);
+        host.PointerMove(start.X + 30, start.Y);
+        host.PointerMove(VaultShellPanel.WindowWidth + 80, start.Y);
+        host.PointerUp(VaultShellPanel.WindowWidth + 80, start.Y);
         Step(TimeSpan.FromMilliseconds(30));
         Assert.True(client.TransferPending);
-        Assert.False(Button("Withdraw item").IsEnabled);
 
         Step(TimeSpan.FromSeconds(3));       // the transfer finishes and is pushed
         Step(TimeSpan.FromMilliseconds(30)); // the refreshed list arrives
@@ -151,7 +156,6 @@ public sealed class ServerChannelTests
         Assert.Equal(8, client.Snapshot.Items.Count);
         Assert.DoesNotContain(client.Snapshot.Items, item => item.Name == "Leather Boots");
         Assert.Contains("Your Leather Boots is back in your pack.", Texts());
-        Assert.Contains(Texts(), text => text.Contains("1 push ·"));
         Assert.Null(host.LastError);
 
         void Step(TimeSpan time)
@@ -164,16 +168,7 @@ public sealed class ServerChannelTests
 
         string[] Texts() => host.Content.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text ?? string.Empty).ToArray();
 
-        Button Button(string text) => host.Content.GetVisualDescendants().OfType<Button>()
-            .Single(button => button.GetVisualDescendants().OfType<TextBlock>().Any(label => label.Text == text));
-
-        void Click(Control control)
-        {
-            var point = control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), host.Content)!.Value;
-            host.PointerDown(point.X, point.Y);
-            host.PointerUp(point.X, point.Y);
-            host.Tick();
-        }
+        Point Center(Control control) => control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), host.Content)!.Value;
     });
 
     [Fact]

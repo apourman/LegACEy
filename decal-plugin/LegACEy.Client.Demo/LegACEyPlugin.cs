@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using Avalonia.Controls;
 using LegACEy.Client.GameArt;
+using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.Demo;
 
@@ -50,7 +51,7 @@ public interface ILegACEyClient
     /// Registers the plugin's window for a station. The window opens when the server pushes station.open for it and
     /// closes on station.close. Closing it sends station.leave. Takes the same arguments as <see cref="ToggleWindowWithChrome"/>.
     /// </summary>
-    void RegisterStationWindow(string station, string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow);
+    void RegisterStationWindow(string station, string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow, IClientTheme? theme = null);
 }
 
 /// <summary>The client's side of plugin hosting. ClientUiRuntime implements it; tests fake it.</summary>

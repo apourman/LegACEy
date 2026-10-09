@@ -2,6 +2,7 @@ using System.Drawing;
 using Avalonia.Controls;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
+using LegACEy.Client.Themes;
 using LegACEy.Plugin.Paperdoll;
 using Xunit;
 
@@ -188,6 +189,20 @@ public sealed class PluginRegistryTests
     });
 
     [Fact]
+    public void A_station_window_is_opened_with_the_theme_it_was_registered_with() => RenderThread.Run(() =>
+    {
+        var channel = new FakeChannel();
+        var host = new FakeHost { ServerChannel = channel };
+        var registry = new PluginRegistry(host, host.Log.Add);
+        var theme = new DerethClientTheme();
+        registry.Add(new FakePlugin("Vault") { OnStart = client => client.RegisterStationWindow("vault", "window", "Vault", 100, 80, new Point(0, 0), _ => new Border(), theme) });
+        registry.SetServerActions(new[] { StationProtocol.Leave });
+
+        channel.Push(StationProtocol.Open, StationBody("vault"));
+        Assert.Same(theme, host.Themes["Vault/window"]);
+    });
+
+    [Fact]
     public void Closing_a_station_window_sends_station_leave() => RenderThread.Run(() =>
     {
         var channel = new FakeChannel();
@@ -254,6 +269,7 @@ public sealed class PluginRegistryTests
         public Dictionary<string, Action<Exception>> Errors { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, Control> Content { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, bool> OwnChrome { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, IClientTheme?> Themes { get; } = new(StringComparer.Ordinal);
 
         public IServerChannel ServerChannel { get; init; } = UnavailableServerChannel.Instance;
         public string PortalPath => string.Empty;
@@ -274,6 +290,7 @@ public sealed class PluginRegistryTests
             }
             Errors[definition.Id] = failed;
             OwnChrome[definition.Id] = ownChrome;
+            Themes[definition.Id] = definition.Theme;
             return true;
         }
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using Avalonia.Controls;
 using LegACEy.Client.Demo;
+using LegACEy.Client.Themes;
 
 namespace LegACEy.Plugin.Vault;
 
@@ -26,7 +27,7 @@ public sealed class VaultPlugin : ILegACEyPlugin
 
     public void Start(ILegACEyClient client) =>
         client.RegisterStationWindow(Station, WindowId, "Vault",
-            VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight, new Point(240, 100), close => CreateWindow(client, close));
+            VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight, new Point(240, 100), close => CreateWindow(client, close), new DerethClientTheme());
 
     private static Control CreateWindow(ILegACEyClient client, Action close)
     {

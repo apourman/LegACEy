@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reflection;
 using Avalonia.Controls;
 using LegACEy.Client.GameArt;
+using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.Demo;
 
@@ -173,10 +174,10 @@ public sealed class PluginRegistry
             _windowOwners[windowId] = entry;
     }
 
-    private void RegisterStation(PluginEntry entry, string station, string id, string title, int width, int height, Point location, Func<Action, Control> createWindow)
+    private void RegisterStation(PluginEntry entry, string station, string id, string title, int width, int height, Point location, Func<Action, Control> createWindow, IClientTheme? theme)
     {
         if (_stations.ContainsKey(station)) throw new InvalidOperationException($"The station '{station}' already has a window.");
-        _stations[station] = (entry, new WindowDefinition(entry.Name + "/" + id, title, width, height), location, createWindow);
+        _stations[station] = (entry, new WindowDefinition(entry.Name + "/" + id, title, width, height, theme: theme), location, createWindow);
     }
 
     private void OpenStation(string station)
@@ -265,10 +266,10 @@ public sealed class PluginRegistry
             _registry.ToggleWindow(_entry, id, title, width, height, defaultLocation, createWindow, ownChrome: true);
         }
 
-        public void RegisterStationWindow(string station, string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow)
+        public void RegisterStationWindow(string station, string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow, IClientTheme? theme = null)
         {
             if (createWindow == null) throw new ArgumentNullException(nameof(createWindow));
-            _registry.RegisterStation(_entry, station, id, title, width, height, defaultLocation, createWindow);
+            _registry.RegisterStation(_entry, station, id, title, width, height, defaultLocation, createWindow, theme);
         }
     }
 
