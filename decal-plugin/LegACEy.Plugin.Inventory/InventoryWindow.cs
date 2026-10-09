@@ -45,6 +45,7 @@ public sealed class InventoryWindow : UserControl, IDisposable
     private readonly IInventoryPort _port;
     private readonly IGameArtSource _art;
     private readonly InventoryLayout _layout;
+    private PaperdollView? _doll;
     private readonly Dictionary<ItemVisual, WriteableBitmap?> _images = new();
     private readonly DerethWindow _frame;
     private readonly InventoryPaperdoll _paperdoll = new();
@@ -94,11 +95,28 @@ public sealed class InventoryWindow : UserControl, IDisposable
     /// <summary>Raised when the header's close box is pressed.</summary>
     public event EventHandler? CloseRequested;
 
-    /// <summary>The doll area under the paperdoll, which the 3D character fills. Its content is the owner's to set.</summary>
+    /// <summary>The doll area under the paperdoll: the 3D character while it shows, otherwise the empty dark panel.</summary>
     public Border DollArea => _paperdoll.DollArea;
 
-    /// <summary>Stops redrawing for port changes, while the window is hidden.</summary>
-    public void Suspend() => _suspended = true;
+    /// <summary>Whether the window has its 3D character yet.</summary>
+    public bool HasDoll => _doll != null;
+
+    /// <summary>
+    /// Gives the window its 3D character, which shows in the doll area while the armour slots are off and the window is shown.
+    /// It can come at any time: the server's actions may arrive after the window opened.
+    /// </summary>
+    public void SetDoll(PaperdollView doll)
+    {
+        _doll = doll;
+        UpdateDoll();
+    }
+
+    /// <summary>Stops redrawing for port changes, and takes the 3D character out, while the window is hidden.</summary>
+    public void Suspend()
+    {
+        _suspended = true;
+        UpdateDoll();
+    }
 
     /// <summary>Draws the port's current state once, and redraws on each change again. Called when the window is shown.</summary>
     public void Resume()
@@ -134,6 +152,9 @@ public sealed class InventoryWindow : UserControl, IDisposable
         if (!_disposed && !_suspended) Render(_port.Snapshot);
     }
 
+    /// <summary>The 3D character is in the doll area only while the armour slots are off and the window is shown, so it asks for looks only then.</summary>
+    private void UpdateDoll() => DollArea.Child = _doll != null && !_showSlots && !_suspended ? _doll : null;
+
     private void ToggleSlots()
     {
         SetShowSlots(!_showSlots);
@@ -154,6 +175,7 @@ public sealed class InventoryWindow : UserControl, IDisposable
             foreach (var slot in item.Slots)
                 worn[slot] = item;
         _paperdoll.Show(slot => WornSlot(snapshot, worn, slot), _showSlots);
+        UpdateDoll();
         RenderPacks(snapshot, open);
         RenderContents(snapshot, open);
         RenderBurden(snapshot);
