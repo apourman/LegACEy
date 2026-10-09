@@ -36,7 +36,12 @@ In-game visual matching and coexistence still require the Windows Decal play-tes
 
 ## Dereth
 
-The Dereth theme (`Dereth/`) draws its chrome from one sprite sheet, `Assets/dereth-sheet.png`, with named regions in
-`Dereth/DerethSheet.cs`. The first sheet is cut from the concept art; a hi-res sheet replaces the PNG and that region
-table only. It does not use AC chrome, so its windows are opened without the retail theme over them. Its shared parts
-(frame, slot grid, scrollbar template, button, search field) take data in and raise events out; the Vault builds on them.
+The Dereth theme (`Dereth/`) draws its chrome from one 2× sprite sheet, `Assets/dereth-sheet.png`, with named regions in
+`Dereth/DerethSheet.cs`. The sheet is generated, not hand-drawn: colours and frame weights are measured from the concept
+art, and buttons, the search field and the close glyph have normal, hover, pressed or focus art. Regenerating the sheet
+replaces the PNG and pastes a new region table; the region sizes only change when the art's layout does. It does not use
+AC chrome, so its windows are opened without the retail theme over them.
+
+Its shared parts (frame, slot grid, scrollbar template, button, search field) take data in and raise events out; the Vault
+builds on them. The slot grid lays 46 px slots on a 50 px pitch, as many columns as fit, centred. `DerethWarmUp` builds
+the theme's parts once at login, so the first window opens without a long frame.
