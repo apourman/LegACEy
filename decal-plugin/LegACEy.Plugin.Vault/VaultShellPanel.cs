@@ -455,20 +455,6 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         return -1;
     }
 
-    /// <summary>A right-click on an item selects it alone and inspects it, unless several items are selected.</summary>
-    public void RightClick(Point position)
-    {
-        var cell = CellAt(position);
-        var items = Snapshot?.Items;
-        if (_client?.Connection != VaultConnection.Live || _dragHost == null || items == null || cell < 0 || cell >= items.Count || _selection.Count > 1) return;
-        if (!_selection.Contains(cell))
-        {
-            _selection.Press(cell, ctrl: false, shift: false);
-            ShowSelection();
-        }
-        _client.Inspect(items[cell].Guid, _dragHost.Appraise);
-    }
-
     private void OnCellReleased(VaultItemView pressed, PointerReleasedEventArgs e)
     {
         // A press released on its own item without a drag is a click: it selects by the modifiers held when it went down.
@@ -480,9 +466,6 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
             {
                 _selection.Press(place, (_pressModifiers & KeyModifiers.Control) != 0, (_pressModifiers & KeyModifiers.Shift) != 0);
                 ShowSelection();
-                // One item selected is the game's selection too, so the game's E appraises it.
-                if (_selection.Count == 1 && _client?.Connection == VaultConnection.Live && _dragHost != null)
-                    _client.Inspect(_client.SelectedGuids()[0], _dragHost.Select);
             }
             return;
         }
@@ -616,7 +599,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
 }
 
 /// <summary>The Vault window: the Dereth frame, its header and close box, around the Vault panel.</summary>
-public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget, IGameInputTarget, IDisposable
+public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget, IDisposable
 {
     private readonly VaultShellPanel _panel;
     private bool _disposed;
@@ -635,11 +618,6 @@ public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget, IGame
 
     public bool RetailDrop(uint itemId, string itemName, Point position) =>
         this.TranslatePoint(position, _panel) is { } point && _panel.RetailDrop(itemId, itemName, point);
-
-    public void RightClick(Point position)
-    {
-        if (this.TranslatePoint(position, _panel) is { } point) _panel.RightClick(point);
-    }
 
     public void Dispose()
     {

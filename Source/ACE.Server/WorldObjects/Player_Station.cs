@@ -39,11 +39,6 @@ namespace ACE.Server.WorldObjects
         }
 
         /// <summary>
-        /// The station object the player has a session at, or null
-        /// </summary>
-        public WorldObject Station => Volatile.Read(ref stationSession)?.Station;
-
-        /// <summary>
         /// True while the player has an open session at a station with this name
         /// </summary>
         public bool HasStation(string station)

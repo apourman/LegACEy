@@ -219,8 +219,6 @@ public sealed class VaultDragDropTests
             return new Icon(this);
         }
         public ItemDropTarget DropTargetAtPointer() => ItemDropTarget.Elsewhere;
-        public void Select(uint objectId) { }
-        public void Appraise(uint objectId) { }
         private sealed class Icon : IDisposable
         {
             private readonly PanelDragHost _owner;

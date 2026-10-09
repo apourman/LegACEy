@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.Threading;
 
 using ACE.Server.Market;
@@ -8,25 +7,6 @@ namespace ACE.Server.WorldObjects
     partial class Player
     {
         private VaultChannel vaultChannel;
-
-        private readonly List<WorldObject> vaultInspected = new List<WorldObject>();
-
-        /// <summary>
-        /// Remembers a Vault item the player inspected, created from its row but in no landblock, so their appraisal of it can be answered.
-        /// The last few are kept, as the client's appraisal can arrive after the next inspect. World thread only.
-        /// </summary>
-        public void RememberVaultInspected(WorldObject item)
-        {
-            vaultInspected.RemoveAll(o => o.Guid == item.Guid);
-            vaultInspected.Add(item);
-            if (vaultInspected.Count > 8)
-                vaultInspected.RemoveAt(0);
-        }
-
-        /// <summary>
-        /// The inspected Vault item with this guid, or null
-        /// </summary>
-        public WorldObject VaultInspected(uint guid) => vaultInspected.Find(o => o.Guid.Full == guid);
 
         /// <summary>
         /// The Vault deposit or withdrawal this player is channelling, or null

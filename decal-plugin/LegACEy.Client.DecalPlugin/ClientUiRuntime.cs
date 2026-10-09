@@ -38,10 +38,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private static extern bool ScreenToClient(IntPtr window, ref NativePoint point);
 
     [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool PostMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
-
-    [DllImport("user32.dll")]
     private static extern IntPtr LoadCursor(IntPtr instance, IntPtr cursorName);
 
     [DllImport("user32.dll")]
@@ -768,18 +764,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             }
         }
 
-        public void Select(uint objectId) => CoreManager.Current.Actions.SelectItem(unchecked((int)objectId));
-
-        public void Appraise(uint objectId)
-        {
-            Log($"Appraising 0x{objectId:X8}; known to the client: {CoreManager.Current.WorldFilter[unchecked((int)objectId)] != null}.");
-            Select(objectId);
-            // The game's examine key, E by default: the game opens its appraisal window for the selection, as when the player presses it.
-            var window = GetForegroundWindow();
-            PostMessage(window, InputRouterService.WmKeyDown, new IntPtr('E'), new IntPtr(0x00120001));
-            PostMessage(window, InputRouterService.WmKeyUp, new IntPtr('E'), new IntPtr(unchecked((int)0xC0120001)));
-        }
-
         public ItemDropTarget DropTargetAtPointer()
         {
             var drag = _owner._retailDrag;
@@ -1025,12 +1009,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                 lParam = (point.X & 0xffff) | (point.Y << 16);
         }
 
-        if (e.Msg == InputRouterService.WmRButtonDown && OfferRightClick(lParam))
-        {
-            e.Eat = true;
-            return;
-        }
-
         var route = _inputRouter.Route(
             new NativeInputMessage(e.Msg, new IntPtr(e.WParam), new IntPtr(lParam)),
             GetInputSurfaces());
@@ -1112,21 +1090,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             if (route.Eat)
                 e.Eat = true;
         });
-    }
-
-    /// <summary>Offers a right-click to the window under the pointer, when it is an <see cref="IGameInputTarget"/>. True if it took it.</summary>
-    private bool OfferRightClick(int lParam)
-    {
-        _pointer = new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff));
-        var id = TopSurfaceAt(_pointer);
-        var surface = SurfaceById(id);
-        if (surface?.Panel.Content is not IGameInputTarget target) return false;
-        try
-        {
-            target.RightClick(new Avalonia.Point(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y));
-        }
-        catch (Exception exception) { _windowFailures[id!](exception); }
-        return true;
     }
 
     /// <summary>
