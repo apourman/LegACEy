@@ -304,10 +304,11 @@ public sealed class DerethButton : Button
 /// <summary>A window with the Dereth frame, a header of icon, title and close box, the title rule and content.</summary>
 public sealed class DerethWindow : UserControl
 {
-    public DerethWindow(string title, Control? icon, Control content)
+    /// <param name="headerActions">Controls for the header, left of the close box. Null when the header has none.</param>
+    public DerethWindow(string title, Control? icon, Control content, Control? headerActions = null)
     {
         if (content == null) throw new ArgumentNullException(nameof(content));
-        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 8, Height = 40 };
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions(headerActions == null ? "Auto,*,Auto" : "Auto,*,Auto,Auto"), ColumnSpacing = 8, Height = 40 };
         if (icon != null)
         {
             // The header's emblem is shrunk to fit; item icons elsewhere stay at their native size.
@@ -325,7 +326,12 @@ public sealed class DerethWindow : UserControl
         var close = new DerethButton { Width = 24, Height = 24, VerticalAlignment = VerticalAlignment.Center, Content = glyph };
         glyph.Follow(close);
         close.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
-        Grid.SetColumn(close, 2);
+        if (headerActions != null)
+        {
+            Grid.SetColumn(headerActions, 2);
+            header.Children.Add(headerActions);
+        }
+        Grid.SetColumn(close, headerActions == null ? 2 : 3);
         header.Children.Add(close);
 
         var body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(6, 0, 6, 6) };
@@ -386,7 +392,7 @@ public sealed class DerethSlotGrid : UserControl
 /// A slot: a framed well around its content. Selected, it shows a teal wash behind the content, a 2 px teal border and a glow
 /// inset inside the slot, so the glow never spills into a neighbouring slot.
 /// </summary>
-public sealed class DerethSlot : Grid
+public class DerethSlot : Grid
 {
     private static readonly IBrush WashBrush = new RadialGradientBrush
     {

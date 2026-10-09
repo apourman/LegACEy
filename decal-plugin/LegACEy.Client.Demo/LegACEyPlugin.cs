@@ -37,6 +37,12 @@ public interface ILegACEyClient
     IInventoryPort Inventory { get; }
     /// <summary>True when the server registered the action (the list from channel.hello). Plugins use it for optional features.</summary>
     bool SupportsAction(string action);
+    /// <summary>
+    /// The plugin's saved settings for this character: two integers, kept beside its window placements. Null when none are saved.
+    /// </summary>
+    Point? LoadSettings();
+    /// <summary>Saves the plugin's two settings integers for this character.</summary>
+    void SaveSettings(Point settings);
     /// <summary>Adds an entry to the LegACEy menu. Its action runs when the player picks it.</summary>
     void AddMenuEntry(string title, uint iconId, Action action);
     /// <summary>
@@ -48,7 +54,10 @@ public interface ILegACEyClient
     /// Like <see cref="ToggleWindow"/>, but the plugin builds the whole window, with its own chrome. The function gets the action
     /// that closes the window; the client adds no chrome of its own.
     /// </summary>
-    void ToggleWindowWithChrome(string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow);
+    /// <param name="theme">The theme the window is drawn in. Null uses the client's theme.</param>
+    /// <param name="resizing">How the player can resize the window from its edges and corners. Null means it does not resize.</param>
+    /// <param name="titleBarHeight">The top strip of the window that drags it, in pixels. A window with a taller header passes the header's height.</param>
+    void ToggleWindowWithChrome(string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow, IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28);
     /// <summary>
     /// Registers the plugin's window for a station, built with its own chrome as <see cref="ToggleWindowWithChrome"/> is.
     /// The window opens when the server pushes station.open for it and closes on station.close. Closing it sends station.leave.
@@ -78,6 +87,10 @@ public interface ILegACEyPluginHost
     void HideWindow(string id);
     /// <summary>Closes the window, open or hidden, and releases it.</summary>
     void CloseWindow(string id);
+    /// <summary>A plugin's saved settings for the current character, or null when none are saved.</summary>
+    Point? LoadPluginSettings(string plugin);
+    /// <summary>Saves a plugin's settings for the current character.</summary>
+    void SavePluginSettings(string plugin, Point settings);
 }
 
 /// <summary>One row of the LegACEy menu.</summary>

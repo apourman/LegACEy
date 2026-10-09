@@ -196,6 +196,23 @@ public sealed class PluginRegistryTests
     });
 
     [Fact]
+    public void A_window_with_its_own_chrome_gets_the_theme_resizing_and_header_height_it_asks_for() => RenderThread.Run(() =>
+    {
+        var host = new FakeHost();
+        var registry = new PluginRegistry(host, host.Log.Add);
+        var theme = new DerethClientTheme();
+        var resizing = new WindowResizing(new Size(200, 150));
+        registry.Add(new FakePlugin("Owner") { OnStart = client => client.AddMenuEntry("Owner", 0,
+            () => client.ToggleWindowWithChrome("window", "Owner", 300, 200, new Point(0, 0), _ => new Border(), theme, resizing, 48)) });
+        registry.RunMenuEntry(registry.VisibleMenuEntries.Single());
+
+        var definition = host.Definitions["Owner/window"];
+        Assert.Same(theme, definition.Theme);
+        Assert.Same(resizing, definition.Resizing);
+        Assert.Equal(48, definition.TitleBarHeight);
+    });
+
+    [Fact]
     public void A_toggled_off_window_comes_back_without_rebuilding_and_logoff_still_releases_it() => RenderThread.Run(() =>
     {
         var host = new FakeHost();
@@ -326,6 +343,11 @@ public sealed class PluginRegistryTests
         public Dictionary<string, Control> Content { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, bool> OwnChrome { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, IClientTheme?> Themes { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, WindowDefinition> Definitions { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, Point> Settings { get; } = new(StringComparer.Ordinal);
+
+        public Point? LoadPluginSettings(string plugin) => Settings.TryGetValue(plugin, out var saved) ? saved : null;
+        public void SavePluginSettings(string plugin, Point settings) => Settings[plugin] = settings;
 
         public IServerChannel ServerChannel { get; init; } = UnavailableServerChannel.Instance;
         public string PortalPath => string.Empty;
@@ -347,6 +369,7 @@ public sealed class PluginRegistryTests
             Errors[definition.Id] = failed;
             OwnChrome[definition.Id] = ownChrome;
             Themes[definition.Id] = definition.Theme;
+            Definitions[definition.Id] = definition;
             return true;
         }
 

@@ -162,7 +162,8 @@ public sealed class PluginRegistry
         MenuChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void ToggleWindow(PluginEntry entry, string id, string title, int width, int height, Point location, Func<Action, Control> createContent, bool ownChrome)
+    private void ToggleWindow(PluginEntry entry, string id, string title, int width, int height, Point location, Func<Action, Control> createContent, bool ownChrome,
+        IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28)
     {
         // Window ids are namespaced by plugin, so a plugin can never open or close another plugin's window or a client window.
         var windowId = entry.Name + "/" + id;
@@ -173,7 +174,8 @@ public sealed class PluginRegistry
             return;
         }
 
-        if (_host.OpenWindow(new WindowDefinition(windowId, title, width, height), location, createContent, reason => Fail(entry, reason), ownChrome))
+        var definition = new WindowDefinition(windowId, title, width, height, titleBarHeight, theme: theme, resizing: resizing);
+        if (_host.OpenWindow(definition, location, createContent, reason => Fail(entry, reason), ownChrome))
             _windowOwners[windowId] = entry;
     }
 
@@ -265,11 +267,15 @@ public sealed class PluginRegistry
             _registry.ToggleWindow(_entry, id, title, width, height, defaultLocation, _ => createContent(), ownChrome: false);
         }
 
-        public void ToggleWindowWithChrome(string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow)
+        public void ToggleWindowWithChrome(string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow,
+            IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28)
         {
             if (createWindow == null) throw new ArgumentNullException(nameof(createWindow));
-            _registry.ToggleWindow(_entry, id, title, width, height, defaultLocation, createWindow, ownChrome: true);
+            _registry.ToggleWindow(_entry, id, title, width, height, defaultLocation, createWindow, ownChrome: true, theme, resizing, titleBarHeight);
         }
+
+        public Point? LoadSettings() => _registry._host.LoadPluginSettings(_entry.Name);
+        public void SaveSettings(Point settings) => _registry._host.SavePluginSettings(_entry.Name, settings);
 
         public void RegisterStationWindow(string station, string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow, IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28)
         {
