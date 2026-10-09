@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/apourman/LegACEy/compare/v0.5.0...v0.6.0) (2026-10-09)
+
+
+### Features
+
+* Dereth theme for the Vault ([#29](https://github.com/apourman/LegACEy/issues/29)) ([271b0b8](https://github.com/apourman/LegACEy/commit/271b0b8908722d92764f16d70051492e086674a6))
+
 ## [0.5.0](https://github.com/apourman/LegACEy/compare/v0.4.0...v0.5.0) (2026-10-08)
 
 
