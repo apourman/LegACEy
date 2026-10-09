@@ -11,38 +11,22 @@ using WindowHover = (string? WindowId, LegACEy.Client.Demo.WindowEdges Edges);
 
 namespace LegACEy.Client.Demo;
 
-/// <summary>
-/// How a window resizes: a minimum size, and per axis a snap step measured beyond fixed chrome, so a size of
-/// chrome + n × step lands on whole cells. A step of 1 and a chrome of 0 snap nothing.
-/// </summary>
+/// <summary>How a window resizes: freely, down to a minimum size.</summary>
 public sealed class WindowResizing
 {
-    public WindowResizing(Size minimum, Size step, Size chrome)
+    public WindowResizing(Size minimum)
     {
         if (minimum.Width <= 0 || minimum.Height <= 0) throw new ArgumentOutOfRangeException(nameof(minimum));
-        if (step.Width <= 0 || step.Height <= 0) throw new ArgumentOutOfRangeException(nameof(step));
         Minimum = minimum;
-        Step = step;
-        Chrome = chrome;
     }
 
     public Size Minimum { get; }
-    public Size Step { get; }
-    public Size Chrome { get; }
 
-    /// <summary>The size nearest <paramref name="wanted"/> on the step, no smaller than the minimum and no bigger than <paramref name="max"/>.</summary>
-    public Size Fit(Size wanted, Size max) => new(
-        Snap(wanted.Width, Minimum.Width, Step.Width, Chrome.Width, max.Width),
-        Snap(wanted.Height, Minimum.Height, Step.Height, Chrome.Height, max.Height));
+    /// <summary><paramref name="wanted"/>, no smaller than the minimum and no bigger than <paramref name="max"/>.</summary>
+    public Size Fit(Size wanted, Size max) => new(Clamp(wanted.Width, Minimum.Width, max.Width), Clamp(wanted.Height, Minimum.Height, max.Height));
 
     /// <summary>One axis. The minimum wins over the maximum when the screen is too small for it.</summary>
-    internal static int Snap(int wanted, int minimum, int step, int chrome, int max)
-    {
-        var snapped = chrome + Math.Round((wanted - chrome) / (double)step, MidpointRounding.AwayFromZero) * step;
-        var largest = chrome + Math.Floor((max - chrome) / (double)step) * step;
-        var smallest = chrome + Math.Ceiling((minimum - chrome) / (double)step) * step;
-        return (int)Math.Max(smallest, Math.Min(largest, snapped));
-    }
+    internal static int Clamp(int wanted, int minimum, int max) => Math.Max(minimum, Math.Min(max, wanted));
 }
 
 /// <summary>Dimensions and identity for a LegACEy window.</summary>
@@ -364,10 +348,10 @@ public sealed class WindowManager
         var resizing = window.Definition.Resizing!;
         var (x, width) = ResizeAxis(_pressBounds.X, _pressBounds.Width, point.X - _pressPoint.X,
             (_resizeEdges & WindowEdges.Left) != 0, (_resizeEdges & WindowEdges.Right) != 0,
-            resizing.Minimum.Width, resizing.Step.Width, resizing.Chrome.Width, _screen.Width);
+            resizing.Minimum.Width, _screen.Width);
         var (y, height) = ResizeAxis(_pressBounds.Y, _pressBounds.Height, point.Y - _pressPoint.Y,
             (_resizeEdges & WindowEdges.Top) != 0, (_resizeEdges & WindowEdges.Bottom) != 0,
-            resizing.Minimum.Height, resizing.Step.Height, resizing.Chrome.Height, _screen.Height);
+            resizing.Minimum.Height, _screen.Height);
         window.Location = new Point(x, y);
         window.Size = new Size(width, height);
         window.PreferredLocation = window.Location;
@@ -376,16 +360,16 @@ public sealed class WindowManager
 
     /// <summary>One axis of a resize. A moving start edge keeps the end edge fixed; a moving end edge stops at the screen.</summary>
     private static (int Start, int Length) ResizeAxis(int start, int length, int delta, bool startMoves, bool endMoves,
-        int minimum, int step, int chrome, int screen)
+        int minimum, int screen)
     {
         if (!startMoves && !endMoves) return (start, length);
         if (startMoves)
         {
             var end = start + length;
-            var fitted = WindowResizing.Snap(length - delta, minimum, step, chrome, end);
+            var fitted = WindowResizing.Clamp(length - delta, minimum, end);
             return (end - fitted, fitted);
         }
-        return (start, WindowResizing.Snap(length + delta, minimum, step, chrome, screen - start));
+        return (start, WindowResizing.Clamp(length + delta, minimum, screen - start));
     }
 
     private void EndDrag()

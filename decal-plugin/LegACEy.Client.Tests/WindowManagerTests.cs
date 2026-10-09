@@ -11,7 +11,7 @@ namespace LegACEy.Client.Tests;
 public sealed class WindowManagerTests
 {
     // The Vault's sizing: 294 is the narrowest grid-aligned width that keeps the header at about 290.
-    private static readonly WindowResizing VaultSizing = new(new Size(290, 306), new Size(50, 50), new Size(44, 6));
+    private static readonly WindowResizing VaultSizing = new(new Size(290, 306));
 
     [Fact]
     public void Pressing_a_window_brings_it_to_the_front_and_hit_testing_uses_front_to_back_order()
@@ -121,7 +121,7 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
-    public void Dragging_the_right_edge_resizes_the_window_to_whole_cells()
+    public void Dragging_the_right_edge_resizes_the_window_by_the_drag()
     {
         var manager = NewManager(1920, 1080);
         manager.Open(Resizable("vault"), new Point(100, 100));
@@ -131,8 +131,7 @@ public sealed class WindowManagerTests
         manager.Release();
 
         var window = manager.Get("vault")!;
-        // 344 + 30 = 374 snaps to 44 + 7 × 50.
-        Assert.Equal(new Size(394, 606), window.Size);
+        Assert.Equal(new Size(374, 606), window.Size);
         Assert.Equal(new Point(100, 100), window.Location);
     }
 
@@ -148,8 +147,8 @@ public sealed class WindowManagerTests
         manager.Release();
 
         var window = manager.Get("vault")!;
-        Assert.Equal(new Size(394, 656), window.Size);
-        Assert.Equal(new Point(450, 250), window.Location);
+        Assert.Equal(new Size(384, 676), window.Size);
+        Assert.Equal(new Point(460, 230), window.Location);
     }
 
     [Fact]
@@ -162,7 +161,7 @@ public sealed class WindowManagerTests
         manager.Move(new Point(-57, 203));
         manager.Release();
 
-        Assert.Equal(new Size(294, 306), manager.Get("vault")!.Size);
+        Assert.Equal(new Size(290, 306), manager.Get("vault")!.Size);
     }
 
     [Fact]
@@ -176,8 +175,8 @@ public sealed class WindowManagerTests
         manager.Release();
 
         var window = manager.Get("vault")!;
-        // 420 px are left to the screen's edge, so the largest whole-cell width is 394.
-        Assert.Equal(new Size(394, 606), window.Size);
+        // 420 px are left to the screen's edge.
+        Assert.Equal(new Size(420, 606), window.Size);
         Assert.True(window.Bounds.Right <= 1920);
     }
 
@@ -267,7 +266,7 @@ public sealed class WindowManagerTests
             var reopened = new WindowManager(new Size(1920, 1080), new FileWindowPositionStore(path), "server-a", "character-a");
             var window = reopened.Open(Resizable("vault"), new Point(0, 0));
 
-            Assert.Equal(new Size(394, 606), window.Size);
+            Assert.Equal(new Size(374, 606), window.Size);
             Assert.Equal(new Point(100, 100), window.Location);
         }
         finally
