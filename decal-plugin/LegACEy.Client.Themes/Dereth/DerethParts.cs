@@ -117,8 +117,8 @@ public sealed class DerethRule : DerethThreeSlice
 }
 
 /// <summary>
-/// The search field: the sheet's field around a text box that shows its placeholder while empty. <see cref="Text"/> is read and set
-/// by the owner, and <see cref="TextChanged"/> fires on every edit. It knows nothing of what the text filters.
+/// The search field: the sheet's field around a text box that shows its placeholder while empty. <see cref="Text"/> is what the
+/// player has typed, and <see cref="TextChanged"/> fires on every edit. It knows nothing of what the text filters.
 /// </summary>
 public sealed class DerethSearchField : DerethThreeSlice
 {
@@ -140,21 +140,17 @@ public sealed class DerethSearchField : DerethThreeSlice
         Child = _input;
     }
 
-    public string Text
-    {
-        get => _input.Text ?? string.Empty;
-        set => _input.Text = value;
-    }
+    public string Text => _input.Text ?? string.Empty;
 
-    /// <summary>The text changed, by typing or by <see cref="Text"/>.</summary>
+    /// <summary>The text changed, by typing.</summary>
     public event EventHandler? TextChanged;
 }
 
 /// <summary>The sheet's paging arrows.</summary>
 public enum DerethSpriteArt { PagerPrevious, PagerNext }
 
-/// <summary>A whole sheet region drawn at the control's size.</summary>
-public sealed class DerethSprite : Control
+/// <summary>A whole sheet region drawn at the control's size. Only the pager arrows use it.</summary>
+internal sealed class DerethSprite : Control
 {
     private readonly Rect _source;
 

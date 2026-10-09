@@ -34,6 +34,8 @@ public sealed class FakeVaultServer : IServerChannelTransport
     public List<string> Received { get; } = new();
     /// <summary>Every page request, as the client sent it.</summary>
     public List<(string Search, int Offset, int Count)> ListRequests { get; } = new();
+    /// <summary>When set, every list request gets this failure instead of a page, as a server that is refusing requests does.</summary>
+    public ChannelStatus? ListStatus { get; set; }
     /// <summary>Pack items the fake refuses to deposit, with the reason.</summary>
     public Dictionary<uint, string> Refused { get; } = new();
     public IReadOnlyList<VaultItemView> Items => _items;
@@ -56,6 +58,11 @@ public sealed class FakeVaultServer : IServerChannelTransport
                 var offset = listReader.ReadInt32();
                 var count = listReader.ReadInt32();
                 ListRequests.Add((search, offset, count));
+                if (ListStatus is { } failure)
+                {
+                    Reply(id, action, failure, ChannelWire.Body(w => ChannelWire.WriteString(w, "The server is busy.")));
+                    break;
+                }
                 var matches = _items.Where(item => item.Name.Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
                 var page = matches.Skip(offset).Take(count).ToArray();
                 Reply(id, action, ChannelStatus.Ok, VaultProtocol.WriteList(new VaultSnapshot(true, Balance, Capacity, _items.Count, matches.Count, page)));

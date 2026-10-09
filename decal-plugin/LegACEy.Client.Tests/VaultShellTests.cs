@@ -76,8 +76,8 @@ public sealed class VaultShellTests
         using var disposeVault = vault!;
         host.ApplyTheme(new DerethClientTheme());
         host.Tick();
-        // The grid's viewer and bar: the search field's text box has a viewer and bars of its own.
-        var viewer = host.Content.GetVisualDescendants().OfType<ScrollViewer>().Single(v => v.GetVisualAncestors().OfType<DerethSlotGrid>().Any());
+        // The grid's bar: the search field's text box has bars of its own.
+        var viewer = VaultFixture.GridScroller(host.Content);
         var bar = host.Content.GetVisualDescendants().OfType<ScrollBar>()
             .Single(control => control.Orientation == Avalonia.Layout.Orientation.Vertical && control.GetVisualAncestors().OfType<DerethSlotGrid>().Any());
         var thumb = bar.GetVisualDescendants().OfType<Thumb>().Single();

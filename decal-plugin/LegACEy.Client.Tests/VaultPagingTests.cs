@@ -1,12 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
-using LegACEy.Client.GameArt;
-using LegACEy.Client.PanelHost;
 using LegACEy.Client.Themes;
 using LegACEy.Plugin.Vault;
 using Xunit;
@@ -20,6 +17,8 @@ public sealed class VaultPagingTests
     public void Arrows_page_the_vault_a_hundred_at_a_time_and_are_disabled_at_either_end() => RenderThread.Run(() =>
     {
         using var vault = new PagedVault(317);
+        var loads = 0;
+        vault.Client.PageLoaded += (_, _) => loads++;
         Assert.Equal("1 – 100 of 317", vault.PagerText);
         Assert.False(vault.Previous.IsEnabled);
         Assert.True(vault.Next.IsEnabled);
@@ -30,6 +29,7 @@ public sealed class VaultPagingTests
         vault.Click(vault.Next);
         Assert.Equal(("", 100, 100), vault.Server.ListRequests[^1]);
         Assert.Equal("101 – 200 of 317", vault.PagerText);
+        Assert.Equal(1, loads);
 
         vault.Click(vault.Next);
         vault.Click(vault.Next);
@@ -71,6 +71,23 @@ public sealed class VaultPagingTests
     });
 
     [Fact]
+    public void A_burst_of_typing_asks_the_server_once_for_the_text_it_settled_on() => RenderThread.Run(() =>
+    {
+        using var vault = new PagedVault(317);
+        var requests = vault.Server.ListRequests.Count;
+
+        vault.SearchBox.Text = "r";
+        vault.SearchBox.Text = "ri";
+        vault.SearchBox.Text = "RING";
+        vault.Settle();
+
+        Assert.Equal(requests + 1, vault.Server.ListRequests.Count);
+        Assert.Equal(("RING", 0, 100), vault.Server.ListRequests[^1]);
+        Assert.Equal("1 – 100 of 158", vault.PagerText);
+        Assert.Null(vault.Host.LastError);
+    });
+
+    [Fact]
     public void A_push_refetches_the_page_on_screen() => RenderThread.Run(() =>
     {
         using var vault = new PagedVault(317);
@@ -107,25 +124,64 @@ public sealed class VaultPagingTests
     });
 
     [Fact]
+    public void A_refused_refetch_keeps_the_page_on_screen_and_the_window_live() => RenderThread.Run(() =>
+    {
+        using var vault = new PagedVault(317);
+        vault.Click(vault.Next); // the second page is on screen
+        var shown = vault.Client.Snapshot!.Items[0].Guid;
+        var loads = 0;
+        vault.Client.PageLoaded += (_, _) => loads++;
+
+        vault.Server.ListStatus = ChannelStatus.RateLimited;
+        vault.Server.Push(VaultProtocol.Changed, VaultProtocol.WriteChanged(true, "Withdrawn", "Your item is back in your pack.", 0));
+        vault.Settle();
+
+        Assert.Equal(VaultConnection.Live, vault.Client.Connection);
+        Assert.Equal(shown, vault.Client.Snapshot!.Items[0].Guid);
+        Assert.Equal("Too many requests; try again shortly.", vault.Client.Notice);
+        Assert.Equal(0, loads); // the page on screen wasn't replaced
+        Assert.Equal("101 – 200 of 317", vault.PagerText);
+
+        // The arrows act on the page on screen, so the next click goes back from it.
+        vault.Server.ListStatus = null;
+        vault.Click(vault.Previous);
+        Assert.Equal(("", 0, 100), vault.Server.ListRequests[^1]);
+        Assert.Equal("1 – 100 of 317", vault.PagerText);
+        Assert.Null(vault.Host.LastError);
+    });
+
+    [Fact]
     public void Moving_an_item_within_a_page_places_it_in_the_whole_vault_order() => RenderThread.Run(() =>
     {
         using var vault = new PagedVault(317);
         vault.Click(vault.Next); // the page holds the items at 100 to 199
         var moving = vault.Client.Snapshot!.Items[0];
+        var loads = 0;
+        vault.Client.PageLoaded += (_, _) => loads++;
 
         vault.DragCell(0, 3);
+        Assert.Equal(0, loads); // the swap on screen isn't a page loaded: the server's reply is
         vault.Settle();
+        Assert.Equal(1, loads);
         Assert.Equal(moving.Guid, vault.Server.Items[103].Guid);
         Assert.Equal(moving.Guid, vault.Client.Snapshot.Items[3].Guid);
 
-        // A search filters the page, so its cells have no place in the whole order: the move is refused.
+        // A search filters the page, so its cells have no place in the whole order: the drag says so, and the move is refused.
         vault.SearchBox.Text = "ring";
         vault.Settle();
         var moves = vault.Server.Received.Count(action => action == VaultProtocol.Move);
-        vault.DragCell(0, 2);
+        var start = vault.Center(vault.Cells[0]);
+        var target = vault.Center(vault.Cells[2]);
+        vault.Host.PointerDown(start.X, start.Y);
+        vault.Host.PointerMove(start.X + 20, start.Y);
+        vault.Host.PointerMove(target.X, target.Y);
+        vault.Host.Tick();
+        Assert.Contains(VaultClient.SearchBlocksMove, vault.Texts());
+        Assert.DoesNotContain(vault.Texts(), text => text.StartsWith("Release to move", StringComparison.Ordinal));
+        vault.Host.PointerUp(target.X, target.Y);
         vault.Settle();
         Assert.Equal(moves, vault.Server.Received.Count(action => action == VaultProtocol.Move));
-        Assert.Contains("Clear the search to rearrange items.", vault.Texts());
+        Assert.Contains(VaultClient.SearchBlocksMove, vault.Texts());
         Assert.Null(vault.Host.LastError);
     });
 
@@ -145,40 +201,16 @@ public sealed class VaultPagingTests
         Assert.Null(vault.Host.LastError);
     });
 
-    /// <summary>A real Vault window over the fake server, with the channel's clock under the test's control.</summary>
-    private sealed class PagedVault : IDisposable
+    /// <summary>A Vault window over <paramref name="count"/> items, half of them rings.</summary>
+    private sealed class PagedVault : VaultFixture
     {
-        private DateTime _now = new(2026, 10, 8, 12, 0, 0, DateTimeKind.Utc);
-        private readonly VaultShellPanel _panel;
-        private readonly ServerChannelClient _channel;
-
-        public PagedVault(int count)
-        {
-            Server = new FakeVaultServer(() => _now, Vault(count)) { Latency = TimeSpan.FromMilliseconds(30) };
-            _channel = new ServerChannelClient(Server, () => _now);
-            Server.Deliver = _channel.Receive;
-            Client = new VaultClient(_channel);
-            VaultShellPanel? panel = null;
-            Host = AvaloniaPanel.Create(() => new VaultShellWindow(panel = new VaultShellPanel(new NoArt(), Client, Drag)),
-                VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight);
-            _panel = panel!;
-            Settle();
-            Assert.Equal(VaultConnection.Live, Client.Connection);
-        }
-
-        public FakeVaultServer Server { get; }
-        public VaultClient Client { get; }
-        public FakeItemDragHost Drag { get; } = new();
-        public AvaloniaPanel Host { get; }
-        private VaultShellWindow Window => (VaultShellWindow)Host.Content;
+        public PagedVault(int count) : base(Vault(count)) { }
 
         /// <summary>The arrows, previous first.</summary>
         public Button Previous => Window.GetVisualDescendants().OfType<DerethPagerButton>().ElementAt(0);
         public Button Next => Window.GetVisualDescendants().OfType<DerethPagerButton>().ElementAt(1);
         public TextBox SearchBox => Window.GetVisualDescendants().OfType<TextBox>().Single();
         public string PagerText => Texts().Single(text => text.Contains('–'));
-
-        public string[] Texts() => Host.Content.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text ?? string.Empty).ToArray();
 
         public void Click(Button button)
         {
@@ -197,34 +229,12 @@ public sealed class VaultPagingTests
         /// <summary>Drags the cell at <paramref name="from"/> onto the cell at <paramref name="to"/> of the page on screen.</summary>
         public void DragCell(int from, int to)
         {
-            var cells = Host.Content.GetVisualDescendants().OfType<WrapPanel>().Single().Children.OfType<Control>().ToArray();
-            var start = Center(cells[from]);
-            var target = Center(cells[to]);
+            var start = Center(Cells[from]);
+            var target = Center(Cells[to]);
             Host.PointerDown(start.X, start.Y);
             Host.PointerMove(start.X + 20, start.Y);
             Host.PointerMove(target.X, target.Y);
             Host.PointerUp(target.X, target.Y);
-        }
-
-        /// <summary>Lets every request, reply and push that is due happen: a few round trips of the channel.</summary>
-        public void Settle()
-        {
-            for (var step = 0; step < 4; step++)
-            {
-                _now += TimeSpan.FromMilliseconds(30);
-                Server.Pump();
-                _channel.Tick();
-                Host.Tick();
-            }
-        }
-
-        private Point Center(Control control) =>
-            control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), Host.Content)!.Value;
-
-        public void Dispose()
-        {
-            _panel.Dispose();
-            Host.Dispose();
         }
     }
 
@@ -237,10 +247,5 @@ public sealed class VaultPagingTests
             var name = number % 2 == 0 ? "Gold Ring" : "Steel Sword";
             yield return new VaultItemView(0x80100000u + (uint)number, name, 0x2, 1, 120, "held", "Arwic Wanderer", deposited, 0x060011CF, 0, 0x06000FC7, 0, 0, 0);
         }
-    }
-
-    private sealed class NoArt : IGameArtSource
-    {
-        public GameImage? ReadImage(uint id) => null;
     }
 }

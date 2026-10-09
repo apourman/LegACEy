@@ -236,7 +236,11 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
                 : (_dropCell >= 0 ? $"Release to deposit {name}" : $"Drop {name} on a vault cell to deposit it", false);
         }
         if (_dragItem != null && client.Connection == VaultConnection.Live)
-            return (_dropCell >= 0 ? $"Release to move {_dragItem.Name} here" : $"Drop {_dragItem.Name} on your inventory to withdraw it", false);
+        {
+            if (_dropCell < 0) return ($"Drop {_dragItem.Name} on your inventory to withdraw it", false);
+            // A filtered page can't be rearranged, so the move would be refused: say so instead of offering it.
+            return client.Search.Length > 0 ? (VaultClient.SearchBlocksMove, false) : ($"Release to move {_dragItem.Name} here", false);
+        }
         return (client.Notice, false);
     }
 

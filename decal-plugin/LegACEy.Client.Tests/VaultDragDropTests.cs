@@ -5,7 +5,6 @@ using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.PanelHost;
-using LegACEy.Client.Themes;
 using LegACEy.Plugin.Vault;
 
 namespace LegACEy.Client.Tests;
@@ -159,8 +158,7 @@ public sealed class VaultDragDropTests
     public void Drop_frame_on_the_top_row_is_fully_visible_without_scrolling(int heightLost) => RenderThread.Run(() =>
     {
         using var vault = new LiveVault(VaultShellPanel.WindowHeight - heightLost);
-        // The grid's viewer: the search field's text box has a viewer of its own.
-        var scroller = vault.Host.Content.GetVisualDescendants().OfType<ScrollViewer>().Single(v => v.GetVisualAncestors().OfType<DerethSlotGrid>().Any());
+        var scroller = VaultFixture.GridScroller(vault.Host.Content);
         Assert.True(scroller.Extent.Height <= scroller.Viewport.Height + 0.5, $"extent {scroller.Extent.Height} > viewport {scroller.Viewport.Height}");
         Assert.Equal(0, scroller.Offset.Y);
 
@@ -226,58 +224,12 @@ public sealed class VaultDragDropTests
         }
     }
 
-    private sealed class LiveVault : IDisposable
+    /// <summary>The Vault window over the fake server with its sample items: the cells, the drop indicators and the drag host.</summary>
+    private sealed class LiveVault : VaultFixture
     {
-        private DateTime _now = new(2026, 10, 5, 12, 0, 0, DateTimeKind.Utc);
-        private readonly VaultShellPanel _panel;
-        private readonly ServerChannelClient _channel;
+        public LiveVault(int height = VaultShellPanel.WindowHeight, IItemDragHost? dragHost = null) : base(null, height, dragHost) { }
 
-        public LiveVault(int height = VaultShellPanel.WindowHeight, IItemDragHost? dragHost = null)
-        {
-            Server = new FakeVaultServer(() => _now) { Latency = TimeSpan.FromMilliseconds(30) };
-            _channel = new ServerChannelClient(Server, () => _now);
-            Server.Deliver = _channel.Receive;
-            Client = new VaultClient(_channel);
-            VaultShellPanel? panel = null;
-            Host = AvaloniaPanel.Create(() => new VaultShellWindow(panel = new VaultShellPanel(new NoArt(), Client, dragHost ?? Drag)),
-                VaultShellPanel.WindowWidth, height);
-            _panel = panel!;
-            Step(TimeSpan.FromMilliseconds(30));
-            Step(TimeSpan.FromMilliseconds(30));
-            Assert.Equal(VaultConnection.Live, Client.Connection);
-        }
-
-        public FakeVaultServer Server { get; }
-        public VaultClient Client { get; }
-        public FakeItemDragHost Drag { get; } = new();
-        public AvaloniaPanel Host { get; }
-        public VaultShellWindow Window => (VaultShellWindow)Host.Content;
-
-        public Control[] Cells => Host.Content.GetVisualDescendants().OfType<WrapPanel>().Single().Children.OfType<Control>().ToArray();
         public Control SlotOf(Control cell) => cell;
         public Border[] VisibleIndicators() => Cells.SelectMany(cell => ((Grid)cell).Children.OfType<Border>()).Where(border => border.IsVisible).ToArray();
-        public string[] Texts() => Host.Content.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text ?? string.Empty).ToArray();
-
-        public Point Center(Control control) =>
-            control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), Host.Content)!.Value;
-
-        public void Step(TimeSpan time)
-        {
-            _now += time;
-            Server.Pump();
-            _channel.Tick();
-            Host.Tick();
-        }
-
-        public void Dispose()
-        {
-            _panel.Dispose();
-            Host.Dispose();
-        }
-    }
-
-    private sealed class NoArt : IGameArtSource
-    {
-        public GameImage? ReadImage(uint id) => null;
     }
 }

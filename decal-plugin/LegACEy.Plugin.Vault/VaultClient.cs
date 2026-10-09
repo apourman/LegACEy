@@ -68,7 +68,7 @@ public static class VaultProtocol
     public const string Check = "vault.check";
     public const string Move = "vault.move";
 
-    /// <summary>The items the window asks for at a time; the server's page size.</summary>
+    /// <summary>The items the window asks for at a time. Must match ACE.Server.Market.VaultChannelActions.PageSize.</summary>
     public const int PageSize = 100;
 
     /// <summary>A page request: the search text (empty for none), the offset of the page's first match and the count.</summary>
@@ -179,6 +179,8 @@ public sealed class VaultClient : IDisposable
     public VaultConnection Connection { get; private set; } = VaultConnection.Connecting;
     /// <summary>The one page the window holds: its items and the counts around them.</summary>
     public VaultSnapshot? Snapshot { get; private set; }
+    /// <summary>Shown instead of a move while a search filters the page on screen.</summary>
+    public const string SearchBlocksMove = "Clear the search to rearrange items.";
     /// <summary>The page on screen starts at this match of the search; it is the position in the whole Vault order too.</summary>
     public int Offset { get; private set; }
     /// <summary>The trimmed search text the page on screen was asked with; empty for the whole Vault.</summary>
@@ -190,6 +192,9 @@ public sealed class VaultClient : IDisposable
     private string _requestedSearch = string.Empty;
     /// <summary>Numbers the page requests, so that only the newest one's reply is shown.</summary>
     private int _pageRequest;
+    private static readonly TimeSpan SearchSettleDelay = TimeSpan.FromMilliseconds(250);
+    /// <summary>The search text waiting for typing to settle; each change starts the wait over.</summary>
+    private IDisposable? _searchSettle;
     /// <summary>The latest thing to tell the player: a transfer result, refusal or error.</summary>
     public string Notice { get; private set; } = string.Empty;
     public TimeSpan? LastRoundTrip { get; private set; }
@@ -199,6 +204,8 @@ public sealed class VaultClient : IDisposable
     public event EventHandler? Changed;
     /// <summary>A deposit check finished; read it with <see cref="DepositCheck"/>.</summary>
     public event EventHandler? DepositCheckChanged;
+    /// <summary>A list reply replaced the page on screen. Not raised by a move's swap or by a notice, so a selection can be cleared on it.</summary>
+    public event EventHandler? PageLoaded;
     private readonly Dictionary<uint, (bool Ok, string Message)> _checks = new();
 
     /// <summary>Greets the server, then loads the Vault.</summary>
@@ -231,11 +238,19 @@ public sealed class VaultClient : IDisposable
         if (_requestedOffset > 0) RequestPage(Math.Max(0, _requestedOffset - VaultProtocol.PageSize), _requestedSearch);
     }
 
-    /// <summary>Filters the Vault by item name, from its first match. Blank text shows the whole Vault.</summary>
+    /// <summary>
+    /// Filters the Vault by item name, from its first match. Blank text shows the whole Vault. The text is asked for once typing has
+    /// settled for a moment, so a burst of keystrokes costs one request, not one each.
+    /// </summary>
     public void SetSearch(string text)
     {
         var search = text.Trim();
-        if (search != _requestedSearch) RequestPage(0, search);
+        _searchSettle?.Dispose();
+        _searchSettle = _channel.Schedule(SearchSettleDelay, () =>
+        {
+            _searchSettle = null;
+            if (search != _requestedSearch) RequestPage(0, search);
+        });
     }
 
     private void RequestPage(int offset, string search)
@@ -246,7 +261,15 @@ public sealed class VaultClient : IDisposable
         Send(VaultProtocol.List, VaultProtocol.ListRequest(search, offset, VaultProtocol.PageSize), reply =>
         {
             if (request != _pageRequest) return;
-            if (!reply.Ok) { Set(VaultConnection.Failed, reply.Message); return; }
+            if (!reply.Ok)
+            {
+                // The page on screen stays, and the arrows and search act on it again. Only the first load can fail the window.
+                _requestedOffset = Offset;
+                _requestedSearch = Search;
+                if (Snapshot == null) Set(VaultConnection.Failed, reply.Message);
+                else Set(Connection, reply.Status == ChannelStatus.RateLimited ? "Too many requests; try again shortly." : reply.Message);
+                return;
+            }
             var page = VaultProtocol.ReadList(reply.Body);
             // The page is past the end because items were taken out: the last page is the one to show.
             if (page.Available && offset > 0 && offset >= page.Total)
@@ -258,6 +281,7 @@ public sealed class VaultClient : IDisposable
             Offset = offset;
             Search = search;
             Snapshot = page;
+            PageLoaded?.Invoke(this, EventArgs.Empty);
             Set(page.Available ? VaultConnection.Live : VaultConnection.Unavailable,
                 page.Available ? Notice : "The Vault is not available on this server.");
         });
@@ -297,7 +321,7 @@ public sealed class VaultClient : IDisposable
         if (Snapshot is not { Available: true } snapshot) return;
         if (Search.Length > 0)
         {
-            Tell("Clear the search to rearrange items.");
+            Tell(SearchBlocksMove);
             return;
         }
         var items = new List<VaultItemView>(snapshot.Items);
@@ -374,9 +398,11 @@ public sealed class VaultClient : IDisposable
         if (_disposed) return;
         _disposed = true;
         _changed.Dispose();
+        _searchSettle?.Dispose();
         foreach (var request in _requests.ToArray()) request.Dispose();
         _requests.Clear();
         Changed = null;
         DepositCheckChanged = null;
+        PageLoaded = null;
     }
 }
