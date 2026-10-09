@@ -129,6 +129,22 @@ public sealed class VaultPagingTests
         Assert.Null(vault.Host.LastError);
     });
 
+    [Fact]
+    public void A_move_made_while_the_next_page_loads_lands_on_the_page_on_screen() => RenderThread.Run(() =>
+    {
+        using var vault = new PagedVault(317);
+        vault.Click(vault.Next); // the second page is on screen
+        var moving = vault.Client.Snapshot!.Items[0];
+
+        vault.Press(vault.Next); // the third page is asked for, and its reply hasn't come
+        vault.DragCell(0, 3);
+        vault.Settle();
+
+        // The cell is the second page's, so the item goes to 100 + 3 in the Vault's order, not to the third page's.
+        Assert.Equal(moving.Guid, vault.Server.Items[103].Guid);
+        Assert.Null(vault.Host.LastError);
+    });
+
     /// <summary>A real Vault window over the fake server, with the channel's clock under the test's control.</summary>
     private sealed class PagedVault : IDisposable
     {
@@ -166,10 +182,16 @@ public sealed class VaultPagingTests
 
         public void Click(Button button)
         {
+            Press(button);
+            Settle();
+        }
+
+        /// <summary>Clicks the button without letting its request's reply arrive.</summary>
+        public void Press(Button button)
+        {
             var point = Center(button);
             Host.PointerDown(point.X, point.Y);
             Host.PointerUp(point.X, point.Y);
-            Settle();
         }
 
         /// <summary>Drags the cell at <paramref name="from"/> onto the cell at <paramref name="to"/> of the page on screen.</summary>

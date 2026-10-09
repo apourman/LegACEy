@@ -181,10 +181,13 @@ public sealed class VaultClient : IDisposable
     public VaultSnapshot? Snapshot { get; private set; }
     /// <summary>The page on screen starts at this match of the search; it is the position in the whole Vault order too.</summary>
     public int Offset { get; private set; }
-    /// <summary>The trimmed search text the page was asked with; empty for the whole Vault.</summary>
+    /// <summary>The trimmed search text the page on screen was asked with; empty for the whole Vault.</summary>
     public string Search { get; private set; } = string.Empty;
     public bool CanPageBack => Offset > 0;
     public bool CanPageForward => Snapshot is { Available: true } page && Offset + VaultProtocol.PageSize < page.Total;
+    // The page asked for last. It can differ from the page on screen until its reply arrives.
+    private int _requestedOffset;
+    private string _requestedSearch = string.Empty;
     /// <summary>Numbers the page requests, so that only the newest one's reply is shown.</summary>
     private int _pageRequest;
     /// <summary>The latest thing to tell the player: a transfer result, refusal or error.</summary>
@@ -215,29 +218,30 @@ public sealed class VaultClient : IDisposable
     }
 
     /// <summary>Loads the page on screen again: after a push, or after a move.</summary>
-    public void Refresh() => RequestPage(Offset, Search);
+    public void Refresh() => RequestPage(_requestedOffset, _requestedSearch);
 
     public void NextPage()
     {
-        if (CanPageForward) RequestPage(Offset + VaultProtocol.PageSize, Search);
+        if (Snapshot is { Available: true } page && _requestedOffset + VaultProtocol.PageSize < page.Total)
+            RequestPage(_requestedOffset + VaultProtocol.PageSize, _requestedSearch);
     }
 
     public void PreviousPage()
     {
-        if (CanPageBack) RequestPage(Math.Max(0, Offset - VaultProtocol.PageSize), Search);
+        if (_requestedOffset > 0) RequestPage(Math.Max(0, _requestedOffset - VaultProtocol.PageSize), _requestedSearch);
     }
 
     /// <summary>Filters the Vault by item name, from its first match. Blank text shows the whole Vault.</summary>
     public void SetSearch(string text)
     {
-        var search = (text ?? string.Empty).Trim();
-        if (search != Search) RequestPage(0, search);
+        var search = text.Trim();
+        if (search != _requestedSearch) RequestPage(0, search);
     }
 
     private void RequestPage(int offset, string search)
     {
-        Offset = offset;
-        Search = search;
+        _requestedOffset = offset;
+        _requestedSearch = search;
         var request = ++_pageRequest;
         Send(VaultProtocol.List, VaultProtocol.ListRequest(search, offset, VaultProtocol.PageSize), reply =>
         {
@@ -245,11 +249,14 @@ public sealed class VaultClient : IDisposable
             if (!reply.Ok) { Set(VaultConnection.Failed, reply.Message); return; }
             var page = VaultProtocol.ReadList(reply.Body);
             // The page is past the end because items were taken out: the last page is the one to show.
-            if (page.Available && Offset > 0 && Offset >= page.Total)
+            if (page.Available && offset > 0 && offset >= page.Total)
             {
-                RequestPage(LastPageOffset(page.Total), Search);
+                RequestPage(LastPageOffset(page.Total), search);
                 return;
             }
+            // The page on screen changes only with its reply, so a move made meanwhile still lands on the page the player sees.
+            Offset = offset;
+            Search = search;
             Snapshot = page;
             Set(page.Available ? VaultConnection.Live : VaultConnection.Unavailable,
                 page.Available ? Notice : "The Vault is not available on this server.");
