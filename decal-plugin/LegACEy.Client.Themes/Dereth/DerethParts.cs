@@ -3,7 +3,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Shapes;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
 using Avalonia.Layout;
@@ -65,7 +64,7 @@ public sealed class DerethFrame : Decorator
     {
         _kind = art;
         Show(DerethState.Normal);
-        RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.None);
+        RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.HighQuality);
     }
 
     /// <summary>
@@ -133,16 +132,21 @@ public sealed class DerethFrame : Decorator
 /// <summary>A horizontal strip: a left cap, a stretched middle and a right cap, drawn from three sheet regions.</summary>
 public class DerethThreeSlice : Decorator
 {
-    private readonly Rect _left;
-    private readonly Rect _middle;
-    private readonly Rect _right;
+    private Rect _left;
+    private Rect _middle;
+    private Rect _right;
 
     internal DerethThreeSlice(Rect left, Rect middle, Rect right)
     {
-        _left = left;
-        _middle = middle;
-        _right = right;
-        RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.None);
+        Show(left, middle, right);
+        RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.HighQuality);
+    }
+
+    /// <summary>Draws the strip from other regions, such as a state's art.</summary>
+    internal void Show(Rect left, Rect middle, Rect right)
+    {
+        (_left, _middle, _right) = (left, middle, right);
+        InvalidateVisual();
     }
 
     public override void Render(DrawingContext context)
@@ -166,7 +170,8 @@ public sealed class DerethRule : DerethThreeSlice
 }
 
 /// <summary>
-/// The search field: the sheet's field around a text box that shows its placeholder while empty. <see cref="Text"/> is what the
+/// The search field: the sheet's field around a text box that shows its placeholder while empty. It brightens on hover and
+/// turns teal while focused. <see cref="Text"/> is what the
 /// player has typed, and <see cref="TextChanged"/> fires on every edit. It knows nothing of what the text filters.
 /// </summary>
 public sealed class DerethSearchField : DerethThreeSlice
@@ -174,7 +179,7 @@ public sealed class DerethSearchField : DerethThreeSlice
     private readonly TextBox _input;
 
     public DerethSearchField(string placeholder)
-        : base(DerethSheet.SearchLeft, DerethSheet.SearchMiddle, DerethSheet.SearchRight)
+        : base(DerethSheet.Search(DerethFieldState.Normal).Left, DerethSheet.Search(DerethFieldState.Normal).Middle, DerethSheet.Search(DerethFieldState.Normal).Right)
     {
         Height = 25;
         // The box is bare: the sheet's field is its frame, so the box's own border, fill and minimum height are cleared.
@@ -186,7 +191,16 @@ public sealed class DerethSearchField : DerethThreeSlice
             VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(36, 0, 6, 0)
         };
         _input.TextChanged += (_, _) => TextChanged?.Invoke(this, EventArgs.Empty);
+        _input.GotFocus += (_, _) => ShowState();
+        _input.LostFocus += (_, _) => ShowState();
+        PropertyChanged += (_, e) => { if (e.Property == IsPointerOverProperty) ShowState(); };
         Child = _input;
+    }
+
+    private void ShowState()
+    {
+        var art = DerethSheet.Search(_input.IsFocused ? DerethFieldState.Focus : IsPointerOver ? DerethFieldState.Hover : DerethFieldState.Normal);
+        Show(art.Left, art.Middle, art.Right);
     }
 
     public string Text => _input.Text ?? string.Empty;
@@ -195,26 +209,35 @@ public sealed class DerethSearchField : DerethThreeSlice
     public event EventHandler? TextChanged;
 }
 
-/// <summary>The sheet's paging arrows.</summary>
-public enum DerethSpriteArt { PagerPrevious, PagerNext }
+/// <summary>The sheet's whole pictures: the paging arrows and the close X.</summary>
+public enum DerethSpriteArt { PagerPrevious, PagerNext, Close }
 
-/// <summary>A whole sheet region drawn at the control's size. Only the pager arrows use it.</summary>
+/// <summary>A whole sheet region drawn at the control's size, in a state.</summary>
 internal sealed class DerethSprite : Control
 {
-    private readonly Rect _source;
+    private readonly DerethSpriteArt _art;
+    private Rect _source;
 
     public DerethSprite(DerethSpriteArt art)
     {
-        _source = art == DerethSpriteArt.PagerNext ? DerethSheet.ArrowNext : DerethSheet.ArrowPrevious;
-        RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.None);
+        _art = art;
+        _source = DerethSheet.Sprite(art, DerethState.Normal);
+        RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.HighQuality);
     }
+
+    /// <summary>Follows a button's state: normal, hover or pressed.</summary>
+    public void Follow(Button button) =>
+        button.Classes.CollectionChanged += (_, _) =>
+        {
+            _source = DerethSheet.Sprite(_art, DerethButton.StateOf(button));
+            InvalidateVisual();
+        };
 
     public override void Render(DrawingContext context) => DerethSheet.Draw(context, _source, new Rect(Bounds.Size));
 }
 
 /// <summary>
-/// A paging arrow: the sheet's arrow as a button, dimmed while it is disabled. The sheet has no hover or pressed arrow,
-/// so every state draws the same art.
+/// A paging arrow: the sheet's arrow as a button, in its hover and pressed art, dimmed while it is disabled.
 /// </summary>
 public sealed class DerethPagerButton : Button
 {
@@ -231,7 +254,12 @@ public sealed class DerethPagerButton : Button
         Background = Brushes.Transparent;
         BorderThickness = new Thickness(0);
         Padding = new Thickness(0);
-        Template = new FuncControlTemplate<Button>((_, _) => new DerethSprite(art));
+        Template = new FuncControlTemplate<Button>((_, _) =>
+        {
+            var sprite = new DerethSprite(art);
+            sprite.Follow(this);
+            return sprite;
+        });
     }
 }
 
@@ -263,14 +291,14 @@ public sealed class DerethButton : Button
             };
             scope.Register(presenter.Name, presenter);
             _frame = new DerethFrame(DerethFrameArt.Button) { Child = presenter };
-            _frame.Show(CurrentState());
+            _frame.Show(StateOf(this));
             return _frame;
         });
-        Classes.CollectionChanged += (_, _) => _frame?.Show(CurrentState());
+        Classes.CollectionChanged += (_, _) => _frame?.Show(StateOf(this));
     }
 
-    private DerethState CurrentState() =>
-        Classes.Contains(":pressed") ? DerethState.Pressed : Classes.Contains(":pointerover") ? DerethState.Hover : DerethState.Normal;
+    internal static DerethState StateOf(Button button) =>
+        button.Classes.Contains(":pressed") ? DerethState.Pressed : button.Classes.Contains(":pointerover") ? DerethState.Hover : DerethState.Normal;
 }
 
 /// <summary>A window with the Dereth frame, a header of icon, title and close box, the title rule and content.</summary>
@@ -292,15 +320,9 @@ public sealed class DerethWindow : UserControl
         };
         Grid.SetColumn(name, 1);
         header.Children.Add(name);
-        var close = new DerethButton
-        {
-            Width = 24, Height = 24, VerticalAlignment = VerticalAlignment.Center,
-            Content = new Path
-            {
-                Data = Geometry.Parse("M 0,0 L 9,9 M 9,0 L 0,9"), Stroke = DerethPalette.GoldBrush, StrokeThickness = 1.6,
-                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
-            }
-        };
+        var glyph = new DerethSprite(DerethSpriteArt.Close) { Width = 12, Height = 12 };
+        var close = new DerethButton { Width = 24, Height = 24, VerticalAlignment = VerticalAlignment.Center, Content = glyph };
+        glyph.Follow(close);
         close.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
         Grid.SetColumn(close, 2);
         header.Children.Add(close);
