@@ -35,7 +35,7 @@ namespace LegACEy.Client.PanelHost;
 public sealed class AvaloniaPanel : IDisposable
 {
     private static bool _runtimeInitialized;
-    private Window _window;
+    private readonly Window _window;
     private readonly int _ownerThreadId;
     private PanelFrame _frame;
     private bool _disposed;
@@ -43,7 +43,7 @@ public sealed class AvaloniaPanel : IDisposable
     private bool _hasInvalidation;
     private bool _renderingSuspended;
     internal int FrameCaptureCount { get; private set; }
-    private RendererInvalidationObserver _rendererObserver;
+    private readonly RendererInvalidationObserver _rendererObserver;
     private readonly HashSet<AvaloniaObject> _renderResources = new();
     private readonly HashSet<INotifyCollectionChanged> _renderCollections = new();
     private IStyle? _themeStyles;
@@ -51,7 +51,7 @@ public sealed class AvaloniaPanel : IDisposable
     // Use one mouse device per window so implicit capture and click state survive
     // successive events. The pinned headless helper renders around every event;
     // raw delivery leaves dispatcher/render work to Tick instead.
-    private MouseDevice _mouseDevice = new();
+    private readonly MouseDevice _mouseDevice = new();
     private RawInputModifiers _mouseButtons;
     private readonly Stopwatch _inputClock = Stopwatch.StartNew();
     private Point _pointerPosition = new(-1, -1);
@@ -273,10 +273,14 @@ public sealed class AvaloniaPanel : IDisposable
         _forceFullFrame = true;
         _window.Width = width;
         _window.Height = height;
-        // Lay out and render the new size now, so the next capture is the new size and not the last frame of the old one.
-        Dispatcher.UIThread.RunJobs();
-        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
         _frame = new PanelFrame(width, height);
+        // Lay out and render the new size now, so the next capture is the new size and not the last frame of the old one.
+        try
+        {
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+        }
+        catch (Exception exception) { ReportError(exception); }
     }
 
     /// <summary>Tell the host that the backing texture was lost and needs a complete upload.</summary>
