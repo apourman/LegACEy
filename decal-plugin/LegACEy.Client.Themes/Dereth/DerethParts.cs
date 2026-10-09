@@ -40,17 +40,39 @@ public static class DerethPalette
 /// <summary>Which sheet art a <see cref="DerethFrame"/> is drawn with.</summary>
 public enum DerethFrameArt { Window, Slot, Button }
 
+/// <summary>A corner of a window frame. None means the pointer is over no corner.</summary>
+public enum DerethCorner { None, TopLeft, TopRight, BottomLeft, BottomRight }
+
 /// <summary>A frame of corner and edge pieces, mirrored to all four sides, with its child inside the edges.</summary>
 public sealed class DerethFrame : Decorator
 {
+    private static readonly IBrush GripFill = DerethPalette.Brush(Color.FromArgb(0x50, DerethPalette.Cream.R, DerethPalette.Cream.G, DerethPalette.Cream.B));
+    private static readonly IPen GripPen = new Pen(DerethPalette.CreamBrush, 1);
+
     private readonly DerethFrameArt _kind;
     private NineSlice _art;
+    private DerethCorner _hoveredCorner;
 
     public DerethFrame(DerethFrameArt art)
     {
         _kind = art;
         Show(DerethState.Normal);
         RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.None);
+    }
+
+    /// <summary>
+    /// The corner the pointer is over. The host sets it on a resizable window's frame, which then brightens that corner
+    /// and shows grip ticks. Only a window frame draws it; slot and button frames ignore it.
+    /// </summary>
+    public DerethCorner HoveredCorner
+    {
+        get => _hoveredCorner;
+        set
+        {
+            if (_hoveredCorner == value) return;
+            _hoveredCorner = value;
+            InvalidateVisual();
+        }
     }
 
     /// <summary>Draws the frame in a state's art; a state without its own region draws the normal art.</summary>
@@ -78,6 +100,21 @@ public sealed class DerethFrame : Decorator
         DerethSheet.Draw(context, _art.CornerSource, new Rect(width - corner, 0, corner, corner), flipX: true);
         DerethSheet.Draw(context, _art.CornerSource, new Rect(0, height - corner, corner, corner), flipY: true);
         DerethSheet.Draw(context, _art.CornerSource, new Rect(width - corner, height - corner, corner, corner), flipX: true, flipY: true);
+        if (_kind == DerethFrameArt.Window && _hoveredCorner != DerethCorner.None) DrawGrip(context, width, height, corner);
+    }
+
+    /// <summary>The hovered corner brightens and shows three grip ticks running diagonally in from the window's outer corner.</summary>
+    private void DrawGrip(DrawingContext context, double width, double height, double corner)
+    {
+        var right = _hoveredCorner is DerethCorner.TopRight or DerethCorner.BottomRight;
+        var bottom = _hoveredCorner is DerethCorner.BottomLeft or DerethCorner.BottomRight;
+        context.FillRectangle(GripFill, new Rect(right ? width - corner : 0, bottom ? height - corner : 0, corner, corner));
+        var outerX = right ? width : 0;
+        var outerY = bottom ? height : 0;
+        var dx = right ? -1 : 1;
+        var dy = bottom ? -1 : 1;
+        for (var reach = 7; reach <= 13; reach += 3)
+            context.DrawLine(GripPen, new Point(outerX + dx * reach, outerY + dy * 2), new Point(outerX + dx * 2, outerY + dy * reach));
     }
 }
 

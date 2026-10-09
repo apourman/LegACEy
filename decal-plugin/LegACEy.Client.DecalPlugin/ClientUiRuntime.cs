@@ -37,6 +37,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ScreenToClient(IntPtr window, ref NativePoint point);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr LoadCursor(IntPtr instance, IntPtr cursorName);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetCursor(IntPtr cursor);
+
     private const string MenuSlot = "LegACEy";
     private const string MenuWindowId = "plugin-menu";
     private const uint MenuIcon = 0x06004D20;
@@ -54,6 +60,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private ScreenSurface? _barSurface;
     private RetailSurfaceRenderer? _barRenderer;
     private WindowManager? _windows;
+    // The window whose frame shows a hovered corner, and the corner it shows.
+    private string? _cornerWindowId;
+    private DerethCorner _cornerApplied;
     private PostUiDrawHook? _postUiDrawHook;
     private bool _windowsEnabled;
     private bool _firstPostUiWindow = true;
@@ -786,7 +795,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         {
             var window = _windows!.Open(definition, requestedLocation);
             opened = true;
-            surface.Location = window.Location;
+            FitSurface(surface, window);
             surface.Visible = true;
             surface.Panel.ApplyTheme(definition.Theme ?? _clientUi?.Theme ?? CurrentTheme());
             _featureSurfaces.Add(definition.Id, surface);
@@ -982,10 +991,59 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                     _hovered = null;
                     break;
             }
+            if (e.Msg == InputRouterService.WmMouseMove)
+                UpdateWindowHover(route.SurfaceId, _pointer);
             if (route.Eat)
                 e.Eat = true;
         });
     }
+
+    /// <summary>
+    /// Shows the resize cursor over a resizable window's edge or corner, and brightens that corner on the window's frame.
+    /// The cursor is set only over an edge, so elsewhere the cursor the game set stands.
+    /// </summary>
+    private void UpdateWindowHover(string? surfaceId, Point point)
+    {
+        if (_windows == null) return;
+        var hover = surfaceId == "bar" ? default : _windows.HoverAt(point);
+        var corner = CornerOf(hover.Edges);
+        if (hover.WindowId != _cornerWindowId || corner != _cornerApplied)
+        {
+            SetWindowCorner(_cornerWindowId, DerethCorner.None);
+            SetWindowCorner(hover.WindowId, corner);
+            _cornerWindowId = hover.WindowId;
+            _cornerApplied = corner;
+        }
+        if (hover.Cursor != WindowCursor.Default)
+            SetCursor(LoadCursor(IntPtr.Zero, CursorResource(hover.Cursor)));
+    }
+
+    private void SetWindowCorner(string? windowId, DerethCorner corner)
+    {
+        var surface = SurfaceById(windowId);
+        if (surface == null) return;
+        foreach (var frame in Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(surface.Panel.Content).OfType<DerethFrame>())
+            frame.HoveredCorner = corner;
+    }
+
+    private static DerethCorner CornerOf(WindowEdges edges)
+    {
+        if (edges == (WindowEdges.Left | WindowEdges.Top)) return DerethCorner.TopLeft;
+        if (edges == (WindowEdges.Right | WindowEdges.Top)) return DerethCorner.TopRight;
+        if (edges == (WindowEdges.Left | WindowEdges.Bottom)) return DerethCorner.BottomLeft;
+        if (edges == (WindowEdges.Right | WindowEdges.Bottom)) return DerethCorner.BottomRight;
+        return DerethCorner.None;
+    }
+
+    /// <summary>The standard cursors by their resource ids: IDC_SIZEWE, IDC_SIZENS, IDC_SIZENWSE, IDC_SIZENESW and IDC_ARROW.</summary>
+    private static IntPtr CursorResource(WindowCursor cursor) => (IntPtr)(cursor switch
+    {
+        WindowCursor.SizeWE => 32644,
+        WindowCursor.SizeNS => 32645,
+        WindowCursor.SizeNWSE => 32642,
+        WindowCursor.SizeNESW => 32643,
+        _ => 32512
+    });
 
     private void GuardInput(InputRoute route, Action action)
     {
@@ -1049,7 +1107,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     {
         if (_windows == null) return;
         foreach (var window in _windows.ZOrder)
-            SurfaceById(window.Id)!.Location = window.Location;
+            FitSurface(SurfaceById(window.Id)!, window);
+    }
+
+    /// <summary>Puts a window's surface where the window manager has it, at the window's size. A new size re-lays out the panel.</summary>
+    private static void FitSurface(ScreenSurface surface, ManagedWindow window)
+    {
+        surface.Location = window.Location;
+        if (surface.Panel.Frame.Width != window.Width || surface.Panel.Frame.Height != window.Height)
+            surface.Panel.Resize(window.Width, window.Height);
     }
 
     private static KeyModifiers ToKeyModifiers(InputModifiers modifiers)

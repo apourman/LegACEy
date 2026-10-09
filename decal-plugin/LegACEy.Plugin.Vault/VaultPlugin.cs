@@ -12,6 +12,9 @@ public sealed class VaultPlugin : ILegACEyPlugin
 {
     private const string WindowId = "vault";
     private const string Station = "vault";
+    // Whole 50 px cells: the default 344 × 606 sits on the grid (44 px and 6 px past it), and the narrowest step is 294,
+    // the first width at or above the 290 px that fits "N selected", Withdraw N and Clear on one line.
+    private static readonly WindowResizing Sizing = new(new Size(290, 256), new Size(50, 50), new Size(44, 6));
 
     public string Name => "Vault";
     public string Version => typeof(VaultPlugin).Assembly.GetName().Version.ToString(3);
@@ -27,7 +30,7 @@ public sealed class VaultPlugin : ILegACEyPlugin
 
     public void Start(ILegACEyClient client) =>
         client.RegisterStationWindow(Station, WindowId, "Vault",
-            VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight, new Point(240, 100), close => CreateWindow(client, close), new DerethClientTheme());
+            VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight, new Point(240, 100), close => CreateWindow(client, close), new DerethClientTheme(), Sizing);
 
     private static Control CreateWindow(ILegACEyClient client, Action close)
     {

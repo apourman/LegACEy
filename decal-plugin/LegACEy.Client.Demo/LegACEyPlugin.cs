@@ -50,7 +50,8 @@ public interface ILegACEyClient
     /// The window opens when the server pushes station.open for it and closes on station.close. Closing it sends station.leave.
     /// </summary>
     /// <param name="theme">The theme the window is drawn in. Null uses the client's theme; a window with its own theme is not given the retail theme over it.</param>
-    void RegisterStationWindow(string station, string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow, IClientTheme? theme = null);
+    /// <param name="resizing">How the player can resize the window from its edges and corners. Null means it does not resize.</param>
+    void RegisterStationWindow(string station, string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow, IClientTheme? theme = null, WindowResizing? resizing = null);
 }
 
 /// <summary>The client's side of plugin hosting. ClientUiRuntime implements it; tests fake it.</summary>

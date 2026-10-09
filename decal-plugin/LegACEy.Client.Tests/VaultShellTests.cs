@@ -112,6 +112,54 @@ public sealed class VaultShellTests
         Assert.Null(host.LastError);
     });
 
+    [Fact]
+    public void The_grid_reflows_its_columns_when_the_window_is_resized() => RenderThread.Run(() =>
+    {
+        VaultShellPanel? vault = null;
+        using var host = AvaloniaPanel.Create(() => new VaultShellWindow(vault = new VaultShellPanel(new MissingArt())),
+            VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight);
+        using var disposeVault = vault!;
+        host.ApplyTheme(new DerethClientTheme());
+        host.Tick();
+        Assert.Equal(6, Columns(host));
+
+        host.Resize(594, VaultShellPanel.WindowHeight);
+        host.Tick();
+        Assert.Equal(11, Columns(host));
+
+        host.Resize(294, VaultShellPanel.WindowHeight);
+        host.Tick();
+        Assert.Equal(5, Columns(host));
+        Assert.Null(host.LastError);
+    });
+
+    [Fact]
+    public void The_scrollbar_is_hidden_while_the_page_fits_and_shown_when_it_does_not() => RenderThread.Run(() =>
+    {
+        VaultShellPanel? vault = null;
+        using var host = AvaloniaPanel.Create(() => new VaultShellWindow(vault = new VaultShellPanel(new MissingArt())),
+            VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight);
+        using var disposeVault = vault!;
+        host.ApplyTheme(new DerethClientTheme());
+        host.Tick();
+        Assert.True(VerticalBar(host).IsVisible);
+
+        // The sample Vault has 317 items: 29 rows at 11 columns, so this window shows the whole page.
+        host.Resize(594, 1800);
+        host.Tick();
+        Assert.False(VerticalBar(host).IsVisible);
+        Assert.Null(host.LastError);
+    });
+
+    private static int Columns(AvaloniaPanel host)
+    {
+        var cells = Assert.Single(host.Content.GetVisualDescendants().OfType<WrapPanel>()).Children;
+        return cells.Count(cell => cell.Bounds.Y == cells[0].Bounds.Y);
+    }
+
+    private static ScrollBar VerticalBar(AvaloniaPanel host) =>
+        host.Content.GetVisualDescendants().OfType<ScrollBar>().Single(bar => bar.Orientation == Avalonia.Layout.Orientation.Vertical);
+
     private sealed class CellArt : IGameArtSource
     {
         public Dictionary<uint, int> Reads { get; } = new();
