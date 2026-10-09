@@ -20,7 +20,7 @@ namespace LegACEy.Plugin.Vault;
 /// </summary>
 public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropTarget
 {
-    public const int WindowWidth = 546;
+    public const int WindowWidth = 566;
     public const int WindowHeight = 694;
     /// <summary>The header's chest icon, from the DAT.</summary>
     public const uint ChestIconId = 0x06001020;
@@ -142,6 +142,8 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         Grid.SetRow(_search, 1);
         _search.TextChanged += (_, _) => _client?.SetSearch(_search.Text);
         Grid.SetRow(_grid, 2);
+        // Inset from the search field above it, which stays the window's widest line.
+        _grid.Margin = new Thickness(10, 0, 10, 0);
         var pager = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Margin = new Thickness(4, 10, 4, 0) };
         _previous.Click += (_, _) => _client?.PreviousPage();
         pager.Children.Add(_previous);

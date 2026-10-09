@@ -136,11 +136,11 @@ public sealed class VaultShellTests
         host.Tick();
         Assert.Equal(10, Columns(host));
 
-        host.Resize(594, VaultShellPanel.WindowHeight);
+        host.Resize(614, VaultShellPanel.WindowHeight);
         host.Tick();
         Assert.Equal(11, Columns(host));
 
-        host.Resize(294, VaultShellPanel.WindowHeight);
+        host.Resize(314, VaultShellPanel.WindowHeight);
         host.Tick();
         Assert.Equal(5, Columns(host));
         Assert.Null(host.LastError);
