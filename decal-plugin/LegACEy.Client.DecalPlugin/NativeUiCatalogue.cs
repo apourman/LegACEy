@@ -41,7 +41,8 @@ internal static class NativeUiCatalogue
         new("CPlayerSystem::s_pPlayerSystem reference", 0x0055E1D0, Bytes("A1 9C 11 87 00 C3"), "Our disassembly of installed end-of-retail acclient.exe: player-system getter", "data reference (absolute VA)"),
         new("CPlayerSystem::s_pPlayerSystem", 0x0087119C, Array.Empty<byte>(), "https://actypes.utilitybelt.me/type/CPlayerSystem", "runtime pointer; expected readable 4-byte slot"),
         Root("Indicators", 0x10000611), Root("CharacterInfo", 0x10000183), Root("PositiveEffects", 0x10000184),
-        Root("NegativeEffects", 0x10000185), Root("LinkStatus", 0x10000187), Root("MiniGame", 0x10000188), Root("Vitae", 0x1000018A)
+        Root("NegativeEffects", 0x10000185), Root("LinkStatus", 0x10000187), Root("MiniGame", 0x10000188), Root("Vitae", 0x1000018A),
+        Root("InventoryPanel", 0x1000018B)
     };
 
     internal static bool Validate(Func<uint, int, byte[]> read, Action<string> log, IEnumerable<NativeUiEntry>? entries = null)

@@ -24,6 +24,8 @@ internal static class NativeUi
     public const uint LinkStatus = 0x10000187;
     public const uint MiniGame = 0x10000188;
     public const uint Vitae = 0x1000018A;
+    /// <summary>InventoryPanel_Field, the retail inventory panel root.</summary>
+    public const uint InventoryPanel = 0x1000018B;
 
     private static readonly IntPtr ManagerInstance = new(0x0083E03C);
     private static bool _ready;

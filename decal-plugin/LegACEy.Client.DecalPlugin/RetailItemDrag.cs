@@ -23,8 +23,6 @@ internal sealed class RetailItemDrag
     private const int PotentialDragElementOffset = 0x318;
     private const int ElementLastOverOffset = 0x244;
     private const int ElementIdOffset = 0x2E4;
-    /// <summary>InventoryPanel_Field, the retail inventory window (Chorizite UIElementId).</summary>
-    internal const uint InventoryPanel = 0x1000018B;
     private static readonly IntPtr ManagerInstance = new(0x0083E03C);
 
     internal static readonly IReadOnlyList<NativeUiEntry> Entries = new[]
@@ -125,7 +123,7 @@ internal sealed class RetailItemDrag
     /// </summary>
     public bool IsPointerOverInventory(out bool exists, out bool open, out uint elementOver)
     {
-        var panel = NativeUi.GetElement(InventoryPanel);
+        var panel = NativeUi.GetElement(NativeUi.InventoryPanel);
         exists = panel != IntPtr.Zero;
         open = exists && NativeUi.IsVisible(panel);
         elementOver = 0;
@@ -170,7 +168,7 @@ internal sealed class RetailItemDrag
         var manager = Marshal.ReadIntPtr(ManagerInstance);
         var over = manager == IntPtr.Zero ? IntPtr.Zero : Marshal.ReadIntPtr(manager, ElementLastOverOffset);
         if (over == IntPtr.Zero) return IntPtr.Zero;
-        var panel = NativeUi.GetElement(InventoryPanel);
+        var panel = NativeUi.GetElement(NativeUi.InventoryPanel);
         if (panel == IntPtr.Zero || !NativeUi.IsVisible(panel) || (over != panel && _isAncestorOfMe!(over, panel) == 0)) return IntPtr.Zero;
         // The hit element is usually a part of the cell (its icon); walk up to the cell itself.
         var element = over;
