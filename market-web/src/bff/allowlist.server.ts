@@ -19,7 +19,6 @@ export const allowlist = [
   { method: 'GET', path: '/api/listings/suggest' },
   { method: 'GET', path: '/api/listings/{id}' },
   // public files: forwarded without the token, with their cache headers
-  { method: 'GET', path: '/api/icons/glow.css', withoutToken: true },
   { method: 'GET', path: '/api/icons/{file}', withoutToken: true },
   { method: 'GET', path: '/api/vault' },
   { method: 'GET', path: '/api/vault/{itemGuid}' },

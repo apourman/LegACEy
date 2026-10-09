@@ -8,18 +8,19 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 
+using LegACEy.Client.GameArt;
 using SkiaSharp;
 
 namespace ACE.MarketApi
 {
     /// <summary>
-    /// Icon PNGs by texture id and optional palette template ("/api/icons/0x06003237.png", "/api/icons/0x06003237_p19.png"), and the glow stylesheet. No sign-in.
+    /// Icon PNGs by texture id and optional palette template ("/api/icons/0x06003237.png", "/api/icons/0x06003237_p19.png"), and the base
+    /// icons composed with their overlay and UI-effect outline. No sign-in.
     /// </summary>
     public static class IconEndpoints
     {
         public static void Map(IEndpointRouteBuilder app)
         {
-            app.MapGet("/icons/glow.css", () => Results.Text(ItemIcons.GlowStylesheet, "text/css")).File(200, "text/css");
             app.MapGet("/icons/{file}", Icon).File(200, "image/png", 404);
         }
 
@@ -42,7 +43,7 @@ namespace ACE.MarketApi
     /// </summary>
     public sealed class IconStore
     {
-        private static readonly Regex fileName = new Regex(@"^0x(?<id>[0-9A-Fa-f]{8})(?:_p(?<template>[0-9]{1,4}))?\.png\z", RegexOptions.CultureInvariant);
+        private static readonly Regex fileName = new Regex(@"^0x(?<id>[0-9A-Fa-f]{8})(?:_p(?<template>[0-9]{1,4}))?(?:_o(?<overlay>[0-9A-Fa-f]{8})_e(?<effects>[0-9A-Fa-f]{8}))?\.png\z", RegexOptions.CultureInvariant);
 
         private readonly GameData gameData;
 
@@ -69,6 +70,10 @@ namespace ACE.MarketApi
             // only names a listing can give out, so requests can't fill the cache with variants
             if (template is int paletteTemplate && !gameData.IsClothingIcon(id, paletteTemplate))
                 return null;
+
+            // composed names are made on each request and not kept: the overlay and effect in a name aren't bounded by a listing
+            if (match.Groups["effects"].Success)
+                return Composite(id, ParseHex(match.Groups["overlay"].Value), ParseHex(match.Groups["effects"].Value));
 
             var path = Path.Combine(directory, ItemIcons.FileName(id, template));
 
@@ -110,8 +115,40 @@ namespace ACE.MarketApi
             return png;
         }
 
+        private static uint ParseHex(string value) => uint.Parse(value, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+
         /// <summary>
-        /// Straight RGBA to PNG with SkiaSharp. Pure white is transparent in the client's icons (the reference site draws them the same way).
+        /// A base icon with its overlay and UI-effect outline composed in, as the client draws it (ItemIconOutline). The icon is composed premultiplied,
+        /// as the client's images are, so a partly transparent overlay blends the same way.
+        /// </summary>
+        private byte[] Composite(uint id, uint overlay, uint uiEffects)
+        {
+            // ponytail: the DAT is read on each request; keep composed PNGs on disk if reads show up in profiles
+            var icon = gameData.IconPixels(id);
+            if (icon == null)
+                return null;
+
+            var overlayPixels = overlay == 0 ? null : gameData.IconPixels(overlay);
+            // the outline textures are opaque, so their straight colors are the premultiplied ones; a null texture is black
+            var outline = gameData.IconPixels(ItemIconOutline.TextureFor(uiEffects));
+
+            var pixels = ItemIconOutline.Compose(GameData.IconSize, GameData.IconSize, Premultiply(icon),
+                overlayPixels == null ? null : Premultiply(overlayPixels), outline);
+
+            return Encode(pixels, GameData.IconSize, GameData.IconSize, SKAlphaType.Premul);
+        }
+
+        private static byte[] Premultiply(byte[] rgba)
+        {
+            var pixels = (byte[])rgba.Clone();
+            for (var i = 0; i < pixels.Length; i += 4)
+                for (var c = 0; c < 3; c++)
+                    pixels[i + c] = (byte)(pixels[i + c] * pixels[i + 3] / 255);
+            return pixels;
+        }
+
+        /// <summary>
+        /// Straight RGBA to PNG with SkiaSharp. Pure white is transparent in the raw icons (the reference site draws them the same way).
         /// </summary>
         private static byte[] EncodePng(byte[] rgba, int width, int height)
         {
@@ -121,7 +158,12 @@ namespace ACE.MarketApi
                     rgba[i + 3] = 0;
             }
 
-            using var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Unpremul));
+            return Encode(rgba, width, height, SKAlphaType.Unpremul);
+        }
+
+        private static byte[] Encode(byte[] rgba, int width, int height, SKAlphaType alpha)
+        {
+            using var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888, alpha));
             Marshal.Copy(rgba, 0, bitmap.GetPixels(), rgba.Length);
 
             using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);

@@ -98,7 +98,7 @@ describe('1. the allowlist', () => {
 
   const listed: [string, string][] = [
     ['GET', '/api/me'], ['GET', '/api/facets'], ['GET', '/api/listings?q=Bone&sort=price'], ['GET', '/api/listings/suggest?q=Bo'], ['GET', '/api/listings/7'],
-    ['GET', '/api/icons/glow.css'], ['GET', '/api/icons/0x06003237_p19.png'], ['GET', '/api/vault'], ['GET', '/api/vault/10'],
+    ['GET', '/api/icons/0x06003237_p19.png'], ['GET', '/api/vault'], ['GET', '/api/vault/10'],
     ['POST', '/api/listings'], ['POST', '/api/listings/7/delist'], ['POST', '/api/listings/7/purchase'], ['POST', '/api/vault/withdraw'],
     ['POST', '/api/vault/deposit'], ['POST', '/api/mmd/withdraw'], ['POST', '/api/inventory/snapshot'], ['GET', '/api/tickets'], ['GET', '/api/tickets/9'],
     ['GET', '/api/history?transfersLimit=50'],
@@ -234,8 +234,6 @@ describe('3. forwarding', () => {
     expect(forwarded('/api/listings')[0].headers['x-market-service-key']).toBe(serviceKey);
 
     const cookie = await signedIn();
-    api.on('GET', '/api/icons/glow.css', { body: '.glow{}', headers: { 'Content-Type': 'text/css' } });
-    await send(request('/api/icons/glow.css', { headers: { Cookie: cookie } }));
     await send(request('/api/icons/0x06003237.png', { headers: { Cookie: cookie } }));
     for (const sent of api.requests) {
       expect(sent.headers.authorization).toBeUndefined();

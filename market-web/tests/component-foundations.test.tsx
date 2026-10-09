@@ -50,7 +50,7 @@ const detail: Detail = {
     seller: "Bravo",
     listedTime: "2026-10-01T00:00:00Z",
     wield: "Level 100",
-    icon: { layers: [], glow: null },
+    icon: { layers: [] },
     lines: ["Damage: 34 - 52"],
     spells: [],
 };

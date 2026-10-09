@@ -264,8 +264,8 @@ namespace ACE.MarketApi.Tests
             var item = ticket.GetProperty("result").GetProperty("items")[0];
             var layers = item.GetProperty("icon").GetProperty("layers").EnumerateArray().ToArray();
 
-            Assert.IsTrue(layers.Length >= 2, "the plate and base icon are represented");
-            Assert.IsTrue(layers.Any(layer => layer.GetProperty("kind").GetString() == "base" && layer.GetProperty("url").GetString() == "/api/icons/0x0600373F.png"),
+            Assert.AreEqual(1, layers.Length, "the base icon alone: no plate");
+            Assert.IsTrue(layers.Any(layer => layer.GetProperty("kind").GetString() == "base" && layer.GetProperty("url").GetString() == "/api/icons/0x0600373F_o00000000_e00000000.png"),
                 "the snapshot's base icon URL points at the item's actual portal DAT icon");
             Assert.AreEqual(JsonValueKind.Null, item.GetProperty("refusalCode").ValueKind);
         }
@@ -287,7 +287,7 @@ namespace ACE.MarketApi.Tests
 
             Assert.AreEqual(
                 "{\"snapshotTime\":\"2026-10-02T12:34:56.1234567Z\",\"items\":[{\"itemGuid\":3221225473,\"name\":\"Snapshot Sword\",\"stackSize\":3,\"refusalCode\":\"worn\","
-                + "\"icon\":{\"layers\":[{\"kind\":\"plate\",\"id\":100667855,\"url\":\"/api/icons/0x060011CF.png\"},{\"kind\":\"base\",\"id\":100677439,\"url\":\"/api/icons/0x0600373F.png\"}],\"glow\":null}}]}",
+                + "\"icon\":{\"layers\":[{\"kind\":\"base\",\"id\":100677439,\"url\":\"/api/icons/0x0600373F_o00000000_e00000000.png\"}]}}]}",
                 wire.GetRawText(), "the snapshot result's wire shape is unchanged");
 
             var strict = new JsonSerializerOptions(JsonSerializerDefaults.Web) { UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow, RespectRequiredConstructorParameters = true };
@@ -299,7 +299,7 @@ namespace ACE.MarketApi.Tests
             Assert.AreEqual("Snapshot Sword", item.Name);
             Assert.AreEqual(3, item.StackSize);
             Assert.AreEqual("worn", item.RefusalCode);
-            Assert.IsTrue(item.Icon.Layers.Any(layer => layer.Kind == "base" && layer.Url == "/api/icons/0x0600373F.png"));
+            Assert.IsTrue(item.Icon.Layers.Any(layer => layer.Kind == "base" && layer.Url == "/api/icons/0x0600373F_o00000000_e00000000.png"));
         }
 
         [TestMethod]

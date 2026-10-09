@@ -28,10 +28,6 @@ namespace ACE.MarketApi.Tests
         // the plates the client draws under an icon, by item type
         private const uint WeaponPlate = 0x060011D2;
         private const uint ArmorPlate = 0x060011CF;
-        private const uint ClothingPlate = 0x060011F3;
-        private const uint JewelryPlate = 0x060011D5;
-        private const uint GemPlate = 0x060011D3;
-        private const uint OtherPlate = 0x060011D4;
 
         // the Nariyid Breastplate's clothing table (weenie 27227), and its icons for palette templates 19 and 20 (the weenie's default)
         private const uint NariyidClothingBase = 0x1000054B;
@@ -145,6 +141,22 @@ namespace ACE.MarketApi.Tests
             return Enumerable.Range(0, texture.Width * texture.Height)
                 .Select(i => BitConverter.ToUInt32(texture.SourceData, i * 4))
                 .Select(argb => argb == 0xFFFFFFFF ? SKColors.Transparent : new SKColor(argb))
+                .ToArray();
+        }
+
+        /// <summary>
+        /// The icon as the client draws it with no overlay: its white outline takes the outline texture's color, or black when there's none (0)
+        /// </summary>
+        private static SKColor[] OutlinedPixels(uint textureId, uint outline)
+        {
+            var texture = Portal.ReadFromDat<Texture>(textureId);
+            Assert.AreEqual(SurfacePixelFormat.PFID_A8R8G8B8, texture.Format);
+            var outlinePixels = outline == 0 ? null : DatPixels(outline);
+
+            return Enumerable.Range(0, texture.Width * texture.Height)
+                .Select(i => BitConverter.ToUInt32(texture.SourceData, i * 4) == 0xFFFFFFFF
+                    ? (outlinePixels?[i] ?? SKColors.Black)
+                    : new SKColor(BitConverter.ToUInt32(texture.SourceData, i * 4)))
                 .ToArray();
         }
 
@@ -291,48 +303,26 @@ namespace ACE.MarketApi.Tests
         // ---- layers and plates in listing responses
 
         [TestMethod]
-        public async Task Listing_IconLayers_PlatePerItemTypeAndTheItemsOwnLayersInClientOrder()
+        public async Task Listing_IconLayers_UnderlayThenTheComposedBaseThenTheSecondaryOverlay_AndNoPlate()
         {
             await using var host = await StartAsync(NewCacheDirectory());
             var seller = await NewSellerAsync(host);
 
-            var plates = new (ItemType Type, uint Plate)[]
+            // the overlay is composed into the base icon, so it isn't a layer of its own; no plate, whatever the item type
+            var icon = await ListedIconAsync(host, seller, ItemType.Armor,
+                $"icon_Underlay = {Underlay}, icon = {NariyidIconPalette20}, icon_Overlay = {Overlay}, icon_Overlay_Secondary = {OverlaySecondary}");
+            CollectionAssert.AreEqual(new List<(string, uint, string)>
             {
-                (ItemType.MeleeWeapon, WeaponPlate),
-                (ItemType.MissileWeapon, WeaponPlate),
-                (ItemType.Caster, WeaponPlate),
-                (ItemType.Armor, ArmorPlate),
-                (ItemType.Clothing, ClothingPlate),
-                (ItemType.Jewelry, JewelryPlate),
-                (ItemType.Gem, GemPlate),
-                (ItemType.Key, OtherPlate),
-                (ItemType.TinkeringMaterial, OtherPlate),
-                (ItemType.Writable, OtherPlate),
-                (ItemType.Misc, OtherPlate),
-            };
+                ("underlay", Underlay, $"/api/icons/0x{Underlay:X8}.png"),
+                ("base", NariyidIconPalette20, $"/api/icons/0x{NariyidIconPalette20:X8}_o{Overlay:X8}_e00000000.png"),
+                ("overlaySecondary", OverlaySecondary, $"/api/icons/0x{OverlaySecondary:X8}.png"),
+            }, Layers(icon));
 
-            foreach (var (type, plate) in plates)
-            {
-                var icon = await ListedIconAsync(host, seller, type,
-                    $"icon_Underlay = {Underlay}, icon = {NariyidIconPalette20}, icon_Overlay = {Overlay}, icon_Overlay_Secondary = {OverlaySecondary}");
-
-                var expected = new List<(string, uint, string)>
-                {
-                    ("plate", plate, $"/api/icons/0x{plate:X8}.png"),
-                    ("underlay", Underlay, $"/api/icons/0x{Underlay:X8}.png"),
-                    ("base", NariyidIconPalette20, $"/api/icons/0x{NariyidIconPalette20:X8}.png"),
-                    ("overlay", Overlay, $"/api/icons/0x{Overlay:X8}.png"),
-                    ("overlaySecondary", OverlaySecondary, $"/api/icons/0x{OverlaySecondary:X8}.png"),
-                };
-                CollectionAssert.AreEqual(expected, Layers(icon), type.ToString());
-            }
-
-            // layers the item doesn't have are left out; the plate is always there
+            // layers the item doesn't have are left out
             var plain = await ListedIconAsync(host, seller, ItemType.Gem, $"icon = {NariyidIconPalette20}");
             CollectionAssert.AreEqual(new List<(string, uint, string)>
             {
-                ("plate", GemPlate, $"/api/icons/0x{GemPlate:X8}.png"),
-                ("base", NariyidIconPalette20, $"/api/icons/0x{NariyidIconPalette20:X8}.png"),
+                ("base", NariyidIconPalette20, $"/api/icons/0x{NariyidIconPalette20:X8}_o00000000_e00000000.png"),
             }, Layers(plain));
 
             // every layer URL serves a PNG
@@ -357,11 +347,11 @@ namespace ACE.MarketApi.Tests
             var baseLayer = icon.GetProperty("layers").EnumerateArray().Single(l => l.GetProperty("kind").GetString() == "base");
             Assert.AreEqual(NariyidIconPalette19, baseLayer.GetProperty("id").GetUInt32());
             Assert.AreEqual(19, baseLayer.GetProperty("paletteTemplate").GetInt32());
-            Assert.AreEqual($"/api/icons/0x{NariyidIconPalette19:X8}_p19.png", baseLayer.GetProperty("url").GetString());
+            Assert.AreEqual($"/api/icons/0x{NariyidIconPalette19:X8}_p19_o00000000_e00000000.png", baseLayer.GetProperty("url").GetString());
 
-            // its colors are template 19's, not the default's
+            // its colors are template 19's, not the default's; with no UI effect the outline is black
             using var dyed = DecodePng(await GetPngAsync(host, baseLayer.GetProperty("url").GetString()));
-            AssertSamePixels(DatPixels(NariyidIconPalette19), dyed, "palette 19");
+            AssertSamePixels(OutlinedPixels(NariyidIconPalette19, outline: 0), dyed, "palette 19");
             var undyed = DatPixels(NariyidIconPalette20);
             Assert.IsTrue(Enumerable.Range(0, 32 * 32).Count(i => dyed.GetPixel(i % 32, i / 32) != undyed[i]) > 100, "the dyed icon differs from the default palette's");
 
@@ -370,13 +360,13 @@ namespace ACE.MarketApi.Tests
             {
                 var kept = (await ListedIconAsync(host, seller, ItemType.Armor, columns)).GetProperty("layers").EnumerateArray().Single(l => l.GetProperty("kind").GetString() == "base");
                 Assert.AreEqual(NariyidIconPalette20, kept.GetProperty("id").GetUInt32(), columns);
-                Assert.AreEqual($"/api/icons/0x{NariyidIconPalette20:X8}.png", kept.GetProperty("url").GetString(), columns);
+                Assert.AreEqual($"/api/icons/0x{NariyidIconPalette20:X8}_o00000000_e00000000.png", kept.GetProperty("url").GetString(), columns);
                 Assert.IsFalse(kept.TryGetProperty("paletteTemplate", out _), columns);
             }
 
             // a single-digit template is written the reference's way, two digits
             var twoDigits = await ListedIconAsync(host, seller, ItemType.Armor, $"icon = {NariyidIconPalette20}, palette_Template = 2, clothing_Base = {NariyidClothingBase}");
-            StringAssert.EndsWith(Layers(twoDigits).Single(l => l.Kind == "base").Url, "_p02.png");
+            StringAssert.Contains(Layers(twoDigits).Single(l => l.Kind == "base").Url, "_p02_o");
             await GetPngAsync(host, Layers(twoDigits).Single(l => l.Kind == "base").Url);
         }
 
@@ -392,51 +382,30 @@ namespace ACE.MarketApi.Tests
             AssertSamePixels(Enumerable.Range(0, reference.Width * reference.Height).Select(i => reference.GetPixel(i % reference.Width, i / reference.Width)).ToArray(), ours, "reference");
         }
 
-        // ---- glow
+        // ---- the outline: the icon's white key color takes its UI effect's texture, or black when the item has no effect
 
         [TestMethod]
-        public async Task Listing_MagicalItems_CarryTheGlowClassForTheirUiEffects()
+        public async Task Base_icon_outline_is_the_ui_effects_texture_or_black()
         {
             await using var host = await StartAsync(NewCacheDirectory());
             var seller = await NewSellerAsync(host);
 
-            var cases = new (string Columns, string Glow)[]
+            var plain = DatPixels(NariyidIconPalette20);
+            Assert.IsTrue(OutlinedPixels(NariyidIconPalette20, outline: 0).Where((pixel, i) => pixel != plain[i]).Any(), "the icon has no white outline to check");
+
+            var cases = new (string Columns, uint Outline)[]
             {
-                ("ui_Effects = 1", "icon-glow--magical"),
-                ("ui_Effects = 2", "icon-glow--poisoned"),
-                ("ui_Effects = 4", "icon-glow--boost-health"),
-                ("ui_Effects = 32", "icon-glow--fire"),
-                ("ui_Effects = 64", "icon-glow--lightning"),
-                ("ui_Effects = 128", "icon-glow--frost"),
-                ("ui_Effects = 256", "icon-glow--acid"),
-                ("ui_Effects = 4096", "icon-glow--nether"),
-                ("ui_Effects = 65", "icon-glow--magical icon-glow--lightning"),
-                ("ui_Effects = 0", null),
-                ("ui_Effects = NULL", null),
+                ("ui_Effects = 0", 0),
+                ("ui_Effects = 32", 0x06001B2E),
+                // Magical and Lightning: the lowest effect's texture
+                ("ui_Effects = 65", 0x060011CA),
             };
-
-            foreach (var (columns, glow) in cases)
-                Assert.AreEqual(glow, Glow(await ListedIconAsync(host, seller, ItemType.MeleeWeapon, $"icon = {NariyidIconPalette20}, {columns}")), columns);
-        }
-
-        [TestMethod]
-        public async Task GlowStylesheet_DefinesAGlowForEveryUiEffect()
-        {
-            await using var host = await StartAsync(NewCacheDirectory());
-
-            var response = await host.GetAsync("/api/icons/glow.css");
-            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
-            Assert.AreEqual("text/css", response.Content.Headers.ContentType?.MediaType);
-            var css = await response.Content.ReadAsStringAsync();
-
-            foreach (var effect in Enum.GetValues<UiEffects>().Where(e => e != UiEffects.Undef))
+            foreach (var (columns, outline) in cases)
             {
-                var kebab = string.Concat(effect.ToString().Select((c, i) => char.IsUpper(c) && i > 0 ? "-" + char.ToLowerInvariant(c) : char.ToLowerInvariant(c).ToString()));
-                StringAssert.Contains(css, $".icon-glow--{kebab} {{", effect.ToString());
+                var url = Layers(await ListedIconAsync(host, seller, ItemType.MeleeWeapon, $"icon = {NariyidIconPalette20}, {columns}")).Single(l => l.Kind == "base").Url;
+                using var bitmap = DecodePng(await GetPngAsync(host, url));
+                AssertSamePixels(OutlinedPixels(NariyidIconPalette20, outline), bitmap, columns);
             }
-
-            // the reference's color for magical items
-            StringAssert.Contains(css, ".icon-glow--magical { --icon-glow: rgba(127, 182, 255, 0.75); }");
         }
     }
 }
