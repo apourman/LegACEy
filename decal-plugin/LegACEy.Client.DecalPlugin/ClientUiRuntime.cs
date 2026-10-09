@@ -43,6 +43,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     [DllImport("user32.dll")]
     private static extern IntPtr SetCursor(IntPtr cursor);
 
+    // WM_SETCURSOR, the hit-test code for the client area, and the standard size cursors' resource ids (MAKEINTRESOURCE).
+    private const int WmSetCursor = 0x0020;
+    private const int HtClient = 1;
+    private const int IdcSizeWE = 32644;
+    private const int IdcSizeNS = 32645;
+    private const int IdcSizeNWSE = 32642;
+    private const int IdcSizeNESW = 32643;
+
     private const string MenuSlot = "LegACEy";
     private const string MenuWindowId = "plugin-menu";
     private const uint MenuIcon = 0x06004D20;
@@ -63,6 +71,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     // The window whose frame shows a hovered corner, and the corner it shows.
     private string? _cornerWindowId;
     private DerethCorner _cornerApplied;
+    private readonly Dictionary<int, IntPtr> _resizeCursors = new();
     private PostUiDrawHook? _postUiDrawHook;
     private bool _windowsEnabled;
     private bool _firstPostUiWindow = true;
@@ -874,6 +883,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private void RemoveFeatureWindow(string id, ScreenSurface surface)
     {
         if (_hovered == surface) _hovered = null;
+        // A hidden or closed window must not reopen with its corner lit.
+        if (_cornerWindowId == id)
+        {
+            SetWindowCorner(id, DerethCorner.None);
+            _cornerWindowId = null;
+            _cornerApplied = DerethCorner.None;
+        }
         surface.Visible = false;
         _featureSurfaces.Remove(id);
         _windowFailures.Remove(id);
@@ -901,6 +917,19 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             return;
 
         var lParam = e.LParam;
+        if (e.Msg == WmSetCursor)
+        {
+            // Over a resize edge in the client area, the resize cursor replaces the game's; the eaten message keeps the game from resetting it.
+            if ((lParam & 0xffff) == HtClient)
+                Guard(() =>
+                {
+                    var cursor = ResizeCursorAt(_pointer);
+                    if (cursor == IntPtr.Zero) return;
+                    SetCursor(cursor);
+                    e.Eat = true;
+                });
+            return;
+        }
         if (e.Msg == InputRouterService.WmMouseMove)
             _pointer = new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff));
         if (e.Msg == InputRouterService.WmLButtonUp && _inputRouter.CapturedSurfaceId == null)
@@ -992,30 +1021,26 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                     break;
             }
             if (e.Msg == InputRouterService.WmMouseMove)
-                UpdateWindowHover(route.SurfaceId, _pointer);
+                UpdateWindowCorner(route.SurfaceId, _pointer);
             if (route.Eat)
                 e.Eat = true;
         });
     }
 
     /// <summary>
-    /// Shows the resize cursor over a resizable window's edge or corner, and brightens that corner on the window's frame.
-    /// The cursor is set only over an edge, so elsewhere the cursor the game set stands.
+    /// Brightens the corner under the pointer on its window's frame. The resize cursor itself is set on WM_SETCURSOR, which
+    /// the game sends before each mouse move, so the game's own handler cannot put its cursor back over an edge.
     /// </summary>
-    private void UpdateWindowHover(string? surfaceId, Point point)
+    private void UpdateWindowCorner(string? surfaceId, Point point)
     {
         if (_windows == null) return;
         var hover = surfaceId == "bar" ? default : _windows.HoverAt(point);
         var corner = CornerOf(hover.Edges);
-        if (hover.WindowId != _cornerWindowId || corner != _cornerApplied)
-        {
-            SetWindowCorner(_cornerWindowId, DerethCorner.None);
-            SetWindowCorner(hover.WindowId, corner);
-            _cornerWindowId = hover.WindowId;
-            _cornerApplied = corner;
-        }
-        if (hover.Cursor != WindowCursor.Default)
-            SetCursor(LoadCursor(IntPtr.Zero, CursorResource(hover.Cursor)));
+        if (hover.WindowId == _cornerWindowId && corner == _cornerApplied) return;
+        SetWindowCorner(_cornerWindowId, DerethCorner.None);
+        SetWindowCorner(hover.WindowId, corner);
+        _cornerWindowId = hover.WindowId;
+        _cornerApplied = corner;
     }
 
     private void SetWindowCorner(string? windowId, DerethCorner corner)
@@ -1035,15 +1060,27 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         return DerethCorner.None;
     }
 
-    /// <summary>The standard cursors by their resource ids: IDC_SIZEWE, IDC_SIZENS, IDC_SIZENWSE, IDC_SIZENESW and IDC_ARROW.</summary>
-    private static IntPtr CursorResource(WindowCursor cursor) => (IntPtr)(cursor switch
+    /// <summary>The resize cursor over the window edge or corner under a point, or zero where the game's own cursor stands.</summary>
+    private IntPtr ResizeCursorAt(Point point)
     {
-        WindowCursor.SizeWE => 32644,
-        WindowCursor.SizeNS => 32645,
-        WindowCursor.SizeNWSE => 32642,
-        WindowCursor.SizeNESW => 32643,
-        _ => 32512
-    });
+        if (_windows == null) return IntPtr.Zero;
+        var resource = CursorResourceId(_windows.HoverAt(point).Edges);
+        if (resource == 0) return IntPtr.Zero;
+        if (!_resizeCursors.TryGetValue(resource, out var cursor))
+            _resizeCursors.Add(resource, cursor = LoadCursor(IntPtr.Zero, (IntPtr)resource));
+        return cursor;
+    }
+
+    /// <summary>The standard size cursor for a set of edges: IDC_SIZEWE, IDC_SIZENS, IDC_SIZENWSE or IDC_SIZENESW. Zero means none.</summary>
+    private static int CursorResourceId(WindowEdges edges)
+    {
+        var horizontal = edges & (WindowEdges.Left | WindowEdges.Right);
+        var vertical = edges & (WindowEdges.Top | WindowEdges.Bottom);
+        if (horizontal == WindowEdges.None && vertical == WindowEdges.None) return 0;
+        if (vertical == WindowEdges.None) return IdcSizeWE;
+        if (horizontal == WindowEdges.None) return IdcSizeNS;
+        return edges == (WindowEdges.Left | WindowEdges.Top) || edges == (WindowEdges.Right | WindowEdges.Bottom) ? IdcSizeNWSE : IdcSizeNESW;
+    }
 
     private void GuardInput(InputRoute route, Action action)
     {

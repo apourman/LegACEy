@@ -11,7 +11,7 @@ namespace LegACEy.Client.Tests;
 public sealed class WindowManagerTests
 {
     // The Vault's sizing: 294 is the narrowest grid-aligned width that keeps the header at about 290.
-    private static readonly WindowResizing VaultSizing = new(new Size(290, 256), new Size(50, 50), new Size(44, 6));
+    private static readonly WindowResizing VaultSizing = new(new Size(290, 306), new Size(50, 50), new Size(44, 6));
 
     [Fact]
     public void Pressing_a_window_brings_it_to_the_front_and_hit_testing_uses_front_to_back_order()
@@ -162,7 +162,7 @@ public sealed class WindowManagerTests
         manager.Move(new Point(-57, 203));
         manager.Release();
 
-        Assert.Equal(new Size(294, 256), manager.Get("vault")!.Size);
+        Assert.Equal(new Size(294, 306), manager.Get("vault")!.Size);
     }
 
     [Fact]
@@ -212,17 +212,19 @@ public sealed class WindowManagerTests
     }
 
     [Theory]
-    [InlineData(443, 300, WindowCursor.SizeWE)]
-    [InlineData(101, 300, WindowCursor.SizeWE)]
-    [InlineData(200, 703, WindowCursor.SizeNS)]
-    [InlineData(200, 101, WindowCursor.SizeNS)]
-    [InlineData(101, 101, WindowCursor.SizeNWSE)]
-    [InlineData(443, 703, WindowCursor.SizeNWSE)]
-    [InlineData(443, 101, WindowCursor.SizeNESW)]
-    [InlineData(101, 703, WindowCursor.SizeNESW)]
-    [InlineData(200, 110, WindowCursor.Default)]
-    [InlineData(200, 400, WindowCursor.Default)]
-    public void The_cursor_is_a_resize_over_an_edge_or_corner_and_the_default_over_the_title_and_body(int x, int y, WindowCursor expected)
+    [InlineData(443, 300, WindowEdges.Right)]
+    [InlineData(101, 300, WindowEdges.Left)]
+    [InlineData(200, 703, WindowEdges.Bottom)]
+    [InlineData(200, 101, WindowEdges.Top)]
+    [InlineData(101, 101, WindowEdges.Left | WindowEdges.Top)]
+    [InlineData(443, 703, WindowEdges.Right | WindowEdges.Bottom)]
+    [InlineData(443, 101, WindowEdges.Right | WindowEdges.Top)]
+    [InlineData(101, 703, WindowEdges.Left | WindowEdges.Bottom)]
+    [InlineData(112, 112, WindowEdges.Left | WindowEdges.Top)]
+    [InlineData(112, 300, WindowEdges.None)]
+    [InlineData(200, 110, WindowEdges.None)]
+    [InlineData(200, 400, WindowEdges.None)]
+    public void The_hover_edges_are_the_edges_and_corners_under_the_pointer_and_none_over_the_title_and_body(int x, int y, WindowEdges expected)
     {
         var manager = NewManager(1920, 1080);
         manager.Open(Resizable("vault"), new Point(100, 100));
@@ -230,7 +232,7 @@ public sealed class WindowManagerTests
         var hover = manager.HoverAt(new Point(x, y));
 
         Assert.Equal("vault", hover.WindowId);
-        Assert.Equal(expected, hover.Cursor);
+        Assert.Equal(expected, hover.Edges);
     }
 
     [Fact]
@@ -265,6 +267,26 @@ public sealed class WindowManagerTests
         try
         {
             File.WriteAllLines(path, new[] { Row("server-a", "character-a", "vault", 300, 200) });
+            var manager = new WindowManager(new Size(1920, 1080), new FileWindowPositionStore(path), "server-a", "character-a");
+
+            var window = manager.Open(Resizable("vault"), new Point(0, 0));
+
+            Assert.Equal(new Point(300, 200), window.Location);
+            Assert.Equal(new Size(344, 606), window.Size);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void A_row_with_a_damaged_size_keeps_its_position_and_opens_at_the_default_size()
+    {
+        var path = TempPath();
+        try
+        {
+            File.WriteAllLines(path, new[] { Row("server-a", "character-a", "vault", 300, 200) + "|wide|9" });
             var manager = new WindowManager(new Size(1920, 1080), new FileWindowPositionStore(path), "server-a", "character-a");
 
             var window = manager.Open(Resizable("vault"), new Point(0, 0));

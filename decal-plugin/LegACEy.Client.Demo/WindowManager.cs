@@ -7,7 +7,7 @@ using System.Text;
 using LegACEy.Client.Themes;
 
 using WindowPlacement = (System.Drawing.Point Location, System.Drawing.Size? Size);
-using WindowHover = (string? WindowId, LegACEy.Client.Demo.WindowEdges Edges, LegACEy.Client.Demo.WindowCursor Cursor);
+using WindowHover = (string? WindowId, LegACEy.Client.Demo.WindowEdges Edges);
 
 namespace LegACEy.Client.Demo;
 
@@ -19,6 +19,8 @@ public sealed class WindowResizing
 {
     public WindowResizing(Size minimum, Size step, Size chrome)
     {
+        if (minimum.Width <= 0 || minimum.Height <= 0) throw new ArgumentOutOfRangeException(nameof(minimum));
+        if (step.Width <= 0 || step.Height <= 0) throw new ArgumentOutOfRangeException(nameof(step));
         Minimum = minimum;
         Step = step;
         Chrome = chrome;
@@ -72,16 +74,16 @@ public sealed class WindowDefinition
     public WindowResizing? Resizing { get; }
 }
 
-/// <summary>The live state of one LegACEy window.</summary>
+/// <summary>The live state of one LegACEy window. The preferred location and size are where the window was last left.</summary>
 public sealed class ManagedWindow
 {
-    internal ManagedWindow(WindowDefinition definition, Point location, Size size)
+    internal ManagedWindow(WindowDefinition definition, Point location, Size size, Point preferredLocation, Size preferredSize)
     {
         Definition = definition;
         Location = location;
-        PreferredLocation = location;
         Size = size;
-        PreferredSize = size;
+        PreferredLocation = preferredLocation;
+        PreferredSize = preferredSize;
     }
 
     public WindowDefinition Definition { get; }
@@ -97,16 +99,9 @@ public sealed class ManagedWindow
     public Rectangle Bounds => new(Location, Size);
 }
 
-/// <summary>Where a window was left: its location and, for a window that resizes, its size.</summary>
-
 /// <summary>The edges of a window a pointer is within a few pixels of. A corner is two edges.</summary>
 [Flags]
 public enum WindowEdges { None = 0, Left = 1, Right = 2, Top = 4, Bottom = 8 }
-
-/// <summary>The cursor a window asks for. Default leaves the cursor as the game set it.</summary>
-public enum WindowCursor { Default, SizeWE, SizeNS, SizeNWSE, SizeNESW }
-
-/// <summary>What a pointer is over: the window, the resize edges under it and the cursor they ask for.</summary>
 
 /// <summary>Persistence seam for placements keyed by server, character and window id.</summary>
 public interface IWindowPositionStore
@@ -135,8 +130,8 @@ public sealed class MemoryWindowPositionStore : IWindowPositionStore
 /// <summary>
 /// Small, recoverable position file beside the plugin. Each row is <c>server|character|window|x|y</c>, with
 /// <c>|width|height</c> appended for a window that resizes. Keys are base64 encoded so server and character names
-/// can contain any punctuation. Position-only rows from before sizes were saved load with no size. A malformed line
-/// is ignored and never prevents the client from loading a window.
+/// can contain any punctuation. Position-only rows from before sizes were saved load with no size, and a row with a
+/// damaged size keeps its position. A malformed line is ignored and never prevents the client from loading a window.
 /// </summary>
 public sealed class FileWindowPositionStore : IWindowPositionStore
 {
@@ -183,11 +178,8 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
                 if (fields.Length is not (5 or 7) || !int.TryParse(fields[3], out var x) || !int.TryParse(fields[4], out var y))
                     continue;
                 Size? size = null;
-                if (fields.Length == 7)
-                {
-                    if (!int.TryParse(fields[5], out var width) || !int.TryParse(fields[6], out var height)) continue;
+                if (fields.Length == 7 && int.TryParse(fields[5], out var width) && int.TryParse(fields[6], out var height))
                     size = new Size(width, height);
-                }
                 rows[fields[0] + "|" + fields[1] + "|" + fields[2]] = (new Point(x, y), size);
             }
         }
@@ -209,12 +201,18 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
 /// <summary>
 /// Pure window behavior used by the plugin adapter and the tests. The first item in ZOrder is
 /// frontmost. Pointer coordinates are screen coordinates and all returned positions are clamped.
-/// A press within <see cref="ResizeBand"/> of a resizable window's edge resizes it; a press in its title bar moves it.
+/// A press in a resizable window's edge band, or in its corner square, resizes it; a press in its title bar moves it.
 /// </summary>
 public sealed class WindowManager
 {
     /// <summary>How far in from a window's outside edge a press still counts as that edge.</summary>
     public const int ResizeBand = 6;
+
+    /// <summary>
+    /// The corner square's size: a press this near both edges of a corner is that corner. It matches the frame's corner
+    /// piece, so the grip is as easy to find as the art shows it.
+    /// </summary>
+    public const int CornerBand = 16;
 
     private readonly List<ManagedWindow> _windows = new();
     private readonly IWindowPositionStore _positions;
@@ -249,11 +247,7 @@ public sealed class WindowManager
         var preferredLocation = saved?.Location ?? requestedLocation;
         var preferredSize = definition.Resizing != null && saved?.Size is { } savedSize ? savedSize : DefaultSize(definition);
         var size = FitSize(definition, preferredSize, _screen);
-        var window = new ManagedWindow(definition, Clamp(preferredLocation, size), size)
-        {
-            PreferredLocation = preferredLocation,
-            PreferredSize = preferredSize
-        };
+        var window = new ManagedWindow(definition, Clamp(preferredLocation, size), size, preferredLocation, preferredSize);
         _windows.Insert(0, window);
         return window;
     }
@@ -273,17 +267,15 @@ public sealed class WindowManager
         _windows.FirstOrDefault(window => window.Bounds.Contains(point));
 
     /// <summary>
-    /// What the pointer is over. During a resize the dragged window and its edges stay put, wherever the pointer goes.
-    /// A title bar, body or move drag gives no edges and the default cursor.
+    /// The window under the pointer and the resize edges it is on. During a resize the dragged window and its edges stay
+    /// put, wherever the pointer goes. A title bar, body or move drag gives no edges.
     /// </summary>
     public WindowHover HoverAt(Point point)
     {
         if (_dragging != null)
-            return _resizeEdges == WindowEdges.None ? default : (_dragging.Id, _resizeEdges, CursorFor(_resizeEdges));
+            return _resizeEdges == WindowEdges.None ? default : (_dragging.Id, _resizeEdges);
         var window = HitTest(point);
-        if (window == null) return default;
-        var edges = EdgesAt(window, point);
-        return (window.Id, edges, CursorFor(edges));
+        return window == null ? default : (window.Id, EdgesAt(window, point));
     }
 
     /// <summary>Press a point. An edge or corner press resizes; a title-bar press moves. Either captures the window.</summary>
@@ -347,29 +339,22 @@ public sealed class WindowManager
         }
     }
 
-    /// <summary>The cursor for resize edges. Corners are a diagonal; a single edge is a bar in one direction.</summary>
-    private static WindowCursor CursorFor(WindowEdges edges)
-    {
-        var horizontal = edges & (WindowEdges.Left | WindowEdges.Right);
-        var vertical = edges & (WindowEdges.Top | WindowEdges.Bottom);
-        if (horizontal == WindowEdges.None && vertical == WindowEdges.None) return WindowCursor.Default;
-        if (vertical == WindowEdges.None) return WindowCursor.SizeWE;
-        if (horizontal == WindowEdges.None) return WindowCursor.SizeNS;
-        return edges == (WindowEdges.Left | WindowEdges.Top) || edges == (WindowEdges.Right | WindowEdges.Bottom)
-            ? WindowCursor.SizeNWSE
-            : WindowCursor.SizeNESW;
-    }
-
-    /// <summary>The edges a point is within <see cref="ResizeBand"/> of. A window that doesn't resize has none.</summary>
+    /// <summary>The edges a point is on: within <see cref="ResizeBand"/> of a side, or inside a corner square of <see cref="CornerBand"/>.</summary>
     private static WindowEdges EdgesAt(ManagedWindow window, Point point)
     {
         if (window.Definition.Resizing == null) return WindowEdges.None;
         var bounds = window.Bounds;
+        var left = point.X - bounds.Left;
+        var right = bounds.Right - 1 - point.X;
+        var top = point.Y - bounds.Top;
+        var bottom = bounds.Bottom - 1 - point.Y;
+        if (Math.Min(left, right) < CornerBand && Math.Min(top, bottom) < CornerBand)
+            return (left < right ? WindowEdges.Left : WindowEdges.Right) | (top < bottom ? WindowEdges.Top : WindowEdges.Bottom);
         var edges = WindowEdges.None;
-        if (point.X < bounds.Left + ResizeBand) edges |= WindowEdges.Left;
-        if (point.X >= bounds.Right - ResizeBand) edges |= WindowEdges.Right;
-        if (point.Y < bounds.Top + ResizeBand) edges |= WindowEdges.Top;
-        if (point.Y >= bounds.Bottom - ResizeBand) edges |= WindowEdges.Bottom;
+        if (left < ResizeBand) edges |= WindowEdges.Left;
+        if (right < ResizeBand) edges |= WindowEdges.Right;
+        if (top < ResizeBand) edges |= WindowEdges.Top;
+        if (bottom < ResizeBand) edges |= WindowEdges.Bottom;
         return edges;
     }
 
