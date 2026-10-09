@@ -17,7 +17,7 @@ public sealed class InventoryPlugin : ILegACEyPlugin
 
     // The window of each layout while the client keeps it, open or hidden. A hidden window keeps its content.
     private readonly Dictionary<InventoryLayout, InventoryWindow> _windows = new();
-    // The settings: read from the client on first use, then kept here, and every change is saved as it happens.
+    // The settings while a window is open: read from the client when a window opens, and every change is saved as it happens.
     private InventorySettings? _settings;
     // The layout whose window the plugin last showed, so a menu press knows whether it hides the window or opens one.
     private InventoryLayout? _shown;
@@ -33,6 +33,9 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     /// <summary>The menu press: opens the current layout's window, or hides it when it is showing.</summary>
     private void Toggle(ILegACEyClient client)
     {
+        // The settings are the character's, and the character logged in now may not be the one the cache came from. The cache
+        // is trusted only while a window is open; otherwise the press reads the value the client holds for this character.
+        if (_shown == null) _settings = null;
         var layout = Current(client).Layout;
         var opening = _shown != layout;
         if (opening)

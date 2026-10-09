@@ -86,6 +86,26 @@ public sealed class InventoryPluginTests
     });
 
     [Fact]
+    public void Settings_follow_the_character_logged_in_when_the_window_opens() => RenderThread.Run(() =>
+    {
+        var store = new MemoryWindowPositionStore();
+        using var client = new FakeInventoryClient(store);
+        new InventoryPlugin().Start(client);
+        client.SaveSettings(VerticalSlotsOn);
+        client.MenuEntries.Single().Action();
+        Assert.NotNull(client.Windows.Get(Vertical));
+        client.MenuEntries.Single().Action();
+        Assert.Null(client.Windows.Get(Vertical));
+
+        // Another character logs in and has its own saved layout: the next open follows that character, not the cached one.
+        client.Character = "Other";
+        store.Save("Server", "Other", "settings:Inventory", (new Point(1, 0), null));
+        client.MenuEntries.Single().Action();
+        Assert.Null(client.Windows.Get(Vertical));
+        Assert.NotNull(client.Windows.Get(Horizontal));
+    });
+
+    [Fact]
     public void A_hidden_layout_takes_the_slots_choice_made_in_the_other_layout_and_draws_what_changed_meanwhile() => RenderThread.Run(() =>
     {
         using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
@@ -178,8 +198,11 @@ public sealed class InventoryPluginTests
         /// <summary>The size and minimum each window was asked for, by id.</summary>
         public Dictionary<string, (int Width, int Height, WindowResizing? Resizing)> Requested { get; } = new(StringComparer.Ordinal);
 
-        /// <summary>The plugin's saved settings value, as the store holds it.</summary>
-        public int? Settings => _store.Load("Server", "Character", SettingsKey)?.Location.X;
+        /// <summary>The character logged in now. Its settings are kept per character; its window placements are not in this fake.</summary>
+        public string Character { get; set; } = "Character";
+
+        /// <summary>The plugin's saved settings value for the character logged in now, as the store holds it.</summary>
+        public int? Settings => _store.Load("Server", Character, SettingsKey)?.Location.X;
 
         /// <summary>The panel of a window, open or hidden.</summary>
         public AvaloniaPanel Panel(string id) => _panels[id];
@@ -191,7 +214,7 @@ public sealed class InventoryPluginTests
         public IInventoryPort Inventory => Port;
         public bool SupportsAction(string action) => false;
         public int? LoadSettings() => Settings;
-        public void SaveSettings(int value) => _store.Save("Server", "Character", SettingsKey, (new Point(value, 0), null));
+        public void SaveSettings(int value) => _store.Save("Server", Character, SettingsKey, (new Point(value, 0), null));
         public void AddMenuEntry(string title, uint iconId, Action action) => MenuEntries.Add((title, iconId, action));
         public void ToggleWindow(string id, string title, int width, int height, Point defaultLocation, Func<Control> createContent) =>
             throw new NotSupportedException();
