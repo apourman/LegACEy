@@ -46,8 +46,8 @@ public enum DerethCorner { None, TopLeft, TopRight, BottomLeft, BottomRight }
 /// <summary>A frame of corner and edge pieces, mirrored to all four sides, with its child inside the edges.</summary>
 public sealed class DerethFrame : Decorator
 {
-    private static readonly IBrush GripFill = DerethPalette.Brush(Color.FromArgb(0x50, DerethPalette.Cream.R, DerethPalette.Cream.G, DerethPalette.Cream.B));
-    private static readonly IPen GripPen = new Pen(DerethPalette.CreamBrush, 1);
+    private static readonly IBrush GripFill = DerethPalette.Brush(Color.FromArgb(0x80, DerethPalette.Cream.R, DerethPalette.Cream.G, DerethPalette.Cream.B));
+    private static readonly IPen GripPen = new Pen(DerethPalette.CreamBrush, 1.2);
 
     private readonly DerethFrameArt _kind;
     private NineSlice _art;
@@ -62,14 +62,14 @@ public sealed class DerethFrame : Decorator
 
     /// <summary>
     /// The corner the pointer is over. The host sets it on a resizable window's frame, which then brightens that corner
-    /// and shows grip ticks. Only a window frame draws it; slot and button frames ignore it.
+    /// and shows grip ticks. Only a window frame draws it; slot and button frames ignore it, so setting it on them is a no-op.
     /// </summary>
     public DerethCorner HoveredCorner
     {
         get => _hoveredCorner;
         set
         {
-            if (_hoveredCorner == value) return;
+            if (_kind != DerethFrameArt.Window || _hoveredCorner == value) return;
             _hoveredCorner = value;
             InvalidateVisual();
         }
@@ -103,7 +103,10 @@ public sealed class DerethFrame : Decorator
         if (_kind == DerethFrameArt.Window && _hoveredCorner != DerethCorner.None) DrawGrip(context, width, height, corner);
     }
 
-    /// <summary>The hovered corner brightens and shows three grip ticks running diagonally in from the window's outer corner.</summary>
+    /// <summary>
+    /// The hovered corner brightens over its whole corner piece, and three grip ticks sit in the frame's inner corner, past
+    /// the 8 px lip, as diagonals across the navy.
+    /// </summary>
     private void DrawGrip(DrawingContext context, double width, double height, double corner)
     {
         var right = _hoveredCorner is DerethCorner.TopRight or DerethCorner.BottomRight;
@@ -113,8 +116,9 @@ public sealed class DerethFrame : Decorator
         var outerY = bottom ? height : 0;
         var dx = right ? -1 : 1;
         var dy = bottom ? -1 : 1;
-        for (var reach = 7; reach <= 13; reach += 3)
-            context.DrawLine(GripPen, new Point(outerX + dx * reach, outerY + dy * 2), new Point(outerX + dx * 2, outerY + dy * reach));
+        const double lip = 8;
+        for (var reach = 11; reach <= 15; reach += 2)
+            context.DrawLine(GripPen, new Point(outerX + dx * reach, outerY + dy * lip), new Point(outerX + dx * lip, outerY + dy * reach));
     }
 }
 
