@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Avalonia;
+using LegACEy.Client.GameArt;
 
 namespace LegACEy.Client.Demo;
 
@@ -31,8 +32,11 @@ public enum ItemDropTarget
 /// <summary>Host services for dragging an item out of a LegACEy window and onto the retail UI.</summary>
 public interface IItemDragHost
 {
-    /// <summary>Shows the item's icon under the pointer, above every window, until disposed.</summary>
-    IDisposable ShowDragIcon(IReadOnlyList<uint> iconLayers);
+    /// <summary>
+    /// Shows the item's icon, already drawn (see ItemIcon.Draw), under the pointer, above every window, until disposed.
+    /// <paramref name="count"/> is how many items the drag carries: above one, the icon carries a "×count" badge.
+    /// </summary>
+    IDisposable ShowDragIcon(GameImage? icon, int count);
 
     /// <summary>What is under the pointer now, outside LegACEy windows.</summary>
     ItemDropTarget DropTargetAtPointer();
@@ -42,12 +46,15 @@ public interface IItemDragHost
 public sealed class FakeItemDragHost : IItemDragHost
 {
     public ItemDropTarget Target { get; set; } = ItemDropTarget.Inventory;
-    public List<uint[]> IconsShown { get; } = new();
+    public List<GameImage?> IconsShown { get; } = new();
+    /// <summary>The count each icon was shown with, as the host was asked to badge it.</summary>
+    public List<int> CountsShown { get; } = new();
     public int IconsOpen { get; private set; }
 
-    public IDisposable ShowDragIcon(IReadOnlyList<uint> iconLayers)
+    public IDisposable ShowDragIcon(GameImage? icon, int count)
     {
-        IconsShown.Add(new List<uint>(iconLayers).ToArray());
+        IconsShown.Add(icon);
+        CountsShown.Add(count);
         IconsOpen++;
         return new Icon(this);
     }

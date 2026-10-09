@@ -37,6 +37,51 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ScreenToClient(IntPtr window, ref NativePoint point);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr LoadCursor(IntPtr instance, IntPtr cursorName);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetCursor(IntPtr cursor);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr CreateIconIndirect(ref IconInfo info);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DestroyCursor(IntPtr cursor);
+
+    [DllImport("gdi32.dll")]
+    private static extern IntPtr CreateBitmap(int width, int height, uint planes, uint bitsPerPixel, byte[] bits);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DeleteObject(IntPtr gdiObject);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct IconInfo
+    {
+        [MarshalAs(UnmanagedType.Bool)] public bool IsIcon;
+        public int HotspotX;
+        public int HotspotY;
+        public IntPtr Mask;
+        public IntPtr Color;
+    }
+
+    // WM_SETCURSOR, the hit-test code for the client area, and the standard size cursors' resource ids (MAKEINTRESOURCE).
+    private const int WmSetCursor = 0x0020;
+    private const int HtClient = 1;
+    private const int IdcSizeWE = 32644;
+    private const int IdcSizeNS = 32645;
+    private const int IdcSizeNWSE = 32642;
+    private const int IdcSizeNESW = 32643;
+    private const int IdcSizeAll = 32646;
+    // The retail cursors in the portal DAT, all 32×32 with the hotspot in the middle.
+    private const uint DatCursorNS = 0x06005E66;
+    private const uint DatCursorWE = 0x06006128;
+    private const uint DatCursorNWSE = 0x06006126;
+    private const uint DatCursorNESW = 0x06006127;
+    private const uint DatCursorMove = 0x06006119;
+
     private const string MenuSlot = "LegACEy";
     private const string MenuWindowId = "plugin-menu";
     private const uint MenuIcon = 0x06004D20;
@@ -46,6 +91,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private static readonly int ProcessId = Process.GetCurrentProcess().Id;
 
     private Device? _device;
+    private static readonly System.Drawing.Color ResizeOutline = System.Drawing.Color.FromArgb(0xC9, 0xA4, 0x5C);
     private PortalDat? _portal;
     private IndicatorBar? _bar;
     private readonly Dictionary<ModelView, ModelRenderer> _modelRenderers = new();
@@ -54,6 +100,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private ScreenSurface? _barSurface;
     private RetailSurfaceRenderer? _barRenderer;
     private WindowManager? _windows;
+    // The window whose frame shows a hovered corner, and the corner it shows.
+    private string? _cornerWindowId;
+    private DerethCorner _cornerApplied;
+    private readonly Dictionary<uint, IntPtr> _datCursors = new();
+    private readonly Dictionary<int, IntPtr> _systemCursors = new();
     private PostUiDrawHook? _postUiDrawHook;
     private bool _windowsEnabled;
     private bool _firstPostUiWindow = true;
@@ -287,6 +338,25 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         _barSurface.Panel.ApplyTheme(CurrentTheme());
         EnsurePostUiDrawHook();
         Log("Indicator bar replacement ready.");
+        WarmUpDerethTheme();
+    }
+
+    /// <summary>Lays out a throwaway Dereth window at login, so the first real one opens without a long frame.</summary>
+    private static void WarmUpDerethTheme()
+    {
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            using var panel = AvaloniaPanel.Create(DerethWarmUp.Sample, DerethWarmUp.Width, DerethWarmUp.Height);
+            panel.ApplyTheme(new DerethClientTheme());
+            panel.Tick();
+        }
+        catch (Exception exception)
+        {
+            Log($"Dereth warm-up failed: {exception.Message}");
+            return;
+        }
+        Log($"Dereth warm-up took {stopwatch.ElapsedMilliseconds} ms.");
     }
 
     private void CreateWindowManager()
@@ -510,6 +580,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             }
         }
         ReleaseModelRenderers(_drawnModelViews);
+        if (_windows.Resizing is { } resizing && _device != null)
+            Guard(() => ScreenSurface.DrawOutline(_device, resizing.Bounds, ResizeOutline));
         // An item dragged out of a LegACEy window draws above everything.
         Guard(() => _dragIconSurface?.DrawNow());
     }
@@ -582,7 +654,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         }
         var top = item == 0 ? null : TopSurfaceAt(_pointer);
         if (top != null && _retailDragIcon == null)
-            _retailDragIcon = ShowDragIcon(ObjectIcon(item));
+            _retailDragIcon = ShowDragIcon(ObjectIcon(item), 1);
         else if (top == null && _retailDragIcon != null)
         {
             _retailDragIcon.Dispose();
@@ -647,28 +719,22 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         catch (COMException) { return string.Empty; }
     }
 
-    /// <summary>The object's icon layers as the client stacks them: item-type plate, underlay, icon, overlay.</summary>
-    private static IReadOnlyList<uint> ObjectIcon(uint id)
+    /// <summary>The object's icon as the retail UI draws it: underlay, the icon with its UI-effect outline, then the secondary overlay.</summary>
+    private GameImage? ObjectIcon(uint id)
     {
         try
         {
             var item = CoreManager.Current.WorldFilter[unchecked((int)id)];
-            if (item == null) return Array.Empty<uint>();
+            if (item == null || _portal == null) return null;
             // Decal reports portal texture ids without their 0x06 prefix.
             static uint Texture(int value) => value == 0 ? 0 : (value & 0xFF000000) == 0 ? unchecked((uint)value) | 0x06000000 : unchecked((uint)value);
-            var layers = new List<uint> { Plate(unchecked((uint)item.Category)) };
-            foreach (var layer in new[] { Texture(item.Values(Decal.Adapter.Wrappers.LongValueKey.IconUnderlay)), Texture(item.Icon),
-                         Texture(item.Values(Decal.Adapter.Wrappers.LongValueKey.IconOverlay)) })
-                if (layer != 0) layers.Add(layer);
-            return layers;
+            // Decal names the UI-effects value IconOutline (checked in Decal.Adapter.dll). Decal has no secondary overlay key, so none is drawn.
+            return ItemIcon.Draw(_portal, Texture(item.Values(Decal.Adapter.Wrappers.LongValueKey.IconUnderlay)), Texture(item.Icon),
+                Texture(item.Values(Decal.Adapter.Wrappers.LongValueKey.IconOverlay)), 0,
+                unchecked((uint)item.Values(Decal.Adapter.Wrappers.LongValueKey.IconOutline)));
         }
-        catch (COMException) { return Array.Empty<uint>(); }
+        catch (COMException) { return null; }
     }
-
-    /// <summary>The plate under an icon by ACE ItemType flags, as the server's vault list and the Market API choose it.</summary>
-    private static uint Plate(uint itemType) =>
-        (itemType & 0x8101) != 0 ? 0x060011D2u : (itemType & 0x2) != 0 ? 0x060011CFu : (itemType & 0x4) != 0 ? 0x060011F3u :
-        (itemType & 0x8) != 0 ? 0x060011D5u : (itemType & 0x800) != 0 ? 0x060011D3u : 0x060011D4u;
 
     /// <summary>Drag services for LegACEy windows: the floating icon and what lies under the pointer in the retail UI.</summary>
     private sealed class ItemDragHost : IItemDragHost
@@ -676,9 +742,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         private readonly ClientUiRuntime _owner;
         public ItemDragHost(ClientUiRuntime owner) => _owner = owner;
 
-        public IDisposable ShowDragIcon(IReadOnlyList<uint> iconLayers)
+        public IDisposable ShowDragIcon(GameImage? image, int count)
         {
-            var icon = _owner.ShowDragIcon(iconLayers);
+            var icon = _owner.ShowDragIcon(image, count);
             _owner._itemDragActive = true;
             return new ItemDrag(_owner, icon);
         }
@@ -711,21 +777,36 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         }
     }
 
-    private IDisposable ShowDragIcon(IReadOnlyList<uint> iconLayers)
+    /// <summary>The "×count" badge for a drag icon's corner: the count over a dark shadow, as the Vault draws its stack counts.</summary>
+    private static Avalonia.Controls.Control CountBadge(int count)
+    {
+        static Avalonia.Controls.TextBlock Line(string text, Avalonia.Media.IBrush brush, Avalonia.Thickness margin) => new()
+        {
+            Text = text, FontSize = 11, FontWeight = Avalonia.Media.FontWeight.SemiBold, FontFamily = DerethPalette.Body, Foreground = brush, Margin = margin
+        };
+        var badge = new Avalonia.Controls.Panel
+        {
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Bottom,
+            Margin = new Avalonia.Thickness(0, 0, 3, 1)
+        };
+        badge.Children.Add(Line($"×{count}", Avalonia.Media.Brushes.Black, new Avalonia.Thickness(1, 1, 0, 0)));
+        badge.Children.Add(Line($"×{count}", DerethPalette.TextBrush, new Avalonia.Thickness(0, 0, 1, 1)));
+        return badge;
+    }
+
+    private IDisposable ShowDragIcon(GameImage? image, int count)
     {
         HideDragIcon();
         if (_device == null || _portal == null) return new DragIcon(this);
-        var bitmaps = new List<Avalonia.Media.Imaging.WriteableBitmap>();
+        var bitmap = GameArtImageExtension.CreateBitmap(image);
         var layers = new Grid { Width = 32, Height = 32 };
-        foreach (var id in iconLayers)
-        {
-            var bitmap = GameArtImageExtension.CreateBitmap(_portal, id);
-            if (bitmap == null) continue;
-            bitmaps.Add(bitmap);
+        if (bitmap != null)
             layers.Children.Add(new Avalonia.Controls.Image { Source = bitmap, Width = 32, Height = 32, Stretch = Stretch.None });
-        }
+        // a selection's drag carries its count in the icon's corner
+        if (count > 1)
+            layers.Children.Add(CountBadge(count));
         RenderOptions.SetBitmapInterpolationMode(layers, Avalonia.Media.Imaging.BitmapInterpolationMode.None);
-        layers.DetachedFromVisualTree += (_, _) => { foreach (var bitmap in bitmaps) bitmap.Dispose(); };
+        layers.DetachedFromVisualTree += (_, _) => bitmap?.Dispose();
         var panel = ObservePanel(AvaloniaPanel.Create(() => layers, 32, 32));
         _dragIconSurface = new ScreenSurface(_device, panel) { Visible = true, Location = new Point(_pointer.X - 16, _pointer.Y - 16) };
         return new DragIcon(this);
@@ -786,9 +867,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         {
             var window = _windows!.Open(definition, requestedLocation);
             opened = true;
-            surface.Location = window.Location;
+            FitSurface(surface, window);
             surface.Visible = true;
-            surface.Panel.ApplyTheme(_clientUi?.Theme ?? CurrentTheme());
+            surface.Panel.ApplyTheme(definition.Theme ?? _clientUi?.Theme ?? CurrentTheme());
             _featureSurfaces.Add(definition.Id, surface);
             _windowFailures[definition.Id] = failed;
         }
@@ -839,7 +920,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     string ILegACEyPluginHost.PortalPath => _portal?.Path ?? string.Empty;
     IGameArtSource ILegACEyPluginHost.Art => (IGameArtSource?)_portal ?? throw new InvalidOperationException("Game art is unavailable until the client UI is ready.");
     IItemDragHost ILegACEyPluginHost.ItemDrag => new ItemDragHost(this);
-    uint ILegACEyPluginHost.CurrentSelection => CurrentSelection();
     bool ILegACEyPluginHost.IsWindowOpen(string id) => _featureSurfaces.ContainsKey(id);
     void ILegACEyPluginHost.HideWindow(string id) => HideFeatureWindow(id);
     void ILegACEyPluginHost.CloseWindow(string id) => ReleaseFeatureWindow(id);
@@ -866,6 +946,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private void RemoveFeatureWindow(string id, ScreenSurface surface)
     {
         if (_hovered == surface) _hovered = null;
+        // A hidden or closed window must not reopen with its corner lit.
+        if (_cornerWindowId == id)
+        {
+            SetWindowCorner(id, DerethCorner.None);
+            _cornerWindowId = null;
+            _cornerApplied = DerethCorner.None;
+        }
         surface.Visible = false;
         _featureSurfaces.Remove(id);
         _windowFailures.Remove(id);
@@ -893,6 +980,19 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             return;
 
         var lParam = e.LParam;
+        if (e.Msg == WmSetCursor)
+        {
+            // Over a resize edge, or while moving a window, our cursor replaces the game's; the eaten message keeps the game from resetting it.
+            if ((lParam & 0xffff) == HtClient)
+                Guard(() =>
+                {
+                    var cursor = WindowCursorAt(_pointer);
+                    if (cursor == IntPtr.Zero) return;
+                    SetCursor(cursor);
+                    e.Eat = true;
+                });
+            return;
+        }
         if (e.Msg == InputRouterService.WmMouseMove)
             _pointer = new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff));
         if (e.Msg == InputRouterService.WmLButtonUp && _inputRouter.CapturedSurfaceId == null)
@@ -936,13 +1036,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                         target?.Panel.PointerMove(route.X, route.Y);
                     break;
                 case InputAction.PointerDown:
+                    // The window that had focus loses it to this one.
+                    SurfaceById(route.ClearFocusSurfaceId)?.Panel.ClearFocus();
                     _pointer = new Point(route.X + target!.Location.X, route.Y + target.Location.Y);
                     if (route.SurfaceId != null && _windows?.Get(route.SurfaceId) != null)
                     {
                         _windows.Press(_pointer);
                         SyncWindowLocations();
                     }
-                    target.Panel.PointerDown(route.X, route.Y);
+                    target.Panel.PointerDown(route.X, route.Y, ToKeyModifiers(route.Modifiers));
                     e.Eat = route.Eat;
                     break;
                 case InputAction.PointerUp:
@@ -983,9 +1085,104 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                     _hovered = null;
                     break;
             }
+            if (e.Msg == InputRouterService.WmMouseMove)
+                UpdateWindowCorner(route.SurfaceId, _pointer);
             if (route.Eat)
                 e.Eat = true;
         });
+    }
+
+    /// <summary>
+    /// Brightens the corner under the pointer on its window's frame. The resize cursor itself is set on WM_SETCURSOR, which
+    /// the game sends before each mouse move, so the game's own handler cannot put its cursor back over an edge.
+    /// </summary>
+    private void UpdateWindowCorner(string? surfaceId, Point point)
+    {
+        if (_windows == null) return;
+        var hover = surfaceId == "bar" ? default : _windows.HoverAt(point);
+        var corner = CornerOf(hover.Edges);
+        if (hover.WindowId == _cornerWindowId && corner == _cornerApplied) return;
+        SetWindowCorner(_cornerWindowId, DerethCorner.None);
+        SetWindowCorner(hover.WindowId, corner);
+        _cornerWindowId = hover.WindowId;
+        _cornerApplied = corner;
+    }
+
+    private void SetWindowCorner(string? windowId, DerethCorner corner)
+    {
+        var surface = SurfaceById(windowId);
+        if (surface == null) return;
+        foreach (var frame in Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(surface.Panel.Content).OfType<DerethFrame>())
+            frame.HoveredCorner = corner;
+    }
+
+    private static DerethCorner CornerOf(WindowEdges edges)
+    {
+        if (edges == (WindowEdges.Left | WindowEdges.Top)) return DerethCorner.TopLeft;
+        if (edges == (WindowEdges.Right | WindowEdges.Top)) return DerethCorner.TopRight;
+        if (edges == (WindowEdges.Left | WindowEdges.Bottom)) return DerethCorner.BottomLeft;
+        if (edges == (WindowEdges.Right | WindowEdges.Bottom)) return DerethCorner.BottomRight;
+        return DerethCorner.None;
+    }
+
+    /// <summary>
+    /// The cursor for a point: the move cursor while a window is being moved, the resize cursor over a window edge or corner,
+    /// or zero where the game's own cursor stands.
+    /// </summary>
+    private IntPtr WindowCursorAt(Point point)
+    {
+        if (_windows == null) return IntPtr.Zero;
+        if (_windows.Moving != null) return RetailCursor(DatCursorMove, IdcSizeAll);
+        var hover = _windows.HoverAt(point);
+        // The pointer goes to a capture, else to the topmost surface under it, as the router decides. Only the window that owns
+        // it gets the resize cursor, so the retail bar and any other surface keep the game's cursor.
+        var owner = _inputRouter.CapturedSurfaceId ?? InputRouterService.SurfaceAt(point.X, point.Y, GetInputSurfaces());
+        if (hover.WindowId == null || owner != hover.WindowId) return IntPtr.Zero;
+        var horizontal = hover.Edges & (WindowEdges.Left | WindowEdges.Right);
+        var vertical = hover.Edges & (WindowEdges.Top | WindowEdges.Bottom);
+        if (horizontal == WindowEdges.None && vertical == WindowEdges.None) return IntPtr.Zero;
+        if (vertical == WindowEdges.None) return RetailCursor(DatCursorWE, IdcSizeWE);
+        if (horizontal == WindowEdges.None) return RetailCursor(DatCursorNS, IdcSizeNS);
+        return hover.Edges == (WindowEdges.Left | WindowEdges.Top) || hover.Edges == (WindowEdges.Right | WindowEdges.Bottom)
+            ? RetailCursor(DatCursorNWSE, IdcSizeNWSE)
+            : RetailCursor(DatCursorNESW, IdcSizeNESW);
+    }
+
+    /// <summary>A retail cursor from the DAT, made once; the standard Windows cursor if the DAT image can't be read.</summary>
+    private IntPtr RetailCursor(uint imageId, int fallback)
+    {
+        if (!_datCursors.TryGetValue(imageId, out var cursor))
+        {
+            try { cursor = _portal?.ReadImage(imageId) is { } image ? CreateCursor(image) : IntPtr.Zero; }
+            catch (Exception exception)
+            {
+                Log($"Cursor 0x{imageId:X8} could not be made from the DAT: {exception.Message}");
+                cursor = IntPtr.Zero;
+            }
+            _datCursors.Add(imageId, cursor);
+        }
+        if (cursor != IntPtr.Zero) return cursor;
+        if (!_systemCursors.TryGetValue(fallback, out cursor))
+            _systemCursors.Add(fallback, cursor = LoadCursor(IntPtr.Zero, (IntPtr)fallback));
+        return cursor;
+    }
+
+    /// <summary>An alpha cursor from a premultiplied BGRA image, its hotspot in the middle.</summary>
+    private static IntPtr CreateCursor(GameImage image)
+    {
+        // The colour bitmap carries the alpha; the 1-bit mask is all zero, so it adds nothing.
+        var color = CreateBitmap(image.Width, image.Height, 1, 32, image.Pixels);
+        var mask = CreateBitmap(image.Width, image.Height, 1, 1, new byte[(image.Width + 15) / 16 * 2 * image.Height]);
+        try
+        {
+            var info = new IconInfo { IsIcon = false, HotspotX = image.Width / 2, HotspotY = image.Height / 2, Mask = mask, Color = color };
+            return CreateIconIndirect(ref info);
+        }
+        finally
+        {
+            DeleteObject(color);
+            DeleteObject(mask);
+        }
     }
 
     private void GuardInput(InputRoute route, Action action)
@@ -1049,8 +1246,19 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private void SyncWindowLocations()
     {
         if (_windows == null) return;
+        // A window being resized keeps its surface until release: relaying it out on every mouse move stalls the game,
+        // so an outline shows the new bounds meanwhile.
         foreach (var window in _windows.ZOrder)
-            SurfaceById(window.Id)!.Location = window.Location;
+            if (window != _windows.Resizing)
+                FitSurface(SurfaceById(window.Id)!, window);
+    }
+
+    /// <summary>Puts a window's surface where the window manager has it, at the window's size. A new size re-lays out the panel.</summary>
+    private static void FitSurface(ScreenSurface surface, ManagedWindow window)
+    {
+        surface.Location = window.Location;
+        if (surface.Panel.Frame.Width != window.Width || surface.Panel.Frame.Height != window.Height)
+            surface.Panel.Resize(window.Width, window.Height);
     }
 
     private static KeyModifiers ToKeyModifiers(InputModifiers modifiers)
@@ -1107,9 +1315,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         foreach (var id in _featureSurfaces.Keys.Concat(_hiddenSurfaces.Keys).ToArray())
             ReleaseFeatureWindow(id);
     }
-
-    /// <summary>The object selected in the game, for "Deposit item"; zero for none.</summary>
-    private static uint CurrentSelection() => unchecked((uint)CoreManager.Current.Actions.CurrentSelection);
 
     private static string SessionCharacter() => CoreManager.Current.CharacterFilter.Name;
     private static string SessionServer() => CoreManager.Current.CharacterFilter.Server;
@@ -1183,6 +1388,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         _windowsEnabled = false;
         _portal?.Dispose();
         _portal = null;
+        foreach (var cursor in _datCursors.Values)
+            if (cursor != IntPtr.Zero) DestroyCursor(cursor);
+        _datCursors.Clear();
         _bar = null;
         _drawnModelViews.Clear();
         ReleaseModelRenderers(_drawnModelViews);

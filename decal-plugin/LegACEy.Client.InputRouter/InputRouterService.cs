@@ -78,7 +78,7 @@ public sealed class InputRouterService
         {
             var delta = HighSigned(message.WParam);
             return target == null ? new InputRoute() : new InputRoute(InputAction.MouseWheel, target.Id, true,
-                x - target.X, y - target.Y, delta, modifiers: _modifiers | WheelModifiers(message.WParam));
+                x - target.X, y - target.Y, delta, modifiers: RouteModifiers(message.WParam));
         }
 
         if (message.Message == WmMouseMove)
@@ -94,9 +94,11 @@ public sealed class InputRouterService
             }
             if (message.Message == WmRButtonDown)
                 return new InputRoute(eat: true);
+            var left = _focusedSurfaceId != target.Id ? _focusedSurfaceId : null;
             _capturedSurfaceId = target.Id;
             _focusedSurfaceId = target.Id;
-            return new InputRoute(InputAction.PointerDown, target.Id, true, x - target.X, y - target.Y);
+            return new InputRoute(InputAction.PointerDown, target.Id, true, x - target.X, y - target.Y, modifiers: RouteModifiers(message.WParam),
+                clearFocusSurfaceId: left);
         }
 
         if (message.Message == WmLButtonUp)
@@ -139,6 +141,9 @@ public sealed class InputRouterService
     private static InputSurface? HitTest(int x, int y, IReadOnlyList<InputSurface> surfaces) =>
         surfaces.Where(surface => surface.Contains(x, y)).OrderByDescending(surface => surface.ZOrder).FirstOrDefault();
 
+    /// <summary>The id of the surface a point routes to when nothing has captured the pointer, or null over no surface.</summary>
+    public static string? SurfaceAt(int x, int y, IReadOnlyList<InputSurface> surfaces) => HitTest(x, y, surfaces)?.Id;
+
     private static InputSurface? Find(string id, IReadOnlyList<InputSurface> surfaces) =>
         surfaces.FirstOrDefault(surface => string.Equals(surface.Id, id, StringComparison.Ordinal));
 
@@ -159,7 +164,14 @@ public sealed class InputRouterService
     private static int LowSigned(IntPtr packed) => unchecked((short)(packed.ToInt64() & 0xffff));
     private static int HighSigned(IntPtr packed) => unchecked((short)((packed.ToInt64() >> 16) & 0xffff));
 
-    private static InputModifiers WheelModifiers(IntPtr wParam)
+    /// <summary>
+    /// A mouse message's modifiers. Shift and Control come only from its key state, which is authoritative, so a key-up the
+    /// router missed cannot stick. Alt and Meta have no key state in the message, so they come from the keys seen.
+    /// </summary>
+    private InputModifiers RouteModifiers(IntPtr wParam) => (_modifiers & (InputModifiers.Alt | InputModifiers.Meta)) | MouseKeyModifiers(wParam);
+
+    /// <summary>The Shift and Control held, from a mouse message's key state (MK_SHIFT and MK_CONTROL in the low word).</summary>
+    private static InputModifiers MouseKeyModifiers(IntPtr wParam)
     {
         var keyState = unchecked((int)wParam.ToInt64()) & 0xffff;
         var modifiers = InputModifiers.None;

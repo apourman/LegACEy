@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 
 using log4net;
@@ -16,7 +17,8 @@ namespace ACE.Server.Market
 {
     /// <summary>
     /// The Vault's actions on the in-band server channel, for the LegACEy client's Vault window. They call the Vault's own entry points,
-    /// so every rule, the transfer channel and the chat messages are unchanged. Bodies are written with ChannelWire; the plugin's VaultProtocol reads them.
+    /// so every rule and the chat messages are unchanged. A single deposit or withdrawal goes through the transfer channel; a batch withdrawal skips it,
+    /// as it is instant. Bodies are written with ChannelWire; the plugin's VaultProtocol reads them.
     /// </summary>
     public static class VaultChannelActions
     {
@@ -27,6 +29,13 @@ namespace ACE.Server.Market
         public const string Withdraw = "vault.withdraw";
         public const string Check = "vault.check";
         public const string Move = "vault.move";
+        public const string WithdrawBatch = "vault.withdraw_batch";
+
+        /// <summary>
+        /// The most items one vault.list reply holds. Must match VaultProtocol.PageSize in the LegACEy Vault client.
+        /// It is also the most one batch withdrawal names.
+        /// </summary>
+        public const int PageSize = 100;
 
         /// <summary>
         /// The station every action above requires: the Vault chest in Yaraq
@@ -45,6 +54,62 @@ namespace ACE.Server.Market
             ServerChannel.Register(Withdraw, context => HandleTransfer(context, deposit: false), Station);
             ServerChannel.Register(Check, HandleCheck, Station);
             ServerChannel.Register(Move, HandleMove, Station);
+            ServerChannel.Register(WithdrawBatch, HandleWithdrawBatch, Station);
+        }
+
+        /// <summary>
+        /// Withdraws a set of items at once, instantly and all or none (body: a count, then the item guids). The reply is the outcome: a byte for
+        /// withdrawn, then the message, which is the first refusal's reason when nothing moved.
+        /// </summary>
+        private static void HandleWithdrawBatch(ChannelContext context)
+        {
+            if (!TryReadGuids(context, out var itemGuids))
+                return;
+
+            Vault.WithdrawMany(context.Player, itemGuids, result => context.Reply(TransferBody(result.Success, result.Message)));
+        }
+
+        /// <summary>
+        /// A reply that says whether the action went ahead, and the message the player is told: the reason when it did not
+        /// </summary>
+        private static byte[] TransferBody(bool accepted, string message) => ChannelWire.Body(w =>
+        {
+            w.Write((byte)(accepted ? 1 : 0));
+            ChannelWire.WriteString(w, message);
+        });
+
+        /// <summary>
+        /// Reads a batch withdrawal's guids: a count from 1 to PageSize, then that many distinct guids. Anything else is a bad request.
+        /// </summary>
+        private static bool TryReadGuids(ChannelContext context, out uint[] itemGuids)
+        {
+            try
+            {
+                using (var body = context.Body())
+                {
+                    var count = body.ReadInt32();
+                    if (count >= 1 && count <= PageSize)
+                    {
+                        var guids = new uint[count];
+                        for (var index = 0; index < count; index++)
+                            guids[index] = body.ReadUInt32();
+
+                        if (guids.Distinct().Count() == count)
+                        {
+                            itemGuids = guids;
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch (EndOfStreamException)
+            {
+                // a body cut short is the same bad request as one with bad bounds
+            }
+
+            itemGuids = null;
+            context.Fail(ChannelStatus.BadRequest, $"Withdraw between 1 and {PageSize} different items.");
+            return false;
         }
 
         /// <summary>
@@ -96,11 +161,7 @@ namespace ACE.Server.Market
                 try
                 {
                     var moved = Vault.Available && VaultStore.Move(accountId, itemGuid, toIndex);
-                    context.Reply(ChannelWire.Body(w =>
-                    {
-                        w.Write((byte)(moved ? 1 : 0));
-                        ChannelWire.WriteString(w, moved ? string.Empty : "That item is no longer in your Vault.");
-                    }));
+                    context.Reply(TransferBody(moved, moved ? string.Empty : "That item is no longer in your Vault."));
                 }
                 catch (Exception ex)
                 {
@@ -126,6 +187,33 @@ namespace ACE.Server.Market
             }
         }
 
+        private readonly record struct ListRequest(string Search, int Offset, int Count);
+
+        /// <summary>
+        /// Reads what vault.list asks for: a search (empty for none), an offset and a count, in that order. The offset is kept at 0 or more and the count
+        /// to 1..PageSize. Fields after the count are for a later version and ignored.
+        /// </summary>
+        private static bool TryReadListRequest(ChannelContext context, out ListRequest request)
+        {
+            try
+            {
+                using (var body = context.Body())
+                {
+                    var search = ChannelWire.ReadString(body);
+                    var offset = body.ReadInt32();
+                    var count = body.ReadInt32();
+                    request = new ListRequest(search, Math.Max(0, offset), Math.Clamp(count, 1, PageSize));
+                    return true;
+                }
+            }
+            catch (EndOfStreamException)
+            {
+                request = default;
+                context.Fail(ChannelStatus.BadRequest, "A search, an offset and a count are required.");
+                return false;
+            }
+        }
+
         private static void HandleList(ChannelContext context)
         {
             if (!Vault.Available)
@@ -133,6 +221,9 @@ namespace ACE.Server.Market
                 context.Reply(ChannelWire.Body(w => w.Write((byte)0)));
                 return;
             }
+
+            if (!TryReadListRequest(context, out var request))
+                return;
 
             var player = context.Player;
             var capacity = (int)MarketSettings.Get(MarketSettings.VaultSize);
@@ -143,10 +234,10 @@ namespace ACE.Server.Market
             {
                 try
                 {
-                    var items = Vault.List(player);
+                    var page = Vault.Page(player, request.Search, request.Offset, request.Count);
                     // NoBalance while the marketplace is closed: the window shows no MMD
                     var balance = marketOpen ? Vault.Balance(player) : NoBalance;
-                    context.Reply(ListBody(items, balance, capacity));
+                    context.Reply(ListBody(page, balance, capacity));
                 }
                 catch (Exception ex)
                 {
@@ -161,16 +252,18 @@ namespace ACE.Server.Market
         /// </summary>
         public const long NoBalance = -1;
 
-        internal static byte[] ListBody(IReadOnlyList<VaultItem> items, long balance, int capacity)
+        internal static byte[] ListBody(VaultPage page, long balance, int capacity)
         {
             return ChannelWire.Body(w =>
             {
                 w.Write((byte)1);
                 w.Write(balance);
                 w.Write(capacity);
-                w.Write(items.Count);
+                w.Write(page.VaultCount);
+                w.Write(page.Total);
+                w.Write(page.Items.Count);
 
-                foreach (var item in items)
+                foreach (var item in page.Items)
                 {
                     w.Write(item.ItemGuid);
                     ChannelWire.WriteString(w, item.Name);
@@ -215,11 +308,7 @@ namespace ACE.Server.Market
 
             starting = false;
 
-            context.Reply(ChannelWire.Body(w =>
-            {
-                w.Write((byte)(refusal == null ? 1 : 0));
-                ChannelWire.WriteString(w, refusal?.Message ?? string.Empty);
-            }));
+            context.Reply(TransferBody(refusal == null, refusal?.Message ?? string.Empty));
         }
 
         /// <summary>

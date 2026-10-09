@@ -10,6 +10,11 @@ using ACE.Database.Models.Shard.Market;
 namespace ACE.Database.Market
 {
     /// <summary>
+    /// One page of a Vault listing: the page's items, how many items match the search, and how many the Vault holds in all
+    /// </summary>
+    public sealed record VaultPage(IReadOnlyList<VaultItem> Items, int Total, int VaultCount);
+
+    /// <summary>
     /// Reads of the Vault tables, through the configured shard database or a context the caller gives. Item moves go through the deposit and withdraw save-queue jobs;
     /// the only writes here never touch an item: the withdrawal channel's marks on a Vault row, the admin's search-column refresh, and the WCID blocklist.
     /// </summary>
@@ -63,6 +68,20 @@ namespace ACE.Database.Market
         }
 
         /// <summary>
+        /// One page of the account's Vault in the player's order. A search is a case-insensitive substring match on the item name over every item,
+        /// so Total counts the matches and the page is taken from them. The Vault is read whole, then filtered and paged in memory; it is capped in size.
+        /// </summary>
+        public static VaultPage Page(uint accountId, string search, int offset, int count)
+        {
+            var all = List(accountId);
+            var matches = string.IsNullOrEmpty(search)
+                ? all
+                : all.Where(item => (item.Name ?? string.Empty).Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
+
+            return new VaultPage(matches.Skip(offset).Take(count).ToList(), matches.Count, all.Count);
+        }
+
+        /// <summary>
         /// The number of items in the account's Vault (a stack counts as one)
         /// </summary>
         public static int Count(uint accountId)
@@ -78,6 +97,17 @@ namespace ACE.Database.Market
         {
             using (var context = new ShardDbContext())
                 return context.MarketVaultItems.AsNoTracking().FirstOrDefault(r => r.ItemGuid == itemGuid);
+        }
+
+        /// <summary>
+        /// The Vault rows of the given items that are the account's, in one query, by item guid. An item that is not the account's has no entry.
+        /// </summary>
+        public static Dictionary<uint, VaultItem> Owned(uint accountId, IReadOnlyList<uint> itemGuids)
+        {
+            var guids = itemGuids.ToList();
+
+            using (var context = new ShardDbContext())
+                return context.MarketVaultItems.AsNoTracking().Where(r => r.AccountId == accountId && guids.Contains(r.ItemGuid)).ToDictionary(r => r.ItemGuid);
         }
 
         /// <summary>

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace LegACEy.Client.Demo;
@@ -62,6 +63,8 @@ public interface IServerChannel
     bool IsAvailable { get; }
     IDisposable Request(string action, byte[] body, Action<ChannelReply> completed, TimeSpan? timeout = null);
     IDisposable Subscribe(string topic, Action<byte[]> handler);
+    /// <summary>Runs the action once the delay has passed, on the host's frame tick. Disposing the result cancels it.</summary>
+    IDisposable Schedule(TimeSpan delay, Action action);
 }
 
 /// <summary>Host transport: sends one encoded request as the payload of the LegACEy game action.</summary>
@@ -82,6 +85,7 @@ public sealed class ServerChannelClient : IServerChannel, IDisposable
     private readonly IServerChannelTransport _transport;
     private readonly Func<DateTime> _clock;
     private readonly Dictionary<uint, Pending> _pending = new();
+    private readonly List<Scheduled> _scheduled = new();
     private readonly Dictionary<string, List<Subscription>> _subscriptions = new(StringComparer.Ordinal);
     private uint _nextId;
 
@@ -149,11 +153,20 @@ public sealed class ServerChannelClient : IServerChannel, IDisposable
             if (subscription.Active) subscription.Handler(message.Body);
     }
 
-    /// <summary>Fails requests whose timeout has passed.</summary>
+    public IDisposable Schedule(TimeSpan delay, Action action)
+    {
+        if (action == null) throw new ArgumentNullException(nameof(action));
+        var scheduled = new Scheduled(this, _clock() + delay, action);
+        _scheduled.Add(scheduled);
+        return scheduled;
+    }
+
+    /// <summary>Runs the scheduled actions that are due, then fails requests whose timeout has passed.</summary>
     public void Tick()
     {
-        if (_pending.Count == 0) return;
         var now = _clock();
+        RunDue(now);
+        if (_pending.Count == 0) return;
         List<Pending>? expired = null;
         foreach (var pending in _pending.Values)
             if (now >= pending.Deadline) (expired ??= new List<Pending>()).Add(pending);
@@ -165,9 +178,20 @@ public sealed class ServerChannelClient : IServerChannel, IDisposable
         }
     }
 
-    /// <summary>The game session ended: every outstanding request fails as disconnected.</summary>
+    private void RunDue(DateTime now)
+    {
+        if (_scheduled.Count == 0) return;
+        foreach (var due in _scheduled.Where(scheduled => now >= scheduled.Due).ToList())
+        {
+            _scheduled.Remove(due);
+            due.Run();
+        }
+    }
+
+    /// <summary>The game session ended: every outstanding request fails as disconnected, and every scheduled action is dropped.</summary>
     public void Reset()
     {
+        _scheduled.Clear();
         var pending = new List<Pending>(_pending.Values);
         _pending.Clear();
         var now = _clock();
@@ -178,7 +202,23 @@ public sealed class ServerChannelClient : IServerChannel, IDisposable
     public void Dispose()
     {
         _pending.Clear();
+        _scheduled.Clear();
         _subscriptions.Clear();
+    }
+
+    private sealed class Scheduled : IDisposable
+    {
+        private readonly ServerChannelClient _owner;
+        private readonly Action _action;
+
+        public Scheduled(ServerChannelClient owner, DateTime due, Action action)
+        { _owner = owner; Due = due; _action = action; }
+
+        public DateTime Due { get; }
+
+        public void Run() => _action();
+
+        public void Dispose() => _owner._scheduled.Remove(this);
     }
 
     private sealed class Pending : IDisposable
@@ -240,6 +280,8 @@ public sealed class UnavailableServerChannel : IServerChannel
     }
 
     public IDisposable Subscribe(string topic, Action<byte[]> handler) => Nothing.Instance;
+
+    public IDisposable Schedule(TimeSpan delay, Action action) => Nothing.Instance;
 
     private sealed class Nothing : IDisposable
     {

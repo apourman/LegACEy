@@ -51,7 +51,7 @@ namespace ACE.Server.Tests.Market
 
             foreach (var player in new[] { depositor, sibling })
             {
-                var listed = Vault.List(player).Single(r => r.ItemGuid == guid);
+                var listed = VaultStore.List(player.Character.AccountId).Single(r => r.ItemGuid == guid);
                 Assert.AreEqual(account, listed.AccountId);
                 Assert.AreEqual(depositor.Guid.Full, listed.CharacterId);
                 Assert.AreEqual(VaultItemState.Held, listed.State);
@@ -83,7 +83,7 @@ namespace ACE.Server.Tests.Market
             Assert.AreEqual(3, back.GetProperty(PropertyInt.NumTimesTinkered));
             Assert.AreEqual(item.Name, back.Name);
             Assert.IsNull(depositor.GetInventoryItem(guid));
-            Assert.AreEqual(0, Vault.List(withdrawer).Count(r => r.ItemGuid == guid), "the Vault row is gone");
+            Assert.AreEqual(0, VaultStore.List(withdrawer.Character.AccountId).Count(r => r.ItemGuid == guid), "the Vault row is gone");
             Assert.AreEqual(0, Count($"SELECT COUNT(*) FROM market_vault_item WHERE item_Guid = {guid};"));
             VaultTestWorld.OnWorldThread(() => { }); // let any follow-up save settle
             Assert.AreEqual(withdrawer.Guid.Full, (uint)Count($"SELECT value FROM biota_properties_i_i_d WHERE object_Id = {guid} AND type = {(int)PropertyInstanceId.Container};"), "the database has the item in the withdrawing character's pack");

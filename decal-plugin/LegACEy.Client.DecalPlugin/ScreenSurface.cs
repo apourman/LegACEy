@@ -142,6 +142,57 @@ internal sealed class ScreenSurface : IDisposable
         _uploaded = true;
     }
 
+    /// <summary>Draws a 2 px outline just inside the bounds in a solid colour, then puts every device state back.</summary>
+    public static void DrawOutline(Device device, Rectangle bounds, Color color)
+    {
+        using var saved = new StateBlock(device, StateBlockType.All);
+        saved.Capture();
+        try
+        {
+            device.VertexShader = null;
+            device.PixelShader = null;
+            device.VertexFormat = CustomVertex.TransformedColored.Format;
+            device.SetTexture(0, null);
+            device.SetRenderState(RenderStates.ZEnable, false);
+            device.SetRenderState(RenderStates.ZBufferWriteEnable, false);
+            device.SetRenderState(RenderStates.Lighting, false);
+            device.SetRenderState(RenderStates.FogEnable, false);
+            device.SetRenderState(RenderStates.AlphaTestEnable, false);
+            device.SetRenderState(RenderStates.AlphaBlendEnable, false);
+            device.SetRenderState(RenderStates.StencilEnable, false);
+            device.SetRenderState(RenderStates.ScissorTestEnable, false);
+            device.SetRenderState(RenderStates.CullMode, (int)Cull.None);
+            device.SetRenderState(RenderStates.ColorWriteEnable, 0xF);
+            device.SetTextureStageState(0, TextureStageStates.ColorOperation, (int)TextureOperation.SelectArg1);
+            device.SetTextureStageState(0, TextureStageStates.ColorArgument1, (int)TextureArgument.Diffuse);
+            device.SetTextureStageState(0, TextureStageStates.AlphaOperation, (int)TextureOperation.SelectArg1);
+            device.SetTextureStageState(0, TextureStageStates.AlphaArgument1, (int)TextureArgument.Diffuse);
+            device.SetTextureStageState(1, TextureStageStates.ColorOperation, (int)TextureOperation.Disable);
+            device.SetTextureStageState(1, TextureStageStates.AlphaOperation, (int)TextureOperation.Disable);
+
+            var argb = color.ToArgb();
+            for (var inset = 0; inset < 2; inset++)
+            {
+                // Transformed vertices at whole coordinates sit on pixel centres in Direct3D 9.
+                float left = bounds.Left + inset, top = bounds.Top + inset;
+                float right = bounds.Right - 1 - inset, bottom = bounds.Bottom - 1 - inset;
+                var strip = new[]
+                {
+                    new CustomVertex.TransformedColored(left, top, 0, 1, argb),
+                    new CustomVertex.TransformedColored(right, top, 0, 1, argb),
+                    new CustomVertex.TransformedColored(right, bottom, 0, 1, argb),
+                    new CustomVertex.TransformedColored(left, bottom, 0, 1, argb),
+                    new CustomVertex.TransformedColored(left, top, 0, 1, argb)
+                };
+                device.DrawUserPrimitives(PrimitiveType.LineStrip, 4, strip);
+            }
+        }
+        finally
+        {
+            saved.Apply();
+        }
+    }
+
     /// <summary>Draw one textured quad with premultiplied alpha, then put every device state back.</summary>
     private void Draw(int width, int height)
     {

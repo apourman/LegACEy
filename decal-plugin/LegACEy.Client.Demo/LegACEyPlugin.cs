@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using Avalonia.Controls;
 using LegACEy.Client.GameArt;
+using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.Demo;
 
@@ -32,8 +33,6 @@ public interface ILegACEyClient
     IGameArtSource Art { get; }
     /// <summary>Drag services for items between the retail inventory and a LegACEy window.</summary>
     IItemDragHost ItemDrag { get; }
-    /// <summary>The object selected in the game; zero for none.</summary>
-    uint CurrentSelection { get; }
     /// <summary>Adds an entry to the LegACEy menu. Its action runs when the player picks it.</summary>
     void AddMenuEntry(string title, uint iconId, Action action);
     /// <summary>
@@ -47,10 +46,13 @@ public interface ILegACEyClient
     /// </summary>
     void ToggleWindowWithChrome(string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow);
     /// <summary>
-    /// Registers the plugin's window for a station. The window opens when the server pushes station.open for it and
-    /// closes on station.close. Closing it sends station.leave. Takes the same arguments as <see cref="ToggleWindowWithChrome"/>.
+    /// Registers the plugin's window for a station, built with its own chrome as <see cref="ToggleWindowWithChrome"/> is.
+    /// The window opens when the server pushes station.open for it and closes on station.close. Closing it sends station.leave.
     /// </summary>
-    void RegisterStationWindow(string station, string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow);
+    /// <param name="theme">The theme the window is drawn in. Null uses the client's theme; a window with its own theme is not given the retail theme over it.</param>
+    /// <param name="resizing">How the player can resize the window from its edges and corners. Null means it does not resize.</param>
+    /// <param name="titleBarHeight">The top strip of the window that drags it, in pixels. A window with a taller header passes the header's height.</param>
+    void RegisterStationWindow(string station, string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow, IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28);
 }
 
 /// <summary>The client's side of plugin hosting. ClientUiRuntime implements it; tests fake it.</summary>
@@ -60,7 +62,6 @@ public interface ILegACEyPluginHost
     string PortalPath { get; }
     IGameArtSource Art { get; }
     IItemDragHost ItemDrag { get; }
-    uint CurrentSelection { get; }
     bool IsWindowOpen(string id);
     /// <summary>
     /// Opens a LegACEy window, or shows it again as it was if it is hidden. <paramref name="createContent"/> runs

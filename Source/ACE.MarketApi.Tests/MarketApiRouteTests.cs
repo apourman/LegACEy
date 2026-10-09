@@ -62,7 +62,6 @@ namespace ACE.MarketApi.Tests
             ("GET", "/tokens"),
             ("POST", "/tokens/1/revoke"),
             ("GET", "/tickets"),
-            ("GET", "/icons/glow.css"),
             ("GET", "/icons/0x06003237.png"),
             ("POST", "/vault/withdraw"),
             ("POST", "/vault/deposit"),
@@ -151,7 +150,7 @@ namespace ACE.MarketApi.Tests
             var icon = (await MarketApiHost.JsonAsync(await host.GetAsync($"/api/listings/{listingId}"))).GetProperty("icon");
             var urls = icon.GetProperty("layers").EnumerateArray().Select(l => l.GetProperty("url").GetString()).ToList();
 
-            Assert.IsTrue(urls.Count >= 2, "a plate and the icon");
+            Assert.AreEqual(1, urls.Count, "the composed base icon alone: no plate");
 
             foreach (var url in urls)
             {

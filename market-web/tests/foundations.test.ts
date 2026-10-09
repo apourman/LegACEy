@@ -43,7 +43,7 @@ const detail = {
     seller: "Bravo",
     listedTime: "2026-10-01T00:00:00Z",
     wield: "Level 100",
-    icon: { layers: [], glow: null },
+    icon: { layers: [] },
     lines: [],
     spells: [],
 } as unknown as import("../src/api").Detail;

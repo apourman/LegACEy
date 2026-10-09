@@ -1,10 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -17,298 +14,318 @@ using LegACEy.Client.Themes;
 namespace LegACEy.Plugin.Vault;
 
 /// <summary>
-/// The account Vault window. With a <see cref="VaultClient"/> it shows the live Vault from the LegACEy server channel:
-/// real items and balance, selection, withdrawal and deposit of the game's selected item, refreshed by server pushes.
-/// Without one it is the static sample shell, with sample icons read from the player's DAT.
+/// The account Vault's contents, drawn with the Dereth parts. With a <see cref="VaultClient"/> it shows the live Vault from
+/// the LegACEy server channel and moves items by drag: deposit, withdraw and reorder. Without one it shows a sample Vault
+/// with icons read from the player's DAT.
 /// </summary>
 public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropTarget
 {
-    // Increment with each visual iteration; the assembly's source revision identifies the actual build.
-    public const string PreviewVersion = "12";
-    public static string BuildRevision { get; } = ReadBuildRevision();
+    public const int WindowWidth = 566;
+    public const int WindowHeight = 694;
+    /// <summary>The header's chest icon, from the DAT.</summary>
+    public const uint ChestIconId = 0x06001020;
+    // A whole page of slots, so the grid looks the same however many items the page holds.
+    private const int MinimumCells = VaultProtocol.PageSize;
+    private const int SampleCount = 317;
+    private const double DragThreshold = 4;
+    /// <summary>How far the cells the selection doesn't hold fade while two or more are selected, or while one is lifted.</summary>
+    private const double DimmedOpacity = 0.4;
+    private static readonly IBrush GoldBrush = DerethPalette.GoldBrush;
+    private static readonly IBrush TextBrush = DerethPalette.TextBrush;
+    private static readonly IBrush MutedBrush = DerethPalette.MutedBrush;
+    private static readonly IBrush Invalid = DerethPalette.InvalidBrush;
+    private static readonly IBrush ShadowBrush = DerethPalette.Brush(Colors.Black);
+    private static readonly IBrush SelectedBrush = DerethPalette.Brush(DerethPalette.TealText);
+    private static readonly IBrush ValidFill = DerethPalette.Brush(Color.FromArgb(0x40, DerethPalette.Gold.R, DerethPalette.Gold.G, DerethPalette.Gold.B));
+    private static readonly IBrush InvalidFill = DerethPalette.Brush(Color.FromArgb(0x40, DerethPalette.Invalid.R, DerethPalette.Invalid.G, DerethPalette.Invalid.B));
 
-    private static string ReadBuildRevision()
+    // icon, UiEffects (the sample's outline: BoostMana, BoostStamina, Frost, Magical, Lightning, Fire, Poisoned, as the prototype draws them), count
+    private static readonly (string Name, uint Icon, int Effects, int Count)[] Samples =
     {
-        var version = typeof(VaultShellPanel).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        var separator = version?.IndexOf('+') ?? -1;
-        if (separator < 0 || separator == version!.Length - 1) return "local";
-        var revision = version.Substring(separator + 1);
-        return revision.Substring(0, Math.Min(8, revision.Length));
-    }
+        ("Chainmail shirt", 0x06000FC7, 0, 1),
+        ("Leather boots", 0x06000FAD, 0x80, 1),
+        ("Gold ring", 0x06000FB5, 0x1, 1),
+        ("Pendant", 0x06000FBE, 0x40, 1),
+        ("Steel shield", 0x06000FCB, 0x20, 1),
+        ("Leather cap", 0x06000FAA, 0, 1),
+        ("Blue potion", 0x06001012, 0x8, 12),
+        ("Yellow potion", 0x06001013, 0x10, 3),
+        ("Treasure chest", ChestIconId, 0, 1),
+        ("Small pouch", 0x06001031, 0, 25),
+        ("Green bottle", 0x06001030, 0x2, 8),
+        ("Silver goblet", 0x0600101F, 0x1, 1)
+    };
 
-    // Retail contents-list empty face and selection overlay (32px RenderSurfaces).
-    public const uint InventoryCellArtId = 0x06004D20;
-    public const uint InventorySelectionArtId = 0x06004D21;
-    public const int WindowWidth = 620;
-    public const int WindowHeight = 460;
-    private const int Columns = 6;
-    private const int MinimumCells = 24;
-    internal static readonly IBrush Text = Brush("#E6E3D8");
-    internal static readonly IBrush Muted = Brush("#AAA79F");
-    internal static readonly IBrush Gold = Brush("#D6BB76");
-    internal static readonly IBrush Warning = Brush("#E0A070");
-    private static readonly IBrush Invalid = Brush("#D9584A");
-    private static readonly IBrush ValidFill = Brush("#40D6BB76");
-    private static readonly IBrush InvalidFill = Brush("#40D9584A");
     private readonly Dictionary<uint, WriteableBitmap?> _images = new();
+    // an item's icon as drawn, by the fields that decide it
+    private readonly Dictionary<(uint Underlay, uint Icon, uint Overlay, uint OverlaySecondary, uint UiEffects), WriteableBitmap?> _itemImages = new();
     private readonly IGameArtSource _art;
     private readonly VaultClient? _client;
-    private readonly ContentControl _summary = new();
-    private readonly ContentControl _contents = new();
-    private readonly ContentControl _details = new();
-    private readonly ContentControl _footerStatus = new();
-    private readonly Button? _deposit;
+    private readonly VaultSnapshot? _sample;
     private readonly IItemDragHost? _dragHost;
-    private readonly List<Control> _liveSlots = new();
+    private readonly TextBlock _itemsLabel = Label(string.Empty, MutedBrush, 13);
+    private readonly TextBlock _items = Label(string.Empty, TextBrush, 13);
+    private readonly TextBlock _balance = Label(string.Empty, GoldBrush, 13);
+    private readonly TextBlock _pagerText = Label(string.Empty, MutedBrush, 12);
+    private readonly DerethSearchField _search = new("Search vault…") { Margin = new Thickness(2, 0, 2, 10) };
+    private readonly DerethPagerButton _previous = new(DerethSpriteArt.PagerPrevious) { Width = 34, Height = 32, IsEnabled = false };
+    private readonly DerethPagerButton _next = new(DerethSpriteArt.PagerNext) { Width = 34, Height = 32, IsEnabled = false };
+    // The message line above the pager: wraps rather than trims, so a long refusal reason stays whole.
+    private readonly TextBlock _status = new()
+    {
+        FontSize = 12, FontFamily = DerethPalette.Body, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center,
+        Margin = new Thickness(4, 6, 4, 0), IsVisible = false
+    };
+    private readonly DerethSlotGrid _grid = new();
+    private readonly List<DerethSlot> _liveSlots = new();
     private readonly List<Border> _dropIndicators = new();
-    private ScrollViewer? _liveScroller;
-    private uint _selected;
+    // The header line: "Items: n / capacity" and the balance, or "N selected" with the selection's buttons instead.
+    private readonly StackPanel _itemsLine = new() { Orientation = Orientation.Horizontal, Spacing = 4 };
+    private readonly TextBlock _selectedLabel = Label(string.Empty, SelectedBrush, 13);
+    private readonly TextBlock _withdrawText = Label(string.Empty, GoldBrush, 12);
+    private readonly DerethButton _withdrawSelection = new() { Height = 24 };
+    private readonly DerethButton _clearSelection = new() { Height = 24, Content = Label("Clear", MutedBrush, 12) };
+    // The selection's line takes the header line: the label on the left, its buttons on the right.
+    private readonly Grid _selectionLine = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto"), IsVisible = false };
+    private readonly StackPanel _selectionButtons = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
+    // The selection: the live Vault's when there is one, so the sample Vault selects too.
+    private readonly VaultSelection _selection;
+    // How the press on a cell was made, so its click selects by the same modifiers.
+    private KeyModifiers _pressModifiers;
     private bool _disposed;
     // a retail item being dragged over the window, and the cell it would land in
     private uint _retailItem;
     private string _retailName = string.Empty;
     private bool _retailOver;
     private int _dropCell = -1;
-    // an item being dragged out of the window to withdraw it
+    // an item being dragged out of the window to withdraw it, and the items the drag carries: the selection when the item is selected
     private VaultItemView? _pressItem;
     private Point _pressPoint;
     private VaultItemView? _dragItem;
+    private IReadOnlyList<uint> _dragGuids = Array.Empty<uint>();
     private IDisposable? _dragIcon;
-    private const double DragThreshold = 4;
 
-    private static readonly (string Name, uint Icon, uint Plate)[] Samples =
-    {
-        ("Chainmail shirt", 0x06000FC7, 0x060011CF),
-        ("Leather boots", 0x06000FAD, 0x060011F3),
-        ("Gold ring", 0x06000FB5, 0x060011D5),
-        ("Pendant", 0x06000FBE, 0x060011D5),
-        ("Steel shield", 0x06000FCB, 0x060011CF),
-        ("Leather cap", 0x06000FAA, 0x060011F3),
-        ("Blue potion", 0x06001012, 0x060011D4),
-        ("Yellow potion", 0x06001013, 0x060011D4),
-        ("Treasure chest", 0x06001020, 0x060011D4),
-        ("Small pouch", 0x06001031, 0x060011D4),
-        ("Green bottle", 0x06001030, 0x060011D4),
-        ("Silver goblet", 0x0600101F, 0x060011D4)
-    };
-
-    /// <param name="client">The live Vault; the panel owns it and disposes it. Null shows the static sample.</param>
+    /// <param name="client">The live Vault; the panel owns it and disposes it. Null shows the sample Vault.</param>
     /// <param name="dragHost">Lets items be dragged out of the window onto the retail inventory to withdraw them.</param>
     public VaultShellPanel(IGameArtSource art, VaultClient? client = null, IItemDragHost? dragHost = null)
     {
         _art = art ?? throw new ArgumentNullException(nameof(art));
         _client = client;
         _dragHost = dragHost;
+        _selection = client?.Selection ?? new VaultSelection();
+        _itemsLine.Children.Add(_itemsLabel);
+        _itemsLine.Children.Add(_items);
+        _withdrawSelection.Content = _withdrawText;
+        _selectionButtons.Children.Add(_withdrawSelection);
+        _selectionButtons.Children.Add(_clearSelection);
+        _selectionLine.Children.Add(_selectedLabel);
+        Grid.SetColumn(_selectionButtons, 1);
+        _selectionLine.Children.Add(_selectionButtons);
+        _sample = client == null ? SampleSnapshot() : null;
         RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.None);
-        var root = new Grid
+
+        var summary = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(2, 10, 2, 8) };
+        summary.Children.Add(_itemsLine);
+        Grid.SetColumn(_balance, 1);
+        summary.Children.Add(_balance);
+        // The selection's line takes the whole header line.
+        Grid.SetColumnSpan(_selectionLine, 2);
+        summary.Children.Add(_selectionLine);
+        // Sample mode has no server to withdraw from: its button stays disabled.
+        _withdrawSelection.IsEnabled = _client != null;
+        _withdrawSelection.Click += (_, _) => _client?.WithdrawMany(_client.SelectedGuids());
+        _clearSelection.Click += (_, _) =>
         {
-            RowDefinitions = new RowDefinitions("Auto,*,Auto"),
-            RowSpacing = 10, Margin = new Thickness(20, 8, 20, 18)
+            _selection.Clear();
+            ShowSelection();
         };
-        root.Children.Add(new Border
-        {
-            BorderBrush = Brush("#655B43"), BorderThickness = new Thickness(0, 0, 0, 1),
-            Padding = new Thickness(0, 0, 0, 8), Child = _summary
-        });
+        Grid.SetRow(_search, 1);
+        _search.TextChanged += (_, _) => _client?.SetSearch(_search.Text);
+        Grid.SetRow(_grid, 2);
+        // Inset from the search field above it, which stays the window's widest line.
+        _grid.Margin = new Thickness(10, 0, 10, 0);
+        var pager = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Margin = new Thickness(4, 10, 4, 0) };
+        _previous.Click += (_, _) => _client?.PreviousPage();
+        pager.Children.Add(_previous);
+        _pagerText.HorizontalAlignment = HorizontalAlignment.Center;
+        Grid.SetColumn(_pagerText, 1);
+        pager.Children.Add(_pagerText);
+        _next.Click += (_, _) => _client?.NextPage();
+        Grid.SetColumn(_next, 2);
+        pager.Children.Add(_next);
+        Grid.SetRow(_status, 3);
+        Grid.SetRow(pager, 4);
 
-        var body = new Grid { ColumnDefinitions = new ColumnDefinitions("330,*"), ColumnSpacing = 22 };
-        var inventory = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), RowSpacing = 12 };
-        // Static presentation surfaces: search and sorting are not connected yet.
-        inventory.Children.Add(new VaultSurface
-        {
-            Padding = new Thickness(12, 9), Child = Label("Search your vault…", Muted)
-        });
-        var categories = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        categories.Children.Add(Label("All items", Gold));
-        var sort = Label("Name  ↓", Muted);
-        Grid.SetColumn(sort, 1);
-        categories.Children.Add(sort);
-        Grid.SetRow(categories, 1);
-        inventory.Children.Add(categories);
-        Grid.SetRow(_contents, 2);
-        inventory.Children.Add(_contents);
-        body.Children.Add(inventory);
+        var content = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto,Auto") };
+        content.Children.Add(summary);
+        content.Children.Add(_search);
+        content.Children.Add(_grid);
+        content.Children.Add(_status);
+        content.Children.Add(pager);
+        Content = content;
 
-        var detailPane = new Border
-        {
-            BorderBrush = Brush("#655B43"), BorderThickness = new Thickness(1, 0, 0, 0),
-            Padding = new Thickness(14, 0, 0, 0), Child = _details
-        };
-        Grid.SetColumn(detailPane, 1);
-        body.Children.Add(detailPane);
-        Grid.SetRow(body, 1);
-        root.Children.Add(body);
-
-        var footer = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto"), RowSpacing = 12 };
-        footer.Children.Add(Rule());
-        var footerRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 12 };
-        if (_client == null) footerRow.Children.Add(ActionFace("Deposit item", false));
-        else
-        {
-            _deposit = ActionButton("Deposit item", false, () => _client.DepositSelection());
-            ToolTip.SetTip(_deposit, "Deposit the item selected in the game");
-            footerRow.Children.Add(_deposit);
-        }
-        _footerStatus.HorizontalAlignment = HorizontalAlignment.Right;
-        _footerStatus.VerticalAlignment = VerticalAlignment.Center;
-        Grid.SetColumn(_footerStatus, 1);
-        footerRow.Children.Add(_footerStatus);
-        Grid.SetRow(footerRow, 1);
-        footer.Children.Add(footerRow);
-        Grid.SetRow(footer, 2);
-        root.Children.Add(footer);
-        Content = root;
-
-        if (_client == null) ShowSample();
+        if (_client == null) Render();
         else
         {
             _client.Changed += OnClientChanged;
             _client.DepositCheckChanged += OnDepositCheckChanged;
-            ShowLive();
+            Render();
             _client.Start();
         }
     }
 
-    private void ShowSample()
-    {
-        _summary.Content = SummaryRow("12 items  /  1,000 capacity", "245 MMD");
-        var slots = new UniformGrid { Columns = Columns, Rows = 4 };
-        for (var index = 0; index < MinimumCells; index++)
-        {
-            var slot = new Border { Height = 48, Margin = new Thickness(0, 0, 6, 6) };
-            if (index < Samples.Length)
-            {
-                var sample = Samples[index];
-                slot.Child = InventoryCell(new[] { sample.Plate, sample.Icon }, index == 0);
-                ToolTip.SetTip(slot, sample.Name + " — sample item");
-            }
-            else slot.Child = InventoryCell();
-            slots.Children.Add(slot);
-        }
-        _contents.Content = slots;
+    /// <summary>The header's chest icon, drawn from the DAT.</summary>
+    internal Control HeaderIcon() => Icon(Bitmap(ChestIconId));
 
-        var selected = Samples[0];
-        var details = new StackPanel { Spacing = 10 };
-        details.Children.Add(Label("SELECTED ITEM", Gold, 11));
-        details.Children.Add(Identity(new[] { selected.Plate, selected.Icon }, "Chainmail\nshirt", "Armor · Stored"));
-        details.Children.Add(Rule());
-        details.Children.Add(Label("Deposited by", Muted, 11));
-        details.Children.Add(Label("Arwic Wanderer"));
-        details.Children.Add(Label("Withdraw to", Muted, 11));
-        details.Children.Add(Label("Current character"));
-        details.Children.Add(Label("60-second transfer", Muted, 11));
-        details.Children.Add(ActionFace("Withdraw item", true));
-        details.Children.Add(Label("Appraise item", Gold));
-        _details.Content = details;
-        _footerStatus.Content = Label($"Sample vault · Preview v{PreviewVersion} · {BuildRevision}", Gold, 11);
+    private static VaultSnapshot SampleSnapshot()
+    {
+        var items = new List<VaultItemView>(SampleCount);
+        for (var index = 0; index < SampleCount; index++)
+        {
+            var sample = Samples[(index * 7) % Samples.Length];
+            items.Add(new VaultItemView((uint)index + 1, sample.Name, 0, sample.Count, 0, "held", string.Empty,
+                DateTimeOffset.FromUnixTimeSeconds(0), 0, 0, sample.Icon, 0, 0, sample.Effects));
+        }
+        return new VaultSnapshot(true, 245, 1000, SampleCount, SampleCount, items);
     }
+
+    private VaultSnapshot? Snapshot => _client == null ? _sample : _client.Snapshot;
 
     private void OnClientChanged(object? sender, EventArgs e)
     {
-        if (!_disposed) ShowLive();
+        if (!_disposed) Render();
     }
 
-    private void ShowLive()
+    private void Render()
     {
-        var client = _client!;
-        var snapshot = client.Snapshot;
+        var snapshot = Snapshot;
         var items = snapshot?.Items ?? Array.Empty<VaultItemView>();
-        if (snapshot is { Available: true })
-            _summary.Content = SummaryRow($"{items.Count:N0} item{(items.Count == 1 ? "" : "s")}  /  {snapshot.Capacity:N0} capacity", snapshot.HasBalance ? $"{snapshot.Balance:N0} MMD" : string.Empty);
+        var available = snapshot is { Available: true };
+        if (available)
+        {
+            _itemsLabel.Text = "Items:";
+            _items.Text = $"{snapshot!.VaultCount:N0} / {snapshot.Capacity:N0}";
+            _balance.Text = snapshot.HasBalance ? $"{snapshot.Balance:N0} MMD" : string.Empty;
+        }
         else
-            _summary.Content = SummaryRow(client.Connection == VaultConnection.Connecting ? "Connecting to the server…" : "Vault unavailable", string.Empty);
+        {
+            _itemsLabel.Text = _client?.Connection == VaultConnection.Connecting ? "Connecting to the server…" : "Vault unavailable";
+            _items.Text = string.Empty;
+        }
 
-        if (items.Count > 0 && FindItem(items, _selected) == null) _selected = items[0].Guid;
         _liveSlots.Clear();
         _dropIndicators.Clear();
-        _liveScroller = null;
-        if (snapshot is { Available: true })
+        _grid.Cells.Clear();
+        if (available)
         {
-            var cells = Math.Max(MinimumCells, (items.Count + Columns - 1) / Columns * Columns);
-            // Compact rows and a top inset leave room for the drop frame whatever the text metrics give the grid area
-            // (Tahoma in game is taller than fallback fonts).
-            var slots = new UniformGrid { Columns = Columns, Rows = cells / Columns, Margin = new Thickness(0, 4, 0, 0) };
+            // A whole page of slots; a deposit may land on any of them, full or empty.
+            var cells = Math.Max(MinimumCells, items.Count);
             for (var index = 0; index < cells; index++)
             {
-                var slot = new Grid { Height = 46, Margin = new Thickness(0, 0, 6, 4), Background = Brushes.Transparent };
-                if (index < items.Count)
+                var item = index < items.Count ? items[index] : null;
+                var cell = new DerethSlot(item == null ? null : Icon(ItemBitmap(item)));
+                if (item != null)
                 {
-                    var item = items[index];
-                    slot.Children.Add(SelectableCell(item, item.Guid == _selected));
-                    ToolTip.SetTip(slot, Describe(item));
+                    ToolTip.SetTip(cell, Describe(item));
+                    if (item.StackSize > 1) cell.Children.Add(StackCount(item.StackSize));
+                    ConnectCell(cell, item);
                 }
-                else slot.Children.Add(InventoryCell());
-                // Shown on the cell a dragged retail item would be deposited into.
+                // Shown on the cell a dragged item would be dropped into.
                 var indicator = new Border
                 {
                     Width = 38, Height = 38, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
                     BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(2), IsHitTestVisible = false
                 };
-                slot.Children.Add(indicator);
-                if (_dragItem != null && index < items.Count && items[index].Guid == _dragItem.Guid) slot.Opacity = 0.4;
+                cell.Children.Add(indicator);
                 _dropIndicators.Add(indicator);
-                _liveSlots.Add(slot);
-                slots.Children.Add(slot);
+                _liveSlots.Add(cell);
+                _grid.Cells.Add(cell);
             }
             ShowDropIndicator(_dropCell);
-            _contents.Content = _liveScroller = new ScrollViewer
-            {
-                Content = slots, Background = Brushes.Transparent,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                VerticalScrollBarVisibility = cells > MinimumCells ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled
-            };
-        }
-        else
-        {
-            var message = Label(client.Connection == VaultConnection.Connecting ? "Asking the server for your Vault…" : client.Notice, Muted);
-            message.Margin = new Thickness(0, 24, 0, 0);
-            _contents.Content = message;
         }
 
-        _details.Content = Details(client, FindItem(items, _selected));
-        if (_deposit != null) _deposit.IsEnabled = client.Connection == VaultConnection.Live && !client.TransferPending;
-        ShowFooter();
+        _pagerText.Text = available ? PagerText(_client?.Offset ?? 0, items.Count, snapshot!.Total) : string.Empty;
+        _previous.IsEnabled = available && _client?.CanPageBack == true;
+        _next.IsEnabled = available && _client?.CanPageForward == true;
+        ShowSelection();
+        ShowStatus();
     }
 
-    private void ShowFooter()
+    /// <summary>
+    /// Shows the selection on the cells and in the header line. Two or more selected make the line "N selected" with its buttons
+    /// and fade the cells that aren't selected; a lifted item's cell fades for the drag.
+    /// </summary>
+    private void ShowSelection()
     {
-        var client = _client!;
+        var multi = _selection.Count >= 2;
+        var lifted = _dragItem == null ? -1 : IndexOf(_dragItem.Guid);
+        for (var index = 0; index < _liveSlots.Count; index++)
+        {
+            var selected = _selection.Contains(index);
+            var slot = _liveSlots[index];
+            slot.Selected = selected;
+            slot.Opacity = index == lifted || (multi && !selected) ? DimmedOpacity : 1;
+        }
+        var snapshot = Snapshot;
+        _itemsLine.IsVisible = !multi;
+        _balance.IsVisible = !multi && snapshot is { Available: true, HasBalance: true };
+        _selectionLine.IsVisible = multi;
+        _selectedLabel.Text = $"{_selection.Count:N0} selected";
+        _withdrawText.Text = $"Withdraw {_selection.Count:N0}";
+    }
+
+    /// <summary>"1 – 100 of 317" for the page on screen, or "0 of 0" when nothing matches.</summary>
+    private static string PagerText(int offset, int shown, int total) =>
+        total == 0 ? "0 of 0" : $"{offset + 1:N0} – {offset + shown:N0} of {total:N0}";
+
+    /// <summary>The message line above the pager: the latest message or drag hint, shown only while there is one.</summary>
+    private void ShowStatus()
+    {
+        var (text, refused) = StatusText();
+        _status.Text = text;
+        _status.Foreground = refused ? Invalid : GoldBrush;
+        _status.IsVisible = text.Length > 0;
+    }
+
+    private (string Text, bool Refused) StatusText()
+    {
+        var client = _client;
+        if (client == null) return (string.Empty, false);
         if (_retailOver && client.Connection == VaultConnection.Live)
         {
             var name = _retailName.Length == 0 ? "this item" : _retailName;
             var check = client.DepositCheck(_retailItem);
-            _footerStatus.Content = check is { Ok: false } refused
-                ? Label(refused.Message, Invalid, 12)
-                : Label(_dropCell >= 0 ? $"Release to deposit {name}" : $"Drop {name} on a vault cell to deposit it", Gold, 12);
-            return;
+            return check is { Ok: false } refused
+                ? (refused.Message, true)
+                : (_dropCell >= 0 ? $"Release to deposit {name}" : $"Drop {name} on a vault cell to deposit it", false);
         }
         if (_dragItem != null && client.Connection == VaultConnection.Live)
         {
-            _footerStatus.Content = Label(_dropCell >= 0 ? $"Release to move {_dragItem.Name} here" : $"Drop {_dragItem.Name} on your inventory to withdraw it", Gold, 12);
-            return;
+            if (_dropCell < 0)
+                return _dragGuids.Count > 1
+                    ? ($"Drop {_dragGuids.Count:N0} items on your inventory to withdraw them", false)
+                    : ($"Drop {_dragItem.Name} on your inventory to withdraw it", false);
+            // A filtered page can't be rearranged, so the move would be refused: say so instead of offering it.
+            // A selection dragged over a cell moves only the item grabbed: the others stay where they are.
+            var only = _dragGuids.Count > 1 ? " (only this item)" : string.Empty;
+            return client.Search.Length > 0 ? (VaultClient.SearchBlocksMove, false) : ($"Release to move {_dragItem.Name} here{only}", false);
         }
-        var roundTrip = client.LastRoundTrip is { } time ? $" · {time.TotalMilliseconds:N0} ms" : string.Empty;
-        var state = client.Connection switch
-        {
-            VaultConnection.Live => $"Live{roundTrip} · {client.PushesReceived} push{(client.PushesReceived == 1 ? "" : "es")}",
-            VaultConnection.Connecting => "Connecting",
-            VaultConnection.Unavailable => "Unavailable",
-            _ => "Server error"
-        };
-        _footerStatus.Content = Label($"{state} · Preview v{PreviewVersion} · {BuildRevision}", Gold, 11);
+        return (client.Notice, false);
     }
+
+    private const double Gap = DerethSlotGrid.Pitch - DerethSlotGrid.CellSize;
 
     /// <summary>The index of the vault cell under a point in this panel's coordinates, or -1.</summary>
     private int CellAt(Point position)
     {
-        if (_liveScroller == null) return -1;
-        var viewport = _liveScroller.TranslatePoint(default, this);
-        if (viewport == null || !new Rect(viewport.Value, _liveScroller.Bounds.Size).Contains(position)) return -1;
+        var viewport = _grid.TranslatePoint(default, this);
+        if (viewport == null || !new Rect(viewport.Value, _grid.Bounds.Size).Contains(position)) return -1;
         for (var index = 0; index < _liveSlots.Count; index++)
         {
             var slot = _liveSlots[index];
+            // Each cell owns half the gap around it, so a drop between two cells lands on the nearer one.
             var origin = slot.TranslatePoint(default, this);
-            if (origin != null && new Rect(origin.Value, slot.Bounds.Size).Contains(position)) return index;
+            if (origin != null && new Rect(origin.Value, slot.Bounds.Size).Inflate(Gap / 2).Contains(position)) return index;
         }
         return -1;
     }
@@ -331,7 +348,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         _retailName = itemName ?? string.Empty;
         _retailOver = over;
         ShowDropIndicator(cell);
-        ShowFooter();
+        ShowStatus();
     }
 
     public bool RetailDrop(uint itemId, string itemName, Point position)
@@ -358,7 +375,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     {
         if (_disposed || !_retailOver) return;
         ShowDropIndicator(_dropCell);
-        ShowFooter();
+        ShowStatus();
     }
 
     /// <summary>Frames the cell an item would land in: gold, or red when the server refuses a dragged retail item.</summary>
@@ -370,9 +387,18 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         {
             var indicator = _dropIndicators[index];
             indicator.IsVisible = index == cell;
-            indicator.BorderBrush = refused ? Invalid : Gold;
+            indicator.BorderBrush = refused ? Invalid : GoldBrush;
             indicator.Background = refused ? InvalidFill : ValidFill;
         }
+    }
+
+    private void ConnectCell(DerethSlot cell, VaultItemView item)
+    {
+        // A press selects its item on release, unless it becomes a drag; dragging an item out of the window onto the retail inventory withdraws it.
+        cell.AddHandler(InputElement.PointerPressedEvent, (_, e) => OnCellPressed(item, e), RoutingStrategies.Tunnel, handledEventsToo: true);
+        cell.AddHandler(InputElement.PointerMovedEvent, (_, e) => OnCellMoved(item, e), RoutingStrategies.Tunnel, handledEventsToo: true);
+        cell.AddHandler(InputElement.PointerReleasedEvent, (_, e) => OnCellReleased(item, e), RoutingStrategies.Tunnel, handledEventsToo: true);
+        cell.AddHandler(InputElement.PointerCaptureLostEvent, (_, _) => EndWithdrawDrag(), handledEventsToo: true);
     }
 
     private void OnCellPressed(VaultItemView item, PointerPressedEventArgs e)
@@ -380,6 +406,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
         _pressItem = item;
         _pressPoint = e.GetPosition(this);
+        _pressModifiers = e.KeyModifiers;
     }
 
     private void OnCellMoved(VaultItemView item, PointerEventArgs e)
@@ -389,20 +416,25 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
             UpdateLiftedHover(e);
             return;
         }
-        if (_dragHost == null || _client == null || _pressItem != item) return;
+        if (_pressItem != item) return;
         var delta = e.GetPosition(this) - _pressPoint;
         if (Math.Abs(delta.X) < DragThreshold && Math.Abs(delta.Y) < DragThreshold) return;
+        // Past the threshold the press is a drag or nothing, so it is never a click, even when no host can take the drag.
         _pressItem = null;
+        if (_dragHost == null || _client == null) return;
         if (item.State != "held" || _client.TransferPending)
         {
             _client.Tell(item.State == "held" ? "Wait for the current transfer to finish." : $"{item.Name} is {StateName(item.State).ToLowerInvariant()} and can't be withdrawn.");
             return;
         }
         _dragItem = item;
-        _dragIcon = _dragHost.ShowDragIcon(new List<uint>(item.IconLayers));
+        // A selected item drags the whole selection, which stays selected; an unselected one drops the selection and drags only itself.
+        var selected = _selection.Contains(IndexOf(item.Guid));
+        if (!selected) _selection.Clear();
+        _dragGuids = selected ? _client.SelectedGuids() : new[] { item.Guid };
+        _dragIcon = _dragHost.ShowDragIcon(ItemImage(item), _dragGuids.Count);
         // The lifted item's own cell dims, as the retail inventory ghosts a dragged item.
-        var from = IndexOf(item.Guid);
-        if (from >= 0 && from < _liveSlots.Count) _liveSlots[from].Opacity = 0.4;
+        ShowSelection();
         UpdateLiftedHover(e);
     }
 
@@ -411,21 +443,34 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         var cell = CellAt(e.GetPosition(this));
         if (cell == _dropCell) return;
         ShowDropIndicator(cell);
-        ShowFooter();
+        ShowStatus();
     }
 
     private int IndexOf(uint guid)
     {
-        var items = _client?.Snapshot?.Items;
+        var items = Snapshot?.Items;
         if (items == null) return -1;
         for (var index = 0; index < items.Count; index++)
             if (items[index].Guid == guid) return index;
         return -1;
     }
 
-    private void OnCellReleased(PointerReleasedEventArgs e)
+    private void OnCellReleased(VaultItemView pressed, PointerReleasedEventArgs e)
     {
+        // A press released on its own item without a drag is a click: it selects by the modifiers held when it went down.
+        if (_dragItem == null && _pressItem == pressed)
+        {
+            _pressItem = null;
+            var place = IndexOf(pressed.Guid);
+            if (place >= 0)
+            {
+                _selection.Press(place, (_pressModifiers & KeyModifiers.Control) != 0, (_pressModifiers & KeyModifiers.Shift) != 0);
+                ShowSelection();
+            }
+            return;
+        }
         var item = _dragItem;
+        var guids = _dragGuids;
         var cell = item == null ? -1 : CellAt(e.GetPosition(this));
         EndWithdrawDrag();
         if (item == null || _client == null || _dragHost == null) return;
@@ -439,7 +484,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         switch (_dragHost.DropTargetAtPointer())
         {
             case ItemDropTarget.Inventory:
-                _client.Withdraw(item.Guid);
+                _client.WithdrawMany(guids);
                 break;
             case ItemDropTarget.InventoryClosed:
                 _client.Tell("Open your inventory, then drop the item on it to withdraw it.");
@@ -455,46 +500,13 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         var wasDragging = _dragItem != null;
         _pressItem = null;
         _dragItem = null;
+        _dragGuids = Array.Empty<uint>();
         _dragIcon?.Dispose();
         _dragIcon = null;
         if (!wasDragging || _disposed) return;
-        foreach (var slot in _liveSlots) slot.Opacity = 1;
+        ShowSelection();
         ShowDropIndicator(-1);
-        if (_client != null) ShowFooter();
-    }
-
-    private Control Details(VaultClient client, VaultItemView? item)
-    {
-        var details = new StackPanel { Spacing = 10 };
-        details.Children.Add(Label("SELECTED ITEM", Gold, 11));
-        if (item == null)
-            details.Children.Add(Label(client.Snapshot is { Available: true } ? "Your Vault is empty. Select an item in your pack and press Deposit item." : "No item selected.", Muted));
-        else
-        {
-            details.Children.Add(Identity(item.IconLayers, item.Name + (item.StackSize > 1 ? $" ×{item.StackSize:N0}" : string.Empty),
-                $"{TypeName(item.ItemType)} · {StateName(item.State)}"));
-            details.Children.Add(Rule());
-            details.Children.Add(Label("Deposited by", Muted, 11));
-            details.Children.Add(Label(item.DepositedBy.Length == 0 ? "Unknown character" : $"{item.DepositedBy}, {item.DepositedAt.LocalDateTime:d MMM}"));
-            details.Children.Add(Label("Withdraw to", Muted, 11));
-            details.Children.Add(Label(client.ServerCharacter.Length == 0 ? "Current character" : client.ServerCharacter));
-            var withdraw = ActionButton("Withdraw item", true, () => client.Withdraw(item.Guid));
-            withdraw.IsEnabled = item.State == "held" && !client.TransferPending;
-            details.Children.Add(withdraw);
-        }
-        if (client.Notice.Length != 0)
-        {
-            var notice = Label(client.Notice, client.Connection == VaultConnection.Live ? Gold : Warning, 11);
-            details.Children.Add(notice);
-        }
-        return details;
-    }
-
-    private static VaultItemView? FindItem(IReadOnlyList<VaultItemView> items, uint guid)
-    {
-        foreach (var item in items)
-            if (item.Guid == guid) return item;
-        return null;
+        if (_client != null) ShowStatus();
     }
 
     private static string Describe(VaultItemView item) =>
@@ -508,142 +520,61 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         _ => state
     };
 
-    // ACE.Entity.Enum.ItemType flags, most specific first, as the server's icon plate does.
-    private static string TypeName(uint type) =>
-        (type & 0x8101) != 0 ? "Weapon" : (type & 0x2) != 0 ? "Armor" : (type & 0x4) != 0 ? "Clothing" : (type & 0x8) != 0 ? "Jewelry" :
-        (type & 0x800) != 0 ? "Gem" : (type & 0x80) != 0 ? "Consumable" : (type & 0x200) != 0 ? "Container" : "Item";
-
-    private static Grid SummaryRow(string left, string right)
+    private static TextBlock Label(string text, IBrush brush, double size) => new()
     {
-        var summary = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        summary.Children.Add(Label(left, Text));
-        var balance = Label(right, Gold);
-        Grid.SetColumn(balance, 1);
-        summary.Children.Add(balance);
-        return summary;
-    }
-
-    private StackPanel Identity(IEnumerable<uint> layers, string name, string subtitle)
-    {
-        var identity = new StackPanel { Spacing = 12, Orientation = Orientation.Horizontal };
-        identity.Children.Add(new Border { Padding = new Thickness(9), Child = InventoryCell(layers) });
-        var title = Label(name, Text, 15);
-        title.MaxWidth = 150;
-        identity.Children.Add(new StackPanel
-        {
-            Spacing = 4, VerticalAlignment = VerticalAlignment.Center,
-            Children = { title, Label(subtitle, Muted, 11) }
-        });
-        return identity;
-    }
-
-    internal static IBrush Brush(string color) => new SolidColorBrush(Color.Parse(color));
-
-    internal static TextBlock Label(string text, IBrush? color = null, double size = 12) => new()
-    {
-        Text = text, TextWrapping = TextWrapping.Wrap, Foreground = color ?? Text,
-        FontSize = size, FontFamily = new FontFamily("Tahoma, avares://LegACEy.Client.Themes/Assets#Liberation Sans")
+        Text = text, Foreground = brush, FontSize = size, FontFamily = DerethPalette.Body,
+        VerticalAlignment = VerticalAlignment.Center
     };
 
-    private static Border Rule() => new() { Height = 1, Background = Brush("#655B43") };
-
-    // The sample shell's display-only face.
-    private static VaultSurface ActionFace(string text, bool primary) => new(VaultMaterial.BlueSteel)
+    /// <summary>A stack count in the cell's corner, with a one-pixel dark shadow.</summary>
+    private static Control StackCount(int count)
     {
-        Padding = new Thickness(14, 9),
-        Child = Label(text, Text, primary ? 13 : 12)
-    };
-
-    private static Button ActionButton(string text, bool primary, Action clicked)
-    {
-        var button = new Button
-        {
-            Content = text, HorizontalAlignment = HorizontalAlignment.Left,
-            Template = new FuncControlTemplate<Button>((owner, _) =>
-            {
-                var label = Label(text, owner.IsEnabled ? Text : Muted, primary ? 13 : 12);
-                var face = new VaultSurface(VaultMaterial.BlueSteel) { Padding = new Thickness(14, 9), Child = label, Opacity = owner.IsEnabled ? 1 : 0.55 };
-                owner.PropertyChanged += (_, change) =>
-                {
-                    if (change.Property != IsEnabledProperty) return;
-                    label.Foreground = owner.IsEnabled ? Text : Muted;
-                    face.Opacity = owner.IsEnabled ? 1 : 0.55;
-                };
-                return face;
-            })
-        };
-        button.Click += (_, _) => clicked();
-        return button;
+        var panel = new Panel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 3, 1) };
+        var shadow = Label(count.ToString(), ShadowBrush, 11);
+        shadow.FontWeight = FontWeight.SemiBold;
+        shadow.Margin = new Thickness(1, 1, 0, 0);
+        var text = Label(count.ToString(), TextBrush, 11);
+        text.FontWeight = FontWeight.SemiBold;
+        text.Margin = new Thickness(0, 0, 1, 1);
+        panel.Children.Add(shadow);
+        panel.Children.Add(text);
+        return panel;
     }
 
-    private Button SelectableCell(VaultItemView item, bool selected)
-    {
-        var button = new Button
-        {
-            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-            Template = new FuncControlTemplate<Button>((_, _) => new Border { Background = Brushes.Transparent, Child = InventoryCell(item.IconLayers, selected) })
-        };
-        button.Classes.Add("vault-cell");
-        button.Click += (_, _) =>
-        {
-            _selected = item.Guid;
-            ShowLive();
-        };
-        // Dragging an item out of the window and onto the retail inventory withdraws it.
-        button.AddHandler(PointerPressedEvent, (_, e) => OnCellPressed(item, e), RoutingStrategies.Tunnel, handledEventsToo: true);
-        button.AddHandler(PointerMovedEvent, (_, e) => OnCellMoved(item, e), RoutingStrategies.Tunnel, handledEventsToo: true);
-        button.AddHandler(PointerReleasedEvent, (_, e) => OnCellReleased(e), RoutingStrategies.Tunnel, handledEventsToo: true);
-        button.AddHandler(PointerCaptureLostEvent, (_, _) => EndWithdrawDrag(), handledEventsToo: true);
-        return button;
-    }
-
-    private Grid InventoryCell(IEnumerable<uint>? layers = null, bool selected = false)
-    {
-        var cell = new Grid
-        {
-            Width = 32, Height = 32,
-            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
-        };
-        var background = Bitmap(InventoryCellArtId);
-        cell.Children.Add(background != null
-            ? (Control)new Image { Source = background, Width = 32, Height = 32, Stretch = Stretch.None }
-            : new Border { Background = Brush("#0C0D0E"), BorderBrush = Brush("#484B4B"), BorderThickness = new Thickness(1) });
-        if (layers != null) cell.Children.Add(Icon(layers));
-        if (selected)
-        {
-            var overlay = Bitmap(InventorySelectionArtId);
-            cell.Children.Add(overlay != null
-                ? (Control)new Image { Source = overlay, Width = 32, Height = 32, Stretch = Stretch.None, IsHitTestVisible = false }
-                : new Border { BorderBrush = Gold, BorderThickness = new Thickness(1), IsHitTestVisible = false });
-        }
-        return cell;
-    }
-
+    /// <summary>A picture that isn't an item (the header's chest): its outline is black, as retail draws it.</summary>
     private WriteableBitmap? Bitmap(uint id)
     {
         if (!_images.TryGetValue(id, out var bitmap))
-            _images.Add(id, bitmap = GameArtImageExtension.CreateBitmap(_art, id));
+            _images.Add(id, bitmap = GameArtImageExtension.CreateBitmap(ItemIcon.Draw(_art, 0, id, 0, 0, 0)));
         return bitmap;
     }
 
-    private Grid Icon(IEnumerable<uint> ids)
+    /// <summary>An item's icon as drawn: outline from its UI effect, no plate. The grid redraws on every change, so the bitmap is kept per look.</summary>
+    private WriteableBitmap? ItemBitmap(VaultItemView item)
+    {
+        var key = (item.Underlay, item.Icon, item.Overlay, item.OverlaySecondary, unchecked((uint)item.UiEffects));
+        if (!_itemImages.TryGetValue(key, out var bitmap))
+            _itemImages.Add(key, bitmap = GameArtImageExtension.CreateBitmap(ItemImage(item)));
+        return bitmap;
+    }
+
+    private GameImage? ItemImage(VaultItemView item) =>
+        ItemIcon.Draw(_art, item.Underlay, item.Icon, item.Overlay, item.OverlaySecondary, unchecked((uint)item.UiEffects));
+
+    /// <summary>An item's icon at native size. Missing art shows a question mark.</summary>
+    private Grid Icon(WriteableBitmap? bitmap)
     {
         var layers = new Grid
         {
             Width = 32, Height = 32,
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
         };
-        foreach (var id in ids)
-        {
-            var bitmap = Bitmap(id);
-            if (bitmap != null)
-                layers.Children.Add(new Image { Source = bitmap, Width = 32, Height = 32, Stretch = Stretch.None });
-        }
+        if (bitmap != null)
+            layers.Children.Add(new Image { Source = bitmap, Width = 32, Height = 32, Stretch = Stretch.None });
         if (layers.Children.Count == 0)
         {
-            var fallback = Label("?", Muted);
+            var fallback = Label("?", MutedBrush, 12);
             fallback.HorizontalAlignment = HorizontalAlignment.Center;
-            fallback.VerticalAlignment = VerticalAlignment.Center;
             layers.Children.Add(fallback);
         }
         return layers;
@@ -662,15 +593,25 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         }
         foreach (var image in _images.Values) image?.Dispose();
         _images.Clear();
+        foreach (var image in _itemImages.Values) image?.Dispose();
+        _itemImages.Clear();
     }
 }
 
-/// <summary>Vault-specific chrome; independent of the theme's retail control styling.</summary>
+/// <summary>The Vault window: the Dereth frame, its header and close box, around the Vault panel.</summary>
 public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget, IDisposable
 {
     private readonly VaultShellPanel _panel;
     private bool _disposed;
     public event EventHandler? CloseRequested;
+
+    public VaultShellWindow(VaultShellPanel panel)
+    {
+        _panel = panel ?? throw new ArgumentNullException(nameof(panel));
+        var window = new DerethWindow("Vault", panel.HeaderIcon(), panel);
+        window.CloseRequested += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
+        Content = window;
+    }
 
     public void RetailDragOver(uint itemId, string itemName, Point? position) =>
         _panel.RetailDragOver(itemId, itemName, position is { } point ? this.TranslatePoint(point, _panel) : null);
@@ -683,45 +624,5 @@ public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget, IDisp
         if (_disposed) return;
         _disposed = true;
         _panel.Dispose();
-    }
-
-    public VaultShellWindow(VaultShellPanel panel)
-    {
-        _panel = panel ?? throw new ArgumentNullException(nameof(panel));
-        var layout = new Grid { RowDefinitions = new RowDefinitions("64,*") };
-        var title = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,32"), Margin = new Thickness(20, 6, 16, 0) };
-        title.Children.Add(new StackPanel
-        {
-            VerticalAlignment = VerticalAlignment.Center, Spacing = 3,
-            Children = { new TextBlock { Text = "Account Vault", Foreground = VaultShellPanel.Text, FontSize = 23, FontFamily = new FontFamily("Georgia, Liberation Serif") }, VaultShellPanel.Label("Shared across your account", VaultShellPanel.Muted, 11) }
-        });
-        var version = VaultShellPanel.Label($"Preview v{VaultShellPanel.PreviewVersion}", VaultShellPanel.Gold, 12);
-        version.VerticalAlignment = VerticalAlignment.Center;
-        version.Margin = new Thickness(0, 0, 12, 0);
-        Grid.SetColumn(version, 1);
-        title.Children.Add(version);
-        var close = new Button
-        {
-            Content = "×", Width = 28, Height = 28, VerticalAlignment = VerticalAlignment.Center,
-            Template = new FuncControlTemplate<Button>((_, _) => new VaultSurface(VaultMaterial.BlueSteel)
-            {
-                Child = new TextBlock
-                {
-                    Text = "×", FontSize = 18, Foreground = VaultShellPanel.Muted,
-                    HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
-                }
-            })
-        };
-        ToolTip.SetTip(close, "Close vault preview");
-        close.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
-        Grid.SetColumn(close, 2);
-        title.Children.Add(close);
-        layout.Children.Add(title);
-        Grid.SetRow(panel, 1);
-        layout.Children.Add(panel);
-        Content = new VaultSurface(ornate: true)
-        {
-            Padding = new Thickness(3), Child = layout
-        };
     }
 }

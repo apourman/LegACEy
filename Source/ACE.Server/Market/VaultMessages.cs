@@ -36,6 +36,8 @@ namespace ACE.Server.Market
                 VaultOutcome.Listed => $"{item} is listed for sale. Delist it before you withdraw it.",
                 VaultOutcome.Withdrawing => $"{item} is already being withdrawn.",
                 VaultOutcome.NoPackSpace => $"You do not have room in your pack for {item}.",
+                VaultOutcome.TooHeavy => $"You are too heavy to carry {item}.",
+                VaultOutcome.BadSelection => $"Choose up to {VaultChannelActions.PageSize} different items to withdraw.",
                 VaultOutcome.UniqueLimit => $"You cannot carry any more of {item}.",
                 VaultOutcome.SaveFailed => $"The Vault could not save {item}. Nothing was changed.",
                 VaultOutcome.Unconfirmed => $"The Vault could not confirm whether {item} moved. Log out and back in: it will be in your pack or in your Vault.",
@@ -48,6 +50,28 @@ namespace ACE.Server.Market
                 VaultOutcome.Interrupted => $"Your Vault channel was interrupted. {item} did not move.",
 
                 _ => outcome.ToString(),
+            };
+        }
+
+        /// <summary>
+        /// What a player is told for a batch withdrawal. A refusal of one item names it; a refusal of the set names the set, as nothing in it moved.
+        /// </summary>
+        public static string ForBatch(VaultOutcome outcome, string firstName, int count)
+        {
+            if (count == 1)
+                return For(outcome, firstName);
+
+            var items = $"{count:N0} items";
+
+            return outcome switch
+            {
+                VaultOutcome.Withdrawn => $"{items} are back in your pack.",
+                VaultOutcome.WithdrawnAtLogin => $"{items} are yours, but your pack has no room for all of them right now. The rest will be in your pack when you next log in.",
+                VaultOutcome.NoPackSpace => $"You do not have room in your pack for all {items}. Nothing was withdrawn.",
+                VaultOutcome.TooHeavy => $"You are too heavy to carry all {items}. Nothing was withdrawn.",
+                VaultOutcome.UniqueLimit => $"You cannot carry all {items}. Nothing was withdrawn.",
+                VaultOutcome.SaveFailed or VaultOutcome.Unconfirmed or VaultOutcome.Banned => For(outcome, items),
+                _ => For(outcome, firstName),
             };
         }
 

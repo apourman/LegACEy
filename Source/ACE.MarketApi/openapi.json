@@ -895,26 +895,6 @@
         }
       }
     },
-    "/api/icons/glow.css": {
-      "get": {
-        "tags": [
-          "ACE.MarketApi"
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "text/css": {
-                "schema": {
-                  "type": "string",
-                  "format": "byte"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/icons/{file}": {
       "get": {
         "tags": [
@@ -1689,8 +1669,7 @@
       },
       "IconResponse": {
         "required": [
-          "layers",
-          "glow"
+          "layers"
         ],
         "type": "object",
         "properties": {
@@ -1699,12 +1678,6 @@
             "items": {
               "$ref": "#/components/schemas/IconLayerResponse"
             }
-          },
-          "glow": {
-            "type": [
-              "null",
-              "string"
-            ]
           }
         }
       },
@@ -2702,9 +2675,6 @@
     },
     {
       "name": "PluginTokenEndpoints"
-    },
-    {
-      "name": "ACE.MarketApi"
     },
     {
       "name": "IconEndpoints"

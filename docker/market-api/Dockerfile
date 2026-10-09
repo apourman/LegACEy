@@ -17,6 +17,7 @@ COPY ACE.Entity/ ACE.Entity/
 COPY ACE.Database/ ACE.Database/
 COPY ACE.DatLoader/ ACE.DatLoader/
 COPY ACE.MarketApi/ ACE.MarketApi/
+COPY Shared/ Shared/
 RUN dotnet publish ACE.MarketApi/ACE.MarketApi.csproj -c Release -o /app --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble

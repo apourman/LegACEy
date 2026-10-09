@@ -66,6 +66,23 @@ public sealed class PanelHostRenderingTests
     });
 
     [Fact]
+    public void A_press_outside_the_focused_text_box_leaves_it() => RenderThread.Run(() =>
+    {
+        using var panel = AvaloniaPanel.Create(() => new StackPanel
+        {
+            Children = { new TextBox { Width = 180, Height = 30 }, new Border { Height = 30, Background = Brushes.Gray } }
+        }, 200, 60);
+
+        panel.PointerDown(20, 10);
+        panel.PointerUp(20, 10);
+        Assert.True(panel.WantsKeyboard);
+
+        panel.PointerDown(20, 45);
+        panel.PointerUp(20, 45);
+        Assert.False(panel.WantsKeyboard);
+    });
+
+    [Fact]
     public void Wheel_input_scrolls_a_list_box() => RenderThread.Run(() =>
     {
         ListBox? listBox = null;
@@ -325,6 +342,21 @@ public sealed class PanelHostRenderingTests
         Assert.True(panel.ContentLost());
         Assert.True(panel.Tick());
         Assert.Contains(new Rectangle(0, 0, 12, 10), panel.Frame.DirtyRectangles);
+    });
+
+    [Fact]
+    public void Resize_keeps_the_content_attached_so_its_owner_does_not_see_a_detach() => RenderThread.Run(() =>
+    {
+        var content = new Border { Background = Brushes.Black };
+        var detaches = 0;
+        content.DetachedFromVisualTree += (_, _) => detaches++;
+        using var panel = AvaloniaPanel.Create(() => content, 8, 6);
+
+        panel.Resize(12, 10);
+        panel.Tick();
+
+        Assert.Same(content, panel.Content);
+        Assert.Equal(0, detaches);
     });
 
     [Fact]

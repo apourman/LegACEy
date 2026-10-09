@@ -35,7 +35,7 @@ namespace LegACEy.Client.PanelHost;
 public sealed class AvaloniaPanel : IDisposable
 {
     private static bool _runtimeInitialized;
-    private Window _window;
+    private readonly Window _window;
     private readonly int _ownerThreadId;
     private PanelFrame _frame;
     private bool _disposed;
@@ -43,7 +43,7 @@ public sealed class AvaloniaPanel : IDisposable
     private bool _hasInvalidation;
     private bool _renderingSuspended;
     internal int FrameCaptureCount { get; private set; }
-    private RendererInvalidationObserver _rendererObserver;
+    private readonly RendererInvalidationObserver _rendererObserver;
     private readonly HashSet<AvaloniaObject> _renderResources = new();
     private readonly HashSet<INotifyCollectionChanged> _renderCollections = new();
     private IStyle? _themeStyles;
@@ -51,7 +51,7 @@ public sealed class AvaloniaPanel : IDisposable
     // Use one mouse device per window so implicit capture and click state survive
     // successive events. The pinned headless helper renders around every event;
     // raw delivery leaves dispatcher/render work to Tick instead.
-    private MouseDevice _mouseDevice = new();
+    private readonly MouseDevice _mouseDevice = new();
     private RawInputModifiers _mouseButtons;
     private readonly Stopwatch _inputClock = Stopwatch.StartNew();
     private Point _pointerPosition = new(-1, -1);
@@ -261,26 +261,26 @@ public sealed class AvaloniaPanel : IDisposable
         catch (Exception exception) { ReportError(exception); }
     }
 
-    /// <summary>Resize the panel's framebuffer and request a full repaint.</summary>
+    /// <summary>
+    /// Resize the panel's window and framebuffer and request a full repaint. The window is resized in place: a new window
+    /// would detach the content, and a content that hears its detach (a plugin's window disposes its client then) would be lost.
+    /// </summary>
     public void Resize(int width, int height)
     {
         VerifyUsable();
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
         if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
         _forceFullFrame = true;
-        StopObservingRenderResources();
-        _rendererObserver.Dispose();
-        var content = Content;
-        _window.Content = null;
-        _window.Close();
-        _mouseDevice.Dispose();
-        _mouseDevice = new MouseDevice();
-        _mouseButtons = RawInputModifiers.None;
-        _window = CreateWindow(content, width, height);
+        _window.Width = width;
+        _window.Height = height;
         _frame = new PanelFrame(width, height);
-        if (_theme != null)
-            ApplyTheme(_theme);
-        _rendererObserver = new RendererInvalidationObserver(_window, () => _hasInvalidation = true);
+        // Lay out and render the new size now, so the next capture is the new size and not the last frame of the old one.
+        try
+        {
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+        }
+        catch (Exception exception) { ReportError(exception); }
     }
 
     /// <summary>Tell the host that the backing texture was lost and needs a complete upload.</summary>
@@ -320,17 +320,21 @@ public sealed class AvaloniaPanel : IDisposable
         });
     }
 
-    /// <summary>The left button went down at a point in panel pixels.</summary>
-    public void PointerDown(double x, double y)
+    /// <summary>The left button went down at a point in panel pixels, with the keyboard modifiers held.</summary>
+    public void PointerDown(double x, double y, KeyModifiers modifiers = KeyModifiers.None)
     {
         VerifyUsable();
         RunInput(() =>
         {
             Invalidate();
             _pointerPosition = new Point(x, y);
-            SendPointer(RawPointerEventType.Move, new Point(x, y));
+            // A press outside the focused text box leaves it, as a click elsewhere on a desktop does; a press on another box focuses that one.
+            if (_window.FocusManager?.GetFocusedElement() is TextBox focused
+                && !(_window.InputHitTest(new Point(x, y)) is Visual hit && (hit == focused || focused.IsVisualAncestorOf(hit))))
+                _window.FocusManager?.ClearFocus();
+            SendPointer(RawPointerEventType.Move, new Point(x, y), ToRawModifiers(modifiers));
             _mouseButtons |= RawInputModifiers.LeftMouseButton;
-            SendPointer(RawPointerEventType.LeftButtonDown, new Point(x, y));
+            SendPointer(RawPointerEventType.LeftButtonDown, new Point(x, y), ToRawModifiers(modifiers));
         });
     }
 
