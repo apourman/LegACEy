@@ -115,6 +115,181 @@ public sealed class InventoryWindowTests
         Assert.False(choice.ShowSlots);
     });
 
+    [Fact]
+    public void Clicking_a_pack_opens_it_and_sends_nothing_else() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+
+        InventoryDriver.Press(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Potions));
+
+        Assert.Equal(new[] { $"open 0x{InventorySample.Potions:X8}" }, port.Commands);
+    });
+
+    [Fact]
+    public void Clicking_an_item_selects_it_and_a_second_click_on_it_in_time_uses_it() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        var apple = host.Cells[0];
+        var select = $"select 0x{InventorySample.Apple:X8}";
+
+        InventoryDriver.Press(host.Host, apple);
+        Assert.Equal(new[] { select }, port.Commands);
+        InventoryDriver.Press(host.Host, apple);
+        Assert.Equal(new[] { select, $"use 0x{InventorySample.Apple:X8}" }, port.Commands);
+    });
+
+    [Fact]
+    public void Dropping_on_a_grid_cell_moves_the_item_to_that_container_and_slot() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        var cells = host.Cells;
+
+        // The scroll sits in slot 4 of the main pack; it goes to the empty slot 10. Its icon rides the pointer until the release.
+        InventoryDriver.DragTo(host.Host, cells[4], cells[10]);
+        Assert.Equal(1, host.Drag.IconsOpen);
+        InventoryDriver.Release(host.Host, cells[10]);
+
+        Assert.Equal(0, host.Drag.IconsOpen);
+        Assert.Equal(new[] { $"move 0x{InventorySample.Scroll:X8} to 0x{InventorySample.Character:X8} slot 10" }, port.Commands);
+    });
+
+    [Fact]
+    public void Dropping_on_a_pack_moves_the_item_into_its_first_free_slot() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        var potions = InventoryDriver.PackSlot(host.Host, InventorySample.Potions);
+
+        // The potions pack holds seventeen items in slots 0 to 16, so the scroll goes to slot 17.
+        InventoryDriver.Drop(host.Host, host.Cells[4], potions);
+
+        Assert.Equal(new[] { $"move 0x{InventorySample.Scroll:X8} to 0x{InventorySample.Potions:X8} slot 17" }, port.Commands);
+    });
+
+    [Fact]
+    public void Dropping_on_an_equipment_slot_wields_the_item_there() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        var head = Slot(host, PaperdollSlot.Head);
+
+        InventoryDriver.Drop(host.Host, host.Cells[9], head);
+
+        Assert.Equal(new[] { $"wield 0x{InventorySample.Cap:X8} to Head" }, port.Commands);
+    });
+
+    [Fact]
+    public void A_refused_move_leaves_the_window_showing_the_ports_unchanged_state() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        var cells = host.Cells;
+
+        // The move is sent, and the port pushes no change: the scroll stays where it was.
+        InventoryDriver.Drop(host.Host, cells[4], cells[10]);
+
+        Assert.Single(port.Commands);
+        Assert.Equal(InventorySample.Scroll, InventoryDriver.Id(host.Cells[4]).ItemId);
+        Assert.Equal(0u, InventoryDriver.Id(host.Cells[10]).ItemId);
+    });
+
+    [Fact]
+    public void An_illegal_equipment_drop_shows_red_and_sends_nothing() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        var weapon = Slot(host, PaperdollSlot.Weapon);
+
+        // A cap can't go in the weapon slot.
+        InventoryDriver.DragTo(host.Host, host.Cells[9], weapon);
+        var indicator = Assert.Single(host.Host.Content.GetVisualDescendants().OfType<Border>(), border => border.Name == "DropIndicator");
+        Assert.True(indicator.IsVisible);
+        Assert.Same(DerethPalette.InvalidBrush, indicator.BorderBrush);
+        InventoryDriver.Release(host.Host, weapon);
+
+        Assert.Empty(port.Commands);
+    });
+
+    [Fact]
+    public void A_side_pack_dropped_on_another_side_pack_is_reordered_to_its_position() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+
+        // Side packs are numbered on their own: the potions pack is the second side pack, so the sack moves to position 1.
+        InventoryDriver.Drop(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Sack), InventoryDriver.PackSlot(host.Host, InventorySample.Potions));
+
+        Assert.Equal(new[] { $"move 0x{InventorySample.Sack:X8} to 0x{InventorySample.Character:X8} slot 1" }, port.Commands);
+    });
+
+    [Fact]
+    public void An_equipped_item_dropped_on_a_grid_cell_is_unequipped_into_that_cell() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+
+        InventoryDriver.Drop(host.Host, Slot(host, PaperdollSlot.Head), host.Cells[10]);
+
+        Assert.Equal(new[] { $"move 0x{InventorySample.Helm:X8} to 0x{InventorySample.Character:X8} slot 10" }, port.Commands);
+    });
+
+    [Fact]
+    public void A_stack_dropped_on_a_stack_of_another_kind_is_moved_into_its_cell_not_merged() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+
+        // An apple on a scroll: both stack, but they are different kinds, so the server places the apple in the scroll's cell.
+        InventoryDriver.Drop(host.Host, host.Cells[0], host.Cells[4]);
+
+        Assert.Equal(new[] { $"move 0x{InventorySample.Apple:X8} to 0x{InventorySample.Character:X8} slot 4" }, port.Commands);
+    });
+
+    [Fact]
+    public void A_press_that_moves_past_the_threshold_and_is_lost_sends_nothing_and_drops_its_icon() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        var start = InventoryDriver.Centre(host.Host, host.Cells[0]);
+
+        // The focus is lost mid-drag: the release comes from nowhere in the window.
+        host.Host.PointerDown(start.X, start.Y);
+        host.Host.PointerMove(start.X + 10, start.Y);
+        Assert.Equal(1, host.Drag.IconsOpen);
+        host.Host.PointerUp(-1, -1);
+
+        Assert.Empty(port.Commands);
+        Assert.Equal(0, host.Drag.IconsOpen);
+    });
+
+    [Fact]
+    public void A_press_released_away_from_where_it_began_without_a_drag_is_not_a_click() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        var start = InventoryDriver.Centre(host.Host, host.Cells[0]);
+
+        host.Host.PointerDown(start.X, start.Y);
+        host.Host.PointerUp(-1, -1);
+
+        Assert.Empty(port.Commands);
+    });
+
     private static DerethSlot Slot(InventoryHost host, PaperdollSlot slot) =>
         InventoryDriver.SlotOrNull(host.Host, slot) ?? throw new InvalidOperationException($"No {slot} slot is drawn.");
 
@@ -126,7 +301,7 @@ public sealed class InventoryWindowTests
         public InventoryHost(FakeInventoryPort port, InventoryLayout layout, bool showSlots, int width = 360, int height = 530)
         {
             InventoryWindow? window = null;
-            Host = AvaloniaPanel.Create(() => window = new InventoryWindow(port, new InventorySample.NoArt(), new InventorySettings(layout, showSlots)), width, height);
+            Host = AvaloniaPanel.Create(() => window = new InventoryWindow(port, new InventorySample.NoArt(), new InventorySettings(layout, showSlots), Drag), width, height);
             Host.ApplyTheme(new DerethClientTheme());
             _window = window!;
             InventoryDriver.Tick(Host);
@@ -134,6 +309,8 @@ public sealed class InventoryWindowTests
 
         public AvaloniaPanel Host { get; }
         public InventoryWindow Window => _window;
+        /// <summary>The drag host the window shows its icons through: <see cref="FakeItemDragHost.IconsOpen"/> counts the icons up.</summary>
+        public FakeItemDragHost Drag { get; } = new();
 
         /// <summary>The cells of the open container's grid, in reading order.</summary>
         public DerethSlot[] Cells => InventoryDriver.Slots(Host).Where(slot => InventoryDriver.Id(slot).Place == SlotPlace.Cell).ToArray();

@@ -37,6 +37,10 @@ public static class DerethPalette
     public static readonly IBrush GrooveBrush = Brush(Groove);
     public static readonly IBrush GrooveEdgeBrush = Brush(GrooveEdge);
     public static readonly IBrush TealBrush = Brush(Teal);
+    /// <summary>Gold at a quarter opacity: the wash of an accepted drop indicator.</summary>
+    public static readonly IBrush GoldWashBrush = Brush(Gold.WithAlpha(0x40));
+    /// <summary>Red at a quarter opacity: the wash of a refused drop indicator.</summary>
+    public static readonly IBrush InvalidWashBrush = Brush(Invalid.WithAlpha(0x40));
 
     public static IBrush Brush(Color color) => new SolidColorBrush(color);
 

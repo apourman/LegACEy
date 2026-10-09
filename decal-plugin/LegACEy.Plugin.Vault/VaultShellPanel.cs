@@ -38,8 +38,8 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     private static readonly IBrush Invalid = DerethPalette.InvalidBrush;
     private static readonly IBrush ShadowBrush = DerethPalette.Brush(Colors.Black);
     private static readonly IBrush SelectedBrush = DerethPalette.Brush(DerethPalette.TealText);
-    private static readonly IBrush ValidFill = DerethPalette.Brush(Color.FromArgb(0x40, DerethPalette.Gold.R, DerethPalette.Gold.G, DerethPalette.Gold.B));
-    private static readonly IBrush InvalidFill = DerethPalette.Brush(Color.FromArgb(0x40, DerethPalette.Invalid.R, DerethPalette.Invalid.G, DerethPalette.Invalid.B));
+    private static readonly IBrush ValidFill = DerethPalette.GoldWashBrush;
+    private static readonly IBrush InvalidFill = DerethPalette.InvalidWashBrush;
 
     // icon, UiEffects (the sample's outline: BoostMana, BoostStamina, Frost, Magical, Lightning, Fire, Poisoned, as the prototype draws them), count
     private static readonly (string Name, uint Icon, int Effects, int Count)[] Samples =

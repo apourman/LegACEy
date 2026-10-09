@@ -5,9 +5,12 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
@@ -19,7 +22,8 @@ namespace LegACEy.Plugin.Inventory;
 /// The inventory in one layout, drawn with the Dereth parts from the port's snapshot. It re-renders when the port changes, and
 /// not while the owner has it <see cref="Suspend"/>ed (hidden); <see cref="Resume"/> draws the current state once.
 /// Its own toggles (layout and Slots) are local and report through <see cref="SettingsChanged"/>; the owner decides what a layout
-/// change does. Selection, use and moves are not handled yet: every slot carries its item, container and slot index for them.
+/// change does. A click on a slot selects its item, or opens a pack; a double-click uses the item; a drag moves it through the
+/// port. The window never changes its own state: a command shows only when the port's next snapshot says so.
 /// </summary>
 public sealed class InventoryWindow : UserControl, IDisposable
 {
@@ -30,6 +34,7 @@ public sealed class InventoryWindow : UserControl, IDisposable
     private const double EmptyOpacity = 0.55;
     private const string StackedGlyph = "M2,1 H12 V6 H2 Z M2,8 H12 V13 H2 Z";
     private const string SideBySideGlyph = "M1,2 H6 V12 H1 Z M8,2 H13 V12 H8 Z";
+    private const double DragThreshold = 4;
 
     private static readonly IBrush GoldBrush = DerethPalette.GoldBrush;
     private static readonly IBrush TextBrush = DerethPalette.TextBrush;
@@ -57,6 +62,20 @@ public sealed class InventoryWindow : UserControl, IDisposable
     private readonly ContentControl _burdenMeter = new();
     private readonly TextBlock _burdenText = Label(string.Empty, TextBrush, 12);
     private readonly TextBlock _pyrealCount = Label(string.Empty, GoldBrush, 12);
+    // Shown over the slot under the pointer while an item is dragged: gold where the drop is accepted, red where it is refused.
+    private readonly Border _dropIndicator = new()
+    {
+        Name = "DropIndicator", IsVisible = false, IsHitTestVisible = false, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(2),
+        HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+    };
+    private readonly IItemDragHost? _dragHost;
+    // A press on a slot: a click on release, or a drag once it moves past the threshold. The item or pack being dragged is _dragged, zero when none.
+    private InventorySlotId? _press;
+    private Point _pressPoint;
+    // How many presses in a row the press was, as the platform counts them: two or more is a double-click.
+    private int _pressClicks;
+    private uint _dragged;
+    private IDisposable? _dragIcon;
     private bool _showSlots;
     private bool _suspended;
     private bool _disposed;
@@ -64,10 +83,12 @@ public sealed class InventoryWindow : UserControl, IDisposable
     /// <param name="port">The character's inventory. The window reads its snapshot and re-renders on its change event.</param>
     /// <param name="art">The game art the icons are drawn from.</param>
     /// <param name="settings">The layout this window draws, and whether the armour slots show.</param>
-    public InventoryWindow(IInventoryPort port, IGameArtSource art, InventorySettings settings)
+    /// <param name="dragHost">Shows the icon of a dragged item under the pointer. Null shows no icon; the drag still works.</param>
+    public InventoryWindow(IInventoryPort port, IGameArtSource art, InventorySettings settings, IItemDragHost? dragHost = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _art = art ?? throw new ArgumentNullException(nameof(art));
+        _dragHost = dragHost;
         _layout = settings.Layout;
         _showSlots = settings.ShowSlots;
         _packList = _layout == InventoryLayout.Vertical
@@ -77,7 +98,12 @@ public sealed class InventoryWindow : UserControl, IDisposable
         var body = _layout == InventoryLayout.Vertical ? VerticalBody() : HorizontalBody();
         _frame = new DerethWindow(Title, Icon(new ItemVisual(BackpackIcon, 0, 0, 0)), body, LayoutToggles());
         _frame.CloseRequested += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
-        Content = _frame;
+        Content = new Grid { Children = { _frame, _dropIndicator } };
+        // The window takes the pointer on its own handlers, so a drag that leaves a slot, or the window, still ends here.
+        AddHandler(InputElement.PointerPressedEvent, OnPressed, RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(InputElement.PointerMovedEvent, OnMoved, RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(InputElement.PointerReleasedEvent, OnReleased, RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(InputElement.PointerCaptureLostEvent, (_, _) => EndDrag(), handledEventsToo: true);
 
         _paperdoll.SlotsPressed += ToggleSlots;
         _paperdoll.SetSlotsOn(_showSlots);
@@ -111,9 +137,12 @@ public sealed class InventoryWindow : UserControl, IDisposable
         UpdateDoll();
     }
 
-    /// <summary>Stops redrawing for port changes, and takes the 3D character out, while the window is hidden.</summary>
+    /// <summary>
+    /// Stops redrawing for port changes, and takes the 3D character out, while the window is hidden. A drag in progress ends.
+    /// </summary>
     public void Suspend()
     {
+        EndDrag();
         _suspended = true;
         UpdateDoll();
     }
@@ -142,6 +171,7 @@ public sealed class InventoryWindow : UserControl, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        EndDrag();
         _port.Changed -= OnChanged;
         foreach (var image in _images.Values) image?.Dispose();
         _images.Clear();
@@ -161,6 +191,204 @@ public sealed class InventoryWindow : UserControl, IDisposable
         SettingsChanged?.Invoke(Settings);
     }
 
+    /// <summary>A press on a slot. Nothing is sent yet: a release decides between a click and a drop.</summary>
+    private void OnPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed || SlotAt(e.GetPosition(this)) is not { } slot) return;
+        _press = (InventorySlotId)slot.Tag!;
+        _pressPoint = e.GetPosition(this);
+        _pressClicks = e.ClickCount;
+        // Moves and the release come to this window even outside it, so a drag that leaves the window still ends here.
+        e.Pointer.Capture(this);
+    }
+
+    private void OnMoved(object? sender, PointerEventArgs e)
+    {
+        if (_press is not { } press) return;
+        var point = e.GetPosition(this);
+        if (_dragged == 0)
+        {
+            if (!PastThreshold(point)) return;
+            // Past the threshold the press is a drag or nothing, so it is never a click, even when it carries nothing.
+            _dragged = DraggedId(press);
+            if (_dragged == 0)
+            {
+                _press = null;
+                return;
+            }
+            _dragIcon = _dragHost?.ShowDragIcon(DragImage(_dragged), 1);
+        }
+        ShowIndicator(point);
+    }
+
+    private void OnReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        // Only the button that started the press acts; another button's release leaves the press alone.
+        if (_press is not { } press || e.InitialPressMouseButton != MouseButton.Left) return;
+        var dragged = _dragged;
+        var point = e.GetPosition(this);
+        var clicks = _pressClicks;
+        // A release past the threshold where no drag began (a focus loss, for one) is not a click.
+        var click = dragged == 0 && !PastThreshold(point);
+        EndDrag();
+        if (click)
+        {
+            Click(press, clicks);
+            return;
+        }
+        // A release outside the slots, or over a refused one, sends nothing.
+        var drop = dragged == 0 || SlotAt(point)?.Tag is not InventorySlotId target ? null : Judge(_port.Snapshot, dragged, target);
+        if (drop?.Accepted == true) drop.Value.Send(_port);
+    }
+
+    /// <summary>A click on release: a pack opens; an item is selected, or used when the press was the second click on it.</summary>
+    private void Click(InventorySlotId slot, int clicks)
+    {
+        if (slot.Place == SlotPlace.Pack)
+        {
+            if (slot.Container != 0) _port.OpenContainer(slot.Container);
+            return;
+        }
+        if (slot.ItemId == 0) return;
+        if (clicks >= 2) _port.Use(slot.ItemId);
+        else _port.Select(slot.ItemId);
+    }
+
+    private void EndDrag()
+    {
+        _press = null;
+        _dragged = 0;
+        _dragIcon?.Dispose();
+        _dragIcon = null;
+        _dropIndicator.IsVisible = false;
+    }
+
+    /// <summary>Shows the indicator over the slot under the pointer: gold when the drop is accepted, red when it is refused.</summary>
+    private void ShowIndicator(Point point)
+    {
+        var slot = SlotAt(point);
+        var drop = slot?.Tag is InventorySlotId target ? Judge(_port.Snapshot, _dragged, target) : null;
+        if (slot == null || drop == null || slot.TranslatePoint(default, this) is not { } origin)
+        {
+            _dropIndicator.IsVisible = false;
+            return;
+        }
+        _dropIndicator.Margin = new Thickness(origin.X, origin.Y, 0, 0);
+        _dropIndicator.Width = slot.Bounds.Width;
+        _dropIndicator.Height = slot.Bounds.Height;
+        _dropIndicator.BorderBrush = drop.Value.Accepted ? GoldBrush : InvalidBrush;
+        _dropIndicator.Background = drop.Value.Accepted ? DerethPalette.GoldWashBrush : DerethPalette.InvalidWashBrush;
+        _dropIndicator.IsVisible = true;
+    }
+
+    /// <summary>The slot under a point of this window, or null over anything the window does not draw as a slot.</summary>
+    private DerethSlot? SlotAt(Point point)
+    {
+        for (var visual = this.GetVisualAt(point); visual != null; visual = visual.GetVisualParent())
+            if (visual is DerethSlot { Tag: InventorySlotId } slot) return slot;
+        return null;
+    }
+
+    /// <summary>What a press on a slot carries: its item, or a side pack. Zero for an empty slot and for the main pack, which is not dragged.</summary>
+    private uint DraggedId(InventorySlotId slot)
+    {
+        if (slot.Place != SlotPlace.Pack) return slot.ItemId;
+        return slot.Container != 0 && _port.Snapshot.SidePacks.Any(pack => pack.Id == slot.Container) ? slot.Container : 0;
+    }
+
+    private GameImage? DragImage(uint id)
+    {
+        var snapshot = _port.Snapshot;
+        var visual = snapshot.Items.FirstOrDefault(item => item.Id == id)?.Visual ?? snapshot.Wielded.FirstOrDefault(item => item.Id == id)?.Visual
+            ?? new ItemVisual(snapshot.SidePacks.FirstOrDefault(pack => pack.Id == id)?.Icon ?? 0, 0, 0, 0);
+        return ItemIcon.Draw(_art, visual.Underlay, visual.Icon, visual.Overlay, 0, visual.UiEffects);
+    }
+
+    /// <summary>Whether a point has moved past the drag threshold from where the press began.</summary>
+    private bool PastThreshold(Point point) =>
+        Math.Abs(point.X - _pressPoint.X) >= DragThreshold || Math.Abs(point.Y - _pressPoint.Y) >= DragThreshold;
+
+    /// <summary>A drop that is red: nothing is sent.</summary>
+    private static readonly (bool Accepted, Action<IInventoryPort> Send)? Refused = (false, _ => { });
+
+    /// <summary>
+    /// What dropping the dragged item or pack on a slot does. Null: nothing shows and nothing is sent (the item's own slot, or an
+    /// item the snapshot no longer holds). Accepted false: red, nothing sent. Accepted true: gold, and the drop sends its command.
+    /// </summary>
+    private static (bool Accepted, Action<IInventoryPort> Send)? Judge(InventorySnapshot s, uint dragged, InventorySlotId target)
+    {
+        if (!s.Contains(dragged)) return null;
+        if (s.SidePacks.Any(pack => pack.Id == dragged)) return PackOnto(s, dragged, target);
+        switch (target.Place)
+        {
+            case SlotPlace.Paperdoll:
+                if (target.ItemId == dragged || target.Equipment is not { } slot) return null;
+                return s.WieldMask(dragged, slot) == 0 ? Refused : (true, p => p.Wield(dragged, slot));
+
+            case SlotPlace.Pack:
+            {
+                if (PackOf(s, target.Container) is not { } into) return Refused;
+                var free = FirstFree(s, into);
+                return free < 0 ? Refused : (true, p => p.MoveToContainer(dragged, into.Id, free));
+            }
+
+            case SlotPlace.Cell:
+            {
+                var occupant = s.Items.FirstOrDefault(item => item.Container == target.Container && item.Slot == target.SlotIndex);
+                if (occupant != null && occupant.Id == dragged) return null;
+                // Stacks of the same kind merge. Any other item dropped on a cell is moved there, and the server places it.
+                var (name, stackMax, itemType) = KindOf(s, dragged);
+                if (occupant != null && occupant.StackMax > 1 && stackMax > 1 && occupant.Name == name && occupant.ItemType == itemType)
+                    return (true, p => p.MergeStack(dragged, occupant.Id));
+                return (true, p => p.MoveToContainer(dragged, target.Container, target.SlotIndex));
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// What dropping a side pack does. Side packs are numbered on their own, so a pack goes to a side-pack position: the position
+    /// of the tile it lands on, or the first empty position when it lands on the main pack. A pack dropped into a side pack's grid
+    /// is accepted and the server refuses it.
+    /// </summary>
+    private static (bool Accepted, Action<IInventoryPort> Send)? PackOnto(InventorySnapshot s, uint pack, InventorySlotId target)
+    {
+        var main = s.MainPack.Id;
+        if (target.Place == SlotPlace.Paperdoll || target.Container == pack) return Refused;
+        if (target.Place == SlotPlace.Cell && target.Container != main) return (true, p => p.MoveToContainer(pack, target.Container, target.SlotIndex));
+        var position = target.Place == SlotPlace.Pack && target.Container != main ? target.SlotIndex : FirstEmptySidePosition(s);
+        return (true, p => p.MoveToContainer(pack, main, position));
+    }
+
+    /// <summary>The position of the first empty side-pack slot, or the number of side packs when none is empty.</summary>
+    private static int FirstEmptySidePosition(InventorySnapshot s)
+    {
+        for (var position = 0; position < s.SidePacks.Count; position++)
+            if (s.SidePacks[position].Id == 0) return position;
+        return s.SidePacks.Count;
+    }
+
+    private static InventoryPack? PackOf(InventorySnapshot s, uint id) =>
+        id == 0 ? null : s.MainPack.Id == id ? s.MainPack : s.SidePacks.FirstOrDefault(pack => pack.Id == id);
+
+    /// <summary>The first slot of a pack that holds no item, or -1 when the pack is full.</summary>
+    private static int FirstFree(InventorySnapshot s, InventoryPack pack)
+    {
+        var used = new HashSet<int>(s.Items.Where(item => item.Container == pack.Id).Select(item => item.Slot));
+        for (var slot = 0; slot < pack.Capacity; slot++)
+            if (!used.Contains(slot)) return slot;
+        return -1;
+    }
+
+    /// <summary>The name, stack maximum and type of an item the snapshot holds, carried or in a pack.</summary>
+    private static (string Name, int StackMax, int ItemType) KindOf(InventorySnapshot s, uint id)
+    {
+        var item = s.Items.FirstOrDefault(candidate => candidate.Id == id);
+        if (item != null) return (item.Name, item.StackMax, item.ItemType);
+        var worn = s.Wielded.FirstOrDefault(candidate => candidate.Id == id);
+        return worn != null ? (worn.Name, worn.StackMax, worn.ItemType) : (string.Empty, 0, 0);
+    }
+
     private void RequestLayout(InventoryLayout layout)
     {
         if (layout != _layout) SettingsChanged?.Invoke(new InventorySettings(layout, _showSlots));
@@ -169,6 +397,8 @@ public sealed class InventoryWindow : UserControl, IDisposable
     private void Render(InventorySnapshot snapshot)
     {
         if (_disposed) return;
+        // The slots are rebuilt, so a drop indicator on the old ones goes; the next pointer move shows the current one.
+        _dropIndicator.IsVisible = false;
         var open = OpenPack(snapshot);
         var worn = new Dictionary<PaperdollSlot, WieldedItem>();
         foreach (var item in snapshot.Wielded)
@@ -197,39 +427,42 @@ public sealed class InventoryWindow : UserControl, IDisposable
     private void RenderPacks(InventorySnapshot snapshot, InventoryPack open)
     {
         _packList.Children.Clear();
+        // A side pack's tile carries its position in the side-pack list: a drop of a pack reorders by that position.
         if (_layout == InventoryLayout.Vertical)
         {
-            _packList.Children.Add(PackColumnSlot(snapshot, snapshot.MainPack, open));
+            _packList.Children.Add(PackColumnSlot(snapshot, snapshot.MainPack, -1, open));
             _packList.Children.Add(new DerethRule { Margin = new Thickness(0, 2), Opacity = 0.7 });
-            foreach (var pack in snapshot.SidePacks) _packList.Children.Add(PackColumnSlot(snapshot, pack, open));
+            for (var position = 0; position < snapshot.SidePacks.Count; position++)
+                _packList.Children.Add(PackColumnSlot(snapshot, snapshot.SidePacks[position], position, open));
             return;
         }
-        _packList.Children.Add(PackTab(snapshot, snapshot.MainPack, open));
+        _packList.Children.Add(PackTab(snapshot, snapshot.MainPack, -1, open));
         _packList.Children.Add(new Border { Width = 1, Background = DerethPalette.GrooveEdgeBrush, Margin = new Thickness(3, 4) });
-        foreach (var pack in snapshot.SidePacks) _packList.Children.Add(PackTab(snapshot, pack, open));
+        for (var position = 0; position < snapshot.SidePacks.Count; position++)
+            _packList.Children.Add(PackTab(snapshot, snapshot.SidePacks[position], position, open));
     }
 
     /// <summary>A pack in the vertical column: its icon, with a fill bar along the foot. An empty side-pack slot is a placeholder.</summary>
-    private DerethSlot PackColumnSlot(InventorySnapshot snapshot, InventoryPack pack, InventoryPack open)
+    private DerethSlot PackColumnSlot(InventorySnapshot snapshot, InventoryPack pack, int position, InventoryPack open)
     {
-        if (pack.Id == 0) return Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, -1, null));
+        if (pack.Id == 0) return Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, position, null));
         var layers = new Grid();
         layers.Children.Add(Icon(new ItemVisual(pack.Icon, 0, 0, 0)));
         layers.Children.Add(FillBar(ItemsIn(snapshot, pack.Id), pack.Capacity));
-        return Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, -1, null), layers, pack.Id == open.Id);
+        return Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), layers, pack.Id == open.Id);
     }
 
     /// <summary>A pack in the horizontal strip: its icon, with "n/cap" under it. An empty side-pack slot is a placeholder.</summary>
-    private Control PackTab(InventorySnapshot snapshot, InventoryPack pack, InventoryPack open)
+    private Control PackTab(InventorySnapshot snapshot, InventoryPack pack, int position, InventoryPack open)
     {
         var stack = new StackPanel { Spacing = 2, Width = DerethSlotGrid.Pitch };
         if (pack.Id == 0)
         {
-            stack.Children.Add(Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, -1, null)));
+            stack.Children.Add(Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, position, null)));
             return stack;
         }
         var selected = pack.Id == open.Id;
-        stack.Children.Add(Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, -1, null), Icon(new ItemVisual(pack.Icon, 0, 0, 0)), selected));
+        stack.Children.Add(Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(new ItemVisual(pack.Icon, 0, 0, 0)), selected));
         var count = Label($"{ItemsIn(snapshot, pack.Id)}/{pack.Capacity}", selected ? TealTextBrush : MutedBrush, 10);
         count.HorizontalAlignment = HorizontalAlignment.Center;
         stack.Children.Add(count);
@@ -369,7 +602,7 @@ public sealed class InventoryWindow : UserControl, IDisposable
     private Control HorizontalBody()
     {
         var left = new StackPanel { Children = { _paperdoll } };
-        var rule = new Border { Width = 1, Background = DerethPalette.Brush(DerethPalette.Gold.WithAlpha(0x40)), Margin = new Thickness(0, 4) };
+        var rule = new Border { Width = 1, Background = DerethPalette.GoldWashBrush, Margin = new Thickness(0, 4) };
 
         var right = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*") };
         _packList.Margin = new Thickness(0, 0, 0, 6);
