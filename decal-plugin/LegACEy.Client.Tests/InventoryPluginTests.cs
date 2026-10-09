@@ -210,7 +210,7 @@ public sealed class InventoryPluginTests
         public IServerChannel ServerChannel => UnavailableServerChannel.Instance;
         public string PortalPath => string.Empty;
         public IGameArtSource Art { get; } = new InventorySample.NoArt();
-        public IItemDragHost ItemDrag => throw new NotSupportedException();
+        public IItemDragHost ItemDrag { get; } = new FakeItemDragHost();
         public IInventoryPort Inventory => Port;
         public bool SupportsAction(string action) => false;
         public int? LoadSettings() => Settings;

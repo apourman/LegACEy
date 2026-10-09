@@ -21,6 +21,8 @@ internal static class InventorySample
     public const uint Scroll = 0x80000007;
     public const uint YellowPotion = 0x80000008;
     public const uint Sword = 0x80000009;
+    // A cap in the main pack, wieldable only in the head slot.
+    public const uint Cap = 0x80000010;
 
     private const uint BackpackIcon = 0x0600127E;
     private const uint SackIcon = 0x0600101E;
@@ -41,6 +43,7 @@ internal static class InventorySample
             Item(Apple, "Apple", Character, 0, 0x06001049, stack: 20),
             Item(Scroll, "Scroll", Character, 4, 0x06001065),
             Item(Sword, "Sword", Character, 7, 0x060010DA),
+            new(Cap, "Cap", Character, 9, new ItemVisual(0x06000FAA, 0, 0, 0), 1, 1, 0, 0x00000001),
         };
         // Seventeen potions in the potions pack, so its grid reads "17 / 24".
         for (var slot = 0; slot < 17; slot++)

@@ -48,4 +48,34 @@ internal static class InventoryDriver
     /// <summary>The paperdoll slot for an equipment slot, or null when the slot is not drawn (the armour slots while Slots is off).</summary>
     public static DerethSlot? SlotOrNull(AvaloniaPanel host, PaperdollSlot slot) =>
         Slots(host).SingleOrDefault(candidate => Id(candidate).Place == SlotPlace.Paperdoll && Id(candidate).Equipment == slot);
+
+    /// <summary>The tile of a pack in the pack list, the main pack's included.</summary>
+    public static DerethSlot PackSlot(AvaloniaPanel host, uint pack) =>
+        Slots(host).Single(candidate => Id(candidate).Place == SlotPlace.Pack && Id(candidate).Container == pack);
+
+    /// <summary>Presses a slot, drags it past the threshold to another, and holds there: the drop indicator shows, and nothing is sent yet.</summary>
+    public static void DragTo(AvaloniaPanel host, Control from, Control to)
+    {
+        Tick(host);
+        var start = Centre(host, from);
+        host.PointerDown(start.X, start.Y, KeyModifiers.None);
+        host.PointerMove(start.X + 10, start.Y);
+        var end = Centre(host, to);
+        host.PointerMove(end.X, end.Y);
+        Tick(host);
+    }
+
+    /// <summary>Lets go over a control, ending the drag begun by <see cref="DragTo"/>.</summary>
+    public static void Release(AvaloniaPanel host, Control at)
+    {
+        var point = Centre(host, at);
+        host.PointerUp(point.X, point.Y);
+        Tick(host);
+    }
+
+    private static Point Centre(AvaloniaPanel host, Control control)
+    {
+        Tick(host);
+        return control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), host.Content)!.Value;
+    }
 }
