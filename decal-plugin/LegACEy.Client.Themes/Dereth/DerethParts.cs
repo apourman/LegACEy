@@ -21,7 +21,7 @@ public static class DerethPalette
     public static readonly Color Invalid = Color.Parse("#D9584A");
     public static readonly Color Groove = Color.Parse("#05080C");
     public static readonly Color GrooveEdge = Color.Parse("#2A3542");
-    public static readonly Color Navy = Color.Parse("#0A1219");
+    public static readonly Color Navy = Color.Parse("#081016");
     /// <summary>The selection colour: a selected slot's wash, border and glow.</summary>
     public static readonly Color Teal = Color.Parse("#3FB3AE");
     /// <summary>Teal text, such as the "N selected" line.</summary>
