@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Avalonia;
+using LegACEy.Client.GameArt;
 
 namespace LegACEy.Client.Demo;
 
@@ -31,8 +32,8 @@ public enum ItemDropTarget
 /// <summary>Host services for dragging an item out of a LegACEy window and onto the retail UI.</summary>
 public interface IItemDragHost
 {
-    /// <summary>Shows the item's icon under the pointer, above every window, until disposed.</summary>
-    IDisposable ShowDragIcon(IReadOnlyList<uint> iconLayers);
+    /// <summary>Shows the item's icon, already drawn (see ItemIcon.Draw), under the pointer, above every window, until disposed.</summary>
+    IDisposable ShowDragIcon(GameImage? icon);
 
     /// <summary>What is under the pointer now, outside LegACEy windows.</summary>
     ItemDropTarget DropTargetAtPointer();
@@ -42,12 +43,12 @@ public interface IItemDragHost
 public sealed class FakeItemDragHost : IItemDragHost
 {
     public ItemDropTarget Target { get; set; } = ItemDropTarget.Inventory;
-    public List<uint[]> IconsShown { get; } = new();
+    public List<GameImage?> IconsShown { get; } = new();
     public int IconsOpen { get; private set; }
 
-    public IDisposable ShowDragIcon(IReadOnlyList<uint> iconLayers)
+    public IDisposable ShowDragIcon(GameImage? icon)
     {
-        IconsShown.Add(new List<uint>(iconLayers).ToArray());
+        IconsShown.Add(icon);
         IconsOpen++;
         return new Icon(this);
     }

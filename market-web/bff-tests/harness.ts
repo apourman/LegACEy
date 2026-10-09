@@ -90,7 +90,7 @@ export const listing = {
   id: 1, itemGuid: 10, wcid: 100, name: 'Bone Slicer', itemType: 'MeleeWeapon', material: 'Steel',
   workmanship: 7, level: 100, arcaneLore: 200, summary: '34-52 (Slashing)',
   quantity: 3, price: 120, seller: 'Bravo Main', listedTime: '2026-10-01T12:00:00Z',
-  wield: 'Level 100', icon: { layers: [], glow: null },
+  wield: 'Level 100', icon: { layers: [] },
 };
 export const detail = { ...listing, lines: ['Value: 500', 'Damage: 34 - 52'], spells: [{ name: 'Blood Drinker', cantrip: false }] };
 export const facets = {

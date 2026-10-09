@@ -647,28 +647,22 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         catch (COMException) { return string.Empty; }
     }
 
-    /// <summary>The object's icon layers as the client stacks them: item-type plate, underlay, icon, overlay.</summary>
-    private static IReadOnlyList<uint> ObjectIcon(uint id)
+    /// <summary>The object's icon as the retail UI draws it: underlay, the icon with its UI-effect outline, then the secondary overlay.</summary>
+    private GameImage? ObjectIcon(uint id)
     {
         try
         {
             var item = CoreManager.Current.WorldFilter[unchecked((int)id)];
-            if (item == null) return Array.Empty<uint>();
+            if (item == null || _portal == null) return null;
             // Decal reports portal texture ids without their 0x06 prefix.
             static uint Texture(int value) => value == 0 ? 0 : (value & 0xFF000000) == 0 ? unchecked((uint)value) | 0x06000000 : unchecked((uint)value);
-            var layers = new List<uint> { Plate(unchecked((uint)item.Category)) };
-            foreach (var layer in new[] { Texture(item.Values(Decal.Adapter.Wrappers.LongValueKey.IconUnderlay)), Texture(item.Icon),
-                         Texture(item.Values(Decal.Adapter.Wrappers.LongValueKey.IconOverlay)) })
-                if (layer != 0) layers.Add(layer);
-            return layers;
+            // Decal names the UI-effects value IconOutline (checked in Decal.Adapter.dll). Decal has no secondary overlay key, so none is drawn.
+            return ItemIcon.Draw(_portal, Texture(item.Values(Decal.Adapter.Wrappers.LongValueKey.IconUnderlay)), Texture(item.Icon),
+                Texture(item.Values(Decal.Adapter.Wrappers.LongValueKey.IconOverlay)), 0,
+                unchecked((uint)item.Values(Decal.Adapter.Wrappers.LongValueKey.IconOutline)));
         }
-        catch (COMException) { return Array.Empty<uint>(); }
+        catch (COMException) { return null; }
     }
-
-    /// <summary>The plate under an icon by ACE ItemType flags, as the server's vault list and the Market API choose it.</summary>
-    private static uint Plate(uint itemType) =>
-        (itemType & 0x8101) != 0 ? 0x060011D2u : (itemType & 0x2) != 0 ? 0x060011CFu : (itemType & 0x4) != 0 ? 0x060011F3u :
-        (itemType & 0x8) != 0 ? 0x060011D5u : (itemType & 0x800) != 0 ? 0x060011D3u : 0x060011D4u;
 
     /// <summary>Drag services for LegACEy windows: the floating icon and what lies under the pointer in the retail UI.</summary>
     private sealed class ItemDragHost : IItemDragHost
@@ -676,9 +670,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         private readonly ClientUiRuntime _owner;
         public ItemDragHost(ClientUiRuntime owner) => _owner = owner;
 
-        public IDisposable ShowDragIcon(IReadOnlyList<uint> iconLayers)
+        public IDisposable ShowDragIcon(GameImage? image)
         {
-            var icon = _owner.ShowDragIcon(iconLayers);
+            var icon = _owner.ShowDragIcon(image);
             _owner._itemDragActive = true;
             return new ItemDrag(_owner, icon);
         }
@@ -711,21 +705,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         }
     }
 
-    private IDisposable ShowDragIcon(IReadOnlyList<uint> iconLayers)
+    private IDisposable ShowDragIcon(GameImage? image)
     {
         HideDragIcon();
         if (_device == null || _portal == null) return new DragIcon(this);
-        var bitmaps = new List<Avalonia.Media.Imaging.WriteableBitmap>();
+        var bitmap = GameArtImageExtension.CreateBitmap(image);
         var layers = new Grid { Width = 32, Height = 32 };
-        foreach (var id in iconLayers)
-        {
-            var bitmap = GameArtImageExtension.CreateBitmap(_portal, id);
-            if (bitmap == null) continue;
-            bitmaps.Add(bitmap);
+        if (bitmap != null)
             layers.Children.Add(new Avalonia.Controls.Image { Source = bitmap, Width = 32, Height = 32, Stretch = Stretch.None });
-        }
         RenderOptions.SetBitmapInterpolationMode(layers, Avalonia.Media.Imaging.BitmapInterpolationMode.None);
-        layers.DetachedFromVisualTree += (_, _) => { foreach (var bitmap in bitmaps) bitmap.Dispose(); };
+        layers.DetachedFromVisualTree += (_, _) => bitmap?.Dispose();
         var panel = ObservePanel(AvaloniaPanel.Create(() => layers, 32, 32));
         _dragIconSurface = new ScreenSurface(_device, panel) { Visible = true, Location = new Point(_pointer.X - 16, _pointer.Y - 16) };
         return new DragIcon(this);

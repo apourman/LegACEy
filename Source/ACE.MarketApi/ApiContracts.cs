@@ -38,7 +38,7 @@ namespace ACE.MarketApi
     public sealed record MeResponse(uint AccountId, string AccountName, IReadOnlyList<CharacterResponse> Characters, long Balance, bool Frozen, bool Paused, int VaultCount, long VaultCap, int ListingCount, long ListingCap);
     /// <param name="PaletteTemplate">only on a base icon chosen from the item's clothing table</param>
     public sealed record IconLayerResponse(string Kind, uint Id, string Url, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? PaletteTemplate = null);
-    public sealed record IconResponse(IReadOnlyList<IconLayerResponse> Layers, string? Glow);
+    public sealed record IconResponse(IReadOnlyList<IconLayerResponse> Layers);
     public sealed record SpellResponse(string Name, bool Cantrip);
     // Both flat on purpose: nesting the listing would change the wire shape, and deriving the detail from the listing drops the listing's fields from the document's required list
     public sealed record ListingResponse(long Id, uint ItemGuid, uint Wcid, string Name, string ItemType, string? Material, int? Workmanship, int? Level, int? ArcaneLore, string Summary, int Quantity, long Price, string Seller, DateTime ListedTime, string? Wield, IconResponse Icon);
@@ -68,7 +68,7 @@ namespace ACE.MarketApi
     internal static class ApiContractViews
     {
         public static IconResponse Icon(ItemIcons.IconView icon) => new(
-            icon.Layers.Select(layer => new IconLayerResponse(layer.Kind, layer.Id, layer.Url, layer.PaletteTemplate)).ToList(), icon.Glow);
+            icon.Layers.Select(layer => new IconLayerResponse(layer.Kind, layer.Id, layer.Url, layer.PaletteTemplate)).ToList());
 
         public static SpellResponse Spell(GameData.Spell spell) => new(spell.Name, spell.Cantrip);
 

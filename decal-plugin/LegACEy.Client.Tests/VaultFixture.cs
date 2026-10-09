@@ -24,14 +24,15 @@ public class VaultFixture : IDisposable
     private readonly VaultShellPanel _panel;
 
     /// <param name="items">The Vault's items; null is the fake's sample Vault.</param>
-    public VaultFixture(IEnumerable<VaultItemView>? items = null, int height = VaultShellPanel.WindowHeight, IItemDragHost? dragHost = null)
+    /// <param name="art">The game art the cells draw; null draws no art.</param>
+    public VaultFixture(IEnumerable<VaultItemView>? items = null, int height = VaultShellPanel.WindowHeight, IItemDragHost? dragHost = null, IGameArtSource? art = null)
     {
         Server = new FakeVaultServer(() => _now, items) { Latency = TimeSpan.FromMilliseconds(30) };
         _channel = new ServerChannelClient(Server, () => _now);
         Server.Deliver = _channel.Receive;
         Client = new VaultClient(_channel);
         VaultShellPanel? panel = null;
-        Host = AvaloniaPanel.Create(() => new VaultShellWindow(panel = new VaultShellPanel(new NoArt(), Client, dragHost ?? Drag)),
+        Host = AvaloniaPanel.Create(() => new VaultShellWindow(panel = new VaultShellPanel(art ?? new NoArt(), Client, dragHost ?? Drag)),
             VaultShellPanel.WindowWidth, height);
         _panel = panel!;
         Settle();
