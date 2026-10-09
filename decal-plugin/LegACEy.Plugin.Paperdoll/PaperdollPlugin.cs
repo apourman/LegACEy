@@ -21,8 +21,6 @@ public sealed class PaperdollPlugin : ILegACEyPlugin
 
     private static Control CreatePanel(ILegACEyClient client)
     {
-        var panel = new PaperdollPanel(client.ServerChannel, client.PortalPath);
-        panel.DetachedFromVisualTree += (_, _) => panel.Dispose();
-        return panel;
+        return new PaperdollPanel(client.ServerChannel, client.PortalPath);
     }
 }

@@ -66,7 +66,8 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     private Control CreateWindow(ILegACEyClient client, InventoryLayout layout, Action close)
     {
         // The client keeps a closed window hidden and shows it again, so this runs once per session for each layout.
-        var window = new InventoryWindow(client.Inventory, client.Art, new InventorySettings(layout, Current(client).ShowSlots));
+        var doll = client.SupportsAction(PaperdollProtocol.Look) ? new PaperdollView(client.ServerChannel, client.PortalPath) : null;
+        var window = new InventoryWindow(client.Inventory, client.Art, new InventorySettings(layout, Current(client).ShowSlots), doll);
         _windows[layout] = window;
         window.CloseRequested += (_, _) => Hide(layout, close);
         window.SettingsChanged += settings =>

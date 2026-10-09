@@ -167,7 +167,8 @@ public sealed class PluginRegistryTests
         registry.Add(new FakePlugin("Other"));
         registry.SetServerActions(new[] { PaperdollProtocol.Look });
         Exception? thrown = null;
-        try { PaperdollProtocol.ReadLook(Array.Empty<byte>()); }
+        // The throw comes from the Paperdoll assembly's own code (a null client); ReadLook now lives in the shared assembly.
+        try { new PaperdollPlugin().Start(null!); }
         catch (Exception exception) { thrown = exception; }
 
         Assert.False(registry.TryFailOwner(new InvalidOperationException("no frames: never thrown")));

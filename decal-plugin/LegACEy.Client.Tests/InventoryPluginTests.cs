@@ -132,6 +132,89 @@ public sealed class InventoryPluginTests
         Assert.Equal(96, cells.Length);
     });
 
+    [Fact]
+    public void With_the_look_on_the_server_and_slots_off_the_doll_area_hosts_the_model_and_asks_for_the_look() => RenderThread.Run(() =>
+    {
+        var transport = new LookTransport();
+        var channel = new ServerChannelClient(transport);
+        using var client = new FakeInventoryClient(new MemoryWindowPositionStore()) { ServerChannel = channel };
+        client.ServerActions.Add(PaperdollProtocol.Look);
+        client.SaveSettings(VerticalSlotsOff);
+        new InventoryPlugin().Start(client);
+        client.MenuEntries.Single().Action();
+
+        var panel = client.Panel(Vertical);
+        Assert.Single(ModelViews(panel));
+        Assert.Equal(new[] { PaperdollProtocol.Look }, transport.Actions);
+
+        // The server says the look changed, as it does when the player equips something: the doll asks again.
+        channel.Receive(LookChanged());
+        Assert.Equal(new[] { PaperdollProtocol.Look, PaperdollProtocol.Look }, transport.Actions);
+    });
+
+    [Fact]
+    public void Without_the_look_on_the_server_the_doll_area_is_a_plain_panel_and_asks_for_nothing() => RenderThread.Run(() =>
+    {
+        var transport = new LookTransport();
+        var channel = new ServerChannelClient(transport);
+        using var client = new FakeInventoryClient(new MemoryWindowPositionStore()) { ServerChannel = channel };
+        client.SaveSettings(VerticalSlotsOff);
+        new InventoryPlugin().Start(client);
+        client.MenuEntries.Single().Action();
+
+        Assert.Empty(ModelViews(client.Panel(Vertical)));
+        channel.Receive(LookChanged());
+        Assert.Empty(transport.Actions);
+    });
+
+    [Fact]
+    public void With_slots_on_no_model_shows_and_no_look_is_asked_for_until_slots_go_off_again() => RenderThread.Run(() =>
+    {
+        var transport = new LookTransport();
+        var channel = new ServerChannelClient(transport);
+        using var client = new FakeInventoryClient(new MemoryWindowPositionStore()) { ServerChannel = channel };
+        client.ServerActions.Add(PaperdollProtocol.Look);
+        client.SaveSettings(VerticalSlotsOn);
+        new InventoryPlugin().Start(client);
+        client.MenuEntries.Single().Action();
+
+        var panel = client.Panel(Vertical);
+        Assert.Empty(ModelViews(panel));
+        channel.Receive(LookChanged());
+        Assert.Empty(transport.Actions);
+
+        InventoryDriver.PressSlots(panel);
+        Assert.Single(ModelViews(panel));
+        Assert.Single(transport.Actions);
+
+        // Slots back on: the model goes, and a later change asks the server for nothing.
+        InventoryDriver.PressSlots(panel);
+        Assert.Empty(ModelViews(panel));
+        channel.Receive(LookChanged());
+        Assert.Single(transport.Actions);
+    });
+
+    [Fact]
+    public void A_hidden_window_stops_asking_for_looks_and_asks_again_when_it_is_shown() => RenderThread.Run(() =>
+    {
+        var transport = new LookTransport();
+        var channel = new ServerChannelClient(transport);
+        using var client = new FakeInventoryClient(new MemoryWindowPositionStore()) { ServerChannel = channel };
+        client.ServerActions.Add(PaperdollProtocol.Look);
+        client.SaveSettings(VerticalSlotsOff);
+        new InventoryPlugin().Start(client);
+        client.MenuEntries.Single().Action();
+        Assert.Single(transport.Actions);
+
+        client.MenuEntries.Single().Action();
+        Assert.Null(client.Windows.Get(Vertical));
+        channel.Receive(LookChanged());
+        Assert.Single(transport.Actions);
+
+        client.MenuEntries.Single().Action();
+        Assert.Equal(2, transport.Actions.Count);
+    });
+
     /// <summary>
     /// Every visible control lies inside the window at the minimum and default sizes the plugin asks for, with the full sample drawn,
     /// and the pack grid shows at least one row. At its minimum the horizontal pack strip stays on one row. Run it again with the
@@ -178,6 +261,25 @@ public sealed class InventoryPluginTests
         Assert.Equal(1, rows);
     }
 
+    private static IEnumerable<ModelView> ModelViews(AvaloniaPanel panel) => panel.Content.GetVisualDescendants().OfType<ModelView>();
+
+    /// <summary>The paperdoll.changed push, as the server sends it after an equipment change.</summary>
+    private static byte[] LookChanged() => ChannelWire.EncodeEvent(ChannelEventKind.Push, ChannelStatus.Ok, 0, PaperdollProtocol.Changed, Array.Empty<byte>());
+
+    /// <summary>Records the action of every request the channel sends; nothing answers them.</summary>
+    private sealed class LookTransport : IServerChannelTransport
+    {
+        public List<string> Actions { get; } = new();
+        public bool IsAvailable => true;
+
+        public bool Send(byte[] requestPayload)
+        {
+            ChannelWire.TryDecodeRequest(requestPayload, out _, out var action, out _);
+            Actions.Add(action);
+            return true;
+        }
+    }
+
     /// <summary>A client for the inventory plugin: a real <see cref="WindowManager"/> places its windows, and each window's panel is kept across hiding.</summary>
     private sealed class FakeInventoryClient : ILegACEyClient, IDisposable
     {
@@ -198,6 +300,9 @@ public sealed class InventoryPluginTests
         /// <summary>The size and minimum each window was asked for, by id.</summary>
         public Dictionary<string, (int Width, int Height, WindowResizing? Resizing)> Requested { get; } = new(StringComparer.Ordinal);
 
+        /// <summary>The actions the server registered, as channel.hello lists them.</summary>
+        public HashSet<string> ServerActions { get; } = new(StringComparer.Ordinal);
+
         /// <summary>The character logged in now. Its settings are kept per character; its window placements are not in this fake.</summary>
         public string Character { get; set; } = "Character";
 
@@ -207,12 +312,12 @@ public sealed class InventoryPluginTests
         /// <summary>The panel of a window, open or hidden.</summary>
         public AvaloniaPanel Panel(string id) => _panels[id];
 
-        public IServerChannel ServerChannel => UnavailableServerChannel.Instance;
+        public IServerChannel ServerChannel { get; set; } = UnavailableServerChannel.Instance;
         public string PortalPath => string.Empty;
         public IGameArtSource Art { get; } = new InventorySample.NoArt();
         public IItemDragHost ItemDrag => throw new NotSupportedException();
         public IInventoryPort Inventory => Port;
-        public bool SupportsAction(string action) => false;
+        public bool SupportsAction(string action) => ServerActions.Contains(action);
         public int? LoadSettings() => Settings;
         public void SaveSettings(int value) => _store.Save("Server", Character, SettingsKey, (new Point(value, 0), null));
         public void AddMenuEntry(string title, uint iconId, Action action) => MenuEntries.Add((title, iconId, action));

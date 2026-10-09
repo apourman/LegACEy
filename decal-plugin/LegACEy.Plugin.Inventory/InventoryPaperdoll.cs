@@ -115,6 +115,12 @@ internal sealed class InventoryPaperdoll : Canvas
         }
     }
 
+    /// <summary>Puts a control in the doll area, or takes the one there out. Taking it out is what stops the 3D look's requests.</summary>
+    public void ShowDoll(Control? doll)
+    {
+        if (DollArea.Child != doll) DollArea.Child = doll;
+    }
+
     /// <summary>Retail's position, scaled to the pitch and rounded to whole pixels.</summary>
     private static double Scale(int retail) => Math.Round(retail * DerethSlotGrid.Pitch / RetailCell);
 }
