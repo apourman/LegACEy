@@ -36,7 +36,7 @@ public sealed class VaultPlugin : ILegACEyPlugin
         VaultShellPanel? vault = null;
         try
         {
-            vaultClient = new VaultClient(client.ServerChannel, () => client.CurrentSelection);
+            vaultClient = new VaultClient(client.ServerChannel);
             vault = new VaultShellPanel(client.Art, vaultClient, client.ItemDrag);
             var window = new VaultShellWindow(vault);
             window.CloseRequested += (_, _) => close();

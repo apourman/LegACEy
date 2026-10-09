@@ -839,7 +839,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     string ILegACEyPluginHost.PortalPath => _portal?.Path ?? string.Empty;
     IGameArtSource ILegACEyPluginHost.Art => (IGameArtSource?)_portal ?? throw new InvalidOperationException("Game art is unavailable until the client UI is ready.");
     IItemDragHost ILegACEyPluginHost.ItemDrag => new ItemDragHost(this);
-    uint ILegACEyPluginHost.CurrentSelection => CurrentSelection();
     bool ILegACEyPluginHost.IsWindowOpen(string id) => _featureSurfaces.ContainsKey(id);
     void ILegACEyPluginHost.HideWindow(string id) => HideFeatureWindow(id);
     void ILegACEyPluginHost.CloseWindow(string id) => ReleaseFeatureWindow(id);
@@ -1107,9 +1106,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         foreach (var id in _featureSurfaces.Keys.Concat(_hiddenSurfaces.Keys).ToArray())
             ReleaseFeatureWindow(id);
     }
-
-    /// <summary>The object selected in the game, for "Deposit item"; zero for none.</summary>
-    private static uint CurrentSelection() => unchecked((uint)CoreManager.Current.Actions.CurrentSelection);
 
     private static string SessionCharacter() => CoreManager.Current.CharacterFilter.Name;
     private static string SessionServer() => CoreManager.Current.CharacterFilter.Server;

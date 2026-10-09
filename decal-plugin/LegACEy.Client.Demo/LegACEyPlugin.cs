@@ -33,8 +33,6 @@ public interface ILegACEyClient
     IGameArtSource Art { get; }
     /// <summary>Drag services for items between the retail inventory and a LegACEy window.</summary>
     IItemDragHost ItemDrag { get; }
-    /// <summary>The object selected in the game; zero for none.</summary>
-    uint CurrentSelection { get; }
     /// <summary>Adds an entry to the LegACEy menu. Its action runs when the player picks it.</summary>
     void AddMenuEntry(string title, uint iconId, Action action);
     /// <summary>
@@ -48,9 +46,10 @@ public interface ILegACEyClient
     /// </summary>
     void ToggleWindowWithChrome(string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow);
     /// <summary>
-    /// Registers the plugin's window for a station. The window opens when the server pushes station.open for it and
-    /// closes on station.close. Closing it sends station.leave. Takes the same arguments as <see cref="ToggleWindowWithChrome"/>.
+    /// Registers the plugin's window for a station, built with its own chrome as <see cref="ToggleWindowWithChrome"/> is.
+    /// The window opens when the server pushes station.open for it and closes on station.close. Closing it sends station.leave.
     /// </summary>
+    /// <param name="theme">The theme the window is drawn in. Null uses the client's theme; a window with its own theme is not given the retail theme over it.</param>
     void RegisterStationWindow(string station, string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow, IClientTheme? theme = null);
 }
 
@@ -61,7 +60,6 @@ public interface ILegACEyPluginHost
     string PortalPath { get; }
     IGameArtSource Art { get; }
     IItemDragHost ItemDrag { get; }
-    uint CurrentSelection { get; }
     bool IsWindowOpen(string id);
     /// <summary>
     /// Opens a LegACEy window, or shows it again as it was if it is hidden. <paramref name="createContent"/> runs

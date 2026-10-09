@@ -245,7 +245,6 @@ public sealed class PluginRegistry
         public string PortalPath => _registry._host.PortalPath;
         public IGameArtSource Art => _registry._host.Art;
         public IItemDragHost ItemDrag => _registry._host.ItemDrag;
-        public uint CurrentSelection => _registry._host.CurrentSelection;
 
         public void AddMenuEntry(string title, uint iconId, Action action)
         {

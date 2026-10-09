@@ -27,8 +27,11 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     private const int MinimumCells = 24;
     private const int SampleCount = 317;
     private const double DragThreshold = 4;
-    private static readonly IBrush Gold = DerethPalette.Brush(DerethPalette.Gold);
-    private static readonly IBrush Invalid = DerethPalette.Brush(DerethPalette.Invalid);
+    private static readonly IBrush GoldBrush = DerethPalette.GoldBrush;
+    private static readonly IBrush TextBrush = DerethPalette.TextBrush;
+    private static readonly IBrush MutedBrush = DerethPalette.MutedBrush;
+    private static readonly IBrush Invalid = DerethPalette.InvalidBrush;
+    private static readonly IBrush ShadowBrush = DerethPalette.Brush(Colors.Black);
     private static readonly IBrush ValidFill = DerethPalette.Brush(Color.FromArgb(0x40, DerethPalette.Gold.R, DerethPalette.Gold.G, DerethPalette.Gold.B));
     private static readonly IBrush InvalidFill = DerethPalette.Brush(Color.FromArgb(0x40, DerethPalette.Invalid.R, DerethPalette.Invalid.G, DerethPalette.Invalid.B));
 
@@ -53,10 +56,16 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     private readonly VaultClient? _client;
     private readonly VaultSnapshot? _sample;
     private readonly IItemDragHost? _dragHost;
-    private readonly TextBlock _items = Label(string.Empty, DerethPalette.Text, 13);
-    private readonly TextBlock _balance = Label(string.Empty, DerethPalette.Gold, 13);
-    private readonly TextBlock _status = Label(string.Empty, DerethPalette.Muted, 12);
-    private string _range = string.Empty;
+    private readonly TextBlock _itemsLabel = Label(string.Empty, MutedBrush, 13);
+    private readonly TextBlock _items = Label(string.Empty, TextBrush, 13);
+    private readonly TextBlock _balance = Label(string.Empty, GoldBrush, 13);
+    private readonly TextBlock _pagerText = Label(string.Empty, MutedBrush, 12);
+    // The message line above the pager: wraps rather than trims, so a long refusal reason stays whole.
+    private readonly TextBlock _status = new()
+    {
+        FontSize = 12, FontFamily = DerethPalette.Body, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center,
+        Margin = new Thickness(4, 6, 4, 0), IsVisible = false
+    };
     private readonly DerethSlotGrid _grid = new();
     private readonly List<Grid> _liveSlots = new();
     private readonly List<Border> _dropIndicators = new();
@@ -83,7 +92,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.None);
 
         var summary = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(2, 10, 2, 8) };
-        summary.Children.Add(_items);
+        summary.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { _itemsLabel, _items } });
         Grid.SetColumn(_balance, 1);
         summary.Children.Add(_balance);
         var search = new DerethSearchField("Search vault…") { Margin = new Thickness(2, 0, 2, 10) };
@@ -92,19 +101,20 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         // ponytail: paging is drawn but inactive; the range covers the whole Vault until the server pages it (ticket 03).
         var pager = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Margin = new Thickness(4, 10, 4, 0) };
         pager.Children.Add(new DerethSprite(DerethSpriteArt.PagerPrevious) { Width = 34, Height = 32, Opacity = 0.45 });
-        _status.HorizontalAlignment = HorizontalAlignment.Center;
-        _status.TextTrimming = TextTrimming.CharacterEllipsis;
-        Grid.SetColumn(_status, 1);
-        pager.Children.Add(_status);
+        _pagerText.HorizontalAlignment = HorizontalAlignment.Center;
+        Grid.SetColumn(_pagerText, 1);
+        pager.Children.Add(_pagerText);
         var next = new DerethSprite(DerethSpriteArt.PagerNext) { Width = 34, Height = 32, Opacity = 0.45 };
         Grid.SetColumn(next, 2);
         pager.Children.Add(next);
-        Grid.SetRow(pager, 3);
+        Grid.SetRow(_status, 3);
+        Grid.SetRow(pager, 4);
 
-        var content = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto") };
+        var content = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto,Auto") };
         content.Children.Add(summary);
         content.Children.Add(search);
         content.Children.Add(_grid);
+        content.Children.Add(_status);
         content.Children.Add(pager);
         Content = content;
 
@@ -147,13 +157,15 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         var available = snapshot is { Available: true };
         if (available)
         {
-            _items.Text = $"Items: {items.Count:N0} / {snapshot!.Capacity:N0}";
+            _itemsLabel.Text = "Items:";
+            _items.Text = $"{items.Count:N0} / {snapshot!.Capacity:N0}";
             _balance.Text = snapshot.HasBalance ? $"{snapshot.Balance:N0} MMD" : string.Empty;
             _balance.IsVisible = snapshot.HasBalance;
         }
         else
         {
-            _items.Text = _client?.Connection == VaultConnection.Connecting ? "Connecting to the server…" : "Vault unavailable";
+            _itemsLabel.Text = _client?.Connection == VaultConnection.Connecting ? "Connecting to the server…" : "Vault unavailable";
+            _items.Text = string.Empty;
             _balance.IsVisible = false;
         }
 
@@ -189,16 +201,17 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
             ShowDropIndicator(_dropCell);
         }
 
-        _range = available ? (items.Count == 0 ? "No items" : $"1 – {items.Count:N0} of {items.Count:N0}") : string.Empty;
+        _pagerText.Text = available ? (items.Count == 0 ? "No items" : $"1 – {items.Count:N0} of {items.Count:N0}") : string.Empty;
         ShowStatus();
     }
 
-    /// <summary>The pager's middle line: the latest message or drag hint while there is one, otherwise the range.</summary>
+    /// <summary>The message line above the pager: the latest message or drag hint, shown only while there is one.</summary>
     private void ShowStatus()
     {
         var (text, refused) = StatusText();
-        _status.Text = text.Length > 0 ? text : _range;
-        _status.Foreground = refused ? Invalid : text.Length > 0 ? Gold : DerethPalette.Brush(DerethPalette.Muted);
+        _status.Text = text;
+        _status.Foreground = refused ? Invalid : GoldBrush;
+        _status.IsVisible = text.Length > 0;
     }
 
     private (string Text, bool Refused) StatusText()
@@ -289,7 +302,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         {
             var indicator = _dropIndicators[index];
             indicator.IsVisible = index == cell;
-            indicator.BorderBrush = refused ? Invalid : Gold;
+            indicator.BorderBrush = refused ? Invalid : GoldBrush;
             indicator.Background = refused ? InvalidFill : ValidFill;
         }
     }
@@ -402,9 +415,9 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         _ => state
     };
 
-    private static TextBlock Label(string text, Color color, double size) => new()
+    private static TextBlock Label(string text, IBrush brush, double size) => new()
     {
-        Text = text, Foreground = DerethPalette.Brush(color), FontSize = size, FontFamily = DerethPalette.Body,
+        Text = text, Foreground = brush, FontSize = size, FontFamily = DerethPalette.Body,
         VerticalAlignment = VerticalAlignment.Center
     };
 
@@ -412,10 +425,10 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     private static Control StackCount(int count)
     {
         var panel = new Panel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 3, 1) };
-        var shadow = Label(count.ToString(), Colors.Black, 11);
+        var shadow = Label(count.ToString(), ShadowBrush, 11);
         shadow.FontWeight = FontWeight.SemiBold;
         shadow.Margin = new Thickness(1, 1, 0, 0);
-        var text = Label(count.ToString(), DerethPalette.Text, 11);
+        var text = Label(count.ToString(), TextBrush, 11);
         text.FontWeight = FontWeight.SemiBold;
         text.Margin = new Thickness(0, 0, 1, 1);
         panel.Children.Add(shadow);
@@ -446,7 +459,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         }
         if (layers.Children.Count == 0)
         {
-            var fallback = Label("?", DerethPalette.Muted, 12);
+            var fallback = Label("?", MutedBrush, 12);
             fallback.HorizontalAlignment = HorizontalAlignment.Center;
             layers.Children.Add(fallback);
         }

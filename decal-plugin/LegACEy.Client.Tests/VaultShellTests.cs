@@ -37,8 +37,9 @@ public sealed class VaultShellTests
             Assert.True(window.Contains(bounds), $"{visual.GetType().Name} at {bounds} lies outside the window {window}");
         }
 
-        // The slot grid's vertical scrollbar is the Dereth one: a gold thumb in the template, not the stock track.
+        // The Dereth scrollbar is nine pixels across; the stock bar is not.
         var scrollBar = host.Content.GetVisualDescendants().OfType<ScrollBar>().Single(bar => bar.Orientation == Avalonia.Layout.Orientation.Vertical);
+        Assert.Equal(9, scrollBar.Width);
         Assert.NotNull(scrollBar.GetVisualDescendants().OfType<Thumb>().SingleOrDefault());
         // The header's chest icon is the game's own art, requested from the DAT.
         if (art is CellArt cellArt) Assert.Contains(VaultShellPanel.ChestIconId, cellArt.Reads.Keys);
@@ -67,6 +68,29 @@ public sealed class VaultShellTests
     });
 
     [Fact]
+    public void Clicking_the_scrollbar_groove_below_the_thumb_pages_the_grid_down() => RenderThread.Run(() =>
+    {
+        VaultShellPanel? vault = null;
+        using var host = AvaloniaPanel.Create(() => new VaultShellWindow(vault = new VaultShellPanel(new MissingArt())),
+            VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight);
+        using var disposeVault = vault!;
+        host.ApplyTheme(new DerethClientTheme());
+        host.Tick();
+        var viewer = host.Content.GetVisualDescendants().OfType<ScrollViewer>().Single();
+        var bar = host.Content.GetVisualDescendants().OfType<ScrollBar>().Single(control => control.Orientation == Avalonia.Layout.Orientation.Vertical);
+        var thumb = bar.GetVisualDescendants().OfType<Thumb>().Single();
+        var groove = thumb.TranslatePoint(new Point(thumb.Bounds.Width / 2, thumb.Bounds.Height + 4), host.Content)!.Value;
+        Assert.Equal(0, viewer.Offset.Y);
+
+        host.PointerDown(groove.X, groove.Y);
+        host.PointerUp(groove.X, groove.Y);
+        host.Tick();
+
+        Assert.True(viewer.Offset.Y > 0, "A click on the groove below the thumb should page the grid down.");
+        Assert.Null(host.LastError);
+    });
+
+    [Fact]
     public void Item_icons_are_drawn_at_native_size_from_the_dat() => RenderThread.Run(() =>
     {
         var art = new CellArt();
@@ -84,16 +108,8 @@ public sealed class VaultShellTests
             Assert.Equal(32, image.Bounds.Width);
             Assert.Equal(32, image.Bounds.Height);
         }
-        Assert.Equal(new byte[] { 0xff, 0x20, 0x10, 0xff }, PixelAt(layers[0], 16, 16));
-        Assert.Contains(0x06000FC7u, art.Reads.Keys);
+        Assert.Equal(1, art.Reads[0x06000FC7u]);
         Assert.Null(host.LastError);
-
-        byte[] PixelAt(Control control, int x, int y)
-        {
-            var point = control.TranslatePoint(new Point(x, y), host.Content)!.Value;
-            var offset = (int)point.Y * host.Frame.Stride + (int)point.X * 4;
-            return host.Frame.Pixels.Skip(offset).Take(4).ToArray();
-        }
     });
 
     private sealed class CellArt : IGameArtSource

@@ -145,15 +145,13 @@ public enum VaultConnection { Connecting, Live, Unavailable, Failed }
 public sealed class VaultClient : IDisposable
 {
     private readonly IServerChannel _channel;
-    private readonly Func<uint> _currentSelection;
     private readonly List<IDisposable> _requests = new();
     private readonly IDisposable _changed;
     private bool _disposed;
 
-    public VaultClient(IServerChannel channel, Func<uint>? currentSelection = null)
+    public VaultClient(IServerChannel channel)
     {
         _channel = channel ?? throw new ArgumentNullException(nameof(channel));
-        _currentSelection = currentSelection ?? (() => 0);
         _changed = _channel.Subscribe(VaultProtocol.Changed, OnChanged);
     }
 
@@ -193,14 +191,6 @@ public sealed class VaultClient : IDisposable
         Set(Snapshot.Available ? VaultConnection.Live : VaultConnection.Unavailable,
             Snapshot.Available ? Notice : "The Vault is not available on this server.");
     });
-
-    /// <summary>Deposits the item selected in the game.</summary>
-    public void DepositSelection()
-    {
-        var guid = _currentSelection();
-        if (guid == 0) { Set(Connection, "Select an item in your pack, then press Deposit."); return; }
-        Deposit(guid);
-    }
 
     public void Deposit(uint guid) => Transfer(VaultProtocol.Deposit, guid);
 

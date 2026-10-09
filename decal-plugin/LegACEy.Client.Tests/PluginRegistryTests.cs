@@ -275,7 +275,6 @@ public sealed class PluginRegistryTests
         public string PortalPath => string.Empty;
         public IGameArtSource Art => throw new NotSupportedException();
         public IItemDragHost ItemDrag => new FakeItemDragHost();
-        public uint CurrentSelection => 0;
         public bool IsWindowOpen(string id) => Errors.ContainsKey(id);
 
         public int Built { get; private set; }

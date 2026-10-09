@@ -129,7 +129,8 @@ public sealed class ServerChannelTests
         Assert.Equal(VaultConnection.Live, client.Connection);
         Assert.Equal(new[] { ChannelHello.Action, VaultProtocol.List }, server.Received);
         Assert.Equal(9, client.Snapshot!.Items.Count);
-        Assert.Contains("Items: 9 / 1,000", Texts());
+        Assert.Contains("Items:", Texts());
+        Assert.Contains("9 / 1,000", Texts());
         Assert.Contains("1,234 MMD", Texts());
         Assert.Equal("Preview Character", client.ServerCharacter);
         Assert.Equal(TimeSpan.FromMilliseconds(30), client.LastRoundTrip);
