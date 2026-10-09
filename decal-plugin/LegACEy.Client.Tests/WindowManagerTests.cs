@@ -197,6 +197,22 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void A_press_low_in_a_taller_title_bar_moves_the_window()
+    {
+        var manager = NewManager(1920, 1080);
+        // The Dereth header is 60 px from the window's top, not the 28 px default.
+        manager.Open(new WindowDefinition("vault", "Vault", 344, 606, titleBarHeight: 60, resizing: VaultSizing), new Point(100, 100));
+
+        Assert.True(manager.Press(new Point(200, 145)));
+        manager.Move(new Point(260, 185));
+        manager.Release();
+
+        var window = manager.Get("vault")!;
+        Assert.Equal(new Point(160, 140), window.Location);
+        Assert.Equal(new Size(344, 606), window.Size);
+    }
+
+    [Fact]
     public void A_window_without_resizing_does_not_resize_from_its_edge()
     {
         var manager = NewManager(800, 600);

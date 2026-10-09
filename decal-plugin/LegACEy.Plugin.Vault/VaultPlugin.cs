@@ -18,7 +18,9 @@ public sealed class VaultPlugin : ILegACEyPlugin
     // above the 290 px that fits "N selected", Withdraw N and Clear on one line.
     // Height: everything but the grid is 189 px (measured), which is not a multiple of 50, so the grid's bottom row is partial by design,
     // as in the agreed v11 render (8 full rows and 17 px at 606). 306 is the minimum: one row still fits with the status line shown.
-    private static readonly WindowResizing Sizing = new(new Size(290, 306), new Size(50, 50), new Size(44, 6));
+    // The Dereth header's strip from the window's top that drags it: the 8 px frame edge, the 2 px top margin and the 50 px header.
+    private const int HeaderHeight = 60;
+    private static readonly WindowResizing Sizing =new(new Size(290, 306), new Size(50, 50), new Size(44, 6));
 
     public string Name => "Vault";
     public string Version => typeof(VaultPlugin).Assembly.GetName().Version.ToString(3);
@@ -34,7 +36,7 @@ public sealed class VaultPlugin : ILegACEyPlugin
 
     public void Start(ILegACEyClient client) =>
         client.RegisterStationWindow(Station, WindowId, "Vault",
-            VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight, new Point(240, 100), close => CreateWindow(client, close), new DerethClientTheme(), Sizing);
+            VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight, new Point(240, 100), close => CreateWindow(client, close), new DerethClientTheme(), Sizing, HeaderHeight);
 
     private static Control CreateWindow(ILegACEyClient client, Action close)
     {
