@@ -36,11 +36,6 @@ internal static class NativeUiCatalogue
         Function("CM_UI::SendNotice_EndCharacterSession", 0x00479F40, "E8 CB 08 00 00 8B 10 68 E2 D1 4D 00 8B C8 FF 52 10", "Cdecl"),
         new("PlayerModule::LockUI receiver adjustment", 0x004D0213, Bytes("E8 B8 DF 08 00 8D 48 34 E8 10 41 10 00"), "Our disassembly of installed end-of-retail acclient.exe: retail UI lock handler gets CPlayerSystem, adds 0x34, calls LockUI", "ThisCall receiver reference"),
         new("PlayerModule::LockUI", 0x005D4330, Bytes("33 C0 8A 81 93 00 00 00 83 E0 01 C3"), "https://actypes.utilitybelt.me/type/PlayerModule; verified against installed acclient.exe", "ThisCall"),
-        // Retail's panel switch. The receiver is the gmPanelUI's gmNoticeHandler base (gmPanelUI + 0x5F8). The panel id is the
-        // element's property 0x10000029 (7 for InventoryPanel_Field in layout 0x21000017). It shows or hides through the panel's
-        // SetVisible and keeps gmPanelUI's current-panel pointer in step.
-        new("gmPanelUI::RecvNotice_SetPanelVisibility", 0x004BD380, Bytes("51 8B 54 24 08 53 55 33 DB 3B D3 56 8B F1 0F 84 69 01 00 00"),
-            "https://actypes.utilitybelt.me/type/gmPanelUI; our capstone read of installed end-of-retail acclient.exe", "ThisCall (uint panelId, bool visible) ret 8"),
         new("RenderDeviceD3D::EndScene", 0x005A0E10, PostUiDrawHook.Signature, "Our capstone read of end-of-retail acclient.exe; unique executable-section signature", "MicrosoftThiscall; signature scan; expected RVA 0x1A0E10"),
         new("UIElementManager::s_pInstance reference", 0x004603A1, new byte[] { 0x3C, 0xE0, 0x83, 0x00 }, Chorizite, "data reference (absolute VA)"),
         new("CPlayerSystem::s_pPlayerSystem reference", 0x0055E1D0, Bytes("A1 9C 11 87 00 C3"), "Our disassembly of installed end-of-retail acclient.exe: player-system getter", "data reference (absolute VA)"),
