@@ -42,12 +42,12 @@ internal static class DerethSheet
 
     private static readonly Dictionary<(DerethFrameArt Art, DerethState State), NineSlice> Frames = new()
     {
-        [(DerethFrameArt.Window, DerethState.Normal)] = new NineSlice(FrameCorner, FrameTop, FrameLeft, Color.Parse("#15202B")),
-        [(DerethFrameArt.Slot, DerethState.Normal)] = new NineSlice(SlotCorner, SlotTop, SlotLeft, Color.Parse("#0D131B")),
+        [(DerethFrameArt.Window, DerethState.Normal)] = new NineSlice(FrameCorner, FrameTop, FrameLeft, Color.Parse("#0A1219")),
+        [(DerethFrameArt.Slot, DerethState.Normal)] = new NineSlice(SlotCorner, SlotTop, SlotLeft, Color.Parse("#05090E")),
         // Button frame: close box, text buttons and the header icon. Corner 8 DIP, edges 4 DIP.
-        [(DerethFrameArt.Button, DerethState.Normal)] = new NineSlice(new(248, 6, 16, 16), new(270, 6, 8, 8), new(284, 6, 8, 8), Color.Parse("#131D28")),
-        [(DerethFrameArt.Button, DerethState.Hover)] = new NineSlice(new(298, 6, 16, 16), new(320, 6, 8, 8), new(334, 6, 8, 8), Color.Parse("#1A2836")),
-        [(DerethFrameArt.Button, DerethState.Pressed)] = new NineSlice(new(348, 6, 16, 16), new(370, 6, 8, 8), new(6, 132, 8, 8), Color.Parse("#0D151E")),
+        [(DerethFrameArt.Button, DerethState.Normal)] = new NineSlice(new(248, 6, 16, 16), new(270, 6, 8, 8), new(284, 6, 8, 8), Color.Parse("#0C141C")),
+        [(DerethFrameArt.Button, DerethState.Hover)] = new NineSlice(new(298, 6, 16, 16), new(320, 6, 8, 8), new(334, 6, 8, 8), Color.Parse("#142130")),
+        [(DerethFrameArt.Button, DerethState.Pressed)] = new NineSlice(new(348, 6, 16, 16), new(370, 6, 8, 8), new(6, 132, 8, 8), Color.Parse("#070C12")),
     };
 
     // Search field per state: left cap (carries the magnifier), stretched middle, right cap. 25 DIP tall.

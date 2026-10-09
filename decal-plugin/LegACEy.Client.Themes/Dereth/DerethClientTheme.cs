@@ -22,7 +22,7 @@ public sealed class DerethClientTheme : IClientTheme
         StartPoint = new RelativePoint(0, 0.5, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 0.5, RelativeUnit.Relative),
         GradientStops = { new GradientStop(Color.Parse("#7A5E30"), 0), new GradientStop(Color.Parse("#D9B66A"), 0.5), new GradientStop(Color.Parse("#7A5E30"), 1) }
     };
-    private static readonly IBrush NavyBrush = DerethPalette.Brush(Color.Parse("#0D141C"));
+    private static readonly IBrush NavyBrush = DerethPalette.Brush(Color.Parse("#060B10"));
     private static readonly ControlTheme ScrollBarControlTheme = new(typeof(ScrollBar))
     {
         Setters = { new Setter(TemplatedControl.TemplateProperty, ScrollBarTemplate()) }
