@@ -21,7 +21,7 @@ namespace LegACEy.Plugin.Vault;
 public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropTarget
 {
     public const int WindowWidth = 546;
-    public const int WindowHeight = 689;
+    public const int WindowHeight = 694;
     /// <summary>The header's chest icon, from the DAT.</summary>
     public const uint ChestIconId = 0x06001020;
     // A whole page of slots, so the grid looks the same however many items the page holds.

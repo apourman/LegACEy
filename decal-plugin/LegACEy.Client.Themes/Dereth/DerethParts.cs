@@ -181,14 +181,14 @@ public sealed class DerethSearchField : DerethThreeSlice
     public DerethSearchField(string placeholder)
         : base(DerethSheet.Search(DerethFieldState.Normal).Left, DerethSheet.Search(DerethFieldState.Normal).Middle, DerethSheet.Search(DerethFieldState.Normal).Right)
     {
-        Height = 25;
+        Height = 30;
         // The box is bare: the sheet's field is its frame, so the box's own border, fill and minimum height are cleared.
         _input = new TextBox
         {
             Watermark = placeholder,
-            Foreground = DerethPalette.TextBrush, CaretBrush = DerethPalette.GoldBrush, FontFamily = DerethPalette.Body, FontSize = 12,
+            Foreground = DerethPalette.TextBrush, CaretBrush = DerethPalette.GoldBrush, FontFamily = DerethPalette.Body, FontSize = 13,
             Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(0), MinHeight = 0,
-            VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(36, 0, 6, 0)
+            VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(43, 0, 8, 0)
         };
         _input.TextChanged += (_, _) => TextChanged?.Invoke(this, EventArgs.Empty);
         _input.GotFocus += (_, _) => ShowState();
