@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.5...decal-plugin-v0.1.6) (2026-10-09)
+
+
+### Bug Fixes
+
+* Vault default height fits a full page with Windows fonts ([#32](https://github.com/apourman/LegACEy/issues/32)) ([eff37d5](https://github.com/apourman/LegACEy/commit/eff37d5554aa32adf27112bf787db5f5b0b8e770))
+
 ## [0.1.5](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.4...decal-plugin-v0.1.5) (2026-10-09)
 
 
