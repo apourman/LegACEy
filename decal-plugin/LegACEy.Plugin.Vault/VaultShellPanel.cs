@@ -218,8 +218,8 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         _grid.Cells.Clear();
         if (available)
         {
-            // One cell more than the items, so there is always an empty slot to drop into.
-            var cells = Math.Max(MinimumCells, items.Count + 1);
+            // A whole page of slots; a deposit may land on any of them, full or empty.
+            var cells = Math.Max(MinimumCells, items.Count);
             for (var index = 0; index < cells; index++)
             {
                 var item = index < items.Count ? items[index] : null;
