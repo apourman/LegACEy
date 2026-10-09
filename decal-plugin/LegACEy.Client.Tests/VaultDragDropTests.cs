@@ -251,7 +251,7 @@ public sealed class VaultDragDropTests
         public AvaloniaPanel Host { get; }
         public VaultShellWindow Window => (VaultShellWindow)Host.Content;
 
-        public Control[] Cells => Host.Content.GetVisualDescendants().OfType<UniformGrid>().Single().Children.ToArray();
+        public Control[] Cells => Host.Content.GetVisualDescendants().OfType<WrapPanel>().Single().Children.OfType<Control>().ToArray();
         public Control SlotOf(Control cell) => cell;
         public Border[] VisibleIndicators() => Cells.SelectMany(cell => ((Grid)cell).Children.OfType<Border>()).Where(border => border.IsVisible).ToArray();
         public string[] Texts() => Host.Content.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text ?? string.Empty).ToArray();

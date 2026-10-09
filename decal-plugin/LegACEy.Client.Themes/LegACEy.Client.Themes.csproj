@@ -8,5 +8,6 @@
     <PackageReference Include="Avalonia" Version="[11.3.22]" />
     <ProjectReference Include="..\LegACEy.Client.GameArt\LegACEy.Client.GameArt.csproj" />
     <AvaloniaResource Include="Assets\LiberationSans-Regular.ttf" />
+    <AvaloniaResource Include="Assets\dereth-sheet.png" />
   </ItemGroup>
 </Project>
