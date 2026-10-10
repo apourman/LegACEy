@@ -155,6 +155,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         public uint ItemId;
         public Point Press;
         public bool Pressed;
+        public int Tries;
     }
     private HandOff? _handOff;
     private IntPtr _gameWindow;
@@ -776,9 +777,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             drag.ClearPotentialDrag();
             int dx = _pointer.X - handOff.Press.X, dy = _pointer.Y - handOff.Press.Y;
             if (dx * dx + dy * dy < 16) return;
-            _handOff = null;
             var started = drag.BeginDrag(handOff.List, handOff.Item, handOff.ItemId, out var state);
-            LogHandOff($"Hand-off of 0x{handOff.ItemId:X8} pressed at {handOff.Press}, client pointer {_pointer}: retail drag started: {started}" +
+            // The first try scrolls the hidden retail list to the item, and retail lays the list out again only on a later frame,
+            // so a scrolled item is hit on a later move.
+            if (!started && ++handOff.Tries < 10) return;
+            _handOff = null;
+            LogHandOff($"Hand-off of 0x{handOff.ItemId:X8} pressed at {handOff.Press}, client pointer {_pointer}, try {handOff.Tries + 1}: retail drag started: {started}" +
                        (started ? "." : $"; {state}, now dragging 0x{drag.CurrentItem():X8}."));
         }
     }
