@@ -142,6 +142,9 @@ public sealed class AvaloniaPanel : IDisposable
             Height = height,
             Padding = new Thickness(0),
             Background = Brushes.Transparent,
+            // The headless window reports no transparency support, so without this Avalonia fills the window white under the
+            // content, which shows wherever the content is see-through (the drag icon, rounded corners).
+            TransparencyBackgroundFallback = Brushes.Transparent,
             SystemDecorations = SystemDecorations.None,
             CanResize = false,
             Content = content

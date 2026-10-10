@@ -235,7 +235,7 @@ public sealed class VaultDragDropTests
         public LiveVault(int height = VaultShellPanel.WindowHeight, IItemDragHost? dragHost = null) : base(null, height, dragHost, new FlatArt()) { }
 
         public Control SlotOf(Control cell) => cell;
-        public Border[] VisibleIndicators() => Cells.SelectMany(cell => ((Grid)cell).Children.OfType<Border>()).Where(border => border.IsVisible).ToArray();
+        public Border[] VisibleIndicators() => Cells.SelectMany(cell => ((Grid)cell).Children.OfType<Border>()).Where(border => border.IsVisible && border.Name != "Well").ToArray();
     }
 
     /// <summary>Every texture is one flat opaque 32×32 image, except id 0 (no layer)</summary>

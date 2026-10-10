@@ -49,7 +49,7 @@ public static class DerethPalette
 }
 
 /// <summary>Which sheet art a <see cref="DerethFrame"/> is drawn with.</summary>
-public enum DerethFrameArt { Window, Slot, Button }
+public enum DerethFrameArt { Window, Button }
 
 /// <summary>A corner of a window frame. None means the pointer is over no corner.</summary>
 public enum DerethCorner { None, TopLeft, TopRight, BottomLeft, BottomRight }
@@ -399,11 +399,18 @@ public sealed class DerethSlotGrid : UserControl
 }
 
 /// <summary>
-/// A slot: a framed well around its content. Selected, it shows a teal wash behind the content, a 2 px teal border and a glow
-/// inset inside the slot, so the glow never spills into a neighbouring slot.
+/// A slot: a slate well with a thin rim around its content, as in the concept art. Selected, it shows a teal wash behind the
+/// content, a 2 px teal border and a glow inset inside the slot, so the glow never spills into a neighbouring slot.
 /// </summary>
 public sealed class DerethSlot : Grid
 {
+    private static readonly IBrush WellBrush = new LinearGradientBrush
+    {
+        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+        GradientStops = { new GradientStop(Color.Parse("#1A252D"), 0), new GradientStop(Color.Parse("#10181E"), 1) }
+    };
+    private static readonly IBrush RimBrush = DerethPalette.Brush(Color.Parse("#2F3E48"));
+
     private static readonly IBrush WashBrush = new RadialGradientBrush
     {
         GradientStops =
@@ -427,7 +434,11 @@ public sealed class DerethSlot : Grid
         var inner = new Grid();
         inner.Children.Add(_wash);
         if (content != null) inner.Children.Add(content);
-        Children.Add(new DerethFrame(DerethFrameArt.Slot) { Child = inner });
+        Children.Add(new Border
+        {
+            Name = "Well", Background = WellBrush, BorderBrush = RimBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3),
+            Child = inner
+        });
         _outline = new Border
         {
             BorderBrush = DerethPalette.TealBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(3),

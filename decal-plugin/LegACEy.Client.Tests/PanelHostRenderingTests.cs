@@ -15,6 +15,15 @@ namespace LegACEy.Client.Tests;
 public sealed class PanelHostRenderingTests
 {
     [Fact]
+    public void See_through_content_stays_transparent_so_a_drag_icon_has_no_background() => RenderThread.Run(() =>
+    {
+        using var panel = AvaloniaPanel.Create(() => new Grid { Width = 32, Height = 32 }, 32, 32);
+        panel.Tick();
+
+        Assert.All(panel.Frame.Pixels, value => Assert.Equal(0, value));
+    });
+
+    [Fact]
     public void Headless_input_clicks_button_and_exposes_cursor_kind() => RenderThread.Run(() =>
     {
         var clicks = 0;

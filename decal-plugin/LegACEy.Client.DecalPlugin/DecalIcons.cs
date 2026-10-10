@@ -1,6 +1,5 @@
 using Decal.Adapter.Wrappers;
 using LegACEy.Client.Demo;
-using LegACEy.Client.GameArt;
 
 namespace LegACEy.Client.DecalPlugin;
 
@@ -10,8 +9,6 @@ internal static class DecalIcons
     /// <summary>Decal reports portal texture ids without their 0x06 prefix; zero means none.</summary>
     public static uint Texture(int value) => value == 0 ? 0 : (value & 0xFF000000) == 0 ? unchecked((uint)value) | 0x06000000 : unchecked((uint)value);
 
-    // Gate: Decal's Category is the item type (ACE's ItemType), which picks the plate.
     public static ItemVisual Visual(WorldObject item) => new(Texture(item.Icon), Texture(item.Values(LongValueKey.IconUnderlay, 0)),
-        Texture(item.Values(LongValueKey.IconOverlay, 0)), unchecked((uint)item.Values(LongValueKey.IconOutline, 0)),
-        ItemIcon.PlateFor(unchecked((uint)item.Values(LongValueKey.Category, 0))));
+        Texture(item.Values(LongValueKey.IconOverlay, 0)), unchecked((uint)item.Values(LongValueKey.IconOutline, 0)));
 }

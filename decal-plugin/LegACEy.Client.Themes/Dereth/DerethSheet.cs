@@ -30,11 +30,6 @@ internal static class DerethSheet
     public static readonly Rect FrameTop = new(46, 6, 120, 16);
     public static readonly Rect FrameLeft = new(172, 6, 16, 120);
 
-    // Slot frame, 34 DIP cells: a 32 px icon inside a 1 DIP rim, as retail cells. Corner 8 DIP.
-    public static readonly Rect SlotCorner = new(194, 6, 16, 16);
-    public static readonly Rect SlotTop = new(216, 6, 6, 2);
-    public static readonly Rect SlotLeft = new(228, 6, 2, 6);
-
     // Title rule: left cap, stretched middle, right cap. 5 DIP tall.
     public static readonly Rect RuleLeft = new(20, 132, 8, 10);
     public static readonly Rect RuleMiddle = new(34, 132, 200, 10);
@@ -43,7 +38,6 @@ internal static class DerethSheet
     private static readonly Dictionary<(DerethFrameArt Art, DerethState State), NineSlice> Frames = new()
     {
         [(DerethFrameArt.Window, DerethState.Normal)] = new NineSlice(FrameCorner, FrameTop, FrameLeft, Color.Parse("#081016")),
-        [(DerethFrameArt.Slot, DerethState.Normal)] = new NineSlice(SlotCorner, SlotTop, SlotLeft, Color.Parse("#1F2B35")),
         // Button frame: close box, text buttons and the header icon. Corner 8 DIP, edges 4 DIP.
         [(DerethFrameArt.Button, DerethState.Normal)] = new NineSlice(new(236, 6, 16, 16), new(258, 6, 8, 8), new(272, 6, 8, 8), Color.Parse("#071016")),
         [(DerethFrameArt.Button, DerethState.Hover)] = new NineSlice(new(286, 6, 16, 16), new(308, 6, 8, 8), new(322, 6, 8, 8), Color.Parse("#0E1923")),

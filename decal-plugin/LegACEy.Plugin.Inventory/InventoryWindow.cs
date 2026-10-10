@@ -63,13 +63,15 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private readonly ContentControl _burdenMeter = new();
     private readonly TextBlock _burdenText = Label(string.Empty, TextBrush, 12);
     private readonly TextBlock _pyrealCount = Label(string.Empty, GoldBrush, 12);
-    // Shown over the slot under the pointer while an item is dragged: gold where the drop is accepted, red where it is refused.
+    // Shown over the slot under the pointer while an item is dragged: a gold border where the drop is accepted, red where it is refused.
     private readonly Border _dropIndicator = new()
     {
         Name = "DropIndicator", IsVisible = false, IsHitTestVisible = false, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(2),
         HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
     };
     private readonly IItemDragHost? _dragHost;
+    // Where the indicator was last asked for, so a redraw during a drag puts it back at once instead of waiting for the next move.
+    private (Point Point, uint Dragged, bool External)? _indicatorAt;
     // The item of a retail drag over this window (another retail window's item, or one of the retail inventory's), zero when none.
     private uint _retailItem;
     // A press on a slot: a click on release, or a drag once it moves past the threshold. The item or pack being dragged is _dragged, zero when none.
@@ -326,6 +328,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         _dragged = 0;
         _dragIcon?.Dispose();
         _dragIcon = null;
+        _indicatorAt = null;
         _dropIndicator.IsVisible = false;
     }
 
@@ -335,6 +338,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     /// <summary>The drop indicator for a dragged item over a point: the slot under it, when the drop there is judged.</summary>
     private void ShowIndicator(Point point, uint dragged, bool external)
     {
+        _indicatorAt = (point, dragged, external);
         var slot = SlotAt(point);
         var drop = slot?.Tag is InventorySlotId target ? Judge(_port, dragged, target, external) : null;
         if (slot == null || drop == null || slot.TranslatePoint(default, this) is not { } origin)
@@ -346,7 +350,6 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         _dropIndicator.Width = slot.Bounds.Width;
         _dropIndicator.Height = slot.Bounds.Height;
         _dropIndicator.BorderBrush = drop.Value.Accepted ? GoldBrush : InvalidBrush;
-        _dropIndicator.Background = drop.Value.Accepted ? DerethPalette.GoldWashBrush : DerethPalette.InvalidWashBrush;
         _dropIndicator.IsVisible = true;
     }
 
@@ -469,7 +472,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private void Render(InventorySnapshot snapshot)
     {
         if (_disposed) return;
-        // The slots are rebuilt, so a drop indicator on the old ones goes; the next pointer move shows the current one.
+        // The slots are rebuilt, so a drop indicator on the old ones goes; a drag in progress gets it back once they are laid out.
         _dropIndicator.IsVisible = false;
         var open = OpenPack(snapshot);
         var worn = new Dictionary<PaperdollSlot, WieldedItem>();
@@ -482,6 +485,11 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         RenderContents(snapshot, open);
         RenderBurden(snapshot);
         _pyrealCount.Text = snapshot.Pyreals.ToString("N0");
+        if (_indicatorAt is { } at && (_dragged != 0 || _retailItem != 0))
+        {
+            UpdateLayout();
+            ShowIndicator(at.Point, at.Dragged, at.External);
+        }
     }
 
     /// <summary>The pack the grid shows: the port's open container, or the main pack when the port has none of the listed packs open.</summary>
@@ -639,7 +647,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private WriteableBitmap? Bitmap(ItemVisual visual)
     {
         if (!_images.TryGetValue(visual, out var bitmap))
-            _images.Add(visual, bitmap = GameArtImageExtension.CreateBitmap(ItemIcon.Draw(_art, visual.Underlay, visual.Icon, visual.Overlay, 0, visual.UiEffects, visual.Plate)));
+            _images.Add(visual, bitmap = GameArtImageExtension.CreateBitmap(ItemIcon.Draw(_art, visual.Underlay, visual.Icon, visual.Overlay, 0, visual.UiEffects)));
         return bitmap;
     }
 
