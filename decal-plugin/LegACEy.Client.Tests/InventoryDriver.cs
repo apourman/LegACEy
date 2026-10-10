@@ -22,6 +22,14 @@ internal static class InventoryDriver
         Tick(host);
     }
 
+    /// <summary>Right-clicks the control at its centre.</summary>
+    public static void RightClick(AvaloniaPanel host, Control control)
+    {
+        var point = Centre(host, control);
+        host.RightClick(point.X, point.Y);
+        Tick(host);
+    }
+
     public static void Tick(AvaloniaPanel host)
     {
         for (var i = 0; i < 3; i++) host.Tick();

@@ -20,6 +20,8 @@ public interface IInventoryPort
     void Select(uint itemId);
     /// <summary>Uses an item as retail does on a double-click.</summary>
     void Use(uint itemId);
+    /// <summary>Selects an item and asks the server to appraise it, as retail does on a right-click, so retail's examination window shows it.</summary>
+    void Assess(uint itemId);
     /// <summary>Drops an item of the player's on the ground, as retail does for one released over the world.</summary>
     void DropOnGround(uint itemId);
     /// <summary>Moves an item to a slot of a container. The server decides the outcome, and the snapshot changes only when the item moves.</summary>
@@ -228,6 +230,7 @@ public sealed class FakeInventoryPort : IInventoryPort
     public void OpenContainer(uint containerId) => Commands.Add($"open 0x{containerId:X8}");
     public void Select(uint itemId) => Commands.Add($"select 0x{itemId:X8}");
     public void Use(uint itemId) => Commands.Add($"use 0x{itemId:X8}");
+    public void Assess(uint itemId) => Commands.Add($"assess 0x{itemId:X8}");
     public void DropOnGround(uint itemId) => Commands.Add($"drop 0x{itemId:X8}");
     public void MoveToContainer(uint itemId, uint containerId, int slotIndex) => Commands.Add($"move 0x{itemId:X8} to 0x{containerId:X8} slot {slotIndex}");
     public uint WieldMask(uint itemId, PaperdollSlot slot)

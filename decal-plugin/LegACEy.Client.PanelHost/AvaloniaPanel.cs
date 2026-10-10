@@ -379,6 +379,20 @@ public sealed class AvaloniaPanel : IDisposable
         });
     }
 
+    /// <summary>The right button went down and up at a point in panel pixels.</summary>
+    public void RightClick(double x, double y)
+    {
+        VerifyUsable();
+        RunInput(() =>
+        {
+            Invalidate();
+            _pointerPosition = ToContent(x, y);
+            SendPointer(RawPointerEventType.Move, ToContent(x, y));
+            SendPointer(RawPointerEventType.RightButtonDown, ToContent(x, y), RawInputModifiers.RightMouseButton);
+            SendPointer(RawPointerEventType.RightButtonUp, ToContent(x, y));
+        });
+    }
+
     /// <summary>The pointer left the panel, so nothing in it should show a hover state.</summary>
     public void PointerLeave()
     {

@@ -87,6 +87,12 @@ internal sealed class DecalInventoryPort : IInventoryPort
 
     public void Use(uint itemId) => CoreManager.Current.Actions.UseItem(Id(itemId), 0);
 
+    public void Assess(uint itemId)
+    {
+        CoreManager.Current.Actions.SelectItem(Id(itemId));
+        CoreManager.Current.Actions.RequestId(Id(itemId));
+    }
+
     public void DropOnGround(uint itemId) => CoreManager.Current.Actions.DropItem(Id(itemId));
 
     // Stack false places the item in the slot rather than adding it to a stack there.

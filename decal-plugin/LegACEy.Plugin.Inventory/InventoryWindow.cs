@@ -210,10 +210,22 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         SettingsChanged?.Invoke(Settings);
     }
 
-    /// <summary>A press on a slot. Nothing is sent yet: a release decides between a click and a drop.</summary>
+    /// <summary>
+    /// A press on a slot. A right press assesses what the slot shows, as retail does. A left press sends nothing yet: a release
+    /// decides between a click and a drop.
+    /// </summary>
     private void OnPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed || SlotAt(e.GetPosition(this)) is not { } slot) return;
+        var button = e.GetCurrentPoint(this).Properties;
+        if (SlotAt(e.GetPosition(this)) is not { } slot) return;
+        if (button.IsRightButtonPressed && _press == null)
+        {
+            var id = (InventorySlotId)slot.Tag!;
+            var item = id.Place == SlotPlace.Pack ? id.Container : id.ItemId;
+            if (item != 0) _port.Assess(item);
+            return;
+        }
+        if (!button.IsLeftButtonPressed) return;
         _press = (InventorySlotId)slot.Tag!;
         _pressPoint = e.GetPosition(this);
         _pressClicks = e.ClickCount;

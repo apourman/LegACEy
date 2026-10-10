@@ -195,6 +195,19 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
+    public void Right_clicking_an_item_assesses_it_and_an_empty_cell_sends_nothing() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+
+        InventoryDriver.RightClick(host.Host, host.Cells[0]);
+        InventoryDriver.RightClick(host.Host, host.Cells[10]);
+
+        Assert.Equal(new[] { $"assess 0x{InventorySample.Apple:X8}" }, port.Commands);
+    });
+
+    [Fact]
     public void Dropping_on_a_grid_cell_moves_the_item_to_that_container_and_slot() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();

@@ -1318,6 +1318,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                     target.Panel.PointerDown(route.X, route.Y, ToKeyModifiers(route.Modifiers));
                     e.Eat = route.Eat;
                     break;
+                case InputAction.RightClick:
+                    target!.Panel.RightClick(route.X, route.Y);
+                    e.Eat = route.Eat;
+                    break;
                 case InputAction.PointerUp:
                     target!.Panel.PointerUp(route.X, route.Y);
                     if (_windows?.IsDragging == true)

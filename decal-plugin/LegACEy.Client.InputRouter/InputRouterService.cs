@@ -95,8 +95,9 @@ public sealed class InputRouterService
                 _focusedSurfaceId = null;
                 return previous == null ? new InputRoute() : new InputRoute(InputAction.ClearFocus, clearFocusSurfaceId: previous);
             }
+            // A right press is a click on its own: it takes neither capture nor focus, and its release is eaten with the rest.
             if (message.Message == WmRButtonDown)
-                return new InputRoute(eat: true);
+                return new InputRoute(InputAction.RightClick, target.Id, true, x - target.X, y - target.Y);
             var left = _focusedSurfaceId != target.Id ? _focusedSurfaceId : null;
             _capturedSurfaceId = target.Id;
             _focusedSurfaceId = target.Id;
