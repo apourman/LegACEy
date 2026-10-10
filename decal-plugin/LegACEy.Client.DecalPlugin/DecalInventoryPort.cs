@@ -155,12 +155,19 @@ internal sealed class DecalInventoryPort : IInventoryPort
 
         private const int CarryingAugmentationProperty = 230;
 
+        // Foci are not containers but take a side-pack slot: the server's RequiresPackSlot description flag (0x00800000).
+        // Gate: Decal's Behavior is the object description flags.
+        private const int RequiresPackSlot = 0x00800000;
+
+        private static bool UsesPackSlot(WorldObject item) =>
+            item.ObjectClass == ObjectClass.Container || (item.Values(LongValueKey.Behavior, 0) & RequiresPackSlot) != 0;
+
         private static WorldObject? CharacterObject() => CoreManager.Current.WorldFilter[CoreManager.Current.CharacterFilter.Id];
 
         private static InventoryObjectRead Read(WorldObject item) => new(unchecked((uint)item.Id), item.Name,
             unchecked((uint)item.Container), item.Values(LongValueKey.Slot, -1), unchecked((uint)item.Values(LongValueKey.EquippedSlots, 0)),
             unchecked((uint)item.Values(LongValueKey.EquipableSlots, 0)), item.Values(LongValueKey.StackCount, 1),
-            item.Values(LongValueKey.StackMax, 0), item.Values(LongValueKey.ItemSlots, 0), item.ObjectClass == ObjectClass.Container,
+            item.Values(LongValueKey.StackMax, 0), item.Values(LongValueKey.ItemSlots, 0), UsesPackSlot(item),
             // Decal's Type is the weenie class id (WCID): pyreals are 273.
             item.Values(LongValueKey.Type, 0), DecalIcons.Visual(item));
     }

@@ -40,7 +40,7 @@ public sealed class InventoryPluginTests
         positions.Save("Server", "Character", Horizontal, (new Point(120, 120), new Size(700, 500)));
         using var client = new FakeInventoryClient(positions);
         new InventoryPlugin().Start(client);
-        client.MenuEntries.Single().Action();
+        client.Retail!.Toggle();
         Assert.Equal(new Size(380, 600), client.Windows.Get(Vertical)!.Size);
 
         InventoryDriver.PressLayout(client.Panel(Vertical), InventoryLayout.Horizontal);
@@ -72,42 +72,8 @@ public sealed class InventoryPluginTests
         Assert.Null(client.Windows.Get(Vertical));
         Assert.Equal(1, client.Retail.CloseCalls);
         Assert.False(client.Retail.Open);
-
-        // While the takeover holds, the menu asks retail, and retail's report opens or hides the window.
-        client.MenuEntries.Single().Action();
-        Assert.NotNull(client.Windows.Get(Vertical));
-        Assert.Equal(1, client.Retail.OpenCalls);
-        Assert.True(client.Retail.Open);
-        client.MenuEntries.Single().Action();
-        Assert.Null(client.Windows.Get(Vertical));
-        Assert.Equal(2, client.Retail.CloseCalls);
-        Assert.False(client.Retail.Open);
-    });
-
-    [Fact]
-    public void While_the_takeover_holds_the_menu_only_asks_retail_so_a_panel_that_ignores_the_request_leaves_the_window_closed() => RenderThread.Run(() =>
-    {
-        using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
-        new InventoryPlugin().Start(client);
-        client.Retail!.Responds = false;
-
-        client.MenuEntries.Single().Action();
-
-        Assert.Equal(1, client.Retail.OpenCalls);
-        Assert.Null(client.Windows.Get(Vertical));
-    });
-
-    [Fact]
-    public void With_the_takeover_off_the_menu_opens_the_window_itself_and_retail_is_not_asked() => RenderThread.Run(() =>
-    {
-        using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
-        new InventoryPlugin().Start(client);
-        client.Retail!.Holds = false;
-
-        client.MenuEntries.Single().Action();
-
-        Assert.NotNull(client.Windows.Get(Vertical));
-        Assert.Equal(0, client.Retail.OpenCalls);
+        // The window stands in for retail's panel, so it has no menu entry of its own.
+        Assert.Empty(client.MenuEntries);
     });
 
     [Fact]
@@ -115,7 +81,7 @@ public sealed class InventoryPluginTests
     {
         using var client = new FakeInventoryClient(new UnwritablePositionStore());
         new InventoryPlugin().Start(client);
-        client.MenuEntries.Single().Action();
+        client.Retail!.Toggle();
 
         InventoryDriver.PressLayout(client.Panel(Vertical), InventoryLayout.Horizontal);
 
@@ -146,7 +112,7 @@ public sealed class InventoryPluginTests
             using (var first = new FakeInventoryClient(new FileWindowPositionStore(path)))
             {
                 new InventoryPlugin().Start(first);
-                first.MenuEntries.Single().Action();
+                first.Retail!.Toggle();
                 InventoryDriver.PressSlots(first.Panel(Vertical));
                 InventoryDriver.PressLayout(first.Panel(Vertical), InventoryLayout.Horizontal);
                 Assert.Equal(HorizontalSlotsOff, first.Settings);
@@ -155,7 +121,7 @@ public sealed class InventoryPluginTests
             // A new session reads the same file: the horizontal layout opens with the Slots toggle still off.
             using var second = new FakeInventoryClient(new FileWindowPositionStore(path));
             new InventoryPlugin().Start(second);
-            second.MenuEntries.Single().Action();
+            second.Retail!.Toggle();
             var horizontal = second.Panel(Horizontal);
             Assert.Null(second.Windows.Get(Vertical));
             Assert.Null(InventoryDriver.SlotOrNull(horizontal, PaperdollSlot.Head));
@@ -174,15 +140,15 @@ public sealed class InventoryPluginTests
         using var client = new FakeInventoryClient(store);
         new InventoryPlugin().Start(client);
         client.SaveSettings(VerticalSlotsOn);
-        client.MenuEntries.Single().Action();
+        client.Retail!.Toggle();
         Assert.NotNull(client.Windows.Get(Vertical));
-        client.MenuEntries.Single().Action();
+        client.Retail!.Toggle();
         Assert.Null(client.Windows.Get(Vertical));
 
         // Another character logs in and has its own saved layout: the next open follows that character, not the cached one.
         client.Character = "Other";
         store.Save("Server", "Other", "settings:Inventory", (new Point(1, 0), null));
-        client.MenuEntries.Single().Action();
+        client.Retail!.Toggle();
         Assert.Null(client.Windows.Get(Vertical));
         Assert.NotNull(client.Windows.Get(Horizontal));
     });
@@ -192,7 +158,7 @@ public sealed class InventoryPluginTests
     {
         using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
         new InventoryPlugin().Start(client);
-        client.MenuEntries.Single().Action();
+        client.Retail!.Toggle();
         InventoryDriver.PressLayout(client.Panel(Vertical), InventoryLayout.Horizontal);
 
         // Slots goes off in the horizontal window, and the port opens a pack while the vertical one is hidden.
@@ -223,7 +189,7 @@ public sealed class InventoryPluginTests
         client.ServerActions.Add(PaperdollProtocol.Look);
         client.SaveSettings(VerticalSlotsOff);
         new InventoryPlugin().Start(client);
-        client.MenuEntries.Single().Action();
+        client.Retail!.Toggle();
 
         var panel = client.Panel(Vertical);
         var model = Assert.Single(ModelViews(panel));
@@ -248,13 +214,13 @@ public sealed class InventoryPluginTests
         using var client = new FakeInventoryClient(new MemoryWindowPositionStore()) { ServerChannel = channel };
         client.SaveSettings(VerticalSlotsOff);
         new InventoryPlugin().Start(client);
-        client.MenuEntries.Single().Action();
+        client.Retail!.Toggle();
         Assert.Empty(ModelViews(client.Panel(Vertical)));
 
         // channel.hello lands after the window opened; the next open gives the doll and asks for the look.
         client.ServerActions.Add(PaperdollProtocol.Look);
-        client.MenuEntries.Single().Action();
-        client.MenuEntries.Single().Action();
+        client.Retail!.Toggle();
+        client.Retail!.Toggle();
         Assert.Single(ModelViews(client.Panel(Vertical)));
         Assert.Equal(new[] { PaperdollProtocol.Look }, transport.Actions);
     });
@@ -268,10 +234,10 @@ public sealed class InventoryPluginTests
         client.ServerActions.Add(PaperdollProtocol.Look);
         client.SaveSettings(VerticalSlotsOff);
         new InventoryPlugin().Start(client);
-        client.MenuEntries.Single().Action();
+        client.Retail!.Toggle();
         var status = (TextBlock)ModelViews(client.Panel(Vertical)).Single().Child!;
 
-        client.MenuEntries.Single().Action();   // hides the window, and with it the doll
+        client.Retail!.Toggle();   // hides the window, and with it the doll
         // A reply the server sent before the hide, with a body this client cannot read: it must not reach the status line.
         channel.Receive(ChannelWire.EncodeEvent(ChannelEventKind.Reply, ChannelStatus.Ok, transport.Ids.Single(), PaperdollProtocol.Look, new byte[] { 1 }));
         Assert.Equal("Loading…", status.Text);
@@ -285,7 +251,7 @@ public sealed class InventoryPluginTests
         using var client = new FakeInventoryClient(new MemoryWindowPositionStore()) { ServerChannel = channel };
         client.SaveSettings(VerticalSlotsOff);
         new InventoryPlugin().Start(client);
-        client.MenuEntries.Single().Action();
+        client.Retail!.Toggle();
 
         Assert.Empty(ModelViews(client.Panel(Vertical)));
         channel.Receive(LookChanged());
@@ -301,7 +267,7 @@ public sealed class InventoryPluginTests
         client.ServerActions.Add(PaperdollProtocol.Look);
         client.SaveSettings(VerticalSlotsOn);
         new InventoryPlugin().Start(client);
-        client.MenuEntries.Single().Action();
+        client.Retail!.Toggle();
 
         var panel = client.Panel(Vertical);
         Assert.Empty(ModelViews(panel));
@@ -328,15 +294,15 @@ public sealed class InventoryPluginTests
         client.ServerActions.Add(PaperdollProtocol.Look);
         client.SaveSettings(VerticalSlotsOff);
         new InventoryPlugin().Start(client);
-        client.MenuEntries.Single().Action();
+        client.Retail!.Toggle();
         Assert.Single(transport.Actions);
 
-        client.MenuEntries.Single().Action();
+        client.Retail!.Toggle();
         Assert.Null(client.Windows.Get(Vertical));
         channel.Receive(LookChanged());
         Assert.Single(transport.Actions);
 
-        client.MenuEntries.Single().Action();
+        client.Retail!.Toggle();
         Assert.Equal(2, transport.Actions.Count);
     });
 
@@ -354,7 +320,7 @@ public sealed class InventoryPluginTests
         client.Port.Push(InventorySample.Snapshot(openContainer: InventorySample.Potions, selected: InventorySample.BluePotion));
         client.SaveSettings(new InventorySettings(layout, showSlots: true).ToInt());
         new InventoryPlugin().Start(client);
-        client.MenuEntries.Single().Action();
+        client.Retail!.Toggle();
 
         var id = layout == InventoryLayout.Horizontal ? Horizontal : Vertical;
         var requested = client.Requested[id];

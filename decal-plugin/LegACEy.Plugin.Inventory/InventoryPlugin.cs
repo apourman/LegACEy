@@ -8,8 +8,9 @@ using LegACEy.Client.Themes;
 namespace LegACEy.Plugin.Inventory;
 
 /// <summary>
-/// The inventory window, opened from the LegACEy menu in the layout the character last chose. Each layout is its own window with
-/// its own saved size and position, so switching layout hides one and opens the other at its own size.
+/// The inventory window, standing in for retail's inventory panel: it opens and closes with retail's panel, in the layout the
+/// character last chose. Each layout is its own window with its own saved size and position, so switching layout hides one and
+/// opens the other at its own size.
 /// </summary>
 public sealed class InventoryPlugin : ILegACEyPlugin
 {
@@ -17,13 +18,13 @@ public sealed class InventoryPlugin : ILegACEyPlugin
 
     // The window of each layout while the client keeps it, open or hidden. A hidden window keeps its content.
     private readonly Dictionary<InventoryLayout, InventoryWindow> _windows = new();
-    // The retail panel this window stands in for while the client's takeover switch is on. It does nothing while the switch is off.
+    // The retail panel this window stands in for. It does nothing while the client's takeover is off, and then retail's panel shows.
     private IRetailPanel? _retail;
     // The settings while a window is open: read from the client when a window opens, and every change is saved as it happens.
-    // The cache is the character's, and the character logged in now may not be the one it came from, so a menu press or a retail
-    // report clears it while no window is open (the next read reaches the client); a layout switch never clears it.
+    // The cache is the character's, and the character logged in now may not be the one it came from, so a retail report clears it
+    // while no window is open (the next read reaches the client); a layout switch never clears it.
     private InventorySettings? _settings;
-    // The layout whose window the plugin last showed, so a menu press knows whether it hides the window or opens one.
+    // The layout whose window the plugin last showed, so a retail report knows whether it hides the window or opens one.
     private InventoryLayout? _shown;
 
     public string Name => "Inventory";
@@ -33,29 +34,12 @@ public sealed class InventoryPlugin : ILegACEyPlugin
 
     public void Start(ILegACEyClient client)
     {
-        client.AddMenuEntry(InventoryWindow.Title, InventoryWindow.BackpackIcon, () => Menu(client));
         _retail = client.TakeOverRetailInventory(open => RetailPanelChanged(client, open));
     }
 
     /// <summary>
-    /// The menu press. While the takeover holds retail's panel, the press only asks retail to open or close it, and retail's report
-    /// opens or closes the window, so the two cannot disagree. With the takeover off, the window opens or closes itself.
-    /// </summary>
-    private void Menu(ILegACEyClient client)
-    {
-        if (_shown == null) _settings = null;
-        if (_retail is { Holds: true })
-        {
-            if (_shown == null) _retail.Open();
-            else _retail.Close();
-            return;
-        }
-        Toggle(client, Current(client).Layout);
-    }
-
-    /// <summary>
-    /// Retail opened or closed its inventory panel while the takeover is on. A layout switch never comes here: it hides and shows
-    /// windows of its own and leaves retail's panel open.
+    /// Retail opened or closed its inventory panel (by key, toolbar or item) while the takeover is on. A layout switch never comes
+    /// here: it hides and shows windows of its own and leaves retail's panel open.
     /// </summary>
     private void RetailPanelChanged(ILegACEyClient client, bool open)
     {

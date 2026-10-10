@@ -81,9 +81,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private const uint DatCursorNWSE = 0x06006126;
     private const uint DatCursorNESW = 0x06006127;
     private const uint DatCursorMove = 0x06006119;
-    // Beside the DLL: while this file exists, plugins may take over retail's inventory panel. Off by default: the drags that leave the
-    // retail UI for the world and other retail windows are not built yet, so a held panel could not hand an item on.
-    private const string RetailPanelSwitchFile = "retail-inventory-takeover";
+    // Beside the DLL: while this file exists, plugins leave retail's inventory panel alone. Without it the LegACEy Inventory takes it
+    // over. ponytail: drags that leave our window for the world and other retail windows are not handed to retail yet (story 45).
+    private const string RetailPanelSwitchFile = "retail-inventory-native";
 
     private const string MenuSlot = "LegACEy";
     private const string MenuWindowId = "plugin-menu";
@@ -753,7 +753,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         if (now - _lastRetailPanelSwitchCheck >= TimeSpan.FromSeconds(1))
         {
             _lastRetailPanelSwitchCheck = now;
-            _retailPanelSwitch = File.Exists(IOPath.Combine(PluginDirectory, RetailPanelSwitchFile));
+            _retailPanelSwitch = !File.Exists(IOPath.Combine(PluginDirectory, RetailPanelSwitchFile));
         }
         return _retailPanelSwitch;
     }

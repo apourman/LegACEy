@@ -22,6 +22,7 @@ public sealed class InventorySnapshotBuilderTests
     private const uint LowerArmWear = 0x00000010;
     private const uint UpperLegWear = 0x00000040;
     private const uint LowerLegWear = 0x00000080;
+    private const uint FootWear = 0x00000100;
 
     [Fact]
     public void Side_packs_follow_retail_order_and_free_slots_show_as_placeholders_up_to_capacity()
@@ -109,6 +110,19 @@ public sealed class InventorySnapshotBuilderTests
         var snapshot = InventorySnapshotBuilder.Build(reader);
 
         Assert.Equal(new[] { PaperdollSlot.Shirt, PaperdollSlot.Pants }, snapshot.Wielded.Single().Slots);
+    }
+
+    [Fact]
+    public void Boots_that_cover_the_lower_legs_show_in_feet_only_and_cannot_be_dropped_on_the_pants()
+    {
+        var boots = FootWear | LowerLegWear;
+        var reader = new FakeReader();
+        reader.Objects.Add(Item(0x50000450, container: Character, slot: -1, equippedMask: boots, validLocations: boots));
+
+        var snapshot = InventorySnapshotBuilder.Build(reader);
+
+        Assert.Equal(new[] { PaperdollSlot.Feet }, snapshot.Wielded.Single().Slots);
+        Assert.Equal(0u, InventorySnapshot.MaskFor(boots, PaperdollSlot.Pants));
     }
 
     [Fact]

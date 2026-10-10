@@ -43,7 +43,7 @@ internal static class DerethSheet
     private static readonly Dictionary<(DerethFrameArt Art, DerethState State), NineSlice> Frames = new()
     {
         [(DerethFrameArt.Window, DerethState.Normal)] = new NineSlice(FrameCorner, FrameTop, FrameLeft, Color.Parse("#081016")),
-        [(DerethFrameArt.Slot, DerethState.Normal)] = new NineSlice(SlotCorner, SlotTop, SlotLeft, Color.Parse("#02070B")),
+        [(DerethFrameArt.Slot, DerethState.Normal)] = new NineSlice(SlotCorner, SlotTop, SlotLeft, Color.Parse("#1F2B35")),
         // Button frame: close box, text buttons and the header icon. Corner 8 DIP, edges 4 DIP.
         [(DerethFrameArt.Button, DerethState.Normal)] = new NineSlice(new(236, 6, 16, 16), new(258, 6, 8, 8), new(272, 6, 8, 8), Color.Parse("#071016")),
         [(DerethFrameArt.Button, DerethState.Hover)] = new NineSlice(new(286, 6, 16, 16), new(308, 6, 8, 8), new(322, 6, 8, 8), Color.Parse("#0E1923")),

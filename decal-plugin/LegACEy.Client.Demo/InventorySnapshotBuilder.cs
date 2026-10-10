@@ -47,6 +47,7 @@ public sealed class InventoryObjectRead
     public int StackMax { get; }
     /// <summary>For a container, its number of slots; zero for anything else.</summary>
     public int ItemSlots { get; }
+    /// <summary>Whether the object takes a side-pack slot: a pack, or a focus.</summary>
     public bool IsContainer { get; }
     /// <summary>The weenie class id (WCID) of the object: Decal's LongValueKey.Type.</summary>
     public int Wcid { get; }
@@ -111,8 +112,14 @@ public static class InventorySnapshotBuilder
         (PaperdollSlot.Pants, 0x00000004u | 0x00000040u | 0x00000080u), // AbdomenWear, UpperLegWear, LowerLegWear
     };
 
-    /// <summary>The EquipMask bits of one paperdoll slot.</summary>
-    internal static uint MaskOf(PaperdollSlot slot) => SlotMasks.Single(pair => pair.Slot == slot).Mask;
+    private const uint FootWear = 0x00000100u;
+
+    /// <summary>
+    /// The bits of <paramref name="mask"/> that land in <paramref name="slot"/>. Boots that also cover the lower legs (FootWear and
+    /// LowerLegWear) belong in Feet only, as retail shows them, so anything with FootWear never reaches Pants.
+    /// </summary>
+    internal static uint Covers(uint mask, PaperdollSlot slot) =>
+        slot == PaperdollSlot.Pants && (mask & FootWear) != 0 ? 0 : mask & SlotMasks.Single(pair => pair.Slot == slot).Mask;
 
     public static InventorySnapshot Build(IInventoryReader reader)
     {
@@ -147,7 +154,7 @@ public static class InventorySnapshotBuilder
 
     /// <summary>The paperdoll slots an equip mask covers, in paperdoll order. A multi-slot mask covers every slot it touches.</summary>
     private static IReadOnlyList<PaperdollSlot> SlotsFor(uint equipMask) =>
-        SlotMasks.Where(pair => (equipMask & pair.Mask) != 0).Select(pair => pair.Slot).ToArray();
+        SlotMasks.Where(pair => Covers(equipMask, pair.Slot) != 0).Select(pair => pair.Slot).ToArray();
 
     /// <summary>The burden limit the server enforces: 150 per strength point, plus a bonus per augmentation capped at 150.</summary>
     private static int BurdenLimit(int strength, int carryingAugmentations)

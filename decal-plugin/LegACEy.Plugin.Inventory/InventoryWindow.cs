@@ -32,7 +32,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     internal const string Title = "Inventory";
     // The pyreal stack's icon in the portal.
     private const uint PyrealIcon = 0x06001080;
-    private const double EmptyOpacity = 0.55;
+    private const double EmptyOpacity = 0.8;
     private const string StackedGlyph = "M2,1 H12 V6 H2 Z M2,8 H12 V13 H2 Z";
     private const string SideBySideGlyph = "M1,2 H6 V12 H1 Z M8,2 H13 V12 H8 Z";
     private const double DragThreshold = 4;
@@ -311,7 +311,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         if (slot.Place == SlotPlace.Pack)
         {
-            if (slot.Container != 0) _port.OpenContainer(slot.Container);
+            // A focus takes a pack slot but holds nothing, so it does not open.
+            if (slot.Container != 0 && PackOf(_port.Snapshot, slot.Container)?.Capacity != 0) _port.OpenContainer(slot.Container);
             return;
         }
         if (slot.ItemId == 0) return;
@@ -519,7 +520,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         if (pack.Id == 0) return Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, position, null));
         var layers = new Grid();
         layers.Children.Add(Icon(new ItemVisual(pack.Icon, 0, 0, 0)));
-        layers.Children.Add(FillBar(ItemsIn(snapshot, pack.Id), pack.Capacity));
+        if (pack.Capacity > 0) layers.Children.Add(FillBar(ItemsIn(snapshot, pack.Id), pack.Capacity));
         return Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), layers, pack.Id == open.Id);
     }
 
@@ -534,7 +535,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         }
         var selected = pack.Id == open.Id;
         stack.Children.Add(Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(new ItemVisual(pack.Icon, 0, 0, 0)), selected));
-        var count = Label($"{ItemsIn(snapshot, pack.Id)}/{pack.Capacity}", selected ? TealTextBrush : MutedBrush, 10);
+        var count = Label(pack.Capacity > 0 ? $"{ItemsIn(snapshot, pack.Id)}/{pack.Capacity}" : " ", selected ? TealTextBrush : MutedBrush, 10);
         count.HorizontalAlignment = HorizontalAlignment.Center;
         stack.Children.Add(count);
         return stack;
@@ -638,7 +639,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private WriteableBitmap? Bitmap(ItemVisual visual)
     {
         if (!_images.TryGetValue(visual, out var bitmap))
-            _images.Add(visual, bitmap = GameArtImageExtension.CreateBitmap(ItemIcon.Draw(_art, visual.Underlay, visual.Icon, visual.Overlay, 0, visual.UiEffects)));
+            _images.Add(visual, bitmap = GameArtImageExtension.CreateBitmap(ItemIcon.Draw(_art, visual.Underlay, visual.Icon, visual.Overlay, 0, visual.UiEffects, visual.Plate)));
         return bitmap;
     }
 

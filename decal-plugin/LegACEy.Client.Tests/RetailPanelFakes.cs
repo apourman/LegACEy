@@ -28,6 +28,9 @@ internal sealed class FakeRetailPanel : IRetailPanel
         _changed(open);
     }
 
+    /// <summary>The player opens or closes retail's panel (key, toolbar or item).</summary>
+    public void Toggle() => Retail(!Open);
+
     void IRetailPanel.Open()
     {
         OpenCalls++;
