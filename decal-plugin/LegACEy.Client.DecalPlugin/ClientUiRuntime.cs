@@ -674,7 +674,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                     (int)(bounds.Width * scale), (int)(bounds.Height * scale));
                 if (!_modelRenderers.TryGetValue(view, out var renderer))
                     _modelRenderers[view] = renderer = new ModelRenderer(_device);
-                renderer.Draw(model, area, view.Yaw, view.Zoom);
+                renderer.Draw(model, area, view.Yaw, view.Zoom, view.Focus);
             }
             catch (Exception exception)
             {
