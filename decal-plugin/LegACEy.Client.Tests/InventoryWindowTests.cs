@@ -150,6 +150,23 @@ public sealed class InventoryWindowTests
         Assert.Equal(new[] { $"drop 0x{InventorySample.Apple:X8}" }, port.Commands);
     });
 
+    [Fact]
+    public void A_drag_that_leaves_the_window_goes_to_retail_when_retail_takes_it() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        host.Drag.Target = ItemDropTarget.World;
+        host.Drag.TakeHandOff = true;
+
+        DragOut(host.Host, host.Cells[0], new Avalonia.Point(-50, -50));
+
+        // Retail drags the item from there on and drops it; our icon is gone and our release sends nothing.
+        Assert.Equal(new[] { InventorySample.Apple }, host.Drag.HandedOff);
+        Assert.Equal(0, host.Drag.IconsOpen);
+        Assert.Empty(port.Commands);
+    });
+
     private static void DragOut(AvaloniaPanel host, Control from, Avalonia.Point to)
     {
         var start = InventoryDriver.Centre(host, from);

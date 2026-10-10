@@ -33,6 +33,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
+
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ScreenToClient(IntPtr window, ref NativePoint point);
@@ -82,7 +86,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private const uint DatCursorNESW = 0x06006127;
     private const uint DatCursorMove = 0x06006119;
     // Beside the DLL: while this file exists, plugins leave retail's inventory panel alone. Without it the LegACEy Inventory takes it
-    // over. ponytail: drags that leave our window for the world and other retail windows are not handed to retail yet (story 45).
+    // over.
     private const string RetailPanelSwitchFile = "retail-inventory-native";
 
     private const string MenuSlot = "LegACEy";
@@ -138,6 +142,18 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private uint _retailDragItem;
     private string _retailDragName = string.Empty;
     private int _loggedDrops;
+    // A drag handed from a LegACEy window to retail, from the press posted to the client until retail's drag starts.
+    private sealed class HandOff
+    {
+        public IntPtr List, Item;
+        public uint ItemId;
+        public Point Press;
+        public bool Pressed;
+    }
+    private HandOff? _handOff;
+    private IntPtr _gameWindow;
+    private int _loggedHandOffs;
+    private uint _handOffMissed;
     // The retail element under the pointer over the 3D world, seen in play (chat reports 0x10000011).
     private const uint WorldViewElement = 0x1000049A;
     private ScreenSurface? _dragIconSurface;
@@ -728,6 +744,40 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     }
 
     /// <summary>
+    /// Takes a handed-off drag one message further, before the client sees the message. The posted press goes through, so the client
+    /// sees the left button held and records where it went down. Retail would then drag whatever that press landed on (the world, as
+    /// often as not), so that is forgotten on every move until the client's pointer, which is the one before this move, is 4 pixels
+    /// from the press: then the item's own list starts retail's drag of it.
+    /// </summary>
+    private void ContinueHandOff(int message)
+    {
+        var handOff = _handOff!;
+        var drag = _retailDrag!;
+        if (message == InputRouterService.WmLButtonDown)
+            handOff.Pressed = true;
+        else if (message == InputRouterService.WmLButtonUp)
+        {
+            _handOff = null;
+            drag.ClearPotentialDrag();
+            LogHandOff($"Hand-off of 0x{handOff.ItemId:X8}: released before retail's drag began.");
+        }
+        else if (message == InputRouterService.WmMouseMove && handOff.Pressed)
+        {
+            drag.ClearPotentialDrag();
+            int dx = _pointer.X - handOff.Press.X, dy = _pointer.Y - handOff.Press.Y;
+            if (dx * dx + dy * dy < 16) return;
+            _handOff = null;
+            var started = drag.BeginDrag(handOff.List, handOff.Item, handOff.ItemId);
+            LogHandOff($"Hand-off of 0x{handOff.ItemId:X8}: retail drag started: {started}.");
+        }
+    }
+
+    private void LogHandOff(string message)
+    {
+        if (_loggedHandOffs++ < 10) Log(message);
+    }
+
+    /// <summary>
     /// Ticks each retail panel takeover once a frame. The switch is read once a second; without the windows able to open, the takeover
     /// is off, so a held panel is given back.
     /// </summary>
@@ -882,6 +932,34 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                 _icon.Dispose();
                 _owner = null;
             }
+        }
+
+        /// <summary>
+        /// Outside every LegACEy surface, finds the item in the retail inventory's lists and posts the client a left press at the
+        /// pointer, as if the press had happened there; <see cref="ContinueHandOff"/> starts retail's drag once the client has seen it.
+        /// </summary>
+        public bool HandToRetail(uint itemId)
+        {
+            var owner = _owner;
+            if (owner._handOff != null || owner._gameWindow == IntPtr.Zero || owner._retailDrag is not { Available: true } drag ||
+                owner.TopSurfaceAt(owner._pointer) != null)
+                return false;
+            var (list, item) = drag.FindItem(itemId);
+            if (item == IntPtr.Zero)
+            {
+                // Asked on every move outside the window; said once per item.
+                if (owner._handOffMissed == itemId) return false;
+                owner._handOffMissed = itemId;
+                owner.LogHandOff($"Hand-off of 0x{itemId:X8}: no retail list shows it; the drag stays ours.");
+                return false;
+            }
+            var point = owner._pointer;
+            const int MkLButton = 1;
+            if (!PostMessage(owner._gameWindow, InputRouterService.WmLButtonDown, new IntPtr(MkLButton), new IntPtr((point.Y << 16) | (point.X & 0xffff))))
+                return false;
+            owner._handOff = new HandOff { List = list, Item = item, ItemId = itemId, Press = point };
+            owner._inputRouter.ReleaseCapture();
+            return true;
         }
 
         public ItemDropTarget DropTargetAtPointer()
@@ -1156,6 +1234,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                 });
             return;
         }
+        _gameWindow = new IntPtr(e.Hwnd);
+        if (_handOff != null)
+            Guard(() => ContinueHandOff(e.Msg));
         if (e.Msg == InputRouterService.WmMouseMove)
             _pointer = new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff));
         if (e.Msg == InputRouterService.WmLButtonUp && _inputRouter.CapturedSurfaceId == null)

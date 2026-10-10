@@ -227,6 +227,14 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             }
             _dragIcon = _dragHost?.ShowDragIcon(DragImage(_dragged), 1, retailDropIndicator: false);
         }
+        // Outside the window, with the button still held, retail may take the drag over; then it is no longer ours.
+        if (!new Rect(Bounds.Size).Contains(point) && !_port.Snapshot.SidePacks.Any(pack => pack.Id == _dragged) &&
+            _dragHost?.HandToRetail(_dragged) == true)
+        {
+            EndDrag();
+            e.Pointer.Capture(null);
+            return;
+        }
         ShowIndicator(point);
     }
 
@@ -265,8 +273,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var snapshot = _port.Snapshot;
         if (_dragHost == null || snapshot.SidePacks.Any(pack => pack.Id == dragged) || !snapshot.Contains(dragged)) return;
         if (_dragHost.DeliverAtPointer(dragged, KindOf(snapshot, dragged).Name)) return;
-        // ponytail: drops on other retail windows and the shortcut bar are not handed on yet. That needs the retail UI element of the
-        // dragged object, and the client's lookup for it is not known. Until then, only a release over the world sends anything.
+        // Retail did not take the drag when it left the window (the retail panel shows no element for the item): only a release over
+        // the world sends anything.
         if (_dragHost.DropTargetAtPointer() == ItemDropTarget.World) _port.DropOnGround(dragged);
     }
 

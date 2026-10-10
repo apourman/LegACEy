@@ -221,6 +221,7 @@ public sealed class VaultDragDropTests
         }
         public ItemDropTarget DropTargetAtPointer() => ItemDropTarget.Elsewhere;
         public bool DeliverAtPointer(uint itemId, string itemName) => false;
+        public bool HandToRetail(uint itemId) => false;
         private sealed class Icon : IDisposable
         {
             private readonly PanelDragHost _owner;

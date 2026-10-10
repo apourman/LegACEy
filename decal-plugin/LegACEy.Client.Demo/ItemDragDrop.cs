@@ -58,6 +58,13 @@ public interface IItemDragHost
     /// released there would reach it. True when that window used the item. Nothing is under the pointer: false.
     /// </summary>
     bool DeliverAtPointer(uint itemId, string itemName);
+
+    /// <summary>
+    /// Offers a drag that has left the window to retail, while the button is still held. True when retail took it: retail then
+    /// draws the drag and decides the drop (the world, an NPC, another retail window, the shortcut bar), and the window must let
+    /// the drag go. False when the pointer is over a LegACEy window or retail has no element for the item.
+    /// </summary>
+    bool HandToRetail(uint itemId);
 }
 
 /// <summary>
@@ -105,6 +112,17 @@ public sealed class FakeItemDragHost : IItemDragHost
     }
 
     public ItemDropTarget DropTargetAtPointer() => Target;
+
+    /// <summary>Whether retail takes a drag handed to it. False by default: the drag stays in the window.</summary>
+    public bool TakeHandOff { get; set; }
+    /// <summary>The items offered to retail, in order, taken or not.</summary>
+    public List<uint> HandedOff { get; } = new();
+
+    public bool HandToRetail(uint itemId)
+    {
+        HandedOff.Add(itemId);
+        return TakeHandOff;
+    }
 
     public bool DeliverAtPointer(uint itemId, string itemName)
     {
