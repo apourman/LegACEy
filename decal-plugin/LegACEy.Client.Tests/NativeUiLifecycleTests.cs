@@ -485,6 +485,21 @@ public sealed class NativeUiLifecycleTests
     }
 
     [Fact]
+    public void Retail_opening_its_panel_in_portal_space_parks_it_and_our_window_opens_once_it_can()
+    {
+        var port = new FakeRetailPanelPort { Open = true, Location = new Point(500, 300) };
+        var events = new List<bool>();
+        using var takeover = new RetailPanelTakeover(port, events.Add, _ => { });
+
+        takeover.Tick(enabled: true, canShow: false);
+        Assert.Equal(RetailPanelTakeover.Parked, port.Location);
+        Assert.Empty(events);
+
+        takeover.Tick(enabled: true);
+        Assert.Equal(new[] { true }, events);
+    }
+
+    [Fact]
     public void Our_close_box_closes_retail_through_its_own_path_and_our_window_follows()
     {
         var port = new FakeRetailPanelPort { Open = true, Location = new Point(500, 300) };

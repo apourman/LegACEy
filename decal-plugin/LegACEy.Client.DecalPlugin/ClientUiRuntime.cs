@@ -527,6 +527,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             }
             TakeOverNativeBar();
             _barRenderer!.RenderFrame(_inGame, _postUiDrawHook?.IsInstalled == true);
+            // Portal space at login comes before Decal's login complete: retail's inventory opened then is parked already,
+            // and our window opens for it once the windows can.
+            if (!_inGame) TickRetailPanels(loggingIn: true);
         });
 
         if (_failed || !_inGame || !_windowsEnabled)
@@ -797,12 +800,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     /// Ticks each retail panel takeover once a frame. The switch is read once a second; without the windows able to open, the takeover
     /// is off, so a held panel is given back.
     /// </summary>
-    private void TickRetailPanels()
+    private void TickRetailPanels(bool loggingIn = false)
     {
         if (_retailPanels.Count == 0) return;
-        var enabled = CanOpenWindows && RetailPanelSwitchOn();
+        // Logging in, the windows can't open yet; they will if the post-UI hook is in.
+        var enabled = (loggingIn ? _postUiDrawHook?.IsInstalled == true : CanOpenWindows) && RetailPanelSwitchOn();
         foreach (var takeover in _retailPanels.ToArray())
-            takeover.Tick(enabled);
+            takeover.Tick(enabled, canShow: !loggingIn);
     }
 
     /// <summary>

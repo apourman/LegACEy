@@ -67,8 +67,10 @@ internal sealed class RetailPanelTakeover : IDisposable
     /// Called once a frame in game. With the switch off, or after a fault, a held panel is given back and nothing else happens; a
     /// restore that is still failing is retried here each frame. Parks the panel when it appears, parks it again when retail laid it
     /// out elsewhere (a resize or a portal transition), and reports each change of retail's open state.
+    /// <paramref name="canShow"/> is false while our window cannot open yet (portal space at login): an open panel is parked
+    /// and reported once it can.
     /// </summary>
-    public void Tick(bool enabled)
+    public void Tick(bool enabled, bool canShow = true)
     {
         if (_disposed) return;
         if (!enabled || _failed)
@@ -101,7 +103,7 @@ internal sealed class RetailPanelTakeover : IDisposable
                 Repark();
             }
             _closedFrames = 0;
-            Report(true);
+            if (canShow) Report(true);
         }
         catch (Exception exception)
         {
