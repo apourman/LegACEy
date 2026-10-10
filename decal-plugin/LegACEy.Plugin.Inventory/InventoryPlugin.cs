@@ -35,6 +35,11 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     public void Start(ILegACEyClient client)
     {
         _retail = client.TakeOverRetailInventory(open => RetailPanelChanged(client, open));
+        // The window can open before the server's action list arrives at login: the doll joins it when the list does.
+        client.WhenServerActionsChange(() =>
+        {
+            if (_shown is { } layout && _windows.TryGetValue(layout, out var window)) GiveDoll(client, window);
+        });
     }
 
     /// <summary>
@@ -72,7 +77,7 @@ public sealed class InventoryPlugin : ILegACEyPlugin
 
     /// <summary>
     /// Gives a window its 3D character when the server lists the look action. The list can arrive after a window was built (the
-    /// window opens before channel.hello), so every open asks again, and a window that already has its character is left alone.
+    /// window opens before channel.hello), so every open and the list's arrival ask again; a window that already has its character is left alone.
     /// </summary>
     private static void GiveDoll(ILegACEyClient client, InventoryWindow window)
     {

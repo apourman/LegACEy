@@ -38,6 +38,11 @@ public interface ILegACEyClient
     /// <summary>True when the server registered the action (the list from channel.hello). Plugins use it for optional features.</summary>
     bool SupportsAction(string action);
     /// <summary>
+    /// Calls <paramref name="changed"/> each time the server's action list changes: channel.hello answered after login, and logoff.
+    /// A window opened before the answer uses it to take up an optional feature.
+    /// </summary>
+    void WhenServerActionsChange(Action changed);
+    /// <summary>
     /// Takes over retail's inventory panel for the plugin's window, while the client's retail takeover switch is on. The client keeps the
     /// panel open where the player cannot see it, and calls <paramref name="retailOpenChanged"/> with true when the panel opens and false
     /// when it closes; the plugin then shows or hides its window. With the switch off, nothing is called and the panel is untouched.

@@ -36,6 +36,9 @@ public sealed class PluginRegistry
     /// <summary>Raised when the menu may have changed: a server answer, a plugin turned off, a menu entry added, or a session change.</summary>
     public event EventHandler? MenuChanged;
 
+    // Each plugin's server-action handlers, already guarded for their plugin.
+    private event Action? ServerActionsChanged;
+
     /// <summary>The menu entries of visible plugins, in load order.</summary>
     public IReadOnlyList<PluginMenuEntry> VisibleMenuEntries =>
         _entries.Where(IsVisible).SelectMany(entry => entry.MenuEntries).ToArray();
@@ -92,6 +95,7 @@ public sealed class PluginRegistry
     {
         _serverActions = new HashSet<string>(actions ?? Array.Empty<string>(), StringComparer.Ordinal);
         MenuChanged?.Invoke(this, EventArgs.Empty);
+        ServerActionsChanged?.Invoke();
     }
 
     /// <summary>The player logged off: plugin windows close and the server's actions are forgotten until the next login.</summary>
@@ -254,6 +258,14 @@ public sealed class PluginRegistry
         public IInventoryPort Inventory { get; }
         public bool SupportsAction(string action) => _registry.SupportsAction(action);
 
+        public void WhenServerActionsChange(Action changed)
+        {
+            if (changed == null) throw new ArgumentNullException(nameof(changed));
+            Action guarded = () => _registry.Guarded(_entry, changed);
+            _registry.ServerActionsChanged += guarded;
+            _ = new TrackedSubscription(_entry.Subscriptions, new GuardedInventory.Release(() => _registry.ServerActionsChanged -= guarded));
+        }
+
         public IRetailPanel TakeOverRetailInventory(Action<bool> retailOpenChanged)
         {
             if (retailOpenChanged == null) throw new ArgumentNullException(nameof(retailOpenChanged));
@@ -377,7 +389,7 @@ public sealed class PluginRegistry
         public void MergeStack(uint itemId, uint targetStackId) => _registry.Guarded(_entry, () => _inner.MergeStack(itemId, targetStackId));
 
         /// <summary>Runs an action once, when disposed.</summary>
-        private sealed class Release : IDisposable
+        internal sealed class Release : IDisposable
         {
             private readonly Action _release;
             public Release(Action release) => _release = release;

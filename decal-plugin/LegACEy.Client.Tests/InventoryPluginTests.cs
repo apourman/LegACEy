@@ -207,7 +207,7 @@ public sealed class InventoryPluginTests
     });
 
     [Fact]
-    public void A_window_opened_before_the_server_lists_the_look_gets_its_doll_on_the_next_open() => RenderThread.Run(() =>
+    public void A_window_opened_before_the_server_lists_the_look_gets_its_doll_when_the_list_arrives() => RenderThread.Run(() =>
     {
         var transport = new LookTransport();
         var channel = new ServerChannelClient(transport);
@@ -217,10 +217,8 @@ public sealed class InventoryPluginTests
         client.Retail!.Toggle();
         Assert.Empty(ModelViews(client.Panel(Vertical)));
 
-        // channel.hello lands after the window opened; the next open gives the doll and asks for the look.
-        client.ServerActions.Add(PaperdollProtocol.Look);
-        client.Retail!.Toggle();
-        client.Retail!.Toggle();
+        // channel.hello lands after the window opened, as it does at login: the open window gets the doll and asks for the look.
+        client.Hello(PaperdollProtocol.Look);
         Assert.Single(ModelViews(client.Panel(Vertical)));
         Assert.Equal(new[] { PaperdollProtocol.Look }, transport.Actions);
     });
@@ -407,6 +405,16 @@ public sealed class InventoryPluginTests
 
         /// <summary>The actions the server registered, as channel.hello lists them.</summary>
         public HashSet<string> ServerActions { get; } = new(StringComparer.Ordinal);
+        private Action? _serverActionsChanged;
+
+        /// <summary>channel.hello answered: the actions are now the server's, and the plugin hears about it.</summary>
+        public void Hello(params string[] actions)
+        {
+            ServerActions.UnionWith(actions);
+            _serverActionsChanged?.Invoke();
+        }
+
+        public void WhenServerActionsChange(Action changed) => _serverActionsChanged += changed;
 
         /// <summary>The character logged in now. Its settings are kept per character; its window placements are not in this fake.</summary>
         public string Character { get; set; } = "Character";
