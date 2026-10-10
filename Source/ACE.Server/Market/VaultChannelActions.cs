@@ -200,9 +200,10 @@ namespace ACE.Server.Market
 
         /// <summary>
         /// The pack place after a withdrawal's guids, if the client sent one: the pack's guid, then the slot. Older clients send none.
+        /// No pack holds more than a byte's worth of items, so the slot is kept to that, and a batch's slots after it cannot overflow.
         /// </summary>
         private static PackPlace? ReadPlace(BinaryReader body) =>
-            body.BaseStream.Length - body.BaseStream.Position >= 8 ? new PackPlace(body.ReadUInt32(), body.ReadInt32()) : null;
+            body.BaseStream.Length - body.BaseStream.Position >= 8 ? new PackPlace(body.ReadUInt32(), Math.Clamp(body.ReadInt32(), 0, byte.MaxValue)) : null;
 
         private readonly record struct ListRequest(string Search, int Offset, int Count);
 

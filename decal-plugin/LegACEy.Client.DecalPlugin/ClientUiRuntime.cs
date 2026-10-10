@@ -351,6 +351,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         _windows = null;
         _hovered = null;
         _dragOffset = null;
+        _handOff = null;
+        _handOffMissed = 0;
+        _ownDragItem = 0;
+        _retailDragItem = 0;
         _bar?.SetOpen(MenuSlot, false);
     }
 
@@ -1304,7 +1308,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                     else if (_dragOffset != null)
                         DragBar(point);
                     else
+                    {
+                        var handingOff = _handOff == null;
                         target?.Panel.PointerMove(route.X, route.Y);
+                        // A drag handed to retail on this move takes the button-up to retail, so the panel lets go of the button now.
+                        if (handingOff && _handOff != null) target?.Panel.PointerUp(-1, -1);
+                    }
                     break;
                 case InputAction.PointerDown:
                     // The window that had focus loses it to this one.

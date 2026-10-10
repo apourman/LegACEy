@@ -253,6 +253,14 @@ namespace ACE.Server.Tests.Market
             var order = pack.Inventory.Values.OrderBy(i => i.PlacementPosition).Select(i => i.Guid.Full).ToArray();
             CollectionAssert.AreEqual(new[] { second.Guid.Full, guids[0], guids[1], first.Guid.Full }, order);
 
+            // a slot past the pack's items, however far, is its end, and stays there when later items push it back
+            var last = DepositedNamed(player, 2, n => $"Last item {n}");
+            var far = ChannelWire.Body(w => { w.Write(1); w.Write(last[0]); w.Write(pack.Guid.Full); w.Write(int.MaxValue); });
+            Assert.IsTrue(TransferReply(Request(player, VaultChannelActions.WithdrawBatch, far)).Accepted);
+            var front = ChannelWire.Body(w => { w.Write(1); w.Write(last[1]); w.Write(pack.Guid.Full); w.Write(0); });
+            Assert.IsTrue(TransferReply(Request(player, VaultChannelActions.WithdrawBatch, front)).Accepted);
+            Assert.AreEqual(last[0], pack.Inventory.Values.OrderBy(i => i.PlacementPosition).Last().Guid.Full);
+
             // a full side pack: the item goes where a withdrawal always has, the main pack
             pack.ItemCapacity = (byte)pack.Inventory.Count;
             var more = DepositedNamed(player, 1, n => $"Overflow item {n}");

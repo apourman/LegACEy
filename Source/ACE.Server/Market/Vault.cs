@@ -396,12 +396,12 @@ namespace ACE.Server.Market
         /// <summary>
         /// Puts a withdrawn item in the live pack, once the database has it there. False if the pack has no room now, and then the item is in the pack at the next login.
         /// A player who has logged out has nothing to put it into, so the database's copy is their pack's.
-        /// Given a place, the item goes there, pushing the items from that slot on back one; a place that is not the player's main pack or one of
-        /// its side packs, or has no room, is ignored.
+        /// Given a place, the item goes there, pushing the items from that slot on back one; a slot past the pack's items is its end. A place
+        /// that is not the player's main pack or one of its side packs, or has no room, is ignored.
         /// </summary>
         private static bool AddWithdrawnToPack(Player player, WorldObject item, PackPlace? place = null) =>
             player.IsLoggingOut
-            || place is { } at && PackAt(player, at.Container) is { } pack && player.TryCreateInInventoryWithNetworking(item, pack, Math.Max(0, at.Position))
+            || place is { } at && PackAt(player, at.Container) is { } pack && player.TryCreateInInventoryWithNetworking(item, pack, Math.Clamp(at.Position, 0, pack.Inventory.Count))
             || player.TryCreateInInventoryWithNetworking(item);
 
         private static Container PackAt(Player player, uint guid) =>
