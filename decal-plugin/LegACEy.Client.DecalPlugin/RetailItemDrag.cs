@@ -57,7 +57,9 @@ internal sealed class RetailItemDrag
         new NativeUiEntry("UIElement::GetAbsoluteY", 0x0069FE30, NativeUiCatalogue.Bytes("56 8B F1 8B 86 B0 00 00 00 85 C0 74 05 8B 40 24 5E C3 8B 8E AC 00 00 00"),
             HandOffSource, "ThisCall () -> int, screen y through the parent chain"),
         new NativeUiEntry("UIElement_ItemList::DynamicCast", 0x004E4830, NativeUiCatalogue.Bytes("8B C1 8B 4C 24 04 81 F9 31 00 00 10 74 10"), HandOffSource,
-            "virtual ThisCall (uint type) -> UIElement_ItemList* for type 0x10000031")
+            "virtual ThisCall (uint type) -> UIElement_ItemList* for type 0x10000031"),
+        new NativeUiEntry("CInputManager::IsActionInProgress", 0x00431AF0, NativeUiCatalogue.Bytes("56 8B 74 24 08 33 D2 8B C6 F7 B1 F8 00 00 00 8B 81 F0 00 00 00 8D 04 90"),
+            HandOffSource, "ThisCall (uint action) -> bool on ICIDM::s_cidm (0x00837FF4); StartDragandDrop asks it for action 7")
     };
     private const string HandOffSource = "acclient.pdb (C:\\Turbine\\Asheron's Call, a near build) for names; our objdump read of installed acclient.exe";
     // The inventory panel's item lists: gm3DItemsUI's pack contents, then gmBackpackUI's two (gm*UI::PostInit).
@@ -84,6 +86,9 @@ internal sealed class RetailItemDrag
     private delegate void BeginDragFn(IntPtr list, int x, int y);
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate int AbsoluteFn(IntPtr element);
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate byte IsActionInProgressFn(IntPtr inputManager, uint action);
+    private static readonly IntPtr InputManagerInstance = new(0x00837FF4);
 
     private readonly Action<string> _log;
     private readonly StopDragFn? _stop;
@@ -168,14 +173,29 @@ internal sealed class RetailItemDrag
     /// has moved 4 pixels from where the client saw it go down, so the client must have seen the press. True when retail now
     /// drags this object; a drag of anything else is cancelled.
     /// </summary>
-    public bool BeginDrag(IntPtr list, IntPtr item, uint objectId)
+    public bool BeginDrag(IntPtr list, IntPtr item, uint objectId) => BeginDrag(list, item, objectId, out _);
+
+    /// <summary>As <see cref="BeginDrag(IntPtr, IntPtr, uint)"/>; <paramref name="state"/> is what retail's drag start checked, read before the call.</summary>
+    public bool BeginDrag(IntPtr list, IntPtr item, uint objectId, out string state)
     {
+        state = DragStartState();
         // A point just inside the item: the list hit-tests it, wherever the panel is parked.
         _beginDrag!(list, _absoluteX!(item) + 2, _absoluteY!(item) + 2);
         var dragged = CurrentItem();
         if (dragged == objectId) return true;
         if (dragged != 0) Cancel();
         return false;
+    }
+
+    // ponytail: play-test probe for refused hand-offs (story 45); drop once they are understood.
+    private string DragStartState()
+    {
+        var manager = Marshal.ReadIntPtr(ManagerInstance);
+        var input = Marshal.ReadIntPtr(InputManagerInstance);
+        if (manager == IntPtr.Zero || input == IntPtr.Zero) return "no manager";
+        var held = Function<IsActionInProgressFn>(0x00431AF0)(input, 7) != 0;
+        return $"left held: {held}, press at ({Marshal.ReadInt32(manager, 0x308)}, {Marshal.ReadInt32(manager, 0x30C)}), " +
+               $"drag running: {Marshal.ReadByte(manager, DragStartedOffset)}";
     }
 
     /// <summary>

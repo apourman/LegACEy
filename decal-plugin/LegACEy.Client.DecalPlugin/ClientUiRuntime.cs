@@ -767,14 +767,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             int dx = _pointer.X - handOff.Press.X, dy = _pointer.Y - handOff.Press.Y;
             if (dx * dx + dy * dy < 16) return;
             _handOff = null;
-            var started = drag.BeginDrag(handOff.List, handOff.Item, handOff.ItemId);
-            LogHandOff($"Hand-off of 0x{handOff.ItemId:X8}: retail drag started: {started}.");
+            var started = drag.BeginDrag(handOff.List, handOff.Item, handOff.ItemId, out var state);
+            LogHandOff($"Hand-off of 0x{handOff.ItemId:X8} pressed at {handOff.Press}, client pointer {_pointer}: retail drag started: {started}" +
+                       (started ? "." : $"; {state}, now dragging 0x{drag.CurrentItem():X8}."));
         }
     }
 
     private void LogHandOff(string message)
     {
-        if (_loggedHandOffs++ < 10) Log(message);
+        if (_loggedHandOffs++ < 40) Log(message);
     }
 
     /// <summary>
