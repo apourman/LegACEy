@@ -204,12 +204,13 @@ namespace ACE.Server.Market
         /// The row must still have the version the mark gave it. On a refusal or failure the row stays marked: the caller releases it.
         /// A game bridge ticket given as ticketId is marked done in the same save as the item.
         /// </summary>
-        public static void Withdraw(Player player, uint itemGuid, uint markedRowVersion, Action<VaultResult> completed = null, long? ticketId = null)
+        /// The item goes to the given place in the pack when there is room there.
+        public static void Withdraw(Player player, uint itemGuid, uint markedRowVersion, Action<VaultResult> completed = null, long? ticketId = null, PackPlace? place = null)
         {
-            Withdraw(player, itemGuid, (uint?)markedRowVersion, completed, ticketId);
+            Withdraw(player, itemGuid, (uint?)markedRowVersion, completed, ticketId, place);
         }
 
-        private static void Withdraw(Player player, uint itemGuid, uint? markedRowVersion, Action<VaultResult> completed, long? ticketId = null)
+        private static void Withdraw(Player player, uint itemGuid, uint? markedRowVersion, Action<VaultResult> completed, long? ticketId = null, PackPlace? place = null)
         {
             VaultOutcome? refusal;
             VaultItem row;
@@ -247,7 +248,7 @@ namespace ACE.Server.Market
             DatabaseManager.Shard.WithdrawFromVault(item.Biota, item.BiotaDatabaseLock, accountId, player.Guid.Full, row.RowVersion, result =>
             {
                 // this runs on the save thread
-                WorldManager.EnqueueAction(new ActionEventDelegate(() => OnWithdrawn(player, item, name, result, completed)));
+                WorldManager.EnqueueAction(new ActionEventDelegate(() => OnWithdrawn(player, item, name, result, completed, place)));
             }, ticket);
         }
 
@@ -256,7 +257,8 @@ namespace ACE.Server.Market
         /// single withdrawal's channel start is. The rows and item biotas are read off the world thread, since reading a full page of them takes
         /// hundreds of milliseconds; the rules, the pack room and the in-memory move stay on the world thread. The result is reported once, on the world thread.
         /// </summary>
-        public static void WithdrawMany(Player player, IReadOnlyList<uint> itemGuids, Action<VaultResult> completed)
+        /// The items go to the given place in the pack, in order, when there is room there.
+        public static void WithdrawMany(Player player, IReadOnlyList<uint> itemGuids, Action<VaultResult> completed, PackPlace? place = null)
         {
             var refusal = Available ? BatchRefusal(player, itemGuids) : VaultOutcome.NotAvailable;
 
@@ -277,7 +279,7 @@ namespace ACE.Server.Market
                 {
                     var rows = VaultStore.Owned(accountId, itemGuids);
                     var biotas = rows.Keys.ToDictionary(guid => guid, guid => DatabaseManager.Shard.BaseDatabase.GetBiota(guid, doNotAddToCache: true));
-                    WorldManager.EnqueueAction(new ActionEventDelegate(() => CheckAndWithdrawBatch(player, itemGuids, rows, biotas, completed)));
+                    WorldManager.EnqueueAction(new ActionEventDelegate(() => CheckAndWithdrawBatch(player, itemGuids, rows, biotas, completed, place)));
                 }
                 catch (Exception ex)
                 {
@@ -309,7 +311,7 @@ namespace ACE.Server.Market
         /// The world thread's half of a batch, once its rows and biotas are read: the start rules again, since the player may have changed while
         /// they were read; then every rule, the pack room and the uniques for the set; then the save. A refusal here clears the batch's inFlight mark.
         /// </summary>
-        private static void CheckAndWithdrawBatch(Player player, IReadOnlyList<uint> itemGuids, Dictionary<uint, VaultItem> rows, Dictionary<uint, ACE.Database.Models.Shard.Biota> biotas, Action<VaultResult> completed)
+        private static void CheckAndWithdrawBatch(Player player, IReadOnlyList<uint> itemGuids, Dictionary<uint, VaultItem> rows, Dictionary<uint, ACE.Database.Models.Shard.Biota> biotas, Action<VaultResult> completed, PackPlace? place)
         {
             var entries = new List<(VaultItem Row, WorldObject Item)>(itemGuids.Count);
             string refusedName = null;
@@ -346,11 +348,11 @@ namespace ACE.Server.Market
             DatabaseManager.Shard.WithdrawManyFromVault(withdrawals, player.Character.AccountId, player.Guid.Full, result =>
             {
                 // this runs on the save thread
-                WorldManager.EnqueueAction(new ActionEventDelegate(() => OnWithdrawnMany(player, items, result, itemGuids, completed)));
+                WorldManager.EnqueueAction(new ActionEventDelegate(() => OnWithdrawnMany(player, items, result, itemGuids, completed, place)));
             });
         }
 
-        private static void OnWithdrawnMany(Player player, List<WorldObject> items, MarketJobResult result, IReadOnlyList<uint> itemGuids, Action<VaultResult> completed)
+        private static void OnWithdrawnMany(Player player, List<WorldObject> items, MarketJobResult result, IReadOnlyList<uint> itemGuids, Action<VaultResult> completed, PackPlace? place)
         {
             inFlight.Remove(player.Guid.Full);
 
@@ -367,9 +369,11 @@ namespace ACE.Server.Market
             // the database has every item in this character's pack; each goes into the live pack, or waits for the next login as one withdrawal does
             var atLogin = 0;
 
-            foreach (var item in items)
+            // in order from the place, each pushing the ones after it back a slot
+            for (var index = 0; index < items.Count; index++)
             {
-                if (!AddWithdrawnToPack(player, item))
+                var item = items[index];
+                if (!AddWithdrawnToPack(player, item, place is { } at ? at with { Position = at.Position + index } : null))
                 {
                     atLogin++;
                     log.Warn($"[VAULT] Withdrawn {item.Name} (0x{item.Guid.Full:X8}) for {player.Name} could not be added to the pack; the database has it in the pack for the next login");
@@ -392,8 +396,16 @@ namespace ACE.Server.Market
         /// <summary>
         /// Puts a withdrawn item in the live pack, once the database has it there. False if the pack has no room now, and then the item is in the pack at the next login.
         /// A player who has logged out has nothing to put it into, so the database's copy is their pack's.
+        /// Given a place, the item goes there, pushing the items from that slot on back one; a place that is not the player's main pack or one of
+        /// its side packs, or has no room, is ignored.
         /// </summary>
-        private static bool AddWithdrawnToPack(Player player, WorldObject item) => player.IsLoggingOut || player.TryCreateInInventoryWithNetworking(item);
+        private static bool AddWithdrawnToPack(Player player, WorldObject item, PackPlace? place = null) =>
+            player.IsLoggingOut
+            || place is { } at && PackAt(player, at.Container) is { } pack && player.TryCreateInInventoryWithNetworking(item, pack, Math.Max(0, at.Position))
+            || player.TryCreateInInventoryWithNetworking(item);
+
+        private static Container PackAt(Player player, uint guid) =>
+            guid == player.Guid.Full ? player : player.Inventory.TryGetValue(new ObjectGuid(guid), out var item) ? item as Container : null;
 
         /// <summary>
         /// Every deposit refusal rule, in order, without changing anything. Null if the item can go in the Vault.
@@ -636,7 +648,7 @@ namespace ACE.Server.Market
             Finish(player, outcome, name, item.Guid.Full, completed);
         }
 
-        private static void OnWithdrawn(Player player, WorldObject item, string name, MarketJobResult result, Action<VaultResult> completed)
+        private static void OnWithdrawn(Player player, WorldObject item, string name, MarketJobResult result, Action<VaultResult> completed, PackPlace? place)
         {
             inFlight.Remove(player.Guid.Full);
 
@@ -652,7 +664,7 @@ namespace ACE.Server.Market
             }
 
             // the database now has the item in this character's pack, so a player who has gone gets it at the next login
-            var inPack = AddWithdrawnToPack(player, item);
+            var inPack = AddWithdrawnToPack(player, item, place);
 
             if (!inPack)
                 log.Warn($"[VAULT] Withdrawn {name} (0x{item.Guid.Full:X8}) for {player.Name} could not be added to the pack; the database has it in the pack for the next login");
@@ -727,4 +739,9 @@ namespace ACE.Server.Market
             };
         }
     }
+
+    /// <summary>
+    /// A slot in the player's pack: the main pack (the player's guid) or a side pack, and the slot index in it
+    /// </summary>
+    public readonly record struct PackPlace(uint Container, int Position);
 }

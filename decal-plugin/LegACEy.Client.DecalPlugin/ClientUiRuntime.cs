@@ -980,6 +980,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             return true;
         }
 
+        public (uint Container, int Position)? InventoryPlaceAtPointer() =>
+            _owner._windows is { } windows ? ItemDropRouting.InventoryPlaceAt(windows, _owner.ContentOf, _owner._pointer) : null;
+
         public ItemDropTarget DropTargetAtPointer()
         {
             // A LegACEy inventory window is the inventory, with or without the takeover.

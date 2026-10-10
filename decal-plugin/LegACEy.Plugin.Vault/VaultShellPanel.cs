@@ -484,7 +484,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         switch (_dragHost.DropTargetAtPointer())
         {
             case ItemDropTarget.Inventory:
-                _client.WithdrawMany(guids);
+                _client.WithdrawMany(guids, _dragHost.InventoryPlaceAtPointer());
                 break;
             case ItemDropTarget.InventoryClosed:
                 _client.Tell("Open your inventory, then drop the item on it to withdraw it.");

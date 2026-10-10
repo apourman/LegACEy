@@ -30,6 +30,9 @@ public interface IInventoryDropZone
     /// where it would go, as the retail inventory's own drop indicator does.
     /// </summary>
     void WithdrawDragOver(Point? position);
+
+    /// <summary>The pack and slot a Vault withdraw released at the position goes to, or null when it goes wherever the server puts it.</summary>
+    (uint Container, int Position)? WithdrawPlaceAt(Point position);
 }
 
 public enum ItemDropTarget
@@ -60,6 +63,9 @@ public interface IItemDragHost
     /// <summary>What is under the pointer now, outside LegACEy windows.</summary>
     ItemDropTarget DropTargetAtPointer();
 
+    /// <summary>The pack and slot of a LegACEy inventory window under the pointer that a Vault withdraw released now goes to, or null.</summary>
+    (uint Container, int Position)? InventoryPlaceAtPointer();
+
     /// <summary>
     /// Hands an item released outside every slot of a LegACEy window to the LegACEy window under the pointer, as a retail drag
     /// released there would reach it. True when that window used the item. Nothing is under the pointer: false.
@@ -83,6 +89,12 @@ public static class ItemDropRouting
     /// <summary>Where a Vault withdraw released at the point counts as the inventory: Inventory over an inventory window, else null.</summary>
     public static ItemDropTarget? InventoryAt(WindowManager windows, Func<string, object?> contentOf, System.Drawing.Point point) =>
         windows.HitTest(point) is { } window && contentOf(window.Id) is IInventoryDropZone ? ItemDropTarget.Inventory : (ItemDropTarget?)null;
+
+    /// <summary>The pack and slot a Vault withdraw released at the point goes to, by the inventory window there; null for none.</summary>
+    public static (uint Container, int Position)? InventoryPlaceAt(WindowManager windows, Func<string, object?> contentOf, System.Drawing.Point point) =>
+        windows.HitTest(point) is { } window && contentOf(window.Id) is IInventoryDropZone zone
+            ? zone.WithdrawPlaceAt(new Point((point.X - window.Location.X) / windows.Scale, (point.Y - window.Location.Y) / windows.Scale))
+            : null;
 
     /// <summary>Delivers an item released at the point to the window there, if that window takes retail drops. True if it used the item.</summary>
     public static bool Deliver(WindowManager windows, Func<string, object?> contentOf, System.Drawing.Point point, uint itemId, string itemName) =>
@@ -137,6 +149,11 @@ public sealed class FakeItemDragHost : IItemDragHost
         HandedOff.Add(itemId);
         return TakeHandOff;
     }
+
+    /// <summary>What <see cref="InventoryPlaceAtPointer"/> answers. Null by default.</summary>
+    public (uint Container, int Position)? InventoryPlace { get; set; }
+
+    public (uint Container, int Position)? InventoryPlaceAtPointer() => InventoryPlace;
 
     public bool DeliverAtPointer(uint itemId, string itemName)
     {

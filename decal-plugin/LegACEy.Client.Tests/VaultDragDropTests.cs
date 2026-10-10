@@ -75,12 +75,15 @@ public sealed class VaultDragDropTests
         Assert.Equal((32, 32), (icon!.Width, icon.Height));
         Assert.Equal(FlatArt.Pixels, icon.Pixels);
         Assert.Equal(new[] { true }, vault.Drag.RetailIndicators); // a Vault withdrawal is one the retail inventory can take
+        // released over the inventory's third cell of a side pack: the withdrawal goes there
+        vault.Drag.InventoryPlace = (0x50000001, 2);
         vault.Host.PointerMove(VaultShellPanel.WindowWidth + 80, start.Y);
         vault.Host.PointerUp(VaultShellPanel.WindowWidth + 80, start.Y);
         vault.Step(TimeSpan.FromMilliseconds(30));
 
         Assert.Equal(0, vault.Drag.IconsOpen);
         Assert.Equal(VaultProtocol.Withdraw, vault.Server.Received.Last());
+        Assert.Equal(((uint)0x50000001, 2), vault.Server.Places.Last());
         Assert.Null(vault.Host.LastError);
     });
 
@@ -220,6 +223,7 @@ public sealed class VaultDragDropTests
             return new Icon(this);
         }
         public ItemDropTarget DropTargetAtPointer() => ItemDropTarget.Elsewhere;
+        public (uint Container, int Position)? InventoryPlaceAtPointer() => null;
         public bool DeliverAtPointer(uint itemId, string itemName) => false;
         public bool HandToRetail(uint itemId) => false;
         private sealed class Icon : IDisposable

@@ -33,6 +33,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     // The pyreal stack's icon in the portal.
     private const uint PyrealIcon = 0x06001080;
     private const double EmptyOpacity = 0.8;
+    // A lifted item's slots fade while it is dragged, as the Vault's do.
+    private const double LiftedOpacity = 0.4;
     private const string StackedGlyph = "M2,1 H12 V6 H2 Z M2,8 H12 V13 H2 Z";
     private const string SideBySideGlyph = "M1,2 H6 V12 H1 Z M8,2 H13 V12 H8 Z";
     private const double DragThreshold = 4;
@@ -227,6 +229,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
                 return;
             }
             _dragIcon = _dragHost?.ShowDragIcon(DragImage(_dragged), 1, retailDropIndicator: false, _dragged);
+            Fade(_dragged, lifted: true);
         }
         // Outside the window, with the button still held, retail may take the drag over; then it is no longer ours.
         if (!new Rect(Bounds.Size).Contains(point) && !_port.Snapshot.SidePacks.Any(pack => pack.Id == _dragged) &&
@@ -320,6 +323,17 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     }
 
     /// <summary>
+    /// Where a Vault withdraw released at the position goes: the cell under it, in its pack, or the front of a pack whose tile it is on.
+    /// Anywhere else, null: the server puts it where withdrawals always go.
+    /// </summary>
+    public (uint Container, int Position)? WithdrawPlaceAt(Point position) => SlotAt(position)?.Tag switch
+    {
+        InventorySlotId { Place: SlotPlace.Cell } cell => (cell.Container, cell.SlotIndex),
+        InventorySlotId { Place: SlotPlace.Pack, Container: not 0 } pack => (pack.Container, 0),
+        _ => null,
+    };
+
+    /// <summary>
     /// A retail drag released over this window. An item from outside our inventory goes onto the slot it is released on, or, released
     /// elsewhere in the window, to the first free slot of the open pack. An item of ours is only moved by its slots, so it is declined
     /// elsewhere. Returns true when the item was used; declined items go back to where they came from.
@@ -360,6 +374,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private void EndDrag()
     {
+        Fade(_dragged, lifted: false);
         _press = null;
         _dragged = 0;
         _dragIcon?.Dispose();
@@ -398,6 +413,15 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         _dropIndicator.Height = slot.Bounds.Height;
         _dropIndicator.BorderBrush = brush;
         _dropIndicator.IsVisible = true;
+    }
+
+    /// <summary>Fades every slot showing the item while it is lifted, as the Vault fades a lifted cell, or brings them back.</summary>
+    private void Fade(uint id, bool lifted)
+    {
+        if (id == 0) return;
+        foreach (var slot in this.GetVisualDescendants().OfType<DerethSlot>())
+            if (slot.Tag is InventorySlotId tag && DraggedId(tag) == id)
+                slot.Opacity = lifted ? LiftedOpacity : 1;
     }
 
     /// <summary>The slot under a point of this window, or null over anything the window does not draw as a slot.</summary>
@@ -532,6 +556,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         RenderContents(snapshot, open);
         RenderBurden(snapshot);
         _pyrealCount.Text = snapshot.Pyreals.ToString("N0");
+        Fade(_dragged, lifted: true);
         if (_indicatorAt is { } at && (_dragged != 0 || _retailItem != 0))
         {
             UpdateLayout();

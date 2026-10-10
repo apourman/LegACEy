@@ -359,18 +359,19 @@ public sealed class DerethWindow : UserControl
 }
 
 /// <summary>
-/// A scrolling grid of fixed slots: 34 px cells on a 36 px pitch, as many columns as the width holds, centred, scrolling
+/// A scrolling grid of fixed slots: 34 px cells on a 35 px pitch, as many columns as the width holds, centred, scrolling
 /// vertically. It takes cells and knows nothing about what they show. It wraps a plain ScrollViewer, because a subclass
 /// gets no template from the base theme.
 /// </summary>
 public sealed class DerethSlotGrid : UserControl
 {
     public const double CellSize = 34;
-    public const double Pitch = 36;
+    public const double Pitch = 35;
 
     private readonly WrapPanel _cells = new()
     {
-        ItemWidth = Pitch, ItemHeight = Pitch, HorizontalAlignment = HorizontalAlignment.Center
+        // The margin keeps the top and bottom rows' drop frames off the scroll area's clipped edge.
+        ItemWidth = Pitch, ItemHeight = Pitch, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 1)
     };
 
     public DerethSlotGrid()
@@ -381,17 +382,10 @@ public sealed class DerethSlotGrid : UserControl
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto
         };
-        // The width a whole column doesn't use widens the gaps between columns, so the grid reaches both sides at any width.
-        scroll.PropertyChanged += (_, e) =>
-        {
-            if (e.Property != ScrollViewer.ViewportProperty) return;
-            var width = scroll.Viewport.Width;
-            _cells.ItemWidth = width < Pitch ? Pitch : Math.Floor(width / Math.Floor(width / Pitch));
-        };
         Content = scroll;
     }
 
-    /// <summary>The distance between the left edges of neighbouring columns: the pitch, widened to share the spare width.</summary>
+    /// <summary>The distance between the left edges of neighbouring columns: the pitch. Width that holds no whole column is split between the sides.</summary>
     public double ColumnPitch => _cells.ItemWidth;
 
     /// <summary>The cells in reading order. Each one is a <see cref="DerethSlot"/> or any control sized to the pitch.</summary>

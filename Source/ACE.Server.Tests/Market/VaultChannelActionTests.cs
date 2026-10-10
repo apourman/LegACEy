@@ -226,6 +226,41 @@ namespace ACE.Server.Tests.Market
             return guids;
         }
 
+        [TestMethod]
+        public void ChannelBatchWithdraw_ToAPackPlace_InsertsThereAndPushesTheRestBack_AndAFullPackFallsBack()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var pack = (Container)VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.PackWcid));
+            // each given item goes in at the front, so the pack holds second, then first
+            var first = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid), pack);
+            var second = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid), pack);
+            var guids = DepositedNamed(player, 2, n => $"Placed item {n}");
+            AtTheVault(player);
+
+            // dropped on the side pack's second cell: the two go there in order, and the item that was there moves back past them
+            var body = ChannelWire.Body(w =>
+            {
+                w.Write(guids.Length);
+                foreach (var guid in guids)
+                    w.Write(guid);
+                w.Write(pack.Guid.Full);
+                w.Write(1);
+            });
+            var (accepted, message) = TransferReply(Request(player, VaultChannelActions.WithdrawBatch, body));
+
+            Assert.IsTrue(accepted, message);
+            Assert.AreEqual(pack.Guid.Full, player.GetInventoryItem(guids[0]).ContainerId);
+            var order = pack.Inventory.Values.OrderBy(i => i.PlacementPosition).Select(i => i.Guid.Full).ToArray();
+            CollectionAssert.AreEqual(new[] { second.Guid.Full, guids[0], guids[1], first.Guid.Full }, order);
+
+            // a full side pack: the item goes where a withdrawal always has, the main pack
+            pack.ItemCapacity = (byte)pack.Inventory.Count;
+            var more = DepositedNamed(player, 1, n => $"Overflow item {n}");
+            var full = ChannelWire.Body(w => { w.Write(1); w.Write(more[0]); w.Write(pack.Guid.Full); w.Write(0); });
+            Assert.IsTrue(TransferReply(Request(player, VaultChannelActions.WithdrawBatch, full)).Accepted);
+            Assert.AreEqual(player.Guid.Full, player.GetInventoryItem(more[0]).ContainerId);
+        }
+
         /// <summary>
         /// The body of a vault.withdraw_batch request: a count, then the item guids
         /// </summary>

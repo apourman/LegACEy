@@ -375,6 +375,10 @@ public sealed class InventoryWindowTests
         zone.WithdrawDragOver(InventoryDriver.Centre(host.Host, host.Cells[10]));
         zone.WithdrawDragOver(null);
         Assert.False(indicator.IsVisible);
+
+        // released there, the withdrawal goes to that cell of the open pack; over the paperdoll, wherever the server puts it
+        Assert.Equal((InventorySample.Character, 10), zone.WithdrawPlaceAt(InventoryDriver.Centre(host.Host, host.Cells[10])));
+        Assert.Null(zone.WithdrawPlaceAt(InventoryDriver.Centre(host.Host, Slot(host, PaperdollSlot.Head))));
     });
 
     [Fact]
@@ -401,6 +405,24 @@ public sealed class InventoryWindowTests
         Assert.Same(DerethPalette.InvalidBrush, indicator.BorderBrush);
         Assert.False(target.RetailDrop(CorpseHelm, "Helm", overShield));
         Assert.Single(port.Commands);
+    });
+
+    [Fact]
+    public void A_dragged_item_fades_in_its_slot_until_it_is_released() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        var start = InventoryDriver.Centre(host.Host, host.Cells[0]);
+        var other = host.Cells[1].Opacity;
+
+        host.Host.PointerDown(start.X, start.Y);
+        host.Host.PointerMove(start.X + 10, start.Y);
+        Assert.True(host.Cells[0].Opacity < 1);
+        Assert.Equal(other, host.Cells[1].Opacity);
+
+        host.Host.PointerUp(start.X + 10, start.Y);
+        Assert.Equal(1, host.Cells[0].Opacity);
     });
 
     [Fact]
