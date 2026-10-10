@@ -25,6 +25,11 @@ internal sealed class NativeRetailPanelPort : IRetailPanelPort
     private static readonly RecvNoticeFn RecvNotice = (RecvNoticeFn)Marshal.GetDelegateForFunctionPointer(
         new IntPtr(RetailPanelCatalogue.RecvNoticeSetPanelVisibility), typeof(RecvNoticeFn));
 
+    private readonly Action<string> _log;
+    private bool _described;
+
+    public NativeRetailPanelPort(Action<string> log) => _log = log;
+
     private static IntPtr Element => NativeUi.GetElement(NativeUi.InventoryPanel);
 
     public IntPtr Identity => Element;
@@ -75,12 +80,28 @@ internal sealed class NativeRetailPanelPort : IRetailPanelPort
     }
 
     /// <summary>The panel frame holding the inventory, or the inventory element itself when the frame is not found.</summary>
-    private static IntPtr Frame()
+    private IntPtr Frame()
     {
         var element = Element;
         if (element == IntPtr.Zero) throw new InvalidOperationException("The retail inventory panel is absent.");
         var frame = NativeUi.GetElement(NativeUi.PanelFrame);
+        if (!_described) Describe(element, frame);
         return frame != IntPtr.Zero ? frame : element;
+    }
+
+    // ponytail: play-test diagnostic for the frame the takeover leaves on screen; delete once the right element is pinned.
+    private void Describe(IntPtr element, IntPtr frame)
+    {
+        _described = true;
+        var text = new System.Text.StringBuilder($"Retail panel tree: frame by id 0x{NativeUi.PanelFrame:X8} = 0x{frame.ToInt32():X8}, " +
+            $"PanelPages 0x10000180 = 0x{NativeUi.GetElement(0x10000180).ToInt32():X8}; inventory up:");
+        var current = element;
+        for (var depth = 0; depth < 8 && current != IntPtr.Zero; depth++)
+        {
+            text.Append($" [0x{current.ToInt32():X8} vt 0x{Marshal.ReadInt32(current):X8} {NativeUi.GetBounds(current)} visible {NativeUi.IsVisible(current)}]");
+            current = NativeUi.Virtual<NativeUi.GetParentFn>(current, NativeUi.GetParentSlot)(current);
+        }
+        _log(text.ToString());
     }
 
     /// <summary>The gmPanelUI element at the panel or within three ancestors, or zero when none has its vtable.</summary>

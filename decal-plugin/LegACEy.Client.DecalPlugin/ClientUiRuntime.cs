@@ -1045,7 +1045,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     IRetailPanel ILegACEyPluginHost.TakeOverRetailInventory(Action<bool> retailOpenChanged)
     {
         if (!NativeUi.Ready || !RetailPanelCatalogueValid()) return NoRetailPanel.Instance;
-        var takeover = new RetailPanelTakeover(new NativeRetailPanelPort(), retailOpenChanged, Log);
+        var takeover = new RetailPanelTakeover(new NativeRetailPanelPort(Log), retailOpenChanged, Log);
         _retailPanels.Add(takeover);
         return new RetailPanelHandle(this, takeover);
     }
