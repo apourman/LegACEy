@@ -60,7 +60,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
 
     private readonly Dictionary<uint, WriteableBitmap?> _images = new();
     // an item's icon as drawn, by the fields that decide it
-    private readonly Dictionary<(uint Underlay, uint Icon, uint Overlay, uint OverlaySecondary, uint UiEffects), WriteableBitmap?> _itemImages = new();
+    private readonly Dictionary<(uint Plate, uint Underlay, uint Icon, uint Overlay, uint OverlaySecondary, uint UiEffects), WriteableBitmap?> _itemImages = new();
     private readonly IGameArtSource _art;
     private readonly VaultClient? _client;
     private readonly VaultSnapshot? _sample;
@@ -528,17 +528,18 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         return bitmap;
     }
 
-    /// <summary>An item's icon as drawn: outline from its UI effect, no plate. The grid redraws on every change, so the bitmap is kept per look.</summary>
+    /// <summary>An item's cell icon: on its type plate, outline from its UI effect. The grid redraws on every change, so the bitmap is kept per look.</summary>
     private WriteableBitmap? ItemBitmap(VaultItemView item)
     {
-        var key = (item.Underlay, item.Icon, item.Overlay, item.OverlaySecondary, unchecked((uint)item.UiEffects));
+        var key = (item.Plate, item.Underlay, item.Icon, item.Overlay, item.OverlaySecondary, unchecked((uint)item.UiEffects));
         if (!_itemImages.TryGetValue(key, out var bitmap))
-            _itemImages.Add(key, bitmap = GameArtImageExtension.CreateBitmap(ItemImage(item)));
+            _itemImages.Add(key, bitmap = GameArtImageExtension.CreateBitmap(ItemImage(item, item.Plate)));
         return bitmap;
     }
 
-    private GameImage? ItemImage(VaultItemView item) =>
-        ItemIcon.Draw(_art, item.Underlay, item.Icon, item.Overlay, item.OverlaySecondary, unchecked((uint)item.UiEffects));
+    /// <summary>The item's icon; the drag image has no plate.</summary>
+    private GameImage? ItemImage(VaultItemView item, uint plate = 0) =>
+        ItemIcon.Draw(_art, item.Underlay, item.Icon, item.Overlay, item.OverlaySecondary, unchecked((uint)item.UiEffects), plate);
 
     public void Dispose()
     {

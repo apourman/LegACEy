@@ -80,6 +80,9 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     // How many presses in a row the press was, as the platform counts them: two or more is a double-click.
     private int _pressClicks;
     private uint _dragged;
+    // The pack the player picked, or zero for the port's open container. Picking a pack is local, as in retail: the server answers a
+    // use of a carried pack with only "use done", which flashed the busy cursor and changed nothing.
+    private uint _picked;
     private IDisposable? _dragIcon;
     private bool _showSlots;
     private bool _suspended;
@@ -314,7 +317,11 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         if (slot.Place == SlotPlace.Pack)
         {
             // A focus takes a pack slot but holds nothing, so it does not open.
-            if (slot.Container != 0 && PackOf(_port.Snapshot, slot.Container)?.Capacity != 0) _port.OpenContainer(slot.Container);
+            if (slot.Container != 0 && PackOf(_port.Snapshot, slot.Container)?.Capacity != 0)
+            {
+                _picked = slot.Container;
+                Render(_port.Snapshot);
+            }
             return;
         }
         if (slot.ItemId == 0) return;
@@ -492,10 +499,13 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         }
     }
 
-    /// <summary>The pack the grid shows: the port's open container, or the main pack when the port has none of the listed packs open.</summary>
-    private static InventoryPack OpenPack(InventorySnapshot snapshot) =>
-        snapshot.OpenContainer == snapshot.MainPack.Id ? snapshot.MainPack
-            : snapshot.SidePacks.FirstOrDefault(pack => pack.Id != 0 && pack.Id == snapshot.OpenContainer) ?? snapshot.MainPack;
+    /// <summary>The pack the grid shows: the picked pack, else the port's open container, else the main pack.</summary>
+    private InventoryPack OpenPack(InventorySnapshot snapshot)
+    {
+        var open = _picked != 0 ? _picked : snapshot.OpenContainer;
+        return open == snapshot.MainPack.Id ? snapshot.MainPack
+            : snapshot.SidePacks.FirstOrDefault(pack => pack.Id != 0 && pack.Id == open) ?? snapshot.MainPack;
+    }
 
     private DerethSlot WornSlot(InventorySnapshot snapshot, Dictionary<PaperdollSlot, WieldedItem> worn, PaperdollSlot slot)
     {
@@ -647,7 +657,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private WriteableBitmap? Bitmap(ItemVisual visual)
     {
         if (!_images.TryGetValue(visual, out var bitmap))
-            _images.Add(visual, bitmap = GameArtImageExtension.CreateBitmap(ItemIcon.Draw(_art, visual.Underlay, visual.Icon, visual.Overlay, 0, visual.UiEffects)));
+            _images.Add(visual, bitmap = GameArtImageExtension.CreateBitmap(ItemIcon.Draw(_art, visual.Underlay, visual.Icon, visual.Overlay, 0, visual.UiEffects, visual.Plate)));
         return bitmap;
     }
 

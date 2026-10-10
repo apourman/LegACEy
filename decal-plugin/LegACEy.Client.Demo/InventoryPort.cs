@@ -59,8 +59,9 @@ public sealed class InventoryPack : IEquatable<InventoryPack>
 /// <summary>An object's icon layers and UI effects, as retail draws them. Every value is a portal id, or zero.</summary>
 public sealed class ItemVisual : IEquatable<ItemVisual>
 {
-    public ItemVisual(uint icon, uint underlay, uint overlay, uint uiEffects)
+    public ItemVisual(uint icon, uint underlay, uint overlay, uint uiEffects, uint plate = 0)
     {
+        Plate = plate;
         Icon = icon;
         Underlay = underlay;
         Overlay = overlay;
@@ -72,8 +73,11 @@ public sealed class ItemVisual : IEquatable<ItemVisual>
     public uint Overlay { get; }
     /// <summary>The client's UI-effect flags for the object (Decal's IconOutline value). Flags, not a portal id.</summary>
     public uint UiEffects { get; }
+    /// <summary>The item-type plate a cell draws behind the icon; a drag image leaves it out.</summary>
+    public uint Plate { get; }
 
-    public bool Equals(ItemVisual? other) => other != null && (Icon, Underlay, Overlay, UiEffects).Equals((other.Icon, other.Underlay, other.Overlay, other.UiEffects));
+    public bool Equals(ItemVisual? other) => other != null
+        && (Icon, Underlay, Overlay, UiEffects, Plate).Equals((other.Icon, other.Underlay, other.Overlay, other.UiEffects, other.Plate));
     public override bool Equals(object? obj) => Equals(obj as ItemVisual);
     public override int GetHashCode() => Icon.GetHashCode();
 }

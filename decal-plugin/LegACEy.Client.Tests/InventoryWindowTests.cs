@@ -116,15 +116,20 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
-    public void Clicking_a_pack_opens_it_and_sends_nothing_else() => RenderThread.Run(() =>
+    public void Clicking_a_pack_shows_its_contents_without_asking_the_server() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
         using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
 
+        // The server answers a use of a carried pack with only "use done" (a busy cursor); retail switches packs locally.
         InventoryDriver.Press(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Potions));
+        Assert.Contains("Contents of Potions", host.Texts());
+        Assert.Equal(InventorySample.BluePotion, InventoryDriver.Id(host.Cells[0]).ItemId);
 
-        Assert.Equal(new[] { $"open 0x{InventorySample.Potions:X8}" }, port.Commands);
+        InventoryDriver.Press(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Character));
+        Assert.Contains("Contents of Main Pack", host.Texts());
+        Assert.Empty(port.Commands);
     });
 
     [Fact]
