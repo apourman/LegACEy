@@ -75,6 +75,17 @@ public sealed class PanelHostRenderingTests
     });
 
     [Fact]
+    public void A_scaled_panel_draws_a_1px_border_as_whole_opaque_pixels_on_every_side() => RenderThread.Run(() =>
+    {
+        // 95 / 0.85 is not a whole design size, which is where a scale transform clipped and faded borders.
+        using var panel = AvaloniaPanel.Create(() => new Border { BorderBrush = Brushes.White, BorderThickness = new Thickness(1) }, 95, 57, scale: 0.85);
+
+        var frame = panel.Frame;
+        byte Alpha(int x, int y) => frame.Pixels[((y * frame.Width) + x) * 4 + 3];
+        Assert.All(new[] { Alpha(0, 28), Alpha(frame.Width - 1, 28), Alpha(47, 0), Alpha(47, frame.Height - 1) }, alpha => Assert.Equal(0xff, alpha));
+    });
+
+    [Fact]
     public void Text_input_and_keyboard_focus_follow_the_focused_text_box() => RenderThread.Run(() =>
     {
         TextBox? textBox = null;

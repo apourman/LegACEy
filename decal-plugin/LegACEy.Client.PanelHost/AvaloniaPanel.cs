@@ -4,6 +4,7 @@ using System.Collections;
 using System.Collections.Specialized;
 using Rectangle = System.Drawing.Rectangle;
 using System.Linq;
+using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -64,9 +65,7 @@ public sealed class AvaloniaPanel : IDisposable
         _ownerThreadId = Thread.CurrentThread.ManagedThreadId;
         _content = content;
         _scale = scale;
-        // The content lays out at design size, the panel's size divided by the scale, and draws scaled; hit tests follow the transform.
-        _window = CreateWindow(scale == 1 ? content : new LayoutTransformControl { LayoutTransform = new ScaleTransform(scale, scale), Child = content },
-            width, height);
+        _window = CreateWindow(content, width, height, scale);
         _frame = new PanelFrame(width, height);
         _rendererObserver = new RendererInvalidationObserver(_window, () => _hasInvalidation = true);
         Tick();
@@ -151,12 +150,12 @@ public sealed class AvaloniaPanel : IDisposable
         _runtimeInitialized = true;
     }
 
-    private static Window CreateWindow(Control content, int width, int height)
+    private static Window CreateWindow(Control content, int width, int height, double scale)
     {
         var window = new Window
         {
-            Width = width,
-            Height = height,
+            Width = width / scale,
+            Height = height / scale,
             Padding = new Thickness(0),
             Background = Brushes.Transparent,
             // The headless window reports no transparency support, so without this Avalonia fills the window white under the
@@ -166,6 +165,15 @@ public sealed class AvaloniaPanel : IDisposable
             CanResize = false,
             Content = content
         };
+        // The content lays out at design size, the panel's size divided by the scale, and renders at the scale as a display's
+        // DPI does: layout rounding snaps every edge and border to whole panel pixels, where a scale transform smears 1 px borders.
+        // The headless window fixes its scaling at 1, so this sets it; pinned Avalonia keeps this field stable.
+        if (scale != 1)
+        {
+            var platform = window.PlatformImpl!;
+            platform.GetType().GetField("<RenderScaling>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(platform, scale);
+            platform.ScalingChanged?.Invoke(scale);
+        }
         window.Show();
         return window;
     }
@@ -291,8 +299,8 @@ public sealed class AvaloniaPanel : IDisposable
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
         if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
         _forceFullFrame = true;
-        _window.Width = width;
-        _window.Height = height;
+        _window.Width = width / _scale;
+        _window.Height = height / _scale;
         _frame = new PanelFrame(width, height);
         // Lay out and render the new size now, so the next capture is the new size and not the last frame of the old one.
         try
@@ -335,8 +343,8 @@ public sealed class AvaloniaPanel : IDisposable
         RunInput(() =>
         {
             Invalidate();
-            _pointerPosition = new Point(x, y);
-            SendPointer(RawPointerEventType.Move, new Point(x, y));
+            _pointerPosition = ToContent(x, y);
+            SendPointer(RawPointerEventType.Move, ToContent(x, y));
         });
     }
 
@@ -347,14 +355,14 @@ public sealed class AvaloniaPanel : IDisposable
         RunInput(() =>
         {
             Invalidate();
-            _pointerPosition = new Point(x, y);
+            _pointerPosition = ToContent(x, y);
             // A press outside the focused text box leaves it, as a click elsewhere on a desktop does; a press on another box focuses that one.
             if (_window.FocusManager?.GetFocusedElement() is TextBox focused
-                && !(_window.InputHitTest(new Point(x, y)) is Visual hit && (hit == focused || focused.IsVisualAncestorOf(hit))))
+                && !(_window.InputHitTest(ToContent(x, y)) is Visual hit && (hit == focused || focused.IsVisualAncestorOf(hit))))
                 _window.FocusManager?.ClearFocus();
-            SendPointer(RawPointerEventType.Move, new Point(x, y), ToRawModifiers(modifiers));
+            SendPointer(RawPointerEventType.Move, ToContent(x, y), ToRawModifiers(modifiers));
             _mouseButtons |= RawInputModifiers.LeftMouseButton;
-            SendPointer(RawPointerEventType.LeftButtonDown, new Point(x, y), ToRawModifiers(modifiers));
+            SendPointer(RawPointerEventType.LeftButtonDown, ToContent(x, y), ToRawModifiers(modifiers));
         });
     }
 
@@ -365,9 +373,9 @@ public sealed class AvaloniaPanel : IDisposable
         RunInput(() =>
         {
             Invalidate();
-            _pointerPosition = new Point(x, y);
+            _pointerPosition = ToContent(x, y);
             _mouseButtons &= ~RawInputModifiers.LeftMouseButton;
-            SendPointer(RawPointerEventType.LeftButtonUp, new Point(x, y));
+            SendPointer(RawPointerEventType.LeftButtonUp, ToContent(x, y));
         });
     }
 
@@ -390,7 +398,7 @@ public sealed class AvaloniaPanel : IDisposable
         RunInput(() =>
         {
             Invalidate();
-            var point = new Point(x, y);
+            var point = ToContent(x, y);
             _pointerPosition = point;
             var rawModifiers = ToRawModifiers(modifiers);
             SendPointer(RawPointerEventType.Move, point, rawModifiers);
