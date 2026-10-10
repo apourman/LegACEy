@@ -72,6 +72,16 @@ public sealed class InventoryPluginTests
         Assert.Null(client.Windows.Get(Vertical));
         Assert.Equal(1, client.Retail.CloseCalls);
         Assert.False(client.Retail.Open);
+
+        // The menu opens the window and retail's panel together, and hides both together.
+        client.MenuEntries.Single().Action();
+        Assert.NotNull(client.Windows.Get(Vertical));
+        Assert.Equal(1, client.Retail.OpenCalls);
+        Assert.True(client.Retail.Open);
+        client.MenuEntries.Single().Action();
+        Assert.Null(client.Windows.Get(Vertical));
+        Assert.Equal(2, client.Retail.CloseCalls);
+        Assert.False(client.Retail.Open);
     });
 
     [Fact]
@@ -397,13 +407,12 @@ public sealed class InventoryPluginTests
         public string PortalPath => string.Empty;
         public IGameArtSource Art { get; } = new InventorySample.NoArt();
         public IItemDragHost ItemDrag { get; } = new FakeItemDragHost();
-        public IItemDropRelay ItemDropRelay { get; } = new FakeItemDropRelay();
         public IInventoryPort Inventory => Port;
         /// <summary>The retail inventory panel the plugin took over, once it has.</summary>
         public FakeRetailPanel? Retail { get; private set; }
-        public IRetailPanel TakeOverRetailPanel(uint rootId, Action<bool> retailOpenChanged)
+        public IRetailPanel TakeOverRetailInventory(Action<bool> retailOpenChanged)
         {
-            Retail = new FakeRetailPanel(rootId, retailOpenChanged);
+            Retail = new FakeRetailPanel(retailOpenChanged);
             return Retail;
         }
         public bool SupportsAction(string action) => ServerActions.Contains(action);

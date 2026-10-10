@@ -58,6 +58,11 @@ next post-UI draw fail in game. The file is deleted, the failure is logged to
 that removal path. With several clients sharing the directory, whichever client
 checks first takes the file; the `[pid N]` prefix shows which one.
 
+The retail inventory takeover is off by default and experimental. Creating an empty file named `retail-inventory-takeover` beside the
+main DLL lets the LegACEy Inventory park retail's inventory panel and show its own window in its place; deleting the file gives the
+panel back. The file is only checked, never consumed. Drags that leave the LegACEy window for the world or other retail windows are not
+yet handed to retail, so with the takeover on they do nothing.
+
 ## Tests
 
 Run the automated tests from the repository root:

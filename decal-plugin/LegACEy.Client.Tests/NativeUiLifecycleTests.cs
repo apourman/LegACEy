@@ -507,9 +507,9 @@ public sealed class NativeUiLifecycleTests
         using var takeover = new RetailPanelTakeover(port, events.Add, _ => { });
         takeover.Tick(enabled: true);
 
-        // The key, the toolbar or an item: retail hides its panel.
+        // The key, the toolbar or an item: retail hides its panel, and our window follows once the gap is a transition's length.
         port.Open = false;
-        takeover.Tick(enabled: true);
+        for (var frame = 0; frame < RetailPanelTakeover.TransitionFrames; frame++) takeover.Tick(enabled: true);
 
         Assert.Equal(0, port.CloseCalls);
         Assert.Equal(new[] { true, false }, events);
@@ -530,7 +530,6 @@ public sealed class NativeUiLifecycleTests
 
         Assert.Equal(new Point(500, 300), port.Location);
         Assert.True(port.Open);
-        Assert.False(takeover.Holding);
         Assert.Equal(new[] { true, false }, events);
 
         // Off for the rest of the session: retail's panel is left as it is.
@@ -551,7 +550,6 @@ public sealed class NativeUiLifecycleTests
         takeover.Tick(enabled: true);
 
         Assert.Equal(RetailPanelTakeover.Parked, port.Location);
-        Assert.True(takeover.Holding);
         Assert.Equal(new[] { true }, events);
     }
 
@@ -591,6 +589,67 @@ public sealed class NativeUiLifecycleTests
         Assert.Empty(events);
     }
 
+    [Fact]
+    public void A_short_gap_in_the_panel_or_its_open_state_does_not_close_our_window()
+    {
+        var port = new FakeRetailPanelPort { Open = true, Location = new Point(500, 300) };
+        var events = new List<bool>();
+        using var takeover = new RetailPanelTakeover(port, events.Add, _ => { });
+        takeover.Tick(enabled: true);
+
+        // A portal relayout: the element goes missing for a few frames, then the panel reads closed for a few more.
+        port.Panel = IntPtr.Zero;
+        for (var frame = 0; frame < 3; frame++) takeover.Tick(enabled: true);
+        port.Panel = new IntPtr(1);
+        port.Open = false;
+        for (var frame = 0; frame < 3; frame++) takeover.Tick(enabled: true);
+        port.Open = true;
+        takeover.Tick(enabled: true);
+
+        Assert.Equal(new[] { true }, events);
+        Assert.Equal(RetailPanelTakeover.Parked, port.Location);
+    }
+
+    [Fact]
+    public void A_move_that_keeps_failing_still_restores_the_save_bit_and_is_retried_until_it_succeeds()
+    {
+        var port = new FakeRetailPanelPort { Open = true, Location = new Point(500, 300) };
+        var events = new List<bool>();
+        using var takeover = new RetailPanelTakeover(port, events.Add, _ => { });
+        takeover.Tick(enabled: true);
+
+        port.FailAllMoves = true;
+        takeover.Tick(enabled: false);
+        takeover.Tick(enabled: false);
+
+        // Still parked, the save bit back where the layout had it, and our window still held: nothing is reported closed yet.
+        Assert.Equal(RetailPanelTakeover.Parked, port.Location);
+        Assert.True(port.SaveLocation);
+        Assert.Equal(new[] { true }, events);
+
+        // The move works again: the next frame gives the place back, which the park never recaptured.
+        port.FailAllMoves = false;
+        takeover.Tick(enabled: false);
+
+        Assert.Equal(new Point(500, 300), port.Location);
+        Assert.Equal(new Point(500, 300), port.SavedLocation);
+        Assert.True(port.SaveLocation);
+        Assert.Equal(new[] { true, false }, events);
+    }
+
+    [Fact]
+    public void The_catalogue_for_the_panel_takeover_is_well_formed()
+    {
+        var entries = RetailPanelCatalogue.Entries;
+        Assert.NotEmpty(entries);
+        Assert.All(entries, entry =>
+        {
+            Assert.False(string.IsNullOrEmpty(entry.Name));
+            Assert.NotNull(entry.Address);
+            Assert.NotEmpty(entry.ExpectedBytes);
+        });
+    }
+
     private sealed class FakeRetailPanelPort : IRetailPanelPort
     {
         private Point _location;
@@ -600,6 +659,8 @@ public sealed class NativeUiLifecycleTests
         public IntPtr Panel { get; set; } = new IntPtr(1);
         public bool Open { get; set; }
         public bool FailNextMove { get; set; }
+        public bool FailAllMoves { get; set; }
+        public int OpenCalls { get; private set; }
         public int CloseCalls { get; private set; }
         /// <summary>The position retail saved in its layout: moved only while save-location is on.</summary>
         public Point SavedLocation { get; private set; }
@@ -623,7 +684,7 @@ public sealed class NativeUiLifecycleTests
         public void MoveTo(Point location)
         {
             Calls.Add($"move {location.X},{location.Y}");
-            if (FailNextMove)
+            if (FailAllMoves || FailNextMove)
             {
                 FailNextMove = false;
                 throw new InvalidOperationException("Native move failed.");
@@ -632,7 +693,14 @@ public sealed class NativeUiLifecycleTests
             if (_save) SavedLocation = location;
         }
 
-        public void Close()
+        public void OpenPanel()
+        {
+            Calls.Add("open");
+            OpenCalls++;
+            Open = true;
+        }
+
+        public void ClosePanel()
         {
             Calls.Add("close");
             CloseCalls++;

@@ -354,10 +354,9 @@ public sealed class PluginRegistryTests
         public string PortalPath => string.Empty;
         public IGameArtSource Art => throw new NotSupportedException();
         public IItemDragHost ItemDrag => new FakeItemDragHost();
-        public IItemDropRelay ItemDropRelay { get; } = new FakeItemDropRelay();
         public IInventoryPort Inventory { get; } = new FakeInventoryPort();
         public bool IsWindowOpen(string id) => Errors.ContainsKey(id);
-        public IRetailPanel TakeOverRetailPanel(uint rootId, Action<bool> retailOpenChanged) => new FakeRetailPanel(rootId, retailOpenChanged);
+        public IRetailPanel TakeOverRetailInventory(Action<bool> retailOpenChanged) => new FakeRetailPanel(retailOpenChanged);
 
         public int Built { get; private set; }
 

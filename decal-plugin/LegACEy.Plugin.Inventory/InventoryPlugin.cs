@@ -14,8 +14,6 @@ namespace LegACEy.Plugin.Inventory;
 public sealed class InventoryPlugin : ILegACEyPlugin
 {
     private static readonly Point DefaultLocation = new(240, 100);
-    // The retail inventory panel's root element (InventoryPanel_Field, research R1).
-    private const uint RetailInventoryPanel = 0x1000018B;
 
     // The window of each layout while the client keeps it, open or hidden. A hidden window keeps its content.
     private readonly Dictionary<InventoryLayout, InventoryWindow> _windows = new();
@@ -33,8 +31,8 @@ public sealed class InventoryPlugin : ILegACEyPlugin
 
     public void Start(ILegACEyClient client)
     {
-        client.AddMenuEntry(InventoryWindow.Title, InventoryWindow.BackpackIcon, () => Toggle(client));
-        _retail = client.TakeOverRetailPanel(RetailInventoryPanel, open => RetailPanelChanged(client, open));
+        client.AddMenuEntry(InventoryWindow.Title, InventoryWindow.BackpackIcon, () => Toggle(client, fromMenu: true));
+        _retail = client.TakeOverRetailInventory(open => RetailPanelChanged(client, open));
     }
 
     /// <summary>
@@ -44,11 +42,14 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     private void RetailPanelChanged(ILegACEyClient client, bool open)
     {
         if (open == (_shown != null)) return;
-        Toggle(client);
+        Toggle(client, fromMenu: false);
     }
 
-    /// <summary>The menu press: opens the current layout's window, or hides it when it is showing.</summary>
-    private void Toggle(ILegACEyClient client)
+    /// <summary>
+    /// Opens the current layout's window, or hides it when it is showing. A menu press also opens or closes retail's panel through the
+    /// takeover (which does nothing while the switch is off), so retail stays authoritative.
+    /// </summary>
+    private void Toggle(ILegACEyClient client, bool fromMenu)
     {
         // The settings are the character's, and the character logged in now may not be the one the cache came from. The cache
         // is trusted only while a window is open; otherwise the press reads the value the client holds for this character.
@@ -71,6 +72,11 @@ public sealed class InventoryPlugin : ILegACEyPlugin
         }
         _shown = opening ? layout : null;
         Show(client, layout);
+        if (fromMenu)
+        {
+            if (opening) _retail?.Open();
+            else _retail?.Close();
+        }
     }
 
     /// <summary>
@@ -93,7 +99,7 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     private Control CreateWindow(ILegACEyClient client, InventoryLayout layout, Action close)
     {
         // The client keeps a closed window hidden and shows it again, so this runs once per session for each layout.
-        var window = new InventoryWindow(client.Inventory, client.Art, new InventorySettings(layout, Current(client).ShowSlots), client.ItemDrag, client.ItemDropRelay);
+        var window = new InventoryWindow(client.Inventory, client.Art, new InventorySettings(layout, Current(client).ShowSlots), client.ItemDrag);
         GiveDoll(client, window);
         _windows[layout] = window;
         // The close box closes retail's panel too, through its own path, when the takeover holds it. Retail's close then reaches us as
@@ -110,7 +116,7 @@ public sealed class InventoryPlugin : ILegACEyPlugin
             if (settings.Layout == layout) return;
             // Hiding keeps this layout's size and position. The other layout opens with its own saved size.
             Hide(layout, close);
-            Toggle(client);
+            Toggle(client, fromMenu: false);
         };
         window.DetachedFromVisualTree += (_, _) => Released(layout, window);
         return window;

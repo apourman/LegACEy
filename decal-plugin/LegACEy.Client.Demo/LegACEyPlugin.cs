@@ -33,19 +33,16 @@ public interface ILegACEyClient
     IGameArtSource Art { get; }
     /// <summary>Drag services for items between the retail inventory and a LegACEy window.</summary>
     IItemDragHost ItemDrag { get; }
-    /// <summary>Hands an item dragged out of a LegACEy window to the LegACEy window under the pointer (the inventory to the Vault).</summary>
-    IItemDropRelay ItemDropRelay { get; }
     /// <summary>The character's inventory: a read-only snapshot, a change event and the retail-call commands.</summary>
     IInventoryPort Inventory { get; }
     /// <summary>True when the server registered the action (the list from channel.hello). Plugins use it for optional features.</summary>
     bool SupportsAction(string action);
     /// <summary>
-    /// Takes over a retail panel for the plugin's window, while the client's retail takeover switch is on. The client keeps the panel
-    /// open where the player cannot see it, and calls <paramref name="retailOpenChanged"/> with true when the panel opens and false
+    /// Takes over retail's inventory panel for the plugin's window, while the client's retail takeover switch is on. The client keeps the
+    /// panel open where the player cannot see it, and calls <paramref name="retailOpenChanged"/> with true when the panel opens and false
     /// when it closes; the plugin then shows or hides its window. With the switch off, nothing is called and the panel is untouched.
     /// </summary>
-    /// <param name="rootId">The retail panel's root element id.</param>
-    IRetailPanel TakeOverRetailPanel(uint rootId, Action<bool> retailOpenChanged);
+    IRetailPanel TakeOverRetailInventory(Action<bool> retailOpenChanged);
     /// <summary>
     /// The plugin's own saved value for this character: one integer that only the plugin reads and writes, so the client does not
     /// interpret it. Null when none is saved.
@@ -85,11 +82,10 @@ public interface ILegACEyPluginHost
     string PortalPath { get; }
     IGameArtSource Art { get; }
     IItemDragHost ItemDrag { get; }
-    IItemDropRelay ItemDropRelay { get; }
     IInventoryPort Inventory { get; }
     bool IsWindowOpen(string id);
-    /// <summary>Takes over a retail panel for a plugin's window. Returns a handle that does nothing while the switch is off.</summary>
-    IRetailPanel TakeOverRetailPanel(uint rootId, Action<bool> retailOpenChanged);
+    /// <summary>Takes over retail's inventory panel for a plugin's window. Returns a handle that does nothing while the switch is off.</summary>
+    IRetailPanel TakeOverRetailInventory(Action<bool> retailOpenChanged);
     /// <summary>
     /// Opens a LegACEy window, or shows it again as it was if it is hidden. <paramref name="createContent"/> runs
     /// only when a new window will open, and gets the action that hides it. Without <paramref name="ownChrome"/> the
@@ -107,12 +103,14 @@ public interface ILegACEyPluginHost
 }
 
 /// <summary>
-/// A retail panel a plugin's window stands in for while the takeover is on. Disposing it gives the panel back; the client does that
+/// Retail's inventory panel, held by a plugin's window while the takeover is on. Disposing it gives the panel back; the client does that
 /// too when the plugin is turned off.
 /// </summary>
 public interface IRetailPanel : IDisposable
 {
-    /// <summary>Closes retail's panel through the client's own close path, if the takeover holds it open. Does nothing otherwise.</summary>
+    /// <summary>Opens retail's panel through its own panel switch, while the takeover holds it. Does nothing otherwise.</summary>
+    void Open();
+    /// <summary>Closes retail's panel through its own panel switch, while the takeover holds it. Does nothing otherwise.</summary>
     void Close();
 }
 
