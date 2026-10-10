@@ -138,7 +138,7 @@ public sealed class InventoryPluginTests
     });
 
     [Fact]
-    public void The_layout_and_slots_choice_come_back_from_the_placements_file_after_a_restart() => RenderThread.Run(() =>
+    public void The_layout_and_slots_choice_come_back_from_the_settings_file_after_a_restart() => RenderThread.Run(() =>
     {
         var path = Path.Combine(Path.GetTempPath(), "legacey-inventory-" + Guid.NewGuid().ToString("N") + ".txt");
         try
@@ -403,7 +403,7 @@ public sealed class InventoryPluginTests
     /// <summary>A client for the inventory plugin: a real <see cref="WindowManager"/> places its windows, and each window's panel is kept across hiding.</summary>
     private sealed class FakeInventoryClient : ILegACEyClient, IDisposable
     {
-        // The client keeps the plugin's one settings value under this key, as ClientUiRuntime does.
+        // The fake keeps the plugin's one settings value in the store it is given, under this key.
         private const string SettingsKey = "settings:Inventory";
         private readonly IWindowPositionStore _store;
         private readonly Dictionary<string, AvaloniaPanel> _panels = new(StringComparer.Ordinal);
