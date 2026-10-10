@@ -34,6 +34,9 @@ public sealed class PaperdollView : Border
         DetachedFromVisualTree += (_, _) => Stop();
     }
 
+    /// <summary>Turns, zooms and moves the view back to its first one: facing the viewer, the whole character, centred.</summary>
+    public void ResetView() => _view.ResetView();
+
     private void Start()
     {
         _changed = _channel.Subscribe(PaperdollProtocol.Changed, _ => Refresh());

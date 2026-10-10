@@ -31,6 +31,10 @@ internal static class InventoryDriver
 
     public static void PressLayout(AvaloniaPanel host, InventoryLayout layout) => Press(host, LayoutToggle(host, layout));
 
+    /// <summary>Presses the header button that collapses or shows the equipment and paperdoll section.</summary>
+    public static void PressEquipment(AvaloniaPanel host) =>
+        Press(host, host.Content.GetVisualDescendants().OfType<DerethButton>().Single(button => button.Name == "EquipmentToggle"));
+
     /// <summary>The Slots toggle under the doll.</summary>
     public static Border SlotsToggle(AvaloniaPanel host) => host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "SlotsToggle");
 

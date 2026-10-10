@@ -35,6 +35,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private const double EmptyOpacity = 0.8;
     // A lifted item's slots fade while it is dragged, as the Vault's do.
     private const double LiftedOpacity = 0.4;
+    // A figure: a head over shoulders and a body.
+    private const string FigureGlyph = "M7,1.5 A2.2,2.2 0 1 1 6.99,1.5 Z M2.5,13 V9.5 Q2.5,6.8 7,6.8 Q11.5,6.8 11.5,9.5 V13 Z";
     private const string StackedGlyph = "M2,1 H12 V6 H2 Z M2,8 H12 V13 H2 Z";
     private const string SideBySideGlyph = "M1,2 H6 V12 H1 Z M8,2 H13 V12 H8 Z";
     private const double DragThreshold = 4;
@@ -88,6 +90,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private uint _picked;
     private IDisposable? _dragIcon;
     private bool _showSlots;
+    // The equipment and paperdoll section is left out: the window is the packs and their contents. Fixed for the window's life.
+    private readonly bool _collapsed;
     private bool _suspended;
     private bool _disposed;
 
@@ -103,6 +107,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         _dragHost = dragHost;
         _layout = settings.Layout;
         _showSlots = settings.ShowSlots;
+        _collapsed = settings.Collapsed;
         _packList = _layout == InventoryLayout.Vertical
             ? new StackPanel { Spacing = 4 }
             : new WrapPanel { Orientation = Orientation.Horizontal };
@@ -125,7 +130,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     }
 
     /// <summary>The window's current settings: its layout, and the Slots toggle.</summary>
-    private InventorySettings Settings => new(_layout, _showSlots);
+    private InventorySettings Settings => new(_layout, _showSlots, _collapsed);
 
     /// <summary>Raised when the player changes the layout or the Slots toggle. The settings are the new ones.</summary>
     public event Action<InventorySettings>? SettingsChanged;
@@ -164,6 +169,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         if (_disposed) return;
         _suspended = false;
+        // Each open starts the 3D character from its first view: facing the player, whole, unzoomed.
+        _doll?.ResetView();
         Render(_port.Snapshot);
     }
 
@@ -537,7 +544,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private void RequestLayout(InventoryLayout layout)
     {
-        if (layout != _layout) SettingsChanged?.Invoke(new InventorySettings(layout, _showSlots));
+        if (layout != _layout) SettingsChanged?.Invoke(new InventorySettings(layout, _showSlots, _collapsed));
     }
 
     private void Render(InventorySnapshot snapshot)
@@ -729,8 +736,11 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private Control VerticalBody()
     {
         var left = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*") };
-        left.Children.Add(At(_paperdoll, 0));
-        left.Children.Add(At(new DerethRule { Margin = new Thickness(0, 8, 0, 0), Opacity = 0.7 }, 1));
+        if (!_collapsed)
+        {
+            left.Children.Add(At(_paperdoll, 0));
+            left.Children.Add(At(new DerethRule { Margin = new Thickness(0, 8, 0, 0), Opacity = 0.7 }, 1));
+        }
         left.Children.Add(At(ContentsLine(), 2));
         left.Children.Add(At(_grid, 3));
 
@@ -775,8 +785,12 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         footer.Children.Add(At(_burdenText, 0, 3));
 
         var body = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*"), RowDefinitions = new RowDefinitions("*,Auto"), ColumnSpacing = 10, Margin = new Thickness(2, 8, 2, 0) };
-        body.Children.Add(At(left, 0, 0));
-        body.Children.Add(At(rule, 0, 1));
+        if (!_collapsed)
+        {
+            body.Children.Add(At(left, 0, 0));
+            body.Children.Add(At(rule, 0, 1));
+        }
+        else body.ColumnSpacing = 0;
         body.Children.Add(At(right, 0, 2));
         body.Children.Add(At(footer, 1, 0));
         Grid.SetColumnSpan(footer, 3);
@@ -788,7 +802,23 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var toggles = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 3, VerticalAlignment = VerticalAlignment.Center };
         toggles.Children.Add(LayoutToggle(InventoryLayout.Vertical, StackedGlyph));
         toggles.Children.Add(LayoutToggle(InventoryLayout.Horizontal, SideBySideGlyph));
+        toggles.Children.Add(EquipmentToggle());
         return toggles;
+    }
+
+    /// <summary>A header button that shows or collapses the equipment and paperdoll section. Lit teal while the section shows.</summary>
+    private Control EquipmentToggle()
+    {
+        var icon = new Path
+        {
+            Data = Geometry.Parse(FigureGlyph), Width = 14, Height = 14, StrokeThickness = 1.2,
+            Stroke = _collapsed ? MutedBrush : DerethPalette.TealBrush,
+            Fill = _collapsed ? null : DerethPalette.Brush(DerethPalette.Teal.WithAlpha(0x40)),
+        };
+        var button = new DerethButton { Width = 24, Height = 24, Name = "EquipmentToggle", Content = icon, Margin = new Thickness(4, 0, 0, 0) };
+        ToolTip.SetTip(button, _collapsed ? "Show equipment" : "Hide equipment");
+        button.Click += (_, _) => SettingsChanged?.Invoke(new InventorySettings(_layout, _showSlots, !_collapsed));
+        return button;
     }
 
     /// <summary>A header button that switches to its layout. The window's own layout is lit teal.</summary>

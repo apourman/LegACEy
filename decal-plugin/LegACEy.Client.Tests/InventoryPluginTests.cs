@@ -56,6 +56,31 @@ public sealed class InventoryPluginTests
     });
 
     [Fact]
+    public void Collapsing_the_equipment_opens_the_layout_s_compact_window_without_the_paperdoll_and_showing_it_comes_back() => RenderThread.Run(() =>
+    {
+        using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
+        new InventoryPlugin().Start(client);
+        client.Retail!.Toggle();
+        Assert.NotNull(InventoryDriver.SlotOrNull(client.Panel(Vertical), PaperdollSlot.Head));
+
+        InventoryDriver.PressEquipment(client.Panel(Vertical));
+        Assert.Null(client.Windows.Get(Vertical));
+        var compact = client.Panel(Vertical + "-compact");
+        Assert.NotNull(client.Windows.Get(Vertical + "-compact"));
+        Assert.Null(InventoryDriver.SlotOrNull(compact, PaperdollSlot.Head));
+        Assert.NotEmpty(InventoryDriver.Slots(compact));
+        Assert.True(InventorySettings.FromInt(client.Settings).Collapsed);
+
+        // Closed and opened again by retail, it opens collapsed; the button brings the full window back.
+        client.Retail!.Toggle();
+        client.Retail!.Toggle();
+        Assert.NotNull(client.Windows.Get(Vertical + "-compact"));
+        InventoryDriver.PressEquipment(compact);
+        Assert.NotNull(client.Windows.Get(Vertical));
+        Assert.False(InventorySettings.FromInt(client.Settings).Collapsed);
+    });
+
+    [Fact]
     public void Retail_opening_its_panel_shows_the_layout_window_and_the_close_box_closes_retail() => RenderThread.Run(() =>
     {
         using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
@@ -66,8 +91,8 @@ public sealed class InventoryPluginTests
         Assert.NotNull(client.Windows.Get(Vertical));
 
         var window = client.Panel(Vertical);
-        // The close box is the header's one button without a layout tag.
-        InventoryDriver.Press(window, window.Content!.GetVisualDescendants().OfType<DerethButton>().Single(button => button.Tag == null));
+        // The close box is the header's one button that is neither a layout nor the equipment toggle.
+        InventoryDriver.Press(window, window.Content!.GetVisualDescendants().OfType<DerethButton>().Single(button => button.Tag == null && button.Name != "EquipmentToggle"));
 
         Assert.Null(client.Windows.Get(Vertical));
         Assert.Equal(1, client.Retail.CloseCalls);
@@ -221,6 +246,14 @@ public sealed class InventoryPluginTests
         client.Hello(PaperdollProtocol.Look);
         Assert.Single(ModelViews(client.Panel(Vertical)));
         Assert.Equal(new[] { PaperdollProtocol.Look }, transport.Actions);
+
+        // Turned and zoomed, then closed and opened again: the doll starts from its first view.
+        var view = ModelViews(client.Panel(Vertical)).Single();
+        view.Zoom = 3;
+        view.Focus = 0.9f;
+        client.Retail!.Toggle();
+        client.Retail!.Toggle();
+        Assert.Equal((1f, 0.5f), (view.Zoom, view.Focus));
     });
 
     [Fact]

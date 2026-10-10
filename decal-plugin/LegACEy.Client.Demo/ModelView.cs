@@ -60,4 +60,12 @@ public sealed class ModelView : Border
 
     /// <summary>The height the view centres on, as a share of the model's height: 0 its feet, 1 its top.</summary>
     public float Focus { get; set; } = 0.5f;
+
+    /// <summary>Back to the first view: facing the viewer, unzoomed, centred on the model's middle.</summary>
+    public void ResetView()
+    {
+        Yaw = (float)Math.PI;
+        Zoom = 1f;
+        Focus = 0.5f;
+    }
 }
