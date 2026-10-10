@@ -267,7 +267,9 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         // ponytail: drops on the 3D world, other retail windows and the shortcut bar are not handed on yet. That needs the retail
         // UI element of the dragged object, and the client's lookup for it is not known. Until then, a release outside every
         // LegACEy window sends nothing.
-        _dragHost.DeliverAtPointer(dragged, KindOf(snapshot, dragged).Name);
+        if (_dragHost.DeliverAtPointer(dragged, KindOf(snapshot, dragged).Name)) return;
+        // ponytail: play-test probe; the host logs the retail element under the pointer, to tell the 3D world from retail windows.
+        _dragHost.DropTargetAtPointer();
     }
 
     /// <summary>
