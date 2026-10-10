@@ -89,6 +89,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     // over.
     private const string RetailPanelSwitchFile = "retail-inventory-native";
 
+    // How big LegACEy windows show against their design size. The indicator bar keeps retail's size, and drag icons retail's 32 pixels.
+    // ponytail: one fixed size; make it a setting (small, medium, large) if players want to choose.
+    private const double WindowScale = 0.85;
+
     private const string MenuSlot = "LegACEy";
     private const string MenuWindowId = "plugin-menu";
     private const uint MenuIcon = 0x06004D20;
@@ -400,7 +404,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     {
         if (_device == null) return;
         _positionStore = new FileWindowPositionStore(IOPath.Combine(PluginDirectory, "window-positions.txt"));
-        _windows = new WindowManager(new Size(_device.Viewport.Width, _device.Viewport.Height), _positionStore, SessionServer(), SessionCharacter());
+        _windows = new WindowManager(new Size(_device.Viewport.Width, _device.Viewport.Height), _positionStore, SessionServer(), SessionCharacter(), WindowScale);
         _windowsEnabled = EnsurePostUiDrawHook();
     }
 
@@ -659,7 +663,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                 var origin = Avalonia.VisualExtensions.TranslatePoint(view, default, window);
                 if (origin == null) continue;
                 var bounds = view.Bounds;
-                var area = new Rectangle(surface.Location.X + (int)origin.Value.X, surface.Location.Y + (int)origin.Value.Y, (int)bounds.Width, (int)bounds.Height);
+                var scale = surface.Panel.Scale;
+                var area = new Rectangle(surface.Location.X + (int)(origin.Value.X * scale), surface.Location.Y + (int)(origin.Value.Y * scale),
+                    (int)(bounds.Width * scale), (int)(bounds.Height * scale));
                 if (!_modelRenderers.TryGetValue(view, out var renderer))
                     _modelRenderers[view] = renderer = new ModelRenderer(_device);
                 renderer.Draw(model, area, view.Yaw, view.Zoom);
@@ -708,7 +714,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             try
             {
                 target.RetailDragOver(item, _retailDragName, top == pair.Key
-                    ? new Avalonia.Point(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y)
+                    ? surface.Panel.ToContent(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y)
                     : null);
             }
             catch (Exception exception) { _windowFailures[pair.Key](exception); }
@@ -733,7 +739,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         {
             try
             {
-                accepted = target.RetailDrop(item, ObjectName(item), new Avalonia.Point(point.X - surface.Location.X, point.Y - surface.Location.Y));
+                accepted = target.RetailDrop(item, ObjectName(item), surface.Panel.ToContent(point.X - surface.Location.X, point.Y - surface.Location.Y));
             }
             catch (Exception exception) { _windowFailures[id](exception); }
         }
@@ -894,7 +900,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             if (_owner._windows is not { } windows) return false;
             var window = windows.HitTest(_owner._pointer);
             if (window == null) return false;
-            try { return ItemDropRouting.DeliverTo(window, _owner.ContentOf, _owner._pointer, itemId, itemName); }
+            try { return ItemDropRouting.DeliverTo(window, _owner.ContentOf, _owner._pointer, itemId, itemName, windows.Scale); }
             catch (Exception exception)
             {
                 if (_owner._windowFailures.TryGetValue(window.Id, out var failed)) failed(exception);
@@ -1057,7 +1063,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     {
         if (_featureSurfaces.ContainsKey(definition.Id))
             throw new InvalidOperationException($"A feature window named '{definition.Id}' is already registered.");
-        var panel = ObservePanel(AvaloniaPanel.Create(() => content, definition.Width, definition.Height), failed);
+        // Created at its on-screen size; showing it fits it to the window manager's size again (a saved size, for one).
+        var scale = _windows!.Scale;
+        var panel = ObservePanel(AvaloniaPanel.Create(() => content, (int)Math.Round(definition.Width * scale), (int)Math.Round(definition.Height * scale), scale), failed);
         var surface = new ScreenSurface(_device!, panel);
         ShowSurface(definition, surface, requestedLocation, failed);
     }

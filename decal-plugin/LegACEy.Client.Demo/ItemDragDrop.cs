@@ -79,12 +79,15 @@ public static class ItemDropRouting
 
     /// <summary>Delivers an item released at the point to the window there, if that window takes retail drops. True if it used the item.</summary>
     public static bool Deliver(WindowManager windows, Func<string, object?> contentOf, System.Drawing.Point point, uint itemId, string itemName) =>
-        windows.HitTest(point) is { } window && DeliverTo(window, contentOf, point, itemId, itemName);
+        windows.HitTest(point) is { } window && DeliverTo(window, contentOf, point, itemId, itemName, windows.Scale);
 
-    /// <summary>Delivers an item released at the point to a window the window manager's hit test already found. True if it used the item.</summary>
-    public static bool DeliverTo(ManagedWindow window, Func<string, object?> contentOf, System.Drawing.Point point, uint itemId, string itemName) =>
+    /// <summary>
+    /// Delivers an item released at the point to a window the window manager's hit test already found. True if it used the item.
+    /// <paramref name="scale"/> is the window manager's: the content measures the point at design size.
+    /// </summary>
+    public static bool DeliverTo(ManagedWindow window, Func<string, object?> contentOf, System.Drawing.Point point, uint itemId, string itemName, double scale = 1) =>
         contentOf(window.Id) is IRetailItemDropTarget target
-        && target.RetailDrop(itemId, itemName, new Point(point.X - window.Location.X, point.Y - window.Location.Y));
+        && target.RetailDrop(itemId, itemName, new Point((point.X - window.Location.X) / scale, (point.Y - window.Location.Y) / scale));
 }
 
 /// <summary>Drag host for tests: no icon, a drop target the caller chooses, and a relay the caller answers.</summary>

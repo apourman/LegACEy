@@ -56,10 +56,17 @@ public sealed class AvaloniaPanel : IDisposable
     private readonly Stopwatch _inputClock = Stopwatch.StartNew();
     private Point _pointerPosition = new(-1, -1);
 
-    private AvaloniaPanel(Control content, int width, int height)
+    private readonly Control _content;
+    private readonly double _scale;
+
+    private AvaloniaPanel(Control content, int width, int height, double scale)
     {
         _ownerThreadId = Thread.CurrentThread.ManagedThreadId;
-        _window = CreateWindow(content, width, height);
+        _content = content;
+        _scale = scale;
+        // The content lays out at design size, the panel's size divided by the scale, and draws scaled; hit tests follow the transform.
+        _window = CreateWindow(scale == 1 ? content : new LayoutTransformControl { LayoutTransform = new ScaleTransform(scale, scale), Child = content },
+            width, height);
         _frame = new PanelFrame(width, height);
         _rendererObserver = new RendererInvalidationObserver(_window, () => _hasInvalidation = true);
         Tick();
@@ -75,7 +82,13 @@ public sealed class AvaloniaPanel : IDisposable
     public event Action<Exception>? Error;
 
     /// <summary>The control tree hosted by this panel.</summary>
-    public Control Content => (Control)_window.Content!;
+    public Control Content => _content;
+
+    /// <summary>How big the content draws against its design size; see <see cref="Create"/>.</summary>
+    public double Scale => _scale;
+
+    /// <summary>A point in panel pixels as the content measures it: the pixels divided by the scale.</summary>
+    public Point ToContent(double x, double y) => new(x / _scale, y / _scale);
 
     /// <summary>True while Avalonia focus belongs to a text entry control.</summary>
     public bool WantsKeyboard => _window.FocusManager?.GetFocusedElement() is TextBox textBox && textBox.IsEffectivelyVisible && textBox.IsEnabled;
@@ -101,13 +114,17 @@ public sealed class AvaloniaPanel : IDisposable
     /// Builds the panel's control. It runs after initialization because constructing any Avalonia
     /// object first would bind the dispatcher to a placeholder that accepts every thread.
     /// </param>
-    public static AvaloniaPanel Create(Func<Control> createContent, int width, int height)
+    /// <param name="width">The panel's width in pixels.</param>
+    /// <param name="height">The panel's height in pixels.</param>
+    /// <param name="scale">How big the content draws: 0.85 lays it out 1/0.85 times the panel's size and draws it at 85%.</param>
+    public static AvaloniaPanel Create(Func<Control> createContent, int width, int height, double scale = 1)
     {
+        if (scale <= 0) throw new ArgumentOutOfRangeException(nameof(scale));
         if (createContent == null) throw new ArgumentNullException(nameof(createContent));
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
         if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
         EnsureRuntimeInitialized();
-        return new AvaloniaPanel(createContent(), width, height);
+        return new AvaloniaPanel(createContent(), width, height, scale);
     }
 
     /// <summary>

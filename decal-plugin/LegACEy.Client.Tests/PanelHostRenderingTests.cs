@@ -55,6 +55,26 @@ public sealed class PanelHostRenderingTests
     });
 
     [Fact]
+    public void A_scaled_panel_lays_out_at_design_size_and_maps_presses_to_it() => RenderThread.Run(() =>
+    {
+        Point? pressed = null;
+        var content = new Border { Background = Brushes.Gray };
+        content.PointerPressed += (_, e) => pressed = e.GetPosition(content);
+        using var panel = AvaloniaPanel.Create(() => content, 100, 60, scale: 0.5);
+
+        Assert.Equal((100, 60), (panel.Frame.Width, panel.Frame.Height));
+        Assert.Equal(new Size(200, 120), content.Bounds.Size);
+        Assert.Same(content, panel.Content);
+        panel.PointerDown(50, 30);
+        Assert.Equal(new Point(100, 60), pressed);
+        Assert.Equal(new Point(100, 60), panel.ToContent(50, 30));
+
+        panel.Resize(80, 40);
+        panel.Tick();
+        Assert.Equal(new Size(160, 80), content.Bounds.Size);
+    });
+
+    [Fact]
     public void Text_input_and_keyboard_focus_follow_the_focused_text_box() => RenderThread.Run(() =>
     {
         TextBox? textBox = null;
