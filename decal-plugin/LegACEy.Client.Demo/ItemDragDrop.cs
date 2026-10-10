@@ -96,10 +96,6 @@ public static class ItemDropRouting
             ? zone.WithdrawPlaceAt(new Point((point.X - window.Location.X) / windows.Scale, (point.Y - window.Location.Y) / windows.Scale))
             : null;
 
-    /// <summary>Delivers an item released at the point to the window there, if that window takes retail drops. True if it used the item.</summary>
-    public static bool Deliver(WindowManager windows, Func<string, object?> contentOf, System.Drawing.Point point, uint itemId, string itemName) =>
-        windows.HitTest(point) is { } window && DeliverTo(window, contentOf, point, itemId, itemName, windows.Scale);
-
     /// <summary>
     /// Delivers an item released at the point to a window the window manager's hit test already found. True if it used the item.
     /// <paramref name="scale"/> is the window manager's: the content measures the point at design size.

@@ -215,7 +215,7 @@ public sealed class InventoryPluginTests
     });
 
     [Fact]
-    public void With_the_look_on_the_server_and_slots_off_the_doll_area_hosts_the_model_and_asks_for_the_look() => RenderThread.Run(() =>
+    public void With_the_look_on_the_server_and_slots_off_the_doll_area_hosts_the_model_and_asks_for_the_look_while_shown() => RenderThread.Run(() =>
     {
         var transport = new LookTransport();
         var channel = new ServerChannelClient(transport);
@@ -237,7 +237,15 @@ public sealed class InventoryPluginTests
 
         // The server says the look changed, as it does when the player equips something: the doll asks again.
         channel.Receive(LookChanged());
-        Assert.Equal(new[] { PaperdollProtocol.Look, PaperdollProtocol.Look }, transport.Actions);
+        Assert.Equal(2, transport.Actions.Count);
+
+        // Hidden, the window stops asking; shown again, it asks.
+        client.Retail!.Toggle();
+        Assert.Null(client.Windows.Get(Vertical));
+        channel.Receive(LookChanged());
+        Assert.Equal(2, transport.Actions.Count);
+        client.Retail!.Toggle();
+        Assert.Equal(3, transport.Actions.Count);
     });
 
     [Fact]
@@ -249,7 +257,10 @@ public sealed class InventoryPluginTests
         client.SaveSettings(VerticalSlotsOff);
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
+        // Without the look on the server the doll area is a plain panel and asks for nothing.
         Assert.Empty(ModelViews(client.Panel(Vertical)));
+        channel.Receive(LookChanged());
+        Assert.Empty(transport.Actions);
 
         // channel.hello lands after the window opened, as it does at login: the open window gets the doll and asks for the look.
         client.Hello(PaperdollProtocol.Look);
@@ -284,21 +295,6 @@ public sealed class InventoryPluginTests
     });
 
     [Fact]
-    public void Without_the_look_on_the_server_the_doll_area_is_a_plain_panel_and_asks_for_nothing() => RenderThread.Run(() =>
-    {
-        var transport = new LookTransport();
-        var channel = new ServerChannelClient(transport);
-        using var client = new FakeInventoryClient(new MemoryWindowPositionStore()) { ServerChannel = channel };
-        client.SaveSettings(VerticalSlotsOff);
-        new InventoryPlugin().Start(client);
-        client.Retail!.Toggle();
-
-        Assert.Empty(ModelViews(client.Panel(Vertical)));
-        channel.Receive(LookChanged());
-        Assert.Empty(transport.Actions);
-    });
-
-    [Fact]
     public void With_slots_on_no_model_shows_and_no_look_is_asked_for_until_slots_go_off_again() => RenderThread.Run(() =>
     {
         var transport = new LookTransport();
@@ -323,27 +319,6 @@ public sealed class InventoryPluginTests
         Assert.Empty(ModelViews(panel));
         channel.Receive(LookChanged());
         Assert.Single(transport.Actions);
-    });
-
-    [Fact]
-    public void A_hidden_window_stops_asking_for_looks_and_asks_again_when_it_is_shown() => RenderThread.Run(() =>
-    {
-        var transport = new LookTransport();
-        var channel = new ServerChannelClient(transport);
-        using var client = new FakeInventoryClient(new MemoryWindowPositionStore()) { ServerChannel = channel };
-        client.ServerActions.Add(PaperdollProtocol.Look);
-        client.SaveSettings(VerticalSlotsOff);
-        new InventoryPlugin().Start(client);
-        client.Retail!.Toggle();
-        Assert.Single(transport.Actions);
-
-        client.Retail!.Toggle();
-        Assert.Null(client.Windows.Get(Vertical));
-        channel.Receive(LookChanged());
-        Assert.Single(transport.Actions);
-
-        client.Retail!.Toggle();
-        Assert.Equal(2, transport.Actions.Count);
     });
 
     /// <summary>

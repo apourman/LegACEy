@@ -115,12 +115,10 @@ public interface ILegACEyPluginHost
 public interface IRetailPanel : IDisposable
 {
     /// <summary>
-    /// True while the takeover holds retail's panel. Then <see cref="Open"/> and <see cref="Close"/> ask retail, and retail's report
+    /// True while the takeover holds retail's panel. Then <see cref="Close"/> asks retail, and retail's report
     /// opens or closes the plugin's window. False when the switch is off: the plugin's window opens and closes itself.
     /// </summary>
     bool Holds { get; }
-    /// <summary>Opens retail's panel through its own panel switch, while the takeover holds it. Does nothing otherwise.</summary>
-    void Open();
     /// <summary>Closes retail's panel through its own panel switch, while the takeover holds it. Does nothing otherwise.</summary>
     void Close();
 }

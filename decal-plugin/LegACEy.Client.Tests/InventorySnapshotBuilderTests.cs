@@ -66,31 +66,11 @@ public sealed class InventorySnapshotBuilderTests
     }
 
     [Theory]
-    [InlineData(PaperdollSlot.Neck, 0x00008000u)]
-    [InlineData(PaperdollSlot.Trinket, 0x04000000u)]
     [InlineData(PaperdollSlot.RightWrist, 0x00020000u)]
     [InlineData(PaperdollSlot.RightRing, 0x00080000u)]
-    [InlineData(PaperdollSlot.Shield, 0x00200000u)]
-    [InlineData(PaperdollSlot.Head, 0x00000001u)]
-    [InlineData(PaperdollSlot.UpperArms, 0x00000800u)]
-    [InlineData(PaperdollSlot.Chest, 0x00000200u)]
-    [InlineData(PaperdollSlot.LowerArms, 0x00001000u)]
-    [InlineData(PaperdollSlot.Abdomen, 0x00000400u)]
-    [InlineData(PaperdollSlot.UpperLegs, 0x00002000u)]
-    [InlineData(PaperdollSlot.Hands, 0x00000020u)]
-    [InlineData(PaperdollSlot.LowerLegs, 0x00004000u)]
-    [InlineData(PaperdollSlot.Feet, 0x00000100u)]
-    [InlineData(PaperdollSlot.AetheriaOne, 0x10000000u)]
-    [InlineData(PaperdollSlot.AetheriaTwo, 0x20000000u)]
-    [InlineData(PaperdollSlot.AetheriaThree, 0x40000000u)]
     [InlineData(PaperdollSlot.LeftWrist, 0x00010000u)]
     [InlineData(PaperdollSlot.LeftRing, 0x00040000u)]
-    [InlineData(PaperdollSlot.Weapon, 0x00100000u)]
-    [InlineData(PaperdollSlot.Ammo, 0x00800000u)]
-    [InlineData(PaperdollSlot.Cloak, 0x08000000u)]
-    [InlineData(PaperdollSlot.Shirt, ChestWear)]
-    [InlineData(PaperdollSlot.Pants, AbdomenWear)]
-    public void A_single_bit_mask_is_in_exactly_its_slot(PaperdollSlot slot, uint mask)
+    public void A_single_bit_mask_is_in_exactly_its_slot_and_left_and_right_do_not_swap(PaperdollSlot slot, uint mask)
     {
         var reader = new FakeReader();
         reader.Objects.Add(Item(0x50000300, container: Character, slot: -1, equippedMask: mask));

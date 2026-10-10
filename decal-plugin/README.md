@@ -60,8 +60,8 @@ checks first takes the file; the `[pid N]` prefix shows which one.
 
 The LegACEy Inventory replaces retail's inventory panel: it parks retail's panel and opens and closes its own window with it (by key,
 toolbar or item). Creating an empty file named `retail-inventory-native` beside the main DLL gives retail's panel back; deleting it
-takes the panel over again. The file is only checked, never consumed. Drags that leave the LegACEy window for the world or other retail
-windows are not yet handed to retail, so they do nothing.
+takes the panel over again. The file is only checked, never consumed. A drag that leaves the LegACEy window is handed to retail's own
+drag when retail's inventory lists show the item, so the world, NPCs and other retail windows take it as they would from retail.
 
 ## Tests
 

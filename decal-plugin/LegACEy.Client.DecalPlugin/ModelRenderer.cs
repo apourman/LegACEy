@@ -23,7 +23,7 @@ internal sealed class ModelRenderer : IDisposable
 
     public ModelRenderer(Device device) => _device = device;
 
-    public void Draw(CharacterModel model, Rectangle area, float yaw, float zoom, float focus = 0.5f)
+    public void Draw(CharacterModel model, Rectangle area, float yaw, float zoom, float focus)
     {
         var screen = _device.Viewport;
         area.Intersect(new Rectangle(screen.X, screen.Y, screen.Width, screen.Height));

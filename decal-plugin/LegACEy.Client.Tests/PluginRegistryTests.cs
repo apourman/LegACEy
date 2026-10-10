@@ -25,7 +25,7 @@ public sealed class PluginRegistryTests
     }
 
     [Fact]
-    public void SupportsAction_follows_the_servers_last_list_and_the_plugin_gets_the_host_inventory()
+    public void SupportsAction_follows_the_servers_last_list()
     {
         var host = new FakeHost();
         var registry = new PluginRegistry(host, host.Log.Add);

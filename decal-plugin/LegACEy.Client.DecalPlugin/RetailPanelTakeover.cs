@@ -19,8 +19,6 @@ internal interface IRetailPanelPort
     void SetSaveLocation(bool save);
     /// <summary>Moves the element. Retail saves the position only while save-location is on.</summary>
     void MoveTo(Point location);
-    /// <summary>Opens the panel through retail's own panel switch, or shows the element when that route is not available.</summary>
-    void OpenPanel();
     /// <summary>Closes the panel through retail's own panel switch, or hides the element when that route is not available.</summary>
     void ClosePanel();
 }
@@ -118,21 +116,6 @@ internal sealed class RetailPanelTakeover : IDisposable
         try
         {
             if (_port.IsOpen) _port.ClosePanel();
-            Report(_port.IsOpen);
-        }
-        catch (Exception exception)
-        {
-            Fail(exception);
-        }
-    }
-
-    /// <summary>The menu's open: retail's panel opens through its own switch, while the takeover holds it.</summary>
-    public void Open()
-    {
-        if (_disposed || !_parked) return;
-        try
-        {
-            if (!_port.IsOpen) _port.OpenPanel();
             Report(_port.IsOpen);
         }
         catch (Exception exception)

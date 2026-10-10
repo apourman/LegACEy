@@ -11,12 +11,12 @@ using LegACEy.Client.Themes;
 namespace LegACEy.Plugin.Inventory;
 
 /// <summary>
-/// The paperdoll block: retail's paperdoll (224×214 at 32 px) with every slot scaled to the 36 px pitch. The doll area is the
+/// The paperdoll block: retail's paperdoll (224×214 at 32 px) with every slot scaled to the 35 px pitch. The doll area is the
 /// one control the 3D character fills; the Slots toggle sits under it. Slots are placed by <see cref="Show"/>.
 /// </summary>
 internal sealed class InventoryPaperdoll : Canvas
 {
-    // Retail's cells are 32 px; the Dereth pitch is 36 px. Each retail position is scaled to it, then the 34 px cell is centred in the pitch.
+    // Retail's cells are 32 px; the Dereth pitch is 35 px. Each retail position is scaled to it, then the 34 px cell is centred in the pitch.
     private const int RetailCell = 32;
     private const int RetailWidth = 224;
     private const int RetailHeight = 214;

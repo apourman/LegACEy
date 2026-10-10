@@ -176,11 +176,9 @@ internal sealed class RetailItemDrag
     /// <summary>
     /// Starts retail's own drag of the item, as a press on it in its list does. Retail checks that the left button is held and
     /// has moved 4 pixels from where the client saw it go down, so the client must have seen the press. True when retail now
-    /// drags this object; a drag of anything else is cancelled.
+    /// drags this object; a drag of anything else is cancelled. <paramref name="state"/> is what retail's drag start checked, read
+    /// before the call.
     /// </summary>
-    public bool BeginDrag(IntPtr list, IntPtr item, uint objectId) => BeginDrag(list, item, objectId, out _);
-
-    /// <summary>As <see cref="BeginDrag(IntPtr, IntPtr, uint)"/>; <paramref name="state"/> is what retail's drag start checked, read before the call.</summary>
     public bool BeginDrag(IntPtr list, IntPtr item, uint objectId, out string state)
     {
         // The list hit-tests rows by its scroll position, so an item scrolled out of view cannot be hit: bring it into view first.

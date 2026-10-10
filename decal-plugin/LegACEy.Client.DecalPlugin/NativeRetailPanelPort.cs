@@ -56,23 +56,19 @@ internal sealed class NativeRetailPanelPort : IRetailPanelPort
     // and saves the place to the character's settings. The base move alone parks it and leaves the saved place alone.
     public void MoveTo(Point location) => BaseMoveTo(Frame(), location.X, location.Y);
 
-    public void OpenPanel() => SwitchPanel(true);
-
-    public void ClosePanel() => SwitchPanel(false);
-
     /// <summary>
-    /// Shows or hides the panel through retail's panel switch, which keeps retail's current-panel pointer in step. When gmPanelUI is
-    /// not found from the element, the element is shown or hidden directly.
+    /// Hides the panel through retail's panel switch, which keeps retail's current-panel pointer in step. When gmPanelUI is
+    /// not found from the element, the element is hidden directly.
     /// </summary>
-    private static void SwitchPanel(bool visible)
+    public void ClosePanel()
     {
         var element = Element;
         if (element == IntPtr.Zero) return;
         var panel = PanelManagerOf(element);
         if (panel != IntPtr.Zero)
-            RecvNotice(IntPtr.Add(panel, NoticeHandlerOffset), InventoryPanelId, visible ? 1u : 0u);
+            RecvNotice(IntPtr.Add(panel, NoticeHandlerOffset), InventoryPanelId, 0u);
         else
-            NativeUi.SetVisible(element, visible);
+            NativeUi.SetVisible(element, false);
     }
 
     /// <summary>

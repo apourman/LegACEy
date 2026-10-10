@@ -851,8 +851,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
 
         public bool Holds => _takeover?.Holds ?? false;
 
-        public void Open() => _takeover?.Open();
-
         public void Close() => _takeover?.Close();
 
         public void Dispose()
@@ -870,7 +868,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     {
         public static readonly NoRetailPanel Instance = new();
         public bool Holds => false;
-        public void Open() { }
         public void Close() { }
         public void Dispose() { }
     }

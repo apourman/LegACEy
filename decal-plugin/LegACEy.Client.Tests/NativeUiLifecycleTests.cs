@@ -654,19 +654,6 @@ public sealed class NativeUiLifecycleTests
         Assert.Equal(new[] { true, false }, events);
     }
 
-    [Fact]
-    public void The_catalogue_for_the_panel_takeover_is_well_formed()
-    {
-        var entries = RetailPanelCatalogue.Entries;
-        Assert.NotEmpty(entries);
-        Assert.All(entries, entry =>
-        {
-            Assert.False(string.IsNullOrEmpty(entry.Name));
-            Assert.NotNull(entry.Address);
-            Assert.NotEmpty(entry.ExpectedBytes);
-        });
-    }
-
     private sealed class FakeRetailPanelPort : IRetailPanelPort
     {
         private Point _location;
@@ -677,7 +664,6 @@ public sealed class NativeUiLifecycleTests
         public bool Open { get; set; }
         public bool FailNextMove { get; set; }
         public bool FailAllMoves { get; set; }
-        public int OpenCalls { get; private set; }
         public int CloseCalls { get; private set; }
         /// <summary>The position retail saved in its layout: moved only while save-location is on.</summary>
         public Point SavedLocation { get; private set; }
@@ -708,13 +694,6 @@ public sealed class NativeUiLifecycleTests
             }
             _location = location;
             if (_save) SavedLocation = location;
-        }
-
-        public void OpenPanel()
-        {
-            Calls.Add("open");
-            OpenCalls++;
-            Open = true;
         }
 
         public void ClosePanel()
