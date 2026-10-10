@@ -434,13 +434,19 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         _dropIndicator.IsVisible = true;
     }
 
-    /// <summary>Fades every slot showing the item while it is lifted, as the Vault fades a lifted cell, or brings them back.</summary>
+    /// <summary>
+    /// Fades every slot showing the item while it is lifted, as the Vault fades a lifted cell, and outlines it as a click's selection
+    /// does; or brings them back, outlined only if the item is retail's selection.
+    /// </summary>
     private void Fade(uint id, bool lifted)
     {
         if (id == 0) return;
         foreach (var slot in this.GetVisualDescendants().OfType<DerethSlot>())
             if (slot.Tag is InventorySlotId tag && DraggedId(tag) == id)
+            {
                 slot.Opacity = lifted ? LiftedOpacity : 1;
+                slot.Selected = lifted || (tag.Place == SlotPlace.Pack ? tag.Container == OpenPack(_port.Snapshot).Id : id == _port.Snapshot.Selected);
+            }
     }
 
     /// <summary>The slot under a point of this window, or null over anything the window does not draw as a slot.</summary>

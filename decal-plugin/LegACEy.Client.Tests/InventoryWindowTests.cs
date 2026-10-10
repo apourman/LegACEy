@@ -225,6 +225,21 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
+    public void A_lifted_item_is_outlined_as_selected_until_it_is_put_down() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        Assert.False(host.Cells[4].Selected);
+
+        InventoryDriver.DragTo(host.Host, host.Cells[4], host.Cells[4]);
+        Assert.True(host.Cells[4].Selected);
+        InventoryDriver.Release(host.Host, host.Cells[4]);
+
+        Assert.False(host.Cells[4].Selected);
+    });
+
+    [Fact]
     public void Dropping_on_a_pack_moves_the_item_into_its_first_free_slot() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();
