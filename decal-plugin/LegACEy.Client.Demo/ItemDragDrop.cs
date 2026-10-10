@@ -47,8 +47,10 @@ public interface IItemDragHost
     /// <paramref name="count"/> is how many items the drag carries: above one, the icon carries a "×count" badge.
     /// <paramref name="retailDropIndicator"/> is true for a drag the retail inventory can take (a Vault withdrawal): the retail
     /// panel then shows its own drop indicator over the cell under the pointer. Our inventory's drags pass false.
+    /// <paramref name="itemId"/> is the world object the drag carries (an inventory item): other LegACEy windows are told about it as
+    /// they are told about a retail drag, so the Vault shows where it would go. Zero for anything else (Vault items).
     /// </summary>
-    IDisposable ShowDragIcon(GameImage? icon, int count, bool retailDropIndicator);
+    IDisposable ShowDragIcon(GameImage? icon, int count, bool retailDropIndicator, uint itemId = 0);
 
     /// <summary>What is under the pointer now, outside LegACEy windows.</summary>
     ItemDropTarget DropTargetAtPointer();
@@ -105,9 +107,13 @@ public sealed class FakeItemDragHost : IItemDragHost
     public List<(uint Id, string Name)> Delivered { get; } = new();
     public int IconsOpen { get; private set; }
 
-    public IDisposable ShowDragIcon(GameImage? icon, int count, bool retailDropIndicator)
+    /// <summary>The world object each icon was shown for, or 0.</summary>
+    public List<uint> ItemsShown { get; } = new();
+
+    public IDisposable ShowDragIcon(GameImage? icon, int count, bool retailDropIndicator, uint itemId = 0)
     {
         IconsShown.Add(icon);
+        ItemsShown.Add(itemId);
         RetailIndicators.Add(retailDropIndicator);
         CountsShown.Add(count);
         IconsOpen++;

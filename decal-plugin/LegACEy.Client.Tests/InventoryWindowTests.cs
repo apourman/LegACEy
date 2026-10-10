@@ -161,6 +161,8 @@ public sealed class InventoryWindowTests
 
         DragOut(host.Host, host.Cells[0], new Avalonia.Point(-50, -50));
 
+        // Other LegACEy windows (the Vault) were told which item the drag carried, so they could show where it would go.
+        Assert.Equal(new uint[] { InventorySample.Apple }, host.Drag.ItemsShown);
         // Retail drags the item from there on and drops it; our icon is gone and our release sends nothing.
         Assert.Equal(new[] { InventorySample.Apple }, host.Drag.HandedOff);
         Assert.Equal(0, host.Drag.IconsOpen);

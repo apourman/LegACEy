@@ -144,6 +144,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private DateTime _lastRetailPanelSwitchCheck;
     private readonly DecalInventoryPort _inventory = new(Log);
     private uint _retailDragItem;
+    // The world object a LegACEy window's own drag carries (an inventory item), or 0.
+    private uint _ownDragItem;
     private string _retailDragName = string.Empty;
     private int _loggedDrops;
     // A drag handed from a LegACEy window to retail, from the press posted to the client until retail's drag starts.
@@ -692,16 +694,18 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     /// <summary>Tells LegACEy drop targets about a drag in the retail UI, and where the pointer is over them.</summary>
     private void UpdateRetailDrag()
     {
-        var item = _retailDrag?.CurrentItem() ?? 0;
+        var retailItem = _retailDrag?.CurrentItem() ?? 0;
+        // A LegACEy inventory drag is told to the other windows as a retail one is; the window it came from ignores its own.
+        var item = retailItem != 0 ? retailItem : _ownDragItem;
         if (item != _retailDragItem)
         {
             _retailDragItem = item;
             _retailDragName = item == 0 ? string.Empty : ObjectName(item);
         }
         var top = item == 0 ? null : TopSurfaceAt(_pointer);
-        if (top != null && _retailDragIcon == null)
+        if (top != null && retailItem != 0 && _retailDragIcon == null)
             _retailDragIcon = ShowDragIcon(ObjectIcon(item), 1);
-        else if (top == null && _retailDragIcon != null)
+        else if ((top == null || retailItem == 0) && _retailDragIcon != null)
         {
             _retailDragIcon.Dispose();
             _retailDragIcon = null;
@@ -909,9 +913,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             }
         }
 
-        public IDisposable ShowDragIcon(GameImage? image, int count, bool retailDropIndicator)
+        public IDisposable ShowDragIcon(GameImage? image, int count, bool retailDropIndicator, uint itemId = 0)
         {
             var icon = _owner.ShowDragIcon(image, count);
+            _owner._ownDragItem = itemId;
             return new ItemDrag(_owner, icon, retailDropIndicator);
         }
 
@@ -936,6 +941,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                     _owner._itemDragActive = false;
                     _owner.Guard(() => _owner._retailDrag?.ClearDropIndicator());
                 }
+                _owner._ownDragItem = 0;
                 _icon.Dispose();
                 _owner = null;
             }

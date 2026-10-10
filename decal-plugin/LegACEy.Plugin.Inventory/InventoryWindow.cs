@@ -225,7 +225,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
                 _press = null;
                 return;
             }
-            _dragIcon = _dragHost?.ShowDragIcon(DragImage(_dragged), 1, retailDropIndicator: false);
+            _dragIcon = _dragHost?.ShowDragIcon(DragImage(_dragged), 1, retailDropIndicator: false, _dragged);
         }
         // Outside the window, with the button still held, retail may take the drag over; then it is no longer ours.
         if (!new Rect(Bounds.Size).Contains(point) && !_port.Snapshot.SidePacks.Any(pack => pack.Id == _dragged) &&
