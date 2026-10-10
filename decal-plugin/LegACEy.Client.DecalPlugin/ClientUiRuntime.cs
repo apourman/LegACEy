@@ -90,8 +90,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private const string RetailPanelSwitchFile = "retail-inventory-native";
 
     // How big LegACEy windows show against their design size. The indicator bar keeps retail's size, and drag icons retail's 32 pixels.
+    // An Avalonia that cannot scale panels shows them at design size rather than failing every window.
     // ponytail: one fixed size; make it a setting (small, medium, large) if players want to choose.
-    private const double WindowScale = 0.85;
+    private static readonly double WindowScale = AvaloniaPanel.CanScale ? 0.85 : 1;
 
     private const string MenuSlot = "LegACEy";
     private const string MenuWindowId = "plugin-menu";
@@ -411,6 +412,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     {
         if (_device == null) return;
         _positionStore = new FileWindowPositionStore(IOPath.Combine(PluginDirectory, "window-positions.txt"));
+        if (!AvaloniaPanel.CanScale) Log("This Avalonia cannot scale panels; LegACEy windows show at their design size.");
         _windows = new WindowManager(new Size(_device.Viewport.Width, _device.Viewport.Height), _positionStore, SessionServer(), SessionCharacter(), WindowScale);
         _windowsEnabled = EnsurePostUiDrawHook();
     }

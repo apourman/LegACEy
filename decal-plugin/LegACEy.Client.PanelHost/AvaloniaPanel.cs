@@ -86,6 +86,15 @@ public sealed class AvaloniaPanel : IDisposable
     /// <summary>How big the content draws against its design size; see <see cref="Create"/>.</summary>
     public double Scale => _scale;
 
+    /// <summary>
+    /// Whether panels can draw at a scale other than 1. The headless window fixes its scaling at 1 behind a private field, which
+    /// this Avalonia has; false if an update renamed it.
+    /// </summary>
+    public static bool CanScale => RenderScaling != null;
+
+    private static readonly FieldInfo? RenderScaling = typeof(AvaloniaHeadlessPlatform).Assembly.GetType("Avalonia.Headless.HeadlessWindowImpl")
+        ?.GetField("<RenderScaling>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic);
+
     /// <summary>A point in panel pixels as the content measures it: the pixels divided by the scale.</summary>
     public Point ToContent(double x, double y) => new(x / _scale, y / _scale);
 
@@ -119,6 +128,7 @@ public sealed class AvaloniaPanel : IDisposable
     public static AvaloniaPanel Create(Func<Control> createContent, int width, int height, double scale = 1)
     {
         if (scale <= 0) throw new ArgumentOutOfRangeException(nameof(scale));
+        if (scale != 1 && !CanScale) throw new NotSupportedException("This Avalonia cannot scale panels; check CanScale first.");
         if (createContent == null) throw new ArgumentNullException(nameof(createContent));
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
         if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
@@ -167,11 +177,11 @@ public sealed class AvaloniaPanel : IDisposable
         };
         // The content lays out at design size, the panel's size divided by the scale, and renders at the scale as a display's
         // DPI does: layout rounding snaps every edge and border to whole panel pixels, where a scale transform smears 1 px borders.
-        // The headless window fixes its scaling at 1, so this sets it; pinned Avalonia keeps this field stable.
+        // The headless window fixes its scaling at 1, so this sets it.
         if (scale != 1)
         {
             var platform = window.PlatformImpl!;
-            platform.GetType().GetField("<RenderScaling>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(platform, scale);
+            RenderScaling!.SetValue(platform, scale);
             platform.ScalingChanged?.Invoke(scale);
         }
         window.Show();
