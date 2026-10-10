@@ -25,11 +25,6 @@ internal sealed class NativeRetailPanelPort : IRetailPanelPort
     private static readonly RecvNoticeFn RecvNotice = (RecvNoticeFn)Marshal.GetDelegateForFunctionPointer(
         new IntPtr(RetailPanelCatalogue.RecvNoticeSetPanelVisibility), typeof(RecvNoticeFn));
 
-    private readonly Action<string> _log;
-    private bool _described;
-
-    public NativeRetailPanelPort(Action<string> log) => _log = log;
-
     private static IntPtr Element => NativeUi.GetElement(NativeUi.InventoryPanel);
 
     public IntPtr Identity => Element;
@@ -43,8 +38,8 @@ internal sealed class NativeRetailPanelPort : IRetailPanelPort
         }
     }
 
-    // The place, save bit and move are the panel frame's (RootPanel_Field), which draws the frame the inventory sits in: moving only
-    // the inventory element left that frame on screen, empty. The gmPanelUI parent walk did not reach it in play, so it is found by id.
+    // The place, save bit and move are the panel frame's, which draws the frame the inventory sits in: moving only the inventory element
+    // left that frame on screen, empty. Places are relative to the parent, so the frame's is its place on screen.
     public Point Location => NativeUi.GetBounds(Frame()).Location;
 
     public bool SaveLocation => (Marshal.ReadInt32(Frame(), SaveLocationOffset) & SaveLocationBit) != 0;
@@ -79,30 +74,21 @@ internal sealed class NativeRetailPanelPort : IRetailPanelPort
             NativeUi.SetVisible(element, visible);
     }
 
-    /// <summary>The panel frame holding the inventory, or the inventory element itself when the frame is not found.</summary>
-    private IntPtr Frame()
+    /// <summary>
+    /// The panel frame holding the inventory: its grandparent, above PanelPages (seen in play: inventory at (0,0) in PanelPages at
+    /// (5,5) in the frame at (1557,284), 309x795, whose parent is the full-screen root). The frame is not registered by id, and its
+    /// vtable is 0x007BC450, not gmPanelUI's. Falls back to the inventory element when the chain is short.
+    /// </summary>
+    private static IntPtr Frame()
     {
         var element = Element;
         if (element == IntPtr.Zero) throw new InvalidOperationException("The retail inventory panel is absent.");
-        var frame = NativeUi.GetElement(NativeUi.PanelFrame);
-        if (!_described) Describe(element, frame);
+        var frame = Parent(Parent(element));
         return frame != IntPtr.Zero ? frame : element;
     }
 
-    // ponytail: play-test diagnostic for the frame the takeover leaves on screen; delete once the right element is pinned.
-    private void Describe(IntPtr element, IntPtr frame)
-    {
-        _described = true;
-        var text = new System.Text.StringBuilder($"Retail panel tree: frame by id 0x{NativeUi.PanelFrame:X8} = 0x{frame.ToInt32():X8}, " +
-            $"PanelPages 0x10000180 = 0x{NativeUi.GetElement(0x10000180).ToInt32():X8}; inventory up:");
-        var current = element;
-        for (var depth = 0; depth < 8 && current != IntPtr.Zero; depth++)
-        {
-            text.Append($" [0x{current.ToInt32():X8} vt 0x{Marshal.ReadInt32(current):X8} {NativeUi.GetBounds(current)} visible {NativeUi.IsVisible(current)}]");
-            current = NativeUi.Virtual<NativeUi.GetParentFn>(current, NativeUi.GetParentSlot)(current);
-        }
-        _log(text.ToString());
-    }
+    private static IntPtr Parent(IntPtr element) =>
+        element == IntPtr.Zero ? IntPtr.Zero : NativeUi.Virtual<NativeUi.GetParentFn>(element, NativeUi.GetParentSlot)(element);
 
     /// <summary>The gmPanelUI element at the panel or within three ancestors, or zero when none has its vtable.</summary>
     private static IntPtr PanelManagerOf(IntPtr element)
