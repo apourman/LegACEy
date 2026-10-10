@@ -56,7 +56,7 @@ public sealed class InventoryVaultDropTests
         Assert.Equal(new[] { (InventorySample.Scroll, "Scroll") }, drag.Delivered);
         Assert.Equal(VaultProtocol.Deposit, vault.Server.Received.Last());
         // The inventory sends no command of its own for a drop on another window.
-        Assert.Empty(port.Commands);
+        Assert.Empty(InventoryDriver.Sent(port));
         Assert.Null(inventory.LastError);
         Assert.Null(vault.Host.LastError);
 

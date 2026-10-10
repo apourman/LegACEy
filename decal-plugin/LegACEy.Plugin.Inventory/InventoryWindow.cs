@@ -247,6 +247,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
                 _press = null;
                 return;
             }
+            // Lifting an item selects it, as a click does, so another item's selection clears. A pack is never selected.
+            if (press.Place != SlotPlace.Pack && _dragged != _port.Snapshot.Selected) _port.Select(_dragged);
             _dragIcon = _dragHost?.ShowDragIcon(DragImage(_dragged), 1, retailDropIndicator: false, _dragged);
             Fade(_dragged, lifted: true);
         }

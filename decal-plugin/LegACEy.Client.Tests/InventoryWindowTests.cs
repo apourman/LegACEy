@@ -143,11 +143,11 @@ public sealed class InventoryWindowTests
 
         host.Drag.Target = ItemDropTarget.Elsewhere;
         DragOut(host.Host, apple, outside);
-        Assert.Empty(port.Commands);
+        Assert.Empty(InventoryDriver.Sent(port));
 
         host.Drag.Target = ItemDropTarget.World;
         DragOut(host.Host, apple, outside);
-        Assert.Equal(new[] { $"drop 0x{InventorySample.Apple:X8}" }, port.Commands);
+        Assert.Equal(new[] { $"drop 0x{InventorySample.Apple:X8}" }, InventoryDriver.Sent(port));
     });
 
     [Fact]
@@ -166,7 +166,7 @@ public sealed class InventoryWindowTests
         // Retail drags the item from there on and drops it; our icon is gone and our release sends nothing.
         Assert.Equal(new[] { InventorySample.Apple }, host.Drag.HandedOff);
         Assert.Equal(0, host.Drag.IconsOpen);
-        Assert.Empty(port.Commands);
+        Assert.Empty(InventoryDriver.Sent(port));
     });
 
     private static void DragOut(AvaloniaPanel host, Control from, Avalonia.Point to)
@@ -221,7 +221,7 @@ public sealed class InventoryWindowTests
         InventoryDriver.Release(host.Host, cells[10]);
 
         Assert.Equal(0, host.Drag.IconsOpen);
-        Assert.Equal(new[] { $"move 0x{InventorySample.Scroll:X8} to 0x{InventorySample.Character:X8} slot 10" }, port.Commands);
+        Assert.Equal(new[] { $"move 0x{InventorySample.Scroll:X8} to 0x{InventorySample.Character:X8} slot 10" }, InventoryDriver.Sent(port));
     });
 
     [Fact]
@@ -234,6 +234,8 @@ public sealed class InventoryWindowTests
 
         InventoryDriver.DragTo(host.Host, host.Cells[4], host.Cells[4]);
         Assert.True(host.Cells[4].Selected);
+        // Lifting it selects it, so the item selected before loses its outline.
+        Assert.Equal(new[] { $"select 0x{InventorySample.Scroll:X8}" }, port.Commands);
         InventoryDriver.Release(host.Host, host.Cells[4]);
 
         Assert.False(host.Cells[4].Selected);
@@ -250,7 +252,7 @@ public sealed class InventoryWindowTests
         // The potions pack holds seventeen items in slots 0 to 16, so the scroll goes to slot 17.
         InventoryDriver.Drop(host.Host, host.Cells[4], potions);
 
-        Assert.Equal(new[] { $"move 0x{InventorySample.Scroll:X8} to 0x{InventorySample.Potions:X8} slot 17" }, port.Commands);
+        Assert.Equal(new[] { $"move 0x{InventorySample.Scroll:X8} to 0x{InventorySample.Potions:X8} slot 17" }, InventoryDriver.Sent(port));
     });
 
     [Fact]
@@ -263,7 +265,7 @@ public sealed class InventoryWindowTests
 
         InventoryDriver.Drop(host.Host, host.Cells[9], head);
 
-        Assert.Equal(new[] { $"wield 0x{InventorySample.Cap:X8} to Head" }, port.Commands);
+        Assert.Equal(new[] { $"wield 0x{InventorySample.Cap:X8} to Head" }, InventoryDriver.Sent(port));
     });
 
     [Fact]
@@ -291,7 +293,7 @@ public sealed class InventoryWindowTests
         // The move is sent, and the port pushes no change: the scroll stays where it was.
         InventoryDriver.Drop(host.Host, cells[4], cells[10]);
 
-        Assert.Single(port.Commands);
+        Assert.Single(InventoryDriver.Sent(port));
         Assert.Equal(InventorySample.Scroll, InventoryDriver.Id(host.Cells[4]).ItemId);
         Assert.Equal(0u, InventoryDriver.Id(host.Cells[10]).ItemId);
     });
@@ -311,7 +313,7 @@ public sealed class InventoryWindowTests
         Assert.Same(DerethPalette.InvalidBrush, indicator.BorderBrush);
         InventoryDriver.Release(host.Host, weapon);
 
-        Assert.Empty(port.Commands);
+        Assert.Empty(InventoryDriver.Sent(port));
     });
 
     [Fact]
@@ -336,7 +338,7 @@ public sealed class InventoryWindowTests
 
         InventoryDriver.Drop(host.Host, Slot(host, PaperdollSlot.Head), host.Cells[10]);
 
-        Assert.Equal(new[] { $"move 0x{InventorySample.Helm:X8} to 0x{InventorySample.Character:X8} slot 10" }, port.Commands);
+        Assert.Equal(new[] { $"move 0x{InventorySample.Helm:X8} to 0x{InventorySample.Character:X8} slot 10" }, InventoryDriver.Sent(port));
     });
 
     [Fact]
@@ -349,7 +351,7 @@ public sealed class InventoryWindowTests
         // An apple on a scroll: both stack, but they are different kinds, so the server places the apple in the scroll's cell.
         InventoryDriver.Drop(host.Host, host.Cells[0], host.Cells[4]);
 
-        Assert.Equal(new[] { $"move 0x{InventorySample.Apple:X8} to 0x{InventorySample.Character:X8} slot 4" }, port.Commands);
+        Assert.Equal(new[] { $"move 0x{InventorySample.Apple:X8} to 0x{InventorySample.Character:X8} slot 4" }, InventoryDriver.Sent(port));
     });
 
     [Fact]
@@ -362,7 +364,7 @@ public sealed class InventoryWindowTests
 
         InventoryDriver.Drop(host.Host, host.Cells[0], host.Cells[5]);
 
-        Assert.Equal(new[] { $"merge 0x{InventorySample.Apple:X8} into 0x{0x80000200u:X8}" }, port.Commands);
+        Assert.Equal(new[] { $"merge 0x{InventorySample.Apple:X8} into 0x{0x80000200u:X8}" }, InventoryDriver.Sent(port));
     });
 
     [Fact]
@@ -467,7 +469,7 @@ public sealed class InventoryWindowTests
         Assert.Equal(1, host.Drag.IconsOpen);
         host.Host.PointerUp(-1, -1);
 
-        Assert.Empty(port.Commands);
+        Assert.Empty(InventoryDriver.Sent(port));
         Assert.Equal(0, host.Drag.IconsOpen);
     });
 

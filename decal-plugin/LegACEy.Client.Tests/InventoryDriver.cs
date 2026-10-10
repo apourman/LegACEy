@@ -30,6 +30,9 @@ internal static class InventoryDriver
         Tick(host);
     }
 
+    /// <summary>The commands a port received other than selections, which a click or lift sends on its own: what a drop sent.</summary>
+    public static string[] Sent(FakeInventoryPort port) => port.Commands.Where(command => !command.StartsWith("select ")).ToArray();
+
     public static void Tick(AvaloniaPanel host)
     {
         for (var i = 0; i < 3; i++) host.Tick();
