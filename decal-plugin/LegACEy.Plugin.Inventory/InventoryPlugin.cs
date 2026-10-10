@@ -9,8 +9,9 @@ namespace LegACEy.Plugin.Inventory;
 
 /// <summary>
 /// The inventory window, standing in for retail's inventory panel: it opens and closes with retail's panel, in the layout the
-/// character last chose. Each layout, full or with its equipment section collapsed, is its own window with its own saved size and
-/// position, so switching hides one and opens the other at its own size.
+/// character last chose. Each layout is its own window with its own saved size and position, so switching hides one and opens the
+/// other at its own size. A layout with its equipment section collapsed is another window with its own size, but it stays where
+/// the full one is, so collapsing and expanding keep the window in place.
 /// </summary>
 public sealed class InventoryPlugin : ILegACEyPlugin
 {
@@ -89,7 +90,8 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     {
         var (width, height, sizing) = Shape(view);
         client.ToggleWindowWithChrome(WindowId(view), InventoryWindow.Title, width, height, DefaultLocation,
-            close => CreateWindow(client, view, close), new DerethClientTheme(), sizing, DerethWindow.TitleBarHeight);
+            close => CreateWindow(client, view, close), new DerethClientTheme(), sizing, DerethWindow.TitleBarHeight,
+            view.Collapsed ? WindowId(new InventoryView(view.Layout, false)) : null);
     }
 
     private Control CreateWindow(ILegACEyClient client, InventoryView view, Action close)

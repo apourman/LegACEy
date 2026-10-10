@@ -49,7 +49,7 @@ public readonly struct InventorySettings
 
 /// <summary>
 /// One of the inventory's windows: a layout, full or with the equipment and paperdoll section collapsed. Each is its own window with
-/// its own saved size and position. Its properties are set by the constructor: netstandard2.0 has no init accessors.
+/// its own saved size; a collapsed layout opens where its full window is. Its properties are set by the constructor: netstandard2.0 has no init accessors.
 /// </summary>
 public readonly record struct InventoryView
 {

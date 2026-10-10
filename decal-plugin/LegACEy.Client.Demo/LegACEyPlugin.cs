@@ -69,7 +69,8 @@ public interface ILegACEyClient
     /// <param name="theme">The theme the window is drawn in. Null uses the client's theme.</param>
     /// <param name="resizing">How the player can resize the window from its edges and corners. Null means it does not resize.</param>
     /// <param name="titleBarHeight">The top strip of the window that drags it, in pixels. A window with a taller header passes the header's height.</param>
-    void ToggleWindowWithChrome(string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow, IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28);
+    /// <param name="sharesLocationWith">The id of another of the plugin's windows this one stands in for: it opens where that one was left, and that one where this one was.</param>
+    void ToggleWindowWithChrome(string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow, IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28, string? sharesLocationWith = null);
     /// <summary>
     /// Registers the plugin's window for a station, built with its own chrome as <see cref="ToggleWindowWithChrome"/> is.
     /// The window opens when the server pushes station.open for it and closes on station.close. Closing it sends station.leave.

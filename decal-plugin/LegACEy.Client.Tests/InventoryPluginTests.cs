@@ -58,13 +58,22 @@ public sealed class InventoryPluginTests
     [Fact]
     public void Collapsing_the_equipment_opens_the_layout_s_compact_window_without_the_paperdoll_and_showing_it_comes_back() => RenderThread.Run(() =>
     {
-        using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
+        var positions = new MemoryWindowPositionStore();
+        positions.Save("Server", "Character", Vertical, (new Point(150, 120), null));
+        using var client = new FakeInventoryClient(positions);
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
         Assert.NotNull(InventoryDriver.SlotOrNull(client.Panel(Vertical), PaperdollSlot.Head));
 
+        // The collapsed window opens where the full one was, and the full one comes back where the collapsed one was left.
+        var full = client.Windows.Get(Vertical)!.Location;
         InventoryDriver.PressEquipment(client.Panel(Vertical));
         Assert.Null(client.Windows.Get(Vertical));
+        Assert.Equal(full, client.Windows.Get(Vertical + "-compact")!.Location);
+        var moved = new Point(full.X + 30, full.Y + 20);
+        client.Windows.Press(new Point(full.X + 100, full.Y + 20));
+        client.Windows.Move(new Point(moved.X + 100, moved.Y + 20));
+        client.Windows.Release();
         var compact = client.Panel(Vertical + "-compact");
         Assert.NotNull(client.Windows.Get(Vertical + "-compact"));
         Assert.Null(InventoryDriver.SlotOrNull(compact, PaperdollSlot.Head));
@@ -76,7 +85,7 @@ public sealed class InventoryPluginTests
         client.Retail!.Toggle();
         Assert.NotNull(client.Windows.Get(Vertical + "-compact"));
         InventoryDriver.PressEquipment(compact);
-        Assert.NotNull(client.Windows.Get(Vertical));
+        Assert.Equal(moved, client.Windows.Get(Vertical)!.Location);
         Assert.False(InventorySettings.FromInt(client.Settings).Collapsed);
     });
 
@@ -478,7 +487,7 @@ public sealed class InventoryPluginTests
             throw new NotSupportedException();
 
         public void ToggleWindowWithChrome(string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow,
-            IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28)
+            IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28, string? sharesLocationWith = null)
         {
             Requested[id] = (width, height, resizing);
             if (Windows.Get(id) != null)
@@ -486,7 +495,7 @@ public sealed class InventoryPluginTests
                 Windows.Close(id);
                 return;
             }
-            var window = Windows.Open(new WindowDefinition(id, title, width, height, titleBarHeight, theme, resizing), defaultLocation);
+            var window = Windows.Open(new WindowDefinition(id, title, width, height, titleBarHeight, theme, resizing, sharesLocationWith), defaultLocation);
             if (_panels.TryGetValue(id, out var panel))
             {
                 panel.Resize(window.Width, window.Height);

@@ -167,7 +167,7 @@ public sealed class PluginRegistry
     }
 
     private void ToggleWindow(PluginEntry entry, string id, string title, int width, int height, Point location, Func<Action, Control> createContent, bool ownChrome,
-        IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28)
+        IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28, string? sharesLocationWith = null)
     {
         // Window ids are namespaced by plugin, so a plugin can never open or close another plugin's window or a client window.
         var windowId = entry.Name + "/" + id;
@@ -178,7 +178,8 @@ public sealed class PluginRegistry
             return;
         }
 
-        var definition = new WindowDefinition(windowId, title, width, height, titleBarHeight, theme: theme, resizing: resizing);
+        var definition = new WindowDefinition(windowId, title, width, height, titleBarHeight, theme: theme, resizing: resizing,
+            sharesLocationWith: sharesLocationWith == null ? null : entry.Name + "/" + sharesLocationWith);
         if (_host.OpenWindow(definition, location, createContent, reason => Fail(entry, reason), ownChrome))
             _windowOwners[windowId] = entry;
     }
@@ -289,10 +290,10 @@ public sealed class PluginRegistry
         }
 
         public void ToggleWindowWithChrome(string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow,
-            IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28)
+            IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28, string? sharesLocationWith = null)
         {
             if (createWindow == null) throw new ArgumentNullException(nameof(createWindow));
-            _registry.ToggleWindow(_entry, id, title, width, height, defaultLocation, createWindow, ownChrome: true, theme, resizing, titleBarHeight);
+            _registry.ToggleWindow(_entry, id, title, width, height, defaultLocation, createWindow, ownChrome: true, theme, resizing, titleBarHeight, sharesLocationWith);
         }
 
         public int? LoadSettings() => _registry._host.LoadPluginSettings(_entry.Name);
