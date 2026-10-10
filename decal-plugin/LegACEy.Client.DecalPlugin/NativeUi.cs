@@ -26,6 +26,8 @@ internal static class NativeUi
     public const uint Vitae = 0x1000018A;
     /// <summary>InventoryPanel_Field, the retail inventory panel root.</summary>
     public const uint InventoryPanel = 0x1000018B;
+    /// <summary>RootPanel_Field, the side-panel frame the inventory and retail's other panels sit in.</summary>
+    public const uint PanelFrame = 0x1000017B;
 
     private static readonly IntPtr ManagerInstance = new(0x0083E03C);
     private static bool _ready;

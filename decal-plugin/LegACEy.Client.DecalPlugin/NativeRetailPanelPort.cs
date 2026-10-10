@@ -38,8 +38,8 @@ internal sealed class NativeRetailPanelPort : IRetailPanelPort
         }
     }
 
-    // The place, save bit and move are the panel frame's (gmPanelUI), which draws the frame the inventory sits in: moving only the
-    // inventory element left that frame on screen, empty. Gate: the inventory moves with its frame.
+    // The place, save bit and move are the panel frame's (RootPanel_Field), which draws the frame the inventory sits in: moving only
+    // the inventory element left that frame on screen, empty. The gmPanelUI parent walk did not reach it in play, so it is found by id.
     public Point Location => NativeUi.GetBounds(Frame()).Location;
 
     public bool SaveLocation => (Marshal.ReadInt32(Frame(), SaveLocationOffset) & SaveLocationBit) != 0;
@@ -79,7 +79,7 @@ internal sealed class NativeRetailPanelPort : IRetailPanelPort
     {
         var element = Element;
         if (element == IntPtr.Zero) throw new InvalidOperationException("The retail inventory panel is absent.");
-        var frame = PanelManagerOf(element);
+        var frame = NativeUi.GetElement(NativeUi.PanelFrame);
         return frame != IntPtr.Zero ? frame : element;
     }
 
