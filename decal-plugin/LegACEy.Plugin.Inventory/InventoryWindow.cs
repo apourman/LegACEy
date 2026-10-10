@@ -811,7 +811,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         var icon = new Path
         {
-            Data = Geometry.Parse(FigureGlyph), Width = 14, Height = 14, StrokeThickness = 1.2,
+            Data = Geometry.Parse(FigureGlyph), Width = 14, Height = 14, StrokeThickness = 1.2, UseLayoutRounding = false,
             Stroke = _collapsed ? MutedBrush : DerethPalette.TealBrush,
             Fill = _collapsed ? null : DerethPalette.Brush(DerethPalette.Teal.WithAlpha(0x40)),
         };
@@ -827,7 +827,9 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var active = layout == _layout;
         var icon = new Path
         {
-            Data = Geometry.Parse(glyph), Width = 14, Height = 14, StrokeThickness = 1.2,
+            // Unrounded, so the glyph sits at the button's exact centre: at a scale the button can round to an odd number of
+            // pixels and the glyph to an even one, and snapping both would push the glyph a pixel off.
+            Data = Geometry.Parse(glyph), Width = 14, Height = 14, StrokeThickness = 1.2, UseLayoutRounding = false,
             Stroke = active ? DerethPalette.TealBrush : MutedBrush,
             Fill = active ? DerethPalette.Brush(DerethPalette.Teal.WithAlpha(0x40)) : null,
         };
