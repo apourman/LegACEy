@@ -2931,14 +2931,19 @@ namespace ACE.Server.Command.Handlers
                     }
                 }
 
+                // a character made outside character creation (a seeded one) can lack untrained skills; the state below needs every valid skill
+                foreach (var skill in SkillHelper.ValidSkills)
+                    session.Player.GetCreatureSkill(skill);
+
                 string returnState = "1=";
                 returnState += $"{DateTime.UtcNow.ToCommonString()}=";
 
                 // need level 25, available skill credits 24
-                returnState += $"24={session.Player.AvailableSkillCredits}=25={session.Player.Level}=";
+                // a seeded character can lack these: an empty value would fail /ungod's parse and strand it in god mode
+                returnState += $"24={session.Player.AvailableSkillCredits ?? 0}=25={session.Player.Level ?? 1}=";
 
                 // need total xp 1, unassigned xp 2
-                returnState += $"1={session.Player.TotalExperience}=2={session.Player.AvailableExperience}=";
+                returnState += $"1={session.Player.TotalExperience ?? 0}=2={session.Player.AvailableExperience ?? 0}=";
 
                 // need all attributes
                 // 1 through 6 str, end, coord, quick, focus, self
