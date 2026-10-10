@@ -703,7 +703,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             _retailDragItem = item;
             _retailDragName = item == 0 ? string.Empty : ObjectName(item);
         }
-        var top = item == 0 ? null : TopSurfaceAt(_pointer);
+        // A Vault withdraw carries no world object, but our inventory still shows where it would go.
+        var top = item == 0 && !_itemDragActive ? null : TopSurfaceAt(_pointer);
         if (top != null && retailItem != 0 && _retailDragIcon == null)
             _retailDragIcon = ShowDragIcon(ObjectIcon(item), 1);
         else if ((top == null || retailItem == 0) && _retailDragIcon != null)
@@ -714,13 +715,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         foreach (var pair in _featureSurfaces.ToArray())
         {
             // An earlier failure in this loop may have closed the window.
-            if (!_featureSurfaces.ContainsKey(pair.Key) || pair.Value.Panel.Content is not IRetailItemDropTarget target) continue;
+            if (!_featureSurfaces.ContainsKey(pair.Key)) continue;
             var surface = pair.Value;
+            Avalonia.Point? over = top == pair.Key ? (Avalonia.Point?)surface.Panel.ToContent(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y) : null;
             try
             {
-                target.RetailDragOver(item, _retailDragName, top == pair.Key
-                    ? surface.Panel.ToContent(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y)
-                    : null);
+                if (surface.Panel.Content is IRetailItemDropTarget target) target.RetailDragOver(item, _retailDragName, over);
+                if (surface.Panel.Content is IInventoryDropZone zone) zone.WithdrawDragOver(_itemDragActive ? over : null);
             }
             catch (Exception exception) { _windowFailures[pair.Key](exception); }
         }

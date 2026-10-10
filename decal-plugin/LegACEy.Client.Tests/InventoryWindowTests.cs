@@ -357,6 +357,27 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
+    public void A_vault_withdraw_over_the_window_lights_the_cell_or_pack_under_it_but_not_a_paperdoll_slot() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        var zone = (IInventoryDropZone)host.Window;
+        var indicator = host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DropIndicator");
+
+        zone.WithdrawDragOver(InventoryDriver.Centre(host.Host, host.Cells[10]));
+        Assert.True(indicator.IsVisible);
+        Assert.Same(DerethPalette.GoldBrush, indicator.BorderBrush);
+
+        zone.WithdrawDragOver(InventoryDriver.Centre(host.Host, Slot(host, PaperdollSlot.Head)));
+        Assert.False(indicator.IsVisible);
+
+        zone.WithdrawDragOver(InventoryDriver.Centre(host.Host, host.Cells[10]));
+        zone.WithdrawDragOver(null);
+        Assert.False(indicator.IsVisible);
+    });
+
+    [Fact]
     public void A_retail_item_from_another_window_is_wielded_where_it_fits_and_refused_where_it_does_not() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();

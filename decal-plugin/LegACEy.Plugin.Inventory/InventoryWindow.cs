@@ -74,6 +74,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private (Point Point, uint Dragged, bool External)? _indicatorAt;
     // The item of a retail drag over this window (another retail window's item, or one of the retail inventory's), zero when none.
     private uint _retailItem;
+    private bool _withdrawOver;
     // A press on a slot: a click on release, or a drag once it moves past the threshold. The item or pack being dragged is _dragged, zero when none.
     private InventorySlotId? _press;
     private Point _pressPoint;
@@ -299,6 +300,26 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     }
 
     /// <summary>
+    /// A Vault withdraw is over this window. The withdrawn item goes into the inventory wherever it is released, so the indicator is
+    /// gold over any pack cell or pack, and hidden over the paperdoll, where it cannot be worn straight from the Vault.
+    /// </summary>
+    public void WithdrawDragOver(Point? position)
+    {
+        if (_disposed || _dragged != 0 || _retailItem != 0) return;
+        var slot = position is { } point ? SlotAt(point) : null;
+        if (slot?.Tag is InventorySlotId { Place: not SlotPlace.Paperdoll })
+        {
+            _withdrawOver = true;
+            Light(slot, GoldBrush);
+        }
+        else if (_withdrawOver)
+        {
+            _withdrawOver = false;
+            _dropIndicator.IsVisible = false;
+        }
+    }
+
+    /// <summary>
     /// A retail drag released over this window. An item from outside our inventory goes onto the slot it is released on, or, released
     /// elsewhere in the window, to the first free slot of the open pack. An item of ours is only moved by its slots, so it is declined
     /// elsewhere. Returns true when the item was used; declined items go back to where they came from.
@@ -356,7 +377,18 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         _indicatorAt = (point, dragged, external);
         var slot = SlotAt(point);
         var drop = slot?.Tag is InventorySlotId target ? Judge(_port, dragged, target, external) : null;
-        if (slot == null || drop == null || slot.TranslatePoint(default, this) is not { } origin)
+        if (slot == null || drop == null)
+        {
+            _dropIndicator.IsVisible = false;
+            return;
+        }
+        Light(slot, drop.Value.Accepted ? GoldBrush : InvalidBrush);
+    }
+
+    /// <summary>Shows the drop indicator over the slot, in the colour.</summary>
+    private void Light(DerethSlot slot, IBrush brush)
+    {
+        if (slot.TranslatePoint(default, this) is not { } origin)
         {
             _dropIndicator.IsVisible = false;
             return;
@@ -364,7 +396,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         _dropIndicator.Margin = new Thickness(origin.X, origin.Y, 0, 0);
         _dropIndicator.Width = slot.Bounds.Width;
         _dropIndicator.Height = slot.Bounds.Height;
-        _dropIndicator.BorderBrush = drop.Value.Accepted ? GoldBrush : InvalidBrush;
+        _dropIndicator.BorderBrush = brush;
         _dropIndicator.IsVisible = true;
     }
 

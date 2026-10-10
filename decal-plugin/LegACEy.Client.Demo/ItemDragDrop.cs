@@ -25,6 +25,11 @@ public interface IRetailItemDropTarget
 /// </summary>
 public interface IInventoryDropZone
 {
+    /// <summary>
+    /// A Vault withdraw is over this window at the position, in this control's coordinates, or null when it is not. The window shows
+    /// where it would go, as the retail inventory's own drop indicator does.
+    /// </summary>
+    void WithdrawDragOver(Point? position);
 }
 
 public enum ItemDropTarget
