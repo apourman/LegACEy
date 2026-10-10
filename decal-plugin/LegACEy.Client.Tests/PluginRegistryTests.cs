@@ -356,6 +356,7 @@ public sealed class PluginRegistryTests
         public IItemDragHost ItemDrag => new FakeItemDragHost();
         public IInventoryPort Inventory { get; } = new FakeInventoryPort();
         public bool IsWindowOpen(string id) => Errors.ContainsKey(id);
+        public IRetailPanel TakeOverRetailInventory(Action<bool> retailOpenChanged) => new FakeRetailPanel(retailOpenChanged);
 
         public int Built { get; private set; }
 

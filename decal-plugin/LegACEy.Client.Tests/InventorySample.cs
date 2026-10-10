@@ -28,7 +28,8 @@ internal static class InventorySample
     private const uint SackIcon = 0x0600101E;
 
     /// <summary>The whole sample: main pack open or a side pack open, with one item selected.</summary>
-    public static InventorySnapshot Snapshot(uint openContainer = Character, uint selected = 0, int burden = 4212)
+    /// <param name="extra">Items added to the main pack's sample, for a test that needs one more.</param>
+    public static InventorySnapshot Snapshot(uint openContainer = Character, uint selected = 0, int burden = 4212, IEnumerable<InventoryItem>? extra = null)
     {
         var main = new InventoryPack(Character, "Main Pack", BackpackIcon, 96);
         var sides = new List<InventoryPack>
@@ -53,6 +54,7 @@ internal static class InventorySample
             else if (slot == 5) items.Add(Item(YellowPotion, "Yellow potion", Potions, slot, 0x06001013, stack: 3));
             else items.Add(Item(0x80000100u + (uint)slot, "Vial", Potions, slot, 0x06001013));
         }
+        if (extra != null) items.AddRange(extra);
 
         var worn = new List<WieldedItem>
         {
@@ -67,6 +69,9 @@ internal static class InventorySample
 
         return new InventorySnapshot(main, sides, items, worn, burden, 5400, 25000, openContainer, selected);
     }
+
+    /// <summary>A stack of the main pack's apple kind (same name and type as the sample's apple), for a merge test.</summary>
+    public static InventoryItem AppleStack(uint id, int slot, int stack) => Item(id, "Apple", Character, slot, 0x06001049, stack: stack, stackMax: 100);
 
     /// <param name="valid">The wield locations the item can take; zero for an item that is not worn.</param>
     /// <param name="stackMax">The most the item stacks to; zero for a non-stacking item.</param>

@@ -23,9 +23,10 @@ namespace LegACEy.Plugin.Inventory;
 /// not while the owner has it <see cref="Suspend"/>ed (hidden); <see cref="Resume"/> draws the current state once.
 /// Its own toggles (layout and Slots) are local and report through <see cref="SettingsChanged"/>; the owner decides what a layout
 /// change does. A click on a slot selects its item, or opens a pack; a double-click uses the item; a drag moves it through the
-/// port. The window never changes its own state: a command shows only when the port's next snapshot says so.
+/// port. The window never changes its own state: a command shows only when the port's next snapshot says so. An item released
+/// outside every slot is offered to the LegACEy window under the pointer (a Vault deposit).
 /// </summary>
-public sealed class InventoryWindow : UserControl, IDisposable
+public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZone, IRetailItemDropTarget
 {
     internal const uint BackpackIcon = 0x0600127E;
     internal const string Title = "Inventory";
@@ -69,6 +70,8 @@ public sealed class InventoryWindow : UserControl, IDisposable
         HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
     };
     private readonly IItemDragHost? _dragHost;
+    // The item of a retail drag over this window (another retail window's item, or one of the retail inventory's), zero when none.
+    private uint _retailItem;
     // A press on a slot: a click on release, or a drag once it moves past the threshold. The item or pack being dragged is _dragged, zero when none.
     private InventorySlotId? _press;
     private Point _pressPoint;
@@ -83,7 +86,8 @@ public sealed class InventoryWindow : UserControl, IDisposable
     /// <param name="port">The character's inventory. The window reads its snapshot and re-renders on its change event.</param>
     /// <param name="art">The game art the icons are drawn from.</param>
     /// <param name="settings">The layout this window draws, and whether the armour slots show.</param>
-    /// <param name="dragHost">Shows the icon of a dragged item under the pointer. Null shows no icon; the drag still works.</param>
+    /// <param name="dragHost">Shows the icon of a dragged item under the pointer, and hands an item released outside the slots to the
+    /// LegACEy window under the pointer. Null shows no icon and hands nothing over; the drag still works.</param>
     public InventoryWindow(IInventoryPort port, IGameArtSource art, InventorySettings settings, IItemDragHost? dragHost = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
@@ -236,9 +240,70 @@ public sealed class InventoryWindow : UserControl, IDisposable
             Click(press, clicks);
             return;
         }
-        // A release outside the slots, or over a refused one, sends nothing.
-        var drop = dragged == 0 || SlotAt(point)?.Tag is not InventorySlotId target ? null : Judge(_port.Snapshot, dragged, target);
-        if (drop?.Accepted == true) drop.Value.Send(_port);
+        if (dragged == 0) return;
+        // Over a slot the drop is judged as it always was: a refused one sends nothing.
+        if (SlotAt(point)?.Tag is InventorySlotId target)
+        {
+            var drop = Judge(_port.Snapshot, dragged, target);
+            if (drop?.Accepted == true) drop.Value.Send(_port);
+            return;
+        }
+        HandOffOutside(dragged);
+    }
+
+    /// <summary>
+    /// A release outside every slot: an item goes to the LegACEy window under the pointer, if that window takes it (a Vault deposit).
+    /// Side packs stay here.
+    /// </summary>
+    private void HandOffOutside(uint dragged)
+    {
+        var snapshot = _port.Snapshot;
+        if (_dragHost == null || snapshot.SidePacks.Any(pack => pack.Id == dragged) || !snapshot.Contains(dragged)) return;
+        // ponytail: story 45, drops on the 3D world, other retail windows and the shortcut bar, is still missing. The hand-off to
+        // retail needs the retail UIItem of this object, and step 01 (R1) did not identify how to find it: no child walk and no
+        // object lookup. Until it does, a release outside every LegACEy window sends nothing, as it always has.
+        _dragHost.DeliverAtPointer(dragged, KindOf(snapshot, dragged).Name);
+    }
+
+    /// <summary>
+    /// A retail drag (another retail window's item, or the retail inventory's) is over this window. It shows the same drop indicator as
+    /// our own drags. Our own drag keeps its indicator; a drag that is not over this window clears it.
+    /// </summary>
+    public void RetailDragOver(uint itemId, string itemName, Point? position)
+    {
+        if (_disposed || _dragged != 0) return;
+        if (itemId == 0 || position is not { } point)
+        {
+            if (_retailItem != 0)
+            {
+                _retailItem = 0;
+                _dropIndicator.IsVisible = false;
+            }
+            return;
+        }
+        _retailItem = itemId;
+        ShowIndicator(point, itemId, external: !_port.Snapshot.Contains(itemId));
+    }
+
+    /// <summary>
+    /// A retail drag released over this window. An item from outside our inventory goes onto the slot it is released on, or, released
+    /// elsewhere in the window, to the first free slot of the open pack. An item of ours is only moved by its slots, so it is declined
+    /// elsewhere. Returns true when the item was used; declined items go back to where they came from.
+    /// </summary>
+    public bool RetailDrop(uint itemId, string itemName, Point position)
+    {
+        _retailItem = 0;
+        _dropIndicator.IsVisible = false;
+        if (_disposed || itemId == 0) return false;
+        var snapshot = _port.Snapshot;
+        var external = !snapshot.Contains(itemId);
+        var target = SlotAt(position)?.Tag as InventorySlotId;
+        if (target == null && external) target = new InventorySlotId(SlotPlace.Pack, 0, OpenPack(snapshot).Id, -1, null);
+        if (target == null) return false;
+        var drop = Judge(snapshot, itemId, target, external);
+        if (drop?.Accepted != true) return false;
+        drop.Value.Send(_port);
+        return true;
     }
 
     /// <summary>A click on release: a pack opens; an item is selected, or used when the press was the second click on it.</summary>
@@ -264,10 +329,13 @@ public sealed class InventoryWindow : UserControl, IDisposable
     }
 
     /// <summary>Shows the indicator over the slot under the pointer: gold when the drop is accepted, red when it is refused.</summary>
-    private void ShowIndicator(Point point)
+    private void ShowIndicator(Point point) => ShowIndicator(point, _dragged, external: false);
+
+    /// <summary>The drop indicator for a dragged item over a point: the slot under it, when the drop there is judged.</summary>
+    private void ShowIndicator(Point point, uint dragged, bool external)
     {
         var slot = SlotAt(point);
-        var drop = slot?.Tag is InventorySlotId target ? Judge(_port.Snapshot, _dragged, target) : null;
+        var drop = slot?.Tag is InventorySlotId target ? Judge(_port.Snapshot, dragged, target, external) : null;
         if (slot == null || drop == null || slot.TranslatePoint(default, this) is not { } origin)
         {
             _dropIndicator.IsVisible = false;
@@ -314,16 +382,19 @@ public sealed class InventoryWindow : UserControl, IDisposable
     /// <summary>
     /// What dropping the dragged item or pack on a slot does. Null: nothing shows and nothing is sent (the item's own slot, or an
     /// item the snapshot no longer holds). Accepted false: red, nothing sent. Accepted true: gold, and the drop sends its command.
+    /// <paramref name="external"/> marks an item from another window, which the snapshot does not hold.
     /// </summary>
-    private static (bool Accepted, Action<IInventoryPort> Send)? Judge(InventorySnapshot s, uint dragged, InventorySlotId target)
+    private static (bool Accepted, Action<IInventoryPort> Send)? Judge(InventorySnapshot s, uint dragged, InventorySlotId target, bool external = false)
     {
-        if (!s.Contains(dragged)) return null;
+        if (!external && !s.Contains(dragged)) return null;
         if (s.SidePacks.Any(pack => pack.Id == dragged)) return PackOnto(s, dragged, target);
         switch (target.Place)
         {
             case SlotPlace.Paperdoll:
                 if (target.ItemId == dragged || target.Equipment is not { } slot) return null;
-                return s.WieldMask(dragged, slot) == 0 ? Refused : (true, p => p.Wield(dragged, slot));
+                // ponytail: an item from another window has no wield mask in the snapshot, so it is sent to any slot and the server
+                // refuses an illegal wield. Add the mask to the port when it carries it.
+                return !external && s.WieldMask(dragged, slot) == 0 ? Refused : (true, p => p.Wield(dragged, slot));
 
             case SlotPlace.Pack:
             {

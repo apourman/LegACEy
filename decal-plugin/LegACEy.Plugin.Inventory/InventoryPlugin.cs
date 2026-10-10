@@ -17,6 +17,8 @@ public sealed class InventoryPlugin : ILegACEyPlugin
 
     // The window of each layout while the client keeps it, open or hidden. A hidden window keeps its content.
     private readonly Dictionary<InventoryLayout, InventoryWindow> _windows = new();
+    // The retail panel this window stands in for while the client's takeover switch is on. It does nothing while the switch is off.
+    private IRetailPanel? _retail;
     // The settings while a window is open: read from the client when a window opens, and every change is saved as it happens.
     private InventorySettings? _settings;
     // The layout whose window the plugin last showed, so a menu press knows whether it hides the window or opens one.
@@ -27,11 +29,27 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     /// <summary>The inventory uses no server actions, so it is never hidden for a missing one.</summary>
     public IReadOnlyCollection<string> RequiredActions { get; } = Array.Empty<string>();
 
-    public void Start(ILegACEyClient client) =>
-        client.AddMenuEntry(InventoryWindow.Title, InventoryWindow.BackpackIcon, () => Toggle(client));
+    public void Start(ILegACEyClient client)
+    {
+        client.AddMenuEntry(InventoryWindow.Title, InventoryWindow.BackpackIcon, () => Toggle(client, fromMenu: true));
+        _retail = client.TakeOverRetailInventory(open => RetailPanelChanged(client, open));
+    }
 
-    /// <summary>The menu press: opens the current layout's window, or hides it when it is showing.</summary>
-    private void Toggle(ILegACEyClient client)
+    /// <summary>
+    /// Retail opened or closed its inventory panel while the takeover is on. A layout switch never comes here: it hides and shows
+    /// windows of its own and leaves retail's panel open.
+    /// </summary>
+    private void RetailPanelChanged(ILegACEyClient client, bool open)
+    {
+        if (open == (_shown != null)) return;
+        Toggle(client, fromMenu: false);
+    }
+
+    /// <summary>
+    /// Opens the current layout's window, or hides it when it is showing. A menu press also opens or closes retail's panel through the
+    /// takeover (which does nothing while the switch is off), so retail stays authoritative.
+    /// </summary>
+    private void Toggle(ILegACEyClient client, bool fromMenu)
     {
         // The settings are the character's, and the character logged in now may not be the one the cache came from. The cache
         // is trusted only while a window is open; otherwise the press reads the value the client holds for this character.
@@ -54,6 +72,11 @@ public sealed class InventoryPlugin : ILegACEyPlugin
         }
         _shown = opening ? layout : null;
         Show(client, layout);
+        if (fromMenu)
+        {
+            if (opening) _retail?.Open();
+            else _retail?.Close();
+        }
     }
 
     /// <summary>
@@ -79,7 +102,13 @@ public sealed class InventoryPlugin : ILegACEyPlugin
         var window = new InventoryWindow(client.Inventory, client.Art, new InventorySettings(layout, Current(client).ShowSlots), client.ItemDrag);
         GiveDoll(client, window);
         _windows[layout] = window;
-        window.CloseRequested += (_, _) => Hide(layout, close);
+        // The close box closes retail's panel too, through its own path, when the takeover holds it. Retail's close then reaches us as
+        // closed, which finds the window already hidden.
+        window.CloseRequested += (_, _) =>
+        {
+            Hide(layout, close);
+            _retail?.Close();
+        };
         window.SettingsChanged += settings =>
         {
             _settings = settings;
@@ -87,7 +116,7 @@ public sealed class InventoryPlugin : ILegACEyPlugin
             if (settings.Layout == layout) return;
             // Hiding keeps this layout's size and position. The other layout opens with its own saved size.
             Hide(layout, close);
-            Toggle(client);
+            Toggle(client, fromMenu: false);
         };
         window.DetachedFromVisualTree += (_, _) => Released(layout, window);
         return window;

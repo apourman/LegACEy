@@ -259,6 +259,38 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
+    public void A_stack_dropped_on_a_stack_of_the_same_kind_merges_into_it() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        // A second apple, in slot 5: the same name and type as the sample's apple in slot 0, so the drop merges the two.
+        port.Push(InventorySample.Snapshot(extra: new[] { InventorySample.AppleStack(0x80000200, slot: 5, stack: 20) }));
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+
+        InventoryDriver.Drop(host.Host, host.Cells[0], host.Cells[5]);
+
+        Assert.Equal(new[] { $"merge 0x{InventorySample.Apple:X8} into 0x{0x80000200u:X8}" }, port.Commands);
+    });
+
+    [Fact]
+    public void A_retail_item_from_another_window_shows_the_indicator_and_dropped_on_a_cell_moves_into_it() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        const uint CorpseItem = 0x90000001; // not in our snapshot: it lies in another retail window
+        var target = (IRetailItemDropTarget)host.Window;
+        var empty = host.Cells[10];
+        var over = InventoryDriver.Centre(host.Host, empty);
+
+        target.RetailDragOver(CorpseItem, "Bow", over);
+        var indicator = host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DropIndicator");
+        Assert.True(indicator.IsVisible);
+
+        Assert.True(target.RetailDrop(CorpseItem, "Bow", over));
+        Assert.Equal(new[] { $"move 0x{CorpseItem:X8} to 0x{InventorySample.Character:X8} slot 10" }, port.Commands);
+    });
+
+    [Fact]
     public void A_press_that_moves_past_the_threshold_and_is_lost_sends_nothing_and_drops_its_icon() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();

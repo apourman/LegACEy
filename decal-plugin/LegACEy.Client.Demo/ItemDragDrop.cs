@@ -19,6 +19,14 @@ public interface IRetailItemDropTarget
     bool RetailDrop(uint itemId, string itemName, Point position);
 }
 
+/// <summary>
+/// A LegACEy window that shows the player's inventory. A Vault withdraw released over it counts as released over the inventory,
+/// whether or not the retail inventory panel is taken over.
+/// </summary>
+public interface IInventoryDropZone
+{
+}
+
 public enum ItemDropTarget
 {
     /// <summary>The pointer is over the open retail inventory.</summary>
@@ -29,7 +37,7 @@ public enum ItemDropTarget
     Elsewhere
 }
 
-/// <summary>Host services for dragging an item out of a LegACEy window and onto the retail UI.</summary>
+/// <summary>Host services for dragging an item out of a LegACEy window and onto the retail UI, and for handing one to a LegACEy window.</summary>
 public interface IItemDragHost
 {
     /// <summary>
@@ -40,15 +48,43 @@ public interface IItemDragHost
 
     /// <summary>What is under the pointer now, outside LegACEy windows.</summary>
     ItemDropTarget DropTargetAtPointer();
+
+    /// <summary>
+    /// Hands an item released outside every slot of a LegACEy window to the LegACEy window under the pointer, as a retail drag
+    /// released there would reach it. True when that window used the item. Nothing is under the pointer: false.
+    /// </summary>
+    bool DeliverAtPointer(uint itemId, string itemName);
 }
 
-/// <summary>Drag host for tests: no icon, and a drop target the caller chooses.</summary>
+/// <summary>
+/// Which LegACEy window a drop released at a screen point lands on, by the window manager's hit test (topmost first).
+/// <c>contentOf</c> gives a window's content by its id.
+/// </summary>
+public static class ItemDropRouting
+{
+    /// <summary>Where a Vault withdraw released at the point counts as the inventory: Inventory over an inventory window, else null.</summary>
+    public static ItemDropTarget? InventoryAt(WindowManager windows, Func<string, object?> contentOf, System.Drawing.Point point) =>
+        windows.HitTest(point) is { } window && contentOf(window.Id) is IInventoryDropZone ? ItemDropTarget.Inventory : (ItemDropTarget?)null;
+
+    /// <summary>Delivers an item released at the point to the window there, if that window takes retail drops. True if it used the item.</summary>
+    public static bool Deliver(WindowManager windows, Func<string, object?> contentOf, System.Drawing.Point point, uint itemId, string itemName)
+    {
+        if (windows.HitTest(point) is not { } window || contentOf(window.Id) is not IRetailItemDropTarget target) return false;
+        return target.RetailDrop(itemId, itemName, new Point(point.X - window.Location.X, point.Y - window.Location.Y));
+    }
+}
+
+/// <summary>Drag host for tests: no icon, a drop target the caller chooses, and a relay the caller answers.</summary>
 public sealed class FakeItemDragHost : IItemDragHost
 {
     public ItemDropTarget Target { get; set; } = ItemDropTarget.Inventory;
+    /// <summary>Answers a drop handed to a LegACEy window. False by default: no window took it.</summary>
+    public Func<uint, string, bool> Relay { get; set; } = (_, _) => false;
     public List<GameImage?> IconsShown { get; } = new();
     /// <summary>The count each icon was shown with, as the host was asked to badge it.</summary>
     public List<int> CountsShown { get; } = new();
+    /// <summary>The items handed to a LegACEy window, in order.</summary>
+    public List<(uint Id, string Name)> Delivered { get; } = new();
     public int IconsOpen { get; private set; }
 
     public IDisposable ShowDragIcon(GameImage? icon, int count)
@@ -60,6 +96,12 @@ public sealed class FakeItemDragHost : IItemDragHost
     }
 
     public ItemDropTarget DropTargetAtPointer() => Target;
+
+    public bool DeliverAtPointer(uint itemId, string itemName)
+    {
+        Delivered.Add((itemId, itemName));
+        return Relay(itemId, itemName);
+    }
 
     private sealed class Icon : IDisposable
     {

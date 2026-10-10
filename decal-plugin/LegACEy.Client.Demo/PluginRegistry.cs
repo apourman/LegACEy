@@ -254,6 +254,15 @@ public sealed class PluginRegistry
         public IInventoryPort Inventory { get; }
         public bool SupportsAction(string action) => _registry.SupportsAction(action);
 
+        public IRetailPanel TakeOverRetailInventory(Action<bool> retailOpenChanged)
+        {
+            if (retailOpenChanged == null) throw new ArgumentNullException(nameof(retailOpenChanged));
+            var panel = _registry._host.TakeOverRetailInventory(open => _registry.Guarded(_entry, () => retailOpenChanged(open)));
+            // Held with the plugin's subscriptions, so turning the plugin off gives the retail panel back.
+            _entry.Subscriptions.Add(panel);
+            return panel;
+        }
+
         public void AddMenuEntry(string title, uint iconId, Action action)
         {
             if (action == null) throw new ArgumentNullException(nameof(action));

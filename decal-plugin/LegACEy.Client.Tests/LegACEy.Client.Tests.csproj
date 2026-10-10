@@ -26,6 +26,7 @@
     <Compile Include="..\LegACEy.Client.DecalPlugin\RetailSurfaceRenderer.cs" Link="RetailSurfaceRenderer.cs" />
     <Compile Include="..\LegACEy.Client.DecalPlugin\GameStatePoller.cs" Link="GameStatePoller.cs" />
     <Compile Include="..\LegACEy.Client.DecalPlugin\NativeUiCatalogue.cs" Link="NativeUiCatalogue.cs" />
+    <Compile Include="..\LegACEy.Client.DecalPlugin\RetailPanelTakeover.cs" Link="RetailPanelTakeover.cs" />
   </ItemGroup>
 
   <ItemGroup>
