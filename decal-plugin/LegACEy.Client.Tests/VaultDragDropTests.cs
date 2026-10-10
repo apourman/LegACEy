@@ -74,6 +74,7 @@ public sealed class VaultDragDropTests
         Assert.NotNull(icon);
         Assert.Equal((32, 32), (icon!.Width, icon.Height));
         Assert.Equal(FlatArt.Pixels, icon.Pixels);
+        Assert.Equal(new[] { true }, vault.Drag.RetailIndicators); // a Vault withdrawal is one the retail inventory can take
         vault.Host.PointerMove(VaultShellPanel.WindowWidth + 80, start.Y);
         vault.Host.PointerUp(VaultShellPanel.WindowWidth + 80, start.Y);
         vault.Step(TimeSpan.FromMilliseconds(30));
@@ -213,8 +214,10 @@ public sealed class VaultDragDropTests
     private sealed class PanelDragHost : IItemDragHost
     {
         public AvaloniaPanel? Panel { get; private set; }
+        public bool RetailDropIndicator { get; private set; }
         public IDisposable ShowDragIcon(LegACEy.Client.GameArt.GameImage? icon, int count, bool retailDropIndicator)
         {
+            RetailDropIndicator = retailDropIndicator;
             Panel = AvaloniaPanel.Create(() => new Grid { Width = 32, Height = 32 }, 32, 32);
             return new Icon(this);
         }

@@ -129,9 +129,9 @@ public sealed class InventorySnapshotBuilderTests
     {
         var reader = new FakeReader { Strength = 100, CarryingAugmentations = 10 };
         reader.Objects.Add(Pack(PackInSlotZero, slot: 0, capacity: 24));
-        reader.Objects.Add(Item(0x50000110, container: Character, slot: 0, itemType: 273, stackCount: 40));
-        reader.Objects.Add(Item(0x50000111, container: PackInSlotZero, slot: 3, itemType: 273, stackCount: 10));
-        reader.Objects.Add(Item(0x50000112, container: PackInSlotZero, slot: 1, itemType: 1, stackCount: 1));
+        reader.Objects.Add(Item(0x50000110, container: Character, slot: 0, wcid: 273, stackCount: 40));
+        reader.Objects.Add(Item(0x50000111, container: PackInSlotZero, slot: 3, wcid: 273, stackCount: 10));
+        reader.Objects.Add(Item(0x50000112, container: PackInSlotZero, slot: 1, wcid: 1, stackCount: 1));
 
         var snapshot = InventorySnapshotBuilder.Build(reader);
 
@@ -143,8 +143,8 @@ public sealed class InventorySnapshotBuilderTests
         new(id, "Pack", Character, slot, 0, 0, 1, 0, capacity, true, 0, Visual(id));
 
     private static InventoryObjectRead Item(uint id, uint container, int slot, uint equippedMask = 0, uint validLocations = 0,
-        int stackCount = 1, int itemType = 1) =>
-        new(id, "Item", container, slot, equippedMask, validLocations, stackCount, 1, 0, false, itemType, Visual(id));
+        int stackCount = 1, int wcid = 1) =>
+        new(id, "Item", container, slot, equippedMask, validLocations, stackCount, 1, 0, false, wcid, Visual(id));
 
     private static ItemVisual Visual(uint icon) => new(icon, underlay: 0, overlay: 0, uiEffects: 0);
 
