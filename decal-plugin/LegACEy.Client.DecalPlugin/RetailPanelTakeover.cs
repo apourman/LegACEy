@@ -27,8 +27,8 @@ internal interface IRetailPanelPort
 
 /// <summary>
 /// Keeps retail's inventory panel open but parked off-screen while the takeover is on, and tells a plugin window when that panel
-/// opens and closes. Retail keeps its open state on the element it would hide, so the element is parked, not hidden each frame
-/// (research R1, Q1; the user has not yet decided this, decision D1). The panel's place and save-location are given back on every exit:
+/// opens and closes. Retail keeps its open state on the element it would hide, so the element is parked rather than hidden each frame.
+/// The panel's place and save-location are given back on every exit:
 /// switch-off, logoff, a fault, unload and plugin turn-off. While parked, save-location is off, so the parked position never reaches
 /// the layout. Call <see cref="Tick"/> on the game thread once a frame.
 /// </summary>
@@ -150,6 +150,9 @@ internal sealed class RetailPanelTakeover : IDisposable
 
     private Point ParkedAt => _parkedAt ?? Parked;
 
+    /// <summary>True while the takeover holds the panel: parked, and not failed. Open and Close reach retail only then.</summary>
+    public bool Holds => _parked && !_failed && !_disposed;
+
     private void Park(IntPtr identity)
     {
         _identity = identity;
@@ -250,7 +253,11 @@ internal sealed class RetailPanelTakeover : IDisposable
 /// </summary>
 internal static class RetailPanelCatalogue
 {
-    private const string Source = "our disassembly of the installed end-of-retail acclient.exe (research R1, Q1)";
+    private const string Source = "our disassembly of the installed end-of-retail acclient.exe";
+    /// <summary>gmPanelUI::RecvNotice_SetPanelVisibility, a ThisCall on gmPanelUI+0x5F8 with (panel id, visible).</summary>
+    internal const uint RecvNoticeSetPanelVisibility = 0x004BD380;
+    /// <summary>gmPanelUI's primary vtable. A panel element whose first dword is this is the gmPanelUI itself.</summary>
+    internal const uint GmPanelUIVtable = 0x007B5070;
 
     internal static readonly IReadOnlyList<NativeUiEntry> Entries = new[]
     {
@@ -260,26 +267,25 @@ internal static class RetailPanelCatalogue
         Shared("UIElement::GetCurrentPosition"),
         Shared("UIElement::SetSaveLocation"),
         Shared("UIElement::MoveTo"),
-        new NativeUiEntry("gmPanelUI::RecvNotice_SetPanelVisibility", 0x004BD380, Bytes(
+        new NativeUiEntry("gmPanelUI::RecvNotice_SetPanelVisibility", RecvNoticeSetPanelVisibility, NativeUiCatalogue.Bytes(
             "51 8B 54 24 08 53 55 33 DB 3B D3 56 8B F1 0F 84 69 01 00 00"), Source, "ThisCall (gmPanelUI+0x5F8; uint panelId, uint visible), ret 8"),
         // The receiver: gmPanelUI's constructor stores the notice sub-object's vtable (0x007B4DC8) at +0x5F8, so the receiver of
         // RecvNotice is gmPanelUI+0x5F8. There is no direct call that computes it; the notice is called through the vtable below.
-        new NativeUiEntry("gmPanelUI constructor: notice sub-object at +0x5F8 (mov [esi+0x5F8], 0x007B4DC8)", 0x004BD536, Bytes(
+        new NativeUiEntry("gmPanelUI constructor: notice sub-object at +0x5F8 (mov [esi+0x5F8], 0x007B4DC8)", 0x004BD536, NativeUiCatalogue.Bytes(
             "C7 86 F8 05 00 00 C8 4D 7B 00"), Source, "instruction reference (receiver offset +0x5F8)"),
         // RecvNotice_SetPanelVisibility is slot +0x260 of the notice vtable 0x007B4DC8.
-        new NativeUiEntry("notice vtable 0x007B4DC8 slot +0x260 holds RecvNotice_SetPanelVisibility", 0x007B4DC8 + 0x260, Bytes("80 D3 4B 00"),
+        new NativeUiEntry("notice vtable 0x007B4DC8 slot +0x260 holds RecvNotice_SetPanelVisibility", 0x007B4DC8 + 0x260, NativeUiCatalogue.Bytes("80 D3 4B 00"),
             Source, "data reference (vtable slot)"),
         // The one call that dispatches it: call [edx+0x260] with the notice object in ecx (mov ecx, esi).
-        new NativeUiEntry("call [edx+0x260] dispatching RecvNotice with the notice object", 0x0047A4E1, Bytes("FF 92 60 02 00 00"),
+        new NativeUiEntry("call [edx+0x260] dispatching RecvNotice with the notice object", 0x0047A4E1, NativeUiCatalogue.Bytes("FF 92 60 02 00 00"),
             Source, "virtual slot call"),
         // gmPanelUI's primary vtable at 0x007B5070: slot +0x0C is ListenToElementMessage, which identifies the class.
-        new NativeUiEntry("gmPanelUI vtable slot +0x0C reference (vtable at 0x007B5070 is gmPanelUI)", 0x007B5070 + 0x0C, Bytes("00 D3 4B 00"),
+        new NativeUiEntry("gmPanelUI vtable slot +0x0C reference (vtable at 0x007B5070 is gmPanelUI)", GmPanelUIVtable + 0x0C, NativeUiCatalogue.Bytes("00 D3 4B 00"),
             Source, "data reference: ListenToElementMessage 0x004BD300 in the class's vtable"),
-        new NativeUiEntry("UIElement::IsAncestorOfMe reference (GetParent through vtable +0xA0)", 0x0045FBB0, Bytes("8B 01 FF 90 A0 00 00 00"),
+        new NativeUiEntry("UIElement::IsAncestorOfMe reference (GetParent through vtable +0xA0)", 0x0045FBB0, NativeUiCatalogue.Bytes("8B 01 FF 90 A0 00 00 00"),
             Source, "virtual slot reference")
     };
 
     private static NativeUiEntry Shared(string name) => NativeUiCatalogue.Entries.Single(entry => entry.Name == name);
 
-    private static byte[] Bytes(string bytes) => bytes.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Select(value => Convert.ToByte(value, 16)).ToArray();
 }

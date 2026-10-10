@@ -20,6 +20,8 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     // The retail panel this window stands in for while the client's takeover switch is on. It does nothing while the switch is off.
     private IRetailPanel? _retail;
     // The settings while a window is open: read from the client when a window opens, and every change is saved as it happens.
+    // The cache is the character's, and the character logged in now may not be the one it came from, so a menu press or a retail
+    // report clears it while no window is open (the next read reaches the client); a layout switch never clears it.
     private InventorySettings? _settings;
     // The layout whose window the plugin last showed, so a menu press knows whether it hides the window or opens one.
     private InventoryLayout? _shown;
@@ -31,8 +33,24 @@ public sealed class InventoryPlugin : ILegACEyPlugin
 
     public void Start(ILegACEyClient client)
     {
-        client.AddMenuEntry(InventoryWindow.Title, InventoryWindow.BackpackIcon, () => Toggle(client, fromMenu: true));
+        client.AddMenuEntry(InventoryWindow.Title, InventoryWindow.BackpackIcon, () => Menu(client));
         _retail = client.TakeOverRetailInventory(open => RetailPanelChanged(client, open));
+    }
+
+    /// <summary>
+    /// The menu press. While the takeover holds retail's panel, the press only asks retail to open or close it, and retail's report
+    /// opens or closes the window, so the two cannot disagree. With the takeover off, the window opens or closes itself.
+    /// </summary>
+    private void Menu(ILegACEyClient client)
+    {
+        if (_shown == null) _settings = null;
+        if (_retail is { Holds: true })
+        {
+            if (_shown == null) _retail.Open();
+            else _retail.Close();
+            return;
+        }
+        Toggle(client, Current(client).Layout);
     }
 
     /// <summary>
@@ -42,19 +60,13 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     private void RetailPanelChanged(ILegACEyClient client, bool open)
     {
         if (open == (_shown != null)) return;
-        Toggle(client, fromMenu: false);
+        if (_shown == null) _settings = null;
+        Toggle(client, Current(client).Layout);
     }
 
-    /// <summary>
-    /// Opens the current layout's window, or hides it when it is showing. A menu press also opens or closes retail's panel through the
-    /// takeover (which does nothing while the switch is off), so retail stays authoritative.
-    /// </summary>
-    private void Toggle(ILegACEyClient client, bool fromMenu)
+    /// <summary>Opens the window of a layout, or hides it when it is the one showing.</summary>
+    private void Toggle(ILegACEyClient client, InventoryLayout layout)
     {
-        // The settings are the character's, and the character logged in now may not be the one the cache came from. The cache
-        // is trusted only while a window is open; otherwise the press reads the value the client holds for this character.
-        if (_shown == null) _settings = null;
-        var layout = Current(client).Layout;
         var opening = _shown != layout;
         if (opening)
         {
@@ -72,11 +84,6 @@ public sealed class InventoryPlugin : ILegACEyPlugin
         }
         _shown = opening ? layout : null;
         Show(client, layout);
-        if (fromMenu)
-        {
-            if (opening) _retail?.Open();
-            else _retail?.Close();
-        }
     }
 
     /// <summary>
@@ -111,12 +118,14 @@ public sealed class InventoryPlugin : ILegACEyPlugin
         };
         window.SettingsChanged += settings =>
         {
+            // The new settings are the plugin's from here on, even if the client cannot save them, so the other layout opens from
+            // them and not from what the client reads back. The cache is not reset here: this is not a menu press.
             _settings = settings;
             client.SaveSettings(settings.ToInt());
             if (settings.Layout == layout) return;
             // Hiding keeps this layout's size and position. The other layout opens with its own saved size.
             Hide(layout, close);
-            Toggle(client, fromMenu: false);
+            Toggle(client, settings.Layout);
         };
         window.DetachedFromVisualTree += (_, _) => Released(layout, window);
         return window;

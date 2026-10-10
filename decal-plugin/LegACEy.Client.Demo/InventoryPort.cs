@@ -22,7 +22,12 @@ public interface IInventoryPort
     void Use(uint itemId);
     /// <summary>Moves an item to a slot of a container. The server decides the outcome, and the snapshot changes only when the item moves.</summary>
     void MoveToContainer(uint itemId, uint containerId, int slotIndex);
-    /// <summary>Wields an item into a paperdoll slot. Nothing is sent when the item cannot go in that slot (see <see cref="InventorySnapshot.WieldMask"/>).</summary>
+    /// <summary>
+    /// The wield mask for an item in a paperdoll slot: its valid locations within the slot, and zero where it cannot go. An item the
+    /// snapshot does not hold (one in another window's container, a corpse, a chest) is read from the world.
+    /// </summary>
+    uint WieldMask(uint itemId, PaperdollSlot slot);
+    /// <summary>Wields an item into a paperdoll slot. Nothing is sent when <see cref="WieldMask"/> is zero for it.</summary>
     void Wield(uint itemId, PaperdollSlot slot);
     /// <summary>Moves a stack onto another stack of the same item, which merges them where the server allows.</summary>
     void MergeStack(uint itemId, uint targetStackId);
@@ -76,7 +81,7 @@ public sealed class ItemVisual : IEquatable<ItemVisual>
 /// <summary>An item in a pack, at a slot index of its container.</summary>
 public sealed class InventoryItem : IEquatable<InventoryItem>
 {
-    public InventoryItem(uint id, string name, uint container, int slot, ItemVisual visual, int stackCount, int stackMax, int itemType, uint validLocations)
+    public InventoryItem(uint id, string name, uint container, int slot, ItemVisual visual, int stackCount, int stackMax, int wcid, uint validLocations)
     {
         Id = id;
         Name = name ?? string.Empty;
@@ -85,7 +90,7 @@ public sealed class InventoryItem : IEquatable<InventoryItem>
         Visual = visual ?? throw new ArgumentNullException(nameof(visual));
         StackCount = stackCount;
         StackMax = stackMax;
-        ItemType = itemType;
+        Wcid = wcid;
         ValidLocations = validLocations;
     }
 
@@ -98,13 +103,13 @@ public sealed class InventoryItem : IEquatable<InventoryItem>
     public ItemVisual Visual { get; }
     public int StackCount { get; }
     public int StackMax { get; }
-    /// <summary>The client's item-type value.</summary>
-    public int ItemType { get; }
+    /// <summary>The weenie class id (WCID) of the item: the kind of object it is, as Decal's LongValueKey.Type reports it.</summary>
+    public int Wcid { get; }
     /// <summary>The wield locations the item can take (the AC EquipMask bits).</summary>
     public uint ValidLocations { get; }
 
-    public bool Equals(InventoryItem? other) => other != null && (Id, Name, Container, Slot, Visual, StackCount, StackMax, ItemType, ValidLocations)
-        .Equals((other.Id, other.Name, other.Container, other.Slot, other.Visual, other.StackCount, other.StackMax, other.ItemType, other.ValidLocations));
+    public bool Equals(InventoryItem? other) => other != null && (Id, Name, Container, Slot, Visual, StackCount, StackMax, Wcid, ValidLocations)
+        .Equals((other.Id, other.Name, other.Container, other.Slot, other.Visual, other.StackCount, other.StackMax, other.Wcid, other.ValidLocations));
     public override bool Equals(object? obj) => Equals(obj as InventoryItem);
     public override int GetHashCode() => Id.GetHashCode();
 }
@@ -112,14 +117,14 @@ public sealed class InventoryItem : IEquatable<InventoryItem>
 /// <summary>An equipped item and the paperdoll slots it covers.</summary>
 public sealed class WieldedItem : IEquatable<WieldedItem>
 {
-    public WieldedItem(uint id, string name, ItemVisual visual, int stackCount, int stackMax, int itemType, uint validLocations, IReadOnlyList<PaperdollSlot> slots)
+    public WieldedItem(uint id, string name, ItemVisual visual, int stackCount, int stackMax, int wcid, uint validLocations, IReadOnlyList<PaperdollSlot> slots)
     {
         Id = id;
         Name = name ?? string.Empty;
         Visual = visual ?? throw new ArgumentNullException(nameof(visual));
         StackCount = stackCount;
         StackMax = stackMax;
-        ItemType = itemType;
+        Wcid = wcid;
         ValidLocations = validLocations;
         Slots = slots ?? throw new ArgumentNullException(nameof(slots));
     }
@@ -129,14 +134,15 @@ public sealed class WieldedItem : IEquatable<WieldedItem>
     public ItemVisual Visual { get; }
     public int StackCount { get; }
     public int StackMax { get; }
-    public int ItemType { get; }
+    /// <summary>The weenie class id (WCID), as <see cref="InventoryItem.Wcid"/>.</summary>
+    public int Wcid { get; }
     /// <summary>The wield locations the item can take (the AC EquipMask bits).</summary>
     public uint ValidLocations { get; }
     /// <summary>Every paperdoll slot the item is drawn in: one for most items, several for a multi-slot item.</summary>
     public IReadOnlyList<PaperdollSlot> Slots { get; }
 
-    public bool Equals(WieldedItem? other) => other != null && (Id, Name, Visual, StackCount, StackMax, ItemType, ValidLocations)
-        .Equals((other.Id, other.Name, other.Visual, other.StackCount, other.StackMax, other.ItemType, other.ValidLocations)) && Slots.SequenceEqual(other.Slots);
+    public bool Equals(WieldedItem? other) => other != null && (Id, Name, Visual, StackCount, StackMax, Wcid, ValidLocations)
+        .Equals((other.Id, other.Name, other.Visual, other.StackCount, other.StackMax, other.Wcid, other.ValidLocations)) && Slots.SequenceEqual(other.Slots);
     public override bool Equals(object? obj) => Equals(obj as WieldedItem);
     public override int GetHashCode() => Id.GetHashCode();
 }
@@ -182,16 +188,12 @@ public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
     public bool Contains(uint id) => id != 0 && (MainPack.Id == id || SidePacks.Any(pack => pack.Id == id)
         || Items.Any(item => item.Id == id) || Wielded.Any(item => item.Id == id));
 
-    /// <summary>
-    /// The explicit wield mask for putting an item into a paperdoll slot: the item's valid locations within that slot.
-    /// Zero means the item cannot go in that slot, so a drop there is refused.
-    /// </summary>
-    public uint WieldMask(uint itemId, PaperdollSlot slot)
-    {
-        var valid = Items.FirstOrDefault(item => item.Id == itemId)?.ValidLocations
-            ?? Wielded.FirstOrDefault(item => item.Id == itemId)?.ValidLocations ?? 0;
-        return valid & InventorySnapshotBuilder.MaskOf(slot);
-    }
+    /// <summary>The wield locations of an item this snapshot holds, carried or worn; null when it holds no such item.</summary>
+    public uint? ValidLocationsOf(uint id) =>
+        Items.FirstOrDefault(item => item.Id == id)?.ValidLocations ?? Wielded.FirstOrDefault(item => item.Id == id)?.ValidLocations;
+
+    /// <summary>The explicit wield mask for a set of valid locations in one paperdoll slot. Zero means the item cannot go in that slot.</summary>
+    public static uint MaskFor(uint validLocations, PaperdollSlot slot) => validLocations & InventorySnapshotBuilder.MaskOf(slot);
 
     public bool Equals(InventorySnapshot? other) => other != null && MainPack.Equals(other.MainPack)
         && SidePacks.SequenceEqual(other.SidePacks) && Items.SequenceEqual(other.Items) && Wielded.SequenceEqual(other.Wielded)
@@ -206,6 +208,8 @@ public sealed class FakeInventoryPort : IInventoryPort
     public InventorySnapshot Snapshot { get; private set; } = InventorySnapshot.Empty;
     /// <summary>Every command received, in order, as text, for example "open 0x…" or "move 0x… to 0x… slot 3".</summary>
     public List<string> Commands { get; } = new();
+    /// <summary>The valid locations of items the snapshot does not hold (another window's container, a corpse), as the port reads them from the world.</summary>
+    public Dictionary<uint, uint> WorldLocations { get; } = new();
     public event Action? Changed;
 
     /// <summary>Replaces the snapshot and raises <see cref="Changed"/>.</summary>
@@ -219,6 +223,17 @@ public sealed class FakeInventoryPort : IInventoryPort
     public void Select(uint itemId) => Commands.Add($"select 0x{itemId:X8}");
     public void Use(uint itemId) => Commands.Add($"use 0x{itemId:X8}");
     public void MoveToContainer(uint itemId, uint containerId, int slotIndex) => Commands.Add($"move 0x{itemId:X8} to 0x{containerId:X8} slot {slotIndex}");
-    public void Wield(uint itemId, PaperdollSlot slot) => Commands.Add($"wield 0x{itemId:X8} to {slot}");
+    public uint WieldMask(uint itemId, PaperdollSlot slot)
+    {
+        var valid = Snapshot.ValidLocationsOf(itemId) ?? (WorldLocations.TryGetValue(itemId, out var world) ? world : 0u);
+        return InventorySnapshot.MaskFor(valid, slot);
+    }
+
+    // The same rule as the port: nothing is sent when the item cannot go in the slot.
+    public void Wield(uint itemId, PaperdollSlot slot)
+    {
+        if (WieldMask(itemId, slot) != 0) Commands.Add($"wield 0x{itemId:X8} to {slot}");
+    }
+
     public void MergeStack(uint itemId, uint targetStackId) => Commands.Add($"merge 0x{itemId:X8} into 0x{targetStackId:X8}");
 }

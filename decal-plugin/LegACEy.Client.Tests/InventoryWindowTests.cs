@@ -187,6 +187,20 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
+    public void A_drag_from_our_inventory_shows_its_icon_without_retail_s_drop_indicator() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+
+        InventoryDriver.DragTo(host.Host, host.Cells[0], host.Cells[10]);
+
+        // Retail's panel accepts nothing from our drags, so its indicator must not light for them.
+        Assert.Equal(new[] { false }, host.Drag.RetailIndicators);
+        InventoryDriver.Release(host.Host, host.Cells[10]);
+    });
+
+    [Fact]
     public void A_refused_move_leaves_the_window_showing_the_ports_unchanged_state() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();
@@ -288,6 +302,32 @@ public sealed class InventoryWindowTests
 
         Assert.True(target.RetailDrop(CorpseItem, "Bow", over));
         Assert.Equal(new[] { $"move 0x{CorpseItem:X8} to 0x{InventorySample.Character:X8} slot 10" }, port.Commands);
+    });
+
+    [Fact]
+    public void A_retail_item_from_another_window_is_wielded_where_it_fits_and_refused_where_it_does_not() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        // A helm lying in another window: not in our snapshot, so its locations come from the world, as the port reads them.
+        const uint CorpseHelm = 0x90000002;
+        port.WorldLocations[CorpseHelm] = 0x00000001; // HeadWear
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        var target = (IRetailItemDropTarget)host.Window;
+        var indicator = host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DropIndicator");
+        var overHead = InventoryDriver.Centre(host.Host, Slot(host, PaperdollSlot.Head));
+        var overShield = InventoryDriver.Centre(host.Host, Slot(host, PaperdollSlot.Shield));
+
+        target.RetailDragOver(CorpseHelm, "Helm", overHead);
+        Assert.Same(DerethPalette.GoldBrush, indicator.BorderBrush);
+        Assert.True(target.RetailDrop(CorpseHelm, "Helm", overHead));
+        Assert.Equal(new[] { $"wield 0x{CorpseHelm:X8} to Head" }, port.Commands);
+
+        // A helm cannot go in the shield slot: the indicator is red, and the drop sends nothing.
+        target.RetailDragOver(CorpseHelm, "Helm", overShield);
+        Assert.Same(DerethPalette.InvalidBrush, indicator.BorderBrush);
+        Assert.False(target.RetailDrop(CorpseHelm, "Helm", overShield));
+        Assert.Single(port.Commands);
     });
 
     [Fact]

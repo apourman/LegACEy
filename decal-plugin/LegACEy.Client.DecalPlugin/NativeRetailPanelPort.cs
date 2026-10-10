@@ -6,33 +6,24 @@ namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
 /// The panel takeover's port over the installed client, for the inventory panel. It calls only addresses in
-/// <see cref="RetailPanelCatalogue"/> (and the shared entries NativeUi already checks), and only on the game thread.
+/// <see cref="RetailPanelCatalogue"/> (and the shared entries NativeUiCatalogue already checks), and only on the game thread.
 /// </summary>
 internal sealed class NativeRetailPanelPort : IRetailPanelPort
 {
     // UIElement::SetSaveLocation writes bit 4 of the dword at +0x554; reading that bit is the same field, so it is covered by its pin.
     private const int SaveLocationOffset = 0x554;
     private const int SaveLocationBit = 0x10;
-    // UIElement::MoveTo is the base move at 0x004634C0; the element's own MoveTo must be it, or the takeover refuses to move the panel.
-    private const uint BaseMoveTo = 0x004634C0;
-    // gmPanelUI's primary vtable, and the parent walk through vtable +0xA0 (GetParent, as IsAncestorOfMe calls it).
-    private const uint GmPanelUIVtable = 0x007B5070;
-    private const int GetParentSlot = 0xA0;
     // RecvNotice_SetPanelVisibility is called on gmPanelUI+0x5F8, the notice sub-object (pinned at the constructor's store).
     private const int NoticeHandlerOffset = 0x5F8;
     // The inventory panel's id in gmPanelUI's panel table: 7, from the element property 0x10000029 of InventoryPanel_Field
-    // (layout 0x21000017, and the InventoryButton in layout 0x21000016 carries the same id; research R1, layout dump).
+    // (the InventoryButton in layout 0x21000016 carries the same id).
     private const uint InventoryPanelId = 7;
-    private const uint RecvNoticeSetPanelVisibility = 0x004BD380;
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void RecvNoticeFn(IntPtr noticeHandler, uint panelId, uint visible);
 
-    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-    private delegate IntPtr GetParentFn(IntPtr element);
-
-    private static readonly RecvNoticeFn RecvNotice =
-        (RecvNoticeFn)Marshal.GetDelegateForFunctionPointer(new IntPtr(RecvNoticeSetPanelVisibility), typeof(RecvNoticeFn));
+    private static readonly RecvNoticeFn RecvNotice = (RecvNoticeFn)Marshal.GetDelegateForFunctionPointer(
+        new IntPtr(RetailPanelCatalogue.RecvNoticeSetPanelVisibility), typeof(RecvNoticeFn));
 
     private static IntPtr Element => NativeUi.GetElement(NativeUi.InventoryPanel);
 
@@ -57,7 +48,7 @@ internal sealed class NativeRetailPanelPort : IRetailPanelPort
     {
         var element = Present();
         // The element's own MoveTo must be the base move, or an override would run in its place.
-        if (NativeUiMovement.ResolveMoveTo(element) != new IntPtr(BaseMoveTo))
+        if (NativeUiMovement.ResolveMoveTo(element) != new IntPtr(NativeUiCatalogue.UIElementMoveTo))
             throw new InvalidOperationException("The retail inventory panel overrides MoveTo; the takeover does not move it.");
         NativeUi.MoveTo(element, location);
     }
@@ -94,12 +85,9 @@ internal sealed class NativeRetailPanelPort : IRetailPanelPort
         var current = element;
         for (var depth = 0; depth < 4 && current != IntPtr.Zero; depth++)
         {
-            if (Marshal.ReadIntPtr(current) == new IntPtr(GmPanelUIVtable)) return current;
-            current = Virtual<GetParentFn>(current, GetParentSlot)(current);
+            if (Marshal.ReadIntPtr(current) == new IntPtr(RetailPanelCatalogue.GmPanelUIVtable)) return current;
+            current = NativeUi.Virtual<NativeUi.GetParentFn>(current, NativeUi.GetParentSlot)(current);
         }
         return IntPtr.Zero;
     }
-
-    private static T Virtual<T>(IntPtr instance, int slot) where T : Delegate =>
-        (T)Marshal.GetDelegateForFunctionPointer(Marshal.ReadIntPtr(Marshal.ReadIntPtr(instance), slot), typeof(T));
 }

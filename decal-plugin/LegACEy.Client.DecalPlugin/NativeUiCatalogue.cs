@@ -21,6 +21,8 @@ internal sealed class NativeUiEntry
 internal static class NativeUiCatalogue
 {
     private const string Chorizite = "Chorizite AcClient bindings / installed end-of-retail acclient.exe";
+    /// <summary>UIElement::MoveTo, the base move. Pinned here; the panel takeover checks that an element's own MoveTo resolves to it.</summary>
+    internal const uint UIElementMoveTo = 0x004634C0;
     internal static readonly IReadOnlyList<NativeUiEntry> Entries = new[]
     {
         Function("UIElementManager::GetElement", 0x00459A00, "53 56 57 8B 79 1C 33 C0 33 D2 85 FF 76 25", "ThisCall"),
@@ -28,7 +30,7 @@ internal static class NativeUiCatalogue
         Function("UIElement::SetVisible", 0x00462390, "51 53 56 57 8B 3D 3C E0 83 00 8B F1", "ThisCall"),
         Function("UIElement::GetCurrentPosition", 0x00460180, "8B 54 24 04 8D 41 7C 3B D0 74 27 56 8B 30", "ThisCall"),
         new("UIElement::SetSaveLocation", 0x0045FA10, Bytes("0F B6 44 24 04 8B 91 54 05 00 00 C1 E0 04 33 C2 83 E0 10 33 D0 89 91 54 05 00 00 C2 04 00"), "https://actypes.utilitybelt.me/type/UIElement; our disassembly of installed end-of-retail acclient.exe", "ThisCall"),
-        Function("UIElement::MoveTo", 0x004634C0, "83 EC 30 53 56 57 8B F1 E8 33 C9 23 00 8B CE", "ThisCall"),
+        Function("UIElement::MoveTo", UIElementMoveTo, "83 EC 30 53 56 57 8B F1 E8 33 C9 23 00 8B CE", "ThisCall"),
         new("gmFloatyIndicatorsUI::MoveTo vtable reference", 0x007BCE3C, Bytes("F0 44 4D 00"), "Our installed-executable disassembly and read-only live vtable: MoveTo slot +0x2C", "virtual ThisCall reference"),
         new("gmFloatyIndicatorsUI::MoveTo", 0x004D44F0, Bytes("83 EC 10 53 8B 5C 24 18 55 56 8B F1 8B 06 57 8B 7C 24 28 FF 90 A0 00 00 00"), "Our disassembly of installed end-of-retail acclient.exe; native override clamps, calls base MoveTo, writes PlayerModule panel properties", "ThisCall via element vtable +0x2C"),
         new("gmFloatyIndicatorsUI::MoveTo saved X writeback", 0x004D45FB, Bytes("8B 8E FC 05 00 00 8D 44 24 18 50 83 C7 04 51 8B CF E8 AF 20 10 00"), "Our installed-executable disassembly: panel key +0x5FC and PlayerModule::SetPanelProperty", "ThisCall reference"),
@@ -68,7 +70,8 @@ internal static class NativeUiCatalogue
     private static NativeUiEntry Function(string name, uint address, string bytes, string convention) =>
         new(name, address, Bytes(bytes), Chorizite, convention);
 
-    private static byte[] Bytes(string bytes) => bytes.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Select(value => Convert.ToByte(value, 16)).ToArray();
+    /// <summary>A pinned byte pattern written as hex pairs separated by spaces.</summary>
+    internal static byte[] Bytes(string bytes) => bytes.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Select(value => Convert.ToByte(value, 16)).ToArray();
 
     private static NativeUiEntry Root(string name, uint id) =>
         new($"RootElementId::{name}", null, Array.Empty<byte>(), "Chorizite.Common RootElementId", "compile-time constant; not called", id);
