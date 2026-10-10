@@ -58,6 +58,9 @@ internal sealed class RetailItemDrag
             HandOffSource, "ThisCall () -> int, screen y through the parent chain"),
         new NativeUiEntry("UIElement_ItemList::DynamicCast", 0x004E4830, NativeUiCatalogue.Bytes("8B C1 8B 4C 24 04 81 F9 31 00 00 10 74 10"), HandOffSource,
             "virtual ThisCall (uint type) -> UIElement_ItemList* for type 0x10000031"),
+        new NativeUiEntry("UIElement_ListBox::ScrollToShow(UIElement*)", 0x0046EF20, NativeUiCatalogue.Bytes(
+            "8B 81 10 06 00 00 85 C0 74 32 56 8B B1 10 06 00 00 33 C0 85 F6 57 76 16"), HandOffSource,
+            "ThisCall (UIElement* item): scrolls the list so the item is in view (ItemList derives from ListBox)"),
         new NativeUiEntry("CInputManager::IsActionInProgress", 0x00431AF0, NativeUiCatalogue.Bytes("56 8B 74 24 08 33 D2 8B C6 F7 B1 F8 00 00 00 8B 81 F0 00 00 00 8D 04 90"),
             HandOffSource, "ThisCall (uint action) -> bool on ICIDM::s_cidm (0x00837FF4); StartDragandDrop asks it for action 7")
     };
@@ -86,6 +89,8 @@ internal sealed class RetailItemDrag
     private delegate void BeginDragFn(IntPtr list, int x, int y);
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate int AbsoluteFn(IntPtr element);
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void ScrollToShowFn(IntPtr list, IntPtr item);
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate byte IsActionInProgressFn(IntPtr inputManager, uint action);
     private static readonly IntPtr InputManagerInstance = new(0x00837FF4);
@@ -178,7 +183,9 @@ internal sealed class RetailItemDrag
     /// <summary>As <see cref="BeginDrag(IntPtr, IntPtr, uint)"/>; <paramref name="state"/> is what retail's drag start checked, read before the call.</summary>
     public bool BeginDrag(IntPtr list, IntPtr item, uint objectId, out string state)
     {
-        state = DragStartState();
+        // The list hit-tests rows by its scroll position, so an item scrolled out of view cannot be hit: bring it into view first.
+        Function<ScrollToShowFn>(0x0046EF20)(list, item);
+        state = DragStartState() + $", item at ({_absoluteX!(item)}, {_absoluteY!(item)}), list at ({_absoluteX(list)}, {_absoluteY!(list)})";
         // A point just inside the item: the list hit-tests it, wherever the panel is parked.
         _beginDrag!(list, _absoluteX!(item) + 2, _absoluteY!(item) + 2);
         var dragged = CurrentItem();
