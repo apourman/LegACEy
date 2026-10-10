@@ -431,7 +431,8 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         var selected = _selection.Contains(IndexOf(item.Guid));
         if (!selected) _selection.Clear();
         _dragGuids = selected ? _client.SelectedGuids() : new[] { item.Guid };
-        _dragIcon = _dragHost.ShowDragIcon(ItemImage(item), _dragGuids.Count);
+        // A withdrawal can be dropped on the retail inventory, so retail's drop indicator shows for it.
+        _dragIcon = _dragHost.ShowDragIcon(ItemImage(item), _dragGuids.Count, retailDropIndicator: true);
         // The lifted item's own cell dims, as the retail inventory ghosts a dragged item.
         ShowSelection();
         UpdateLiftedHover(e);

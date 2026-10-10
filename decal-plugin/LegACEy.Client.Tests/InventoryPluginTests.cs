@@ -73,7 +73,7 @@ public sealed class InventoryPluginTests
         Assert.Equal(1, client.Retail.CloseCalls);
         Assert.False(client.Retail.Open);
 
-        // The menu opens the window and retail's panel together, and hides both together.
+        // While the takeover holds, the menu asks retail, and retail's report opens or hides the window.
         client.MenuEntries.Single().Action();
         Assert.NotNull(client.Windows.Get(Vertical));
         Assert.Equal(1, client.Retail.OpenCalls);
@@ -82,6 +82,45 @@ public sealed class InventoryPluginTests
         Assert.Null(client.Windows.Get(Vertical));
         Assert.Equal(2, client.Retail.CloseCalls);
         Assert.False(client.Retail.Open);
+    });
+
+    [Fact]
+    public void While_the_takeover_holds_the_menu_only_asks_retail_so_a_panel_that_ignores_the_request_leaves_the_window_closed() => RenderThread.Run(() =>
+    {
+        using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
+        new InventoryPlugin().Start(client);
+        client.Retail!.Responds = false;
+
+        client.MenuEntries.Single().Action();
+
+        Assert.Equal(1, client.Retail.OpenCalls);
+        Assert.Null(client.Windows.Get(Vertical));
+    });
+
+    [Fact]
+    public void With_the_takeover_off_the_menu_opens_the_window_itself_and_retail_is_not_asked() => RenderThread.Run(() =>
+    {
+        using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
+        new InventoryPlugin().Start(client);
+        client.Retail!.Holds = false;
+
+        client.MenuEntries.Single().Action();
+
+        Assert.NotNull(client.Windows.Get(Vertical));
+        Assert.Equal(0, client.Retail.OpenCalls);
+    });
+
+    [Fact]
+    public void A_layout_switch_opens_the_other_layout_even_when_the_client_cannot_save_the_choice() => RenderThread.Run(() =>
+    {
+        using var client = new FakeInventoryClient(new UnwritablePositionStore());
+        new InventoryPlugin().Start(client);
+        client.MenuEntries.Single().Action();
+
+        InventoryDriver.PressLayout(client.Panel(Vertical), InventoryLayout.Horizontal);
+
+        Assert.Null(client.Windows.Get(Vertical));
+        Assert.NotNull(client.Windows.Get(Horizontal));
     });
 
     [Fact]
@@ -354,6 +393,15 @@ public sealed class InventoryPluginTests
 
     /// <summary>The paperdoll.changed push, as the server sends it after an equipment change.</summary>
     private static byte[] LookChanged() => ChannelWire.EncodeEvent(ChannelEventKind.Push, ChannelStatus.Ok, 0, PaperdollProtocol.Changed, Array.Empty<byte>());
+
+    /// <summary>A placements store that keeps nothing, as a read-only install path does: every save is dropped without an error.</summary>
+    private sealed class UnwritablePositionStore : IWindowPositionStore
+    {
+        public (Point Location, Size? Size)? Load(string server, string character, string windowId) => null;
+        public void Save(string server, string character, string windowId, (Point Location, Size? Size) placement)
+        {
+        }
+    }
 
     /// <summary>Records the action of every request the channel sends; nothing answers them.</summary>
     private sealed class LookTransport : IServerChannelTransport

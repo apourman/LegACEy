@@ -31,7 +31,7 @@ public interface ILegACEyClient
     string PortalPath { get; }
     /// <summary>The client's interface art, read on the game thread. Images are decoded once and shared.</summary>
     IGameArtSource Art { get; }
-    /// <summary>Drag services for items between the retail inventory and a LegACEy window.</summary>
+    /// <summary>Drag services for items dragged out of a LegACEy window onto the retail UI, and handed to a LegACEy window.</summary>
     IItemDragHost ItemDrag { get; }
     /// <summary>The character's inventory: a read-only snapshot, a change event and the retail-call commands.</summary>
     IInventoryPort Inventory { get; }
@@ -108,6 +108,11 @@ public interface ILegACEyPluginHost
 /// </summary>
 public interface IRetailPanel : IDisposable
 {
+    /// <summary>
+    /// True while the takeover holds retail's panel. Then <see cref="Open"/> and <see cref="Close"/> ask retail, and retail's report
+    /// opens or closes the plugin's window. False when the switch is off: the plugin's window opens and closes itself.
+    /// </summary>
+    bool Holds { get; }
     /// <summary>Opens retail's panel through its own panel switch, while the takeover holds it. Does nothing otherwise.</summary>
     void Open();
     /// <summary>Closes retail's panel through its own panel switch, while the takeover holds it. Does nothing otherwise.</summary>

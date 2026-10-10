@@ -81,7 +81,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private const uint DatCursorNWSE = 0x06006126;
     private const uint DatCursorNESW = 0x06006127;
     private const uint DatCursorMove = 0x06006119;
-    // Beside the DLL: while this file exists, plugins may take over retail's inventory panel. Off by default (decision D2).
+    // Beside the DLL: while this file exists, plugins may take over retail's inventory panel. Off by default: the drags that leave the
+    // retail UI for the world and other retail windows are not built yet, so a held panel could not hand an item on.
     private const string RetailPanelSwitchFile = "retail-inventory-takeover";
 
     private const string MenuSlot = "LegACEy";
@@ -133,7 +134,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private bool? _retailPanelsValid;
     private bool _retailPanelSwitch;
     private DateTime _lastRetailPanelSwitchCheck;
-    private readonly DecalInventoryPort _inventory = new();
+    private readonly DecalInventoryPort _inventory = new(Log);
     private uint _retailDragItem;
     private string _retailDragName = string.Empty;
     private int _loggedDrops;
@@ -772,6 +773,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             _takeover = takeover;
         }
 
+        public bool Holds => _takeover?.Holds ?? false;
+
         public void Open() => _takeover?.Open();
 
         public void Close() => _takeover?.Close();
@@ -790,6 +793,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private sealed class NoRetailPanel : IRetailPanel
     {
         public static readonly NoRetailPanel Instance = new();
+        public bool Holds => false;
         public void Open() { }
         public void Close() { }
         public void Dispose() { }
@@ -837,7 +841,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             if (_owner._windows is not { } windows) return false;
             var window = windows.HitTest(_owner._pointer);
             if (window == null) return false;
-            try { return ItemDropRouting.Deliver(windows, _owner.ContentOf, _owner._pointer, itemId, itemName); }
+            try { return ItemDropRouting.DeliverTo(window, _owner.ContentOf, _owner._pointer, itemId, itemName); }
             catch (Exception exception)
             {
                 if (_owner._windowFailures.TryGetValue(window.Id, out var failed)) failed(exception);
@@ -846,23 +850,33 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             }
         }
 
-        public IDisposable ShowDragIcon(GameImage? image, int count)
+        public IDisposable ShowDragIcon(GameImage? image, int count, bool retailDropIndicator)
         {
             var icon = _owner.ShowDragIcon(image, count);
-            _owner._itemDragActive = true;
-            return new ItemDrag(_owner, icon);
+            return new ItemDrag(_owner, icon, retailDropIndicator);
         }
 
         private sealed class ItemDrag : IDisposable
         {
             private ClientUiRuntime? _owner;
             private readonly IDisposable _icon;
-            public ItemDrag(ClientUiRuntime owner, IDisposable icon) { _owner = owner; _icon = icon; }
+            // Only a drag the retail inventory can take shows retail's drop indicator; the others leave retail's indicator alone.
+            private readonly bool _retailIndicator;
+            public ItemDrag(ClientUiRuntime owner, IDisposable icon, bool retailIndicator)
+            {
+                _owner = owner;
+                _icon = icon;
+                _retailIndicator = retailIndicator;
+                if (retailIndicator) owner._itemDragActive = true;
+            }
             public void Dispose()
             {
                 if (_owner == null) return;
-                _owner._itemDragActive = false;
-                _owner.Guard(() => _owner._retailDrag?.ClearDropIndicator());
+                if (_retailIndicator)
+                {
+                    _owner._itemDragActive = false;
+                    _owner.Guard(() => _owner._retailDrag?.ClearDropIndicator());
+                }
                 _icon.Dispose();
                 _owner = null;
             }

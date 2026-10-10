@@ -117,7 +117,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     }
 
     /// <summary>The window's current settings: its layout, and the Slots toggle.</summary>
-    public InventorySettings Settings => new(_layout, _showSlots);
+    private InventorySettings Settings => new(_layout, _showSlots);
 
     /// <summary>Raised when the player changes the layout or the Slots toggle. The settings are the new ones.</summary>
     public event Action<InventorySettings>? SettingsChanged;
@@ -126,7 +126,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     public event EventHandler? CloseRequested;
 
     /// <summary>The doll area under the paperdoll: the 3D character while it shows, otherwise the empty dark panel.</summary>
-    public Border DollArea => _paperdoll.DollArea;
+    private Border DollArea => _paperdoll.DollArea;
 
     /// <summary>Whether the window has its 3D character yet.</summary>
     public bool HasDoll => _doll != null;
@@ -220,7 +220,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
                 _press = null;
                 return;
             }
-            _dragIcon = _dragHost?.ShowDragIcon(DragImage(_dragged), 1);
+            _dragIcon = _dragHost?.ShowDragIcon(DragImage(_dragged), 1, retailDropIndicator: false);
         }
         ShowIndicator(point);
     }
@@ -244,7 +244,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         // Over a slot the drop is judged as it always was: a refused one sends nothing.
         if (SlotAt(point)?.Tag is InventorySlotId target)
         {
-            var drop = Judge(_port.Snapshot, dragged, target);
+            var drop = Judge(_port, dragged, target);
             if (drop?.Accepted == true) drop.Value.Send(_port);
             return;
         }
@@ -259,9 +259,9 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         var snapshot = _port.Snapshot;
         if (_dragHost == null || snapshot.SidePacks.Any(pack => pack.Id == dragged) || !snapshot.Contains(dragged)) return;
-        // ponytail: story 45, drops on the 3D world, other retail windows and the shortcut bar, is still missing. The hand-off to
-        // retail needs the retail UIItem of this object, and step 01 (R1) did not identify how to find it: no child walk and no
-        // object lookup. Until it does, a release outside every LegACEy window sends nothing, as it always has.
+        // ponytail: drops on the 3D world, other retail windows and the shortcut bar are not handed on yet. That needs the retail
+        // UI element of the dragged object, and the client's lookup for it is not known. Until then, a release outside every
+        // LegACEy window sends nothing.
         _dragHost.DeliverAtPointer(dragged, KindOf(snapshot, dragged).Name);
     }
 
@@ -300,7 +300,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var target = SlotAt(position)?.Tag as InventorySlotId;
         if (target == null && external) target = new InventorySlotId(SlotPlace.Pack, 0, OpenPack(snapshot).Id, -1, null);
         if (target == null) return false;
-        var drop = Judge(snapshot, itemId, target, external);
+        var drop = Judge(_port, itemId, target, external);
         if (drop?.Accepted != true) return false;
         drop.Value.Send(_port);
         return true;
@@ -335,7 +335,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private void ShowIndicator(Point point, uint dragged, bool external)
     {
         var slot = SlotAt(point);
-        var drop = slot?.Tag is InventorySlotId target ? Judge(_port.Snapshot, dragged, target, external) : null;
+        var drop = slot?.Tag is InventorySlotId target ? Judge(_port, dragged, target, external) : null;
         if (slot == null || drop == null || slot.TranslatePoint(default, this) is not { } origin)
         {
             _dropIndicator.IsVisible = false;
@@ -384,17 +384,17 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     /// item the snapshot no longer holds). Accepted false: red, nothing sent. Accepted true: gold, and the drop sends its command.
     /// <paramref name="external"/> marks an item from another window, which the snapshot does not hold.
     /// </summary>
-    private static (bool Accepted, Action<IInventoryPort> Send)? Judge(InventorySnapshot s, uint dragged, InventorySlotId target, bool external = false)
+    private static (bool Accepted, Action<IInventoryPort> Send)? Judge(IInventoryPort port, uint dragged, InventorySlotId target, bool external = false)
     {
+        var s = port.Snapshot;
         if (!external && !s.Contains(dragged)) return null;
         if (s.SidePacks.Any(pack => pack.Id == dragged)) return PackOnto(s, dragged, target);
         switch (target.Place)
         {
             case SlotPlace.Paperdoll:
                 if (target.ItemId == dragged || target.Equipment is not { } slot) return null;
-                // ponytail: an item from another window has no wield mask in the snapshot, so it is sent to any slot and the server
-                // refuses an illegal wield. Add the mask to the port when it carries it.
-                return !external && s.WieldMask(dragged, slot) == 0 ? Refused : (true, p => p.Wield(dragged, slot));
+                // The port's mask covers an item from another window too (it reads the item's locations from the world).
+                return port.WieldMask(dragged, slot) == 0 ? Refused : (true, p => p.Wield(dragged, slot));
 
             case SlotPlace.Pack:
             {
@@ -408,8 +408,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
                 var occupant = s.Items.FirstOrDefault(item => item.Container == target.Container && item.Slot == target.SlotIndex);
                 if (occupant != null && occupant.Id == dragged) return null;
                 // Stacks of the same kind merge. Any other item dropped on a cell is moved there, and the server places it.
-                var (name, stackMax, itemType) = KindOf(s, dragged);
-                if (occupant != null && occupant.StackMax > 1 && stackMax > 1 && occupant.Name == name && occupant.ItemType == itemType)
+                var (name, stackMax, wcid) = KindOf(s, dragged);
+                if (occupant != null && occupant.StackMax > 1 && stackMax > 1 && occupant.Name == name && occupant.Wcid == wcid)
                     return (true, p => p.MergeStack(dragged, occupant.Id));
                 return (true, p => p.MoveToContainer(dragged, target.Container, target.SlotIndex));
             }
@@ -451,13 +451,13 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         return -1;
     }
 
-    /// <summary>The name, stack maximum and type of an item the snapshot holds, carried or in a pack.</summary>
-    private static (string Name, int StackMax, int ItemType) KindOf(InventorySnapshot s, uint id)
+    /// <summary>The name, stack maximum and weenie class id (WCID) of an item the snapshot holds, carried or worn.</summary>
+    private static (string Name, int StackMax, int Wcid) KindOf(InventorySnapshot s, uint id)
     {
         var item = s.Items.FirstOrDefault(candidate => candidate.Id == id);
-        if (item != null) return (item.Name, item.StackMax, item.ItemType);
+        if (item != null) return (item.Name, item.StackMax, item.Wcid);
         var worn = s.Wielded.FirstOrDefault(candidate => candidate.Id == id);
-        return worn != null ? (worn.Name, worn.StackMax, worn.ItemType) : (string.Empty, 0, 0);
+        return worn != null ? (worn.Name, worn.StackMax, worn.Wcid) : (string.Empty, 0, 0);
     }
 
     private void RequestLayout(InventoryLayout layout)

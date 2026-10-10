@@ -119,8 +119,9 @@ public sealed class InventorySnapshotBuilderTests
 
         var snapshot = InventorySnapshotBuilder.Build(reader);
 
-        Assert.Equal(Shield, snapshot.WieldMask(0x50000500, PaperdollSlot.Shield));
-        Assert.Equal(0u, snapshot.WieldMask(0x50000500, PaperdollSlot.Chest));
+        var valid = snapshot.ValidLocationsOf(0x50000500) ?? 0;
+        Assert.Equal(Shield, InventorySnapshot.MaskFor(valid, PaperdollSlot.Shield));
+        Assert.Equal(0u, InventorySnapshot.MaskFor(valid, PaperdollSlot.Chest));
     }
 
     [Fact]

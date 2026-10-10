@@ -90,11 +90,16 @@ internal sealed class DecalInventoryPort : IInventoryPort
     public void MoveToContainer(uint itemId, uint containerId, int slotIndex) =>
         CoreManager.Current.Actions.MoveItem(Id(itemId), Id(containerId), slotIndex, false);
 
+    // An item the snapshot does not hold (one from a chest or corpse) has its valid locations read from the world, the same
+    // EquipableSlots key the snapshot reads.
+    public uint WieldMask(uint itemId, PaperdollSlot slot) =>
+        InventorySnapshot.MaskFor(_refresh.Snapshot.ValidLocationsOf(itemId) ?? LiveValidLocations(itemId), slot);
+
     // Explicit placement (1) into the item's valid locations within the slot; nothing is sent when there are none.
     // Gate: the mask lands in that slot, and a refused slot sends nothing.
     public void Wield(uint itemId, PaperdollSlot slot)
     {
-        var mask = _refresh.Snapshot.WieldMask(itemId, slot);
+        var mask = WieldMask(itemId, slot);
         if (mask != 0) CoreManager.Current.Actions.AutoWield(Id(itemId), unchecked((int)mask), 1, 0);
     }
 
@@ -102,6 +107,12 @@ internal sealed class DecalInventoryPort : IInventoryPort
     public void MergeStack(uint itemId, uint targetStackId) => CoreManager.Current.Actions.MoveItem(Id(itemId), Id(targetStackId));
 
     private static int Id(uint id) => unchecked((int)id);
+
+    private static uint LiveValidLocations(uint itemId)
+    {
+        var item = CoreManager.Current.WorldFilter[Id(itemId)];
+        return item == null ? 0 : unchecked((uint)item.Values(LongValueKey.EquipableSlots, 0));
+    }
 
     /// <summary>The client's inventory reads, made on the game thread once per rebuild.</summary>
     private sealed class DecalInventoryReader : IInventoryReader
@@ -144,6 +155,7 @@ internal sealed class DecalInventoryPort : IInventoryPort
             unchecked((uint)item.Container), item.Values(LongValueKey.Slot, -1), unchecked((uint)item.Values(LongValueKey.EquippedSlots, 0)),
             unchecked((uint)item.Values(LongValueKey.EquipableSlots, 0)), item.Values(LongValueKey.StackCount, 1),
             item.Values(LongValueKey.StackMax, 0), item.Values(LongValueKey.ItemSlots, 0), item.ObjectClass == ObjectClass.Container,
+            // Decal's Type is the weenie class id (WCID): pyreals are 273.
             item.Values(LongValueKey.Type, 0), DecalIcons.Visual(item));
     }
 }

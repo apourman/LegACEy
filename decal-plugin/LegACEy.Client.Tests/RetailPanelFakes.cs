@@ -16,6 +16,10 @@ internal sealed class FakeRetailPanel : IRetailPanel
     public bool Open { get; private set; }
     public int OpenCalls { get; private set; }
     public int CloseCalls { get; private set; }
+    /// <summary>Whether the takeover holds the panel. False models the switch being off, when Open and Close do nothing.</summary>
+    public bool Holds { get; set; } = true;
+    /// <summary>Whether retail acts on a request. False models a panel switch with no effect.</summary>
+    public bool Responds { get; set; } = true;
 
     /// <summary>Retail opened (true) or closed (false) its panel.</summary>
     public void Retail(bool open)
@@ -27,13 +31,13 @@ internal sealed class FakeRetailPanel : IRetailPanel
     void IRetailPanel.Open()
     {
         OpenCalls++;
-        if (!Open) Retail(true);
+        if (Responds && !Open) Retail(true);
     }
 
     void IRetailPanel.Close()
     {
         CloseCalls++;
-        if (Open) Retail(false);
+        if (Responds && Open) Retail(false);
     }
 
     public void Dispose() { }

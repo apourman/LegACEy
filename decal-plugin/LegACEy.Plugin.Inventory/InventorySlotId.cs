@@ -11,8 +11,8 @@ public enum SlotPlace
 }
 
 /// <summary>
-/// Identifies a slot the window draws: carried as the <c>Tag</c> of its <c>DerethSlot</c>, so the commands that come later find it
-/// by what it shows and where it is. Its properties are set once, by the constructor (no init accessors: netstandard2.0 has none).
+/// Identifies a slot the window draws: carried as the <c>Tag</c> of its <c>DerethSlot</c>, so a click or drag finds the item or
+/// pack it shows, and where it is. Its properties are set once, by the constructor (no init accessors: netstandard2.0 has none).
 /// </summary>
 public sealed record InventorySlotId
 {

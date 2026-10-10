@@ -174,7 +174,7 @@ public sealed class VaultSelectionTests
         vault.Click(2);
         vault.Click(4, Ctrl);
 
-        // An unselected item: the drag drops the selection and moves that one item, as a stray drag always has (story 45).
+        // An unselected item: the drag drops the selection and moves that one item, as a stray drag always has.
         var start = vault.Center(vault.Cells[6]);
         vault.Host.PointerDown(start.X, start.Y);
         vault.Host.PointerMove(start.X + 30, start.Y);

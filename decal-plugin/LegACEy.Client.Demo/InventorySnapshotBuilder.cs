@@ -18,7 +18,7 @@ public enum PaperdollSlot
 public sealed class InventoryObjectRead
 {
     public InventoryObjectRead(uint id, string name, uint container, int slot, uint equippedMask, uint validLocations,
-        int stackCount, int stackMax, int itemSlots, bool isContainer, int itemType, ItemVisual visual)
+        int stackCount, int stackMax, int itemSlots, bool isContainer, int wcid, ItemVisual visual)
     {
         Id = id;
         Name = name ?? string.Empty;
@@ -30,7 +30,7 @@ public sealed class InventoryObjectRead
         StackMax = stackMax;
         ItemSlots = itemSlots;
         IsContainer = isContainer;
-        ItemType = itemType;
+        Wcid = wcid;
         Visual = visual ?? throw new ArgumentNullException(nameof(visual));
     }
 
@@ -48,7 +48,8 @@ public sealed class InventoryObjectRead
     /// <summary>For a container, its number of slots; zero for anything else.</summary>
     public int ItemSlots { get; }
     public bool IsContainer { get; }
-    public int ItemType { get; }
+    /// <summary>The weenie class id (WCID) of the object: Decal's LongValueKey.Type.</summary>
+    public int Wcid { get; }
     public ItemVisual Visual { get; }
 }
 
@@ -74,9 +75,9 @@ public interface IInventoryReader
 /// <summary>Builds an <see cref="InventorySnapshot"/> from the reads. It has no Decal dependency, so the rules are tested here.</summary>
 public static class InventorySnapshotBuilder
 {
-    // Decal's item type for a pyreal stack.
-    private const int PyrealItemType = 273;
-    // The spec's main pack size, used when the client reports no capacity. The server's value wins when it reports one.
+    // The weenie class id of a pyreal stack (ACE's pyreal weenie: Player_Death and Player_House check it the same way).
+    private const int PyrealWcid = 273;
+    // The main pack's size when the client reports none. The server's value wins when it reports one.
     private const int DefaultMainPackCapacity = 96;
     private const int MaxAugmentationBurden = 150;
 
@@ -130,14 +131,14 @@ public static class InventorySnapshotBuilder
         {
             if (read.EquippedMask != 0)
             {
-                wielded.Add(new WieldedItem(read.Id, read.Name, read.Visual, read.StackCount, read.StackMax, read.ItemType,
+                wielded.Add(new WieldedItem(read.Id, read.Name, read.Visual, read.StackCount, read.StackMax, read.Wcid,
                     read.ValidLocations, SlotsFor(read.EquippedMask)));
                 continue;
             }
             if (read.IsContainer || read.Slot < 0) continue;
             items.Add(new InventoryItem(read.Id, read.Name, read.Container, read.Slot, read.Visual, read.StackCount, read.StackMax,
-                read.ItemType, read.ValidLocations));
-            if (read.ItemType == PyrealItemType) pyreals += read.StackCount;
+                read.Wcid, read.ValidLocations));
+            if (read.Wcid == PyrealWcid) pyreals += read.StackCount;
         }
 
         return new InventorySnapshot(mainPack, sidePacks, items, wielded, reader.Burden,
