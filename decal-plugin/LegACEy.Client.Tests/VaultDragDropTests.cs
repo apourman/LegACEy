@@ -214,10 +214,8 @@ public sealed class VaultDragDropTests
     private sealed class PanelDragHost : IItemDragHost
     {
         public AvaloniaPanel? Panel { get; private set; }
-        public bool RetailDropIndicator { get; private set; }
         public IDisposable ShowDragIcon(LegACEy.Client.GameArt.GameImage? icon, int count, bool retailDropIndicator)
         {
-            RetailDropIndicator = retailDropIndicator;
             Panel = AvaloniaPanel.Create(() => new Grid { Width = 32, Height = 32 }, 32, 32);
             return new Icon(this);
         }
