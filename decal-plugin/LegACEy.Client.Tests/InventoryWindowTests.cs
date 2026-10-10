@@ -133,6 +133,34 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
+    public void An_item_released_over_the_world_is_dropped_and_one_released_over_another_retail_window_is_not() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        var apple = host.Cells[0];
+        var outside = new Avalonia.Point(-50, -50);
+
+        host.Drag.Target = ItemDropTarget.Elsewhere;
+        DragOut(host.Host, apple, outside);
+        Assert.Empty(port.Commands);
+
+        host.Drag.Target = ItemDropTarget.World;
+        DragOut(host.Host, apple, outside);
+        Assert.Equal(new[] { $"drop 0x{InventorySample.Apple:X8}" }, port.Commands);
+    });
+
+    private static void DragOut(AvaloniaPanel host, Control from, Avalonia.Point to)
+    {
+        var start = InventoryDriver.Centre(host, from);
+        host.PointerDown(start.X, start.Y, Avalonia.Input.KeyModifiers.None);
+        host.PointerMove(start.X + 10, start.Y);
+        host.PointerMove(to.X, to.Y);
+        host.PointerUp(to.X, to.Y);
+        InventoryDriver.Tick(host);
+    }
+
+    [Fact]
     public void Clicking_an_item_selects_it_and_a_second_click_on_it_in_time_uses_it() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();

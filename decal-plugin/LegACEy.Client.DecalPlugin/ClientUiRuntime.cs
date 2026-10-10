@@ -138,6 +138,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private uint _retailDragItem;
     private string _retailDragName = string.Empty;
     private int _loggedDrops;
+    // The retail element under the pointer over the 3D world, seen in play (chat reports 0x10000011).
+    private const uint WorldViewElement = 0x1000049A;
     private ScreenSurface? _dragIconSurface;
     // our copy of the retail drag icon, drawn while the item is over a LegACEy window (the client draws its own below them)
     private IDisposable? _retailDragIcon;
@@ -890,7 +892,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             if (drag == null) return ItemDropTarget.Inventory;
             var over = drag.IsPointerOverInventory(out var exists, out var open, out var element);
             // Without the panel element, any drop outside LegACEy windows withdraws to the pack.
-            var target = !exists ? ItemDropTarget.Inventory : !open ? ItemDropTarget.InventoryClosed : over ? ItemDropTarget.Inventory : ItemDropTarget.Elsewhere;
+            var target = !exists ? ItemDropTarget.Inventory : !open ? ItemDropTarget.InventoryClosed : over ? ItemDropTarget.Inventory
+                : element == WorldViewElement ? ItemDropTarget.World : ItemDropTarget.Elsewhere;
             if (_owner._loggedDrops++ < 5)
                 Log($"Item dropped at {_owner._pointer}: retail element under pointer 0x{element:X8}, inventory open: {open}, target: {target}.");
             return target;

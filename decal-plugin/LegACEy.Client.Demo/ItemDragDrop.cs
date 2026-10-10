@@ -34,7 +34,9 @@ public enum ItemDropTarget
     /// <summary>The retail inventory panel exists but is closed.</summary>
     InventoryClosed,
     /// <summary>Anywhere else.</summary>
-    Elsewhere
+    Elsewhere,
+    /// <summary>The 3D world view: an item of the player's released here is dropped on the ground.</summary>
+    World
 }
 
 /// <summary>Host services for dragging an item out of a LegACEy window and onto the retail UI, and for handing one to a LegACEy window.</summary>

@@ -369,6 +369,7 @@ public sealed class PluginRegistry
         public void OpenContainer(uint containerId) => _registry.Guarded(_entry, () => _inner.OpenContainer(containerId));
         public void Select(uint itemId) => _registry.Guarded(_entry, () => _inner.Select(itemId));
         public void Use(uint itemId) => _registry.Guarded(_entry, () => _inner.Use(itemId));
+        public void DropOnGround(uint itemId) => _registry.Guarded(_entry, () => _inner.DropOnGround(itemId));
         public void MoveToContainer(uint itemId, uint containerId, int slotIndex) =>
             _registry.Guarded(_entry, () => _inner.MoveToContainer(itemId, containerId, slotIndex));
         public uint WieldMask(uint itemId, PaperdollSlot slot) => _inner.WieldMask(itemId, slot);
