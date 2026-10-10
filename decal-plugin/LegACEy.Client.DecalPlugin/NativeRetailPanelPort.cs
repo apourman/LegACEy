@@ -22,6 +22,12 @@ internal sealed class NativeRetailPanelPort : IRetailPanelPort
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void RecvNoticeFn(IntPtr noticeHandler, uint panelId, uint visible);
 
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void MoveToFn(IntPtr element, int x, int y);
+
+    private static readonly MoveToFn BaseMoveTo = (MoveToFn)Marshal.GetDelegateForFunctionPointer(
+        new IntPtr(NativeUiCatalogue.UIElementMoveTo), typeof(MoveToFn));
+
     private static readonly RecvNoticeFn RecvNotice = (RecvNoticeFn)Marshal.GetDelegateForFunctionPointer(
         new IntPtr(RetailPanelCatalogue.RecvNoticeSetPanelVisibility), typeof(RecvNoticeFn));
 
@@ -46,14 +52,9 @@ internal sealed class NativeRetailPanelPort : IRetailPanelPort
 
     public void SetSaveLocation(bool save) => NativeUi.SetSaveLocation(Frame(), save);
 
-    public void MoveTo(Point location)
-    {
-        var element = Frame();
-        // The element's own MoveTo must be the base move, or an override would run in its place.
-        if (NativeUiMovement.ResolveMoveTo(element) != new IntPtr(NativeUiCatalogue.UIElementMoveTo))
-            throw new InvalidOperationException("The retail panel frame overrides MoveTo; the takeover does not move it.");
-        NativeUi.MoveTo(element, location);
-    }
+    // The frame's own MoveTo (0x004D1800) clamps the place inside its parent, so it can never go off-screen, then calls the base move
+    // and saves the place to the character's settings. The base move alone parks it and leaves the saved place alone.
+    public void MoveTo(Point location) => BaseMoveTo(Frame(), location.X, location.Y);
 
     public void OpenPanel() => SwitchPanel(true);
 
