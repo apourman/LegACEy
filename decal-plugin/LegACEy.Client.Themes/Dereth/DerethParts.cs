@@ -414,8 +414,13 @@ public sealed class DerethSlot : Grid
         }
     };
 
+    private static readonly IBrush CarriedBrush = DerethPalette.Brush(DerethPalette.TealText);
+    private static readonly BoxShadows SelectedGlow = new(new BoxShadow { IsInset = true, Blur = 6, Color = DerethPalette.Teal.WithAlpha(0xB0) });
+    private static readonly BoxShadows CarriedGlow = new(new BoxShadow { IsInset = true, Blur = 10, Spread = 1, Color = DerethPalette.TealText });
+
     private readonly Border _wash;
     private readonly Border _outline;
+    private bool _carried;
 
     /// <summary>A slot holding the content: a 34 px framed well, centred in its pitch, with a selected state.</summary>
     public DerethSlot(Control? content)
@@ -436,7 +441,7 @@ public sealed class DerethSlot : Grid
         _outline = new Border
         {
             BorderBrush = DerethPalette.TealBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(3),
-            BoxShadow = new BoxShadows(new BoxShadow { IsInset = true, Blur = 6, Color = DerethPalette.Teal.WithAlpha(0xB0) }),
+            BoxShadow = SelectedGlow,
             IsVisible = false, IsHitTestVisible = false
         };
         Children.Add(_outline);
@@ -450,6 +455,19 @@ public sealed class DerethSlot : Grid
         {
             _wash.IsVisible = value;
             _outline.IsVisible = value;
+        }
+    }
+
+    /// <summary>Whether a selected slot is carried by a drag of the selection: its border is thicker, brighter and glows more.</summary>
+    public bool Carried
+    {
+        get => _carried;
+        set
+        {
+            _carried = value;
+            _outline.BorderThickness = new Thickness(value ? 3 : 2);
+            _outline.BorderBrush = value ? CarriedBrush : DerethPalette.TealBrush;
+            _outline.BoxShadow = value ? CarriedGlow : SelectedGlow;
         }
     }
 }

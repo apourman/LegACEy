@@ -263,7 +263,10 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
             var selected = _selection.Contains(index);
             var slot = _liveSlots[index];
             slot.Selected = selected;
-            slot.Opacity = index == lifted || (multi && !selected) ? DimmedOpacity : 1;
+            // A dragged selection stands out by its border, so its cells stay bright; a single lifted item dims.
+            var carried = multi && selected && _dragItem != null;
+            slot.Carried = carried;
+            slot.Opacity = (index == lifted && !carried) || (multi && !selected) ? DimmedOpacity : 1;
         }
         var snapshot = Snapshot;
         _itemsLine.IsVisible = !multi;

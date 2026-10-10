@@ -9,6 +9,7 @@ using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.PanelHost;
 using LegACEy.Client.Themes;
+using LegACEy.Client.Themes;
 using LegACEy.Plugin.Vault;
 using Xunit;
 
@@ -164,6 +165,28 @@ public sealed class VaultSelectionTests
         vault.Server.Push(VaultProtocol.Changed, VaultProtocol.WriteChanged(true, "Withdrawn", "Your item is back in your pack.", vault.Server.Items[0].Guid));
         vault.Settle();
         Assert.Empty(vault.Selected);
+        Assert.Null(vault.Host.LastError);
+    });
+
+    [Fact]
+    public void A_dragged_selection_shows_its_cells_carried_and_bright_only_while_it_is_dragged() => RenderThread.Run(() =>
+    {
+        using var vault = new SelectionVault();
+        vault.Click(2);
+        vault.Click(4, Ctrl);
+        Assert.DoesNotContain(vault.Cells.OfType<DerethSlot>(), cell => cell.Carried);
+
+        var start = vault.Center(vault.Cells[2]);
+        vault.Host.PointerDown(start.X, start.Y);
+        vault.Host.PointerMove(start.X + 30, start.Y);
+        for (var index = 0; index < 10; index++)
+            Assert.Equal(index is 2 or 4, ((DerethSlot)vault.Cells[index]).Carried);
+        Assert.Equal(1, vault.Cells[2].Opacity);
+
+        vault.Host.PointerMove(VaultShellPanel.WindowWidth + 80, start.Y);
+        vault.Host.PointerUp(VaultShellPanel.WindowWidth + 80, start.Y);
+        vault.Step(TimeSpan.FromMilliseconds(30));
+        Assert.DoesNotContain(vault.Cells.OfType<DerethSlot>(), cell => cell.Carried);
         Assert.Null(vault.Host.LastError);
     });
 
