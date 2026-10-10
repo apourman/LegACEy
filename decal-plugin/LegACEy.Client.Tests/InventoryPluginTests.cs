@@ -56,6 +56,39 @@ public sealed class InventoryPluginTests
     });
 
     [Fact]
+    public void Retail_opening_its_panel_shows_the_layout_window_and_the_close_box_closes_retail() => RenderThread.Run(() =>
+    {
+        using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
+        new InventoryPlugin().Start(client);
+        Assert.Null(client.Windows.Get(Vertical));
+
+        client.Retail!.Retail(true);
+        Assert.NotNull(client.Windows.Get(Vertical));
+
+        var window = client.Panel(Vertical);
+        // The close box is the header's one button without a layout tag.
+        InventoryDriver.Press(window, window.Content!.GetVisualDescendants().OfType<DerethButton>().Single(button => button.Tag == null));
+
+        Assert.Null(client.Windows.Get(Vertical));
+        Assert.Equal(1, client.Retail.CloseCalls);
+        Assert.False(client.Retail.Open);
+    });
+
+    [Fact]
+    public void A_layout_switch_neither_closes_retail_nor_hides_the_panel_from_the_window() => RenderThread.Run(() =>
+    {
+        using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
+        new InventoryPlugin().Start(client);
+        client.Retail!.Retail(true);
+
+        InventoryDriver.PressLayout(client.Panel(Vertical), InventoryLayout.Horizontal);
+
+        Assert.NotNull(client.Windows.Get(Horizontal));
+        Assert.Equal(0, client.Retail.CloseCalls);
+        Assert.True(client.Retail.Open);
+    });
+
+    [Fact]
     public void The_layout_and_slots_choice_come_back_from_the_placements_file_after_a_restart() => RenderThread.Run(() =>
     {
         var path = Path.Combine(Path.GetTempPath(), "legacey-inventory-" + Guid.NewGuid().ToString("N") + ".txt");
@@ -364,7 +397,15 @@ public sealed class InventoryPluginTests
         public string PortalPath => string.Empty;
         public IGameArtSource Art { get; } = new InventorySample.NoArt();
         public IItemDragHost ItemDrag { get; } = new FakeItemDragHost();
+        public IItemDropRelay ItemDropRelay { get; } = new FakeItemDropRelay();
         public IInventoryPort Inventory => Port;
+        /// <summary>The retail inventory panel the plugin took over, once it has.</summary>
+        public FakeRetailPanel? Retail { get; private set; }
+        public IRetailPanel TakeOverRetailPanel(uint rootId, Action<bool> retailOpenChanged)
+        {
+            Retail = new FakeRetailPanel(rootId, retailOpenChanged);
+            return Retail;
+        }
         public bool SupportsAction(string action) => ServerActions.Contains(action);
         public int? LoadSettings() => Settings;
         public void SaveSettings(int value) => _store.Save("Server", Character, SettingsKey, (new Point(value, 0), null));

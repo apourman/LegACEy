@@ -81,6 +81,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private const uint DatCursorNWSE = 0x06006126;
     private const uint DatCursorNESW = 0x06006127;
     private const uint DatCursorMove = 0x06006119;
+    // Beside the DLL: while this file exists, plugins may take over retail's inventory panel. Off by default (decision D2).
+    private const string RetailPanelSwitchFile = "retail-inventory-takeover";
 
     private const string MenuSlot = "LegACEy";
     private const string MenuWindowId = "plugin-menu";
@@ -125,6 +127,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private GameChannelTransport? _channelTransport;
     private ServerChannelClient? _serverChannel;
     private RetailItemDrag? _retailDrag;
+    // Plugin takeovers of retail panels (the inventory), and the switch that turns them on. The switch is a marker file beside the DLL,
+    // as the post-UI test failure is: create the file to turn the takeover on, delete it to turn it off.
+    private readonly List<RetailPanelTakeover> _retailPanels = new();
+    private bool? _retailPanelsValid;
+    private bool _retailPanelSwitch;
+    private DateTime _lastRetailPanelSwitchCheck;
     private readonly DecalInventoryPort _inventory = new();
     private uint _retailDragItem;
     private string _retailDragName = string.Empty;
@@ -303,6 +311,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up client UI at logoff: {exception}"); }
         _clientUi = null;
+        // Before the plugins close their windows: giving the panel back tells the plugin its window is no longer held.
+        EndRetailPanels();
         try { _plugins?.EndSession(); }
         catch (Exception exception) { Log($"Could not close plugin windows at logoff: {exception}"); }
         // Windows released their requests above; anything still outstanding fails as disconnected.
@@ -507,6 +517,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                 }
             }
 
+            TickRetailPanels();
             UpdateRetailDrag();
             if (_itemDragActive)
                 _retailDrag?.UpdateDropIndicator();
@@ -712,6 +723,80 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         UpdateRetailDrag();
     }
 
+    /// <summary>Ticks each retail panel takeover once a frame, with the switch as it was read (checked once a second).</summary>
+    private void TickRetailPanels()
+    {
+        if (_retailPanels.Count == 0) return;
+        var enabled = RetailPanelSwitchOn();
+        foreach (var takeover in _retailPanels.ToArray())
+            takeover.Tick(enabled);
+    }
+
+    /// <summary>
+    /// Gives every retail panel back: logoff, unload, or the windows failing. A takeover keeps its plugin's handle, and takes its
+    /// panel again at the next login.
+    /// </summary>
+    private void EndRetailPanels()
+    {
+        foreach (var takeover in _retailPanels.ToArray())
+            takeover.EndSession();
+    }
+
+    private bool RetailPanelSwitchOn()
+    {
+        var now = DateTime.UtcNow;
+        if (now - _lastRetailPanelSwitchCheck >= TimeSpan.FromSeconds(1))
+        {
+            _lastRetailPanelSwitchCheck = now;
+            _retailPanelSwitch = File.Exists(IOPath.Combine(PluginDirectory, RetailPanelSwitchFile));
+        }
+        return _retailPanelSwitch;
+    }
+
+    /// <summary>The LegACEy windows that can take a drop, topmost first, with their screen bounds.</summary>
+    private IEnumerable<DropArea> DropAreas()
+    {
+        if (_windows == null) yield break;
+        foreach (var window in _windows.ZOrder)
+        {
+            var surface = SurfaceById(window.Id);
+            if (surface is { Visible: true })
+                yield return new DropArea(window.Id, surface.Panel.Content, new Rectangle(window.Location, new Size(window.Width, window.Height)));
+        }
+    }
+
+    /// <summary>A plugin's hold on a retail panel. Disposing it gives the panel back.</summary>
+    private sealed class RetailPanelHandle : IRetailPanel
+    {
+        private readonly ClientUiRuntime _owner;
+        private RetailPanelTakeover? _takeover;
+
+        public RetailPanelHandle(ClientUiRuntime owner, RetailPanelTakeover takeover)
+        {
+            _owner = owner;
+            _takeover = takeover;
+        }
+
+        public void Close() => _takeover?.Close();
+
+        public void Dispose()
+        {
+            var takeover = _takeover;
+            if (takeover == null) return;
+            _takeover = null;
+            _owner._retailPanels.Remove(takeover);
+            takeover.Dispose();
+        }
+    }
+
+    /// <summary>What a plugin gets when the takeover cannot run: nothing happens, and the retail panel is left alone.</summary>
+    private sealed class NoRetailPanel : IRetailPanel
+    {
+        public static readonly NoRetailPanel Instance = new();
+        public void Close() { }
+        public void Dispose() { }
+    }
+
     private string? TopSurfaceAt(Point point)
     {
         InputSurface? top = null;
@@ -743,10 +828,25 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     }
 
     /// <summary>Drag services for LegACEy windows: the floating icon and what lies under the pointer in the retail UI.</summary>
-    private sealed class ItemDragHost : IItemDragHost
+    private sealed class ItemDragHost : IItemDragHost, IItemDropRelay
     {
         private readonly ClientUiRuntime _owner;
         public ItemDragHost(ClientUiRuntime owner) => _owner = owner;
+
+        /// <summary>An item released outside every slot of a LegACEy window goes to the window under the pointer, if it takes retail drops.</summary>
+        public bool DeliverAtPointer(uint itemId, string itemName)
+        {
+            var areas = _owner.DropAreas().ToArray();
+            var area = ItemDropRouting.TopAt(_owner._pointer, areas);
+            if (area == null) return false;
+            try { return ItemDropRouting.Deliver(_owner._pointer, areas, itemId, itemName); }
+            catch (Exception exception)
+            {
+                if (_owner._windowFailures.TryGetValue(area.Id, out var failed)) failed(exception);
+                else _owner.Disable(exception);
+                return false;
+            }
+        }
 
         public IDisposable ShowDragIcon(GameImage? image, int count)
         {
@@ -772,6 +872,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
 
         public ItemDropTarget DropTargetAtPointer()
         {
+            // A LegACEy inventory window is the inventory, with or without the takeover.
+            if (ItemDropRouting.InventoryAt(_owner._pointer, _owner.DropAreas()) is { } inventory) return inventory;
             var drag = _owner._retailDrag;
             if (drag == null) return ItemDropTarget.Inventory;
             var over = drag.IsPointerOverInventory(out var exists, out var open, out var element);
@@ -926,7 +1028,23 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     string ILegACEyPluginHost.PortalPath => _portal?.Path ?? string.Empty;
     IGameArtSource ILegACEyPluginHost.Art => (IGameArtSource?)_portal ?? throw new InvalidOperationException("Game art is unavailable until the client UI is ready.");
     IItemDragHost ILegACEyPluginHost.ItemDrag => new ItemDragHost(this);
+    IItemDropRelay ILegACEyPluginHost.ItemDropRelay => new ItemDragHost(this);
     IInventoryPort ILegACEyPluginHost.Inventory => _inventory;
+
+    IRetailPanel ILegACEyPluginHost.TakeOverRetailPanel(uint rootId, Action<bool> retailOpenChanged)
+    {
+        if (!NativeUi.Ready || !RetailPanelCatalogueValid()) return NoRetailPanel.Instance;
+        var takeover = new RetailPanelTakeover(new NativeRetailPanelPort(rootId), retailOpenChanged, Log);
+        _retailPanels.Add(takeover);
+        return new RetailPanelHandle(this, takeover);
+    }
+
+    /// <summary>The panel takeover's own addresses. A mismatch turns only the takeover off; the bar and the Vault drag keep their gates.</summary>
+    private bool RetailPanelCatalogueValid()
+    {
+        _retailPanelsValid ??= NativeUiCatalogue.Validate(NativeUi.ReadMemory, Log, RetailPanelCatalogue.Entries);
+        return _retailPanelsValid.Value;
+    }
     bool ILegACEyPluginHost.IsWindowOpen(string id) => _featureSurfaces.ContainsKey(id);
     void ILegACEyPluginHost.HideWindow(string id) => HideFeatureWindow(id);
     void ILegACEyPluginHost.CloseWindow(string id) => ReleaseFeatureWindow(id);
@@ -1316,6 +1434,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     /// <summary>Disable only the post-UI windows when EndScene fails; retail surfaces continue.</summary>
     private void DisableWindows(Exception exception)
     {
+        // The takeover stands in for a window: without windows, retail's panel must come back now.
+        EndRetailPanels();
         _windowsEnabled = false;
         Log($"LegACEy windows disabled: {exception}");
         _bar?.SetOpen(MenuSlot, false);
@@ -1393,6 +1513,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         _clientUi = null;
         try { _serverChannel?.Reset(); }
         catch (Exception exception) { Log($"Could not fail outstanding server channel requests: {exception}"); }
+        EndRetailPanels();
         RestoreNativeBar();
         _hovered = null;
         _barSurface?.Dispose();

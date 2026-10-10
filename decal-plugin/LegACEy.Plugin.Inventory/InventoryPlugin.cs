@@ -14,9 +14,13 @@ namespace LegACEy.Plugin.Inventory;
 public sealed class InventoryPlugin : ILegACEyPlugin
 {
     private static readonly Point DefaultLocation = new(240, 100);
+    // The retail inventory panel's root element (InventoryPanel_Field, research R1).
+    private const uint RetailInventoryPanel = 0x1000018B;
 
     // The window of each layout while the client keeps it, open or hidden. A hidden window keeps its content.
     private readonly Dictionary<InventoryLayout, InventoryWindow> _windows = new();
+    // The retail panel this window stands in for while the client's takeover switch is on. It does nothing while the switch is off.
+    private IRetailPanel? _retail;
     // The settings while a window is open: read from the client when a window opens, and every change is saved as it happens.
     private InventorySettings? _settings;
     // The layout whose window the plugin last showed, so a menu press knows whether it hides the window or opens one.
@@ -27,8 +31,21 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     /// <summary>The inventory uses no server actions, so it is never hidden for a missing one.</summary>
     public IReadOnlyCollection<string> RequiredActions { get; } = Array.Empty<string>();
 
-    public void Start(ILegACEyClient client) =>
+    public void Start(ILegACEyClient client)
+    {
         client.AddMenuEntry(InventoryWindow.Title, InventoryWindow.BackpackIcon, () => Toggle(client));
+        _retail = client.TakeOverRetailPanel(RetailInventoryPanel, open => RetailPanelChanged(client, open));
+    }
+
+    /// <summary>
+    /// Retail opened or closed its inventory panel while the takeover is on. A layout switch never comes here: it hides and shows
+    /// windows of its own and leaves retail's panel open.
+    /// </summary>
+    private void RetailPanelChanged(ILegACEyClient client, bool open)
+    {
+        if (open == (_shown != null)) return;
+        Toggle(client);
+    }
 
     /// <summary>The menu press: opens the current layout's window, or hides it when it is showing.</summary>
     private void Toggle(ILegACEyClient client)
@@ -76,10 +93,16 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     private Control CreateWindow(ILegACEyClient client, InventoryLayout layout, Action close)
     {
         // The client keeps a closed window hidden and shows it again, so this runs once per session for each layout.
-        var window = new InventoryWindow(client.Inventory, client.Art, new InventorySettings(layout, Current(client).ShowSlots), client.ItemDrag);
+        var window = new InventoryWindow(client.Inventory, client.Art, new InventorySettings(layout, Current(client).ShowSlots), client.ItemDrag, client.ItemDropRelay);
         GiveDoll(client, window);
         _windows[layout] = window;
-        window.CloseRequested += (_, _) => Hide(layout, close);
+        // The close box closes retail's panel too, through its own path, when the takeover holds it. Retail's close then reaches us as
+        // closed, which finds the window already hidden.
+        window.CloseRequested += (_, _) =>
+        {
+            Hide(layout, close);
+            _retail?.Close();
+        };
         window.SettingsChanged += settings =>
         {
             _settings = settings;

@@ -23,9 +23,10 @@ namespace LegACEy.Plugin.Inventory;
 /// not while the owner has it <see cref="Suspend"/>ed (hidden); <see cref="Resume"/> draws the current state once.
 /// Its own toggles (layout and Slots) are local and report through <see cref="SettingsChanged"/>; the owner decides what a layout
 /// change does. A click on a slot selects its item, or opens a pack; a double-click uses the item; a drag moves it through the
-/// port. The window never changes its own state: a command shows only when the port's next snapshot says so.
+/// port. The window never changes its own state: a command shows only when the port's next snapshot says so. An item released
+/// outside every slot is offered to the LegACEy window under the pointer (a Vault deposit).
 /// </summary>
-public sealed class InventoryWindow : UserControl, IDisposable
+public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZone
 {
     internal const uint BackpackIcon = 0x0600127E;
     internal const string Title = "Inventory";
@@ -69,6 +70,7 @@ public sealed class InventoryWindow : UserControl, IDisposable
         HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
     };
     private readonly IItemDragHost? _dragHost;
+    private readonly IItemDropRelay? _relay;
     // A press on a slot: a click on release, or a drag once it moves past the threshold. The item or pack being dragged is _dragged, zero when none.
     private InventorySlotId? _press;
     private Point _pressPoint;
@@ -84,11 +86,13 @@ public sealed class InventoryWindow : UserControl, IDisposable
     /// <param name="art">The game art the icons are drawn from.</param>
     /// <param name="settings">The layout this window draws, and whether the armour slots show.</param>
     /// <param name="dragHost">Shows the icon of a dragged item under the pointer. Null shows no icon; the drag still works.</param>
-    public InventoryWindow(IInventoryPort port, IGameArtSource art, InventorySettings settings, IItemDragHost? dragHost = null)
+    /// <param name="relay">Offers an item released outside the slots to the LegACEy window under the pointer. Null offers nothing.</param>
+    public InventoryWindow(IInventoryPort port, IGameArtSource art, InventorySettings settings, IItemDragHost? dragHost = null, IItemDropRelay? relay = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _art = art ?? throw new ArgumentNullException(nameof(art));
         _dragHost = dragHost;
+        _relay = relay;
         _layout = settings.Layout;
         _showSlots = settings.ShowSlots;
         _packList = _layout == InventoryLayout.Vertical
@@ -236,9 +240,29 @@ public sealed class InventoryWindow : UserControl, IDisposable
             Click(press, clicks);
             return;
         }
-        // A release outside the slots, or over a refused one, sends nothing.
-        var drop = dragged == 0 || SlotAt(point)?.Tag is not InventorySlotId target ? null : Judge(_port.Snapshot, dragged, target);
-        if (drop?.Accepted == true) drop.Value.Send(_port);
+        if (dragged == 0) return;
+        // Over a slot the drop is judged as it always was: a refused one sends nothing.
+        if (SlotAt(point)?.Tag is InventorySlotId target)
+        {
+            var drop = Judge(_port.Snapshot, dragged, target);
+            if (drop?.Accepted == true) drop.Value.Send(_port);
+            return;
+        }
+        HandOffOutside(dragged);
+    }
+
+    /// <summary>
+    /// A release outside every slot: an item goes to the LegACEy window under the pointer, if that window takes it (a Vault deposit).
+    /// Side packs stay here.
+    /// </summary>
+    private void HandOffOutside(uint dragged)
+    {
+        var snapshot = _port.Snapshot;
+        if (_relay == null || snapshot.SidePacks.Any(pack => pack.Id == dragged) || !snapshot.Contains(dragged)) return;
+        // ponytail: story 45, drops on the 3D world, other retail windows and the shortcut bar, is still missing. The hand-off to
+        // retail needs the retail UIItem of this object, and step 01 (R1) did not identify how to find it: no child walk and no
+        // object lookup. Until it does, a release outside every LegACEy window sends nothing, as it always has.
+        _relay.DeliverAtPointer(dragged, KindOf(snapshot, dragged).Name);
     }
 
     /// <summary>A click on release: a pack opens; an item is selected, or used when the press was the second click on it.</summary>

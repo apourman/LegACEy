@@ -259,6 +259,19 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
+    public void A_stack_dropped_on_a_stack_of_the_same_kind_merges_into_it() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        // A second apple, in slot 5: the same name and type as the sample's apple in slot 0, so the drop merges the two.
+        port.Push(InventorySample.Snapshot(extra: new[] { InventorySample.AppleStack(0x80000200, slot: 5, stack: 20) }));
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+
+        InventoryDriver.Drop(host.Host, host.Cells[0], host.Cells[5]);
+
+        Assert.Equal(new[] { $"merge 0x{InventorySample.Apple:X8} into 0x{0x80000200u:X8}" }, port.Commands);
+    });
+
+    [Fact]
     public void A_press_that_moves_past_the_threshold_and_is_lost_sends_nothing_and_drops_its_icon() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();
