@@ -513,6 +513,8 @@ public sealed class NativeUiLifecycleTests
 
         Assert.Equal(0, port.CloseCalls);
         Assert.Equal(new[] { true, false }, events);
+        // The frame is shared with retail's other panels, so it is back in its place once the inventory closes.
+        Assert.Equal(new Point(500, 300), port.Location);
     }
 
     [Fact]

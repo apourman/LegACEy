@@ -26,8 +26,9 @@ internal interface IRetailPanelPort
 }
 
 /// <summary>
-/// Keeps retail's inventory panel open but parked off-screen while the takeover is on, and tells a plugin window when that panel
-/// opens and closes. Retail keeps its open state on the element it would hide, so the element is parked rather than hidden each frame.
+/// Parks retail's inventory panel off-screen while it is open and the takeover is on, and tells a plugin window when that panel
+/// opens and closes. Retail keeps its open state on the element it would hide, so the element is parked rather than hidden each frame;
+/// a closed panel is given back at once, because its frame also holds retail's other panels.
 /// The panel's place and save-location are given back on every exit:
 /// switch-off, logoff, a fault, unload and plugin turn-off. While parked, save-location is off, so the parked position never reaches
 /// the layout. Call <see cref="Tick"/> on the game thread once a frame.
@@ -84,6 +85,14 @@ internal sealed class RetailPanelTakeover : IDisposable
                 Closing();
                 return;
             }
+            if (!_port.IsOpen)
+            {
+                // The panel frame is shared with retail's other panels (character, spells, options), so it is given back as soon as
+                // the inventory closes, and the next panel retail opens shows where it should.
+                Restore();
+                Closing();
+                return;
+            }
             if (!_parked || identity != _identity) Park(identity);
             else if (_port.Location != ParkedAt)
             {
@@ -91,12 +100,8 @@ internal sealed class RetailPanelTakeover : IDisposable
                 _original = _port.Location;
                 Repark();
             }
-            if (_port.IsOpen)
-            {
-                _closedFrames = 0;
-                Report(true);
-            }
-            else Closing();
+            _closedFrames = 0;
+            Report(true);
         }
         catch (Exception exception)
         {
@@ -159,7 +164,6 @@ internal sealed class RetailPanelTakeover : IDisposable
         _original = _port.Location;
         _originalSave = _port.SaveLocation;
         _parked = true;
-        _reportedOpen = false;
         _restoreFailed = false;
         Repark();
         _log($"Parked the retail inventory panel off-screen; its place is {_original}.");

@@ -38,18 +38,20 @@ internal sealed class NativeRetailPanelPort : IRetailPanelPort
         }
     }
 
-    public Point Location => NativeUi.GetBounds(Present()).Location;
+    // The place, save bit and move are the panel frame's (gmPanelUI), which draws the frame the inventory sits in: moving only the
+    // inventory element left that frame on screen, empty. Gate: the inventory moves with its frame.
+    public Point Location => NativeUi.GetBounds(Frame()).Location;
 
-    public bool SaveLocation => (Marshal.ReadInt32(Present(), SaveLocationOffset) & SaveLocationBit) != 0;
+    public bool SaveLocation => (Marshal.ReadInt32(Frame(), SaveLocationOffset) & SaveLocationBit) != 0;
 
-    public void SetSaveLocation(bool save) => NativeUi.SetSaveLocation(Present(), save);
+    public void SetSaveLocation(bool save) => NativeUi.SetSaveLocation(Frame(), save);
 
     public void MoveTo(Point location)
     {
-        var element = Present();
+        var element = Frame();
         // The element's own MoveTo must be the base move, or an override would run in its place.
         if (NativeUiMovement.ResolveMoveTo(element) != new IntPtr(NativeUiCatalogue.UIElementMoveTo))
-            throw new InvalidOperationException("The retail inventory panel overrides MoveTo; the takeover does not move it.");
+            throw new InvalidOperationException("The retail panel frame overrides MoveTo; the takeover does not move it.");
         NativeUi.MoveTo(element, location);
     }
 
@@ -72,11 +74,13 @@ internal sealed class NativeRetailPanelPort : IRetailPanelPort
             NativeUi.SetVisible(element, visible);
     }
 
-    private static IntPtr Present()
+    /// <summary>The panel frame holding the inventory, or the inventory element itself when the frame is not found.</summary>
+    private static IntPtr Frame()
     {
         var element = Element;
         if (element == IntPtr.Zero) throw new InvalidOperationException("The retail inventory panel is absent.");
-        return element;
+        var frame = PanelManagerOf(element);
+        return frame != IntPtr.Zero ? frame : element;
     }
 
     /// <summary>The gmPanelUI element at the panel or within three ancestors, or zero when none has its vtable.</summary>
