@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Decal.Adapter;
 using Decal.Adapter.Wrappers;
 using LegACEy.Client.Demo;
@@ -108,10 +109,15 @@ internal sealed class DecalInventoryPort : IInventoryPort
 
     private static int Id(uint id) => unchecked((int)id);
 
+    // Runs every frame during a retail drag over a paperdoll slot, so a COMException or a released object reads as no slots.
     private static uint LiveValidLocations(uint itemId)
     {
-        var item = CoreManager.Current.WorldFilter[Id(itemId)];
-        return item == null ? 0 : unchecked((uint)item.Values(LongValueKey.EquipableSlots, 0));
+        try
+        {
+            var item = CoreManager.Current.WorldFilter[Id(itemId)];
+            return item == null ? 0 : unchecked((uint)item.Values(LongValueKey.EquipableSlots, 0));
+        }
+        catch (COMException) { return 0; }
     }
 
     /// <summary>The client's inventory reads, made on the game thread once per rebuild.</summary>
