@@ -25,6 +25,7 @@ public sealed class PortalDat : IDisposable, IGameArtSource
     // ponytail: unbounded; holds the window art and every item icon shown this session. Add eviction if a session's
     // icons ever reach a few MB.
     private readonly Dictionary<uint, GameImage?> _images = new();
+    private IReadOnlyDictionary<uint, SpellInfo>? _spells;
 
     public PortalDat(string path)
     {
@@ -48,6 +49,17 @@ public sealed class PortalDat : IDisposable, IGameArtSource
         if (!_images.TryGetValue(id, out var image))
             _images.Add(id, image = DecodeImage(id));
         return image;
+    }
+
+    /// <summary>The spells' names and descriptions by spell id, read once. Empty when the file has no spell table.</summary>
+    public IReadOnlyDictionary<uint, SpellInfo> ReadSpells()
+    {
+        if (_spells == null)
+        {
+            var file = ReadFile(SpellTable.FileId);
+            _spells = file == null ? new Dictionary<uint, SpellInfo>() : SpellTable.Parse(file);
+        }
+        return _spells;
     }
 
     private GameImage? DecodeImage(uint id)

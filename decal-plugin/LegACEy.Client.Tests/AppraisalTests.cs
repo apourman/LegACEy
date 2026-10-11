@@ -248,6 +248,68 @@ public sealed class AppraisalTests
         Assert.Equal(0, host.Opened);
     });
 
+    [Fact]
+    public void The_ivory_stick_lists_five_spells_with_their_descriptions_then_its_requirements_and_mana()
+    {
+        // The retail screenshot's item: the spells in the order the server sends them (the same as retail's list), the wield and activation
+        // requirements, spellcraft, and mana at 1,492 of 1,494 with one point burned every 15 seconds.
+        var bytes = new ServerAppraisal(0x80000A05)
+        {
+            Ints =
+            {
+                [1] = 0x1, [48] = 44, [105] = 6, [19] = 17285, [5] = 101, [106] = 370, [107] = 1492, [108] = 1494,
+                [109] = 188, [115] = 390, [176] = 44, [158] = 2, [159] = 44, [160] = 420,
+            },
+            Floats = { [5] = -1.0 / 15 },
+            Strings = { [1] = "Ivory Stick", [16] = "Nearly flawless Ivory Stick of Blood Drinker, set with 4 Green Garnets" },
+            Dids = { [8] = 0x06001F98 },
+            SpellBook = { 2087u, 2096u, 2116u, 2572u, 4405u },
+        }.Build();
+        var spells = new Dictionary<uint, SpellInfo>
+        {
+            [2087] = new("Might of the Lugians", "Increases the caster's Strength by 40 points."),
+            [2096] = new("Aura of Infected Caress", "Increases a weapon's damage value by 22 points."),
+            [2116] = new("Aura of Atlan's Alacrity", "Improves a weapon's speed by 70 points."),
+            [2572] = new("Major Coordination", "Increases the target's Coordination by 15 points. Additional spells can be layered over this."),
+            [4405] = new("Aura of Incantation of Heart Seeker Self", "Increases a weapon's Attack Skill modifier by 20.0 percentage points."),
+        };
+
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), spells);
+
+        var sections = content.Sections.ToDictionary(section => section.Heading, section => section.Rows);
+        Assert.Equal(new[] { "Spells", "Requirements" }, content.Sections.Select(section => section.Heading));
+        Assert.Equal(new AppraisalRow[]
+        {
+            new AppraisalSpellRow("Might of the Lugians", "Increases the caster's Strength by 40 points."),
+            new AppraisalSpellRow("Aura of Infected Caress", "Increases a weapon's damage value by 22 points."),
+            new AppraisalSpellRow("Aura of Atlan's Alacrity", "Improves a weapon's speed by 70 points."),
+            new AppraisalSpellRow("Major Coordination", "Increases the target's Coordination by 15 points. Additional spells can be layered over this."),
+            new AppraisalSpellRow("Aura of Incantation of Heart Seeker Self", "Increases a weapon's Attack Skill modifier by 20.0 percentage points."),
+        }, sections["Spells"]);
+        Assert.Equal(new AppraisalRow[]
+        {
+            new("Wield", "Base Heavy Weapons 420"),
+            new("Activation", "Arcane Lore 188, Heavy Weapons 390"),
+            new("Spellcraft", "370"),
+            new AppraisalMeterRow("Mana", 1492, 1494, "1 point per 15 seconds"),
+        }, sections["Requirements"]);
+    }
+
+    [Fact]
+    public void A_spell_the_table_does_not_know_is_named_by_its_id_and_an_enchantment_is_listed_by_the_id_it_carries()
+    {
+        var bytes = new ServerAppraisal(0x80000A06) { Strings = { [1] = "Ivory Stick" }, SpellBook = { 0x80000000u | 2087u, 9999u } }.Build();
+        var spells = new Dictionary<uint, SpellInfo> { [2087] = new("Might of the Lugians", "Increases the caster's Strength by 40 points.") };
+
+        var rows = Assert.Single(AppraisalContent.From(AppraisalResponse.Read(bytes), spells).Sections).Rows;
+
+        Assert.Equal(new AppraisalRow[]
+        {
+            new AppraisalSpellRow("Might of the Lugians", "Increases the caster's Strength by 40 points."),
+            new AppraisalSpellRow("Spell 9999", string.Empty),
+        }, rows);
+    }
+
     /// <summary>
     /// Runs on the render thread with Avalonia started, since the window is measured for its height before it opens. The panel host starts
     /// the headless runtime the first time it is created, as it does in the game.

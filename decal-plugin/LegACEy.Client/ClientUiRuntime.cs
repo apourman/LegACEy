@@ -190,7 +190,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         _gameStatePoller = new GameStatePoller(_gameState, Bridge.ReadGameState,
             error => Log($"Character stats temporarily unavailable; keeping UI active and retrying: {error.Message}"));
-        _appraisal = new AppraisalFeature(this, Log);
+        _appraisal = new AppraisalFeature(this, Log, spells: () => _portal?.ReadSpells());
         _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal);
     }
 

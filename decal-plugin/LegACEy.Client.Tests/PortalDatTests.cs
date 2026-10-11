@@ -44,6 +44,25 @@ public sealed class PortalDatTests
             Assert.NotNull(dat.ReadImage(id));
     }
 
+    [Fact]
+    public void Real_dat_spells_read_as_retail_words_them_when_a_portal_path_is_provided()
+    {
+        var path = Environment.GetEnvironmentVariable("LEGACEY_PORTAL_DAT");
+        if (string.IsNullOrWhiteSpace(path)) return;
+
+        using var dat = new PortalDat(path);
+        var spells = dat.ReadSpells();
+        // The Ivory Stick's five spells, as the retail appraisal lists them, and a name with Windows-1252's apostrophe.
+        Assert.Equal(("Might of the Lugians", "Increases the caster's Strength by 40 points."), (spells[2087].Name, spells[2087].Description));
+        Assert.Equal(("Aura of Infected Caress", "Increases a weapon's damage value by 22 points."), (spells[2096].Name, spells[2096].Description));
+        Assert.Equal(("Aura of Atlan's Alacrity", "Improves a weapon's speed by 70 points."), (spells[2116].Name, spells[2116].Description));
+        Assert.Equal(("Major Coordination", "Increases the target's Coordination by 15 points. Additional spells can be layered over this."),
+            (spells[2572].Name, spells[2572].Description));
+        Assert.Equal(("Aura of Incantation of Heart Seeker Self", "Increases a weapon's Attack Skill modifier by 20.0 percentage points."),
+            (spells[4405].Name, spells[4405].Description));
+        Assert.Equal("Asheron\u2019s Benediction", spells[3810].Name);
+    }
+
     private static string CreateFixture(uint format)
     {
         const uint blockSize = 4096;
