@@ -171,13 +171,14 @@ public sealed class AppraisalTests
     }
 
     [Fact]
-    public void A_weapon_type_line_names_its_skill_and_a_potion_names_none()
+    public void A_weapon_names_its_skill_in_the_type_line_and_its_workmanship_in_retail_words_and_a_potion_names_no_skill()
     {
         var weapon = AppraisalContent.From(AppraisalResponse.Read(new ServerAppraisal(0x80000A04)
         {
-            Strings = { [1] = "Ivory Stick" }, Ints = { [1] = 0x1, [48] = 44 }
+            Strings = { [1] = "Ivory Stick" }, Ints = { [1] = 0x1, [48] = 44, [105] = 6 }
         }.Build()));
         Assert.Equal("Melee weapon · Heavy Weapons", weapon.TypeLine);
+        Assert.Equal(("Workmanship", "Nearly flawless (6)"), weapon.Figures.Select(figure => (figure.Label, figure.Value)).Single());
 
         var potion = AppraisalContent.From(AppraisalResponse.Read(PotionMessage(Potion, 75)));
         Assert.DoesNotContain("·", potion.TypeLine);

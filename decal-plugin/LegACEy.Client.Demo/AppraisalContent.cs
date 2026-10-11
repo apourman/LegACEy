@@ -22,14 +22,16 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     IReadOnlyList<AppraisalSection> Sections, string Description)
 {
     // The server's property ids (ACE.Entity PropertyInt, PropertyString and PropertyDataId).
-    private const uint ItemTypeInt = 1, EncumbranceValInt = 5, ValueInt = 19, WeaponSkillInt = 48, ItemWorkmanshipInt = 105;
+    private const uint ItemTypeInt = 1, EncumbranceValInt = 5, ValueInt = 19, WeaponSkillInt = 48, ItemWorkmanshipInt = 105, SalvagedItemsInt = 170;
     private const uint NameString = 1, UseString = 14, LongDescString = 16;
     private const uint IconDid = 8, IconOverlayDid = 50, IconUnderlayDid = 52;
 
     /// <summary>The summary figures, in the order they sit side by side. A figure the server did not send is left out.</summary>
-    private static readonly (string Label, uint Property)[] FigureRules =
+    private static readonly (string Label, Func<AppraisalResponse, string?> Text)[] FigureRules =
     {
-        ("Value", ValueInt), ("Burden", EncumbranceValInt), ("Workmanship", ItemWorkmanshipInt)
+        ("Value", response => Number(response, ValueInt)),
+        ("Burden", response => Number(response, EncumbranceValInt)),
+        ("Workmanship", WorkmanshipText),
     };
 
     /// <summary>The item-type bits and the name the type line shows for the first bit set.</summary>
@@ -52,8 +54,9 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     public static AppraisalContent From(AppraisalResponse response)
     {
         var figures = FigureRules
-            .Where(rule => response.Ints.ContainsKey(rule.Property))
-            .Select(rule => new AppraisalFigure(rule.Label, response.Ints[rule.Property].ToString(CultureInfo.InvariantCulture)))
+            .Select(rule => (rule.Label, Text: rule.Text(response)))
+            .Where(figure => figure.Text != null)
+            .Select(figure => new AppraisalFigure(figure.Label, figure.Text!))
             .ToList();
         var sections = SectionRules
             .Select(rule => new AppraisalSection(rule.Heading, rule.Rows(response).ToList()))
@@ -79,6 +82,45 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     /// The type line: the item's type, then its weapon skill when it has one ("Melee weapon · Heavy Weapons"). Skill names are ACE's
     /// Skill.ToSentence (ACE.Entity/Enum/Skill.cs), indexed by the skill's id.
     /// </summary>
+    private static string? Number(AppraisalResponse response, uint property) =>
+        response.Ints.TryGetValue(property, out var value) ? value.ToString(CultureInfo.InvariantCulture) : null;
+
+    /// <summary>
+    /// Workmanship in retail's words: "Nearly flawless (6)". Items are banded by clamping to 0-10 and show the raw number. A salvaged item
+    /// (the count in SalvagedItemsInt) shows the average workmanship per salvaged item, rounded to a band and written to two places.
+    /// Mirrors ItemAppraisalTextFormatter in OpenAC (AcDream.App/UI/Layout), MIT. A workmanship of zero has no words, so no figure.
+    /// </summary>
+    private static string? WorkmanshipText(AppraisalResponse response)
+    {
+        if (!response.Ints.TryGetValue(ItemWorkmanshipInt, out var workmanship)) return null;
+        if (response.Ints.TryGetValue(SalvagedItemsInt, out var salvaged) && salvaged > 0)
+        {
+            double average = (double)workmanship / salvaged;
+            var adjective = WorkmanshipAdjective(Clamp((int)Math.Round(average), 0, 10));
+            return adjective.Length == 0 ? null : $"{adjective} ({average.ToString("0.00", CultureInfo.InvariantCulture)})";
+        }
+        var words = WorkmanshipAdjective(Clamp(workmanship, 0, 10));
+        return words.Length == 0 ? null : $"{words} ({workmanship.ToString(CultureInfo.InvariantCulture)})";
+    }
+
+    // Math.Clamp is not in netstandard2.0, which Demo targets.
+    private static int Clamp(int value, int min, int max) => value < min ? min : value > max ? max : value;
+
+    private static string WorkmanshipAdjective(int workmanship) => workmanship switch
+    {
+        <= 0 => string.Empty,
+        1 => "Poorly crafted",
+        2 => "Well-crafted",
+        3 => "Finely crafted",
+        4 => "Exquisitely crafted",
+        5 => "Magnificent",
+        6 => "Nearly flawless",
+        7 => "Flawless",
+        8 => "Utterly flawless",
+        9 => "Incomparable",
+        _ => "Priceless",
+    };
+
     private static string TypeLineOf(AppraisalResponse response)
     {
         var type = response.Ints.TryGetValue(ItemTypeInt, out var bits) ? ItemTypeNames.FirstOrDefault(item => (bits & item.Bit) != 0).Name : null;
