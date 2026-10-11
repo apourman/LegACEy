@@ -46,7 +46,8 @@ internal static class NativeUiCatalogue
         Root("NegativeEffects", 0x10000185), Root("LinkStatus", 0x10000187), Root("MiniGame", 0x10000188), Root("Vitae", 0x1000018A),
         Root("InventoryPanel", 0x1000018B),
         // The examination panel: the top-level element of LayoutDesc 0x2100006B in the installed client_local_English.dat. That layout also
-        // holds the inscription field 0x1000013E, which the appraisal window's inscription limit is read from. Checked by the DAT, not the process.
+        // holds the inscription field 0x1000013E, whose MaxCharacters the appraisal window's inscription limit (300) was confirmed against. The
+        // limit is a constant in the window, not read at runtime. Checked by the DAT, not the process.
         Root("Examination", NativeUi.Examination, "installed client_local_English.dat, LayoutDesc 0x2100006B (top-level element)")
     };
 

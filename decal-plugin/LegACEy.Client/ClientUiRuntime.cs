@@ -207,7 +207,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             // Only with the examination's addresses checked: otherwise retail's examination panel is left alone.
             if (NativeUi.Ready && RetailPanelCatalogueValid())
                 _examination = new RetailExaminationTakeover(new NativeExaminationPort(), () => (uint)Bridge.Fact(BridgeFact.CurrentSelection),
-                    _appraisal.Examine, Log);
+                    _appraisal, Log);
             try
             {
                 _channelTransport = new GameChannelTransport(NativeUi.ReadMemory, () => _inGame, Log);

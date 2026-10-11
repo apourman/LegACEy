@@ -13,8 +13,9 @@ public enum InscriptionMode { ReadOnly, Editable }
 public sealed record AppraisalInscription(InscriptionMode Mode, string Text, string Scribe)
 {
     /// <summary>
-    /// Retail's maximum inscription length: MaxCharacters (property 0x1E) of the inscription field, element 0x1000013E of the examination
-    /// layout 0x2100006B in the installed client_local_English.dat. The server does not check the length.
+    /// Retail's maximum inscription length, a constant confirmed against MaxCharacters (property 0x1E) of the inscription field, element
+    /// 0x1000013E of the examination layout 0x2100006B in the installed client_local_English.dat. It is not read from the DAT at runtime.
+    /// The server does not check the length.
     /// </summary>
     public const int MaxLength = 300;
 

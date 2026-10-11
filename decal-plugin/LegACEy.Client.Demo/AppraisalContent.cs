@@ -41,7 +41,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     IReadOnlyList<AppraisalSection> Sections, string Description, AppraisalInscription? Inscription, string Subtitle = "")
 {
     // The server's property ids (ACE.Entity PropertyInt, PropertyString and PropertyDataId).
-    private const uint ItemTypeInt = 1, EncumbranceValInt = 5, ValueInt = 19, WeaponSkillInt = 48, ItemWorkmanshipInt = 105, SalvagedItemsInt = 170;
+    private const uint ItemTypeInt = 1, EncumbranceValInt = 5, ValueInt = 19, ItemWorkmanshipInt = 105, SalvagedItemsInt = 170;
     private const uint NameString = 1, UseString = 14, LongDescString = 16;
     private const uint IconDid = 8, IconOverlayDid = 50, IconUnderlayDid = 52;
     private const uint SpellcraftInt = 106, CurManaInt = 107, MaxManaInt = 108, ArcaneLoreInt = 109, AllegianceRankInt = 110, SkillLevelInt = 115;
@@ -49,7 +49,12 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     private const uint ManaRateFloat = 5;
     // The high bit the server sets on an enchantment's spell id in the spell book.
     private const uint EnchantmentBit = 0x80000000;
-    private const uint ArmorLevelInt = 28, WeaponTypeInt = 353, WeaponDefenseFloat = 29;
+    private const uint ArmorLevelInt = 28, WeaponTypeInt = 353;
+    // The bonuses as PropertyFloat ids (ACE.Entity), each an AssessmentProperty: melee, missile and magic defence, mana conversion, and the
+    // elemental damage modifier against monsters. The damage type of a spell's elemental bonus is PropertyInt DamageType (45), and the
+    // elemental damage bonus of a weapon is PropertyInt ElementalDamageBonus (204).
+    private const uint WeaponDefenseFloat = 29, ManaConversionFloat = 144, MissileDefenseFloat = 149, MagicDefenseFloat = 150,
+        ElementalDamageModFloat = 152, DamageTypeInt = 45, ElementalDamageBonusInt = 204;
     // Creatures and characters (ACE.Entity PropertyInt and PropertyString), as OpenAC's creature appraisal reads them (CreatureAppraisalRows, MIT).
     private const uint LevelInt = 25, CreatureTypeInt = 2, HeritageGroupInt = 188, GenderInt = 113, TitleIdInt = 261, RankInt = 30,
         FollowersInt = 35, DeathsInt = 43, ChessRankInt = 181, FishingSkillInt = 192, TitlesEarnedInt = 262, AgeInt = 125,
@@ -71,7 +76,11 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
 
     // Highlight and colour bits as ACE.Server's WeaponMask and ArmorMask set them. A highlighted bit with its colour bit set is raised;
     // highlighted without it, lowered.
-    private const uint WeaponAttackBit = 0x1, WeaponMeleeDefenseBit = 0x2, WeaponSpeedBit = 0x4, WeaponDamageBit = 0x8, WeaponDamageVarianceBit = 0x10;
+    private const uint WeaponAttackBit = 0x1, WeaponMeleeDefenseBit = 0x2, WeaponSpeedBit = 0x4, WeaponDamageBit = 0x8, WeaponDamageVarianceBit = 0x10,
+        WeaponDamageModBit = 0x20;
+    private const uint ResistManaConversionBit = 0x1000, ResistElementalDamageBit = 0x2000;
+    // ACE's Skill ids of the two launchers, which the weapon profile names.
+    private const uint BowSkill = 2, CrossbowSkill = 3;
     private const uint ArmorLevelBit = 0x1, ArmorSlashingBit = 0x2, ArmorPiercingBit = 0x4, ArmorBludgeoningBit = 0x8, ArmorFireBit = 0x20,
         ArmorColdBit = 0x10, ArmorAcidBit = 0x40, ArmorLightningBit = 0x80;
 
@@ -96,7 +105,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     /// </summary>
     private static readonly SectionRule[] SectionRules =
     {
-        new("Combat", (response, _) => WeaponRows(response)),
+        new("Combat", (response, _) => CombatRows(response)),
         new("Armor", (response, _) => ArmorRows(response)),
         new("Spells", (response, spells) => SpellRows(response, spells)),
         new("Requirements", (response, _) => RequirementRows(response)),
@@ -193,7 +202,10 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     {
         var weaponType = response.Ints.TryGetValue(WeaponTypeInt, out var kind) && kind > 0 && kind < WeaponTypeNames.Length ? WeaponTypeNames[kind] : null;
         var type = weaponType ?? (response.Ints.TryGetValue(ItemTypeInt, out var bits) ? ItemTypeNames.FirstOrDefault(item => (bits & item.Bit) != 0).Name : null);
-        var skill = response.Ints.TryGetValue(WeaponSkillInt, out var id) && id > 0 && id < SkillNames.Length ? SkillNames[id] : null;
+        // The weapon's skill comes from its profile: PropertyInt WeaponSkill is not an assessment property, so the server never sends it as one.
+        var skill = response.Weapon is { } weapon && weapon.WeaponSkill > 0 && weapon.WeaponSkill < SkillNames.Length
+            ? SkillNames[weapon.WeaponSkill]
+            : null;
         return string.Join(" · ", new[] { type, skill }.Where(part => !string.IsNullOrEmpty(part)));
     }
 
@@ -218,34 +230,80 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     };
 
     /// <summary>
-    /// A weapon's Combat rows: damage and type, speed, and the attack and melee defence bonuses. Values are coloured from the masks the
-    /// server sent. A weapon with no profile has none.
+    /// The Combat rows, as OpenAC's formatter orders them (MIT): a weapon's damage (a launcher's damage bonus), its elemental bonus, a
+    /// launcher's damage modifier, speed, a launcher's range or a melee weapon's attack; then the melee, missile and magic defence bonuses,
+    /// and a caster's mana conversion and elemental damage. Values are coloured from the masks the server sent, and the client does not work
+    /// out a buff itself.
     /// </summary>
-    private static IEnumerable<AppraisalRow> WeaponRows(AppraisalResponse response)
+    private static IEnumerable<AppraisalRow> CombatRows(AppraisalResponse response)
     {
-        if (response.Weapon is not { } weapon) return Array.Empty<AppraisalRow>();
-        var rows = new List<AppraisalRow>
+        if (response.Weapon is { } weapon)
         {
-            new AppraisalRow("Damage", DamageText(weapon), DamageTone(response.WeaponMask)),
-            new AppraisalRow("Speed", SpeedText(weapon.WeaponTime), ToneOf(response.WeaponMask, WeaponSpeedBit)),
-        };
-        if (Math.Abs(weapon.WeaponOffense - 1) > Epsilon)
-            rows.Add(new AppraisalRow("Attack", (weapon.WeaponOffense - 1).ToString("+0%;-0%;0%", CultureInfo.InvariantCulture),
-                ToneOf(response.WeaponMask, WeaponAttackBit)));
-        if (response.Floats.TryGetValue(WeaponDefenseFloat, out var defence) && Math.Abs(defence - 1) > Epsilon)
-            rows.Add(new AppraisalRow("Melee defense", (defence - 1).ToString("+0.0%;-0.0%;0.0%", CultureInfo.InvariantCulture),
-                ToneOf(response.WeaponMask, WeaponMeleeDefenseBit)));
-        return rows;
+            var launcher = IsLauncher(weapon);
+            yield return launcher
+                ? new AppraisalRow("Damage Bonus", DamageText(weapon, withType: false), DamageTone(response.WeaponMask))
+                : new AppraisalRow("Damage", DamageText(weapon, withType: true), DamageTone(response.WeaponMask));
+            if (response.Ints.TryGetValue(ElementalDamageBonusInt, out var elemental) && elemental > 0)
+                yield return new AppraisalRow(null, $"Elemental Damage Bonus: {elemental.ToString(CultureInfo.InvariantCulture)}, {DamageWord(weapon.DamageType)}.");
+            if (launcher)
+                yield return new AppraisalRow("Damage Modifier", SignedPercent(weapon.DamageMod - 1), ToneOf(response.WeaponMask, WeaponDamageModBit));
+            yield return new AppraisalRow("Speed", SpeedText(weapon.WeaponTime), ToneOf(response.WeaponMask, WeaponSpeedBit));
+            if (launcher) yield return new AppraisalRow("Range", RangeText(weapon));
+            else if (Math.Abs(weapon.WeaponOffense - 1) > Epsilon)
+                yield return new AppraisalRow("Attack", SignedPercent(weapon.WeaponOffense - 1), ToneOf(response.WeaponMask, WeaponAttackBit));
+        }
+        if (Modifier(response, WeaponDefenseFloat) is { } melee)
+            yield return new AppraisalRow("Melee defense", melee, ToneOf(response.WeaponMask, WeaponMeleeDefenseBit));
+        if (Modifier(response, MissileDefenseFloat) is { } missile) yield return new AppraisalRow("Missile defense", missile);
+        if (Modifier(response, MagicDefenseFloat) is { } magic) yield return new AppraisalRow("Magic defense", magic);
+        if (response.Floats.TryGetValue(ManaConversionFloat, out var conversion))
+            yield return new AppraisalRow("Mana conversion", SignedPercent(conversion), ToneOf(response.ResistMask, ResistManaConversionBit));
+        if (response.Floats.TryGetValue(ElementalDamageModFloat, out var elementalMod) && response.Ints.TryGetValue(DamageTypeInt, out var spellType))
+        {
+            // Retail's elemental bonus: against monsters, and against players at a quarter of it (OpenAC's ShowCasterData).
+            yield return new AppraisalRow(null, $"Damage bonus for {DamageWord((uint)spellType)} spells:", ToneOf(response.ResistMask, ResistElementalDamageBit));
+            yield return new AppraisalRow("vs. Monsters", SignedPercent(elementalMod - 1));
+            yield return new AppraisalRow("vs. Players", SignedPercent((elementalMod - 1) * 0.25));
+        }
     }
 
-    /// <summary>The damage range and type, "41.28 – 86 Bludgeoning", or one figure when the variance leaves no range.</summary>
-    private static string DamageText(WeaponProfile weapon)
+    /// <summary>
+    /// A launcher is a bow or a crossbow. OpenAC gates on the hook's valid locations and ammunition type, which the server sends only for
+    /// hooks (its hook profile is not written for weapons), so the weapon's skill names the launcher here.
+    /// </summary>
+    private static bool IsLauncher(WeaponProfile weapon) => weapon.WeaponSkill == BowSkill || weapon.WeaponSkill == CrossbowSkill;
+
+    /// <summary>A bonus the float holds as a multiplier, as "+21%"; null when it is missing or none.</summary>
+    private static string? Modifier(AppraisalResponse response, uint property) =>
+        response.Floats.TryGetValue(property, out var value) && Math.Abs(value - 1) > Epsilon ? SignedPercent(value - 1) : null;
+
+    /// <summary>A signed percentage, as OpenAC writes a bonus: "+21%", "-5%", "0%".</summary>
+    private static string SignedPercent(double fraction) => fraction.ToString("+0%;-0%;0%", CultureInfo.InvariantCulture);
+
+    /// <summary>The damage range, "41.28 – 86", or one figure when the variance leaves no range; with the damage type when asked.</summary>
+    private static string DamageText(WeaponProfile weapon, bool withType)
     {
         var high = FormatDamage(weapon.Damage);
         var low = (1 - weapon.DamageVariance) * weapon.Damage;
         var range = weapon.Damage - low > Epsilon ? $"{FormatDamage(low)} – {high}" : high;
         var type = DamageTypeName(weapon.DamageType);
-        return type.Length == 0 ? range : $"{range} {type}";
+        return withType && type.Length > 0 ? $"{range} {type}" : range;
+    }
+
+    /// <summary>The damage type's name as OpenAC names it, or "type N" for one it does not know. Used where a line names a type.</summary>
+    private static string DamageWord(uint type) =>
+        DamageTypeName(type) is { Length: > 0 } name ? name : $"type {type.ToString(CultureInfo.InvariantCulture)}";
+
+    /// <summary>
+    /// A launcher's range in yards, from its maximum velocity as OpenAC works it out: capped at 85, rounded down to five yards from 10 up.
+    /// The "(based on STRENGTH 100)" note is added when the server estimated the velocity.
+    /// </summary>
+    private static string RangeText(WeaponProfile weapon)
+    {
+        var raw = Math.Min(85d, 2d * Math.Pow(weapon.MaxVelocity, 2d) * (1d / 9.8d) * 1.094d);
+        var range = raw < 10d ? (int)Math.Ceiling(raw) : (int)raw - (int)raw % 5;
+        var text = range.ToString(CultureInfo.InvariantCulture) + " yds.";
+        return weapon.MaxVelocityEstimated != 0 ? text + " (based on STRENGTH 100)" : text;
     }
 
     // Two decimals at most, never an exponent: 41.28 and 86.

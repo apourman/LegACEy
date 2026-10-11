@@ -74,16 +74,10 @@ public static class SpellTable
         for (var i = 0; i < bytes.Length; i++)
         {
             var source = (byte)((bytes[i] >> 4) | (bytes[i] << 4));
-            chars[i] = source is >= 0x80 and <= 0x9F ? Windows1252High[source - 0x80] : (char)source;
+            chars[i] = Windows1252.ToChar(source);
         }
         return new string(chars);
     }
-
-    // Windows-1252 for bytes 0x80-0x9F, where it differs from Latin-1 (the apostrophe in "Asheron's" is 0x92, the dash in "80 - 200" is 0x96).
-    // The five undefined bytes keep their control characters, as the code page does.
-    private const string Windows1252High =
-        "€\u0081‚ƒ„…†‡ˆ‰Š‹Œ\u008DŽ\u008F" +
-        "\u0090‘’“”•–—˜™š›œ\u009DžŸ";
 
     /// <summary>Strings end on a four-byte boundary of the file, as the DAT's own reader aligns them.</summary>
     private static void Align(BinaryReader reader)
