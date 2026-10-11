@@ -72,7 +72,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
 
     /// <summary>
     /// The sections below the summary, in the order the window shows them. A rule gives a heading and its rows; a section with no rows is
-    /// left out. Later tickets add Spells, Requirements and Other between Armor and Use, in that order.
+    /// left out. Later tickets add Other between Armor and Use, in that order.
     /// </summary>
     private static readonly SectionRule[] SectionRules =
     {
@@ -85,9 +85,9 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
 
     /// <summary>
     /// Builds what the window shows from one appraisal. <paramref name="spells"/> gives each spell's name and description by id (the
-    /// portal DAT's spell table); a spell it does not know is named by its id.
+    /// portal DAT's spell table, empty when there is none); a spell it does not know is named by its id.
     /// </summary>
-    public static AppraisalContent From(AppraisalResponse response, IReadOnlyDictionary<uint, SpellInfo>? spells = null)
+    public static AppraisalContent From(AppraisalResponse response, IReadOnlyDictionary<uint, SpellInfo> spells)
     {
         var figures = FigureRules
             .Select(rule => (rule.Label, Text: rule.Text(response)))
@@ -95,7 +95,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
             .Select(figure => new AppraisalFigure(figure.Label, figure.Text!))
             .ToList();
         var sections = SectionRules
-            .Select(rule => new AppraisalSection(rule.Heading, rule.Rows(response, spells ?? NoSpells).ToList()))
+            .Select(rule => new AppraisalSection(rule.Heading, rule.Rows(response, spells).ToList()))
             .Where(section => section.Rows.Count > 0)
             .ToList();
         var visual = response.Dids.TryGetValue(IconDid, out var icon) && icon != 0
@@ -305,9 +305,9 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     private static IEnumerable<AppraisalRow> TextRows(IReadOnlyDictionary<uint, string> strings, uint property) =>
         strings.TryGetValue(property, out var text) && text.Length > 0 ? new[] { new AppraisalRow(null, text) } : Array.Empty<AppraisalRow>();
 
-    private static readonly IReadOnlyDictionary<uint, SpellInfo> NoSpells = new Dictionary<uint, SpellInfo>();
-
     /// <summary>The spells in the order the server lists them, cantrips included, each with its description under it.</summary>
+    // The server's spell book order, which OpenAC's formatter also lists as it comes. Neither ACE nor OpenAC sorts appraisal spells by the
+    // table's DisplayOrder, so this does not either.
     private static IEnumerable<AppraisalRow> SpellRows(AppraisalResponse response, IReadOnlyDictionary<uint, SpellInfo> spells) =>
         response.SpellBook.Select(raw => SpellRow(raw & ~EnchantmentBit, spells));
 
@@ -338,8 +338,9 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     };
 
     /// <summary>
-    /// One wield requirement by its type: 1 skill, 2 base skill, 3-6 the primary or secondary attribute (base for 4 and 6), 7 level, 8 a
-    /// trained or specialized skill. Types 9-12 (standing, creature, heritage) are not shown yet.
+    /// One wield requirement by its type, as OpenAC's ItemAppraisalTextFormatter words it: 1 skill, 2 base skill, 3-6 the primary or
+    /// secondary attribute (base for 4 and 6), 7 level, 8 a trained or specialized skill (no level), 9-10 a faction standing. Types 11
+    /// (creature) and 12 (heritage) need name tables this window does not carry yet, so they show no line.
     /// </summary>
     private static string? WieldText(int type, int stat, int level) => type switch
     {
@@ -350,7 +351,23 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
         5 => Requirement(Named(SecondaryAttributeNames, stat), level),
         6 => Requirement(Named(SecondaryAttributeNames, stat), level, "Base "),
         7 => level > 0 ? "Level " + level.ToString(CultureInfo.InvariantCulture) : null,
-        8 => Named(SkillNames, stat) is { } skill ? (level == 3 ? "Specialized " : "Trained ") + skill : null,
+        // SkillAdvancementClass (ACE.Entity): 2 trained, 3 specialized. Inactive and untrained show no line.
+        8 => (Named(SkillNames, stat), level) switch
+        {
+            (string skill, 2) => "Trained " + skill,
+            (string skill, 3) => "Specialized " + skill,
+            _ => null,
+        },
+        9 or 10 => Requirement(Standing(stat), level),
+        _ => null,
+    };
+
+    /// <summary>The faction a standing requirement names, by its id (OpenAC's names). An unknown id has no name.</summary>
+    private static string? Standing(int id) => id switch
+    {
+        0x11F => "Standing with the Celestial Hand",
+        0x120 => "Standing with the Eldrytch Web",
+        0x121 => "Standing with the Radiant Blood",
         _ => null,
     };
 
@@ -364,18 +381,22 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
         Requirement(Named(SecondaryAttributeNames, Int(response, SecondAttributeInt)), Int(response, SecondAttributeLevelInt)),
     }.OfType<string>();
 
-    /// <summary>The mana meter: current and maximum mana, with retail's cost line from the mana rate. ACE sends the rate negative (it burns -rate a second).</summary>
+    /// <summary>
+    /// The mana meter: current and maximum mana, with the cost line from the mana rate. As ACE's appraisal rules
+    /// (Source/ACE.MarketApi/AppraisalRules.cs) do, the cost shows only for a negative rate, which burns -rate points a second.
+    /// </summary>
     private static AppraisalMeterRow? ManaMeter(AppraisalResponse response)
     {
         if (!response.Ints.TryGetValue(CurManaInt, out var current) || !response.Ints.TryGetValue(MaxManaInt, out var maximum)) return null;
-        var cost = response.Floats.TryGetValue(ManaRateFloat, out var rate) && Math.Abs(rate) > 0.000001 ? ManaCost(Math.Abs(rate)) : null;
+        var cost = response.Floats.TryGetValue(ManaRateFloat, out var rate) && rate < 0 ? ManaCost(-1 / rate) : null;
         return new AppraisalMeterRow("Mana", current, maximum, cost);
     }
 
-    private static string ManaCost(double rate)
+    /// <summary>One point per the given seconds, rounded and never under one second.</summary>
+    private static string ManaCost(double seconds)
     {
-        var seconds = (int)Math.Round(1 / rate);
-        return "1 point per " + seconds.ToString(CultureInfo.InvariantCulture) + (seconds == 1 ? " second" : " seconds");
+        var whole = Math.Max(1, (int)Math.Round(seconds));
+        return "1 point per " + whole.ToString(CultureInfo.InvariantCulture) + (whole == 1 ? " second" : " seconds");
     }
 
     /// <summary>"name level", with an optional prefix, when the name is known and the level is set; otherwise nothing.</summary>

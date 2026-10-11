@@ -5,12 +5,13 @@ using System.IO;
 namespace LegACEy.Client.GameArt;
 
 /// <summary>
-/// Reads interface art (RenderSurface, 0x06xxxxxx) from client_portal.dat.
+/// Reads interface art (RenderSurface, 0x06xxxxxx) and the spell table from client_portal.dat.
 /// </summary>
 /// <remarks>
 /// The dat layout follows ACE.DatLoader: a header at 0x140, a B-tree directory of 62 branches
 /// and up to 61 sorted entries per node, and files stored in chained blocks whose first four
 /// bytes point at the next block. The file is opened for shared reading, since acclient keeps it open.
+/// The game thread (spells) and the UI thread (images) share the one stream, so reads are serialised on it.
 /// </remarks>
 public sealed class PortalDat : IDisposable, IGameArtSource
 {
@@ -51,15 +52,27 @@ public sealed class PortalDat : IDisposable, IGameArtSource
         return image;
     }
 
-    /// <summary>The spells' names and descriptions by spell id, read once. Empty when the file has no spell table.</summary>
-    public IReadOnlyDictionary<uint, SpellInfo> ReadSpells()
+    /// <summary>
+    /// The spells' names and descriptions by spell id, read once. A spell table that is missing or cannot be read gives an empty table,
+    /// logged once, so every spell is named by its id and the appraisal still shows.
+    /// </summary>
+    public IReadOnlyDictionary<uint, SpellInfo> ReadSpells(Action<string>? log = null)
     {
-        if (_spells == null)
+        lock (_stream)
         {
-            var file = ReadFile(SpellTable.FileId);
-            _spells = file == null ? new Dictionary<uint, SpellInfo>() : SpellTable.Parse(file);
+            if (_spells != null) return _spells;
+            try
+            {
+                var file = ReadFile(SpellTable.FileId);
+                _spells = file == null ? new Dictionary<uint, SpellInfo>() : SpellTable.Parse(file);
+            }
+            catch (Exception exception)
+            {
+                log?.Invoke($"The spell names could not be read from the portal: {exception.Message}");
+                _spells = new Dictionary<uint, SpellInfo>();
+            }
+            return _spells;
         }
-        return _spells;
     }
 
     private GameImage? DecodeImage(uint id)
@@ -122,8 +135,13 @@ public sealed class PortalDat : IDisposable, IGameArtSource
         return colors;
     }
 
-    /// <summary>Find a file in the B-tree and read its blocks.</summary>
+    /// <summary>Find a file in the B-tree and read its blocks, one read at a time on the shared stream.</summary>
     internal byte[]? ReadFile(uint id)
+    {
+        lock (_stream) return FindFile(id);
+    }
+
+    private byte[]? FindFile(uint id)
     {
         var node = _rootDirectory;
         while (node != 0)

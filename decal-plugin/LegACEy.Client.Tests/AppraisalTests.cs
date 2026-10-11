@@ -20,6 +20,7 @@ namespace LegACEy.Client.Tests;
 /// </summary>
 public sealed class AppraisalTests
 {
+    private static readonly IReadOnlyDictionary<uint, SpellInfo> NoSpells = new Dictionary<uint, SpellInfo>();
     private const uint Potion = 0x80000A01;
     private const uint Gem = 0x80000A02;
 
@@ -33,7 +34,7 @@ public sealed class AppraisalTests
             Dids = { [8] = 0x06001F98, [52] = 0x06000001, [50] = 0x06000002 }
         }.Build();
 
-        var content = AppraisalContent.From(AppraisalResponse.Read(bytes));
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells);
 
         Assert.Equal(Potion, content.ObjectId);
         Assert.Equal("Mana Potion", content.Name);
@@ -53,7 +54,7 @@ public sealed class AppraisalTests
         var bytes = new ServerAppraisal(Gem) { Success = false, Strings = { [1] = "Peridot" }, Ints = { [19] = 300 } }.Build();
 
         var response = AppraisalResponse.Read(bytes);
-        var content = AppraisalContent.From(response);
+        var content = AppraisalContent.From(response, NoSpells);
 
         Assert.False(response.Success);
         Assert.Equal("Peridot", content.Name);
@@ -164,7 +165,7 @@ public sealed class AppraisalTests
             WeaponMasks = (0xD, 0xD),
         }.Build();
 
-        var content = AppraisalContent.From(AppraisalResponse.Read(bytes));
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells);
 
         Assert.Equal("Staff · Heavy Weapons", content.TypeLine);
         var combat = Assert.Single(content.Sections, section => section.Heading == "Combat");
@@ -189,7 +190,7 @@ public sealed class AppraisalTests
             ArmorMasks = (0x21, 0x1),
         }.Build();
 
-        var content = AppraisalContent.From(AppraisalResponse.Read(bytes));
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells);
 
         var armor = Assert.Single(content.Sections, section => section.Heading == "Armor");
         Assert.Equal(new[]
@@ -230,11 +231,11 @@ public sealed class AppraisalTests
         var weapon = AppraisalContent.From(AppraisalResponse.Read(new ServerAppraisal(0x80000A04)
         {
             Strings = { [1] = "Ivory Stick" }, Ints = { [1] = 0x1, [48] = 44, [105] = 6 }
-        }.Build()));
+        }.Build()), NoSpells);
         Assert.Equal("Melee weapon · Heavy Weapons", weapon.TypeLine);
         Assert.Equal(("Workmanship", "Nearly flawless (6)"), weapon.Figures.Select(figure => (figure.Label, figure.Value)).Single());
 
-        var potion = AppraisalContent.From(AppraisalResponse.Read(PotionMessage(Potion, 75)));
+        var potion = AppraisalContent.From(AppraisalResponse.Read(PotionMessage(Potion, 75)), NoSpells);
         Assert.DoesNotContain("·", potion.TypeLine);
     }
 
@@ -362,6 +363,53 @@ public sealed class AppraisalTests
             new AppraisalSpellRow("Might of the Lugians", "Increases the caster's Strength by 40 points."),
             new AppraisalSpellRow("Spell 9999", string.Empty),
         }, rows);
+    }
+
+    [Fact]
+    public void The_mana_cost_is_one_point_per_the_rounded_seconds_for_a_negative_rate_and_never_per_zero()
+    {
+        Assert.Equal("1 point per 15 seconds", ManaNote(-1.0 / 15));
+        Assert.Equal("1 point per 1 second", ManaNote(-100.0));
+        Assert.Null(ManaNote(0.5));
+        Assert.Null(ManaNote(0.0));
+    }
+
+    /// <summary>The cost line under the mana meter for an item whose mana rate is the given value.</summary>
+    private static string? ManaNote(double rate)
+    {
+        var bytes = new ServerAppraisal(0x80000A07)
+        {
+            Strings = { [1] = "Wand" }, Ints = { [107] = 10, [108] = 20 }, Floats = { [5] = rate },
+        }.Build();
+        var meter = Assert.IsType<AppraisalMeterRow>(Assert.Single(AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells).Sections,
+            section => section.Heading == "Requirements").Rows.Single());
+        return meter.Note;
+    }
+
+    [Fact]
+    public void Wield_lines_name_trained_and_specialized_skills_and_factions_and_leave_out_inactive_and_untrained_skills_and_creatures()
+    {
+        var bytes = new ServerAppraisal(0x80000A08)
+        {
+            Strings = { [1] = "Ivory Stick" },
+            Ints =
+            {
+                // Trained Heavy Weapons (SkillAdvancementClass 2), then untrained (1), a faction standing, and a creature (no line).
+                [158] = 8, [159] = 44, [160] = 2,
+                [270] = 8, [271] = 44, [272] = 1,
+                [273] = 9, [274] = 0x11F, [275] = 500,
+                [276] = 11, [277] = 5, [278] = 3,
+            },
+        }.Build();
+
+        var requirements = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells).Sections
+            .Single(section => section.Heading == "Requirements").Rows;
+
+        Assert.Equal(new AppraisalRow[]
+        {
+            new("Wield", "Trained Heavy Weapons"),
+            new("Wield", "Standing with the Celestial Hand 500"),
+        }, requirements);
     }
 
     /// <summary>

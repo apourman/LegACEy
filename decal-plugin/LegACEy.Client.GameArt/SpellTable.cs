@@ -23,7 +23,7 @@ public static class SpellTable
     // The SpellType values (ACE.Entity SpellType) whose records carry extra fields.
     private const uint EnchantmentType = 1, PortalSummonType = 7, FellowEnchantmentType = 12;
 
-    /// <summary>Reads the spell table's file. Names are read as Latin-1, which agrees with Windows-1252 for plain text.</summary>
+    /// <summary>Reads the spell table's file. Its strings are read as Windows-1252 (see <see cref="ReadString"/>).</summary>
     public static IReadOnlyDictionary<uint, SpellInfo> Parse(byte[] file)
     {
         using var reader = new BinaryReader(new MemoryStream(file));
