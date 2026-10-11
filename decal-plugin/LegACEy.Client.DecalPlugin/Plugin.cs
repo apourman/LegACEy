@@ -163,16 +163,16 @@ public sealed unsafe class Plugin : FilterBase
 
         var assemblies = System.IO.Directory.GetFiles(runtime, "*.dll").Where(IsManaged).ToArray();
         var keys = new[] { "TRUSTED_PLATFORM_ASSEMBLIES", "NATIVE_DLL_SEARCH_DIRECTORIES", "APP_CONTEXT_BASE_DIRECTORY", "System.GC.Concurrent", "System.Globalization.Invariant" }
-            .Select(Utf8).ToArray();
-        var values = new[] { string.Join(";", assemblies), runtime + ";", runtime + "\\", "true", "true" }.Select(Utf8).ToArray();
+            .Select(value => (IntPtr)Utf8(value)).ToArray();
+        var values = new[] { string.Join(";", assemblies), runtime + ";", runtime + "\\", "true", "true" }.Select(value => (IntPtr)Utf8(value)).ToArray();
         IntPtr host;
         uint domain;
         void* init;
         fixed (IntPtr* keyPointers = keys)
         fixed (IntPtr* valuePointers = values)
-            Check(initialize(Utf8Pointer(Process.GetCurrentProcess().MainModule!.FileName), Utf8Pointer("LegACEy"), keys.Length,
+            Check(initialize(Utf8(Process.GetCurrentProcess().MainModule!.FileName), Utf8("LegACEy"), keys.Length,
                 (byte**)keyPointers, (byte**)valuePointers, &host, &domain), "coreclr_initialize");
-        Check(createDelegate(host, domain, Utf8Pointer("LegACEy.Client"), Utf8Pointer("LegACEy.Client.DecalPlugin.Bridge"), Utf8Pointer("Init"), &init),
+        Check(createDelegate(host, domain, Utf8("LegACEy.Client"), Utf8("LegACEy.Client.DecalPlugin.Bridge"), Utf8("Init"), &init),
             "coreclr_create_delegate for Bridge.Init");
         Log($"CoreCLR up in {watch.ElapsedMilliseconds} ms with {assemblies.Length} assemblies: {FreeAddressSpace()}.");
         return (delegate* unmanaged[Stdcall]<BridgeEvents*, BridgeCalls*, int>)init;
@@ -190,15 +190,13 @@ public sealed unsafe class Plugin : FilterBase
     }
 
     /// <summary>A NUL-terminated UTF-8 copy for CoreCLR. ponytail: never freed; a handful of strings, once per process.</summary>
-    private static IntPtr Utf8(string value)
+    private static byte* Utf8(string value)
     {
         var bytes = Encoding.UTF8.GetBytes(value + "\0");
         var copy = Marshal.AllocHGlobal(bytes.Length);
         Marshal.Copy(bytes, 0, copy, bytes.Length);
-        return copy;
+        return (byte*)copy;
     }
-
-    private static byte* Utf8Pointer(string value) => (byte*)Utf8(value);
 
     private static bool IsManaged(string path)
     {
