@@ -8,6 +8,26 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <!-- The release publishes the client self-contained for win-x86, trimmed, into runtime\ beside the stub (see the README).
+       Plugins load from Plugins\ at run time, outside the trim graph, so what they reach must survive. Partial mode trims only
+       assemblies marked trimmable (the framework, Avalonia, Skia, Reloaded); the roots keep Avalonia, Skia, the hook library and
+       the everyday framework surface whole. -->
+  <PropertyGroup>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+    <!-- Trim warnings show on publish only; plain builds and tests stay quiet. -->
+    <EnableTrimAnalyzer Condition="'$(_IsPublishing)' != 'true'">false</EnableTrimAnalyzer>
+  </PropertyGroup>
+  <ItemGroup>
+    <TrimmerRootAssembly Include="Avalonia;Avalonia.Base;Avalonia.Controls;Avalonia.Dialogs;Avalonia.Markup;Avalonia.Markup.Xaml;Avalonia.Skia;Avalonia.Themes.Simple;Avalonia.Headless;SkiaSharp;HarfBuzzSharp;Reloaded.Hooks;Reloaded.Hooks.Definitions;Reloaded.Memory;Reloaded.Memory.Buffers;Reloaded.Assembler" />
+    <!-- The plugin API surface. netstandard is a pure facade; its root keeps the type forwards plugins bind through (trimming
+         strips forwards nothing in the graph uses). The rest keeps the everyday framework code whole. Checked once on 10 Oct with
+         a System.Reflection.Metadata scan following netstandard's forwards: every type and member the three plugins and the
+         LegACEy libraries reference resolves in the trimmed runtime\.
+         ponytail: Xml, Net and Crypto stay trimmed; root more if a plugin logs MissingMethodException. -->
+    <TrimmerRootAssembly Include="netstandard;System.Private.CoreLib;System.Collections;System.Collections.Concurrent;System.Collections.NonGeneric;System.Collections.Specialized;System.Linq;System.ObjectModel;System.ComponentModel;System.ComponentModel.Primitives;System.ComponentModel.TypeConverter;System.Drawing.Primitives;System.Text.RegularExpressions;System.Memory;System.Runtime.InteropServices" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="LegACEy.Client.Tests" />
     <PackageReference Include="Reloaded.Hooks" Version="4.3.3" />
