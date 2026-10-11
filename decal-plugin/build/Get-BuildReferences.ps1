@@ -25,7 +25,7 @@ if ($process.ExitCode -ne 0) { throw "Decal extraction failed: $($process.ExitCo
 $references = Join-Path $Destination 'references'
 New-Item -ItemType Directory -Force -Path $references | Out-Null
 foreach ($name in @('Decal.Adapter.dll', 'Decal.Interop.Core.dll')) {
-    $referenceCopies = @(Get-ChildItem -Path $decal -Recurse -File -Filter $name | Where-Object { $_.Name -eq $name })
+    $referenceCopies = @(Get-ChildItem -Path $decal -Recurse -File -Filter $name)
     if ($referenceCopies.Count -eq 0) { throw "Missing build reference: $name" }
     # Decal includes identical PIA copies in its root and .NET 4.0 PIA folder.
     $hashes = @($referenceCopies | ForEach-Object { (Get-FileHash $_.FullName -Algorithm SHA256).Hash } | Select-Object -Unique)

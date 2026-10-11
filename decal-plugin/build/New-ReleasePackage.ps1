@@ -12,15 +12,14 @@ New-Item -ItemType Directory -Force -Path $Destination | Out-Null
 $package = Join-Path $Destination 'package'
 if (Test-Path $package) { throw 'Use a fresh packaging directory' }
 New-Item -ItemType Directory -Path $package | Out-Null
-foreach ($name in @('LegACEy.Client.DecalPlugin.dll', 'LegACEy.Client.GameArt.dll')) {
-    $path = Join-Path $BuildOutput $name
-    if (!(Test-Path $path)) { throw "Missing stub assembly: $name" }
-    Copy-Item $path $package
-}
+Copy-Item (Join-Path $BuildOutput 'LegACEy.Client.DecalPlugin.dll'), (Join-Path $BuildOutput 'LegACEy.Client.GameArt.dll') $package
 $runtime = Join-Path $BuildOutput 'runtime'
-foreach ($name in @('coreclr.dll', 'System.Private.CoreLib.dll', 'LegACEy.Client.dll', 'LegACEy.Client.PanelHost.dll', 'LegACEy.Client.InputRouter.dll', 'LegACEy.Client.GameArt.dll', 'LegACEy.Client.Themes.dll', 'LegACEy.Client.Demo.dll', 'libSkiaSharp.dll', 'libHarfBuzzSharp.dll')) {
+foreach ($name in @('coreclr.dll', 'clrjit.dll', 'System.Private.CoreLib.dll', 'netstandard.dll', 'LegACEy.Client.dll', 'LegACEy.Client.PanelHost.dll', 'LegACEy.Client.InputRouter.dll', 'LegACEy.Client.GameArt.dll', 'LegACEy.Client.Themes.dll', 'LegACEy.Client.Demo.dll', 'libSkiaSharp.dll', 'libHarfBuzzSharp.dll')) {
     if (!(Test-Path (Join-Path $runtime $name))) { throw "Incomplete runtime: runtime\$name is missing. Publish the client into runtime\ first." }
 }
+# The game is x86: coreclr.dll's PE machine field must be 0x14C.
+$coreclr = [IO.File]::ReadAllBytes((Join-Path $runtime 'coreclr.dll'))
+if ([BitConverter]::ToUInt16($coreclr, [BitConverter]::ToInt32($coreclr, 0x3C) + 4) -ne 0x14C) { throw 'runtime\coreclr.dll is not x86: publish with -r win-x86.' }
 Copy-Item $runtime $package -Recurse
 # LegACEy plugins: Plugins\<Name>\<Name>.dll beside the stub. Each folder ships only its own DLL.
 $pluginRoot = Join-Path $BuildOutput 'Plugins'

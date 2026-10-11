@@ -15,13 +15,17 @@
   <PropertyGroup>
     <PublishTrimmed>true</PublishTrimmed>
     <TrimMode>partial</TrimMode>
-    <!-- The publish reports trim warnings; plain builds and tests stay quiet. -->
-    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+    <!-- Trim warnings show on publish only; plain builds and tests stay quiet. -->
+    <EnableTrimAnalyzer Condition="'$(_IsPublishing)' != 'true'">false</EnableTrimAnalyzer>
   </PropertyGroup>
   <ItemGroup>
     <TrimmerRootAssembly Include="Avalonia;Avalonia.Base;Avalonia.Controls;Avalonia.Dialogs;Avalonia.Markup;Avalonia.Markup.Xaml;Avalonia.Skia;Avalonia.Themes.Simple;Avalonia.Headless;SkiaSharp;HarfBuzzSharp;Reloaded.Hooks;Reloaded.Hooks.Definitions;Reloaded.Memory;Reloaded.Memory.Buffers;Reloaded.Assembler" />
-    <!-- ponytail: the everyday netstandard2.0 surface, not all of it (Xml, Net, Crypto stay trimmed); root more if a plugin logs MissingMethodException. -->
-    <TrimmerRootAssembly Include="netstandard;System.Private.CoreLib;System.Runtime;System.Collections;System.Collections.Concurrent;System.Collections.NonGeneric;System.Collections.Specialized;System.Linq;System.ObjectModel;System.ComponentModel;System.ComponentModel.Primitives;System.ComponentModel.TypeConverter;System.Text.RegularExpressions;System.Memory;System.Runtime.InteropServices" />
+    <!-- The plugin API surface. netstandard is a pure facade; its root keeps the type forwards plugins bind through (trimming
+         strips forwards nothing in the graph uses). The rest keeps the everyday framework code whole. Checked once on 10 Oct with
+         a System.Reflection.Metadata scan following netstandard's forwards: every type and member the three plugins and the
+         LegACEy libraries reference resolves in the trimmed runtime\.
+         ponytail: Xml, Net and Crypto stay trimmed; root more if a plugin logs MissingMethodException. -->
+    <TrimmerRootAssembly Include="netstandard;System.Private.CoreLib;System.Collections;System.Collections.Concurrent;System.Collections.NonGeneric;System.Collections.Specialized;System.Linq;System.ObjectModel;System.ComponentModel;System.ComponentModel.Primitives;System.ComponentModel.TypeConverter;System.Drawing.Primitives;System.Text.RegularExpressions;System.Memory;System.Runtime.InteropServices" />
   </ItemGroup>
 
   <ItemGroup>

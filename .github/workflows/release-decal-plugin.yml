@@ -54,7 +54,7 @@ jobs:
       - name: Extract pinned Windows build references
         run: ./decal-plugin/build/Get-BuildReferences.ps1 -Destination "$env:RUNNER_TEMP/plugin-build-references"
 
-      - name: Build the Windows x86 plugin
+      - name: Build the x86 stub and publish the trimmed .NET 10 client into runtime
         env:
           PLUGIN_VERSION: ${{ inputs.release_version }}
         run: |
@@ -63,11 +63,7 @@ jobs:
             --configuration Release --output "$env:RUNNER_TEMP/plugin-output" `
             "-p:Version=$env:PLUGIN_VERSION" "-p:DecalInstallDir=$references" `
             "-p:DecalInteropDir=$references"
-
-      - name: Publish the trimmed .NET 10 client into runtime
-        env:
-          PLUGIN_VERSION: ${{ inputs.release_version }}
-        run: |
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           dotnet publish decal-plugin/LegACEy.Client/LegACEy.Client.csproj `
             --configuration Release --runtime win-x86 --self-contained `
             --output "$env:RUNNER_TEMP/plugin-output/runtime" "-p:Version=$env:PLUGIN_VERSION"

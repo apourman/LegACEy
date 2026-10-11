@@ -49,15 +49,12 @@ native libraries. The project locates Decal through `DecalInstallDir` and
 `DecalInteropDir`. Override these MSBuild properties with `-p:PropertyName=PATH`
 if your installation differs from the project defaults.
 
-The main output is
-`LegACEy.Client.DecalPlugin/bin/Release/net48/LegACEy.Client.DecalPlugin.dll`
-relative to this directory, with `LegACEy.Client.GameArt.dll` beside it. It loads
-through Decal and is not a standalone executable. Each LegACEy plugin is copied
-beside it as `Plugins/<Name>/<Name>.dll`, for example
-`Plugins/Paperdoll/Paperdoll.dll` and `Plugins/Vault/Vault.dll`; the client loads
-those at startup. Keep `Plugins/` and `runtime/` beside the main DLL. If Decal is
-registered against a previous checkout path, update that registration after
-moving the directory.
+Register `bin/Release/net48/LegACEy.Client.DecalPlugin.dll` in Decal; it is not
+a standalone executable. Each LegACEy plugin is copied beside it as
+`Plugins/<Name>/<Name>.dll`, and the client loads those at startup. Keep
+`LegACEy.Client.GameArt.dll`, `Plugins/` and `runtime/` beside the main DLL. If
+Decal is registered against a previous checkout path, update that registration
+after moving the directory.
 
 Creating an empty file named `fail-post-ui-draw` beside the main DLL makes the
 next post-UI draw fail in game. The file is deleted, the failure is logged to
@@ -130,8 +127,10 @@ keeps the server as GitHub's repository-wide latest release.
 
 The Windows build extracts the Decal 2.9.8.3 references from the official
 download, checks its pinned SHA-256 hash, builds the x86 stub, and publishes the
-trimmed client into `runtime/`. The package step fails if `runtime/` lacks the
-.NET runtime, the client, or the native rendering libraries. No game installation or DAT files are needed for the build. Automated
+trimmed client into `runtime/`. The package step fails if `runtime/` lacks
+`coreclr.dll`, `clrjit.dll`, `System.Private.CoreLib.dll`, `netstandard.dll`, a
+LegACEy client library, or the Skia or HarfBuzz native library, or if its
+`coreclr.dll` is not x86. No game installation or DAT files are needed for the build. Automated
 plugin tests, asset publishing checks, and the Windows native hook check must
 pass before publishing.
 
@@ -139,18 +138,18 @@ Each release contains:
 
 - `LegACEy.Client.DecalPlugin.dll`, for an existing installation with a matching
   `runtime` folder.
-- `LegACEy-decal-plugin-v<version>-windows-x86.zip`, containing the main DLL,
-  `LegACEy.Client.GameArt.dll`, the `Plugins` folder with the bundled LegACEy
-  plugins, the `runtime` folder with the .NET 10 runtime and the client, and
-  license notices.
+- `LegACEy-decal-plugin-v<version>-windows-x86.zip`, the build layout above
+  (`runtime` holds the .NET 10 runtime) plus license notices.
 - `SHA256SUMS.txt`, covering the DLL and ZIP.
 
 For a fresh installation, extract the ZIP and register its
-`LegACEy.Client.DecalPlugin.dll` in Decal. Keep `LegACEy.Client.GameArt.dll` and
-the `Plugins` and `runtime` folders in place.
+`LegACEy.Client.DecalPlugin.dll` in Decal. To update, extract the ZIP over the
+old folder; updating the client needs the ZIP, not just the main DLL. Files that
+older releases left at the root (every DLL except `LegACEy.Client.DecalPlugin.dll`
+and `LegACEy.Client.GameArt.dll`, and the `x86` folder) are unused and can be
+deleted.
 Players need Decal and .NET Framework 4.8, which Decal itself needs; neither is
 bundled. The .NET 10 runtime ships in `runtime`, so nothing else is installed.
-Updating the client requires the ZIP rather than replacing just the main DLL.
 
 A failed build or upload leaves the release as a draft. Use **Re-run failed jobs**
 on the original workflow run to retry the plugin build/publish jobs with the
