@@ -254,7 +254,8 @@ internal static class DatModels
         return data == null ? null : new BinaryReader(new MemoryStream(data, writable: false));
     }
 
-    private static uint ReadCompressed(BinaryReader reader)
+    /// <summary>The DAT's compressed count: one byte under 0x80, two under 0x40 in the first byte, else four (ACE.DatLoader's ReadCompressedUInt32).</summary>
+    internal static uint ReadCompressed(BinaryReader reader)
     {
         var b0 = reader.ReadByte();
         if ((b0 & 0x80) == 0) return b0;

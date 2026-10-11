@@ -210,6 +210,116 @@ public sealed class AppraisalTests
     }
 
     [Fact]
+    public void A_monster_shows_its_type_and_level_its_vitals_as_meters_and_its_attributes_raised_and_lowered()
+    {
+        // A Drudge Ravener: Strength raised by a buff (highlight and colour), Quickness lowered by a debuff (highlight only).
+        var bytes = new ServerAppraisal(0x80000B01)
+        {
+            Strings = { [1] = "Drudge Ravener" },
+            // A heritage on a creature (ACE's Creature.GenerateNewFace sets one from its weenie) does not make it a character.
+            Ints = { [25] = 80, [2] = 7, [188] = 1 },
+            Creature = new CreatureWrite(1240, 1240, new uint[] { 290, 260, 190, 240, 150, 140, 760, 320, 980, 320 }, 0x5, 0x1),
+        }.Build();
+        var names = new CharacterNames(new Dictionary<uint, string> { [7] = "Drudge" }, new Dictionary<uint, string>());
+
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells, names: names);
+
+        Assert.Equal("Drudge · Level 80", content.TypeLine);
+        Assert.Equal(string.Empty, content.Subtitle);
+        Assert.Null(content.Visual);
+        Assert.Empty(content.Figures);
+        Assert.Equal(new[] { "Vitals", "Attributes" }, content.Sections.Select(section => section.Heading));
+        var vitals = content.Sections[0].Rows.Cast<AppraisalMeterRow>().ToList();
+        Assert.Equal(new[]
+        {
+            ("Health", "1,240 / 1,240", AppraisalMeterFill.Health),
+            ("Stamina", "760 / 980", AppraisalMeterFill.Stamina),
+            ("Mana", "320 / 320", AppraisalMeterFill.Mana),
+        }, vitals.Select(meter => (meter.Name, meter.Text, meter.Fill)));
+        Assert.Equal(new[]
+        {
+            ("Strength", "290", AppraisalTone.Raised),
+            ("Endurance", "260", AppraisalTone.Normal),
+            ("Coordination", "240", AppraisalTone.Normal),
+            ("Quickness", "190", AppraisalTone.Lowered),
+            ("Focus", "150", AppraisalTone.Normal),
+            ("Self", "140", AppraisalTone.Normal),
+        }, content.Sections[1].Rows.Select(row => (row.Label!, row.Text, row.Tone)));
+    }
+
+    [Fact]
+    public void A_player_shows_its_level_heritage_gender_and_title_its_allegiance_and_fellowship_and_its_attributes()
+    {
+        // Big Dog: an Aluvian male, a title, a patron and a monarch, rank 4, and a fellowship; Strength raised.
+        var bytes = new ServerAppraisal(0x50000C01)
+        {
+            Strings = { [1] = "Big Dog", [21] = "Ronin Kael", [35] = "Ilsa of Yaraq", [10] = "Lightning" },
+            Ints = { [25] = 126, [188] = 1, [113] = 1, [261] = 5, [30] = 4, [35] = 12, [125] = 3700, [2] = 1 },
+            Creature = new CreatureWrite(412, 455, new uint[] { 200, 100, 100, 100, 60, 100, 380, 510, 380, 510 }, 0x1, 0x1),
+        }.Build();
+        var names = new CharacterNames(new Dictionary<uint, string>(), new Dictionary<uint, string> { [5] = "Vanquisher of the Olthoi" });
+
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells, names: names);
+
+        Assert.Equal("Level 126 · Aluvian Male", content.TypeLine);
+        Assert.Equal("Vanquisher of the Olthoi", content.Subtitle);
+        Assert.Equal(new[] { "Allegiance", "Vitals", "Attributes", "Character" }, content.Sections.Select(section => section.Heading));
+        Assert.Equal(new[]
+        {
+            ("Monarch", "Ronin Kael"),
+            ("Patron", "Ilsa of Yaraq"),
+            ("Rank", "4"),
+            ("Followers", "12"),
+            ("Fellowship", "Lightning"),
+        }, content.Sections[0].Rows.Select(row => (row.Label!, row.Text)));
+        Assert.Equal(new[] { ("Time in Dereth", "1h 1m 40s"), ("* = Unenchantable", string.Empty) },
+            content.Sections[3].Rows.Select(row => (row.Label!, row.Text)));
+        Assert.Equal(new[] { ("412 / 455", AppraisalTone.Normal), ("380 / 380", AppraisalTone.Normal), ("510 / 510", AppraisalTone.Normal) },
+            content.Sections[1].Rows.Cast<AppraisalMeterRow>().Select(meter => (meter.Text, meter.Tone)));
+        Assert.Equal(AppraisalTone.Raised, content.Sections[2].Rows[0].Tone);
+        Assert.Equal(new[] { "Strength", "Endurance", "Coordination", "Quickness", "Focus", "Self" },
+            content.Sections[2].Rows.Select(row => row.Label!));
+    }
+
+    [Fact]
+    public void A_character_with_no_named_monarch_shows_its_followers_and_its_society_with_the_rank_word()
+    {
+        // The template name marks a character (the server sends it for every player); the Celestial Hand bit with rank 150 is an Adept.
+        var bytes = new ServerAppraisal(0x50000C03)
+        {
+            Strings = { [1] = "Lord Two", [5] = "Adventurer" },
+            Ints = { [25] = 20, [188] = 2, [113] = 2, [30] = 1, [35] = 1, [281] = 1, [287] = 150 },
+            Creature = new CreatureWrite(100, 100, null, 0, 0),
+        }.Build();
+
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells);
+
+        Assert.Equal(new[] { ("Society", "Celestial Hand ~ Adept"), ("Alleg. Monarch", "1 Follower"), ("Rank", "1") },
+            content.Sections[0].Rows.Select(row => (row.Label!, row.Text)));
+    }
+
+    [Fact]
+    public void A_creature_whose_appraisal_failed_shows_its_health_as_a_percentage_and_no_stamina_or_mana_or_attributes()
+    {
+        var bytes = new ServerAppraisal(0x80000B02)
+        {
+            Success = false,
+            Strings = { [1] = "Drudge Ravener" },
+            Creature = new CreatureWrite(412, 455, null, 0, 0),
+        }.Build();
+
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells);
+
+        Assert.Equal(new[] { "Vitals", "Attributes" }, content.Sections.Select(section => section.Heading));
+        var vitals = content.Sections[0].Rows;
+        Assert.Equal(new[] { ("Health", "91 %"), ("Stamina", "???"), ("Mana", "???") }, vitals.Select(row => (row.Label!, row.Text)));
+        Assert.IsNotType<AppraisalMeterRow>(vitals[0]);
+        Assert.Equal(new[] { "Strength", "Endurance", "Coordination", "Quickness", "Focus", "Self" },
+            content.Sections[1].Rows.Select(row => row.Label!));
+        Assert.All(content.Sections[1].Rows, row => Assert.Equal("???", row.Text));
+    }
+
+    [Fact]
     public void The_game_event_0xF7B0_carries_an_identify_response_to_the_reader()
     {
         var payload = PotionMessage(Potion, 75);
