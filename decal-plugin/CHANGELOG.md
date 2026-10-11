@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.9](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.8...decal-plugin-v0.1.9) (2026-10-11)
+
+
+### Features
+
+* appraisal window ([#39](https://github.com/apourman/LegACEy/issues/39)) ([cecaf19](https://github.com/apourman/LegACEy/commit/cecaf19da1ec8a756c087a0befebde5a1e80c1d8))
+
 ## [0.1.8](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.7...decal-plugin-v0.1.8) (2026-10-11)
 
 
