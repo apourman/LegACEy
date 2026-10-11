@@ -34,7 +34,8 @@ public sealed unsafe class BridgeTests : IDisposable
     {
         Device = &Device, Fact = &Fact, Text = &Text, Inventory = &Inventory, Item = &Item,
         UseItem = &UseItem, SelectItem = &SelectItem, RequestId = &RequestId, DropItem = &DropItem,
-        MoveItem = &MoveItem, MergeItem = &MergeItem, AutoWield = &AutoWield
+        MoveItem = &MoveItem, MergeItem = &MergeItem, AutoWield = &AutoWield,
+        ValidLocations = &ValidLocations
     };
 
     [Fact]
@@ -83,6 +84,8 @@ public sealed unsafe class BridgeTests : IDisposable
         Assert.Equal(new[] { "use 7 0", "select 8", "id 8", "move 9 50000001 3 0", "merge 10 11", "drop 12", "wield 80000020 100000 1 0" },
             Calls.Where(call => !call.StartsWith("read")));
         Assert.Equal(new IntPtr(0x0BADF00D), Bridge.Device());
+        // An item the snapshot doesn't hold, such as one dragged from a chest, has its valid locations read from the world.
+        Assert.Equal(0x100000u, inventory.WieldMask(0x80000030, PaperdollSlot.Weapon));
 
         // A name filling the whole row and cut inside a character loses that character, never shows U+FFFD.
         var row = new BridgeItem();
@@ -262,4 +265,11 @@ public sealed unsafe class BridgeTests : IDisposable
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
     private static int AutoWield(int id, int mask, int placement, int unknown) => Done($"wield {id:X} {mask:X} {placement} {unknown}");
+
+    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
+    private static int ValidLocations(int id, int* mask)
+    {
+        *mask = unchecked((uint)id) == 0x80000030 ? 0x100000 : 0;
+        return 0;
+    }
 }

@@ -85,7 +85,7 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     // Runs every frame during a retail drag over a paperdoll slot, so a failed read or a released object reads as no slots.
     private static uint LiveValidLocations(uint itemId)
     {
-        try { return Bridge.Item(itemId)?.ValidLocations ?? 0; }
+        try { return Bridge.ValidLocations(itemId); }
         catch (COMException) { return 0; }
     }
 
