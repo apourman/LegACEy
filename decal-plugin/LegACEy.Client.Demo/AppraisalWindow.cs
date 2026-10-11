@@ -142,8 +142,8 @@ public sealed class AppraisalWindow
     }
 
     /// <summary>
-    /// A label in a fixed column with its value beside it, or a line of text across the section when there is no label. Spells and meters
-    /// have their own layout.
+    /// A label in a fixed column with its value beside it, or a line of text across the section when there is no label. The tone colours the
+    /// value. Spells and meters have their own layout.
     /// </summary>
     private static Control Row(AppraisalRow row)
     {
@@ -152,10 +152,11 @@ public sealed class AppraisalWindow
             case AppraisalSpellRow spell: return Spell(spell);
             case AppraisalMeterRow meter: return Meter(meter);
         }
-        if (row.Label == null) return new TextBlock { Text = row.Text, Foreground = DerethPalette.TextBrush, FontSize = 13, TextWrapping = TextWrapping.Wrap };
+        var brush = ToneBrush(row.Tone);
+        if (row.Label == null) return new TextBlock { Text = row.Text, Foreground = brush, FontSize = 13, TextWrapping = TextWrapping.Wrap };
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions(LabelColumn), ColumnSpacing = 8 };
         grid.Children.Add(Text(row.Label, DerethPalette.MutedBrush, 13));
-        var value = Text(row.Text, DerethPalette.TextBrush, 13);
+        var value = Text(row.Text, brush, 13);
         Grid.SetColumn(value, 1);
         grid.Children.Add(value);
         return grid;
@@ -165,7 +166,7 @@ public sealed class AppraisalWindow
     private static Control Spell(AppraisalSpellRow spell)
     {
         var stack = new StackPanel();
-        stack.Children.Add(Text(spell.Name, DerethPalette.CreamBrush, 12));
+        stack.Children.Add(Text(spell.Name, spell.Tone == AppraisalTone.Normal ? DerethPalette.CreamBrush : ToneBrush(spell.Tone), 12));
         if (spell.Description.Length > 0)
             stack.Children.Add(new TextBlock { Text = spell.Description, Foreground = DerethPalette.MutedBrush, FontSize = 11.5, TextWrapping = TextWrapping.Wrap });
         return stack;
@@ -177,7 +178,7 @@ public sealed class AppraisalWindow
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions(LabelColumn), ColumnSpacing = 8, Margin = new Thickness(0, 2, 0, 0) };
         grid.Children.Add(Text(meter.Name, DerethPalette.MutedBrush, 13));
         var bar = new StackPanel { Spacing = 3 };
-        bar.Children.Add(Bar(meter.Current, meter.Maximum, meter.Text));
+        bar.Children.Add(Bar(meter.Current, meter.Maximum, meter.Text, meter.Tone == AppraisalTone.Normal ? DerethPalette.CreamBrush : ToneBrush(meter.Tone)));
         if (meter.Note != null) bar.Children.Add(Text(meter.Note, DerethPalette.MutedBrush, 11));
         Grid.SetColumn(bar, 1);
         grid.Children.Add(bar);
@@ -188,7 +189,7 @@ public sealed class AppraisalWindow
     /// The groove, filled from the left to the share of the maximum in a gradient, with the value centred on it. Mana blue is the only
     /// fill so far; a second meter kind would pick its own.
     /// </summary>
-    private static Control Bar(int current, int maximum, string text)
+    private static Control Bar(int current, int maximum, string text, IBrush textBrush)
     {
         var share = maximum > 0 ? Math.Min(1, Math.Max(0, current / (double)maximum)) : 0;
         var fill = new Border
@@ -209,11 +210,18 @@ public sealed class AppraisalWindow
         });
         track.Children.Add(new TextBlock
         {
-            Text = text, Foreground = DerethPalette.CreamBrush, FontSize = 10.5, FontFamily = FontFamily.Default,
+            Text = text, Foreground = textBrush, FontSize = 10.5, FontFamily = FontFamily.Default,
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
         });
         return track;
     }
+    /// <summary>Raised values are the theme's green, lowered ones its red (the invalid colour), and the rest the text colour.</summary>
+    private static IBrush ToneBrush(AppraisalTone tone) => tone switch
+    {
+        AppraisalTone.Raised => DerethPalette.RaisedBrush,
+        AppraisalTone.Lowered => DerethPalette.InvalidBrush,
+        _ => DerethPalette.TextBrush,
+    };
 
     private static TextBlock Text(string text, IBrush brush, double size, bool centred = false, FontFamily? font = null) => new()
     {

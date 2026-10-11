@@ -152,6 +152,60 @@ public sealed class AppraisalTests
     });
 
     [Fact]
+    public void The_ivory_stick_shows_its_buffed_damage_speed_and_attack_raised_and_its_type_as_staff()
+    {
+        // The retail screenshot (https://i.imgur.com/RwUmSMd.png): damage, speed and attack are buffed; the defence bonus is not.
+        var bytes = new ServerAppraisal(0x80000A05)
+        {
+            Strings = { [1] = "Ivory Stick" },
+            Ints = { [1] = 0x1, [48] = 44, [353] = 7, [19] = 17285, [5] = 101 },
+            Floats = { [29] = 1.21 },
+            Weapon = new WeaponWrite(4, 0, 44, 86, 0.52, 1.0, 1.0, 1.0, 1.28, 0),
+            WeaponMasks = (0xD, 0xD),
+        }.Build();
+
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes));
+
+        Assert.Equal("Staff · Heavy Weapons", content.TypeLine);
+        var combat = Assert.Single(content.Sections, section => section.Heading == "Combat");
+        Assert.Equal(new[]
+        {
+            ("Damage", "41.28 – 86 Bludgeoning", AppraisalTone.Raised),
+            ("Speed", "Very Fast (0)", AppraisalTone.Raised),
+            ("Attack", "+28%", AppraisalTone.Raised),
+            ("Melee defense", "+21.0%", AppraisalTone.Normal),
+        }, combat.Rows.Select(row => (row.Label!, row.Text, row.Tone)));
+    }
+
+    [Fact]
+    public void A_breastplate_shows_its_raised_armour_level_and_its_lowered_fire_protection_in_red()
+    {
+        // Armour is in the same order as the server's ArmorProfile: slashing, piercing, bludgeoning, cold, fire, acid, nether, lightning.
+        var bytes = new ServerAppraisal(0x80000A06)
+        {
+            Strings = { [1] = "Nariyid Breastplate" },
+            Ints = { [1] = 0x2, [19] = 8450, [28] = 650 },
+            Armor = new[] { 1.2f, 1.0f, 1.2f, 0.78f, 0.38f, 1.0f, 0f, 1.0f },
+            ArmorMasks = (0x21, 0x1),
+        }.Build();
+
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes));
+
+        var armor = Assert.Single(content.Sections, section => section.Heading == "Armor");
+        Assert.Equal(new[]
+        {
+            ("Armor level", "650", AppraisalTone.Raised),
+            ("Slashing", "Above Average (1.2)", AppraisalTone.Normal),
+            ("Piercing", "Average (1.0)", AppraisalTone.Normal),
+            ("Bludgeoning", "Above Average (1.2)", AppraisalTone.Normal),
+            ("Fire", "Poor (0.4)", AppraisalTone.Lowered),
+            ("Cold", "Below Average (0.8)", AppraisalTone.Normal),
+            ("Acid", "Average (1.0)", AppraisalTone.Normal),
+            ("Lightning", "Average (1.0)", AppraisalTone.Normal),
+        }, armor.Rows.Select(row => (row.Label!, row.Text, row.Tone)));
+    }
+
+    [Fact]
     public void The_game_event_0xF7B0_carries_an_identify_response_to_the_reader()
     {
         var payload = PotionMessage(Potion, 75);
