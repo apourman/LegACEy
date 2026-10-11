@@ -1,0 +1,209 @@
+using System;
+using System.Drawing;
+using System.Numerics;
+using System.Runtime.InteropServices;
+
+namespace LegACEy.Client.DecalPlugin;
+
+/// <summary>
+/// The few Direct3D 9 COM calls LegACEy draws with, made on the game's own objects through their vtables. A failed HRESULT throws a
+/// <see cref="COMException"/>, as Managed DirectX did, so the callers' failure paths switch the UI off.
+/// </summary>
+internal static unsafe class D3D9
+{
+    // Vtable slots, checked against the method order in mingw-w64 d3d9.h. IUnknown comes first in every interface:
+    // QueryInterface 0, AddRef 1, Release 2.
+    private const int ReleaseSlot = 2;
+    // IDirect3DDevice9
+    private const int CreateTextureSlot = 23;
+    private const int ClearSlot = 43;
+    private const int SetTransformSlot = 44;
+    private const int SetViewportSlot = 47;
+    private const int GetViewportSlot = 48;
+    private const int SetMaterialSlot = 49;
+    private const int SetLightSlot = 51;
+    private const int LightEnableSlot = 53;
+    private const int SetRenderStateSlot = 57;
+    private const int CreateStateBlockSlot = 59;
+    private const int SetTextureSlot = 65;
+    private const int SetTextureStageStateSlot = 67;
+    private const int SetSamplerStateSlot = 69;
+    private const int DrawPrimitiveUPSlot = 83;
+    private const int SetFVFSlot = 89;
+    private const int SetVertexShaderSlot = 92;
+    private const int SetPixelShaderSlot = 107;
+    // IDirect3DTexture9 (after IDirect3DResource9 3-10 and IDirect3DBaseTexture9 11-16)
+    private const int LockRectSlot = 19;
+    private const int UnlockRectSlot = 20;
+    // IDirect3DStateBlock9 (GetDevice 3, Capture 4)
+    private const int ApplySlot = 5;
+
+    // Values from mingw-w64 d3d9types.h.
+    public const uint FvfXyz = 0x002, FvfXyzRhw = 0x004, FvfNormal = 0x010, FvfDiffuse = 0x040, FvfTex1 = 0x100;
+    public const int LineStrip = 3, TriangleList = 4, TriangleStrip = 5;
+    public const int TransformView = 2, TransformProjection = 3, TransformWorld = 256;
+    private const int StateBlockAll = 1, FormatA8R8G8B8 = 21, PoolManaged = 1, ClearZBuffer = 2;
+
+    public enum RenderState
+    {
+        ZEnable = 7, FillMode = 8, ShadeMode = 9, ZWriteEnable = 14, AlphaTestEnable = 15, SrcBlend = 19, DestBlend = 20,
+        CullMode = 22, ZFunc = 23, AlphaRef = 24, AlphaFunc = 25, AlphaBlendEnable = 27, FogEnable = 28, SpecularEnable = 29,
+        StencilEnable = 52, Lighting = 137, Ambient = 139, ColorVertex = 141, NormalizeNormals = 143, ColorWriteEnable = 168,
+        BlendOp = 171, ScissorTestEnable = 174, SeparateAlphaBlendEnable = 206
+    }
+
+    public enum StageState { ColorOp = 1, ColorArg1 = 2, ColorArg2 = 3, AlphaOp = 4, AlphaArg1 = 5, TexCoordIndex = 11, TextureTransformFlags = 24 }
+
+    public enum SamplerState { AddressU = 1, AddressV = 2, MagFilter = 5, MinFilter = 6, MipFilter = 7 }
+
+    // D3DTOP, D3DTA, D3DTEXF, D3DTADDRESS, D3DCMP, D3DCULL, D3DFILL, D3DSHADE, D3DBLEND and D3DBLENDOP values.
+    public const int OpDisable = 1, OpSelectArg1 = 2, OpModulate = 4, ArgDiffuse = 0, ArgTexture = 2;
+    public const int FilterNone = 0, FilterPoint = 1, FilterLinear = 2, AddressWrap = 1, AddressClamp = 3;
+    public const int CmpLessEqual = 4, CmpGreaterEqual = 7, CullNone = 1, FillSolid = 3, ShadeGouraud = 2;
+    public const int BlendOne = 2, BlendInvSrcAlpha = 6, BlendOpAdd = 1;
+
+    /// <summary>D3DLIGHT9.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Light
+    {
+        public int Type;
+        public Vector4 Diffuse, Specular, Ambient;
+        public Vector3 Position, Direction;
+        public float Range, Falloff, Attenuation0, Attenuation1, Attenuation2, Theta, Phi;
+    }
+
+    /// <summary>D3DMATERIAL9.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Material
+    {
+        public Vector4 Diffuse, Ambient, Specular, Emissive;
+        public float Power;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Viewport9
+    {
+        public int X, Y, Width, Height;
+        public float MinZ, MaxZ;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LockedRect
+    {
+        public int Pitch;
+        public byte* Bits;
+    }
+
+    private static void** Vt(IntPtr com) => *(void***)com;
+
+    private static void Check(int result, string method)
+    {
+        if (result < 0) throw new COMException($"Direct3D 9 {method} failed: 0x{result:X8}.", result);
+    }
+
+    /// <summary>Releases a COM object this code created, once.</summary>
+    public static void Release(ref IntPtr com)
+    {
+        if (com == IntPtr.Zero) return;
+        ((delegate* unmanaged[Stdcall]<IntPtr, uint>)Vt(com)[ReleaseSlot])(com);
+        com = IntPtr.Zero;
+    }
+
+    /// <summary>Records every device state; <see cref="RestoreState"/> puts them back and frees the record.</summary>
+    public static IntPtr SaveState(IntPtr device)
+    {
+        IntPtr block;
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, IntPtr*, int>)Vt(device)[CreateStateBlockSlot])(device, StateBlockAll, &block), "CreateStateBlock");
+        return block;
+    }
+
+    public static void RestoreState(IntPtr block)
+    {
+        try { Check(((delegate* unmanaged[Stdcall]<IntPtr, int>)Vt(block)[ApplySlot])(block), "StateBlock.Apply"); }
+        finally { Release(ref block); }
+    }
+
+    /// <summary>An A8R8G8B8 texture in the managed pool, which Direct3D restores itself after a device reset.</summary>
+    public static IntPtr CreateTexture(IntPtr device, int width, int height)
+    {
+        IntPtr texture;
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, int, int, int, int, int, IntPtr*, IntPtr, int>)Vt(device)[CreateTextureSlot])(
+            device, width, height, 1, 0, FormatA8R8G8B8, PoolManaged, &texture, IntPtr.Zero), "CreateTexture");
+        return texture;
+    }
+
+    /// <summary>Copies a rectangle of 32-bit pixels, at the same place in both, into the texture's top level.</summary>
+    public static void Upload(IntPtr texture, Rectangle area, byte[] pixels, int stride)
+    {
+        var rect = stackalloc int[] { area.Left, area.Top, area.Right, area.Bottom };
+        LockedRect locked;
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, LockedRect*, int*, int, int>)Vt(texture)[LockRectSlot])(texture, 0, &locked, rect, 0), "LockRect");
+        try
+        {
+            var rowBytes = area.Width * 4;
+            for (var row = 0; row < area.Height; row++)
+                pixels.AsSpan((area.Y + row) * stride + area.X * 4, rowBytes).CopyTo(new Span<byte>(locked.Bits + row * locked.Pitch, rowBytes));
+        }
+        finally
+        {
+            Check(((delegate* unmanaged[Stdcall]<IntPtr, int, int>)Vt(texture)[UnlockRectSlot])(texture, 0), "UnlockRect");
+        }
+    }
+
+    public static Rectangle Viewport(IntPtr device)
+    {
+        Viewport9 viewport;
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, Viewport9*, int>)Vt(device)[GetViewportSlot])(device, &viewport), "GetViewport");
+        return new Rectangle(viewport.X, viewport.Y, viewport.Width, viewport.Height);
+    }
+
+    public static void SetViewport(IntPtr device, Rectangle area)
+    {
+        var viewport = new Viewport9 { X = area.X, Y = area.Y, Width = area.Width, Height = area.Height, MinZ = 0, MaxZ = 1 };
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, Viewport9*, int>)Vt(device)[SetViewportSlot])(device, &viewport), "SetViewport");
+    }
+
+    /// <summary>Clears the depth buffer inside one screen rectangle.</summary>
+    public static void ClearDepth(IntPtr device, Rectangle area, float z)
+    {
+        var rect = stackalloc int[] { area.Left, area.Top, area.Right, area.Bottom };
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, int*, int, int, float, int, int>)Vt(device)[ClearSlot])(device, 1, rect, ClearZBuffer, 0, z, 0), "Clear");
+    }
+
+    // D3DMATRIX is row-major with row vectors, the same layout and convention as System.Numerics.Matrix4x4.
+    public static void SetTransform(IntPtr device, int state, Matrix4x4 matrix) =>
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, Matrix4x4*, int>)Vt(device)[SetTransformSlot])(device, state, &matrix), "SetTransform");
+
+    public static void SetMaterial(IntPtr device, Material material) =>
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, Material*, int>)Vt(device)[SetMaterialSlot])(device, &material), "SetMaterial");
+
+    public static void SetLight(IntPtr device, int index, Light light) =>
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, Light*, int>)Vt(device)[SetLightSlot])(device, index, &light), "SetLight");
+
+    public static void LightEnable(IntPtr device, int index, bool enable) =>
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, int, int>)Vt(device)[LightEnableSlot])(device, index, enable ? 1 : 0), "LightEnable");
+
+    public static void SetRenderState(IntPtr device, RenderState state, int value) =>
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, RenderState, int, int>)Vt(device)[SetRenderStateSlot])(device, state, value), "SetRenderState");
+
+    public static void SetTexture(IntPtr device, int stage, IntPtr texture) =>
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, IntPtr, int>)Vt(device)[SetTextureSlot])(device, stage, texture), "SetTexture");
+
+    public static void SetStageState(IntPtr device, int stage, StageState state, int value) =>
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, StageState, int, int>)Vt(device)[SetTextureStageStateSlot])(device, stage, state, value), "SetTextureStageState");
+
+    public static void SetSamplerState(IntPtr device, int sampler, SamplerState state, int value) =>
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, SamplerState, int, int>)Vt(device)[SetSamplerStateSlot])(device, sampler, state, value), "SetSamplerState");
+
+    /// <summary>Fixed-function drawing: no shaders, and the given flexible vertex format.</summary>
+    public static void UseFixedFunction(IntPtr device, uint vertexFormat)
+    {
+        var vt = Vt(device);
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, IntPtr, int>)vt[SetVertexShaderSlot])(device, IntPtr.Zero), "SetVertexShader");
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, IntPtr, int>)vt[SetPixelShaderSlot])(device, IntPtr.Zero), "SetPixelShader");
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, uint, int>)vt[SetFVFSlot])(device, vertexFormat), "SetFVF");
+    }
+
+    public static void DrawPrimitiveUP(IntPtr device, int type, int count, void* vertices, int stride) =>
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, int, void*, int, int>)Vt(device)[DrawPrimitiveUPSlot])(device, type, count, vertices, stride), "DrawPrimitiveUP");
+}
