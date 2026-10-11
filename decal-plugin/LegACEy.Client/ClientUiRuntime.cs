@@ -188,17 +188,26 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     public void Startup()
     {
+        // Before the plugins load, which may need it; a failed start leaves no handler behind.
         AssemblyLoadContext.Default.Resolving += ResolveFromClientDirectory;
-        NativeUi.Initialize(Log);
         try
         {
-            _channelTransport = new GameChannelTransport(NativeUi.ReadMemory, () => _inGame, Log);
-            _serverChannel = new ServerChannelClient(_channelTransport);
+            NativeUi.Initialize(Log);
+            try
+            {
+                _channelTransport = new GameChannelTransport(NativeUi.ReadMemory, () => _inGame, Log);
+                _serverChannel = new ServerChannelClient(_channelTransport);
+            }
+            catch (Exception exception) { Log($"LegACEy server channel disabled: {exception.Message}"); }
+            try { _retailDrag = new RetailItemDrag(NativeUi.ReadMemory, Log); }
+            catch (Exception exception) { Log($"Item drag and drop disabled: {exception.Message}"); }
+            LoadPlugins();
         }
-        catch (Exception exception) { Log($"LegACEy server channel disabled: {exception.Message}"); }
-        try { _retailDrag = new RetailItemDrag(NativeUi.ReadMemory, Log); }
-        catch (Exception exception) { Log($"Item drag and drop disabled: {exception.Message}"); }
-        LoadPlugins();
+        catch
+        {
+            AssemblyLoadContext.Default.Resolving -= ResolveFromClientDirectory;
+            throw;
+        }
     }
 
     /// <summary>Starts the plugins in Plugins/ beside the client. Each plugin's failures stay with that plugin.</summary>
@@ -215,31 +224,42 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     public void Shutdown()
     {
-        _postUiDrawHook?.Dispose();
-        _postUiDrawHook = null;
-        RestoreNativeBar();
-        TearDown();
-        _serverChannel?.Dispose();
-        _serverChannel = null;
-        AssemblyLoadContext.Default.Resolving -= ResolveFromClientDirectory;
+        try
+        {
+            _postUiDrawHook?.Dispose();
+            _postUiDrawHook = null;
+            RestoreNativeBar();
+            TearDown();
+            _serverChannel?.Dispose();
+            _serverChannel = null;
+        }
+        finally { AssemblyLoadContext.Default.Resolving -= ResolveFromClientDirectory; }
     }
 
     /// <summary>
     /// An assembly the runtime could not find, such as one a plugin references: serve the copy shipped with the client when it is the
-    /// same or newer, and log every redirect.
+    /// same or newer, and log every redirect. A copy that can't be read or loaded is logged and left to the runtime's own failure.
     /// </summary>
     private static Assembly? ResolveFromClientDirectory(AssemblyLoadContext context, AssemblyName requested)
     {
-        var path = IOPath.Combine(ClientDirectory, requested.Name + ".dll");
+        if (requested.Name is not { } name) return null;
+        var path = IOPath.Combine(ClientDirectory, IOPath.GetFileName(name) + ".dll");
         if (!File.Exists(path))
             return null;
+        try
+        {
+            var shipped = AssemblyName.GetAssemblyName(path);
+            if (requested.Version != null && shipped.Version < requested.Version)
+                return null;
 
-        var shipped = AssemblyName.GetAssemblyName(path);
-        if (requested.Version != null && shipped.Version < requested.Version)
+            Log($"Assembly redirect: {requested.FullName} -> {shipped.Version}");
+            return context.LoadFromAssemblyPath(path);
+        }
+        catch (Exception exception)
+        {
+            Log($"Assembly redirect to {path} failed: {exception.Message}");
             return null;
-
-        Log($"Assembly redirect: {requested.FullName} -> {shipped.Version}");
-        return context.LoadFromAssemblyPath(path);
+        }
     }
 
     internal static void Log(string message)

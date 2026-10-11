@@ -5,6 +5,9 @@ using Microsoft.DirectX.Direct3D;
 
 namespace LegACEy.Client.DecalPlugin;
 
+// ponytail: the net48 copy, kept so this plugin still runs until step 02 turns it into the stub. The client's own copy is in
+// LegACEy.Client; step 02 deletes this file (the Decal reads move into the stub's bridge calls).
+
 internal static class GameDevice
 {
     private static readonly Guid Direct3DDevice9 = new("D0223B96-BF7A-43FD-92BD-A43B0D82B9EB");

@@ -5,6 +5,7 @@
     <Prefer32Bit>true</Prefer32Bit>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <DecalInstallDir Condition="'$(DecalInstallDir)' == ''">C:\Program Files (x86)\Decal 3.0</DecalInstallDir>
     <DecalInteropDir Condition="'$(DecalInteropDir)' == ''">C:\Windows\Microsoft.NET\assembly\GAC_MSIL\Decal.Interop.Core\v4.0_2.9.8.3__481f17d392f1fb65</DecalInteropDir>
     <ManagedDirectXDir Condition="'$(ManagedDirectXDir)' == ''">C:\Windows\Microsoft.NET\DirectX for Managed Code\1.0.2902.0</ManagedDirectXDir>
@@ -43,6 +44,8 @@
        client sources that still build on net48. -->
   <ItemGroup>
     <Compile Include="..\LegACEy.Client\GameChannelTransport.cs;..\LegACEy.Client\GameStatePoller.cs;..\LegACEy.Client\NativeRetailPanelPort.cs;..\LegACEy.Client\NativeUi.cs;..\LegACEy.Client\NativeUiCatalogue.cs;..\LegACEy.Client\NativeUiMovement.cs;..\LegACEy.Client\PostUiDrawHook.cs;..\LegACEy.Client\RetailItemDrag.cs;..\LegACEy.Client\RetailPanelTakeover.cs;..\LegACEy.Client\RetailSurfaceRenderer.cs;..\LegACEy.Client\RetailTakeoverLifecycle.cs;..\LegACEy.Client\Win32KeyMap.cs" LinkBase="Client" />
+    <!-- The bridge tables the stub will fill: compiled here so the client's layout is the stub's, with no copy to drift. -->
+    <Compile Include="..\LegACEy.Client\BridgeTables.cs" LinkBase="Client" />
   </ItemGroup>
 
   <!-- Plugins are built with this client (same global properties, so one build of each shared project) but not referenced

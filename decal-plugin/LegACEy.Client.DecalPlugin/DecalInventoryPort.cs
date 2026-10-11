@@ -7,6 +7,9 @@ using LegACEy.Client.Demo;
 
 namespace LegACEy.Client.DecalPlugin;
 
+// ponytail: the net48 copy, kept so this plugin still runs until step 02 turns it into the stub. The client's own copy is in
+// LegACEy.Client; step 02 deletes this file (the Decal reads move into the stub's bridge calls).
+
 /// <summary>
 /// The inventory port over Decal. Reads and commands run on the game thread, the render callback's thread. Decal events
 /// mark the snapshot stale only when they touch the character's inventory; <see cref="Flush"/> rebuilds it once per frame.

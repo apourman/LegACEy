@@ -41,7 +41,7 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     /// </summary>
     public void ObjectChanged(uint id, uint container)
     {
-        var characterId = unchecked((uint)Bridge.Fact(BridgeFact.CharacterId));
+        var characterId = (uint)Bridge.Fact(BridgeFact.CharacterId);
         var snapshot = _refresh.Snapshot;
         if (id == characterId || container == characterId || snapshot.Contains(id) || snapshot.Contains(container))
             _refresh.MarkStale();
@@ -92,17 +92,17 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     /// <summary>The client's inventory reads, made on the game thread once per rebuild.</summary>
     private sealed class BridgeInventoryReader : IInventoryReader
     {
-        public uint CharacterId => unchecked((uint)Bridge.Fact(BridgeFact.CharacterId));
+        public uint CharacterId => (uint)Bridge.Fact(BridgeFact.CharacterId);
         public IReadOnlyList<InventoryObjectRead> Objects => Bridge.Inventory();
         public int MainPackCapacity => Bridge.Fact(BridgeFact.MainPackCapacity);
-        public uint MainPackIcon => unchecked((uint)Bridge.Fact(BridgeFact.MainPackIcon));
+        public uint MainPackIcon => (uint)Bridge.Fact(BridgeFact.MainPackIcon);
         public int SidePackCapacity => Bridge.Fact(BridgeFact.SidePackCapacity);
         public int Burden => Bridge.Fact(BridgeFact.Burden);
         public int Strength => Bridge.Fact(BridgeFact.Strength);
         // Gate: BurdenLimit must match the server's EncumbranceCapacity.
         public int CarryingAugmentations => Bridge.Fact(BridgeFact.CarryingAugmentations);
         // Decal documents OpenedContainer as a chest or corpse. Gate: a side pack and the main pack report here too.
-        public uint OpenContainer => unchecked((uint)Bridge.Fact(BridgeFact.OpenedContainer));
-        public uint Selected => unchecked((uint)Bridge.Fact(BridgeFact.CurrentSelection));
+        public uint OpenContainer => (uint)Bridge.Fact(BridgeFact.OpenedContainer);
+        public uint Selected => (uint)Bridge.Fact(BridgeFact.CurrentSelection);
     }
 }

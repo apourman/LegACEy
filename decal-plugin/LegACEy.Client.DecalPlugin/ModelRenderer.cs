@@ -8,6 +8,9 @@ using Microsoft.DirectX.Direct3D;
 
 namespace LegACEy.Client.DecalPlugin;
 
+// ponytail: the Managed DirectX drawing, kept so this plugin still draws until step 03 ports it to direct D3D9 calls in
+// LegACEy.Client; step 03 deletes this file.
+
 /// <summary>
 /// Draws a <see cref="CharacterModel"/> with the game's own Direct3D 9 device, into a rectangle of the back buffer,
 /// from the post-UI hook. Textures go to the card once per model (managed pool, so they survive a device reset);
