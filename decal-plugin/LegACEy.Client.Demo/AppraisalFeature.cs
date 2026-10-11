@@ -34,6 +34,8 @@ public sealed class AppraisalFeature
     private uint _requested;
     private long _requestedAt;
     private uint _shownId;
+    // A plugin's selected stored item, examined in place of the game's selection; null when there is none.
+    private Action? _storedSelection;
     private AppraisalWindow? _view;
     // Whether the window is hidden by its close box, as opposed to released by the client. A hidden window comes back when shown again.
     private bool _hidden;
@@ -103,6 +105,8 @@ public sealed class AppraisalFeature
     /// </summary>
     public void Follow(uint selection)
     {
+        // The game's selection moved on: a plugin's selection of a stored item is no longer what the player examines.
+        _storedSelection = null;
         if (selection == 0 || selection == _shownId || !_host.IsWindowOpen(WindowId)) return;
         if (Examine(selection) != ExamineResult.Shown) return;
         try { _game.RequestAppraisal(selection); }
@@ -162,6 +166,24 @@ public sealed class AppraisalFeature
         {
             _log($"Could not close the appraisal window: {exception.Message}");
         }
+    }
+
+    /// <summary>
+    /// A plugin's selection of an item that is not in the world (a Vault item), which the game cannot select: until the game's selection
+    /// changes (<see cref="Follow"/>), examining runs <paramref name="examine"/> instead. Null clears it.
+    /// </summary>
+    public void SelectStored(Action? examine) => _storedSelection = examine;
+
+    /// <summary>
+    /// Examines a plugin's selected stored item, when there is one: true when it was asked for, and the game's selection is not examined.
+    /// Nothing thrown escapes: it is logged, and the stored item counts as examined.
+    /// </summary>
+    public bool ExamineStored()
+    {
+        if (_storedSelection is not { } examine) return false;
+        try { examine(); }
+        catch (Exception exception) { _log($"Could not examine the selected item: {exception.Message}"); }
+        return true;
     }
 
     /// <summary>

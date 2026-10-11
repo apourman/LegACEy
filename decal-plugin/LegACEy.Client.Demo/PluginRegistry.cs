@@ -301,6 +301,9 @@ public sealed class PluginRegistry
 
         public bool IsAppraisalOpen => _registry._host.IsWindowOpen(AppraisalFeature.WindowId);
 
+        public void SelectForExamination(Action? examine) =>
+            _registry._host.SelectForExamination(examine == null ? null : () => _registry.Guarded(_entry, examine));
+
         public int? LoadSettings() => _registry._host.LoadPluginSettings(_entry.Name);
         public void SaveSettings(int value) => _registry._host.SavePluginSettings(_entry.Name, value);
 

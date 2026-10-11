@@ -350,6 +350,7 @@ public sealed class PluginRegistryTests
         public int? LoadPluginSettings(string plugin) => Settings.TryGetValue(plugin, out var saved) ? saved : null;
         public void SavePluginSettings(string plugin, int value) => Settings[plugin] = value;
         public void ShowAppraisal(byte[] appraisal, string name, ItemVisual? visual, int stackCount) { }
+        public void SelectForExamination(Action? examine) { }
 
         public IServerChannel ServerChannel { get; init; } = UnavailableServerChannel.Instance;
         public string PortalPath => string.Empty;

@@ -199,6 +199,12 @@ internal sealed class RetailExaminationTakeover : IDisposable
     private void OnOpenChanged(bool open)
     {
         if (!open) return;
+        // A plugin's selected stored item (a Vault item) is what the player examines: its own window shows it, so retail's panel closes.
+        if (_appraisals.ExamineStored())
+        {
+            _closeAfterShow = true;
+            return;
+        }
         if (_selected == 0)
         {
             GiveBack("Retail's examination panel is given back: nothing is selected to examine.");

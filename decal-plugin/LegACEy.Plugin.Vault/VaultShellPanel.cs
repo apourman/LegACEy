@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -68,6 +69,9 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     // Right-click on an item appraises it, when the plugin gives a way to; so does a plain click while the appraisal window is open.
     private readonly Action<VaultItemView>? _appraise;
     private readonly Func<bool> _appraisalOpen;
+    // Told when the selection becomes one item, or stops being one (null), so examining can appraise it.
+    private readonly Action<VaultItemView?>? _selectedChanged;
+    private VaultItemView? _reportedSelection;
     private readonly TextBlock _itemsLabel = Label(string.Empty, MutedBrush, 12);
     private readonly TextBlock _items = Label(string.Empty, TextBrush, 12);
     private readonly TextBlock _balance = Label(string.Empty, GoldBrush, 12);
@@ -113,13 +117,14 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     /// <param name="client">The live Vault; the panel owns it and disposes it. Null shows the sample Vault.</param>
     /// <param name="dragHost">Lets items be dragged out of the window onto the retail inventory to withdraw them.</param>
     public VaultShellPanel(IGameArtSource art, VaultClient? client = null, IItemDragHost? dragHost = null, Action<VaultItemView>? appraise = null,
-        Func<bool>? appraisalOpen = null)
+        Func<bool>? appraisalOpen = null, Action<VaultItemView?>? selectedChanged = null)
     {
         _art = art ?? throw new ArgumentNullException(nameof(art));
         _client = client;
         _dragHost = dragHost;
         _appraise = appraise;
         _appraisalOpen = appraisalOpen ?? (() => false);
+        _selectedChanged = selectedChanged;
         _selection = client?.Selection ?? new VaultSelection();
         _itemsLine.Children.Add(_itemsLabel);
         _itemsLine.Children.Add(_items);
@@ -280,6 +285,12 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         _selectionLine.IsVisible = multi;
         _selectedLabel.Text = $"{_selection.Count:N0} selected";
         _withdrawText.Text = $"Withdraw {_selection.Count:N0}";
+        var single = _selection.Count == 1 && snapshot?.Items is { } items && _selection.Indices.First() is var at && at >= 0 && at < items.Count
+            ? items[at]
+            : null;
+        if (single?.Guid == _reportedSelection?.Guid) return;
+        _reportedSelection = single;
+        _selectedChanged?.Invoke(single);
     }
 
     /// <summary>"1 – 100 of 317" for the page on screen, or "0 of 0" when nothing matches.</summary>

@@ -65,6 +65,11 @@ public interface ILegACEyClient
     /// <summary>True while the appraisal window is open, so a plugin's own selection can follow it as the game's selection does.</summary>
     bool IsAppraisalOpen { get; }
     /// <summary>
+    /// The plugin's own selection of an item that is not in the world, which the game cannot select: until the game's selection changes,
+    /// examining (the E key) runs <paramref name="examine"/> instead of examining the game's selection. Null clears it.
+    /// </summary>
+    void SelectForExamination(Action? examine);
+    /// <summary>
     /// Opens the plugin's window around the content it builds, or hides that window when it is open. A hidden window keeps its
     /// content and comes back as it was; the content is built once per session.
     /// </summary>
@@ -115,6 +120,8 @@ public interface ILegACEyPluginHost
     void SavePluginSettings(string plugin, int value);
     /// <summary>Shows a stored item's appraisal in the appraisal window. See <see cref="ILegACEyClient.ShowAppraisal"/>.</summary>
     void ShowAppraisal(byte[] appraisal, string name, ItemVisual? visual, int stackCount);
+    /// <summary>A plugin's selection for examining. See <see cref="ILegACEyClient.SelectForExamination"/>.</summary>
+    void SelectForExamination(Action? examine);
 }
 
 /// <summary>

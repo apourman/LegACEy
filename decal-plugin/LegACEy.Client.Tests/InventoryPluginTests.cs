@@ -460,6 +460,7 @@ public sealed class InventoryPluginTests
         public void AddMenuEntry(string title, uint iconId, Action action) => MenuEntries.Add((title, iconId, action));
         public void ShowAppraisal(byte[] appraisal, string name, ItemVisual? visual, int stackCount) { }
         public bool IsAppraisalOpen => false;
+        public void SelectForExamination(Action? examine) { }
         public void ToggleWindow(string id, string title, int width, int height, Point defaultLocation, Func<Control> createContent) =>
             throw new NotSupportedException();
 

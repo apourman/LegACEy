@@ -41,15 +41,22 @@ public sealed class VaultPlugin : ILegACEyPlugin
         {
             vaultClient = new VaultClient(client.ServerChannel);
             var appraiser = vaultClient;
-            vault = new VaultShellPanel(client.Art, vaultClient, client.ItemDrag, item =>
+            void Appraise(VaultItemView item)
             {
                 // An older server has no Vault appraisals: right-click then does nothing, as before.
                 if (!client.SupportsAction(VaultProtocol.Appraise)) return;
                 appraiser.Appraise(item.Guid, body => client.ShowAppraisal(body, item.Name,
                     new ItemVisual(item.Icon, item.Underlay, item.Overlay, unchecked((uint)item.UiEffects), item.Plate), item.StackSize));
-            }, () => client.IsAppraisalOpen);
+            }
+            // The game cannot select a Vault item, so a selected one is handed to the client for the E key to appraise.
+            vault = new VaultShellPanel(client.Art, vaultClient, client.ItemDrag, Appraise, () => client.IsAppraisalOpen,
+                item => client.SelectForExamination(item == null ? null : () => Appraise(item)));
             var window = new VaultShellWindow(vault);
-            window.CloseRequested += (_, _) => close();
+            window.CloseRequested += (_, _) =>
+            {
+                client.SelectForExamination(null);
+                close();
+            };
             window.DetachedFromVisualTree += (_, _) => window.Dispose();
             return window;
         }

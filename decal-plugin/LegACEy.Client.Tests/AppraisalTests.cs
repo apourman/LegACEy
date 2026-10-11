@@ -1146,6 +1146,36 @@ public sealed class AppraisalTests
     });
 
     [Fact]
+    public void Examining_with_a_vault_item_selected_appraises_it_until_the_games_selection_changes() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost();
+        var game = new FakeAppraisalGame();
+        var appraisals = new AppraisalFeature(host, _ => { }, game: game);
+        uint selected = Potion;
+        var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Location = new Point(1200, 300) };
+        using var examination = new RetailExaminationTakeover(panel, () => selected, appraisals, _ => { }, () => true);
+        examination.Tick(enabled: true);
+        var examined = 0;
+        appraisals.SelectStored(() => examined++);
+
+        // E with a world object still the game's selection: the Vault item is examined, and retail's panel closes.
+        panel.Open = true;
+        examination.Tick(enabled: true);
+        examination.Tick(enabled: true);
+        Assert.Equal(1, examined);
+        Assert.Empty(game.Appraised);
+        Assert.Equal(1, panel.CloseCalls);
+
+        // The game's selection moves on: E examines it again.
+        selected = Gem;
+        examination.Tick(enabled: true);
+        panel.Open = true;
+        examination.Tick(enabled: true);
+        Assert.Equal(1, examined);
+        Assert.Equal(new[] { Gem }, game.Appraised);
+    });
+
+    [Fact]
     public void A_yielded_panel_is_taken_over_again_when_the_player_selects_another_object() => OnWindowThread(() =>
     {
         const uint OtherPotion = 0x80000B55;
@@ -1495,6 +1525,7 @@ public sealed class AppraisalTests
         public int? LoadPluginSettings(string plugin) => null;
         public void SavePluginSettings(string plugin, int value) { }
         public void ShowAppraisal(byte[] appraisal, string name, ItemVisual? visual, int stackCount) { }
+        public void SelectForExamination(Action? examine) { }
 
         private sealed class NoArt : IGameArtSource
         {
