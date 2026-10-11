@@ -19,6 +19,8 @@ public static class DerethPalette
     public static readonly Color Text = Color.Parse("#D7D9D6");
     public static readonly Color Muted = Color.Parse("#8E979E");
     public static readonly Color Invalid = Color.Parse("#D9584A");
+    /// <summary>The green of a value a buff or spell raised, as retail colours it.</summary>
+    public static readonly Color Raised = Color.Parse("#8ED17A");
     public static readonly Color Groove = Color.Parse("#05080C");
     public static readonly Color GrooveEdge = Color.Parse("#2A3542");
     public static readonly Color Navy = Color.Parse("#081016");
@@ -34,6 +36,7 @@ public static class DerethPalette
     public static readonly IBrush TextBrush = Brush(Text);
     public static readonly IBrush MutedBrush = Brush(Muted);
     public static readonly IBrush InvalidBrush = Brush(Invalid);
+    public static readonly IBrush RaisedBrush = Brush(Raised);
     public static readonly IBrush GrooveBrush = Brush(Groove);
     public static readonly IBrush GrooveEdgeBrush = Brush(GrooveEdge);
     public static readonly IBrush TealBrush = Brush(Teal);
