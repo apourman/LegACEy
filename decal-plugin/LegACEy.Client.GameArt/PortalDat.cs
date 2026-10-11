@@ -27,6 +27,7 @@ public sealed class PortalDat : IDisposable, IGameArtSource
     // icons ever reach a few MB.
     private readonly Dictionary<uint, GameImage?> _images = new();
     private IReadOnlyDictionary<uint, SpellInfo>? _spells;
+    private CharacterNames? _characterNames;
 
     public PortalDat(string path)
     {
@@ -73,6 +74,62 @@ public sealed class PortalDat : IDisposable, IGameArtSource
             }
             return _spells;
         }
+    }
+
+    /// <summary>
+    /// The creature type and title names, read once. The titles' strings are in client_local_English.dat beside this portal; when that is
+    /// missing or cannot be read the titles are named by nothing (logged once), and the creature types still show.
+    /// </summary>
+    public CharacterNames ReadCharacterNames(Action<string>? log = null)
+    {
+        lock (_stream)
+        {
+            if (_characterNames != null) return _characterNames;
+            try
+            {
+                var creatureTypes = ReadEnumNames(CharacterNames.CreatureTypeMapper);
+                _characterNames = new CharacterNames(creatureTypes, ReadTitleNames(log));
+            }
+            catch (Exception exception)
+            {
+                log?.Invoke($"The creature and title names could not be read from the portal: {exception.Message}");
+                _characterNames = CharacterNames.None;
+            }
+            return _characterNames;
+        }
+    }
+
+    /// <summary>An enum mapper's names with its base mapper's, following the base chain once around; a missing file ends it.</summary>
+    private Dictionary<uint, string> ReadEnumNames(uint mapperId)
+    {
+        var names = new Dictionary<uint, string>();
+        var visited = new HashSet<uint>();
+        for (var id = mapperId; id != 0 && visited.Add(id);)
+        {
+            var file = ReadFile(id);
+            if (file == null) break;
+            id = CharacterNames.ParseEnumMapper(file, names);
+        }
+        return names;
+    }
+
+    private Dictionary<uint, string> ReadTitleNames(Action<string>? log)
+    {
+        var titleIds = ReadEnumNames(CharacterNames.TitleMapper);
+        var titles = new Dictionary<uint, string>();
+        var localPath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Path)!, "client_local_English.dat");
+        if (!File.Exists(localPath))
+        {
+            log?.Invoke($"The English language DAT is not beside the portal, so titles are not named: {localPath}");
+            return titles;
+        }
+        using var language = new PortalDat(localPath);
+        var table = language.ReadFile(CharacterNames.TitleStringTable);
+        if (table == null) return titles;
+        var strings = CharacterNames.ParseStringTable(table);
+        foreach (var entry in titleIds)
+            if (strings.TryGetValue(CharacterNames.Hash(entry.Value), out var title)) titles[entry.Key] = title;
+        return titles;
     }
 
     private GameImage? DecodeImage(uint id)

@@ -23,6 +23,7 @@ public sealed class AppraisalWindow
     // The label column's width: the values of the rows and meters start after it, as in the layout the summary sets.
     private const string LabelColumn = "92,*";
     private static readonly Color ManaFill = Color.Parse("#4F86C6");
+    private static readonly Color HealthFill = Color.Parse("#B8453A");
     /// <summary>The tallest the window grows before its body scrolls.</summary>
     public const int MaxHeight = 520;
     // The Dereth frame and header, the title rule and the body's bottom margin, around the body.
@@ -85,6 +86,7 @@ public sealed class AppraisalWindow
     {
         var body = new StackPanel { Margin = new Thickness(10, 6, 10, 6), Spacing = 2 };
         if (content.TypeLine.Length > 0) body.Children.Add(Text(content.TypeLine, DerethPalette.CreamBrush, 14));
+        if (content.Subtitle.Length > 0) body.Children.Add(Text(content.Subtitle, DerethPalette.MutedBrush, 12));
         if (content.Figures.Count > 0) body.Children.Add(Figures(content.Figures));
         foreach (var section in content.Sections)
         {
@@ -199,7 +201,8 @@ public sealed class AppraisalWindow
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions(LabelColumn), ColumnSpacing = 8, Margin = new Thickness(0, 2, 0, 0) };
         grid.Children.Add(Text(meter.Name, DerethPalette.MutedBrush, 13));
         var bar = new StackPanel { Spacing = 3 };
-        bar.Children.Add(Bar(meter.Current, meter.Maximum, meter.Text, meter.Tone == AppraisalTone.Normal ? DerethPalette.CreamBrush : ToneBrush(meter.Tone)));
+        bar.Children.Add(Bar(meter.Current, meter.Maximum, meter.Text, meter.Tone == AppraisalTone.Normal ? DerethPalette.CreamBrush : ToneBrush(meter.Tone),
+            meter.Fill));
         if (meter.Note != null) bar.Children.Add(Text(meter.Note, DerethPalette.MutedBrush, 11));
         Grid.SetColumn(bar, 1);
         grid.Children.Add(bar);
@@ -207,18 +210,19 @@ public sealed class AppraisalWindow
     }
 
     /// <summary>
-    /// The groove, filled from the left to the share of the maximum in a gradient, with the value centred on it. Mana blue is the only
-    /// fill so far; a second meter kind would pick its own.
+    /// The groove, filled from the left to the share of the maximum in a gradient, with the value centred on it. The gradient runs from the
+    /// fill's colour to half of it.
     /// </summary>
-    private static Control Bar(int current, int maximum, string text, IBrush textBrush)
+    private static Control Bar(int current, int maximum, string text, IBrush textBrush, AppraisalMeterFill kind)
     {
         var share = maximum > 0 ? Math.Min(1, Math.Max(0, current / (double)maximum)) : 0;
+        var top = FillColor(kind);
         var fill = new Border
         {
             Background = new LinearGradientBrush
             {
                 StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
-                GradientStops = { new GradientStop(ManaFill, 0), new GradientStop(Color.FromRgb((byte)(ManaFill.R / 2), (byte)(ManaFill.G / 2), (byte)(ManaFill.B / 2)), 1) }
+                GradientStops = { new GradientStop(top, 0), new GradientStop(Color.FromRgb((byte)(top.R / 2), (byte)(top.G / 2), (byte)(top.B / 2)), 1) }
             }
         };
         var filled = new Grid { ColumnDefinitions = new ColumnDefinitions { new(share, GridUnitType.Star), new(1 - share, GridUnitType.Star) } };
@@ -236,6 +240,14 @@ public sealed class AppraisalWindow
         });
         return track;
     }
+    /// <summary>Mana blue, health red and stamina gold, the three meters' fills.</summary>
+    private static Color FillColor(AppraisalMeterFill kind) => kind switch
+    {
+        AppraisalMeterFill.Health => HealthFill,
+        AppraisalMeterFill.Stamina => DerethPalette.Gold,
+        _ => ManaFill,
+    };
+
     /// <summary>
     /// The inscription at the foot: an editable field the character writes in, or the text and its scribe read only. A read-only item that
     /// nobody inscribed says so.
