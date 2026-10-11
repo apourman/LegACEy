@@ -35,6 +35,8 @@ public sealed class AppraisalFeature
     private long _requestedAt;
     private uint _shownId;
     private AppraisalWindow? _view;
+    // Whether the window is hidden by its close box, as opposed to released by the client. A hidden window comes back when shown again.
+    private bool _hidden;
 
     /// <param name="clock">The time in milliseconds, for timing requests out. Null uses the system's tick count.</param>
     /// <param name="game">The character, the inventory and the inscription action. Null means none: nothing is editable and nothing is sent.</param>
@@ -66,21 +68,39 @@ public sealed class AppraisalFeature
 
     /// <summary>
     /// Retail's examination panel showed for this object (the E key, or any other way retail opens it). The window shows the object's
-    /// cached response at once when there is one. Otherwise it asks for one silently, since retail's E may not identify the object itself,
-    /// and the response that arrives opens the window, as <see cref="Request"/> does. Nothing thrown escapes: it is logged.
+    /// cached response at once when there is one, and reports <see cref="ExamineResult.Shown"/>, or <see cref="ExamineResult.Failed"/> when
+    /// it could not open. Otherwise it asks for one silently, since retail's E may not identify the object itself, and reports
+    /// <see cref="ExamineResult.Pending"/>: the response that arrives opens the window, as <see cref="Request"/> does, and <see cref="Status"/>
+    /// tells the owner how that turns out. Nothing thrown escapes: it is logged, and reported as failed.
     /// </summary>
-    public void Examine(uint objectId)
+    public ExamineResult Examine(uint objectId)
     {
         Request(objectId);
         try
         {
-            if (_responses.TryGetValue(objectId, out var cached)) Show(cached);
-            else _game.RequestAppraisal(objectId);
+            if (!_responses.TryGetValue(objectId, out var cached))
+            {
+                _game.RequestAppraisal(objectId);
+                return ExamineResult.Pending;
+            }
+            return Show(cached) ? ExamineResult.Shown : ExamineResult.Failed;
         }
         catch (Exception exception)
         {
             _log($"Could not show an appraisal: {exception.Message}");
+            return ExamineResult.Failed;
         }
+    }
+
+    /// <summary>
+    /// Where an examination that <see cref="Examine"/> left pending stands: <see cref="ExamineResult.Shown"/> once the window shows the object,
+    /// <see cref="ExamineResult.Pending"/> while its request is still within the timeout, and <see cref="ExamineResult.Failed"/> when the
+    /// request was answered without opening the window, timed out, or was replaced.
+    /// </summary>
+    public ExamineResult Status(uint objectId)
+    {
+        if (_shownId == objectId && _host.IsWindowOpen(WindowId)) return ExamineResult.Shown;
+        return _requested == objectId && _clock() - _requestedAt <= RequestTimeoutMs ? ExamineResult.Pending : ExamineResult.Failed;
     }
 
     /// <summary>
@@ -104,7 +124,10 @@ public sealed class AppraisalFeature
         }
     }
 
-    /// <summary>Logoff: the object ids and the window's content belong to the character that left, so the window closes too.</summary>
+    /// <summary>
+    /// Logoff: the object ids and the window's content belong to the character that left, so the window closes too. A window the client
+    /// refuses to close is logged, never thrown: the client's other features must carry on.
+    /// </summary>
     public void Clear()
     {
         _responses.Clear();
@@ -112,19 +135,32 @@ public sealed class AppraisalFeature
         _shownId = 0;
         Shown = null;
         _view = null;
-        _host.CloseWindow(WindowId);
+        _hidden = false;
+        try
+        {
+            _host.CloseWindow(WindowId);
+        }
+        catch (Exception exception)
+        {
+            _log($"Could not close the appraisal window: {exception.Message}");
+        }
     }
 
-    private void Show(AppraisalResponse response)
+    /// <summary>Shows the response in the window, opening it when it is not open. Returns false when the window could not open.</summary>
+    private bool Show(AppraisalResponse response)
     {
         var content = AppraisalContent.From(response, _spells(), _game.CharacterName, _game.IsCarried(response.ObjectId), _names());
         var art = _host.Art;
+        // A window the client released (its surface failed or closed on its own) is neither open nor hidden: the view is stale, so the next
+        // appraisal builds a new one.
+        if (_view != null && !_hidden && !_host.IsWindowOpen(WindowId)) _view = null;
         // One window serves the session: it takes the next appraisal in place while the content fits its height. A height change
         // releases the window and builds a new one, because a window's size cannot change once it is open.
         if (_view == null || !_view.TryShow(content, art, Inscribe))
         {
             _host.CloseWindow(WindowId);
             _view = AppraisalWindow.Create(content, art, Inscribe);
+            _hidden = false;
         }
         var view = _view;
         // An open window already shows the content. A hidden one comes back as it was, with the content just swapped in.
@@ -138,19 +174,27 @@ public sealed class AppraisalFeature
                 view.Close = () =>
                 {
                     _requested = 0;
+                    _hidden = true;
                     close();
                 };
                 return view.Window;
-            }, error => _log($"The appraisal window failed: {error.Message}"), ownChrome: true);
+            }, error =>
+            {
+                _log($"The appraisal window failed: {error.Message}");
+                // The client has released the window, so the view it held is stale and the next appraisal builds a new one.
+                if (ReferenceEquals(_view, view)) _view = null;
+            }, ownChrome: true);
             // The window never opened, so the view is dropped: it was not handed to the client.
             if (!opened)
             {
                 _view = null;
-                return;
+                return false;
             }
+            _hidden = false;
         }
         _shownId = response.ObjectId;
         Shown = content;
+        return true;
     }
 
     /// <summary>
@@ -177,6 +221,9 @@ public sealed class AppraisalFeature
         }
     }
 }
+
+/// <summary>Where an examination stands: the window shows the object, its response is still awaited, or the examination failed.</summary>
+public enum ExamineResult { Shown, Pending, Failed }
 
 /// <summary>
 /// What the appraisal window needs from the game: the character's name and whether an item is carried, for the inscription rule, and the

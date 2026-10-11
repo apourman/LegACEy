@@ -177,8 +177,60 @@ public sealed class AppraisalTests
             ("Damage", "41.28 – 86 Bludgeoning", AppraisalTone.Raised),
             ("Speed", "Very Fast (0)", AppraisalTone.Raised),
             ("Attack", "+28%", AppraisalTone.Raised),
-            ("Melee defense", "+21.0%", AppraisalTone.Normal),
+            ("Melee defense", "+21%", AppraisalTone.Normal),
         }, combat.Rows.Select(row => (row.Label!, row.Text, row.Tone)));
+    }
+
+    [Fact]
+    public void A_caster_has_no_weapon_profile_but_shows_its_defence_mana_conversion_and_elemental_damage_in_the_combat_section()
+    {
+        // A wand: no weapon profile. Melee defence is lowered (highlight without colour); mana conversion and the fire bonus are raised.
+        var bytes = new ServerAppraisal(0x80000B01)
+        {
+            Strings = { [1] = "Wand of Fire Bolts" },
+            Ints = { [1] = 0x1000, [19] = 2000, [45] = 16 },
+            Floats = { [29] = 1.04, [144] = 0.05, [152] = 1.2 },
+            ResistMasks = (0x1000 | 0x2000, 0x1000 | 0x2000),
+            WeaponMasks = (0x2, 0x0),
+        }.Build();
+
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells);
+
+        var combat = Assert.Single(content.Sections, section => section.Heading == "Combat");
+        Assert.Equal(new (string?, string, AppraisalTone)[]
+        {
+            ("Melee defense", "+4%", AppraisalTone.Lowered),
+            ("Mana conversion", "+5%", AppraisalTone.Raised),
+            (null, "Damage bonus for Fire spells:", AppraisalTone.Raised),
+            ("vs. Monsters", "+20%", AppraisalTone.Normal),
+            ("vs. Players", "+5%", AppraisalTone.Normal),
+        }, combat.Rows.Select(row => (row.Label, row.Text, row.Tone)));
+    }
+
+    [Fact]
+    public void A_bow_shows_its_damage_bonus_modifier_speed_range_and_elemental_bonus_and_no_attack()
+    {
+        // A bow: a damage bonus of 24 to 30, a 20% damage modifier raised by a buff, speed 40 and a maximum velocity that gives 20 yards.
+        var bytes = new ServerAppraisal(0x80000B02)
+        {
+            Strings = { [1] = "Yumi" },
+            Ints = { [1] = 0x100, [204] = 3 },
+            Weapon = new WeaponWrite(DamageType: 2, WeaponTime: 40, WeaponSkill: 2, Damage: 30, DamageVariance: 0.2, DamageMod: 1.2,
+                WeaponLength: 1.0, MaxVelocity: 10.0, WeaponOffense: 1.0, MaxVelocityEstimated: 1),
+            WeaponMasks = (0x20, 0x20),
+        }.Build();
+
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells);
+
+        var combat = Assert.Single(content.Sections, section => section.Heading == "Combat");
+        Assert.Equal(new (string?, string, AppraisalTone)[]
+        {
+            ("Damage Bonus", "24 – 30", AppraisalTone.Normal),
+            (null, "Elemental Damage Bonus: 3, Piercing.", AppraisalTone.Normal),
+            ("Damage Modifier", "+20%", AppraisalTone.Raised),
+            ("Speed", "Average (40)", AppraisalTone.Normal),
+            ("Range", "20 yds. (based on STRENGTH 100)", AppraisalTone.Normal),
+        }, combat.Rows.Select(row => (row.Label, row.Text, row.Tone)));
     }
 
     [Fact]
@@ -341,9 +393,11 @@ public sealed class AppraisalTests
     [Fact]
     public void A_weapon_names_its_skill_in_the_type_line_and_its_workmanship_in_retail_words_and_a_potion_names_no_skill()
     {
+        // The skill comes in the weapon profile: the server never sends PropertyInt WeaponSkill as an assessment property.
         var weapon = AppraisalContent.From(AppraisalResponse.Read(new ServerAppraisal(0x80000A04)
         {
-            Strings = { [1] = "Ivory Stick" }, Ints = { [1] = 0x1, [48] = 44, [105] = 6 }
+            Strings = { [1] = "Ivory Stick" }, Ints = { [1] = 0x1, [105] = 6 },
+            Weapon = new WeaponWrite(4, 0, 44, 6, 0, 1.0, 1.0, 1.0, 1.0, 0),
         }.Build()), NoSpells);
         Assert.Equal("Melee weapon · Heavy Weapons", weapon.TypeLine);
         Assert.Equal(("Workmanship", "Nearly flawless (6)"), weapon.Figures.Select(figure => (figure.Label, figure.Value)).Single());
@@ -702,6 +756,71 @@ public sealed class AppraisalTests
         Assert.Equal("Remember.", InscriptionField(host).Text);
     });
 
+    [Fact]
+    public void A_refresh_does_not_replace_the_inscription_field_while_it_holds_text_not_yet_saved() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost();
+        var game = new FakeAppraisalGame();
+        var appraisals = new AppraisalFeature(host, _ => { }, game: game);
+        appraisals.Request(Potion);
+        appraisals.Receive(InscribedPotion(Potion, "Old", "Aerbax", inscribable: true));
+        var field = InscriptionField(host);
+        field.Text = "Typed, not sent";
+
+        // A refresh of the same item (a silent ID's answer, say) brings other saved text: the field keeps what was typed.
+        appraisals.Receive(InscribedPotion(Potion, "Saved elsewhere", "Aerbax", inscribable: true));
+
+        Assert.Same(field, InscriptionField(host));
+        Assert.Equal("Typed, not sent", field.Text);
+        Assert.Empty(game.Inscriptions);
+        // Leaving the field then saves what was typed, once.
+        Leave(field);
+        Assert.Equal(new[] { (Potion, "Typed, not sent") }, game.Inscriptions);
+    });
+
+    [Fact]
+    public void A_window_the_client_released_is_built_again_for_the_next_appraisal() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost();
+        var appraisals = new AppraisalFeature(host, _ => { });
+        appraisals.Request(Potion);
+        appraisals.Receive(PotionMessage(Potion, 75));
+        var first = host.LastWindow;
+
+        // The client lets the window go on its own: it is neither open nor hidden, so the next appraisal opens a new one.
+        host.Release(AppraisalFeature.WindowId);
+        appraisals.Request(Potion);
+        appraisals.Receive(PotionMessage(Potion, 80));
+
+        Assert.Equal(2, host.Opened);
+        Assert.NotSame(first, host.LastWindow);
+        Assert.Equal(Potion, appraisals.Shown?.ObjectId);
+    });
+
+    [Fact]
+    public void Clearing_at_logoff_does_not_throw_when_the_client_refuses_to_close_the_window() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost { FailClose = true };
+        var logged = new List<string>();
+        var appraisals = new AppraisalFeature(host, logged.Add);
+        appraisals.Request(Potion);
+        appraisals.Receive(PotionMessage(Potion, 75));
+
+        appraisals.Clear();
+
+        Assert.Null(appraisals.Shown);
+        Assert.Contains(logged, line => line.Contains("Could not close the appraisal window", StringComparison.Ordinal));
+    });
+
+    [Fact]
+    public void Strings_are_read_as_windows_1252_so_byte_0x92_is_a_right_single_quote()
+    {
+        // The server writes Windows-1252. The writer sends U+0092, which Latin-1 writes as the byte 0x92.
+        var bytes = new ServerAppraisal(Potion) { Strings = { [1] = "Asheron\u0092s" } }.Build();
+
+        Assert.Equal("Asheron’s", AppraisalResponse.Read(bytes).Strings[1]);
+    }
+
     // The examination takeover, through the retail panel port fake and the appraisal feature's host fake. The panel parks when it shows,
     // the window opens for the selection's response, and a silent ID without a show opens nothing.
 
@@ -712,20 +831,69 @@ public sealed class AppraisalTests
         var game = new FakeAppraisalGame();
         var appraisals = new AppraisalFeature(host, _ => { }, game: game);
         var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
-        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals.Examine, _ => { });
+        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { });
 
         examination.Tick(enabled: true);
 
-        Assert.Equal(1, panel.CloseCalls);
-        Assert.False(panel.Open);
+        // Waiting for the response: retail's panel is parked out of sight and not closed, so retail's text never shows.
+        Assert.Equal(0, panel.CloseCalls);
+        Assert.True(panel.Open);
+        Assert.Equal(RetailPanelTakeover.Parked, panel.Location);
         Assert.Equal(0, host.Opened);
         // Nothing cached for the object, so it is asked for silently; retail's own identify may also answer.
         Assert.Equal(new[] { Potion }, game.Appraised);
         appraisals.Receive(PotionMessage(Potion, 75));
         Assert.Equal(1, host.Opened);
         Assert.Equal(Potion, appraisals.Shown?.ObjectId);
-        // Closed, so retail's panel is given back where it was on the next frame.
+        // Our window shows: retail's panel is closed on the next frame, and given back where it was on the one after.
         examination.Tick(enabled: true);
+        Assert.Equal(1, panel.CloseCalls);
+        Assert.False(panel.Open);
+        examination.Tick(enabled: true);
+        Assert.Equal(new Point(1200, 300), panel.Location);
+    });
+
+    [Fact]
+    public void An_examination_with_no_response_within_the_timeout_gives_retails_panel_back() => OnWindowThread(() =>
+    {
+        long now = 0;
+        var host = new FakeAppraisalHost();
+        var appraisals = new AppraisalFeature(host, _ => { }, clock: () => now, game: new FakeAppraisalGame());
+        var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
+        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { });
+        examination.Tick(enabled: true);
+        Assert.Equal(RetailPanelTakeover.Parked, panel.Location);
+
+        now = 10_001;
+        examination.Tick(enabled: true);
+
+        // The response did not come in time: retail's panel is back on screen, open, and our window stays shut.
+        Assert.Equal(new Point(1200, 300), panel.Location);
+        Assert.True(panel.Open);
+        Assert.Equal(0, panel.CloseCalls);
+        // A response that comes late only caches; it does not open the window over retail's panel.
+        appraisals.Receive(PotionMessage(Potion, 75));
+        examination.Tick(enabled: true);
+        Assert.Equal(0, host.Opened);
+        Assert.Equal(new Point(1200, 300), panel.Location);
+    });
+
+    [Fact]
+    public void An_examination_whose_window_cannot_show_the_response_gives_retails_panel_back() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost { FailOpen = true };
+        var appraisals = new AppraisalFeature(host, _ => { }, game: new FakeAppraisalGame());
+        var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
+        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { });
+        examination.Tick(enabled: true);
+
+        appraisals.Receive(PotionMessage(Potion, 75));
+        examination.Tick(enabled: true);
+
+        Assert.Equal(0, host.Opened);
+        Assert.Null(appraisals.Shown);
+        Assert.Equal(0, panel.CloseCalls);
+        Assert.True(panel.Open);
         Assert.Equal(new Point(1200, 300), panel.Location);
     });
 
@@ -737,7 +905,7 @@ public sealed class AppraisalTests
         appraisals.Receive(PotionMessage(Potion, 75));
         Assert.Equal(0, host.Opened);
         var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
-        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals.Examine, _ => { });
+        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { });
 
         examination.Tick(enabled: true);
 
@@ -751,7 +919,7 @@ public sealed class AppraisalTests
         var host = new FakeAppraisalHost();
         var appraisals = new AppraisalFeature(host, _ => { });
         var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
-        using var examination = new RetailExaminationTakeover(panel, () => 0, appraisals.Examine, _ => { });
+        using var examination = new RetailExaminationTakeover(panel, () => 0, appraisals, _ => { });
 
         examination.Tick(enabled: true);
         appraisals.Receive(PotionMessage(Potion, 75));
@@ -763,12 +931,33 @@ public sealed class AppraisalTests
     });
 
     [Fact]
+    public void A_panel_parked_before_our_window_could_show_is_given_back_when_the_selection_is_gone() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost();
+        var appraisals = new AppraisalFeature(host, _ => { }, game: new FakeAppraisalGame());
+        uint selected = Potion;
+        var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
+        using var examination = new RetailExaminationTakeover(panel, () => selected, appraisals, _ => { });
+        examination.Tick(enabled: true, canShow: false);
+        Assert.Equal(RetailPanelTakeover.Parked, panel.Location);
+
+        selected = 0;
+        examination.Tick(enabled: true);
+
+        // Nothing to examine when the panel is reported, so retail's panel is not left parked out of sight.
+        Assert.Equal(new Point(1200, 300), panel.Location);
+        Assert.True(panel.Open);
+        Assert.Equal(0, panel.CloseCalls);
+        Assert.Equal(0, host.Opened);
+    });
+
+    [Fact]
     public void A_silent_id_without_the_panel_showing_opens_nothing_and_leaves_the_panel_alone() => OnWindowThread(() =>
     {
         var host = new FakeAppraisalHost();
         var appraisals = new AppraisalFeature(host, _ => { });
         var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = false, Location = new Point(1200, 300) };
-        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals.Examine, _ => { });
+        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { });
         examination.Tick(enabled: true);
 
         appraisals.Receive(PotionMessage(Potion, 75));
@@ -785,7 +974,7 @@ public sealed class AppraisalTests
         var host = new FakeAppraisalHost();
         var appraisals = new AppraisalFeature(host, _ => { });
         var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
-        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals.Examine, _ => { });
+        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { });
 
         examination.Tick(enabled: false);
         appraisals.Receive(PotionMessage(Potion, 75));
@@ -802,7 +991,7 @@ public sealed class AppraisalTests
         var host = new FakeAppraisalHost();
         var appraisals = new AppraisalFeature(host, _ => { });
         var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300), FailNextMove = true };
-        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals.Examine, _ => { });
+        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { });
 
         examination.Tick(enabled: true);
         appraisals.Receive(PotionMessage(Potion, 75));
@@ -1014,6 +1203,8 @@ public sealed class AppraisalTests
         public DerethWindow? LastWindow { get; private set; }
         /// <summary>When set, opening fails the way a broken window does.</summary>
         public bool FailOpen { get; set; }
+        /// <summary>When set, closing fails the way a window the client will not close does.</summary>
+        public bool FailClose { get; set; }
 
         public IServerChannel ServerChannel => UnavailableServerChannel.Instance;
         public string PortalPath => string.Empty;
@@ -1033,7 +1224,15 @@ public sealed class AppraisalTests
         }
 
         public void HideWindow(string id) => _open.Remove(id);
-        public void CloseWindow(string id) => _open.Remove(id);
+
+        public void CloseWindow(string id)
+        {
+            if (FailClose) throw new InvalidOperationException("The window would not close.");
+            _open.Remove(id);
+        }
+
+        /// <summary>The client lets a window go on its own, without the close action: its surface is gone.</summary>
+        public void Release(string id) => _open.Remove(id);
         public int? LoadPluginSettings(string plugin) => null;
         public void SavePluginSettings(string plugin, int value) { }
 

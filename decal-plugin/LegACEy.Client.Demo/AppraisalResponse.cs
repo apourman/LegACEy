@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using LegACEy.Client.GameArt;
 
 namespace LegACEy.Client.Demo;
 
@@ -115,14 +116,14 @@ public sealed class AppraisalResponse
 
     /// <summary>
     /// A 16-bit length, the bytes, then padding so the whole string is a multiple of four bytes. The server writes Windows-1252; each byte
-    /// is read as its Latin-1 character, which agrees with Windows-1252 for plain text.
+    /// is read as its Windows-1252 character, the table the spell table reads with.
     /// </summary>
     private static string ReadString16L(BinaryReader reader)
     {
         var length = reader.ReadUInt16();
         var bytes = ReadExactly(reader, length);
         var chars = new char[bytes.Length];
-        for (var i = 0; i < bytes.Length; i++) chars[i] = (char)bytes[i];
+        for (var i = 0; i < bytes.Length; i++) chars[i] = Windows1252.ToChar(bytes[i]);
         var padding = (4 - (2 + length) % 4) % 4;
         ReadExactly(reader, padding);
         return new string(chars);
