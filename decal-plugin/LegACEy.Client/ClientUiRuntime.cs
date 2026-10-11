@@ -102,7 +102,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // This client's own folder, the runtime folder beside the stub.
     private static string ClientDirectory => IOPath.GetDirectoryName(typeof(ClientUiRuntime).Assembly.Location)!;
     // Every client appends to the same log beside the DLL; the process id tells their lines apart.
-    private static readonly int ProcessId = Process.GetCurrentProcess().Id;
+    private static readonly int ProcessId = Environment.ProcessId;
 
     private IntPtr _device;
     private static readonly System.Drawing.Color ResizeOutline = System.Drawing.Color.FromArgb(0xC9, 0xA4, 0x5C);

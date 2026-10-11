@@ -136,6 +136,8 @@ public sealed unsafe class Plugin : FilterBase
 
     private void OnServerDispatch(object? sender, NetworkMessageEventArgs e)
     {
+        // Only game events (0xF7B0) can carry the server channel; the client ignores everything else.
+        if (e.Message.Type != 0xF7B0) return;
         try
         {
             var raw = e.Message.RawData;
