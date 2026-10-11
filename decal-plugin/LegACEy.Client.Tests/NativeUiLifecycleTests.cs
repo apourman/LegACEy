@@ -654,7 +654,7 @@ public sealed class NativeUiLifecycleTests
         Assert.Equal(new[] { true, false }, events);
     }
 
-    private sealed class FakeRetailPanelPort : IRetailPanelPort
+    internal sealed class FakeRetailPanelPort : IRetailPanelPort
     {
         private Point _location;
         private bool _save = true;

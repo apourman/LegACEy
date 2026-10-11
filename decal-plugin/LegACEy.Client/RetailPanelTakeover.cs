@@ -151,7 +151,7 @@ internal sealed class RetailPanelTakeover : IDisposable
         _parked = true;
         _restoreFailed = false;
         Repark();
-        _log($"Parked the retail inventory panel off-screen; its place is {_original}.");
+        _log($"Parked the retail panel off-screen; its place is {_original}.");
     }
 
     /// <summary>Moves the panel to the parked place. A panel that does not land there (clamped by the client) fails the takeover.</summary>
@@ -193,7 +193,7 @@ internal sealed class RetailPanelTakeover : IDisposable
             if (!_restoreFailed)
             {
                 _restoreFailed = true;
-                _log($"Could not give the retail inventory panel back; retrying each frame: {exception.Message}");
+                _log($"Could not give the retail panel back; retrying each frame: {exception.Message}");
             }
         }
     }
@@ -225,13 +225,13 @@ internal sealed class RetailPanelTakeover : IDisposable
         _parked = false;
         _identity = IntPtr.Zero;
         _parkedAt = null;
-        _log($"Gave the retail inventory panel back at {_original}.");
+        _log($"Gave the retail panel back at {_original}.");
     }
 
     private void Fail(Exception exception)
     {
         _failed = true;
-        _log($"Retail inventory takeover turned off: {exception.Message}");
+        _log($"Retail panel takeover turned off: {exception.Message}");
         Release();
     }
 }
@@ -256,6 +256,7 @@ internal static class RetailPanelCatalogue
         Shared("UIElement::GetCurrentPosition"),
         Shared("UIElement::SetSaveLocation"),
         Shared("UIElement::MoveTo"),
+        Shared("RootElementId::Examination"),
         new NativeUiEntry("gmPanelUI::RecvNotice_SetPanelVisibility", RecvNoticeSetPanelVisibility, NativeUiCatalogue.Bytes(
             "51 8B 54 24 08 53 55 33 DB 3B D3 56 8B F1 0F 84 69 01 00 00"), Source, "ThisCall (gmPanelUI+0x5F8; uint panelId, uint visible), ret 8"),
         // The receiver: gmPanelUI's constructor stores the notice sub-object's vtable (0x007B4DC8) at +0x5F8, so the receiver of

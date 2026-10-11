@@ -11,8 +11,8 @@ namespace LegACEy.Client.DecalPlugin;
 internal sealed class NativeRetailPanelPort : IRetailPanelPort
 {
     // UIElement::SetSaveLocation writes bit 4 of the dword at +0x554; reading that bit is the same field, so it is covered by its pin.
-    private const int SaveLocationOffset = 0x554;
-    private const int SaveLocationBit = 0x10;
+    internal const int SaveLocationOffset = 0x554;
+    internal const int SaveLocationBit = 0x10;
     // RecvNotice_SetPanelVisibility is called on gmPanelUI+0x5F8, the notice sub-object (pinned at the constructor's store).
     private const int NoticeHandlerOffset = 0x5F8;
     // The inventory panel's id in gmPanelUI's panel table: 7, from the element property 0x10000029 of InventoryPanel_Field

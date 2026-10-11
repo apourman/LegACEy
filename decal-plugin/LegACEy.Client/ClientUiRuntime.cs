@@ -146,6 +146,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool? _retailPanelsValid;
     private bool _retailPanelSwitch;
     private DateTime _lastRetailPanelSwitchCheck;
+    // Retail's examination panel, taken over for the session when the native UI check passes; each showing is an appraisal in our window.
+    private RetailExaminationTakeover? _examination;
     private readonly BridgeInventoryPort _inventory = new(Log);
     private readonly AppraisalFeature _appraisal;
     // The inventory as plugins and windows get it: the bridge port, with an Assess also asking for the appraisal window.
@@ -202,6 +204,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         try
         {
             NativeUi.Initialize(Log);
+            // Only with the examination's addresses checked: otherwise retail's examination panel is left alone.
+            if (NativeUi.Ready && RetailPanelCatalogueValid())
+                _examination = new RetailExaminationTakeover(new NativeExaminationPort(), () => (uint)Bridge.Fact(BridgeFact.CurrentSelection),
+                    _appraisal.Examine, Log);
             try
             {
                 _channelTransport = new GameChannelTransport(NativeUi.ReadMemory, () => _inGame, Log);
@@ -830,11 +836,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void TickRetailPanels(bool loggingIn = false)
     {
-        if (_retailPanels.Count == 0) return;
+        if (_retailPanels.Count == 0 && _examination == null) return;
         // Logging in, the windows can't open yet; they will if the post-UI hook is in.
         var enabled = (loggingIn ? _postUiDrawHook?.IsInstalled == true : CanOpenWindows) && RetailPanelSwitchOn();
         foreach (var takeover in _retailPanels.ToArray())
             takeover.Tick(enabled, canShow: !loggingIn);
+        _examination?.Tick(enabled, canShow: !loggingIn);
     }
 
     /// <summary>
@@ -845,6 +852,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         foreach (var takeover in _retailPanels.ToArray())
             takeover.EndSession();
+        _examination?.EndSession();
     }
 
     private bool RetailPanelSwitchOn()
