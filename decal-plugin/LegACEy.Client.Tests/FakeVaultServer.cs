@@ -42,6 +42,8 @@ public sealed class FakeVaultServer : IServerChannelTransport
     public List<uint[]> Batches { get; } = new();
     /// <summary>When set, every batch withdrawal is refused with this reason and moves nothing, as a server whose pack has no room for the set would answer.</summary>
     public string? BatchRefusal { get; set; }
+    /// <summary>Every withdrawal's pack place, single or batch, as the client sent it: null when it sent none.</summary>
+    public List<(uint Container, int Position)?> Places { get; } = new();
     public IReadOnlyList<VaultItemView> Items => _items;
 
     /// <summary>Changes the Vault the way something outside the window would (a /vault command, the website). Nothing is pushed: the test pushes it.</summary>
@@ -94,6 +96,7 @@ public sealed class FakeVaultServer : IServerChannelTransport
                 for (var index = 0; index < batch.Length; index++)
                     batch[index] = batchReader.ReadUInt32();
                 Batches.Add(batch);
+                Places.Add(ReadPlace(batchReader));
                 var batchRefusal = BatchRefusal ?? (batch.All(guid => _items.Any(item => item.Guid == guid)) ? null : "That item is not in your Vault.");
                 if (batchRefusal == null)
                 {
@@ -105,8 +108,10 @@ public sealed class FakeVaultServer : IServerChannelTransport
                 break;
             case VaultProtocol.Withdraw:
             case VaultProtocol.Deposit:
-                var guid = ChannelWire.Reader(body).ReadUInt32();
+                var transferReader = ChannelWire.Reader(body);
+                var guid = transferReader.ReadUInt32();
                 var deposit = action == VaultProtocol.Deposit;
+                if (!deposit) Places.Add(ReadPlace(transferReader));
                 var refusal = deposit ? (Refused.TryGetValue(guid, out var depositRefusal) ? depositRefusal : null)
                     : _items.Any(item => item.Guid == guid) ? null : "That item is not in your Vault.";
                 if (refusal == null) _transfers.Add((_clock() + TransferTime, deposit, guid));
@@ -118,6 +123,9 @@ public sealed class FakeVaultServer : IServerChannelTransport
         }
         return true;
     }
+
+    private static (uint Container, int Position)? ReadPlace(System.IO.BinaryReader reader) =>
+        reader.BaseStream.Length - reader.BaseStream.Position >= 8 ? (reader.ReadUInt32(), reader.ReadInt32()) : null;
 
     /// <summary>Delivers due replies and finishes due transfers, pushing vault.changed for each.</summary>
     public void Pump()

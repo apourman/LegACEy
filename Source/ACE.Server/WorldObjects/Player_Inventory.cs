@@ -92,6 +92,37 @@ namespace ACE.Server.WorldObjects
             if (!TryAddToInventory(item, out container)) // We don't have enough burden available or no empty pack slot.
                 return false;
 
+            SendCreatedInInventory(item, container);
+            return true;
+        }
+
+        /// <summary>
+        /// If enough burden is available and the pack has room, this will add (via create) an item to the pack, the main pack or a side pack in it,
+        /// at the slot, pushing the items from that slot on back one.
+        /// </summary>
+        public bool TryCreateInInventoryWithNetworking(WorldObject item, Container pack, int placementPosition)
+        {
+            if (pack == this)
+            {
+                if (!TryAddToInventory(item, placementPosition, limitToMainPackOnly: true))
+                    return false;
+            }
+            else
+            {
+                if (pack.ContainerId != Guid.Full || !HasEnoughBurdenToAddToInventory(item) || !pack.TryAddToInventory(item, placementPosition, limitToMainPackOnly: true, burdenCheck: false))
+                    return false;
+
+                // as TryAddToInventory does for an item it puts in a side pack
+                EncumbranceVal += item.EncumbranceVal ?? 0;
+                Value += item.Value ?? 0;
+            }
+
+            SendCreatedInInventory(item, pack);
+            return true;
+        }
+
+        private void SendCreatedInInventory(WorldObject item, Container container)
+        {
             Session.Network.EnqueueSend(new GameMessageCreateObject(item));
 
             if (item is Container itemAsContainer)
@@ -110,8 +141,6 @@ namespace ACE.Server.WorldObjects
                 UpdateCoinValue();
 
             item.SaveBiotaToDatabase();
-
-            return true;
         }
 
         public bool TryConsumeFromInventoryWithNetworking(WorldObject item, int amount = int.MaxValue)

@@ -4,6 +4,7 @@ using System.Collections;
 using System.Collections.Specialized;
 using Rectangle = System.Drawing.Rectangle;
 using System.Linq;
+using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -56,10 +57,15 @@ public sealed class AvaloniaPanel : IDisposable
     private readonly Stopwatch _inputClock = Stopwatch.StartNew();
     private Point _pointerPosition = new(-1, -1);
 
-    private AvaloniaPanel(Control content, int width, int height)
+    private readonly Control _content;
+    private readonly double _scale;
+
+    private AvaloniaPanel(Control content, int width, int height, double scale)
     {
         _ownerThreadId = Thread.CurrentThread.ManagedThreadId;
-        _window = CreateWindow(content, width, height);
+        _content = content;
+        _scale = scale;
+        _window = CreateWindow(content, width, height, scale);
         _frame = new PanelFrame(width, height);
         _rendererObserver = new RendererInvalidationObserver(_window, () => _hasInvalidation = true);
         Tick();
@@ -75,7 +81,22 @@ public sealed class AvaloniaPanel : IDisposable
     public event Action<Exception>? Error;
 
     /// <summary>The control tree hosted by this panel.</summary>
-    public Control Content => (Control)_window.Content!;
+    public Control Content => _content;
+
+    /// <summary>How big the content draws against its design size; see <see cref="Create"/>.</summary>
+    public double Scale => _scale;
+
+    /// <summary>
+    /// Whether panels can draw at a scale other than 1. The headless window fixes its scaling at 1 behind a private field, which
+    /// this Avalonia has; false if an update renamed it.
+    /// </summary>
+    public static bool CanScale => RenderScaling != null;
+
+    private static readonly FieldInfo? RenderScaling = typeof(AvaloniaHeadlessPlatform).Assembly.GetType("Avalonia.Headless.HeadlessWindowImpl")
+        ?.GetField("<RenderScaling>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic);
+
+    /// <summary>A point in panel pixels as the content measures it: the pixels divided by the scale.</summary>
+    public Point ToContent(double x, double y) => new(x / _scale, y / _scale);
 
     /// <summary>True while Avalonia focus belongs to a text entry control.</summary>
     public bool WantsKeyboard => _window.FocusManager?.GetFocusedElement() is TextBox textBox && textBox.IsEffectivelyVisible && textBox.IsEnabled;
@@ -101,13 +122,18 @@ public sealed class AvaloniaPanel : IDisposable
     /// Builds the panel's control. It runs after initialization because constructing any Avalonia
     /// object first would bind the dispatcher to a placeholder that accepts every thread.
     /// </param>
-    public static AvaloniaPanel Create(Func<Control> createContent, int width, int height)
+    /// <param name="width">The panel's width in pixels.</param>
+    /// <param name="height">The panel's height in pixels.</param>
+    /// <param name="scale">How big the content draws: 0.85 lays it out 1/0.85 times the panel's size and draws it at 85%.</param>
+    public static AvaloniaPanel Create(Func<Control> createContent, int width, int height, double scale = 1)
     {
+        if (scale <= 0) throw new ArgumentOutOfRangeException(nameof(scale));
+        if (scale != 1 && !CanScale) throw new NotSupportedException("This Avalonia cannot scale panels; check CanScale first.");
         if (createContent == null) throw new ArgumentNullException(nameof(createContent));
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
         if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
         EnsureRuntimeInitialized();
-        return new AvaloniaPanel(createContent(), width, height);
+        return new AvaloniaPanel(createContent(), width, height, scale);
     }
 
     /// <summary>
@@ -134,18 +160,30 @@ public sealed class AvaloniaPanel : IDisposable
         _runtimeInitialized = true;
     }
 
-    private static Window CreateWindow(Control content, int width, int height)
+    private static Window CreateWindow(Control content, int width, int height, double scale)
     {
         var window = new Window
         {
-            Width = width,
-            Height = height,
+            Width = width / scale,
+            Height = height / scale,
             Padding = new Thickness(0),
             Background = Brushes.Transparent,
+            // The headless window reports no transparency support, so without this Avalonia fills the window white under the
+            // content, which shows wherever the content is see-through (the drag icon, rounded corners).
+            TransparencyBackgroundFallback = Brushes.Transparent,
             SystemDecorations = SystemDecorations.None,
             CanResize = false,
             Content = content
         };
+        // The content lays out at design size, the panel's size divided by the scale, and renders at the scale as a display's
+        // DPI does: layout rounding snaps every edge and border to whole panel pixels, where a scale transform smears 1 px borders.
+        // The headless window fixes its scaling at 1, so this sets it.
+        if (scale != 1)
+        {
+            var platform = window.PlatformImpl!;
+            RenderScaling!.SetValue(platform, scale);
+            platform.ScalingChanged?.Invoke(scale);
+        }
         window.Show();
         return window;
     }
@@ -271,8 +309,8 @@ public sealed class AvaloniaPanel : IDisposable
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
         if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
         _forceFullFrame = true;
-        _window.Width = width;
-        _window.Height = height;
+        _window.Width = width / _scale;
+        _window.Height = height / _scale;
         _frame = new PanelFrame(width, height);
         // Lay out and render the new size now, so the next capture is the new size and not the last frame of the old one.
         try
@@ -315,8 +353,8 @@ public sealed class AvaloniaPanel : IDisposable
         RunInput(() =>
         {
             Invalidate();
-            _pointerPosition = new Point(x, y);
-            SendPointer(RawPointerEventType.Move, new Point(x, y));
+            _pointerPosition = ToContent(x, y);
+            SendPointer(RawPointerEventType.Move, ToContent(x, y));
         });
     }
 
@@ -327,14 +365,14 @@ public sealed class AvaloniaPanel : IDisposable
         RunInput(() =>
         {
             Invalidate();
-            _pointerPosition = new Point(x, y);
+            _pointerPosition = ToContent(x, y);
             // A press outside the focused text box leaves it, as a click elsewhere on a desktop does; a press on another box focuses that one.
             if (_window.FocusManager?.GetFocusedElement() is TextBox focused
-                && !(_window.InputHitTest(new Point(x, y)) is Visual hit && (hit == focused || focused.IsVisualAncestorOf(hit))))
+                && !(_window.InputHitTest(ToContent(x, y)) is Visual hit && (hit == focused || focused.IsVisualAncestorOf(hit))))
                 _window.FocusManager?.ClearFocus();
-            SendPointer(RawPointerEventType.Move, new Point(x, y), ToRawModifiers(modifiers));
+            SendPointer(RawPointerEventType.Move, ToContent(x, y), ToRawModifiers(modifiers));
             _mouseButtons |= RawInputModifiers.LeftMouseButton;
-            SendPointer(RawPointerEventType.LeftButtonDown, new Point(x, y), ToRawModifiers(modifiers));
+            SendPointer(RawPointerEventType.LeftButtonDown, ToContent(x, y), ToRawModifiers(modifiers));
         });
     }
 
@@ -345,9 +383,23 @@ public sealed class AvaloniaPanel : IDisposable
         RunInput(() =>
         {
             Invalidate();
-            _pointerPosition = new Point(x, y);
+            _pointerPosition = ToContent(x, y);
             _mouseButtons &= ~RawInputModifiers.LeftMouseButton;
-            SendPointer(RawPointerEventType.LeftButtonUp, new Point(x, y));
+            SendPointer(RawPointerEventType.LeftButtonUp, ToContent(x, y));
+        });
+    }
+
+    /// <summary>The right button went down and up at a point in panel pixels.</summary>
+    public void RightClick(double x, double y)
+    {
+        VerifyUsable();
+        RunInput(() =>
+        {
+            Invalidate();
+            _pointerPosition = ToContent(x, y);
+            SendPointer(RawPointerEventType.Move, ToContent(x, y));
+            SendPointer(RawPointerEventType.RightButtonDown, ToContent(x, y), RawInputModifiers.RightMouseButton);
+            SendPointer(RawPointerEventType.RightButtonUp, ToContent(x, y));
         });
     }
 
@@ -370,7 +422,7 @@ public sealed class AvaloniaPanel : IDisposable
         RunInput(() =>
         {
             Invalidate();
-            var point = new Point(x, y);
+            var point = ToContent(x, y);
             _pointerPosition = point;
             var rawModifiers = ToRawModifiers(modifiers);
             SendPointer(RawPointerEventType.Move, point, rawModifiers);

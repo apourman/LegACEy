@@ -15,6 +15,15 @@ namespace LegACEy.Client.Tests;
 public sealed class PanelHostRenderingTests
 {
     [Fact]
+    public void See_through_content_stays_transparent_so_a_drag_icon_has_no_background() => RenderThread.Run(() =>
+    {
+        using var panel = AvaloniaPanel.Create(() => new Grid { Width = 32, Height = 32 }, 32, 32);
+        panel.Tick();
+
+        Assert.All(panel.Frame.Pixels, value => Assert.Equal(0, value));
+    });
+
+    [Fact]
     public void Headless_input_clicks_button_and_exposes_cursor_kind() => RenderThread.Run(() =>
     {
         var clicks = 0;
@@ -43,6 +52,37 @@ public sealed class PanelHostRenderingTests
 
         Assert.Equal(1, clicks);
         Assert.Same(button.Cursor, panel.CursorKind);
+    });
+
+    [Fact]
+    public void A_scaled_panel_lays_out_at_design_size_and_maps_presses_to_it() => RenderThread.Run(() =>
+    {
+        Point? pressed = null;
+        var content = new Border { Background = Brushes.Gray };
+        content.PointerPressed += (_, e) => pressed = e.GetPosition(content);
+        using var panel = AvaloniaPanel.Create(() => content, 100, 60, scale: 0.5);
+
+        Assert.Equal((100, 60), (panel.Frame.Width, panel.Frame.Height));
+        Assert.Equal(new Size(200, 120), content.Bounds.Size);
+        Assert.Same(content, panel.Content);
+        panel.PointerDown(50, 30);
+        Assert.Equal(new Point(100, 60), pressed);
+        Assert.Equal(new Point(100, 60), panel.ToContent(50, 30));
+
+        panel.Resize(80, 40);
+        panel.Tick();
+        Assert.Equal(new Size(160, 80), content.Bounds.Size);
+    });
+
+    [Fact]
+    public void A_scaled_panel_draws_a_1px_border_as_whole_opaque_pixels_on_every_side() => RenderThread.Run(() =>
+    {
+        // 95 / 0.85 is not a whole design size, which is where a scale transform clipped and faded borders.
+        using var panel = AvaloniaPanel.Create(() => new Border { BorderBrush = Brushes.White, BorderThickness = new Thickness(1) }, 95, 57, scale: 0.85);
+
+        var frame = panel.Frame;
+        byte Alpha(int x, int y) => frame.Pixels[((y * frame.Width) + x) * 4 + 3];
+        Assert.All(new[] { Alpha(0, 28), Alpha(frame.Width - 1, 28), Alpha(47, 0), Alpha(47, frame.Height - 1) }, alpha => Assert.Equal(0xff, alpha));
     });
 
     [Fact]

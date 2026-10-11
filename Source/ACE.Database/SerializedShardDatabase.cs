@@ -158,6 +158,18 @@ namespace ACE.Database
         }
 
         /// <summary>
+        /// Queues the batch deposit job: every item's change, Vault row and deposit event, saved in one save (see ShardDatabase.DepositManyToVault).
+        /// </summary>
+        public void DepositManyToVault(IReadOnlyList<(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, VaultItem vaultItem)> items, int maxItems, Action<MarketJobResult> callback)
+        {
+            _queue.Add(new Task(() =>
+            {
+                var result = RunMarketJob(nameof(DepositManyToVault), () => BaseDatabase.DepositManyToVault(items, maxItems));
+                callback?.Invoke(result);
+            }));
+        }
+
+        /// <summary>
         /// Queues the withdraw job: the item change, the Vault row removal and a withdraw event, saved once (see ShardDatabase.WithdrawFromVault).
         /// A game bridge ticket passed as ticket is marked done in the same save.
         /// </summary>

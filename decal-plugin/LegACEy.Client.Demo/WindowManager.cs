@@ -34,7 +34,12 @@ public sealed class WindowDefinition
 {
     /// <param name="theme">The window's own theme, such as Dereth. Null uses the client's theme, which a window with its own theme does not get.</param>
     /// <param name="resizing">How the window resizes from its edges and corners. Null means it does not resize.</param>
-    public WindowDefinition(string id, string title, int width, int height, int titleBarHeight = 28, IClientTheme? theme = null, WindowResizing? resizing = null)
+    /// <param name="sharesLocationWith">
+    /// Another window this one stands in for, such as a compact view of it: this one opens where that one was last left, and
+    /// where this one is left is where that one opens. Each keeps its own size.
+    /// </param>
+    public WindowDefinition(string id, string title, int width, int height, int titleBarHeight = 28, IClientTheme? theme = null, WindowResizing? resizing = null,
+        string? sharesLocationWith = null)
     {
         if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("A window id is required.", nameof(id));
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
@@ -47,6 +52,7 @@ public sealed class WindowDefinition
         TitleBarHeight = titleBarHeight;
         Theme = theme;
         Resizing = resizing;
+        SharesLocationWith = sharesLocationWith;
     }
 
     public string Id { get; }
@@ -56,6 +62,7 @@ public sealed class WindowDefinition
     public int TitleBarHeight { get; }
     public IClientTheme? Theme { get; }
     public WindowResizing? Resizing { get; }
+    public string? SharesLocationWith { get; }
 }
 
 /// <summary>The live state of one LegACEy window. The preferred location and size are where the window was last left.</summary>
@@ -209,8 +216,14 @@ public sealed class WindowManager
     private Point _pressPoint;
     private Rectangle _pressBounds;
 
-    public WindowManager(Size screen, IWindowPositionStore positions, string server, string character)
+    /// <param name="scale">
+    /// How big windows show, against the sizes their definitions give: 0.85 shows a 400 pixel wide window 340 pixels wide. Sizes,
+    /// title bars and minimums are scaled on open; saved sizes stay at design size, so a scale change keeps a window's proportions.
+    /// </param>
+    public WindowManager(Size screen, IWindowPositionStore positions, string server, string character, double scale = 1)
     {
+        if (scale <= 0) throw new ArgumentOutOfRangeException(nameof(scale));
+        Scale = scale;
         if (screen.Width <= 0 || screen.Height <= 0) throw new ArgumentOutOfRangeException(nameof(screen));
         _screen = screen;
         _positions = positions ?? throw new ArgumentNullException(nameof(positions));
@@ -219,6 +232,7 @@ public sealed class WindowManager
     }
 
     public Size Screen => _screen;
+    public double Scale { get; }
     public IReadOnlyList<ManagedWindow> ZOrder => _windows;
     public bool IsDragging => _dragging != null;
     /// <summary>The window an edge or corner drag is resizing, or null.</summary>
@@ -231,9 +245,11 @@ public sealed class WindowManager
         if (definition == null) throw new ArgumentNullException(nameof(definition));
         var existing = Get(definition.Id);
         if (existing != null) return existing;
+        definition = Scaled(definition);
         var saved = _positions.Load(_server, _character, definition.Id);
-        var preferredLocation = saved?.Location ?? requestedLocation;
-        var preferredSize = definition.Resizing != null && saved?.Size is { } savedSize ? savedSize : DefaultSize(definition);
+        var shared = definition.SharesLocationWith is { } other ? _positions.Load(_server, _character, other)?.Location : null;
+        var preferredLocation = shared ?? saved?.Location ?? requestedLocation;
+        var preferredSize = definition.Resizing != null && saved?.Size is { } savedSize ? Scaled(savedSize) : DefaultSize(definition);
         var size = FitSize(definition, preferredSize, _screen);
         var window = new ManagedWindow(definition, Clamp(preferredLocation, size), size, preferredLocation, preferredSize);
         _windows.Insert(0, window);
@@ -246,7 +262,7 @@ public sealed class WindowManager
     {
         var window = Get(id);
         if (window == null) return false;
-        _positions.Save(_server, _character, window.Id, Placement(window));
+        Save(window);
         if (_dragging == window) EndDrag();
         return _windows.Remove(window);
     }
@@ -301,8 +317,7 @@ public sealed class WindowManager
 
     public void Release()
     {
-        if (_dragging != null)
-            _positions.Save(_server, _character, _dragging.Id, Placement(_dragging));
+        if (_dragging != null) Save(_dragging);
         EndDrag();
     }
 
@@ -387,8 +402,24 @@ public sealed class WindowManager
     private static Size FitSize(WindowDefinition definition, Size wanted, Size screen) =>
         definition.Resizing is { } resizing ? resizing.Fit(wanted, screen) : DefaultSize(definition);
 
-    private static WindowPlacement Placement(ManagedWindow window) =>
-        (window.PreferredLocation, window.Definition.Resizing == null ? null : window.PreferredSize);
+    /// <summary>Saves where a window was left, and moves the window it shares a location with there too, keeping that one's size.</summary>
+    private void Save(ManagedWindow window)
+    {
+        _positions.Save(_server, _character, window.Id, Placement(window));
+        if (window.Definition.SharesLocationWith is { } other)
+            _positions.Save(_server, _character, other, (window.PreferredLocation, _positions.Load(_server, _character, other)?.Size));
+    }
+
+    private WindowPlacement Placement(ManagedWindow window) =>
+        (window.PreferredLocation, window.Definition.Resizing == null ? null : Scaled(window.PreferredSize, 1 / Scale));
+
+    /// <summary>The definition at this manager's scale: what its window measures on screen.</summary>
+    private WindowDefinition Scaled(WindowDefinition definition) => Scale == 1 ? definition : new WindowDefinition(
+        definition.Id, definition.Title, Scaled(definition.Width), Scaled(definition.Height), Scaled(definition.TitleBarHeight), definition.Theme,
+        definition.Resizing is { } resizing ? new WindowResizing(Scaled(resizing.Minimum)) : null, definition.SharesLocationWith);
+
+    private Size Scaled(Size size, double? scale = null) => new(Scaled(size.Width, scale), Scaled(size.Height, scale));
+    private int Scaled(int length, double? scale = null) => Math.Max(1, (int)Math.Round(length * (scale ?? Scale)));
 
     private Point Clamp(Point location, Size size, Size? screen = null)
     {

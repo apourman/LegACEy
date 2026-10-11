@@ -17,7 +17,7 @@ namespace ACE.Server.Market
 {
     /// <summary>
     /// The Vault's actions on the in-band server channel, for the LegACEy client's Vault window. They call the Vault's own entry points,
-    /// so every rule and the chat messages are unchanged. A single deposit or withdrawal goes through the transfer channel; a batch withdrawal skips it,
+    /// so every rule and the chat messages are unchanged. A single deposit or withdrawal goes through the transfer channel; a batch skips it,
     /// as it is instant. Bodies are written with ChannelWire; the plugin's VaultProtocol reads them.
     /// </summary>
     public static class VaultChannelActions
@@ -30,10 +30,11 @@ namespace ACE.Server.Market
         public const string Check = "vault.check";
         public const string Move = "vault.move";
         public const string WithdrawBatch = "vault.withdraw_batch";
+        public const string DepositBatch = "vault.deposit_batch";
 
         /// <summary>
         /// The most items one vault.list reply holds. Must match VaultProtocol.PageSize in the LegACEy Vault client.
-        /// It is also the most one batch withdrawal names.
+        /// It is also the most one batch names.
         /// </summary>
         public const int PageSize = 100;
 
@@ -55,6 +56,7 @@ namespace ACE.Server.Market
             ServerChannel.Register(Check, HandleCheck, Station);
             ServerChannel.Register(Move, HandleMove, Station);
             ServerChannel.Register(WithdrawBatch, HandleWithdrawBatch, Station);
+            ServerChannel.Register(DepositBatch, HandleDepositBatch, Station);
         }
 
         /// <summary>
@@ -63,10 +65,21 @@ namespace ACE.Server.Market
         /// </summary>
         private static void HandleWithdrawBatch(ChannelContext context)
         {
-            if (!TryReadGuids(context, out var itemGuids))
+            if (!TryReadGuids(context, out var itemGuids, out var place))
                 return;
 
-            Vault.WithdrawMany(context.Player, itemGuids, result => context.Reply(TransferBody(result.Success, result.Message)));
+            Vault.WithdrawMany(context.Player, itemGuids, result => context.Reply(TransferBody(result.Success, result.Message)), place);
+        }
+
+        /// <summary>
+        /// Deposits a set of the player's items at once, instantly and all or none (body: a count, then the item guids). The reply is as a batch withdrawal's.
+        /// </summary>
+        private static void HandleDepositBatch(ChannelContext context)
+        {
+            if (!TryReadGuids(context, out var itemGuids, out _))
+                return;
+
+            Vault.DepositMany(context.Player, itemGuids, result => context.Reply(TransferBody(result.Success, result.Message)));
         }
 
         /// <summary>
@@ -79,10 +92,11 @@ namespace ACE.Server.Market
         });
 
         /// <summary>
-        /// Reads a batch withdrawal's guids: a count from 1 to PageSize, then that many distinct guids. Anything else is a bad request.
+        /// Reads a batch's guids: a count from 1 to PageSize, then that many distinct guids, then an optional pack place. Anything else is a bad request.
         /// </summary>
-        private static bool TryReadGuids(ChannelContext context, out uint[] itemGuids)
+        private static bool TryReadGuids(ChannelContext context, out uint[] itemGuids, out PackPlace? place)
         {
+            place = null;
             try
             {
                 using (var body = context.Body())
@@ -97,6 +111,7 @@ namespace ACE.Server.Market
                         if (guids.Distinct().Count() == count)
                         {
                             itemGuids = guids;
+                            place = ReadPlace(body);
                             return true;
                         }
                     }
@@ -108,7 +123,7 @@ namespace ACE.Server.Market
             }
 
             itemGuids = null;
-            context.Fail(ChannelStatus.BadRequest, $"Withdraw between 1 and {PageSize} different items.");
+            context.Fail(ChannelStatus.BadRequest, $"Choose between 1 and {PageSize} different items.");
             return false;
         }
 
@@ -171,21 +186,37 @@ namespace ACE.Server.Market
             });
         }
 
-        private static bool TryReadGuid(ChannelContext context, out uint itemGuid)
+        private static bool TryReadGuid(ChannelContext context, out uint itemGuid) => TryReadGuid(context, out itemGuid, out _);
+
+        /// <summary>
+        /// Reads an item guid, then the optional pack place a withdrawal was dropped on.
+        /// </summary>
+        private static bool TryReadGuid(ChannelContext context, out uint itemGuid, out PackPlace? place)
         {
             try
             {
                 using (var body = context.Body())
+                {
                     itemGuid = body.ReadUInt32();
+                    place = ReadPlace(body);
+                }
                 return true;
             }
             catch (EndOfStreamException)
             {
                 itemGuid = 0;
+                place = null;
                 context.Fail(ChannelStatus.BadRequest, "An item id is required.");
                 return false;
             }
         }
+
+        /// <summary>
+        /// The pack place after a withdrawal's guids, if the client sent one: the pack's guid, then the slot. Older clients send none.
+        /// No pack holds more than a byte's worth of items, so the slot is kept to that, and a batch's slots after it cannot overflow.
+        /// </summary>
+        private static PackPlace? ReadPlace(BinaryReader body) =>
+            body.BaseStream.Length - body.BaseStream.Position >= 8 ? new PackPlace(body.ReadUInt32(), Math.Clamp(body.ReadInt32(), 0, byte.MaxValue)) : null;
 
         private readonly record struct ListRequest(string Search, int Offset, int Count);
 
@@ -288,7 +319,7 @@ namespace ACE.Server.Market
         /// </summary>
         private static void HandleTransfer(ChannelContext context, bool deposit)
         {
-            if (!TryReadGuid(context, out var itemGuid))
+            if (!TryReadGuid(context, out var itemGuid, out var place))
                 return;
 
             // a refusal is reported through the callback before Start returns; a channel that started reports when it ends
@@ -304,7 +335,7 @@ namespace ACE.Server.Market
             if (deposit)
                 VaultChannel.StartDeposit(context.Player, itemGuid, Completed);
             else
-                VaultChannel.StartWithdraw(context.Player, itemGuid, Completed);
+                VaultChannel.StartWithdraw(context.Player, itemGuid, Completed, place: place);
 
             starting = false;
 

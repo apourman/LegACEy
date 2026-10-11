@@ -37,6 +37,10 @@ public static class DerethPalette
     public static readonly IBrush GrooveBrush = Brush(Groove);
     public static readonly IBrush GrooveEdgeBrush = Brush(GrooveEdge);
     public static readonly IBrush TealBrush = Brush(Teal);
+    /// <summary>Gold at a quarter opacity: the wash of an accepted drop indicator.</summary>
+    public static readonly IBrush GoldWashBrush = Brush(Gold.WithAlpha(0x40));
+    /// <summary>Red at a quarter opacity: the wash of a refused drop indicator.</summary>
+    public static readonly IBrush InvalidWashBrush = Brush(Invalid.WithAlpha(0x40));
 
     public static IBrush Brush(Color color) => new SolidColorBrush(color);
 
@@ -45,7 +49,7 @@ public static class DerethPalette
 }
 
 /// <summary>Which sheet art a <see cref="DerethFrame"/> is drawn with.</summary>
-public enum DerethFrameArt { Window, Slot, Button }
+public enum DerethFrameArt { Window, Button }
 
 /// <summary>A corner of a window frame. None means the pointer is over no corner.</summary>
 public enum DerethCorner { None, TopLeft, TopRight, BottomLeft, BottomRight }
@@ -181,14 +185,14 @@ public sealed class DerethSearchField : DerethThreeSlice
     public DerethSearchField(string placeholder)
         : base(DerethSheet.Search(DerethFieldState.Normal).Left, DerethSheet.Search(DerethFieldState.Normal).Middle, DerethSheet.Search(DerethFieldState.Normal).Right)
     {
-        Height = 30;
+        Height = 26;
         // The box is bare: the sheet's field is its frame, so the box's own border, fill and minimum height are cleared.
         _input = new TextBox
         {
             Watermark = placeholder,
-            Foreground = DerethPalette.TextBrush, CaretBrush = DerethPalette.GoldBrush, FontFamily = DerethPalette.Body, FontSize = 13,
+            Foreground = DerethPalette.TextBrush, CaretBrush = DerethPalette.GoldBrush, FontFamily = DerethPalette.Body, FontSize = 12,
             Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(0), MinHeight = 0,
-            VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(43, 0, 8, 0)
+            VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(34, 0, 8, 0)
         };
         _input.TextChanged += (_, _) => TextChanged?.Invoke(this, EventArgs.Empty);
         _input.GotFocus += (_, _) => ShowState();
@@ -304,18 +308,26 @@ public sealed class DerethButton : Button
 /// <summary>A window with the Dereth frame, a header of icon, title and close box, the title rule and content.</summary>
 public sealed class DerethWindow : UserControl
 {
-    public DerethWindow(string title, Control? icon, Control content)
+    /// <summary>
+    /// The strip from a Dereth window's top that drags it: the 8 px frame edge and the 40 px header. A window passes it as its
+    /// title-bar height.
+    /// </summary>
+    public const int TitleBarHeight = 48;
+
+    /// <param name="headerActions">Controls for the header, left of the close box. Null when the header has none.</param>
+    public DerethWindow(string title, Control? icon, Control content, Control? headerActions = null)
     {
         if (content == null) throw new ArgumentNullException(nameof(content));
-        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 10, Height = 50 };
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions(headerActions == null ? "Auto,*,Auto" : "Auto,*,Auto,Auto"), ColumnSpacing = 8, Height = 40 };
         if (icon != null)
         {
-            var framed = new DerethFrame(DerethFrameArt.Button) { Width = 40, Height = 40, Child = icon };
+            // The header's emblem is shrunk to fit; item icons elsewhere stay at their native size.
+            var framed = new DerethFrame(DerethFrameArt.Button) { Width = 32, Height = 32, Child = new Viewbox { Child = icon } };
             header.Children.Add(framed);
         }
         var name = new TextBlock
         {
-            Text = title, Foreground = DerethPalette.CreamBrush, FontSize = 24, FontFamily = DerethPalette.Title,
+            Text = title, Foreground = DerethPalette.CreamBrush, FontSize = 16, FontFamily = DerethPalette.Title,
             VerticalAlignment = VerticalAlignment.Center
         };
         Grid.SetColumn(name, 1);
@@ -324,10 +336,15 @@ public sealed class DerethWindow : UserControl
         var close = new DerethButton { Width = 24, Height = 24, VerticalAlignment = VerticalAlignment.Center, Content = glyph };
         glyph.Follow(close);
         close.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
-        Grid.SetColumn(close, 2);
+        if (headerActions != null)
+        {
+            Grid.SetColumn(headerActions, 2);
+            header.Children.Add(headerActions);
+        }
+        Grid.SetColumn(close, headerActions == null ? 2 : 3);
         header.Children.Add(close);
 
-        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(6, 2, 6, 6) };
+        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(6, 0, 6, 6) };
         body.Children.Add(header);
         // The rule runs nearly frame to frame, as in the concept.
         var rule = new DerethRule { Margin = new Thickness(-6, 0, -6, 0) };
@@ -342,40 +359,52 @@ public sealed class DerethWindow : UserControl
 }
 
 /// <summary>
-/// A scrolling grid of fixed slots: 46 px cells on a 50 px pitch, as many columns as the width holds, centred, scrolling
+/// A scrolling grid of fixed slots: 34 px cells on a 35 px pitch, as many columns as the width holds, centred, scrolling
 /// vertically. It takes cells and knows nothing about what they show. It wraps a plain ScrollViewer, because a subclass
 /// gets no template from the base theme.
 /// </summary>
 public sealed class DerethSlotGrid : UserControl
 {
-    public const double CellSize = 46;
-    public const double Pitch = 50;
+    public const double CellSize = 34;
+    public const double Pitch = 35;
 
     private readonly WrapPanel _cells = new()
     {
-        ItemWidth = Pitch, ItemHeight = Pitch, HorizontalAlignment = HorizontalAlignment.Center
+        // The margin keeps the top and bottom rows' drop frames off the scroll area's clipped edge.
+        ItemWidth = Pitch, ItemHeight = Pitch, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 1)
     };
 
     public DerethSlotGrid()
     {
-        Content = new ScrollViewer
+        var scroll = new ScrollViewer
         {
             Content = _cells,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto
         };
+        Content = scroll;
     }
+
+    /// <summary>The distance between the left edges of neighbouring columns: the pitch. Width that holds no whole column is split between the sides.</summary>
+    public double ColumnPitch => _cells.ItemWidth;
 
     /// <summary>The cells in reading order. Each one is a <see cref="DerethSlot"/> or any control sized to the pitch.</summary>
     public Controls Cells => _cells.Children;
 }
 
 /// <summary>
-/// A slot: a framed well around its content. Selected, it shows a teal wash behind the content, a 2 px teal border and a glow
-/// inset inside the slot, so the glow never spills into a neighbouring slot.
+/// A slot: a slate well with a thin rim around its content, as in the concept art. Selected, it shows a teal wash behind the
+/// content, a 2 px teal border and a glow inset inside the slot, so the glow never spills into a neighbouring slot.
 /// </summary>
 public sealed class DerethSlot : Grid
 {
+    private static readonly IBrush WellBrush = new LinearGradientBrush
+    {
+        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+        GradientStops = { new GradientStop(Color.Parse("#1A252D"), 0), new GradientStop(Color.Parse("#10181E"), 1) }
+    };
+    private static readonly IBrush RimBrush = DerethPalette.Brush(Color.Parse("#2F3E48"));
+
     private static readonly IBrush WashBrush = new RadialGradientBrush
     {
         GradientStops =
@@ -385,25 +414,34 @@ public sealed class DerethSlot : Grid
         }
     };
 
+    private static readonly IBrush CarriedBrush = DerethPalette.Brush(DerethPalette.TealText);
+    private static readonly BoxShadows SelectedGlow = new(new BoxShadow { IsInset = true, Blur = 6, Color = DerethPalette.Teal.WithAlpha(0xB0) });
+    private static readonly BoxShadows CarriedGlow = new(new BoxShadow { IsInset = true, Blur = 10, Spread = 1, Color = DerethPalette.TealText });
+
     private readonly Border _wash;
     private readonly Border _outline;
+    private bool _carried;
 
-    /// <summary>A slot holding the content: a 46 px framed well, left-aligned in its pitch, with a selected state.</summary>
+    /// <summary>A slot holding the content: a 34 px framed well, centred in its pitch, with a selected state.</summary>
     public DerethSlot(Control? content)
     {
         Width = DerethSlotGrid.CellSize;
         Height = DerethSlotGrid.CellSize;
-        HorizontalAlignment = HorizontalAlignment.Left;
+        HorizontalAlignment = HorizontalAlignment.Center;
         Background = Brushes.Transparent;
         _wash = new Border { Margin = new Thickness(2), CornerRadius = new CornerRadius(3), Background = WashBrush, IsVisible = false, IsHitTestVisible = false };
         var inner = new Grid();
         inner.Children.Add(_wash);
         if (content != null) inner.Children.Add(content);
-        Children.Add(new DerethFrame(DerethFrameArt.Slot) { Child = inner });
+        Children.Add(new Border
+        {
+            Name = "Well", Background = WellBrush, BorderBrush = RimBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3),
+            Child = inner
+        });
         _outline = new Border
         {
             BorderBrush = DerethPalette.TealBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(3),
-            BoxShadow = new BoxShadows(new BoxShadow { IsInset = true, Blur = 10, Color = DerethPalette.Teal.WithAlpha(0xB0) }),
+            BoxShadow = SelectedGlow,
             IsVisible = false, IsHitTestVisible = false
         };
         Children.Add(_outline);
@@ -417,6 +455,19 @@ public sealed class DerethSlot : Grid
         {
             _wash.IsVisible = value;
             _outline.IsVisible = value;
+        }
+    }
+
+    /// <summary>Whether a selected slot is carried by a drag of the selection: its border is thicker, brighter and glows more.</summary>
+    public bool Carried
+    {
+        get => _carried;
+        set
+        {
+            _carried = value;
+            _outline.BorderThickness = new Thickness(value ? 3 : 2);
+            _outline.BorderBrush = value ? CarriedBrush : DerethPalette.TealBrush;
+            _outline.BoxShadow = value ? CarriedGlow : SelectedGlow;
         }
     }
 }

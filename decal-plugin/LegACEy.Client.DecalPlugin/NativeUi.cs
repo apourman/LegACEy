@@ -24,6 +24,8 @@ internal static class NativeUi
     public const uint LinkStatus = 0x10000187;
     public const uint MiniGame = 0x10000188;
     public const uint Vitae = 0x1000018A;
+    /// <summary>InventoryPanel_Field, the retail inventory panel root.</summary>
+    public const uint InventoryPanel = 0x1000018B;
 
     private static readonly IntPtr ManagerInstance = new(0x0083E03C);
     private static bool _ready;
@@ -51,6 +53,11 @@ internal static class NativeUi
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate byte LockUiFn(IntPtr playerModule);
+
+    /// <summary>UIElement::GetParent: the virtual call at vtable slot <see cref="GetParentSlot"/>.</summary>
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    internal delegate IntPtr GetParentFn(IntPtr element);
+    internal const int GetParentSlot = 0xA0;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct Box2D
@@ -99,6 +106,10 @@ internal static class NativeUi
         var manager = Marshal.ReadIntPtr(ManagerInstance);
         return manager == IntPtr.Zero ? IntPtr.Zero : GetElementNative(manager, id);
     }
+
+    /// <summary>The function at a vtable slot of an object, as a delegate. Call on the game thread.</summary>
+    internal static T Virtual<T>(IntPtr instance, int slot) where T : Delegate =>
+        (T)Marshal.GetDelegateForFunctionPointer(Marshal.ReadIntPtr(Marshal.ReadIntPtr(instance), slot), typeof(T));
 
     public static bool IsVisible(IntPtr element) { EnsureReady(); return IsVisibleNative(element) != 0; }
 

@@ -190,6 +190,145 @@ namespace ACE.Server.Market
         }
 
         /// <summary>
+        /// Deposits a set of items in one save: all of them or none. It is instant, with no channel, and refused while a transfer is active or when a
+        /// channel could not start (a recent player fight, a trade). Each item's rules come first, so the first refusal is the one reported; then the
+        /// Vault's room for the whole set. The items leave the pack as a single deposit's item does. The result is reported once, on the world thread.
+        /// </summary>
+        public static void DepositMany(Player player, IReadOnlyList<uint> itemGuids, Action<VaultResult> completed)
+        {
+            var items = new List<WorldObject>(itemGuids.Count);
+            WorldObject refused = null;
+            VaultOutcome? refusal;
+
+            try
+            {
+                refusal = Available ? BatchRefusal(player, itemGuids) ?? CheckDepositSet(player, itemGuids, items, out refused) : VaultOutcome.NotAvailable;
+            }
+            catch (Exception ex)
+            {
+                // the checks read the database; nothing has moved yet
+                log.Error($"[VAULT] Batch deposit of {itemGuids.Count} items for {player.Name} failed in its checks: {ex}");
+                refusal = VaultOutcome.SaveFailed;
+            }
+
+            if (refusal != null)
+            {
+                FinishBatch(player, refusal.Value, refused?.Name, itemGuids, completed);
+                return;
+            }
+
+            var accountId = player.Character.AccountId;
+            var deposits = new List<(ACE.Entity.Models.Biota, ReaderWriterLockSlim, VaultItem)>(items.Count);
+
+            for (var index = 0; index < items.Count; index++)
+            {
+                var item = items[index];
+                var (containerId, ownerId, placement) = (item.ContainerId, item.OwnerId, item.PlacementPosition);
+                var vaultItem = NewVaultItem(item, accountId, player.Guid.Full);
+                var escrowed = EscrowCopy(item);
+
+                if (!player.TryRemoveFromInventoryForVault(item.Guid, out _))
+                {
+                    // nothing is saved yet: the items already taken out go back
+                    for (var back = 0; back < index; back++)
+                        player.TryCreateInInventoryWithNetworking(items[back]);
+
+                    FinishBatch(player, VaultOutcome.NotInPack, item.Name, itemGuids, completed);
+                    return;
+                }
+
+                // as a single deposit's item, the live item says where it was until the job is done (see Deposit)
+                item.ContainerId = containerId;
+                item.OwnerId = ownerId;
+                item.PlacementPosition = placement;
+
+                if (player.CurrentAppraisalTarget == item.Guid.Full)
+                    player.CurrentAppraisalTarget = null;
+
+                deposits.Add((escrowed, new ReaderWriterLockSlim(), vaultItem));
+            }
+
+            inFlight.Add(player.Guid.Full);
+
+            DatabaseManager.Shard.DepositManyToVault(deposits, (int)MarketSettings.Get(MarketSettings.VaultSize), result =>
+            {
+                // this runs on the save thread
+                WorldManager.EnqueueAction(new ActionEventDelegate(() => OnDepositedMany(player, items, result, itemGuids, completed)));
+            });
+        }
+
+        /// <summary>
+        /// Every deposit refusal rule for a set, in order: each item's own rules, then the Vault's room for all of them. Null if the set can go in
+        /// the Vault; the items are then added in the order given.
+        /// </summary>
+        private static VaultOutcome? CheckDepositSet(Player player, IReadOnlyList<uint> itemGuids, List<WorldObject> items, out WorldObject refused)
+        {
+            refused = null;
+
+            foreach (var itemGuid in itemGuids)
+            {
+                var refusal = CheckDepositItem(player, itemGuid, out var item);
+
+                if (refusal != null)
+                {
+                    refused = item;
+                    return refusal;
+                }
+
+                items.Add(item);
+            }
+
+            return CheckVaultRoom(player, items.Count);
+        }
+
+        private static void OnDepositedMany(Player player, List<WorldObject> items, MarketJobResult result, IReadOnlyList<uint> itemGuids, Action<VaultResult> completed)
+        {
+            inFlight.Remove(player.Guid.Full);
+
+            if (result == MarketJobResult.Saved)
+            {
+                // forgotten, never destroyed, as a single deposit's item (see OnDeposited)
+                foreach (var item in items)
+                {
+                    item.ContainerId = null;
+                    item.OwnerId = null;
+                    item.PlacementPosition = null;
+                }
+
+                FinishBatch(player, VaultOutcome.Deposited, items[0].Name, itemGuids, completed);
+                return;
+            }
+
+            if (result == MarketJobResult.Unknown)
+            {
+                log.Error($"[VAULT] Batch deposit of {items.Count} items for {player.Name} may or may not have been saved; the objects are dropped and the database decides at the next login");
+                FinishBatch(player, VaultOutcome.Unconfirmed, items[0].Name, itemGuids, completed);
+                return;
+            }
+
+            log.Warn($"[VAULT] Batch deposit of {items.Count} items for {player.Name} failed ({result}); nothing was saved");
+
+            var outcome = VaultOutcome.SaveFailed;
+
+            try
+            {
+                if (CheckVaultRoom(player, items.Count) != null)
+                    outcome = VaultOutcome.VaultFull;
+            }
+            catch (Exception ex)
+            {
+                log.Warn($"[VAULT] Could not read the Vault size for {player.Name}'s failed batch deposit: {ex.Message}");
+            }
+
+            // the database still has every item in the pack, as after a failed single deposit
+            foreach (var item in items)
+                if (!player.IsLoggingOut && !player.TryCreateInInventoryWithNetworking(item))
+                    log.Warn($"[VAULT] Batch deposit of {item.Name} (0x{item.Guid.Full:X8}) for {player.Name} failed and the pack has no room for it; the database has it in the pack for the next login");
+
+            FinishBatch(player, outcome, items[0].Name, itemGuids, completed);
+        }
+
+        /// <summary>
         /// Moves an item from the account's Vault into the player's pack.
         /// The item is loaded from the database and pointed at the player in memory, but only added to the pack once the job has removed the Vault row,
         /// so that no save of the pack can ever put the item in a pack while its Vault row still exists.
@@ -204,12 +343,13 @@ namespace ACE.Server.Market
         /// The row must still have the version the mark gave it. On a refusal or failure the row stays marked: the caller releases it.
         /// A game bridge ticket given as ticketId is marked done in the same save as the item.
         /// </summary>
-        public static void Withdraw(Player player, uint itemGuid, uint markedRowVersion, Action<VaultResult> completed = null, long? ticketId = null)
+        /// The item goes to the given place in the pack when there is room there.
+        public static void Withdraw(Player player, uint itemGuid, uint markedRowVersion, Action<VaultResult> completed = null, long? ticketId = null, PackPlace? place = null)
         {
-            Withdraw(player, itemGuid, (uint?)markedRowVersion, completed, ticketId);
+            Withdraw(player, itemGuid, (uint?)markedRowVersion, completed, ticketId, place);
         }
 
-        private static void Withdraw(Player player, uint itemGuid, uint? markedRowVersion, Action<VaultResult> completed, long? ticketId = null)
+        private static void Withdraw(Player player, uint itemGuid, uint? markedRowVersion, Action<VaultResult> completed, long? ticketId = null, PackPlace? place = null)
         {
             VaultOutcome? refusal;
             VaultItem row;
@@ -247,7 +387,7 @@ namespace ACE.Server.Market
             DatabaseManager.Shard.WithdrawFromVault(item.Biota, item.BiotaDatabaseLock, accountId, player.Guid.Full, row.RowVersion, result =>
             {
                 // this runs on the save thread
-                WorldManager.EnqueueAction(new ActionEventDelegate(() => OnWithdrawn(player, item, name, result, completed)));
+                WorldManager.EnqueueAction(new ActionEventDelegate(() => OnWithdrawn(player, item, name, result, completed, place)));
             }, ticket);
         }
 
@@ -256,7 +396,8 @@ namespace ACE.Server.Market
         /// single withdrawal's channel start is. The rows and item biotas are read off the world thread, since reading a full page of them takes
         /// hundreds of milliseconds; the rules, the pack room and the in-memory move stay on the world thread. The result is reported once, on the world thread.
         /// </summary>
-        public static void WithdrawMany(Player player, IReadOnlyList<uint> itemGuids, Action<VaultResult> completed)
+        /// The items go to the given place in the pack, in order, when there is room there.
+        public static void WithdrawMany(Player player, IReadOnlyList<uint> itemGuids, Action<VaultResult> completed, PackPlace? place = null)
         {
             var refusal = Available ? BatchRefusal(player, itemGuids) : VaultOutcome.NotAvailable;
 
@@ -277,7 +418,7 @@ namespace ACE.Server.Market
                 {
                     var rows = VaultStore.Owned(accountId, itemGuids);
                     var biotas = rows.Keys.ToDictionary(guid => guid, guid => DatabaseManager.Shard.BaseDatabase.GetBiota(guid, doNotAddToCache: true));
-                    WorldManager.EnqueueAction(new ActionEventDelegate(() => CheckAndWithdrawBatch(player, itemGuids, rows, biotas, completed)));
+                    WorldManager.EnqueueAction(new ActionEventDelegate(() => CheckAndWithdrawBatch(player, itemGuids, rows, biotas, completed, place)));
                 }
                 catch (Exception ex)
                 {
@@ -309,7 +450,7 @@ namespace ACE.Server.Market
         /// The world thread's half of a batch, once its rows and biotas are read: the start rules again, since the player may have changed while
         /// they were read; then every rule, the pack room and the uniques for the set; then the save. A refusal here clears the batch's inFlight mark.
         /// </summary>
-        private static void CheckAndWithdrawBatch(Player player, IReadOnlyList<uint> itemGuids, Dictionary<uint, VaultItem> rows, Dictionary<uint, ACE.Database.Models.Shard.Biota> biotas, Action<VaultResult> completed)
+        private static void CheckAndWithdrawBatch(Player player, IReadOnlyList<uint> itemGuids, Dictionary<uint, VaultItem> rows, Dictionary<uint, ACE.Database.Models.Shard.Biota> biotas, Action<VaultResult> completed, PackPlace? place)
         {
             var entries = new List<(VaultItem Row, WorldObject Item)>(itemGuids.Count);
             string refusedName = null;
@@ -346,11 +487,11 @@ namespace ACE.Server.Market
             DatabaseManager.Shard.WithdrawManyFromVault(withdrawals, player.Character.AccountId, player.Guid.Full, result =>
             {
                 // this runs on the save thread
-                WorldManager.EnqueueAction(new ActionEventDelegate(() => OnWithdrawnMany(player, items, result, itemGuids, completed)));
+                WorldManager.EnqueueAction(new ActionEventDelegate(() => OnWithdrawnMany(player, items, result, itemGuids, completed, place)));
             });
         }
 
-        private static void OnWithdrawnMany(Player player, List<WorldObject> items, MarketJobResult result, IReadOnlyList<uint> itemGuids, Action<VaultResult> completed)
+        private static void OnWithdrawnMany(Player player, List<WorldObject> items, MarketJobResult result, IReadOnlyList<uint> itemGuids, Action<VaultResult> completed, PackPlace? place)
         {
             inFlight.Remove(player.Guid.Full);
 
@@ -367,9 +508,11 @@ namespace ACE.Server.Market
             // the database has every item in this character's pack; each goes into the live pack, or waits for the next login as one withdrawal does
             var atLogin = 0;
 
-            foreach (var item in items)
+            // in order from the place, each pushing the ones after it back a slot
+            for (var index = 0; index < items.Count; index++)
             {
-                if (!AddWithdrawnToPack(player, item))
+                var item = items[index];
+                if (!AddWithdrawnToPack(player, item, place is { } at ? at with { Position = at.Position + index } : null))
                 {
                     atLogin++;
                     log.Warn($"[VAULT] Withdrawn {item.Name} (0x{item.Guid.Full:X8}) for {player.Name} could not be added to the pack; the database has it in the pack for the next login");
@@ -392,14 +535,36 @@ namespace ACE.Server.Market
         /// <summary>
         /// Puts a withdrawn item in the live pack, once the database has it there. False if the pack has no room now, and then the item is in the pack at the next login.
         /// A player who has logged out has nothing to put it into, so the database's copy is their pack's.
+        /// Given a place, the item goes there, pushing the items from that slot on back one; a slot past the pack's items is its end. A place
+        /// that is not the player's main pack or one of its side packs, or has no room, is ignored.
         /// </summary>
-        private static bool AddWithdrawnToPack(Player player, WorldObject item) => player.IsLoggingOut || player.TryCreateInInventoryWithNetworking(item);
+        private static bool AddWithdrawnToPack(Player player, WorldObject item, PackPlace? place = null) =>
+            player.IsLoggingOut
+            || place is { } at && PackAt(player, at.Container) is { } pack && player.TryCreateInInventoryWithNetworking(item, pack, Math.Clamp(at.Position, 0, pack.Inventory.Count))
+            || player.TryCreateInInventoryWithNetworking(item);
+
+        private static Container PackAt(Player player, uint guid) =>
+            guid == player.Guid.Full ? player : player.Inventory.TryGetValue(new ObjectGuid(guid), out var item) ? item as Container : null;
 
         /// <summary>
         /// Every deposit refusal rule, in order, without changing anything. Null if the item can go in the Vault.
         /// The item is set whenever the player has it, so a refusal can name it.
         /// </summary>
         public static VaultOutcome? CheckDeposit(Player player, uint itemGuid, out WorldObject item)
+        {
+            return CheckDepositItem(player, itemGuid, out item) ?? CheckVaultRoom(player, 1);
+        }
+
+        /// <summary>
+        /// Whether the account's Vault has room for <paramref name="count"/> more items: null if it has, VaultFull if not
+        /// </summary>
+        private static VaultOutcome? CheckVaultRoom(Player player, int count) =>
+            VaultStore.Count(player.Character.AccountId) + count > (int)MarketSettings.Get(MarketSettings.VaultSize) ? VaultOutcome.VaultFull : null;
+
+        /// <summary>
+        /// Every deposit refusal rule but the Vault's room, in order. The item is set whenever the player has it.
+        /// </summary>
+        private static VaultOutcome? CheckDepositItem(Player player, uint itemGuid, out WorldObject item)
         {
             item = null;
 
@@ -422,15 +587,7 @@ namespace ACE.Server.Market
             if (player.ItemsInTradeWindow.Contains(guid))
                 return VaultOutcome.InTrade;
 
-            var refusal = CheckDepositRules(player, item);
-
-            if (refusal != null)
-                return refusal;
-
-            if (VaultStore.Count(player.Character.AccountId) >= (int)MarketSettings.Get(MarketSettings.VaultSize))
-                return VaultOutcome.VaultFull;
-
-            return null;
+            return CheckDepositRules(player, item);
         }
 
         /// <summary>
@@ -636,7 +793,7 @@ namespace ACE.Server.Market
             Finish(player, outcome, name, item.Guid.Full, completed);
         }
 
-        private static void OnWithdrawn(Player player, WorldObject item, string name, MarketJobResult result, Action<VaultResult> completed)
+        private static void OnWithdrawn(Player player, WorldObject item, string name, MarketJobResult result, Action<VaultResult> completed, PackPlace? place)
         {
             inFlight.Remove(player.Guid.Full);
 
@@ -652,7 +809,7 @@ namespace ACE.Server.Market
             }
 
             // the database now has the item in this character's pack, so a player who has gone gets it at the next login
-            var inPack = AddWithdrawnToPack(player, item);
+            var inPack = AddWithdrawnToPack(player, item, place);
 
             if (!inPack)
                 log.Warn($"[VAULT] Withdrawn {name} (0x{item.Guid.Full:X8}) for {player.Name} could not be added to the pack; the database has it in the pack for the next login");
@@ -674,7 +831,7 @@ namespace ACE.Server.Market
         /// </summary>
         private static void FinishBatch(Player player, VaultOutcome outcome, string firstName, IReadOnlyList<uint> itemGuids, Action<VaultResult> completed)
         {
-            var mayHaveMoved = outcome is VaultOutcome.Withdrawn or VaultOutcome.WithdrawnAtLogin or VaultOutcome.Unconfirmed;
+            var mayHaveMoved = outcome is VaultOutcome.Deposited or VaultOutcome.Withdrawn or VaultOutcome.WithdrawnAtLogin or VaultOutcome.Unconfirmed;
             var firstGuid = itemGuids.Count > 0 ? itemGuids[0] : 0u;
             Report(player, new VaultResult(outcome, VaultMessages.ForBatch(outcome, firstName, itemGuids.Count), firstGuid), completed, push: mayHaveMoved);
         }
@@ -727,4 +884,9 @@ namespace ACE.Server.Market
             };
         }
     }
+
+    /// <summary>
+    /// A slot in the player's pack: the main pack (the player's guid) or a side pack, and the slot index in it
+    /// </summary>
+    public readonly record struct PackPlace(uint Container, int Position);
 }

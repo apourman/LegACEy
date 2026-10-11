@@ -10,7 +10,7 @@ namespace ACE.Server.ClientChannel
     {
         /// <summary>
         /// Reply: u32 setup, u32 base palette, u16 count of (u32 palette, u16 offset, u16 length) in blocks of 8 colours,
-        /// u16 count of (u8 part, u32 old texture, u32 new texture), u16 count of (u8 part, u32 model). The plugin's PaperdollProtocol reads it.
+        /// u16 count of (u8 part, u32 old texture, u32 new texture), u16 count of (u8 part, u32 model). The client's PaperdollProtocol reads it.
         /// </summary>
         public const string Look = "paperdoll.look";
 

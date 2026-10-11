@@ -43,5 +43,5 @@ replaces the PNG and pastes a new region table; the region sizes only change whe
 AC chrome, so its windows are opened without the retail theme over them.
 
 Its shared parts (frame, slot grid, scrollbar template, button, search field) take data in and raise events out; the Vault
-builds on them. The slot grid lays 46 px slots on a 50 px pitch, as many columns as fit, centred. `DerethWarmUp` builds
+builds on them. The slot grid lays 34 px slots on a 35 px pitch, so 32 px icons sit in a 1 px rim as retail cells do, as many columns as fit, centred. `DerethWarmUp` builds
 the theme's parts once at login, so the first window opens without a long frame.

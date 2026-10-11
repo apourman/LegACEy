@@ -23,31 +23,51 @@ internal sealed class RetailItemDrag
     private const int PotentialDragElementOffset = 0x318;
     private const int ElementLastOverOffset = 0x244;
     private const int ElementIdOffset = 0x2E4;
-    /// <summary>InventoryPanel_Field, the retail inventory window (Chorizite UIElementId).</summary>
-    internal const uint InventoryPanel = 0x1000018B;
     private static readonly IntPtr ManagerInstance = new(0x0083E03C);
 
     internal static readonly IReadOnlyList<NativeUiEntry> Entries = new[]
     {
         // Through its first use of the catcher: reads m_dragElement (+0x31C), m_pElementLastDragCursorOver (+0x250) and m_dragOwner (+0x320).
-        new NativeUiEntry("UIElementManager::StopDragandDrop", 0x00459880, Bytes(
+        new NativeUiEntry("UIElementManager::StopDragandDrop", 0x00459880, NativeUiCatalogue.Bytes(
             "53 57 8B F9 8B 87 1C 03 00 00 33 DB 3B C3 0F 84 92 00 00 00 56 6A 18 E8 59 58 18 00 83 C4 04 3B C3 74 1D " +
             "C7 40 04 01 00 00 00 C7 00 94 CD 79 00 89 58 08 89 58 0C 89 58 10 88 58 14 8B F0 EB 02 33 F6 8B 87 1C 03 00 00 " +
             "89 46 08 8B 8F 50 02 00 00 89 4E 10 8B 97 20 03 00 00 89 56 0C C6 46 14 01 8B 8F 50 02 00 00 3B CB 74 0E"), Source, "ThisCall ()"),
         new NativeUiEntry("UIElementManager::MouseUpEvent reads m_bDragStarted and m_dragElement", 0x0045DEFB,
-            Bytes("8A 86 24 03 00 00 84 C0 74 46 8B 86 1C 03 00 00"), Source, "offset reference (+0x324, +0x31C)"),
-        new NativeUiEntry("UIElementManager::MouseUpEvent reads m_pElementLastOver", 0x0045DF23, Bytes("8B 8E 44 02 00 00"), Source, "offset reference (+0x244)"),
-        new NativeUiEntry("UIElement_UIItem::SetDragAcceptState", 0x004E1F20, Bytes(
+            NativeUiCatalogue.Bytes("8A 86 24 03 00 00 84 C0 74 46 8B 86 1C 03 00 00"), Source, "offset reference (+0x324, +0x31C)"),
+        new NativeUiEntry("UIElementManager::MouseUpEvent reads m_pElementLastOver", 0x0045DF23, NativeUiCatalogue.Bytes("8B 8E 44 02 00 00"), Source, "offset reference (+0x244)"),
+        new NativeUiEntry("UIElement_UIItem::SetDragAcceptState", 0x004E1F20, NativeUiCatalogue.Bytes(
             "8B 89 88 06 00 00 85 C9 74 18 8B 44 24 04 3B 81 00 04 00 00 74 0C 8B 11 89 44 24 04 FF A2 9C 00 00 00 C2"), Source,
             "ThisCall (uint state); 0x1000003F none, 0x10000040 accept (green circle), 0x10000041 reject (showed red in game)"),
-        new NativeUiEntry("UIElement_UIItem::DynamicCast", 0x004E1D40, Bytes("8B C1 8B 4C 24 04 81 F9 32 00 00 10 74 0B 33 D2 83 F9 03 0F 95 C2 4A 23 C2 C2 04"), Source,
+        new NativeUiEntry("UIElement_UIItem::DynamicCast", 0x004E1D40, NativeUiCatalogue.Bytes("8B C1 8B 4C 24 04 81 F9 32 00 00 10 74 0B 33 D2 83 F9 03 0F 95 C2 4A 23 C2 C2 04"), Source,
             "virtual ThisCall (uint type) -> UIElement_UIItem* for type 0x10000032"),
-        new NativeUiEntry("DynamicCast to UIItem through vtable +0x94", 0x0048B762, Bytes("68 32 00 00 10 8B C8 FF 92 94 00 00 00"), Source, "virtual slot reference"),
-        new NativeUiEntry("UIElement::IsAncestorOfMe", 0x0045FBB0, Bytes("8B 01 FF 90 A0 00 00 00 85 C0 74 1A 56 8B 74 24 08 3B C6 74 0E 8B 10 8B C8 FF"), Source,
+        new NativeUiEntry("DynamicCast to UIItem through vtable +0x94", 0x0048B762, NativeUiCatalogue.Bytes("68 32 00 00 10 8B C8 FF 92 94 00 00 00"), Source, "virtual slot reference"),
+        new NativeUiEntry("UIElement::IsAncestorOfMe", 0x0045FBB0, NativeUiCatalogue.Bytes("8B 01 FF 90 A0 00 00 00 85 C0 74 1A 56 8B 74 24 08 3B C6 74 0E 8B 10 8B C8 FF"), Source,
             "ThisCall (UIElement* ancestor) -> bool"),
-        new NativeUiEntry("UIElement_ItemList::InqDropIconInfo", 0x004E3380, Bytes("8B 44 24 10 83 EC 3C 53 55 8B 6C 24 50 56 8B 74"), Source,
-            "Cdecl (UIElement* dropIcon, uint* itemId, uint* spellId, DropItemFlags* flags)")
+        new NativeUiEntry("UIElement_ItemList::InqDropIconInfo", 0x004E3380, NativeUiCatalogue.Bytes("8B 44 24 10 83 EC 3C 53 55 8B 6C 24 50 56 8B 74"), Source,
+            "Cdecl (UIElement* dropIcon, uint* itemId, uint* spellId, DropItemFlags* flags)"),
+        // The hand-off: names from the acclient.pdb beside the installed client (a near build; addresses checked here).
+        new NativeUiEntry("UIElement_ItemList::ItemList_GetItem", 0x004E3BC0, NativeUiCatalogue.Bytes(
+            "53 56 57 8B F9 8B 87 10 06 00 00 33 F6 85 C0 76 35 8B 5C 24 10 8B 87 08 06 00 00 8B 0C B0 85 C9"), HandOffSource,
+            "ThisCall (uint objectId) -> UIElement_UIItem*, the list item whose object id (+0x5FC) matches, or 0"),
+        new NativeUiEntry("UIElement_ItemList::ItemList_BeginDrag", 0x004E3F60, NativeUiCatalogue.Bytes(
+            "51 56 8D 44 24 07 50 68 16 00 00 10 8B F1 E8 4D CD F7 FF 8A 44 24 07 84 C0 0F 84 FE 00 00 00 8B"), HandOffSource,
+            "ThisCall (int x, int y): hit-tests the item at the screen point, selects it, and starts retail's drag of it"),
+        new NativeUiEntry("UIElement::GetAbsoluteX", 0x0069FE00, NativeUiCatalogue.Bytes("56 8B F1 8B 86 B0 00 00 00 85 C0 74 05 8B 40 20 5E C3 8B 8E AC 00 00 00"),
+            HandOffSource, "ThisCall () -> int, screen x through the parent chain"),
+        new NativeUiEntry("UIElement::GetAbsoluteY", 0x0069FE30, NativeUiCatalogue.Bytes("56 8B F1 8B 86 B0 00 00 00 85 C0 74 05 8B 40 24 5E C3 8B 8E AC 00 00 00"),
+            HandOffSource, "ThisCall () -> int, screen y through the parent chain"),
+        new NativeUiEntry("UIElement_ItemList::DynamicCast", 0x004E4830, NativeUiCatalogue.Bytes("8B C1 8B 4C 24 04 81 F9 31 00 00 10 74 10"), HandOffSource,
+            "virtual ThisCall (uint type) -> UIElement_ItemList* for type 0x10000031"),
+        new NativeUiEntry("UIElement_ListBox::ScrollToShow(UIElement*)", 0x0046EF20, NativeUiCatalogue.Bytes(
+            "8B 81 10 06 00 00 85 C0 74 32 56 8B B1 10 06 00 00 33 C0 85 F6 57 76 16"), HandOffSource,
+            "ThisCall (UIElement* item): scrolls the list so the item is in view (ItemList derives from ListBox)"),
+        new NativeUiEntry("CInputManager::IsActionInProgress", 0x00431AF0, NativeUiCatalogue.Bytes("56 8B 74 24 08 33 D2 8B C6 F7 B1 F8 00 00 00 8B 81 F0 00 00 00 8D 04 90"),
+            HandOffSource, "ThisCall (uint action) -> bool on ICIDM::s_cidm (0x00837FF4); StartDragandDrop asks it for action 7")
     };
+    private const string HandOffSource = "acclient.pdb (C:\\Turbine\\Asheron's Call, a near build) for names; our objdump read of installed acclient.exe";
+    // The inventory panel's item lists: gm3DItemsUI's pack contents, then gmBackpackUI's two (gm*UI::PostInit).
+    private static readonly uint[] InventoryLists = { 0x100001C6, 0x100001C9, 0x100001CA };
+    private const uint ItemListType = 0x10000031;
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void StopDragFn(IntPtr manager);
@@ -57,16 +77,23 @@ internal sealed class RetailItemDrag
     private delegate void SetDragAcceptStateFn(IntPtr item, uint state);
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate IntPtr DynamicCastFn(IntPtr element, uint type);
-    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-    private delegate IntPtr GetParentFn(IntPtr element);
-
     private const uint UiItemType = 0x10000032;
     private const uint DragAcceptNone = 0x1000003F;
     private const uint DragAcceptYes = 0x10000040;
     private const int DynamicCastSlot = 0x94;
-    private const int GetParentSlot = 0xA0;
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate void InqDropIconInfoFn(IntPtr dropIcon, out uint itemId, out uint spellId, out uint flags);
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate IntPtr GetItemFn(IntPtr list, uint objectId);
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void BeginDragFn(IntPtr list, int x, int y);
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate int AbsoluteFn(IntPtr element);
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void ScrollToShowFn(IntPtr list, IntPtr item);
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate byte IsActionInProgressFn(IntPtr inputManager, uint action);
+    private static readonly IntPtr InputManagerInstance = new(0x00837FF4);
 
     private readonly Action<string> _log;
     private readonly StopDragFn? _stop;
@@ -74,6 +101,10 @@ internal sealed class RetailItemDrag
     private readonly SetDragAcceptStateFn? _setDragAccept;
     private IntPtr _acceptCell;
     private readonly InqDropIconInfoFn? _inquire;
+    private readonly GetItemFn? _getItem;
+    private readonly BeginDragFn? _beginDrag;
+    private readonly AbsoluteFn? _absoluteX;
+    private readonly AbsoluteFn? _absoluteY;
     private bool _loggedInventory;
 
     public RetailItemDrag(Func<uint, int, byte[]> readMemory, Action<string> log)
@@ -89,6 +120,10 @@ internal sealed class RetailItemDrag
         _isAncestorOfMe = Function<IsAncestorOfMeFn>(0x0045FBB0);
         _setDragAccept = Function<SetDragAcceptStateFn>(0x004E1F20);
         _inquire = Function<InqDropIconInfoFn>(0x004E3380);
+        _getItem = Function<GetItemFn>(0x004E3BC0);
+        _beginDrag = Function<BeginDragFn>(0x004E3F60);
+        _absoluteX = Function<AbsoluteFn>(0x0069FE00);
+        _absoluteY = Function<AbsoluteFn>(0x0069FE30);
     }
 
     public bool Available { get; }
@@ -120,12 +155,70 @@ internal sealed class RetailItemDrag
     }
 
     /// <summary>
+    /// The retail inventory's list and item element for an object, or zeros when no list there shows it (an item in a pack the
+    /// retail panel is not showing, or an equipped one). The panel need not be visible: a parked one keeps its lists.
+    /// </summary>
+    public (IntPtr List, IntPtr Item) FindItem(uint objectId)
+    {
+        var panel = Available ? NativeUi.GetElement(NativeUi.InventoryPanel) : IntPtr.Zero;
+        if (panel == IntPtr.Zero) return default;
+        foreach (var id in InventoryLists)
+        {
+            var element = NativeUi.GetElement(id);
+            if (element == IntPtr.Zero || _isAncestorOfMe!(element, panel) == 0) continue;
+            var list = NativeUi.Virtual<DynamicCastFn>(element, DynamicCastSlot)(element, ItemListType);
+            var item = list == IntPtr.Zero ? IntPtr.Zero : _getItem!(list, objectId);
+            if (item != IntPtr.Zero) return (list, item);
+        }
+        return default;
+    }
+
+    /// <summary>
+    /// Starts retail's own drag of the item, as a press on it in its list does. Retail checks that the left button is held and
+    /// has moved 4 pixels from where the client saw it go down, so the client must have seen the press. True when retail now
+    /// drags this object; a drag of anything else is cancelled. <paramref name="state"/> is what retail's drag start checked, read
+    /// before the call.
+    /// </summary>
+    public bool BeginDrag(IntPtr list, IntPtr item, uint objectId, out string state)
+    {
+        // The list hit-tests rows by its scroll position, so an item scrolled out of view cannot be hit: bring it into view first.
+        Function<ScrollToShowFn>(0x0046EF20)(list, item);
+        state = DragStartState() + $", item at ({_absoluteX!(item)}, {_absoluteY!(item)}), list at ({_absoluteX(list)}, {_absoluteY!(list)})";
+        // A point just inside the item: the list hit-tests it, wherever the panel is parked.
+        _beginDrag!(list, _absoluteX!(item) + 2, _absoluteY!(item) + 2);
+        var dragged = CurrentItem();
+        if (dragged == objectId) return true;
+        if (dragged != 0) Cancel();
+        return false;
+    }
+
+    // ponytail: play-test probe for refused hand-offs (story 45); drop once they are understood.
+    private string DragStartState()
+    {
+        var manager = Marshal.ReadIntPtr(ManagerInstance);
+        var input = Marshal.ReadIntPtr(InputManagerInstance);
+        if (manager == IntPtr.Zero || input == IntPtr.Zero) return "no manager";
+        var held = Function<IsActionInProgressFn>(0x00431AF0)(input, 7) != 0;
+        return $"left held: {held}, press at ({Marshal.ReadInt32(manager, 0x308)}, {Marshal.ReadInt32(manager, 0x30C)}), " +
+               $"drag running: {Marshal.ReadByte(manager, DragStartedOffset)}";
+    }
+
+    /// <summary>
+    /// Forgets the element the client's last left press landed on, so the client's next move does not start a drag of it.
+    /// </summary>
+    public void ClearPotentialDrag()
+    {
+        var manager = Available ? Marshal.ReadIntPtr(ManagerInstance) : IntPtr.Zero;
+        if (manager != IntPtr.Zero) Marshal.WriteIntPtr(manager, PotentialDragElementOffset, IntPtr.Zero);
+    }
+
+    /// <summary>
     /// Whether the client's own hit test puts the pointer over the retail inventory window (its packs, paperdoll and
     /// container list included). Exists is false when the client has no inventory element; Open, whether it is shown.
     /// </summary>
     public bool IsPointerOverInventory(out bool exists, out bool open, out uint elementOver)
     {
-        var panel = NativeUi.GetElement(InventoryPanel);
+        var panel = NativeUi.GetElement(NativeUi.InventoryPanel);
         exists = panel != IntPtr.Zero;
         open = exists && NativeUi.IsVisible(panel);
         elementOver = 0;
@@ -170,29 +263,19 @@ internal sealed class RetailItemDrag
         var manager = Marshal.ReadIntPtr(ManagerInstance);
         var over = manager == IntPtr.Zero ? IntPtr.Zero : Marshal.ReadIntPtr(manager, ElementLastOverOffset);
         if (over == IntPtr.Zero) return IntPtr.Zero;
-        var panel = NativeUi.GetElement(InventoryPanel);
+        var panel = NativeUi.GetElement(NativeUi.InventoryPanel);
         if (panel == IntPtr.Zero || !NativeUi.IsVisible(panel) || (over != panel && _isAncestorOfMe!(over, panel) == 0)) return IntPtr.Zero;
         // The hit element is usually a part of the cell (its icon); walk up to the cell itself.
         var element = over;
-        for (var depth = 0; depth < 16 && element != IntPtr.Zero && element != panel; depth++, element = Virtual<GetParentFn>(element, GetParentSlot)(element))
+        for (var depth = 0; depth < 16 && element != IntPtr.Zero && element != panel;
+             depth++, element = NativeUi.Virtual<NativeUi.GetParentFn>(element, NativeUi.GetParentSlot)(element))
         {
-            var item = Virtual<DynamicCastFn>(element, DynamicCastSlot)(element, UiItemType);
+            var item = NativeUi.Virtual<DynamicCastFn>(element, DynamicCastSlot)(element, UiItemType);
             if (item != IntPtr.Zero) return item;
         }
         return IntPtr.Zero;
     }
 
-    private static T Virtual<T>(IntPtr instance, int slot) where T : Delegate =>
-        (T)Marshal.GetDelegateForFunctionPointer(Marshal.ReadIntPtr(Marshal.ReadIntPtr(instance), slot), typeof(T));
-
     private static T Function<T>(uint address) where T : Delegate =>
         (T)Marshal.GetDelegateForFunctionPointer(new IntPtr(address), typeof(T));
-
-    private static byte[] Bytes(string bytes)
-    {
-        var parts = bytes.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-        var result = new byte[parts.Length];
-        for (var i = 0; i < parts.Length; i++) result[i] = Convert.ToByte(parts[i], 16);
-        return result;
-    }
 }

@@ -226,6 +226,49 @@ namespace ACE.Server.Tests.Market
             return guids;
         }
 
+        [TestMethod]
+        public void ChannelBatchWithdraw_ToAPackPlace_InsertsThereAndPushesTheRestBack_AndAFullPackFallsBack()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var pack = (Container)VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.PackWcid));
+            // each given item goes in at the front, so the pack holds second, then first
+            var first = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid), pack);
+            var second = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid), pack);
+            var guids = DepositedNamed(player, 2, n => $"Placed item {n}");
+            AtTheVault(player);
+
+            // dropped on the side pack's second cell: the two go there in order, and the item that was there moves back past them
+            var body = ChannelWire.Body(w =>
+            {
+                w.Write(guids.Length);
+                foreach (var guid in guids)
+                    w.Write(guid);
+                w.Write(pack.Guid.Full);
+                w.Write(1);
+            });
+            var (accepted, message) = TransferReply(Request(player, VaultChannelActions.WithdrawBatch, body));
+
+            Assert.IsTrue(accepted, message);
+            Assert.AreEqual(pack.Guid.Full, player.GetInventoryItem(guids[0]).ContainerId);
+            var order = pack.Inventory.Values.OrderBy(i => i.PlacementPosition).Select(i => i.Guid.Full).ToArray();
+            CollectionAssert.AreEqual(new[] { second.Guid.Full, guids[0], guids[1], first.Guid.Full }, order);
+
+            // a slot past the pack's items, however far, is its end, and stays there when later items push it back
+            var last = DepositedNamed(player, 2, n => $"Last item {n}");
+            var far = ChannelWire.Body(w => { w.Write(1); w.Write(last[0]); w.Write(pack.Guid.Full); w.Write(int.MaxValue); });
+            Assert.IsTrue(TransferReply(Request(player, VaultChannelActions.WithdrawBatch, far)).Accepted);
+            var front = ChannelWire.Body(w => { w.Write(1); w.Write(last[1]); w.Write(pack.Guid.Full); w.Write(0); });
+            Assert.IsTrue(TransferReply(Request(player, VaultChannelActions.WithdrawBatch, front)).Accepted);
+            Assert.AreEqual(last[0], pack.Inventory.Values.OrderBy(i => i.PlacementPosition).Last().Guid.Full);
+
+            // a full side pack: the item goes where a withdrawal always has, the main pack
+            pack.ItemCapacity = (byte)pack.Inventory.Count;
+            var more = DepositedNamed(player, 1, n => $"Overflow item {n}");
+            var full = ChannelWire.Body(w => { w.Write(1); w.Write(more[0]); w.Write(pack.Guid.Full); w.Write(0); });
+            Assert.IsTrue(TransferReply(Request(player, VaultChannelActions.WithdrawBatch, full)).Accepted);
+            Assert.AreEqual(player.Guid.Full, player.GetInventoryItem(more[0]).ContainerId);
+        }
+
         /// <summary>
         /// The body of a vault.withdraw_batch request: a count, then the item guids
         /// </summary>
@@ -470,6 +513,67 @@ namespace ACE.Server.Tests.Market
             finally
             {
                 MarketTestDatabase.Execute(Db, $"DROP TRIGGER IF EXISTS `{trigger}`;");
+            }
+        }
+
+        [TestMethod]
+        public void ChannelBatchDeposit_MovesEveryItemAtOnce_WithNoChannelWait_AndPushesChanged()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var guids = Enumerable.Range(0, 3).Select(_ => VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid)).Guid.Full).ToArray();
+            AtTheVault(player);
+
+            using (ChannelSeconds(60))
+            {
+                var sent = Send(player, VaultChannelActions.DepositBatch, WithdrawBatchBody(guids));
+                var events = WaitForEvents(player, e => e.Kind == ChannelEventKind.Reply && e.RequestId == sent);
+
+                Assert.AreEqual(1, events.Last().Body[0], "accepted");
+                Assert.IsFalse(player.IsVaultChannelling, "no channel");
+                foreach (var guid in guids)
+                {
+                    Assert.IsNull(player.GetInventoryItem(guid), "out of the pack");
+                    Assert.IsNotNull(VaultStore.Get(guid), "in the Vault");
+                    Assert.AreEqual(0, Count($"SELECT COUNT(*) FROM biota_properties_i_i_d WHERE object_Id = {guid} AND type = {(int)PropertyInstanceId.Container};"), "the database has it in the Vault");
+                }
+                AssertChanged(events.Single(e => e.Kind == ChannelEventKind.Push), nameof(VaultOutcome.Deposited));
+            }
+        }
+
+        [TestMethod]
+        public void ChannelBatchDeposit_IfOneItemIsRefusedOrTheSetDoesNotFit_MovesNothingAndSaysWhy()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var plain = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid)).Guid.Full;
+            var attuned = VaultTestWorld.NewItem(VaultTestWorld.SwordWcid);
+            attuned.Attuned = AttunedStatus.Attuned;
+            VaultTestWorld.Give(player, attuned);
+            AtTheVault(player);
+
+            AssertRefused(new[] { plain, attuned.Guid.Full }, "attuned");
+
+            // the Vault has room for one more: each item fits alone, but not both
+            var other = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid)).Guid.Full;
+            MarketTestDatabase.Execute(Db, $"REPLACE INTO config_properties_long (`key`, `value`, description) VALUES ('{MarketSettings.VaultSize.Key}', 1, 'test');");
+            try
+            {
+                AssertRefused(new[] { plain, other }, "no room for all 2 items");
+            }
+            finally
+            {
+                MarketTestDatabase.Execute(Db, $"DELETE FROM config_properties_long WHERE `key` = '{MarketSettings.VaultSize.Key}';");
+            }
+
+            void AssertRefused(uint[] guids, string reason)
+            {
+                var (accepted, message) = TransferReply(Request(player, VaultChannelActions.DepositBatch, WithdrawBatchBody(guids)));
+                Assert.IsFalse(accepted, "refused: " + message);
+                StringAssert.Contains(message, reason);
+                foreach (var guid in guids)
+                {
+                    Assert.IsNotNull(player.GetInventoryItem(guid), "still in the pack");
+                    Assert.IsNull(VaultStore.Get(guid), "not in the Vault");
+                }
             }
         }
 

@@ -9,6 +9,7 @@ using LegACEy.Client.GameArt;
 using LegACEy.Client.PanelHost;
 using LegACEy.Client.Themes;
 using LegACEy.Plugin.Vault;
+using static LegACEy.Client.Tests.PanelFrameAssert;
 
 namespace LegACEy.Client.Tests;
 
@@ -37,7 +38,7 @@ public sealed class VaultShellTests
         Assert.Equal(9, scrollBar.Width);
         Assert.NotNull(scrollBar.GetVisualDescendants().OfType<Thumb>().SingleOrDefault());
         // The header's chest icon is the game's own art, requested from the DAT.
-        if (art is CellArt cellArt) Assert.Contains(VaultShellPanel.ChestIconId, cellArt.Reads.Keys);
+        if (art is CellArt cellArt) Assert.Contains(VaultShellPanel.VaultIconId, cellArt.Reads.Keys);
         Assert.False(host.Tick());
     });
 
@@ -136,13 +137,13 @@ public sealed class VaultShellTests
         host.Tick();
         Assert.Equal(10, Columns(host));
 
-        host.Resize(614, VaultShellPanel.WindowHeight);
+        host.Resize(446, VaultShellPanel.WindowHeight);
         host.Tick();
         Assert.Equal(11, Columns(host));
 
-        host.Resize(314, VaultShellPanel.WindowHeight);
+        host.Resize(290, VaultShellPanel.WindowHeight);
         host.Tick();
-        Assert.Equal(5, Columns(host));
+        Assert.Equal(7, Columns(host));
         Assert.Null(host.LastError);
     });
 
@@ -207,20 +208,6 @@ public sealed class VaultShellTests
         }
     }
 
-    /// <summary>Every visible control lies inside the window, except scrolled-out cells, which the grid's viewport clips.</summary>
-    private static void AssertNothingOutsideFrame(AvaloniaPanel host)
-    {
-        var window = new Rect(host.Content.Bounds.Size);
-        foreach (var visual in host.Content.GetVisualDescendants().OfType<Visual>())
-        {
-            if (!visual.IsEffectivelyVisible || visual.GetVisualAncestors().OfType<ScrollViewer>().Any()) continue;
-            var origin = visual.TranslatePoint(default, host.Content);
-            if (origin == null) continue;
-            var bounds = new Rect(origin.Value, visual.Bounds.Size);
-            Assert.True(window.Contains(bounds), $"{visual.GetType().Name} at {bounds} lies outside the window {window}");
-        }
-    }
-
     private static int Columns(AvaloniaPanel host)
     {
         var cells = Assert.Single(host.Content.GetVisualDescendants().OfType<WrapPanel>()).Children;
@@ -239,7 +226,7 @@ public sealed class VaultShellTests
         public GameImage? ReadImage(uint id)
         {
             Reads[id] = Reads.TryGetValue(id, out var count) ? count + 1 : 1;
-            if (id != 0x06000FC7 && id != VaultShellPanel.ChestIconId)
+            if (id != 0x06000FC7 && id != VaultShellPanel.VaultIconId)
                 return null;
             var pixels = new byte[32 * 32 * 4];
             for (var y = 0; y < 32; y++)

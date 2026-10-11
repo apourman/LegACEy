@@ -14,8 +14,6 @@ public sealed class VaultPlugin : ILegACEyPlugin
     private const string Station = "vault";
     // The window resizes freely; the grid centres its columns in the spare width. The minimum width fits "N selected", Withdraw N and
     // Clear on one line, and at the minimum height one grid row still fits with the status line shown.
-    // The Dereth header's strip from the window's top that drags it: the 8 px frame edge, the 2 px top margin and the 50 px header.
-    private const int HeaderHeight = 60;
     private static readonly WindowResizing Sizing =new(new Size(290, 306));
 
     public string Name => "Vault";
@@ -32,7 +30,7 @@ public sealed class VaultPlugin : ILegACEyPlugin
 
     public void Start(ILegACEyClient client) =>
         client.RegisterStationWindow(Station, WindowId, "Vault",
-            VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight, new Point(240, 100), close => CreateWindow(client, close), new DerethClientTheme(), Sizing, HeaderHeight);
+            VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight, new Point(240, 100), close => CreateWindow(client, close), new DerethClientTheme(), Sizing, DerethWindow.TitleBarHeight);
 
     private static Control CreateWindow(ILegACEyClient client, Action close)
     {

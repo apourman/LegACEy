@@ -36,6 +36,9 @@ public sealed class PluginRegistry
     /// <summary>Raised when the menu may have changed: a server answer, a plugin turned off, a menu entry added, or a session change.</summary>
     public event EventHandler? MenuChanged;
 
+    // Each plugin's server-action handlers, already guarded for their plugin.
+    private event Action? ServerActionsChanged;
+
     /// <summary>The menu entries of visible plugins, in load order.</summary>
     public IReadOnlyList<PluginMenuEntry> VisibleMenuEntries =>
         _entries.Where(IsVisible).SelectMany(entry => entry.MenuEntries).ToArray();
@@ -92,6 +95,7 @@ public sealed class PluginRegistry
     {
         _serverActions = new HashSet<string>(actions ?? Array.Empty<string>(), StringComparer.Ordinal);
         MenuChanged?.Invoke(this, EventArgs.Empty);
+        ServerActionsChanged?.Invoke();
     }
 
     /// <summary>The player logged off: plugin windows close and the server's actions are forgotten until the next login.</summary>
@@ -129,7 +133,10 @@ public sealed class PluginRegistry
         return false;
     }
 
-    private bool IsVisible(PluginEntry entry) => entry.Enabled && entry.RequiredActions.All(_serverActions.Contains);
+    /// <summary>Whether the server's last channel.hello registered the action. Nothing registered before the first answer.</summary>
+    private bool SupportsAction(string action) => _serverActions.Contains(action);
+
+    private bool IsVisible(PluginEntry entry) => entry.Enabled && entry.RequiredActions.All(SupportsAction);
 
     /// <summary>Runs one of a plugin's actions. An error from it turns that plugin off; a plugin that is already off is ignored.</summary>
     private void Guarded(PluginEntry entry, Action action)
@@ -159,7 +166,8 @@ public sealed class PluginRegistry
         MenuChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void ToggleWindow(PluginEntry entry, string id, string title, int width, int height, Point location, Func<Action, Control> createContent, bool ownChrome)
+    private void ToggleWindow(PluginEntry entry, string id, string title, int width, int height, Point location, Func<Action, Control> createContent, bool ownChrome,
+        IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28, string? sharesLocationWith = null)
     {
         // Window ids are namespaced by plugin, so a plugin can never open or close another plugin's window or a client window.
         var windowId = entry.Name + "/" + id;
@@ -170,7 +178,9 @@ public sealed class PluginRegistry
             return;
         }
 
-        if (_host.OpenWindow(new WindowDefinition(windowId, title, width, height), location, createContent, reason => Fail(entry, reason), ownChrome))
+        var definition = new WindowDefinition(windowId, title, width, height, titleBarHeight, theme: theme, resizing: resizing,
+            sharesLocationWith: sharesLocationWith == null ? null : entry.Name + "/" + sharesLocationWith);
+        if (_host.OpenWindow(definition, location, createContent, reason => Fail(entry, reason), ownChrome))
             _windowOwners[windowId] = entry;
     }
 
@@ -239,12 +249,32 @@ public sealed class PluginRegistry
             _registry = registry;
             _entry = entry;
             ServerChannel = new GuardedChannel(registry, entry);
+            Inventory = new GuardedInventory(registry, entry, registry._host.Inventory);
         }
 
         public IServerChannel ServerChannel { get; }
         public string PortalPath => _registry._host.PortalPath;
         public IGameArtSource Art => _registry._host.Art;
         public IItemDragHost ItemDrag => _registry._host.ItemDrag;
+        public IInventoryPort Inventory { get; }
+        public bool SupportsAction(string action) => _registry.SupportsAction(action);
+
+        public void WhenServerActionsChange(Action changed)
+        {
+            if (changed == null) throw new ArgumentNullException(nameof(changed));
+            Action guarded = () => _registry.Guarded(_entry, changed);
+            _registry.ServerActionsChanged += guarded;
+            _ = new TrackedSubscription(_entry.Subscriptions, new GuardedInventory.Release(() => _registry.ServerActionsChanged -= guarded));
+        }
+
+        public IRetailPanel TakeOverRetailInventory(Action<bool> retailOpenChanged)
+        {
+            if (retailOpenChanged == null) throw new ArgumentNullException(nameof(retailOpenChanged));
+            var panel = _registry._host.TakeOverRetailInventory(open => _registry.Guarded(_entry, () => retailOpenChanged(open)));
+            // Held with the plugin's subscriptions, so turning the plugin off gives the retail panel back.
+            _entry.Subscriptions.Add(panel);
+            return panel;
+        }
 
         public void AddMenuEntry(string title, uint iconId, Action action)
         {
@@ -259,11 +289,15 @@ public sealed class PluginRegistry
             _registry.ToggleWindow(_entry, id, title, width, height, defaultLocation, _ => createContent(), ownChrome: false);
         }
 
-        public void ToggleWindowWithChrome(string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow)
+        public void ToggleWindowWithChrome(string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow,
+            IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28, string? sharesLocationWith = null)
         {
             if (createWindow == null) throw new ArgumentNullException(nameof(createWindow));
-            _registry.ToggleWindow(_entry, id, title, width, height, defaultLocation, createWindow, ownChrome: true);
+            _registry.ToggleWindow(_entry, id, title, width, height, defaultLocation, createWindow, ownChrome: true, theme, resizing, titleBarHeight, sharesLocationWith);
         }
+
+        public int? LoadSettings() => _registry._host.LoadPluginSettings(_entry.Name);
+        public void SaveSettings(int value) => _registry._host.SavePluginSettings(_entry.Name, value);
 
         public void RegisterStationWindow(string station, string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow, IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28)
         {
@@ -305,6 +339,63 @@ public sealed class PluginRegistry
         {
             if (action == null) throw new ArgumentNullException(nameof(action));
             return Channel.Schedule(delay, () => _registry.Guarded(_entry, action));
+        }
+    }
+
+    /// <summary>The inventory as one plugin sees it: its Changed handlers and its commands run under that plugin's guard.</summary>
+    private sealed class GuardedInventory : IInventoryPort
+    {
+        private readonly PluginRegistry _registry;
+        private readonly PluginEntry _entry;
+        private readonly IInventoryPort _inner;
+        private readonly List<(Action Handler, IDisposable Subscription)> _handlers = new();
+
+        public GuardedInventory(PluginRegistry registry, PluginEntry entry, IInventoryPort inner)
+        {
+            _registry = registry;
+            _entry = entry;
+            _inner = inner;
+        }
+
+        public InventorySnapshot Snapshot => _inner.Snapshot;
+
+        public event Action? Changed
+        {
+            add
+            {
+                if (value == null) return;
+                Action handler = value;
+                Action guarded = () => _registry.Guarded(_entry, handler);
+                _inner.Changed += guarded;
+                var subscription = new TrackedSubscription(_entry.Subscriptions, new Release(() => _inner.Changed -= guarded));
+                _handlers.Add((handler, subscription));
+            }
+            remove
+            {
+                var index = _handlers.FindIndex(pair => pair.Handler == value);
+                if (index < 0) return;
+                _handlers[index].Subscription.Dispose();
+                _handlers.RemoveAt(index);
+            }
+        }
+
+        public void OpenContainer(uint containerId) => _registry.Guarded(_entry, () => _inner.OpenContainer(containerId));
+        public void Select(uint itemId) => _registry.Guarded(_entry, () => _inner.Select(itemId));
+        public void Use(uint itemId) => _registry.Guarded(_entry, () => _inner.Use(itemId));
+        public void Assess(uint itemId) => _registry.Guarded(_entry, () => _inner.Assess(itemId));
+        public void DropOnGround(uint itemId) => _registry.Guarded(_entry, () => _inner.DropOnGround(itemId));
+        public void MoveToContainer(uint itemId, uint containerId, int slotIndex) =>
+            _registry.Guarded(_entry, () => _inner.MoveToContainer(itemId, containerId, slotIndex));
+        public uint WieldMask(uint itemId, PaperdollSlot slot) => _inner.WieldMask(itemId, slot);
+        public void Wield(uint itemId, PaperdollSlot slot) => _registry.Guarded(_entry, () => _inner.Wield(itemId, slot));
+        public void MergeStack(uint itemId, uint targetStackId) => _registry.Guarded(_entry, () => _inner.MergeStack(itemId, targetStackId));
+
+        /// <summary>Runs an action once, when disposed.</summary>
+        internal sealed class Release : IDisposable
+        {
+            private readonly Action _release;
+            public Release(Action release) => _release = release;
+            public void Dispose() => _release();
         }
     }
 

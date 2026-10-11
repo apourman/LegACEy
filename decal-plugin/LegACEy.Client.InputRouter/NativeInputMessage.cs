@@ -23,6 +23,7 @@ public enum InputAction
     PointerMove,
     PointerDown,
     PointerUp,
+    RightClick,
     MouseWheel,
     KeyDown,
     KeyUp,

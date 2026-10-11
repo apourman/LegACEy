@@ -1,5 +1,4 @@
 using LegACEy.Client.Demo;
-using LegACEy.Plugin.Paperdoll;
 using Xunit;
 
 namespace LegACEy.Client.Tests;

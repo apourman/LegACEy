@@ -38,6 +38,7 @@ namespace ACE.Server.Tests.ClientChannel
                     VaultChannelActions.Check,
                     VaultChannelActions.Move,
                     VaultChannelActions.WithdrawBatch,
+                    VaultChannelActions.DepositBatch,
                     StationChannelActions.Leave,
                 },
                 names);

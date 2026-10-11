@@ -10,6 +10,7 @@ using Avalonia.Media.Imaging;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
+using static LegACEy.Client.Themes.DerethItemCells;
 
 namespace LegACEy.Plugin.Vault;
 
@@ -18,13 +19,13 @@ namespace LegACEy.Plugin.Vault;
 /// the LegACEy server channel and moves items by drag: deposit, withdraw and reorder. Without one it shows a sample Vault
 /// with icons read from the player's DAT.
 /// </summary>
-public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropTarget
+public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropTarget, IItemSetDropTarget
 {
-    public const int WindowWidth = 566;
-    // Room for ten rows with Windows fonts, whose taller lines take 12 px more than the Linux test fonts.
-    public const int WindowHeight = 706;
-    /// <summary>The header's chest icon, from the DAT.</summary>
-    public const uint ChestIconId = 0x06001020;
+    public const int WindowWidth = 410;
+    // Room for ten rows with Windows fonts, whose lines are taller than the Linux test fonts'.
+    public const int WindowHeight = 540;
+    /// <summary>The header's icon, from the DAT: the Sealed Vault's, as the Vault in the world.</summary>
+    public const uint VaultIconId = 0x06003774;
     // A whole page of slots, so the grid looks the same however many items the page holds.
     private const int MinimumCells = VaultProtocol.PageSize;
     private const int SampleCount = 317;
@@ -37,8 +38,8 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     private static readonly IBrush Invalid = DerethPalette.InvalidBrush;
     private static readonly IBrush ShadowBrush = DerethPalette.Brush(Colors.Black);
     private static readonly IBrush SelectedBrush = DerethPalette.Brush(DerethPalette.TealText);
-    private static readonly IBrush ValidFill = DerethPalette.Brush(Color.FromArgb(0x40, DerethPalette.Gold.R, DerethPalette.Gold.G, DerethPalette.Gold.B));
-    private static readonly IBrush InvalidFill = DerethPalette.Brush(Color.FromArgb(0x40, DerethPalette.Invalid.R, DerethPalette.Invalid.G, DerethPalette.Invalid.B));
+    private static readonly IBrush ValidFill = DerethPalette.GoldWashBrush;
+    private static readonly IBrush InvalidFill = DerethPalette.InvalidWashBrush;
 
     // icon, UiEffects (the sample's outline: BoostMana, BoostStamina, Frost, Magical, Lightning, Fire, Poisoned, as the prototype draws them), count
     private static readonly (string Name, uint Icon, int Effects, int Count)[] Samples =
@@ -51,7 +52,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         ("Leather cap", 0x06000FAA, 0, 1),
         ("Blue potion", 0x06001012, 0x8, 12),
         ("Yellow potion", 0x06001013, 0x10, 3),
-        ("Treasure chest", ChestIconId, 0, 1),
+        ("Treasure chest", 0x06001020, 0, 1),
         ("Small pouch", 0x06001031, 0, 25),
         ("Green bottle", 0x06001030, 0x2, 8),
         ("Silver goblet", 0x0600101F, 0x1, 1)
@@ -59,16 +60,16 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
 
     private readonly Dictionary<uint, WriteableBitmap?> _images = new();
     // an item's icon as drawn, by the fields that decide it
-    private readonly Dictionary<(uint Underlay, uint Icon, uint Overlay, uint OverlaySecondary, uint UiEffects), WriteableBitmap?> _itemImages = new();
+    private readonly Dictionary<(uint Plate, uint Underlay, uint Icon, uint Overlay, uint OverlaySecondary, uint UiEffects), WriteableBitmap?> _itemImages = new();
     private readonly IGameArtSource _art;
     private readonly VaultClient? _client;
     private readonly VaultSnapshot? _sample;
     private readonly IItemDragHost? _dragHost;
-    private readonly TextBlock _itemsLabel = Label(string.Empty, MutedBrush, 13);
-    private readonly TextBlock _items = Label(string.Empty, TextBrush, 13);
-    private readonly TextBlock _balance = Label(string.Empty, GoldBrush, 13);
+    private readonly TextBlock _itemsLabel = Label(string.Empty, MutedBrush, 12);
+    private readonly TextBlock _items = Label(string.Empty, TextBrush, 12);
+    private readonly TextBlock _balance = Label(string.Empty, GoldBrush, 12);
     private readonly TextBlock _pagerText = Label(string.Empty, MutedBrush, 12);
-    private readonly DerethSearchField _search = new("Search vault…") { Margin = new Thickness(2, 0, 2, 10) };
+    private readonly DerethSearchField _search = new("Search vault…") { Margin = new Thickness(0, 0, 0, 6) };
     private readonly DerethPagerButton _previous = new(DerethSpriteArt.PagerPrevious) { Width = 34, Height = 32, IsEnabled = false };
     private readonly DerethPagerButton _next = new(DerethSpriteArt.PagerNext) { Width = 34, Height = 32, IsEnabled = false };
     // The message line above the pager: wraps rather than trims, so a long refusal reason stays whole.
@@ -82,7 +83,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     private readonly List<Border> _dropIndicators = new();
     // The header line: "Items: n / capacity" and the balance, or "N selected" with the selection's buttons instead.
     private readonly StackPanel _itemsLine = new() { Orientation = Orientation.Horizontal, Spacing = 4 };
-    private readonly TextBlock _selectedLabel = Label(string.Empty, SelectedBrush, 13);
+    private readonly TextBlock _selectedLabel = Label(string.Empty, SelectedBrush, 12);
     private readonly TextBlock _withdrawText = Label(string.Empty, GoldBrush, 12);
     private readonly DerethButton _withdrawSelection = new() { Height = 24 };
     private readonly DerethButton _clearSelection = new() { Height = 24, Content = Label("Clear", MutedBrush, 12) };
@@ -125,7 +126,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         _sample = client == null ? SampleSnapshot() : null;
         RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.None);
 
-        var summary = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(2, 10, 2, 8) };
+        var summary = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(2, 6, 2, 6) };
         summary.Children.Add(_itemsLine);
         Grid.SetColumn(_balance, 1);
         summary.Children.Add(_balance);
@@ -143,9 +144,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         Grid.SetRow(_search, 1);
         _search.TextChanged += (_, _) => _client?.SetSearch(_search.Text);
         Grid.SetRow(_grid, 2);
-        // Inset from the search field above it, which stays the window's widest line.
-        _grid.Margin = new Thickness(10, 0, 10, 0);
-        var pager = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Margin = new Thickness(4, 10, 4, 0) };
+        var pager = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Margin = new Thickness(0, 6, 0, 0) };
         _previous.Click += (_, _) => _client?.PreviousPage();
         pager.Children.Add(_previous);
         _pagerText.HorizontalAlignment = HorizontalAlignment.Center;
@@ -176,7 +175,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     }
 
     /// <summary>The header's chest icon, drawn from the DAT.</summary>
-    internal Control HeaderIcon() => Icon(Bitmap(ChestIconId));
+    internal Control HeaderIcon() => Icon(Bitmap(VaultIconId));
 
     private static VaultSnapshot SampleSnapshot()
     {
@@ -231,10 +230,9 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
                     if (item.StackSize > 1) cell.Children.Add(StackCount(item.StackSize));
                     ConnectCell(cell, item);
                 }
-                // Shown on the cell a dragged item would be dropped into.
+                // Shown on the cell a dragged item would be dropped into, over the whole slot.
                 var indicator = new Border
                 {
-                    Width = 38, Height = 38, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
                     BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(2), IsHitTestVisible = false
                 };
                 cell.Children.Add(indicator);
@@ -265,7 +263,10 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
             var selected = _selection.Contains(index);
             var slot = _liveSlots[index];
             slot.Selected = selected;
-            slot.Opacity = index == lifted || (multi && !selected) ? DimmedOpacity : 1;
+            // A dragged selection stands out by its border, so its cells stay bright; a single lifted item dims.
+            var carried = multi && selected && _dragItem != null;
+            slot.Carried = carried;
+            slot.Opacity = (index == lifted && !carried) || (multi && !selected) ? DimmedOpacity : 1;
         }
         var snapshot = Snapshot;
         _itemsLine.IsVisible = !multi;
@@ -314,7 +315,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         return (client.Notice, false);
     }
 
-    private const double Gap = DerethSlotGrid.Pitch - DerethSlotGrid.CellSize;
+    private double Gap => _grid.ColumnPitch - DerethSlotGrid.CellSize;
 
     /// <summary>The index of the vault cell under a point in this panel's coordinates, or -1.</summary>
     private int CellAt(Point position)
@@ -369,6 +370,21 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
             return false;
         }
         _client.Deposit(itemId);
+        return true;
+    }
+
+    /// <summary>A set of inventory items released together: on a vault cell they go in as one batch deposit; anywhere else they stay.</summary>
+    public bool DropMany(IReadOnlyList<uint> itemIds, Point position)
+    {
+        if (_client == null || _disposed || itemIds.Count == 0) return false;
+        var cell = _client.Connection == VaultConnection.Live ? CellAt(position) : -1;
+        RetailDragOver(0, string.Empty, null);
+        if (cell < 0)
+        {
+            if (_client.Connection == VaultConnection.Live) _client.Tell("Drop the items on a vault cell to deposit them.");
+            return false;
+        }
+        _client.DepositMany(itemIds);
         return true;
     }
 
@@ -433,7 +449,8 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         var selected = _selection.Contains(IndexOf(item.Guid));
         if (!selected) _selection.Clear();
         _dragGuids = selected ? _client.SelectedGuids() : new[] { item.Guid };
-        _dragIcon = _dragHost.ShowDragIcon(ItemImage(item), _dragGuids.Count);
+        // A withdrawal can be dropped on the retail inventory, so retail's drop indicator shows for it.
+        _dragIcon = _dragHost.ShowDragIcon(ItemImage(item), _dragGuids.Count, retailDropIndicator: true);
         // The lifted item's own cell dims, as the retail inventory ghosts a dragged item.
         ShowSelection();
         UpdateLiftedHover(e);
@@ -485,7 +502,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         switch (_dragHost.DropTargetAtPointer())
         {
             case ItemDropTarget.Inventory:
-                _client.WithdrawMany(guids);
+                _client.WithdrawMany(guids, _dragHost.InventoryPlaceAtPointer());
                 break;
             case ItemDropTarget.InventoryClosed:
                 _client.Tell("Open your inventory, then drop the item on it to withdraw it.");
@@ -521,28 +538,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         _ => state
     };
 
-    private static TextBlock Label(string text, IBrush brush, double size) => new()
-    {
-        Text = text, Foreground = brush, FontSize = size, FontFamily = DerethPalette.Body,
-        VerticalAlignment = VerticalAlignment.Center
-    };
-
-    /// <summary>A stack count in the cell's corner, with a one-pixel dark shadow.</summary>
-    private static Control StackCount(int count)
-    {
-        var panel = new Panel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 3, 1) };
-        var shadow = Label(count.ToString(), ShadowBrush, 11);
-        shadow.FontWeight = FontWeight.SemiBold;
-        shadow.Margin = new Thickness(1, 1, 0, 0);
-        var text = Label(count.ToString(), TextBrush, 11);
-        text.FontWeight = FontWeight.SemiBold;
-        text.Margin = new Thickness(0, 0, 1, 1);
-        panel.Children.Add(shadow);
-        panel.Children.Add(text);
-        return panel;
-    }
-
-    /// <summary>A picture that isn't an item (the header's chest): its outline is black, as retail draws it.</summary>
+    /// <summary>A picture that isn't an item (the header's vault): its outline is black, as retail draws it.</summary>
     private WriteableBitmap? Bitmap(uint id)
     {
         if (!_images.TryGetValue(id, out var bitmap))
@@ -550,36 +546,18 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         return bitmap;
     }
 
-    /// <summary>An item's icon as drawn: outline from its UI effect, no plate. The grid redraws on every change, so the bitmap is kept per look.</summary>
+    /// <summary>An item's cell icon: on its type plate, outline from its UI effect. The grid redraws on every change, so the bitmap is kept per look.</summary>
     private WriteableBitmap? ItemBitmap(VaultItemView item)
     {
-        var key = (item.Underlay, item.Icon, item.Overlay, item.OverlaySecondary, unchecked((uint)item.UiEffects));
+        var key = (item.Plate, item.Underlay, item.Icon, item.Overlay, item.OverlaySecondary, unchecked((uint)item.UiEffects));
         if (!_itemImages.TryGetValue(key, out var bitmap))
-            _itemImages.Add(key, bitmap = GameArtImageExtension.CreateBitmap(ItemImage(item)));
+            _itemImages.Add(key, bitmap = GameArtImageExtension.CreateBitmap(ItemImage(item, item.Plate)));
         return bitmap;
     }
 
-    private GameImage? ItemImage(VaultItemView item) =>
-        ItemIcon.Draw(_art, item.Underlay, item.Icon, item.Overlay, item.OverlaySecondary, unchecked((uint)item.UiEffects));
-
-    /// <summary>An item's icon at native size. Missing art shows a question mark.</summary>
-    private Grid Icon(WriteableBitmap? bitmap)
-    {
-        var layers = new Grid
-        {
-            Width = 32, Height = 32,
-            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
-        };
-        if (bitmap != null)
-            layers.Children.Add(new Image { Source = bitmap, Width = 32, Height = 32, Stretch = Stretch.None });
-        if (layers.Children.Count == 0)
-        {
-            var fallback = Label("?", MutedBrush, 12);
-            fallback.HorizontalAlignment = HorizontalAlignment.Center;
-            layers.Children.Add(fallback);
-        }
-        return layers;
-    }
+    /// <summary>The item's icon; the drag image has no plate.</summary>
+    private GameImage? ItemImage(VaultItemView item, uint plate = 0) =>
+        ItemIcon.Draw(_art, item.Underlay, item.Icon, item.Overlay, item.OverlaySecondary, unchecked((uint)item.UiEffects), plate);
 
     public void Dispose()
     {
@@ -600,7 +578,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
 }
 
 /// <summary>The Vault window: the Dereth frame, its header and close box, around the Vault panel.</summary>
-public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget, IDisposable
+public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget, IItemSetDropTarget, IDisposable
 {
     private readonly VaultShellPanel _panel;
     private bool _disposed;
@@ -619,6 +597,9 @@ public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget, IDisp
 
     public bool RetailDrop(uint itemId, string itemName, Point position) =>
         this.TranslatePoint(position, _panel) is { } point && _panel.RetailDrop(itemId, itemName, point);
+
+    public bool DropMany(IReadOnlyList<uint> itemIds, Point position) =>
+        this.TranslatePoint(position, _panel) is { } point && _panel.DropMany(itemIds, point);
 
     public void Dispose()
     {

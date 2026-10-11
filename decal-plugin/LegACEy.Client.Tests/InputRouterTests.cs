@@ -22,6 +22,21 @@ public sealed class InputRouterTests
     }
 
     [Fact]
+    public void A_right_press_over_a_surface_is_a_right_click_there_and_takes_no_capture()
+    {
+        var router = new InputRouterService();
+        var surfaces = new[] { Surface("back", 0, 0), Surface("front", 1, 10) };
+
+        var down = router.Route(new NativeInputMessage(InputRouterService.WmRButtonDown, 0, Pack(15, 15)), surfaces);
+        var move = router.Route(new NativeInputMessage(InputRouterService.WmMouseMove, 0, Pack(5, 5)), surfaces);
+
+        Assert.Equal(InputAction.RightClick, down.Action);
+        Assert.Equal("front", down.SurfaceId);
+        Assert.True(down.Eat);
+        Assert.Equal("back", move.SurfaceId);
+    }
+
+    [Fact]
     public void Key_messages_are_eaten_and_routed_only_when_the_focused_surface_wants_keyboard()
     {
         var router = new InputRouterService();

@@ -23,7 +23,7 @@ internal sealed class ModelRenderer : IDisposable
 
     public ModelRenderer(Device device) => _device = device;
 
-    public void Draw(CharacterModel model, Rectangle area, float yaw, float zoom)
+    public void Draw(CharacterModel model, Rectangle area, float yaw, float zoom, float focus)
     {
         var screen = _device.Viewport;
         area.Intersect(new Rectangle(screen.X, screen.Y, screen.Width, screen.Height));
@@ -38,8 +38,8 @@ internal sealed class ModelRenderer : IDisposable
             // the game's depth buffer is finished with by now; clear only our rectangle of it
             _device.Clear(ClearFlags.ZBuffer, 0, 1f, 0, new[] { area });
 
-            var middle = (model.Bottom + model.Top) / 2;
-            var distance = (model.Top - model.Bottom) * 0.6f / (float)Math.Tan(FieldOfView / 2) / zoom;
+            var middle = model.Bottom + (model.Top - model.Bottom) * focus;
+            var distance = (model.Top - model.Bottom) * LegACEy.Client.Demo.ModelView.Framing / 2 / (float)Math.Tan(FieldOfView / 2) / zoom;
             _device.Transform.World = Matrix.RotationZ(yaw);
             _device.Transform.View = Matrix.LookAtRH(new Vector3(0, -distance, middle), new Vector3(0, 0, middle), new Vector3(0, 0, 1));
             _device.Transform.Projection = Matrix.PerspectiveFovRH(FieldOfView, area.Width / (float)area.Height, 0.1f, distance + 5);

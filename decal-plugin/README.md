@@ -20,6 +20,7 @@ and database remain in the repository's upstream-compatible `Source/` and
 | `LegACEy.Client.Demo` | Framework windows and controls, and the plugin API (`ILegACEyPlugin`, `ILegACEyClient`) |
 | `LegACEy.Plugin.Paperdoll` | The 3D paperdoll plugin, built into `Plugins/Paperdoll/` |
 | `LegACEy.Plugin.Vault` | The account Vault plugin, built into `Plugins/Vault/` |
+| `LegACEy.Plugin.Inventory` | The inventory window, built into `Plugins/Inventory/` |
 | `LegACEy.Client.Tests` | Automated tests without an installed Decal runtime |
 | `LegACEy.Client.HookSmoke` | Windows native hook regression check |
 
@@ -56,6 +57,11 @@ next post-UI draw fail in game. The file is deleted, the failure is logged to
 `legacey-avalonia.log`, and the retail EndScene hook is removed, which exercises
 that removal path. With several clients sharing the directory, whichever client
 checks first takes the file; the `[pid N]` prefix shows which one.
+
+The LegACEy Inventory replaces retail's inventory panel: it parks retail's panel and opens and closes its own window with it (by key,
+toolbar or item). Creating an empty file named `retail-inventory-native` beside the main DLL gives retail's panel back; deleting it
+takes the panel over again. The file is only checked, never consumed. A drag that leaves the LegACEy window is handed to retail's own
+drag when retail's inventory lists show the item, so the world, NPCs and other retail windows take it as they would from retail.
 
 ## Tests
 

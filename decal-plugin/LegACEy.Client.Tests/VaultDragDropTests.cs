@@ -74,12 +74,16 @@ public sealed class VaultDragDropTests
         Assert.NotNull(icon);
         Assert.Equal((32, 32), (icon!.Width, icon.Height));
         Assert.Equal(FlatArt.Pixels, icon.Pixels);
+        Assert.Equal(new[] { true }, vault.Drag.RetailIndicators); // a Vault withdrawal is one the retail inventory can take
+        // released over the inventory's third cell of a side pack: the withdrawal goes there
+        vault.Drag.InventoryPlace = (0x50000001, 2);
         vault.Host.PointerMove(VaultShellPanel.WindowWidth + 80, start.Y);
         vault.Host.PointerUp(VaultShellPanel.WindowWidth + 80, start.Y);
         vault.Step(TimeSpan.FromMilliseconds(30));
 
         Assert.Equal(0, vault.Drag.IconsOpen);
         Assert.Equal(VaultProtocol.Withdraw, vault.Server.Received.Last());
+        Assert.Equal(((uint)0x50000001, 2), vault.Server.Places.Last());
         Assert.Null(vault.Host.LastError);
     });
 
@@ -213,12 +217,16 @@ public sealed class VaultDragDropTests
     private sealed class PanelDragHost : IItemDragHost
     {
         public AvaloniaPanel? Panel { get; private set; }
-        public IDisposable ShowDragIcon(LegACEy.Client.GameArt.GameImage? icon, int count)
+        public IDisposable ShowDragIcon(LegACEy.Client.GameArt.GameImage? icon, int count, bool retailDropIndicator, uint itemId = 0)
         {
             Panel = AvaloniaPanel.Create(() => new Grid { Width = 32, Height = 32 }, 32, 32);
             return new Icon(this);
         }
         public ItemDropTarget DropTargetAtPointer() => ItemDropTarget.Elsewhere;
+        public (uint Container, int Position)? InventoryPlaceAtPointer() => null;
+        public bool DeliverAtPointer(uint itemId, string itemName) => false;
+        public bool DeliverManyAtPointer(IReadOnlyList<uint> itemIds) => false;
+        public bool HandToRetail(uint itemId) => false;
         private sealed class Icon : IDisposable
         {
             private readonly PanelDragHost _owner;
@@ -233,7 +241,7 @@ public sealed class VaultDragDropTests
         public LiveVault(int height = VaultShellPanel.WindowHeight, IItemDragHost? dragHost = null) : base(null, height, dragHost, new FlatArt()) { }
 
         public Control SlotOf(Control cell) => cell;
-        public Border[] VisibleIndicators() => Cells.SelectMany(cell => ((Grid)cell).Children.OfType<Border>()).Where(border => border.IsVisible).ToArray();
+        public Border[] VisibleIndicators() => Cells.SelectMany(cell => ((Grid)cell).Children.OfType<Border>()).Where(border => border.IsVisible && border.Name != "Well").ToArray();
     }
 
     /// <summary>Every texture is one flat opaque 32×32 image, except id 0 (no layer)</summary>

@@ -30,6 +30,33 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void A_scaled_manager_shows_windows_smaller_and_saves_their_size_at_design_size()
+    {
+        var store = new MemoryWindowPositionStore();
+        var manager = new WindowManager(new Size(800, 600), store, "server", "character", scale: 0.5);
+        var resizing = new WindowResizing(new Size(100, 60));
+        var window = manager.Open(new WindowDefinition("one", "One", 200, 120, titleBarHeight: 20, resizing: resizing), new Point(10, 10));
+
+        Assert.Equal(new Size(100, 60), window.Size);
+        // The title bar is 10 pixels tall now: a press 8 pixels down moves the window, one 15 pixels down is in the content.
+        manager.Press(new Point(60, 25));
+        Assert.Null(manager.Moving);
+        manager.Release();
+        manager.Press(new Point(60, 18));
+        Assert.Same(window, manager.Moving);
+        manager.Release();
+        // The minimum shrinks too: the bottom-right corner can pull the window down to 50×30.
+        Assert.True(manager.Press(new Point(109, 69)));
+        manager.Move(new Point(0, 0));
+        manager.Release();
+        Assert.Equal(new Size(50, 30), window.Size);
+        manager.Close("one");
+
+        Assert.Equal(new Size(100, 60), store.Get("server", "character", "one")!.Value.Size);
+        Assert.Equal(new Size(50, 30), manager.Open(new WindowDefinition("one", "One", 200, 120, titleBarHeight: 20, resizing: resizing), new Point(10, 10)).Size);
+    }
+
+    [Fact]
     public void Dragging_the_title_bar_moves_the_window_and_clamps_it_to_the_screen()
     {
         var manager = NewManager(300, 200);

@@ -33,6 +33,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
+
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ScreenToClient(IntPtr window, ref NativePoint point);
@@ -81,6 +85,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private const uint DatCursorNWSE = 0x06006126;
     private const uint DatCursorNESW = 0x06006127;
     private const uint DatCursorMove = 0x06006119;
+    // Beside the DLL: while this file exists, plugins leave retail's inventory panel alone. Without it the LegACEy Inventory takes it
+    // over.
+    private const string RetailPanelSwitchFile = "retail-inventory-native";
+
+    // How big LegACEy windows show against their design size. The indicator bar keeps retail's size, and drag icons retail's 32 pixels.
+    // An Avalonia that cannot scale panels shows them at design size rather than failing every window.
+    // ponytail: one fixed size; make it a setting (small, medium, large) if players want to choose.
+    private static readonly double WindowScale = AvaloniaPanel.CanScale ? 0.85 : 1;
 
     private const string MenuSlot = "LegACEy";
     private const string MenuWindowId = "plugin-menu";
@@ -100,6 +112,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private ScreenSurface? _barSurface;
     private RetailSurfaceRenderer? _barRenderer;
     private WindowManager? _windows;
+    private IWindowPositionStore? _positionStore;
+    // Each plugin's one settings value, per character, in its own file: a row keyed by the plugin's name whose X is the value.
+    private static readonly FileWindowPositionStore SettingsStore = new(IOPath.Combine(PluginDirectory, "plugin-settings.txt"));
     // The window whose frame shows a hovered corner, and the corner it shows.
     private string? _cornerWindowId;
     private DerethCorner _cornerApplied;
@@ -123,9 +138,33 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private GameChannelTransport? _channelTransport;
     private ServerChannelClient? _serverChannel;
     private RetailItemDrag? _retailDrag;
+    // Plugin takeovers of retail panels (the inventory), and the switch that turns them on. The switch is a marker file beside the DLL,
+    // as the post-UI test failure is: create the file to turn the takeover on, delete it to turn it off.
+    private readonly List<RetailPanelTakeover> _retailPanels = new();
+    private bool? _retailPanelsValid;
+    private bool _retailPanelSwitch;
+    private DateTime _lastRetailPanelSwitchCheck;
+    private readonly DecalInventoryPort _inventory = new(Log);
     private uint _retailDragItem;
+    // The world object a LegACEy window's own drag carries (an inventory item), or 0.
+    private uint _ownDragItem;
     private string _retailDragName = string.Empty;
     private int _loggedDrops;
+    // A drag handed from a LegACEy window to retail, from the press posted to the client until retail's drag starts.
+    private sealed class HandOff
+    {
+        public IntPtr List, Item;
+        public uint ItemId;
+        public Point Press;
+        public bool Pressed;
+        public int Tries;
+    }
+    private HandOff? _handOff;
+    private IntPtr _gameWindow;
+    private int _loggedHandOffs;
+    private uint _handOffMissed;
+    // The retail element under the pointer over the 3D world, seen in play (chat reports 0x10000011).
+    private const uint WorldViewElement = 0x1000049A;
     private ScreenSurface? _dragIconSurface;
     // our copy of the retail drag icon, drawn while the item is over a LegACEy window (the client draws its own below them)
     private IDisposable? _retailDragIcon;
@@ -181,6 +220,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         CoreManager.Current.RenderFrame -= OnRenderFrame;
         CoreManager.Current.WindowMessage -= OnWindowMessage;
         CoreManager.Current.EchoFilter.ServerDispatch -= OnServerDispatch;
+        _inventory.Detach();
         _postUiDrawHook?.Dispose();
         _postUiDrawHook = null;
         RestoreNativeBar();
@@ -230,6 +270,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         CoreManager.Current.RenderFrame += OnRenderFrame;
         CoreManager.Current.WindowMessage += OnWindowMessage;
         CoreManager.Current.EchoFilter.ServerDispatch += OnServerDispatch;
+        _inventory.Attach();
     }
 
     /// <summary>LegACEy channel replies and pushes arrive on the game thread with every other server message.</summary>
@@ -262,6 +303,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                 CreateWindowManager();
             _clientUi ??= new ClientUiFramework(this, _gameState, CurrentTheme(), _serverChannel);
             _inGame = true;
+            _inventory.MarkStale();
             PublishGameState();
             RequestServerActions();
         });
@@ -293,9 +335,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         Guard(() => ApplyReset(_inputRouter.Route(new NativeInputMessage(InputRouterService.WmLogoff, IntPtr.Zero, IntPtr.Zero), GetInputSurfaces())));
         Guard(() => _hovered?.Panel.PointerLeave());
         _inGame = false;
+        _inventory.Clear();
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up client UI at logoff: {exception}"); }
         _clientUi = null;
+        // Before the plugins close their windows: giving the panel back tells the plugin its window is no longer held.
+        try { EndRetailPanels(); }
+        catch (Exception exception) { Log($"Could not give the retail inventory panel back at logoff: {exception}"); }
         try { _plugins?.EndSession(); }
         catch (Exception exception) { Log($"Could not close plugin windows at logoff: {exception}"); }
         // Windows released their requests above; anything still outstanding fails as disconnected.
@@ -307,6 +353,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         _windows = null;
         _hovered = null;
         _dragOffset = null;
+        _handOff = null;
+        _handOffMissed = 0;
+        _ownDragItem = 0;
+        _retailDragItem = 0;
         _bar?.SetOpen(MenuSlot, false);
     }
 
@@ -362,7 +412,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private void CreateWindowManager()
     {
         if (_device == null) return;
-        _windows = new WindowManager(new Size(_device.Viewport.Width, _device.Viewport.Height), new FileWindowPositionStore(IOPath.Combine(PluginDirectory, "window-positions.txt")), SessionServer(), SessionCharacter());
+        _positionStore = new FileWindowPositionStore(IOPath.Combine(PluginDirectory, "window-positions.txt"));
+        if (!AvaloniaPanel.CanScale) Log("This Avalonia cannot scale panels; LegACEy windows show at their design size.");
+        _windows = new WindowManager(new Size(_device.Viewport.Width, _device.Viewport.Height), _positionStore, SessionServer(), SessionCharacter(), WindowScale);
         _windowsEnabled = EnsurePostUiDrawHook();
     }
 
@@ -471,6 +523,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         Guard(() =>
         {
             PublishGameState();
+            _inventory.Flush(_inGame);
             _serverChannel?.Tick();
             if (_barSurface == null)
             {
@@ -481,6 +534,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             }
             TakeOverNativeBar();
             _barRenderer!.RenderFrame(_inGame, _postUiDrawHook?.IsInstalled == true);
+            // Portal space at login comes before Decal's login complete: retail's inventory opened then is parked already,
+            // and our window opens for it once the windows can.
+            if (!_inGame) TickRetailPanels(loggingIn: true);
         });
 
         if (_failed || !_inGame || !_windowsEnabled)
@@ -498,6 +554,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                 }
             }
 
+            TickRetailPanels();
             UpdateRetailDrag();
             if (_itemDragActive)
                 _retailDrag?.UpdateDropIndicator();
@@ -619,10 +676,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                 var origin = Avalonia.VisualExtensions.TranslatePoint(view, default, window);
                 if (origin == null) continue;
                 var bounds = view.Bounds;
-                var area = new Rectangle(surface.Location.X + (int)origin.Value.X, surface.Location.Y + (int)origin.Value.Y, (int)bounds.Width, (int)bounds.Height);
+                var scale = surface.Panel.Scale;
+                var area = new Rectangle(surface.Location.X + (int)(origin.Value.X * scale), surface.Location.Y + (int)(origin.Value.Y * scale),
+                    (int)(bounds.Width * scale), (int)(bounds.Height * scale));
                 if (!_modelRenderers.TryGetValue(view, out var renderer))
                     _modelRenderers[view] = renderer = new ModelRenderer(_device);
-                renderer.Draw(model, area, view.Yaw, view.Zoom);
+                renderer.Draw(model, area, view.Yaw, view.Zoom, view.Focus);
             }
             catch (Exception exception)
             {
@@ -646,16 +705,19 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     /// <summary>Tells LegACEy drop targets about a drag in the retail UI, and where the pointer is over them.</summary>
     private void UpdateRetailDrag()
     {
-        var item = _retailDrag?.CurrentItem() ?? 0;
+        var retailItem = _retailDrag?.CurrentItem() ?? 0;
+        // A LegACEy inventory drag is told to the other windows as a retail one is; the window it came from ignores its own.
+        var item = retailItem != 0 ? retailItem : _ownDragItem;
         if (item != _retailDragItem)
         {
             _retailDragItem = item;
             _retailDragName = item == 0 ? string.Empty : ObjectName(item);
         }
-        var top = item == 0 ? null : TopSurfaceAt(_pointer);
-        if (top != null && _retailDragIcon == null)
+        // A Vault withdraw carries no world object, but our inventory still shows where it would go.
+        var top = item == 0 && !_itemDragActive ? null : TopSurfaceAt(_pointer);
+        if (top != null && retailItem != 0 && _retailDragIcon == null)
             _retailDragIcon = ShowDragIcon(ObjectIcon(item), 1);
-        else if (top == null && _retailDragIcon != null)
+        else if ((top == null || retailItem == 0) && _retailDragIcon != null)
         {
             _retailDragIcon.Dispose();
             _retailDragIcon = null;
@@ -663,13 +725,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         foreach (var pair in _featureSurfaces.ToArray())
         {
             // An earlier failure in this loop may have closed the window.
-            if (!_featureSurfaces.ContainsKey(pair.Key) || pair.Value.Panel.Content is not IRetailItemDropTarget target) continue;
+            if (!_featureSurfaces.ContainsKey(pair.Key)) continue;
             var surface = pair.Value;
+            Avalonia.Point? over = top == pair.Key ? (Avalonia.Point?)surface.Panel.ToContent(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y) : null;
             try
             {
-                target.RetailDragOver(item, _retailDragName, top == pair.Key
-                    ? new Avalonia.Point(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y)
-                    : null);
+                if (surface.Panel.Content is IRetailItemDropTarget target) target.RetailDragOver(item, _retailDragName, over);
+                if (surface.Panel.Content is IInventoryDropZone zone) zone.WithdrawDragOver(_itemDragActive ? over : null);
             }
             catch (Exception exception) { _windowFailures[pair.Key](exception); }
         }
@@ -693,7 +755,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         {
             try
             {
-                accepted = target.RetailDrop(item, ObjectName(item), new Avalonia.Point(point.X - surface.Location.X, point.Y - surface.Location.Y));
+                accepted = target.RetailDrop(item, ObjectName(item), surface.Panel.ToContent(point.X - surface.Location.X, point.Y - surface.Location.Y));
             }
             catch (Exception exception) { _windowFailures[id](exception); }
         }
@@ -701,6 +763,116 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             Log($"Retail item 0x{item:X8} dropped on LegACEy window '{id}'; retail drag cancelled; accepted: {accepted}.");
         _retailDragItem = 0;
         UpdateRetailDrag();
+    }
+
+    /// <summary>
+    /// Takes a handed-off drag one message further, before the client sees the message. The posted press goes through, so the client
+    /// sees the left button held and records where it went down. Retail would then drag whatever that press landed on (the world, as
+    /// often as not), so that is forgotten on every move until the client's pointer, which is the one before this move, is 4 pixels
+    /// from the press: then the item's own list starts retail's drag of it.
+    /// </summary>
+    private void ContinueHandOff(int message)
+    {
+        var handOff = _handOff!;
+        var drag = _retailDrag!;
+        if (message == InputRouterService.WmLButtonDown)
+            handOff.Pressed = true;
+        else if (message == InputRouterService.WmLButtonUp)
+        {
+            _handOff = null;
+            drag.ClearPotentialDrag();
+            LogHandOff($"Hand-off of 0x{handOff.ItemId:X8}: released before retail's drag began.");
+        }
+        else if (message == InputRouterService.WmMouseMove && handOff.Pressed)
+        {
+            drag.ClearPotentialDrag();
+            int dx = _pointer.X - handOff.Press.X, dy = _pointer.Y - handOff.Press.Y;
+            if (dx * dx + dy * dy < 16) return;
+            var started = drag.BeginDrag(handOff.List, handOff.Item, handOff.ItemId, out var state);
+            // The first try scrolls the hidden retail list to the item, and retail lays the list out again only on a later frame,
+            // so a scrolled item is hit on a later move.
+            if (!started && ++handOff.Tries < 10) return;
+            _handOff = null;
+            LogHandOff($"Hand-off of 0x{handOff.ItemId:X8} pressed at {handOff.Press}, client pointer {_pointer}, try {handOff.Tries + 1}: retail drag started: {started}" +
+                       (started ? "." : $"; {state}, now dragging 0x{drag.CurrentItem():X8}."));
+        }
+    }
+
+    private void LogHandOff(string message)
+    {
+        if (_loggedHandOffs++ < 40) Log(message);
+    }
+
+    /// <summary>
+    /// Ticks each retail panel takeover once a frame. The switch is read once a second; without the windows able to open, the takeover
+    /// is off, so a held panel is given back.
+    /// </summary>
+    private void TickRetailPanels(bool loggingIn = false)
+    {
+        if (_retailPanels.Count == 0) return;
+        // Logging in, the windows can't open yet; they will if the post-UI hook is in.
+        var enabled = (loggingIn ? _postUiDrawHook?.IsInstalled == true : CanOpenWindows) && RetailPanelSwitchOn();
+        foreach (var takeover in _retailPanels.ToArray())
+            takeover.Tick(enabled, canShow: !loggingIn);
+    }
+
+    /// <summary>
+    /// Gives every retail panel back: logoff, unload, or the windows failing. A takeover keeps its plugin's handle, and takes its
+    /// panel again at the next login.
+    /// </summary>
+    private void EndRetailPanels()
+    {
+        foreach (var takeover in _retailPanels.ToArray())
+            takeover.EndSession();
+    }
+
+    private bool RetailPanelSwitchOn()
+    {
+        var now = DateTime.UtcNow;
+        if (now - _lastRetailPanelSwitchCheck >= TimeSpan.FromSeconds(1))
+        {
+            _lastRetailPanelSwitchCheck = now;
+            _retailPanelSwitch = !File.Exists(IOPath.Combine(PluginDirectory, RetailPanelSwitchFile));
+        }
+        return _retailPanelSwitch;
+    }
+
+    /// <summary>A LegACEy window's content by its id, for the drop routing that the window manager's hit test drives.</summary>
+    private object? ContentOf(string id) => SurfaceById(id)?.Panel.Content;
+
+    /// <summary>A plugin's hold on a retail panel. Disposing it gives the panel back.</summary>
+    private sealed class RetailPanelHandle : IRetailPanel
+    {
+        private readonly ClientUiRuntime _owner;
+        private RetailPanelTakeover? _takeover;
+
+        public RetailPanelHandle(ClientUiRuntime owner, RetailPanelTakeover takeover)
+        {
+            _owner = owner;
+            _takeover = takeover;
+        }
+
+        public bool Holds => _takeover?.Holds ?? false;
+
+        public void Close() => _takeover?.Close();
+
+        public void Dispose()
+        {
+            var takeover = _takeover;
+            if (takeover == null) return;
+            _takeover = null;
+            _owner._retailPanels.Remove(takeover);
+            takeover.Dispose();
+        }
+    }
+
+    /// <summary>What a plugin gets when the takeover cannot run: nothing happens, and the retail panel is left alone.</summary>
+    private sealed class NoRetailPanel : IRetailPanel
+    {
+        public static readonly NoRetailPanel Instance = new();
+        public bool Holds => false;
+        public void Close() { }
+        public void Dispose() { }
     }
 
     private string? TopSurfaceAt(Point point)
@@ -726,12 +898,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         {
             var item = CoreManager.Current.WorldFilter[unchecked((int)id)];
             if (item == null || _portal == null) return null;
-            // Decal reports portal texture ids without their 0x06 prefix.
-            static uint Texture(int value) => value == 0 ? 0 : (value & 0xFF000000) == 0 ? unchecked((uint)value) | 0x06000000 : unchecked((uint)value);
-            // Decal names the UI-effects value IconOutline (checked in Decal.Adapter.dll). Decal has no secondary overlay key, so none is drawn.
-            return ItemIcon.Draw(_portal, Texture(item.Values(Decal.Adapter.Wrappers.LongValueKey.IconUnderlay)), Texture(item.Icon),
-                Texture(item.Values(Decal.Adapter.Wrappers.LongValueKey.IconOverlay)), 0,
-                unchecked((uint)item.Values(Decal.Adapter.Wrappers.LongValueKey.IconOutline)));
+            var visual = DecalIcons.Visual(item);
+            // Decal has no secondary overlay key, so none is drawn.
+            return ItemIcon.Draw(_portal, visual.Underlay, visual.Icon, visual.Overlay, 0, visual.UiEffects);
         }
         catch (COMException) { return null; }
     }
@@ -742,35 +911,110 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         private readonly ClientUiRuntime _owner;
         public ItemDragHost(ClientUiRuntime owner) => _owner = owner;
 
-        public IDisposable ShowDragIcon(GameImage? image, int count)
+        /// <summary>An item released outside every slot of a LegACEy window goes to the window under the pointer, if it takes retail drops.</summary>
+        public bool DeliverAtPointer(uint itemId, string itemName)
+        {
+            if (_owner._windows is not { } windows) return false;
+            var window = windows.HitTest(_owner._pointer);
+            if (window == null) return false;
+            try { return ItemDropRouting.DeliverTo(window, _owner.ContentOf, _owner._pointer, itemId, itemName, windows.Scale); }
+            catch (Exception exception)
+            {
+                if (_owner._windowFailures.TryGetValue(window.Id, out var failed)) failed(exception);
+                else _owner.Disable(exception);
+                return false;
+            }
+        }
+
+        public bool DeliverManyAtPointer(IReadOnlyList<uint> itemIds)
+        {
+            if (_owner._windows is not { } windows) return false;
+            var window = windows.HitTest(_owner._pointer);
+            if (window == null) return false;
+            try { return ItemDropRouting.DeliverManyTo(window, _owner.ContentOf, _owner._pointer, itemIds, windows.Scale); }
+            catch (Exception exception)
+            {
+                if (_owner._windowFailures.TryGetValue(window.Id, out var failed)) failed(exception);
+                else _owner.Disable(exception);
+                return false;
+            }
+        }
+
+        public IDisposable ShowDragIcon(GameImage? image, int count, bool retailDropIndicator, uint itemId = 0)
         {
             var icon = _owner.ShowDragIcon(image, count);
-            _owner._itemDragActive = true;
-            return new ItemDrag(_owner, icon);
+            _owner._ownDragItem = itemId;
+            return new ItemDrag(_owner, icon, retailDropIndicator);
         }
 
         private sealed class ItemDrag : IDisposable
         {
             private ClientUiRuntime? _owner;
             private readonly IDisposable _icon;
-            public ItemDrag(ClientUiRuntime owner, IDisposable icon) { _owner = owner; _icon = icon; }
+            // Only a drag the retail inventory can take shows retail's drop indicator; the others leave retail's indicator alone.
+            private readonly bool _retailIndicator;
+            public ItemDrag(ClientUiRuntime owner, IDisposable icon, bool retailIndicator)
+            {
+                _owner = owner;
+                _icon = icon;
+                _retailIndicator = retailIndicator;
+                if (retailIndicator) owner._itemDragActive = true;
+            }
             public void Dispose()
             {
                 if (_owner == null) return;
-                _owner._itemDragActive = false;
-                _owner.Guard(() => _owner._retailDrag?.ClearDropIndicator());
+                if (_retailIndicator)
+                {
+                    _owner._itemDragActive = false;
+                    _owner.Guard(() => _owner._retailDrag?.ClearDropIndicator());
+                }
+                _owner._ownDragItem = 0;
                 _icon.Dispose();
                 _owner = null;
             }
         }
 
+        /// <summary>
+        /// Outside every LegACEy surface, finds the item in the retail inventory's lists and posts the client a left press at the
+        /// pointer, as if the press had happened there; <see cref="ContinueHandOff"/> starts retail's drag once the client has seen it.
+        /// </summary>
+        public bool HandToRetail(uint itemId)
+        {
+            var owner = _owner;
+            if (owner._handOff != null || owner._gameWindow == IntPtr.Zero || owner._retailDrag is not { Available: true } drag ||
+                owner.TopSurfaceAt(owner._pointer) != null)
+                return false;
+            var (list, item) = drag.FindItem(itemId);
+            if (item == IntPtr.Zero)
+            {
+                // Asked on every move outside the window; said once per item.
+                if (owner._handOffMissed == itemId) return false;
+                owner._handOffMissed = itemId;
+                owner.LogHandOff($"Hand-off of 0x{itemId:X8}: no retail list shows it; the drag stays ours.");
+                return false;
+            }
+            var point = owner._pointer;
+            const int MkLButton = 1;
+            if (!PostMessage(owner._gameWindow, InputRouterService.WmLButtonDown, new IntPtr(MkLButton), new IntPtr((point.Y << 16) | (point.X & 0xffff))))
+                return false;
+            owner._handOff = new HandOff { List = list, Item = item, ItemId = itemId, Press = point };
+            owner._inputRouter.ReleaseCapture();
+            return true;
+        }
+
+        public (uint Container, int Position)? InventoryPlaceAtPointer() =>
+            _owner._windows is { } windows ? ItemDropRouting.InventoryPlaceAt(windows, _owner.ContentOf, _owner._pointer) : null;
+
         public ItemDropTarget DropTargetAtPointer()
         {
+            // A LegACEy inventory window is the inventory, with or without the takeover.
+            if (_owner._windows is { } windows && ItemDropRouting.InventoryAt(windows, _owner.ContentOf, _owner._pointer) is { } inventory) return inventory;
             var drag = _owner._retailDrag;
             if (drag == null) return ItemDropTarget.Inventory;
             var over = drag.IsPointerOverInventory(out var exists, out var open, out var element);
             // Without the panel element, any drop outside LegACEy windows withdraws to the pack.
-            var target = !exists ? ItemDropTarget.Inventory : !open ? ItemDropTarget.InventoryClosed : over ? ItemDropTarget.Inventory : ItemDropTarget.Elsewhere;
+            var target = !exists ? ItemDropTarget.Inventory : !open ? ItemDropTarget.InventoryClosed : over ? ItemDropTarget.Inventory
+                : element == WorldViewElement ? ItemDropTarget.World : ItemDropTarget.Elsewhere;
             if (_owner._loggedDrops++ < 5)
                 Log($"Item dropped at {_owner._pointer}: retail element under pointer 0x{element:X8}, inventory open: {open}, target: {target}.");
             return target;
@@ -855,7 +1099,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     {
         if (_featureSurfaces.ContainsKey(definition.Id))
             throw new InvalidOperationException($"A feature window named '{definition.Id}' is already registered.");
-        var panel = ObservePanel(AvaloniaPanel.Create(() => content, definition.Width, definition.Height), failed);
+        // Created at its on-screen size; showing it fits it to the window manager's size again (a saved size, for one).
+        var scale = _windows!.Scale;
+        var panel = ObservePanel(AvaloniaPanel.Create(() => content, (int)Math.Round(definition.Width * scale), (int)Math.Round(definition.Height * scale), scale), failed);
         var surface = new ScreenSurface(_device!, panel);
         ShowSurface(definition, surface, requestedLocation, failed);
     }
@@ -920,9 +1166,43 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     string ILegACEyPluginHost.PortalPath => _portal?.Path ?? string.Empty;
     IGameArtSource ILegACEyPluginHost.Art => (IGameArtSource?)_portal ?? throw new InvalidOperationException("Game art is unavailable until the client UI is ready.");
     IItemDragHost ILegACEyPluginHost.ItemDrag => new ItemDragHost(this);
+    IInventoryPort ILegACEyPluginHost.Inventory => _inventory;
+
+    IRetailPanel ILegACEyPluginHost.TakeOverRetailInventory(Action<bool> retailOpenChanged)
+    {
+        if (!NativeUi.Ready || !RetailPanelCatalogueValid()) return NoRetailPanel.Instance;
+        var takeover = new RetailPanelTakeover(new NativeRetailPanelPort(), retailOpenChanged, Log);
+        _retailPanels.Add(takeover);
+        return new RetailPanelHandle(this, takeover);
+    }
+
+    /// <summary>
+    /// The panel takeover's own addresses. A mismatch, or a check that throws, turns only the takeover off; the bar and the Vault drag keep
+    /// their gates.
+    /// </summary>
+    private bool RetailPanelCatalogueValid()
+    {
+        if (_retailPanelsValid is { } known) return known;
+        try
+        {
+            _retailPanelsValid = NativeUiCatalogue.Validate(NativeUi.ReadMemory, Log, RetailPanelCatalogue.Entries);
+        }
+        catch (Exception exception)
+        {
+            Log($"Retail inventory takeover disabled: its native addresses could not be checked: {exception.Message}");
+            _retailPanelsValid = false;
+        }
+        return _retailPanelsValid.Value;
+    }
+
     bool ILegACEyPluginHost.IsWindowOpen(string id) => _featureSurfaces.ContainsKey(id);
     void ILegACEyPluginHost.HideWindow(string id) => HideFeatureWindow(id);
     void ILegACEyPluginHost.CloseWindow(string id) => ReleaseFeatureWindow(id);
+
+    int? ILegACEyPluginHost.LoadPluginSettings(string plugin) => SettingsStore.Load(SessionServer(), SessionCharacter(), plugin)?.Location.X;
+
+    void ILegACEyPluginHost.SavePluginSettings(string plugin, int value) =>
+        SettingsStore.Save(SessionServer(), SessionCharacter(), plugin, (new Point(value, 0), null));
 
     private void HideFeatureWindow(string id)
     {
@@ -993,6 +1273,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                 });
             return;
         }
+        _gameWindow = new IntPtr(e.Hwnd);
+        if (_handOff != null)
+            Guard(() => ContinueHandOff(e.Msg));
         if (e.Msg == InputRouterService.WmMouseMove)
             _pointer = new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff));
         if (e.Msg == InputRouterService.WmLButtonUp && _inputRouter.CapturedSurfaceId == null)
@@ -1033,7 +1316,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                     else if (_dragOffset != null)
                         DragBar(point);
                     else
+                    {
+                        var handingOff = _handOff == null;
                         target?.Panel.PointerMove(route.X, route.Y);
+                        // A drag handed to retail on this move takes the button-up to retail, so the panel lets go of the button now.
+                        if (handingOff && _handOff != null) target?.Panel.PointerUp(-1, -1);
+                    }
                     break;
                 case InputAction.PointerDown:
                     // The window that had focus loses it to this one.
@@ -1045,6 +1333,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                         SyncWindowLocations();
                     }
                     target.Panel.PointerDown(route.X, route.Y, ToKeyModifiers(route.Modifiers));
+                    e.Eat = route.Eat;
+                    break;
+                case InputAction.RightClick:
+                    target!.Panel.RightClick(route.X, route.Y);
                     e.Eat = route.Eat;
                     break;
                 case InputAction.PointerUp:
@@ -1298,6 +1590,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     /// <summary>Disable only the post-UI windows when EndScene fails; retail surfaces continue.</summary>
     private void DisableWindows(Exception exception)
     {
+        // The takeover stands in for a window: without windows, retail's panel must come back now.
+        try { EndRetailPanels(); }
+        catch (Exception cleanupError) { Log($"Could not give the retail inventory panel back after a window failure: {cleanupError}"); }
         _windowsEnabled = false;
         Log($"LegACEy windows disabled: {exception}");
         _bar?.SetOpen(MenuSlot, false);
@@ -1365,6 +1660,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
 
     private void TearDown()
     {
+        // First: retail's panel must be given back before anything else is torn down.
+        try { EndRetailPanels(); }
+        catch (Exception exception) { Log($"Could not give the retail inventory panel back during unload: {exception}"); }
         if (_itemDragActive)
             try { _retailDrag?.ClearDropIndicator(); } catch (Exception exception) { Log($"Could not clear the inventory drop indicator: {exception.Message}"); }
         _itemDragActive = false;

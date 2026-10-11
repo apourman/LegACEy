@@ -39,6 +39,11 @@ namespace ACE.Server.Market
         /// </summary>
         public long? TicketId { get; }
 
+        /// <summary>
+        /// For a withdrawal: where in the pack the player dropped it, if they did
+        /// </summary>
+        public PackPlace? Place { get; }
+
         private readonly Action<VaultResult> completed;
 
         /// <summary>
@@ -46,8 +51,9 @@ namespace ACE.Server.Market
         /// </summary>
         private bool froze;
 
-        private VaultChannel(bool isDeposit, uint itemGuid, string itemName, uint markedRowVersion, Action<VaultResult> completed, long? ticketId = null)
+        private VaultChannel(bool isDeposit, uint itemGuid, string itemName, uint markedRowVersion, Action<VaultResult> completed, long? ticketId = null, PackPlace? place = null)
         {
+            Place = place;
             IsDeposit = isDeposit;
             ItemGuid = itemGuid;
             ItemName = itemName;
@@ -77,7 +83,7 @@ namespace ACE.Server.Market
         /// Starts a withdrawal channel, on the world thread. The Vault row is marked withdrawing now, so it can't be listed while the player channels.
         /// A game bridge ticket given as ticketId is marked done in the same save as the item.
         /// </summary>
-        public static void StartWithdraw(Player player, uint itemGuid, Action<VaultResult> completed = null, long? ticketId = null)
+        public static void StartWithdraw(Player player, uint itemGuid, Action<VaultResult> completed = null, long? ticketId = null, PackPlace? place = null)
         {
             VaultItem row = null;
             VaultOutcome? refusal;
@@ -92,7 +98,7 @@ namespace ACE.Server.Market
 
                     if (marked != null)
                     {
-                        Begin(player, new VaultChannel(isDeposit: false, itemGuid, row.Name, marked.Value, completed, ticketId));
+                        Begin(player, new VaultChannel(isDeposit: false, itemGuid, row.Name, marked.Value, completed, ticketId, place));
                         return;
                     }
 
@@ -214,7 +220,7 @@ namespace ACE.Server.Market
                     Release(channel);
 
                 channel.completed?.Invoke(result);
-            }, channel.TicketId);
+            }, channel.TicketId, channel.Place);
         }
 
         /// <summary>
