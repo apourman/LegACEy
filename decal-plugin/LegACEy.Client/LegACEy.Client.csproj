@@ -17,6 +17,8 @@
     <TrimMode>partial</TrimMode>
     <!-- Trim warnings show on publish only; plain builds and tests stay quiet. -->
     <EnableTrimAnalyzer Condition="'$(_IsPublishing)' != 'true'">false</EnableTrimAnalyzer>
+    <!-- Precompiled x86 code: without it the first in-world frame spent about 1 s in the JIT (in game, 11 Oct). -->
+    <PublishReadyToRun>true</PublishReadyToRun>
   </PropertyGroup>
   <ItemGroup>
     <TrimmerRootAssembly Include="Avalonia;Avalonia.Base;Avalonia.Controls;Avalonia.Dialogs;Avalonia.Markup;Avalonia.Markup.Xaml;Avalonia.Skia;Avalonia.Themes.Simple;Avalonia.Headless;SkiaSharp;HarfBuzzSharp;Reloaded.Hooks;Reloaded.Hooks.Definitions;Reloaded.Memory;Reloaded.Memory.Buffers;Reloaded.Assembler" />
