@@ -97,17 +97,28 @@ internal sealed class GameChannelTransport : IServerChannelTransport
     /// </summary>
     public byte[]? ReadEvent(int messageType, ReadOnlySpan<byte> raw)
     {
+        var payload = GameEventPayload(messageType, raw, ChannelWire.GameEventType);
+        if (payload == null) return null;
+        if (!_loggedFirstReceive)
+        {
+            _log($"Server channel event: {raw.Length} raw bytes, payload {payload.Length} bytes.");
+            _loggedFirstReceive = true;
+        }
+        Received++;
+        return payload;
+    }
+
+    /// <summary>
+    /// The payload after the event type of a 0xF7B0 game event with <paramref name="eventType"/>, or null for any other message or event.
+    /// Any event type is read the same way, so the appraisal response (0x00C9) and the LegACEy channel share one path.
+    /// </summary>
+    internal static byte[]? GameEventPayload(int messageType, ReadOnlySpan<byte> raw, uint eventType)
+    {
         if (messageType != GameEventMessage) return null;
         // Decal's raw bytes may or may not start with the message type (a character id never equals it); the event type follows
         // character and sequence either way. Only that one place is checked, so a sequence number never reads as the event type.
         var offset = raw.Length >= 4 && UInt32At(raw, 0) == GameEventMessage ? 16 : 12;
-        if (raw.Length < offset || UInt32At(raw, offset - 4) != ChannelWire.GameEventType) return null;
-        if (!_loggedFirstReceive)
-        {
-            _log($"Server channel event: {raw.Length} raw bytes, payload offset {offset}.");
-            _loggedFirstReceive = true;
-        }
-        Received++;
+        if (raw.Length < offset || UInt32At(raw, offset - 4) != eventType) return null;
         return raw.Slice(offset).ToArray();
     }
 

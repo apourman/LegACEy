@@ -147,6 +147,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _retailPanelSwitch;
     private DateTime _lastRetailPanelSwitchCheck;
     private readonly BridgeInventoryPort _inventory = new(Log);
+    private readonly AppraisalFeature _appraisal;
+    // The inventory as plugins and windows get it: the bridge port, with an Assess also asking for the appraisal window.
+    private readonly AppraisingInventoryPort _appraisingInventory;
     private uint _retailDragItem;
     // The world object a LegACEy window's own drag carries (an inventory item), or 0.
     private uint _ownDragItem;
@@ -183,8 +186,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _inGame;
     private bool _failed;
 
-    public ClientUiRuntime() => _gameStatePoller = new GameStatePoller(_gameState, Bridge.ReadGameState,
-        error => Log($"Character stats temporarily unavailable; keeping UI active and retrying: {error.Message}"));
+    public ClientUiRuntime()
+    {
+        _gameStatePoller = new GameStatePoller(_gameState, Bridge.ReadGameState,
+            error => Log($"Character stats temporarily unavailable; keeping UI active and retrying: {error.Message}"));
+        _appraisal = new AppraisalFeature(this, Log);
+        _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal);
+    }
 
     public void Startup()
     {
@@ -282,7 +290,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>LegACEy channel replies and pushes arrive on the game thread with every other server message.</summary>
     public void ServerMessage(int type, ReadOnlySpan<byte> raw)
     {
-        if (_failed || _serverChannel == null || _channelTransport == null)
+        if (_failed)
+            return;
+        // The appraisal response is a game event like any other, so it is read whether or not the LegACEy server channel is up.
+        var appraisal = GameChannelTransport.GameEventPayload(type, raw, AppraisalResponse.IdentifyEvent);
+        if (appraisal != null) Guard(() => _appraisal.Receive(appraisal));
+        if (_serverChannel == null || _channelTransport == null)
             return;
         byte[]? payload;
         try { payload = _channelTransport.ReadEvent(type, raw); }
@@ -342,6 +355,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         Guard(() => _hovered?.Panel.PointerLeave());
         _inGame = false;
         _inventory.Clear();
+        Guard(() => _appraisal.Clear());
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up client UI at logoff: {exception}"); }
         _clientUi = null;
@@ -1170,7 +1184,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     string ILegACEyPluginHost.PortalPath => _portal?.Path ?? string.Empty;
     IGameArtSource ILegACEyPluginHost.Art => (IGameArtSource?)_portal ?? throw new InvalidOperationException("Game art is unavailable until the client UI is ready.");
     IItemDragHost ILegACEyPluginHost.ItemDrag => new ItemDragHost(this);
-    IInventoryPort ILegACEyPluginHost.Inventory => _inventory;
+    IInventoryPort ILegACEyPluginHost.Inventory => _appraisingInventory;
 
     IRetailPanel ILegACEyPluginHost.TakeOverRetailInventory(Action<bool> retailOpenChanged)
     {
