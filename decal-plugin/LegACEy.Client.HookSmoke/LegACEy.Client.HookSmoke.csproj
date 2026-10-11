@@ -8,8 +8,8 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Reloaded.Hooks" Version="4.3.3" />
-    <Compile Include="../LegACEy.Client.DecalPlugin/PostUiDrawHook.cs" Link="PostUiDrawHook.cs" />
-    <Compile Include="../LegACEy.Client.DecalPlugin/NativeUiMovement.cs" Link="NativeUiMovement.cs" />
+    <Compile Include="../LegACEy.Client/PostUiDrawHook.cs" Link="PostUiDrawHook.cs" />
+    <Compile Include="../LegACEy.Client/NativeUiMovement.cs" Link="NativeUiMovement.cs" />
     <Reference Include="System.Drawing" />
   </ItemGroup>
 </Project>

@@ -6,22 +6,21 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Runtime.Loader;
 using Avalonia.Input;
 using Avalonia.Controls;
 using Avalonia.Media;
 using IOPath = System.IO.Path;
-using Decal.Adapter;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.InputRouter;
 using LegACEy.Client.PanelHost;
 using LegACEy.Client.Themes;
-using Microsoft.DirectX.Direct3D;
 
 namespace LegACEy.Client.DecalPlugin;
 
-/// <summary>Decal-facing runtime that wires game callbacks to the netstandard client UI framework.</summary>
-internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
+/// <summary>The client runtime: wires the Decal events the bridge raises to the netstandard client UI framework.</summary>
+internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClientEvents
 {
     [StructLayout(LayoutKind.Sequential)]
     private struct NativePoint
@@ -98,11 +97,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private const string MenuWindowId = "plugin-menu";
     private const uint MenuIcon = 0x06004D20;
     private const string TestFailureFile = "fail-post-ui-draw";
-    private static readonly string PluginDirectory = IOPath.GetDirectoryName(typeof(ClientUiRuntime).Assembly.Location)!;
+    // The stub's folder, which the bridge sets before the client starts: the log, settings and Plugins\ live there.
+    internal static string PluginDirectory { get; set; } = ClientDirectory;
+    // This client's own folder, the runtime folder beside the stub.
+    private static string ClientDirectory => IOPath.GetDirectoryName(typeof(ClientUiRuntime).Assembly.Location)!;
     // Every client appends to the same log beside the DLL; the process id tells their lines apart.
-    private static readonly int ProcessId = Process.GetCurrentProcess().Id;
+    private static readonly int ProcessId = Environment.ProcessId;
 
-    private Device? _device;
+    private IntPtr _device;
     private static readonly System.Drawing.Color ResizeOutline = System.Drawing.Color.FromArgb(0xC9, 0xA4, 0x5C);
     private PortalDat? _portal;
     private IndicatorBar? _bar;
@@ -114,7 +116,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private WindowManager? _windows;
     private IWindowPositionStore? _positionStore;
     // Each plugin's one settings value, per character, in its own file: a row keyed by the plugin's name whose X is the value.
-    private static readonly FileWindowPositionStore SettingsStore = new(IOPath.Combine(PluginDirectory, "plugin-settings.txt"));
+    private readonly FileWindowPositionStore _settingsStore = new(IOPath.Combine(PluginDirectory, "plugin-settings.txt"));
     // The window whose frame shows a hovered corner, and the corner it shows.
     private string? _cornerWindowId;
     private DerethCorner _cornerApplied;
@@ -144,7 +146,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private bool? _retailPanelsValid;
     private bool _retailPanelSwitch;
     private DateTime _lastRetailPanelSwitchCheck;
-    private readonly DecalInventoryPort _inventory = new(Log);
+    private readonly BridgeInventoryPort _inventory = new(Log);
     private uint _retailDragItem;
     // The world object a LegACEy window's own drag carries (an inventory item), or 0.
     private uint _ownDragItem;
@@ -181,23 +183,31 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private bool _inGame;
     private bool _failed;
 
-    public ClientUiRuntime() => _gameStatePoller = new GameStatePoller(_gameState, ReadGameState,
+    public ClientUiRuntime() => _gameStatePoller = new GameStatePoller(_gameState, Bridge.ReadGameState,
         error => Log($"Character stats temporarily unavailable; keeping UI active and retrying: {error.Message}"));
 
     public void Startup()
     {
-        AppDomain.CurrentDomain.AssemblyResolve += ResolveFromPluginDirectory;
-        NativeUi.Initialize(Log);
+        // Before the plugins load, which may need it; a failed start leaves no handler behind.
+        AssemblyLoadContext.Default.Resolving += ResolveFromClientDirectory;
         try
         {
-            _channelTransport = new GameChannelTransport(NativeUi.ReadMemory, () => _inGame, Log);
-            _serverChannel = new ServerChannelClient(_channelTransport);
+            NativeUi.Initialize(Log);
+            try
+            {
+                _channelTransport = new GameChannelTransport(NativeUi.ReadMemory, () => _inGame, Log);
+                _serverChannel = new ServerChannelClient(_channelTransport);
+            }
+            catch (Exception exception) { Log($"LegACEy server channel disabled: {exception.Message}"); }
+            try { _retailDrag = new RetailItemDrag(NativeUi.ReadMemory, Log); }
+            catch (Exception exception) { Log($"Item drag and drop disabled: {exception.Message}"); }
+            LoadPlugins();
         }
-        catch (Exception exception) { Log($"LegACEy server channel disabled: {exception.Message}"); }
-        try { _retailDrag = new RetailItemDrag(NativeUi.ReadMemory, Log); }
-        catch (Exception exception) { Log($"Item drag and drop disabled: {exception.Message}"); }
-        LoadPlugins();
-        CoreManager.Current.FilterInitComplete += OnFilterInitComplete;
+        catch
+        {
+            AssemblyLoadContext.Default.Resolving -= ResolveFromClientDirectory;
+            throw;
+        }
     }
 
     /// <summary>Starts the plugins in Plugins/ beside the client. Each plugin's failures stay with that plugin.</summary>
@@ -214,43 +224,45 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
 
     public void Shutdown()
     {
-        CoreManager.Current.FilterInitComplete -= OnFilterInitComplete;
-        CoreManager.Current.CharacterFilter.LoginComplete -= OnLoginComplete;
-        CoreManager.Current.CharacterFilter.Logoff -= OnLogoff;
-        CoreManager.Current.RenderFrame -= OnRenderFrame;
-        CoreManager.Current.WindowMessage -= OnWindowMessage;
-        CoreManager.Current.EchoFilter.ServerDispatch -= OnServerDispatch;
-        _inventory.Detach();
-        _postUiDrawHook?.Dispose();
-        _postUiDrawHook = null;
-        RestoreNativeBar();
-        TearDown();
-        _serverChannel?.Dispose();
-        _serverChannel = null;
-        AppDomain.CurrentDomain.AssemblyResolve -= ResolveFromPluginDirectory;
+        try
+        {
+            _postUiDrawHook?.Dispose();
+            _postUiDrawHook = null;
+            RestoreNativeBar();
+            TearDown();
+            _serverChannel?.Dispose();
+            _serverChannel = null;
+        }
+        finally { AssemblyLoadContext.Default.Resolving -= ResolveFromClientDirectory; }
     }
 
     /// <summary>
-    /// The client process has no binding redirects, and Avalonia references older builds of
-    /// System.Buffers, System.Numerics.Vectors and others than the ones shipped beside the plugin.
-    /// Serve the shipped copy when it is the same or newer, and log every redirect.
+    /// An assembly the runtime could not find, such as one a plugin references: serve the copy shipped with the client when it is the
+    /// same or newer, and log every redirect. A copy that can't be read or loaded is logged and left to the runtime's own failure.
     /// </summary>
-    private static Assembly? ResolveFromPluginDirectory(object? sender, ResolveEventArgs args)
+    private static Assembly? ResolveFromClientDirectory(AssemblyLoadContext context, AssemblyName requested)
     {
-        var requested = new AssemblyName(args.Name);
-        var path = IOPath.Combine(PluginDirectory, requested.Name + ".dll");
+        if (requested.Name is not { } name) return null;
+        var path = IOPath.Combine(ClientDirectory, IOPath.GetFileName(name) + ".dll");
         if (!File.Exists(path))
             return null;
+        try
+        {
+            var shipped = AssemblyName.GetAssemblyName(path);
+            if (requested.Version != null && shipped.Version < requested.Version)
+                return null;
 
-        var shipped = AssemblyName.GetAssemblyName(path);
-        if (requested.Version != null && shipped.Version < requested.Version)
+            Log($"Assembly redirect: {requested.FullName} -> {shipped.Version}");
+            return context.LoadFromAssemblyPath(path);
+        }
+        catch (Exception exception)
+        {
+            Log($"Assembly redirect to {path} failed: {exception.Message}");
             return null;
-
-        Log($"Assembly redirect: {args.Name} -> {shipped.Version}, requested by {args.RequestingAssembly?.GetName().Name ?? "unknown"}");
-        return Assembly.LoadFrom(path);
+        }
     }
 
-    private static void Log(string message)
+    internal static void Log(string message)
     {
         try
         {
@@ -262,24 +274,18 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         }
     }
 
-    private void OnFilterInitComplete(object? sender, EventArgs e)
-    {
-        CoreManager.Current.FilterInitComplete -= OnFilterInitComplete;
-        CoreManager.Current.CharacterFilter.LoginComplete += OnLoginComplete;
-        CoreManager.Current.CharacterFilter.Logoff += OnLogoff;
-        CoreManager.Current.RenderFrame += OnRenderFrame;
-        CoreManager.Current.WindowMessage += OnWindowMessage;
-        CoreManager.Current.EchoFilter.ServerDispatch += OnServerDispatch;
-        _inventory.Attach();
-    }
+    // The open container and the selection are part of the inventory snapshot, whoever changed them.
+    public void ItemSelected() => _inventory.MarkStale();
+    public void ContainerOpened() => _inventory.MarkStale();
+    public void InventoryChanged(uint id, uint container) => _inventory.ObjectChanged(id, container);
 
     /// <summary>LegACEy channel replies and pushes arrive on the game thread with every other server message.</summary>
-    private void OnServerDispatch(object? sender, NetworkMessageEventArgs e)
+    public void ServerMessage(int type, ReadOnlySpan<byte> raw)
     {
         if (_failed || _serverChannel == null || _channelTransport == null)
             return;
         byte[]? payload;
-        try { payload = _channelTransport.ReadEvent(e); }
+        try { payload = _channelTransport.ReadEvent(type, raw); }
         catch (Exception exception)
         {
             Log($"Could not read a server channel event: {exception}");
@@ -290,7 +296,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     }
 
     /// <summary>Enable character-specific windows once Decal has finished loading character identity.</summary>
-    private void OnLoginComplete(object? sender, EventArgs e)
+    public void LoginComplete()
     {
         if (_failed || !NativeUi.Ready)
             return;
@@ -330,7 +336,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         }
     }
 
-    private void OnLogoff(object? sender, EventArgs e)
+    public void Logoff()
     {
         Guard(() => ApplyReset(_inputRouter.Route(new NativeInputMessage(InputRouterService.WmLogoff, IntPtr.Zero, IntPtr.Zero), GetInputSurfaces())));
         Guard(() => _hovered?.Panel.PointerLeave());
@@ -411,10 +417,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
 
     private void CreateWindowManager()
     {
-        if (_device == null) return;
+        if (_device == IntPtr.Zero) return;
         _positionStore = new FileWindowPositionStore(IOPath.Combine(PluginDirectory, "window-positions.txt"));
         if (!AvaloniaPanel.CanScale) Log("This Avalonia cannot scale panels; LegACEy windows show at their design size.");
-        _windows = new WindowManager(new Size(_device.Viewport.Width, _device.Viewport.Height), _positionStore, SessionServer(), SessionCharacter(), WindowScale);
+        _windows = new WindowManager(GameDevice.ViewportSize(_device), _positionStore, SessionServer(), SessionCharacter(), WindowScale);
         _windowsEnabled = EnsurePostUiDrawHook();
     }
 
@@ -481,7 +487,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             _dragOffset = null;
             return;
         }
-        var screen = _device!.Viewport;
+        var screen = GameDevice.ViewportSize(_device);
         var size = _barSurface!.Bounds.Size;
         _barSurface.Location = new Point(
             Math.Max(0, Math.Min(screen.Width - size.Width, pointer.X - _dragOffset!.Value.Width)),
@@ -502,10 +508,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     /// <summary>
     /// Replace the native bar on its first visible frame, including world entry and logout.
     /// </summary>
-    private void OnRenderFrame(object? sender, EventArgs e)
+    public void Frame()
     {
         var timer = Stopwatch.StartNew();
-        try { OnRenderFrameCore(sender, e); }
+        try { FrameCore(); }
         finally
         {
             if (timer.Elapsed > _maxUiFrame) _maxUiFrame = timer.Elapsed;
@@ -513,7 +519,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         }
     }
 
-    private void OnRenderFrameCore(object? sender, EventArgs e)
+    private void FrameCore()
     {
         if (_barTakeover != null && _failed)
             RestoreNativeBar();
@@ -546,7 +552,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         {
             if (_windows != null)
             {
-                var viewport = new Size(_device!.Viewport.Width, _device.Viewport.Height);
+                var viewport = GameDevice.ViewportSize(_device);
                 if (_windows.Screen != viewport)
                 {
                     _windows.ResizeScreen(viewport);
@@ -637,7 +643,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             }
         }
         ReleaseModelRenderers(_drawnModelViews);
-        if (_windows.Resizing is { } resizing && _device != null)
+        if (_windows.Resizing is { } resizing && _device != IntPtr.Zero)
             Guard(() => ScreenSurface.DrawOutline(_device, resizing.Bounds, ResizeOutline));
         // An item dragged out of a LegACEy window draws above everything.
         Guard(() => _dragIconSurface?.DrawNow());
@@ -665,7 +671,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     /// </summary>
     private void DrawModelViews(ScreenSurface? surface)
     {
-        if (surface is not { Visible: true } || _device == null || surface.Panel.Content is not Avalonia.Visual window) return;
+        if (surface is not { Visible: true } || _device == IntPtr.Zero || surface.Panel.Content is not Avalonia.Visual window) return;
         // ponytail: walks the window's visual tree every frame; cache the views per window if a big window makes it show up in the frame budget
         foreach (var view in Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<ModelView>())
         {
@@ -887,7 +893,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
 
     private static string ObjectName(uint id)
     {
-        try { return CoreManager.Current.WorldFilter[unchecked((int)id)]?.Name ?? string.Empty; }
+        try { return Bridge.Item(id)?.Name ?? string.Empty; }
         catch (COMException) { return string.Empty; }
     }
 
@@ -896,9 +902,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     {
         try
         {
-            var item = CoreManager.Current.WorldFilter[unchecked((int)id)];
-            if (item == null || _portal == null) return null;
-            var visual = DecalIcons.Visual(item);
+            if (_portal == null || Bridge.Item(id) is not { } item) return null;
+            var visual = item.Visual;
             // Decal has no secondary overlay key, so none is drawn.
             return ItemIcon.Draw(_portal, visual.Underlay, visual.Icon, visual.Overlay, 0, visual.UiEffects);
         }
@@ -1041,7 +1046,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private IDisposable ShowDragIcon(GameImage? image, int count)
     {
         HideDragIcon();
-        if (_device == null || _portal == null) return new DragIcon(this);
+        if (_device == IntPtr.Zero || _portal == null) return new DragIcon(this);
         var bitmap = GameArtImageExtension.CreateBitmap(image);
         var layers = new Grid { Width = 32, Height = 32 };
         if (bitmap != null)
@@ -1080,8 +1085,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     private void TakeOverNativeBar()
     {
         _barTakeover ??= new RetailTakeoverLifecycle(new NativeBarPort(NativeUi.Indicators), new SurfaceTakeoverPort(_barSurface!));
-        var viewport = _device!.Viewport;
-        if (_barTakeover?.Tick(_dragOffset != null, new Size(viewport.Width, viewport.Height)) == true)
+        if (_barTakeover?.Tick(_dragOffset != null, GameDevice.ViewportSize(_device)) == true)
             _dragOffset = null;
     }
 
@@ -1093,7 +1097,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         return new FeatureWindow(this, definition.Id);
     }
 
-    private bool CanOpenWindows => _windowsEnabled && _windows != null && _device != null && _postUiDrawHook?.HasRun == true;
+    private bool CanOpenWindows => _windowsEnabled && _windows != null && _device != IntPtr.Zero && _postUiDrawHook?.HasRun == true;
 
     private void OpenWindowCore(WindowDefinition definition, Control content, Point requestedLocation, Action<Exception> failed)
     {
@@ -1102,7 +1106,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         // Created at its on-screen size; showing it fits it to the window manager's size again (a saved size, for one).
         var scale = _windows!.Scale;
         var panel = ObservePanel(AvaloniaPanel.Create(() => content, (int)Math.Round(definition.Width * scale), (int)Math.Round(definition.Height * scale), scale), failed);
-        var surface = new ScreenSurface(_device!, panel);
+        var surface = new ScreenSurface(_device, panel);
         ShowSurface(definition, surface, requestedLocation, failed);
     }
 
@@ -1199,10 +1203,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     void ILegACEyPluginHost.HideWindow(string id) => HideFeatureWindow(id);
     void ILegACEyPluginHost.CloseWindow(string id) => ReleaseFeatureWindow(id);
 
-    int? ILegACEyPluginHost.LoadPluginSettings(string plugin) => SettingsStore.Load(SessionServer(), SessionCharacter(), plugin)?.Location.X;
+    int? ILegACEyPluginHost.LoadPluginSettings(string plugin) => _settingsStore.Load(SessionServer(), SessionCharacter(), plugin)?.Location.X;
 
     void ILegACEyPluginHost.SavePluginSettings(string plugin, int value) =>
-        SettingsStore.Save(SessionServer(), SessionCharacter(), plugin, (new Point(value, 0), null));
+        _settingsStore.Save(SessionServer(), SessionCharacter(), plugin, (new Point(value, 0), null));
 
     private void HideFeatureWindow(string id)
     {
@@ -1253,14 +1257,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         _barTakeover = null;
     }
 
-    /// <summary>Translate Decal's raw messages into router decisions and Avalonia.Headless input.</summary>
-    private void OnWindowMessage(object? sender, WindowMessageEventArgs e)
+    /// <summary>Translate Decal's raw messages into router decisions and Avalonia.Headless input. True eats the message.</summary>
+    public bool WindowMessage(int hwnd, int message, int wParam, int lParam)
     {
         if (_failed || !_inGame || _barSurface == null)
-            return;
+            return false;
 
-        var lParam = e.LParam;
-        if (e.Msg == WmSetCursor)
+        var eat = false;
+        if (message == WmSetCursor)
         {
             // Over a resize edge, or while moving a window, our cursor replaces the game's; the eaten message keeps the game from resetting it.
             if ((lParam & 0xffff) == HtClient)
@@ -1269,18 +1273,18 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                     var cursor = WindowCursorAt(_pointer);
                     if (cursor == IntPtr.Zero) return;
                     SetCursor(cursor);
-                    e.Eat = true;
+                    eat = true;
                 });
-            return;
+            return eat;
         }
-        _gameWindow = new IntPtr(e.Hwnd);
+        _gameWindow = new IntPtr(hwnd);
         if (_handOff != null)
-            Guard(() => ContinueHandOff(e.Msg));
-        if (e.Msg == InputRouterService.WmMouseMove)
+            Guard(() => ContinueHandOff(message));
+        if (message == InputRouterService.WmMouseMove)
             _pointer = new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff));
-        if (e.Msg == InputRouterService.WmLButtonUp && _inputRouter.CapturedSurfaceId == null)
+        if (message == InputRouterService.WmLButtonUp && _inputRouter.CapturedSurfaceId == null)
             Guard(() => HandleRetailDrop(new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff))));
-        if (e.Msg == InputRouterService.WmMouseWheel)
+        if (message == InputRouterService.WmMouseWheel)
         {
             var point = new NativePoint
             {
@@ -1293,7 +1297,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         }
 
         var route = _inputRouter.Route(
-            new NativeInputMessage(e.Msg, new IntPtr(e.WParam), new IntPtr(lParam)),
+            new NativeInputMessage(message, new IntPtr(wParam), new IntPtr(lParam)),
             GetInputSurfaces());
         GuardInput(route, () =>
         {
@@ -1333,11 +1337,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                         SyncWindowLocations();
                     }
                     target.Panel.PointerDown(route.X, route.Y, ToKeyModifiers(route.Modifiers));
-                    e.Eat = route.Eat;
+                    eat = route.Eat;
                     break;
                 case InputAction.RightClick:
                     target!.Panel.RightClick(route.X, route.Y);
-                    e.Eat = route.Eat;
+                    eat = route.Eat;
                     break;
                 case InputAction.PointerUp:
                     target!.Panel.PointerUp(route.X, route.Y);
@@ -1348,23 +1352,23 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                     }
                     if (_dragOffset != null)
                         EndBarDrag();
-                    e.Eat = route.Eat;
+                    eat = route.Eat;
                     break;
                 case InputAction.MouseWheel:
                     target!.Panel.MouseWheel(route.X, route.Y, 0, route.WheelDelta / 120.0, ToKeyModifiers(route.Modifiers));
-                    e.Eat = route.Eat;
+                    eat = route.Eat;
                     break;
                 case InputAction.KeyDown:
                     target!.Panel.KeyDown(Win32KeyMap.ToAvaloniaKey(route.KeyCode), ToKeyModifiers(route.Modifiers));
-                    e.Eat = route.Eat;
+                    eat = route.Eat;
                     break;
                 case InputAction.KeyUp:
                     target!.Panel.KeyUp(Win32KeyMap.ToAvaloniaKey(route.KeyCode), ToKeyModifiers(route.Modifiers));
-                    e.Eat = route.Eat;
+                    eat = route.Eat;
                     break;
                 case InputAction.TextInput:
                     target!.Panel.TextInput(((char)route.KeyCode).ToString());
-                    e.Eat = route.Eat;
+                    eat = route.Eat;
                     break;
                 case InputAction.ClearFocus:
                     SurfaceById(route.ClearFocusSurfaceId)?.Panel.ClearFocus();
@@ -1372,16 +1376,17 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
                 case InputAction.Reset:
                     ApplyReset(route);
                     break;
-                case InputAction.None when e.Msg == InputRouterService.WmMouseMove:
+                case InputAction.None when message == InputRouterService.WmMouseMove:
                     _hovered?.Panel.PointerLeave();
                     _hovered = null;
                     break;
             }
-            if (e.Msg == InputRouterService.WmMouseMove)
+            if (message == InputRouterService.WmMouseMove)
                 UpdateWindowCorner(route.SurfaceId, _pointer);
             if (route.Eat)
-                e.Eat = true;
+                eat = true;
         });
+        return eat;
     }
 
     /// <summary>
@@ -1577,7 +1582,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
     }
 
     /// <summary>Stop drawing, give the player the retail bar back, and log why.</summary>
-    private void Disable(Exception exception)
+    public void Disable(Exception exception)
     {
         // Every panel drains the shared Avalonia dispatcher, so a plugin's failure can surface on another panel.
         if (_plugins?.TryFailOwner(exception) == true) return;
@@ -1611,19 +1616,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             ReleaseFeatureWindow(id);
     }
 
-    private static string SessionCharacter() => CoreManager.Current.CharacterFilter.Name;
-    private static string SessionServer() => CoreManager.Current.CharacterFilter.Server;
+    private static string SessionCharacter() => Bridge.Text(BridgeText.CharacterName);
+    private static string SessionServer() => Bridge.Text(BridgeText.ServerName);
 
     private void PublishGameState() => _gameStatePoller.Poll(_inGame);
-
-    private static GameStateSnapshot ReadGameState()
-    {
-        var filter = CoreManager.Current.CharacterFilter;
-        return new GameStateSnapshot(SessionCharacter(), SessionServer(),
-            filter.Health, filter.EffectiveVital[Decal.Adapter.Wrappers.CharFilterVitalType.Health],
-            filter.Stamina, filter.EffectiveVital[Decal.Adapter.Wrappers.CharFilterVitalType.Stamina],
-            filter.Mana, filter.EffectiveVital[Decal.Adapter.Wrappers.CharFilterVitalType.Mana]);
-    }
 
     private sealed class FeatureWindow : IDisposable
     {
