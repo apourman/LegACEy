@@ -237,11 +237,19 @@ public sealed class AppraisalTests
     public void An_armour_piece_names_what_it_covers_on_the_type_line()
     {
         // A chest piece in the chest slot. The world's coverage bits are the chest's and the upper arms' priority.
-        var bytes = new ServerAppraisal(0x80000A06) { Strings = { [1] = "Nariyid Breastplate" }, Ints = { [1] = 0x2 } }.Build();
+        var bytes = new ServerAppraisal(0x80000A06)
+        {
+            Strings = { [1] = "Nariyid Breastplate" },
+            Ints = { [1] = 0x2, [28] = 650 },
+            Armor = new[] { 1.2f, 1.0f, 1.2f, 0.78f, 0.38f, 1.0f, 0f, 1.0f },
+        }.Build();
 
         var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells, validLocations: 0x200, coverage: 0x0008 | 0x1000);
 
         Assert.Equal("Armor · Covers Chest, Upper Arms", content.TypeLine);
+        var armor = Assert.Single(content.Sections, section => section.Heading == "Armor");
+        var covers = Assert.Single(armor.Rows, row => row.Label == "Covers");
+        Assert.Equal("Chest, Upper Arms", covers.Text);
     }
 
     [Fact]

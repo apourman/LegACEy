@@ -105,12 +105,12 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     /// </summary>
     private static readonly SectionRule[] SectionRules =
     {
-        new("Combat", (response, _) => CombatRows(response)),
-        new("Armor", (response, _) => ArmorRows(response)),
-        new("Spells", (response, spells) => SpellRows(response, spells)),
-        new("Requirements", (response, _) => RequirementRows(response)),
-        new("Use", (response, _) => TextRows(response.Strings, UseString)),
-        new("Other", (response, _) => AppraisalOtherLines.Rows(response)),
+        new("Combat", (response, _, _) => CombatRows(response)),
+        new("Armor", (response, _, covered) => ArmorRows(response, covered)),
+        new("Spells", (response, spells, _) => SpellRows(response, spells)),
+        new("Requirements", (response, _, _) => RequirementRows(response)),
+        new("Use", (response, _, _) => TextRows(response.Strings, UseString)),
+        new("Other", (response, _, _) => AppraisalOtherLines.Rows(response)),
     };
 
     /// <summary>
@@ -133,9 +133,10 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
                 .Where(figure => figure.Text != null)
                 .Select(figure => new AppraisalFigure(figure.Label, figure.Text!))
                 .ToList();
+        var covered = CoveredAreas(validLocations, coverage);
         var sections = (hasCreatureProfile
                 ? CreatureSections(response)
-                : SectionRules.Select(rule => new AppraisalSection(rule.Heading, rule.Rows(response, spells).ToList())))
+                : SectionRules.Select(rule => new AppraisalSection(rule.Heading, rule.Rows(response, spells, covered).ToList())))
             .Where(section => section.Rows.Count > 0)
             .ToList();
         var visual = response.Dids.TryGetValue(IconDid, out var icon) && icon != 0
@@ -145,7 +146,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
             response.ObjectId,
             response.Strings.TryGetValue(NameString, out var name) && name.Length > 0 ? name : "Unknown item",
             visual,
-            hasCreatureProfile ? CreatureTypeLine(response, names ?? CharacterNames.None) : TypeLineOf(response, validLocations, coverage),
+            hasCreatureProfile ? CreatureTypeLine(response, names ?? CharacterNames.None) : TypeLineOf(response, covered),
             figures,
             sections,
             response.Strings.TryGetValue(LongDescString, out var description) ? description : string.Empty,
@@ -201,7 +202,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     /// ("Staff · Heavy Weapons"), then what a piece of clothing or armour covers ("Armor · Covers Chest, Upper Arms").
     /// Skill names are ACE's Skill.ToSentence (ACE.Entity/Enum/Skill.cs), indexed by the skill's id.
     /// </summary>
-    private static string TypeLineOf(AppraisalResponse response, uint validLocations, uint coverage)
+    private static string TypeLineOf(AppraisalResponse response, string covered)
     {
         var weaponType = response.Ints.TryGetValue(WeaponTypeInt, out var kind) && kind > 0 && kind < WeaponTypeNames.Length ? WeaponTypeNames[kind] : null;
         var type = weaponType ?? (response.Ints.TryGetValue(ItemTypeInt, out var bits) ? ItemTypeNames.FirstOrDefault(item => (bits & item.Bit) != 0).Name : null);
@@ -209,21 +210,20 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
         var skill = response.Weapon is { } weapon && weapon.WeaponSkill > 0 && weapon.WeaponSkill < SkillNames.Length
             ? SkillNames[weapon.WeaponSkill]
             : null;
-        return string.Join(" · ", new[] { type, skill, CoversText(validLocations, coverage) }.Where(part => !string.IsNullOrEmpty(part)));
+        return string.Join(" · ", new[] { type, skill, covered.Length == 0 ? null : "Covers " + covered }.Where(part => !string.IsNullOrEmpty(part)));
     }
 
     // The clothing slots (0x0800_7FFF) and the weapon and shield slots (0x03F0_0000), as OpenAC's formatter tests them.
     private const uint ClothingLocations = 0x0800_7FFF, WeaponAndShieldLocations = 0x03F0_0000;
 
     /// <summary>
-    /// "Covers Chest, Upper Arms" for a clothing or armour piece: one that is in a clothing slot and not a weapon or shield. Named by the
+    /// "Chest, Upper Arms" for a clothing or armour piece: one that is in a clothing slot and not a weapon or shield. Named by the
     /// coverage bits, as OpenAC's ClothingCoverage names them (MIT). Empty when the item covers nothing it names.
     /// </summary>
-    private static string CoversText(uint validLocations, uint coverage)
+    private static string CoveredAreas(uint validLocations, uint coverage)
     {
         if ((validLocations & WeaponAndShieldLocations) != 0 || (validLocations & ClothingLocations) == 0) return string.Empty;
-        var covered = CoverageNames.Where(area => (coverage & area.Bits) != 0).Select(area => area.Name).ToArray();
-        return covered.Length == 0 ? string.Empty : "Covers " + string.Join(", ", covered);
+        return string.Join(", ", CoverageNames.Where(area => (coverage & area.Bits) != 0).Select(area => area.Name));
     }
 
     /// <summary>The coverage areas in OpenAC's order, each with the two priority bits that cover it.</summary>
@@ -367,10 +367,10 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     };
 
     /// <summary>
-    /// An armour piece's Armor rows: the armour level, then each protection in retail's words with its modifier ("Above Average (1.2)").
-    /// Nether shows only on a piece that protects against it. A piece with no armour level has none.
+    /// An armour piece's Armor rows: the armour level, then each protection in retail's words with its modifier ("Above Average (1.2)"),
+    /// then what it covers when it covers any. Nether shows only on a piece that protects against it. A piece with no armour level has none.
     /// </summary>
-    private static IEnumerable<AppraisalRow> ArmorRows(AppraisalResponse response)
+    private static IEnumerable<AppraisalRow> ArmorRows(AppraisalResponse response, string covered)
     {
         if (response.Armor is not { } armor || !response.Ints.TryGetValue(ArmorLevelInt, out var level) || level <= 0)
             return Array.Empty<AppraisalRow>();
@@ -387,6 +387,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
         };
         if (armor.Nether > Epsilon) rows.Add(Protection("Nether", armor.Nether, null, 0));
         rows.Add(Protection("Lightning", armor.Lightning, mask, ArmorLightningBit));
+        if (covered.Length > 0) rows.Add(new AppraisalRow("Covers", covered));
         return rows;
     }
 
@@ -741,5 +742,5 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     /// <summary>The non-empty parts joined by the separator.</summary>
     private static string Join(string separator, params string?[] parts) => string.Join(separator, parts.Where(part => !string.IsNullOrEmpty(part)));
 
-    private sealed record SectionRule(string Heading, Func<AppraisalResponse, IReadOnlyDictionary<uint, SpellInfo>, IEnumerable<AppraisalRow>> Rows);
+    private sealed record SectionRule(string Heading, Func<AppraisalResponse, IReadOnlyDictionary<uint, SpellInfo>, string, IEnumerable<AppraisalRow>> Rows);
 }
