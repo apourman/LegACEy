@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/apourman/LegACEy/compare/v0.6.0...v0.7.0) (2026-10-11)
+
+
+### Features
+
+* Dereth inventory window ([#34](https://github.com/apourman/LegACEy/issues/34)) ([322dcb2](https://github.com/apourman/LegACEy/commit/322dcb2ce60a695023320609ff949bfc333c550a))
+
 ## [0.6.0](https://github.com/apourman/LegACEy/compare/v0.5.0...v0.6.0) (2026-10-09)
 
 
