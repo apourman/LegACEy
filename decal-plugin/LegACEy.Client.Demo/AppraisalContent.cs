@@ -31,14 +31,15 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     private const uint ItemTypeInt = 1, EncumbranceValInt = 5, ValueInt = 19, WeaponSkillInt = 48, ItemWorkmanshipInt = 105, SalvagedItemsInt = 170;
     private const uint NameString = 1, UseString = 14, LongDescString = 16;
     private const uint IconDid = 8, IconOverlayDid = 50, IconUnderlayDid = 52;
-    private const uint ArmorLevelInt = 28, ElementalDamageInt = 204, WeaponTypeInt = 353, WeaponDefenseFloat = 29;
+    private const uint ArmorLevelInt = 28, WeaponTypeInt = 353, WeaponDefenseFloat = 29;
+    // Values closer than this are the same figure (a bonus of 1.0 is none).
+    private const float Epsilon = 0.0002f;
 
-    // Highlight and colour bits as ACE.Server's WeaponMask, ArmorMask and ResistMask set them. A highlighted bit with its colour bit set is
-    // raised; highlighted without it, lowered. ACE's armour mask has no nether bit; 0x100 is where OpenAC reads it.
+    // Highlight and colour bits as ACE.Server's WeaponMask and ArmorMask set them. A highlighted bit with its colour bit set is raised;
+    // highlighted without it, lowered.
     private const uint WeaponAttackBit = 0x1, WeaponMeleeDefenseBit = 0x2, WeaponSpeedBit = 0x4, WeaponDamageBit = 0x8, WeaponDamageVarianceBit = 0x10;
     private const uint ArmorLevelBit = 0x1, ArmorSlashingBit = 0x2, ArmorPiercingBit = 0x4, ArmorBludgeoningBit = 0x8, ArmorFireBit = 0x20,
-        ArmorColdBit = 0x10, ArmorAcidBit = 0x40, ArmorLightningBit = 0x80, ArmorNetherBit = 0x100;
-    private const uint ResistElementalBit = 0x2000;
+        ArmorColdBit = 0x10, ArmorAcidBit = 0x40, ArmorLightningBit = 0x80;
 
     /// <summary>The summary figures, in the order they sit side by side. A figure the server did not send is left out.</summary>
     private static readonly (string Label, Func<AppraisalResponse, string?> Text)[] FigureRules =
@@ -146,7 +147,10 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
         return string.Join(" · ", new[] { type, skill }.Where(part => !string.IsNullOrEmpty(part)));
     }
 
-    /// <summary>ACE's WeaponType names by its value (Unarmed 1 to Thrown 10). Two-handed and magic have no word here, as OpenAC leaves them out.</summary>
+    /// <summary>
+    /// ACE's WeaponType names by its value (Unarmed 1 to Thrown 10), as OpenAC names them. Two-handed (11) and magic (12) have no word in
+    /// either, so for them the type line falls back to the item type name.
+    /// </summary>
     private static readonly string[] WeaponTypeNames =
     {
         "", "Unarmed", "Sword", "Axe", "Mace", "Spear", "Dagger", "Staff", "Bow", "Crossbow", "Thrown"
@@ -164,8 +168,8 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     };
 
     /// <summary>
-    /// A weapon's Combat rows: damage and type, speed, the attack and melee defence bonuses, and the elemental damage bonus. Values are
-    /// coloured from the masks the server sent. A weapon with no profile has none.
+    /// A weapon's Combat rows: damage and type, speed, and the attack and melee defence bonuses. Values are coloured from the masks the
+    /// server sent. A weapon with no profile has none.
     /// </summary>
     private static IEnumerable<AppraisalRow> WeaponRows(AppraisalResponse response)
     {
@@ -175,18 +179,12 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
             new AppraisalRow("Damage", DamageText(weapon), DamageTone(response.WeaponMask)),
             new AppraisalRow("Speed", SpeedText(weapon.WeaponTime), ToneOf(response.WeaponMask, WeaponSpeedBit)),
         };
-        if (Math.Abs(weapon.WeaponOffense - 1) > 0.000001)
+        if (Math.Abs(weapon.WeaponOffense - 1) > Epsilon)
             rows.Add(new AppraisalRow("Attack", (weapon.WeaponOffense - 1).ToString("+0%;-0%;0%", CultureInfo.InvariantCulture),
                 ToneOf(response.WeaponMask, WeaponAttackBit)));
-        if (response.Floats.TryGetValue(WeaponDefenseFloat, out var defence) && Math.Abs(defence - 1) > 0.000001)
+        if (response.Floats.TryGetValue(WeaponDefenseFloat, out var defence) && Math.Abs(defence - 1) > Epsilon)
             rows.Add(new AppraisalRow("Melee defense", (defence - 1).ToString("+0.0%;-0.0%;0.0%", CultureInfo.InvariantCulture),
                 ToneOf(response.WeaponMask, WeaponMeleeDefenseBit)));
-        if (response.Ints.TryGetValue(ElementalDamageInt, out var elemental) && elemental > 0)
-        {
-            var type = DamageTypeName(weapon.DamageType);
-            rows.Add(new AppraisalRow("Elemental damage", type.Length == 0 ? $"{elemental}" : $"{elemental} {type}",
-                ToneOf(response.ResistMask, ResistElementalBit)));
-        }
         return rows;
     }
 
@@ -195,14 +193,15 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     {
         var high = FormatDamage(weapon.Damage);
         var low = (1 - weapon.DamageVariance) * weapon.Damage;
-        var range = weapon.Damage - low > 0.0002 ? $"{FormatDamage(low)} – {high}" : high;
+        var range = weapon.Damage - low > Epsilon ? $"{FormatDamage(low)} – {high}" : high;
         var type = DamageTypeName(weapon.DamageType);
         return type.Length == 0 ? range : $"{range} {type}";
     }
 
-    private static string FormatDamage(double damage) => damage.ToString(damage > 10 ? "G4" : "G3", CultureInfo.InvariantCulture);
+    // Two decimals at most, never an exponent: 41.28 and 86.
+    private static string FormatDamage(double damage) => damage.ToString("0.##", CultureInfo.InvariantCulture);
 
-    /// <summary>The damage type's name, by ACE's DamageType bit (Slash 1 to Electric 64, named as retail's armour rows name it). Empty when unknown.</summary>
+    /// <summary>The damage type's name, by ACE's DamageType bit (Slash 1 to Nether 1024), named as retail's armour rows name it. Empty when unknown.</summary>
     private static string DamageTypeName(uint type) => type switch
     {
         1 => "Slashing",
@@ -212,6 +211,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
         16 => "Fire",
         32 => "Acid",
         64 => "Lightning",
+        1024 => "Nether",
         _ => string.Empty,
     };
 
@@ -253,7 +253,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
             Protection("Cold", armor.Cold, mask, ArmorColdBit),
             Protection("Acid", armor.Acid, mask, ArmorAcidBit),
         };
-        if (armor.Nether > 0.0002f) rows.Add(Protection("Nether", armor.Nether, mask, ArmorNetherBit));
+        if (armor.Nether > Epsilon) rows.Add(Protection("Nether", armor.Nether, null, 0));
         rows.Add(Protection("Lightning", armor.Lightning, mask, ArmorLightningBit));
         return rows;
     }
@@ -264,7 +264,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     /// <summary>Retail's word for a protection modifier, from None to Unparalleled (OpenAC's bands).</summary>
     private static string Quality(float modifier) => modifier switch
     {
-        <= 0.0002f => "None",
+        <= Epsilon => "None",
         < 0.4f => "Poor",
         < 0.8f => "Below Average",
         < 1.2f => "Average",
