@@ -28,6 +28,8 @@ internal static class NativeUi
     public const uint InventoryPanel = 0x1000018B;
     /// <summary>The examination panel's root: the window retail opens for an E-key appraisal (LayoutDesc 0x2100006B).</summary>
     public const uint Examination = 0x100005F2;
+    /// <summary>The examination layout's inscription field (0x2100006B): it sits under <see cref="Examination"/>.</summary>
+    public const uint ExaminationInscription = 0x1000013E;
 
     private static readonly IntPtr ManagerInstance = new(0x0083E03C);
     private static bool _ready;

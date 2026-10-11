@@ -35,7 +35,7 @@ public sealed unsafe class BridgeTests : IDisposable
         Device = &Device, Fact = &Fact, Text = &Text, Inventory = &Inventory, Item = &Item,
         UseItem = &UseItem, SelectItem = &SelectItem, RequestId = &RequestId, DropItem = &DropItem,
         MoveItem = &MoveItem, MergeItem = &MergeItem, AutoWield = &AutoWield,
-        ValidLocations = &ValidLocations
+        ValidLocations = &ValidLocations, Coverage = &Coverage
     };
 
     [Fact]
@@ -270,6 +270,13 @@ public sealed unsafe class BridgeTests : IDisposable
     private static int ValidLocations(int id, int* mask)
     {
         *mask = unchecked((uint)id) == 0x80000030 ? 0x100000 : 0;
+        return 0;
+    }
+
+    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
+    private static int Coverage(int id, int* mask)
+    {
+        *mask = 0;
         return 0;
     }
 }

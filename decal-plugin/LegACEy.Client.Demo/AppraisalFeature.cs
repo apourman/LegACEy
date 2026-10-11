@@ -154,7 +154,8 @@ public sealed class AppraisalFeature
     /// <summary>Shows the response in the window, opening it when it is not open. Returns false when the window could not open.</summary>
     private bool Show(AppraisalResponse response)
     {
-        var content = AppraisalContent.From(response, _spells(), _game.CharacterName, _game.IsCarried(response.ObjectId), _names());
+        var content = AppraisalContent.From(response, _spells(), _game.CharacterName, _game.IsCarried(response.ObjectId), _names(),
+            _game.ValidLocationsOf(response.ObjectId), _game.CoverageOf(response.ObjectId));
         var art = _host.Art;
         // A window the client released (its surface failed or closed on its own) is neither open nor hidden: the view is stale, so the next
         // appraisal builds a new one.
@@ -245,6 +246,10 @@ public interface IAppraisalGame
     bool SetInscription(uint itemId, string text);
     /// <summary>Asks the server to appraise an item again, silently: the item is not selected and no window is asked for.</summary>
     void RequestAppraisal(uint itemId);
+    /// <summary>The item's equipable slots (the world's EquipableSlots), zero when the world does not have it.</summary>
+    uint ValidLocationsOf(uint itemId);
+    /// <summary>The item's clothing coverage (the world's Coverage bits), zero when the world does not have it.</summary>
+    uint CoverageOf(uint itemId);
 }
 
 /// <summary>The game when there is none: no character, nothing carried, nothing sent.</summary>
@@ -260,6 +265,8 @@ internal sealed class NoAppraisalGame : IAppraisalGame
     public bool IsCarried(uint itemId) => false;
     public bool SetInscription(uint itemId, string text) => false;
     public void RequestAppraisal(uint itemId) { }
+    public uint ValidLocationsOf(uint itemId) => 0;
+    public uint CoverageOf(uint itemId) => 0;
 }
 
 /// <summary>
