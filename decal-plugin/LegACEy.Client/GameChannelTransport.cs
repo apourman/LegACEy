@@ -69,17 +69,20 @@ internal sealed class GameChannelTransport : IServerChannelTransport
     public int Sent { get; private set; }
     public int Received { get; private set; }
 
-    public bool Send(byte[] requestPayload)
+    public bool Send(byte[] requestPayload) => SendAction(ChannelWire.GameActionOpcode, requestPayload);
+
+    /// <summary>
+    /// Sends a retail game action with <paramref name="opcode"/> and its payload through the client's own send, as the LegACEy channel's
+    /// requests are sent. Returns false when the channel is not available or the client refuses the action.
+    /// </summary>
+    public bool SendAction(uint opcode, byte[] payload)
     {
         if (!IsAvailable) return false;
-        var size = 12 + requestPayload.Length;
+        var size = 12 + payload.Length;
         var buffer = _allocate!((uint)size);
         if (buffer == IntPtr.Zero) return false;
         var counter = _nextCounter!();
-        Marshal.WriteInt32(buffer, 0, unchecked((int)GameActionMessage));
-        Marshal.WriteInt32(buffer, 4, unchecked((int)counter));
-        Marshal.WriteInt32(buffer, 8, unchecked((int)ChannelWire.GameActionOpcode));
-        Marshal.Copy(requestPayload, 0, buffer + 12, requestPayload.Length);
+        Marshal.Copy(GameActionFrame(counter, opcode, payload), 0, buffer, size);
         var sent = _sendToWeenie!(buffer, size) != 0;
         if (!sent) _counterFailed!();
         else Sent++;
@@ -89,6 +92,20 @@ internal sealed class GameChannelTransport : IServerChannelTransport
             _loggedFirstSend = true;
         }
         return sent;
+    }
+
+    /// <summary>
+    /// The bytes of a game action as retail's Proto_UI::SendToWeenie takes them: 0xF7B1, the UI counter, the action's opcode, then its
+    /// payload. The server reads the sequence and the opcode, then the action's own fields.
+    /// </summary>
+    internal static byte[] GameActionFrame(uint counter, uint opcode, byte[] payload)
+    {
+        var frame = new byte[12 + payload.Length];
+        BinaryPrimitives.WriteUInt32LittleEndian(frame, GameActionMessage);
+        BinaryPrimitives.WriteUInt32LittleEndian(frame.AsSpan(4), counter);
+        BinaryPrimitives.WriteUInt32LittleEndian(frame.AsSpan(8), opcode);
+        Buffer.BlockCopy(payload, 0, frame, 12, payload.Length);
+        return frame;
     }
 
     /// <summary>

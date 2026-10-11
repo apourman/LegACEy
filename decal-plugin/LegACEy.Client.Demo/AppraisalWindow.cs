@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using LegACEy.Client.GameArt;
@@ -13,8 +14,8 @@ namespace LegACEy.Client.Demo;
 /// <summary>
 /// The appraisal window: a Dereth window whose header carries the item's icon and name, drawing an <see cref="AppraisalContent"/>. The
 /// summary, then the sections (each a gold heading over a rule), then the long description in italics under a rule. The body scrolls
-/// past <see cref="MaxHeight"/>. One instance serves the session: <see cref="TryShow"/> swaps in the next appraisal while it fits the
-/// height the window has.
+/// past <see cref="MaxHeight"/>, and the inscription stays pinned under it. One instance serves the session: <see cref="TryShow"/> swaps in
+/// the next appraisal while it fits the height the window has.
 /// </summary>
 public sealed class AppraisalWindow
 {
@@ -28,29 +29,35 @@ public sealed class AppraisalWindow
 
     private readonly DerethWindow _window;
     private readonly ScrollViewer _scroll;
+    private readonly ContentControl _foot;
 
-    private AppraisalWindow(DerethWindow window, ScrollViewer scroll, int height)
+    private AppraisalWindow(DerethWindow window, ScrollViewer scroll, ContentControl foot, int height)
     {
         _window = window;
         _scroll = scroll;
+        _foot = foot;
         Height = height;
     }
 
     public DerethWindow Window => _window;
 
-    /// <summary>The height the window was built at: its body's height plus the chrome, up to <see cref="MaxHeight"/>.</summary>
+    /// <summary>The height the window was built at: its body and inscription plus the chrome, up to <see cref="MaxHeight"/>.</summary>
     public int Height { get; }
 
     /// <summary>Runs when the player closes the window with its close box.</summary>
     public Action? Close { get; set; }
 
-    /// <summary>The window for an appraisal, at the height its content needs.</summary>
-    public static AppraisalWindow Create(AppraisalContent content, IGameArtSource? art)
+    /// <summary>
+    /// The window for an appraisal, at the height its content needs. <paramref name="inscribe"/> saves an inscription on an item and returns
+    /// whether it was sent.
+    /// </summary>
+    public static AppraisalWindow Create(AppraisalContent content, IGameArtSource? art, Func<uint, string, bool> inscribe)
     {
-        var (body, height) = Layout(content);
-        var scroll = Scroll(body);
-        var window = new DerethWindow(content.Name, Icon(content.Visual, art), scroll);
-        var view = new AppraisalWindow(window, scroll, height);
+        var layout = Layout(content, inscribe);
+        var scroll = Scroll(layout.Body);
+        var foot = new ContentControl { Content = layout.Foot };
+        var window = new DerethWindow(content.Name, Icon(content.Visual, art), Frame(scroll, foot));
+        var view = new AppraisalWindow(window, scroll, foot, layout.Height);
         window.CloseRequested += (_, _) => view.Close?.Invoke();
         return view;
     }
@@ -59,18 +66,19 @@ public sealed class AppraisalWindow
     /// Shows another appraisal in this window, when its content fits the height the window has. Returns false, with the window unchanged,
     /// when it needs another height: the window's size cannot change once it is open.
     /// </summary>
-    public bool TryShow(AppraisalContent content, IGameArtSource? art)
+    public bool TryShow(AppraisalContent content, IGameArtSource? art, Func<uint, string, bool> inscribe)
     {
-        var (body, height) = Layout(content);
-        if (height != Height) return false;
+        var layout = Layout(content, inscribe);
+        if (layout.Height != Height) return false;
         _window.Title = content.Name;
         _window.SetIcon(Icon(content.Visual, art));
-        _scroll.Content = body;
+        _scroll.Content = layout.Body;
+        _foot.Content = layout.Foot;
         return true;
     }
 
-    /// <summary>The body for the content, and the height the window needs to show all of it.</summary>
-    private static (Control Body, int Height) Layout(AppraisalContent content)
+    /// <summary>The body and the inscription for the content, and the height the window needs to show all of it.</summary>
+    private static (Control Body, Control? Foot, int Height) Layout(AppraisalContent content, Func<uint, string, bool> inscribe)
     {
         var body = new StackPanel { Margin = new Thickness(10, 6, 10, 6), Spacing = 2 };
         if (content.TypeLine.Length > 0) body.Children.Add(Text(content.TypeLine, DerethPalette.CreamBrush, 14));
@@ -89,9 +97,22 @@ public sealed class AppraisalWindow
                 TextWrapping = TextWrapping.Wrap
             });
         }
-        // A window measured before it is shown has no template yet, so the body is measured and the chrome added to it.
+        var foot = content.Inscription is { } inscription ? Inscription(inscription, content.ObjectId, inscribe) : null;
+        // A window measured before it is shown has no template yet, so the parts are measured and the chrome added to them.
         body.Measure(new Size(Width - BodyInset, double.PositiveInfinity));
-        return (body, Math.Min(MaxHeight, Chrome + (int)Math.Ceiling(body.DesiredSize.Height)));
+        foot?.Measure(new Size(Width - BodyInset, double.PositiveInfinity));
+        var needed = Chrome + (int)Math.Ceiling(body.DesiredSize.Height) + (foot == null ? 0 : (int)Math.Ceiling(foot.DesiredSize.Height));
+        return (body, foot, Math.Min(MaxHeight, needed));
+    }
+
+    /// <summary>The frame's content: the scrolling body, and the inscription pinned under it.</summary>
+    private static Grid Frame(Control scroll, Control foot)
+    {
+        var grid = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
+        grid.Children.Add(scroll);
+        Grid.SetRow(foot, 1);
+        grid.Children.Add(foot);
+        return grid;
     }
 
     private static ScrollViewer Scroll(Control body) => new()
@@ -148,6 +169,54 @@ public sealed class AppraisalWindow
         Grid.SetColumn(value, 1);
         grid.Children.Add(value);
         return grid;
+    }
+
+    /// <summary>
+    /// The inscription at the foot: an editable field the character writes in, or the text and its scribe read only. A read-only item that
+    /// nobody inscribed says so.
+    /// </summary>
+    private static Control Inscription(AppraisalInscription inscription, uint itemId, Func<uint, string, bool> inscribe)
+    {
+        if (inscription.Mode == InscriptionMode.Editable) return Editable(inscription.Text, text => inscribe(itemId, text));
+        var panel = new StackPanel { Margin = new Thickness(10, 6, 10, 6), Spacing = 2 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = inscription.Text.Length > 0 ? $"“{inscription.Text}”" : "Not inscribed",
+            Foreground = DerethPalette.CreamBrush, FontSize = 13, FontStyle = FontStyle.Italic, TextWrapping = TextWrapping.Wrap
+        });
+        if (inscription.Scribe.Length > 0) panel.Children.Add(Text($"Inscribed by {inscription.Scribe}", DerethPalette.MutedBrush, 11));
+        return panel;
+    }
+
+    /// <summary>
+    /// The field the character writes in. Enter saves, and so does leaving it with changed text; the saved text is kept so an unchanged
+    /// field sends nothing. Escape puts back the last saved text. A save that the game does not send keeps the typed text, so the next
+    /// Enter tries again. Empty text erases the inscription. The placeholder shows while it is empty.
+    /// </summary>
+    private static Control Editable(string saved, Func<string, bool> save)
+    {
+        var committed = saved;
+        var input = new TextBox
+        {
+            Text = saved, Watermark = "Inscribe here", MaxLength = AppraisalInscription.MaxLength, FontFamily = DerethPalette.Body,
+            FontSize = 12, Foreground = DerethPalette.TextBrush, CaretBrush = DerethPalette.GoldBrush, Background = DerethPalette.GrooveBrush,
+            BorderBrush = DerethPalette.GrooveEdgeBrush,
+        };
+        void Save()
+        {
+            var text = input.Text ?? string.Empty;
+            if (text == committed) return;
+            if (save(text)) committed = text;
+        }
+        input.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter) { Save(); e.Handled = true; }
+            else if (e.Key == Key.Escape) { input.Text = committed; e.Handled = true; }
+        };
+        input.LostFocus += (_, _) => Save();
+        var panel = new StackPanel { Margin = new Thickness(10, 6, 10, 6), Spacing = 2, Children = { input } };
+        panel.Children.Add(Text("Enter saves · Esc cancels", DerethPalette.MutedBrush, 11));
+        return panel;
     }
 
     private static TextBlock Text(string text, IBrush brush, double size, bool centred = false, FontFamily? font = null) => new()

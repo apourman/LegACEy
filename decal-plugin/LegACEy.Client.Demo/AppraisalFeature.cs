@@ -26,6 +26,7 @@ public sealed class AppraisalFeature
     private readonly ILegACEyPluginHost _host;
     private readonly Action<string> _log;
     private readonly Func<long> _clock;
+    private readonly IAppraisalGame _game;
     private readonly Dictionary<uint, AppraisalResponse> _responses = new();
     private uint _requested;
     private long _requestedAt;
@@ -33,11 +34,13 @@ public sealed class AppraisalFeature
     private AppraisalWindow? _view;
 
     /// <param name="clock">The time in milliseconds, for timing requests out. Null uses the system's tick count.</param>
-    public AppraisalFeature(ILegACEyPluginHost host, Action<string> log, Func<long>? clock = null)
+    /// <param name="game">The character, the inventory and the inscription action. Null means none: nothing is editable and nothing is sent.</param>
+    public AppraisalFeature(ILegACEyPluginHost host, Action<string> log, Func<long>? clock = null, IAppraisalGame? game = null)
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _log = log ?? throw new ArgumentNullException(nameof(log));
         _clock = clock ?? new Func<long>(() => Stopwatch.GetTimestamp() * 1000 / Stopwatch.Frequency);
+        _game = game ?? NoAppraisalGame.Instance;
     }
 
     /// <summary>What the window shows: the content of the last appraisal the window opened for, or null when it has opened for none.</summary>
@@ -87,14 +90,14 @@ public sealed class AppraisalFeature
 
     private void Show(AppraisalResponse response)
     {
-        var content = AppraisalContent.From(response);
+        var content = AppraisalContent.From(response, _game.CharacterName, _game.IsCarried(response.ObjectId));
         var art = _host.Art;
         // One window serves the session: it takes the next appraisal in place while the content fits its height. A height change
         // releases the window and builds a new one, because a window's size cannot change once it is open.
-        if (_view == null || !_view.TryShow(content, art))
+        if (_view == null || !_view.TryShow(content, art, Inscribe))
         {
             _host.CloseWindow(WindowId);
-            _view = AppraisalWindow.Create(content, art);
+            _view = AppraisalWindow.Create(content, art, Inscribe);
         }
         var view = _view;
         // An open window already shows the content. A hidden one comes back as it was, with the content just swapped in.
@@ -122,6 +125,52 @@ public sealed class AppraisalFeature
         _shownId = response.ObjectId;
         Shown = content;
     }
+
+    /// <summary>
+    /// Saves an inscription on an item and returns whether it was sent. The server sends no reply, so the item is appraised again: that
+    /// response shows the saved text, or the old text when the server refused it.
+    /// </summary>
+    private bool Inscribe(uint itemId, string text)
+    {
+        if (!_game.SetInscription(itemId, text))
+        {
+            _log("Could not send the inscription: the server channel is not available.");
+            return false;
+        }
+        _game.RequestAppraisal(itemId);
+        return true;
+    }
+}
+
+/// <summary>
+/// What the appraisal window needs from the game: the character's name and whether an item is carried, for the inscription rule, and the
+/// two things it asks of the game to save an inscription.
+/// </summary>
+public interface IAppraisalGame
+{
+    /// <summary>The character's name, as the server writes it as a scribe's name.</summary>
+    string CharacterName { get; }
+    /// <summary>Whether the item is in the character's packs or worn, as the inventory has it.</summary>
+    bool IsCarried(uint itemId);
+    /// <summary>Sends retail's set-inscription action for an item. Returns false when it could not be sent.</summary>
+    bool SetInscription(uint itemId, string text);
+    /// <summary>Asks the server to appraise an item again, silently: the item is not selected and no window is asked for.</summary>
+    void RequestAppraisal(uint itemId);
+}
+
+/// <summary>The game when there is none: no character, nothing carried, nothing sent.</summary>
+internal sealed class NoAppraisalGame : IAppraisalGame
+{
+    public static readonly NoAppraisalGame Instance = new();
+
+    private NoAppraisalGame()
+    {
+    }
+
+    public string CharacterName => string.Empty;
+    public bool IsCarried(uint itemId) => false;
+    public bool SetInscription(uint itemId, string text) => false;
+    public void RequestAppraisal(uint itemId) { }
 }
 
 /// <summary>
