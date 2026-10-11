@@ -87,7 +87,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
 
     /// <summary>
     /// The sections below the summary, in the order the window shows them. A rule gives a heading and its rows; a section with no rows is
-    /// left out. Later tickets add Other between Armor and Use, in that order.
+    /// left out. The order is Combat, Armor, Spells, Requirements, Use, then Other (its rules are in AppraisalOtherLines.cs).
     /// </summary>
     private static readonly SectionRule[] SectionRules =
     {
@@ -96,9 +96,9 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
         new("Spells", (response, spells) => SpellRows(response, spells)),
         new("Requirements", (response, _) => RequirementRows(response)),
         new("Use", (response, _) => TextRows(response.Strings, UseString)),
+        new("Other", (response, _) => AppraisalOtherLines.Rows(response)),
     };
 
-    /// <summary>
     /// <summary>
     /// Builds what the window shows from one appraisal. <paramref name="spells"/> gives each spell's name and description by id (the
     /// portal DAT's spell table, empty when there is none); a spell it does not know is named by its id. The inscription field depends on
