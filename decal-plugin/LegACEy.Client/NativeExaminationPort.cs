@@ -16,26 +16,19 @@ internal sealed class NativeExaminationPort : NativePanelPort
 
     /// <summary>
     /// Checks, at runtime, that the root element is the examination panel: the inscription field resolves and sits under the root. Read
-    /// on the first show, before the panel is parked. Any failed read is a failed check, so retail's panel is then left alone.
+    /// before the panel is parked. A read that throws propagates, so the caller logs its reason and leaves retail's panel alone.
     /// </summary>
     public bool VerifyRoot()
     {
-        try
+        var root = Element;
+        var field = NativeUi.GetElement(NativeUi.ExaminationInscription);
+        if (root == IntPtr.Zero || field == IntPtr.Zero) return false;
+        var current = field;
+        for (var depth = 0; depth < MaxDepth && current != IntPtr.Zero; depth++)
         {
-            var root = Element;
-            var field = NativeUi.GetElement(NativeUi.ExaminationInscription);
-            if (root == IntPtr.Zero || field == IntPtr.Zero) return false;
-            var current = field;
-            for (var depth = 0; depth < MaxDepth && current != IntPtr.Zero; depth++)
-            {
-                if (current == root) return true;
-                current = NativeUi.Virtual<NativeUi.GetParentFn>(current, NativeUi.GetParentSlot)(current);
-            }
-            return false;
+            if (current == root) return true;
+            current = NativeUi.Virtual<NativeUi.GetParentFn>(current, NativeUi.GetParentSlot)(current);
         }
-        catch (Exception)
-        {
-            return false;
-        }
+        return false;
     }
 }

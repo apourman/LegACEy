@@ -256,6 +256,17 @@ public sealed class AppraisalTests
     }
 
     [Fact]
+    public void A_gem_outside_the_clothing_slots_names_no_coverage_even_when_the_world_reports_some()
+    {
+        var bytes = new ServerAppraisal(0x80000A07) { Strings = { [1] = "Green Garnet" }, Ints = { [1] = 0x800 } }.Build();
+
+        // No equipable slots: a gem is not clothing, so the coverage bits are not named.
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells, validLocations: 0, coverage: 0x0008 | 0x1000);
+
+        Assert.Equal("Gem", content.TypeLine);
+    }
+
+    [Fact]
     public void A_failed_root_check_leaves_retails_examination_panel_untouched() => OnWindowThread(() =>
     {
         var host = new FakeAppraisalHost();

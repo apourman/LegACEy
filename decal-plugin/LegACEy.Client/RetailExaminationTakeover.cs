@@ -34,8 +34,9 @@ internal sealed class RetailExaminationTakeover : IDisposable
 
     /// <param name="selection">The object retail is examining: the current selection, read each enabled frame before the panel is ticked.</param>
     /// <param name="appraisals">Shows the appraisal window for an object, now or when its response arrives, and reports how that went.</param>
-    /// <param name="verifyRoot">Checks at runtime that the port's root is the examination panel. Run once a session, on the first show and
-    /// before the panel is parked. False, or a throw, leaves retail's panel alone for the session.</param>
+    /// <param name="verifyRoot">Checks at runtime that the port's root is the examination panel. Run once a session, on the first enabled
+    /// tick where the panel is open and our window can show, before the panel is parked. False, or a throw, leaves retail's panel alone for
+    /// the session.</param>
     public RetailExaminationTakeover(IRetailPanelPort port, Func<uint> selection, AppraisalFeature appraisals, Action<string> log, Func<bool> verifyRoot)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
@@ -43,7 +44,7 @@ internal sealed class RetailExaminationTakeover : IDisposable
         _appraisals = appraisals ?? throw new ArgumentNullException(nameof(appraisals));
         _log = log ?? throw new ArgumentNullException(nameof(log));
         _verifyRoot = verifyRoot ?? throw new ArgumentNullException(nameof(verifyRoot));
-        _panel = new RetailPanelTakeover(_port, OnOpenChanged, _log);
+        _panel = new RetailPanelTakeover(_port, OnOpenChanged, Note);
     }
 
     /// <summary>Ticks the panel takeover; <paramref name="enabled"/> false gives the panel back, as the inventory takeover does.</summary>
@@ -104,13 +105,25 @@ internal sealed class RetailExaminationTakeover : IDisposable
     }
 
     /// <summary>
-    /// The root check, made once a session on the first show (the panel exists then). Until the panel is open there is nothing to check
-    /// and nothing is parked, so true. A failed check is logged once and stays failed for the session.
+    /// The root check, made once a session on the first enabled tick where the panel is open and our window can show (the panel exists
+    /// then). While the panel is closed there is nothing to check and nothing is parked, so true with no verdict yet. A failed check, or a
+    /// port that cannot say whether it is open, is logged once and stays failed for the session.
     /// </summary>
     private bool RootVerified()
     {
         if (_rootVerified is { } verified) return verified;
-        if (!_port.IsOpen) return true;
+        bool open;
+        try
+        {
+            open = _port.IsOpen;
+        }
+        catch (Exception exception)
+        {
+            Note($"Retail's examination panel is left to retail: its state could not be read: {exception.Message}");
+            _rootVerified = false;
+            return false;
+        }
+        if (!open) return true;
         bool passed;
         try
         {
@@ -118,10 +131,10 @@ internal sealed class RetailExaminationTakeover : IDisposable
         }
         catch (Exception exception)
         {
-            _log($"Retail's examination panel is left to retail: the root check failed: {exception.Message}");
+            Note($"Retail's examination panel is left to retail: the root check failed: {exception.Message}");
             passed = false;
         }
-        if (!passed) _log("Retail's examination panel is left to retail: its root is not confirmed as the examination panel.");
+        if (!passed) Note("Retail's examination panel is left to retail: its root is not confirmed as the examination panel.");
         _rootVerified = passed;
         return passed;
     }
@@ -134,7 +147,7 @@ internal sealed class RetailExaminationTakeover : IDisposable
         }
         catch (Exception exception)
         {
-            if (!_selectionFailed) _log($"Could not read the selection; retail's examination is left to retail: {exception.Message}");
+            if (!_selectionFailed) Note($"Could not read the selection; retail's examination is left to retail: {exception.Message}");
             _selectionFailed = true;
             return 0;
         }
@@ -186,10 +199,17 @@ internal sealed class RetailExaminationTakeover : IDisposable
         }
     }
 
+    /// <summary>The log, guarded: a log that throws must not escape the frame's tick.</summary>
+    private void Note(string message)
+    {
+        try { _log(message); }
+        catch (Exception) { }
+    }
+
     /// <summary>The one failure path: logs why, stops waiting, and gives retail's panel back open, remembering what it was given back for.</summary>
     private void GiveBack(string reason)
     {
-        _log(reason);
+        Note(reason);
         _awaiting = 0;
         _yielding = true;
         _yieldedFor = _selected;

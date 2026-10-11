@@ -301,6 +301,7 @@ internal static class RetailPanelCatalogue
         Shared("UIElement::SetSaveLocation"),
         Shared("UIElement::MoveTo"),
         Shared("RootElementId::Examination"),
+        Shared("RootElementId::ExaminationInscription"),
         new NativeUiEntry("gmPanelUI::RecvNotice_SetPanelVisibility", RecvNoticeSetPanelVisibility, NativeUiCatalogue.Bytes(
             "51 8B 54 24 08 53 55 33 DB 3B D3 56 8B F1 0F 84 69 01 00 00"), Source, "ThisCall (gmPanelUI+0x5F8; uint panelId, uint visible), ret 8"),
         // The receiver: gmPanelUI's constructor stores the notice sub-object's vtable (0x007B4DC8) at +0x5F8, so the receiver of
