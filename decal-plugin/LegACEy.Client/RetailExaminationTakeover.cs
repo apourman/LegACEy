@@ -9,8 +9,9 @@ namespace LegACEy.Client.DecalPlugin;
 /// shows it, the panel is closed again so that the next examination is a new show. While the window waits for the object's response, the
 /// panel stays parked (hidden). If the window cannot show it, or no response arrives within the request timeout, retail's panel is given
 /// back, so examining always shows something. Given back, retail's panel stays as retail shows it until retail closes it, or until the
-/// player selects another object or asks for a new appraisal, which takes it over again. With no selection to examine, or while our window
-/// cannot show (portal space at login), the panel is left to retail. Call <see cref="Tick"/> on the game thread once a frame.
+/// player selects another object or asks for a new appraisal, which takes it over again. With no selection to examine, the panel is left to
+/// retail. While our window cannot show yet (portal space at login), a panel that shows is parked and held, and handed to the window once it
+/// can show. Call <see cref="Tick"/> on the game thread once a frame.
 /// </summary>
 internal sealed class RetailExaminationTakeover : IDisposable
 {
@@ -91,9 +92,11 @@ internal sealed class RetailExaminationTakeover : IDisposable
                 _appraisals.Follow(_selected);
             }
         }
-        // Our window can only show with the character in the world. Until then the panel is left to retail, and nothing waits for it.
         // A failed root check leaves the panel to retail for the session: nothing is parked and nothing is closed.
-        var live = enabled && canShow && RootVerified();
+        var verified = enabled && RootVerified();
+        // Our window can only show with the character in the world. Until then a shown panel is parked, out of sight, and nothing waits
+        // for it: the panel takeover reports it open once the window can show, and it is examined then.
+        var live = verified && canShow;
         if (!live)
         {
             _awaiting = 0;
@@ -111,7 +114,7 @@ internal sealed class RetailExaminationTakeover : IDisposable
                 _panel.Reclaim();
             }
         }
-        _panel.Tick(live && (_selected != 0 || _panel.Holds || _yielding));
+        _panel.Tick(verified && (_selected != 0 || _panel.Holds || _yielding), canShow);
         // The close comes after the takeover has parked the panel and reported it, so it is a second step, not a reentrant call.
         if (!_closeAfterShow) return;
         _closeAfterShow = false;

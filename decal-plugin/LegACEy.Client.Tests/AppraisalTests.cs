@@ -1120,29 +1120,29 @@ public sealed class AppraisalTests
     });
 
     [Fact]
-    public void A_panel_is_left_to_retail_while_our_window_cannot_show_yet_and_is_not_parked_out_of_sight() => OnWindowThread(() =>
+    public void A_panel_shown_while_our_window_cannot_show_yet_is_held_out_of_sight_and_examined_once_it_can() => OnWindowThread(() =>
     {
         var host = new FakeAppraisalHost();
         var game = new FakeAppraisalGame();
         var appraisals = new AppraisalFeature(host, _ => { }, game: game);
-        uint selected = Potion;
         var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
-        using var examination = new RetailExaminationTakeover(panel, () => selected, appraisals, _ => { }, () => true);
+        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { }, () => true);
 
         examination.Tick(enabled: true, canShow: false);
 
-        // Portal space: nothing is parked, nothing is asked for, and retail's panel stays where it is.
-        Assert.Equal(new Point(1200, 300), panel.Location);
+        // Portal space: retail's panel is parked out of sight, and nothing is asked for while our window cannot open.
+        Assert.NotEqual(new Point(1200, 300), panel.Location);
         Assert.True(panel.Open);
         Assert.Empty(game.Appraised);
         Assert.Equal(0, host.Opened);
 
-        selected = 0;
+        // In the world: the held panel is examined, and the response shows in our window and closes retail's panel.
         examination.Tick(enabled: true);
-        Assert.Equal(new Point(1200, 300), panel.Location);
-        Assert.True(panel.Open);
-        Assert.Equal(0, panel.CloseCalls);
-        Assert.Equal(0, host.Opened);
+        Assert.Equal(new[] { Potion }, game.Appraised);
+        appraisals.Receive(PotionMessage(Potion, 75));
+        examination.Tick(enabled: true);
+        Assert.Equal(1, host.Opened);
+        Assert.Equal(1, panel.CloseCalls);
     });
 
     [Fact]
