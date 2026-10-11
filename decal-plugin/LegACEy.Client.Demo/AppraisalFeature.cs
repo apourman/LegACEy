@@ -97,6 +97,19 @@ public sealed class AppraisalFeature
     }
 
     /// <summary>
+    /// The selection moved while the window is open: as retail's open examination window does, the window follows it to the newly selected
+    /// object, showing its cached response at once and asking for a fresh one. Nothing happens with the window closed, with nothing selected,
+    /// or for the object already shown. Nothing thrown escapes.
+    /// </summary>
+    public void Follow(uint selection)
+    {
+        if (selection == 0 || selection == _shownId || !_host.IsWindowOpen(WindowId)) return;
+        if (Examine(selection) != ExamineResult.Shown) return;
+        try { _game.RequestAppraisal(selection); }
+        catch (Exception exception) { _log($"Could not refresh an appraisal: {exception.Message}"); }
+    }
+
+    /// <summary>
     /// Where an examination that <see cref="Examine"/> left pending stands: <see cref="ExamineResult.Shown"/> once the window shows the object,
     /// <see cref="ExamineResult.Pending"/> while its request is still within the timeout, and <see cref="ExamineResult.Failed"/> when the
     /// request was answered without opening the window, timed out, or was replaced.

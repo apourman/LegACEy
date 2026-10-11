@@ -589,6 +589,43 @@ public sealed class AppraisalTests
     });
 
     [Fact]
+    public void The_open_window_follows_the_selection_to_another_object_as_retail_does() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost();
+        var game = new FakeAppraisalGame();
+        var appraisals = new AppraisalFeature(host, _ => { }, game: game);
+        appraisals.Request(Potion);
+        appraisals.Receive(PotionMessage(Potion, 75));
+
+        appraisals.Follow(Potion);
+        Assert.Empty(game.Appraised);
+
+        appraisals.Follow(Gem);
+        Assert.Equal(new[] { Gem }, game.Appraised);
+        appraisals.Receive(PotionMessage(Gem, 300));
+        Assert.Equal(Gem, appraisals.Shown?.ObjectId);
+        Assert.Equal(1, host.Opened);
+
+        // Back to an object already appraised: shown from the cache at once, and asked for afresh.
+        appraisals.Follow(Potion);
+        Assert.Equal(Potion, appraisals.Shown?.ObjectId);
+        Assert.Equal(new[] { Gem, Potion }, game.Appraised);
+    });
+
+    [Fact]
+    public void A_closed_window_does_not_follow_the_selection() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost();
+        var game = new FakeAppraisalGame();
+        var appraisals = new AppraisalFeature(host, _ => { }, game: game);
+
+        appraisals.Follow(Gem);
+
+        Assert.Empty(game.Appraised);
+        Assert.Equal(0, host.Opened);
+    });
+
+    [Fact]
     public void A_response_that_cannot_be_read_or_shown_is_logged_and_never_thrown() => OnWindowThread(() =>
     {
         var logged = new List<string>();

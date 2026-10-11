@@ -23,6 +23,8 @@ internal sealed class RetailExaminationTakeover : IDisposable
     // The root check, made on the first show of a session before the panel is parked. Null until then.
     private bool? _rootVerified;
     private uint _selected;
+    // The selection the appraisal window last followed: a change is handed to the window once.
+    private uint _followed;
     // The object whose response the window is waiting for, while retail's panel is parked (hidden) for it. Zero when none.
     private uint _awaiting;
     // Retail's panel is given back: for the object selected then, and at the appraisal request count then.
@@ -69,6 +71,7 @@ internal sealed class RetailExaminationTakeover : IDisposable
         _yielding = false;
         _closeAfterShow = false;
         _rootVerified = null;
+        _followed = 0;
         _panel.EndSession();
     }
 
@@ -82,6 +85,11 @@ internal sealed class RetailExaminationTakeover : IDisposable
         {
             _selected = ReadSelection();
             NoteChange();
+            if (_selected != _followed)
+            {
+                _followed = _selected;
+                _appraisals.Follow(_selected);
+            }
         }
         // Our window can only show with the character in the world. Until then the panel is left to retail, and nothing waits for it.
         // A failed root check leaves the panel to retail for the session: nothing is parked and nothing is closed.
