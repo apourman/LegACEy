@@ -43,7 +43,9 @@ dotnet publish decal-plugin/LegACEy.Client/LegACEy.Client.csproj --configuration
 ```
 
 Rerun the publish after changing the client or its libraries; the stub build
-alone does not update `runtime/`. The publish is self-contained and trimmed: it
+alone does not update `runtime/`. With the game closed,
+`decal-plugin/build/Update-LocalPlugin.ps1` pulls (fast-forward only), builds
+and publishes in one step. The publish is self-contained and trimmed: it
 holds the .NET runtime, the client, Avalonia, and the x86 Skia and HarfBuzz
 native libraries. The project locates Decal through `DecalInstallDir` and
 `DecalInteropDir`. Override these MSBuild properties with `-p:PropertyName=PATH`
