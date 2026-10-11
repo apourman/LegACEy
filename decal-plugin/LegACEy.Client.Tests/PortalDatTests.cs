@@ -44,7 +44,54 @@ public sealed class PortalDatTests
             Assert.NotNull(dat.ReadImage(id));
     }
 
-    private static string CreateFixture(uint format)
+    [Fact]
+    public void Real_dat_spells_read_as_retail_words_them_when_a_portal_path_is_provided()
+    {
+        var path = Environment.GetEnvironmentVariable("LEGACEY_PORTAL_DAT");
+        if (string.IsNullOrWhiteSpace(path)) return;
+
+        using var dat = new PortalDat(path);
+        var spells = dat.ReadSpells();
+        // The Ivory Stick's five spells, as the retail appraisal lists them, and a name with Windows-1252's apostrophe.
+        Assert.Equal(("Might of the Lugians", "Increases the caster's Strength by 40 points."), (spells[2087].Name, spells[2087].Description));
+        Assert.Equal(("Aura of Infected Caress", "Increases a weapon's damage value by 22 points."), (spells[2096].Name, spells[2096].Description));
+        Assert.Equal(("Aura of Atlan's Alacrity", "Improves a weapon's speed by 70 points."), (spells[2116].Name, spells[2116].Description));
+        Assert.Equal(("Major Coordination", "Increases the target's Coordination by 15 points. Additional spells can be layered over this."),
+            (spells[2572].Name, spells[2572].Description));
+        Assert.Equal(("Aura of Incantation of Heart Seeker Self", "Increases a weapon's Attack Skill modifier by 20.0 percentage points."),
+            (spells[4405].Name, spells[4405].Description));
+        Assert.Equal("Asheron\u2019s Benediction", spells[3810].Name);
+    }
+
+    [Fact]
+    public void A_dat_without_a_spell_table_has_no_spells()
+    {
+        var path = CreateFixture(20);
+        try
+        {
+            using var dat = new PortalDat(path);
+            Assert.Empty(dat.ReadSpells());
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void A_spell_table_that_ends_early_gives_no_spells_and_is_logged_once()
+    {
+        // The table promises five spells and has no bytes for the first; reading it fails.
+        var path = CreateFixture(20, spellTable: new byte[] { 1, 0, 0, 0, 5, 0, 8, 0 });
+        try
+        {
+            var logged = new List<string>();
+            using var dat = new PortalDat(path);
+            Assert.Empty(dat.ReadSpells(logged.Add));
+            Assert.Empty(dat.ReadSpells(logged.Add));
+            Assert.Single(logged);
+        }
+        finally { File.Delete(path); }
+    }
+
+    private static string CreateFixture(uint format, byte[]? spellTable = null)
     {
         const uint blockSize = 4096;
         var files = new SortedDictionary<uint, byte[]>();
@@ -74,6 +121,7 @@ public sealed class PortalDatTests
         if (format is 41 or 101)
             BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan(24 + pixelLength), PaletteId);
         files[BaseId] = image;
+        if (spellTable != null) files[SpellTable.FileId] = spellTable;
 
         var path = Path.Combine(Path.GetTempPath(), $"portal-fixture-{Guid.NewGuid():N}.dat");
         var directoryOffset = 0x400;

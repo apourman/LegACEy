@@ -196,6 +196,13 @@ public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
     public bool Contains(uint id) => id != 0 && (MainPack.Id == id || SidePacks.Any(pack => pack.Id == id)
         || Items.Any(item => item.Id == id) || Wielded.Any(item => item.Id == id));
 
+    /// <summary>
+    /// Whether the character carries the object: a side pack, or an item in a pack or worn. The main pack is the character itself, so it
+    /// is not carried. This is the server's MyInventory | MyEquippedItems, which the inscription rule uses.
+    /// </summary>
+    public bool Carries(uint id) => id != 0 && (SidePacks.Any(pack => pack.Id == id) || Items.Any(item => item.Id == id)
+        || Wielded.Any(item => item.Id == id));
+
     /// <summary>The wield locations of an item this snapshot holds, carried or worn; null when it holds no such item.</summary>
     public uint? ValidLocationsOf(uint id) =>
         Items.FirstOrDefault(item => item.Id == id)?.ValidLocations ?? Wielded.FirstOrDefault(item => item.Id == id)?.ValidLocations;
