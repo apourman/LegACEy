@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/apourman/LegACEy/compare/v0.7.0...v0.8.0) (2026-10-11)
+
+
+### Features
+
+* appraisal window ([#39](https://github.com/apourman/LegACEy/issues/39)) ([cecaf19](https://github.com/apourman/LegACEy/commit/cecaf19da1ec8a756c087a0befebde5a1e80c1d8))
+
 ## [0.7.0](https://github.com/apourman/LegACEy/compare/v0.6.0...v0.7.0) (2026-10-11)
 
 
