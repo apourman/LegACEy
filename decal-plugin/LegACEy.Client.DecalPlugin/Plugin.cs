@@ -1,22 +1,261 @@
+using System;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text;
 using Decal.Adapter;
+using Decal.Adapter.Wrappers;
+using IOPath = System.IO.Path;
 
 namespace LegACEy.Client.DecalPlugin;
 
-/// <summary>Decal's plugin entry point; UI behavior is owned by ClientUiRuntime and ClientUiFramework.</summary>
+/// <summary>
+/// The thin Decal stub. It starts the LegACEy client's .NET 10 runtime from runtime\ beside this DLL and hands it the bridge: Decal
+/// events go in through the client's table, and the client's Decal reads and actions come back out through <see cref="DecalCalls"/>.
+/// Anything that fails here is logged and leaves the game untouched; nothing is thrown into Decal.
+/// </summary>
 [FriendlyName("LegACEy Decal Plugin")]
-public sealed class Plugin : FilterBase
+public sealed unsafe class Plugin : FilterBase
 {
-    private ClientUiRuntime? _runtime;
+    /// <summary>The folder holding this DLL: the log, settings and Plugins\ live there.</summary>
+    internal static readonly string Directory = IOPath.GetDirectoryName(typeof(Plugin).Assembly.Location)!;
+    private static readonly int ProcessId = Process.GetCurrentProcess().Id;
+
+    // Process lifetime: the runtime can't be unloaded, and the client keeps pointers into both tables.
+    private static delegate* unmanaged[Stdcall]<BridgeEvents*, BridgeCalls*, int> _init;
+    private static BridgeEvents* _events;
+    private static BridgeCalls* _calls;
+    private bool _running;
 
     protected override void Startup()
     {
-        _runtime = new ClientUiRuntime();
-        _runtime.Startup();
+        try
+        {
+            Log($"LegACEy stub starting: {FreeAddressSpace()}.");
+            if (_init == null) _init = StartRuntime();
+            if (_events == null)
+            {
+                _events = (BridgeEvents*)Marshal.AllocHGlobal(sizeof(BridgeEvents));
+                *_events = default;
+                _calls = DecalCalls.Create();
+            }
+            var watch = Stopwatch.StartNew();
+            if (_init(_events, _calls) != 0)
+            {
+                Log("LegACEy is off: the client did not start (see the lines above).");
+                return;
+            }
+            Log($"LegACEy client started in {watch.ElapsedMilliseconds} ms: {FreeAddressSpace()}.");
+            _running = true;
+            CoreManager.Current.FilterInitComplete += OnFilterInitComplete;
+        }
+        catch (Exception exception) { Log($"LegACEy is off: {exception}"); }
     }
 
     protected override void Shutdown()
     {
-        _runtime?.Shutdown();
-        _runtime = null;
+        if (!_running) return;
+        _running = false;
+        try
+        {
+            var core = CoreManager.Current;
+            core.FilterInitComplete -= OnFilterInitComplete;
+            core.CharacterFilter.LoginComplete -= OnLoginComplete;
+            core.CharacterFilter.Logoff -= OnLogoff;
+            core.RenderFrame -= OnRenderFrame;
+            core.WindowMessage -= OnWindowMessage;
+            core.EchoFilter.ServerDispatch -= OnServerDispatch;
+            core.ItemSelected -= OnItemSelected;
+            core.ContainerOpened -= OnContainerOpened;
+            var world = core.WorldFilter;
+            world.CreateObject -= OnCreated;
+            world.ChangeObject -= OnChanged;
+            world.ReleaseObject -= OnReleased;
+            world.MoveObject -= OnMoved;
+        }
+        catch (Exception exception) { Log($"Could not unsubscribe from Decal at shutdown: {exception}"); }
+        _events->Shutdown();
     }
+
+    // The client's event entry points catch their own exceptions, so only the stub's own Decal reads need a guard here.
+
+    private void OnFilterInitComplete(object? sender, EventArgs e)
+    {
+        try
+        {
+            var core = CoreManager.Current;
+            core.FilterInitComplete -= OnFilterInitComplete;
+            core.CharacterFilter.LoginComplete += OnLoginComplete;
+            core.CharacterFilter.Logoff += OnLogoff;
+            core.RenderFrame += OnRenderFrame;
+            core.WindowMessage += OnWindowMessage;
+            core.EchoFilter.ServerDispatch += OnServerDispatch;
+            // The open container and the selection are part of the inventory snapshot, whoever changed them.
+            core.ItemSelected += OnItemSelected;
+            core.ContainerOpened += OnContainerOpened;
+            var world = core.WorldFilter;
+            world.CreateObject += OnCreated;
+            world.ChangeObject += OnChanged;
+            world.ReleaseObject += OnReleased;
+            world.MoveObject += OnMoved;
+        }
+        catch (Exception exception) { Log($"LegACEy could not subscribe to Decal: {exception}"); }
+    }
+
+    private void OnRenderFrame(object? sender, EventArgs e) => _events->Frame();
+    private void OnLoginComplete(object? sender, EventArgs e) => _events->LoginComplete();
+    private void OnLogoff(object? sender, LogoffEventArgs e) => _events->Logoff();
+    private void OnItemSelected(object? sender, ItemSelectedEventArgs e) => _events->ItemSelected();
+    private void OnContainerOpened(object? sender, ContainerOpenedEventArgs e) => _events->ContainerOpened();
+
+    private void OnWindowMessage(object? sender, WindowMessageEventArgs e)
+    {
+        try
+        {
+            if (_events->WindowMessage(e.Hwnd, e.Msg, e.WParam, e.LParam) != 0) e.Eat = true;
+        }
+        catch (Exception exception) { Log($"Could not pass a window message to LegACEy: {exception.Message}"); }
+    }
+
+    private void OnServerDispatch(object? sender, NetworkMessageEventArgs e)
+    {
+        try
+        {
+            var raw = e.Message.RawData;
+            fixed (byte* bytes = raw) _events->ServerMessage(e.Message.Type, bytes, raw.Length);
+        }
+        catch (Exception exception) { Log($"Could not pass a server message to LegACEy: {exception.Message}"); }
+    }
+
+    private void OnCreated(object? sender, CreateObjectEventArgs e) => InventoryChanged(e.New);
+    private void OnChanged(object? sender, ChangeObjectEventArgs e) => InventoryChanged(e.Changed);
+    private void OnReleased(object? sender, ReleaseObjectEventArgs e) => InventoryChanged(e.Released);
+    private void OnMoved(object? sender, MoveObjectEventArgs e) => InventoryChanged(e.Moved);
+
+    private void InventoryChanged(WorldObject? item)
+    {
+        if (item == null) return;
+        try { _events->InventoryChanged(item.Id, item.Container); }
+        catch (Exception exception) { Log($"Could not pass an inventory change to LegACEy: {exception.Message}"); }
+    }
+
+    /// <summary>Starts CoreCLR from runtime\ and returns the client's Bridge.Init. Throws with the reason when it can't.</summary>
+    private static delegate* unmanaged[Stdcall]<BridgeEvents*, BridgeCalls*, int> StartRuntime()
+    {
+        var runtime = IOPath.Combine(Directory, "runtime");
+        var coreclrPath = IOPath.Combine(runtime, "coreclr.dll");
+        if (!File.Exists(coreclrPath)) throw new FileNotFoundException($"The .NET runtime is missing: {coreclrPath} was not found.");
+
+        var watch = Stopwatch.StartNew();
+        var coreclr = LoadLibraryEx(coreclrPath, IntPtr.Zero, LoadWithAlteredSearchPath);
+        if (coreclr == IntPtr.Zero)
+        {
+            var error = Marshal.GetLastWin32Error();
+            throw error == ErrorBadExeFormat
+                ? new BadImageFormatException($"{coreclrPath} is not an x86 runtime.")
+                : new Win32Exception(error, $"Could not load {coreclrPath}: {new Win32Exception(error).Message}");
+        }
+        var initialize = (delegate* unmanaged[Stdcall]<byte*, byte*, int, byte**, byte**, IntPtr*, uint*, int>)Export(coreclr, "coreclr_initialize");
+        var createDelegate = (delegate* unmanaged[Stdcall]<IntPtr, uint, byte*, byte*, byte*, void**, int>)Export(coreclr, "coreclr_create_delegate");
+
+        var assemblies = System.IO.Directory.GetFiles(runtime, "*.dll").Where(IsManaged).ToArray();
+        var keys = new[] { "TRUSTED_PLATFORM_ASSEMBLIES", "NATIVE_DLL_SEARCH_DIRECTORIES", "APP_CONTEXT_BASE_DIRECTORY", "System.GC.Concurrent", "System.Globalization.Invariant" }
+            .Select(Utf8).ToArray();
+        var values = new[] { string.Join(";", assemblies), runtime + ";", runtime + "\\", "true", "true" }.Select(Utf8).ToArray();
+        IntPtr host;
+        uint domain;
+        void* init;
+        fixed (IntPtr* keyPointers = keys)
+        fixed (IntPtr* valuePointers = values)
+            Check(initialize(Utf8Pointer(Process.GetCurrentProcess().MainModule!.FileName), Utf8Pointer("LegACEy"), keys.Length,
+                (byte**)keyPointers, (byte**)valuePointers, &host, &domain), "coreclr_initialize");
+        Check(createDelegate(host, domain, Utf8Pointer("LegACEy.Client"), Utf8Pointer("LegACEy.Client.DecalPlugin.Bridge"), Utf8Pointer("Init"), &init),
+            "coreclr_create_delegate for Bridge.Init");
+        Log($"CoreCLR up in {watch.ElapsedMilliseconds} ms with {assemblies.Length} assemblies: {FreeAddressSpace()}.");
+        return (delegate* unmanaged[Stdcall]<BridgeEvents*, BridgeCalls*, int>)init;
+    }
+
+    private const int LoadWithAlteredSearchPath = 0x8;
+    private const int ErrorBadExeFormat = 193;
+
+    private static void* Export(IntPtr module, string name) =>
+        GetProcAddress(module, name) is var pointer && pointer != IntPtr.Zero ? (void*)pointer : throw new EntryPointNotFoundException($"coreclr.dll has no {name}.");
+
+    private static void Check(int result, string what)
+    {
+        if (result < 0) throw new InvalidOperationException($"{what} failed: 0x{result:X8}.");
+    }
+
+    /// <summary>A NUL-terminated UTF-8 copy for CoreCLR. ponytail: never freed; a handful of strings, once per process.</summary>
+    private static IntPtr Utf8(string value)
+    {
+        var bytes = Encoding.UTF8.GetBytes(value + "\0");
+        var copy = Marshal.AllocHGlobal(bytes.Length);
+        Marshal.Copy(bytes, 0, copy, bytes.Length);
+        return copy;
+    }
+
+    private static byte* Utf8Pointer(string value) => (byte*)Utf8(value);
+
+    private static bool IsManaged(string path)
+    {
+        try
+        {
+            AssemblyName.GetAssemblyName(path);
+            return true;
+        }
+        catch (BadImageFormatException) { return false; }
+    }
+
+    /// <summary>Appends to the client's log beside this DLL; the process id tells several clients' lines apart.</summary>
+    internal static void Log(string message)
+    {
+        try { File.AppendAllText(IOPath.Combine(Directory, "legacey-avalonia.log"), $"{DateTime.Now:O} [pid {ProcessId}] {message}{Environment.NewLine}"); }
+        catch
+        {
+            // Logging must never break the Decal callback that triggered it.
+        }
+    }
+
+    /// <summary>Free 32-bit address space, as RynthCore's LoaderFreeAddressSpaceMb walks it.</summary>
+    private static string FreeAddressSpace()
+    {
+        long free = 0, largest = 0, address = 0;
+        while (VirtualQuery(new IntPtr(unchecked((int)(uint)address)), out var region, (IntPtr)sizeof(MemoryRegion)) != IntPtr.Zero)
+        {
+            var size = (long)(uint)region.RegionSize;
+            if (size == 0) break;
+            if (region.State == MemFree)
+            {
+                free += size;
+                largest = Math.Max(largest, size);
+            }
+            address = (uint)region.BaseAddress + size;
+            if (address > uint.MaxValue) break;
+        }
+        return $"{free >> 20} MB free, largest {largest >> 20} MB";
+    }
+
+    private const uint MemFree = 0x10000;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MemoryRegion
+    {
+        public IntPtr BaseAddress, AllocationBase;
+        public uint AllocationProtect;
+        public IntPtr RegionSize;
+        public uint State, Protect, Type;
+    }
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr VirtualQuery(IntPtr address, out MemoryRegion region, IntPtr length);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern IntPtr LoadLibraryEx(string path, IntPtr file, int flags);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Ansi)]
+    private static extern IntPtr GetProcAddress(IntPtr module, string name);
 }

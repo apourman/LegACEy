@@ -100,7 +100,7 @@ public enum BridgeText
 }
 
 /// <summary>
-/// One world object as <c>DecalInventoryPort</c> read it: the <see cref="InventoryObjectRead"/> fields, with the icon visual already
+/// One world object as the stub flattens it from Decal (DecalCalls): the <see cref="InventoryObjectRead"/> fields, with the icon visual already
 /// in full portal ids.
 /// </summary>
 [StructLayout(LayoutKind.Sequential)]
