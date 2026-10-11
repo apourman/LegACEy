@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using LegACEy.Client.GameArt;
 
 namespace LegACEy.Client.Demo;
 
@@ -15,7 +16,15 @@ public enum AppraisalTone { Normal, Raised, Lowered }
 /// One line of a section. A line with a label is a label and a value; a line without one is text across the section. The tone colours the
 /// value.
 /// </summary>
-public sealed record AppraisalRow(string? Label, string Text, AppraisalTone Tone = AppraisalTone.Normal);
+public record AppraisalRow(string? Label, string Text, AppraisalTone Tone = AppraisalTone.Normal);
+
+/// <summary>A spell: its name, with its description under it.</summary>
+public sealed record AppraisalSpellRow(string Name, string Description, AppraisalTone Tone = AppraisalTone.Normal)
+    : AppraisalRow(Name, Description, Tone);
+
+/// <summary>A meter filled to Current of Maximum, labelled, with an optional note under it such as a cost.</summary>
+public sealed record AppraisalMeterRow(string Name, int Current, int Maximum, string? Note, AppraisalTone Tone = AppraisalTone.Normal)
+    : AppraisalRow(Name, string.Format(CultureInfo.InvariantCulture, "{0:N0} / {1:N0}", Current, Maximum), Tone);
 
 /// <summary>A section below the summary: a heading and its rows. A section with no rows is never built.</summary>
 public sealed record AppraisalSection(string Heading, IReadOnlyList<AppraisalRow> Rows);
@@ -31,6 +40,11 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     private const uint ItemTypeInt = 1, EncumbranceValInt = 5, ValueInt = 19, WeaponSkillInt = 48, ItemWorkmanshipInt = 105, SalvagedItemsInt = 170;
     private const uint NameString = 1, UseString = 14, LongDescString = 16;
     private const uint IconDid = 8, IconOverlayDid = 50, IconUnderlayDid = 52;
+    private const uint SpellcraftInt = 106, CurManaInt = 107, MaxManaInt = 108, ArcaneLoreInt = 109, AllegianceRankInt = 110, SkillLevelInt = 115;
+    private const uint UsageSkillInt = 176, AttributeInt = 257, AttributeLevelInt = 258, SecondAttributeInt = 259, SecondAttributeLevelInt = 260;
+    private const uint ManaRateFloat = 5;
+    // The high bit the server sets on an enchantment's spell id in the spell book.
+    private const uint EnchantmentBit = 0x80000000;
     private const uint ArmorLevelInt = 28, WeaponTypeInt = 353, WeaponDefenseFloat = 29;
     // Values closer than this are the same figure (a bonus of 1.0 is none).
     private const float Epsilon = 0.0002f;
@@ -58,20 +72,26 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
 
     /// <summary>
     /// The sections below the summary, in the order the window shows them. A rule gives a heading and its rows; a section with no rows is
-    /// left out. Later tickets add Spells, Requirements and Other between Armor and Use, in that order.
+    /// left out. Later tickets add Other between Armor and Use, in that order.
     /// </summary>
     private static readonly SectionRule[] SectionRules =
     {
-        new("Combat", WeaponRows),
-        new("Armor", ArmorRows),
-        new("Use", response => TextRows(response.Strings, UseString)),
+        new("Combat", (response, _) => WeaponRows(response)),
+        new("Armor", (response, _) => ArmorRows(response)),
+        new("Spells", (response, spells) => SpellRows(response, spells)),
+        new("Requirements", (response, _) => RequirementRows(response)),
+        new("Use", (response, _) => TextRows(response.Strings, UseString)),
     };
 
     /// <summary>
-    /// Builds what the window shows from one appraisal. The inscription field depends on who the character is and whether the item is
-    /// carried, which the appraisal does not say, so the caller passes them; with neither, an item is never editable.
+    /// <summary>
+    /// Builds what the window shows from one appraisal. <paramref name="spells"/> gives each spell's name and description by id (the
+    /// portal DAT's spell table, empty when there is none); a spell it does not know is named by its id. The inscription field depends on
+    /// who the character is and whether the item is carried, which the appraisal does not say, so the caller passes them; with neither, an
+    /// item is never editable.
     /// </summary>
-    public static AppraisalContent From(AppraisalResponse response, string characterName = "", bool carried = false)
+    public static AppraisalContent From(AppraisalResponse response, IReadOnlyDictionary<uint, SpellInfo> spells,
+        string characterName = "", bool carried = false)
     {
         var figures = FigureRules
             .Select(rule => (rule.Label, Text: rule.Text(response)))
@@ -79,7 +99,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
             .Select(figure => new AppraisalFigure(figure.Label, figure.Text!))
             .ToList();
         var sections = SectionRules
-            .Select(rule => new AppraisalSection(rule.Heading, rule.Rows(response).ToList()))
+            .Select(rule => new AppraisalSection(rule.Heading, rule.Rows(response, spells).ToList()))
             .Where(section => section.Rows.Count > 0)
             .ToList();
         var visual = response.Dids.TryGetValue(IconDid, out var icon) && icon != 0
@@ -290,5 +310,114 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     private static IEnumerable<AppraisalRow> TextRows(IReadOnlyDictionary<uint, string> strings, uint property) =>
         strings.TryGetValue(property, out var text) && text.Length > 0 ? new[] { new AppraisalRow(null, text) } : Array.Empty<AppraisalRow>();
 
-    private sealed record SectionRule(string Heading, Func<AppraisalResponse, IEnumerable<AppraisalRow>> Rows);
+    /// <summary>The spells in the order the server lists them, cantrips included, each with its description under it.</summary>
+    // The server's spell book order, which OpenAC's formatter also lists as it comes. Neither ACE nor OpenAC sorts appraisal spells by the
+    // table's DisplayOrder, so this does not either.
+    private static IEnumerable<AppraisalRow> SpellRows(AppraisalResponse response, IReadOnlyDictionary<uint, SpellInfo> spells) =>
+        response.SpellBook.Select(raw => SpellRow(raw & ~EnchantmentBit, spells));
+
+    private static AppraisalRow SpellRow(uint id, IReadOnlyDictionary<uint, SpellInfo> spells) =>
+        spells.TryGetValue(id, out var spell)
+            ? new AppraisalSpellRow(spell.Name, spell.Description)
+            : new AppraisalSpellRow("Spell " + id.ToString(CultureInfo.InvariantCulture), string.Empty);
+
+    /// <summary>The wield lines, then activation, spellcraft and the mana meter. The wording follows OpenAC's ItemAppraisalTextFormatter (MIT).</summary>
+    private static IEnumerable<AppraisalRow> RequirementRows(AppraisalResponse response)
+    {
+        foreach (var slot in WieldSlots)
+        {
+            if (!response.Ints.TryGetValue(slot.Requirement, out var type) || !response.Ints.TryGetValue(slot.Stat, out var stat)
+                || !response.Ints.TryGetValue(slot.Level, out var level)) continue;
+            if (WieldText(type, stat, level) is { } text) yield return new AppraisalRow("Wield", text);
+        }
+        var activation = ActivationParts(response).ToList();
+        if (activation.Count > 0) yield return new AppraisalRow("Activation", string.Join(", ", activation));
+        if (Number(response, SpellcraftInt) is { } spellcraft) yield return new AppraisalRow("Spellcraft", spellcraft);
+        if (ManaMeter(response) is { } mana) yield return mana;
+    }
+
+    /// <summary>The four wield requirement slots: the requirement type, the skill or attribute it names, and its level.</summary>
+    private static readonly (uint Requirement, uint Stat, uint Level)[] WieldSlots =
+    {
+        (158, 159, 160), (270, 271, 272), (273, 274, 275), (276, 277, 278),
+    };
+
+    /// <summary>
+    /// One wield requirement by its type, as OpenAC's ItemAppraisalTextFormatter words it: 1 skill, 2 base skill, 3-6 the primary or
+    /// secondary attribute (base for 4 and 6), 7 level, 8 a trained or specialized skill (no level), 9-10 a faction standing. Types 11
+    /// (creature) and 12 (heritage) need name tables this window does not carry yet, so they show no line.
+    /// </summary>
+    private static string? WieldText(int type, int stat, int level) => type switch
+    {
+        1 => Requirement(Named(SkillNames, stat), level),
+        2 => Requirement(Named(SkillNames, stat), level, "Base "),
+        3 => Requirement(Named(PrimaryAttributeNames, stat), level),
+        4 => Requirement(Named(PrimaryAttributeNames, stat), level, "Base "),
+        5 => Requirement(Named(SecondaryAttributeNames, stat), level),
+        6 => Requirement(Named(SecondaryAttributeNames, stat), level, "Base "),
+        7 => level > 0 ? "Level " + level.ToString(CultureInfo.InvariantCulture) : null,
+        // SkillAdvancementClass (ACE.Entity): 2 trained, 3 specialized. Inactive and untrained show no line.
+        8 => (Named(SkillNames, stat), level) switch
+        {
+            (string skill, 2) => "Trained " + skill,
+            (string skill, 3) => "Specialized " + skill,
+            _ => null,
+        },
+        9 or 10 => Requirement(Standing(stat), level),
+        _ => null,
+    };
+
+    /// <summary>The faction a standing requirement names, by its id (OpenAC's names). An unknown id has no name.</summary>
+    private static string? Standing(int id) => id switch
+    {
+        0x11F => "Standing with the Celestial Hand",
+        0x120 => "Standing with the Eldrytch Web",
+        0x121 => "Standing with the Radiant Blood",
+        _ => null,
+    };
+
+    /// <summary>Arcane Lore, Allegiance Rank, the usage skill, then the primary and secondary attributes, as retail lists them.</summary>
+    private static IEnumerable<string> ActivationParts(AppraisalResponse response) => new[]
+    {
+        Requirement("Arcane Lore", Int(response, ArcaneLoreInt)),
+        Requirement("Allegiance Rank", Int(response, AllegianceRankInt)),
+        Requirement(Named(SkillNames, Int(response, UsageSkillInt)), Int(response, SkillLevelInt)),
+        Requirement(Named(PrimaryAttributeNames, Int(response, AttributeInt)), Int(response, AttributeLevelInt)),
+        Requirement(Named(SecondaryAttributeNames, Int(response, SecondAttributeInt)), Int(response, SecondAttributeLevelInt)),
+    }.OfType<string>();
+
+    /// <summary>
+    /// The mana meter: current and maximum mana, with the cost line from the mana rate. As ACE's appraisal rules
+    /// (Source/ACE.MarketApi/AppraisalRules.cs) do, the cost shows only for a negative rate, which burns -rate points a second.
+    /// </summary>
+    private static AppraisalMeterRow? ManaMeter(AppraisalResponse response)
+    {
+        if (!response.Ints.TryGetValue(CurManaInt, out var current) || !response.Ints.TryGetValue(MaxManaInt, out var maximum)) return null;
+        var cost = response.Floats.TryGetValue(ManaRateFloat, out var rate) && rate < 0 ? ManaCost(-1 / rate) : null;
+        return new AppraisalMeterRow("Mana", current, maximum, cost);
+    }
+
+    /// <summary>One point per the given seconds, rounded and never under one second.</summary>
+    private static string ManaCost(double seconds)
+    {
+        var whole = Math.Max(1, (int)Math.Round(seconds));
+        return "1 point per " + whole.ToString(CultureInfo.InvariantCulture) + (whole == 1 ? " second" : " seconds");
+    }
+
+    /// <summary>"name level", with an optional prefix, when the name is known and the level is set; otherwise nothing.</summary>
+    private static string? Requirement(string? name, int level, string prefix = "") =>
+        name == null || level <= 0 ? null : prefix + name + " " + level.ToString(CultureInfo.InvariantCulture);
+
+    private static string? Named(IReadOnlyList<string> names, int id) => id > 0 && id < names.Count ? names[id] : null;
+
+    private static int Int(AppraisalResponse response, uint property) => response.Ints.TryGetValue(property, out var value) ? value : 0;
+
+    // The attribute names by the server's PropertyAttribute and PropertyAttribute2nd ids (ACE.Entity), as OpenAC names them.
+    private static readonly string[] PrimaryAttributeNames = { string.Empty, "Strength", "Endurance", "Quickness", "Coordination", "Focus", "Self" };
+    private static readonly string[] SecondaryAttributeNames =
+    {
+        string.Empty, "Max Health", "Health", "Max Stamina", "Stamina", "Max Mana", "Mana"
+    };
+
+    private sealed record SectionRule(string Heading, Func<AppraisalResponse, IReadOnlyDictionary<uint, SpellInfo>, IEnumerable<AppraisalRow>> Rows);
 }

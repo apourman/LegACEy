@@ -20,6 +20,9 @@ namespace LegACEy.Client.Demo;
 public sealed class AppraisalWindow
 {
     public const int Width = 330;
+    // The label column's width: the values of the rows and meters start after it, as in the layout the summary sets.
+    private const string LabelColumn = "92,*";
+    private static readonly Color ManaFill = Color.Parse("#4F86C6");
     /// <summary>The tallest the window grows before its body scrolls.</summary>
     public const int MaxHeight = 520;
     // The Dereth frame and header, the title rule and the body's bottom margin, around the body.
@@ -159,12 +162,20 @@ public sealed class AppraisalWindow
         return heading;
     }
 
-    /// <summary>A label on the left and its value on the right, or a line of text across the section when there is no label.</summary>
+    /// <summary>
+    /// A label in a fixed column with its value beside it, or a line of text across the section when there is no label. The tone colours the
+    /// value. Spells and meters have their own layout.
+    /// </summary>
     private static Control Row(AppraisalRow row)
     {
+        switch (row)
+        {
+            case AppraisalSpellRow spell: return Spell(spell);
+            case AppraisalMeterRow meter: return Meter(meter);
+        }
         var brush = ToneBrush(row.Tone);
         if (row.Label == null) return new TextBlock { Text = row.Text, Foreground = brush, FontSize = 13, TextWrapping = TextWrapping.Wrap };
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions(LabelColumn), ColumnSpacing = 8 };
         grid.Children.Add(Text(row.Label, DerethPalette.MutedBrush, 13));
         var value = Text(row.Text, brush, 13);
         Grid.SetColumn(value, 1);
@@ -172,6 +183,59 @@ public sealed class AppraisalWindow
         return grid;
     }
 
+    /// <summary>The name in cream, the description under it in muted text.</summary>
+    private static Control Spell(AppraisalSpellRow spell)
+    {
+        var stack = new StackPanel();
+        stack.Children.Add(Text(spell.Name, spell.Tone == AppraisalTone.Normal ? DerethPalette.CreamBrush : ToneBrush(spell.Tone), 12));
+        if (spell.Description.Length > 0)
+            stack.Children.Add(new TextBlock { Text = spell.Description, Foreground = DerethPalette.MutedBrush, FontSize = 11.5, TextWrapping = TextWrapping.Wrap });
+        return stack;
+    }
+
+    /// <summary>The label in the label column, the bar beside it, and the note under the bar.</summary>
+    private static Control Meter(AppraisalMeterRow meter)
+    {
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions(LabelColumn), ColumnSpacing = 8, Margin = new Thickness(0, 2, 0, 0) };
+        grid.Children.Add(Text(meter.Name, DerethPalette.MutedBrush, 13));
+        var bar = new StackPanel { Spacing = 3 };
+        bar.Children.Add(Bar(meter.Current, meter.Maximum, meter.Text, meter.Tone == AppraisalTone.Normal ? DerethPalette.CreamBrush : ToneBrush(meter.Tone)));
+        if (meter.Note != null) bar.Children.Add(Text(meter.Note, DerethPalette.MutedBrush, 11));
+        Grid.SetColumn(bar, 1);
+        grid.Children.Add(bar);
+        return grid;
+    }
+
+    /// <summary>
+    /// The groove, filled from the left to the share of the maximum in a gradient, with the value centred on it. Mana blue is the only
+    /// fill so far; a second meter kind would pick its own.
+    /// </summary>
+    private static Control Bar(int current, int maximum, string text, IBrush textBrush)
+    {
+        var share = maximum > 0 ? Math.Min(1, Math.Max(0, current / (double)maximum)) : 0;
+        var fill = new Border
+        {
+            Background = new LinearGradientBrush
+            {
+                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+                GradientStops = { new GradientStop(ManaFill, 0), new GradientStop(Color.FromRgb((byte)(ManaFill.R / 2), (byte)(ManaFill.G / 2), (byte)(ManaFill.B / 2)), 1) }
+            }
+        };
+        var filled = new Grid { ColumnDefinitions = new ColumnDefinitions { new(share, GridUnitType.Star), new(1 - share, GridUnitType.Star) } };
+        filled.Children.Add(fill);
+        var track = new Grid { Height = 14 };
+        track.Children.Add(new Border
+        {
+            Background = DerethPalette.GrooveBrush, BorderBrush = DerethPalette.GrooveEdgeBrush, BorderThickness = new Thickness(1),
+            Padding = new Thickness(1), Child = filled
+        });
+        track.Children.Add(new TextBlock
+        {
+            Text = text, Foreground = textBrush, FontSize = 10.5, FontFamily = FontFamily.Default,
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+        });
+        return track;
+    }
     /// <summary>
     /// The inscription at the foot: an editable field the character writes in, or the text and its scribe read only. A read-only item that
     /// nobody inscribed says so.

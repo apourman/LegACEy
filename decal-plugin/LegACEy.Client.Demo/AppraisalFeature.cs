@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.Demo;
@@ -26,6 +27,7 @@ public sealed class AppraisalFeature
     private readonly ILegACEyPluginHost _host;
     private readonly Action<string> _log;
     private readonly Func<long> _clock;
+    private readonly Func<IReadOnlyDictionary<uint, SpellInfo>> _spells;
     private readonly IAppraisalGame _game;
     private readonly Dictionary<uint, AppraisalResponse> _responses = new();
     private uint _requested;
@@ -35,11 +37,14 @@ public sealed class AppraisalFeature
 
     /// <param name="clock">The time in milliseconds, for timing requests out. Null uses the system's tick count.</param>
     /// <param name="game">The character, the inventory and the inscription action. Null means none: nothing is editable and nothing is sent.</param>
-    public AppraisalFeature(ILegACEyPluginHost host, Action<string> log, Func<long>? clock = null, IAppraisalGame? game = null)
+    /// <param name="spells">The spell table's names and descriptions by id, read when a window is built. Null names no spells: each is shown by its id.</param>
+    public AppraisalFeature(ILegACEyPluginHost host, Action<string> log, Func<long>? clock = null, IAppraisalGame? game = null,
+        Func<IReadOnlyDictionary<uint, SpellInfo>>? spells = null)
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _log = log ?? throw new ArgumentNullException(nameof(log));
         _clock = clock ?? new Func<long>(() => Stopwatch.GetTimestamp() * 1000 / Stopwatch.Frequency);
+        _spells = spells ?? (() => new Dictionary<uint, SpellInfo>());
         _game = game ?? NoAppraisalGame.Instance;
     }
 
@@ -90,7 +95,7 @@ public sealed class AppraisalFeature
 
     private void Show(AppraisalResponse response)
     {
-        var content = AppraisalContent.From(response, _game.CharacterName, _game.IsCarried(response.ObjectId));
+        var content = AppraisalContent.From(response, _spells(), _game.CharacterName, _game.IsCarried(response.ObjectId));
         var art = _host.Art;
         // One window serves the session: it takes the next appraisal in place while the content fits its height. A height change
         // releases the window and builds a new one, because a window's size cannot change once it is open.

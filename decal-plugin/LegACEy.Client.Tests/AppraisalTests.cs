@@ -23,6 +23,7 @@ namespace LegACEy.Client.Tests;
 /// </summary>
 public sealed class AppraisalTests
 {
+    private static readonly IReadOnlyDictionary<uint, SpellInfo> NoSpells = new Dictionary<uint, SpellInfo>();
     private const uint Potion = 0x80000A01;
     private const uint Gem = 0x80000A02;
 
@@ -36,7 +37,7 @@ public sealed class AppraisalTests
             Dids = { [8] = 0x06001F98, [52] = 0x06000001, [50] = 0x06000002 }
         }.Build();
 
-        var content = AppraisalContent.From(AppraisalResponse.Read(bytes));
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells);
 
         Assert.Equal(Potion, content.ObjectId);
         Assert.Equal("Mana Potion", content.Name);
@@ -56,7 +57,7 @@ public sealed class AppraisalTests
         var bytes = new ServerAppraisal(Gem) { Success = false, Strings = { [1] = "Peridot" }, Ints = { [19] = 300 } }.Build();
 
         var response = AppraisalResponse.Read(bytes);
-        var content = AppraisalContent.From(response);
+        var content = AppraisalContent.From(response, NoSpells);
 
         Assert.False(response.Success);
         Assert.Equal("Peridot", content.Name);
@@ -167,7 +168,7 @@ public sealed class AppraisalTests
             WeaponMasks = (0xD, 0xD),
         }.Build();
 
-        var content = AppraisalContent.From(AppraisalResponse.Read(bytes));
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells);
 
         Assert.Equal("Staff · Heavy Weapons", content.TypeLine);
         var combat = Assert.Single(content.Sections, section => section.Heading == "Combat");
@@ -192,7 +193,7 @@ public sealed class AppraisalTests
             ArmorMasks = (0x21, 0x1),
         }.Build();
 
-        var content = AppraisalContent.From(AppraisalResponse.Read(bytes));
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells);
 
         var armor = Assert.Single(content.Sections, section => section.Heading == "Armor");
         Assert.Equal(new[]
@@ -233,11 +234,11 @@ public sealed class AppraisalTests
         var weapon = AppraisalContent.From(AppraisalResponse.Read(new ServerAppraisal(0x80000A04)
         {
             Strings = { [1] = "Ivory Stick" }, Ints = { [1] = 0x1, [48] = 44, [105] = 6 }
-        }.Build()));
+        }.Build()), NoSpells);
         Assert.Equal("Melee weapon · Heavy Weapons", weapon.TypeLine);
         Assert.Equal(("Workmanship", "Nearly flawless (6)"), weapon.Figures.Select(figure => (figure.Label, figure.Value)).Single());
 
-        var potion = AppraisalContent.From(AppraisalResponse.Read(PotionMessage(Potion, 75)));
+        var potion = AppraisalContent.From(AppraisalResponse.Read(PotionMessage(Potion, 75)), NoSpells);
         Assert.DoesNotContain("·", potion.TypeLine);
     }
 
@@ -305,6 +306,115 @@ public sealed class AppraisalTests
         Assert.Equal(0, host.Opened);
     });
 
+    [Fact]
+    public void The_ivory_stick_lists_five_spells_with_their_descriptions_then_its_requirements_and_mana()
+    {
+        // The retail screenshot's item: the spells in the order the server sends them (the same as retail's list), the wield and activation
+        // requirements, spellcraft, and mana at 1,492 of 1,494 with one point burned every 15 seconds.
+        var bytes = new ServerAppraisal(0x80000A05)
+        {
+            Ints =
+            {
+                [1] = 0x1, [48] = 44, [105] = 6, [19] = 17285, [5] = 101, [106] = 370, [107] = 1492, [108] = 1494,
+                [109] = 188, [115] = 390, [176] = 44, [158] = 2, [159] = 44, [160] = 420,
+            },
+            Floats = { [5] = -1.0 / 15 },
+            Strings = { [1] = "Ivory Stick", [16] = "Nearly flawless Ivory Stick of Blood Drinker, set with 4 Green Garnets" },
+            Dids = { [8] = 0x06001F98 },
+            SpellBook = { 2087u, 2096u, 2116u, 2572u, 4405u },
+        }.Build();
+        var spells = new Dictionary<uint, SpellInfo>
+        {
+            [2087] = new("Might of the Lugians", "Increases the caster's Strength by 40 points."),
+            [2096] = new("Aura of Infected Caress", "Increases a weapon's damage value by 22 points."),
+            [2116] = new("Aura of Atlan's Alacrity", "Improves a weapon's speed by 70 points."),
+            [2572] = new("Major Coordination", "Increases the target's Coordination by 15 points. Additional spells can be layered over this."),
+            [4405] = new("Aura of Incantation of Heart Seeker Self", "Increases a weapon's Attack Skill modifier by 20.0 percentage points."),
+        };
+
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), spells);
+
+        var sections = content.Sections.ToDictionary(section => section.Heading, section => section.Rows);
+        Assert.Equal(new[] { "Spells", "Requirements" }, content.Sections.Select(section => section.Heading));
+        Assert.Equal(new AppraisalRow[]
+        {
+            new AppraisalSpellRow("Might of the Lugians", "Increases the caster's Strength by 40 points."),
+            new AppraisalSpellRow("Aura of Infected Caress", "Increases a weapon's damage value by 22 points."),
+            new AppraisalSpellRow("Aura of Atlan's Alacrity", "Improves a weapon's speed by 70 points."),
+            new AppraisalSpellRow("Major Coordination", "Increases the target's Coordination by 15 points. Additional spells can be layered over this."),
+            new AppraisalSpellRow("Aura of Incantation of Heart Seeker Self", "Increases a weapon's Attack Skill modifier by 20.0 percentage points."),
+        }, sections["Spells"]);
+        Assert.Equal(new AppraisalRow[]
+        {
+            new("Wield", "Base Heavy Weapons 420"),
+            new("Activation", "Arcane Lore 188, Heavy Weapons 390"),
+            new("Spellcraft", "370"),
+            new AppraisalMeterRow("Mana", 1492, 1494, "1 point per 15 seconds"),
+        }, sections["Requirements"]);
+    }
+
+    [Fact]
+    public void A_spell_the_table_does_not_know_is_named_by_its_id_and_an_enchantment_is_listed_by_the_id_it_carries()
+    {
+        var bytes = new ServerAppraisal(0x80000A06) { Strings = { [1] = "Ivory Stick" }, SpellBook = { 0x80000000u | 2087u, 9999u } }.Build();
+        var spells = new Dictionary<uint, SpellInfo> { [2087] = new("Might of the Lugians", "Increases the caster's Strength by 40 points.") };
+
+        var rows = Assert.Single(AppraisalContent.From(AppraisalResponse.Read(bytes), spells).Sections).Rows;
+
+        Assert.Equal(new AppraisalRow[]
+        {
+            new AppraisalSpellRow("Might of the Lugians", "Increases the caster's Strength by 40 points."),
+            new AppraisalSpellRow("Spell 9999", string.Empty),
+        }, rows);
+    }
+
+    [Fact]
+    public void The_mana_cost_is_one_point_per_the_rounded_seconds_for_a_negative_rate_and_never_per_zero()
+    {
+        Assert.Equal("1 point per 15 seconds", ManaNote(-1.0 / 15));
+        Assert.Equal("1 point per 1 second", ManaNote(-100.0));
+        Assert.Null(ManaNote(0.5));
+        Assert.Null(ManaNote(0.0));
+    }
+
+    /// <summary>The cost line under the mana meter for an item whose mana rate is the given value.</summary>
+    private static string? ManaNote(double rate)
+    {
+        var bytes = new ServerAppraisal(0x80000A07)
+        {
+            Strings = { [1] = "Wand" }, Ints = { [107] = 10, [108] = 20 }, Floats = { [5] = rate },
+        }.Build();
+        var meter = Assert.IsType<AppraisalMeterRow>(Assert.Single(AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells).Sections,
+            section => section.Heading == "Requirements").Rows.Single());
+        return meter.Note;
+    }
+
+    [Fact]
+    public void Wield_lines_name_trained_and_specialized_skills_and_factions_and_leave_out_inactive_and_untrained_skills_and_creatures()
+    {
+        var bytes = new ServerAppraisal(0x80000A08)
+        {
+            Strings = { [1] = "Ivory Stick" },
+            Ints =
+            {
+                // Trained Heavy Weapons (SkillAdvancementClass 2), then untrained (1), a faction standing, and a creature (no line).
+                [158] = 8, [159] = 44, [160] = 2,
+                [270] = 8, [271] = 44, [272] = 1,
+                [273] = 9, [274] = 0x11F, [275] = 500,
+                [276] = 11, [277] = 5, [278] = 3,
+            },
+        }.Build();
+
+        var requirements = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells).Sections
+            .Single(section => section.Heading == "Requirements").Rows;
+
+        Assert.Equal(new AppraisalRow[]
+        {
+            new("Wield", "Trained Heavy Weapons"),
+            new("Wield", "Standing with the Celestial Hand 500"),
+        }, requirements);
+    }
+
     [Theory]
     [InlineData(true, "", true, InscriptionMode.Editable)]
     [InlineData(true, "Aerbax", true, InscriptionMode.Editable)]
@@ -316,7 +426,7 @@ public sealed class AppraisalTests
         bool inscribable, string scribe, bool carried, InscriptionMode expected)
     {
         var content = AppraisalContent.From(AppraisalResponse.Read(InscribedPotion(Potion, scribe.Length > 0 ? "Bonked" : "", scribe, inscribable)),
-            "Aerbax", carried);
+            NoSpells, "Aerbax", carried);
 
         Assert.Equal(expected, content.Inscription!.Mode);
     }
@@ -324,7 +434,7 @@ public sealed class AppraisalTests
     [Fact]
     public void An_item_that_is_neither_inscribable_nor_inscribed_has_no_inscription_field()
     {
-        var content = AppraisalContent.From(AppraisalResponse.Read(PotionMessage(Potion, 75)), "Aerbax", carried: true);
+        var content = AppraisalContent.From(AppraisalResponse.Read(PotionMessage(Potion, 75)), NoSpells, "Aerbax", carried: true);
 
         Assert.Null(content.Inscription);
     }
@@ -332,7 +442,7 @@ public sealed class AppraisalTests
     [Fact]
     public void Another_characters_inscription_reads_with_its_text_and_scribe()
     {
-        var content = AppraisalContent.From(AppraisalResponse.Read(InscribedPotion(Potion, "Bonked many a drudge", "Ilsa of Yaraq")), "Aerbax", carried: true);
+        var content = AppraisalContent.From(AppraisalResponse.Read(InscribedPotion(Potion, "Bonked many a drudge", "Ilsa of Yaraq")), NoSpells, "Aerbax", carried: true);
 
         Assert.Equal(new AppraisalInscription(InscriptionMode.ReadOnly, "Bonked many a drudge", "Ilsa of Yaraq"), content.Inscription);
     }
