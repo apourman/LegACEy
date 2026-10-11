@@ -34,7 +34,7 @@ public sealed record AppraisalSection(string Heading, IReadOnlyList<AppraisalRow
 /// draws this model and nothing else, so the rules that build it are tested without drawing. Built by <see cref="From"/>.
 /// </summary>
 public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Visual, string TypeLine, IReadOnlyList<AppraisalFigure> Figures,
-    IReadOnlyList<AppraisalSection> Sections, string Description)
+    IReadOnlyList<AppraisalSection> Sections, string Description, AppraisalInscription? Inscription)
 {
     // The server's property ids (ACE.Entity PropertyInt, PropertyString and PropertyDataId).
     private const uint ItemTypeInt = 1, EncumbranceValInt = 5, ValueInt = 19, WeaponSkillInt = 48, ItemWorkmanshipInt = 105, SalvagedItemsInt = 170;
@@ -84,10 +84,14 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     };
 
     /// <summary>
+    /// <summary>
     /// Builds what the window shows from one appraisal. <paramref name="spells"/> gives each spell's name and description by id (the
-    /// portal DAT's spell table, empty when there is none); a spell it does not know is named by its id.
+    /// portal DAT's spell table, empty when there is none); a spell it does not know is named by its id. The inscription field depends on
+    /// who the character is and whether the item is carried, which the appraisal does not say, so the caller passes them; with neither, an
+    /// item is never editable.
     /// </summary>
-    public static AppraisalContent From(AppraisalResponse response, IReadOnlyDictionary<uint, SpellInfo> spells)
+    public static AppraisalContent From(AppraisalResponse response, IReadOnlyDictionary<uint, SpellInfo> spells,
+        string characterName = "", bool carried = false)
     {
         var figures = FigureRules
             .Select(rule => (rule.Label, Text: rule.Text(response)))
@@ -108,7 +112,8 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
             TypeLineOf(response),
             figures,
             sections,
-            response.Strings.TryGetValue(LongDescString, out var description) ? description : string.Empty);
+            response.Strings.TryGetValue(LongDescString, out var description) ? description : string.Empty,
+            AppraisalInscription.From(response, characterName, carried));
     }
 
     /// <summary>A portal id the response sent, or zero when it did not.</summary>

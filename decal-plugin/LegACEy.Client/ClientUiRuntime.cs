@@ -20,7 +20,7 @@ using LegACEy.Client.Themes;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>The client runtime: wires the Decal events the bridge raises to the netstandard client UI framework.</summary>
-internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClientEvents
+internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClientEvents, IAppraisalGame
 {
     [StructLayout(LayoutKind.Sequential)]
     private struct NativePoint
@@ -190,7 +190,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         _gameStatePoller = new GameStatePoller(_gameState, Bridge.ReadGameState,
             error => Log($"Character stats temporarily unavailable; keeping UI active and retrying: {error.Message}"));
-        _appraisal = new AppraisalFeature(this, Log, spells: () => _portal?.ReadSpells(Log) ?? new Dictionary<uint, SpellInfo>());
+        _appraisal = new AppraisalFeature(this, Log, spells: () => _portal?.ReadSpells(Log) ?? new Dictionary<uint, SpellInfo>(), game: this);
         _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal);
     }
 
@@ -1216,6 +1216,17 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     bool ILegACEyPluginHost.IsWindowOpen(string id) => _featureSurfaces.ContainsKey(id);
     void ILegACEyPluginHost.HideWindow(string id) => HideFeatureWindow(id);
     void ILegACEyPluginHost.CloseWindow(string id) => ReleaseFeatureWindow(id);
+
+    // The appraisal window's game: the character and the inventory it reads, the inscription action through the server channel's send,
+    // and a silent ID request (Bridge.RequestId, which selects nothing and opens no window).
+    string IAppraisalGame.CharacterName => SessionCharacter();
+
+    bool IAppraisalGame.IsCarried(uint itemId) => _inventory.Snapshot.Carries(itemId);
+
+    bool IAppraisalGame.SetInscription(uint itemId, string text) =>
+        _channelTransport?.SendAction(InscriptionAction.Opcode, InscriptionAction.Payload(itemId, text)) ?? false;
+
+    void IAppraisalGame.RequestAppraisal(uint itemId) => Bridge.RequestId(itemId);
 
     int? ILegACEyPluginHost.LoadPluginSettings(string plugin) => _settingsStore.Load(SessionServer(), SessionCharacter(), plugin)?.Location.X;
 
