@@ -61,21 +61,24 @@ internal sealed unsafe class ScreenSurface : IDisposable
             return;
         if (_failureBudget.Record(timer.Elapsed))
             throw new TimeoutException($"Panel tick exceeded 50 ms for {_failureBudget.ConsecutiveSlowTicks} consecutive frames ({timer.Elapsed.TotalMilliseconds:F1} ms).");
-        if (changed || !_uploaded || _texture == IntPtr.Zero)
+        // _uploaded is true only while a texture holds a complete frame.
+        if (changed || !_uploaded)
             Upload(Panel.Frame);
     }
 
     /// <summary>Draw the prepared frame at its current location.</summary>
     public void DrawNow()
     {
-        if (!Visible || _texture == IntPtr.Zero)
+        if (!Visible || !_uploaded)
             return;
         Draw(Panel.Frame.Width, Panel.Frame.Height);
     }
 
     public void Dispose()
     {
-        Release(ref _texture);
+        Release(_texture);
+        _texture = IntPtr.Zero;
+        _uploaded = false;
         Panel.Dispose();
     }
 
@@ -83,7 +86,8 @@ internal sealed unsafe class ScreenSurface : IDisposable
     {
         if (_texture != IntPtr.Zero && (_textureWidth != frame.Width || _textureHeight != frame.Height))
         {
-            Release(ref _texture);
+            Release(_texture);
+            _texture = IntPtr.Zero;
             _uploaded = false;
         }
         if (_texture == IntPtr.Zero)
@@ -94,22 +98,33 @@ internal sealed unsafe class ScreenSurface : IDisposable
         }
 
         var timer = Stopwatch.StartNew();
-        try
+        IReadOnlyList<Rectangle> dirty = _uploaded ? frame.DirtyRectangles : new[] { new Rectangle(0, 0, frame.Width, frame.Height) };
+        for (var i = 0; i < dirty.Count; i++)
         {
-            IReadOnlyList<Rectangle> dirty = _uploaded ? frame.DirtyRectangles : new[] { new Rectangle(0, 0, frame.Width, frame.Height) };
-            for (var i = 0; i < dirty.Count; i++)
-            {
-                var rect = dirty[i];
-                if (rect.Width <= 0 || rect.Height <= 0) continue;
-                D3D9.Upload(_texture, rect, frame.Pixels, frame.Stride);
-            }
+            var rect = dirty[i];
+            if (rect.Width <= 0 || rect.Height <= 0) continue;
+            D3D9.Upload(_texture, rect, frame.Pixels, frame.Stride);
         }
-        finally
-        {
-            timer.Stop();
-            LastUploadMilliseconds = timer.Elapsed.TotalMilliseconds;
-        }
+        timer.Stop();
+        LastUploadMilliseconds = timer.Elapsed.TotalMilliseconds;
         _uploaded = true;
+    }
+
+    /// <summary>The states both overlay draws share: no depth, fog, lighting, alpha test, stencil, scissor or culling; stage 1 off.</summary>
+    private static void SetOverlayStates(IntPtr device, uint vertexFormat)
+    {
+        UseFixedFunction(device, vertexFormat);
+        SetRenderState(device, RenderState.ZEnable, 0);
+        SetRenderState(device, RenderState.ZWriteEnable, 0);
+        SetRenderState(device, RenderState.Lighting, 0);
+        SetRenderState(device, RenderState.FogEnable, 0);
+        SetRenderState(device, RenderState.AlphaTestEnable, 0);
+        SetRenderState(device, RenderState.StencilEnable, 0);
+        SetRenderState(device, RenderState.ScissorTestEnable, 0);
+        SetRenderState(device, RenderState.CullMode, CullNone);
+        SetRenderState(device, RenderState.ColorWriteEnable, 0xF);
+        SetStageState(device, 1, StageState.ColorOp, OpDisable);
+        SetStageState(device, 1, StageState.AlphaOp, OpDisable);
     }
 
     /// <summary>Draws a 2 px outline just inside the bounds in a solid colour, then puts every device state back.</summary>
@@ -118,24 +133,13 @@ internal sealed unsafe class ScreenSurface : IDisposable
         var saved = SaveState(device);
         try
         {
-            UseFixedFunction(device, FvfXyzRhw | FvfDiffuse);
+            SetOverlayStates(device, FvfXyzRhw | FvfDiffuse);
             SetTexture(device, 0, IntPtr.Zero);
-            SetRenderState(device, RenderState.ZEnable, 0);
-            SetRenderState(device, RenderState.ZWriteEnable, 0);
-            SetRenderState(device, RenderState.Lighting, 0);
-            SetRenderState(device, RenderState.FogEnable, 0);
-            SetRenderState(device, RenderState.AlphaTestEnable, 0);
             SetRenderState(device, RenderState.AlphaBlendEnable, 0);
-            SetRenderState(device, RenderState.StencilEnable, 0);
-            SetRenderState(device, RenderState.ScissorTestEnable, 0);
-            SetRenderState(device, RenderState.CullMode, CullNone);
-            SetRenderState(device, RenderState.ColorWriteEnable, 0xF);
             SetStageState(device, 0, StageState.ColorOp, OpSelectArg1);
             SetStageState(device, 0, StageState.ColorArg1, ArgDiffuse);
             SetStageState(device, 0, StageState.AlphaOp, OpSelectArg1);
             SetStageState(device, 0, StageState.AlphaArg1, ArgDiffuse);
-            SetStageState(device, 1, StageState.ColorOp, OpDisable);
-            SetStageState(device, 1, StageState.AlphaOp, OpDisable);
 
             var argb = (uint)color.ToArgb();
             var strip = stackalloc ColoredVertex[5];
@@ -161,44 +165,31 @@ internal sealed unsafe class ScreenSurface : IDisposable
     /// <summary>Draw one textured quad with premultiplied alpha, then put every device state back.</summary>
     private void Draw(int width, int height)
     {
-        var device = _device;
-        var saved = SaveState(device);
+        var saved = SaveState(_device);
         try
         {
-            UseFixedFunction(device, FvfXyzRhw | FvfTex1);
-            SetTexture(device, 0, _texture);
-            SetTexture(device, 1, IntPtr.Zero);
+            SetOverlayStates(_device, FvfXyzRhw | FvfTex1);
+            SetTexture(_device, 0, _texture);
+            SetTexture(_device, 1, IntPtr.Zero);
+            SetRenderState(_device, RenderState.FillMode, FillSolid);
+            SetRenderState(_device, RenderState.AlphaBlendEnable, 1);
+            SetRenderState(_device, RenderState.SeparateAlphaBlendEnable, 0);
+            SetRenderState(_device, RenderState.BlendOp, BlendOpAdd);
+            SetRenderState(_device, RenderState.SrcBlend, BlendOne);
+            SetRenderState(_device, RenderState.DestBlend, BlendInvSrcAlpha);
 
-            SetRenderState(device, RenderState.ZEnable, 0);
-            SetRenderState(device, RenderState.ZWriteEnable, 0);
-            SetRenderState(device, RenderState.Lighting, 0);
-            SetRenderState(device, RenderState.FogEnable, 0);
-            SetRenderState(device, RenderState.AlphaTestEnable, 0);
-            SetRenderState(device, RenderState.StencilEnable, 0);
-            SetRenderState(device, RenderState.ScissorTestEnable, 0);
-            SetRenderState(device, RenderState.CullMode, CullNone);
-            SetRenderState(device, RenderState.FillMode, FillSolid);
-            SetRenderState(device, RenderState.ColorWriteEnable, 0xF);
-            SetRenderState(device, RenderState.AlphaBlendEnable, 1);
-            SetRenderState(device, RenderState.SeparateAlphaBlendEnable, 0);
-            SetRenderState(device, RenderState.BlendOp, BlendOpAdd);
-            SetRenderState(device, RenderState.SrcBlend, BlendOne);
-            SetRenderState(device, RenderState.DestBlend, BlendInvSrcAlpha);
+            SetStageState(_device, 0, StageState.ColorOp, OpSelectArg1);
+            SetStageState(_device, 0, StageState.ColorArg1, ArgTexture);
+            SetStageState(_device, 0, StageState.AlphaOp, OpSelectArg1);
+            SetStageState(_device, 0, StageState.AlphaArg1, ArgTexture);
+            SetStageState(_device, 0, StageState.TexCoordIndex, 0);
+            SetStageState(_device, 0, StageState.TextureTransformFlags, 0);
 
-            SetStageState(device, 0, StageState.ColorOp, OpSelectArg1);
-            SetStageState(device, 0, StageState.ColorArg1, ArgTexture);
-            SetStageState(device, 0, StageState.AlphaOp, OpSelectArg1);
-            SetStageState(device, 0, StageState.AlphaArg1, ArgTexture);
-            SetStageState(device, 0, StageState.TexCoordIndex, 0);
-            SetStageState(device, 0, StageState.TextureTransformFlags, 0);
-            SetStageState(device, 1, StageState.ColorOp, OpDisable);
-            SetStageState(device, 1, StageState.AlphaOp, OpDisable);
-
-            SetSamplerState(device, 0, SamplerState.MinFilter, FilterPoint);
-            SetSamplerState(device, 0, SamplerState.MagFilter, FilterPoint);
-            SetSamplerState(device, 0, SamplerState.MipFilter, FilterNone);
-            SetSamplerState(device, 0, SamplerState.AddressU, AddressClamp);
-            SetSamplerState(device, 0, SamplerState.AddressV, AddressClamp);
+            SetSamplerState(_device, 0, SamplerState.MinFilter, FilterPoint);
+            SetSamplerState(_device, 0, SamplerState.MagFilter, FilterPoint);
+            SetSamplerState(_device, 0, SamplerState.MipFilter, FilterNone);
+            SetSamplerState(_device, 0, SamplerState.AddressU, AddressClamp);
+            SetSamplerState(_device, 0, SamplerState.AddressV, AddressClamp);
 
             // Pixel centres sit at half-pixel offsets in Direct3D 9, so shift by half a pixel for 1:1 texels.
             float left = Location.X - 0.5f, top = Location.Y - 0.5f;
@@ -211,7 +202,7 @@ internal sealed unsafe class ScreenSurface : IDisposable
                 left, bottom, 0, 1, 0, 1,
                 right, bottom, 0, 1, 1, 1
             };
-            DrawPrimitiveUP(device, TriangleStrip, 2, quad, 24);
+            DrawPrimitiveUP(_device, TriangleStrip, 2, quad, 24);
         }
         finally
         {

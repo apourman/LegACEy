@@ -7,7 +7,8 @@ namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
 /// The few Direct3D 9 COM calls LegACEy draws with, made on the game's own objects through their vtables. A failed HRESULT throws a
-/// <see cref="COMException"/>, as Managed DirectX did, so the callers' failure paths switch the UI off.
+/// <see cref="COMException"/> (Managed DirectX threw its own Direct3DException types there), which the callers' catch-all failure
+/// paths turn into switching the UI off, as before.
 /// </summary>
 internal static unsafe class D3D9
 {
@@ -102,11 +103,9 @@ internal static unsafe class D3D9
     }
 
     /// <summary>Releases a COM object this code created, once.</summary>
-    public static void Release(ref IntPtr com)
+    public static void Release(IntPtr com)
     {
-        if (com == IntPtr.Zero) return;
-        ((delegate* unmanaged[Stdcall]<IntPtr, uint>)Vt(com)[ReleaseSlot])(com);
-        com = IntPtr.Zero;
+        if (com != IntPtr.Zero) ((delegate* unmanaged[Stdcall]<IntPtr, uint>)Vt(com)[ReleaseSlot])(com);
     }
 
     /// <summary>Records every device state; <see cref="RestoreState"/> puts them back and frees the record.</summary>
@@ -120,7 +119,7 @@ internal static unsafe class D3D9
     public static void RestoreState(IntPtr block)
     {
         try { Check(((delegate* unmanaged[Stdcall]<IntPtr, int>)Vt(block)[ApplySlot])(block), "StateBlock.Apply"); }
-        finally { Release(ref block); }
+        finally { Release(block); }
     }
 
     /// <summary>An A8R8G8B8 texture in the managed pool, which Direct3D restores itself after a device reset.</summary>
@@ -138,16 +137,19 @@ internal static unsafe class D3D9
         var rect = stackalloc int[] { area.Left, area.Top, area.Right, area.Bottom };
         LockedRect locked;
         Check(((delegate* unmanaged[Stdcall]<IntPtr, int, LockedRect*, int*, int, int>)Vt(texture)[LockRectSlot])(texture, 0, &locked, rect, 0), "LockRect");
+        var unlock = (delegate* unmanaged[Stdcall]<IntPtr, int, int>)Vt(texture)[UnlockRectSlot];
         try
         {
             var rowBytes = area.Width * 4;
             for (var row = 0; row < area.Height; row++)
                 pixels.AsSpan((area.Y + row) * stride + area.X * 4, rowBytes).CopyTo(new Span<byte>(locked.Bits + row * locked.Pitch, rowBytes));
         }
-        finally
+        catch
         {
-            Check(((delegate* unmanaged[Stdcall]<IntPtr, int, int>)Vt(texture)[UnlockRectSlot])(texture, 0), "UnlockRect");
+            unlock(texture, 0); // the copy's exception is the one worth reporting
+            throw;
         }
+        Check(unlock(texture, 0), "UnlockRect");
     }
 
     public static Rectangle Viewport(IntPtr device)
