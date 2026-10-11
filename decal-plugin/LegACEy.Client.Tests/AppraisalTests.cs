@@ -234,6 +234,62 @@ public sealed class AppraisalTests
     }
 
     [Fact]
+    public void An_armour_piece_names_what_it_covers_on_the_type_line()
+    {
+        // A chest piece in the chest slot. The world's coverage bits are the chest's and the upper arms' priority.
+        var bytes = new ServerAppraisal(0x80000A06) { Strings = { [1] = "Nariyid Breastplate" }, Ints = { [1] = 0x2 } }.Build();
+
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells, validLocations: 0x200, coverage: 0x0008 | 0x1000);
+
+        Assert.Equal("Armor · Covers Chest, Upper Arms", content.TypeLine);
+    }
+
+    [Fact]
+    public void A_weapon_names_no_coverage_even_when_the_world_reports_some()
+    {
+        var bytes = new ServerAppraisal(0x80000A06) { Strings = { [1] = "Ivory Stick" }, Ints = { [1] = 0x1 } }.Build();
+
+        // A two-handed slot (0x0100_0000 is in the weapon and shield slots): no "Covers", whatever the coverage bits say.
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells, validLocations: 0x0100_0000, coverage: 0x0008);
+
+        Assert.Equal("Melee weapon", content.TypeLine);
+    }
+
+    [Fact]
+    public void A_gem_outside_the_clothing_slots_names_no_coverage_even_when_the_world_reports_some()
+    {
+        var bytes = new ServerAppraisal(0x80000A07) { Strings = { [1] = "Green Garnet" }, Ints = { [1] = 0x800 } }.Build();
+
+        // No equipable slots: a gem is not clothing, so the coverage bits are not named.
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells, validLocations: 0, coverage: 0x0008 | 0x1000);
+
+        Assert.Equal("Gem", content.TypeLine);
+    }
+
+    [Fact]
+    public void A_failed_root_check_leaves_retails_examination_panel_untouched() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost();
+        var game = new FakeAppraisalGame();
+        var appraisals = new AppraisalFeature(host, _ => { }, game: game);
+        var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
+        var logged = new List<string>();
+        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, logged.Add, () => false);
+
+        examination.Tick(enabled: true);
+        examination.Tick(enabled: true);
+
+        // Retail's panel stays open where retail put it: not parked, not closed, nothing asked for and nothing shown by us.
+        Assert.True(panel.Open);
+        Assert.Equal(new Point(1200, 300), panel.Location);
+        Assert.Equal(0, panel.CloseCalls);
+        Assert.Empty(game.Appraised);
+        Assert.Equal(0, host.Opened);
+        // Logged once for the session, not every frame.
+        Assert.Single(logged);
+    });
+
+    [Fact]
     public void A_breastplate_shows_its_raised_armour_level_and_its_lowered_fire_protection_in_red()
     {
         // Armour is in the same order as the server's ArmorProfile: slashing, piercing, bludgeoning, cold, fire, acid, nether, lightning.
@@ -871,7 +927,7 @@ public sealed class AppraisalTests
         var game = new FakeAppraisalGame();
         var appraisals = new AppraisalFeature(host, _ => { }, game: game);
         var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
-        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { });
+        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { }, () => true);
 
         examination.Tick(enabled: true);
 
@@ -900,7 +956,7 @@ public sealed class AppraisalTests
         var host = new FakeAppraisalHost();
         var appraisals = new AppraisalFeature(host, _ => { }, clock: () => now, game: new FakeAppraisalGame());
         var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
-        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { });
+        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { }, () => true);
         examination.Tick(enabled: true);
         Assert.Equal(RetailPanelTakeover.Parked, panel.Location);
 
@@ -924,7 +980,7 @@ public sealed class AppraisalTests
         var host = new FakeAppraisalHost { FailOpen = true };
         var appraisals = new AppraisalFeature(host, _ => { }, game: new FakeAppraisalGame());
         var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
-        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { });
+        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { }, () => true);
         examination.Tick(enabled: true);
 
         appraisals.Receive(PotionMessage(Potion, 75));
@@ -945,7 +1001,7 @@ public sealed class AppraisalTests
         appraisals.Receive(PotionMessage(Potion, 75));
         Assert.Equal(0, host.Opened);
         var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
-        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { });
+        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { }, () => true);
 
         examination.Tick(enabled: true);
 
@@ -959,7 +1015,7 @@ public sealed class AppraisalTests
         var host = new FakeAppraisalHost();
         var appraisals = new AppraisalFeature(host, _ => { });
         var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
-        using var examination = new RetailExaminationTakeover(panel, () => 0, appraisals, _ => { });
+        using var examination = new RetailExaminationTakeover(panel, () => 0, appraisals, _ => { }, () => true);
 
         examination.Tick(enabled: true);
         appraisals.Receive(PotionMessage(Potion, 75));
@@ -978,7 +1034,7 @@ public sealed class AppraisalTests
         var appraisals = new AppraisalFeature(host, _ => { }, game: game);
         uint selected = Potion;
         var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
-        using var examination = new RetailExaminationTakeover(panel, () => selected, appraisals, _ => { });
+        using var examination = new RetailExaminationTakeover(panel, () => selected, appraisals, _ => { }, () => true);
 
         examination.Tick(enabled: true, canShow: false);
 
@@ -1006,7 +1062,7 @@ public sealed class AppraisalTests
         var appraisals = new AppraisalFeature(host, _ => { }, clock: () => now, game: game);
         uint selected = Potion;
         var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
-        using var examination = new RetailExaminationTakeover(panel, () => selected, appraisals, _ => { });
+        using var examination = new RetailExaminationTakeover(panel, () => selected, appraisals, _ => { }, () => true);
         examination.Tick(enabled: true);
         now = 10_001;
         examination.Tick(enabled: true);
@@ -1038,7 +1094,7 @@ public sealed class AppraisalTests
         var appraisals = new AppraisalFeature(host, logged.Add,
             clock: () => clockFails ? throw new InvalidOperationException("The clock failed.") : 0, game: new FakeAppraisalGame());
         var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
-        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, logged.Add);
+        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, logged.Add, () => true);
         examination.Tick(enabled: true);
         Assert.Equal(RetailPanelTakeover.Parked, panel.Location);
 
@@ -1058,7 +1114,7 @@ public sealed class AppraisalTests
         var host = new FakeAppraisalHost();
         var appraisals = new AppraisalFeature(host, _ => { });
         var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = false, Location = new Point(1200, 300) };
-        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { });
+        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { }, () => true);
         examination.Tick(enabled: true);
 
         appraisals.Receive(PotionMessage(Potion, 75));
@@ -1075,7 +1131,7 @@ public sealed class AppraisalTests
         var host = new FakeAppraisalHost();
         var appraisals = new AppraisalFeature(host, _ => { });
         var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
-        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { });
+        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { }, () => true);
 
         examination.Tick(enabled: false);
         appraisals.Receive(PotionMessage(Potion, 75));
@@ -1092,7 +1148,7 @@ public sealed class AppraisalTests
         var host = new FakeAppraisalHost();
         var appraisals = new AppraisalFeature(host, _ => { });
         var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300), FailNextMove = true };
-        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { });
+        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, _ => { }, () => true);
 
         examination.Tick(enabled: true);
         appraisals.Receive(PotionMessage(Potion, 75));
@@ -1291,6 +1347,8 @@ public sealed class AppraisalTests
         }
 
         public void RequestAppraisal(uint itemId) => Appraised.Add(itemId);
+        public uint ValidLocationsOf(uint itemId) => 0;
+        public uint CoverageOf(uint itemId) => 0;
     }
 
     /// <summary>A plugin host with one window, recording what the feature opens. Its art has no images, so items show no icon.</summary>

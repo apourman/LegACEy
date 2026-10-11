@@ -119,9 +119,11 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     /// who the character is and whether the item is carried, which the appraisal does not say, so the caller passes them; with neither, an
     /// item is never editable. A creature (one with a creature profile) takes the creature layout instead of the item's sections and
     /// figures; <paramref name="names"/> gives a creature's type and a character's title, and a name it does not know is left out.
+    /// <paramref name="validLocations"/> and <paramref name="coverage"/> are the item's equipable slots and clothing coverage from the world
+    /// (the appraisal does not carry them); a piece of clothing or armour names what it covers on the type line.
     /// </summary>
     public static AppraisalContent From(AppraisalResponse response, IReadOnlyDictionary<uint, SpellInfo> spells,
-        string characterName = "", bool carried = false, CharacterNames? names = null)
+        string characterName = "", bool carried = false, CharacterNames? names = null, uint validLocations = 0, uint coverage = 0)
     {
         var hasCreatureProfile = response.Creature != null;
         var figures = hasCreatureProfile
@@ -143,7 +145,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
             response.ObjectId,
             response.Strings.TryGetValue(NameString, out var name) && name.Length > 0 ? name : "Unknown item",
             visual,
-            hasCreatureProfile ? CreatureTypeLine(response, names ?? CharacterNames.None) : TypeLineOf(response),
+            hasCreatureProfile ? CreatureTypeLine(response, names ?? CharacterNames.None) : TypeLineOf(response, validLocations, coverage),
             figures,
             sections,
             response.Strings.TryGetValue(LongDescString, out var description) ? description : string.Empty,
@@ -196,9 +198,10 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
 
     /// <summary>
     /// The type line: the weapon's type word when the server sends one, else the item's type, then the weapon skill when it has one
-    /// ("Staff · Heavy Weapons"). Skill names are ACE's Skill.ToSentence (ACE.Entity/Enum/Skill.cs), indexed by the skill's id.
+    /// ("Staff · Heavy Weapons"), then what a piece of clothing or armour covers ("Armor · Covers Chest, Upper Arms").
+    /// Skill names are ACE's Skill.ToSentence (ACE.Entity/Enum/Skill.cs), indexed by the skill's id.
     /// </summary>
-    private static string TypeLineOf(AppraisalResponse response)
+    private static string TypeLineOf(AppraisalResponse response, uint validLocations, uint coverage)
     {
         var weaponType = response.Ints.TryGetValue(WeaponTypeInt, out var kind) && kind > 0 && kind < WeaponTypeNames.Length ? WeaponTypeNames[kind] : null;
         var type = weaponType ?? (response.Ints.TryGetValue(ItemTypeInt, out var bits) ? ItemTypeNames.FirstOrDefault(item => (bits & item.Bit) != 0).Name : null);
@@ -206,8 +209,29 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
         var skill = response.Weapon is { } weapon && weapon.WeaponSkill > 0 && weapon.WeaponSkill < SkillNames.Length
             ? SkillNames[weapon.WeaponSkill]
             : null;
-        return string.Join(" · ", new[] { type, skill }.Where(part => !string.IsNullOrEmpty(part)));
+        return string.Join(" · ", new[] { type, skill, CoversText(validLocations, coverage) }.Where(part => !string.IsNullOrEmpty(part)));
     }
+
+    // The clothing slots (0x0800_7FFF) and the weapon and shield slots (0x03F0_0000), as OpenAC's formatter tests them.
+    private const uint ClothingLocations = 0x0800_7FFF, WeaponAndShieldLocations = 0x03F0_0000;
+
+    /// <summary>
+    /// "Covers Chest, Upper Arms" for a clothing or armour piece: one that is in a clothing slot and not a weapon or shield. Named by the
+    /// coverage bits, as OpenAC's ClothingCoverage names them (MIT). Empty when the item covers nothing it names.
+    /// </summary>
+    private static string CoversText(uint validLocations, uint coverage)
+    {
+        if ((validLocations & WeaponAndShieldLocations) != 0 || (validLocations & ClothingLocations) == 0) return string.Empty;
+        var covered = CoverageNames.Where(area => (coverage & area.Bits) != 0).Select(area => area.Name).ToArray();
+        return covered.Length == 0 ? string.Empty : "Covers " + string.Join(", ", covered);
+    }
+
+    /// <summary>The coverage areas in OpenAC's order, each with the two priority bits that cover it.</summary>
+    private static readonly (uint Bits, string Name)[] CoverageNames =
+    {
+        (0x4000, "Head"), (0x0008 | 0x0400, "Chest"), (0x0010 | 0x0800, "Abdomen"), (0x0020 | 0x1000, "Upper Arms"),
+        (0x0040 | 0x2000, "Lower Arms"), (0x0080, "Hands"), (0x0002 | 0x0100, "Upper Legs"), (0x0004 | 0x0200, "Lower Legs"), (0x10000, "Feet")
+    };
 
     /// <summary>
     /// ACE's WeaponType names by its value (Unarmed 1 to Thrown 10), as OpenAC names them. Two-handed (11) and magic (12) have no word in

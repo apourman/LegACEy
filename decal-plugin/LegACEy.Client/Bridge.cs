@@ -206,6 +206,13 @@ public static unsafe class Bridge
         return (uint)mask;
     }
 
+    internal static uint CoverageOf(uint id)
+    {
+        int mask;
+        Check(_calls.Coverage((int)id, &mask), nameof(CoverageOf));
+        return (uint)mask;
+    }
+
     internal static void UseItem(uint id, int state) => Check(_calls.UseItem((int)id, state), nameof(UseItem));
     internal static void SelectItem(uint id) => Check(_calls.SelectItem((int)id), nameof(SelectItem));
     internal static void RequestId(uint id) => Check(_calls.RequestId((int)id), nameof(RequestId));

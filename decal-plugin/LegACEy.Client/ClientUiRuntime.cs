@@ -206,8 +206,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             NativeUi.Initialize(Log);
             // Only with the examination's addresses checked: otherwise retail's examination panel is left alone.
             if (NativeUi.Ready && RetailPanelCatalogueValid())
-                _examination = new RetailExaminationTakeover(new NativeExaminationPort(), () => (uint)Bridge.Fact(BridgeFact.CurrentSelection),
-                    _appraisal, Log);
+            {
+                var examinationPort = new NativeExaminationPort();
+                _examination = new RetailExaminationTakeover(examinationPort, () => (uint)Bridge.Fact(BridgeFact.CurrentSelection),
+                    _appraisal, Log, examinationPort.VerifyRoot);
+            }
             try
             {
                 _channelTransport = new GameChannelTransport(NativeUi.ReadMemory, () => _inGame, Log);
@@ -1236,6 +1239,17 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _channelTransport?.SendAction(InscriptionAction.Opcode, InscriptionAction.Payload(itemId, text)) ?? false;
 
     void IAppraisalGame.RequestAppraisal(uint itemId) => Bridge.RequestId(itemId);
+
+    // A released object reads as no slots and no coverage: the window then shows no "Covers" line.
+    uint IAppraisalGame.ValidLocationsOf(uint itemId) => WorldRead(() => Bridge.ValidLocations(itemId));
+
+    uint IAppraisalGame.CoverageOf(uint itemId) => WorldRead(() => Bridge.CoverageOf(itemId));
+
+    private static uint WorldRead(Func<uint> read)
+    {
+        try { return read(); }
+        catch (COMException) { return 0; }
+    }
 
     int? ILegACEyPluginHost.LoadPluginSettings(string plugin) => _settingsStore.Load(SessionServer(), SessionCharacter(), plugin)?.Location.X;
 

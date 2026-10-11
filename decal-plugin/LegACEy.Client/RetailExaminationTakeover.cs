@@ -14,10 +14,14 @@ namespace LegACEy.Client.DecalPlugin;
 /// </summary>
 internal sealed class RetailExaminationTakeover : IDisposable
 {
+    private readonly IRetailPanelPort _port;
     private readonly RetailPanelTakeover _panel;
     private readonly Func<uint> _selection;
     private readonly AppraisalFeature _appraisals;
     private readonly Action<string> _log;
+    private readonly Func<bool> _verifyRoot;
+    // The root check, made on the first show of a session before the panel is parked. Null until then.
+    private bool? _rootVerified;
     private uint _selected;
     // The object whose response the window is waiting for, while retail's panel is parked (hidden) for it. Zero when none.
     private uint _awaiting;
@@ -30,12 +34,17 @@ internal sealed class RetailExaminationTakeover : IDisposable
 
     /// <param name="selection">The object retail is examining: the current selection, read each enabled frame before the panel is ticked.</param>
     /// <param name="appraisals">Shows the appraisal window for an object, now or when its response arrives, and reports how that went.</param>
-    public RetailExaminationTakeover(IRetailPanelPort port, Func<uint> selection, AppraisalFeature appraisals, Action<string> log)
+    /// <param name="verifyRoot">Checks at runtime that the port's root is the examination panel. Run once a session, on the first enabled
+    /// tick where the panel is open and our window can show, before the panel is parked. False, or a throw, leaves retail's panel alone for
+    /// the session.</param>
+    public RetailExaminationTakeover(IRetailPanelPort port, Func<uint> selection, AppraisalFeature appraisals, Action<string> log, Func<bool> verifyRoot)
     {
+        _port = port ?? throw new ArgumentNullException(nameof(port));
         _selection = selection ?? throw new ArgumentNullException(nameof(selection));
         _appraisals = appraisals ?? throw new ArgumentNullException(nameof(appraisals));
         _log = log ?? throw new ArgumentNullException(nameof(log));
-        _panel = new RetailPanelTakeover(port ?? throw new ArgumentNullException(nameof(port)), OnOpenChanged, _log);
+        _verifyRoot = verifyRoot ?? throw new ArgumentNullException(nameof(verifyRoot));
+        _panel = new RetailPanelTakeover(_port, OnOpenChanged, Note);
     }
 
     /// <summary>Ticks the panel takeover; <paramref name="enabled"/> false gives the panel back, as the inventory takeover does.</summary>
@@ -57,6 +66,7 @@ internal sealed class RetailExaminationTakeover : IDisposable
         _awaiting = 0;
         _yielding = false;
         _closeAfterShow = false;
+        _rootVerified = null;
         _panel.EndSession();
     }
 
@@ -68,7 +78,8 @@ internal sealed class RetailExaminationTakeover : IDisposable
         // examination: the panel is not parked, unless it is already held for an object.
         if (enabled) _selected = ReadSelection();
         // Our window can only show with the character in the world. Until then the panel is left to retail, and nothing waits for it.
-        var live = enabled && canShow;
+        // A failed root check leaves the panel to retail for the session: nothing is parked and nothing is closed.
+        var live = enabled && canShow && RootVerified();
         if (!live)
         {
             _awaiting = 0;
@@ -93,6 +104,41 @@ internal sealed class RetailExaminationTakeover : IDisposable
         _panel.Close();
     }
 
+    /// <summary>
+    /// The root check, made once a session on the first enabled tick where the panel is open and our window can show (the panel exists
+    /// then). While the panel is closed there is nothing to check and nothing is parked, so true with no verdict yet. A failed check, or a
+    /// port that cannot say whether it is open, is logged once and stays failed for the session.
+    /// </summary>
+    private bool RootVerified()
+    {
+        if (_rootVerified is { } verified) return verified;
+        bool open;
+        try
+        {
+            open = _port.IsOpen;
+        }
+        catch (Exception exception)
+        {
+            Note($"Retail's examination panel is left to retail: its state could not be read: {exception.Message}");
+            _rootVerified = false;
+            return false;
+        }
+        if (!open) return true;
+        bool passed;
+        try
+        {
+            passed = _verifyRoot();
+        }
+        catch (Exception exception)
+        {
+            Note($"Retail's examination panel is left to retail: the root check failed: {exception.Message}");
+            passed = false;
+        }
+        if (!passed) Note("Retail's examination panel is left to retail: its root is not confirmed as the examination panel.");
+        _rootVerified = passed;
+        return passed;
+    }
+
     private uint ReadSelection()
     {
         try
@@ -101,7 +147,7 @@ internal sealed class RetailExaminationTakeover : IDisposable
         }
         catch (Exception exception)
         {
-            if (!_selectionFailed) _log($"Could not read the selection; retail's examination is left to retail: {exception.Message}");
+            if (!_selectionFailed) Note($"Could not read the selection; retail's examination is left to retail: {exception.Message}");
             _selectionFailed = true;
             return 0;
         }
@@ -153,10 +199,17 @@ internal sealed class RetailExaminationTakeover : IDisposable
         }
     }
 
+    /// <summary>The log, guarded: a log that throws must not escape the frame's tick.</summary>
+    private void Note(string message)
+    {
+        try { _log(message); }
+        catch (Exception) { }
+    }
+
     /// <summary>The one failure path: logs why, stops waiting, and gives retail's panel back open, remembering what it was given back for.</summary>
     private void GiveBack(string reason)
     {
-        _log(reason);
+        Note(reason);
         _awaiting = 0;
         _yielding = true;
         _yieldedFor = _selected;
