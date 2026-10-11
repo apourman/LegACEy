@@ -22,7 +22,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     IReadOnlyList<AppraisalSection> Sections, string Description)
 {
     // The server's property ids (ACE.Entity PropertyInt, PropertyString and PropertyDataId).
-    private const uint ItemTypeInt = 1, EncumbranceValInt = 5, ValueInt = 19, ItemWorkmanshipInt = 105;
+    private const uint ItemTypeInt = 1, EncumbranceValInt = 5, ValueInt = 19, WeaponSkillInt = 48, ItemWorkmanshipInt = 105;
     private const uint NameString = 1, UseString = 14, LongDescString = 16;
     private const uint IconDid = 8, IconOverlayDid = 50, IconUnderlayDid = 52;
 
@@ -75,11 +75,27 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     /// <summary>A portal id the response sent, or zero when it did not.</summary>
     private static uint Did(AppraisalResponse response, uint property) => response.Dids.TryGetValue(property, out var id) ? id : 0;
 
+    /// <summary>
+    /// The type line: the item's type, then its weapon skill when it has one ("Melee weapon · Heavy Weapons"). Skill names are ACE's
+    /// Skill.ToSentence (ACE.Entity/Enum/Skill.cs), indexed by the skill's id.
+    /// </summary>
     private static string TypeLineOf(AppraisalResponse response)
     {
-        if (!response.Ints.TryGetValue(ItemTypeInt, out var type)) return string.Empty;
-        return ItemTypeNames.FirstOrDefault(item => (type & item.Bit) != 0).Name ?? string.Empty;
+        var type = response.Ints.TryGetValue(ItemTypeInt, out var bits) ? ItemTypeNames.FirstOrDefault(item => (bits & item.Bit) != 0).Name : null;
+        var skill = response.Ints.TryGetValue(WeaponSkillInt, out var id) && id > 0 && id < SkillNames.Length ? SkillNames[id] : null;
+        return string.Join(" · ", new[] { type, skill }.Where(part => !string.IsNullOrEmpty(part)));
     }
+
+    private static readonly string[] SkillNames =
+    {
+        "None", "Axe", "Bow", "Crossbow", "Dagger", "Mace", "Melee Defense", "Missile Defense", "Sling", "Spear", "Staff", "Sword",
+        "Thrown Weapon", "Unarmed Combat", "Arcane Lore", "Magic Defense", "Mana Conversion", "Spellcraft", "Item Tinkering",
+        "Assess Person", "Deception", "Healing", "Jump", "Lockpick", "Run", "Awareness", "Arms And Armor Repair", "Assess Creature",
+        "Weapon Tinkering", "Armor Tinkering", "Magic Item Tinkering", "Creature Enchantment", "Item Enchantment", "Life Magic",
+        "War Magic", "Leadership", "Loyalty", "Fletching", "Alchemy", "Cooking", "Salvaging", "Two Handed Combat", "Gearcraft",
+        "Void Magic", "Heavy Weapons", "Light Weapons", "Finesse Weapons", "Missile Weapons", "Shield", "Dual Wield", "Recklessness",
+        "Sneak Attack", "Dirty Fighting", "Challenge", "Summoning"
+    };
 
     private static IEnumerable<AppraisalRow> TextRows(IReadOnlyDictionary<uint, string> strings, uint property) =>
         strings.TryGetValue(property, out var text) && text.Length > 0 ? new[] { new AppraisalRow(null, text) } : Array.Empty<AppraisalRow>();

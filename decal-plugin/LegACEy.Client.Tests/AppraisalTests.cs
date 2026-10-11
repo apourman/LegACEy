@@ -9,6 +9,7 @@ using LegACEy.Client.DecalPlugin;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.PanelHost;
+using LegACEy.Client.Themes;
 using Xunit;
 
 namespace LegACEy.Client.Tests;
@@ -92,13 +93,14 @@ public sealed class AppraisalTests
         Assert.Equal(0x06001F98u, response.Dids[8]);
         Assert.Equal(new uint[] { 0x1111, 0x2222 }, response.SpellBook);
         Assert.Equal(8f, response.Armor!.Lightning);
-        Assert.Equal((0x9u, 10u, 20u, (ushort)0x5, (ushort)0x6), (response.Creature!.Flags, response.Creature.Health, response.Creature.HealthMax,
-            response.Creature.AttributeHighlights, response.Creature.AttributeColors));
+        Assert.Equal((0x9u, 10u, 20u), (response.Creature!.Flags, response.Creature.Health, response.Creature.HealthMax));
         Assert.Equal(new uint[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }, response.Creature.Attributes);
+        Assert.Equal(new HighlightMask(0x5, 0x6), response.Creature.AttributeMask);
         Assert.Equal(new WeaponProfile(2, 3, 4, 5, 0.5, 1.25, 1.0, 2.0, 1.1, 6), response.Weapon);
         Assert.Equal(new HookProfile(1, 2, 3), response.Hook);
-        Assert.Equal(new ushort[] { 0x3, 0x1, 0x5, 0x4, 0x9, 0x8 },
-            new[] { response.ArmorHighlight, response.ArmorColor, response.WeaponHighlight, response.WeaponColor, response.ResistHighlight, response.ResistColor });
+        Assert.Equal(new HighlightMask(0x3, 0x1), response.ArmorMask);
+        Assert.Equal(new HighlightMask(0x5, 0x4), response.WeaponMask);
+        Assert.Equal(new HighlightMask(0x9, 0x8), response.ResistMask);
         Assert.Equal(new ArmorLevels(1, 2, 3, 4, 5, 6, 7, 8, 9), response.Levels);
     }
 
@@ -158,6 +160,92 @@ public sealed class AppraisalTests
         Assert.Equal(payload, GameChannelTransport.GameEventPayload(0xF7B0, raw, AppraisalResponse.IdentifyEvent));
         Assert.Null(GameChannelTransport.GameEventPayload(0xF7B0, raw, ChannelWire.GameEventType));
     }
+
+    [Fact]
+    public void A_payload_cut_short_or_with_a_negative_count_is_malformed_and_never_reads_past_its_end()
+    {
+        var potion = PotionMessage(Potion, 75);
+        Assert.Throws<EndOfStreamException>(() => AppraisalResponse.Read(potion.Take(potion.Length - 2).ToArray()));
+        // Flags name the spell book, which is a count of minus one.
+        Assert.Throws<InvalidDataException>(() => AppraisalResponse.Read(Words(Potion, 0x10, 1, 0xFFFFFFFF)));
+    }
+
+    [Fact]
+    public void A_weapon_type_line_names_its_skill_and_a_potion_names_none()
+    {
+        var weapon = AppraisalContent.From(AppraisalResponse.Read(new ServerAppraisal(0x80000A04)
+        {
+            Strings = { [1] = "Ivory Stick" }, Ints = { [1] = 0x1, [48] = 44 }
+        }.Build()));
+        Assert.Equal("Melee weapon · Heavy Weapons", weapon.TypeLine);
+
+        var potion = AppraisalContent.From(AppraisalResponse.Read(PotionMessage(Potion, 75)));
+        Assert.DoesNotContain("·", potion.TypeLine);
+    }
+
+    [Fact]
+    public void An_assess_replaced_by_another_does_not_open_the_window_for_the_first_item() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost();
+        var appraisals = new AppraisalFeature(host, _ => { });
+        appraisals.Request(Potion);
+        appraisals.Request(Gem);
+
+        appraisals.Receive(PotionMessage(Potion, 75));
+        Assert.Equal(0, host.Opened);
+
+        appraisals.Receive(PotionMessage(Gem, 300));
+        Assert.Equal(Gem, appraisals.Shown?.ObjectId);
+    });
+
+    [Fact]
+    public void An_assess_that_never_answers_does_not_open_the_window_for_a_silent_id_that_comes_later() => OnWindowThread(() =>
+    {
+        var now = 0L;
+        var host = new FakeAppraisalHost();
+        var appraisals = new AppraisalFeature(host, _ => { }, () => now);
+        appraisals.Request(Potion);
+
+        now = 60_000;
+        appraisals.Receive(PotionMessage(Potion, 75));
+
+        Assert.Equal(0, host.Opened);
+        Assert.Null(appraisals.Shown);
+    });
+
+    [Fact]
+    public void Another_appraisal_of_the_same_height_takes_over_the_open_window() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost();
+        var appraisals = new AppraisalFeature(host, _ => { });
+        appraisals.Request(Potion);
+        appraisals.Receive(PotionMessage(Potion, 75));
+        var first = host.LastWindow;
+
+        appraisals.Request(Gem);
+        appraisals.Receive(PotionMessage(Gem, 300));
+
+        Assert.Equal(1, host.Opened);
+        Assert.Same(first, host.LastWindow);
+        Assert.Equal("300", appraisals.Shown?.Figures[0].Value);
+    });
+
+    [Fact]
+    public void A_response_that_cannot_be_read_or_shown_is_logged_and_never_thrown() => OnWindowThread(() =>
+    {
+        var logged = new List<string>();
+        var host = new FakeAppraisalHost();
+        var appraisals = new AppraisalFeature(host, logged.Add);
+        appraisals.Request(Potion);
+
+        appraisals.Receive(new byte[] { 1, 0, 0 });
+        Assert.Single(logged);
+
+        host.FailOpen = true;
+        appraisals.Receive(PotionMessage(Potion, 75));
+        Assert.Equal(2, logged.Count);
+        Assert.Equal(0, host.Opened);
+    });
 
     /// <summary>
     /// Runs on the render thread with Avalonia started, since the window is measured for its height before it opens. The panel host starts
@@ -320,6 +408,10 @@ public sealed class AppraisalTests
 
         public int Opened { get; private set; }
         public int Open => _open.Count;
+        /// <summary>The content the last opened window was built with.</summary>
+        public DerethWindow? LastWindow { get; private set; }
+        /// <summary>When set, opening fails the way a broken window does.</summary>
+        public bool FailOpen { get; set; }
 
         public IServerChannel ServerChannel => UnavailableServerChannel.Instance;
         public string PortalPath => string.Empty;
@@ -331,7 +423,8 @@ public sealed class AppraisalTests
 
         public bool OpenWindow(WindowDefinition definition, Point location, Func<Action, Control> createContent, Action<Exception> failed, bool ownChrome)
         {
-            createContent(() => HideWindow(definition.Id));
+            if (FailOpen) throw new InvalidOperationException("The window broke while opening.");
+            LastWindow = (DerethWindow)createContent(() => HideWindow(definition.Id));
             _open.Add(definition.Id);
             Opened++;
             return true;

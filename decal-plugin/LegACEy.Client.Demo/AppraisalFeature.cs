@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
-using System.IO;
 using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.Demo;
@@ -18,18 +18,26 @@ public sealed class AppraisalFeature
 
     // The cache is for the current character only; logoff clears it, and it starts over when it grows past this many objects.
     private const int CacheLimit = 64;
+    // A request is answered by the server at once. One that has not been answered this long is stale, and its item's later
+    // response (a plugin's silent ID, say) does not open the window.
+    private const long RequestTimeoutMs = 10_000;
     private static readonly Point DefaultLocation = new(240, 100);
 
     private readonly ILegACEyPluginHost _host;
     private readonly Action<string> _log;
+    private readonly Func<long> _clock;
     private readonly Dictionary<uint, AppraisalResponse> _responses = new();
     private uint _requested;
+    private long _requestedAt;
     private uint _shownId;
+    private AppraisalWindow? _view;
 
-    public AppraisalFeature(ILegACEyPluginHost host, Action<string> log)
+    /// <param name="clock">The time in milliseconds, for timing requests out. Null uses the system's tick count.</param>
+    public AppraisalFeature(ILegACEyPluginHost host, Action<string> log, Func<long>? clock = null)
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _log = log ?? throw new ArgumentNullException(nameof(log));
+        _clock = clock ?? new Func<long>(() => Stopwatch.GetTimestamp() * 1000 / Stopwatch.Frequency);
     }
 
     /// <summary>What the window shows: the content of the last appraisal the window opened for, or null when it has opened for none.</summary>
@@ -38,29 +46,31 @@ public sealed class AppraisalFeature
     /// <summary>The last response for an object this session, or null when none has arrived.</summary>
     public AppraisalResponse? Response(uint objectId) => _responses.TryGetValue(objectId, out var response) ? response : null;
 
-    /// <summary>The player asked to appraise this item: its response opens the window.</summary>
-    public void Request(uint objectId) => _requested = objectId;
+    /// <summary>The player asked to appraise this item. A new request replaces the one still waiting.</summary>
+    public void Request(uint objectId)
+    {
+        _requested = objectId;
+        _requestedAt = _clock();
+    }
 
-    /// <summary>Takes one 0x00C9 payload: the object's id, then its appraisal. A payload that does not read is logged and ignored.</summary>
+    /// <summary>
+    /// Takes one 0x00C9 payload: the object's id, then its appraisal. The first response for the requested item opens the window and clears
+    /// the request. Nothing thrown while reading or showing it escapes: it is logged, and the client's other features carry on.
+    /// </summary>
     public void Receive(byte[] payload)
     {
-        AppraisalResponse response;
-        try { response = AppraisalResponse.Read(payload); }
-        catch (EndOfStreamException exception)
+        try
         {
-            _log($"Could not read an appraisal response: {exception.Message}");
-            return;
+            var response = AppraisalResponse.Read(payload);
+            if (_responses.Count >= CacheLimit) _responses.Clear();
+            _responses[response.ObjectId] = response;
+            var requested = response.ObjectId == _requested && _clock() - _requestedAt <= RequestTimeoutMs;
+            if (response.ObjectId == _requested) _requested = 0;
+            if (requested || (response.ObjectId == _shownId && _host.IsWindowOpen(WindowId))) Show(response);
         }
-        if (_responses.Count >= CacheLimit) _responses.Clear();
-        _responses[response.ObjectId] = response;
-        if (response.ObjectId == _requested)
+        catch (Exception exception)
         {
-            _requested = 0;
-            Show(response);
-        }
-        else if (response.ObjectId == _shownId && _host.IsWindowOpen(WindowId))
-        {
-            Show(response);
+            _log($"Could not show an appraisal: {exception.Message}");
         }
     }
 
@@ -71,23 +81,44 @@ public sealed class AppraisalFeature
         _requested = 0;
         _shownId = 0;
         Shown = null;
+        _view = null;
         _host.CloseWindow(WindowId);
     }
 
     private void Show(AppraisalResponse response)
     {
         var content = AppraisalContent.From(response);
-        var window = AppraisalWindow.Build(content, _host.Art, out var height);
-        // The window is as tall as its content, up to the limit. The client keeps a hidden window's size, so the window is released
-        // and opened again: its place is saved when it is released, so it reopens where it was.
-        _host.CloseWindow(WindowId);
-        var definition = new WindowDefinition(WindowId, "Appraisal", AppraisalWindow.Width, height, DerethWindow.TitleBarHeight, new DerethClientTheme());
-        var opened = _host.OpenWindow(definition, DefaultLocation, close =>
+        var art = _host.Art;
+        // One window serves the session: it takes the next appraisal in place while the content fits its height. A height change
+        // releases the window and builds a new one, because a window's size cannot change once it is open.
+        if (_view == null || !_view.TryShow(content, art))
         {
-            window.CloseRequested += (_, _) => close();
-            return window;
-        }, error => _log($"The appraisal window failed: {error.Message}"), ownChrome: true);
-        if (!opened) return;
+            _host.CloseWindow(WindowId);
+            _view = AppraisalWindow.Create(content, art);
+        }
+        var view = _view;
+        // An open window already shows the content. A hidden one comes back as it was, with the content just swapped in.
+        if (!_host.IsWindowOpen(WindowId))
+        {
+            var definition = new WindowDefinition(WindowId, "Appraisal", AppraisalWindow.Width, view.Height, DerethWindow.TitleBarHeight,
+                new DerethClientTheme());
+            var opened = _host.OpenWindow(definition, DefaultLocation, close =>
+            {
+                // The close box ends any request still waiting: the player has stopped looking at the window.
+                view.Close = () =>
+                {
+                    _requested = 0;
+                    close();
+                };
+                return view.Window;
+            }, error => _log($"The appraisal window failed: {error.Message}"), ownChrome: true);
+            // The window never opened, so the view is dropped: it was not handed to the client.
+            if (!opened)
+            {
+                _view = null;
+                return;
+            }
+        }
         _shownId = response.ObjectId;
         Shown = content;
     }

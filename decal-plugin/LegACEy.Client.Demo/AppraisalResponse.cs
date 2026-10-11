@@ -8,12 +8,15 @@ namespace LegACEy.Client.Demo;
 /// <summary>Armour protections by damage type, as the server's ArmorProfile writes them.</summary>
 public sealed record ArmorProfile(float Slashing, float Piercing, float Bludgeoning, float Cold, float Fire, float Acid, float Nether, float Lightning);
 
+/// <summary>A highlight and colour mask pair as the server sends it: which values a buff or debuff changed, and whether each went up (green) or down (red).</summary>
+public sealed record HighlightMask(ushort Highlight, ushort Color);
+
 /// <summary>
 /// The creature profile. <see cref="Attributes"/> are Strength, Endurance, Quickness, Coordination, Focus, Self, Stamina, Mana, maximum
-/// Stamina and maximum Mana, sent only when <see cref="Flags"/> has the attributes bit (0x8). The highlight masks are sent when the buff
-/// bit (0x1) is set, and are zero otherwise.
+/// Stamina and maximum Mana, sent only when <see cref="Flags"/> has the attributes bit (0x8). <see cref="AttributeMask"/> is sent when
+/// the buff bit (0x1) is set, and is null otherwise.
 /// </summary>
-public sealed record CreatureProfile(uint Flags, uint Health, uint HealthMax, IReadOnlyList<uint> Attributes, ushort AttributeHighlights, ushort AttributeColors);
+public sealed record CreatureProfile(uint Flags, uint Health, uint HealthMax, IReadOnlyList<uint> Attributes, HighlightMask? AttributeMask);
 
 /// <summary>The weapon profile: damage type and range, speed, skill, and the bonuses, all with the server's enchantments applied.</summary>
 public sealed record WeaponProfile(uint DamageType, uint WeaponTime, uint WeaponSkill, uint Damage, double DamageVariance, double DamageMod,
@@ -58,12 +61,9 @@ public sealed class AppraisalResponse
     public CreatureProfile? Creature { get; private set; }
     public WeaponProfile? Weapon { get; private set; }
     public HookProfile? Hook { get; private set; }
-    public ushort ArmorHighlight { get; private set; }
-    public ushort ArmorColor { get; private set; }
-    public ushort WeaponHighlight { get; private set; }
-    public ushort WeaponColor { get; private set; }
-    public ushort ResistHighlight { get; private set; }
-    public ushort ResistColor { get; private set; }
+    public HighlightMask? ArmorMask { get; private set; }
+    public HighlightMask? WeaponMask { get; private set; }
+    public HighlightMask? ResistMask { get; private set; }
     public ArmorLevels? Levels { get; private set; }
 
     /// <summary>Reads the payload of a 0x00C9 event: the object's id, then the appraisal. Throws <see cref="EndOfStreamException"/> when the payload is short.</summary>
@@ -89,9 +89,9 @@ public sealed class AppraisalResponse
         if (Has(flags, WeaponPart)) response.Weapon = new WeaponProfile(reader.ReadUInt32(), reader.ReadUInt32(), reader.ReadUInt32(), reader.ReadUInt32(),
             reader.ReadDouble(), reader.ReadDouble(), reader.ReadDouble(), reader.ReadDouble(), reader.ReadDouble(), reader.ReadUInt32());
         if (Has(flags, HookPart)) response.Hook = new HookProfile(reader.ReadUInt32(), reader.ReadUInt32(), reader.ReadUInt32());
-        if (Has(flags, ArmorEnchantment)) (response.ArmorHighlight, response.ArmorColor) = (reader.ReadUInt16(), reader.ReadUInt16());
-        if (Has(flags, WeaponEnchantment)) (response.WeaponHighlight, response.WeaponColor) = (reader.ReadUInt16(), reader.ReadUInt16());
-        if (Has(flags, ResistEnchantment)) (response.ResistHighlight, response.ResistColor) = (reader.ReadUInt16(), reader.ReadUInt16());
+        if (Has(flags, ArmorEnchantment)) response.ArmorMask = ReadMask(reader);
+        if (Has(flags, WeaponEnchantment)) response.WeaponMask = ReadMask(reader);
+        if (Has(flags, ResistEnchantment)) response.ResistMask = ReadMask(reader);
         if (Has(flags, ArmorLevelsPart)) response.Levels = new ArmorLevels(reader.ReadUInt32(), reader.ReadUInt32(), reader.ReadUInt32(),
             reader.ReadUInt32(), reader.ReadUInt32(), reader.ReadUInt32(), reader.ReadUInt32(), reader.ReadUInt32(), reader.ReadUInt32());
         return response;
@@ -120,22 +120,35 @@ public sealed class AppraisalResponse
     private static string ReadString16L(BinaryReader reader)
     {
         var length = reader.ReadUInt16();
-        var bytes = reader.ReadBytes(length);
+        var bytes = ReadExactly(reader, length);
         var chars = new char[bytes.Length];
         for (var i = 0; i < bytes.Length; i++) chars[i] = (char)bytes[i];
         var padding = (4 - (2 + length) % 4) % 4;
-        reader.ReadBytes(padding);
+        ReadExactly(reader, padding);
         return new string(chars);
     }
 
-    /// <summary>A 32-bit count, then each spell id.</summary>
+    /// <summary>The bytes asked for. A payload that ends early is malformed, as a short read of a number is.</summary>
+    private static byte[] ReadExactly(BinaryReader reader, int count)
+    {
+        var bytes = reader.ReadBytes(count);
+        if (bytes.Length < count) throw new EndOfStreamException($"The appraisal ends {count - bytes.Length} bytes early.");
+        return bytes;
+    }
+
+    /// <summary>A 32-bit count, then each spell id. A count that is negative or needs more bytes than the payload has is malformed.</summary>
     private static List<uint> ReadList(BinaryReader reader)
     {
         var count = reader.ReadInt32();
+        var remaining = reader.BaseStream.Length - reader.BaseStream.Position;
+        if (count < 0 || count > remaining / 4) throw new InvalidDataException($"The spell book count {count} does not fit the appraisal.");
         var list = new List<uint>(count);
         for (var i = 0; i < count; i++) list.Add(reader.ReadUInt32());
         return list;
     }
+
+    /// <summary>A highlight mask then a colour mask, each 16 bits.</summary>
+    private static HighlightMask ReadMask(BinaryReader reader) => new(reader.ReadUInt16(), reader.ReadUInt16());
 
     private static CreatureProfile ReadCreature(BinaryReader reader)
     {
@@ -145,9 +158,8 @@ public sealed class AppraisalResponse
         var attributes = new List<uint>();
         if ((flags & ShowAttributes) != 0)
             for (var i = 0; i < 10; i++) attributes.Add(reader.ReadUInt32());
-        var highlights = (flags & BuffsDebuffs) != 0 ? reader.ReadUInt16() : (ushort)0;
-        var colors = (flags & BuffsDebuffs) != 0 ? reader.ReadUInt16() : (ushort)0;
-        return new CreatureProfile(flags, health, healthMax, attributes, highlights, colors);
+        var mask = (flags & BuffsDebuffs) != 0 ? ReadMask(reader) : null;
+        return new CreatureProfile(flags, health, healthMax, attributes, mask);
     }
 
 }

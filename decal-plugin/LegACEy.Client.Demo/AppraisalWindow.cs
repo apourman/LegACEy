@@ -13,21 +13,64 @@ namespace LegACEy.Client.Demo;
 /// <summary>
 /// The appraisal window: a Dereth window whose header carries the item's icon and name, drawing an <see cref="AppraisalContent"/>. The
 /// summary, then the sections (each a gold heading over a rule), then the long description in italics under a rule. The body scrolls
-/// past <see cref="MaxHeight"/>.
+/// past <see cref="MaxHeight"/>. One instance serves the session: <see cref="TryShow"/> swaps in the next appraisal while it fits the
+/// height the window has.
 /// </summary>
-public static class AppraisalWindow
+public sealed class AppraisalWindow
 {
     public const int Width = 330;
     /// <summary>The tallest the window grows before its body scrolls.</summary>
     public const int MaxHeight = 520;
-    // The Dereth frame and header, the title rule and the body's bottom margin, around the body. A window measured before it is shown
-    // has no template yet, so the body is measured and this is added to it.
+    // The Dereth frame and header, the title rule and the body's bottom margin, around the body.
     private const int Chrome = DerethWindow.TitleBarHeight + 5 + 6 + 8;
     // The frame and the window's side margins, and the body's padding, around the text.
     private const int BodyInset = 40;
 
-    /// <summary>The window for the content, and the height it fits: its body's height plus the chrome, up to <see cref="MaxHeight"/>.</summary>
-    public static DerethWindow Build(AppraisalContent content, IGameArtSource? art, out int height)
+    private readonly DerethWindow _window;
+    private readonly ScrollViewer _scroll;
+
+    private AppraisalWindow(DerethWindow window, ScrollViewer scroll, int height)
+    {
+        _window = window;
+        _scroll = scroll;
+        Height = height;
+    }
+
+    public DerethWindow Window => _window;
+
+    /// <summary>The height the window was built at: its body's height plus the chrome, up to <see cref="MaxHeight"/>.</summary>
+    public int Height { get; }
+
+    /// <summary>Runs when the player closes the window with its close box.</summary>
+    public Action? Close { get; set; }
+
+    /// <summary>The window for an appraisal, at the height its content needs.</summary>
+    public static AppraisalWindow Create(AppraisalContent content, IGameArtSource? art)
+    {
+        var (body, height) = Layout(content);
+        var scroll = Scroll(body);
+        var window = new DerethWindow(content.Name, Icon(content.Visual, art), scroll);
+        var view = new AppraisalWindow(window, scroll, height);
+        window.CloseRequested += (_, _) => view.Close?.Invoke();
+        return view;
+    }
+
+    /// <summary>
+    /// Shows another appraisal in this window, when its content fits the height the window has. Returns false, with the window unchanged,
+    /// when it needs another height: the window's size cannot change once it is open.
+    /// </summary>
+    public bool TryShow(AppraisalContent content, IGameArtSource? art)
+    {
+        var (body, height) = Layout(content);
+        if (height != Height) return false;
+        _window.Title = content.Name;
+        _window.SetIcon(Icon(content.Visual, art));
+        _scroll.Content = body;
+        return true;
+    }
+
+    /// <summary>The body for the content, and the height the window needs to show all of it.</summary>
+    private static (Control Body, int Height) Layout(AppraisalContent content)
     {
         var body = new StackPanel { Margin = new Thickness(10, 6, 10, 6), Spacing = 2 };
         if (content.TypeLine.Length > 0) body.Children.Add(Text(content.TypeLine, DerethPalette.CreamBrush, 14));
@@ -46,16 +89,17 @@ public static class AppraisalWindow
                 TextWrapping = TextWrapping.Wrap
             });
         }
+        // A window measured before it is shown has no template yet, so the body is measured and the chrome added to it.
         body.Measure(new Size(Width - BodyInset, double.PositiveInfinity));
-        height = Math.Min(MaxHeight, Chrome + (int)Math.Ceiling(body.DesiredSize.Height));
-        var scroll = new ScrollViewer
-        {
-            Content = body,
-            HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
-            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
-        };
-        return new DerethWindow(content.Name, Icon(content.Visual, art), scroll);
+        return (body, Math.Min(MaxHeight, Chrome + (int)Math.Ceiling(body.DesiredSize.Height)));
     }
+
+    private static ScrollViewer Scroll(Control body) => new()
+    {
+        Content = body,
+        HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+        VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
+    };
 
     private static Control? Icon(ItemVisual? visual, IGameArtSource? art)
     {
