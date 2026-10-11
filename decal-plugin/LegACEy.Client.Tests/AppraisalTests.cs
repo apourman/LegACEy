@@ -779,6 +779,46 @@ public sealed class AppraisalTests
     });
 
     [Fact]
+    public void A_refresh_of_the_same_item_makes_escape_restore_its_new_saved_text() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost();
+        var game = new FakeAppraisalGame();
+        var appraisals = new AppraisalFeature(host, _ => { }, game: game);
+        appraisals.Request(Potion);
+        appraisals.Receive(InscribedPotion(Potion, "Old", "Aerbax", inscribable: true));
+        var field = InscriptionField(host);
+        field.Text = "Typed";
+        appraisals.Receive(InscribedPotion(Potion, "Saved elsewhere", "Aerbax", inscribable: true));
+
+        Press(field, Key.Escape);
+
+        Assert.Equal("Saved elsewhere", field.Text);
+        Assert.Empty(game.Inscriptions);
+    });
+
+    [Fact]
+    public void A_refresh_of_another_item_replaces_the_unsaved_field_and_sends_nothing_for_the_first_item() => OnWindowThread(() =>
+    {
+        const uint OtherPotion = 0x80000B21;
+        var host = new FakeAppraisalHost();
+        var game = new FakeAppraisalGame();
+        var appraisals = new AppraisalFeature(host, _ => { }, game: game);
+        appraisals.Request(Potion);
+        appraisals.Receive(InscribedPotion(Potion, "Old", "Aerbax", inscribable: true));
+        var first = InscriptionField(host);
+        first.Text = "Typed for the first item";
+
+        appraisals.Request(OtherPotion);
+        appraisals.Receive(InscribedPotion(OtherPotion, "Saved for the second", "Aerbax", inscribable: true));
+
+        Assert.Equal(OtherPotion, appraisals.Shown?.ObjectId);
+        Assert.Equal("Saved for the second", InscriptionField(host).Text);
+        // The replaced field no longer saves: leaving it sends nothing, least of all the first item's text.
+        Leave(first);
+        Assert.Empty(game.Inscriptions);
+    });
+
+    [Fact]
     public void A_window_the_client_released_is_built_again_for_the_next_appraisal() => OnWindowThread(() =>
     {
         var host = new FakeAppraisalHost();
@@ -931,24 +971,85 @@ public sealed class AppraisalTests
     });
 
     [Fact]
-    public void A_panel_parked_before_our_window_could_show_is_given_back_when_the_selection_is_gone() => OnWindowThread(() =>
+    public void A_panel_is_left_to_retail_while_our_window_cannot_show_yet_and_is_not_parked_out_of_sight() => OnWindowThread(() =>
     {
         var host = new FakeAppraisalHost();
-        var appraisals = new AppraisalFeature(host, _ => { }, game: new FakeAppraisalGame());
+        var game = new FakeAppraisalGame();
+        var appraisals = new AppraisalFeature(host, _ => { }, game: game);
         uint selected = Potion;
         var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
         using var examination = new RetailExaminationTakeover(panel, () => selected, appraisals, _ => { });
+
         examination.Tick(enabled: true, canShow: false);
-        Assert.Equal(RetailPanelTakeover.Parked, panel.Location);
+
+        // Portal space: nothing is parked, nothing is asked for, and retail's panel stays where it is.
+        Assert.Equal(new Point(1200, 300), panel.Location);
+        Assert.True(panel.Open);
+        Assert.Empty(game.Appraised);
+        Assert.Equal(0, host.Opened);
 
         selected = 0;
         examination.Tick(enabled: true);
-
-        // Nothing to examine when the panel is reported, so retail's panel is not left parked out of sight.
         Assert.Equal(new Point(1200, 300), panel.Location);
         Assert.True(panel.Open);
         Assert.Equal(0, panel.CloseCalls);
         Assert.Equal(0, host.Opened);
+    });
+
+    [Fact]
+    public void A_yielded_panel_is_taken_over_again_when_the_player_selects_another_object() => OnWindowThread(() =>
+    {
+        const uint OtherPotion = 0x80000B55;
+        long now = 0;
+        var host = new FakeAppraisalHost();
+        var game = new FakeAppraisalGame();
+        var appraisals = new AppraisalFeature(host, _ => { }, clock: () => now, game: game);
+        uint selected = Potion;
+        var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
+        using var examination = new RetailExaminationTakeover(panel, () => selected, appraisals, _ => { });
+        examination.Tick(enabled: true);
+        now = 10_001;
+        examination.Tick(enabled: true);
+        Assert.Equal(new Point(1200, 300), panel.Location);
+
+        // Retail's panel is left as retail shows it while the selection stays.
+        examination.Tick(enabled: true);
+        Assert.Equal(new Point(1200, 300), panel.Location);
+        Assert.Equal(0, panel.CloseCalls);
+
+        // Another object selected: it is examined afresh, so retail's panel is parked and our window waits for it.
+        selected = OtherPotion;
+        examination.Tick(enabled: true);
+        Assert.Equal(RetailPanelTakeover.Parked, panel.Location);
+        Assert.Equal(new[] { Potion, OtherPotion }, game.Appraised);
+        appraisals.Receive(PotionMessage(OtherPotion, 75));
+        examination.Tick(enabled: true);
+        Assert.Equal(1, host.Opened);
+        Assert.Equal(OtherPotion, appraisals.Shown?.ObjectId);
+        Assert.Equal(1, panel.CloseCalls);
+    });
+
+    [Fact]
+    public void An_exception_while_the_examination_waits_gives_retails_panel_back_and_is_logged() => OnWindowThread(() =>
+    {
+        var clockFails = false;
+        var logged = new List<string>();
+        var host = new FakeAppraisalHost();
+        var appraisals = new AppraisalFeature(host, logged.Add,
+            clock: () => clockFails ? throw new InvalidOperationException("The clock failed.") : 0, game: new FakeAppraisalGame());
+        var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
+        using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals, logged.Add);
+        examination.Tick(enabled: true);
+        Assert.Equal(RetailPanelTakeover.Parked, panel.Location);
+
+        // The clock fails while the response is awaited: nothing escapes the takeover, and retail's panel comes back.
+        clockFails = true;
+        examination.Tick(enabled: true);
+
+        Assert.Equal(new Point(1200, 300), panel.Location);
+        Assert.True(panel.Open);
+        Assert.Equal(0, panel.CloseCalls);
+        Assert.Contains(logged, line => line.Contains("given back", StringComparison.Ordinal));
     });
 
     [Fact]

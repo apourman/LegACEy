@@ -34,15 +34,17 @@ public sealed class AppraisalWindow
     private readonly DerethWindow _window;
     private readonly ScrollViewer _scroll;
     private readonly ContentControl _foot;
-    // Whether the field in the foot holds text the player has not saved yet. While it does, the foot is not swapped.
-    private Func<bool> _unsaved;
+    // The inscription field in the foot, and the item it writes for. Null when the foot holds no field.
+    private InscriptionField? _field;
+    private uint _footObject;
 
-    private AppraisalWindow(DerethWindow window, ScrollViewer scroll, ContentControl foot, int height, Func<bool> unsaved)
+    private AppraisalWindow(DerethWindow window, ScrollViewer scroll, ContentControl foot, int height, InscriptionField? field, uint footObject)
     {
         _window = window;
         _scroll = scroll;
         _foot = foot;
-        _unsaved = unsaved;
+        _field = field;
+        _footObject = footObject;
         Height = height;
     }
 
@@ -64,15 +66,16 @@ public sealed class AppraisalWindow
         var scroll = Scroll(layout.Body);
         var foot = new ContentControl { Content = layout.Foot };
         var window = new DerethWindow(content.Name, Icon(content.Visual, art), Frame(scroll, foot));
-        var view = new AppraisalWindow(window, scroll, foot, layout.Height, layout.Unsaved);
+        var view = new AppraisalWindow(window, scroll, foot, layout.Height, layout.Field, content.ObjectId);
         window.CloseRequested += (_, _) => view.Close?.Invoke();
         return view;
     }
 
     /// <summary>
     /// Shows another appraisal in this window, when its content fits the height the window has. Returns false, with the window unchanged,
-    /// when it needs another height: the window's size cannot change once it is open. The inscription field is not replaced while it holds
-    /// text the player has not saved (a refresh would drop it): the foot keeps the field until the text is saved.
+    /// when it needs another height: the window's size cannot change once it is open. The inscription field with unsaved text is kept only
+    /// for the same item, and then it takes the refreshed saved text (Escape restores that). Another item's appraisal replaces the field: the
+    /// typed text is dropped, unsent.
     /// </summary>
     public bool TryShow(AppraisalContent content, IGameArtSource? art, Func<uint, string, bool> inscribe)
     {
@@ -81,19 +84,23 @@ public sealed class AppraisalWindow
         _window.Title = content.Name;
         _window.SetIcon(Icon(content.Visual, art));
         _scroll.Content = layout.Body;
-        if (!_unsaved())
+        if (_field is { Unsaved: true } kept && layout.Field != null && content.ObjectId == _footObject)
         {
-            _foot.Content = layout.Foot;
-            _unsaved = layout.Unsaved;
+            kept.Rebase(content.Inscription?.Text ?? string.Empty);
+            return true;
         }
+        _field?.Detach();
+        _foot.Content = layout.Foot;
+        _field = layout.Field;
+        _footObject = content.ObjectId;
         return true;
     }
 
-    /// <summary>
-    /// The body and the inscription for the content, the height the window needs to show all of it, and whether the inscription field holds
-    /// unsaved text.
-    /// </summary>
-    private static (Control Body, Control? Foot, int Height, Func<bool> Unsaved) Layout(AppraisalContent content, Func<uint, string, bool> inscribe)
+    /// <summary>The window is replaced by a new one: its inscription field no longer saves what is typed in it.</summary>
+    public void Retire() => _field?.Detach();
+
+    /// <summary>The body and the inscription for the content, and the height the window needs to show all of it.</summary>
+    private static (Control Body, Control? Foot, int Height, InscriptionField? Field) Layout(AppraisalContent content, Func<uint, string, bool> inscribe)
     {
         var body = new StackPanel { Margin = new Thickness(10, 6, 10, 6), Spacing = 2 };
         if (content.TypeLine.Length > 0) body.Children.Add(Text(content.TypeLine, DerethPalette.CreamBrush, 14));
@@ -113,13 +120,13 @@ public sealed class AppraisalWindow
                 TextWrapping = TextWrapping.Wrap
             });
         }
-        Func<bool> unsaved = () => false;
-        var foot = content.Inscription is { } inscription ? Inscription(inscription, content.ObjectId, inscribe, out unsaved) : null;
+        InscriptionField? field = null;
+        var foot = content.Inscription is { } inscription ? Inscription(inscription, content.ObjectId, inscribe, out field) : null;
         // A window measured before it is shown has no template yet, so the parts are measured and the chrome added to them.
         body.Measure(new Size(Width - BodyInset, double.PositiveInfinity));
         foot?.Measure(new Size(Width - BodyInset, double.PositiveInfinity));
         var needed = Chrome + (int)Math.Ceiling(body.DesiredSize.Height) + (foot == null ? 0 : (int)Math.Ceiling(foot.DesiredSize.Height));
-        return (body, foot, Math.Min(MaxHeight, needed), unsaved);
+        return (body, foot, Math.Min(MaxHeight, needed), field);
     }
 
     /// <summary>The frame's content: the scrolling body, and the inscription pinned under it.</summary>
@@ -264,10 +271,14 @@ public sealed class AppraisalWindow
     /// The inscription at the foot: an editable field the character writes in, or the text and its scribe read only. A read-only item that
     /// nobody inscribed says so.
     /// </summary>
-    private static Control Inscription(AppraisalInscription inscription, uint itemId, Func<uint, string, bool> inscribe, out Func<bool> unsaved)
+    private static Control Inscription(AppraisalInscription inscription, uint itemId, Func<uint, string, bool> inscribe, out InscriptionField? field)
     {
-        if (inscription.Mode == InscriptionMode.Editable) return Editable(inscription.Text, text => inscribe(itemId, text), out unsaved);
-        unsaved = () => false;
+        if (inscription.Mode == InscriptionMode.Editable)
+        {
+            field = new InscriptionField(inscription.Text, text => inscribe(itemId, text));
+            return field.Panel;
+        }
+        field = null;
         var panel = new StackPanel { Margin = new Thickness(10, 6, 10, 6), Spacing = 2 };
         panel.Children.Add(new TextBlock
         {
@@ -281,35 +292,61 @@ public sealed class AppraisalWindow
     /// <summary>
     /// The field the character writes in. Enter saves, and so does leaving it with changed text. Only the appraisal's text counts as saved:
     /// a send is remembered only so that leaving the field after Enter does not send the same text again, and the refreshed appraisal
-    /// (the response to the silent ID) brings the field its new saved text. Escape puts back the saved text. A save that the game does not
-    /// send keeps the typed text, so the next Enter tries again. Empty text erases the inscription. The placeholder shows while it is empty.
-    /// <paramref name="unsaved"/> tells whether the field holds text that is not saved or sent yet.
+    /// (the response to the silent ID) brings the field its new saved text, through <see cref="Rebase"/>. Escape puts back the saved text. A
+    /// save that the game does not send keeps the typed text, so the next Enter tries again. Empty text erases the inscription. The
+    /// placeholder shows while it is empty. Once the window has replaced the field (<see cref="Detach"/>), it no longer saves.
     /// </summary>
-    private static Control Editable(string saved, Func<string, bool> save, out Func<bool> unsaved)
+    private sealed class InscriptionField
     {
-        string? sent = null;
-        var input = new TextBox
+        private readonly TextBox _input;
+        private readonly Func<string, bool> _save;
+        private string _saved;
+        private string? _sent;
+        private bool _detached;
+
+        public InscriptionField(string saved, Func<string, bool> save)
         {
-            Text = saved, Watermark = "Inscribe here", MaxLength = AppraisalInscription.MaxLength, FontFamily = DerethPalette.Body,
-            FontSize = 12, Foreground = DerethPalette.TextBrush, CaretBrush = DerethPalette.GoldBrush, Background = DerethPalette.GrooveBrush,
-            BorderBrush = DerethPalette.GrooveEdgeBrush,
-        };
-        void Save()
-        {
-            var text = input.Text ?? string.Empty;
-            if (text == (sent ?? saved)) return;
-            if (save(text)) sent = text;
+            _saved = saved;
+            _save = save;
+            _input = new TextBox
+            {
+                Text = saved, Watermark = "Inscribe here", MaxLength = AppraisalInscription.MaxLength, FontFamily = DerethPalette.Body,
+                FontSize = 12, Foreground = DerethPalette.TextBrush, CaretBrush = DerethPalette.GoldBrush, Background = DerethPalette.GrooveBrush,
+                BorderBrush = DerethPalette.GrooveEdgeBrush,
+            };
+            _input.KeyDown += (_, e) =>
+            {
+                if (e.Key == Key.Enter) { Save(); e.Handled = true; }
+                else if (e.Key == Key.Escape) { _input.Text = _saved; _sent = null; e.Handled = true; }
+            };
+            _input.LostFocus += (_, _) => Save();
+            var panel = new StackPanel { Margin = new Thickness(10, 6, 10, 6), Spacing = 2, Children = { _input } };
+            panel.Children.Add(Text("Enter saves · Esc cancels", DerethPalette.MutedBrush, 11));
+            Panel = panel;
         }
-        input.KeyDown += (_, e) =>
+
+        public Control Panel { get; }
+
+        /// <summary>Whether the field holds text that is not saved or sent yet.</summary>
+        public bool Unsaved => (_input.Text ?? string.Empty) != (_sent ?? _saved);
+
+        /// <summary>A refreshed appraisal of the same item: its saved text is the new one. The typed text stays in the field.</summary>
+        public void Rebase(string saved)
         {
-            if (e.Key == Key.Enter) { Save(); e.Handled = true; }
-            else if (e.Key == Key.Escape) { input.Text = saved; sent = null; e.Handled = true; }
-        };
-        input.LostFocus += (_, _) => Save();
-        unsaved = () => (input.Text ?? string.Empty) != (sent ?? saved);
-        var panel = new StackPanel { Margin = new Thickness(10, 6, 10, 6), Spacing = 2, Children = { input } };
-        panel.Children.Add(Text("Enter saves · Esc cancels", DerethPalette.MutedBrush, 11));
-        return panel;
+            _saved = saved;
+            _sent = null;
+        }
+
+        /// <summary>The window replaced the field: nothing typed in it is saved from now on, so the field sends nothing.</summary>
+        public void Detach() => _detached = true;
+
+        private void Save()
+        {
+            if (_detached) return;
+            var text = _input.Text ?? string.Empty;
+            if (text == (_sent ?? _saved)) return;
+            if (_save(text)) _sent = text;
+        }
     }
 
     /// <summary>Raised values are the theme's green, lowered ones its red (the invalid colour), and the rest the text colour.</summary>

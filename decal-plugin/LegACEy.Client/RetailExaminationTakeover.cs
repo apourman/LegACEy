@@ -8,8 +8,9 @@ namespace LegACEy.Client.DecalPlugin;
 /// E key on any selection, or any other way retail opens it), the current selection is handed to the appraisal window. When the window
 /// shows it, the panel is closed again so that the next examination is a new show. While the window waits for the object's response, the
 /// panel stays parked (hidden). If the window cannot show it, or no response arrives within the request timeout, retail's panel is given
-/// back, so examining always shows something. With no selection to examine, the panel is left to retail. Call <see cref="Tick"/> on the
-/// game thread once a frame.
+/// back, so examining always shows something. Given back, retail's panel stays as retail shows it until retail closes it, or until the
+/// player selects another object or asks for a new appraisal, which takes it over again. With no selection to examine, or while our window
+/// cannot show (portal space at login), the panel is left to retail. Call <see cref="Tick"/> on the game thread once a frame.
 /// </summary>
 internal sealed class RetailExaminationTakeover : IDisposable
 {
@@ -20,6 +21,10 @@ internal sealed class RetailExaminationTakeover : IDisposable
     private uint _selected;
     // The object whose response the window is waiting for, while retail's panel is parked (hidden) for it. Zero when none.
     private uint _awaiting;
+    // Retail's panel is given back: for the object selected then, and at the appraisal request count then.
+    private bool _yielding;
+    private uint _yieldedFor;
+    private int _yieldedRequests;
     private bool _selectionFailed;
     private bool _closeAfterShow;
 
@@ -36,27 +41,57 @@ internal sealed class RetailExaminationTakeover : IDisposable
     /// <summary>Ticks the panel takeover; <paramref name="enabled"/> false gives the panel back, as the inventory takeover does.</summary>
     public void Tick(bool enabled, bool canShow = true)
     {
-        // The selection is read first, so that the panel shown this frame is judged by the object it is for. An empty selection is no
-        // examination: the panel is not parked, unless it is already held for an object.
-        if (enabled) _selected = ReadSelection();
-        if (!enabled) _awaiting = 0;
-        else if (_awaiting != 0) Resolve();
-        _panel.Tick(enabled && (_selected != 0 || _panel.Holds), canShow);
-        // The close comes after the takeover has parked the panel and reported it, so it is a second step, not a reentrant call.
-        if (!_closeAfterShow) return;
-        _closeAfterShow = false;
-        _panel.Close();
+        try
+        {
+            TickCore(enabled, canShow);
+        }
+        catch (Exception exception)
+        {
+            GiveBack($"Retail's examination panel is given back: {exception.Message}");
+        }
     }
 
     /// <summary>Logoff or unload: gives the panel back and forgets the session.</summary>
     public void EndSession()
     {
         _awaiting = 0;
+        _yielding = false;
         _closeAfterShow = false;
         _panel.EndSession();
     }
 
     public void Dispose() => _panel.Dispose();
+
+    private void TickCore(bool enabled, bool canShow)
+    {
+        // The selection is read first, so that the panel shown this frame is judged by the object it is for. An empty selection is no
+        // examination: the panel is not parked, unless it is already held for an object.
+        if (enabled) _selected = ReadSelection();
+        // Our window can only show with the character in the world. Until then the panel is left to retail, and nothing waits for it.
+        var live = enabled && canShow;
+        if (!live)
+        {
+            _awaiting = 0;
+            _yielding = false;
+            _closeAfterShow = false;
+        }
+        else
+        {
+            // A yield ends when retail closes the panel, or when the player moves on to another object or asks for a new appraisal.
+            if (_yielding && !_panel.Yielded) _yielding = false;
+            if (_awaiting != 0) Resolve();
+            if (_yielding && _selected != 0 && (_selected != _yieldedFor || _appraisals.Requests != _yieldedRequests))
+            {
+                _yielding = false;
+                _panel.Reclaim();
+            }
+        }
+        _panel.Tick(live && (_selected != 0 || _panel.Holds || _yielding));
+        // The close comes after the takeover has parked the panel and reported it, so it is a second step, not a reentrant call.
+        if (!_closeAfterShow) return;
+        _closeAfterShow = false;
+        _panel.Close();
+    }
 
     private uint ReadSelection()
     {
@@ -84,8 +119,7 @@ internal sealed class RetailExaminationTakeover : IDisposable
                 _closeAfterShow = true;
                 return;
             default:
-                _log("Retail's examination panel is given back: no response for the object came in time, or the window did not show it.");
-                GiveBack();
+                GiveBack("Retail's examination panel is given back: no response for the object came in time, or the window did not show it.");
                 return;
         }
     }
@@ -93,10 +127,9 @@ internal sealed class RetailExaminationTakeover : IDisposable
     private void OnOpenChanged(bool open)
     {
         if (!open) return;
-        // With no object to examine there is nothing for our window to show, so retail's panel is given back.
         if (_selected == 0)
         {
-            GiveBack();
+            GiveBack("Retail's examination panel is given back: nothing is selected to examine.");
             return;
         }
         try
@@ -110,22 +143,24 @@ internal sealed class RetailExaminationTakeover : IDisposable
                     _awaiting = _selected;
                     break;
                 default:
-                    _log("Retail's examination panel is given back: the appraisal window could not show the object.");
-                    GiveBack();
+                    GiveBack("Retail's examination panel is given back: the appraisal window could not show the object.");
                     break;
             }
         }
         catch (Exception exception)
         {
-            _log($"Could not show the examined object: {exception.Message}");
-            GiveBack();
+            GiveBack($"Retail's examination panel is given back: {exception.Message}");
         }
     }
 
-    /// <summary>Gives retail its panel back, open, and stops waiting for the object's response.</summary>
-    private void GiveBack()
+    /// <summary>The one failure path: logs why, stops waiting, and gives retail's panel back open, remembering what it was given back for.</summary>
+    private void GiveBack(string reason)
     {
+        _log(reason);
         _awaiting = 0;
+        _yielding = true;
+        _yieldedFor = _selected;
+        _yieldedRequests = _appraisals.Requests;
         _panel.Yield();
     }
 }
