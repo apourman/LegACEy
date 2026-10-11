@@ -216,7 +216,8 @@ public sealed class AppraisalTests
         var bytes = new ServerAppraisal(0x80000B01)
         {
             Strings = { [1] = "Drudge Ravener" },
-            Ints = { [25] = 80, [2] = 7 },
+            // A heritage on a creature (ACE's Creature.GenerateNewFace sets one from its weenie) does not make it a character.
+            Ints = { [25] = 80, [2] = 7, [188] = 1 },
             Creature = new CreatureWrite(1240, 1240, new uint[] { 290, 260, 190, 240, 150, 140, 760, 320, 980, 320 }, 0x5, 0x1),
         }.Build();
         var names = new CharacterNames(new Dictionary<uint, string> { [7] = "Drudge" }, new Dictionary<uint, string>());
@@ -253,7 +254,7 @@ public sealed class AppraisalTests
         var bytes = new ServerAppraisal(0x50000C01)
         {
             Strings = { [1] = "Big Dog", [21] = "Ronin Kael", [35] = "Ilsa of Yaraq", [10] = "Lightning" },
-            Ints = { [25] = 126, [188] = 1, [113] = 1, [261] = 5, [30] = 4, [2] = 1 },
+            Ints = { [25] = 126, [188] = 1, [113] = 1, [261] = 5, [30] = 4, [35] = 12, [125] = 3700, [2] = 1 },
             Creature = new CreatureWrite(412, 455, new uint[] { 200, 100, 100, 100, 60, 100, 380, 510, 380, 510 }, 0x1, 0x1),
         }.Build();
         var names = new CharacterNames(new Dictionary<uint, string>(), new Dictionary<uint, string> { [5] = "Vanquisher of the Olthoi" });
@@ -262,19 +263,39 @@ public sealed class AppraisalTests
 
         Assert.Equal("Level 126 · Aluvian Male", content.TypeLine);
         Assert.Equal("Vanquisher of the Olthoi", content.Subtitle);
-        Assert.Equal(new[] { "Allegiance", "Vitals", "Attributes" }, content.Sections.Select(section => section.Heading));
+        Assert.Equal(new[] { "Allegiance", "Vitals", "Attributes", "Character" }, content.Sections.Select(section => section.Heading));
         Assert.Equal(new[]
         {
             ("Monarch", "Ronin Kael"),
             ("Patron", "Ilsa of Yaraq"),
             ("Rank", "4"),
+            ("Followers", "12"),
             ("Fellowship", "Lightning"),
         }, content.Sections[0].Rows.Select(row => (row.Label!, row.Text)));
+        Assert.Equal(new[] { ("Time in Dereth", "1h 1m 40s"), ("* = Unenchantable", string.Empty) },
+            content.Sections[3].Rows.Select(row => (row.Label!, row.Text)));
         Assert.Equal(new[] { ("412 / 455", AppraisalTone.Normal), ("380 / 380", AppraisalTone.Normal), ("510 / 510", AppraisalTone.Normal) },
             content.Sections[1].Rows.Cast<AppraisalMeterRow>().Select(meter => (meter.Text, meter.Tone)));
         Assert.Equal(AppraisalTone.Raised, content.Sections[2].Rows[0].Tone);
         Assert.Equal(new[] { "Strength", "Endurance", "Coordination", "Quickness", "Focus", "Self" },
             content.Sections[2].Rows.Select(row => row.Label!));
+    }
+
+    [Fact]
+    public void A_character_with_no_named_monarch_shows_its_followers_and_its_society_with_the_rank_word()
+    {
+        // The template name marks a character (the server sends it for every player); the Celestial Hand bit with rank 150 is an Adept.
+        var bytes = new ServerAppraisal(0x50000C03)
+        {
+            Strings = { [1] = "Lord Two", [5] = "Adventurer" },
+            Ints = { [25] = 20, [188] = 2, [113] = 2, [30] = 1, [35] = 1, [281] = 1, [287] = 150 },
+            Creature = new CreatureWrite(100, 100, null, 0, 0),
+        }.Build();
+
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells);
+
+        Assert.Equal(new[] { ("Society", "Celestial Hand ~ Adept"), ("Alleg. Monarch", "1 Follower"), ("Rank", "1") },
+            content.Sections[0].Rows.Select(row => (row.Label!, row.Text)));
     }
 
     [Fact]
@@ -289,11 +310,13 @@ public sealed class AppraisalTests
 
         var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells);
 
-        var vitals = Assert.Single(content.Sections);
-        Assert.Equal("Vitals", vitals.Heading);
-        var health = Assert.Single(vitals.Rows);
-        Assert.IsNotType<AppraisalMeterRow>(health);
-        Assert.Equal(("Health", "91 %"), (health.Label, health.Text));
+        Assert.Equal(new[] { "Vitals", "Attributes" }, content.Sections.Select(section => section.Heading));
+        var vitals = content.Sections[0].Rows;
+        Assert.Equal(new[] { ("Health", "91 %"), ("Stamina", "???"), ("Mana", "???") }, vitals.Select(row => (row.Label!, row.Text)));
+        Assert.IsNotType<AppraisalMeterRow>(vitals[0]);
+        Assert.Equal(new[] { "Strength", "Endurance", "Coordination", "Quickness", "Focus", "Self" },
+            content.Sections[1].Rows.Select(row => row.Label!));
+        Assert.All(content.Sections[1].Rows, row => Assert.Equal("???", row.Text));
     }
 
     [Fact]

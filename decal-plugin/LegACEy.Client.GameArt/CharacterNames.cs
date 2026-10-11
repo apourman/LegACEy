@@ -10,11 +10,14 @@ namespace LegACEy.Client.GameArt;
 /// </summary>
 public sealed class CharacterNames
 {
-    /// <summary>The creature type enum mapper in the portal DAT.</summary>
+    /// <summary>
+    /// The creature type enum mapper in the portal DAT. OpenAC names creature types from it (CreatureDisplayNameResolver.MapperDid, MIT), and
+    /// the installed portal DAT agrees with ACE's CreatureType values: 1 Olthoi, 2 Banderling, 3 Drudge, 7 Mite, 10 Rat.
+    /// </summary>
     public const uint CreatureTypeMapper = 0x2200000E;
-    /// <summary>The character title enum mapper in the portal DAT.</summary>
+    /// <summary>The character title enum mapper in the portal DAT (ACE: Player_Character.EnumMapper_CharacterTitle_FileID).</summary>
     public const uint TitleMapper = 0x22000041;
-    /// <summary>The character title strings in the English language DAT (client_local_English.dat).</summary>
+    /// <summary>The character title strings in the English language DAT (client_local_English.dat), ACE's StringTable.CharacterTitle_FileID.</summary>
     public const uint TitleStringTable = 0x2300000E;
 
     public static readonly CharacterNames None = new(new Dictionary<uint, string>(), new Dictionary<uint, string>());
@@ -32,16 +35,17 @@ public sealed class CharacterNames
     public IReadOnlyDictionary<uint, string> Titles { get; }
 
     /// <summary>
-    /// Adds an enum mapper's names to <paramref name="names"/> (a name already there is kept) and returns its base mapper's id, or zero. The
-    /// mapper is the id, its base id, a numbering byte, then a compressed count of (key, one-byte-length string) pairs.
+    /// Adds an enum mapper's names to <paramref name="names"/> (a name already there is kept). The mapper is its own id, its base mapper's
+    /// id (not followed: the creature and title mappers hold their names themselves), a numbering byte, then a compressed count of
+    /// (key, one-byte-length string) pairs. Read as ACE.DatLoader's EnumMapper reads it.
     /// </summary>
-    public static uint ParseEnumMapper(byte[] file, IDictionary<uint, string> names)
+    public static void ParseEnumMapper(byte[] file, IDictionary<uint, string> names)
     {
         using var reader = new BinaryReader(new MemoryStream(file));
         reader.ReadUInt32(); // the mapper's own id
-        var baseId = reader.ReadUInt32();
+        reader.ReadUInt32(); // the base mapper's id
         reader.ReadByte(); // the numbering type
-        var count = ReadCompressed(reader);
+        var count = DatModels.ReadCompressed(reader);
         for (var i = 0; i < count; i++)
         {
             var key = reader.ReadUInt32();
@@ -50,12 +54,12 @@ public sealed class CharacterNames
             if (bytes.Length < length) throw new EndOfStreamException("The enum mapper ends inside a name.");
             if (!names.ContainsKey(key)) names[key] = Latin1(bytes);
         }
-        return baseId;
     }
 
     /// <summary>
-    /// The string table's first string by the hash of its key. Each entry is a key, the variable names and variables (each a 16-bit or
-    /// 32-bit count of unicode strings), the strings, then comments that are skipped.
+    /// The string table's first string by the hash of its key. Each entry is its key, the variable names and variables (each a 16-bit count
+    /// of unicode strings), the strings (a 32-bit count), then comments (a 32-bit count of 32-bit values), then a byte. Read as ACE.DatLoader's
+    /// StringTable and StringTableData read them.
     /// </summary>
     public static Dictionary<uint, string> ParseStringTable(byte[] file)
     {
@@ -63,7 +67,7 @@ public sealed class CharacterNames
         reader.ReadUInt32(); // the table's own id
         reader.ReadUInt32(); // the language, English
         reader.ReadByte();
-        var entries = ReadCompressed(reader);
+        var entries = DatModels.ReadCompressed(reader);
         var strings = new Dictionary<uint, string>();
         for (var i = 0; i < entries; i++)
         {
@@ -85,27 +89,22 @@ public sealed class CharacterNames
         return strings;
     }
 
-    /// <summary>The hash a string table keys its entries by: ACE's SpellTable.ComputeHash, which is the same as the DAT's own.</summary>
+    /// <summary>
+    /// The hash a string table keys its entries by, as ACE's SpellTable.ComputeHash computes it (Source/ACE.DatLoader/FileTypes/SpellTable.cs,
+    /// lines 32-51): each byte is read signed, the running value is shifted a nibble, and the top nibble is folded back in. ACE does not clamp
+    /// the result. The bytes are Windows-1252: a character up to 0xFF is its byte, and anything beyond is written as '?'.
+    /// </summary>
     public static uint Hash(string value)
     {
-        uint result = 0u;
+        long result = 0;
         foreach (var c in value)
         {
-            result = unchecked((result << 4) + (byte)c);
-            var high = result & 0xF0000000u;
-            if (high != 0u) result = ((high >> 24) ^ result) & 0x0FFFFFFFu;
+            var signed = unchecked((sbyte)(c <= 0xFF ? (byte)c : (byte)'?'));
+            result = signed + (result << 4);
+            if ((result & 0xF0000000L) != 0)
+                result = (result ^ ((result & 0xF0000000L) >> 24)) & 0x0FFFFFFFL;
         }
-        return result == uint.MaxValue ? uint.MaxValue - 1u : result;
-    }
-
-    private static uint ReadCompressed(BinaryReader reader)
-    {
-        var b0 = reader.ReadByte();
-        if ((b0 & 0x80) == 0) return b0;
-        var b1 = reader.ReadByte();
-        if ((b0 & 0x40) == 0) return (uint)(((b0 & 0x7F) << 8) | b1);
-        var s = reader.ReadUInt16();
-        return (uint)(((((b0 & 0x3F) << 8) | b1) << 16) | s);
+        return unchecked((uint)result);
     }
 
     private static void SkipUnicode(BinaryReader reader, int count)
@@ -116,7 +115,7 @@ public sealed class CharacterNames
     /// <summary>A compressed length, then that many 16-bit characters.</summary>
     private static string ReadUnicode(BinaryReader reader)
     {
-        var length = ReadCompressed(reader);
+        var length = DatModels.ReadCompressed(reader);
         var chars = new char[length];
         for (var i = 0; i < length; i++) chars[i] = (char)reader.ReadUInt16();
         return new string(chars);

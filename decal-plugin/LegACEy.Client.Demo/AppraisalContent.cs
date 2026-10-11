@@ -50,17 +50,22 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     // The high bit the server sets on an enchantment's spell id in the spell book.
     private const uint EnchantmentBit = 0x80000000;
     private const uint ArmorLevelInt = 28, WeaponTypeInt = 353, WeaponDefenseFloat = 29;
-    // Creatures and characters (ACE.Entity PropertyInt and PropertyString), as OpenAC's creature appraisal reads them.
+    // Creatures and characters (ACE.Entity PropertyInt and PropertyString), as OpenAC's creature appraisal reads them (CreatureAppraisalRows, MIT).
     private const uint LevelInt = 25, CreatureTypeInt = 2, HeritageGroupInt = 188, GenderInt = 113, TitleIdInt = 261, RankInt = 30,
-        FollowersInt = 35, DeathsInt = 43, ChessRankInt = 181, FishingSkillInt = 192, TitlesEarnedInt = 262;
+        FollowersInt = 35, DeathsInt = 43, ChessRankInt = 181, FishingSkillInt = 192, TitlesEarnedInt = 262, AgeInt = 125,
+        FactionBitsInt = 281, SocietyCelHanInt = 287, SocietyEldWebInt = 288, SocietyRadBloInt = 289;
     private const uint DamageRatingInt = 307, DamageResistRatingInt = 308, CritRatingInt = 313, CritDamageRatingInt = 314,
         CritResistRatingInt = 315, CritDamageResistRatingInt = 316, DotResistRatingInt = 350, LifeResistRatingInt = 351;
-    private const uint MonarchsTitleString = 21, PatronsTitleString = 35, FellowshipString = 10, DateOfBirthString = 43;
+    private const uint MonarchsTitleString = 21, PatronsTitleString = 35, FellowshipString = 10, DateOfBirthString = 43, TemplateString = 5;
     // The attribute block the server writes after a successful appraisal: Strength, Endurance, Quickness, Coordination, Focus, Self, then
     // Stamina, Mana and their maximums. The highlight bits are the attributes' own (Health 0x40, Stamina 0x80, Mana 0x100).
     private const int AttributeCount = 10, StaminaAt = 6, ManaAt = 7, StaminaMaxAt = 8, ManaMaxAt = 9;
     private const int HealthBit = 6, StaminaBit = 7, ManaBit = 8;
     private const uint UnenchantableArmorLevel = 9999;
+    // The society faction bits (OpenAC's CreatureAppraisalRows: Celestial Hand, Eldrytch Web, Radiant Blood).
+    private const int CelestialHandBit = 0x1, EldrytchWebBit = 0x2, RadiantBloodBit = 0x4;
+    // The value a retail appraisal shows where the server did not send the figure.
+    private const string UnknownValue = "???";
     // Values closer than this are the same figure (a bonus of 1.0 is none).
     private const float Epsilon = 0.0002f;
 
@@ -109,15 +114,15 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     public static AppraisalContent From(AppraisalResponse response, IReadOnlyDictionary<uint, SpellInfo> spells,
         string characterName = "", bool carried = false, CharacterNames? names = null)
     {
-        var creature = response.Creature != null;
-        var figures = creature
+        var hasCreatureProfile = response.Creature != null;
+        var figures = hasCreatureProfile
             ? new List<AppraisalFigure>()
             : FigureRules
                 .Select(rule => (rule.Label, Text: rule.Text(response)))
                 .Where(figure => figure.Text != null)
                 .Select(figure => new AppraisalFigure(figure.Label, figure.Text!))
                 .ToList();
-        var sections = (creature
+        var sections = (hasCreatureProfile
                 ? CreatureSections(response)
                 : SectionRules.Select(rule => new AppraisalSection(rule.Heading, rule.Rows(response, spells).ToList())))
             .Where(section => section.Rows.Count > 0)
@@ -129,12 +134,12 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
             response.ObjectId,
             response.Strings.TryGetValue(NameString, out var name) && name.Length > 0 ? name : "Unknown item",
             visual,
-            creature ? CreatureTypeLine(response, names ?? CharacterNames.None) : TypeLineOf(response),
+            hasCreatureProfile ? CreatureTypeLine(response, names ?? CharacterNames.None) : TypeLineOf(response),
             figures,
             sections,
             response.Strings.TryGetValue(LongDescString, out var description) ? description : string.Empty,
             AppraisalInscription.From(response, characterName, carried),
-            creature ? TitleOf(response, names ?? CharacterNames.None) : string.Empty);
+            hasCreatureProfile ? TitleOf(response, names ?? CharacterNames.None) : string.Empty);
     }
 
     /// <summary>A portal id the response sent, or zero when it did not.</summary>
@@ -440,8 +445,17 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
         string.Empty, "Max Health", "Health", "Max Stamina", "Stamina", "Max Mana", "Mana"
     };
 
-    /// <summary>A character has a heritage; a creature has none.</summary>
-    private static bool IsCharacter(AppraisalResponse response) => Int(response, HeritageGroupInt) > 0;
+    /// <summary>
+    /// A character is a player, not a creature. Heritage alone is not enough: a creature can carry one too, since ACE's
+    /// Creature.GenerateNewFace sets HeritageGroup from the weenie's HeritageGroupName (Source/ACE.Server/WorldObjects/Creature.cs:147-155).
+    /// So a character also needs a marker only a player has: its template name, which PlayerFactory sets on every new character
+    /// (Source/ACE.Server/Factories/PlayerFactory.cs:136; the privacy options do not hide it), its date of birth, which only Player's
+    /// constructor sets (Player.cs:101; the options can hide it), or its display title. OpenAC picks its character view from the template
+    /// name or the title (AcDream.App/UI/Layout/AppraisalUiController.cs, SelectView).
+    /// </summary>
+    private static bool IsCharacter(AppraisalResponse response) =>
+        Int(response, HeritageGroupInt) > 0 && (StringOf(response, TemplateString) != null || StringOf(response, DateOfBirthString) != null
+            || Int(response, TitleIdInt) > 0);
 
     // Heritage names by the server's HeritageGroup, as OpenAC's CharacterIdentityText names them (MIT).
     private static readonly string[] HeritageNames =
@@ -477,73 +491,112 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     }
 
     /// <summary>
-    /// A creature's sections, in the order the window shows them: the allegiance, vitals and attributes, then for a character its armour
-    /// levels and details. The ratings are listed for any creature that has them.
+    /// A creature's sections, in the order the window shows them (the approved renders' layout): the allegiance, vitals and attributes, then
+    /// for a character its armour levels and details. The ratings are listed for any creature that has them.
     /// </summary>
     private static IEnumerable<AppraisalSection> CreatureSections(AppraisalResponse response)
     {
         var creature = response.Creature!;
-        yield return Section("Allegiance", AllegianceRows(response));
+        var character = IsCharacter(response);
+        if (character) yield return Section("Allegiance", AllegianceRows(response));
         yield return Section("Vitals", VitalRows(creature));
         yield return Section("Attributes", AttributeRows(creature));
-        if (IsCharacter(response)) yield return Section("Armor", ArmorLevelRows(response.Levels));
+        if (character) yield return Section("Armor", ArmorLevelRows(response.Levels));
         yield return Section("Ratings", RatingRows(response));
-        if (IsCharacter(response)) yield return Section("Character", CharacterRows(response));
+        if (character) yield return Section("Character", CharacterRows(response));
     }
 
     private static AppraisalSection Section(string heading, IEnumerable<AppraisalRow> rows) => new(heading, rows.ToList());
 
-    /// <summary>The monarch and patron (one line when they are the same), the character's rank, the followers a monarch has, and the fellowship.</summary>
+    /// <summary>
+    /// A character's society, rank and allegiance, in retail's order (OpenAC's CreatureAppraisalRows): the society, then the monarch and
+    /// patron (one line when they are the same), or "Alleg. Monarch" with the followers when no monarch is named, then the rank, the
+    /// followers and the fellowship.
+    /// </summary>
     private static IEnumerable<AppraisalRow> AllegianceRows(AppraisalResponse response)
     {
+        if (SocietyText(response) is { } society) yield return new AppraisalRow("Society", society);
         var monarch = StringOf(response, MonarchsTitleString);
         var patron = StringOf(response, PatronsTitleString);
-        if (monarch != null && string.Equals(monarch, patron, StringComparison.Ordinal))
+        int? followers = response.Ints.TryGetValue(FollowersInt, out var count) ? Math.Max(0, count) : null;
+        if (monarch == null)
+        {
+            if (followers is { } alone) yield return new AppraisalRow("Alleg. Monarch", FollowerCount(alone));
+        }
+        else if (string.Equals(monarch, patron, StringComparison.Ordinal))
             yield return new AppraisalRow("Monarch/Patron", monarch);
         else
         {
-            if (monarch != null) yield return new AppraisalRow("Monarch", monarch);
+            yield return new AppraisalRow("Monarch", monarch);
             if (patron != null) yield return new AppraisalRow("Patron", patron);
         }
         if (response.Ints.TryGetValue(RankInt, out var rank) && rank > 0) yield return new AppraisalRow("Rank", Invariant(rank));
-        if (response.Ints.TryGetValue(FollowersInt, out var followers)) yield return new AppraisalRow("Followers", Invariant(followers));
+        if (monarch != null && followers is { } named) yield return new AppraisalRow("Followers", Invariant(named));
         if (StringOf(response, FellowshipString) is { } fellowship) yield return new AppraisalRow("Fellowship", fellowship);
     }
 
+    /// <summary>"1 Follower" or "12 Followers".</summary>
+    private static string FollowerCount(int count) => Invariant(count) + (count == 1 ? " Follower" : " Followers");
+
+    /// <summary>
+    /// The society by its faction bit, with the rank's name ("Celestial Hand ~ Adept"); "???" when the bits name none. Retail colours it
+    /// against the examiner's own society; this window does not know that, so the society is only text.
+    /// </summary>
+    private static string? SocietyText(AppraisalResponse response)
+    {
+        if (!response.Ints.TryGetValue(FactionBitsInt, out var bits)) return null;
+        if ((bits & CelestialHandBit) != 0) return "Celestial Hand" + SocietyRank(response, SocietyCelHanInt);
+        if ((bits & EldrytchWebBit) != 0) return "Eldrytch Web" + SocietyRank(response, SocietyEldWebInt);
+        if ((bits & RadiantBloodBit) != 0) return "Radiant Blood" + SocietyRank(response, SocietyRadBloInt);
+        return UnknownValue;
+    }
+
+    private static string SocietyRank(AppraisalResponse response, uint property) => Int(response, property) switch
+    {
+        >= 1 and <= 100 => " ~ Initiate",
+        >= 101 and <= 300 => " ~ Adept",
+        >= 301 and <= 600 => " ~ Knight",
+        >= 601 and <= 1000 => " ~ Lord",
+        >= 1001 and <= 1500 => " ~ Master",
+        _ => string.Empty,
+    };
+
     /// <summary>
     /// Health, stamina and mana as meters, current over maximum, as far as the appraisal revealed them. The attributes (so stamina and mana)
-    /// come only with a successful appraisal; without them health shows as a percentage and there are no other meters.
+    /// come only with a successful appraisal. Without them health shows as a percentage, and stamina and mana as "???", as retail does.
     /// </summary>
     private static IEnumerable<AppraisalRow> VitalRows(CreatureProfile creature)
     {
-        var revealed = creature.Attributes.Count == AttributeCount;
-        if (creature.HealthMax > 0)
-        {
-            if (revealed) yield return Meter("Health", creature.Health, creature.HealthMax, HealthBit, AppraisalMeterFill.Health, creature);
-            else yield return new AppraisalRow("Health", Math.Round(100.0 * creature.Health / creature.HealthMax).ToString("0", CultureInfo.InvariantCulture) + " %");
-        }
-        if (!revealed) yield break;
-        if (creature.Attributes[StaminaMaxAt] > 0)
-            yield return Meter("Stamina", creature.Attributes[StaminaAt], creature.Attributes[StaminaMaxAt], StaminaBit, AppraisalMeterFill.Stamina, creature);
-        if (creature.Attributes[ManaMaxAt] > 0)
-            yield return Meter("Mana", creature.Attributes[ManaAt], creature.Attributes[ManaMaxAt], ManaBit, AppraisalMeterFill.Mana, creature);
+        var attributes = creature.Attributes.Count == AttributeCount ? creature.Attributes : null;
+        if (attributes == null && creature.HealthMax > 0)
+            yield return new AppraisalRow("Health", Math.Round(100.0 * creature.Health / creature.HealthMax).ToString("0", CultureInfo.InvariantCulture) + " %");
+        else
+            yield return Vital("Health", creature.Health, creature.HealthMax, HealthBit, AppraisalMeterFill.Health, creature);
+        yield return Vital("Stamina", attributes?[StaminaAt], attributes?[StaminaMaxAt], StaminaBit, AppraisalMeterFill.Stamina, creature);
+        yield return Vital("Mana", attributes?[ManaAt], attributes?[ManaMaxAt], ManaBit, AppraisalMeterFill.Mana, creature);
     }
 
-    private static AppraisalMeterRow Meter(string name, uint current, uint maximum, int bit, AppraisalMeterFill fill, CreatureProfile creature) =>
-        new(name, Clamp32(current), Clamp32(maximum), null, ToneOf(creature.AttributeMask, 1u << bit), fill);
+    /// <summary>A meter for a current and a maximum above zero, coloured from the attribute mask; otherwise the value is "???".</summary>
+    private static AppraisalRow Vital(string name, uint? current, uint? maximum, int bit, AppraisalMeterFill fill, CreatureProfile creature) =>
+        current is { } now && maximum is { } top && top > 0
+            ? new AppraisalMeterRow(name, Clamp32(now), Clamp32(top), null, ToneOf(creature.AttributeMask, 1u << bit), fill)
+            : new AppraisalRow(name, UnknownValue);
 
-    // The attribute block's rows in retail's order, each with its index in the block; the index is also the attribute's highlight bit.
-    private static readonly (string Name, int Index)[] AttributeRules =
-    {
-        ("Strength", 0), ("Endurance", 1), ("Coordination", 3), ("Quickness", 2), ("Focus", 4), ("Self", 5),
-    };
+    // The attribute rows in retail's order, as PropertyAttribute ids (ACE.Entity: Strength 1, Endurance 2, Quickness 3, Coordination 4, Focus 5,
+    // Self 6). The attribute block and the highlight bits index an attribute at its id less one.
+    private static readonly uint[] AttributeOrder = { 1, 2, 4, 3, 5, 6 };
 
-    /// <summary>Each attribute's current value, coloured raised or lowered from the creature's attribute masks.</summary>
+    /// <summary>Each attribute's current value, coloured raised or lowered from the creature's attribute masks; "???" without the attributes.</summary>
     private static IEnumerable<AppraisalRow> AttributeRows(CreatureProfile creature)
     {
-        if (creature.Attributes.Count != AttributeCount) yield break;
-        foreach (var (name, index) in AttributeRules)
-            yield return new AppraisalRow(name, Invariant(creature.Attributes[index]), ToneOf(creature.AttributeMask, 1u << index));
+        var attributes = creature.Attributes.Count == AttributeCount ? creature.Attributes : null;
+        foreach (var id in AttributeOrder)
+        {
+            var index = (int)id - 1;
+            var name = PrimaryAttributeNames[id];
+            if (attributes == null || attributes[index] == 0) yield return new AppraisalRow(name, UnknownValue);
+            else yield return new AppraisalRow(name, Invariant(attributes[index]), ToneOf(creature.AttributeMask, 1u << index));
+        }
     }
 
     /// <summary>The armour level of each body part group, as "AL: 120/120/120". A value of 9999 or more is unenchantable (a star and the rest).</summary>
@@ -578,14 +631,20 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
             yield return new AppraisalRow("DoT/Life", $"Resist: {Invariant(dotResist)}/{Invariant(lifeResist)}");
     }
 
-    /// <summary>The character's details the server sends: the arrival date, chess rank, fishing skill, deaths and titles earned.</summary>
+    /// <summary>
+    /// The character's details in retail's order: the arrival date, the time in Dereth (retail's duration wording, shared with the other
+    /// lines' breakdown), chess rank, fishing skill, deaths and titles earned, then retail's footer for the unenchantable marker.
+    /// </summary>
     private static IEnumerable<AppraisalRow> CharacterRows(AppraisalResponse response)
     {
         if (StringOf(response, DateOfBirthString) is { } arrived) yield return new AppraisalRow("Arrived in Dereth", arrived);
+        if (response.Ints.TryGetValue(AgeInt, out var age))
+            yield return new AppraisalRow("Time in Dereth", AppraisalOtherLines.Breakdown(Math.Max(0, age), AppraisalOtherLines.CooldownUnits, compact: true));
         if (response.Ints.TryGetValue(ChessRankInt, out var chess)) yield return new AppraisalRow("Chess Rank", Invariant(chess));
         if (response.Ints.TryGetValue(FishingSkillInt, out var fishing)) yield return new AppraisalRow("Fishing Skill", Invariant(fishing));
         if (response.Ints.TryGetValue(DeathsInt, out var deaths)) yield return new AppraisalRow("Deaths", deaths <= 0 ? "Has never died" : Invariant(deaths));
         if (response.Ints.TryGetValue(TitlesEarnedInt, out var titles)) yield return new AppraisalRow("Titles Earned", Invariant(titles));
+        yield return new AppraisalRow("* = Unenchantable", string.Empty);
     }
 
     private static string? StringOf(AppraisalResponse response, uint property) =>

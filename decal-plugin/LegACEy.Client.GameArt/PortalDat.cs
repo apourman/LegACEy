@@ -77,58 +77,63 @@ public sealed class PortalDat : IDisposable, IGameArtSource
     }
 
     /// <summary>
-    /// The creature type and title names, read once. The titles' strings are in client_local_English.dat beside this portal; when that is
-    /// missing or cannot be read the titles are named by nothing (logged once), and the creature types still show.
+    /// The creature type and title names, read once. Each is read on its own: a creature mapper that cannot be read leaves the creature types
+    /// out but keeps the titles, and a broken English DAT (the titles' strings, client_local_English.dat beside this portal) leaves the titles
+    /// out but keeps the creature types. Each failure is logged once.
     /// </summary>
     public CharacterNames ReadCharacterNames(Action<string>? log = null)
     {
         lock (_stream)
         {
             if (_characterNames != null) return _characterNames;
-            try
-            {
-                var creatureTypes = ReadEnumNames(CharacterNames.CreatureTypeMapper);
-                _characterNames = new CharacterNames(creatureTypes, ReadTitleNames(log));
-            }
-            catch (Exception exception)
-            {
-                log?.Invoke($"The creature and title names could not be read from the portal: {exception.Message}");
-                _characterNames = CharacterNames.None;
-            }
+            var creatureTypes = ReadMapperNames(CharacterNames.CreatureTypeMapper, "creature types", log);
+            var titles = ReadTitleNames(log);
+            _characterNames = new CharacterNames(creatureTypes, titles);
             return _characterNames;
         }
     }
 
-    /// <summary>An enum mapper's names with its base mapper's, following the base chain once around; a missing file ends it.</summary>
-    private Dictionary<uint, string> ReadEnumNames(uint mapperId)
+    private Dictionary<uint, string> ReadMapperNames(uint mapperId, string what, Action<string>? log)
     {
         var names = new Dictionary<uint, string>();
-        var visited = new HashSet<uint>();
-        for (var id = mapperId; id != 0 && visited.Add(id);)
+        try
         {
-            var file = ReadFile(id);
-            if (file == null) break;
-            id = CharacterNames.ParseEnumMapper(file, names);
+            var file = ReadFile(mapperId);
+            if (file != null) CharacterNames.ParseEnumMapper(file, names);
+            else log?.Invoke($"The {what} mapper is missing from the portal, so {what} are not named.");
+        }
+        catch (Exception exception)
+        {
+            log?.Invoke($"The {what} could not be read from the portal: {exception.Message}");
+            names.Clear();
         }
         return names;
     }
 
     private Dictionary<uint, string> ReadTitleNames(Action<string>? log)
     {
-        var titleIds = ReadEnumNames(CharacterNames.TitleMapper);
         var titles = new Dictionary<uint, string>();
-        var localPath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Path)!, "client_local_English.dat");
-        if (!File.Exists(localPath))
+        try
         {
-            log?.Invoke($"The English language DAT is not beside the portal, so titles are not named: {localPath}");
-            return titles;
+            var keys = ReadMapperNames(CharacterNames.TitleMapper, "titles", log);
+            var localPath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Path)!, "client_local_English.dat");
+            if (!File.Exists(localPath))
+            {
+                log?.Invoke($"The English language DAT is not beside the portal, so titles are not named: {localPath}");
+                return titles;
+            }
+            using var language = new PortalDat(localPath);
+            var table = language.ReadFile(CharacterNames.TitleStringTable);
+            if (table == null) return titles;
+            var strings = CharacterNames.ParseStringTable(table);
+            foreach (var entry in keys)
+                if (strings.TryGetValue(CharacterNames.Hash(entry.Value), out var title)) titles[entry.Key] = title;
         }
-        using var language = new PortalDat(localPath);
-        var table = language.ReadFile(CharacterNames.TitleStringTable);
-        if (table == null) return titles;
-        var strings = CharacterNames.ParseStringTable(table);
-        foreach (var entry in titleIds)
-            if (strings.TryGetValue(CharacterNames.Hash(entry.Value), out var title)) titles[entry.Key] = title;
+        catch (Exception exception)
+        {
+            log?.Invoke($"The character titles could not be read from the English language DAT: {exception.Message}");
+            titles.Clear();
+        }
         return titles;
     }
 

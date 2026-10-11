@@ -372,7 +372,7 @@ internal static class AppraisalOtherLines
 
     private static readonly (int Size, string Unit)[] ExpiryUnits = { (31_536_000, "years"), (86_400, "days"), (3_600, "hours"), (60, "minutes") };
 
-    private static readonly (int Size, string Unit)[] CooldownUnits = { (2_592_000, "mo"), (86_400, "d"), (3_600, "h"), (60, "m") };
+    internal static readonly (int Size, string Unit)[] CooldownUnits = { (2_592_000, "mo"), (86_400, "d"), (3_600, "h"), (60, "m") };
 
     /// <summary>"2 days, 3 hours, 4 seconds." as retail words the time left.</summary>
     private static string FormatExpiry(int remainingSeconds) => Breakdown(remainingSeconds, ExpiryUnits, compact: false);
@@ -384,7 +384,7 @@ internal static class AppraisalOtherLines
     /// Splits a count of seconds into units, largest first, leaving out the units that are zero, with the seconds last. Retail's two
     /// wordings differ only in the layout: compact ("1h 2m 3s") or long ("1 hours, 2 minutes, 3 seconds.").
     /// </summary>
-    private static string Breakdown(int seconds, (int Size, string Unit)[] units, bool compact)
+    internal static string Breakdown(int seconds, (int Size, string Unit)[] units, bool compact)
     {
         int remaining = Math.Max(0, seconds);
         var parts = new List<string>();
