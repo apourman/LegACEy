@@ -20,6 +20,9 @@ using Microsoft.DirectX.Direct3D;
 
 namespace LegACEy.Client.DecalPlugin;
 
+// ponytail: the net48 copy, kept so this plugin still runs until step 02 turns it into the stub. The client's own copy is in
+// LegACEy.Client; step 02 deletes this file (the Decal reads move into the stub's bridge calls).
+
 /// <summary>Decal-facing runtime that wires game callbacks to the netstandard client UI framework.</summary>
 internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
 {
@@ -279,7 +282,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         if (_failed || _serverChannel == null || _channelTransport == null)
             return;
         byte[]? payload;
-        try { payload = _channelTransport.ReadEvent(e); }
+        try { payload = _channelTransport.ReadEvent(e.Message.Type, e.Message.RawData); }
         catch (Exception exception)
         {
             Log($"Could not read a server channel event: {exception}");

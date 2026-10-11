@@ -8,6 +8,9 @@ using Microsoft.DirectX.Direct3D;
 
 namespace LegACEy.Client.DecalPlugin;
 
+// ponytail: the Managed DirectX drawing, kept so this plugin still draws until step 03 ports it to direct D3D9 calls in
+// LegACEy.Client; step 03 deletes this file.
+
 /// <summary>
 /// An Avalonia panel drawn straight onto the game's Direct3D 9 device at a screen position,
 /// with no window chrome around it.

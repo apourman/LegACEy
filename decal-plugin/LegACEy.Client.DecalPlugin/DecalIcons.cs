@@ -4,6 +4,9 @@ using LegACEy.Client.GameArt;
 
 namespace LegACEy.Client.DecalPlugin;
 
+// ponytail: the net48 copy, kept so this plugin still runs until step 02 turns it into the stub. The client's own copy is in
+// LegACEy.Client; step 02 deletes this file (the Decal reads move into the stub's bridge calls).
+
 /// <summary>Decal's icon values as the portal ids and visual the client draws. Shared by the item icon and the inventory.</summary>
 internal static class DecalIcons
 {

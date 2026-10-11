@@ -13,6 +13,7 @@ and database remain in the repository's upstream-compatible `Source/` and
 | Project | Purpose |
 | --- | --- |
 | `LegACEy.Client.DecalPlugin` | Decal entry point, game integration, and native rendering hooks |
+| `LegACEy.Client` | The client on .NET 10 (runtime, hooks, retail takeover) and its bridge to the Decal entry point |
 | `LegACEy.Client.PanelHost` | Avalonia surface hosting and rendering |
 | `LegACEy.Client.InputRouter` | Mouse and keyboard routing |
 | `LegACEy.Client.GameArt` | Game DAT art loading |
