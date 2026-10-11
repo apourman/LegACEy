@@ -141,14 +141,23 @@ public sealed class AppraisalWindow
     /// <summary>A label on the left and its value on the right, or a line of text across the section when there is no label.</summary>
     private static Control Row(AppraisalRow row)
     {
-        if (row.Label == null) return new TextBlock { Text = row.Text, Foreground = DerethPalette.TextBrush, FontSize = 13, TextWrapping = TextWrapping.Wrap };
+        var brush = ToneBrush(row.Tone);
+        if (row.Label == null) return new TextBlock { Text = row.Text, Foreground = brush, FontSize = 13, TextWrapping = TextWrapping.Wrap };
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
         grid.Children.Add(Text(row.Label, DerethPalette.MutedBrush, 13));
-        var value = Text(row.Text, DerethPalette.TextBrush, 13);
+        var value = Text(row.Text, brush, 13);
         Grid.SetColumn(value, 1);
         grid.Children.Add(value);
         return grid;
     }
+
+    /// <summary>Raised values are the theme's green, lowered ones its red (the invalid colour), and the rest the text colour.</summary>
+    private static IBrush ToneBrush(AppraisalTone tone) => tone switch
+    {
+        AppraisalTone.Raised => DerethPalette.RaisedBrush,
+        AppraisalTone.Lowered => DerethPalette.InvalidBrush,
+        _ => DerethPalette.TextBrush,
+    };
 
     private static TextBlock Text(string text, IBrush brush, double size, bool centred = false, FontFamily? font = null) => new()
     {
