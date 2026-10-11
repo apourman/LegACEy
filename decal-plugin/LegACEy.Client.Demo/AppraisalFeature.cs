@@ -65,6 +65,25 @@ public sealed class AppraisalFeature
     }
 
     /// <summary>
+    /// Retail's examination panel showed for this object (the E key, or any other way retail opens it). The window shows the object's
+    /// cached response at once when there is one. Otherwise it asks for one silently, since retail's E may not identify the object itself,
+    /// and the response that arrives opens the window, as <see cref="Request"/> does. Nothing thrown escapes: it is logged.
+    /// </summary>
+    public void Examine(uint objectId)
+    {
+        Request(objectId);
+        try
+        {
+            if (_responses.TryGetValue(objectId, out var cached)) Show(cached);
+            else _game.RequestAppraisal(objectId);
+        }
+        catch (Exception exception)
+        {
+            _log($"Could not show an appraisal: {exception.Message}");
+        }
+    }
+
+    /// <summary>
     /// Takes one 0x00C9 payload: the object's id, then its appraisal. The first response for the requested item opens the window and clears
     /// the request. Nothing thrown while reading or showing it escapes: it is logged, and the client's other features carry on.
     /// </summary>
