@@ -243,20 +243,22 @@ public sealed class AppraisalTests
     }
 
     [Fact]
-    public void An_item_with_a_set_ratings_and_an_imbue_shows_them_in_the_other_section_in_retail_words()
+    public void An_item_with_a_material_set_imbue_ratings_and_a_slayer_shows_them_in_the_other_section_in_retail_words()
     {
         var content = AppraisalContent.From(AppraisalResponse.Read(new ServerAppraisal(0x80000A05)
         {
             Strings = { [1] = "Ivory Stick" },
-            Ints = { [1] = 0x1, [265] = 13, [370] = 5, [372] = 3, [179] = 0x20 }
+            Ints = { [1] = 0x1, [131] = 64, [265] = 13, [370] = 5, [372] = 3, [179] = 0x20, [166] = 1 }
         }.Build()), NoSpells);
 
         var other = Assert.Single(content.Sections, section => section.Heading == "Other");
         Assert.Equal(new[]
         {
+            ("Material", "Steel"),
             ("Set", "Soldier's"),
+            ("Imbued Effect", "Bludgeon Rending"),
             ("Ratings", "Dam 5, Crit 3"),
-            ("Properties", "Bludgeon Rending"),
+            ("Properties", "Olthoi slayer"),
             (null, "This item cannot be further imbued."),
         }, other.Rows.Select(row => (row.Label, row.Text)));
     }
