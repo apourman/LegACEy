@@ -38,7 +38,7 @@ public sealed class VaultShellTests
         Assert.Equal(9, scrollBar.Width);
         Assert.NotNull(scrollBar.GetVisualDescendants().OfType<Thumb>().SingleOrDefault());
         // The header's chest icon is the game's own art, requested from the DAT.
-        if (art is CellArt cellArt) Assert.Contains(VaultShellPanel.ChestIconId, cellArt.Reads.Keys);
+        if (art is CellArt cellArt) Assert.Contains(VaultShellPanel.VaultIconId, cellArt.Reads.Keys);
         Assert.False(host.Tick());
     });
 
@@ -226,7 +226,7 @@ public sealed class VaultShellTests
         public GameImage? ReadImage(uint id)
         {
             Reads[id] = Reads.TryGetValue(id, out var count) ? count + 1 : 1;
-            if (id != 0x06000FC7 && id != VaultShellPanel.ChestIconId)
+            if (id != 0x06000FC7 && id != VaultShellPanel.VaultIconId)
                 return null;
             var pixels = new byte[32 * 32 * 4];
             for (var y = 0; y < 32; y++)

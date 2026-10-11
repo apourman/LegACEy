@@ -24,8 +24,8 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     public const int WindowWidth = 410;
     // Room for ten rows with Windows fonts, whose lines are taller than the Linux test fonts'.
     public const int WindowHeight = 540;
-    /// <summary>The header's chest icon, from the DAT.</summary>
-    public const uint ChestIconId = 0x06001020;
+    /// <summary>The header's icon, from the DAT: the Sealed Vault's, as the Vault in the world.</summary>
+    public const uint VaultIconId = 0x06003774;
     // A whole page of slots, so the grid looks the same however many items the page holds.
     private const int MinimumCells = VaultProtocol.PageSize;
     private const int SampleCount = 317;
@@ -52,7 +52,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         ("Leather cap", 0x06000FAA, 0, 1),
         ("Blue potion", 0x06001012, 0x8, 12),
         ("Yellow potion", 0x06001013, 0x10, 3),
-        ("Treasure chest", ChestIconId, 0, 1),
+        ("Treasure chest", 0x06001020, 0, 1),
         ("Small pouch", 0x06001031, 0, 25),
         ("Green bottle", 0x06001030, 0x2, 8),
         ("Silver goblet", 0x0600101F, 0x1, 1)
@@ -175,7 +175,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     }
 
     /// <summary>The header's chest icon, drawn from the DAT.</summary>
-    internal Control HeaderIcon() => Icon(Bitmap(ChestIconId));
+    internal Control HeaderIcon() => Icon(Bitmap(VaultIconId));
 
     private static VaultSnapshot SampleSnapshot()
     {
@@ -538,7 +538,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         _ => state
     };
 
-    /// <summary>A picture that isn't an item (the header's chest): its outline is black, as retail draws it.</summary>
+    /// <summary>A picture that isn't an item (the header's vault): its outline is black, as retail draws it.</summary>
     private WriteableBitmap? Bitmap(uint id)
     {
         if (!_images.TryGetValue(id, out var bitmap))
