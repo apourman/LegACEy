@@ -45,10 +45,9 @@ internal static class NativeUiCatalogue
         Root("Indicators", 0x10000611), Root("CharacterInfo", 0x10000183), Root("PositiveEffects", 0x10000184),
         Root("NegativeEffects", 0x10000185), Root("LinkStatus", 0x10000187), Root("MiniGame", 0x10000188), Root("Vitae", 0x1000018A),
         Root("InventoryPanel", 0x1000018B),
-        // The examination panel: the top-level element of LayoutDesc 0x2100006B in the installed client_local_English.dat, which also holds
-        // the inscription field 0x1000013E that the appraisal window's inscription limit is read from. Checked by the DAT, not the process.
-        new("RootElementId::Examination", null, Array.Empty<byte>(),
-            "installed client_local_English.dat, LayoutDesc 0x2100006B (top-level element 0x100005F2)", "compile-time constant; not called", 0x100005F2)
+        // The examination panel: the top-level element of LayoutDesc 0x2100006B in the installed client_local_English.dat. That layout also
+        // holds the inscription field 0x1000013E, which the appraisal window's inscription limit is read from. Checked by the DAT, not the process.
+        Root("Examination", NativeUi.Examination, "installed client_local_English.dat, LayoutDesc 0x2100006B (top-level element)")
     };
 
     internal static bool Validate(Func<uint, int, byte[]> read, Action<string> log, IEnumerable<NativeUiEntry>? entries = null)
@@ -77,6 +76,6 @@ internal static class NativeUiCatalogue
     /// <summary>A pinned byte pattern written as hex pairs separated by spaces.</summary>
     internal static byte[] Bytes(string bytes) => bytes.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Select(value => Convert.ToByte(value, 16)).ToArray();
 
-    private static NativeUiEntry Root(string name, uint id) =>
-        new($"RootElementId::{name}", null, Array.Empty<byte>(), "Chorizite.Common RootElementId", "compile-time constant; not called", id);
+    private static NativeUiEntry Root(string name, uint id, string source = "Chorizite.Common RootElementId") =>
+        new($"RootElementId::{name}", null, Array.Empty<byte>(), source, "compile-time constant; not called", id);
 }

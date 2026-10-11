@@ -84,8 +84,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const uint DatCursorNWSE = 0x06006126;
     private const uint DatCursorNESW = 0x06006127;
     private const uint DatCursorMove = 0x06006119;
-    // Beside the DLL: while this file exists, plugins leave retail's inventory panel alone. Without it the LegACEy Inventory takes it
-    // over.
+    // Beside the DLL: while this file exists, retail's inventory and examination panels stay retail's. Without it the LegACEy UI takes them
+    // over; the examination takeover follows the same switch.
     private const string RetailPanelSwitchFile = "retail-inventory-native";
 
     // How big LegACEy windows show against their design size. The indicator bar keeps retail's size, and drag icons retail's 32 pixels.
@@ -140,8 +140,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private GameChannelTransport? _channelTransport;
     private ServerChannelClient? _serverChannel;
     private RetailItemDrag? _retailDrag;
-    // Plugin takeovers of retail panels (the inventory), and the switch that turns them on. The switch is a marker file beside the DLL,
-    // as the post-UI test failure is: create the file to turn the takeover on, delete it to turn it off.
+    // Plugin takeovers of retail panels (the inventory), and the switch that turns them on, which also turns the examination takeover on or off. The switch is a marker file beside the DLL,
+    // as the post-UI test failure is. Creating the switch file gives retail's panels back; deleting it turns the takeovers on.
     private readonly List<RetailPanelTakeover> _retailPanels = new();
     private bool? _retailPanelsValid;
     private bool _retailPanelSwitch;
@@ -368,7 +368,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _clientUi = null;
         // Before the plugins close their windows: giving the panel back tells the plugin its window is no longer held.
         try { EndRetailPanels(); }
-        catch (Exception exception) { Log($"Could not give the retail inventory panel back at logoff: {exception}"); }
+        catch (Exception exception) { Log($"Could not give the retail panels back at logoff: {exception}"); }
         try { _plugins?.EndSession(); }
         catch (Exception exception) { Log($"Could not close plugin windows at logoff: {exception}"); }
         // Windows released their requests above; anything still outstanding fails as disconnected.
@@ -1631,7 +1631,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         // The takeover stands in for a window: without windows, retail's panel must come back now.
         try { EndRetailPanels(); }
-        catch (Exception cleanupError) { Log($"Could not give the retail inventory panel back after a window failure: {cleanupError}"); }
+        catch (Exception cleanupError) { Log($"Could not give the retail panels back after a window failure: {cleanupError}"); }
         _windowsEnabled = false;
         Log($"LegACEy windows disabled: {exception}");
         _bar?.SetOpen(MenuSlot, false);
@@ -1692,7 +1692,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         // First: retail's panel must be given back before anything else is torn down.
         try { EndRetailPanels(); }
-        catch (Exception exception) { Log($"Could not give the retail inventory panel back during unload: {exception}"); }
+        catch (Exception exception) { Log($"Could not give the retail panels back during unload: {exception}"); }
         if (_itemDragActive)
             try { _retailDrag?.ClearDropIndicator(); } catch (Exception exception) { Log($"Could not clear the inventory drop indicator: {exception.Message}"); }
         _itemDragActive = false;

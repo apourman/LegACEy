@@ -709,7 +709,8 @@ public sealed class AppraisalTests
     public void The_examination_panel_parks_when_it_shows_and_our_window_opens_for_the_selections_response() => OnWindowThread(() =>
     {
         var host = new FakeAppraisalHost();
-        var appraisals = new AppraisalFeature(host, _ => { });
+        var game = new FakeAppraisalGame();
+        var appraisals = new AppraisalFeature(host, _ => { }, game: game);
         var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
         using var examination = new RetailExaminationTakeover(panel, () => Potion, appraisals.Examine, _ => { });
 
@@ -718,6 +719,8 @@ public sealed class AppraisalTests
         Assert.Equal(1, panel.CloseCalls);
         Assert.False(panel.Open);
         Assert.Equal(0, host.Opened);
+        // Nothing cached for the object, so it is asked for silently; retail's own identify may also answer.
+        Assert.Equal(new[] { Potion }, game.Appraised);
         appraisals.Receive(PotionMessage(Potion, 75));
         Assert.Equal(1, host.Opened);
         Assert.Equal(Potion, appraisals.Shown?.ObjectId);
@@ -740,6 +743,23 @@ public sealed class AppraisalTests
 
         Assert.Equal(1, host.Opened);
         Assert.Equal(Potion, appraisals.Shown?.ObjectId);
+    });
+
+    [Fact]
+    public void An_empty_selection_when_the_panel_shows_leaves_retails_panel_to_retail() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost();
+        var appraisals = new AppraisalFeature(host, _ => { });
+        var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
+        using var examination = new RetailExaminationTakeover(panel, () => 0, appraisals.Examine, _ => { });
+
+        examination.Tick(enabled: true);
+        appraisals.Receive(PotionMessage(Potion, 75));
+
+        Assert.True(panel.Open);
+        Assert.Equal(new Point(1200, 300), panel.Location);
+        Assert.Equal(0, panel.CloseCalls);
+        Assert.Equal(0, host.Opened);
     });
 
     [Fact]

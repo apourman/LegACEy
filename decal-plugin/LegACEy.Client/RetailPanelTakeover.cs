@@ -24,7 +24,7 @@ internal interface IRetailPanelPort
 }
 
 /// <summary>
-/// Parks retail's inventory panel off-screen while it is open and the takeover is on, and tells a plugin window when that panel
+/// Parks a retail panel (the inventory's, or the examination's) off-screen while it is open and the takeover is on, and tells the owner when that panel
 /// opens and closes. Retail keeps its open state on the element it would hide, so the element is parked rather than hidden each frame;
 /// a closed panel is given back at once, because its frame also holds retail's other panels.
 /// The panel's place and save-location are given back on every exit:

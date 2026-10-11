@@ -66,16 +66,16 @@ public sealed class AppraisalFeature
 
     /// <summary>
     /// Retail's examination panel showed for this object (the E key, or any other way retail opens it). The window shows the object's
-    /// cached response at once, when there is one, and the response that arrives for the request otherwise, as <see cref="Request"/>.
-    /// Nothing thrown while showing escapes: it is logged, and the examination carries on.
+    /// cached response at once when there is one. Otherwise it asks for one silently, since retail's E may not identify the object itself,
+    /// and the response that arrives opens the window, as <see cref="Request"/> does. Nothing thrown escapes: it is logged.
     /// </summary>
     public void Examine(uint objectId)
     {
         Request(objectId);
-        if (!_responses.TryGetValue(objectId, out var cached)) return;
         try
         {
-            Show(cached);
+            if (_responses.TryGetValue(objectId, out var cached)) Show(cached);
+            else _game.RequestAppraisal(objectId);
         }
         catch (Exception exception)
         {
