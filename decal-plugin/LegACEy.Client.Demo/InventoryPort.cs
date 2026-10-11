@@ -20,7 +20,7 @@ public interface IInventoryPort
     void Select(uint itemId);
     /// <summary>Uses an item as retail does on a double-click.</summary>
     void Use(uint itemId);
-    /// <summary>Selects an item and asks the server to appraise it, as retail does on a right-click, so retail's examination window shows it.</summary>
+    /// <summary>Selects an item and asks the server to appraise it, as retail does on a right-click. The appraisal window opens for the item when its response arrives.</summary>
     void Assess(uint itemId);
     /// <summary>Drops an item of the player's on the ground, as retail does for one released over the world.</summary>
     void DropOnGround(uint itemId);
