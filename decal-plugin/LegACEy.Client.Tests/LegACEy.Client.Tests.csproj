@@ -1,16 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Reloaded.Hooks" Version="4.3.3" />
     <PackageReference Include="coverlet.collector" Version="6.0.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="xunit" Version="2.5.3" />
@@ -19,17 +19,10 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
-    <!-- Exercise the plugin's key translation without requiring Windows-only Decal assemblies. -->
-    <Compile Include="..\LegACEy.Client.DecalPlugin\Win32KeyMap.cs" Link="Win32KeyMap.cs" />
-    <Compile Include="..\LegACEy.Client.DecalPlugin\PostUiDrawHook.cs" Link="PostUiDrawHook.cs" />
-    <Compile Include="..\LegACEy.Client.DecalPlugin\RetailTakeoverLifecycle.cs" Link="RetailTakeoverLifecycle.cs" />
-    <Compile Include="..\LegACEy.Client.DecalPlugin\RetailSurfaceRenderer.cs" Link="RetailSurfaceRenderer.cs" />
-    <Compile Include="..\LegACEy.Client.DecalPlugin\GameStatePoller.cs" Link="GameStatePoller.cs" />
-    <Compile Include="..\LegACEy.Client.DecalPlugin\NativeUiCatalogue.cs" Link="NativeUiCatalogue.cs" />
-    <Compile Include="..\LegACEy.Client.DecalPlugin\RetailPanelTakeover.cs" Link="RetailPanelTakeover.cs" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\LegACEy.Client\LegACEy.Client.csproj" />
     <ProjectReference Include="..\LegACEy.Client.PanelHost\LegACEy.Client.PanelHost.csproj" />
     <ProjectReference Include="..\LegACEy.Client.InputRouter\LegACEy.Client.InputRouter.csproj" />
     <ProjectReference Include="..\LegACEy.Client.Demo\LegACEy.Client.Demo.csproj" />

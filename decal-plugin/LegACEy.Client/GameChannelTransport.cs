@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Buffers.Binary;
 using System.Runtime.InteropServices;
-using Decal.Adapter;
 using LegACEy.Client.Demo;
 
 namespace LegACEy.Client.DecalPlugin;
@@ -92,32 +92,26 @@ internal sealed class GameChannelTransport : IServerChannelTransport
     }
 
     /// <summary>
-    /// The LegACEy event payload (after the event type) from a Decal server message, or null for any other message.
-    /// Decal parses 0xF7B0 as character, sequence and event, so an unknown event type still reaches plugins.
+    /// The LegACEy event payload (after the event type) from a server message's type and raw bytes, or null for any other message.
+    /// A 0xF7B0 game event is character, sequence and event type, so an unknown event type still reaches plugins.
     /// </summary>
-    public byte[]? ReadEvent(NetworkMessageEventArgs e)
+    public byte[]? ReadEvent(int messageType, ReadOnlySpan<byte> raw)
     {
-        var message = e.Message;
-        if (message.Type != GameEventMessage) return null;
-        int eventType;
-        try { eventType = message.Value<int>("event"); }
-        catch (Exception) { return null; }
-        if (unchecked((uint)eventType) != ChannelWire.GameEventType) return null;
-        var raw = message.RawData;
-        // Decal's raw bytes may or may not start with the message type; find the event type either way.
-        var offset = raw.Length >= 16 && BitConverter.ToUInt32(raw, 0) == GameEventMessage && BitConverter.ToUInt32(raw, 12) == ChannelWire.GameEventType ? 16
-            : raw.Length >= 12 && BitConverter.ToUInt32(raw, 8) == ChannelWire.GameEventType ? 12 : -1;
-        if (!_loggedFirstReceive || offset < 0)
+        if (messageType != GameEventMessage) return null;
+        // Decal's raw bytes may or may not start with the message type (a character id never equals it); the event type follows
+        // character and sequence either way. Only that one place is checked, so a sequence number never reads as the event type.
+        var offset = raw.Length >= 4 && UInt32At(raw, 0) == GameEventMessage ? 16 : 12;
+        if (raw.Length < offset || UInt32At(raw, offset - 4) != ChannelWire.GameEventType) return null;
+        if (!_loggedFirstReceive)
         {
             _log($"Server channel event: {raw.Length} raw bytes, payload offset {offset}.");
             _loggedFirstReceive = true;
         }
-        if (offset < 0) return null;
         Received++;
-        var payload = new byte[raw.Length - offset];
-        Buffer.BlockCopy(raw, offset, payload, 0, payload.Length);
-        return payload;
+        return raw.Slice(offset).ToArray();
     }
+
+    private static uint UInt32At(ReadOnlySpan<byte> bytes, int offset) => BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset));
 
     private static T Function<T>(uint address) where T : Delegate =>
         (T)Marshal.GetDelegateForFunctionPointer(new IntPtr(address), typeof(T));

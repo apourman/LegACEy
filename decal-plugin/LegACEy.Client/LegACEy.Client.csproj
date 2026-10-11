@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The LegACEy client on .NET 10, started inside acclient by the Decal plugin. The IL stays AnyCPU so the tests load it on
+       x64; the game build selects x86 with -r win-x86. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="LegACEy.Client.Tests" />
+    <PackageReference Include="Reloaded.Hooks" Version="4.3.3" />
+    <ProjectReference Include="..\LegACEy.Client.PanelHost\LegACEy.Client.PanelHost.csproj" />
+    <ProjectReference Include="..\LegACEy.Client.InputRouter\LegACEy.Client.InputRouter.csproj" />
+    <ProjectReference Include="..\LegACEy.Client.GameArt\LegACEy.Client.GameArt.csproj" />
+    <ProjectReference Include="..\LegACEy.Client.Demo\LegACEy.Client.Demo.csproj" />
+    <ProjectReference Include="..\LegACEy.Client.Themes\LegACEy.Client.Themes.csproj" />
+  </ItemGroup>
+</Project>

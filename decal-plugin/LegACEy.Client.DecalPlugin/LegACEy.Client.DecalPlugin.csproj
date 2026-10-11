@@ -39,6 +39,12 @@
     <ProjectReference Include="..\LegACEy.Client.Themes\LegACEy.Client.Themes.csproj" />
   </ItemGroup>
 
+  <!-- ponytail: until this project becomes the thin stub, it keeps its Decal and Managed DirectX code and compiles the moved
+       client sources that still build on net48. -->
+  <ItemGroup>
+    <Compile Include="..\LegACEy.Client\GameChannelTransport.cs;..\LegACEy.Client\GameStatePoller.cs;..\LegACEy.Client\NativeRetailPanelPort.cs;..\LegACEy.Client\NativeUi.cs;..\LegACEy.Client\NativeUiCatalogue.cs;..\LegACEy.Client\NativeUiMovement.cs;..\LegACEy.Client\PostUiDrawHook.cs;..\LegACEy.Client\RetailItemDrag.cs;..\LegACEy.Client\RetailPanelTakeover.cs;..\LegACEy.Client\RetailSurfaceRenderer.cs;..\LegACEy.Client\RetailTakeoverLifecycle.cs;..\LegACEy.Client\Win32KeyMap.cs" LinkBase="Client" />
+  </ItemGroup>
+
   <!-- Plugins are built with this client (same global properties, so one build of each shared project) but not referenced
        by it. Each plugin's DLL is then copied to Plugins\<Name>\ beside the client. -->
   <ItemGroup>

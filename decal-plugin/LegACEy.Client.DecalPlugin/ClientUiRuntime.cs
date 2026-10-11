@@ -279,7 +279,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
         if (_failed || _serverChannel == null || _channelTransport == null)
             return;
         byte[]? payload;
-        try { payload = _channelTransport.ReadEvent(e); }
+        try { payload = _channelTransport.ReadEvent(e.Message.Type, e.Message.RawData); }
         catch (Exception exception)
         {
             Log($"Could not read a server channel event: {exception}");
