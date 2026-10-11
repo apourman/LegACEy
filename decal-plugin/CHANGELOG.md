@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.7...decal-plugin-v0.1.8) (2026-10-11)
+
+
+### Features
+
+* LegACEy client on .NET 10 ([#37](https://github.com/apourman/LegACEy/issues/37)) ([7f13192](https://github.com/apourman/LegACEy/commit/7f131924826dc7e87fbfb09f71f892b6e8cf23af))
+
 ## [0.1.7](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.6...decal-plugin-v0.1.7) (2026-10-11)
 
 
