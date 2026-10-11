@@ -164,12 +164,37 @@ public sealed class AppraisalFeature
         }
     }
 
-    /// <summary>Shows the response in the window, opening it when it is not open. Returns false when the window could not open.</summary>
-    private bool Show(AppraisalResponse response)
+    /// <summary>
+    /// Shows an appraisal the server sent for an item that is not in the world (a Vault item, over the server channel): the same 0x00C9
+    /// body, in the window, with the name, icon and stack count the caller has for it. It is not cached, and its inscription is read-only.
+    /// Nothing thrown escapes: it is logged.
+    /// </summary>
+    public void ShowStored(byte[] payload, string name, ItemVisual? visual, int stackCount)
     {
-        var content = AppraisalContent.From(response, _spells(), _game.CharacterName, _game.IsCarried(response.ObjectId), _names(),
-            _game.ValidLocationsOf(response.ObjectId), _game.CoverageOf(response.ObjectId), _game.WorldObjectOf(response.ObjectId),
-            _game.PluralNameOf(response.ObjectId));
+        try
+        {
+            var response = AppraisalResponse.Read(payload);
+            _requested = 0;
+            Show(response, new InventoryObjectRead(response.ObjectId, name, 0, 0, 0, 0, stackCount, stackCount, 0, false, 0,
+                visual ?? new ItemVisual(0, 0, 0, 0)));
+        }
+        catch (Exception exception)
+        {
+            _log($"Could not show a stored item's appraisal: {exception.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Shows the response in the window, opening it when it is not open. Returns false when the window could not open. A
+    /// <paramref name="stored"/> item is not in the world: it is what the window knows of it, and nothing is read from the world.
+    /// </summary>
+    private bool Show(AppraisalResponse response, InventoryObjectRead? stored = null)
+    {
+        var id = response.ObjectId;
+        var content = stored != null
+            ? AppraisalContent.From(response, _spells(), _game.CharacterName, carried: false, _names(), world: stored)
+            : AppraisalContent.From(response, _spells(), _game.CharacterName, _game.IsCarried(id), _names(), _game.ValidLocationsOf(id),
+                _game.CoverageOf(id), _game.WorldObjectOf(id), _game.PluralNameOf(id));
         var art = _host.Art;
         // A window the client released (its surface failed or closed on its own) is neither open nor hidden: the view is stale, so the next
         // appraisal builds a new one.

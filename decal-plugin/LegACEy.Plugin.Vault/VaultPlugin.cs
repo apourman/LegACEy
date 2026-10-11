@@ -40,7 +40,14 @@ public sealed class VaultPlugin : ILegACEyPlugin
         try
         {
             vaultClient = new VaultClient(client.ServerChannel);
-            vault = new VaultShellPanel(client.Art, vaultClient, client.ItemDrag);
+            var appraiser = vaultClient;
+            vault = new VaultShellPanel(client.Art, vaultClient, client.ItemDrag, item =>
+            {
+                // An older server has no Vault appraisals: right-click then does nothing, as before.
+                if (!client.SupportsAction(VaultProtocol.Appraise)) return;
+                appraiser.Appraise(item.Guid, body => client.ShowAppraisal(body, item.Name,
+                    new ItemVisual(item.Icon, item.Underlay, item.Overlay, unchecked((uint)item.UiEffects), item.Plate), item.StackSize));
+            });
             var window = new VaultShellWindow(vault);
             window.CloseRequested += (_, _) => close();
             window.DetachedFromVisualTree += (_, _) => window.Dispose();

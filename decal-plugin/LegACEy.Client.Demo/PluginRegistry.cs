@@ -296,6 +296,9 @@ public sealed class PluginRegistry
             _registry.ToggleWindow(_entry, id, title, width, height, defaultLocation, createWindow, ownChrome: true, theme, resizing, titleBarHeight, sharesLocationWith);
         }
 
+        public void ShowAppraisal(byte[] appraisal, string name, ItemVisual? visual, int stackCount) =>
+            _registry._host.ShowAppraisal(appraisal ?? throw new ArgumentNullException(nameof(appraisal)), name ?? string.Empty, visual, stackCount);
+
         public int? LoadSettings() => _registry._host.LoadPluginSettings(_entry.Name);
         public void SaveSettings(int value) => _registry._host.SavePluginSettings(_entry.Name, value);
 

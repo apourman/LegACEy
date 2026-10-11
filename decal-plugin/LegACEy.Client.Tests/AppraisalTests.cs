@@ -613,6 +613,23 @@ public sealed class AppraisalTests
     });
 
     [Fact]
+    public void A_vault_item_shows_with_the_vaults_name_and_icon_and_a_read_only_inscription() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost();
+        var appraisals = new AppraisalFeature(host, _ => { }, game: new FakeAppraisalGame());
+
+        // The character's own inscription, which a carried item would let them edit: an item in the Vault is not carried.
+        appraisals.ShowStored(InscribedPotion(Gem, "Mine", "Aerbax"), "Gift Potion", new ItemVisual(0x06001F98, 0, 0, 0), 3);
+
+        Assert.Equal(1, host.Opened);
+        Assert.Equal("3 Gift Potions", appraisals.Shown?.Name);
+        Assert.Equal(0x06001F98u, appraisals.Shown?.Visual?.Icon);
+        Assert.Empty(host.LastWindow!.GetLogicalDescendants().OfType<TextBox>());
+        // It is not cached with the world's responses.
+        Assert.Null(appraisals.Response(Gem));
+    });
+
+    [Fact]
     public void A_closed_window_does_not_follow_the_selection() => OnWindowThread(() =>
     {
         var host = new FakeAppraisalHost();
@@ -1477,6 +1494,7 @@ public sealed class AppraisalTests
         public void Release(string id) => _open.Remove(id);
         public int? LoadPluginSettings(string plugin) => null;
         public void SavePluginSettings(string plugin, int value) { }
+        public void ShowAppraisal(byte[] appraisal, string name, ItemVisual? visual, int stackCount) { }
 
         private sealed class NoArt : IGameArtSource
         {

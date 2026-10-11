@@ -1264,6 +1264,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         catch (COMException) { return 0; }
     }
 
+    void ILegACEyPluginHost.ShowAppraisal(byte[] appraisal, string name, ItemVisual? visual, int stackCount) =>
+        _appraisal.ShowStored(appraisal, name, visual, stackCount);
+
     int? ILegACEyPluginHost.LoadPluginSettings(string plugin) => _settingsStore.Load(SessionServer(), SessionCharacter(), plugin)?.Location.X;
 
     void ILegACEyPluginHost.SavePluginSettings(string plugin, int value) =>
