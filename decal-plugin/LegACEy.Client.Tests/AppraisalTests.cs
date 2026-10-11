@@ -554,20 +554,22 @@ public sealed class AppraisalTests
     });
 
     [Fact]
-    public void Another_appraisal_of_the_same_height_takes_over_the_open_window() => OnWindowThread(() =>
+    public void Another_appraisal_takes_over_the_open_resizable_window_whatever_its_height() => OnWindowThread(() =>
     {
         var host = new FakeAppraisalHost();
-        var appraisals = new AppraisalFeature(host, _ => { });
+        var appraisals = new AppraisalFeature(host, _ => { }, game: new FakeAppraisalGame());
         appraisals.Request(Potion);
         appraisals.Receive(PotionMessage(Potion, 75));
         var first = host.LastWindow;
 
+        // Taller: the inscription foot. The window keeps the size the player gave it and the body scrolls.
         appraisals.Request(Gem);
-        appraisals.Receive(PotionMessage(Gem, 300));
+        appraisals.Receive(InscribedPotion(Gem, "Bonked many a drudge", "Ilsa of Yaraq"));
 
         Assert.Equal(1, host.Opened);
         Assert.Same(first, host.LastWindow);
-        Assert.Equal("300", appraisals.Shown?.Figures[0].Value);
+        Assert.NotNull(host.LastDefinition?.Resizing);
+        Assert.Equal(Gem, appraisals.Shown?.ObjectId);
     });
 
     [Fact]
@@ -1384,6 +1386,8 @@ public sealed class AppraisalTests
         public int Open => _open.Count;
         /// <summary>The content the last opened window was built with.</summary>
         public DerethWindow? LastWindow { get; private set; }
+        /// <summary>The definition the last window was opened with.</summary>
+        public WindowDefinition? LastDefinition { get; private set; }
         /// <summary>When set, opening fails the way a broken window does.</summary>
         public bool FailOpen { get; set; }
         /// <summary>When set, closing fails the way a window the client will not close does.</summary>
@@ -1400,6 +1404,7 @@ public sealed class AppraisalTests
         public bool OpenWindow(WindowDefinition definition, Point location, Func<Action, Control> createContent, Action<Exception> failed, bool ownChrome)
         {
             if (FailOpen) throw new InvalidOperationException("The window broke while opening.");
+            LastDefinition = definition;
             LastWindow = (DerethWindow)createContent(() => HideWindow(definition.Id));
             _open.Add(definition.Id);
             Opened++;

@@ -160,21 +160,22 @@ public sealed class AppraisalFeature
         // A window the client released (its surface failed or closed on its own) is neither open nor hidden: the view is stale, so the next
         // appraisal builds a new one.
         if (_view != null && !_hidden && !_host.IsWindowOpen(WindowId)) _view = null;
-        // One window serves the session: it takes the next appraisal in place while the content fits its height. A height change
-        // releases the window and builds a new one, because a window's size cannot change once it is open.
-        if (_view == null || !_view.TryShow(content, art, Inscribe))
+        // One window serves the session: it takes the next appraisal in place, at the size the player left it.
+        if (_view == null)
         {
-            _view?.Retire();
-            _host.CloseWindow(WindowId);
             _view = AppraisalWindow.Create(content, art, Inscribe);
             _hidden = false;
+        }
+        else
+        {
+            _view.Show(content, art, Inscribe);
         }
         var view = _view;
         // An open window already shows the content. A hidden one comes back as it was, with the content just swapped in.
         if (!_host.IsWindowOpen(WindowId))
         {
             var definition = new WindowDefinition(WindowId, "Appraisal", AppraisalWindow.Width, view.Height, DerethWindow.TitleBarHeight,
-                new DerethClientTheme());
+                new DerethClientTheme(), AppraisalWindow.Sizing);
             var opened = _host.OpenWindow(definition, DefaultLocation, close =>
             {
                 // The close box ends any request still waiting: the player has stopped looking at the window.

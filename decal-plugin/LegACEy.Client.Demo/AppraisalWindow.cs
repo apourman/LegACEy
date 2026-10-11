@@ -14,8 +14,8 @@ namespace LegACEy.Client.Demo;
 /// <summary>
 /// The appraisal window: a Dereth window whose header carries the item's icon and name, drawing an <see cref="AppraisalContent"/>. The
 /// summary, then the sections (each a gold heading over a rule), then the long description in italics under a rule. The body scrolls
-/// past <see cref="MaxHeight"/>, and the inscription stays pinned under it. One instance serves the session: <see cref="TryShow"/> swaps in
-/// the next appraisal while it fits the height the window has.
+/// when it does not fit, and the inscription stays pinned under it. The window opens fitted to its content (up to <see cref="MaxHeight"/>)
+/// and resizes from its edges. One instance serves the session: <see cref="Show"/> swaps in the next appraisal at the window's size.
 /// </summary>
 public sealed class AppraisalWindow
 {
@@ -24,8 +24,10 @@ public sealed class AppraisalWindow
     private const string LabelColumn = "92,*";
     private static readonly Color ManaFill = Color.Parse("#4F86C6");
     private static readonly Color HealthFill = Color.Parse("#B8453A");
-    /// <summary>The tallest the window grows before its body scrolls.</summary>
+    /// <summary>The tallest the window opens at before its body scrolls; the player can resize it from there.</summary>
     public const int MaxHeight = 520;
+    /// <summary>The smallest the player can resize the window to: the header, the summary and a few rows.</summary>
+    public static readonly WindowResizing Sizing = new(new System.Drawing.Size(260, 160));
     // The Dereth frame and header, the title rule and the body's bottom margin, around the body.
     private const int Chrome = DerethWindow.TitleBarHeight + 5 + 6 + 8;
     // The frame and the window's side margins, and the body's padding, around the text.
@@ -50,7 +52,7 @@ public sealed class AppraisalWindow
 
     public DerethWindow Window => _window;
 
-    /// <summary>The height the window was built at: its body and inscription plus the chrome, up to <see cref="MaxHeight"/>.</summary>
+    /// <summary>The height the window opens at when no size is saved: its body and inscription plus the chrome, up to <see cref="MaxHeight"/>.</summary>
     public int Height { get; }
 
     /// <summary>Runs when the player closes the window with its close box.</summary>
@@ -72,28 +74,25 @@ public sealed class AppraisalWindow
     }
 
     /// <summary>
-    /// Shows another appraisal in this window, when its content fits the height the window has. Returns false, with the window unchanged,
-    /// when it needs another height: the window's size cannot change once it is open. The inscription field with unsaved text is kept only
-    /// for the same item, and then it takes the refreshed saved text (Escape restores that). Another item's appraisal replaces the field: the
-    /// typed text is dropped, unsent.
+    /// Shows another appraisal in this window, at the size the window has (the player's to set): the body scrolls when it does not fit. The
+    /// inscription field with unsaved text is kept only for the same item, and then it takes the refreshed saved text (Escape restores that).
+    /// Another item's appraisal replaces the field: the typed text is dropped, unsent.
     /// </summary>
-    public bool TryShow(AppraisalContent content, IGameArtSource? art, Func<uint, string, bool> inscribe)
+    public void Show(AppraisalContent content, IGameArtSource? art, Func<uint, string, bool> inscribe)
     {
         var layout = Layout(content, inscribe);
-        if (layout.Height != Height) return false;
         _window.Title = content.Name;
         _window.SetIcon(Icon(content.Visual, art));
         _scroll.Content = layout.Body;
         if (_field is { Unsaved: true } kept && layout.Field != null && content.ObjectId == _footObject)
         {
             kept.Rebase(content.Inscription?.Text ?? string.Empty);
-            return true;
+            return;
         }
         _field?.Detach();
         _foot.Content = layout.Foot;
         _field = layout.Field;
         _footObject = content.ObjectId;
-        return true;
     }
 
     /// <summary>The window is replaced by a new one: its inscription field no longer saves what is typed in it.</summary>
