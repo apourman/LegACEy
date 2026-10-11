@@ -123,7 +123,8 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     /// (the appraisal does not carry them); a piece of clothing or armour names what it covers on the type line.
     /// </summary>
     public static AppraisalContent From(AppraisalResponse response, IReadOnlyDictionary<uint, SpellInfo> spells,
-        string characterName = "", bool carried = false, CharacterNames? names = null, uint validLocations = 0, uint coverage = 0)
+        string characterName = "", bool carried = false, CharacterNames? names = null, uint validLocations = 0, uint coverage = 0,
+        InventoryObjectRead? world = null)
     {
         var hasCreatureProfile = response.Creature != null;
         var figures = hasCreatureProfile
@@ -139,12 +140,15 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
                 : SectionRules.Select(rule => new AppraisalSection(rule.Heading, rule.Rows(response, spells, covered).ToList())))
             .Where(section => section.Rows.Count > 0)
             .ToList();
-        var visual = response.Dids.TryGetValue(IconDid, out var icon) && icon != 0
-            ? new ItemVisual(icon, Did(response, IconUnderlayDid), Did(response, IconOverlayDid), 0)
-            : null;
+        // The server's appraisal carries no name or icon (retail takes both from the object's create message), so the world's come first.
+        var visual = world is { Visual.Icon: not 0 } ? world.Visual
+            : response.Dids.TryGetValue(IconDid, out var icon) && icon != 0
+                ? new ItemVisual(icon, Did(response, IconUnderlayDid), Did(response, IconOverlayDid), 0)
+                : null;
         return new AppraisalContent(
             response.ObjectId,
-            response.Strings.TryGetValue(NameString, out var name) && name.Length > 0 ? name : "Unknown item",
+            world is { Name.Length: > 0 } ? world.Name
+                : response.Strings.TryGetValue(NameString, out var name) && name.Length > 0 ? name : "Unknown item",
             visual,
             hasCreatureProfile ? CreatureTypeLine(response, names ?? CharacterNames.None) : TypeLineOf(response, covered),
             figures,

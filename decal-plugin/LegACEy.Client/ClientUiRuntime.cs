@@ -1245,6 +1245,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     uint IAppraisalGame.CoverageOf(uint itemId) => WorldRead(() => Bridge.CoverageOf(itemId));
 
+    InventoryObjectRead? IAppraisalGame.WorldObjectOf(uint itemId)
+    {
+        try { return Bridge.Item(itemId); }
+        catch (COMException) { return null; }
+    }
+
     private static uint WorldRead(Func<uint> read)
     {
         try { return read(); }

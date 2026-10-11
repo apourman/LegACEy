@@ -52,6 +52,19 @@ public sealed class AppraisalTests
     }
 
     [Fact]
+    public void The_name_and_icon_come_from_the_world_because_the_server_sends_neither()
+    {
+        // ACE's appraisal has no Name string or Icon data id: neither is an assessment property.
+        var bytes = new ServerAppraisal(Potion) { Ints = { [19] = 75 } }.Build();
+        var world = new InventoryObjectRead(Potion, "Mana Potion", 0, 0, 0, 0, 1, 1, 0, false, 0, new ItemVisual(0x06001F98, 0, 0, 0));
+
+        var content = AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells, world: world);
+
+        Assert.Equal("Mana Potion", content.Name);
+        Assert.Equal(0x06001F98u, content.Visual?.Icon);
+    }
+
+    [Fact]
     public void A_failed_appraisal_shows_the_name_and_figures_the_server_sent()
     {
         var bytes = new ServerAppraisal(Gem) { Success = false, Strings = { [1] = "Peridot" }, Ints = { [19] = 300 } }.Build();
@@ -1357,6 +1370,9 @@ public sealed class AppraisalTests
         public void RequestAppraisal(uint itemId) => Appraised.Add(itemId);
         public uint ValidLocationsOf(uint itemId) => 0;
         public uint CoverageOf(uint itemId) => 0;
+        /// <summary>The world's objects by id; the server's appraisal sends no name or icon.</summary>
+        public Dictionary<uint, InventoryObjectRead> World { get; } = new();
+        public InventoryObjectRead? WorldObjectOf(uint itemId) => World.GetValueOrDefault(itemId);
     }
 
     /// <summary>A plugin host with one window, recording what the feature opens. Its art has no images, so items show no icon.</summary>
