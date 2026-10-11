@@ -122,6 +122,19 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     /// <paramref name="validLocations"/> and <paramref name="coverage"/> are the item's equipable slots and clothing coverage from the world
     /// (the appraisal does not carry them); a piece of clothing or armour names what it covers on the type line.
     /// </summary>
+    /// <summary>
+    /// The window's title as retail names the object: the material first ("Iron Mace"), with the material's word taken out of the name
+    /// wherever it was, and the material alone when nothing else is left (a gem named for its material).
+    /// </summary>
+    private static string TitleOf(AppraisalResponse response, InventoryObjectRead? world)
+    {
+        var name = world is { Name.Length: > 0 } ? world.Name
+            : response.Strings.TryGetValue(NameString, out var sent) && sent.Length > 0 ? sent : "Unknown item";
+        if (AppraisalOtherLines.Material(response) is not { } material) return name;
+        var rest = name.Replace(material, string.Empty).Trim();
+        return rest.Length == 0 ? material : $"{material} {rest}";
+    }
+
     public static AppraisalContent From(AppraisalResponse response, IReadOnlyDictionary<uint, SpellInfo> spells,
         string characterName = "", bool carried = false, CharacterNames? names = null, uint validLocations = 0, uint coverage = 0,
         InventoryObjectRead? world = null)
@@ -147,8 +160,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
                 : null;
         return new AppraisalContent(
             response.ObjectId,
-            world is { Name.Length: > 0 } ? world.Name
-                : response.Strings.TryGetValue(NameString, out var name) && name.Length > 0 ? name : "Unknown item",
+            TitleOf(response, world),
             visual,
             hasCreatureProfile ? CreatureTypeLine(response, names ?? CharacterNames.None) : TypeLineOf(response, covered),
             figures,

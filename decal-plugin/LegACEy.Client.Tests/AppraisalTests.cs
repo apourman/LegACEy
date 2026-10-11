@@ -64,6 +64,18 @@ public sealed class AppraisalTests
         Assert.Equal(0x06001F98u, content.Visual?.Icon);
     }
 
+    [Theory]
+    [InlineData("Mace", 61, "Iron Mace")]
+    [InlineData("Peridot", 34, "Peridot")]
+    [InlineData("Mace", 0, "Mace")]
+    public void The_title_puts_the_material_first_as_retail_does(string worldName, int material, string title)
+    {
+        var bytes = new ServerAppraisal(Potion) { Ints = { [131] = material } }.Build();
+        var world = new InventoryObjectRead(Potion, worldName, 0, 0, 0, 0, 1, 1, 0, false, 0, new ItemVisual(0, 0, 0, 0));
+
+        Assert.Equal(title, AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells, world: world).Name);
+    }
+
     [Fact]
     public void A_failed_appraisal_shows_the_name_and_figures_the_server_sent()
     {

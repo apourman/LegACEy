@@ -131,9 +131,9 @@ internal static class AppraisalOtherLines
         response => IntOf(response, property) is int value && (value & bit) != 0 ? sentence : null;
 
     /// <summary>The material's name, from the material table. Nothing for no material or a value the table does not have.</summary>
-    private static string? Material(AppraisalResponse response) => MaterialName(IntOf(response, MaterialTypeInt));
+    internal static string? Material(AppraisalResponse response) => MaterialName(IntOf(response, MaterialTypeInt));
 
-    private static string? MaterialName(int? value) =>
+    internal static string? MaterialName(int? value) =>
         value is int v && v > 0 && v < AppraisalNameTables.Materials.Length && AppraisalNameTables.Materials[v].Length > 0
             ? AppraisalNameTables.Materials[v]
             : null;
