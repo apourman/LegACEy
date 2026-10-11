@@ -152,21 +152,12 @@ public sealed class AppraisalWindow
         return DerethItemCells.Icon(GameArtImageExtension.CreateBitmap(image));
     }
 
-    /// <summary>The summary figures side by side, each a value over its label, sharing the width evenly.</summary>
+    /// <summary>Value, Burden and Workmanship stacked, each label in the label column with its value beside it, as the rows below.</summary>
     private static Control Figures(IReadOnlyList<AppraisalFigure> figures)
     {
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions(string.Join(",", figures.Select(_ => "*"))), Margin = new Thickness(0, 4, 0, 4) };
-        for (var i = 0; i < figures.Count; i++)
-        {
-            var figure = new StackPanel
-            {
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Children = { Text(figures[i].Value, DerethPalette.CreamBrush, 16, centred: true), Text(figures[i].Label, DerethPalette.MutedBrush, 11, centred: true) }
-            };
-            Grid.SetColumn(figure, i);
-            grid.Children.Add(figure);
-        }
-        return grid;
+        var stack = new StackPanel { Margin = new Thickness(0, 4, 0, 4), Spacing = 2 };
+        foreach (var figure in figures) stack.Children.Add(Row(new AppraisalRow(figure.Label, figure.Value)));
+        return stack;
     }
 
     /// <summary>A section heading in gold, with the rule running from it to the window's edge.</summary>
@@ -356,9 +347,8 @@ public sealed class AppraisalWindow
         _ => DerethPalette.TextBrush,
     };
 
-    private static TextBlock Text(string text, IBrush brush, double size, bool centred = false, FontFamily? font = null) => new()
+    private static TextBlock Text(string text, IBrush brush, double size, FontFamily? font = null) => new()
     {
         Text = text, Foreground = brush, FontSize = size, FontFamily = font ?? FontFamily.Default,
-        TextAlignment = centred ? TextAlignment.Center : TextAlignment.Left,
     };
 }
