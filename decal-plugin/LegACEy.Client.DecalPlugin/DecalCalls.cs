@@ -25,7 +25,7 @@ internal static unsafe class DecalCalls
     {
         var calls = (BridgeCalls*)Marshal.AllocHGlobal(sizeof(BridgeCalls));
         calls->Device = (delegate* unmanaged[Stdcall]<IntPtr*, int>)Pointer(new DeviceCall(Device));
-        calls->Fact = (delegate* unmanaged[Stdcall]<int, int*, int>)Pointer(new FactCall(Fact));
+        calls->Fact = (delegate* unmanaged[Stdcall]<int, int*, int>)Pointer(new ReadCall(Fact));
         calls->Text = (delegate* unmanaged[Stdcall]<int, byte*, int, int*, int>)Pointer(new TextCall(Text));
         calls->Inventory = (delegate* unmanaged[Stdcall]<BridgeItem*, int, int*, int>)Pointer(new InventoryCall(Inventory));
         calls->Item = (delegate* unmanaged[Stdcall]<int, BridgeItem*, int*, int>)Pointer(new ItemCall(Item));
@@ -36,6 +36,7 @@ internal static unsafe class DecalCalls
         calls->MoveItem = (delegate* unmanaged[Stdcall]<int, int, int, int, int>)Pointer(new Call4(MoveItem));
         calls->MergeItem = (delegate* unmanaged[Stdcall]<int, int, int>)Pointer(new Call2(MergeItem));
         calls->AutoWield = (delegate* unmanaged[Stdcall]<int, int, int, int, int>)Pointer(new Call4(AutoWield));
+        calls->ValidLocations = (delegate* unmanaged[Stdcall]<int, int*, int>)Pointer(new ReadCall(ValidLocations));
         return calls;
     }
 
@@ -47,32 +48,24 @@ internal static unsafe class DecalCalls
 
     private static int Fail(Exception exception) => Marshal.GetHRForException(exception) is var result && result != 0 ? result : EFail;
 
-    private static int Device(IntPtr* device)
+    private static int Device(IntPtr* device) => Act(() => *device = OpenDevice());
+
+    private static IntPtr OpenDevice()
     {
+        var iid = Direct3DDevice9;
+        var game = CoreManager.Current.Decal.Underlying.GetD3DDevice(ref iid);
+        if (game == null) return IntPtr.Zero;
+        var unknown = Marshal.GetIUnknownForObject(game);
+        // ponytail: the client keeps this reference for the session and never releases it, as Managed DirectX's Device did.
         try
         {
-            *device = IntPtr.Zero;
-            var iid = Direct3DDevice9;
-            var game = CoreManager.Current.Decal.Underlying.GetD3DDevice(ref iid);
-            if (game == null) return 0;
-            var unknown = Marshal.GetIUnknownForObject(game);
-            // ponytail: the client keeps this reference for the session and never releases it, as Managed DirectX's Device did.
-            try { Marshal.ThrowExceptionForHR(Marshal.QueryInterface(unknown, ref iid, out *device)); }
-            finally { Marshal.Release(unknown); }
-            return 0;
+            Marshal.ThrowExceptionForHR(Marshal.QueryInterface(unknown, ref iid, out var device));
+            return device;
         }
-        catch (Exception exception) { return Fail(exception); }
+        finally { Marshal.Release(unknown); }
     }
 
-    private static int Fact(int fact, int* value)
-    {
-        try
-        {
-            *value = ReadFact((BridgeFact)fact);
-            return 0;
-        }
-        catch (Exception exception) { return Fail(exception); }
-    }
+    private static int Fact(int fact, int* value) => Act(() => *value = ReadFact((BridgeFact)fact));
 
     // The augmentation count is ACE's AugmentationIncreasedCarryingCapacity (PropertyInt 230).
     private const int CarryingAugmentationProperty = 230;
@@ -105,52 +98,40 @@ internal static unsafe class DecalCalls
 
     private static WorldObject? CharacterObject() => CoreManager.Current.WorldFilter[CoreManager.Current.CharacterFilter.Id];
 
-    private static int Text(int text, byte* buffer, int capacity, int* length)
+    private static int Text(int text, byte* buffer, int capacity, int* length) => Act(() =>
     {
-        try
-        {
-            var value = (BridgeText)text switch
+        var value = (BridgeText)text switch
             {
-                BridgeText.CharacterName => CoreManager.Current.CharacterFilter.Name,
-                BridgeText.ServerName => CoreManager.Current.CharacterFilter.Server,
-                BridgeText.PluginDirectory => Plugin.Directory,
-                _ => throw new ArgumentOutOfRangeException(nameof(text), text, "Unknown bridge text.")
-            };
-            var bytes = Encoding.UTF8.GetBytes(value ?? string.Empty);
-            *length = bytes.Length;
-            Marshal.Copy(bytes, 0, (IntPtr)buffer, Math.Min(bytes.Length, capacity));
-            return 0;
-        }
-        catch (Exception exception) { return Fail(exception); }
-    }
+            BridgeText.CharacterName => CoreManager.Current.CharacterFilter.Name,
+            BridgeText.ServerName => CoreManager.Current.CharacterFilter.Server,
+            BridgeText.PluginDirectory => Plugin.Directory,
+            _ => throw new ArgumentOutOfRangeException(nameof(text), text, "Unknown bridge text.")
+        };
+        var bytes = Encoding.UTF8.GetBytes(value ?? string.Empty);
+        *length = bytes.Length;
+        Marshal.Copy(bytes, 0, (IntPtr)buffer, Math.Min(bytes.Length, capacity));
+    });
 
-    private static int Inventory(BridgeItem* rows, int capacity, int* count)
+    private static int Inventory(BridgeItem* rows, int capacity, int* count) => Act(() =>
     {
-        try
+        var written = 0;
+        foreach (WorldObject item in CoreManager.Current.WorldFilter.GetInventory())
         {
-            var written = 0;
-            foreach (WorldObject item in CoreManager.Current.WorldFilter.GetInventory())
-            {
-                if (written < capacity) Flatten(item, rows + written);
-                written++;
-            }
-            *count = written;
-            return 0;
+            if (written < capacity) Flatten(item, rows + written);
+            written++;
         }
-        catch (Exception exception) { return Fail(exception); }
-    }
+        *count = written;
+    });
 
-    private static int Item(int id, BridgeItem* row, int* found)
+    private static int Item(int id, BridgeItem* row, int* found) => Act(() =>
     {
-        try
-        {
-            var item = CoreManager.Current.WorldFilter[id];
-            *found = item == null ? 0 : 1;
-            if (item != null) Flatten(item, row);
-            return 0;
-        }
-        catch (Exception exception) { return Fail(exception); }
-    }
+        var item = CoreManager.Current.WorldFilter[id];
+        *found = item == null ? 0 : 1;
+        if (item != null) Flatten(item, row);
+    });
+
+    private static int ValidLocations(int id, int* mask) =>
+        Act(() => *mask = CoreManager.Current.WorldFilter[id]?.Values(LongValueKey.EquipableSlots, 0) ?? 0);
 
     // Foci are not containers but take a side-pack slot: the server's RequiresPackSlot description flag (0x00800000).
     // Gate: Decal's Behavior is the object description flags.
@@ -195,7 +176,7 @@ internal static unsafe class DecalCalls
     private static int AutoWield(int id, int mask, int placement, int unknown) =>
         Act(() => CoreManager.Current.Actions.AutoWield(id, mask, placement, unknown));
 
-    // Actions are player clicks, not per-frame reads, so the closure is no cost worth avoiding.
+    // ponytail: a closure per call, some every frame; plain try/catch per call if the allocations ever show up.
     private static int Act(Action action)
     {
         try
@@ -207,7 +188,7 @@ internal static unsafe class DecalCalls
     }
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int DeviceCall(IntPtr* device);
-    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int FactCall(int fact, int* value);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int ReadCall(int key, int* value);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int TextCall(int text, byte* buffer, int capacity, int* length);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int InventoryCall(BridgeItem* rows, int capacity, int* count);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int ItemCall(int id, BridgeItem* row, int* found);

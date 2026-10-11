@@ -199,6 +199,13 @@ public static unsafe class Bridge
         Fact(BridgeFact.Health), Fact(BridgeFact.MaxHealth), Fact(BridgeFact.Stamina), Fact(BridgeFact.MaxStamina),
         Fact(BridgeFact.Mana), Fact(BridgeFact.MaxMana));
 
+    internal static uint ValidLocations(uint id)
+    {
+        int mask;
+        Check(_calls.ValidLocations((int)id, &mask), nameof(ValidLocations));
+        return (uint)mask;
+    }
+
     internal static void UseItem(uint id, int state) => Check(_calls.UseItem((int)id, state), nameof(UseItem));
     internal static void SelectItem(uint id) => Check(_calls.SelectItem((int)id), nameof(SelectItem));
     internal static void RequestId(uint id) => Check(_calls.RequestId((int)id), nameof(RequestId));

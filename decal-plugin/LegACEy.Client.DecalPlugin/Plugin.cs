@@ -22,7 +22,7 @@ public sealed unsafe class Plugin : FilterBase
 {
     /// <summary>The folder holding this DLL: the log, settings and Plugins\ live there.</summary>
     internal static readonly string Directory = IOPath.GetDirectoryName(typeof(Plugin).Assembly.Location)!;
-    private static readonly int ProcessId = Process.GetCurrentProcess().Id;
+    private static readonly int ProcessId = CurrentProcessId();
 
     // Process lifetime: the runtime can't be unloaded, and the client keeps pointers into both tables.
     private static delegate* unmanaged[Stdcall]<BridgeEvents*, BridgeCalls*, int> _init;
@@ -45,39 +45,52 @@ public sealed unsafe class Plugin : FilterBase
             var watch = Stopwatch.StartNew();
             if (_init(_events, _calls) != 0)
             {
-                Log("LegACEy is off: the client did not start (see the lines above).");
+                Log("LegACEy is off: the client did not start (see the lines above, or runtime\\legacey-avalonia.log if it could not read this folder).");
                 return;
             }
-            Log($"LegACEy client started in {watch.ElapsedMilliseconds} ms: {FreeAddressSpace()}.");
+            // The client is running from here on, so Shutdown must reach it whatever fails next.
             _running = true;
+            Log($"LegACEy client started in {watch.ElapsedMilliseconds} ms: {FreeAddressSpace()}.");
             CoreManager.Current.FilterInitComplete += OnFilterInitComplete;
         }
-        catch (Exception exception) { Log($"LegACEy is off: {exception}"); }
+        catch (Exception exception) { Log(_running ? $"LegACEy could not wait for Decal's filters: {exception}" : $"LegACEy is off: {exception}"); }
     }
 
     protected override void Shutdown()
     {
         if (!_running) return;
         _running = false;
-        try
+        // Each group on its own, so one failing filter doesn't keep the rest subscribed.
+        Unsubscribe(() =>
         {
             var core = CoreManager.Current;
             core.FilterInitComplete -= OnFilterInitComplete;
-            core.CharacterFilter.LoginComplete -= OnLoginComplete;
-            core.CharacterFilter.Logoff -= OnLogoff;
             core.RenderFrame -= OnRenderFrame;
             core.WindowMessage -= OnWindowMessage;
-            core.EchoFilter.ServerDispatch -= OnServerDispatch;
             core.ItemSelected -= OnItemSelected;
             core.ContainerOpened -= OnContainerOpened;
-            var world = core.WorldFilter;
+        });
+        Unsubscribe(() =>
+        {
+            CoreManager.Current.CharacterFilter.LoginComplete -= OnLoginComplete;
+            CoreManager.Current.CharacterFilter.Logoff -= OnLogoff;
+        });
+        Unsubscribe(() => CoreManager.Current.EchoFilter.ServerDispatch -= OnServerDispatch);
+        Unsubscribe(() =>
+        {
+            var world = CoreManager.Current.WorldFilter;
             world.CreateObject -= OnCreated;
             world.ChangeObject -= OnChanged;
             world.ReleaseObject -= OnReleased;
             world.MoveObject -= OnMoved;
-        }
-        catch (Exception exception) { Log($"Could not unsubscribe from Decal at shutdown: {exception}"); }
+        });
         _events->Shutdown();
+    }
+
+    private static void Unsubscribe(Action unsubscribe)
+    {
+        try { unsubscribe(); }
+        catch (Exception exception) { Log($"Could not unsubscribe from Decal at shutdown: {exception}"); }
     }
 
     // The client's event entry points catch their own exceptions, so only the stub's own Decal reads need a guard here.
@@ -105,6 +118,7 @@ public sealed unsafe class Plugin : FilterBase
         catch (Exception exception) { Log($"LegACEy could not subscribe to Decal: {exception}"); }
     }
 
+    // Bridge.Raise on the client side catches every exception, so these plain forwards can't unwind into Decal.
     private void OnRenderFrame(object? sender, EventArgs e) => _events->Frame();
     private void OnLoginComplete(object? sender, EventArgs e) => _events->LoginComplete();
     private void OnLogoff(object? sender, LogoffEventArgs e) => _events->Logoff();
@@ -170,12 +184,24 @@ public sealed unsafe class Plugin : FilterBase
         void* init;
         fixed (IntPtr* keyPointers = keys)
         fixed (IntPtr* valuePointers = values)
-            Check(initialize(Utf8(Process.GetCurrentProcess().MainModule!.FileName), Utf8("LegACEy"), keys.Length,
+            Check(initialize(Utf8(GameExecutable()), Utf8("LegACEy"), keys.Length,
                 (byte**)keyPointers, (byte**)valuePointers, &host, &domain), "coreclr_initialize");
         Check(createDelegate(host, domain, Utf8("LegACEy.Client"), Utf8("LegACEy.Client.DecalPlugin.Bridge"), Utf8("Init"), &init),
             "coreclr_create_delegate for Bridge.Init");
         Log($"CoreCLR up in {watch.ElapsedMilliseconds} ms with {assemblies.Length} assemblies: {FreeAddressSpace()}.");
         return (delegate* unmanaged[Stdcall]<BridgeEvents*, BridgeCalls*, int>)init;
+    }
+
+    private static int CurrentProcessId()
+    {
+        using var process = Process.GetCurrentProcess();
+        return process.Id;
+    }
+
+    private static string GameExecutable()
+    {
+        using var process = Process.GetCurrentProcess();
+        return process.MainModule!.FileName;
     }
 
     private const int LoadWithAlteredSearchPath = 0x8;

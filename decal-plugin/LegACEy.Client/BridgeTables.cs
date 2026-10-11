@@ -64,6 +64,9 @@ public unsafe struct BridgeCalls
     public delegate* unmanaged[Stdcall]<int, int, int> MergeItem;
     /// <summary>Actions.AutoWield(id, slot mask, explicit placement, unknown).</summary>
     public delegate* unmanaged[Stdcall]<int, int, int, int, int> AutoWield;
+    /// <summary>(id, out mask): one world object's valid locations (EquipableSlots), 0 when the world has no such object. A lean
+    /// <see cref="Item"/> for the per-frame read during a retail drag over the paperdoll.</summary>
+    public delegate* unmanaged[Stdcall]<int, int*, int> ValidLocations;
 }
 
 /// <summary>The integer facts <see cref="BridgeCalls.Fact"/> answers.</summary>
