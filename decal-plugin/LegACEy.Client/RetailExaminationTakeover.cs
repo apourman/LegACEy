@@ -31,6 +31,8 @@ internal sealed class RetailExaminationTakeover : IDisposable
     private int _yieldedRequests;
     private bool _selectionFailed;
     private bool _closeAfterShow;
+    // What the last enabled tick saw of retail's panel, logged on each change: whether the client has it, and whether it shows.
+    private (bool Found, bool Shown)? _seen;
 
     /// <param name="selection">The object retail is examining: the current selection, read each enabled frame before the panel is ticked.</param>
     /// <param name="appraisals">Shows the appraisal window for an object, now or when its response arrives, and reports how that went.</param>
@@ -76,7 +78,11 @@ internal sealed class RetailExaminationTakeover : IDisposable
     {
         // The selection is read first, so that the panel shown this frame is judged by the object it is for. An empty selection is no
         // examination: the panel is not parked, unless it is already held for an object.
-        if (enabled) _selected = ReadSelection();
+        if (enabled)
+        {
+            _selected = ReadSelection();
+            NoteChange();
+        }
         // Our window can only show with the character in the world. Until then the panel is left to retail, and nothing waits for it.
         // A failed root check leaves the panel to retail for the session: nothing is parked and nothing is closed.
         var live = enabled && canShow && RootVerified();
@@ -137,6 +143,15 @@ internal sealed class RetailExaminationTakeover : IDisposable
         if (!passed) Note("Retail's examination panel is left to retail: its root is not confirmed as the examination panel.");
         _rootVerified = passed;
         return passed;
+    }
+
+    /// <summary>Logs each change of what the client has of retail's panel, with the selection then: the trail for a takeover that never fires.</summary>
+    private void NoteChange()
+    {
+        var seen = (_port.Identity != IntPtr.Zero, _port.IsOpen);
+        if (_seen == seen) return;
+        _seen = seen;
+        Note($"Retail's examination panel is {(seen.Item1 ? "present" : "absent")} and {(seen.Item2 ? "shown" : "hidden")}; selection 0x{_selected:X8}.");
     }
 
     private uint ReadSelection()

@@ -211,6 +211,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _examination = new RetailExaminationTakeover(examinationPort, () => (uint)Bridge.Fact(BridgeFact.CurrentSelection),
                     _appraisal, Log, examinationPort.VerifyRoot);
             }
+            else Log("Retail's examination panel is left to retail: the native UI or its addresses are not ready.");
             try
             {
                 _channelTransport = new GameChannelTransport(NativeUi.ReadMemory, () => _inGame, Log);

@@ -323,7 +323,7 @@ public sealed class AppraisalTests
         Assert.Empty(game.Appraised);
         Assert.Equal(0, host.Opened);
         // Logged once for the session, not every frame.
-        Assert.Single(logged);
+        Assert.Single(logged, line => line.Contains("not confirmed"));
     });
 
     [Fact]
