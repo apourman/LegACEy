@@ -45,11 +45,12 @@ internal static class NativeUiCatalogue
         Root("Indicators", 0x10000611), Root("CharacterInfo", 0x10000183), Root("PositiveEffects", 0x10000184),
         Root("NegativeEffects", 0x10000185), Root("LinkStatus", 0x10000187), Root("MiniGame", 0x10000188), Root("Vitae", 0x1000018A),
         Root("InventoryPanel", 0x1000018B),
-        // The examination panel: the top-level element of LayoutDesc 0x2100006B in the installed client_local_English.dat. The DAT holds the
+        // The examination panel: 0x100005F7 in LayoutDesc 0x21000005, placed from the top-level element 0x100005F2 of LayoutDesc 0x2100006B
+        // in the installed client_local_English.dat (the placed id is the one the client registers). The DAT holds the
         // inscription field 0x1000013E under it, whose MaxCharacters the appraisal window's inscription limit (300) was confirmed against; the
         // limit is a constant in the window, not read at runtime. Both ids are checked by the DAT. In the process, the examination takeover
         // checks the root once per session before parking it (NativeExaminationPort.VerifyRoot: the field resolves beneath the root).
-        Root("Examination", NativeUi.Examination, "installed client_local_English.dat, LayoutDesc 0x2100006B (top-level element)"),
+        Root("Examination", NativeUi.Examination, "installed client_local_English.dat, LayoutDesc 0x21000005 (placed from 0x2100006B/0x100005F2)"),
         Root("ExaminationInscription", NativeUi.ExaminationInscription, "installed client_local_English.dat, LayoutDesc 0x2100006B (inscription field)")
     };
 
