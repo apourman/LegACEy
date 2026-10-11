@@ -926,6 +926,20 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost
             }
         }
 
+        public bool DeliverManyAtPointer(IReadOnlyList<uint> itemIds)
+        {
+            if (_owner._windows is not { } windows) return false;
+            var window = windows.HitTest(_owner._pointer);
+            if (window == null) return false;
+            try { return ItemDropRouting.DeliverManyTo(window, _owner.ContentOf, _owner._pointer, itemIds, windows.Scale); }
+            catch (Exception exception)
+            {
+                if (_owner._windowFailures.TryGetValue(window.Id, out var failed)) failed(exception);
+                else _owner.Disable(exception);
+                return false;
+            }
+        }
+
         public IDisposable ShowDragIcon(GameImage? image, int count, bool retailDropIndicator, uint itemId = 0)
         {
             var icon = _owner.ShowDragIcon(image, count);

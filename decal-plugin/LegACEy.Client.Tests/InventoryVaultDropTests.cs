@@ -64,6 +64,51 @@ public sealed class InventoryVaultDropTests
     });
 
     [Fact]
+    public void A_picked_set_released_over_the_vault_is_deposited_as_one_batch() => RenderThread.Run(() =>
+    {
+        var windows = new WindowManager(new Size(1920, 1080), new MemoryWindowPositionStore(), "Server", "Character");
+        var contents = new Dictionary<string, object>();
+        var pointer = default(Point);
+        var drag = new FakeItemDragHost { RelayMany = ids => windows.HitTest(pointer) is { } window && ItemDropRouting.DeliverManyTo(window, Content, pointer, ids, windows.Scale) };
+        using var vault = new VaultFixture(null, VaultShellPanel.WindowHeight, new FakeItemDragHost());
+        windows.Open(new WindowDefinition("vault", "Vault", VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight), VaultOrigin);
+        contents["vault"] = vault.Window;
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var inventory = AvaloniaPanel.Create(() => new InventoryWindow(port, new InventorySample.NoArt(),
+            new InventorySettings(InventoryLayout.Vertical, showSlots: true), drag), 360, 530);
+        inventory.ApplyTheme(new DerethClientTheme());
+        windows.Open(new WindowDefinition("inventory", "Inventory", 360, 530), new Point(0, 0));
+        contents["inventory"] = inventory.Content;
+        InventoryDriver.Tick(inventory);
+        DerethSlot Cell(uint id) => InventoryDriver.Slots(inventory).Single(slot => InventoryDriver.Id(slot).ItemId == id);
+        foreach (var (id, modifiers) in new[] { (InventorySample.Apple, KeyModifiers.None), (InventorySample.Scroll, KeyModifiers.Control) })
+        {
+            var at = InventoryDriver.Centre(inventory, Cell(id));
+            inventory.PointerDown(at.X, at.Y, modifiers);
+            inventory.PointerUp(at.X, at.Y);
+            InventoryDriver.Tick(inventory);
+        }
+        var over = vault.Center(vault.Cells[10]);
+        var release = new Point(VaultOrigin.X + (int)over.X, VaultOrigin.Y + (int)over.Y);
+
+        var start = InventoryDriver.Centre(inventory, Cell(InventorySample.Scroll));
+        inventory.PointerDown(start.X, start.Y, KeyModifiers.None);
+        inventory.PointerMove(start.X + 10, start.Y);
+        pointer = release;
+        inventory.PointerMove(release.X, release.Y);
+        inventory.PointerUp(release.X, release.Y);
+        vault.Step(TimeSpan.FromMilliseconds(30));
+
+        Assert.Equal(VaultProtocol.DepositBatch, vault.Server.Received.Last());
+        Assert.Empty(InventoryDriver.Sent(port));
+        Assert.Null(inventory.LastError);
+        Assert.Null(vault.Host.LastError);
+
+        object? Content(string id) => contents.TryGetValue(id, out var content) ? content : null;
+    });
+
+    [Fact]
     public void A_vault_item_released_over_the_inventory_window_withdraws_it_as_over_the_inventory() => RenderThread.Run(() =>
     {
         var windows = new WindowManager(new Size(1920, 1080), new MemoryWindowPositionStore(), "Server", "Character");

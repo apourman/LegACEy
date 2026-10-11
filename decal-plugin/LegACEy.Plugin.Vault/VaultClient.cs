@@ -61,12 +61,13 @@ public static class VaultProtocol
     public const string Check = "vault.check";
     public const string Move = "vault.move";
     public const string WithdrawBatch = "vault.withdraw_batch";
+    public const string DepositBatch = "vault.deposit_batch";
 
     /// <summary>The items the window asks for at a time. Must match ACE.Server.Market.VaultChannelActions.PageSize.</summary>
     public const int PageSize = 100;
 
-    /// <summary>A batch withdrawal: a count, then the item ids.</summary>
-    public static byte[] WithdrawBatchRequest(IReadOnlyList<uint> guids, (uint Container, int Position)? place = null) => ChannelWire.Body(w =>
+    /// <summary>A batch deposit or withdrawal: a count, then the item ids, then for a withdrawal the pack place, if any.</summary>
+    public static byte[] BatchRequest(IReadOnlyList<uint> guids, (uint Container, int Position)? place = null) => ChannelWire.Body(w =>
     {
         w.Write(guids.Count);
         foreach (var guid in guids) w.Write(guid);
@@ -338,12 +339,40 @@ public sealed class VaultClient : IDisposable
 
         TransferPending = true;
         Set(Connection, $"Asking the server to withdraw {guids.Count:N0} items…");
-        Send(VaultProtocol.WithdrawBatch, VaultProtocol.WithdrawBatchRequest(guids, place), reply =>
+        Send(VaultProtocol.WithdrawBatch, VaultProtocol.BatchRequest(guids, place), reply =>
         {
             TransferPending = false;
             if (!reply.Ok) { Set(Connection, reply.Message); return; }
             var (accepted, message) = VaultProtocol.ReadTransfer(reply.Body);
             // An accepted batch is instant: its push (always sent for an accepted one) reloads the page and clears the selection.
+            if (!accepted) Set(Connection, message);
+        });
+    }
+
+    /// <summary>
+    /// Deposits the given items of the player's. One is deposited as <see cref="Deposit"/> always has been; two or more go as one batch, which is
+    /// instant and moves all of them or none. A refused batch shows the server's reason; an accepted one's push reloads the page.
+    /// </summary>
+    public void DepositMany(IReadOnlyList<uint> guids)
+    {
+        if (TransferPending)
+        {
+            Tell("Wait for the current transfer to finish.");
+            return;
+        }
+        if (guids.Count == 1)
+        {
+            Deposit(guids[0]);
+            return;
+        }
+
+        TransferPending = true;
+        Set(Connection, $"Asking the server to deposit {guids.Count:N0} items…");
+        Send(VaultProtocol.DepositBatch, VaultProtocol.BatchRequest(guids), reply =>
+        {
+            TransferPending = false;
+            if (!reply.Ok) { Set(Connection, reply.Message); return; }
+            var (accepted, message) = VaultProtocol.ReadTransfer(reply.Body);
             if (!accepted) Set(Connection, message);
         });
     }

@@ -49,41 +49,60 @@ namespace ACE.Database
         /// </summary>
         public MarketJobResult DepositToVault(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, VaultItem vaultItem, int maxItems = int.MaxValue, TicketCompletion ticket = null)
         {
-            if (vaultItem.ItemGuid != biota.Id || vaultItem.State != VaultItemState.Held)
-            {
-                log.Warn($"[DATABASE][VAULT] DepositToVault 0x{biota.Id:X8} refused: Vault row for 0x{vaultItem.ItemGuid:X8} in state {vaultItem.State}");
-                return MarketJobResult.Refused;
-            }
+            return DepositManyToVault(new[] { (biota, rwLock, vaultItem) }, maxItems, ticket);
+        }
 
-            rwLock.EnterReadLock();
-            try
+        /// <summary>
+        /// Saves items the world thread has taken out of a pack into the Vault, as one save: every item, Vault row and deposit item event, or none of it.
+        /// Refuses, saving nothing, if an item still has a container, wielder or location, or if the set would take the account's Vault past maxItems.
+        /// Failed means nothing was saved; Unknown means the save may have committed. The rows must all be the same account's.
+        /// </summary>
+        public MarketJobResult DepositManyToVault(IReadOnlyList<(ACE.Entity.Models.Biota biota, ReaderWriterLockSlim rwLock, VaultItem vaultItem)> items, int maxItems = int.MaxValue, TicketCompletion ticket = null)
+        {
+            foreach (var (biota, rwLock, vaultItem) in items)
             {
-                if (IsInWorld(biota))
+                if (vaultItem.ItemGuid != biota.Id || vaultItem.State != VaultItemState.Held)
                 {
-                    log.Warn($"[DATABASE][VAULT] DepositToVault 0x{biota.Id:X8} refused: the item still has a container, wielder or location");
-                    return MarketJobResult.Refused;
-                }
-            }
-            finally
-            {
-                rwLock.ExitReadLock();
-            }
-
-            return SaveVaultJob(nameof(DepositToVault), new[] { (biota, rwLock) }, ItemEventKind.Deposit, context =>
-            {
-                if (context.MarketVaultItems.Count(r => r.AccountId == vaultItem.AccountId) >= maxItems)
-                {
-                    log.Warn($"[DATABASE][VAULT] DepositToVault 0x{biota.Id:X8} refused: the Vault of account {vaultItem.AccountId} already holds {maxItems} items");
+                    log.Warn($"[DATABASE][VAULT] DepositToVault 0x{biota.Id:X8} refused: Vault row for 0x{vaultItem.ItemGuid:X8} in state {vaultItem.State}");
                     return MarketJobResult.Refused;
                 }
 
-                vaultItem.DepositedTime = DateTime.UtcNow;
+                rwLock.EnterReadLock();
+                try
+                {
+                    if (IsInWorld(biota))
+                    {
+                        log.Warn($"[DATABASE][VAULT] DepositToVault 0x{biota.Id:X8} refused: the item still has a container, wielder or location");
+                        return MarketJobResult.Refused;
+                    }
+                }
+                finally
+                {
+                    rwLock.ExitReadLock();
+                }
+            }
+
+            var accountId = items[0].vaultItem.AccountId;
+
+            return SaveVaultJob(nameof(DepositToVault), items.Select(item => (item.biota, item.rwLock)).ToList(), ItemEventKind.Deposit, context =>
+            {
+                if (context.MarketVaultItems.Count(r => r.AccountId == accountId) + items.Count > maxItems)
+                {
+                    log.Warn($"[DATABASE][VAULT] DepositToVault of {items.Count} items refused: the Vault of account {accountId} would hold more than {maxItems} items");
+                    return MarketJobResult.Refused;
+                }
+
+                var now = DateTime.UtcNow;
 
                 if (ticket != null)
-                    TicketStore.Complete(context, ticket, vaultItem.DepositedTime);
+                    TicketStore.Complete(context, ticket, now);
 
-                context.MarketVaultItems.Add(vaultItem);
-                context.MarketItemEvents.Add(NewItemEvent(biota.Id, vaultItem.AccountId, vaultItem.CharacterId, ItemEventKind.Deposit, vaultItem.DepositedTime));
+                foreach (var (biota, _, vaultItem) in items)
+                {
+                    vaultItem.DepositedTime = now;
+                    context.MarketVaultItems.Add(vaultItem);
+                    context.MarketItemEvents.Add(NewItemEvent(biota.Id, vaultItem.AccountId, vaultItem.CharacterId, ItemEventKind.Deposit, now));
+                }
 
                 return MarketJobResult.Saved;
             });

@@ -517,6 +517,67 @@ namespace ACE.Server.Tests.Market
         }
 
         [TestMethod]
+        public void ChannelBatchDeposit_MovesEveryItemAtOnce_WithNoChannelWait_AndPushesChanged()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var guids = Enumerable.Range(0, 3).Select(_ => VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid)).Guid.Full).ToArray();
+            AtTheVault(player);
+
+            using (ChannelSeconds(60))
+            {
+                var sent = Send(player, VaultChannelActions.DepositBatch, WithdrawBatchBody(guids));
+                var events = WaitForEvents(player, e => e.Kind == ChannelEventKind.Reply && e.RequestId == sent);
+
+                Assert.AreEqual(1, events.Last().Body[0], "accepted");
+                Assert.IsFalse(player.IsVaultChannelling, "no channel");
+                foreach (var guid in guids)
+                {
+                    Assert.IsNull(player.GetInventoryItem(guid), "out of the pack");
+                    Assert.IsNotNull(VaultStore.Get(guid), "in the Vault");
+                    Assert.AreEqual(0, Count($"SELECT COUNT(*) FROM biota_properties_i_i_d WHERE object_Id = {guid} AND type = {(int)PropertyInstanceId.Container};"), "the database has it in the Vault");
+                }
+                AssertChanged(events.Single(e => e.Kind == ChannelEventKind.Push), nameof(VaultOutcome.Deposited));
+            }
+        }
+
+        [TestMethod]
+        public void ChannelBatchDeposit_IfOneItemIsRefusedOrTheSetDoesNotFit_MovesNothingAndSaysWhy()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var plain = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid)).Guid.Full;
+            var attuned = VaultTestWorld.NewItem(VaultTestWorld.SwordWcid);
+            attuned.Attuned = AttunedStatus.Attuned;
+            VaultTestWorld.Give(player, attuned);
+            AtTheVault(player);
+
+            AssertRefused(new[] { plain, attuned.Guid.Full }, "attuned");
+
+            // the Vault has room for one more: each item fits alone, but not both
+            var other = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid)).Guid.Full;
+            MarketTestDatabase.Execute(Db, $"REPLACE INTO config_properties_long (`key`, `value`, description) VALUES ('{MarketSettings.VaultSize.Key}', 1, 'test');");
+            try
+            {
+                AssertRefused(new[] { plain, other }, "no room for all 2 items");
+            }
+            finally
+            {
+                MarketTestDatabase.Execute(Db, $"DELETE FROM config_properties_long WHERE `key` = '{MarketSettings.VaultSize.Key}';");
+            }
+
+            void AssertRefused(uint[] guids, string reason)
+            {
+                var (accepted, message) = TransferReply(Request(player, VaultChannelActions.DepositBatch, WithdrawBatchBody(guids)));
+                Assert.IsFalse(accepted, "refused: " + message);
+                StringAssert.Contains(message, reason);
+                foreach (var guid in guids)
+                {
+                    Assert.IsNotNull(player.GetInventoryItem(guid), "still in the pack");
+                    Assert.IsNull(VaultStore.Get(guid), "not in the Vault");
+                }
+            }
+        }
+
+        [TestMethod]
         public void ChannelRequest_ForAnUnknownAction_RepliesUnknownAction()
         {
             var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());

@@ -225,6 +225,7 @@ public sealed class VaultDragDropTests
         public ItemDropTarget DropTargetAtPointer() => ItemDropTarget.Elsewhere;
         public (uint Container, int Position)? InventoryPlaceAtPointer() => null;
         public bool DeliverAtPointer(uint itemId, string itemName) => false;
+        public bool DeliverManyAtPointer(IReadOnlyList<uint> itemIds) => false;
         public bool HandToRetail(uint itemId) => false;
         private sealed class Icon : IDisposable
         {

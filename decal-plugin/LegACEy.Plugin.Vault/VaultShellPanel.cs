@@ -19,7 +19,7 @@ namespace LegACEy.Plugin.Vault;
 /// the LegACEy server channel and moves items by drag: deposit, withdraw and reorder. Without one it shows a sample Vault
 /// with icons read from the player's DAT.
 /// </summary>
-public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropTarget
+public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropTarget, IItemSetDropTarget
 {
     public const int WindowWidth = 410;
     // Room for ten rows with Windows fonts, whose lines are taller than the Linux test fonts'.
@@ -373,6 +373,21 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         return true;
     }
 
+    /// <summary>A set of inventory items released together: on a vault cell they go in as one batch deposit; anywhere else they stay.</summary>
+    public bool DropMany(IReadOnlyList<uint> itemIds, Point position)
+    {
+        if (_client == null || _disposed || itemIds.Count == 0) return false;
+        var cell = _client.Connection == VaultConnection.Live ? CellAt(position) : -1;
+        RetailDragOver(0, string.Empty, null);
+        if (cell < 0)
+        {
+            if (_client.Connection == VaultConnection.Live) _client.Tell("Drop the items on a vault cell to deposit them.");
+            return false;
+        }
+        _client.DepositMany(itemIds);
+        return true;
+    }
+
     private void OnDepositCheckChanged(object? sender, EventArgs e)
     {
         if (_disposed || !_retailOver) return;
@@ -563,7 +578,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
 }
 
 /// <summary>The Vault window: the Dereth frame, its header and close box, around the Vault panel.</summary>
-public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget, IDisposable
+public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget, IItemSetDropTarget, IDisposable
 {
     private readonly VaultShellPanel _panel;
     private bool _disposed;
@@ -582,6 +597,9 @@ public sealed class VaultShellWindow : UserControl, IRetailItemDropTarget, IDisp
 
     public bool RetailDrop(uint itemId, string itemName, Point position) =>
         this.TranslatePoint(position, _panel) is { } point && _panel.RetailDrop(itemId, itemName, point);
+
+    public bool DropMany(IReadOnlyList<uint> itemIds, Point position) =>
+        this.TranslatePoint(position, _panel) is { } point && _panel.DropMany(itemIds, point);
 
     public void Dispose()
     {

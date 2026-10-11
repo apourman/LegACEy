@@ -25,6 +25,8 @@ namespace LegACEy.Plugin.Inventory;
 /// change does. A click on a slot selects its item, or opens a pack; a double-click uses the item; a drag moves it through the
 /// port. The window never changes its own state: a command shows only when the port's next snapshot says so. An item released
 /// outside every slot is offered to the LegACEy window under the pointer (a Vault deposit).
+/// Ctrl and Shift clicks pick several items of the open pack, as in the Vault. A picked set lifted together goes only into a pack or
+/// to the Vault; retail never sees it.
 /// </summary>
 public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZone, IRetailItemDropTarget
 {
@@ -85,6 +87,11 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     // How many presses in a row the press was, as the platform counts them: two or more is a double-click.
     private int _pressClicks;
     private uint _dragged;
+    // The items picked with Ctrl and Shift in the open pack, and the modifiers held when the press began.
+    private readonly InventorySelection _selection = new();
+    private KeyModifiers _pressModifiers;
+    // The set a drag carries, in pack order: the picked items when one of two or more picked was lifted, else empty.
+    private IReadOnlyList<uint> _carried = Array.Empty<uint>();
     // The pack the player picked, or zero for the port's open container. Picking a pack is local, as in retail: the server answers a
     // use of a carried pack with only "use done", which flashed the busy cursor and changed nothing.
     private uint _picked;
@@ -227,6 +234,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         }
         if (!button.IsLeftButtonPressed) return;
         _press = (InventorySlotId)slot.Tag!;
+        _pressModifiers = e.KeyModifiers;
         _pressPoint = e.GetPosition(this);
         _pressClicks = e.ClickCount;
         // Moves and the release come to this window even outside it, so a drag that leaves the window still ends here.
@@ -247,13 +255,20 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
                 _press = null;
                 return;
             }
-            // Lifting an item selects it, as a click does, so another item's selection clears. A pack is never selected.
-            if (press.Place != SlotPlace.Pack && _dragged != _port.Snapshot.Selected) _port.Select(_dragged);
-            _dragIcon = _dragHost?.ShowDragIcon(DragImage(_dragged), 1, retailDropIndicator: false, _dragged);
+            // A picked item of two or more lifts the whole set, which stays picked; any other item drops the set and lifts alone, as in the Vault.
+            if (press.Place != SlotPlace.Pack && _selection.Count > 1)
+            {
+                if (_selection.Contains(_dragged)) _carried = _selection.InOrder(OpenOrder(_port.Snapshot));
+                else _selection.Clear();
+                ShowSelection();
+            }
+            // Lifting an item selects it, as a click does, so another item's selection clears. A pack is never selected; nor is a set.
+            if (press.Place != SlotPlace.Pack && _carried.Count == 0 && _dragged != _port.Snapshot.Selected) _port.Select(_dragged);
+            _dragIcon = _dragHost?.ShowDragIcon(DragImage(_dragged), Math.Max(1, _carried.Count), retailDropIndicator: false, _dragged);
             Fade(_dragged, lifted: true);
         }
-        // Outside the window, with the button still held, retail may take the drag over; then it is no longer ours.
-        if (!new Rect(Bounds.Size).Contains(point) && !_port.Snapshot.SidePacks.Any(pack => pack.Id == _dragged) &&
+        // Outside the window, with the button still held, retail may take the drag over; then it is no longer ours. Never a set.
+        if (_carried.Count == 0 && !new Rect(Bounds.Size).Contains(point) && !_port.Snapshot.SidePacks.Any(pack => pack.Id == _dragged) &&
             _dragHost?.HandToRetail(_dragged) == true)
         {
             EndDrag();
@@ -268,6 +283,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         // Only the button that started the press acts; another button's release leaves the press alone.
         if (_press is not { } press || e.InitialPressMouseButton != MouseButton.Left) return;
         var dragged = _dragged;
+        var carried = _carried;
         var point = e.GetPosition(this);
         var clicks = _pressClicks;
         // A release past the threshold where no drag began (a focus loss, for one) is not a click.
@@ -282,11 +298,13 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         // Over a slot the drop is judged as it always was: a refused one sends nothing.
         if (SlotAt(point)?.Tag is InventorySlotId target)
         {
-            var drop = Judge(_port, dragged, target);
+            var drop = carried.Count > 1 ? JudgeSet(_port.Snapshot, carried, target) : Judge(_port, dragged, target);
             if (drop?.Accepted == true) drop.Value.Send(_port);
             return;
         }
-        HandOffOutside(dragged);
+        // A set goes only to a LegACEy window that takes sets (the Vault): never to retail or the ground.
+        if (carried.Count > 1) _dragHost?.DeliverManyAtPointer(carried);
+        else HandOffOutside(dragged);
     }
 
     /// <summary>
@@ -389,19 +407,50 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             return;
         }
         if (slot.ItemId == 0) return;
-        if (clicks >= 2) _port.Use(slot.ItemId);
-        else _port.Select(slot.ItemId);
+        var ctrl = (_pressModifiers & KeyModifiers.Control) != 0;
+        var shift = (_pressModifiers & KeyModifiers.Shift) != 0;
+        if (clicks >= 2 && !ctrl && !shift)
+        {
+            _port.Use(slot.ItemId);
+            return;
+        }
+        if (slot.Place == SlotPlace.Cell) _selection.Press(slot.ItemId, OpenOrder(_port.Snapshot), ctrl, shift);
+        else _selection.Clear();
+        ShowSelection();
+        // A Ctrl or Shift click only picks; retail's selection follows plain clicks.
+        if (!ctrl && !shift || slot.Place != SlotPlace.Cell) _port.Select(slot.ItemId);
     }
 
     private void EndDrag()
     {
         Fade(_dragged, lifted: false);
+        var wasSet = _carried.Count > 1;
+        _carried = Array.Empty<uint>();
+        if (wasSet) ShowSelection();
         _press = null;
         _dragged = 0;
         _dragIcon?.Dispose();
         _dragIcon = null;
         _indicatorAt = null;
         _dropIndicator.IsVisible = false;
+    }
+
+    /// <summary>
+    /// Shows the picked set on the open pack's cells. While two or more items are picked, the picked ones are outlined and the others fade, as in
+    /// the Vault; a lifted set is outlined as carried. Otherwise a cell is outlined when it is retail's selection.
+    /// </summary>
+    private void ShowSelection()
+    {
+        var set = _selection.Count > 1;
+        var selected = _port.Snapshot.Selected;
+        foreach (var slot in _grid.Cells.OfType<DerethSlot>())
+            if (slot.Tag is InventorySlotId { Place: SlotPlace.Cell, ItemId: not 0 } tag)
+            {
+                var picked = _selection.Contains(tag.ItemId);
+                slot.Selected = set ? picked : tag.ItemId == selected;
+                slot.Carried = set && picked && _carried.Count > 1;
+                slot.Opacity = set && !picked ? LiftedOpacity : 1;
+            }
     }
 
     /// <summary>Shows the indicator over the slot under the pointer: gold when the drop is accepted, red when it is refused.</summary>
@@ -412,7 +461,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         _indicatorAt = (point, dragged, external);
         var slot = SlotAt(point);
-        var drop = slot?.Tag is InventorySlotId target ? Judge(_port, dragged, target, external) : null;
+        var drop = slot?.Tag is not InventorySlotId target ? null
+            : _carried.Count > 1 && !external ? JudgeSet(_port.Snapshot, _carried, target) : Judge(_port, dragged, target, external);
         if (slot == null || drop == null)
         {
             _dropIndicator.IsVisible = false;
@@ -442,7 +492,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     /// </summary>
     private void Fade(uint id, bool lifted)
     {
-        if (id == 0) return;
+        // A lifted set stays bright, outlined as carried, as the render draws it.
+        if (id == 0 || _carried.Count > 1) return;
         foreach (var slot in this.GetVisualDescendants().OfType<DerethSlot>())
             if (slot.Tag is InventorySlotId tag && DraggedId(tag) == id)
             {
@@ -520,6 +571,24 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     }
 
     /// <summary>
+    /// What dropping a set does: into a pack's cell or onto its tile, the items move there in turn, in order, from that cell or the pack's first
+    /// free slot. A pack without room for the items not already in it is red, as is the paperdoll. Onto one of the set's own cells: nothing.
+    /// </summary>
+    private static (bool Accepted, Action<IInventoryPort> Send)? JudgeSet(InventorySnapshot s, IReadOnlyList<uint> carried, InventorySlotId target)
+    {
+        if (target.Place == SlotPlace.Paperdoll || PackOf(s, target.Container) is not { } into) return Refused;
+        if (target.ItemId != 0 && carried.Contains(target.ItemId)) return null;
+        var arriving = carried.Count(id => s.Items.FirstOrDefault(item => item.Id == id)?.Container != into.Id);
+        if (target.Place == SlotPlace.Pack && arriving == 0) return null;
+        if (ItemsIn(s, into.Id) + arriving > into.Capacity) return Refused;
+        var start = target.Place == SlotPlace.Cell ? target.SlotIndex : FirstFree(s, into);
+        return (true, p =>
+        {
+            for (var index = 0; index < carried.Count; index++) p.MoveToContainer(carried[index], into.Id, start + index);
+        });
+    }
+
+    /// <summary>
     /// What dropping a side pack does. Side packs are numbered on their own, so a pack goes to a side-pack position: the position
     /// of the tile it lands on, or the first empty position when it lands on the main pack. A pack dropped into a side pack's grid
     /// is accepted and the server refuses it.
@@ -573,6 +642,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         // The slots are rebuilt, so a drop indicator on the old ones goes; a drag in progress gets it back once they are laid out.
         _dropIndicator.IsVisible = false;
         var open = OpenPack(snapshot);
+        _selection.Keep(OpenOrder(snapshot));
         var worn = new Dictionary<PaperdollSlot, WieldedItem>();
         foreach (var item in snapshot.Wielded)
             foreach (var slot in item.Slots)
@@ -581,6 +651,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         UpdateDoll();
         RenderPacks(snapshot, open);
         RenderContents(snapshot, open);
+        ShowSelection();
         RenderBurden(snapshot);
         _pyrealCount.Text = snapshot.Pyreals.ToString("N0");
         Fade(_dragged, lifted: true);
@@ -597,6 +668,13 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var open = _picked != 0 ? _picked : snapshot.OpenContainer;
         return open == snapshot.MainPack.Id ? snapshot.MainPack
             : snapshot.SidePacks.FirstOrDefault(pack => pack.Id != 0 && pack.Id == open) ?? snapshot.MainPack;
+    }
+
+    /// <summary>The open pack's items in slot order, the order a Shift click picks a range in.</summary>
+    private IReadOnlyList<uint> OpenOrder(InventorySnapshot snapshot)
+    {
+        var open = OpenPack(snapshot).Id;
+        return snapshot.Items.Where(item => item.Container == open).OrderBy(item => item.Slot).Select(item => item.Id).ToList();
     }
 
     private DerethSlot WornSlot(InventorySnapshot snapshot, Dictionary<PaperdollSlot, WieldedItem> worn, PaperdollSlot slot)

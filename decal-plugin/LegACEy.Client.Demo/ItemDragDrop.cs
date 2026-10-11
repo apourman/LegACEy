@@ -19,6 +19,13 @@ public interface IRetailItemDropTarget
     bool RetailDrop(uint itemId, string itemName, Point position);
 }
 
+/// <summary>A LegACEy window that takes a set of the player's items released over it at once (the Vault's batch deposit).</summary>
+public interface IItemSetDropTarget
+{
+    /// <summary>The items were released together at the position, in this control's coordinates. True if the window used them.</summary>
+    bool DropMany(IReadOnlyList<uint> itemIds, Point position);
+}
+
 /// <summary>
 /// A LegACEy window that shows the player's inventory. A Vault withdraw released over it counts as released over the inventory,
 /// whether or not the retail inventory panel is taken over.
@@ -72,6 +79,9 @@ public interface IItemDragHost
     /// </summary>
     bool DeliverAtPointer(uint itemId, string itemName);
 
+    /// <summary>Hands a set of items released together to the LegACEy window under the pointer, if it takes sets. True when it used them.</summary>
+    bool DeliverManyAtPointer(IReadOnlyList<uint> itemIds);
+
     /// <summary>
     /// Offers a drag that has left the window to retail, while the button is still held. True when retail took it: retail then
     /// draws the drag and decides the drop (the world, an NPC, another retail window, the shortcut bar), and the window must let
@@ -103,6 +113,11 @@ public static class ItemDropRouting
     public static bool DeliverTo(ManagedWindow window, Func<string, object?> contentOf, System.Drawing.Point point, uint itemId, string itemName, double scale = 1) =>
         contentOf(window.Id) is IRetailItemDropTarget target
         && target.RetailDrop(itemId, itemName, new Point((point.X - window.Location.X) / scale, (point.Y - window.Location.Y) / scale));
+
+    /// <summary>Delivers a set of items released at the point to the window, as <see cref="DeliverTo"/> delivers one. True if it used them.</summary>
+    public static bool DeliverManyTo(ManagedWindow window, Func<string, object?> contentOf, System.Drawing.Point point, IReadOnlyList<uint> itemIds, double scale = 1) =>
+        contentOf(window.Id) is IItemSetDropTarget target
+        && target.DropMany(itemIds, new Point((point.X - window.Location.X) / scale, (point.Y - window.Location.Y) / scale));
 }
 
 /// <summary>Drag host for tests: no icon, a drop target the caller chooses, and a relay the caller answers.</summary>
@@ -155,6 +170,17 @@ public sealed class FakeItemDragHost : IItemDragHost
     {
         Delivered.Add((itemId, itemName));
         return Relay(itemId, itemName);
+    }
+
+    /// <summary>Answers a set handed to a LegACEy window. False by default.</summary>
+    public Func<IReadOnlyList<uint>, bool> RelayMany { get; set; } = _ => false;
+    /// <summary>The sets handed to a LegACEy window, in order.</summary>
+    public List<IReadOnlyList<uint>> DeliveredSets { get; } = new();
+
+    public bool DeliverManyAtPointer(IReadOnlyList<uint> itemIds)
+    {
+        DeliveredSets.Add(itemIds);
+        return RelayMany(itemIds);
     }
 
     private sealed class Icon : IDisposable

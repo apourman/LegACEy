@@ -190,6 +190,145 @@ namespace ACE.Server.Market
         }
 
         /// <summary>
+        /// Deposits a set of items in one save: all of them or none. It is instant, with no channel, and refused while a transfer is active or when a
+        /// channel could not start (a recent player fight, a trade). Each item's rules come first, so the first refusal is the one reported; then the
+        /// Vault's room for the whole set. The items leave the pack as a single deposit's item does. The result is reported once, on the world thread.
+        /// </summary>
+        public static void DepositMany(Player player, IReadOnlyList<uint> itemGuids, Action<VaultResult> completed)
+        {
+            var items = new List<WorldObject>(itemGuids.Count);
+            WorldObject refused = null;
+            VaultOutcome? refusal;
+
+            try
+            {
+                refusal = Available ? BatchRefusal(player, itemGuids) ?? CheckDepositSet(player, itemGuids, items, out refused) : VaultOutcome.NotAvailable;
+            }
+            catch (Exception ex)
+            {
+                // the checks read the database; nothing has moved yet
+                log.Error($"[VAULT] Batch deposit of {itemGuids.Count} items for {player.Name} failed in its checks: {ex}");
+                refusal = VaultOutcome.SaveFailed;
+            }
+
+            if (refusal != null)
+            {
+                FinishBatch(player, refusal.Value, refused?.Name, itemGuids, completed);
+                return;
+            }
+
+            var accountId = player.Character.AccountId;
+            var deposits = new List<(ACE.Entity.Models.Biota, ReaderWriterLockSlim, VaultItem)>(items.Count);
+
+            for (var index = 0; index < items.Count; index++)
+            {
+                var item = items[index];
+                var (containerId, ownerId, placement) = (item.ContainerId, item.OwnerId, item.PlacementPosition);
+                var vaultItem = NewVaultItem(item, accountId, player.Guid.Full);
+                var escrowed = EscrowCopy(item);
+
+                if (!player.TryRemoveFromInventoryForVault(item.Guid, out _))
+                {
+                    // nothing is saved yet: the items already taken out go back
+                    for (var back = 0; back < index; back++)
+                        player.TryCreateInInventoryWithNetworking(items[back]);
+
+                    FinishBatch(player, VaultOutcome.NotInPack, item.Name, itemGuids, completed);
+                    return;
+                }
+
+                // as a single deposit's item, the live item says where it was until the job is done (see Deposit)
+                item.ContainerId = containerId;
+                item.OwnerId = ownerId;
+                item.PlacementPosition = placement;
+
+                if (player.CurrentAppraisalTarget == item.Guid.Full)
+                    player.CurrentAppraisalTarget = null;
+
+                deposits.Add((escrowed, new ReaderWriterLockSlim(), vaultItem));
+            }
+
+            inFlight.Add(player.Guid.Full);
+
+            DatabaseManager.Shard.DepositManyToVault(deposits, (int)MarketSettings.Get(MarketSettings.VaultSize), result =>
+            {
+                // this runs on the save thread
+                WorldManager.EnqueueAction(new ActionEventDelegate(() => OnDepositedMany(player, items, result, itemGuids, completed)));
+            });
+        }
+
+        /// <summary>
+        /// Every deposit refusal rule for a set, in order: each item's own rules, then the Vault's room for all of them. Null if the set can go in
+        /// the Vault; the items are then added in the order given.
+        /// </summary>
+        private static VaultOutcome? CheckDepositSet(Player player, IReadOnlyList<uint> itemGuids, List<WorldObject> items, out WorldObject refused)
+        {
+            refused = null;
+
+            foreach (var itemGuid in itemGuids)
+            {
+                var refusal = CheckDepositItem(player, itemGuid, out var item);
+
+                if (refusal != null)
+                {
+                    refused = item;
+                    return refusal;
+                }
+
+                items.Add(item);
+            }
+
+            return CheckVaultRoom(player, items.Count);
+        }
+
+        private static void OnDepositedMany(Player player, List<WorldObject> items, MarketJobResult result, IReadOnlyList<uint> itemGuids, Action<VaultResult> completed)
+        {
+            inFlight.Remove(player.Guid.Full);
+
+            if (result == MarketJobResult.Saved)
+            {
+                // forgotten, never destroyed, as a single deposit's item (see OnDeposited)
+                foreach (var item in items)
+                {
+                    item.ContainerId = null;
+                    item.OwnerId = null;
+                    item.PlacementPosition = null;
+                }
+
+                FinishBatch(player, VaultOutcome.Deposited, items[0].Name, itemGuids, completed);
+                return;
+            }
+
+            if (result == MarketJobResult.Unknown)
+            {
+                log.Error($"[VAULT] Batch deposit of {items.Count} items for {player.Name} may or may not have been saved; the objects are dropped and the database decides at the next login");
+                FinishBatch(player, VaultOutcome.Unconfirmed, items[0].Name, itemGuids, completed);
+                return;
+            }
+
+            log.Warn($"[VAULT] Batch deposit of {items.Count} items for {player.Name} failed ({result}); nothing was saved");
+
+            var outcome = VaultOutcome.SaveFailed;
+
+            try
+            {
+                if (CheckVaultRoom(player, items.Count) != null)
+                    outcome = VaultOutcome.VaultFull;
+            }
+            catch (Exception ex)
+            {
+                log.Warn($"[VAULT] Could not read the Vault size for {player.Name}'s failed batch deposit: {ex.Message}");
+            }
+
+            // the database still has every item in the pack, as after a failed single deposit
+            foreach (var item in items)
+                if (!player.IsLoggingOut && !player.TryCreateInInventoryWithNetworking(item))
+                    log.Warn($"[VAULT] Batch deposit of {item.Name} (0x{item.Guid.Full:X8}) for {player.Name} failed and the pack has no room for it; the database has it in the pack for the next login");
+
+            FinishBatch(player, outcome, items[0].Name, itemGuids, completed);
+        }
+
+        /// <summary>
         /// Moves an item from the account's Vault into the player's pack.
         /// The item is loaded from the database and pointed at the player in memory, but only added to the pack once the job has removed the Vault row,
         /// so that no save of the pack can ever put the item in a pack while its Vault row still exists.
@@ -413,6 +552,20 @@ namespace ACE.Server.Market
         /// </summary>
         public static VaultOutcome? CheckDeposit(Player player, uint itemGuid, out WorldObject item)
         {
+            return CheckDepositItem(player, itemGuid, out item) ?? CheckVaultRoom(player, 1);
+        }
+
+        /// <summary>
+        /// Whether the account's Vault has room for <paramref name="count"/> more items: null if it has, VaultFull if not
+        /// </summary>
+        private static VaultOutcome? CheckVaultRoom(Player player, int count) =>
+            VaultStore.Count(player.Character.AccountId) + count > (int)MarketSettings.Get(MarketSettings.VaultSize) ? VaultOutcome.VaultFull : null;
+
+        /// <summary>
+        /// Every deposit refusal rule but the Vault's room, in order. The item is set whenever the player has it.
+        /// </summary>
+        private static VaultOutcome? CheckDepositItem(Player player, uint itemGuid, out WorldObject item)
+        {
             item = null;
 
             if (!Available)
@@ -434,15 +587,7 @@ namespace ACE.Server.Market
             if (player.ItemsInTradeWindow.Contains(guid))
                 return VaultOutcome.InTrade;
 
-            var refusal = CheckDepositRules(player, item);
-
-            if (refusal != null)
-                return refusal;
-
-            if (VaultStore.Count(player.Character.AccountId) >= (int)MarketSettings.Get(MarketSettings.VaultSize))
-                return VaultOutcome.VaultFull;
-
-            return null;
+            return CheckDepositRules(player, item);
         }
 
         /// <summary>
@@ -686,7 +831,7 @@ namespace ACE.Server.Market
         /// </summary>
         private static void FinishBatch(Player player, VaultOutcome outcome, string firstName, IReadOnlyList<uint> itemGuids, Action<VaultResult> completed)
         {
-            var mayHaveMoved = outcome is VaultOutcome.Withdrawn or VaultOutcome.WithdrawnAtLogin or VaultOutcome.Unconfirmed;
+            var mayHaveMoved = outcome is VaultOutcome.Deposited or VaultOutcome.Withdrawn or VaultOutcome.WithdrawnAtLogin or VaultOutcome.Unconfirmed;
             var firstGuid = itemGuids.Count > 0 ? itemGuids[0] : 0u;
             Report(player, new VaultResult(outcome, VaultMessages.ForBatch(outcome, firstName, itemGuids.Count), firstGuid), completed, push: mayHaveMoved);
         }

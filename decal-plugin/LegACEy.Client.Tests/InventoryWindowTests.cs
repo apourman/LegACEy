@@ -169,6 +169,45 @@ public sealed class InventoryWindowTests
         Assert.Empty(InventoryDriver.Sent(port));
     });
 
+    [Fact]
+    public void Ctrl_and_shift_clicks_pick_a_set_that_drags_into_a_pack_but_never_to_retail() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        host.Drag.Target = ItemDropTarget.World;
+        host.Drag.TakeHandOff = true;
+        // The main pack's cells are its slots: apple 0, scroll 4, sword 7, cap 9.
+        var apple = host.Cells[0];
+
+        Click(host.Host, apple, Avalonia.Input.KeyModifiers.None);
+        Click(host.Host, host.Cells[7], Avalonia.Input.KeyModifiers.Shift);
+        Click(host.Host, host.Cells[4], Avalonia.Input.KeyModifiers.Control);
+
+        // Apple to sword, less the scroll: picked cells are outlined, the rest fade.
+        Assert.Equal(new[] { true, false, true, false }, new[] { 0, 4, 7, 9 }.Select(slot => host.Cells[slot].Selected));
+        Assert.True(host.Cells[9].Opacity < 1);
+
+        InventoryDriver.Drop(host.Host, host.Cells[0], InventoryDriver.PackSlot(host.Host, InventorySample.Sack));
+        Assert.Equal(new[] { $"move 0x{InventorySample.Apple:X8} to 0x{InventorySample.Sack:X8} slot 0", $"move 0x{InventorySample.Sword:X8} to 0x{InventorySample.Sack:X8} slot 1" },
+            InventoryDriver.Sent(port));
+
+        // Out over the world, the set is offered only to a LegACEy window: retail never takes it and nothing drops.
+        DragOut(host.Host, host.Cells[7], new Avalonia.Point(-50, -50));
+        Assert.Empty(host.Drag.HandedOff);
+        Assert.Equal(new[] { InventorySample.Apple, InventorySample.Sword }, Assert.Single(host.Drag.DeliveredSets));
+        Assert.Equal(2, InventoryDriver.Sent(port).Length);
+        Assert.Null(host.Host.LastError);
+    });
+
+    private static void Click(AvaloniaPanel host, Control control, Avalonia.Input.KeyModifiers modifiers)
+    {
+        var point = InventoryDriver.Centre(host, control);
+        host.PointerDown(point.X, point.Y, modifiers);
+        host.PointerUp(point.X, point.Y);
+        InventoryDriver.Tick(host);
+    }
+
     private static void DragOut(AvaloniaPanel host, Control from, Avalonia.Point to)
     {
         var start = InventoryDriver.Centre(host, from);

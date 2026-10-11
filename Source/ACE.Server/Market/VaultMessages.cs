@@ -37,7 +37,7 @@ namespace ACE.Server.Market
                 VaultOutcome.Withdrawing => $"{item} is already being withdrawn.",
                 VaultOutcome.NoPackSpace => $"You do not have room in your pack for {item}.",
                 VaultOutcome.TooHeavy => $"You are too heavy to carry {item}.",
-                VaultOutcome.BadSelection => $"Choose up to {VaultChannelActions.PageSize} different items to withdraw.",
+                VaultOutcome.BadSelection => $"Choose up to {VaultChannelActions.PageSize} different items to move.",
                 VaultOutcome.UniqueLimit => $"You cannot carry any more of {item}.",
                 VaultOutcome.SaveFailed => $"The Vault could not save {item}. Nothing was changed.",
                 VaultOutcome.Unconfirmed => $"The Vault could not confirm whether {item} moved. Log out and back in: it will be in your pack or in your Vault.",
@@ -54,7 +54,7 @@ namespace ACE.Server.Market
         }
 
         /// <summary>
-        /// What a player is told for a batch withdrawal. A refusal of one item names it; a refusal of the set names the set, as nothing in it moved.
+        /// What a player is told for a batch deposit or withdrawal. A refusal of one item names it; a refusal of the set names the set, as nothing in it moved.
         /// </summary>
         public static string ForBatch(VaultOutcome outcome, string firstName, int count)
         {
@@ -65,7 +65,9 @@ namespace ACE.Server.Market
 
             return outcome switch
             {
+                VaultOutcome.Deposited => $"{items} are now in your Vault.",
                 VaultOutcome.Withdrawn => $"{items} are back in your pack.",
+                VaultOutcome.VaultFull => $"Your Vault has no room for all {items}. Nothing was deposited.",
                 VaultOutcome.WithdrawnAtLogin => $"{items} are yours, but your pack has no room for all of them right now. The rest will be in your pack when you next log in.",
                 VaultOutcome.NoPackSpace => $"You do not have room in your pack for all {items}. Nothing was withdrawn.",
                 VaultOutcome.TooHeavy => $"You are too heavy to carry all {items}. Nothing was withdrawn.",
