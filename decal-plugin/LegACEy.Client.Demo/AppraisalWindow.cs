@@ -190,13 +190,14 @@ public sealed class AppraisalWindow
     }
 
     /// <summary>
-    /// The field the character writes in. Enter saves, and so does leaving it with changed text; the saved text is kept so an unchanged
-    /// field sends nothing. Escape puts back the last saved text. A save that the game does not send keeps the typed text, so the next
-    /// Enter tries again. Empty text erases the inscription. The placeholder shows while it is empty.
+    /// The field the character writes in. Enter saves, and so does leaving it with changed text. Only the appraisal's text counts as saved:
+    /// a send is remembered only so that leaving the field after Enter does not send the same text again, and the refreshed appraisal
+    /// (the response to the silent ID) brings the field its new saved text. Escape puts back the saved text. A save that the game does not
+    /// send keeps the typed text, so the next Enter tries again. Empty text erases the inscription. The placeholder shows while it is empty.
     /// </summary>
     private static Control Editable(string saved, Func<string, bool> save)
     {
-        var committed = saved;
+        string? sent = null;
         var input = new TextBox
         {
             Text = saved, Watermark = "Inscribe here", MaxLength = AppraisalInscription.MaxLength, FontFamily = DerethPalette.Body,
@@ -206,13 +207,13 @@ public sealed class AppraisalWindow
         void Save()
         {
             var text = input.Text ?? string.Empty;
-            if (text == committed) return;
-            if (save(text)) committed = text;
+            if (text == (sent ?? saved)) return;
+            if (save(text)) sent = text;
         }
         input.KeyDown += (_, e) =>
         {
             if (e.Key == Key.Enter) { Save(); e.Handled = true; }
-            else if (e.Key == Key.Escape) { input.Text = committed; e.Handled = true; }
+            else if (e.Key == Key.Escape) { input.Text = saved; sent = null; e.Handled = true; }
         };
         input.LostFocus += (_, _) => Save();
         var panel = new StackPanel { Margin = new Thickness(10, 6, 10, 6), Spacing = 2, Children = { input } };

@@ -132,13 +132,22 @@ public sealed class AppraisalFeature
     /// </summary>
     private bool Inscribe(uint itemId, string text)
     {
-        if (!_game.SetInscription(itemId, text))
+        // Like Receive, nothing thrown while sending escapes: it is logged, and the window keeps the typed text.
+        try
         {
-            _log("Could not send the inscription: the server channel is not available.");
+            if (!_game.SetInscription(itemId, text))
+            {
+                _log("Could not send the inscription: the server channel is not available.");
+                return false;
+            }
+            _game.RequestAppraisal(itemId);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            _log($"Could not save the inscription: {exception.Message}");
             return false;
         }
-        _game.RequestAppraisal(itemId);
-        return true;
     }
 }
 

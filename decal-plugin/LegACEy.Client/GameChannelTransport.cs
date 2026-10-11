@@ -69,28 +69,38 @@ internal sealed class GameChannelTransport : IServerChannelTransport
     public int Sent { get; private set; }
     public int Received { get; private set; }
 
-    public bool Send(byte[] requestPayload) => SendAction(ChannelWire.GameActionOpcode, requestPayload);
-
-    /// <summary>
-    /// Sends a retail game action with <paramref name="opcode"/> and its payload through the client's own send, as the LegACEy channel's
-    /// requests are sent. Returns false when the channel is not available or the client refuses the action.
-    /// </summary>
-    public bool SendAction(uint opcode, byte[] payload)
+    /// <summary>A LegACEy channel request: the LegACEy opcode, logged and counted.</summary>
+    public bool Send(byte[] requestPayload)
     {
         if (!IsAvailable) return false;
-        var size = 12 + payload.Length;
-        var buffer = _allocate!((uint)size);
-        if (buffer == IntPtr.Zero) return false;
-        var counter = _nextCounter!();
-        Marshal.Copy(GameActionFrame(counter, opcode, payload), 0, buffer, size);
-        var sent = _sendToWeenie!(buffer, size) != 0;
-        if (!sent) _counterFailed!();
-        else Sent++;
+        var size = 12 + requestPayload.Length;
+        var sent = Transmit(ChannelWire.GameActionOpcode, requestPayload, out var counter);
+        if (sent) Sent++;
         if (!_loggedFirstSend || !sent)
         {
             _log($"Server channel send: {size} bytes, UI counter {counter}, accepted by client: {sent}.");
             _loggedFirstSend = true;
         }
+        return sent;
+    }
+
+    /// <summary>
+    /// Sends another retail game action (for example Writing_SetInscription) through the client's own send. It is neither logged nor
+    /// counted as a channel request. Returns false when the channel is not available or the client refuses the action.
+    /// </summary>
+    public bool SendAction(uint opcode, byte[] payload) => IsAvailable && Transmit(opcode, payload, out _);
+
+    /// <summary>Hands one frame to the client's send. A refused send gives its UI counter back to the client.</summary>
+    private bool Transmit(uint opcode, byte[] payload, out uint counter)
+    {
+        counter = 0;
+        var size = 12 + payload.Length;
+        var buffer = _allocate!((uint)size);
+        if (buffer == IntPtr.Zero) return false;
+        counter = _nextCounter!();
+        Marshal.Copy(GameActionFrame(counter, opcode, payload), 0, buffer, size);
+        var sent = _sendToWeenie!(buffer, size) != 0;
+        if (!sent) _counterFailed!();
         return sent;
     }
 

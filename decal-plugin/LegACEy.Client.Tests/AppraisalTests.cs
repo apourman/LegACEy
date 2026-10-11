@@ -385,9 +385,10 @@ public sealed class AppraisalTests
         Assert.Equal(new[] { (Potion, "Remember.") }, game.Inscriptions);
         Assert.Equal(new[] { Potion }, game.Appraised);
 
+        // The saved text is the appraisal's, and no refresh has come back yet, so Escape puts back the empty text it was shown with.
         field.Text = "Changed my mind";
         Press(field, Key.Escape);
-        Assert.Equal("Remember.", field.Text);
+        Assert.Equal("", field.Text);
         Assert.Single(game.Inscriptions);
     });
 
@@ -407,6 +408,38 @@ public sealed class AppraisalTests
         Press(field, Key.Enter);
 
         Assert.Equal(new[] { (Potion, "New"), (Potion, "") }, game.Inscriptions);
+    });
+
+    [Fact]
+    public void Text_is_sent_as_utf8_with_its_character_count_as_the_length()
+    {
+        // The server reads ReadChars(length) with a UTF-8 reader, so "é" (two bytes, one character) has length 1.
+        Assert.Equal(new byte[] { 0x01, 0x0A, 0, 0x80, 0x01, 0x00, 0xC3, 0xA9 }, InscriptionAction.Payload(Potion, "é"));
+    }
+
+    [Fact]
+    public void After_a_save_the_fresh_appraisal_shows_the_new_text_and_a_refused_one_shows_the_old_text() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost();
+        var game = new FakeAppraisalGame();
+        var appraisals = new AppraisalFeature(host, _ => { }, game: game);
+        appraisals.Request(Potion);
+        appraisals.Receive(InscribedPotion(Potion, "", "", inscribable: true));
+        InscriptionField(host).Text = "Remember.";
+        Press(InscriptionField(host), Key.Enter);
+        Assert.Equal(new[] { Potion }, game.Appraised);
+
+        // The silent ID's answer carries what was saved and the scribe.
+        appraisals.Receive(InscribedPotion(Potion, "Remember.", "Aerbax", inscribable: true));
+        Assert.Equal(new AppraisalInscription(InscriptionMode.Editable, "Remember.", "Aerbax"), appraisals.Shown!.Inscription);
+        Assert.Equal("Remember.", InscriptionField(host).Text);
+
+        // A refused save: the answer still has the old text, and the field shows it.
+        InscriptionField(host).Text = "Refused";
+        Press(InscriptionField(host), Key.Enter);
+        appraisals.Receive(InscribedPotion(Potion, "Remember.", "Aerbax", inscribable: true));
+        Assert.Equal("Remember.", appraisals.Shown!.Inscription!.Text);
+        Assert.Equal("Remember.", InscriptionField(host).Text);
     });
 
     /// <summary>

@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 
 namespace LegACEy.Client.Demo;
 
@@ -24,8 +25,9 @@ public sealed record AppraisalInscription(InscriptionMode Mode, string Text, str
     /// The field for an appraisal, or null when the item is neither inscribable nor inscribed. It follows the server's rule for the
     /// set-inscription action (GameActionSetInscription and Player_Inventory.HandleActionSetInscription): the item must be carried (in the
     /// character's packs or worn), inscribable, and either unscribed or scribed by this character. The server also lets admins overwrite
-    /// any inscription; the client does not offer that. The server's account check is not in the appraisal, so the scribe's name stands
-    /// in for it.
+    /// any inscription; the client does not offer that. The server's account check is not in the appraisal (it drops ScribeAccount for a
+    /// non-admin examiner), so the scribe's name stands in for it. A same-name character on another account is refused silently by the
+    /// server (HandleActionSetInscription sends no reply for a refusal), so the field stays editable and the save does nothing.
     /// </summary>
     public static AppraisalInscription? From(AppraisalResponse response, string characterName, bool carried)
     {
@@ -48,13 +50,13 @@ public static class InscriptionAction
     public const uint Opcode = 0x00BF;
 
     /// <summary>
-    /// The payload for an item and its new text. Empty text erases the inscription. The text is one byte a character, as the appraisal
-    /// reader reads it; a character past Latin-1 is written as '?'.
+    /// The payload for an item and its new text. Empty text erases the inscription. The text is UTF-8 and the length is its number of
+    /// characters: the server reads it with a UTF-8 BinaryReader and ReadChars(length), so a byte count would read past the text when a
+    /// character takes more than one byte. Every character is kept.
     /// </summary>
     public static byte[] Payload(uint itemId, string text)
     {
-        var bytes = new byte[text.Length];
-        for (var i = 0; i < text.Length; i++) bytes[i] = text[i] <= 0xFF ? (byte)text[i] : (byte)'?';
+        var bytes = Encoding.UTF8.GetBytes(text);
         // The padding makes the length and the text a multiple of four bytes: the length's two bytes count.
         var padding = (4 - (2 + bytes.Length) % 4) % 4;
         var payload = new byte[4 + 2 + bytes.Length + padding];
@@ -62,8 +64,8 @@ public static class InscriptionAction
         payload[1] = (byte)(itemId >> 8);
         payload[2] = (byte)(itemId >> 16);
         payload[3] = (byte)(itemId >> 24);
-        payload[4] = (byte)bytes.Length;
-        payload[5] = (byte)(bytes.Length >> 8);
+        payload[4] = (byte)text.Length;
+        payload[5] = (byte)(text.Length >> 8);
         Array.Copy(bytes, 0, payload, 6, bytes.Length);
         return payload;
     }

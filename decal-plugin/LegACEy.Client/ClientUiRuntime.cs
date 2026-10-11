@@ -1221,11 +1221,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // and a silent ID request (Bridge.RequestId, which selects nothing and opens no window).
     string IAppraisalGame.CharacterName => SessionCharacter();
 
-    bool IAppraisalGame.IsCarried(uint itemId)
-    {
-        var snapshot = _inventory.Snapshot;
-        return snapshot.Items.Any(item => item.Id == itemId) || snapshot.Wielded.Any(item => item.Id == itemId);
-    }
+    bool IAppraisalGame.IsCarried(uint itemId) => _inventory.Snapshot.Carries(itemId);
 
     bool IAppraisalGame.SetInscription(uint itemId, string text) =>
         _channelTransport?.SendAction(InscriptionAction.Opcode, InscriptionAction.Payload(itemId, text)) ?? false;
