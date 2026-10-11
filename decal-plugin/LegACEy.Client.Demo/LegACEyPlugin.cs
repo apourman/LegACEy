@@ -62,6 +62,8 @@ public interface ILegACEyClient
     /// then the appraisal, as a 0x00C9 event carries it) that the server sent the plugin, and the name, icon and stack count are the plugin's own.
     /// </summary>
     void ShowAppraisal(byte[] appraisal, string name, ItemVisual? visual, int stackCount);
+    /// <summary>True while the appraisal window is open, so a plugin's own selection can follow it as the game's selection does.</summary>
+    bool IsAppraisalOpen { get; }
     /// <summary>
     /// Opens the plugin's window around the content it builds, or hides that window when it is open. A hidden window keeps its
     /// content and comes back as it was; the content is built once per session.

@@ -47,7 +47,7 @@ public sealed class VaultPlugin : ILegACEyPlugin
                 if (!client.SupportsAction(VaultProtocol.Appraise)) return;
                 appraiser.Appraise(item.Guid, body => client.ShowAppraisal(body, item.Name,
                     new ItemVisual(item.Icon, item.Underlay, item.Overlay, unchecked((uint)item.UiEffects), item.Plate), item.StackSize));
-            });
+            }, () => client.IsAppraisalOpen);
             var window = new VaultShellWindow(vault);
             window.CloseRequested += (_, _) => close();
             window.DetachedFromVisualTree += (_, _) => window.Dispose();

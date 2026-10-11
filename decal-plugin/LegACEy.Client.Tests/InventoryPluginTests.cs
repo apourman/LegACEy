@@ -459,6 +459,7 @@ public sealed class InventoryPluginTests
         public void SaveSettings(int value) => _store.Save("Server", Character, SettingsKey, (new Point(value, 0), null));
         public void AddMenuEntry(string title, uint iconId, Action action) => MenuEntries.Add((title, iconId, action));
         public void ShowAppraisal(byte[] appraisal, string name, ItemVisual? visual, int stackCount) { }
+        public bool IsAppraisalOpen => false;
         public void ToggleWindow(string id, string title, int width, int height, Point defaultLocation, Func<Control> createContent) =>
             throw new NotSupportedException();
 
