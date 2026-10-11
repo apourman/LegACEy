@@ -158,14 +158,19 @@ public static unsafe class Bridge
         return value;
     }
 
-    internal static string Text(BridgeText text)
+    internal static string Text(BridgeText text) => ReadText(_calls.Text, (int)text, text.ToString());
+
+    /// <summary>A world object's plural name, empty when it has none.</summary>
+    internal static string PluralName(uint id) => ReadText(_calls.PluralName, (int)id, nameof(PluralName));
+
+    private static string ReadText(delegate* unmanaged[Stdcall]<int, byte*, int, int*, int> call, int key, string name)
     {
         // A value that grew between the two calls is asked for again, never cut.
         Span<byte> buffer = stackalloc byte[256];
         int length;
         while (true)
         {
-            fixed (byte* bytes = buffer) Check(_calls.Text((int)text, bytes, buffer.Length, &length), text.ToString());
+            fixed (byte* bytes = buffer) Check(call(key, bytes, buffer.Length, &length), name);
             if (length <= buffer.Length) return Encoding.UTF8.GetString(buffer[..length]);
             buffer = new byte[length];
         }

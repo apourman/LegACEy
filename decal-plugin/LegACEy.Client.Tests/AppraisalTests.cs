@@ -65,15 +65,19 @@ public sealed class AppraisalTests
     }
 
     [Theory]
-    [InlineData("Mace", 61, "Iron Mace")]
-    [InlineData("Peridot", 34, "Peridot")]
-    [InlineData("Mace", 0, "Mace")]
-    public void The_title_puts_the_material_first_as_retail_does(string worldName, int material, string title)
+    [InlineData("Mace", 61, 1, "", "Iron Mace")]
+    [InlineData("Peridot", 34, 1, "", "Peridot")]
+    [InlineData("Mace", 0, 1, "", "Mace")]
+    [InlineData("Mana Potion", 0, 5, "", "5 Mana Potions")]
+    [InlineData("Glass", 0, 3, "", "3 Glasses")]
+    [InlineData("Pyreal", 0, 250, "Pyreals", "250 Pyreals")]
+    [InlineData("Peridot", 34, 2, "Peridots", "2 Peridots")]
+    public void The_title_puts_the_count_and_material_first_as_retail_does(string worldName, int material, int stack, string plural, string title)
     {
         var bytes = new ServerAppraisal(Potion) { Ints = { [131] = material } }.Build();
-        var world = new InventoryObjectRead(Potion, worldName, 0, 0, 0, 0, 1, 1, 0, false, 0, new ItemVisual(0, 0, 0, 0));
+        var world = new InventoryObjectRead(Potion, worldName, 0, 0, 0, 0, stack, 100, 0, false, 0, new ItemVisual(0, 0, 0, 0));
 
-        Assert.Equal(title, AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells, world: world).Name);
+        Assert.Equal(title, AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells, world: world, plural: plural).Name);
     }
 
     [Fact]
@@ -1387,6 +1391,7 @@ public sealed class AppraisalTests
         /// <summary>The world's objects by id; the server's appraisal sends no name or icon.</summary>
         public Dictionary<uint, InventoryObjectRead> World { get; } = new();
         public InventoryObjectRead? WorldObjectOf(uint itemId) => World.GetValueOrDefault(itemId);
+        public string PluralNameOf(uint itemId) => string.Empty;
     }
 
     /// <summary>A plugin host with one window, recording what the feature opens. Its art has no images, so items show no icon.</summary>

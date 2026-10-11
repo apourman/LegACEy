@@ -1251,6 +1251,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         catch (COMException) { return null; }
     }
 
+    string IAppraisalGame.PluralNameOf(uint itemId)
+    {
+        try { return Bridge.PluralName(itemId); }
+        catch (COMException) { return string.Empty; }
+    }
+
     private static uint WorldRead(Func<uint> read)
     {
         try { return read(); }

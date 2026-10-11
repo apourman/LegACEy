@@ -38,6 +38,7 @@ internal static unsafe class DecalCalls
         calls->AutoWield = (delegate* unmanaged[Stdcall]<int, int, int, int, int>)Pointer(new Call4(AutoWield));
         calls->ValidLocations = (delegate* unmanaged[Stdcall]<int, int*, int>)Pointer(new ReadCall(ValidLocations));
         calls->Coverage = (delegate* unmanaged[Stdcall]<int, int*, int>)Pointer(new ReadCall(Coverage));
+        calls->PluralName = (delegate* unmanaged[Stdcall]<int, byte*, int, int*, int>)Pointer(new TextCall(PluralName));
         return calls;
     }
 
@@ -108,10 +109,18 @@ internal static unsafe class DecalCalls
             BridgeText.PluginDirectory => Plugin.Directory,
             _ => throw new ArgumentOutOfRangeException(nameof(text), text, "Unknown bridge text.")
         };
+        Utf8(value, buffer, capacity, length);
+    });
+
+    private static int PluralName(int id, byte* buffer, int capacity, int* length) =>
+        Act(() => Utf8(CoreManager.Current.WorldFilter[id]?.Values(StringValueKey.SecondaryName, string.Empty), buffer, capacity, length));
+
+    private static void Utf8(string? value, byte* buffer, int capacity, int* length)
+    {
         var bytes = Encoding.UTF8.GetBytes(value ?? string.Empty);
         *length = bytes.Length;
         Marshal.Copy(bytes, 0, (IntPtr)buffer, Math.Min(bytes.Length, capacity));
-    });
+    }
 
     private static int Inventory(BridgeItem* rows, int capacity, int* count) => Act(() =>
     {

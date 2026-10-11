@@ -123,21 +123,23 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     /// (the appraisal does not carry them); a piece of clothing or armour names what it covers on the type line.
     /// </summary>
     /// <summary>
-    /// The window's title as retail names the object: the material first ("Iron Mace"), with the material's word taken out of the name
-    /// wherever it was, and the material alone when nothing else is left (a gem named for its material).
+    /// The window's title as retail names the object: a stack's count and plural name ("5 Mana Potions"; without a plural name, "s", or
+    /// after an s "es"), with the material in front ("Iron Mace") unless the name already has it (a gem named for its material).
     /// </summary>
-    private static string TitleOf(AppraisalResponse response, InventoryObjectRead? world)
+    private static string TitleOf(AppraisalResponse response, InventoryObjectRead? world, string plural)
     {
         var name = world is { Name.Length: > 0 } ? world.Name
             : response.Strings.TryGetValue(NameString, out var sent) && sent.Length > 0 ? sent : "Unknown item";
-        if (AppraisalOtherLines.Material(response) is not { } material) return name;
-        var rest = name.Replace(material, string.Empty).Trim();
-        return rest.Length == 0 ? material : $"{material} {rest}";
+        var count = world?.StackCount ?? 0;
+        if (count > 1) name = plural.Length > 0 ? plural : name + (name.EndsWith("s", StringComparison.Ordinal) ? "es" : "s");
+        if (AppraisalOtherLines.Material(response) is { } material && name.IndexOf(material, StringComparison.Ordinal) < 0)
+            name = material + " " + name;
+        return count > 1 ? Invariant(count) + " " + name : name;
     }
 
     public static AppraisalContent From(AppraisalResponse response, IReadOnlyDictionary<uint, SpellInfo> spells,
         string characterName = "", bool carried = false, CharacterNames? names = null, uint validLocations = 0, uint coverage = 0,
-        InventoryObjectRead? world = null)
+        InventoryObjectRead? world = null, string plural = "")
     {
         var hasCreatureProfile = response.Creature != null;
         var figures = hasCreatureProfile
@@ -160,7 +162,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
                 : null;
         return new AppraisalContent(
             response.ObjectId,
-            TitleOf(response, world),
+            TitleOf(response, world, plural),
             visual,
             hasCreatureProfile ? CreatureTypeLine(response, names ?? CharacterNames.None) : TypeLineOf(response, covered),
             figures,
