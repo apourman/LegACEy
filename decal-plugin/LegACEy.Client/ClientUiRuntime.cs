@@ -20,7 +20,7 @@ using LegACEy.Client.Themes;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>The client runtime: wires the Decal events the bridge raises to the netstandard client UI framework.</summary>
-internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClientEvents
+internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClientEvents, IAppraisalGame
 {
     [StructLayout(LayoutKind.Sequential)]
     private struct NativePoint
@@ -84,8 +84,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const uint DatCursorNWSE = 0x06006126;
     private const uint DatCursorNESW = 0x06006127;
     private const uint DatCursorMove = 0x06006119;
-    // Beside the DLL: while this file exists, plugins leave retail's inventory panel alone. Without it the LegACEy Inventory takes it
-    // over.
+    // Beside the DLL: while this file exists, retail's inventory and examination panels stay retail's. Without it the LegACEy UI takes them
+    // over; the examination takeover follows the same switch.
     private const string RetailPanelSwitchFile = "retail-inventory-native";
 
     // How big LegACEy windows show against their design size. The indicator bar keeps retail's size, and drag icons retail's 32 pixels.
@@ -140,13 +140,18 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private GameChannelTransport? _channelTransport;
     private ServerChannelClient? _serverChannel;
     private RetailItemDrag? _retailDrag;
-    // Plugin takeovers of retail panels (the inventory), and the switch that turns them on. The switch is a marker file beside the DLL,
-    // as the post-UI test failure is: create the file to turn the takeover on, delete it to turn it off.
+    // Plugin takeovers of retail panels (the inventory), and the switch that turns them on, which also turns the examination takeover on or off. The switch is a marker file beside the DLL,
+    // as the post-UI test failure is. Creating the switch file gives retail's panels back; deleting it turns the takeovers on.
     private readonly List<RetailPanelTakeover> _retailPanels = new();
     private bool? _retailPanelsValid;
     private bool _retailPanelSwitch;
     private DateTime _lastRetailPanelSwitchCheck;
+    // Retail's examination panel, taken over for the session when the native UI check passes; each showing is an appraisal in our window.
+    private RetailExaminationTakeover? _examination;
     private readonly BridgeInventoryPort _inventory = new(Log);
+    private readonly AppraisalFeature _appraisal;
+    // The inventory as plugins and windows get it: the bridge port, with an Assess also asking for the appraisal window.
+    private readonly AppraisingInventoryPort _appraisingInventory;
     private uint _retailDragItem;
     // The world object a LegACEy window's own drag carries (an inventory item), or 0.
     private uint _ownDragItem;
@@ -183,8 +188,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _inGame;
     private bool _failed;
 
-    public ClientUiRuntime() => _gameStatePoller = new GameStatePoller(_gameState, Bridge.ReadGameState,
-        error => Log($"Character stats temporarily unavailable; keeping UI active and retrying: {error.Message}"));
+    public ClientUiRuntime()
+    {
+        _gameStatePoller = new GameStatePoller(_gameState, Bridge.ReadGameState,
+            error => Log($"Character stats temporarily unavailable; keeping UI active and retrying: {error.Message}"));
+        _appraisal = new AppraisalFeature(this, Log, spells: () => _portal?.ReadSpells(Log) ?? new Dictionary<uint, SpellInfo>(), game: this,
+            names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None);
+        _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal);
+    }
 
     public void Startup()
     {
@@ -193,6 +204,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         try
         {
             NativeUi.Initialize(Log);
+            // Only with the examination's addresses checked: otherwise retail's examination panel is left alone.
+            if (NativeUi.Ready && RetailPanelCatalogueValid())
+            {
+                var examinationPort = new NativeExaminationPort();
+                _examination = new RetailExaminationTakeover(examinationPort, () => (uint)Bridge.Fact(BridgeFact.CurrentSelection),
+                    _appraisal, Log, examinationPort.VerifyRoot);
+            }
+            else Log("Retail's examination panel is left to retail: the native UI or its addresses are not ready.");
             try
             {
                 _channelTransport = new GameChannelTransport(NativeUi.ReadMemory, () => _inGame, Log);
@@ -282,7 +301,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>LegACEy channel replies and pushes arrive on the game thread with every other server message.</summary>
     public void ServerMessage(int type, ReadOnlySpan<byte> raw)
     {
-        if (_failed || _serverChannel == null || _channelTransport == null)
+        if (_failed)
+            return;
+        // The appraisal response is a game event like any other, so it is read whether or not the LegACEy server channel is up.
+        var appraisal = GameChannelTransport.GameEventPayload(type, raw, AppraisalResponse.IdentifyEvent);
+        if (appraisal != null) Guard(() => _appraisal.Receive(appraisal));
+        if (_serverChannel == null || _channelTransport == null)
             return;
         byte[]? payload;
         try { payload = _channelTransport.ReadEvent(type, raw); }
@@ -342,12 +366,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         Guard(() => _hovered?.Panel.PointerLeave());
         _inGame = false;
         _inventory.Clear();
+        Guard(() => _appraisal.Clear());
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up client UI at logoff: {exception}"); }
         _clientUi = null;
         // Before the plugins close their windows: giving the panel back tells the plugin its window is no longer held.
         try { EndRetailPanels(); }
-        catch (Exception exception) { Log($"Could not give the retail inventory panel back at logoff: {exception}"); }
+        catch (Exception exception) { Log($"Could not give the retail panels back at logoff: {exception}"); }
         try { _plugins?.EndSession(); }
         catch (Exception exception) { Log($"Could not close plugin windows at logoff: {exception}"); }
         // Windows released their requests above; anything still outstanding fails as disconnected.
@@ -815,11 +840,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void TickRetailPanels(bool loggingIn = false)
     {
-        if (_retailPanels.Count == 0) return;
+        if (_retailPanels.Count == 0 && _examination == null) return;
         // Logging in, the windows can't open yet; they will if the post-UI hook is in.
         var enabled = (loggingIn ? _postUiDrawHook?.IsInstalled == true : CanOpenWindows) && RetailPanelSwitchOn();
         foreach (var takeover in _retailPanels.ToArray())
             takeover.Tick(enabled, canShow: !loggingIn);
+        _examination?.Tick(enabled, canShow: !loggingIn);
     }
 
     /// <summary>
@@ -830,6 +856,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         foreach (var takeover in _retailPanels.ToArray())
             takeover.EndSession();
+        _examination?.EndSession();
     }
 
     private bool RetailPanelSwitchOn()
@@ -1170,7 +1197,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     string ILegACEyPluginHost.PortalPath => _portal?.Path ?? string.Empty;
     IGameArtSource ILegACEyPluginHost.Art => (IGameArtSource?)_portal ?? throw new InvalidOperationException("Game art is unavailable until the client UI is ready.");
     IItemDragHost ILegACEyPluginHost.ItemDrag => new ItemDragHost(this);
-    IInventoryPort ILegACEyPluginHost.Inventory => _inventory;
+    IInventoryPort ILegACEyPluginHost.Inventory => _appraisingInventory;
 
     IRetailPanel ILegACEyPluginHost.TakeOverRetailInventory(Action<bool> retailOpenChanged)
     {
@@ -1202,6 +1229,45 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     bool ILegACEyPluginHost.IsWindowOpen(string id) => _featureSurfaces.ContainsKey(id);
     void ILegACEyPluginHost.HideWindow(string id) => HideFeatureWindow(id);
     void ILegACEyPluginHost.CloseWindow(string id) => ReleaseFeatureWindow(id);
+
+    // The appraisal window's game: the character and the inventory it reads, the inscription action through the server channel's send,
+    // and a silent ID request (Bridge.RequestId, which selects nothing and opens no window).
+    string IAppraisalGame.CharacterName => SessionCharacter();
+
+    bool IAppraisalGame.IsCarried(uint itemId) => _inventory.Snapshot.Carries(itemId);
+
+    bool IAppraisalGame.SetInscription(uint itemId, string text) =>
+        _channelTransport?.SendAction(InscriptionAction.Opcode, InscriptionAction.Payload(itemId, text)) ?? false;
+
+    void IAppraisalGame.RequestAppraisal(uint itemId) => Bridge.RequestId(itemId);
+
+    // A released object reads as no slots and no coverage: the window then shows no "Covers" line.
+    uint IAppraisalGame.ValidLocationsOf(uint itemId) => WorldRead(() => Bridge.ValidLocations(itemId));
+
+    uint IAppraisalGame.CoverageOf(uint itemId) => WorldRead(() => Bridge.CoverageOf(itemId));
+
+    InventoryObjectRead? IAppraisalGame.WorldObjectOf(uint itemId)
+    {
+        try { return Bridge.Item(itemId); }
+        catch (COMException) { return null; }
+    }
+
+    string IAppraisalGame.PluralNameOf(uint itemId)
+    {
+        try { return Bridge.PluralName(itemId); }
+        catch (COMException) { return string.Empty; }
+    }
+
+    private static uint WorldRead(Func<uint> read)
+    {
+        try { return read(); }
+        catch (COMException) { return 0; }
+    }
+
+    void ILegACEyPluginHost.ShowAppraisal(byte[] appraisal, string name, ItemVisual? visual, int stackCount) =>
+        _appraisal.ShowStored(appraisal, name, visual, stackCount);
+
+    void ILegACEyPluginHost.SelectForExamination(Action? examine) => _appraisal.SelectStored(examine);
 
     int? ILegACEyPluginHost.LoadPluginSettings(string plugin) => _settingsStore.Load(SessionServer(), SessionCharacter(), plugin)?.Location.X;
 
@@ -1597,7 +1663,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         // The takeover stands in for a window: without windows, retail's panel must come back now.
         try { EndRetailPanels(); }
-        catch (Exception cleanupError) { Log($"Could not give the retail inventory panel back after a window failure: {cleanupError}"); }
+        catch (Exception cleanupError) { Log($"Could not give the retail panels back after a window failure: {cleanupError}"); }
         _windowsEnabled = false;
         Log($"LegACEy windows disabled: {exception}");
         _bar?.SetOpen(MenuSlot, false);
@@ -1658,7 +1724,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         // First: retail's panel must be given back before anything else is torn down.
         try { EndRetailPanels(); }
-        catch (Exception exception) { Log($"Could not give the retail inventory panel back during unload: {exception}"); }
+        catch (Exception exception) { Log($"Could not give the retail panels back during unload: {exception}"); }
         if (_itemDragActive)
             try { _retailDrag?.ClearDropIndicator(); } catch (Exception exception) { Log($"Could not clear the inventory drop indicator: {exception.Message}"); }
         _itemDragActive = false;

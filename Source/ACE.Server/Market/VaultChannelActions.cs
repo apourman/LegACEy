@@ -31,6 +31,7 @@ namespace ACE.Server.Market
         public const string Move = "vault.move";
         public const string WithdrawBatch = "vault.withdraw_batch";
         public const string DepositBatch = "vault.deposit_batch";
+        public const string Appraise = "vault.appraise";
 
         /// <summary>
         /// The most items one vault.list reply holds. Must match VaultProtocol.PageSize in the LegACEy Vault client.
@@ -57,6 +58,7 @@ namespace ACE.Server.Market
             ServerChannel.Register(Move, HandleMove, Station);
             ServerChannel.Register(WithdrawBatch, HandleWithdrawBatch, Station);
             ServerChannel.Register(DepositBatch, HandleDepositBatch, Station);
+            ServerChannel.Register(Appraise, VaultAppraisal.Handle, Station);
         }
 
         /// <summary>

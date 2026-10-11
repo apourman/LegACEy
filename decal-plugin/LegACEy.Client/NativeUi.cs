@@ -26,6 +26,14 @@ internal static class NativeUi
     public const uint Vitae = 0x1000018A;
     /// <summary>InventoryPanel_Field, the retail inventory panel root.</summary>
     public const uint InventoryPanel = 0x1000018B;
+    /// <summary>
+    /// The examination panel's root: the window retail opens for an E-key appraisal. It is placed in LayoutDesc 0x21000005 as 0x100005F7,
+    /// built from LayoutDesc 0x2100006B's top-level element 0x100005F2; the client registers it under the placed id, as it does the
+    /// inventory (0x1000018B, built from 0x21000023/0x100001CC), so the base id finds nothing.
+    /// </summary>
+    public const uint Examination = 0x100005F7;
+    /// <summary>The examination layout's inscription field (0x2100006B): it sits under <see cref="Examination"/>.</summary>
+    public const uint ExaminationInscription = 0x1000013E;
 
     private static readonly IntPtr ManagerInstance = new(0x0083E03C);
     private static bool _ready;

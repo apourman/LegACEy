@@ -24,7 +24,7 @@ internal interface IRetailPanelPort
 }
 
 /// <summary>
-/// Parks retail's inventory panel off-screen while it is open and the takeover is on, and tells a plugin window when that panel
+/// Parks a retail panel (the inventory's, or the examination's) off-screen while it is open and the takeover is on, and tells the owner when that panel
 /// opens and closes. Retail keeps its open state on the element it would hide, so the element is parked rather than hidden each frame;
 /// a closed panel is given back at once, because its frame also holds retail's other panels.
 /// The panel's place and save-location are given back on every exit:
@@ -52,6 +52,8 @@ internal sealed class RetailPanelTakeover : IDisposable
     private int _closedFrames;
     private bool _restoreFailed;
     private bool _failed;
+    // Given back while open, by Yield: retail shows the panel as it was, and it is not parked again until retail closes it.
+    private bool _yielded;
     private bool _disposed;
 
     public RetailPanelTakeover(IRetailPanelPort port, Action<bool> openChanged, Action<string> log)
@@ -73,6 +75,7 @@ internal sealed class RetailPanelTakeover : IDisposable
         if (_disposed) return;
         if (!enabled || _failed)
         {
+            _yielded = false;
             if (_parked) Release();
             return;
         }
@@ -82,6 +85,7 @@ internal sealed class RetailPanelTakeover : IDisposable
             if (identity == IntPtr.Zero)
             {
                 // Retail is between panels: keep our window through a short gap.
+                _yielded = false;
                 Closing();
                 return;
             }
@@ -89,8 +93,15 @@ internal sealed class RetailPanelTakeover : IDisposable
             {
                 // The panel frame is shared with retail's other panels (character, spells, options), so it is given back as soon as
                 // the inventory closes, and the next panel retail opens shows where it should.
+                _yielded = false;
                 Restore();
                 Closing();
+                return;
+            }
+            if (_yielded)
+            {
+                // Retail shows its panel for a showing we gave back: it is left as it is until retail closes it.
+                _closedFrames = 0;
                 return;
             }
             if (!_parked || identity != _identity) Park(identity);
@@ -124,11 +135,41 @@ internal sealed class RetailPanelTakeover : IDisposable
         }
     }
 
+    /// <summary>
+    /// Gives the panel back while it stays open, for a showing the owner could not show in its window: retail's panel is shown at its place,
+    /// and it is not parked again until retail closes it. A restore that fails turns the takeover off, as a failed park does.
+    /// </summary>
+    public void Yield()
+    {
+        if (_disposed) return;
+        _yielded = true;
+        try
+        {
+            Restore();
+        }
+        catch (Exception exception)
+        {
+            Fail(exception);
+        }
+    }
+
+    /// <summary>
+    /// Ends a <see cref="Yield"/> for a new showing the owner wants: the next frame parks the panel again and reports it open, so the owner
+    /// examines it afresh. Nothing happens when the panel is not yielded.
+    /// </summary>
+    public void Reclaim()
+    {
+        if (!_yielded) return;
+        _yielded = false;
+        _reportedOpen = false;
+    }
+
     /// <summary>Logoff: gives the panel back and forgets the session, so the next login takes the panel over afresh.</summary>
     public void EndSession()
     {
         Release();
         _failed = false;
+        _yielded = false;
     }
 
     public void Dispose()
@@ -143,6 +184,9 @@ internal sealed class RetailPanelTakeover : IDisposable
     /// <summary>True while the takeover holds the panel: parked, and not failed. Open and Close reach retail only then.</summary>
     public bool Holds => _parked && !_failed && !_disposed;
 
+    /// <summary>True from <see cref="Yield"/> until retail closes the panel, the takeover is switched off, or <see cref="Reclaim"/> ends it.</summary>
+    public bool Yielded => _yielded && !_disposed;
+
     private void Park(IntPtr identity)
     {
         _identity = identity;
@@ -151,7 +195,7 @@ internal sealed class RetailPanelTakeover : IDisposable
         _parked = true;
         _restoreFailed = false;
         Repark();
-        _log($"Parked the retail inventory panel off-screen; its place is {_original}.");
+        _log($"Parked the retail panel off-screen; its place is {_original}.");
     }
 
     /// <summary>Moves the panel to the parked place. A panel that does not land there (clamped by the client) fails the takeover.</summary>
@@ -193,7 +237,7 @@ internal sealed class RetailPanelTakeover : IDisposable
             if (!_restoreFailed)
             {
                 _restoreFailed = true;
-                _log($"Could not give the retail inventory panel back; retrying each frame: {exception.Message}");
+                _log($"Could not give the retail panel back; retrying each frame: {exception.Message}");
             }
         }
     }
@@ -225,13 +269,13 @@ internal sealed class RetailPanelTakeover : IDisposable
         _parked = false;
         _identity = IntPtr.Zero;
         _parkedAt = null;
-        _log($"Gave the retail inventory panel back at {_original}.");
+        _log($"Gave the retail panel back at {_original}.");
     }
 
     private void Fail(Exception exception)
     {
         _failed = true;
-        _log($"Retail inventory takeover turned off: {exception.Message}");
+        _log($"Retail panel takeover turned off: {exception.Message}");
         Release();
     }
 }
@@ -256,6 +300,8 @@ internal static class RetailPanelCatalogue
         Shared("UIElement::GetCurrentPosition"),
         Shared("UIElement::SetSaveLocation"),
         Shared("UIElement::MoveTo"),
+        Shared("RootElementId::Examination"),
+        Shared("RootElementId::ExaminationInscription"),
         new NativeUiEntry("gmPanelUI::RecvNotice_SetPanelVisibility", RecvNoticeSetPanelVisibility, NativeUiCatalogue.Bytes(
             "51 8B 54 24 08 53 55 33 DB 3B D3 56 8B F1 0F 84 69 01 00 00"), Source, "ThisCall (gmPanelUI+0x5F8; uint panelId, uint visible), ret 8"),
         // The receiver: gmPanelUI's constructor stores the notice sub-object's vtable (0x007B4DC8) at +0x5F8, so the receiver of

@@ -58,6 +58,18 @@ public interface ILegACEyClient
     /// <summary>Adds an entry to the LegACEy menu. Its action runs when the player picks it.</summary>
     void AddMenuEntry(string title, uint iconId, Action action);
     /// <summary>
+    /// Shows an item that is not in the world in the appraisal window: <paramref name="appraisal"/> is the game's appraisal body (the item id,
+    /// then the appraisal, as a 0x00C9 event carries it) that the server sent the plugin, and the name, icon and stack count are the plugin's own.
+    /// </summary>
+    void ShowAppraisal(byte[] appraisal, string name, ItemVisual? visual, int stackCount);
+    /// <summary>True while the appraisal window is open, so a plugin's own selection can follow it as the game's selection does.</summary>
+    bool IsAppraisalOpen { get; }
+    /// <summary>
+    /// The plugin's own selection of an item that is not in the world, which the game cannot select: until the game's selection changes,
+    /// examining (the E key) runs <paramref name="examine"/> instead of examining the game's selection. Null clears it.
+    /// </summary>
+    void SelectForExamination(Action? examine);
+    /// <summary>
     /// Opens the plugin's window around the content it builds, or hides that window when it is open. A hidden window keeps its
     /// content and comes back as it was; the content is built once per session.
     /// </summary>
@@ -106,6 +118,10 @@ public interface ILegACEyPluginHost
     int? LoadPluginSettings(string plugin);
     /// <summary>Saves a plugin's one settings value for the current character.</summary>
     void SavePluginSettings(string plugin, int value);
+    /// <summary>Shows a stored item's appraisal in the appraisal window. See <see cref="ILegACEyClient.ShowAppraisal"/>.</summary>
+    void ShowAppraisal(byte[] appraisal, string name, ItemVisual? visual, int stackCount);
+    /// <summary>A plugin's selection for examining. See <see cref="ILegACEyClient.SelectForExamination"/>.</summary>
+    void SelectForExamination(Action? examine);
 }
 
 /// <summary>

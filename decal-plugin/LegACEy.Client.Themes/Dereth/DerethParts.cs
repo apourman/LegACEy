@@ -19,6 +19,8 @@ public static class DerethPalette
     public static readonly Color Text = Color.Parse("#D7D9D6");
     public static readonly Color Muted = Color.Parse("#8E979E");
     public static readonly Color Invalid = Color.Parse("#D9584A");
+    /// <summary>The green of a value a buff or spell raised, as retail colours it.</summary>
+    public static readonly Color Raised = Color.Parse("#8ED17A");
     public static readonly Color Groove = Color.Parse("#05080C");
     public static readonly Color GrooveEdge = Color.Parse("#2A3542");
     public static readonly Color Navy = Color.Parse("#081016");
@@ -34,6 +36,7 @@ public static class DerethPalette
     public static readonly IBrush TextBrush = Brush(Text);
     public static readonly IBrush MutedBrush = Brush(Muted);
     public static readonly IBrush InvalidBrush = Brush(Invalid);
+    public static readonly IBrush RaisedBrush = Brush(Raised);
     public static readonly IBrush GrooveBrush = Brush(Groove);
     public static readonly IBrush GrooveEdgeBrush = Brush(GrooveEdge);
     public static readonly IBrush TealBrush = Brush(Teal);
@@ -319,19 +322,18 @@ public sealed class DerethWindow : UserControl
     {
         if (content == null) throw new ArgumentNullException(nameof(content));
         var header = new Grid { ColumnDefinitions = new ColumnDefinitions(headerActions == null ? "Auto,*,Auto" : "Auto,*,Auto,Auto"), ColumnSpacing = 8, Height = 40 };
-        if (icon != null)
-        {
-            // The header's emblem is shrunk to fit; item icons elsewhere stay at their native size.
-            var framed = new DerethFrame(DerethFrameArt.Button) { Width = 32, Height = 32, Child = new Viewbox { Child = icon } };
-            header.Children.Add(framed);
-        }
-        var name = new TextBlock
+        // The header's emblem is shrunk to fit; item icons elsewhere stay at their native size. It is always there, and takes no
+        // space while it has no icon, so a window that changes its icon keeps the same header.
+        _emblem = new DerethFrame(DerethFrameArt.Button) { Width = 32, Height = 32 };
+        header.Children.Add(_emblem);
+        SetIcon(icon);
+        _name = new TextBlock
         {
             Text = title, Foreground = DerethPalette.CreamBrush, FontSize = 16, FontFamily = DerethPalette.Title,
             VerticalAlignment = VerticalAlignment.Center
         };
-        Grid.SetColumn(name, 1);
-        header.Children.Add(name);
+        Grid.SetColumn(_name, 1);
+        header.Children.Add(_name);
         var glyph = new DerethSprite(DerethSpriteArt.Close) { Width = 12, Height = 12 };
         var close = new DerethButton { Width = 24, Height = 24, VerticalAlignment = VerticalAlignment.Center, Content = glyph };
         glyph.Follow(close);
@@ -353,6 +355,23 @@ public sealed class DerethWindow : UserControl
         Grid.SetRow(content, 2);
         body.Children.Add(content);
         Content = new DerethFrame(DerethFrameArt.Window) { Child = body };
+    }
+
+    private readonly DerethFrame _emblem;
+    private readonly TextBlock _name;
+
+    /// <summary>The title in the header.</summary>
+    public string Title
+    {
+        get => _name.Text ?? string.Empty;
+        set => _name.Text = value;
+    }
+
+    /// <summary>Replaces the header's icon. Null shows no icon, and the title moves to the edge.</summary>
+    public void SetIcon(Control? icon)
+    {
+        _emblem.Child = icon == null ? null : new Viewbox { Child = icon };
+        _emblem.IsVisible = icon != null;
     }
 
     public event EventHandler? CloseRequested;

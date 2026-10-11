@@ -20,7 +20,7 @@ public interface IInventoryPort
     void Select(uint itemId);
     /// <summary>Uses an item as retail does on a double-click.</summary>
     void Use(uint itemId);
-    /// <summary>Selects an item and asks the server to appraise it, as retail does on a right-click, so retail's examination window shows it.</summary>
+    /// <summary>Selects an item and asks the server to appraise it, as retail does on a right-click. The appraisal window opens for the item when its response arrives.</summary>
     void Assess(uint itemId);
     /// <summary>Drops an item of the player's on the ground, as retail does for one released over the world.</summary>
     void DropOnGround(uint itemId);
@@ -195,6 +195,13 @@ public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
     /// <summary>Whether the id is the main pack, a side pack, or an item or wielded item in this snapshot.</summary>
     public bool Contains(uint id) => id != 0 && (MainPack.Id == id || SidePacks.Any(pack => pack.Id == id)
         || Items.Any(item => item.Id == id) || Wielded.Any(item => item.Id == id));
+
+    /// <summary>
+    /// Whether the character carries the object: a side pack, or an item in a pack or worn. The main pack is the character itself, so it
+    /// is not carried. This is the server's MyInventory | MyEquippedItems, which the inscription rule uses.
+    /// </summary>
+    public bool Carries(uint id) => id != 0 && (SidePacks.Any(pack => pack.Id == id) || Items.Any(item => item.Id == id)
+        || Wielded.Any(item => item.Id == id));
 
     /// <summary>The wield locations of an item this snapshot holds, carried or worn; null when it holds no such item.</summary>
     public uint? ValidLocationsOf(uint id) =>

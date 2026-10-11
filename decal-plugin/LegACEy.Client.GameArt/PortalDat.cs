@@ -5,12 +5,13 @@ using System.IO;
 namespace LegACEy.Client.GameArt;
 
 /// <summary>
-/// Reads interface art (RenderSurface, 0x06xxxxxx) from client_portal.dat.
+/// Reads interface art (RenderSurface, 0x06xxxxxx) and the spell table from client_portal.dat.
 /// </summary>
 /// <remarks>
 /// The dat layout follows ACE.DatLoader: a header at 0x140, a B-tree directory of 62 branches
 /// and up to 61 sorted entries per node, and files stored in chained blocks whose first four
 /// bytes point at the next block. The file is opened for shared reading, since acclient keeps it open.
+/// The game thread (spells) and the UI thread (images) share the one stream, so reads are serialised on it.
 /// </remarks>
 public sealed class PortalDat : IDisposable, IGameArtSource
 {
@@ -25,6 +26,8 @@ public sealed class PortalDat : IDisposable, IGameArtSource
     // ponytail: unbounded; holds the window art and every item icon shown this session. Add eviction if a session's
     // icons ever reach a few MB.
     private readonly Dictionary<uint, GameImage?> _images = new();
+    private IReadOnlyDictionary<uint, SpellInfo>? _spells;
+    private CharacterNames? _characterNames;
 
     public PortalDat(string path)
     {
@@ -48,6 +51,90 @@ public sealed class PortalDat : IDisposable, IGameArtSource
         if (!_images.TryGetValue(id, out var image))
             _images.Add(id, image = DecodeImage(id));
         return image;
+    }
+
+    /// <summary>
+    /// The spells' names and descriptions by spell id, read once. A spell table that is missing or cannot be read gives an empty table,
+    /// logged once, so every spell is named by its id and the appraisal still shows.
+    /// </summary>
+    public IReadOnlyDictionary<uint, SpellInfo> ReadSpells(Action<string>? log = null)
+    {
+        lock (_stream)
+        {
+            if (_spells != null) return _spells;
+            try
+            {
+                var file = ReadFile(SpellTable.FileId);
+                _spells = file == null ? new Dictionary<uint, SpellInfo>() : SpellTable.Parse(file);
+            }
+            catch (Exception exception)
+            {
+                log?.Invoke($"The spell names could not be read from the portal: {exception.Message}");
+                _spells = new Dictionary<uint, SpellInfo>();
+            }
+            return _spells;
+        }
+    }
+
+    /// <summary>
+    /// The creature type and title names, read once. Each is read on its own: a creature mapper that cannot be read leaves the creature types
+    /// out but keeps the titles, and a broken English DAT (the titles' strings, client_local_English.dat beside this portal) leaves the titles
+    /// out but keeps the creature types. Each failure is logged once.
+    /// </summary>
+    public CharacterNames ReadCharacterNames(Action<string>? log = null)
+    {
+        lock (_stream)
+        {
+            if (_characterNames != null) return _characterNames;
+            var creatureTypes = ReadMapperNames(CharacterNames.CreatureTypeMapper, "creature types", log);
+            var titles = ReadTitleNames(log);
+            _characterNames = new CharacterNames(creatureTypes, titles);
+            return _characterNames;
+        }
+    }
+
+    private Dictionary<uint, string> ReadMapperNames(uint mapperId, string what, Action<string>? log)
+    {
+        var names = new Dictionary<uint, string>();
+        try
+        {
+            var file = ReadFile(mapperId);
+            if (file != null) CharacterNames.ParseEnumMapper(file, names);
+            else log?.Invoke($"The {what} mapper is missing from the portal, so {what} are not named.");
+        }
+        catch (Exception exception)
+        {
+            log?.Invoke($"The {what} could not be read from the portal: {exception.Message}");
+            names.Clear();
+        }
+        return names;
+    }
+
+    private Dictionary<uint, string> ReadTitleNames(Action<string>? log)
+    {
+        var titles = new Dictionary<uint, string>();
+        try
+        {
+            var keys = ReadMapperNames(CharacterNames.TitleMapper, "titles", log);
+            var localPath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Path)!, "client_local_English.dat");
+            if (!File.Exists(localPath))
+            {
+                log?.Invoke($"The English language DAT is not beside the portal, so titles are not named: {localPath}");
+                return titles;
+            }
+            using var language = new PortalDat(localPath);
+            var table = language.ReadFile(CharacterNames.TitleStringTable);
+            if (table == null) return titles;
+            var strings = CharacterNames.ParseStringTable(table);
+            foreach (var entry in keys)
+                if (strings.TryGetValue(CharacterNames.Hash(entry.Value), out var title)) titles[entry.Key] = title;
+        }
+        catch (Exception exception)
+        {
+            log?.Invoke($"The character titles could not be read from the English language DAT: {exception.Message}");
+            titles.Clear();
+        }
+        return titles;
     }
 
     private GameImage? DecodeImage(uint id)
@@ -110,8 +197,13 @@ public sealed class PortalDat : IDisposable, IGameArtSource
         return colors;
     }
 
-    /// <summary>Find a file in the B-tree and read its blocks.</summary>
+    /// <summary>Find a file in the B-tree and read its blocks, one read at a time on the shared stream.</summary>
     internal byte[]? ReadFile(uint id)
+    {
+        lock (_stream) return FindFile(id);
+    }
+
+    private byte[]? FindFile(uint id)
     {
         var node = _rootDirectory;
         while (node != 0)

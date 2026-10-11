@@ -69,20 +69,13 @@ internal sealed class GameChannelTransport : IServerChannelTransport
     public int Sent { get; private set; }
     public int Received { get; private set; }
 
+    /// <summary>A LegACEy channel request: the LegACEy opcode, logged and counted.</summary>
     public bool Send(byte[] requestPayload)
     {
         if (!IsAvailable) return false;
         var size = 12 + requestPayload.Length;
-        var buffer = _allocate!((uint)size);
-        if (buffer == IntPtr.Zero) return false;
-        var counter = _nextCounter!();
-        Marshal.WriteInt32(buffer, 0, unchecked((int)GameActionMessage));
-        Marshal.WriteInt32(buffer, 4, unchecked((int)counter));
-        Marshal.WriteInt32(buffer, 8, unchecked((int)ChannelWire.GameActionOpcode));
-        Marshal.Copy(requestPayload, 0, buffer + 12, requestPayload.Length);
-        var sent = _sendToWeenie!(buffer, size) != 0;
-        if (!sent) _counterFailed!();
-        else Sent++;
+        var sent = Transmit(ChannelWire.GameActionOpcode, requestPayload, out var counter);
+        if (sent) Sent++;
         if (!_loggedFirstSend || !sent)
         {
             _log($"Server channel send: {size} bytes, UI counter {counter}, accepted by client: {sent}.");
@@ -92,22 +85,67 @@ internal sealed class GameChannelTransport : IServerChannelTransport
     }
 
     /// <summary>
+    /// Sends another retail game action (for example Writing_SetInscription) through the client's own send. It is neither logged nor
+    /// counted as a channel request. Returns false when the channel is not available or the client refuses the action.
+    /// </summary>
+    public bool SendAction(uint opcode, byte[] payload) => IsAvailable && Transmit(opcode, payload, out _);
+
+    /// <summary>Hands one frame to the client's send. A refused send gives its UI counter back to the client.</summary>
+    private bool Transmit(uint opcode, byte[] payload, out uint counter)
+    {
+        counter = 0;
+        var size = 12 + payload.Length;
+        var buffer = _allocate!((uint)size);
+        if (buffer == IntPtr.Zero) return false;
+        counter = _nextCounter!();
+        Marshal.Copy(GameActionFrame(counter, opcode, payload), 0, buffer, size);
+        var sent = _sendToWeenie!(buffer, size) != 0;
+        if (!sent) _counterFailed!();
+        return sent;
+    }
+
+    /// <summary>
+    /// The bytes of a game action as retail's Proto_UI::SendToWeenie takes them: 0xF7B1, the UI counter, the action's opcode, then its
+    /// payload. The server reads the sequence and the opcode, then the action's own fields.
+    /// </summary>
+    internal static byte[] GameActionFrame(uint counter, uint opcode, byte[] payload)
+    {
+        var frame = new byte[12 + payload.Length];
+        BinaryPrimitives.WriteUInt32LittleEndian(frame, GameActionMessage);
+        BinaryPrimitives.WriteUInt32LittleEndian(frame.AsSpan(4), counter);
+        BinaryPrimitives.WriteUInt32LittleEndian(frame.AsSpan(8), opcode);
+        Buffer.BlockCopy(payload, 0, frame, 12, payload.Length);
+        return frame;
+    }
+
+    /// <summary>
     /// The LegACEy event payload (after the event type) from a server message's type and raw bytes, or null for any other message.
     /// A 0xF7B0 game event is character, sequence and event type, so an unknown event type still reaches plugins.
     /// </summary>
     public byte[]? ReadEvent(int messageType, ReadOnlySpan<byte> raw)
     {
+        var payload = GameEventPayload(messageType, raw, ChannelWire.GameEventType);
+        if (payload == null) return null;
+        if (!_loggedFirstReceive)
+        {
+            _log($"Server channel event: {raw.Length} raw bytes, payload {payload.Length} bytes.");
+            _loggedFirstReceive = true;
+        }
+        Received++;
+        return payload;
+    }
+
+    /// <summary>
+    /// The payload after the event type of a 0xF7B0 game event with <paramref name="eventType"/>, or null for any other message or event.
+    /// Any event type is read the same way, so the appraisal response (0x00C9) and the LegACEy channel share one path.
+    /// </summary>
+    internal static byte[]? GameEventPayload(int messageType, ReadOnlySpan<byte> raw, uint eventType)
+    {
         if (messageType != GameEventMessage) return null;
         // Decal's raw bytes may or may not start with the message type (a character id never equals it); the event type follows
         // character and sequence either way. Only that one place is checked, so a sequence number never reads as the event type.
         var offset = raw.Length >= 4 && UInt32At(raw, 0) == GameEventMessage ? 16 : 12;
-        if (raw.Length < offset || UInt32At(raw, offset - 4) != ChannelWire.GameEventType) return null;
-        if (!_loggedFirstReceive)
-        {
-            _log($"Server channel event: {raw.Length} raw bytes, payload offset {offset}.");
-            _loggedFirstReceive = true;
-        }
-        Received++;
+        if (raw.Length < offset || UInt32At(raw, offset - 4) != eventType) return null;
         return raw.Slice(offset).ToArray();
     }
 

@@ -62,6 +62,8 @@ public static class VaultProtocol
     public const string Move = "vault.move";
     public const string WithdrawBatch = "vault.withdraw_batch";
     public const string DepositBatch = "vault.deposit_batch";
+    /// <summary>An item's appraisal (body: the item id). The reply is the game's appraisal body for it: the item id, then the appraisal.</summary>
+    public const string Appraise = "vault.appraise";
 
     /// <summary>The items the window asks for at a time. Must match ACE.Server.Market.VaultChannelActions.PageSize.</summary>
     public const int PageSize = 100;
@@ -443,6 +445,20 @@ public sealed class VaultClient : IDisposable
             if (!accepted) TransferPending = false;
             // A started transfer is announced in chat; its outcome comes as a vault.changed push.
             Set(Connection, accepted ? "Transfer channelling — stay still until it completes." : message);
+        });
+    }
+
+    /// <summary>
+    /// Asks the server to appraise a Vault item, and hands its appraisal body to <paramref name="show"/>. A refusal is the window's notice.
+    /// </summary>
+    public void Appraise(uint guid, Action<byte[]> show)
+    {
+        if (show == null) throw new ArgumentNullException(nameof(show));
+        if (!_channel.IsAvailable) return;
+        Send(VaultProtocol.Appraise, ChannelWire.Body(w => w.Write(guid)), reply =>
+        {
+            if (!reply.Ok) { Set(Connection, reply.Message); return; }
+            show(reply.Body);
         });
     }
 
