@@ -12,7 +12,7 @@ and database remain in the repository's upstream-compatible `Source/` and
 
 | Project | Purpose |
 | --- | --- |
-| `LegACEy.Client.DecalPlugin` | Decal entry point, game integration, and native rendering hooks |
+| `LegACEy.Client.DecalPlugin` | The net48 stub Decal registers: Decal access, and starts the .NET 10 client from `runtime/` |
 | `LegACEy.Client` | The client on .NET 10 (runtime, hooks, retail takeover) and its bridge to the Decal entry point |
 | `LegACEy.Client.PanelHost` | Avalonia surface hosting and rendering |
 | `LegACEy.Client.InputRouter` | Mouse and keyboard routing |
@@ -29,29 +29,35 @@ Project and assembly names retain the `LegACEy.Client` prefix.
 
 ## Build the plugin
 
-Build on Windows with a .NET SDK that supports these projects and the .NET
-Framework 4.8 targeting pack. The plugin targets .NET Framework 4.8 and x86,
-matching the game process. Install Decal and Managed DirectX first.
+Build on Windows with the .NET 10 SDK and the .NET Framework 4.8 targeting pack.
+The stub targets .NET Framework 4.8 and x86, matching the game process, and
+starts the client on .NET 10 from a `runtime/` folder beside it. Install Decal
+first.
 
-From the repository root:
+From the repository root, build the stub, then publish the client into its
+`runtime/` folder:
 
 ```powershell
 dotnet build decal-plugin/LegACEy.Client.DecalPlugin/LegACEy.Client.DecalPlugin.csproj --configuration Release
+dotnet publish decal-plugin/LegACEy.Client/LegACEy.Client.csproj --configuration Release --runtime win-x86 --self-contained --output decal-plugin/LegACEy.Client.DecalPlugin/bin/Release/net48/runtime
 ```
 
-The project locates Decal and Managed DirectX through `DecalInstallDir`,
-`DecalInteropDir`, and `ManagedDirectXDir`. Override these MSBuild properties
-with `-p:PropertyName=PATH` if your installation differs from the project defaults.
+Rerun the publish after changing the client or its libraries; the stub build
+alone does not update `runtime/`. The publish is self-contained and trimmed: it
+holds the .NET runtime, the client, Avalonia, and the x86 Skia and HarfBuzz
+native libraries. The project locates Decal through `DecalInstallDir` and
+`DecalInteropDir`. Override these MSBuild properties with `-p:PropertyName=PATH`
+if your installation differs from the project defaults.
 
 The main output is
 `LegACEy.Client.DecalPlugin/bin/Release/net48/LegACEy.Client.DecalPlugin.dll`
-relative to this directory. It loads through Decal and requires its companion
-managed libraries and the `x86/` native rendering libraries from the build
-output. Each LegACEy plugin is copied beside it as
-`Plugins/<Name>/<Name>.dll`, for example `Plugins/Paperdoll/Paperdoll.dll` and `Plugins/Vault/Vault.dll`;
-the client loads those at startup. Keep the `Plugins` folder beside the main DLL. Keep those dependencies available beside the plugin; the main DLL is
-not a standalone executable. If Decal is registered against a previous checkout
-path, update that registration after moving the directory.
+relative to this directory, with `LegACEy.Client.GameArt.dll` beside it. It loads
+through Decal and is not a standalone executable. Each LegACEy plugin is copied
+beside it as `Plugins/<Name>/<Name>.dll`, for example
+`Plugins/Paperdoll/Paperdoll.dll` and `Plugins/Vault/Vault.dll`; the client loads
+those at startup. Keep `Plugins/` and `runtime/` beside the main DLL. If Decal is
+registered against a previous checkout path, update that registration after
+moving the directory.
 
 Creating an empty file named `fail-post-ui-draw` beside the main DLL makes the
 next post-UI draw fail in game. The file is deleted, the failure is logged to
@@ -122,27 +128,29 @@ only the root package outputs.
 The plugin's publishing job leaves release-please's release notes intact and
 keeps the server as GitHub's repository-wide latest release.
 
-The Windows build extracts Decal 2.9.8.3 and Managed DirectX 1.1 references from
-official downloads, checks their pinned SHA-256 hashes, and builds the x86
-plugin. No game installation or DAT files are needed for the build. Automated
+The Windows build extracts the Decal 2.9.8.3 references from the official
+download, checks its pinned SHA-256 hash, builds the x86 stub, and publishes the
+trimmed client into `runtime/`. The package step fails if `runtime/` lacks the
+.NET runtime, the client, or the native rendering libraries. No game installation or DAT files are needed for the build. Automated
 plugin tests, asset publishing checks, and the Windows native hook check must
 pass before publishing.
 
 Each release contains:
 
-- `LegACEy.Client.DecalPlugin.dll`, for an existing installation with matching
-  companion libraries.
+- `LegACEy.Client.DecalPlugin.dll`, for an existing installation with a matching
+  `runtime` folder.
 - `LegACEy-decal-plugin-v<version>-windows-x86.zip`, containing the main DLL,
-  companion managed DLLs, x86 rendering libraries, the `Plugins` folder with the
-  bundled LegACEy plugins, and license notices.
+  `LegACEy.Client.GameArt.dll`, the `Plugins` folder with the bundled LegACEy
+  plugins, the `runtime` folder with the .NET 10 runtime and the client, and
+  license notices.
 - `SHA256SUMS.txt`, covering the DLL and ZIP.
 
 For a fresh installation, extract the ZIP and register its
-`LegACEy.Client.DecalPlugin.dll` in Decal. Keep the companion files and the
-`Plugins` folder in place.
-Players still need Decal, .NET Framework 4.8, and Managed DirectX installed;
-those external references are not bundled. Updating companion libraries
-requires the ZIP rather than replacing just the main DLL.
+`LegACEy.Client.DecalPlugin.dll` in Decal. Keep `LegACEy.Client.GameArt.dll` and
+the `Plugins` and `runtime` folders in place.
+Players need Decal and .NET Framework 4.8, which Decal itself needs; neither is
+bundled. The .NET 10 runtime ships in `runtime`, so nothing else is installed.
+Updating the client requires the ZIP rather than replacing just the main DLL.
 
 A failed build or upload leaves the release as a draft. Use **Re-run failed jobs**
 on the original workflow run to retry the plugin build/publish jobs with the

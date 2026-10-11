@@ -8,6 +8,22 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <!-- The release publishes the client self-contained for win-x86, trimmed, into runtime\ beside the stub (see the README).
+       Plugins load from Plugins\ at run time, outside the trim graph, so what they reach must survive. Partial mode trims only
+       assemblies marked trimmable (the framework, Avalonia, Skia, Reloaded); the roots keep Avalonia, Skia, the hook library and
+       the everyday framework surface whole. -->
+  <PropertyGroup>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+    <!-- The publish reports trim warnings; plain builds and tests stay quiet. -->
+    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+  </PropertyGroup>
+  <ItemGroup>
+    <TrimmerRootAssembly Include="Avalonia;Avalonia.Base;Avalonia.Controls;Avalonia.Dialogs;Avalonia.Markup;Avalonia.Markup.Xaml;Avalonia.Skia;Avalonia.Themes.Simple;Avalonia.Headless;SkiaSharp;HarfBuzzSharp;Reloaded.Hooks;Reloaded.Hooks.Definitions;Reloaded.Memory;Reloaded.Memory.Buffers;Reloaded.Assembler" />
+    <!-- ponytail: the everyday netstandard2.0 surface, not all of it (Xml, Net, Crypto stay trimmed); root more if a plugin logs MissingMethodException. -->
+    <TrimmerRootAssembly Include="netstandard;System.Private.CoreLib;System.Runtime;System.Collections;System.Collections.Concurrent;System.Collections.NonGeneric;System.Collections.Specialized;System.Linq;System.ObjectModel;System.ComponentModel;System.ComponentModel.Primitives;System.ComponentModel.TypeConverter;System.Text.RegularExpressions;System.Memory;System.Runtime.InteropServices" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="LegACEy.Client.Tests" />
     <PackageReference Include="Reloaded.Hooks" Version="4.3.3" />

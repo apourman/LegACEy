@@ -43,9 +43,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
-          dotnet-version: |
-            8.0.x
-            10.0.x
+          dotnet-version: 10.0.x
 
       - name: Check release asset publishing
         run: python -m unittest discover -s decal-plugin/build -p 'test_*.py'
@@ -64,12 +62,20 @@ jobs:
           dotnet build decal-plugin/LegACEy.Client.DecalPlugin/LegACEy.Client.DecalPlugin.csproj `
             --configuration Release --output "$env:RUNNER_TEMP/plugin-output" `
             "-p:Version=$env:PLUGIN_VERSION" "-p:DecalInstallDir=$references" `
-            "-p:DecalInteropDir=$references" "-p:ManagedDirectXDir=$references"
+            "-p:DecalInteropDir=$references"
+
+      - name: Publish the trimmed .NET 10 client into runtime
+        env:
+          PLUGIN_VERSION: ${{ inputs.release_version }}
+        run: |
+          dotnet publish decal-plugin/LegACEy.Client/LegACEy.Client.csproj `
+            --configuration Release --runtime win-x86 --self-contained `
+            --output "$env:RUNNER_TEMP/plugin-output/runtime" "-p:Version=$env:PLUGIN_VERSION"
 
       - name: Exercise the Windows native hook
         run: dotnet run --project decal-plugin/LegACEy.Client.HookSmoke --configuration Release
 
-      - name: Package the DLL and runtime dependencies
+      - name: Package the stub, plugins and runtime
         env:
           PLUGIN_TAG: ${{ inputs.release_tag }}
         run: ./decal-plugin/build/New-ReleasePackage.ps1 -BuildOutput "$env:RUNNER_TEMP/plugin-output" -Destination "$env:RUNNER_TEMP/plugin-package" -Tag $env:PLUGIN_TAG
