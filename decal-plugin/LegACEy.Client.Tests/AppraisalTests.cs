@@ -185,6 +185,44 @@ public sealed class AppraisalTests
     }
 
     [Fact]
+    public void An_item_with_a_set_ratings_and_an_imbue_shows_them_in_the_other_section_in_retail_words()
+    {
+        var content = AppraisalContent.From(AppraisalResponse.Read(new ServerAppraisal(0x80000A05)
+        {
+            Strings = { [1] = "Ivory Stick" },
+            Ints = { [1] = 0x1, [265] = 13, [370] = 5, [372] = 3, [179] = 0x20 }
+        }.Build()));
+
+        var other = Assert.Single(content.Sections, section => section.Heading == "Other");
+        Assert.Equal(new[]
+        {
+            ("Set", "Soldier's"),
+            ("Ratings", "Dam 5, Crit 3"),
+            ("Properties", "Bludgeon Rending"),
+            (null, "This item cannot be further imbued."),
+        }, other.Rows.Select(row => (row.Label, row.Text)));
+    }
+
+    [Fact]
+    public void A_portal_shows_its_destination_and_restrictions_in_the_other_section_and_no_use_section()
+    {
+        var content = AppraisalContent.From(AppraisalResponse.Read(new ServerAppraisal(0x80000A06)
+        {
+            Strings = { [1] = "Portal", [16] = "A shimmering archway.", [38] = "Holtburg" },
+            Ints = { [111] = 0x2 | 0x20 }
+        }.Build()));
+
+        var section = Assert.Single(content.Sections);
+        Assert.Equal("Other", section.Heading);
+        Assert.Equal(new[]
+        {
+            ("Destination", "Holtburg"),
+            (null, "Player Killers may not use this portal."),
+            (null, "This portal cannot be recalled nor linked to."),
+        }, section.Rows.Select(row => (row.Label, row.Text)));
+    }
+
+    [Fact]
     public void An_assess_replaced_by_another_does_not_open_the_window_for_the_first_item() => OnWindowThread(() =>
     {
         var host = new FakeAppraisalHost();
