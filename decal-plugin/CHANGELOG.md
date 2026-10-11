@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.6...decal-plugin-v0.1.7) (2026-10-11)
+
+
+### Features
+
+* Dereth inventory window ([#34](https://github.com/apourman/LegACEy/issues/34)) ([322dcb2](https://github.com/apourman/LegACEy/commit/322dcb2ce60a695023320609ff949bfc333c550a))
+
 ## [0.1.6](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.5...decal-plugin-v0.1.6) (2026-10-09)
 
 
