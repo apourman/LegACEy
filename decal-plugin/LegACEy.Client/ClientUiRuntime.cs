@@ -1057,6 +1057,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             // A LegACEy inventory window is the inventory, with or without the takeover.
             if (_owner._windows is { } windows && ItemDropRouting.InventoryAt(windows, _owner.ContentOf, _owner._pointer) is { } inventory) return inventory;
+            // Any other LegACEy window (the Vault, which refused the item) covers the world: a release there drops nothing.
+            if (_owner.TopSurfaceAt(_owner._pointer) is { } surface)
+            {
+                if (_owner._loggedDrops++ < 5) Log($"Item dropped at {_owner._pointer} over LegACEy surface '{surface}': target: Elsewhere.");
+                return ItemDropTarget.Elsewhere;
+            }
             var drag = _owner._retailDrag;
             if (drag == null) return ItemDropTarget.Inventory;
             var over = drag.IsPointerOverInventory(out var exists, out var open, out var element);
