@@ -51,7 +51,15 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     // Gate: opening an already-open pack, and the main pack, match retail.
     public void OpenContainer(uint containerId) => Bridge.UseItem(containerId, 0);
 
-    public void Select(uint itemId) => Bridge.SelectItem(itemId);
+    /// <summary>Retail's target mode, set once the native UI is checked; null leaves a click a plain selection.</summary>
+    public RetailTargetMode? TargetMode { get; set; }
+
+    // A click selects, and while retail waits for a target (a gem or kit in use) makes the item that target, as retail's item lists do.
+    public void Select(uint itemId)
+    {
+        Bridge.SelectItem(itemId);
+        TargetMode?.TryTarget(itemId);
+    }
 
     public void Use(uint itemId) => Bridge.UseItem(itemId, 0);
 

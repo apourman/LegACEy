@@ -220,6 +220,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             catch (Exception exception) { Log($"LegACEy server channel disabled: {exception.Message}"); }
             try { _retailDrag = new RetailItemDrag(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"Item drag and drop disabled: {exception.Message}"); }
+            try { _inventory.TargetMode = new RetailTargetMode(NativeUi.ReadMemory, Log); }
+            catch (Exception exception) { Log($"Using an item on a target in LegACEy windows is off: {exception.Message}"); }
             LoadPlugins();
         }
         catch
