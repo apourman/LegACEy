@@ -181,7 +181,9 @@ internal static unsafe class DecalCalls
 
     private static int UseItem(int id, int state) => Act(() => CoreManager.Current.Actions.UseItem(id, state));
     private static int SelectItem(int id) => Act(() => CoreManager.Current.Actions.SelectItem(id));
-    private static int RequestId(int id) => Act(() => CoreManager.Current.Actions.RequestId(id));
+    // Every ID we ask for is the player's own (right-click, E, the window following the selection), so it skips Decal's ID queue,
+    // which other plugins fill at login; Actions.RequestId would wait behind them. Only the latest one stays pending, as in retail.
+    private static int RequestId(int id) => Act(() => CoreManager.Current.IDQueue.ShortcircuitID(id));
     private static int DropItem(int id) => Act(() => CoreManager.Current.Actions.DropItem(id));
     private static int MoveItem(int id, int container, int slot, int stack) =>
         Act(() => CoreManager.Current.Actions.MoveItem(id, container, slot, stack != 0));
