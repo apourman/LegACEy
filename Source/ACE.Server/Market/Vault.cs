@@ -132,6 +132,8 @@ namespace ACE.Server.Market
             var ownerId = item.OwnerId;
             var placement = item.PlacementPosition;
 
+            SaveIfNew(item);
+
             // what the Vault saves: the item out of every pack, without cast-on enchantments (they don't tick on an escrowed item, and the buyer should get what the listing shows)
             var escrowed = EscrowCopy(item);
 
@@ -161,6 +163,16 @@ namespace ACE.Server.Market
                 // this runs on the save thread
                 WorldManager.EnqueueAction(new ActionEventDelegate(() => OnDeposited(player, item, name, result, completed)));
             }, ticket);
+        }
+
+        /// <summary>
+        /// The deposit job changes the item's row and refuses an item that has none. An item made this session (a split stack, a crafted item) has no row
+        /// until a save writes it, so it is saved here, in its pack, first. The shard queue runs jobs in order, so the row is there when the deposit job reads it.
+        /// </summary>
+        private static void SaveIfNew(WorldObject item)
+        {
+            if (!item.BiotaOriginatedFromOrHasBeenSavedToDatabase())
+                item.SaveBiotaToDatabase();
         }
 
         /// <summary>
@@ -225,6 +237,7 @@ namespace ACE.Server.Market
                 var item = items[index];
                 var (containerId, ownerId, placement) = (item.ContainerId, item.OwnerId, item.PlacementPosition);
                 var vaultItem = NewVaultItem(item, accountId, player.Guid.Full);
+                SaveIfNew(item);
                 var escrowed = EscrowCopy(item);
 
                 if (!player.TryRemoveFromInventoryForVault(item.Guid, out _))
