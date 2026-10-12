@@ -3698,6 +3698,9 @@ namespace ACE.Server.WorldObjects
         /// This is raised when we:
         /// - try to inscribe an item
         /// </summary>
+        /// <summary>The longest inscription the retail client's field accepts (LayoutDesc 0x2100006B, element 0x1000013E).</summary>
+        public const int MaxInscriptionLength = 300;
+
         public void HandleActionSetInscription(uint itemGuid, string inscriptionText)
         {
             var item = FindObject(itemGuid, SearchLocations.MyInventory | SearchLocations.MyEquippedItems, out _, out _, out _);
@@ -3729,6 +3732,14 @@ namespace ACE.Server.WorldObjects
                         doInscribe = true;
                     else if (item.ScribeName == Name && item.ScribeAccount == Account.AccountName)
                         doInscribe = true;
+                }
+
+                if (doInscribe && inscriptionText?.Length > MaxInscriptionLength)
+                {
+                    // The retail client's inscription field stops at 300 characters; only a modified client sends more.
+                    log.Warn($"{Name} sent a {inscriptionText.Length}-character inscription for 0x{itemGuid:X8}; the limit is {MaxInscriptionLength}.");
+                    ChatPacket.SendServerMessage(Session, $"Inscriptions are limited to {MaxInscriptionLength} characters.", ChatMessageType.System);
+                    return;
                 }
 
                 if (doInscribe)

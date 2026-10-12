@@ -105,12 +105,12 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     /// </summary>
     private static readonly SectionRule[] SectionRules =
     {
-        new("Combat", (response, _, _) => CombatRows(response)),
-        new("Armor", (response, _, covered) => ArmorRows(response, covered)),
-        new("Spells", (response, spells, _) => SpellRows(response, spells)),
-        new("Requirements", (response, _, _) => RequirementRows(response)),
-        new("Use", (response, _, _) => TextRows(response.Strings, UseString)),
-        new("Other", (response, _, _) => AppraisalOtherLines.Rows(response)),
+        new("Combat", (response, _) => CombatRows(response)),
+        new("Armor", (response, _) => ArmorRows(response)),
+        new("Spells", (response, spells) => SpellRows(response, spells)),
+        new("Requirements", (response, _) => RequirementRows(response)),
+        new("Use", (response, _) => TextRows(response.Strings, UseString)),
+        new("Other", (response, _) => AppraisalOtherLines.Rows(response)),
     };
 
     /// <summary>
@@ -152,7 +152,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
         var covered = CoveredAreas(validLocations, coverage);
         var sections = (hasCreatureProfile
                 ? CreatureSections(response)
-                : SectionRules.Select(rule => new AppraisalSection(rule.Heading, rule.Rows(response, spells, covered).ToList())))
+                : SectionRules.Select(rule => new AppraisalSection(rule.Heading, rule.Rows(response, spells).ToList())))
             .Where(section => section.Rows.Count > 0)
             .ToList();
         // The server's appraisal carries no name or icon (retail takes both from the object's create message), so the world's come first.
@@ -315,12 +315,12 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     /// </summary>
     private static bool IsLauncher(WeaponProfile weapon) => weapon.WeaponSkill == BowSkill || weapon.WeaponSkill == CrossbowSkill;
 
-    /// <summary>A bonus the float holds as a multiplier, as "+21%"; null when it is missing or none.</summary>
+    /// <summary>A bonus the float holds as a multiplier, as "+21.0%"; null when it is missing or none.</summary>
     private static string? Modifier(AppraisalResponse response, uint property) =>
         response.Floats.TryGetValue(property, out var value) && Math.Abs(value - 1) > Epsilon ? SignedPercent(value - 1) : null;
 
-    /// <summary>A signed percentage, as OpenAC writes a bonus: "+21%", "-5%", "0%".</summary>
-    private static string SignedPercent(double fraction) => fraction.ToString("+0%;-0%;0%", CultureInfo.InvariantCulture);
+    /// <summary>A signed percentage with one decimal, as the approved render shows a bonus: "+21.0%", "-5.0%", "0.0%".</summary>
+    private static string SignedPercent(double fraction) => fraction.ToString("+0.0%;-0.0%;0.0%", CultureInfo.InvariantCulture);
 
     /// <summary>The damage range, "41.28 – 86", or one figure when the variance leaves no range; with the damage type when asked.</summary>
     private static string DamageText(WeaponProfile weapon, bool withType)
@@ -385,10 +385,10 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     };
 
     /// <summary>
-    /// An armour piece's Armor rows: the armour level, then each protection in retail's words with its modifier ("Above Average (1.2)"),
-    /// then what it covers when it covers any. Nether shows only on a piece that protects against it. A piece with no armour level has none.
+    /// An armour piece's Armor rows: the armour level, then each protection in retail's words with its modifier ("Above Average (1.2)").
+    /// Nether shows only on a piece that protects against it. A piece with no armour level has none. What it covers is on the type line.
     /// </summary>
-    private static IEnumerable<AppraisalRow> ArmorRows(AppraisalResponse response, string covered)
+    private static IEnumerable<AppraisalRow> ArmorRows(AppraisalResponse response)
     {
         if (response.Armor is not { } armor || !response.Ints.TryGetValue(ArmorLevelInt, out var level) || level <= 0)
             return Array.Empty<AppraisalRow>();
@@ -405,7 +405,6 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
         };
         if (armor.Nether > Epsilon) rows.Add(Protection("Nether", armor.Nether, null, 0));
         rows.Add(Protection("Lightning", armor.Lightning, mask, ArmorLightningBit));
-        if (covered.Length > 0) rows.Add(new AppraisalRow("Covers", covered));
         return rows;
     }
 
@@ -760,5 +759,5 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     /// <summary>The non-empty parts joined by the separator.</summary>
     private static string Join(string separator, params string?[] parts) => string.Join(separator, parts.Where(part => !string.IsNullOrEmpty(part)));
 
-    private sealed record SectionRule(string Heading, Func<AppraisalResponse, IReadOnlyDictionary<uint, SpellInfo>, string, IEnumerable<AppraisalRow>> Rows);
+    private sealed record SectionRule(string Heading, Func<AppraisalResponse, IReadOnlyDictionary<uint, SpellInfo>, IEnumerable<AppraisalRow>> Rows);
 }

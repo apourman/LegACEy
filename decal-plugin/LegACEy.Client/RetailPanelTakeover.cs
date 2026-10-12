@@ -52,8 +52,6 @@ internal sealed class RetailPanelTakeover : IDisposable
     private int _closedFrames;
     private bool _restoreFailed;
     private bool _failed;
-    // Given back while open, by Yield: retail shows the panel as it was, and it is not parked again until retail closes it.
-    private bool _yielded;
     private bool _disposed;
 
     public RetailPanelTakeover(IRetailPanelPort port, Action<bool> openChanged, Action<string> log)
@@ -75,7 +73,6 @@ internal sealed class RetailPanelTakeover : IDisposable
         if (_disposed) return;
         if (!enabled || _failed)
         {
-            _yielded = false;
             if (_parked) Release();
             return;
         }
@@ -85,7 +82,6 @@ internal sealed class RetailPanelTakeover : IDisposable
             if (identity == IntPtr.Zero)
             {
                 // Retail is between panels: keep our window through a short gap.
-                _yielded = false;
                 Closing();
                 return;
             }
@@ -93,15 +89,8 @@ internal sealed class RetailPanelTakeover : IDisposable
             {
                 // The panel frame is shared with retail's other panels (character, spells, options), so it is given back as soon as
                 // the inventory closes, and the next panel retail opens shows where it should.
-                _yielded = false;
                 Restore();
                 Closing();
-                return;
-            }
-            if (_yielded)
-            {
-                // Retail shows its panel for a showing we gave back: it is left as it is until retail closes it.
-                _closedFrames = 0;
                 return;
             }
             if (!_parked || identity != _identity) Park(identity);
@@ -135,41 +124,11 @@ internal sealed class RetailPanelTakeover : IDisposable
         }
     }
 
-    /// <summary>
-    /// Gives the panel back while it stays open, for a showing the owner could not show in its window: retail's panel is shown at its place,
-    /// and it is not parked again until retail closes it. A restore that fails turns the takeover off, as a failed park does.
-    /// </summary>
-    public void Yield()
-    {
-        if (_disposed) return;
-        _yielded = true;
-        try
-        {
-            Restore();
-        }
-        catch (Exception exception)
-        {
-            Fail(exception);
-        }
-    }
-
-    /// <summary>
-    /// Ends a <see cref="Yield"/> for a new showing the owner wants: the next frame parks the panel again and reports it open, so the owner
-    /// examines it afresh. Nothing happens when the panel is not yielded.
-    /// </summary>
-    public void Reclaim()
-    {
-        if (!_yielded) return;
-        _yielded = false;
-        _reportedOpen = false;
-    }
-
     /// <summary>Logoff: gives the panel back and forgets the session, so the next login takes the panel over afresh.</summary>
     public void EndSession()
     {
         Release();
         _failed = false;
-        _yielded = false;
     }
 
     public void Dispose()
@@ -183,9 +142,6 @@ internal sealed class RetailPanelTakeover : IDisposable
 
     /// <summary>True while the takeover holds the panel: parked, and not failed. Open and Close reach retail only then.</summary>
     public bool Holds => _parked && !_failed && !_disposed;
-
-    /// <summary>True from <see cref="Yield"/> until retail closes the panel, the takeover is switched off, or <see cref="Reclaim"/> ends it.</summary>
-    public bool Yielded => _yielded && !_disposed;
 
     private void Park(IntPtr identity)
     {

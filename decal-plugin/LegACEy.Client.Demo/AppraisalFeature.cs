@@ -66,11 +66,7 @@ public sealed class AppraisalFeature
     {
         _requested = objectId;
         _requestedAt = _clock();
-        Requests++;
     }
-
-    /// <summary>How many appraisals the player has asked for this session. A new request is a new appraisal, even of the same object.</summary>
-    public int Requests { get; private set; }
 
     /// <summary>
     /// Retail's examination panel showed for this object (the E key, or any other way retail opens it). The window shows the object's

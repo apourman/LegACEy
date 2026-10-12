@@ -205,8 +205,8 @@ public sealed class AppraisalTests
         {
             ("Damage", "41.28 – 86 Bludgeoning", AppraisalTone.Raised),
             ("Speed", "Very Fast (0)", AppraisalTone.Raised),
-            ("Attack", "+28%", AppraisalTone.Raised),
-            ("Melee defense", "+21%", AppraisalTone.Normal),
+            ("Attack", "+28.0%", AppraisalTone.Raised),
+            ("Melee defense", "+21.0%", AppraisalTone.Normal),
         }, combat.Rows.Select(row => (row.Label!, row.Text, row.Tone)));
     }
 
@@ -228,11 +228,11 @@ public sealed class AppraisalTests
         var combat = Assert.Single(content.Sections, section => section.Heading == "Combat");
         Assert.Equal(new (string?, string, AppraisalTone)[]
         {
-            ("Melee defense", "+4%", AppraisalTone.Lowered),
-            ("Mana conversion", "+5%", AppraisalTone.Raised),
+            ("Melee defense", "+4.0%", AppraisalTone.Lowered),
+            ("Mana conversion", "+5.0%", AppraisalTone.Raised),
             (null, "Damage bonus for Fire spells:", AppraisalTone.Raised),
-            ("vs. Monsters", "+20%", AppraisalTone.Normal),
-            ("vs. Players", "+5%", AppraisalTone.Normal),
+            ("vs. Monsters", "+20.0%", AppraisalTone.Normal),
+            ("vs. Players", "+5.0%", AppraisalTone.Normal),
         }, combat.Rows.Select(row => (row.Label, row.Text, row.Tone)));
     }
 
@@ -256,7 +256,7 @@ public sealed class AppraisalTests
         {
             ("Damage Bonus", "24 – 30", AppraisalTone.Normal),
             (null, "Elemental Damage Bonus: 3, Piercing.", AppraisalTone.Normal),
-            ("Damage Modifier", "+20%", AppraisalTone.Raised),
+            ("Damage Modifier", "+20.0%", AppraisalTone.Raised),
             ("Speed", "Average (40)", AppraisalTone.Normal),
             ("Range", "20 yds. (based on STRENGTH 100)", AppraisalTone.Normal),
         }, combat.Rows.Select(row => (row.Label, row.Text, row.Tone)));
@@ -277,8 +277,7 @@ public sealed class AppraisalTests
 
         Assert.Equal("Armor · Covers Chest, Upper Arms", content.TypeLine);
         var armor = Assert.Single(content.Sections, section => section.Heading == "Armor");
-        var covers = Assert.Single(armor.Rows, row => row.Label == "Covers");
-        Assert.Equal("Chest, Upper Arms", covers.Text);
+        Assert.DoesNotContain(armor.Rows, row => row.Label == "Covers");
     }
 
     [Fact]
@@ -1043,7 +1042,7 @@ public sealed class AppraisalTests
     });
 
     [Fact]
-    public void An_examination_with_no_response_within_the_timeout_gives_retails_panel_back() => OnWindowThread(() =>
+    public void An_examination_with_no_response_within_the_timeout_closes_retails_panel() => OnWindowThread(() =>
     {
         long now = 0;
         var host = new FakeAppraisalHost();
@@ -1056,19 +1055,17 @@ public sealed class AppraisalTests
         now = 10_001;
         examination.Tick(enabled: true);
 
-        // The response did not come in time: retail's panel is back on screen, open, and our window stays shut.
-        Assert.Equal(new Point(1200, 300), panel.Location);
-        Assert.True(panel.Open);
-        Assert.Equal(0, panel.CloseCalls);
-        // A response that comes late only caches; it does not open the window over retail's panel.
+        // The response did not come in time: retail's panel is closed, never shown, and our window stays shut.
+        Assert.Equal(1, panel.CloseCalls);
+        Assert.False(panel.Open);
+        // A response that comes late only caches; it does not open the window.
         appraisals.Receive(PotionMessage(Potion, 75));
         examination.Tick(enabled: true);
         Assert.Equal(0, host.Opened);
-        Assert.Equal(new Point(1200, 300), panel.Location);
     });
 
     [Fact]
-    public void An_examination_whose_window_cannot_show_the_response_gives_retails_panel_back() => OnWindowThread(() =>
+    public void An_examination_whose_window_cannot_show_the_response_closes_retails_panel() => OnWindowThread(() =>
     {
         var host = new FakeAppraisalHost { FailOpen = true };
         var appraisals = new AppraisalFeature(host, _ => { }, game: new FakeAppraisalGame());
@@ -1081,9 +1078,8 @@ public sealed class AppraisalTests
 
         Assert.Equal(0, host.Opened);
         Assert.Null(appraisals.Shown);
-        Assert.Equal(0, panel.CloseCalls);
-        Assert.True(panel.Open);
-        Assert.Equal(new Point(1200, 300), panel.Location);
+        Assert.Equal(1, panel.CloseCalls);
+        Assert.False(panel.Open);
     });
 
     [Fact]
@@ -1103,7 +1099,7 @@ public sealed class AppraisalTests
     });
 
     [Fact]
-    public void An_empty_selection_when_the_panel_shows_leaves_retails_panel_to_retail() => OnWindowThread(() =>
+    public void An_empty_selection_when_the_panel_shows_closes_retails_panel() => OnWindowThread(() =>
     {
         var host = new FakeAppraisalHost();
         var appraisals = new AppraisalFeature(host, _ => { });
@@ -1113,9 +1109,8 @@ public sealed class AppraisalTests
         examination.Tick(enabled: true);
         appraisals.Receive(PotionMessage(Potion, 75));
 
-        Assert.True(panel.Open);
-        Assert.Equal(new Point(1200, 300), panel.Location);
-        Assert.Equal(0, panel.CloseCalls);
+        Assert.False(panel.Open);
+        Assert.Equal(1, panel.CloseCalls);
         Assert.Equal(0, host.Opened);
     });
 
@@ -1176,40 +1171,7 @@ public sealed class AppraisalTests
     });
 
     [Fact]
-    public void A_yielded_panel_is_taken_over_again_when_the_player_selects_another_object() => OnWindowThread(() =>
-    {
-        const uint OtherPotion = 0x80000B55;
-        long now = 0;
-        var host = new FakeAppraisalHost();
-        var game = new FakeAppraisalGame();
-        var appraisals = new AppraisalFeature(host, _ => { }, clock: () => now, game: game);
-        uint selected = Potion;
-        var panel = new NativeUiLifecycleTests.FakeRetailPanelPort { Open = true, Location = new Point(1200, 300) };
-        using var examination = new RetailExaminationTakeover(panel, () => selected, appraisals, _ => { }, () => true);
-        examination.Tick(enabled: true);
-        now = 10_001;
-        examination.Tick(enabled: true);
-        Assert.Equal(new Point(1200, 300), panel.Location);
-
-        // Retail's panel is left as retail shows it while the selection stays.
-        examination.Tick(enabled: true);
-        Assert.Equal(new Point(1200, 300), panel.Location);
-        Assert.Equal(0, panel.CloseCalls);
-
-        // Another object selected: it is examined afresh, so retail's panel is parked and our window waits for it.
-        selected = OtherPotion;
-        examination.Tick(enabled: true);
-        Assert.Equal(RetailPanelTakeover.Parked, panel.Location);
-        Assert.Equal(new[] { Potion, OtherPotion }, game.Appraised);
-        appraisals.Receive(PotionMessage(OtherPotion, 75));
-        examination.Tick(enabled: true);
-        Assert.Equal(1, host.Opened);
-        Assert.Equal(OtherPotion, appraisals.Shown?.ObjectId);
-        Assert.Equal(1, panel.CloseCalls);
-    });
-
-    [Fact]
-    public void An_exception_while_the_examination_waits_gives_retails_panel_back_and_is_logged() => OnWindowThread(() =>
+    public void An_exception_while_the_examination_waits_closes_retails_panel_and_is_logged() => OnWindowThread(() =>
     {
         var clockFails = false;
         var logged = new List<string>();
@@ -1221,14 +1183,13 @@ public sealed class AppraisalTests
         examination.Tick(enabled: true);
         Assert.Equal(RetailPanelTakeover.Parked, panel.Location);
 
-        // The clock fails while the response is awaited: nothing escapes the takeover, and retail's panel comes back.
+        // The clock fails while the response is awaited: nothing escapes the takeover, and retail's panel is closed.
         clockFails = true;
         examination.Tick(enabled: true);
 
-        Assert.Equal(new Point(1200, 300), panel.Location);
-        Assert.True(panel.Open);
-        Assert.Equal(0, panel.CloseCalls);
-        Assert.Contains(logged, line => line.Contains("given back", StringComparison.Ordinal));
+        Assert.False(panel.Open);
+        Assert.Equal(1, panel.CloseCalls);
+        Assert.Contains(logged, line => line.Contains("dropped", StringComparison.Ordinal));
     });
 
     [Fact]
