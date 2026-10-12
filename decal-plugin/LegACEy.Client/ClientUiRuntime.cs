@@ -557,6 +557,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             PublishGameState();
             _inventory.Flush(_inGame);
+            _inventory.TargetMode?.Tick();
             _serverChannel?.Tick();
             if (_barSurface == null)
             {
