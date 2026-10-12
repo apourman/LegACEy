@@ -62,7 +62,12 @@ internal sealed class RetailItemDrag
             "8B 81 10 06 00 00 85 C0 74 32 56 8B B1 10 06 00 00 33 C0 85 F6 57 76 16"), HandOffSource,
             "ThisCall (UIElement* item): scrolls the list so the item is in view (ItemList derives from ListBox)"),
         new NativeUiEntry("CInputManager::IsActionInProgress", 0x00431AF0, NativeUiCatalogue.Bytes("56 8B 74 24 08 33 D2 8B C6 F7 B1 F8 00 00 00 8B 81 F0 00 00 00 8D 04 90"),
-            HandOffSource, "ThisCall (uint action) -> bool on ICIDM::s_cidm (0x00837FF4); StartDragandDrop asks it for action 7")
+            HandOffSource, "ThisCall (uint action) -> bool on ICIDM::s_cidm (0x00837FF4); StartDragandDrop asks it for action 7"),
+        new NativeUiEntry("UIElementManager::SetMouseCapture", 0x0045D350, NativeUiCatalogue.Bytes("8B 44 24 04 56 8B F1 39 86 4C 02 00 00 74 1B"), HandOffSource,
+            "ThisCall (UIElement* element): m_pMouseCapture (+0x24C), counted; MouseUpEvent releases it"),
+        new NativeUiEntry("UIElementManager::MouseDownEvent stores the press, then gives it to the capture holder", 0x0045DCE8, NativeUiCatalogue.Bytes(
+            "89 AE 08 03 00 00 89 9E 0C 03 00 00 8B 86 4C 02 00 00 85 C0 0F 85 D4 00 00 00"), HandOffSource,
+            "offset reference: press point (+0x308, +0x30C), then with a capture holder (+0x24C) no hit test of the element under the pointer")
     };
     private const string HandOffSource = "acclient.pdb (C:\\Turbine\\Asheron's Call, a near build) for names; our objdump read of installed acclient.exe";
     // The inventory panel's item lists: gm3DItemsUI's pack contents, then gmBackpackUI's two (gm*UI::PostInit).
@@ -93,6 +98,8 @@ internal sealed class RetailItemDrag
     private delegate void ScrollToShowFn(IntPtr list, IntPtr item);
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate byte IsActionInProgressFn(IntPtr inputManager, uint action);
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void SetMouseCaptureFn(IntPtr manager, IntPtr element);
     private static readonly IntPtr InputManagerInstance = new(0x00837FF4);
 
     private readonly Action<string> _log;
@@ -105,6 +112,7 @@ internal sealed class RetailItemDrag
     private readonly BeginDragFn? _beginDrag;
     private readonly AbsoluteFn? _absoluteX;
     private readonly AbsoluteFn? _absoluteY;
+    private readonly SetMouseCaptureFn? _setCapture;
     private bool _loggedInventory;
 
     public RetailItemDrag(Func<uint, int, byte[]> readMemory, Action<string> log)
@@ -124,6 +132,19 @@ internal sealed class RetailItemDrag
         _beginDrag = Function<BeginDragFn>(0x004E3F60);
         _absoluteX = Function<AbsoluteFn>(0x0069FE00);
         _absoluteY = Function<AbsoluteFn>(0x0069FE30);
+        _setCapture = Function<SetMouseCaptureFn>(0x0045D350);
+    }
+
+    /// <summary>
+    /// Gives the next press to the item, as if it were pressed on: the client's press goes to the mouse capture holder instead of the
+    /// element under the pointer (a toolbar shortcut, a window's frame). The drag start moves the capture to the drag icon, and the
+    /// release frees it. Call before the client sees the press.
+    /// </summary>
+    public void CapturePress(IntPtr item)
+    {
+        if (!Available || item == IntPtr.Zero) return;
+        var manager = Marshal.ReadIntPtr(ManagerInstance);
+        if (manager != IntPtr.Zero) _setCapture!(manager, item);
     }
 
     public bool Available { get; }

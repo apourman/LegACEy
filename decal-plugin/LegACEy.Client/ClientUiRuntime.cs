@@ -806,7 +806,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// Takes a handed-off drag one message further, before the client sees the message. The posted press goes through, so the client
-    /// sees the left button held and records where it went down. Retail would then drag whatever that press landed on (the world, as
+    /// sees the left button held and records where it went down; the hidden item holds the mouse capture, so the press goes to it rather than
+    /// to the retail element under the pointer. Retail would then drag whatever that press landed on (the world, as
     /// often as not), so that is forgotten on every move until the client's pointer, which is the one before this move, is 4 pixels
     /// from the press: then the item's own list starts retail's drag of it.
     /// </summary>
@@ -815,7 +816,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var handOff = _handOff!;
         var drag = _retailDrag!;
         if (message == InputRouterService.WmLButtonDown)
+        {
+            // Without this the press lands on whatever retail element is under the pointer: a bar shortcut, or a window's frame it then moves.
+            drag.CapturePress(handOff.Item);
             handOff.Pressed = true;
+        }
         else if (message == InputRouterService.WmLButtonUp)
         {
             _handOff = null;
