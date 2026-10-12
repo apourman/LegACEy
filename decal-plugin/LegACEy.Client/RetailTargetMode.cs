@@ -60,7 +60,6 @@ internal sealed class RetailTargetMode
     private delegate byte IsCompatibleFn(uint target);
     private readonly IsCompatibleFn? _isCompatible;
     private readonly Action<string> _log;
-    private uint _seenFound;
 
     private readonly ExecuteFn? _execute;
     private readonly SetModeFn? _setMode;
@@ -84,15 +83,35 @@ internal sealed class RetailTargetMode
         _isCompatible = Marshal.GetDelegateForFunctionPointer<IsCompatibleFn>(new IntPtr(IsCompatibleAddress));
     }
 
-    /// <summary>Each frame: logs when something other than this class changes the found object while it holds a hover.</summary>
+    /// <summary>
+    /// Each frame while a LegACEy item is hovered in target mode: retail re-picks the object under the pointer from the world behind the
+    /// window (seen in play: a static object, 2 ms after the hover), so the hovered item is written back and the cursor updated. Written
+    /// directly, without set_found_object's notice, so retail is not prompted to pick again.
+    /// </summary>
     public void Tick()
     {
-        if (_hovered == 0 || _setFound == null) return;
+        if (_hovered == 0 || _updateCursor == null) return;
+        var ui = Marshal.ReadIntPtr(UiSystemInstance);
+        if (ui == IntPtr.Zero) return;
+        if (Marshal.ReadInt32(ui, TargetModeOffset) == 0)
+        {
+            _hovered = 0;
+            return;
+        }
         var found = unchecked((uint)Marshal.ReadInt32(FoundObject));
-        if (found == _seenFound) return;
-        _seenFound = found;
-        Note($"found object changed to 0x{found:X8} while hovering 0x{_hovered:X8}");
+        if (found == _hovered) return;
+        Marshal.WriteInt32(FoundObject, unchecked((int)_hovered));
+        _updateCursor(ui);
+        // ponytail: diagnostics; once a second at most, so a per-frame fight with retail shows as a steady count.
+        _restores++;
+        var now = Environment.TickCount;
+        if (now - _restoreLogged < 1000) return;
+        Note($"restored 0x{_hovered:X8} over 0x{found:X8} ({_restores} since last note)");
+        _restoreLogged = now;
+        _restores = 0;
     }
+
+    private int _restores, _restoreLogged = Environment.TickCount - 1000;
 
     private void Note(string what)
     {
@@ -128,7 +147,6 @@ internal sealed class RetailTargetMode
         _hovered = objectId;
         _setFound(objectId, -1);
         _updateCursor(ui);
-        _seenFound = objectId;
         Note($"hover 0x{objectId:X8}");
     }
 
