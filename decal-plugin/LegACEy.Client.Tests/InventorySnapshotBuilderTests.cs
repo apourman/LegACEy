@@ -148,7 +148,6 @@ public sealed class InventorySnapshotBuilderTests
         public List<InventoryObjectRead> Objects { get; } = new();
         IReadOnlyList<InventoryObjectRead> IInventoryReader.Objects => Objects;
         public int MainPackCapacity { get; set; } = 96;
-        public uint MainPackIcon { get; set; }
         public int SidePackCapacity { get; set; }
         public int Burden { get; set; }
         public int Strength { get; set; }

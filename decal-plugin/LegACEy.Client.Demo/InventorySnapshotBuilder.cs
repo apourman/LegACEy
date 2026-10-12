@@ -60,9 +60,8 @@ public interface IInventoryReader
     uint CharacterId { get; }
     /// <summary>Everything the character holds: the packs, the items in them and the wielded items.</summary>
     IReadOnlyList<InventoryObjectRead> Objects { get; }
-    /// <summary>The main pack's slot count and icon, which are the character's own.</summary>
+    /// <summary>The main pack's slot count, which is the character's own.</summary>
     int MainPackCapacity { get; }
-    uint MainPackIcon { get; }
     /// <summary>How many side-pack slots the character has.</summary>
     int SidePackCapacity { get; }
     int Burden { get; }
@@ -81,6 +80,8 @@ public static class InventorySnapshotBuilder
     // The main pack's size when the client reports none. The server's value wins when it reports one.
     private const int DefaultMainPackCapacity = 96;
     private const int MaxAugmentationBurden = 150;
+    // The main pack is the character itself, but retail's pack list shows it as a backpack, not the character's own icon.
+    public const uint MainPackIcon = 0x0600127E;
 
     // One row per slot: the AC EquipMask bits (ACE.Entity.Enum.EquipMask) that the slot covers.
     // Shirt and Pants take the underplating wear bits; armour takes the armour bits.
@@ -128,7 +129,7 @@ public static class InventorySnapshotBuilder
         var objects = reader.Objects;
 
         var mainCapacity = reader.MainPackCapacity > 0 ? reader.MainPackCapacity : DefaultMainPackCapacity;
-        var mainPack = new InventoryPack(characterId, "Main Pack", reader.MainPackIcon, mainCapacity);
+        var mainPack = new InventoryPack(characterId, "Main Pack", MainPackIcon, mainCapacity);
         var sidePacks = SidePacks(objects, characterId, reader.SidePackCapacity);
 
         var items = new List<InventoryItem>();

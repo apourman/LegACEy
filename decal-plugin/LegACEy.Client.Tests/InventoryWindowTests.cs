@@ -129,7 +129,27 @@ public sealed class InventoryWindowTests
 
         InventoryDriver.Press(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Character));
         Assert.Contains("Contents of Main Pack", host.Texts());
-        Assert.Empty(port.Commands);
+        // The main pack is the character: clicking it selects them, as retail's does, so an item in use can target them.
+        Assert.Equal(new[] { $"select 0x{InventorySample.Character:X8}" }, port.Commands);
+    });
+
+    [Fact]
+    public void The_main_pack_drags_out_to_retail_as_the_character_and_never_moves_inside_the_window() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        var main = InventoryDriver.PackSlot(host.Host, InventorySample.Character);
+
+        InventoryDriver.Drop(host.Host, main, InventoryDriver.PackSlot(host.Host, InventorySample.Potions));
+        Assert.Empty(InventoryDriver.Sent(port));
+
+        // Retail takes it (a shortcut on the bar selects the character).
+        host.Drag.Target = ItemDropTarget.World;
+        host.Drag.TakeHandOff = true;
+        DragOut(host.Host, main, new Avalonia.Point(-50, -50));
+        Assert.Equal(new[] { InventorySample.Character }, host.Drag.HandedOff);
+        Assert.Empty(InventoryDriver.Sent(port));
     });
 
     [Fact]

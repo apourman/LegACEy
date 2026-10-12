@@ -89,8 +89,6 @@ public enum BridgeFact
     CarryingAugmentations,
     /// <summary>The character object's ItemSlots.</summary>
     MainPackCapacity,
-    /// <summary>The character object's icon as a full portal id (0x06 prefix added).</summary>
-    MainPackIcon,
     /// <summary>The character object's PackSlots.</summary>
     SidePackCapacity,
     /// <summary>Actions.OpenedContainer.</summary>

@@ -107,7 +107,6 @@ internal sealed class BridgeInventoryPort : IInventoryPort
         public uint CharacterId => (uint)Bridge.Fact(BridgeFact.CharacterId);
         public IReadOnlyList<InventoryObjectRead> Objects => Bridge.Inventory();
         public int MainPackCapacity => Bridge.Fact(BridgeFact.MainPackCapacity);
-        public uint MainPackIcon => (uint)Bridge.Fact(BridgeFact.MainPackIcon);
         public int SidePackCapacity => Bridge.Fact(BridgeFact.SidePackCapacity);
         public int Burden => Bridge.Fact(BridgeFact.Burden);
         public int Strength => Bridge.Fact(BridgeFact.Strength);

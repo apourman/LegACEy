@@ -90,7 +90,6 @@ internal static unsafe class DecalCalls
             BridgeFact.CarryingAugmentations => character.GetCharProperty(CarryingAugmentationProperty),
             // The main pack is the character's own object: ItemSlots is its slot count, and PackSlots counts the side packs.
             BridgeFact.MainPackCapacity => CharacterObject()?.Values(LongValueKey.ItemSlots, 0) ?? 0,
-            BridgeFact.MainPackIcon => unchecked((int)Texture(CharacterObject()?.Icon ?? 0)),
             BridgeFact.SidePackCapacity => CharacterObject()?.Values(LongValueKey.PackSlots, 0) ?? 0,
             BridgeFact.OpenedContainer => core.Actions.OpenedContainer,
             BridgeFact.CurrentSelection => core.Actions.CurrentSelection,
