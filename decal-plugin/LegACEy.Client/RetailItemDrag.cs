@@ -64,7 +64,9 @@ internal sealed class RetailItemDrag
         new NativeUiEntry("CInputManager::IsActionInProgress", 0x00431AF0, NativeUiCatalogue.Bytes("56 8B 74 24 08 33 D2 8B C6 F7 B1 F8 00 00 00 8B 81 F0 00 00 00 8D 04 90"),
             HandOffSource, "ThisCall (uint action) -> bool on ICIDM::s_cidm (0x00837FF4); StartDragandDrop asks it for action 7"),
         new NativeUiEntry("UIElementManager::SetMouseCapture", 0x0045D350, NativeUiCatalogue.Bytes("8B 44 24 04 56 8B F1 39 86 4C 02 00 00 74 1B"), HandOffSource,
-            "ThisCall (UIElement* element): m_pMouseCapture (+0x24C), counted; MouseUpEvent releases it"),
+            "ThisCall (UIElement* element): m_pMouseCapture (+0x24C), counted (+0x2C8); MouseUpEvent releases it once"),
+        new NativeUiEntry("UIElementManager::ReleaseMouseCapture", 0x0045D390, NativeUiCatalogue.Bytes("56 8B F1 8B 86 4C 02 00 00 85 C0 74 3A 3B 44 24 08 75 34"), HandOffSource,
+            "ThisCall (UIElement* element): one count off when the element holds the capture; the last clears it"),
         new NativeUiEntry("UIElementManager::MouseDownEvent stores the press, then gives it to the capture holder", 0x0045DCE8, NativeUiCatalogue.Bytes(
             "89 AE 08 03 00 00 89 9E 0C 03 00 00 8B 86 4C 02 00 00 85 C0 0F 85 D4 00 00 00"), HandOffSource,
             "offset reference: press point (+0x308, +0x30C), then with a capture holder (+0x24C) no hit test of the element under the pointer")
@@ -100,6 +102,7 @@ internal sealed class RetailItemDrag
     private delegate byte IsActionInProgressFn(IntPtr inputManager, uint action);
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void SetMouseCaptureFn(IntPtr manager, IntPtr element);
+    private const int MouseCaptureOffset = 0x24C;
     private static readonly IntPtr InputManagerInstance = new(0x00837FF4);
 
     private readonly Action<string> _log;
@@ -113,6 +116,7 @@ internal sealed class RetailItemDrag
     private readonly AbsoluteFn? _absoluteX;
     private readonly AbsoluteFn? _absoluteY;
     private readonly SetMouseCaptureFn? _setCapture;
+    private readonly SetMouseCaptureFn? _releaseCapture;
     private bool _loggedInventory;
 
     public RetailItemDrag(Func<uint, int, byte[]> readMemory, Action<string> log)
@@ -133,18 +137,29 @@ internal sealed class RetailItemDrag
         _absoluteX = Function<AbsoluteFn>(0x0069FE00);
         _absoluteY = Function<AbsoluteFn>(0x0069FE30);
         _setCapture = Function<SetMouseCaptureFn>(0x0045D350);
+        _releaseCapture = Function<SetMouseCaptureFn>(0x0045D390);
     }
 
     /// <summary>
     /// Gives the next press to the item, as if it were pressed on: the client's press goes to the mouse capture holder instead of the
-    /// element under the pointer (a toolbar shortcut, a window's frame). The drag start moves the capture to the drag icon, and the
-    /// release frees it. Call before the client sees the press.
+    /// element under the pointer (a toolbar shortcut, a window's frame). Call before the client sees the press, and
+    /// <see cref="ReleasePress"/> once it has: the item takes the capture again on the press, and the client's release frees only one.
     /// </summary>
     public void CapturePress(IntPtr item)
     {
         if (!Available || item == IntPtr.Zero) return;
         var manager = Marshal.ReadIntPtr(ManagerInstance);
         if (manager != IntPtr.Zero) _setCapture!(manager, item);
+    }
+
+    /// <summary>Takes back every count of the capture the item holds, so later presses reach what is under the pointer again.</summary>
+    public void ReleasePress(IntPtr item)
+    {
+        if (!Available || item == IntPtr.Zero) return;
+        var manager = Marshal.ReadIntPtr(ManagerInstance);
+        // Bounded: the count is the client's, and a stray one must not spin here.
+        for (var i = 0; i < 16 && manager != IntPtr.Zero && Marshal.ReadIntPtr(manager, MouseCaptureOffset) == item; i++)
+            _releaseCapture!(manager, item);
     }
 
     public bool Available { get; }

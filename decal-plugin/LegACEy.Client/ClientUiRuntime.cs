@@ -823,12 +823,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         else if (message == InputRouterService.WmLButtonUp)
         {
+            drag.ReleasePress(handOff.Item);
             _handOff = null;
             drag.ClearPotentialDrag();
             LogHandOff($"Hand-off of 0x{handOff.ItemId:X8}: released before retail's drag began.");
         }
         else if (message == InputRouterService.WmMouseMove && handOff.Pressed)
         {
+            // The client has seen the press: the capture that routed it to the item is given back before anything else.
+            drag.ReleasePress(handOff.Item);
             drag.ClearPotentialDrag();
             int dx = _pointer.X - handOff.Press.X, dy = _pointer.Y - handOff.Press.Y;
             if (dx * dx + dy * dy < 16) return;
