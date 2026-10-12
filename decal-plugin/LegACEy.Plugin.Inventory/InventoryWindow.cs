@@ -87,6 +87,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     // How many presses in a row the press was, as the platform counts them: two or more is a double-click.
     private int _pressClicks;
     private uint _dragged;
+    // The item last reported under the pointer, so the port hears of each change once.
+    private uint _hovered;
     // The items picked with Ctrl and Shift in the open pack, and the modifiers held when the press began.
     private readonly InventorySelection _selection = new();
     private KeyModifiers _pressModifiers;
@@ -128,6 +130,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         AddHandler(InputElement.PointerMovedEvent, OnMoved, RoutingStrategies.Bubble, handledEventsToo: true);
         AddHandler(InputElement.PointerReleasedEvent, OnReleased, RoutingStrategies.Bubble, handledEventsToo: true);
         AddHandler(InputElement.PointerCaptureLostEvent, (_, _) => EndDrag(), handledEventsToo: true);
+        AddHandler(InputElement.PointerExitedEvent, (_, _) => Hover(0), handledEventsToo: true);
 
         _paperdoll.SlotsPressed += ToggleSlots;
         _paperdoll.SetSlotsOn(_showSlots);
@@ -243,8 +246,12 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private void OnMoved(object? sender, PointerEventArgs e)
     {
-        if (_press is not { } press) return;
         var point = e.GetPosition(this);
+        if (_press is not { } press)
+        {
+            Hover((SlotAt(point)?.Tag as InventorySlotId)?.ItemId ?? 0);
+            return;
+        }
         if (_dragged == 0)
         {
             if (!PastThreshold(point)) return;
@@ -500,6 +507,14 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
                 slot.Opacity = lifted ? LiftedOpacity : 1;
                 slot.Selected = lifted || (tag.Place == SlotPlace.Pack ? tag.Container == OpenPack(_port.Snapshot).Id : id == _port.Snapshot.Selected);
             }
+    }
+
+    /// <summary>Tells the port which item the pointer is over, once per change, so retail's target cursor can judge it.</summary>
+    private void Hover(uint itemId)
+    {
+        if (itemId == _hovered) return;
+        _hovered = itemId;
+        _port.Hover(itemId);
     }
 
     /// <summary>The slot under a point of this window, or null over anything the window does not draw as a slot.</summary>

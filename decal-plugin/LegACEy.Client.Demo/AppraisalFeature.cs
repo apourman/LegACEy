@@ -360,6 +360,7 @@ public sealed class AppraisingInventoryPort : IInventoryPort
     public void OpenContainer(uint containerId) => _inner.OpenContainer(containerId);
     public void Select(uint itemId) => _inner.Select(itemId);
     public void Use(uint itemId) => _inner.Use(itemId);
+    public void Hover(uint itemId) => _inner.Hover(itemId);
 
     public void Assess(uint itemId)
     {

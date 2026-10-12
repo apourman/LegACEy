@@ -219,6 +219,22 @@ public sealed class InventoryWindowTests
     }
 
     [Fact]
+    public void The_item_under_the_pointer_is_reported_for_retails_target_cursor() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        var apple = InventoryDriver.Centre(host.Host, host.Cells[0]);
+
+        host.Host.PointerMove(apple.X, apple.Y);
+        Assert.Equal(InventorySample.Apple, port.Hovered);
+        // Over no item, the pointer reports none; a hover is never a retail command.
+        host.Host.PointerMove(-50, -50);
+        Assert.Equal(0u, port.Hovered);
+        Assert.Empty(port.Commands);
+    });
+
+    [Fact]
     public void Clicking_an_item_selects_it_and_a_second_click_on_it_in_time_uses_it() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();

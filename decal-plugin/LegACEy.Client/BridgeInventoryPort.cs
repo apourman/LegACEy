@@ -63,6 +63,8 @@ internal sealed class BridgeInventoryPort : IInventoryPort
 
     public void Use(uint itemId) => Bridge.UseItem(itemId, 0);
 
+    public void Hover(uint itemId) => TargetMode?.Hover(itemId);
+
     public void Assess(uint itemId)
     {
         Bridge.SelectItem(itemId);
