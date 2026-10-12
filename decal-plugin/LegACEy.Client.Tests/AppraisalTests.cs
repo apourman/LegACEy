@@ -81,6 +81,39 @@ public sealed class AppraisalTests
     }
 
     [Fact]
+    public void Long_labels_widen_the_label_column_instead_of_being_cut_off() => OnWindowThread(() =>
+    {
+        // A healing kit: its Other labels are longer than the summary's.
+        var host = new FakeAppraisalHost();
+        var appraisals = new AppraisalFeature(host, _ => { });
+        appraisals.Request(Potion);
+        appraisals.Receive(new ServerAppraisal(Potion)
+        {
+            Ints = { [19] = 50, [5] = 50, [90] = 75, [92] = 25 },
+            Floats = { [100] = 1.0 },
+            Strings = { [1] = "Adept Healing Kit" }
+        }.Build());
+        using var panel = AvaloniaPanel.Create(() => host.LastWindow!, AppraisalWindow.Width, 300);
+        panel.Tick();
+        var path = Environment.GetEnvironmentVariable("LEGACEY_APPRAISAL_RENDER");
+        if (path != null)
+        {
+            using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(AppraisalWindow.Width, 300));
+            bitmap.Render(host.LastWindow!);
+            bitmap.Save(path);
+        }
+
+        var labels = host.LastWindow!.GetLogicalDescendants().OfType<TextBlock>()
+            .Where(text => text.Text is "Bonus to Healing Skill" or "Restoration Bonus" or "Number of uses remaining" or "Value")
+            .ToList();
+        Assert.Equal(4, labels.Count);
+        Assert.All(labels, label => Assert.True(label.TextLayout.WidthIncludingTrailingWhitespace <= label.Bounds.Width + 0.5,
+            $"\"{label.Text}\" needs {label.TextLayout.WidthIncludingTrailingWhitespace} but has {label.Bounds.Width}."));
+        // One label column for the whole window: every value starts in the same place.
+        Assert.Single(labels.Select(label => label.Bounds.Width).Distinct());
+    });
+
+    [Fact]
     public void A_failed_appraisal_shows_the_name_and_figures_the_server_sent()
     {
         var bytes = new ServerAppraisal(Gem) { Success = false, Strings = { [1] = "Peridot" }, Ints = { [19] = 300 } }.Build();

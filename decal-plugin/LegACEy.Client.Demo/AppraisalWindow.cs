@@ -20,8 +20,8 @@ namespace LegACEy.Client.Demo;
 public sealed class AppraisalWindow
 {
     public const int Width = 330;
-    // The label column's width: the values of the rows and meters start after it, as in the layout the summary sets.
-    private const string LabelColumn = "92,*";
+    // The label column: as wide as the window's widest label, so every value starts in one place, from 92 up to 150 (a longer label wraps).
+    private const double LabelMinWidth = 92, LabelMaxWidth = 150;
     private static readonly Color ManaFill = Color.Parse("#4F86C6");
     private static readonly Color HealthFill = Color.Parse("#B8453A");
     /// <summary>The tallest the window opens at before its body scrolls; the player can resize it from there.</summary>
@@ -102,6 +102,7 @@ public sealed class AppraisalWindow
     private static (Control Body, Control? Foot, int Height, InscriptionField? Field) Layout(AppraisalContent content, Func<uint, string, bool> inscribe)
     {
         var body = new StackPanel { Margin = new Thickness(10, 6, 10, 6), Spacing = 2 };
+        Grid.SetIsSharedSizeScope(body, true);
         if (content.TypeLine.Length > 0) body.Children.Add(Text(content.TypeLine, DerethPalette.CreamBrush, 14));
         if (content.Subtitle.Length > 0) body.Children.Add(Text(content.Subtitle, DerethPalette.MutedBrush, 12));
         if (content.Figures.Count > 0) body.Children.Add(Figures(content.Figures));
@@ -186,8 +187,8 @@ public sealed class AppraisalWindow
         }
         var brush = ToneBrush(row.Tone);
         if (row.Label == null) return new TextBlock { Text = row.Text, Foreground = brush, FontSize = 13, TextWrapping = TextWrapping.Wrap };
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions(LabelColumn), ColumnSpacing = 8 };
-        grid.Children.Add(Text(row.Label, DerethPalette.MutedBrush, 13));
+        var grid = LabelGrid();
+        grid.Children.Add(Label(row.Label));
         var value = Text(row.Text, brush, 13);
         Grid.SetColumn(value, 1);
         grid.Children.Add(value);
@@ -207,8 +208,9 @@ public sealed class AppraisalWindow
     /// <summary>The label in the label column, the bar beside it, and the note under the bar.</summary>
     private static Control Meter(AppraisalMeterRow meter)
     {
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions(LabelColumn), ColumnSpacing = 8, Margin = new Thickness(0, 2, 0, 0) };
-        grid.Children.Add(Text(meter.Name, DerethPalette.MutedBrush, 13));
+        var grid = LabelGrid();
+        grid.Margin = new Thickness(0, 2, 0, 0);
+        grid.Children.Add(Label(meter.Name));
         var bar = new StackPanel { Spacing = 3 };
         bar.Children.Add(Bar(meter.Current, meter.Maximum, meter.Text, meter.Tone == AppraisalTone.Normal ? DerethPalette.CreamBrush : ToneBrush(meter.Tone),
             meter.Fill));
@@ -346,6 +348,21 @@ public sealed class AppraisalWindow
         AppraisalTone.Lowered => DerethPalette.InvalidBrush,
         _ => DerethPalette.TextBrush,
     };
+
+    /// <summary>A row with the label column the whole window shares, and the value in the rest.</summary>
+    private static Grid LabelGrid() => new()
+    {
+        ColumnDefinitions = { new ColumnDefinition(GridLength.Auto) { SharedSizeGroup = "Label", MinWidth = LabelMinWidth }, new ColumnDefinition(1, GridUnitType.Star) },
+        ColumnSpacing = 8
+    };
+
+    private static TextBlock Label(string text)
+    {
+        var label = Text(text, DerethPalette.MutedBrush, 13);
+        label.MaxWidth = LabelMaxWidth;
+        label.TextWrapping = TextWrapping.Wrap;
+        return label;
+    }
 
     private static TextBlock Text(string text, IBrush brush, double size, FontFamily? font = null) => new()
     {
