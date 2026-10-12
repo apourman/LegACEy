@@ -16,7 +16,8 @@ internal sealed class RetailTargetMode
 {
     private const string Source = "acclient.pdb (C:\\Turbine\\Asheron's Call, a near build; +0xDA0 in this region) for names; our objdump read of installed acclient.exe";
     private const uint ExecuteTargetModeForItemAddress = 0x005658D0, SetTargetModeAddress = 0x005656E0;
-    private const uint SetFoundObjectAddress = 0x00451D30, UpdateCursorStateAddress = 0x005653D0;
+    private const uint SetFoundObjectAddress = 0x00451D30, UpdateCursorStateAddress = 0x005653D0, IsTargetCompatibleAddress = 0x00588EA0;
+    private const int UseOnTargetMode = 3;
     private static readonly IntPtr FoundObject = new(0x0083DA44);
     private static readonly IntPtr UiSystemInstance = new(0x00871354);
     private const int TargetModeOffset = 0x2C;
@@ -40,7 +41,9 @@ internal sealed class RetailTargetMode
         new NativeUiEntry("UIElement_SmartBoxWrapper::FindObject sets an item list's hovered item", 0x004E60E4,
             NativeUiCatalogue.Bytes("8B 88 FC 05 00 00 6A FF 51 E8 3E BC F6 FF"), Source, "the retail pattern followed here: set_found_object(item +0x5FC, -1)"),
         new NativeUiEntry("ClientUISystem::UpdateCursorState", UpdateCursorStateAddress, NativeUiCatalogue.Bytes("83 EC 08 53 55 56 57 89 4C 24 10 E8 40 C9 EE FF 85 C0"),
-            Source, "ThisCall (): in target mode 3 the cursor is valid (0x28) or invalid (0x29) by ItemHolder::IsTargetCompatibleWithTargetingObject")
+            Source, "ThisCall (): in target mode 3 the cursor is valid (0x28) or invalid (0x29) by ItemHolder::IsTargetCompatibleWithTargetingObject"),
+        new NativeUiEntry("ItemHolder::IsTargetCompatibleWithTargetingObject", IsTargetCompatibleAddress, NativeUiCatalogue.Bytes(
+            "53 8B 5C 24 08 85 DB 56 57 0F 84 84 00 00 00 A1 E4 1A 87 00"), Source, "Cdecl (uint target) -> bool: whether the held item can be used on the target")
     };
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
@@ -52,11 +55,15 @@ internal sealed class RetailTargetMode
     private delegate void SetFoundObjectFn(uint objectId, int part);
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void UpdateCursorFn(IntPtr uiSystem);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.U1)]
+    private delegate bool IsCompatibleFn(uint objectId);
 
     private readonly ExecuteFn? _execute;
     private readonly SetModeFn? _setMode;
     private readonly SetFoundObjectFn? _setFound;
     private readonly UpdateCursorFn? _updateCursor;
+    private readonly IsCompatibleFn? _isCompatible;
     // The item this class last made the found object; zero when it left the found object to retail.
     private uint _hovered;
 
@@ -71,6 +78,7 @@ internal sealed class RetailTargetMode
         _setMode = Marshal.GetDelegateForFunctionPointer<SetModeFn>(new IntPtr(SetTargetModeAddress));
         _setFound = Marshal.GetDelegateForFunctionPointer<SetFoundObjectFn>(new IntPtr(SetFoundObjectAddress));
         _updateCursor = Marshal.GetDelegateForFunctionPointer<UpdateCursorFn>(new IntPtr(UpdateCursorStateAddress));
+        _isCompatible = Marshal.GetDelegateForFunctionPointer<IsCompatibleFn>(new IntPtr(IsTargetCompatibleAddress));
     }
 
     /// <summary>
@@ -120,6 +128,20 @@ internal sealed class RetailTargetMode
         _hovered = objectId;
         _setFound(objectId, -1);
         _updateCursor(ui);
+    }
+
+    /// <summary>
+    /// While an item waits to be used on a target, a click on an object it cannot be used on (the invalid cursor) ends the wait, so the
+    /// cursor turns plain and the click selects nothing: true when that happened.
+    /// </summary>
+    public bool CancelIfInvalid(uint objectId)
+    {
+        if (_isCompatible == null || _setMode == null || objectId == 0) return false;
+        var ui = Marshal.ReadIntPtr(UiSystemInstance);
+        if (ui == IntPtr.Zero || Marshal.ReadInt32(ui, TargetModeOffset) != UseOnTargetMode || _isCompatible(objectId)) return false;
+        _setMode(ui, 0);
+        Hover(0);
+        return true;
     }
 
     /// <summary>When retail is waiting for a target, makes the object that target, as retail's item lists do; false when it is not waiting.</summary>

@@ -55,8 +55,10 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     public RetailTargetMode? TargetMode { get; set; }
 
     // A click selects, and while retail waits for a target (a gem or kit in use) makes the item that target, as retail's item lists do.
+    // An item the held one cannot be used on cancels the use instead, and is not selected.
     public void Select(uint itemId)
     {
+        if (TargetMode?.CancelIfInvalid(itemId) == true) return;
         Bridge.SelectItem(itemId);
         TargetMode?.TryTarget(itemId);
     }

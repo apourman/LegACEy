@@ -21,8 +21,9 @@ internal sealed class RetailBusyCursor
             Source, "ThisCall (): +0x14 up; the first count updates the cursor"),
         new NativeUiEntry("ClientUISystem::DecrementBusyCount", DecrementAddress, NativeUiCatalogue.Bytes("FF 49 14 75 05 E9 96 FD FF FF C3"),
             Source, "ThisCall (): +0x14 down; the last count updates the cursor"),
+        // Ends before the Event_Appraise call (E8 48 D9 1F 00 on disk), which Decal patches in the running client.
         new NativeUiEntry("an examination request raises the busy count before Event_Appraise", 0x004ABB43,
-            NativeUiCatalogue.Bytes("E8 E8 91 0B 00 8B C8 E8 C1 9A 0B 00 57 89 7E 1C E8 48 D9 1F 00"), Source, "the retail pattern followed here")
+            NativeUiCatalogue.Bytes("E8 E8 91 0B 00 8B C8 E8 C1 9A 0B 00 57 89 7E 1C"), Source, "the retail pattern followed here")
     };
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
