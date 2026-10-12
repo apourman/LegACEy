@@ -16,10 +16,8 @@ internal sealed class RetailTargetMode
 {
     private const string Source = "acclient.pdb (C:\\Turbine\\Asheron's Call, a near build; +0xDA0 in this region) for names; our objdump read of installed acclient.exe";
     private const uint ExecuteTargetModeForItemAddress = 0x005658D0, SetTargetModeAddress = 0x005656E0;
-    private const uint SetFoundObjectAddress = 0x00451D30, UpdateCursorStateAddress = 0x005653D0, IsCompatibleAddress = 0x00588EA0;
-    // ponytail: diagnostics for the target cursor (12 Oct); drop once it is confirmed in play.
-    private static readonly IntPtr FoundObject = new(0x0083DA44), HeldItem = new(0x00871AE4);
-    private const int CursorOffset = 0x30;
+    private const uint SetFoundObjectAddress = 0x00451D30, UpdateCursorStateAddress = 0x005653D0;
+    private static readonly IntPtr FoundObject = new(0x0083DA44);
     private static readonly IntPtr UiSystemInstance = new(0x00871354);
     private const int TargetModeOffset = 0x2C;
 
@@ -42,9 +40,7 @@ internal sealed class RetailTargetMode
         new NativeUiEntry("UIElement_SmartBoxWrapper::FindObject sets an item list's hovered item", 0x004E60E4,
             NativeUiCatalogue.Bytes("8B 88 FC 05 00 00 6A FF 51 E8 3E BC F6 FF"), Source, "the retail pattern followed here: set_found_object(item +0x5FC, -1)"),
         new NativeUiEntry("ClientUISystem::UpdateCursorState", UpdateCursorStateAddress, NativeUiCatalogue.Bytes("83 EC 08 53 55 56 57 89 4C 24 10 E8 40 C9 EE FF 85 C0"),
-            Source, "ThisCall (): in target mode 3 the cursor is valid (0x28) or invalid (0x29) by ItemHolder::IsTargetCompatibleWithTargetingObject"),
-        new NativeUiEntry("ItemHolder::IsTargetCompatibleWithTargetingObject", IsCompatibleAddress,
-            NativeUiCatalogue.Bytes("53 8B 5C 24 08 85 DB 56 57 0F 84 84 00 00 00 A1 E4 1A 87 00"), Source, "Cdecl (uint target) -> bool, against the held item (0x00871AE4)")
+            Source, "ThisCall (): in target mode 3 the cursor is valid (0x28) or invalid (0x29) by ItemHolder::IsTargetCompatibleWithTargetingObject")
     };
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
@@ -56,10 +52,6 @@ internal sealed class RetailTargetMode
     private delegate void SetFoundObjectFn(uint objectId, int part);
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void UpdateCursorFn(IntPtr uiSystem);
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate byte IsCompatibleFn(uint target);
-    private readonly IsCompatibleFn? _isCompatible;
-    private readonly Action<string> _log;
 
     private readonly ExecuteFn? _execute;
     private readonly SetModeFn? _setMode;
@@ -70,7 +62,6 @@ internal sealed class RetailTargetMode
 
     public RetailTargetMode(Func<uint, int, byte[]> readMemory, Action<string> log)
     {
-        _log = log;
         if (!NativeUiCatalogue.Validate(readMemory, log, Entries))
         {
             log("Using an item on a target in LegACEy windows is off: the running client does not match its native entries.");
@@ -80,13 +71,12 @@ internal sealed class RetailTargetMode
         _setMode = Marshal.GetDelegateForFunctionPointer<SetModeFn>(new IntPtr(SetTargetModeAddress));
         _setFound = Marshal.GetDelegateForFunctionPointer<SetFoundObjectFn>(new IntPtr(SetFoundObjectAddress));
         _updateCursor = Marshal.GetDelegateForFunctionPointer<UpdateCursorFn>(new IntPtr(UpdateCursorStateAddress));
-        _isCompatible = Marshal.GetDelegateForFunctionPointer<IsCompatibleFn>(new IntPtr(IsCompatibleAddress));
     }
 
     /// <summary>
     /// Each frame while a LegACEy item is hovered in target mode: retail re-picks the object under the pointer from the world behind the
-    /// window (seen in play: a static object, 2 ms after the hover), so the hovered item is written back and the cursor updated. Written
-    /// directly, without set_found_object's notice, so retail is not prompted to pick again.
+    /// window every frame (seen in play: a static object, 80 to 150 times a second), so the hovered item is written back and the cursor
+    /// updated. Written directly, without set_found_object's notice, so retail is not prompted to pick again.
     /// </summary>
     public void Tick()
     {
@@ -102,25 +92,8 @@ internal sealed class RetailTargetMode
         if (found == _hovered) return;
         Marshal.WriteInt32(FoundObject, unchecked((int)_hovered));
         _updateCursor(ui);
-        // ponytail: diagnostics; once a second at most, so a per-frame fight with retail shows as a steady count.
-        _restores++;
-        var now = Environment.TickCount;
-        if (now - _restoreLogged < 1000) return;
-        Note($"restored 0x{_hovered:X8} over 0x{found:X8} ({_restores} since last note)");
-        _restoreLogged = now;
-        _restores = 0;
     }
 
-    private int _restores, _restoreLogged = Environment.TickCount - 1000;
-
-    private void Note(string what)
-    {
-        var ui = Marshal.ReadIntPtr(UiSystemInstance);
-        if (ui == IntPtr.Zero) return;
-        var found = unchecked((uint)Marshal.ReadInt32(FoundObject));
-        _log($"Target cursor: {what}; mode {Marshal.ReadInt32(ui, TargetModeOffset)}, held 0x{Marshal.ReadInt32(HeldItem):X8}, found 0x{found:X8}, " +
-            $"compatible {(found != 0 && _isCompatible!(found) != 0)}, cursor 0x{Marshal.ReadInt32(ui, CursorOffset):X}.");
-    }
 
     /// <summary>True while retail waits for a target (any target mode).</summary>
     public bool Waiting
@@ -147,7 +120,6 @@ internal sealed class RetailTargetMode
         _hovered = objectId;
         _setFound(objectId, -1);
         _updateCursor(ui);
-        Note($"hover 0x{objectId:X8}");
     }
 
     /// <summary>When retail is waiting for a target, makes the object that target, as retail's item lists do; false when it is not waiting.</summary>

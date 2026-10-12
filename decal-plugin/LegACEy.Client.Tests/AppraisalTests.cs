@@ -114,6 +114,20 @@ public sealed class AppraisalTests
     });
 
     [Fact]
+    public void An_appraisal_is_awaited_from_the_request_until_its_response_and_not_when_shown_from_the_cache() => OnWindowThread(() =>
+    {
+        var appraisals = new AppraisalFeature(new FakeAppraisalHost(), _ => { }, game: new FakeAppraisalGame());
+
+        appraisals.Request(Potion);
+        Assert.True(appraisals.Waiting);
+        appraisals.Receive(PotionMessage(Potion, 75));
+        Assert.False(appraisals.Waiting);
+
+        appraisals.Examine(Potion);
+        Assert.False(appraisals.Waiting);
+    });
+
+    [Fact]
     public void A_failed_appraisal_shows_the_name_and_figures_the_server_sent()
     {
         var bytes = new ServerAppraisal(Gem) { Success = false, Strings = { [1] = "Peridot" }, Ints = { [19] = 300 } }.Build();

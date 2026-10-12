@@ -68,6 +68,9 @@ public sealed class AppraisalFeature
         _requestedAt = _clock();
     }
 
+    /// <summary>True while an appraisal the player asked for is still on its way: retail shows its busy cursor then.</summary>
+    public bool Waiting => _requested != 0 && _clock() - _requestedAt <= RequestTimeoutMs;
+
     /// <summary>
     /// Retail's examination panel showed for this object (the E key, or any other way retail opens it). The window shows the object's
     /// cached response at once when there is one, and reports <see cref="ExamineResult.Shown"/>, or <see cref="ExamineResult.Failed"/> when
@@ -85,6 +88,8 @@ public sealed class AppraisalFeature
                 _game.RequestAppraisal(objectId);
                 return ExamineResult.Pending;
             }
+            // Shown from the cache: nothing was asked for, so nothing is awaited.
+            _requested = 0;
             return Show(cached) ? ExamineResult.Shown : ExamineResult.Failed;
         }
         catch (Exception exception)

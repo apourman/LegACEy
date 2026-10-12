@@ -150,6 +150,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private RetailExaminationTakeover? _examination;
     private readonly BridgeInventoryPort _inventory = new(Log);
     private readonly AppraisalFeature _appraisal;
+    private RetailBusyCursor? _busyCursor;
     // The inventory as plugins and windows get it: the bridge port, with an Assess also asking for the appraisal window.
     private readonly AppraisingInventoryPort _appraisingInventory;
     private uint _retailDragItem;
@@ -220,6 +221,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             catch (Exception exception) { Log($"LegACEy server channel disabled: {exception.Message}"); }
             try { _retailDrag = new RetailItemDrag(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"Item drag and drop disabled: {exception.Message}"); }
+            try { _busyCursor = new RetailBusyCursor(NativeUi.ReadMemory, Log); }
+            catch (Exception exception) { Log($"The busy cursor while an appraisal loads is off: {exception.Message}"); }
             try { _inventory.TargetMode = new RetailTargetMode(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"Using an item on a target in LegACEy windows is off: {exception.Message}"); }
             LoadPlugins();
@@ -369,6 +372,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _inGame = false;
         _inventory.Clear();
         Guard(() => _appraisal.Clear());
+        Guard(() => _busyCursor?.Show(false));
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up client UI at logoff: {exception}"); }
         _clientUi = null;
@@ -558,6 +562,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             PublishGameState();
             _inventory.Flush(_inGame);
             _inventory.TargetMode?.Tick();
+            _busyCursor?.Show(_inGame && _appraisal.Waiting);
             _serverChannel?.Tick();
             if (_barSurface == null)
             {
