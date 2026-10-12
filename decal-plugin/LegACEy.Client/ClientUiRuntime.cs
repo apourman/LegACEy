@@ -1427,8 +1427,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     }
                     break;
                 case InputAction.PointerDown:
-                    // The window that had focus loses it to this one.
+                    // The window that had focus loses it to this one, and so does retail's focused element (a split amount box).
                     SurfaceById(route.ClearFocusSurfaceId)?.Panel.ClearFocus();
+                    _retailDrag?.ClearKeyboardFocus();
                     _pointer = new Point(route.X + target!.Location.X, route.Y + target.Location.Y);
                     if (route.SurfaceId != null && _windows?.Get(route.SurfaceId) != null)
                     {

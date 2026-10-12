@@ -65,6 +65,8 @@ internal sealed class RetailItemDrag
             HandOffSource, "ThisCall (uint action) -> bool on ICIDM::s_cidm (0x00837FF4); StartDragandDrop asks it for action 7"),
         new NativeUiEntry("UIElementManager::SetMouseCapture", 0x0045D350, NativeUiCatalogue.Bytes("8B 44 24 04 56 8B F1 39 86 4C 02 00 00 74 1B"), HandOffSource,
             "ThisCall (UIElement* element): m_pMouseCapture (+0x24C), counted (+0x2C8); MouseUpEvent releases it once"),
+        new NativeUiEntry("UIElementManager::SetFocusElement", 0x0045B970, NativeUiCatalogue.Bytes("56 8B F1 8B 86 28 03 00 00 57 8B 7C 24 0C 3B C7 74 4E 85 C0 74 1A"), HandOffSource,
+            "ThisCall (UIElement* element): keyboard focus (+0x328); the element losing it is told (vtable +0xB4), so a text box commits what was typed"),
         new NativeUiEntry("UIElementManager::ReleaseMouseCapture", 0x0045D390, NativeUiCatalogue.Bytes("56 8B F1 8B 86 4C 02 00 00 85 C0 74 3A 3B 44 24 08 75 34"), HandOffSource,
             "ThisCall (UIElement* element): one count off when the element holds the capture; the last clears it"),
         new NativeUiEntry("UIElementManager::MouseDownEvent stores the press, then gives it to the capture holder", 0x0045DCE8, NativeUiCatalogue.Bytes(
@@ -117,6 +119,8 @@ internal sealed class RetailItemDrag
     private readonly AbsoluteFn? _absoluteY;
     private readonly SetMouseCaptureFn? _setCapture;
     private readonly SetMouseCaptureFn? _releaseCapture;
+    private readonly SetMouseCaptureFn? _setFocus;
+    private const int FocusElementOffset = 0x328;
     private bool _loggedInventory;
 
     public RetailItemDrag(Func<uint, int, byte[]> readMemory, Action<string> log)
@@ -138,6 +142,18 @@ internal sealed class RetailItemDrag
         _absoluteY = Function<AbsoluteFn>(0x0069FE30);
         _setCapture = Function<SetMouseCaptureFn>(0x0045D350);
         _releaseCapture = Function<SetMouseCaptureFn>(0x0045D390);
+        _setFocus = Function<SetMouseCaptureFn>(0x0045B970);
+    }
+
+    /// <summary>
+    /// A press on a LegACEy window takes the keyboard focus from retail's element, as a press anywhere else in retail does: a typed split
+    /// amount is committed then, before a drag from our window splits the stack by the slider's old value.
+    /// </summary>
+    public void ClearKeyboardFocus()
+    {
+        if (!Available) return;
+        var manager = Marshal.ReadIntPtr(ManagerInstance);
+        if (manager != IntPtr.Zero && Marshal.ReadIntPtr(manager, FocusElementOffset) != IntPtr.Zero) _setFocus!(manager, IntPtr.Zero);
     }
 
     /// <summary>
