@@ -242,9 +242,9 @@ namespace ACE.Server.Market
 
                 if (!player.TryRemoveFromInventoryForVault(item.Guid, out _))
                 {
-                    // nothing is saved yet: the items already taken out go back
-                    for (var back = 0; back < index; back++)
-                        player.TryCreateInInventoryWithNetworking(items[back]);
+                    // nothing is saved yet: the items already taken out go back, last first
+                    for (var back = index - 1; back >= 0; back--)
+                        ReturnToPack(player, items[back], items[back].Name);
 
                     FinishBatch(player, VaultOutcome.NotInPack, item.Name, itemGuids, completed);
                     return;
@@ -303,6 +303,7 @@ namespace ACE.Server.Market
                 // forgotten, never destroyed, as a single deposit's item (see OnDeposited)
                 foreach (var item in items)
                 {
+                    player.SendRemovedForVault(item);
                     item.ContainerId = null;
                     item.OwnerId = null;
                     item.PlacementPosition = null;
@@ -315,6 +316,8 @@ namespace ACE.Server.Market
             if (result == MarketJobResult.Unknown)
             {
                 log.Error($"[VAULT] Batch deposit of {items.Count} items for {player.Name} may or may not have been saved; the objects are dropped and the database decides at the next login");
+                foreach (var item in items)
+                    player.SendRemovedForVault(item);
                 FinishBatch(player, VaultOutcome.Unconfirmed, items[0].Name, itemGuids, completed);
                 return;
             }
@@ -333,10 +336,10 @@ namespace ACE.Server.Market
                 log.Warn($"[VAULT] Could not read the Vault size for {player.Name}'s failed batch deposit: {ex.Message}");
             }
 
-            // the database still has every item in the pack, as after a failed single deposit
-            foreach (var item in items)
-                if (!player.IsLoggingOut && !player.TryCreateInInventoryWithNetworking(item))
-                    log.Warn($"[VAULT] Batch deposit of {item.Name} (0x{item.Guid.Full:X8}) for {player.Name} failed and the pack has no room for it; the database has it in the pack for the next login");
+            // the database still has every item in the pack, as after a failed single deposit; they go back last first, to the places they were taken from
+            if (!player.IsLoggingOut)
+                for (var index = items.Count - 1; index >= 0; index--)
+                    ReturnToPack(player, items[index], items[index].Name);
 
             FinishBatch(player, outcome, items[0].Name, itemGuids, completed);
         }
@@ -768,6 +771,7 @@ namespace ACE.Server.Market
             {
                 // The object is forgotten, never destroyed: destroying it would delete its row. Cleared as the Vault has it,
                 // so that a save of it from anything still holding it can't put it back in a pack.
+                player.SendRemovedForVault(item);
                 item.ContainerId = null;
                 item.OwnerId = null;
                 item.PlacementPosition = null;
@@ -780,6 +784,7 @@ namespace ACE.Server.Market
             {
                 // the database has the item either in the pack or in the Vault; putting it back here could make a second copy, so the next login shows which
                 log.Error($"[VAULT] Deposit of {name} (0x{item.Guid.Full:X8}) for {player.Name} may or may not have been saved; the object is dropped and the database decides at the next login");
+                player.SendRemovedForVault(item);
                 Finish(player, VaultOutcome.Unconfirmed, name, item.Guid.Full, completed);
                 return;
             }
@@ -800,10 +805,25 @@ namespace ACE.Server.Market
             }
 
             // the database still has the item in the pack (the live item kept its container throughout). A player who has gone gets it back when they log in, so the object is just discarded.
-            if (!player.IsLoggingOut && !player.TryCreateInInventoryWithNetworking(item))
-                log.Warn($"[VAULT] Deposit of {name} (0x{item.Guid.Full:X8}) for {player.Name} failed and the pack has no room for it; the database has it in the pack for the next login");
+            if (!player.IsLoggingOut)
+                ReturnToPack(player, item, name);
 
             Finish(player, outcome, name, item.Guid.Full, completed);
+        }
+
+        /// <summary>
+        /// A refused deposit's item goes back to the place it was taken from, which the live item still names. The client was never told it left.
+        /// If that pack is gone, the client is told it left and gets it as a new item wherever there is room.
+        /// </summary>
+        private static void ReturnToPack(Player player, WorldObject item, string name)
+        {
+            if (player.TryReturnFromVault(item, item.ContainerId ?? 0, item.PlacementPosition ?? 0))
+                return;
+
+            player.SendRemovedForVault(item);
+
+            if (!player.TryCreateInInventoryWithNetworking(item))
+                log.Warn($"[VAULT] Deposit of {name} (0x{item.Guid.Full:X8}) for {player.Name} failed and the pack has no room for it; the database has it in the pack for the next login");
         }
 
         private static void OnWithdrawn(Player player, WorldObject item, string name, MarketJobResult result, Action<VaultResult> completed, PackPlace? place)

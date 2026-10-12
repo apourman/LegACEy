@@ -279,14 +279,21 @@ namespace ACE.Server.WorldObjects
         }
 
         /// <summary>
-        /// Takes an item out of the pack for a Vault deposit: in memory only, with the client messages of TryRemoveFromInventoryWithNetworking but none of its saves.<para />
+        /// Takes an item out of the pack for a Vault deposit, in memory only: no client messages and none of TryRemoveFromInventoryWithNetworking's saves.<para />
         /// The networking removal queues a save of the item with no container, so a crash before the deposit commits would leave an ownerless item for the orphan purge to delete.
+        /// The client still shows the item until the deposit is decided: <see cref="SendRemovedForVault"/> once it is saved, <see cref="TryReturnFromVault"/> if it is refused.
         /// The caller hands the item to the deposit job and then forgets the object: never save it and never Destroy it.
         /// </summary>
         public bool TryRemoveFromInventoryForVault(ObjectGuid objectGuid, out WorldObject item)
         {
-            if (!TryRemoveFromInventory(objectGuid, out item))
-                return false;
+            return TryRemoveFromInventory(objectGuid, out item);
+        }
+
+        /// <summary>The client messages of TryRemoveFromInventoryWithNetworking, for an item <see cref="TryRemoveFromInventoryForVault"/> took that the Vault now has.</summary>
+        public void SendRemovedForVault(WorldObject item)
+        {
+            if (Session == null)
+                return;
 
             Session.Network.EnqueueSend(
                 new GameMessagePublicUpdateInstanceID(item, PropertyInstanceId.Container, ObjectGuid.Invalid),
@@ -296,7 +303,23 @@ namespace ACE.Server.WorldObjects
                 UpdateCoinValue();
 
             Session.Network.EnqueueSend(new GameMessageDeleteObject(item));
+        }
 
+        /// <summary>
+        /// Puts an item <see cref="TryRemoveFromInventoryForVault"/> took back at its place, in memory only: the client never saw it go.
+        /// Items taken together go back in the reverse order. False when its pack is gone; the caller then sends it as a new item.
+        /// </summary>
+        public bool TryReturnFromVault(WorldObject item, uint containerId, int placement)
+        {
+            if (containerId == Guid.Full)
+                return TryAddToInventory(item, placement, limitToMainPackOnly: true, burdenCheck: false);
+
+            if (GetInventoryItem(containerId) is not Container pack || pack.ContainerId != Guid.Full || !pack.TryAddToInventory(item, placement, limitToMainPackOnly: true, burdenCheck: false))
+                return false;
+
+            // as TryAddToInventory does for an item it puts in a side pack
+            EncumbranceVal += item.EncumbranceVal ?? 0;
+            Value += item.Value ?? 0;
             return true;
         }
 

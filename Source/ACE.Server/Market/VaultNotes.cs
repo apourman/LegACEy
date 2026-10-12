@@ -212,6 +212,7 @@ namespace ACE.Server.Market
                 // Cleared, so that a save from anything still holding one can't write it back into a pack.
                 foreach (var note in notes)
                 {
+                    player.SendRemovedForVault(note);
                     note.ContainerId = null;
                     note.OwnerId = null;
                     note.PlacementPosition = null;
@@ -225,6 +226,8 @@ namespace ACE.Server.Market
             {
                 // the database has the notes either in the pack or banked; putting them back here could double them, so the next login shows which
                 log.Error($"[VAULT] Note deposit of {amount:N0} MMD for {player.Name} may or may not have been saved; the notes are dropped and the database decides at the next login");
+                foreach (var note in notes)
+                    player.SendRemovedForVault(note);
                 FinishNotes(player, VaultOutcome.Unconfirmed, amount, balance, completed);
                 return;
             }
@@ -232,14 +235,10 @@ namespace ACE.Server.Market
             log.Warn($"[VAULT] Note deposit of {amount:N0} MMD for {player.Name} failed ({result}); nothing was saved");
 
             // the database still has the notes in the pack (the live notes kept their container throughout). A player who has gone gets them back when they log in, so the objects are just discarded.
+            // they go back last first, to the places they were taken from
             if (!player.IsLoggingOut)
-            {
-                foreach (var note in notes)
-                {
-                    if (!player.TryCreateInInventoryWithNetworking(note))
-                        log.Warn($"[VAULT] Note deposit for {player.Name} failed and the pack has no room for 0x{note.Guid.Full:X8}; the database has it in the pack for the next login");
-                }
-            }
+                for (var index = notes.Count - 1; index >= 0; index--)
+                    ReturnToPack(player, notes[index], notes[index].Name);
 
             FinishNotes(player, VaultOutcome.SaveFailed, amount, balance, completed);
         }

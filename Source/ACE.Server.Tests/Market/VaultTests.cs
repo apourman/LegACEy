@@ -294,8 +294,11 @@ namespace ACE.Server.Tests.Market
         {
             var account = VaultTestWorld.NewAccountId();
             var player = VaultTestWorld.NewPlayer(account);
+            VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
             var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+            VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
             var guid = item.Guid.Full;
+            var slot = item.PlacementPosition;
 
             VaultResult result;
             using (FailInsertsInto("market_item_event"))
@@ -303,6 +306,7 @@ namespace ACE.Server.Tests.Market
 
             Assert.AreEqual(VaultOutcome.SaveFailed, result.Outcome, result.Message);
             Assert.IsNotNull(player.GetInventoryItem(guid), "the item is back in the pack");
+            Assert.AreEqual(slot, player.GetInventoryItem(guid).PlacementPosition, "in the slot it was taken from, where the client still shows it");
             Assert.AreEqual(1, Count($"SELECT COUNT(*) FROM biota_properties_i_i_d WHERE object_Id = {guid} AND type = {(int)PropertyInstanceId.Container};"), "the database still has it in the pack");
             Assert.AreEqual(0, VaultStore.Count(account), "the Vault is unchanged");
 
