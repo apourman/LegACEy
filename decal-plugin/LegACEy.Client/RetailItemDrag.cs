@@ -65,8 +65,6 @@ internal sealed class RetailItemDrag
             HandOffSource, "ThisCall (uint action) -> bool on ICIDM::s_cidm (0x00837FF4); StartDragandDrop asks it for action 7"),
         new NativeUiEntry("UIElementManager::SetMouseCapture", 0x0045D350, NativeUiCatalogue.Bytes("8B 44 24 04 56 8B F1 39 86 4C 02 00 00 74 1B"), HandOffSource,
             "ThisCall (UIElement* element): m_pMouseCapture (+0x24C), counted (+0x2C8); MouseUpEvent releases it once"),
-        new NativeUiEntry("UIElementManager::SetFocusElement", 0x0045B970, NativeUiCatalogue.Bytes("56 8B F1 8B 86 28 03 00 00 57 8B 7C 24 0C 3B C7 74 4E 85 C0 74 1A"), HandOffSource,
-            "ThisCall (UIElement* element): keyboard focus (+0x328); the element losing it is told (vtable +0xB4), so a text box commits what was typed"),
         new NativeUiEntry("UIElementManager::ReleaseMouseCapture", 0x0045D390, NativeUiCatalogue.Bytes("56 8B F1 8B 86 4C 02 00 00 85 C0 74 3A 3B 44 24 08 75 34"), HandOffSource,
             "ThisCall (UIElement* element): one count off when the element holds the capture; the last clears it"),
         new NativeUiEntry("UIElementManager::MouseDownEvent stores the press, then gives it to the capture holder", 0x0045DCE8, NativeUiCatalogue.Bytes(
@@ -120,6 +118,13 @@ internal sealed class RetailItemDrag
     private readonly SetMouseCaptureFn? _setCapture;
     private readonly SetMouseCaptureFn? _releaseCapture;
     private readonly SetMouseCaptureFn? _setFocus;
+    // Checked on its own: something in the running client patches this function's first instruction (seen 12 Oct), and a failure here must
+    // only cost the focus clear, never drag and drop. The pattern starts past the patched prologue (push esi; mov esi,ecx; mov eax,[esi+0x328]).
+    private static readonly IReadOnlyList<NativeUiEntry> FocusEntries = new[]
+    {
+        new NativeUiEntry("UIElementManager::SetFocusElement body", 0x0045B979, NativeUiCatalogue.Bytes("57 8B 7C 24 0C 3B C7 74 4E 85 C0 74 1A 6A 00 6A 00 6A 2F 50"), HandOffSource,
+            "ThisCall (UIElement* element) at 0x0045B970: keyboard focus (+0x328); the element losing it is told (vtable +0xB4), so a text box commits what was typed")
+    };
     private const int FocusElementOffset = 0x328;
     private bool _loggedInventory;
 
@@ -142,7 +147,10 @@ internal sealed class RetailItemDrag
         _absoluteY = Function<AbsoluteFn>(0x0069FE30);
         _setCapture = Function<SetMouseCaptureFn>(0x0045D350);
         _releaseCapture = Function<SetMouseCaptureFn>(0x0045D390);
-        _setFocus = Function<SetMouseCaptureFn>(0x0045B970);
+        if (NativeUiCatalogue.Validate(readMemory, log, FocusEntries))
+            _setFocus = Function<SetMouseCaptureFn>(0x0045B970);
+        else
+            log($"Retail's keyboard focus is left alone on presses in LegACEy windows; SetFocusElement starts {BitConverter.ToString(readMemory(0x0045B970, 24))}.");
     }
 
     /// <summary>
@@ -151,9 +159,9 @@ internal sealed class RetailItemDrag
     /// </summary>
     public void ClearKeyboardFocus()
     {
-        if (!Available) return;
+        if (_setFocus == null) return;
         var manager = Marshal.ReadIntPtr(ManagerInstance);
-        if (manager != IntPtr.Zero && Marshal.ReadIntPtr(manager, FocusElementOffset) != IntPtr.Zero) _setFocus!(manager, IntPtr.Zero);
+        if (manager != IntPtr.Zero && Marshal.ReadIntPtr(manager, FocusElementOffset) != IntPtr.Zero) _setFocus(manager, IntPtr.Zero);
     }
 
     /// <summary>
