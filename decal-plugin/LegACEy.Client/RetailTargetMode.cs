@@ -72,6 +72,17 @@ internal sealed class RetailTargetMode
         _updateCursor = Marshal.GetDelegateForFunctionPointer<UpdateCursorFn>(new IntPtr(UpdateCursorStateAddress));
     }
 
+    /// <summary>True while retail waits for a target (any target mode).</summary>
+    public bool Waiting
+    {
+        get
+        {
+            if (_execute == null) return false;
+            var ui = Marshal.ReadIntPtr(UiSystemInstance);
+            return ui != IntPtr.Zero && Marshal.ReadInt32(ui, TargetModeOffset) != 0;
+        }
+    }
+
     /// <summary>
     /// The pointer is over an item in a LegACEy window, or over none with zero. While retail waits for a target, the item becomes the object
     /// under the pointer and the cursor shows whether it is a valid target; zero clears it, as leaving a retail item list does.

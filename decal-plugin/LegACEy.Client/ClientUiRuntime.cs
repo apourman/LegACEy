@@ -1391,6 +1391,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     {
                         var handingOff = _handOff == null;
                         target?.Panel.PointerMove(route.X, route.Y);
+                        // While retail waits for a target, a move over a LegACEy window stays ours: retail would pick the world object
+                        // behind the window as the one under the pointer, over the item the window reported, and judge that for its cursor.
+                        if (target != null && _inventory.TargetMode?.Waiting == true) eat = true;
                         // A drag handed to retail on this move takes the button-up to retail, so the panel lets go of the button now.
                         if (handingOff && _handOff != null) target?.Panel.PointerUp(-1, -1);
                     }
