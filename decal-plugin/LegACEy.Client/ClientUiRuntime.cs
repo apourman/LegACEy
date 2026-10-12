@@ -303,6 +303,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     public void ContainerOpened() => _inventory.MarkStale();
     public void InventoryChanged(uint id, uint container) => _inventory.ObjectChanged(id, container);
 
+    // InventoryPutObjInContainer, WieldObject and InventoryPutObjectIn3D (ACE's GameEventType).
+    private static readonly uint[] InventoryMoveEvents = { 0x0022, 0x0023, 0x019A };
+
     /// <summary>LegACEy channel replies and pushes arrive on the game thread with every other server message.</summary>
     public void ServerMessage(int type, ReadOnlySpan<byte> raw)
     {
@@ -311,6 +314,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // The appraisal response is a game event like any other, so it is read whether or not the LegACEy server channel is up.
         var appraisal = GameChannelTransport.GameEventPayload(type, raw, AppraisalResponse.IdentifyEvent);
         if (appraisal != null) Guard(() => _appraisal.Receive(appraisal));
+        // An item put in a pack, wielded or put in the world: Decal raised no event for some of these (a split stack, a pickup), so the
+        // inventory is read again on the next frame.
+        foreach (var moved in InventoryMoveEvents)
+            if (GameChannelTransport.GameEventPayload(type, raw, moved) != null)
+                _inventory.MarkStale();
         if (_serverChannel == null || _channelTransport == null)
             return;
         byte[]? payload;

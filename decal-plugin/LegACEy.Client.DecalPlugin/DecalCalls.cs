@@ -124,13 +124,34 @@ internal static unsafe class DecalCalls
     private static int Inventory(BridgeItem* rows, int capacity, int* count) => Act(() =>
     {
         var written = 0;
-        foreach (WorldObject item in CoreManager.Current.WorldFilter.GetInventory())
+        var seen = new HashSet<int>();
+        void Add(WorldObject item)
         {
+            if (!seen.Add(item.Id)) return;
             if (written < capacity) Flatten(item, rows + written);
             written++;
         }
+        var world = CoreManager.Current.WorldFilter;
+        foreach (WorldObject item in world.GetInventory()) Add(item);
+        // Decal's inventory list missed objects that came into a pack this session (a split stack, one picked up off the ground, one the
+        // Vault put back) until a relog, though their Container already said where they are; the packs' contents are read from that too.
+        var character = CoreManager.Current.CharacterFilter.Id;
+        var packs = new List<int> { character };
+        foreach (WorldObject item in world.GetByContainer(character))
+            if (item.ObjectClass == ObjectClass.Container) packs.Add(item.Id);
+        var missed = 0;
+        foreach (var pack in packs)
+            foreach (WorldObject item in world.GetByContainer(pack))
+                if (!seen.Contains(item.Id))
+                {
+                    Add(item);
+                    missed++;
+                }
+        if (missed > 0 && _loggedMissed++ < 5) Plugin.Log($"Decal's inventory list missed {missed} object(s) its packs hold; read from the packs.");
         *count = written;
     });
+
+    private static int _loggedMissed;
 
     private static int Item(int id, BridgeItem* row, int* found) => Act(() =>
     {
