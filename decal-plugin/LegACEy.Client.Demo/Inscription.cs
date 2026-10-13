@@ -21,6 +21,9 @@ public sealed record AppraisalInscription(InscriptionMode Mode, string Text, str
 
     // The server's property ids: PropertyBool.Inscribable, PropertyString.Inscription and PropertyString.ScribeName.
     private const uint InscribableBool = 22, InscriptionString = 7, ScribeNameString = 8;
+    // ObjectDescriptionFlag.Inscribable, from the object's create message: ACE's appraisal never sends PropertyBool.Inscribable (it is not an
+    // assessment property), so this flag is how retail, and the window, know a blank item can be inscribed.
+    public const uint InscribableFlag = 0x2;
 
     /// <summary>
     /// The field for an appraisal, or null when the item is neither inscribable nor inscribed. It follows the server's rule for the
@@ -30,9 +33,9 @@ public sealed record AppraisalInscription(InscriptionMode Mode, string Text, str
     /// non-admin examiner), so the scribe's name stands in for it. A same-name character on another account is refused silently by the
     /// server (HandleActionSetInscription sends no reply for a refusal), so the field stays editable and the save does nothing.
     /// </summary>
-    public static AppraisalInscription? From(AppraisalResponse response, string characterName, bool carried)
+    public static AppraisalInscription? From(AppraisalResponse response, string characterName, bool carried, uint descriptionFlags = 0)
     {
-        var inscribable = response.Bools.TryGetValue(InscribableBool, out var flag) && flag;
+        var inscribable = (descriptionFlags & InscribableFlag) != 0 || (response.Bools.TryGetValue(InscribableBool, out var flag) && flag);
         var text = response.Strings.TryGetValue(InscriptionString, out var inscription) ? inscription : string.Empty;
         var scribe = response.Strings.TryGetValue(ScribeNameString, out var name) ? name : string.Empty;
         if (!inscribable && text.Length == 0 && scribe.Length == 0) return null;

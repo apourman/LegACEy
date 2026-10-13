@@ -217,7 +217,7 @@ public sealed class AppraisalFeature
         var content = stored != null
             ? AppraisalContent.From(response, _spells(), _game.CharacterName, carried: false, _names(), world: stored)
             : AppraisalContent.From(response, _spells(), _game.CharacterName, _game.IsCarried(id), _names(), _game.ValidLocationsOf(id),
-                _game.CoverageOf(id), _game.WorldObjectOf(id), _game.PluralNameOf(id));
+                _game.CoverageOf(id), _game.WorldObjectOf(id), _game.PluralNameOf(id), _game.DescriptionFlagsOf(id));
         var art = _host.Art;
         // A window the client released (its surface failed or closed on its own) is neither open nor hidden: the view is stale, so the next
         // appraisal builds a new one.
@@ -313,6 +313,8 @@ public interface IAppraisalGame
     uint ValidLocationsOf(uint itemId);
     /// <summary>The item's clothing coverage (the world's Coverage bits), zero when the world does not have it.</summary>
     uint CoverageOf(uint itemId);
+    /// <summary>The world object's description flags (ACE's ObjectDescriptionFlag), 0 when it is not in the world.</summary>
+    uint DescriptionFlagsOf(uint itemId);
     /// <summary>The object as the world has it, for its name and icon (the server's appraisal sends neither), null when the world does not
     /// have it.</summary>
     InventoryObjectRead? WorldObjectOf(uint itemId);
@@ -335,6 +337,7 @@ internal sealed class NoAppraisalGame : IAppraisalGame
     public void RequestAppraisal(uint itemId) { }
     public uint ValidLocationsOf(uint itemId) => 0;
     public uint CoverageOf(uint itemId) => 0;
+    public uint DescriptionFlagsOf(uint itemId) => 0;
     public InventoryObjectRead? WorldObjectOf(uint itemId) => null;
     public string PluralNameOf(uint itemId) => string.Empty;
 }

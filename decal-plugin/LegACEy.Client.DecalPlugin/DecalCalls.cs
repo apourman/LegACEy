@@ -39,6 +39,7 @@ internal static unsafe class DecalCalls
         calls->ValidLocations = (delegate* unmanaged[Stdcall]<int, int*, int>)Pointer(new ReadCall(ValidLocations));
         calls->Coverage = (delegate* unmanaged[Stdcall]<int, int*, int>)Pointer(new ReadCall(Coverage));
         calls->PluralName = (delegate* unmanaged[Stdcall]<int, byte*, int, int*, int>)Pointer(new TextCall(PluralName));
+        calls->DescriptionFlags = (delegate* unmanaged[Stdcall]<int, int*, int>)Pointer(new ReadCall(DescriptionFlags));
         return calls;
     }
 
@@ -165,6 +166,9 @@ internal static unsafe class DecalCalls
 
     private static int Coverage(int id, int* mask) =>
         Act(() => *mask = CoreManager.Current.WorldFilter[id]?.Values(LongValueKey.Coverage, 0) ?? 0);
+
+    private static int DescriptionFlags(int id, int* flags) =>
+        Act(() => *flags = CoreManager.Current.WorldFilter[id]?.Values(LongValueKey.Behavior, 0) ?? 0);
 
     // Foci are not containers but take a side-pack slot: the server's RequiresPackSlot description flag (0x00800000).
     // Gate: Decal's Behavior is the object description flags.

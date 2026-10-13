@@ -1276,6 +1276,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     uint IAppraisalGame.CoverageOf(uint itemId) => WorldRead(() => Bridge.CoverageOf(itemId));
 
+    uint IAppraisalGame.DescriptionFlagsOf(uint itemId) => WorldRead(() => Bridge.DescriptionFlagsOf(itemId));
+
     InventoryObjectRead? IAppraisalGame.WorldObjectOf(uint itemId)
     {
         try { return Bridge.Item(itemId); }

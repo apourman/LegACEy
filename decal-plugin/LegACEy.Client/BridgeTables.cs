@@ -73,6 +73,9 @@ public unsafe struct BridgeCalls
     /// <summary>(id, buffer, capacity, out length): one world object's plural name (Decal's SecondaryName) as UTF-8, empty when it has none
     /// or the world has no such object; length is the full byte count. Read for the appraisal window's title on a stack.</summary>
     public delegate* unmanaged[Stdcall]<int, byte*, int, int*, int> PluralName;
+    /// <summary>(id, out flags): one world object's description flags (Decal's Behavior, ACE's ObjectDescriptionFlag), 0 when the world has
+    /// no such object. Read for whether the appraisal window offers an inscription: the server's appraisal does not say an item is inscribable.</summary>
+    public delegate* unmanaged[Stdcall]<int, int*, int> DescriptionFlags;
 }
 
 /// <summary>The integer facts <see cref="BridgeCalls.Fact"/> answers.</summary>

@@ -139,7 +139,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
 
     public static AppraisalContent From(AppraisalResponse response, IReadOnlyDictionary<uint, SpellInfo> spells,
         string characterName = "", bool carried = false, CharacterNames? names = null, uint validLocations = 0, uint coverage = 0,
-        InventoryObjectRead? world = null, string plural = "")
+        InventoryObjectRead? world = null, string plural = "", uint descriptionFlags = 0)
     {
         var hasCreatureProfile = response.Creature != null;
         var figures = hasCreatureProfile
@@ -168,7 +168,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
             figures,
             sections,
             response.Strings.TryGetValue(LongDescString, out var description) ? description : string.Empty,
-            AppraisalInscription.From(response, characterName, carried),
+            AppraisalInscription.From(response, characterName, carried, descriptionFlags),
             hasCreatureProfile ? TitleOf(response, names ?? CharacterNames.None) : string.Empty);
     }
 

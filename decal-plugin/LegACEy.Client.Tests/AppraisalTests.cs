@@ -839,6 +839,15 @@ public sealed class AppraisalTests
     }
 
     [Fact]
+    public void A_blank_item_is_inscribable_by_its_description_flag_which_the_appraisal_does_not_carry()
+    {
+        var content = AppraisalContent.From(AppraisalResponse.Read(PotionMessage(Potion, 75)), NoSpells, "Aerbax", carried: true,
+            descriptionFlags: AppraisalInscription.InscribableFlag);
+
+        Assert.Equal(new AppraisalInscription(InscriptionMode.Editable, "", ""), content.Inscription);
+    }
+
+    [Fact]
     public void Another_characters_inscription_reads_with_its_text_and_scribe()
     {
         var content = AppraisalContent.From(AppraisalResponse.Read(InscribedPotion(Potion, "Bonked many a drudge", "Ilsa of Yaraq")), NoSpells, "Aerbax", carried: true);
@@ -1480,6 +1489,7 @@ public sealed class AppraisalTests
         public void RequestAppraisal(uint itemId) => Appraised.Add(itemId);
         public uint ValidLocationsOf(uint itemId) => 0;
         public uint CoverageOf(uint itemId) => 0;
+        public uint DescriptionFlagsOf(uint itemId) => 0;
         /// <summary>The world's objects by id; the server's appraisal sends no name or icon.</summary>
         public Dictionary<uint, InventoryObjectRead> World { get; } = new();
         public InventoryObjectRead? WorldObjectOf(uint itemId) => World.GetValueOrDefault(itemId);
