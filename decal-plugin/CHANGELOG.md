@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.10](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.9...decal-plugin-v0.1.10) (2026-10-13)
+
+
+### Bug Fixes
+
+* appraisal, inventory and Vault follow-ups ([#42](https://github.com/apourman/LegACEy/issues/42)) ([73384c2](https://github.com/apourman/LegACEy/commit/73384c2ba51f3537625f8c37ed1bf9860c192d1e))
+
 ## [0.1.9](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.8...decal-plugin-v0.1.9) (2026-10-11)
 
 
