@@ -151,6 +151,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private readonly BridgeInventoryPort _inventory = new(Log);
     private readonly AppraisalFeature _appraisal;
     private RetailBusyCursor? _busyCursor;
+    private RetailTextMode? _textMode;
     // The inventory as plugins and windows get it: the bridge port, with an Assess also asking for the appraisal window.
     private readonly AppraisingInventoryPort _appraisingInventory;
     private uint _retailDragItem;
@@ -223,6 +224,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             catch (Exception exception) { Log($"Item drag and drop disabled: {exception.Message}"); }
             try { _busyCursor = new RetailBusyCursor(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"The busy cursor while an appraisal loads is off: {exception.Message}"); }
+            try { _textMode = new RetailTextMode(NativeUi.ReadMemory, Log); }
+            catch (Exception exception) { Log($"Keys typed in LegACEy text boxes also reach the game: {exception.Message}"); }
             try { _inventory.TargetMode = new RetailTargetMode(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"Using an item on a target in LegACEy windows is off: {exception.Message}"); }
             LoadPlugins();
@@ -381,6 +384,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _inventory.Clear();
         Guard(() => _appraisal.Clear());
         Guard(() => _busyCursor?.Show(false));
+        Guard(() => _textMode?.Hold(false));
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up client UI at logoff: {exception}"); }
         _clientUi = null;
@@ -571,6 +575,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _inventory.Flush(_inGame);
             _inventory.TargetMode?.Tick();
             _busyCursor?.Show(_inGame && _appraisal.Waiting);
+            _textMode?.Hold(_inGame && SurfaceById(_inputRouter.FocusedSurfaceId)?.Panel.WantsKeyboard == true);
             _serverChannel?.Tick();
             if (_barSurface == null)
             {
