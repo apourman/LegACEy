@@ -3716,14 +3716,33 @@ namespace ACE.Server.WorldObjects
         // Game Action Handlers - Misc
         // ===========================
 
+        /// <summary>The longest inscription the retail client's field accepts (LayoutDesc 0x2100006B, element 0x1000013E).</summary>
+        public const int MaxInscriptionLength = 300;
+
+        /// <summary>
+        /// Why an inscription's text is refused, or null when it can be saved (empty text erases). Over the retail field's length only a modified
+        /// client sends; control characters (line breaks included) and invisible format characters (a right-to-left override, a zero-width space)
+        /// would let the text pass for something else, such as a forged "Inscribed by" line.
+        /// </summary>
+        public static string InscriptionTextRefusal(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return null;
+
+            if (text.Length > MaxInscriptionLength)
+                return $"Inscriptions are limited to {MaxInscriptionLength} characters.";
+
+            if (text.Any(c => char.IsControl(c) || char.GetUnicodeCategory(c) == System.Globalization.UnicodeCategory.Format))
+                return "Inscriptions can't contain line breaks or hidden characters.";
+
+            return null;
+        }
+
         /// <summary>
         /// This method processes the Game Action (F7B1) Set Inscription (0x00BF)
         /// This is raised when we:
         /// - try to inscribe an item
         /// </summary>
-        /// <summary>The longest inscription the retail client's field accepts (LayoutDesc 0x2100006B, element 0x1000013E).</summary>
-        public const int MaxInscriptionLength = 300;
-
         public void HandleActionSetInscription(uint itemGuid, string inscriptionText)
         {
             var item = FindObject(itemGuid, SearchLocations.MyInventory | SearchLocations.MyEquippedItems, out _, out _, out _);
@@ -3757,11 +3776,11 @@ namespace ACE.Server.WorldObjects
                         doInscribe = true;
                 }
 
-                if (doInscribe && inscriptionText?.Length > MaxInscriptionLength)
+                if (doInscribe && InscriptionTextRefusal(inscriptionText) is { } refusal)
                 {
-                    // The retail client's inscription field stops at 300 characters; only a modified client sends more.
-                    log.Warn($"{Name} sent a {inscriptionText.Length}-character inscription for 0x{itemGuid:X8}; the limit is {MaxInscriptionLength}.");
-                    ChatPacket.SendServerMessage(Session, $"Inscriptions are limited to {MaxInscriptionLength} characters.", ChatMessageType.System);
+                    // the text itself is never logged
+                    log.Warn($"{Name} sent a refused {inscriptionText.Length}-character inscription for 0x{itemGuid:X8}: {refusal}");
+                    ChatPacket.SendServerMessage(Session, refusal, ChatMessageType.System);
                     return;
                 }
 
