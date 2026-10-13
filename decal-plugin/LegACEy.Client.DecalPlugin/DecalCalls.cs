@@ -39,6 +39,7 @@ internal static unsafe class DecalCalls
         calls->ValidLocations = (delegate* unmanaged[Stdcall]<int, int*, int>)Pointer(new ReadCall(ValidLocations));
         calls->Coverage = (delegate* unmanaged[Stdcall]<int, int*, int>)Pointer(new ReadCall(Coverage));
         calls->PluralName = (delegate* unmanaged[Stdcall]<int, byte*, int, int*, int>)Pointer(new TextCall(PluralName));
+        calls->DescriptionFlags = (delegate* unmanaged[Stdcall]<int, int*, int>)Pointer(new ReadCall(DescriptionFlags));
         return calls;
     }
 
@@ -90,7 +91,6 @@ internal static unsafe class DecalCalls
             BridgeFact.CarryingAugmentations => character.GetCharProperty(CarryingAugmentationProperty),
             // The main pack is the character's own object: ItemSlots is its slot count, and PackSlots counts the side packs.
             BridgeFact.MainPackCapacity => CharacterObject()?.Values(LongValueKey.ItemSlots, 0) ?? 0,
-            BridgeFact.MainPackIcon => unchecked((int)Texture(CharacterObject()?.Icon ?? 0)),
             BridgeFact.SidePackCapacity => CharacterObject()?.Values(LongValueKey.PackSlots, 0) ?? 0,
             BridgeFact.OpenedContainer => core.Actions.OpenedContainer,
             BridgeFact.CurrentSelection => core.Actions.CurrentSelection,
@@ -125,13 +125,34 @@ internal static unsafe class DecalCalls
     private static int Inventory(BridgeItem* rows, int capacity, int* count) => Act(() =>
     {
         var written = 0;
-        foreach (WorldObject item in CoreManager.Current.WorldFilter.GetInventory())
+        var seen = new HashSet<int>();
+        void Add(WorldObject item)
         {
+            if (!seen.Add(item.Id)) return;
             if (written < capacity) Flatten(item, rows + written);
             written++;
         }
+        var world = CoreManager.Current.WorldFilter;
+        foreach (WorldObject item in world.GetInventory()) Add(item);
+        // Decal's inventory list missed objects that came into a pack this session (a split stack, one picked up off the ground, one the
+        // Vault put back) until a relog, though their Container already said where they are; the packs' contents are read from that too.
+        var character = CoreManager.Current.CharacterFilter.Id;
+        var packs = new List<int> { character };
+        foreach (WorldObject item in world.GetByContainer(character))
+            if (item.ObjectClass == ObjectClass.Container) packs.Add(item.Id);
+        var missed = 0;
+        foreach (var pack in packs)
+            foreach (WorldObject item in world.GetByContainer(pack))
+                if (!seen.Contains(item.Id))
+                {
+                    Add(item);
+                    missed++;
+                }
+        if (missed > 0 && _loggedMissed++ < 5) Plugin.Log($"Decal's inventory list missed {missed} object(s) its packs hold; read from the packs.");
         *count = written;
     });
+
+    private static int _loggedMissed;
 
     private static int Item(int id, BridgeItem* row, int* found) => Act(() =>
     {
@@ -145,6 +166,9 @@ internal static unsafe class DecalCalls
 
     private static int Coverage(int id, int* mask) =>
         Act(() => *mask = CoreManager.Current.WorldFilter[id]?.Values(LongValueKey.Coverage, 0) ?? 0);
+
+    private static int DescriptionFlags(int id, int* flags) =>
+        Act(() => *flags = CoreManager.Current.WorldFilter[id]?.Values(LongValueKey.Behavior, 0) ?? 0);
 
     // Foci are not containers but take a side-pack slot: the server's RequiresPackSlot description flag (0x00800000).
     // Gate: Decal's Behavior is the object description flags.
@@ -181,7 +205,9 @@ internal static unsafe class DecalCalls
 
     private static int UseItem(int id, int state) => Act(() => CoreManager.Current.Actions.UseItem(id, state));
     private static int SelectItem(int id) => Act(() => CoreManager.Current.Actions.SelectItem(id));
-    private static int RequestId(int id) => Act(() => CoreManager.Current.Actions.RequestId(id));
+    // Every ID we ask for is the player's own (right-click, E, the window following the selection), so it skips Decal's ID queue,
+    // which other plugins fill at login; Actions.RequestId would wait behind them. Only the latest one stays pending, as in retail.
+    private static int RequestId(int id) => Act(() => CoreManager.Current.IDQueue.ShortcircuitID(id));
     private static int DropItem(int id) => Act(() => CoreManager.Current.Actions.DropItem(id));
     private static int MoveItem(int id, int container, int slot, int stack) =>
         Act(() => CoreManager.Current.Actions.MoveItem(id, container, slot, stack != 0));

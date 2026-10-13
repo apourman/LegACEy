@@ -129,7 +129,27 @@ public sealed class InventoryWindowTests
 
         InventoryDriver.Press(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Character));
         Assert.Contains("Contents of Main Pack", host.Texts());
-        Assert.Empty(port.Commands);
+        // The main pack is the character: clicking it selects them, as retail's does, so an item in use can target them.
+        Assert.Equal(new[] { $"select 0x{InventorySample.Character:X8}" }, port.Commands);
+    });
+
+    [Fact]
+    public void The_main_pack_drags_out_to_retail_as_the_character_and_never_moves_inside_the_window() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        var main = InventoryDriver.PackSlot(host.Host, InventorySample.Character);
+
+        InventoryDriver.Drop(host.Host, main, InventoryDriver.PackSlot(host.Host, InventorySample.Potions));
+        Assert.Empty(InventoryDriver.Sent(port));
+
+        // Retail takes it (a shortcut on the bar selects the character).
+        host.Drag.Target = ItemDropTarget.World;
+        host.Drag.TakeHandOff = true;
+        DragOut(host.Host, main, new Avalonia.Point(-50, -50));
+        Assert.Equal(new[] { InventorySample.Character }, host.Drag.HandedOff);
+        Assert.Empty(InventoryDriver.Sent(port));
     });
 
     [Fact]
@@ -217,6 +237,22 @@ public sealed class InventoryWindowTests
         host.PointerUp(to.X, to.Y);
         InventoryDriver.Tick(host);
     }
+
+    [Fact]
+    public void The_item_under_the_pointer_is_reported_for_retails_target_cursor() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        var apple = InventoryDriver.Centre(host.Host, host.Cells[0]);
+
+        host.Host.PointerMove(apple.X, apple.Y);
+        Assert.Equal(InventorySample.Apple, port.Hovered);
+        // Over no item, the pointer reports none; a hover is never a retail command.
+        host.Host.PointerMove(-50, -50);
+        Assert.Equal(0u, port.Hovered);
+        Assert.Empty(port.Commands);
+    });
 
     [Fact]
     public void Clicking_an_item_selects_it_and_a_second_click_on_it_in_time_uses_it() => RenderThread.Run(() =>

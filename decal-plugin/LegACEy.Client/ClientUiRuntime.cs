@@ -150,6 +150,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private RetailExaminationTakeover? _examination;
     private readonly BridgeInventoryPort _inventory = new(Log);
     private readonly AppraisalFeature _appraisal;
+    private RetailBusyCursor? _busyCursor;
+    private RetailTextMode? _textMode;
     // The inventory as plugins and windows get it: the bridge port, with an Assess also asking for the appraisal window.
     private readonly AppraisingInventoryPort _appraisingInventory;
     private uint _retailDragItem;
@@ -220,6 +222,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             catch (Exception exception) { Log($"LegACEy server channel disabled: {exception.Message}"); }
             try { _retailDrag = new RetailItemDrag(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"Item drag and drop disabled: {exception.Message}"); }
+            try { _busyCursor = new RetailBusyCursor(NativeUi.ReadMemory, Log); }
+            catch (Exception exception) { Log($"The busy cursor while an appraisal loads is off: {exception.Message}"); }
+            try { _textMode = new RetailTextMode(NativeUi.ReadMemory, Log); }
+            catch (Exception exception) { Log($"Keys typed in LegACEy text boxes also reach the game: {exception.Message}"); }
+            try { _inventory.TargetMode = new RetailTargetMode(NativeUi.ReadMemory, Log); }
+            catch (Exception exception) { Log($"Using an item on a target in LegACEy windows is off: {exception.Message}"); }
             LoadPlugins();
         }
         catch
@@ -298,6 +306,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     public void ContainerOpened() => _inventory.MarkStale();
     public void InventoryChanged(uint id, uint container) => _inventory.ObjectChanged(id, container);
 
+    // InventoryPutObjInContainer, WieldObject and InventoryPutObjectIn3D (ACE's GameEventType).
+    private static readonly uint[] InventoryMoveEvents = { 0x0022, 0x0023, 0x019A };
+
     /// <summary>LegACEy channel replies and pushes arrive on the game thread with every other server message.</summary>
     public void ServerMessage(int type, ReadOnlySpan<byte> raw)
     {
@@ -306,6 +317,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // The appraisal response is a game event like any other, so it is read whether or not the LegACEy server channel is up.
         var appraisal = GameChannelTransport.GameEventPayload(type, raw, AppraisalResponse.IdentifyEvent);
         if (appraisal != null) Guard(() => _appraisal.Receive(appraisal));
+        // An item put in a pack, wielded or put in the world: Decal raised no event for some of these (a split stack, a pickup), so the
+        // inventory is read again on the next frame.
+        foreach (var moved in InventoryMoveEvents)
+            if (GameChannelTransport.GameEventPayload(type, raw, moved) != null)
+                _inventory.MarkStale();
         if (_serverChannel == null || _channelTransport == null)
             return;
         byte[]? payload;
@@ -367,6 +383,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _inGame = false;
         _inventory.Clear();
         Guard(() => _appraisal.Clear());
+        Guard(() => _busyCursor?.Show(false));
+        Guard(() => _textMode?.Hold(false));
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up client UI at logoff: {exception}"); }
         _clientUi = null;
@@ -555,6 +573,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             PublishGameState();
             _inventory.Flush(_inGame);
+            _inventory.TargetMode?.Tick();
+            _busyCursor?.Show(_inGame && _appraisal.Waiting);
+            _textMode?.Hold(_inGame && SurfaceById(_inputRouter.FocusedSurfaceId)?.Panel.WantsKeyboard == true);
             _serverChannel?.Tick();
             if (_barSurface == null)
             {
@@ -798,7 +819,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// Takes a handed-off drag one message further, before the client sees the message. The posted press goes through, so the client
-    /// sees the left button held and records where it went down. Retail would then drag whatever that press landed on (the world, as
+    /// sees the left button held and records where it went down; the hidden item holds the mouse capture, so the press goes to it rather than
+    /// to the retail element under the pointer. Retail would then drag whatever that press landed on (the world, as
     /// often as not), so that is forgotten on every move until the client's pointer, which is the one before this move, is 4 pixels
     /// from the press: then the item's own list starts retail's drag of it.
     /// </summary>
@@ -807,15 +829,22 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var handOff = _handOff!;
         var drag = _retailDrag!;
         if (message == InputRouterService.WmLButtonDown)
+        {
+            // Without this the press lands on whatever retail element is under the pointer: a bar shortcut, or a window's frame it then moves.
+            drag.CapturePress(handOff.Item);
             handOff.Pressed = true;
+        }
         else if (message == InputRouterService.WmLButtonUp)
         {
+            drag.ReleasePress(handOff.Item);
             _handOff = null;
             drag.ClearPotentialDrag();
             LogHandOff($"Hand-off of 0x{handOff.ItemId:X8}: released before retail's drag began.");
         }
         else if (message == InputRouterService.WmMouseMove && handOff.Pressed)
         {
+            // The client has seen the press: the capture that routed it to the item is given back before anything else.
+            drag.ReleasePress(handOff.Item);
             drag.ClearPotentialDrag();
             int dx = _pointer.X - handOff.Press.X, dy = _pointer.Y - handOff.Press.Y;
             if (dx * dx + dy * dy < 16) return;
@@ -1041,6 +1070,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             // A LegACEy inventory window is the inventory, with or without the takeover.
             if (_owner._windows is { } windows && ItemDropRouting.InventoryAt(windows, _owner.ContentOf, _owner._pointer) is { } inventory) return inventory;
+            // Any other LegACEy window (the Vault, which refused the item) covers the world: a release there drops nothing.
+            if (_owner.TopSurfaceAt(_owner._pointer) is { } surface)
+            {
+                if (_owner._loggedDrops++ < 5) Log($"Item dropped at {_owner._pointer} over LegACEy surface '{surface}': target: Elsewhere.");
+                return ItemDropTarget.Elsewhere;
+            }
             var drag = _owner._retailDrag;
             if (drag == null) return ItemDropTarget.Inventory;
             var over = drag.IsPointerOverInventory(out var exists, out var open, out var element);
@@ -1246,6 +1281,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     uint IAppraisalGame.CoverageOf(uint itemId) => WorldRead(() => Bridge.CoverageOf(itemId));
 
+    uint IAppraisalGame.DescriptionFlagsOf(uint itemId) => WorldRead(() => Bridge.DescriptionFlagsOf(itemId));
+
     InventoryObjectRead? IAppraisalGame.WorldObjectOf(uint itemId)
     {
         try { return Bridge.Item(itemId); }
@@ -1389,13 +1426,17 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     {
                         var handingOff = _handOff == null;
                         target?.Panel.PointerMove(route.X, route.Y);
+                        // While retail waits for a target, a move over a LegACEy window stays ours: retail would pick the world object
+                        // behind the window as the one under the pointer, over the item the window reported, and judge that for its cursor.
+                        if (target != null && _inventory.TargetMode?.Waiting == true) eat = true;
                         // A drag handed to retail on this move takes the button-up to retail, so the panel lets go of the button now.
                         if (handingOff && _handOff != null) target?.Panel.PointerUp(-1, -1);
                     }
                     break;
                 case InputAction.PointerDown:
-                    // The window that had focus loses it to this one.
+                    // The window that had focus loses it to this one, and so does retail's focused element (a split amount box).
                     SurfaceById(route.ClearFocusSurfaceId)?.Panel.ClearFocus();
+                    _retailDrag?.ClearKeyboardFocus();
                     _pointer = new Point(route.X + target!.Location.X, route.Y + target.Location.Y);
                     if (route.SurfaceId != null && _windows?.Get(route.SurfaceId) != null)
                     {

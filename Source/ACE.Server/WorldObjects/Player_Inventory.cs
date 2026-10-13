@@ -279,14 +279,21 @@ namespace ACE.Server.WorldObjects
         }
 
         /// <summary>
-        /// Takes an item out of the pack for a Vault deposit: in memory only, with the client messages of TryRemoveFromInventoryWithNetworking but none of its saves.<para />
+        /// Takes an item out of the pack for a Vault deposit, in memory only: no client messages and none of TryRemoveFromInventoryWithNetworking's saves.<para />
         /// The networking removal queues a save of the item with no container, so a crash before the deposit commits would leave an ownerless item for the orphan purge to delete.
+        /// The client still shows the item until the deposit is decided: <see cref="SendRemovedForVault"/> once it is saved, <see cref="TryReturnFromVault"/> if it is refused.
         /// The caller hands the item to the deposit job and then forgets the object: never save it and never Destroy it.
         /// </summary>
         public bool TryRemoveFromInventoryForVault(ObjectGuid objectGuid, out WorldObject item)
         {
-            if (!TryRemoveFromInventory(objectGuid, out item))
-                return false;
+            return TryRemoveFromInventory(objectGuid, out item);
+        }
+
+        /// <summary>The client messages of TryRemoveFromInventoryWithNetworking, for an item <see cref="TryRemoveFromInventoryForVault"/> took that the Vault now has.</summary>
+        public void SendRemovedForVault(WorldObject item)
+        {
+            if (Session == null)
+                return;
 
             Session.Network.EnqueueSend(
                 new GameMessagePublicUpdateInstanceID(item, PropertyInstanceId.Container, ObjectGuid.Invalid),
@@ -296,7 +303,23 @@ namespace ACE.Server.WorldObjects
                 UpdateCoinValue();
 
             Session.Network.EnqueueSend(new GameMessageDeleteObject(item));
+        }
 
+        /// <summary>
+        /// Puts an item <see cref="TryRemoveFromInventoryForVault"/> took back at its place, in memory only: the client never saw it go.
+        /// Items taken together go back in the reverse order. False when its pack is gone; the caller then sends it as a new item.
+        /// </summary>
+        public bool TryReturnFromVault(WorldObject item, uint containerId, int placement)
+        {
+            if (containerId == Guid.Full)
+                return TryAddToInventory(item, placement, limitToMainPackOnly: true, burdenCheck: false);
+
+            if (GetInventoryItem(containerId) is not Container pack || pack.ContainerId != Guid.Full || !pack.TryAddToInventory(item, placement, limitToMainPackOnly: true, burdenCheck: false))
+                return false;
+
+            // as TryAddToInventory does for an item it puts in a side pack
+            EncumbranceVal += item.EncumbranceVal ?? 0;
+            Value += item.Value ?? 0;
             return true;
         }
 
@@ -3693,6 +3716,28 @@ namespace ACE.Server.WorldObjects
         // Game Action Handlers - Misc
         // ===========================
 
+        /// <summary>The longest inscription the retail client's field accepts (LayoutDesc 0x2100006B, element 0x1000013E).</summary>
+        public const int MaxInscriptionLength = 300;
+
+        /// <summary>
+        /// Why an inscription's text is refused, or null when it can be saved (empty text erases). Over the retail field's length only a modified
+        /// client sends; control characters (line breaks included) and invisible format characters (a right-to-left override, a zero-width space)
+        /// would let the text pass for something else, such as a forged "Inscribed by" line.
+        /// </summary>
+        public static string InscriptionTextRefusal(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return null;
+
+            if (text.Length > MaxInscriptionLength)
+                return $"Inscriptions are limited to {MaxInscriptionLength} characters.";
+
+            if (text.Any(c => char.IsControl(c) || char.GetUnicodeCategory(c) == System.Globalization.UnicodeCategory.Format))
+                return "Inscriptions can't contain line breaks or hidden characters.";
+
+            return null;
+        }
+
         /// <summary>
         /// This method processes the Game Action (F7B1) Set Inscription (0x00BF)
         /// This is raised when we:
@@ -3729,6 +3774,14 @@ namespace ACE.Server.WorldObjects
                         doInscribe = true;
                     else if (item.ScribeName == Name && item.ScribeAccount == Account.AccountName)
                         doInscribe = true;
+                }
+
+                if (doInscribe && InscriptionTextRefusal(inscriptionText) is { } refusal)
+                {
+                    // the text itself is never logged
+                    log.Warn($"{Name} sent a refused {inscriptionText.Length}-character inscription for 0x{itemGuid:X8}: {refusal}");
+                    ChatPacket.SendServerMessage(Session, refusal, ChatMessageType.System);
+                    return;
                 }
 
                 if (doInscribe)

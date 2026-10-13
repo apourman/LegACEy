@@ -20,6 +20,8 @@ public interface IInventoryPort
     void Select(uint itemId);
     /// <summary>Uses an item as retail does on a double-click.</summary>
     void Use(uint itemId);
+    /// <summary>The pointer is over an item, or over none with zero: while retail waits for a target, its cursor shows whether the item is a valid one.</summary>
+    void Hover(uint itemId);
     /// <summary>Selects an item and asks the server to appraise it, as retail does on a right-click. The appraisal window opens for the item when its response arrives.</summary>
     void Assess(uint itemId);
     /// <summary>Drops an item of the player's on the ground, as retail does for one released over the world.</summary>
@@ -237,6 +239,9 @@ public sealed class FakeInventoryPort : IInventoryPort
     public void OpenContainer(uint containerId) => Commands.Add($"open 0x{containerId:X8}");
     public void Select(uint itemId) => Commands.Add($"select 0x{itemId:X8}");
     public void Use(uint itemId) => Commands.Add($"use 0x{itemId:X8}");
+    /// <summary>The item last reported under the pointer, or zero. Kept apart from <see cref="Commands"/>: a hover is not a retail action.</summary>
+    public uint Hovered { get; private set; }
+    public void Hover(uint itemId) => Hovered = itemId;
     public void Assess(uint itemId) => Commands.Add($"assess 0x{itemId:X8}");
     public void DropOnGround(uint itemId) => Commands.Add($"drop 0x{itemId:X8}");
     public void MoveToContainer(uint itemId, uint containerId, int slotIndex) => Commands.Add($"move 0x{itemId:X8} to 0x{containerId:X8} slot {slotIndex}");

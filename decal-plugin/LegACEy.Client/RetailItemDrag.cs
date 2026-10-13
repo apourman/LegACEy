@@ -62,7 +62,14 @@ internal sealed class RetailItemDrag
             "8B 81 10 06 00 00 85 C0 74 32 56 8B B1 10 06 00 00 33 C0 85 F6 57 76 16"), HandOffSource,
             "ThisCall (UIElement* item): scrolls the list so the item is in view (ItemList derives from ListBox)"),
         new NativeUiEntry("CInputManager::IsActionInProgress", 0x00431AF0, NativeUiCatalogue.Bytes("56 8B 74 24 08 33 D2 8B C6 F7 B1 F8 00 00 00 8B 81 F0 00 00 00 8D 04 90"),
-            HandOffSource, "ThisCall (uint action) -> bool on ICIDM::s_cidm (0x00837FF4); StartDragandDrop asks it for action 7")
+            HandOffSource, "ThisCall (uint action) -> bool on ICIDM::s_cidm (0x00837FF4); StartDragandDrop asks it for action 7"),
+        new NativeUiEntry("UIElementManager::SetMouseCapture", 0x0045D350, NativeUiCatalogue.Bytes("8B 44 24 04 56 8B F1 39 86 4C 02 00 00 74 1B"), HandOffSource,
+            "ThisCall (UIElement* element): m_pMouseCapture (+0x24C), counted (+0x2C8); MouseUpEvent releases it once"),
+        new NativeUiEntry("UIElementManager::ReleaseMouseCapture", 0x0045D390, NativeUiCatalogue.Bytes("56 8B F1 8B 86 4C 02 00 00 85 C0 74 3A 3B 44 24 08 75 34"), HandOffSource,
+            "ThisCall (UIElement* element): one count off when the element holds the capture; the last clears it"),
+        new NativeUiEntry("UIElementManager::MouseDownEvent stores the press, then gives it to the capture holder", 0x0045DCE8, NativeUiCatalogue.Bytes(
+            "89 AE 08 03 00 00 89 9E 0C 03 00 00 8B 86 4C 02 00 00 85 C0 0F 85 D4 00 00 00"), HandOffSource,
+            "offset reference: press point (+0x308, +0x30C), then with a capture holder (+0x24C) no hit test of the element under the pointer")
     };
     private const string HandOffSource = "acclient.pdb (C:\\Turbine\\Asheron's Call, a near build) for names; our objdump read of installed acclient.exe";
     // The inventory panel's item lists: gm3DItemsUI's pack contents, then gmBackpackUI's two (gm*UI::PostInit).
@@ -93,6 +100,9 @@ internal sealed class RetailItemDrag
     private delegate void ScrollToShowFn(IntPtr list, IntPtr item);
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate byte IsActionInProgressFn(IntPtr inputManager, uint action);
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void SetMouseCaptureFn(IntPtr manager, IntPtr element);
+    private const int MouseCaptureOffset = 0x24C;
     private static readonly IntPtr InputManagerInstance = new(0x00837FF4);
 
     private readonly Action<string> _log;
@@ -105,6 +115,17 @@ internal sealed class RetailItemDrag
     private readonly BeginDragFn? _beginDrag;
     private readonly AbsoluteFn? _absoluteX;
     private readonly AbsoluteFn? _absoluteY;
+    private readonly SetMouseCaptureFn? _setCapture;
+    private readonly SetMouseCaptureFn? _releaseCapture;
+    private readonly SetMouseCaptureFn? _setFocus;
+    // Checked on its own: something in the running client patches this function's first instruction (seen 12 Oct), and a failure here must
+    // only cost the focus clear, never drag and drop. The pattern starts past the patched prologue (push esi; mov esi,ecx; mov eax,[esi+0x328]).
+    private static readonly IReadOnlyList<NativeUiEntry> FocusEntries = new[]
+    {
+        new NativeUiEntry("UIElementManager::SetFocusElement body", 0x0045B979, NativeUiCatalogue.Bytes("57 8B 7C 24 0C 3B C7 74 4E 85 C0 74 1A 6A 00 6A 00 6A 2F 50"), HandOffSource,
+            "ThisCall (UIElement* element) at 0x0045B970: keyboard focus (+0x328); the element losing it is told (vtable +0xB4), so a text box commits what was typed")
+    };
+    private const int FocusElementOffset = 0x328;
     private bool _loggedInventory;
 
     public RetailItemDrag(Func<uint, int, byte[]> readMemory, Action<string> log)
@@ -124,6 +145,45 @@ internal sealed class RetailItemDrag
         _beginDrag = Function<BeginDragFn>(0x004E3F60);
         _absoluteX = Function<AbsoluteFn>(0x0069FE00);
         _absoluteY = Function<AbsoluteFn>(0x0069FE30);
+        _setCapture = Function<SetMouseCaptureFn>(0x0045D350);
+        _releaseCapture = Function<SetMouseCaptureFn>(0x0045D390);
+        if (NativeUiCatalogue.Validate(readMemory, log, FocusEntries))
+            _setFocus = Function<SetMouseCaptureFn>(0x0045B970);
+        else
+            log($"Retail's keyboard focus is left alone on presses in LegACEy windows; SetFocusElement starts {BitConverter.ToString(readMemory(0x0045B970, 24))}.");
+    }
+
+    /// <summary>
+    /// A press on a LegACEy window takes the keyboard focus from retail's element, as a press anywhere else in retail does: a typed split
+    /// amount is committed then, before a drag from our window splits the stack by the slider's old value.
+    /// </summary>
+    public void ClearKeyboardFocus()
+    {
+        if (_setFocus == null) return;
+        var manager = Marshal.ReadIntPtr(ManagerInstance);
+        if (manager != IntPtr.Zero && Marshal.ReadIntPtr(manager, FocusElementOffset) != IntPtr.Zero) _setFocus(manager, IntPtr.Zero);
+    }
+
+    /// <summary>
+    /// Gives the next press to the item, as if it were pressed on: the client's press goes to the mouse capture holder instead of the
+    /// element under the pointer (a toolbar shortcut, a window's frame). Call before the client sees the press, and
+    /// <see cref="ReleasePress"/> once it has: the item takes the capture again on the press, and the client's release frees only one.
+    /// </summary>
+    public void CapturePress(IntPtr item)
+    {
+        if (!Available || item == IntPtr.Zero) return;
+        var manager = Marshal.ReadIntPtr(ManagerInstance);
+        if (manager != IntPtr.Zero) _setCapture!(manager, item);
+    }
+
+    /// <summary>Takes back every count of the capture the item holds, so later presses reach what is under the pointer again.</summary>
+    public void ReleasePress(IntPtr item)
+    {
+        if (!Available || item == IntPtr.Zero) return;
+        var manager = Marshal.ReadIntPtr(ManagerInstance);
+        // Bounded: the count is the client's, and a stray one must not spin here.
+        for (var i = 0; i < 16 && manager != IntPtr.Zero && Marshal.ReadIntPtr(manager, MouseCaptureOffset) == item; i++)
+            _releaseCapture!(manager, item);
     }
 
     public bool Available { get; }

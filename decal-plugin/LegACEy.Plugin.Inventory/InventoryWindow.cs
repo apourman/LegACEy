@@ -30,7 +30,7 @@ namespace LegACEy.Plugin.Inventory;
 /// </summary>
 public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZone, IRetailItemDropTarget
 {
-    internal const uint BackpackIcon = 0x0600127E;
+    internal const uint BackpackIcon = InventorySnapshotBuilder.MainPackIcon;
     internal const string Title = "Inventory";
     // The pyreal stack's icon in the portal.
     private const uint PyrealIcon = 0x06001080;
@@ -87,6 +87,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     // How many presses in a row the press was, as the platform counts them: two or more is a double-click.
     private int _pressClicks;
     private uint _dragged;
+    // The item last reported under the pointer, so the port hears of each change once.
+    private uint _hovered;
     // The items picked with Ctrl and Shift in the open pack, and the modifiers held when the press began.
     private readonly InventorySelection _selection = new();
     private KeyModifiers _pressModifiers;
@@ -128,6 +130,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         AddHandler(InputElement.PointerMovedEvent, OnMoved, RoutingStrategies.Bubble, handledEventsToo: true);
         AddHandler(InputElement.PointerReleasedEvent, OnReleased, RoutingStrategies.Bubble, handledEventsToo: true);
         AddHandler(InputElement.PointerCaptureLostEvent, (_, _) => EndDrag(), handledEventsToo: true);
+        AddHandler(InputElement.PointerExitedEvent, (_, _) => Hover(0), handledEventsToo: true);
 
         _paperdoll.SlotsPressed += ToggleSlots;
         _paperdoll.SetSlotsOn(_showSlots);
@@ -243,8 +246,12 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private void OnMoved(object? sender, PointerEventArgs e)
     {
-        if (_press is not { } press) return;
         var point = e.GetPosition(this);
+        if (_press is not { } press)
+        {
+            Hover(SlotAt(point)?.Tag is InventorySlotId hovered ? TargetOf(hovered) : 0);
+            return;
+        }
         if (_dragged == 0)
         {
             if (!PastThreshold(point)) return;
@@ -309,12 +316,12 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     /// <summary>
     /// A release outside every slot: an item goes to the LegACEy window under the pointer, if that window takes it (a Vault deposit).
-    /// Side packs stay here.
+    /// Packs stay here.
     /// </summary>
     private void HandOffOutside(uint dragged)
     {
         var snapshot = _port.Snapshot;
-        if (_dragHost == null || snapshot.SidePacks.Any(pack => pack.Id == dragged) || !snapshot.Contains(dragged)) return;
+        if (_dragHost == null || PackOf(snapshot, dragged) != null || !snapshot.Contains(dragged)) return;
         if (_dragHost.DeliverAtPointer(dragged, KindOf(snapshot, dragged).Name)) return;
         // Retail did not take the drag when it left the window (the retail panel shows no element for the item): only a release over
         // the world sends anything.
@@ -404,6 +411,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
                 _picked = slot.Container;
                 Render(_port.Snapshot);
             }
+            // The main pack is the character: a click selects them, or makes them the target of an item in use (a healing kit).
+            if (TargetOf(slot) is var character and not 0) _port.Select(character);
             return;
         }
         if (slot.ItemId == 0) return;
@@ -502,6 +511,14 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             }
     }
 
+    /// <summary>Tells the port which item the pointer is over, once per change, so retail's target cursor can judge it.</summary>
+    private void Hover(uint itemId)
+    {
+        if (itemId == _hovered) return;
+        _hovered = itemId;
+        _port.Hover(itemId);
+    }
+
     /// <summary>The slot under a point of this window, or null over anything the window does not draw as a slot.</summary>
     private DerethSlot? SlotAt(Point point)
     {
@@ -510,18 +527,26 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         return null;
     }
 
-    /// <summary>What a press on a slot carries: its item, or a side pack. Zero for an empty slot and for the main pack, which is not dragged.</summary>
+    /// <summary>
+    /// What a press on a slot carries: its item, a side pack, or the main pack, which is the character and only goes to retail (a
+    /// shortcut on the bar). Zero for an empty slot.
+    /// </summary>
     private uint DraggedId(InventorySlotId slot)
     {
         if (slot.Place != SlotPlace.Pack) return slot.ItemId;
-        return slot.Container != 0 && _port.Snapshot.SidePacks.Any(pack => pack.Id == slot.Container) ? slot.Container : 0;
+        var s = _port.Snapshot;
+        return slot.Container != 0 && (slot.Container == s.MainPack.Id || s.SidePacks.Any(pack => pack.Id == slot.Container)) ? slot.Container : 0;
     }
+
+    /// <summary>The object a slot stands for when it is selected or targeted: its item, or the character for the main pack.</summary>
+    private uint TargetOf(InventorySlotId slot) =>
+        slot.Place != SlotPlace.Pack ? slot.ItemId : slot.Container != 0 && slot.Container == _port.Snapshot.MainPack.Id ? slot.Container : 0;
 
     private GameImage? DragImage(uint id)
     {
         var snapshot = _port.Snapshot;
         var visual = snapshot.Items.FirstOrDefault(item => item.Id == id)?.Visual ?? snapshot.Wielded.FirstOrDefault(item => item.Id == id)?.Visual
-            ?? new ItemVisual(snapshot.SidePacks.FirstOrDefault(pack => pack.Id == id)?.Icon ?? 0, 0, 0, 0);
+            ?? new ItemVisual(PackOf(snapshot, id)?.Icon ?? 0, 0, 0, 0);
         return ItemIcon.Draw(_art, visual.Underlay, visual.Icon, visual.Overlay, 0, visual.UiEffects);
     }
 
@@ -540,7 +565,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private static (bool Accepted, Action<IInventoryPort> Send)? Judge(IInventoryPort port, uint dragged, InventorySlotId target, bool external = false)
     {
         var s = port.Snapshot;
-        if (!external && !s.Contains(dragged)) return null;
+        if (!external && !s.Contains(dragged) || dragged == s.MainPack.Id) return null;
         if (s.SidePacks.Any(pack => pack.Id == dragged)) return PackOnto(s, dragged, target);
         switch (target.Place)
         {
