@@ -38,8 +38,12 @@ public sealed class WindowDefinition
     /// Another window this one stands in for, such as a compact view of it: this one opens where that one was last left, and
     /// where this one is left is where that one opens. Each keeps its own size.
     /// </param>
+    /// <param name="dragsFromContent">
+    /// No title bar: a press does not start a move. The window's content starts one with <see cref="WindowManager.BeginMove"/>, on the presses
+    /// that should drag it, so the rest of the window (its buttons and slots) stays a click.
+    /// </param>
     public WindowDefinition(string id, string title, int width, int height, int titleBarHeight = 28, IClientTheme? theme = null, WindowResizing? resizing = null,
-        string? sharesLocationWith = null)
+        string? sharesLocationWith = null, bool dragsFromContent = false)
     {
         if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("A window id is required.", nameof(id));
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
@@ -53,6 +57,7 @@ public sealed class WindowDefinition
         Theme = theme;
         Resizing = resizing;
         SharesLocationWith = sharesLocationWith;
+        DragsFromContent = dragsFromContent;
     }
 
     public string Id { get; }
@@ -63,6 +68,7 @@ public sealed class WindowDefinition
     public IClientTheme? Theme { get; }
     public WindowResizing? Resizing { get; }
     public string? SharesLocationWith { get; }
+    public bool DragsFromContent { get; }
 }
 
 /// <summary>The live state of one LegACEy window. The preferred location and size are where the window was last left.</summary>
@@ -295,11 +301,22 @@ public sealed class WindowManager
             _pressPoint = point;
             _pressBounds = window.Bounds;
         }
-        else if (point.Y - window.Location.Y < window.TitleBarHeight)
+        else if (!window.Definition.DragsFromContent && point.Y - window.Location.Y < window.TitleBarHeight)
         {
             _dragging = window;
             _dragOffset = new Point(point.X - window.Location.X, point.Y - window.Location.Y);
         }
+        return true;
+    }
+
+    /// <summary>Starts a move of a window from its content, at the pointer's point: its content calls this on a press that should drag it.</summary>
+    public bool BeginMove(string id, Point point)
+    {
+        var window = Get(id);
+        if (window == null || _dragging != null) return false;
+        _resizeEdges = WindowEdges.None;
+        _dragging = window;
+        _dragOffset = new Point(point.X - window.Location.X, point.Y - window.Location.Y);
         return true;
     }
 
@@ -416,7 +433,7 @@ public sealed class WindowManager
     /// <summary>The definition at this manager's scale: what its window measures on screen.</summary>
     private WindowDefinition Scaled(WindowDefinition definition) => Scale == 1 ? definition : new WindowDefinition(
         definition.Id, definition.Title, Scaled(definition.Width), Scaled(definition.Height), Scaled(definition.TitleBarHeight), definition.Theme,
-        definition.Resizing is { } resizing ? new WindowResizing(Scaled(resizing.Minimum)) : null, definition.SharesLocationWith);
+        definition.Resizing is { } resizing ? new WindowResizing(Scaled(resizing.Minimum)) : null, definition.SharesLocationWith, definition.DragsFromContent);
 
     private Size Scaled(Size size, double? scale = null) => new(Scaled(size.Width, scale), Scaled(size.Height, scale));
     private int Scaled(int length, double? scale = null) => Math.Max(1, (int)Math.Round(length * (scale ?? Scale)));
