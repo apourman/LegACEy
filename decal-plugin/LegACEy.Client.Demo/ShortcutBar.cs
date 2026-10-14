@@ -39,6 +39,9 @@ public sealed class ShortcutBar : Decorator, IDisposable
     private readonly int _firstIndex;
     private readonly Func<bool> _uiLocked;
     private readonly Action _startMove;
+    private readonly Func<System.Drawing.Point> _pointer;
+    private readonly Action? _tagClick;
+    private System.Drawing.Point? _tagPressAt;
     // The tag first, then one slot per shortcut.
     private readonly StackPanel _row = new() { Orientation = Orientation.Horizontal, Spacing = Gap, VerticalAlignment = VerticalAlignment.Center };
     private readonly ShortcutSlotView?[] _shown = new ShortcutSlotView?[SlotCount];
@@ -52,8 +55,10 @@ public sealed class ShortcutBar : Decorator, IDisposable
     /// <param name="art">Game art for the icons; null draws a placeholder.</param>
     /// <param name="uiLocked">Whether retail's UI is locked: a locked bar does not move.</param>
     /// <param name="startMove">Starts the window's move, from the pointer's place, on a press on the frame or the tag.</param>
+    /// <param name="pointer">The pointer's place now, in screen pixels: a tag press and release at one place is a click.</param>
+    /// <param name="tagClick">Run on a click on the row tag; null for a tag that does nothing but drag.</param>
     public ShortcutBar(int row, int firstIndex, IRetailToolbarPort port, Func<uint, ShortcutItem?> itemOf, IGameArtSource? art,
-        Func<bool> uiLocked, Action startMove)
+        Func<bool> uiLocked, Action startMove, Func<System.Drawing.Point> pointer, Action? tagClick)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _itemOf = itemOf ?? throw new ArgumentNullException(nameof(itemOf));
@@ -61,6 +66,8 @@ public sealed class ShortcutBar : Decorator, IDisposable
         _firstIndex = firstIndex;
         _uiLocked = uiLocked ?? throw new ArgumentNullException(nameof(uiLocked));
         _startMove = startMove ?? throw new ArgumentNullException(nameof(startMove));
+        _pointer = pointer ?? throw new ArgumentNullException(nameof(pointer));
+        _tagClick = tagClick;
 
         _row.Children.Add(new Border
         {
@@ -85,13 +92,30 @@ public sealed class ShortcutBar : Decorator, IDisposable
         {
             if (e.GetCurrentPoint(hit).Properties.IsLeftButtonPressed && !_uiLocked()) _startMove();
         };
+        // A tag press that ends where the pointer started is a click; a move in between was a drag of the bar.
+        RowTag.PointerPressed += (_, e) =>
+        {
+            if (e.GetCurrentPoint(RowTag).Properties.IsLeftButtonPressed) _tagPressAt = _pointer();
+        };
+        RowTag.PointerReleased += (_, e) =>
+        {
+            var pressedAt = _tagPressAt;
+            _tagPressAt = null;
+            if (pressedAt is { } at && at == _pointer()) _tagClick?.Invoke();
+        };
+        // A press that ends off the tag is not a click on it, so a stale press cannot toggle later.
+        RowTag.PointerExited += (_, _) => _tagPressAt = null;
+        RowTag.PointerCaptureLost += (_, _) => _tagPressAt = null;
         Child = hit;
         Refresh();
         port.Changed += Refresh;
     }
 
-    /// <summary>The bar's row tag: a press on it drags the bar.</summary>
+    /// <summary>The bar's row tag: a press on it drags the bar, and a click on it runs the tag's click.</summary>
     public Control RowTag => (Control)_row.Children[0];
+
+    /// <summary>The hover name of the row tag: what a click on it does.</summary>
+    public void SetTagTip(string tip) => ToolTip.SetTip(RowTag, tip);
 
     /// <summary>The slot at a position in the row, zero-based: where the player clicks it.</summary>
     public Control SlotAt(int position) => (Control)_row.Children[position + 1];
@@ -107,6 +131,10 @@ public sealed class ShortcutBar : Decorator, IDisposable
             toolbar.Left - gap - (int)Math.Round(bar.Width * scale),
             toolbar.Bottom - (int)Math.Round(bar.Height * scale));
     }
+
+    /// <summary>The place for a bar 4 DIP above another bar at <paramref name="row"/>: the same left edge, its top 4 DIP above the other's.</summary>
+    public static System.Drawing.Point AboveRow(System.Drawing.Point row, double scale) =>
+        new(row.X, row.Y - (int)Math.Round(4 * scale) - (int)Math.Round(BarHeight * scale));
 
     /// <summary>Shows the port's shortcuts for this row, with the items the player holds. A slot whose item is gone shows empty.</summary>
     public void Refresh()
