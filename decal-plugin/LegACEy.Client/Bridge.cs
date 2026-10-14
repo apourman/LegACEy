@@ -225,6 +225,7 @@ public static unsafe class Bridge
         return (uint)flags;
     }
 
+    internal static void SetCombatMode(int mode) => Check(_calls.SetCombatMode(mode), nameof(SetCombatMode));
     internal static void UseItem(uint id, int state) => Check(_calls.UseItem((int)id, state), nameof(UseItem));
     internal static void SelectItem(uint id) => Check(_calls.SelectItem((int)id), nameof(SelectItem));
     internal static void RequestId(uint id) => Check(_calls.RequestId((int)id), nameof(RequestId));
