@@ -137,6 +137,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private Size? _dragOffset;
     private RetailTakeoverLifecycle? _barTakeover;
     // The Dereth toolbar over retail's toolbar: its port, window, surface and takeover, held only while the switch is on.
+    private readonly SelectionMeters _selectionMeters = new();
     private NativeRetailToolbarPort? _toolbarPort;
     private RetailToolbar? _toolbar;
     private ScreenSurface? _toolbarSurface;
@@ -335,6 +336,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // The appraisal response is a game event like any other, so it is read whether or not the LegACEy server channel is up.
         var appraisal = GameChannelTransport.GameEventPayload(type, raw, AppraisalResponse.IdentifyEvent);
         if (appraisal != null) Guard(() => _appraisal.Receive(appraisal));
+        // The selection plaque's health and mana, which retail asks the server for itself when the selection changes.
+        _selectionMeters.Receive(type, raw);
         // An item put in a pack, wielded or put in the world: Decal raised no event for some of these (a split stack, a pickup), so the
         // inventory is read again on the next frame.
         foreach (var moved in InventoryMoveEvents)
@@ -1445,7 +1448,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool CreateRetailToolbar()
     {
         if (!NativeUi.Ready || _device == IntPtr.Zero || !RetailPanelCatalogueValid() || !RetailToolbarCatalogueValid()) return false;
-        _toolbarPort = new NativeRetailToolbarPort(Log, () => _retailPanels.Any(panel => panel.Holds) ? _inventoryWindowOpen : (bool?)null, () => _inGame);
+        _toolbarPort = new NativeRetailToolbarPort(Log, () => _retailPanels.Any(panel => panel.Holds) ? _inventoryWindowOpen : (bool?)null,
+            () => _inGame, _selectionMeters, _appraisal, _inventory.TargetMode);
         var toolbar = new RetailToolbar(_toolbarPort, ToggleMenuWindow);
         toolbar.Measure(Avalonia.Size.Infinity);
         var size = toolbar.DesiredSize;

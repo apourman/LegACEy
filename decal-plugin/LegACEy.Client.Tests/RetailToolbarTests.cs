@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Avalonia;
 using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
+using LegACEy.Client.DecalPlugin;
 using LegACEy.Client.PanelHost;
 using LegACEy.Client.Themes;
 
@@ -103,17 +105,106 @@ public sealed class RetailToolbarTests
         Assert.Equal(new[] { (11, true), (11, false) }, port.Requests.Select(r => ((int)r.Panel, r.Open)));
     });
 
+    [Fact]
+    public void With_nothing_selected_use_and_examine_do_nothing() => RenderThread.Run(() =>
+    {
+        var port = new FakeToolbarPort();
+        using var panel = Open(port, out var toolbar);
+        panel.Tick();
+
+        Click(panel, toolbar, toolbar.UseButton);
+        Click(panel, toolbar, toolbar.ExamineButton);
+
+        Assert.Equal(0, port.UseCount);
+        Assert.Equal(0, port.ExamineCount);
+    });
+
+    [Fact]
+    public void Use_and_examine_act_on_the_selected_object() => RenderThread.Run(() =>
+    {
+        var port = new FakeToolbarPort { Selection = new RetailSelection(0x50000001, "Ivory Quarter Staff", SelectionKind.ItemWithMana, 0.82f) };
+        using var panel = Open(port, out var toolbar);
+        panel.Tick();
+
+        Click(panel, toolbar, toolbar.UseButton);
+        Click(panel, toolbar, toolbar.ExamineButton);
+
+        Assert.Equal(1, port.UseCount);
+        Assert.Equal(1, port.ExamineCount);
+    });
+
+    [Fact]
+    public void The_plaque_follows_the_selection_through_nothing_creature_mana_item_and_stack() => RenderThread.Run(() =>
+    {
+        var creature = new RetailSelection(0x80000001, "Drudge Skulker", SelectionKind.Creature, 0.64f);
+        var hurt = creature with { Meter = 0.3f };
+        var staff = new RetailSelection(0x50000002, "Ivory Quarter Staff", SelectionKind.ItemWithMana, 0.82f);
+        var pyreals = new RetailSelection(0x50000003, "Pyreals", SelectionKind.Stack);
+        var port = new FakeToolbarPort();
+        using var panel = Open(port, out _);
+        panel.Tick();
+
+        // Each state is shown as a fresh toolbar in that state draws it, so a change made anywhere reaches the plaque on the next frame.
+        foreach (var selection in new RetailSelection?[] { creature, hurt, staff, pyreals, null })
+        {
+            port.Selection = selection;
+            port.Raise();
+            panel.Tick();
+            AssertDrawn(Render(p => p.Selection = selection), panel);
+        }
+    });
+
+    [Fact]
+    public void Health_and_mana_are_read_from_the_server_events_by_object_id()
+    {
+        var meters = new SelectionMeters();
+
+        meters.Receive(0xF7B0, GameEvent(0x01C0, 0x80000001, 0.25f));
+        meters.Receive(0xF7B0, GameEvent(0x0264, 0x50000002, 0.82f, success: 1));
+
+        Assert.Equal(0.25f, meters.Health(0x80000001));
+        Assert.Null(meters.Health(0x50000002));
+        Assert.Equal(0.82f, meters.Mana(0x50000002));
+        Assert.Null(meters.Mana(0x80000001));
+
+        // An item with no mana answers with success 0: no reading, not an empty meter.
+        meters.Receive(0xF7B0, GameEvent(0x0264, 0x50000003, 0f, success: 0));
+        Assert.Null(meters.Mana(0x50000003));
+    }
+
+    /// <summary>A game event as the server sends it: the 0xF7B0 header, the character, a sequence number, the event type, then the body.</summary>
+    private static byte[] GameEvent(uint eventType, uint objectId, float value, uint? success = null)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new BinaryWriter(stream))
+        {
+            writer.Write(0xF7B0u);
+            writer.Write(0x50000001u);
+            writer.Write(0u);
+            writer.Write(eventType);
+            writer.Write(objectId);
+            writer.Write(value);
+            if (success is { } flag) writer.Write(flag);
+        }
+        return stream.ToArray();
+    }
+
     /// <summary>A port that reads a panel as open only after it was asked to open it, as the native port does for the panels it cannot read yet.</summary>
     private sealed class RequestedOnlyPort : IRetailToolbarPort
     {
         private readonly HashSet<RetailPanel> _open = new();
 
         public RetailStance Stance => RetailStance.Peace;
+        public RetailSelection? Selection => null;
         public List<(RetailPanel Panel, bool Open)> Requests { get; } = new();
 
         public event Action? Changed;
 
         public void ToggleStance() { }
+
+        public void UseSelected() { }
+
+        public void ExamineSelected() { }
 
         public bool IsPanelOpen(RetailPanel panel) => _open.Contains(panel);
 
@@ -137,6 +228,9 @@ public sealed class RetailToolbarTests
         public RetailStance Stance { get; set; } = RetailStance.Peace;
         public int StanceToggles { get; private set; }
         public List<(RetailPanel Panel, bool Open)> PanelRequests { get; } = new();
+        public RetailSelection? Selection { get; set; }
+        public int UseCount { get; private set; }
+        public int ExamineCount { get; private set; }
 
         public event Action? Changed;
 
@@ -146,6 +240,10 @@ public sealed class RetailToolbarTests
             StanceToggles++;
             Stance = Stance == RetailStance.Peace ? RetailStance.Melee : RetailStance.Peace;
         }
+
+        public void UseSelected() => UseCount++;
+
+        public void ExamineSelected() => ExamineCount++;
 
         public bool IsPanelOpen(RetailPanel panel) => _open.Contains(panel);
 

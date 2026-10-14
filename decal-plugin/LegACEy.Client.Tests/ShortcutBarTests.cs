@@ -124,6 +124,9 @@ public sealed class ShortcutBarTests
         public bool IsPanelOpen(RetailPanel panel) => false;
         public void SetPanelOpen(RetailPanel panel, bool open) { }
         public void UseShortcut(int index) => Used.Add(index);
+        public RetailSelection? Selection => null;
+        public void UseSelected() { }
+        public void ExamineSelected() { }
 
         public event Action? Changed;
 
