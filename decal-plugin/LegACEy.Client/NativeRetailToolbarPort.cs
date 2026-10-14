@@ -21,10 +21,15 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     private readonly Action<string> _log;
     // Supplies the inventory window's open state while a takeover holds the panel; null when none does.
     private readonly Func<bool?> _takenInventoryOpen;
+    // True only in game: the shortcut chain belongs to the character, so it is not read at login, portal space or after logoff.
+    private readonly Func<bool> _inGame;
     private readonly Dictionary<RetailPanel, bool> _requested = new();
+    // Poll reads into the buffer and compares in place, so a frame allocates nothing when the list has not moved.
+    private readonly RetailShortcut[] _shortcutBuffer = new RetailShortcut[RetailToolbarCatalogue.ShortcutSlots];
+    private readonly RetailShortcut[] _lastShortcuts = new RetailShortcut[RetailToolbarCatalogue.ShortcutSlots];
+    private int _lastShortcutCount;
     private RetailStance _lastStance;
     private bool _lastInventoryOpen;
-    private IReadOnlyList<RetailShortcut> _lastShortcuts = Array.Empty<RetailShortcut>();
     private bool _noManagerLogged;
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -43,10 +48,11 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     private static readonly UseShortcutFn UseShortcutNative = Marshal.GetDelegateForFunctionPointer<UseShortcutFn>(
         new IntPtr(RetailToolbarCatalogue.UseShortcut));
 
-    public NativeRetailToolbarPort(Action<string> log, Func<bool?> takenInventoryOpen)
+    public NativeRetailToolbarPort(Action<string> log, Func<bool?> takenInventoryOpen, Func<bool> inGame)
     {
         _log = log;
         _takenInventoryOpen = takenInventoryOpen;
+        _inGame = inGame;
     }
 
     public event Action? Changed;
@@ -75,10 +81,20 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
         return element != IntPtr.Zero && NativeUi.IsVisible(element);
     }
 
-    /// <summary>retail's shortcut list, read from the ShortCutManager: each filled slot's index and object id.</summary>
-    public IReadOnlyList<RetailShortcut> Shortcuts => ReadShortcuts();
+    /// <summary>retail's shortcut list, read from the ShortCutManager: each filled slot's index and object id. Empty outside the game.</summary>
+    public IReadOnlyList<RetailShortcut> Shortcuts
+    {
+        get
+        {
+            var buffer = new RetailShortcut[RetailToolbarCatalogue.ShortcutSlots];
+            return buffer.AsSpan(0, ReadShortcuts(buffer)).ToArray();
+        }
+    }
 
-    /// <summary>Uses a shortcut as the number key does, through retail's toolbar. Nothing is used when the toolbar is not retail's.</summary>
+    /// <summary>
+    /// Uses a shortcut through retail's toolbar with fromKey true. Retail's notice that uses a shortcut (RecvNotice_UseShortcut) passes the
+    /// same true, as the number key does; the sender of that notice on a slot click is not traced. Nothing is used when the toolbar is not retail's.
+    /// </summary>
     public void UseShortcut(int index)
     {
         var toolbar = NativeUi.GetElement(NativeUi.RootToolbarField);
@@ -105,31 +121,35 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     {
         var stance = Stance;
         var inventoryOpen = IsPanelOpen(RetailPanel.Inventory);
-        var shortcuts = ReadShortcuts();
-        if (stance == _lastStance && inventoryOpen == _lastInventoryOpen && shortcuts.SequenceEqual(_lastShortcuts)) return;
+        var count = ReadShortcuts(_shortcutBuffer);
+        if (stance == _lastStance && inventoryOpen == _lastInventoryOpen
+            && _shortcutBuffer.AsSpan(0, count).SequenceEqual(_lastShortcuts.AsSpan(0, _lastShortcutCount))) return;
         _lastStance = stance;
         _lastInventoryOpen = inventoryOpen;
-        _lastShortcuts = shortcuts;
+        _shortcutBuffer.AsSpan(0, count).CopyTo(_lastShortcuts);
+        _lastShortcutCount = count;
         Changed?.Invoke();
     }
 
     /// <summary>
-    /// The shortcut list. CPlayerSystem's PlayerModule sits at +0x34 and holds the ShortCutManager at its +0x04; the manager's 18 slot
-    /// pointers start at +4, and each filled slot's entry holds the object id at +8. A zero pointer is an empty slot. Row 1 is slots 0 to 8.
+    /// Reads the shortcut list into <paramref name="buffer"/> and returns how many slots are filled. CPlayerSystem's PlayerModule sits at +0x34
+    /// and holds the ShortCutManager at its +0x04; the manager's 18 slot pointers start at +4, and each filled slot's entry holds the object id
+    /// at +8. A zero pointer is an empty slot, and a zero hop before it returns nothing. Row 1 is slots 0 to 8. Outside the game, nothing is read.
     /// </summary>
-    private static IReadOnlyList<RetailShortcut> ReadShortcuts()
+    private int ReadShortcuts(RetailShortcut[] buffer)
     {
-        var shortcuts = new List<RetailShortcut>();
+        if (!_inGame()) return 0;
         var system = Marshal.ReadIntPtr(new IntPtr(RetailToolbarCatalogue.PlayerSystem));
-        if (system == IntPtr.Zero) return shortcuts;
+        if (system == IntPtr.Zero) return 0;
         var manager = Marshal.ReadIntPtr(system, RetailToolbarCatalogue.PlayerModuleOffset + 4);
-        if (manager == IntPtr.Zero) return shortcuts;
+        if (manager == IntPtr.Zero) return 0;
+        var count = 0;
         for (var slot = 0; slot < RetailToolbarCatalogue.ShortcutSlots; slot++)
         {
             var entry = Marshal.ReadIntPtr(manager, 4 + 4 * slot);
-            if (entry != IntPtr.Zero) shortcuts.Add(new RetailShortcut(slot, unchecked((uint)Marshal.ReadInt32(entry, 8))));
+            if (entry != IntPtr.Zero) buffer[count++] = new RetailShortcut(slot, unchecked((uint)Marshal.ReadInt32(entry, 8)));
         }
-        return shortcuts;
+        return count;
     }
 
     private static IntPtr PanelManager()

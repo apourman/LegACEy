@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
 
@@ -20,7 +21,7 @@ public sealed record ShortcutSlotView(int Index, ShortcutItem? Item);
 /// number in the corner, or only its key number when empty. A click uses the slot. The frame and the tag drag the bar, unless retail's UI
 /// is locked; a press on a slot never does.
 /// </summary>
-public sealed class ShortcutBar : Decorator
+public sealed class ShortcutBar : Decorator, IDisposable
 {
     /// <summary>The bar's height in DIPs, the toolbar's.</summary>
     public const int BarHeight = 48;
@@ -41,6 +42,8 @@ public sealed class ShortcutBar : Decorator
     // The tag first, then one slot per shortcut.
     private readonly StackPanel _row = new() { Orientation = Orientation.Horizontal, Spacing = Gap, VerticalAlignment = VerticalAlignment.Center };
     private readonly ShortcutSlotView?[] _shown = new ShortcutSlotView?[SlotCount];
+    // The icon each slot's art was drawn into; a slot's icon is disposed when the slot is rebuilt or the bar closes.
+    private readonly WriteableBitmap?[] _icons = new WriteableBitmap?[SlotCount];
 
     /// <param name="row">The row's number, shown on its tag.</param>
     /// <param name="firstIndex">The slot index of the row's first slot: 0 for row 1, 9 for row 2.</param>
@@ -115,8 +118,19 @@ public sealed class ShortcutBar : Decorator
             var view = new ShortcutSlotView(index, ItemOf(shortcuts, index));
             if (view == _shown[position]) continue;
             _shown[position] = view;
-            _row.Children[position + 1] = Slot(view, position + 1);
+            var previous = _icons[position];
+            _row.Children[position + 1] = Slot(view, position);
+            // The new slot is in place before the old icon goes, so nothing draws a disposed bitmap.
+            previous?.Dispose();
         }
+    }
+
+    /// <summary>Stops following the port and frees the icons. The bar's window is released by the client first.</summary>
+    public void Dispose()
+    {
+        _port.Changed -= Refresh;
+        foreach (var icon in _icons) icon?.Dispose();
+        Array.Clear(_icons, 0, _icons.Length);
     }
 
     private ShortcutItem? ItemOf(IReadOnlyList<RetailShortcut> shortcuts, int index)
@@ -126,9 +140,10 @@ public sealed class ShortcutBar : Decorator
         return null;
     }
 
-    private DerethSlot Slot(ShortcutSlotView view, int key)
+    private DerethSlot Slot(ShortcutSlotView view, int position)
     {
-        var slot = new DerethSlot(Contents(view, key)) { Width = SlotSize, Height = SlotSize };
+        _icons[position] = null;
+        var slot = new DerethSlot(Contents(view, position)) { Width = SlotSize, Height = SlotSize };
         var pressed = false;
         slot.PointerPressed += (_, e) =>
         {
@@ -145,11 +160,13 @@ public sealed class ShortcutBar : Decorator
         return slot;
     }
 
-    private Control Contents(ShortcutSlotView view, int key)
+    private Control Contents(ShortcutSlotView view, int position)
     {
+        var key = position + 1;
         var layers = new Grid();
         if (view.Item is not { } item)
         {
+            // An empty slot shows its key number, centred, as the mockup does.
             layers.Children.Add(new TextBlock
             {
                 Text = key.ToString(), FontFamily = DerethPalette.Title, FontSize = 14, Foreground = EmptyKey,
@@ -157,7 +174,7 @@ public sealed class ShortcutBar : Decorator
             });
             return layers;
         }
-        layers.Children.Add(Icon(item.Visual));
+        layers.Children.Add(Icon(item.Visual, position));
         if (item.StackCount > 1) layers.Children.Add(DerethItemCells.StackCount(item.StackCount));
         layers.Children.Add(new TextBlock
         {
@@ -167,13 +184,14 @@ public sealed class ShortcutBar : Decorator
         return layers;
     }
 
-    private Control Icon(ItemVisual visual)
+    private Control Icon(ItemVisual visual, int position)
     {
         var bitmap = _art == null ? null
             : GameArtImageExtension.CreateBitmap(ItemIcon.Draw(_art, visual.Underlay, visual.Icon, visual.Overlay, 0, visual.UiEffects, visual.Plate));
         if (bitmap == null)
             return new TextBlock { Text = "?", FontFamily = DerethPalette.Body, FontSize = 12, Foreground = DerethPalette.MutedBrush,
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        _icons[position] = bitmap;
         return new Image { Source = bitmap, Width = 28, Height = 28, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
     }
 }

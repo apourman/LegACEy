@@ -1430,7 +1430,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (_toolbarSurface == null && !CreateRetailToolbar()) return;
             _toolbarPort!.Poll();
             _toolbarTakeover!.Tick(false, GameDevice.ViewportSize(_device));
-            EnsureShortcutBar();
+            // The bar stands beside the toolbar only while the takeover holds retail's element; otherwise it closes with it.
+            if (_toolbarTakeover.Holds) EnsureShortcutBar();
+            else CloseShortcutBar();
             _toolbarRenderer!.RenderFrame(_inGame, _postUiDrawHook?.IsInstalled == true);
         }
         catch (Exception exception)
@@ -1443,7 +1445,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool CreateRetailToolbar()
     {
         if (!NativeUi.Ready || _device == IntPtr.Zero || !RetailPanelCatalogueValid() || !RetailToolbarCatalogueValid()) return false;
-        _toolbarPort = new NativeRetailToolbarPort(Log, () => _retailPanels.Any(panel => panel.Holds) ? _inventoryWindowOpen : (bool?)null);
+        _toolbarPort = new NativeRetailToolbarPort(Log, () => _retailPanels.Any(panel => panel.Holds) ? _inventoryWindowOpen : (bool?)null, () => _inGame);
         var toolbar = new RetailToolbar(_toolbarPort, ToggleMenuWindow);
         toolbar.Measure(Avalonia.Size.Infinity);
         var size = toolbar.DesiredSize;
@@ -1470,6 +1472,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             () => _windows?.BeginMove(ShortcutRowWindowId, _pointer));
         bar.Measure(Avalonia.Size.Infinity);
         var width = (int)Math.Ceiling(bar.DesiredSize.Width);
+        // No title bar: the bar drags from its content (DragsFromContent), so titleBarHeight is not used for a drag. It is set to the bar's
+        // height only because a window's title bar must be at least 1 and at most its height.
         var definition = new WindowDefinition(ShortcutRowWindowId, "Shortcut row 1", width, ShortcutBar.BarHeight,
             titleBarHeight: ShortcutBar.BarHeight, theme: new DerethClientTheme(), dragsFromContent: true);
         var location = ShortcutBar.DefaultLocation(_toolbarSurface!.Bounds, new Size(width, ShortcutBar.BarHeight), WindowScale);
@@ -1480,14 +1484,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _unsubscribeShortcutItems = () => _inventory.Changed -= refresh;
     }
 
-    /// <summary>Closes shortcut row 1 and stops its refresh. Its saved position stays where the player left it.</summary>
+    /// <summary>Closes shortcut row 1, stops its refresh and frees its icons. Its saved position stays where the player left it.</summary>
     private void CloseShortcutBar()
     {
         _unsubscribeShortcutItems?.Invoke();
         _unsubscribeShortcutItems = null;
         if (_shortcutBar == null) return;
+        var bar = _shortcutBar;
         _shortcutBar = null;
         ReleaseFeatureWindow(ShortcutRowWindowId);
+        bar.Dispose();
     }
 
     /// <summary>The icon and stack count of an object the player holds, from the inventory snapshot; null when it is not held.</summary>

@@ -33,7 +33,7 @@ public sealed class ShortcutBarTests
         port.Set(changed);
         panel.Tick();
 
-        AssertDrawn(Render(changed, held), panel);
+        PanelFrameAssert.AssertDrawnLike(Render(changed, held), panel);
         // A slot holding an item shows it, so the filled frame differs from the one with no shortcuts at all.
         Assert.NotEqual(filled, Render(Array.Empty<RetailShortcut>(), held));
     });
@@ -95,22 +95,6 @@ public sealed class ShortcutBarTests
         using var panel = Open(new FakeShortcutPort(shortcuts), held, out _);
         panel.Tick();
         return panel.Frame.Pixels.ToArray();
-    }
-
-    /// <summary>
-    /// The panel's frame must show what a fresh bar in the same state draws. A mismatch names the pixels that differ. A redrawn edge is
-    /// blended over the pixels it replaces, so it may differ from a fresh draw by a level or two; a change of content differs by far more.
-    /// </summary>
-    private static void AssertDrawn(byte[] fresh, AvaloniaPanel panel)
-    {
-        var actual = panel.Frame.Pixels.ToArray();
-        var stride = panel.Frame.Stride / 4;
-        var differing = new List<(int X, int Y)>();
-        for (var i = 0; i + 4 <= fresh.Length; i += 4)
-            if (Enumerable.Range(0, 4).Any(channel => Math.Abs(fresh[i + channel] - actual[i + channel]) > 2))
-                differing.Add(((i / 4) % stride, (i / 4) / stride));
-        if (differing.Count == 0) return;
-        Assert.Fail($"{differing.Count} pixels differ, from ({differing.Min(p => p.X)},{differing.Min(p => p.Y)}) to ({differing.Max(p => p.X)},{differing.Max(p => p.Y)}).");
     }
 
     /// <summary>A press and release at the middle of a control, where the player clicks it.</summary>
