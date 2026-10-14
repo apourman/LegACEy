@@ -177,14 +177,14 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     /// </summary>
     public void AddShortcut(int index, uint objectId)
     {
-        var toolbar = RetailToolbarElement();
+        var toolbar = _inGame() ? RetailToolbarElement() : IntPtr.Zero;
         if (toolbar != IntPtr.Zero) AddShortcutNative(toolbar, objectId, index, true);
     }
 
-    /// <summary>Takes the shortcut out of the slot through retail's remove, which sends RemoveShortCut to the server.</summary>
+    /// <summary>Takes the shortcut out of the slot through retail's remove, which sends RemoveShortCut to the server. Nothing outside the game.</summary>
     public void RemoveShortcut(int index)
     {
-        var toolbar = RetailToolbarElement();
+        var toolbar = _inGame() ? RetailToolbarElement() : IntPtr.Zero;
         if (toolbar != IntPtr.Zero) RemoveShortcutInSlotNumNative(toolbar, index, true);
     }
 

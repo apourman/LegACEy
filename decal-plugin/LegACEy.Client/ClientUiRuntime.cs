@@ -150,6 +150,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // Shortcut rows 1 and 2: their own windows beside the toolbar, held while the takeover is, and their refresh on inventory changes.
     private const string ShortcutRowWindowId = "shortcut-row-1";
     private const string ShortcutRow2WindowId = "shortcut-row-2";
+    // The Dereth toolbar's surface id. It is not a managed window, so drops reach it by its surface.
+    private const string ToolbarSurfaceId = "toolbar";
     private ShortcutBar? _shortcutBar;
     private ShortcutBar? _shortcutRow2;
     // The slot a shortcut drag started from, shared by both rows: a drop on either row moves the shortcut.
@@ -1007,7 +1009,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         public bool DeliverAtPointer(uint itemId, string itemName)
         {
             // The toolbar is not a managed window, so a drop on it is delivered to its own surface.
-            if (_owner.TopSurfaceAt(_owner._pointer) == "toolbar") return _owner.DeliverToToolbar(itemId, itemName);
+            if (_owner.TopSurfaceAt(_owner._pointer) == ToolbarSurfaceId)
+                return _owner.DeliverToToolbar((content, point) => content is IRetailItemDropTarget target && target.RetailDrop(itemId, itemName, point));
             if (_owner._windows is not { } windows) return false;
             var window = windows.HitTest(_owner._pointer);
             if (window == null) return false;
@@ -1022,6 +1025,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
         public bool DeliverManyAtPointer(IReadOnlyList<uint> itemIds)
         {
+            if (_owner.TopSurfaceAt(_owner._pointer) == ToolbarSurfaceId)
+                return _owner.DeliverToToolbar((content, point) => content is IItemSetDropTarget target && target.DropMany(itemIds, point));
             if (_owner._windows is not { } windows) return false;
             var window = windows.HitTest(_owner._pointer);
             if (window == null) return false;
@@ -1562,12 +1567,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         return null;
     }
 
-    /// <summary>Gives retail's toolbar back and drops the Dereth toolbar. A give-back that fails is logged and retried on the next call.</summary>
-    /// <summary>An item from a LegACEy window released on the toolbar: the toolbar takes it only on its backpack.</summary>
-    private bool DeliverToToolbar(uint itemId, string itemName)
+    /// <summary>
+    /// A LegACEy window's item released on the toolbar, as the toolbar's content takes it: only its backpack takes one. A shortcut dragged
+    /// off a bar is not an item drop: released on the backpack it is only removed from its bar.
+    /// </summary>
+    private bool DeliverToToolbar(Func<object, Avalonia.Point, bool> deliver)
     {
-        if (_toolbarSurface is not { } surface || surface.Panel.Content is not IRetailItemDropTarget target) return false;
-        try { return target.RetailDrop(itemId, itemName, surface.Panel.ToContent(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y)); }
+        if (_shortcutDrag.Slot != null || _toolbarSurface is not { } surface) return false;
+        var point = surface.Panel.ToContent(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y);
+        try { return deliver(surface.Panel.Content, point); }
         catch (Exception exception)
         {
             ToolbarFailed(exception);
@@ -1576,23 +1584,26 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Moves an item to the main pack's first free slot, as retail's backpack takes it. Nothing moves when the item is already in the main
-    /// pack or the pack is full.
+    /// Moves the items to the main pack's free slots in order, as retail's backpack takes them. An item already in the main pack is skipped,
+    /// and the rest stop when the pack is full. True when one moved.
     /// </summary>
-    private void MoveToMainPack(uint itemId)
+    private bool MoveToMainPack(IReadOnlyList<uint> itemIds)
     {
         var snapshot = _inventory.Snapshot;
         var main = snapshot.MainPack;
-        if (snapshot.Items.Any(item => item.Id == itemId && item.Container == main.Id)) return;
-        var used = new HashSet<int>(snapshot.Items.Where(item => item.Container == main.Id).Select(item => item.Slot));
-        for (var slot = 0; slot < main.Capacity; slot++)
+        using var free = snapshot.FreeSlots(main).GetEnumerator();
+        var moved = false;
+        foreach (var itemId in itemIds)
         {
-            if (used.Contains(slot)) continue;
-            _inventory.MoveToContainer(itemId, main.Id, slot);
-            return;
+            if (snapshot.Items.Any(item => item.Id == itemId && item.Container == main.Id)) continue;
+            if (!free.MoveNext()) break;
+            _inventory.MoveToContainer(itemId, main.Id, free.Current);
+            moved = true;
         }
+        return moved;
     }
 
+    /// <summary>Gives retail's toolbar back and drops the Dereth toolbar. A give-back that fails is logged and retried on the next call.</summary>
     private void ReleaseRetailToolbar()
     {
         CloseShortcutBar();
@@ -1893,7 +1904,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_barSurface is { Visible: true })
             surfaces.Add(new InputSurface("bar", _barSurface.Location.X, _barSurface.Location.Y, _barSurface.Bounds.Width, _barSurface.Bounds.Height, 0, _barSurface.Panel.WantsKeyboard));
         if (_toolbarSurface is { Visible: true })
-            surfaces.Add(new InputSurface("toolbar", _toolbarSurface.Location.X, _toolbarSurface.Location.Y, _toolbarSurface.Bounds.Width, _toolbarSurface.Bounds.Height, 0, _toolbarSurface.Panel.WantsKeyboard));
+            surfaces.Add(new InputSurface(ToolbarSurfaceId, _toolbarSurface.Location.X, _toolbarSurface.Location.Y, _toolbarSurface.Bounds.Width, _toolbarSurface.Bounds.Height, 0, _toolbarSurface.Panel.WantsKeyboard));
         if (_windows != null)
         {
             var z = _windows.ZOrder.Count;
@@ -1910,7 +1921,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private ScreenSurface? SurfaceById(string? id)
     {
         if (id == "bar") return _barSurface;
-        if (id == "toolbar") return _toolbarSurface;
+        if (id == ToolbarSurfaceId) return _toolbarSurface;
         if (id != null && _featureSurfaces.TryGetValue(id, out var surface)) return surface;
         return null;
     }

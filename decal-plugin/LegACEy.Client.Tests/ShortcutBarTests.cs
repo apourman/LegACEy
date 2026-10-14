@@ -176,12 +176,28 @@ public sealed class ShortcutBarTests
         row1.Tick();
         row2.Tick();
 
-        Drag(row1, first, first.SlotAt(1), drag, first, first.SlotAt(4));
+        // The shortcut leaves its slot when the drag begins, and lands on release.
+        BeginDrag(row1, first, first.SlotAt(1));
+        Assert.Equal(new[] { "remove 1" }, port.Edits);
+        Release(row1, drag, first, first.SlotAt(4));
         Assert.Equal(new[] { "remove 1", "remove 4", "add 4 0x100", "add 1 0x200" }, port.Edits);
         port.Edits.Clear();
 
-        Drag(row1, first, first.SlotAt(0), drag, second, second.SlotAt(0));
+        BeginDrag(row1, first, first.SlotAt(0));
+        Release(row1, drag, second, second.SlotAt(0));
         Assert.Equal(new[] { "remove 0", "add 9 0x300" }, port.Edits);
+    });
+
+    [Fact]
+    public void A_drop_of_the_item_a_slot_already_holds_changes_nothing() => RenderThread.Run(() =>
+    {
+        var port = new FakeShortcutPort(new[] { new RetailShortcut(3, 0x100) });
+        using var panel = Open(port, new Dictionary<uint, ShortcutItem>(), out var bar);
+        panel.Tick();
+
+        Assert.True(bar.RetailDrop(0x100, string.Empty, Centre(bar, bar.SlotAt(3))));
+
+        Assert.Empty(port.Edits);
     });
 
     [Fact]
@@ -192,7 +208,8 @@ public sealed class ShortcutBarTests
         using var panel = Open(port, new Dictionary<uint, ShortcutItem>(), out var bar, drag: drag);
         panel.Tick();
 
-        Drag(panel, bar, bar.SlotAt(1), drag);
+        BeginDrag(panel, bar, bar.SlotAt(1));
+        Release(panel, drag);
 
         Assert.Equal(new[] { "remove 1" }, port.Edits);
     });
@@ -235,12 +252,19 @@ public sealed class ShortcutBarTests
         panel.PointerUp(centre.X, centre.Y);
     }
 
+    /// <summary>A press on a slot and a move 20 px to the right: the drag of its shortcut begins.</summary>
+    private static void BeginDrag(AvaloniaPanel panel, ShortcutBar bar, Control source)
+    {
+        var start = Centre(bar, source);
+        panel.PointerDown(start.X, start.Y);
+        panel.PointerMove(start.X + 20, start.Y);
+    }
+
     /// <summary>
-    /// A drag of the shortcut in <paramref name="source"/> from <paramref name="bar"/>, released 20 px to the right. The host hands the
-    /// release to <paramref name="target"/> of <paramref name="targetBar"/>, as the client does for a window under the pointer. With no target
-    /// the release is over nothing, and no LegACEy window takes it.
+    /// The release of a drag begun on a slot. The host hands it to <paramref name="target"/> of <paramref name="targetBar"/>, as the client
+    /// does for a window under the pointer. With no target the release is over nothing, and no LegACEy window takes it.
     /// </summary>
-    private static void Drag(AvaloniaPanel panel, ShortcutBar bar, Control source, FakeItemDragHost drag, ShortcutBar? targetBar = null, Control? target = null)
+    private static void Release(AvaloniaPanel panel, FakeItemDragHost drag, ShortcutBar? targetBar = null, Control? target = null)
     {
         drag.Relay = (id, name) =>
         {
@@ -248,10 +272,7 @@ public sealed class ShortcutBarTests
             targetBar.RetailDrop(id, name, Centre(targetBar, target));
             return true;
         };
-        var start = Centre(bar, source);
-        panel.PointerDown(start.X, start.Y);
-        panel.PointerMove(start.X + 20, start.Y);
-        panel.PointerUp(start.X + 20, start.Y);
+        panel.PointerUp(0, 0);
     }
 
     /// <summary>The middle of a control, in the bar's coordinates: where the player points at it.</summary>

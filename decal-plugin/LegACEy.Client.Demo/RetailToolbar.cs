@@ -63,7 +63,7 @@ public interface IRetailToolbarPort
 /// The Dereth toolbar that replaces retail's: the stance, six window buttons and the LegACEy menu, then Use, a selection plaque, Examine
 /// and the backpack, in one row. The shortcut bars are not in it yet. It shows the port's state and asks the port for each change.
 /// </summary>
-public sealed class RetailToolbar : Decorator, IRetailItemDropTarget
+public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDropTarget
 {
     /// <summary>The window buttons, in the order the toolbar shows them, with the names their hover text shows.</summary>
     private static readonly (RetailPanel Panel, DerethGlyph Glyph, string Name)[] WindowButtons =
@@ -84,7 +84,7 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget
 
     private readonly IRetailToolbarPort _port;
     private readonly Action _openMenu;
-    private readonly Action<uint> _moveToMainPack;
+    private readonly Func<IReadOnlyList<uint>, bool> _moveToMainPack;
     private readonly DerethMedallion _stance;
     private readonly Dictionary<RetailPanel, DerethMedallion> _windows = new();
     private readonly DerethMedallion _menu;
@@ -94,8 +94,8 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget
 
     /// <param name="port">Retail's toolbar, as the client reaches it.</param>
     /// <param name="openMenu">Opens or closes the LegACEy menu. The caller shows the menu's state with <see cref="SetMenuOpen"/>.</param>
-    /// <param name="moveToMainPack">Moves an item to the player's main pack: what a drop on the backpack does.</param>
-    public RetailToolbar(IRetailToolbarPort port, Action openMenu, Action<uint> moveToMainPack)
+    /// <param name="moveToMainPack">Moves the items to the player's main pack, in order, as a drop on the backpack does. True when one moved.</param>
+    public RetailToolbar(IRetailToolbarPort port, Action openMenu, Func<IReadOnlyList<uint>, bool> moveToMainPack)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _openMenu = openMenu ?? throw new ArgumentNullException(nameof(openMenu));
@@ -151,13 +151,15 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget
     public void SetMenuOpen(bool open) => _menu.IsOpen = open;
 
     /// <summary>A drop on the backpack goes to the main pack, as retail's backpack takes it. Elsewhere on the toolbar it is not taken.</summary>
-    public bool RetailDrop(uint itemId, string itemName, Point position)
+    public bool RetailDrop(uint itemId, string itemName, Point position) => itemId != 0 && OnBackpack(position) && _moveToMainPack([itemId]);
+
+    /// <summary>A set of items dropped on the backpack goes to the main pack together. Elsewhere on the toolbar it is not taken.</summary>
+    public bool DropMany(IReadOnlyList<uint> itemIds, Point position) => OnBackpack(position) && _moveToMainPack(itemIds);
+
+    private bool OnBackpack(Point position)
     {
         var backpack = _windows[RetailPanel.Inventory];
-        if (itemId == 0 || backpack.TranslatePoint(new Point(0, 0), this) is not { } origin
-            || !new Rect(origin, backpack.Bounds.Size).Contains(position)) return false;
-        _moveToMainPack(itemId);
-        return true;
+        return backpack.TranslatePoint(new Point(0, 0), this) is { } origin && new Rect(origin, backpack.Bounds.Size).Contains(position);
     }
 
     /// <summary>The toolbar draws no drop indicator; a drop is judged on release.</summary>

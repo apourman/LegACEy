@@ -82,7 +82,7 @@ public sealed class RetailToolbarTests
             menuClicks++;
             // The client opens its menu, then tells the toolbar it is open.
             toolbar!.SetMenuOpen(true);
-        }, _ => { }), Width, Height);
+        }, _ => true), Width, Height);
         panel.Tick();
 
         Click(panel, toolbar!, toolbar!.MenuButton);
@@ -155,10 +155,15 @@ public sealed class RetailToolbarTests
     });
 
     [Fact]
-    public void A_drop_on_the_backpack_moves_the_item_to_the_main_pack_and_a_drop_elsewhere_on_the_toolbar_is_not_taken() => RenderThread.Run(() =>
+    public void A_drop_on_the_backpack_moves_the_items_to_the_main_pack_and_a_drop_elsewhere_or_with_no_room_is_not_taken() => RenderThread.Run(() =>
     {
         var moved = new List<uint>();
-        using var panel = Open(new FakeToolbarPort(), out var toolbar, moved.Add);
+        bool MoveToMainPack(IReadOnlyList<uint> ids)
+        {
+            moved.AddRange(ids);
+            return true;
+        }
+        using var panel = Open(new FakeToolbarPort(), out var toolbar, MoveToMainPack);
         panel.Tick();
 
         var backpack = toolbar.ButtonFor(RetailPanel.Inventory);
@@ -167,8 +172,16 @@ public sealed class RetailToolbarTests
         var socialCentre = social.TranslatePoint(new Point(social.Bounds.Width / 2, social.Bounds.Height / 2), toolbar)!.Value;
 
         Assert.True(toolbar.RetailDrop(0x500, string.Empty, backpackCentre));
+        Assert.True(toolbar.DropMany(new uint[] { 0x501, 0x502 }, backpackCentre));
         Assert.False(toolbar.RetailDrop(0x500, string.Empty, socialCentre));
-        Assert.Equal(new[] { 0x500u }, moved);
+        Assert.Equal(new uint[] { 0x500, 0x501, 0x502 }, moved);
+
+        // A pack with no room for the item takes nothing, and the drop is not taken.
+        using var full = Open(new FakeToolbarPort(), out var fullToolbar, _ => false);
+        full.Tick();
+        var fullBackpack = fullToolbar.ButtonFor(RetailPanel.Inventory);
+        Assert.False(fullToolbar.RetailDrop(0x500, string.Empty,
+            fullBackpack.TranslatePoint(new Point(fullBackpack.Bounds.Width / 2, fullBackpack.Bounds.Height / 2), fullToolbar)!.Value));
     });
 
     [Fact]
@@ -311,10 +324,10 @@ public sealed class RetailToolbarTests
         Assert.Fail($"{differing.Count} pixels differ, from ({differing.Min(p => p.X)},{differing.Min(p => p.Y)}) to ({differing.Max(p => p.X)},{differing.Max(p => p.Y)}).");
     }
 
-    private static AvaloniaPanel Open(IRetailToolbarPort port, out RetailToolbar toolbar, Action<uint>? moveToMainPack = null)
+    private static AvaloniaPanel Open(IRetailToolbarPort port, out RetailToolbar toolbar, Func<IReadOnlyList<uint>, bool>? moveToMainPack = null)
     {
         RetailToolbar? created = null;
-        var panel = AvaloniaPanel.Create(() => created = new RetailToolbar(port, () => { }, moveToMainPack ?? (_ => { })), Width, Height);
+        var panel = AvaloniaPanel.Create(() => created = new RetailToolbar(port, () => { }, moveToMainPack ?? (_ => true)), Width, Height);
         toolbar = created!;
         return panel;
     }
