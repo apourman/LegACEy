@@ -243,6 +243,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             catch (Exception exception) { Log($"Keys typed in LegACEy text boxes also reach the game: {exception.Message}"); }
             try { _inventory.TargetMode = new RetailTargetMode(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"Using an item on a target in LegACEy windows is off: {exception.Message}"); }
+            // A move of the selected stack splits by retail's amount only with the toolbar catalogue (its split entries) valid.
+            if (RetailToolbarCatalogueValid()) _inventory.Split = new StackSplitter(new NativeRetailSplitPort());
             LoadPlugins();
         }
         catch

@@ -46,6 +46,14 @@ internal static class RetailToolbarCatalogue
     internal const uint SplitAmount = 0x0081D7EC;
     /// <summary>The selected stack's size (int32), the split amount's upper bound; SplitStackSizeRead already byte-checks this address.</summary>
     internal const uint SplitStackSize = 0x0081D7F0;
+    /// <summary>CM_Inventory::Event_StackableSplitTo3D (uint stackId, int amount), cdecl: sends game action 0x0056 (drop part of a stack).</summary>
+    internal const uint StackableSplitTo3D = 0x006ACF20;
+    /// <summary>The opcode store (mov [edx], 0x56) inside Event_StackableSplitTo3D, which ties the address to the sender.</summary>
+    internal const uint StackableSplitTo3DOpcode = 0x006ACF7A;
+    /// <summary>CM_Inventory::Event_StackableSplitToContainer (uint stackId, uint containerId, int place, int amount), cdecl: game action 0x0055.</summary>
+    internal const uint StackableSplitToContainer = 0x006AD030;
+    /// <summary>The opcode store (mov [edx], 0x55) inside Event_StackableSplitToContainer, which ties the address to the sender.</summary>
+    internal const uint StackableSplitToContainerOpcode = 0x006AD08A;
     /// <summary>The typed or slid split amount is written to the global 0x0081D7EC, clamped to [1, stack size].</summary>
     internal const uint SplitAmountWrite = 0x004BFC02;
     /// <summary>The stack size of the selected object (0x0081D7F0), the clamp's upper bound.</summary>
@@ -96,6 +104,15 @@ internal static class RetailToolbarCatalogue
         new NativeUiEntry("ItemHolder::AttemptMerge reads the split amount (0x0081D7EC)", SplitAmountConsumer,
             NativeUiCatalogue.Bytes("8B 15 EC D7 81 00"), Source, "instruction reference (mov edx, [0x81D7EC])"),
         new NativeUiEntry("gmToolbarUI selection change resets the split amount (0x0081D7EC)", SplitSelectionReset,
-            NativeUiCatalogue.Bytes("89 2D EC D7 81 00"), Source, "instruction reference (mov [0x81D7EC], ebp)")
+            NativeUiCatalogue.Bytes("89 2D EC D7 81 00"), Source, "instruction reference (mov [0x81D7EC], ebp)"),
+        // The PDB names these in CM_Inventory.obj; the exe is the PDB address plus +0xF60 (two functions agree on it, and the end bytes match).
+        new NativeUiEntry("CM_Inventory::Event_StackableSplitTo3D (game action 0x0056)", StackableSplitTo3D,
+            NativeUiCatalogue.Bytes("83 EC 0C 53 56 57 E8 75 A4 E9 FF"), Source, "cdecl (uint stackId, int amount); PDB +0xF60"),
+        new NativeUiEntry("CM_Inventory::Event_StackableSplitTo3D opcode store (0x0056)", StackableSplitTo3DOpcode,
+            NativeUiCatalogue.Bytes("C7 02 56 00 00 00"), Source, "instruction reference (mov dword ptr [edx], 0x56)"),
+        new NativeUiEntry("CM_Inventory::Event_StackableSplitToContainer (game action 0x0055)", StackableSplitToContainer,
+            NativeUiCatalogue.Bytes("83 EC 0C 53 56 57 E8 65 A3 E9 FF"), Source, "cdecl (uint stackId, uint containerId, int place, int amount); PDB +0xF60"),
+        new NativeUiEntry("CM_Inventory::Event_StackableSplitToContainer opcode store (0x0055)", StackableSplitToContainerOpcode,
+            NativeUiCatalogue.Bytes("C7 02 55 00 00 00"), Source, "instruction reference (mov dword ptr [edx], 0x55)")
     };
 }

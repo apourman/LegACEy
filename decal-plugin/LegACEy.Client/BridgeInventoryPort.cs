@@ -73,10 +73,22 @@ internal sealed class BridgeInventoryPort : IInventoryPort
         Bridge.RequestId(itemId);
     }
 
-    public void DropOnGround(uint itemId) => Bridge.DropItem(itemId);
+    // The selected stack's split by retail's amount, when the catalogue is valid; null keeps every move whole, as before.
+    public StackSplitter? Split { get; set; }
+
+    // A selected stack below the split amount drops that amount, not the whole stack.
+    public void DropOnGround(uint itemId)
+    {
+        if (Split?.TrySplitTo3D(itemId) == true) return;
+        Bridge.DropItem(itemId);
+    }
 
     // Stack false places the item in the slot rather than adding it to a stack there.
-    public void MoveToContainer(uint itemId, uint containerId, int slotIndex) => Bridge.MoveItem(itemId, containerId, slotIndex, stack: false);
+    public void MoveToContainer(uint itemId, uint containerId, int slotIndex)
+    {
+        if (Split?.TrySplitToContainer(itemId, containerId, slotIndex) == true) return;
+        Bridge.MoveItem(itemId, containerId, slotIndex, stack: false);
+    }
 
     // An item the snapshot does not hold (one from a chest or corpse) has its valid locations read from the world, the same
     // EquipableSlots key the snapshot reads.
