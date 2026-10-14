@@ -33,6 +33,22 @@ internal static class RetailToolbarCatalogue
     internal const uint ShortCutManagerSlots = 0x005D68B0;
     /// <summary>ShortCutManager::AddShortCut writes the index at entry +4 and the object id at entry +8.</summary>
     internal const uint ShortCutManagerSlotWrites = 0x005D6903;
+    /// <summary>ClientCombatSystem::GetCombatSystem: returns the singleton from 0x0087166C, the receiver of the stance calls below.</summary>
+    internal const uint GetCombatSystem = 0x0056B210;
+    /// <summary>ClientCombatSystem::SetCombatMode (COMBAT_MODE mode, bool sendToServer), ThisCall, ret 8. Modes: 1 peace, 2 melee, 4 missile, 8 magic.</summary>
+    internal const uint SetCombatMode = 0x0056CB80;
+    /// <summary>ClientCombatSystem::ToggleCombatMode, ThisCall, no arguments: the stance button's click.</summary>
+    internal const uint ToggleCombatMode = 0x0056D610;
+    /// <summary>The toolbar's element switch: element id minus 0x10000192 (the stance icons), bounds 0x13.</summary>
+    internal const uint StanceIdSwitch = 0x004BFD6C;
+    /// <summary>...and the case map for those ids: case 0 (ToggleCombatMode) for ids 0x10000192 to 0x10000195.</summary>
+    internal const uint StanceCaseMap = 0x004BFE8C;
+    /// <summary>The typed or slid split amount is written to the global 0x0081D7EC, clamped to [1, stack size].</summary>
+    internal const uint SplitAmountWrite = 0x004BFC02;
+    /// <summary>The stack size of the selected object (0x0081D7F0), the clamp's upper bound.</summary>
+    internal const uint SplitStackSizeRead = 0x004BFBBE;
+    /// <summary>ItemHolder::AttemptMerge reads the split amount for the selected object (0x00588765).</summary>
+    internal const uint SplitAmountConsumer = 0x00588765;
 
     internal static readonly IReadOnlyList<NativeUiEntry> Entries = new[]
     {
@@ -58,7 +74,23 @@ internal static class RetailToolbarCatalogue
         new NativeUiEntry("ShortCutManager::AddShortCut bounds the 18 slots", ShortCutManagerSlots,
             NativeUiCatalogue.Bytes("83 FF 12 7D 68 8B 44 BB 04"), Source, "instruction reference (slot count and slot read)"),
         new NativeUiEntry("ShortCutManager::AddShortCut writes entry index (+4) and object id (+8)", ShortCutManagerSlotWrites,
-            NativeUiCatalogue.Bytes("89 78 04 8B 56 08 89 50 08"), Source, "instruction reference (entry layout)")
+            NativeUiCatalogue.Bytes("89 78 04 8B 56 08 89 50 08"), Source, "instruction reference (entry layout)"),
+        new NativeUiEntry("ClientCombatSystem::GetCombatSystem", GetCombatSystem, NativeUiCatalogue.Bytes("A1 6C 16 87 00 C3"),
+            Source, "Cdecl () -> ClientCombatSystem*, read from 0x0087166C"),
+        new NativeUiEntry("ClientCombatSystem::SetCombatMode", SetCombatMode, NativeUiCatalogue.Bytes("51 53 56 8B F1 8B 46 1C 57 8B 7C 24 14"),
+            Source, "ThisCall (COMBAT_MODE mode, bool sendToServer), ret 8; returns early when the mode is unchanged"),
+        new NativeUiEntry("ClientCombatSystem::ToggleCombatMode", ToggleCombatMode, NativeUiCatalogue.Bytes("56 8B F1 83 7E 1C 01 6A 01 75 11"),
+            Source, "ThisCall, no arguments: peace <-> the default mode, sent to the server (the stance button's click)"),
+        new NativeUiEntry("gmToolbarUI element switch: stance ids 0x10000192.. (element id minus base)", StanceIdSwitch,
+            NativeUiCatalogue.Bytes("05 6E FE FF EF 83 F8 13"), Source, "instruction reference (id base 0x10000192, bound 0x13)"),
+        new NativeUiEntry("gmToolbarUI element switch: case map for ids 0x10000192..0x10000195 (case 0 = ToggleCombatMode)", StanceCaseMap,
+            NativeUiCatalogue.Bytes("00 00 00 00 03 03 03 03"), Source, "data reference (case map)"),
+        new NativeUiEntry("gmToolbarUI split amount write (0x0081D7EC, clamped to the stack size)", SplitAmountWrite,
+            NativeUiCatalogue.Bytes("89 35 EC D7 81 00"), Source, "instruction reference (mov [0x81D7EC], esi)"),
+        new NativeUiEntry("gmToolbarUI split stack size read (0x0081D7F0)", SplitStackSizeRead, NativeUiCatalogue.Bytes("A1 F0 D7 81 00"),
+            Source, "instruction reference (mov eax, [0x81D7F0])"),
+        new NativeUiEntry("ItemHolder::AttemptMerge reads the split amount (0x0081D7EC)", SplitAmountConsumer,
+            NativeUiCatalogue.Bytes("8B 15 EC D7 81 00"), Source, "instruction reference (mov edx, [0x81D7EC])")
     };
 
     private static NativeUiEntry Shared(string name) => RetailTargetMode.Entries.Single(entry => entry.Name == name);
