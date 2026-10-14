@@ -200,6 +200,22 @@ public static unsafe class Bridge
         return found != 0 ? row.ToRead() : null;
     }
 
+    /// <summary>The selected object for the selection plaque, or null when nothing is selected or the world has no such object.</summary>
+    internal static RetailSelection? Selection()
+    {
+        var id = (uint)Fact(BridgeFact.CurrentSelection);
+        if (id == 0) return null;
+        BridgeItem row;
+        int found;
+        Check(_calls.Item((int)id, &row, &found), nameof(Item));
+        if (found == 0) return null;
+        var kind = row.IsCreature != 0 ? SelectionKind.Creature
+            : row.HasMana != 0 ? SelectionKind.ItemWithMana
+            : row.StackCount > 1 ? SelectionKind.Stack
+            : SelectionKind.Other;
+        return new RetailSelection(id, row.ToRead().Name, kind);
+    }
+
     internal static GameStateSnapshot ReadGameState() => new(Text(BridgeText.CharacterName), Text(BridgeText.ServerName),
         Fact(BridgeFact.Health), Fact(BridgeFact.MaxHealth), Fact(BridgeFact.Stamina), Fact(BridgeFact.MaxStamina),
         Fact(BridgeFact.Mana), Fact(BridgeFact.MaxMana));
