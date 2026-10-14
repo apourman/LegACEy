@@ -18,14 +18,6 @@ internal static class RetailToolbarCatalogue
     internal const uint AddShortcut = 0x004BE630;
     /// <summary>gmToolbarUI::RemoveShortcutInSlotNum (int slot, bool sendToServer), ThisCall, ret 8. Returns the object id it removed.</summary>
     internal const uint RemoveShortcutInSlotNum = 0x004BE180;
-    /// <summary>gmToolbarUI::RemoveShortcut (uint objectId, bool sendToServer), ThisCall, ret 8: the slot of an object, cleared.</summary>
-    internal const uint RemoveShortcut = 0x004BE0E0;
-    /// <summary>gmToolbarUI::CreateShortcutToItem (uint objectId, short slot, bool, bool), ThisCall, ret 0x10: a drop onto an occupied slot.</summary>
-    internal const uint CreateShortcutToItem = 0x004BE750;
-    /// <summary>gmToolbarUI::IsShortcutSlotAvailable (int slot), ThisCall, ret 4: whether the slot is empty.</summary>
-    internal const uint IsShortcutSlotAvailable = 0x004BE270;
-    /// <summary>gmToolbarUI::GetFirstEmptyShortcutToTheRightOf (uint slot), ThisCall: the next empty slot, or -1.</summary>
-    internal const uint GetFirstEmptyShortcutToTheRightOf = 0x004BE1F0;
     /// <summary>gmPanelUI's notice sub-object reads the panel count at +0x0C (gmPanelUI+0x604) inside RecvNotice_SetPanelVisibility.</summary>
     internal const uint PanelChildCount = 0x004BD394;
     /// <summary>...and the panel table at +0x04 (gmPanelUI+0x5FC): {element, panelId} pairs, 8 bytes each.</summary>
@@ -81,14 +73,6 @@ internal static class RetailToolbarCatalogue
             Source, "ThisCall (uint objectId, short slot, bool sendToServer), ret 0xC"),
         new NativeUiEntry("gmToolbarUI::RemoveShortcutInSlotNum", RemoveShortcutInSlotNum, NativeUiCatalogue.Bytes("8B 44 24 04 85 C0 56 57 8B F9 7C 51"),
             Source, "ThisCall (int slot, bool sendToServer), ret 8"),
-        new NativeUiEntry("gmToolbarUI::RemoveShortcut", RemoveShortcut, NativeUiCatalogue.Bytes("53 55 56 8B D9 8B 83 3C 06 00 00"),
-            Source, "ThisCall (uint objectId, bool sendToServer), ret 8"),
-        new NativeUiEntry("gmToolbarUI::CreateShortcutToItem", CreateShortcutToItem, NativeUiCatalogue.Bytes("81 EC 9C 00 00 00 55 8B AC 24 A4 00 00 00"),
-            Source, "ThisCall (uint objectId, short slot, bool, bool), ret 0x10"),
-        new NativeUiEntry("gmToolbarUI::IsShortcutSlotAvailable", IsShortcutSlotAvailable, NativeUiCatalogue.Bytes("8B 44 24 04 85 C0 7C 23"),
-            Source, "ThisCall (int slot), ret 4"),
-        new NativeUiEntry("gmToolbarUI::GetFirstEmptyShortcutToTheRightOf", GetFirstEmptyShortcutToTheRightOf, NativeUiCatalogue.Bytes("53 8B 5C 24 08 56"),
-            Source, "ThisCall (uint slot)"),
         new NativeUiEntry("gmPanelUI panel count (notice sub-object +0x0C)", PanelChildCount, NativeUiCatalogue.Bytes("8B 46 0C 33 C9"),
             Source, "instruction reference (child count)"),
         new NativeUiEntry("gmPanelUI panel table (notice sub-object +0x04): {element, panelId}", PanelChildTable,

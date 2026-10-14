@@ -198,10 +198,6 @@ public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
     public bool Contains(uint id) => id != 0 && (MainPack.Id == id || SidePacks.Any(pack => pack.Id == id)
         || Items.Any(item => item.Id == id) || Wielded.Any(item => item.Id == id));
 
-    /// <summary>
-    /// Whether the character carries the object: a side pack, or an item in a pack or worn. The main pack is the character itself, so it
-    /// is not carried. This is the server's MyInventory | MyEquippedItems, which the inscription rule uses.
-    /// </summary>
     /// <summary>The slots of a pack that hold no item, in order. Empty when the pack is full.</summary>
     public IEnumerable<int> FreeSlots(InventoryPack pack)
     {
@@ -210,6 +206,10 @@ public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
             if (!used.Contains(slot)) yield return slot;
     }
 
+    /// <summary>
+    /// Whether the character carries the object: a side pack, or an item in a pack or worn. The main pack is the character itself, so it
+    /// is not carried. This is the server's MyInventory | MyEquippedItems, which the inscription rule uses.
+    /// </summary>
     public bool Carries(uint id) => id != 0 && (SidePacks.Any(pack => pack.Id == id) || Items.Any(item => item.Id == id)
         || Wielded.Any(item => item.Id == id));
 

@@ -255,8 +255,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             catch (Exception exception) { Log($"Keys typed in LegACEy text boxes also reach the game: {exception.Message}"); }
             try { _inventory.TargetMode = new RetailTargetMode(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"Using an item on a target in LegACEy windows is off: {exception.Message}"); }
-            // A move of the selected stack splits by retail's amount only with the toolbar catalogue (its split entries) valid.
-            if (RetailToolbarCatalogueValid()) _inventory.Split = new StackSplitter(new NativeRetailSplitPort());
             LoadPlugins();
         }
         catch
@@ -1446,9 +1444,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         try
         {
+            var switchOn = RetailToolbarSwitchOn();
+            // A give-back that failed is retried every frame until it lands, whatever state the toolbar is in: retail's toolbar is never left hidden.
+            if (_toolbarTakeover != null && (!_windowsEnabled || _toolbarFailed || !switchOn))
+            {
+                ReleaseRetailToolbar();
+                return;
+            }
             // Without windows the toolbar's surface cannot draw; DisableWindows has already given retail's toolbar back.
             if (!_windowsEnabled) return;
-            if (!RetailToolbarSwitchOn())
+            if (!switchOn)
             {
                 _toolbarFailed = false;
                 ReleaseRetailToolbar();
@@ -1475,6 +1480,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (!NativeUi.Ready || _device == IntPtr.Zero || !RetailPanelCatalogueValid() || !RetailToolbarCatalogueValid()) return false;
         _toolbarPort = new NativeRetailToolbarPort(Log, () => _retailPanels.Any(panel => panel.Holds) ? _inventoryWindowOpen : (bool?)null,
             () => _inGame, _selectionMeters, _appraisal, _inventory.TargetMode);
+        // A move of the selected stack splits by retail's amount while the toolbar that shows the amount is up, and only then.
+        _inventory.Split ??= new StackSplitter(new NativeRetailSplitPort());
         var toolbar = new RetailToolbar(_toolbarPort, ToggleMenuWindow, MoveToMainPack);
         toolbar.Measure(Avalonia.Size.Infinity);
         var size = toolbar.DesiredSize;
@@ -1618,6 +1625,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>Gives retail's toolbar back and drops the Dereth toolbar. A give-back that fails is logged and retried on the next call.</summary>
     private void ReleaseRetailToolbar()
     {
+        _inventory.Split = null;
         CloseShortcutBar();
         if (_toolbarTakeover != null)
         {
