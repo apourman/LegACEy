@@ -50,6 +50,14 @@ internal static class RetailToolbarCatalogue
     internal const uint SplitAmountConsumer = 0x00588765;
     /// <summary>A change of selection sets the split amount back to 1 (0x0081D7EC).</summary>
     internal const uint SplitSelectionReset = 0x004C01BD;
+    /// <summary>CPlayerSystem's instance pointer (0x0087119C); its getter at 0x0055E1D0 reads it.</summary>
+    internal const uint PlayerSystem = 0x0087119C;
+    /// <summary>The UI lock passes CPlayerSystem+0x34 on as the PlayerModule receiver (lea ecx, [eax+0x34]).</summary>
+    internal const uint PlayerModuleReceiver = 0x004D0213;
+    /// <summary>PlayerModule sits at CPlayerSystem+0x34, and its ShortCutManager pointer at +0x04.</summary>
+    internal const int PlayerModuleOffset = 0x34;
+    /// <summary>The ShortCutManager's slots: 18, rows 1 and 2.</summary>
+    internal const int ShortcutSlots = 18;
 
     internal static readonly IReadOnlyList<NativeUiEntry> Entries = new[]
     {
@@ -92,6 +100,10 @@ internal static class RetailToolbarCatalogue
         new NativeUiEntry("ItemHolder::AttemptMerge reads the split amount (0x0081D7EC)", SplitAmountConsumer,
             NativeUiCatalogue.Bytes("8B 15 EC D7 81 00"), Source, "instruction reference (mov edx, [0x81D7EC])"),
         new NativeUiEntry("gmToolbarUI selection change resets the split amount (0x0081D7EC)", SplitSelectionReset,
-            NativeUiCatalogue.Bytes("89 2D EC D7 81 00"), Source, "instruction reference (mov [0x81D7EC], ebp)")
+            NativeUiCatalogue.Bytes("89 2D EC D7 81 00"), Source, "instruction reference (mov [0x81D7EC], ebp)"),
+        new NativeUiEntry("CPlayerSystem::s_pPlayerSystem read by its getter (0x0087119C)", 0x0055E1D0,
+            NativeUiCatalogue.Bytes("A1 9C 11 87 00 C3"), Source, "instruction reference (mov eax, [0x87119C]), Cdecl getter"),
+        new NativeUiEntry("PlayerModule receiver: CPlayerSystem+0x34 (lea ecx, [eax+0x34]) in the UI lock", PlayerModuleReceiver,
+            NativeUiCatalogue.Bytes("E8 B8 DF 08 00 8D 48 34 E8 10 41 10 00"), Source, "instruction reference (PlayerModule at +0x34)")
     };
 }

@@ -72,6 +72,23 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void A_window_without_a_title_bar_moves_only_when_its_content_begins_the_move()
+    {
+        var manager = NewManager(300, 200);
+        manager.Open(new WindowDefinition("bar", "Bar", 120, 48, titleBarHeight: 48, dragsFromContent: true), new Point(10, 10));
+
+        // A press on the window is a click for its content: it does not start a move.
+        Assert.True(manager.Press(new Point(25, 25)));
+        manager.Move(new Point(200, 150));
+        Assert.Equal(new Point(10, 10), manager.Get("bar")!.Location);
+
+        Assert.True(manager.BeginMove("bar", new Point(25, 25)));
+        manager.Move(new Point(125, 65));
+        manager.Release();
+        Assert.Equal(new Point(110, 50), manager.Get("bar")!.Location);
+    }
+
+    [Fact]
     public void Positions_are_restored_only_for_the_same_server_character_and_window()
     {
         var path = Path.Combine(Path.GetTempPath(), "legacey-window-tests-" + Guid.NewGuid().ToString("N") + ".txt");
