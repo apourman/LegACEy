@@ -198,7 +198,7 @@ internal static unsafe class DecalCalls
         row->Plate = ItemIcon.PlateFor(unchecked((uint)item.Values(LongValueKey.Category, 0)));
         var name = Encoding.UTF8.GetBytes(item.Name ?? string.Empty);
         Marshal.Copy(name, 0, (IntPtr)row->Name, Math.Min(name.Length, BridgeItem.NameCapacity));
-        row->IsCreature = item.ObjectClass is ObjectClass.Monster or ObjectClass.Npc ? 1 : 0;
+        row->IsCreature = item.ObjectClass is ObjectClass.Monster or ObjectClass.Npc or ObjectClass.Player ? 1 : 0;
         // Gate: Decal's MaximumMana is the item's ItemMaxMana (ACE property 108), read in play for an item with mana.
         row->HasMana = item.Values(LongValueKey.MaximumMana, 0) > 0 ? 1 : 0;
     }

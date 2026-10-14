@@ -95,14 +95,22 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
             if (id == 0)
             {
                 _described = null;
+                _meters.KeepOnly(0);
                 return null;
             }
-            if (_described?.Id != id) _described = Bridge.Selection(id);
-            return _described switch
+            if (_described?.Id != id)
             {
-                { Kind: SelectionKind.Creature } creature => creature with { Meter = _meters.Health(id) },
-                { Kind: SelectionKind.ItemWithMana } item => item with { Meter = _meters.Mana(id) },
-                var other => other
+                _described = Bridge.Selection(id);
+                _meters.KeepOnly(id);
+            }
+            if (_described is not { } described) return null;
+            return described.Kind switch
+            {
+                SelectionKind.Creature => described with { Meter = _meters.Health(id) },
+                SelectionKind.ItemWithMana => described with { Meter = _meters.Mana(id) },
+                // Decal's maximum mana fills in only after an appraisal, so an object the server gave a mana answer is an item with mana too.
+                _ when _meters.Mana(id) is { } mana => described with { Kind = SelectionKind.ItemWithMana, Meter = mana },
+                _ => described
             };
         }
     }
