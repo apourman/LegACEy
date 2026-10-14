@@ -303,6 +303,23 @@ public sealed class RetailToolbarTests
         Assert.Null(meters.Mana(0x50000003));
     }
 
+    [Fact]
+    public void The_snapshot_reports_a_change_in_each_input_and_nothing_when_none_moved()
+    {
+        var snapshot = new RetailToolbarSnapshot();
+        var selection = new RetailSelection(0x50000001, "Ivory Quarter Staff", SelectionKind.ItemWithMana, 0.82f);
+        var shortcuts = new[] { new RetailShortcut(0, 0x50000001) };
+        var none = ReadOnlySpan<RetailShortcut>.Empty;
+
+        Assert.True(snapshot.Update(RetailStance.Peace, 0, null, none));
+        Assert.False(snapshot.Update(RetailStance.Peace, 0, null, none));
+        Assert.True(snapshot.Update(RetailStance.Melee, 0, null, none));
+        Assert.True(snapshot.Update(RetailStance.Melee, 1 << (int)RetailPanel.Skills, null, none));
+        Assert.True(snapshot.Update(RetailStance.Melee, 1 << (int)RetailPanel.Skills, selection, none));
+        Assert.True(snapshot.Update(RetailStance.Melee, 1 << (int)RetailPanel.Skills, selection, shortcuts));
+        Assert.False(snapshot.Update(RetailStance.Melee, 1 << (int)RetailPanel.Skills, selection, shortcuts));
+    }
+
     /// <summary>A game event as the server sends it: the 0xF7B0 header, the character, a sequence number, the event type, then the body.</summary>
     private static byte[] GameEvent(uint eventType, uint objectId, float value, uint? success = null)
     {

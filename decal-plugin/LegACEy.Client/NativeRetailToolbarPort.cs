@@ -10,7 +10,7 @@ namespace LegACEy.Client.DecalPlugin;
 /// The toolbar's port over the installed client. The stance click is retail's combat toggle (ToggleCombatMode), the stance read is Decal's combat mode.
 /// A panel opens or closes through gmPanelUI's notice, by its panel number; the notice needs gmPanelUI, found from the toolbar's element or
 /// else the inventory's. The selection is Decal's current selection; Use goes through Decal's UseItem and Examine through the appraisal
-/// window, never retail's examination panel. <see cref="Poll"/> raises <see cref="Changed"/> when the stance, the inventory's open state,
+/// window, never retail's examination panel. <see cref="Poll"/> raises <see cref="Changed"/> when the stance, any button's panel open state,
 /// the selection or the shortcut list moved, once a frame.
 /// </summary>
 /// <remarks>
@@ -32,11 +32,12 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     private readonly Dictionary<RetailPanel, bool> _requested = new();
     // Poll reads into the buffer and compares in place, so a frame allocates nothing when the list has not moved.
     private readonly RetailShortcut[] _shortcutBuffer = new RetailShortcut[RetailToolbarCatalogue.ShortcutSlots];
-    private readonly RetailShortcut[] _lastShortcuts = new RetailShortcut[RetailToolbarCatalogue.ShortcutSlots];
-    private int _lastShortcutCount;
-    private RetailStance _lastStance;
-    private bool _lastInventoryOpen;
-    private RetailSelection? _lastSelection;
+    private readonly RetailToolbarSnapshot _snapshot = new();
+    // The panels the toolbar's buttons open and show, in any order: Poll reads each one's open state every frame.
+    private static readonly RetailPanel[] ButtonPanels =
+    {
+        RetailPanel.Options, RetailPanel.Skills, RetailPanel.Social, RetailPanel.Magic, RetailPanel.WorldMap, RetailPanel.Quests, RetailPanel.Inventory
+    };
     // The selected object's name, kind and stack count, as read when its id was last seen or it last changed; the meter is applied on top each read.
     private RetailSelection? _described;
     private bool _noManagerLogged;
@@ -225,22 +226,23 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
         if (_described?.Id == id) _described = null;
     }
 
-    /// <summary>Raises <see cref="Changed"/> when the stance, the inventory's open state, the selection or the shortcut list moved since the last call.</summary>
+    /// <summary>Raises <see cref="Changed"/> when the stance, any window panel's open state, the selection or the shortcut list moved since the last call.</summary>
     public void Poll()
     {
-        var stance = Stance;
-        var inventoryOpen = IsPanelOpen(RetailPanel.Inventory);
         var selection = Selection;
         // A stack that shrank takes the split amount down with it, as retail's own box clamps it.
         if (selection is { Kind: SelectionKind.Stack } && SplitAmount > ReadInt(RetailToolbarCatalogue.SplitStackSize)) SplitAmount = ReadInt(RetailToolbarCatalogue.SplitStackSize);
         var count = ReadShortcuts(_shortcutBuffer);
-        if (stance == _lastStance && inventoryOpen == _lastInventoryOpen && selection == _lastSelection
-            && _shortcutBuffer.AsSpan(0, count).SequenceEqual(_lastShortcuts.AsSpan(0, _lastShortcutCount))) return;
-        _lastStance = stance;
-        _lastInventoryOpen = inventoryOpen;
-        _lastSelection = selection;
-        _shortcutBuffer.AsSpan(0, count).CopyTo(_lastShortcuts);
-        _lastShortcutCount = count;
+        if (_snapshot.Update(Stance, OpenPanels(), selection, _shortcutBuffer.AsSpan(0, count))) Changed?.Invoke();
+    }
+
+    /// <summary>The window panels the buttons show, as a bit each at its panel number: a set bit is an open panel.</summary>
+    private int OpenPanels()
+    {
+        var open = 0;
+        foreach (var panel in ButtonPanels)
+            if (IsPanelOpen(panel)) open |= 1 << (int)panel;
+        return open;
     }
 
     /// <summary>
