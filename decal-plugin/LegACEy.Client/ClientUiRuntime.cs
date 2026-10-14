@@ -138,7 +138,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private Size? _dragOffset;
     private RetailTakeoverLifecycle? _barTakeover;
     // The Dereth toolbar over retail's toolbar: its port, window, surface and takeover, held only while the switch is on.
-    private readonly SelectionMeters _selectionMeters = new();
+    // Keeps only the selected object's answers, so combat traffic does not grow it.
+    private readonly SelectionMeters _selectionMeters = new(() => (uint)Bridge.Fact(BridgeFact.CurrentSelection));
     private NativeRetailToolbarPort? _toolbarPort;
     private RetailToolbar? _toolbar;
     private ScreenSurface? _toolbarSurface;
@@ -603,6 +604,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (_barTakeover != null && _failed)
             RestoreNativeBar();
+        // Once the whole UI has failed, a give-back of retail's toolbar that failed is retried each frame until it lands; logged once per streak.
+        if (_failed && _toolbarTakeover != null)
+        {
+            try { ReleaseRetailToolbar(); }
+            catch (Exception exception)
+            {
+                if (!_toolbarReleaseLogged) Log($"Could not give the retail toolbar back; retrying: {exception}");
+                _toolbarReleaseLogged = true;
+            }
+        }
         if (_failed || !NativeUi.Ready)
             return;
 

@@ -213,7 +213,7 @@ public sealed class ShortcutBarTests
     });
 
     [Fact]
-    public void A_shortcut_released_over_a_window_that_is_not_a_bar_is_not_offered_to_it() => RenderThread.Run(() =>
+    public void A_shortcut_released_over_a_window_that_is_not_a_bar_is_not_offered_to_it_and_a_bar_takes_it() => RenderThread.Run(() =>
     {
         var windows = new WindowManager(new Size(1920, 1080), new MemoryWindowPositionStore(), "Server", "Character");
         var vault = new RecordingDropTarget();
@@ -221,8 +221,20 @@ public sealed class ShortcutBarTests
         var window = windows.HitTest(new Point(10, 10))!;
 
         Assert.False(ItemDropRouting.DeliverShortcutTo(window, _ => vault, new Point(10, 10), 0x100));
-
         Assert.Empty(vault.Dropped);
+
+        // A bar in a window of its own at the origin, opened last so it is on top: a release on slot 5 binds the shortcut there.
+        var port = new FakeShortcutPort(Array.Empty<RetailShortcut>());
+        using var panel = Open(port, new Dictionary<uint, ShortcutItem>(), out var bar);
+        panel.Tick();
+        windows.Open(new WindowDefinition("row", "Row", Width, Height), new Point(0, 0));
+        var slot = Centre(bar, bar.SlotAt(5));
+        var release = new Point((int)slot.X, (int)slot.Y);
+        var barWindow = windows.HitTest(release)!;
+
+        Assert.Equal("row", barWindow.Id);
+        Assert.True(ItemDropRouting.DeliverShortcutTo(barWindow, _ => bar, release, 0x100));
+        Assert.Equal(new[] { "add 5 0x100" }, port.Edits);
     });
 
     /// <summary>A window's content that takes item drops and records them: a window other than a shortcut bar.</summary>

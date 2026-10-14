@@ -317,6 +317,23 @@ public sealed class RetailToolbarTests
     }
 
     [Fact]
+    public void Only_the_selected_objects_answers_are_kept()
+    {
+        var selected = 0x80000001u;
+        var meters = new SelectionMeters(() => selected);
+
+        meters.Receive(0xF7B0, GameEvent(0x01C0, 0x80000001, 0.25f));
+        meters.Receive(0xF7B0, GameEvent(0x01C0, 0x80000002, 0.9f));
+        Assert.Equal(0.25f, meters.Health(0x80000001));
+        Assert.Null(meters.Health(0x80000002));
+
+        // The selection moves on: the old object's answer is dropped with it.
+        selected = 0x80000002;
+        meters.KeepOnly(0x80000002);
+        Assert.Null(meters.Health(0x80000001));
+    }
+
+    [Fact]
     public void The_snapshot_reports_a_change_in_each_input_and_nothing_when_none_moved()
     {
         var snapshot = new RetailToolbarSnapshot();

@@ -72,8 +72,9 @@ takes the panel over again. The file is only checked, never consumed. A drag tha
 drag when retail's inventory lists show the item, so the world, NPCs and other retail windows take it as they would from retail.
 
 Creating an empty file named `retail-toolbar-takeover` beside the main DLL replaces retail's toolbar with the Dereth toolbar, drawn at
-retail's toolbar position. Deleting it gives retail's toolbar back within a second. Without the file nothing changes. This is opt-in until the
-toolbar is play-tested.
+retail's toolbar position. Press and drag the toolbar's frame (not a button) to move it, unless retail's UI is locked; the place is saved
+by retail. The two shortcut bars start beside the toolbar and move on their own. Deleting the file gives retail's toolbar back within a
+second. Without the file nothing changes. This is opt-in until the toolbar is play-tested.
 
 ## Tests
 
