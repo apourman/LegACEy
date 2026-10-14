@@ -157,6 +157,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // as the post-UI test failure is. Creating the switch file gives retail's panels back; deleting it turns the takeovers on.
     private readonly List<RetailPanelTakeover> _retailPanels = new();
     private bool? _retailPanelsValid;
+    private bool? _retailToolbarValid;
     private bool _retailPanelSwitch;
     private DateTime _lastRetailPanelSwitchCheck;
     // Retail's examination panel, taken over for the session when the native UI check passes; each showing is an appraisal in our window.
@@ -1279,6 +1280,26 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         return _retailPanelsValid.Value;
     }
 
+    /// <summary>
+    /// The toolbar takeover's own addresses, checked once. A mismatch, or a check that throws, leaves retail's toolbar in place and logs
+    /// one line; the bar, the Vault drag and the inventory keep their gates.
+    /// </summary>
+    private bool RetailToolbarCatalogueValid()
+    {
+        if (_retailToolbarValid is { } known) return known;
+        try
+        {
+            _retailToolbarValid = NativeUiCatalogue.Validate(NativeUi.ReadMemory, Log, RetailToolbarCatalogue.Entries);
+            if (_retailToolbarValid == false) Log("Dereth toolbar takeover is off: the running client does not match its native entries.");
+        }
+        catch (Exception exception)
+        {
+            Log($"Dereth toolbar takeover is off: its native addresses could not be checked: {exception.Message}");
+            _retailToolbarValid = false;
+        }
+        return _retailToolbarValid.Value;
+    }
+
     bool ILegACEyPluginHost.IsWindowOpen(string id) => _featureSurfaces.ContainsKey(id);
     void ILegACEyPluginHost.HideWindow(string id) => HideFeatureWindow(id);
     void ILegACEyPluginHost.CloseWindow(string id) => ReleaseFeatureWindow(id);
@@ -1416,7 +1437,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>Makes the toolbar window and takes retail's toolbar. False when the native addresses are not ready, so retail's toolbar is left alone.</summary>
     private bool CreateRetailToolbar()
     {
-        if (!NativeUi.Ready || _device == IntPtr.Zero || !RetailPanelCatalogueValid()) return false;
+        if (!NativeUi.Ready || _device == IntPtr.Zero || !RetailPanelCatalogueValid() || !RetailToolbarCatalogueValid()) return false;
         _toolbarPort = new NativeRetailToolbarPort(Log, () => _retailPanels.Any(panel => panel.Holds) ? _inventoryWindowOpen : (bool?)null);
         var toolbar = new RetailToolbar(_toolbarPort, ToggleMenuWindow);
         toolbar.Measure(Avalonia.Size.Infinity);
