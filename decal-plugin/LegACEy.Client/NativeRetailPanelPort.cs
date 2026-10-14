@@ -45,16 +45,20 @@ internal sealed class NativeRetailPanelPort : NativePanelPort
         if (element == IntPtr.Zero) return;
         var panel = PanelManagerOf(element);
         if (panel != IntPtr.Zero)
-            RecvNotice(IntPtr.Add(panel, NoticeHandlerOffset), InventoryPanelId, 0u);
+            SetPanelVisibility(panel, InventoryPanelId, false);
         else
             NativeUi.SetVisible(element, false);
     }
+
+    /// <summary>Opens or closes a panel through gmPanelUI's notice, which keeps retail's current-panel pointer in step.</summary>
+    internal static void SetPanelVisibility(IntPtr panelManager, uint panelId, bool visible) =>
+        RecvNotice(IntPtr.Add(panelManager, NoticeHandlerOffset), panelId, visible ? 1u : 0u);
 
     private static IntPtr Parent(IntPtr element) =>
         element == IntPtr.Zero ? IntPtr.Zero : NativeUi.Virtual<NativeUi.GetParentFn>(element, NativeUi.GetParentSlot)(element);
 
     /// <summary>The gmPanelUI element at the panel or within three ancestors, or zero when none has its vtable.</summary>
-    private static IntPtr PanelManagerOf(IntPtr element)
+    internal static IntPtr PanelManagerOf(IntPtr element)
     {
         var current = element;
         for (var depth = 0; depth < 4 && current != IntPtr.Zero; depth++)

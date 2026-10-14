@@ -26,6 +26,8 @@ internal static class NativeUi
     public const uint Vitae = 0x1000018A;
     /// <summary>InventoryPanel_Field, the retail inventory panel root.</summary>
     public const uint InventoryPanel = 0x1000018B;
+    /// <summary>RootToolbar_Field: retail's toolbar root, the row of stance, window buttons, selection and backpack. An id, not an address: it is found at run time, and the takeover does nothing when it is absent.</summary>
+    public const uint RootToolbarField = 0x10000191;
     /// <summary>
     /// The examination panel's root: the window retail opens for an E-key appraisal. It is placed in LayoutDesc 0x21000005 as 0x100005F7,
     /// built from LayoutDesc 0x2100006B's top-level element 0x100005F2; the client registers it under the placed id, as it does the
