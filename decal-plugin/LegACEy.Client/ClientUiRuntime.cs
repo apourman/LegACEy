@@ -119,6 +119,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private IWindowPositionStore? _positionStore;
     // Each plugin's one settings value, per character, in its own file: a row keyed by the plugin's name whose X is the value.
     private readonly FileWindowPositionStore _settingsStore = new(IOPath.Combine(PluginDirectory, "plugin-settings.txt"));
+    private readonly ShortcutRowChoice _row2Choice;
     // The window whose frame shows a hovered corner, and the corner it shows.
     private string? _cornerWindowId;
     private DerethCorner _cornerApplied;
@@ -146,6 +147,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _toolbarFailed;
     private bool _toolbarSwitch;
     private bool _toolbarReleaseLogged;
+    // Shortcut rows 1 and 2: their own windows beside the toolbar, held while the takeover is, and their refresh on inventory changes.
+    private const string ShortcutRowWindowId = "shortcut-row-1";
+    private const string ShortcutRow2WindowId = "shortcut-row-2";
+    private ShortcutBar? _shortcutBar;
+    private ShortcutBar? _shortcutRow2;
+    private Action? _unsubscribeShortcutItems;
     private bool _inventoryWindowOpen;
     private DateTime _lastToolbarSwitchCheck;
     private readonly GameStatePort _gameState = new(new GameStateSnapshot("unknown-character", "unknown-server", 0, 0, 0, 0, 0, 0));
@@ -212,6 +219,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _appraisal = new AppraisalFeature(this, Log, spells: () => _portal?.ReadSpells(Log) ?? new Dictionary<uint, SpellInfo>(), game: this,
             names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None);
         _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal);
+        _row2Choice = new ShortcutRowChoice(_settingsStore);
     }
 
     public void Startup()
@@ -1435,6 +1443,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (_toolbarSurface == null && !CreateRetailToolbar()) return;
             _toolbarPort!.Poll();
             _toolbarTakeover!.Tick(false, GameDevice.ViewportSize(_device));
+            // The bar stands beside the toolbar only while the takeover holds retail's element; otherwise it closes with it.
+            if (_toolbarTakeover.Holds) EnsureShortcutBar();
+            else CloseShortcutBar();
             _toolbarRenderer!.RenderFrame(_inGame, _postUiDrawHook?.IsInstalled == true);
         }
         catch (Exception exception)
@@ -1448,7 +1459,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (!NativeUi.Ready || _device == IntPtr.Zero || !RetailPanelCatalogueValid() || !RetailToolbarCatalogueValid()) return false;
         _toolbarPort = new NativeRetailToolbarPort(Log, () => _retailPanels.Any(panel => panel.Holds) ? _inventoryWindowOpen : (bool?)null,
-            _selectionMeters, _appraisal, _inventory.TargetMode);
+            () => _inGame, _selectionMeters, _appraisal, _inventory.TargetMode);
         var toolbar = new RetailToolbar(_toolbarPort, ToggleMenuWindow);
         toolbar.Measure(Avalonia.Size.Infinity);
         var size = toolbar.DesiredSize;
@@ -1464,9 +1475,99 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         return true;
     }
 
+    /// <summary>
+    /// Shows shortcut row 1 as its own window beside the toolbar, once the takeover holds the toolbar and the windows can open. Its
+    /// position is saved like any LegACEy window's; where it first opens is beside the toolbar.
+    /// </summary>
+    private void EnsureShortcutBar()
+    {
+        if (_shortcutBar != null || !CanOpenWindows) return;
+        _shortcutBar = OpenShortcutRow(1, 0, ShortcutRowWindowId, ToggleShortcutRow2);
+        if (_row2Choice.IsOn(SessionServer(), SessionCharacter())) ShowShortcutRow2();
+        else SetRow2TagTip();
+        Action refresh = () => { _shortcutBar?.Refresh(); _shortcutRow2?.Refresh(); };
+        _inventory.Changed += refresh;
+        _unsubscribeShortcutItems = () => _inventory.Changed -= refresh;
+    }
+
+    /// <summary>Closes both shortcut rows, stops their refresh and frees their icons. Their saved positions stay where the player left them.</summary>
+    private void CloseShortcutBar()
+    {
+        _unsubscribeShortcutItems?.Invoke();
+        _unsubscribeShortcutItems = null;
+        HideShortcutRow2();
+        if (_shortcutBar == null) return;
+        var bar = _shortcutBar;
+        _shortcutBar = null;
+        ReleaseFeatureWindow(ShortcutRowWindowId);
+        bar.Dispose();
+    }
+
+    /// <summary>Row 1's tag: turns row 2 off or on and saves the choice for the character.</summary>
+    private void ToggleShortcutRow2()
+    {
+        // Decided from what is on screen, so a choice that cannot be saved still turns row 2 off and on.
+        if (_shortcutRow2 == null) ShowShortcutRow2();
+        else HideShortcutRow2();
+        _row2Choice.Save(SessionServer(), SessionCharacter(), _shortcutRow2 != null);
+    }
+
+    private void ShowShortcutRow2()
+    {
+        if (_shortcutRow2 != null) return;
+        // Row 2 starts at slot 9, the first slot after row 1's nine.
+        _shortcutRow2 = OpenShortcutRow(2, ShortcutBar.SlotCount, ShortcutRow2WindowId, null);
+        SetRow2TagTip();
+    }
+
+    private void HideShortcutRow2()
+    {
+        if (_shortcutRow2 == null) return;
+        var bar = _shortcutRow2;
+        _shortcutRow2 = null;
+        ReleaseFeatureWindow(ShortcutRow2WindowId);
+        bar.Dispose();
+        SetRow2TagTip();
+    }
+
+    private void SetRow2TagTip() => _shortcutBar?.SetTagTip(_shortcutRow2 != null ? "Hide shortcut row 2" : "Show shortcut row 2");
+
+    /// <summary>
+    /// Opens a shortcut row as its own window. It has no title bar: the frame and the row tag drag it. Without a saved position it sits beside
+    /// the toolbar (row 1) or 4 DIP above row 1 (row 2).
+    /// </summary>
+    private ShortcutBar OpenShortcutRow(int row, int firstIndex, string windowId, Action? tagClick)
+    {
+        var bar = new ShortcutBar(row, firstIndex, _toolbarPort!, ShortcutItemOf, _portal, () => NativeUi.IsUiLocked,
+            () => _windows?.BeginMove(windowId, _pointer), () => _pointer, tagClick);
+        bar.Measure(Avalonia.Size.Infinity);
+        var size = new Size((int)Math.Ceiling(bar.DesiredSize.Width), ShortcutBar.BarHeight);
+        // No title bar: the bar drags from its content (DragsFromContent), so titleBarHeight is not used for a drag. It is set to the bar's
+        // height only because a window's title bar must be at least 1 and at most its height.
+        var definition = new WindowDefinition(windowId, $"Shortcut row {row}", size.Width, size.Height,
+            titleBarHeight: ShortcutBar.BarHeight, theme: new DerethClientTheme(), dragsFromContent: true);
+        var beside = ShortcutBar.DefaultLocation(_toolbarSurface!.Bounds, size, WindowScale);
+        // Row 2 goes above row 1 where row 1 is now, which the player may have moved.
+        var location = row == 1 ? beside : ShortcutBar.AboveRow(_windows?.Get(ShortcutRowWindowId)?.Location ?? beside, WindowScale);
+        OpenWindowCore(definition, bar, location, ToolbarFailed);
+        return bar;
+    }
+
+    /// <summary>The icon and stack count of an object the player holds, from the inventory snapshot; null when it is not held.</summary>
+    private ShortcutItem? ShortcutItemOf(uint id)
+    {
+        var snapshot = _inventory.Snapshot;
+        foreach (var item in snapshot.Items)
+            if (item.Id == id) return new ShortcutItem(item.Visual, item.StackCount);
+        foreach (var worn in snapshot.Wielded)
+            if (worn.Id == id) return new ShortcutItem(worn.Visual, worn.StackCount);
+        return null;
+    }
+
     /// <summary>Gives retail's toolbar back and drops the Dereth toolbar. A give-back that fails is logged and retried on the next call.</summary>
     private void ReleaseRetailToolbar()
     {
+        CloseShortcutBar();
         if (_toolbarTakeover != null)
         {
             try { _toolbarTakeover.Dispose(); }

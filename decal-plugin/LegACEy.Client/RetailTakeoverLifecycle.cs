@@ -50,6 +50,9 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
         return new RetailTakeoverLifecycle(native, surface);
     }
 
+    /// <summary>Whether retail's element is held: hidden by this takeover, with its surface standing where the element was.</summary>
+    public bool Holds => !_disposed && _captured;
+
     public bool CanDrag
     {
         get
