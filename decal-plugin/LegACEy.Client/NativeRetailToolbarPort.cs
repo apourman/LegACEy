@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using LegACEy.Client.Demo;
 
@@ -8,7 +9,7 @@ namespace LegACEy.Client.DecalPlugin;
 /// <summary>
 /// The toolbar's port over the installed client. The stance click is retail's combat toggle (ToggleCombatMode), the stance read is Decal's combat mode.
 /// A panel opens or closes through gmPanelUI's notice, by its panel number; the notice needs gmPanelUI, found from the toolbar's element or
-/// else the inventory's. <see cref="Poll"/> raises <see cref="Changed"/> when the stance or the inventory's open state moved, once a frame.
+/// else the inventory's. <see cref="Poll"/> raises <see cref="Changed"/> when the stance, the inventory's open state or the shortcut list moved, once a frame.
 /// </summary>
 /// <remarks>
 /// The inventory's open state comes from the LegACEy inventory window while its takeover holds retail's panel, and from retail's element
@@ -23,6 +24,7 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     private readonly Dictionary<RetailPanel, bool> _requested = new();
     private RetailStance _lastStance;
     private bool _lastInventoryOpen;
+    private IReadOnlyList<RetailShortcut> _lastShortcuts = Array.Empty<RetailShortcut>();
     private bool _noManagerLogged;
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -31,10 +33,15 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void ToggleCombatModeFn(IntPtr combatSystem);
 
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void UseShortcutFn(IntPtr toolbar, int slot, bool fromKey);
+
     private static readonly GetCombatSystemFn GetCombatSystem = Marshal.GetDelegateForFunctionPointer<GetCombatSystemFn>(
         new IntPtr(RetailToolbarCatalogue.GetCombatSystem));
     private static readonly ToggleCombatModeFn ToggleCombatModeNative = Marshal.GetDelegateForFunctionPointer<ToggleCombatModeFn>(
         new IntPtr(RetailToolbarCatalogue.ToggleCombatMode));
+    private static readonly UseShortcutFn UseShortcutNative = Marshal.GetDelegateForFunctionPointer<UseShortcutFn>(
+        new IntPtr(RetailToolbarCatalogue.UseShortcut));
 
     public NativeRetailToolbarPort(Action<string> log, Func<bool?> takenInventoryOpen)
     {
@@ -68,6 +75,17 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
         return element != IntPtr.Zero && NativeUi.IsVisible(element);
     }
 
+    /// <summary>retail's shortcut list, read from the ShortCutManager: each filled slot's index and object id.</summary>
+    public IReadOnlyList<RetailShortcut> Shortcuts => ReadShortcuts();
+
+    /// <summary>Uses a shortcut as the number key does, through retail's toolbar. Nothing is used when the toolbar is not retail's.</summary>
+    public void UseShortcut(int index)
+    {
+        var toolbar = NativeUi.GetElement(NativeUi.RootToolbarField);
+        if (toolbar == IntPtr.Zero || Marshal.ReadIntPtr(toolbar) != new IntPtr(RetailToolbarCatalogue.GmToolbarUIVtable)) return;
+        UseShortcutNative(toolbar, index, true);
+    }
+
     public void SetPanelOpen(RetailPanel panel, bool open)
     {
         var manager = PanelManager();
@@ -82,15 +100,36 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
         Changed?.Invoke();
     }
 
-    /// <summary>Raises <see cref="Changed"/> when the stance or the inventory's open state moved since the last call.</summary>
+    /// <summary>Raises <see cref="Changed"/> when the stance, the inventory's open state or the shortcut list moved since the last call.</summary>
     public void Poll()
     {
         var stance = Stance;
         var inventoryOpen = IsPanelOpen(RetailPanel.Inventory);
-        if (stance == _lastStance && inventoryOpen == _lastInventoryOpen) return;
+        var shortcuts = ReadShortcuts();
+        if (stance == _lastStance && inventoryOpen == _lastInventoryOpen && shortcuts.SequenceEqual(_lastShortcuts)) return;
         _lastStance = stance;
         _lastInventoryOpen = inventoryOpen;
+        _lastShortcuts = shortcuts;
         Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// The shortcut list. CPlayerSystem's PlayerModule sits at +0x34 and holds the ShortCutManager at its +0x04; the manager's 18 slot
+    /// pointers start at +4, and each filled slot's entry holds the object id at +8. A zero pointer is an empty slot. Row 1 is slots 0 to 8.
+    /// </summary>
+    private static IReadOnlyList<RetailShortcut> ReadShortcuts()
+    {
+        var shortcuts = new List<RetailShortcut>();
+        var system = Marshal.ReadIntPtr(new IntPtr(RetailToolbarCatalogue.PlayerSystem));
+        if (system == IntPtr.Zero) return shortcuts;
+        var manager = Marshal.ReadIntPtr(system, RetailToolbarCatalogue.PlayerModuleOffset + 4);
+        if (manager == IntPtr.Zero) return shortcuts;
+        for (var slot = 0; slot < RetailToolbarCatalogue.ShortcutSlots; slot++)
+        {
+            var entry = Marshal.ReadIntPtr(manager, 4 + 4 * slot);
+            if (entry != IntPtr.Zero) shortcuts.Add(new RetailShortcut(slot, unchecked((uint)Marshal.ReadInt32(entry, 8))));
+        }
+        return shortcuts;
     }
 
     private static IntPtr PanelManager()

@@ -124,6 +124,9 @@ public sealed class RetailToolbarTests
             else _open.Remove(panel);
             Changed?.Invoke();
         }
+
+        public IReadOnlyList<RetailShortcut> Shortcuts => Array.Empty<RetailShortcut>();
+        public void UseShortcut(int index) { }
     }
 
     /// <summary>A fake of retail's toolbar: it records what the toolbar asks, and applies a panel change at once, as retail does.</summary>
@@ -161,6 +164,9 @@ public sealed class RetailToolbarTests
         }
 
         public void Raise() => Changed?.Invoke();
+
+        public IReadOnlyList<RetailShortcut> Shortcuts => Array.Empty<RetailShortcut>();
+        public void UseShortcut(int index) { }
     }
 
     /// <summary>A toolbar in the given state, drawn once: what a player sees after a change must equal this.</summary>

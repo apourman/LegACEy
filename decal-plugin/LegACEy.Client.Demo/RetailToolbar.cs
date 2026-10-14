@@ -17,6 +17,9 @@ public enum RetailStance { Peace = 1, Melee = 2, Missile = 4, Magic = 8 }
 /// </summary>
 public enum RetailPanel { Options = 10, Skills = 11, Social = 12, Magic = 13, WorldMap = 16, Quests = 25, Inventory = 7 }
 
+/// <summary>A shortcut in retail's shortcut list: its slot index (row 1 is 0 to 8, row 2 is 9 to 17) and the object it uses.</summary>
+public readonly record struct RetailShortcut(int Index, uint ObjectId);
+
 /// <summary>
 /// The retail calls the toolbar makes. The client implements it over retail's toolbar and gmPanelUI; tests fake it.
 /// </summary>
@@ -29,7 +32,11 @@ public interface IRetailToolbarPort
     /// <summary>Retail's open state for a panel.</summary>
     bool IsPanelOpen(RetailPanel panel);
     void SetPanelOpen(RetailPanel panel, bool open);
-    /// <summary>Raised when the stance or a panel's open state may have changed.</summary>
+    /// <summary>The shortcuts retail holds, in slot order. Empty slots are left out.</summary>
+    IReadOnlyList<RetailShortcut> Shortcuts { get; }
+    /// <summary>Uses the shortcut in a slot, as the number key does.</summary>
+    void UseShortcut(int index);
+    /// <summary>Raised when the stance, a panel's open state or the shortcut list may have changed.</summary>
     event Action? Changed;
 }
 
