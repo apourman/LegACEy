@@ -88,12 +88,33 @@ public sealed class RetailToolbar : Decorator
     private readonly DerethMedallion _use;
     private readonly DerethMedallion _examine;
     private readonly Border _plaque;
+    // The plaque's parts are fixed; a refresh only changes what they show, so a typed figure and the focus survive it.
+    private readonly TextBlock _name = new()
+    {
+        FontFamily = DerethPalette.Title,
+        FontSize = 11,
+        // The mockup's name line is 11 DIP tall, so the amount row fits under it in the plaque's 31.
+        LineHeight = 11,
+        TextAlignment = TextAlignment.Center,
+        TextWrapping = TextWrapping.NoWrap,
+        TextTrimming = TextTrimming.CharacterEllipsis
+    };
+    private readonly Border _amountSlot = new() { IsVisible = false };
+    private readonly Border _meterSlot = new() { IsVisible = false };
+    private readonly StackPanel _plaqueContent;
+    // The amount row of the stack being split: its stack, the count it shows, whether a write is in progress, and its controls.
+    private uint _amountStackId;
+    private int _amountSize;
+    private bool _amountBusy;
+    private Grid? _amountRow;
+    private TextBox? _amountBox;
+    private Slider? _amountSlider;
 
     /// <summary>The stack's amount box, shown while a stack is selected; null otherwise.</summary>
-    public TextBox? AmountBox { get; private set; }
+    public TextBox? AmountBox => _amountBox;
 
     /// <summary>The stack's amount slider, shown while a stack is selected; null otherwise.</summary>
-    public Slider? AmountSlider { get; private set; }
+    public Slider? AmountSlider => _amountSlider;
 
     /// <param name="port">Retail's toolbar, as the client reaches it.</param>
     /// <param name="openMenu">Opens or closes the LegACEy menu. The caller shows the menu's state with <see cref="SetMenuOpen"/>.</param>
@@ -123,6 +144,7 @@ public sealed class RetailToolbar : Decorator
         _use = Medallion(DerethGlyph.Use, 20, 16, "Use selected");
         _use.Clicked += _port.UseSelected;
         row.Children.Add(Centred(_use));
+        _plaqueContent = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center, Children = { _name, _amountSlot, _meterSlot } };
         _plaque = new Border
         {
             Width = 150,
@@ -131,7 +153,8 @@ public sealed class RetailToolbar : Decorator
             Background = DerethPalette.GrooveBrush,
             BorderBrush = DerethPalette.GrooveEdgeBrush,
             BorderThickness = new Thickness(1),
-            Padding = new Thickness(7, 0)
+            Padding = new Thickness(7, 0),
+            Child = _plaqueContent
         };
         row.Children.Add(Centred(_plaque));
         _examine = Medallion(DerethGlyph.Examine, 20, 16, "Examine selected");
@@ -175,48 +198,51 @@ public sealed class RetailToolbar : Decorator
 
     private void ShowSelection(RetailSelection? selection)
     {
-        _plaque.Child = PlaqueContent(selection);
+        _name.Text = selection?.Name ?? "Nothing selected";
+        _name.FontStyle = selection is null ? FontStyle.Italic : FontStyle.Normal;
+        _name.Foreground = selection is null ? DerethPalette.MutedBrush : DerethPalette.CreamBrush;
+        // A stack's amount row stays while that stack stays selected; another object drops it.
+        var stack = selection is { Kind: SelectionKind.Stack } stackSelection ? stackSelection : null;
+        _amountSlot.IsVisible = stack is not null;
+        var row = stack is null ? ForgetAmount() : AmountRow(stack);
+        if (!ReferenceEquals(_amountSlot.Child, row)) _amountSlot.Child = row;
+        // No bar while the server's answer is pending, or for an item with no mana.
+        Control? meter = selection is { Kind: SelectionKind.Creature or SelectionKind.ItemWithMana, Meter: { } fraction } meterSelection
+            ? Meter(meterSelection.Kind == SelectionKind.Creature ? HealthBrush : ManaBrush, fraction)
+            : null;
+        _meterSlot.IsVisible = meter is not null;
+        _meterSlot.Child = meter;
         // Dimmed and inactive while nothing is selected: they take no pointer, so they show no hover or press and do nothing.
         _use.Opacity = _examine.Opacity = selection is null ? DimmedOpacity : 1;
         _use.IsHitTestVisible = _examine.IsHitTestVisible = selection is not null;
     }
 
-    private Control PlaqueContent(RetailSelection? selection)
+    /// <summary>The amount row for a stack: the same row while the stack stays selected, a new one for another stack.</summary>
+    private Control AmountRow(RetailSelection stack)
     {
-        AmountBox = null;
-        AmountSlider = null;
-        var name = new TextBlock
-        {
-            Text = selection?.Name ?? "Nothing selected",
-            FontFamily = DerethPalette.Title,
-            FontSize = 11,
-            // The mockup's name line is 11 DIP tall, so the amount row fits under it in the plaque's 31.
-            LineHeight = 11,
-            FontStyle = selection is null ? FontStyle.Italic : FontStyle.Normal,
-            Foreground = selection is null ? DerethPalette.MutedBrush : DerethPalette.CreamBrush,
-            TextAlignment = TextAlignment.Center,
-            TextWrapping = TextWrapping.NoWrap,
-            TextTrimming = TextTrimming.CharacterEllipsis
-        };
-        var content = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center, Children = { name } };
-        if (selection is { Kind: SelectionKind.Stack } stack) content.Children.Add(Amount(stack));
-        // No bar while the server's answer is pending, or for an item with no mana.
-        if (selection is { Kind: SelectionKind.Creature or SelectionKind.ItemWithMana, Meter: { } fraction } meter)
-            content.Children.Add(Meter(meter.Kind == SelectionKind.Creature ? HealthBrush : ManaBrush, fraction));
-        return content;
+        if (_amountRow is null || _amountStackId != stack.Id) BuildAmountRow(stack.Id);
+        ShowAmount(stack.StackCount);
+        return _amountRow!;
+    }
+
+    /// <summary>Drops the amount row once no stack is selected. Its controls are no longer the current ones, so their focus-loss writes nothing.</summary>
+    private Control? ForgetAmount()
+    {
+        _amountStackId = 0;
+        _amountRow = null;
+        _amountBox = null;
+        _amountSlider = null;
+        return null;
     }
 
     /// <summary>
-    /// The amount box and slider of a split, at retail's amount. Typing or sliding writes the amount, clamped to 1 and the stack's count; the
-    /// box takes the clamped figure when it loses focus or Enter is pressed.
+    /// The amount box and slider of a split. Typing or sliding writes the amount, clamped to 1 and the stack's count; the box takes the
+    /// clamped figure when it loses focus or Enter is pressed. Events from a row that is no longer the current one write nothing.
     /// </summary>
-    private Control Amount(RetailSelection stack)
+    private void BuildAmountRow(uint stackId)
     {
-        var size = stack.StackCount;
-        var busy = false;
         var box = new TextBox
         {
-            Text = Between(_port.SplitAmount, 1, size).ToString(CultureInfo.InvariantCulture),
             Foreground = DerethPalette.TextBrush, CaretBrush = DerethPalette.GoldBrush, FontFamily = DerethPalette.Body, FontSize = 8,
             Background = TrackBrush, BorderBrush = AmountEdge, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(2),
             Padding = new Thickness(0), MinHeight = 0, Height = 11, TextAlignment = TextAlignment.Right,
@@ -224,42 +250,62 @@ public sealed class RetailToolbar : Decorator
         };
         var slider = new Slider
         {
-            Minimum = 1, Maximum = size, Value = Between(_port.SplitAmount, 1, size), TickFrequency = 1, IsSnapToTickEnabled = true,
-            Template = AmountSliderTemplate(), VerticalAlignment = VerticalAlignment.Center, Height = 10
+            Minimum = 1, TickFrequency = 1, IsSnapToTickEnabled = true, Template = AmountSliderTemplate(),
+            VerticalAlignment = VerticalAlignment.Center, Height = 10
         };
-
-        // Writes the amount and shows it in the control that did not set it; source null shows it in both.
-        void Apply(int amount, Control? source)
-        {
-            if (busy) return;
-            busy = true;
-            try
-            {
-                amount = Between(amount, 1, size);
-                _port.SplitAmount = amount;
-                if (source != box) box.Text = amount.ToString(CultureInfo.InvariantCulture);
-                if (source != slider) slider.Value = amount;
-            }
-            finally { busy = false; }
-        }
-
+        _amountStackId = stackId;
+        _amountBox = box;
+        _amountSlider = slider;
         box.TextChanged += (_, _) =>
         {
-            if (int.TryParse(box.Text, NumberStyles.None, CultureInfo.InvariantCulture, out var typed)) Apply(typed, box);
+            // Only typing writes: the text the plaque sets itself can raise this event after the refresh that set it.
+            if (box == _amountBox && box.IsFocused && int.TryParse(box.Text, NumberStyles.None, CultureInfo.InvariantCulture, out var typed)) Apply(typed, box);
         };
-        // Enter or losing focus settles the box on the amount in force, as retail's box does.
-        Action settle = () => Apply(int.TryParse(box.Text, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) ? parsed : _port.SplitAmount, null);
-        box.LostFocus += (_, _) => settle();
-        box.KeyDown += (_, e) => { if (e.Key == Key.Enter) settle(); };
+        box.LostFocus += (_, _) => Settle(box);
+        box.KeyDown += (_, e) => { if (e.Key == Key.Enter) Settle(box); };
         slider.PropertyChanged += (_, e) =>
         {
-            if (e.Property == RangeBase.ValueProperty) Apply((int)Math.Round(slider.Value), slider);
+            if (e.Property == RangeBase.ValueProperty && slider == _amountSlider) Apply((int)Math.Round(slider.Value), slider);
         };
-
-        AmountBox = box;
-        AmountSlider = slider;
         Grid.SetColumn(slider, 1);
-        return new Grid { ColumnDefinitions = new ColumnDefinitions("46,*"), ColumnSpacing = 5, Children = { box, slider } };
+        _amountRow = new Grid { ColumnDefinitions = new ColumnDefinitions("46,*"), ColumnSpacing = 5, Children = { box, slider } };
+    }
+
+    /// <summary>Shows the stack's amount at the port's figure, clamped to the count. A box being typed in keeps its text.</summary>
+    private void ShowAmount(int size)
+    {
+        _amountSize = size;
+        var amount = Between(_port.SplitAmount, 1, size);
+        _amountBusy = true;
+        try
+        {
+            _amountSlider!.Maximum = size;
+            _amountSlider.Value = amount;
+            if (!_amountBox!.IsFocused) _amountBox.Text = amount.ToString(CultureInfo.InvariantCulture);
+        }
+        finally { _amountBusy = false; }
+    }
+
+    /// <summary>Writes an amount, clamped to 1 and the count, and shows it in the control that did not set it; source null shows it in both.</summary>
+    private void Apply(int amount, Control? source)
+    {
+        if (_amountBusy || _amountBox is null || _amountSlider is null) return;
+        _amountBusy = true;
+        try
+        {
+            amount = Between(amount, 1, _amountSize);
+            _port.SplitAmount = amount;
+            if (source != _amountBox) _amountBox.Text = amount.ToString(CultureInfo.InvariantCulture);
+            if (source != _amountSlider) _amountSlider.Value = amount;
+        }
+        finally { _amountBusy = false; }
+    }
+
+    /// <summary>Enter or losing focus settles the box on the figure typed, or the amount in force when none parses.</summary>
+    private void Settle(TextBox box)
+    {
+        if (box != _amountBox) return;
+        Apply(int.TryParse(box.Text, NumberStyles.None, CultureInfo.InvariantCulture, out var typed) ? typed : _port.SplitAmount, null);
     }
 
     /// <summary>A dark track with a gold thumb, as the retail amount slider draws.</summary>

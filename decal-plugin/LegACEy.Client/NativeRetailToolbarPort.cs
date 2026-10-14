@@ -73,7 +73,7 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
                 _described = null;
                 return null;
             }
-            if (_described?.Id != id) Describe(id);
+            if (_described?.Id != id) _described = Bridge.Selection(id);
             return _described switch
             {
                 { Kind: SelectionKind.Creature } creature => creature with { Meter = _meters.Health(id) },
@@ -84,18 +84,21 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     }
 
     /// <summary>
-    /// Retail's split amount: the global the drag reads for the selected stack. Writes are clamped to [1, the stack's count], as retail's
-    /// own box clamps them, and do nothing while no stack is selected.
+    /// Retail's split amount: the global the drag reads for the selected stack. A write is clamped to [1, the stack's size] as retail's box
+    /// clamps it, and only lands while the stack the plaque shows is still the selection.
     /// </summary>
     public int SplitAmount
     {
-        get => BitConverter.ToInt32(NativeUi.ReadMemory(RetailToolbarCatalogue.SplitAmount, 4), 0);
+        get => ReadInt(RetailToolbarCatalogue.SplitAmount);
         set
         {
-            if (_described is not { Kind: SelectionKind.Stack } stack) return;
-            Marshal.WriteInt32(new IntPtr(unchecked((int)RetailToolbarCatalogue.SplitAmount)), Math.Clamp(value, 1, stack.StackCount));
+            var id = (uint)Bridge.Fact(BridgeFact.CurrentSelection);
+            if (_described is not { Kind: SelectionKind.Stack } || _described.Id != id) return;
+            Marshal.WriteInt32(new IntPtr(unchecked((int)RetailToolbarCatalogue.SplitAmount)), Math.Clamp(value, 1, Math.Max(1, ReadInt(RetailToolbarCatalogue.SplitStackSize))));
         }
     }
+
+    private static int ReadInt(uint address) => BitConverter.ToInt32(NativeUi.ReadMemory(address, 4), 0);
 
     /// <summary>
     /// Uses the selection as the hand button does. While retail waits for a target (a gem or kit in use), the selection is that target, as
@@ -162,19 +165,14 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
         if (_described?.Id == id) _described = null;
     }
 
-    /// <summary>Describes the selected object, and brings the split amount down to the stack's count if a smaller stack now holds it.</summary>
-    private void Describe(uint id)
-    {
-        _described = Bridge.Selection(id);
-        if (_described is { Kind: SelectionKind.Stack } stack && SplitAmount > stack.StackCount) SplitAmount = stack.StackCount;
-    }
-
     /// <summary>Raises <see cref="Changed"/> when the stance, the inventory's open state or the selection moved since the last call.</summary>
     public void Poll()
     {
         var stance = Stance;
         var inventoryOpen = IsPanelOpen(RetailPanel.Inventory);
         var selection = Selection;
+        // A stack that shrank takes the split amount down with it, as retail's own box clamps it.
+        if (selection is { Kind: SelectionKind.Stack } && SplitAmount > ReadInt(RetailToolbarCatalogue.SplitStackSize)) SplitAmount = ReadInt(RetailToolbarCatalogue.SplitStackSize);
         if (stance == _lastStance && inventoryOpen == _lastInventoryOpen && selection == _lastSelection) return;
         _lastStance = stance;
         _lastInventoryOpen = inventoryOpen;

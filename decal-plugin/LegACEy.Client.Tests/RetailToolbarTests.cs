@@ -161,9 +161,10 @@ public sealed class RetailToolbarTests
     {
         var stack = Pyreals(12500);
         var port = new FakeToolbarPort { Selection = stack, SplitAmount = 10 };
-        using var panel = Open(port, out _);
+        using var panel = Open(port, out var toolbar);
         panel.Tick();
 
+        Assert.Equal("10", toolbar.AmountBox!.Text);
         AssertDrawn(Render(p => { p.Selection = stack; p.SplitAmount = 10; }), panel);
         // The box draws the figure: another amount draws differently, so the box is not a fixed picture.
         Assert.NotEqual(Render(p => { p.Selection = stack; p.SplitAmount = 11; }), panel.Frame.Pixels.ToArray());
@@ -190,6 +191,48 @@ public sealed class RetailToolbarTests
         Assert.Equal(50, port.SplitAmount);
         Slide(panel, toolbar, toolbar.AmountSlider!, 0.0);
         Assert.Equal(1, port.SplitAmount);
+    });
+
+    [Fact]
+    public void A_refresh_keeps_the_typed_amount_and_the_focus() => RenderThread.Run(() =>
+    {
+        var port = new FakeToolbarPort { Selection = Pyreals(500), SplitAmount = 10 };
+        using var panel = Open(port, out var toolbar);
+        panel.Tick();
+
+        Click(panel, toolbar, toolbar.AmountBox!);
+        TypeReplacing(panel, "12");
+        // The port changes something else (the stance, say) while the box is being typed in: the plaque is redrawn.
+        port.Raise();
+        panel.Tick();
+
+        Assert.True(panel.WantsKeyboard);
+        Assert.Equal("12", toolbar.AmountBox!.Text);
+        panel.TextInput("3");
+        Assert.Equal(123, port.SplitAmount);
+    });
+
+    [Fact]
+    public void A_split_typed_for_one_stack_is_not_written_once_another_stack_is_selected() => RenderThread.Run(() =>
+    {
+        var port = new FakeToolbarPort { Selection = Pyreals(500), SplitAmount = 10 };
+        using var panel = Open(port, out var toolbar);
+        panel.Tick();
+
+        Click(panel, toolbar, toolbar.AmountBox!);
+        TypeReplacing(panel, "5");
+        Assert.Equal(5, port.SplitAmount);
+        var writesBeforeSwitch = port.SplitWrites.Count;
+
+        // The player selects a smaller stack while the box still holds the first stack's figure. Retiring that box can
+        // move the focus, and a settle from it must not write the first stack's figure to the second.
+        port.Selection = new RetailSelection(0x50000007, "Arrows", SelectionKind.Stack, StackCount: 20);
+        port.Raise();
+        panel.Tick();
+        panel.ClearFocus();
+        panel.Tick();
+
+        Assert.DoesNotContain(5, port.SplitWrites.Skip(writesBeforeSwitch));
     });
 
     [Fact]
@@ -287,7 +330,18 @@ public sealed class RetailToolbarTests
         public int StanceToggles { get; private set; }
         public List<(RetailPanel Panel, bool Open)> PanelRequests { get; } = new();
         public RetailSelection? Selection { get; set; }
-        public int SplitAmount { get; set; } = 1;
+        private int _splitAmount = 1;
+        // Every write, in order, so a test can see what the plaque asked retail for.
+        public List<int> SplitWrites { get; } = new();
+        public int SplitAmount
+        {
+            get => _splitAmount;
+            set
+            {
+                _splitAmount = value;
+                SplitWrites.Add(value);
+            }
+        }
         public int UseCount { get; private set; }
         public int ExamineCount { get; private set; }
 

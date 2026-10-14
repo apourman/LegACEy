@@ -44,6 +44,8 @@ internal static class RetailToolbarCatalogue
     internal const uint ToggleCombatMode = 0x0056D610;
     /// <summary>The split amount global (int32): the amount retail splits off the selected stack when it is dragged. SplitAmountWrite and SplitAmountConsumer already byte-check this address.</summary>
     internal const uint SplitAmount = 0x0081D7EC;
+    /// <summary>The selected stack's size (int32), the split amount's upper bound; SplitStackSizeRead already byte-checks this address.</summary>
+    internal const uint SplitStackSize = 0x0081D7F0;
     /// <summary>The typed or slid split amount is written to the global 0x0081D7EC, clamped to [1, stack size].</summary>
     internal const uint SplitAmountWrite = 0x004BFC02;
     /// <summary>The stack size of the selected object (0x0081D7F0), the clamp's upper bound.</summary>
