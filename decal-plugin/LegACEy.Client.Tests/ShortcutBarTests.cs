@@ -201,6 +201,57 @@ public sealed class ShortcutBarTests
     });
 
     [Fact]
+    public void A_drop_of_an_item_bound_on_another_slot_moves_it_so_it_is_bound_once() => RenderThread.Run(() =>
+    {
+        var port = new FakeShortcutPort(new[] { new RetailShortcut(2, 0x100) });
+        using var panel = Open(port, new Dictionary<uint, ShortcutItem>(), out var bar);
+        panel.Tick();
+
+        Assert.True(bar.RetailDrop(0x100, string.Empty, Centre(bar, bar.SlotAt(5))));
+
+        Assert.Equal(new[] { "remove 2", "add 5 0x100" }, port.Edits);
+    });
+
+    [Fact]
+    public void A_shortcut_released_over_a_window_that_is_not_a_bar_is_not_offered_to_it_and_a_bar_takes_it() => RenderThread.Run(() =>
+    {
+        var windows = new WindowManager(new Size(1920, 1080), new MemoryWindowPositionStore(), "Server", "Character");
+        var vault = new RecordingDropTarget();
+        windows.Open(new WindowDefinition("vault", "Vault", 200, 200), new Point(0, 0));
+        var window = windows.HitTest(new Point(10, 10))!;
+
+        Assert.False(ItemDropRouting.DeliverShortcutTo(window, _ => vault, new Point(10, 10), 0x100));
+        Assert.Empty(vault.Dropped);
+
+        // A bar in a window of its own at the origin, opened last so it is on top: a release on slot 5 binds the shortcut there.
+        var port = new FakeShortcutPort(Array.Empty<RetailShortcut>());
+        using var panel = Open(port, new Dictionary<uint, ShortcutItem>(), out var bar);
+        panel.Tick();
+        windows.Open(new WindowDefinition("row", "Row", Width, Height), new Point(0, 0));
+        var slot = Centre(bar, bar.SlotAt(5));
+        var release = new Point((int)slot.X, (int)slot.Y);
+        var barWindow = windows.HitTest(release)!;
+
+        Assert.Equal("row", barWindow.Id);
+        Assert.True(ItemDropRouting.DeliverShortcutTo(barWindow, _ => bar, release, 0x100));
+        Assert.Equal(new[] { "add 5 0x100" }, port.Edits);
+    });
+
+    /// <summary>A window's content that takes item drops and records them: a window other than a shortcut bar.</summary>
+    private sealed class RecordingDropTarget : IRetailItemDropTarget
+    {
+        public List<uint> Dropped { get; } = new();
+
+        public void RetailDragOver(uint itemId, string itemName, Avalonia.Point? position) { }
+
+        public bool RetailDrop(uint itemId, string itemName, Avalonia.Point position)
+        {
+            Dropped.Add(itemId);
+            return true;
+        }
+    }
+
+    [Fact]
     public void A_shortcut_dragged_off_the_bars_is_removed() => RenderThread.Run(() =>
     {
         var port = new FakeShortcutPort(new[] { new RetailShortcut(1, 0x100) });

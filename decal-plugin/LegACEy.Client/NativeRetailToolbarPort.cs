@@ -10,7 +10,7 @@ namespace LegACEy.Client.DecalPlugin;
 /// The toolbar's port over the installed client. The stance click is retail's combat toggle (ToggleCombatMode), the stance read is Decal's combat mode.
 /// A panel opens or closes through gmPanelUI's notice, by its panel number; the notice needs gmPanelUI, found from the toolbar's element or
 /// else the inventory's. The selection is Decal's current selection; Use goes through Decal's UseItem and Examine through the appraisal
-/// window, never retail's examination panel. <see cref="Poll"/> raises <see cref="Changed"/> when the stance, the inventory's open state,
+/// window, never retail's examination panel. <see cref="Poll"/> raises <see cref="Changed"/> when the stance, any button's panel open state,
 /// the selection or the shortcut list moved, once a frame.
 /// </summary>
 /// <remarks>
@@ -32,13 +32,18 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     private readonly Dictionary<RetailPanel, bool> _requested = new();
     // Poll reads into the buffer and compares in place, so a frame allocates nothing when the list has not moved.
     private readonly RetailShortcut[] _shortcutBuffer = new RetailShortcut[RetailToolbarCatalogue.ShortcutSlots];
-    private readonly RetailShortcut[] _lastShortcuts = new RetailShortcut[RetailToolbarCatalogue.ShortcutSlots];
-    private int _lastShortcutCount;
-    private RetailStance _lastStance;
-    private bool _lastInventoryOpen;
-    private RetailSelection? _lastSelection;
-    // The selected object's name, kind and stack count, as read when its id was last seen or it last changed; the meter is applied on top each read.
+    private readonly RetailToolbarSnapshot _snapshot = new();
+    // The panels the toolbar's buttons open and show, in any order: Poll reads each one's open state every frame.
+    private static readonly RetailPanel[] ButtonPanels =
+    {
+        RetailPanel.Options, RetailPanel.Skills, RetailPanel.Social, RetailPanel.Magic, RetailPanel.WorldMap, RetailPanel.Quests, RetailPanel.Inventory
+    };
+    // The selected object's name, kind and stack count, as read when its id was last seen or it last changed (null when the world had no such
+    // object, which is not read again until the id changes). The meter is applied on top, not stored here.
     private RetailSelection? _described;
+    // The selected id last seen, and whether the game reported the selected object changed since it was read.
+    private uint _selectedId;
+    private bool _rereadSelected;
     private bool _noManagerLogged;
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -90,21 +95,39 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     {
         get
         {
-            var id = (uint)Bridge.Fact(BridgeFact.CurrentSelection);
-            if (id == 0)
-            {
-                _described = null;
-                return null;
-            }
-            if (_described?.Id != id) _described = Bridge.Selection(id);
-            return _described switch
-            {
-                { Kind: SelectionKind.Creature } creature => creature with { Meter = _meters.Health(id) },
-                { Kind: SelectionKind.ItemWithMana } item => item with { Meter = _meters.Mana(id) },
-                var other => other
-            };
+            if (Described() is not { } described) return null;
+            return described with { Kind = KindOf(described), Meter = MeterOf(described) };
         }
     }
+
+    /// <summary>
+    /// The selected object as read, without its meter. Read again only when the selected id changes or the game reports the object changed;
+    /// a selection the world has no object for stays null until then. Meters are dropped with the selection that asked for them.
+    /// </summary>
+    private RetailSelection? Described()
+    {
+        var id = (uint)Bridge.Fact(BridgeFact.CurrentSelection);
+        if (id == _selectedId && !_rereadSelected) return _described;
+        if (id != _selectedId) _meters.KeepOnly(id);
+        _selectedId = id;
+        _rereadSelected = false;
+        _described = id == 0 ? null : Bridge.Selection(id);
+        return _described;
+    }
+
+    /// <summary>
+    /// The kind the plaque shows. Decal's maximum mana fills in only after an appraisal, so an item the server gave a mana answer is an item
+    /// with mana too. A stack keeps its kind (its split box), and a creature keeps its health meter, whatever answer came.
+    /// </summary>
+    private SelectionKind KindOf(RetailSelection described) =>
+        described.Kind == SelectionKind.Other && _meters.Mana(described.Id) != null ? SelectionKind.ItemWithMana : described.Kind;
+
+    private float? MeterOf(RetailSelection described) => KindOf(described) switch
+    {
+        SelectionKind.Creature => _meters.Health(described.Id),
+        SelectionKind.ItemWithMana => _meters.Mana(described.Id),
+        _ => null
+    };
 
     /// <summary>
     /// Retail's split amount: the global the drag reads for the selected stack. A write is clamped to [1, the stack's size] as retail's box
@@ -116,12 +139,13 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
         set
         {
             var id = (uint)Bridge.Fact(BridgeFact.CurrentSelection);
-            if (_described is not { Kind: SelectionKind.Stack } || _described.Id != id) return;
+            if (Described() is not { Kind: SelectionKind.Stack } stack || stack.Id != id) return;
             Marshal.WriteInt32(new IntPtr(unchecked((int)RetailToolbarCatalogue.SplitAmount)), Math.Clamp(value, 1, Math.Max(1, ReadInt(RetailToolbarCatalogue.SplitStackSize))));
         }
     }
 
-    private static int ReadInt(uint address) => BitConverter.ToInt32(NativeUi.ReadMemory(address, 4), 0);
+    /// <summary>A global int32 of retail's, read in place. Its address is checked by the catalogue before the takeover is on.</summary>
+    private static int ReadInt(uint address) => Marshal.ReadInt32(new IntPtr(unchecked((int)address)));
 
     /// <summary>
     /// Uses the selection as the hand button does. While retail waits for a target (a gem or kit in use), the selection is that target, as
@@ -222,25 +246,28 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     /// <summary>The game reported an object changed (a stack's count moved, say): a selected object is read again on the next read.</summary>
     public void ObjectChanged(uint id)
     {
-        if (_described?.Id == id) _described = null;
+        if (id != 0 && id == _selectedId) _rereadSelected = true;
     }
 
-    /// <summary>Raises <see cref="Changed"/> when the stance, the inventory's open state, the selection or the shortcut list moved since the last call.</summary>
+    /// <summary>Raises <see cref="Changed"/> when the stance, any window panel's open state, the selection or the shortcut list moved since the last call.</summary>
     public void Poll()
     {
-        var stance = Stance;
-        var inventoryOpen = IsPanelOpen(RetailPanel.Inventory);
-        var selection = Selection;
+        var described = Described();
         // A stack that shrank takes the split amount down with it, as retail's own box clamps it.
-        if (selection is { Kind: SelectionKind.Stack } && SplitAmount > ReadInt(RetailToolbarCatalogue.SplitStackSize)) SplitAmount = ReadInt(RetailToolbarCatalogue.SplitStackSize);
+        if (described is { Kind: SelectionKind.Stack } && SplitAmount > ReadInt(RetailToolbarCatalogue.SplitStackSize)) SplitAmount = ReadInt(RetailToolbarCatalogue.SplitStackSize);
         var count = ReadShortcuts(_shortcutBuffer);
-        if (stance == _lastStance && inventoryOpen == _lastInventoryOpen && selection == _lastSelection
-            && _shortcutBuffer.AsSpan(0, count).SequenceEqual(_lastShortcuts.AsSpan(0, _lastShortcutCount))) return;
-        _lastStance = stance;
-        _lastInventoryOpen = inventoryOpen;
-        _lastSelection = selection;
-        _shortcutBuffer.AsSpan(0, count).CopyTo(_lastShortcuts);
-        _lastShortcutCount = count;
+        var kind = described is null ? SelectionKind.Other : KindOf(described);
+        var meter = described is null ? null : MeterOf(described);
+        if (_snapshot.Update(Stance, OpenPanels(), described, kind, meter, _shortcutBuffer.AsSpan(0, count))) Changed?.Invoke();
+    }
+
+    /// <summary>The window panels the buttons show, as a bit each at its panel number: a set bit is an open panel.</summary>
+    private int OpenPanels()
+    {
+        var open = 0;
+        foreach (var panel in ButtonPanels)
+            if (IsPanelOpen(panel)) open |= 1 << (int)panel;
+        return open;
     }
 
     /// <summary>

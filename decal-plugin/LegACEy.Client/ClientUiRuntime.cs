@@ -138,13 +138,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private Size? _dragOffset;
     private RetailTakeoverLifecycle? _barTakeover;
     // The Dereth toolbar over retail's toolbar: its port, window, surface and takeover, held only while the switch is on.
-    private readonly SelectionMeters _selectionMeters = new();
+    // Keeps only the selected object's answers, so combat traffic does not grow it.
+    private readonly SelectionMeters _selectionMeters = new(() => (uint)Bridge.Fact(BridgeFact.CurrentSelection));
     private NativeRetailToolbarPort? _toolbarPort;
     private RetailToolbar? _toolbar;
     private ScreenSurface? _toolbarSurface;
     private RetailSurfaceRenderer? _toolbarRenderer;
     private RetailTakeoverLifecycle? _toolbarTakeover;
     private bool _toolbarFailed;
+    // The offset from the toolbar's corner to the pointer while its frame is dragged; null when it is not.
+    private Size? _toolbarDragOffset;
     private bool _toolbarSwitch;
     private bool _toolbarReleaseLogged;
     // Shortcut rows 1 and 2: their own windows beside the toolbar, held while the takeover is, and their refresh on inventory changes.
@@ -255,8 +258,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             catch (Exception exception) { Log($"Keys typed in LegACEy text boxes also reach the game: {exception.Message}"); }
             try { _inventory.TargetMode = new RetailTargetMode(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"Using an item on a target in LegACEy windows is off: {exception.Message}"); }
-            // A move of the selected stack splits by retail's amount only with the toolbar catalogue (its split entries) valid.
-            if (RetailToolbarCatalogueValid()) _inventory.Split = new StackSplitter(new NativeRetailSplitPort());
             LoadPlugins();
         }
         catch
@@ -603,6 +604,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (_barTakeover != null && _failed)
             RestoreNativeBar();
+        // Once the whole UI has failed, a give-back of retail's toolbar that failed is retried each frame until it lands; logged once per streak.
+        if (_failed && _toolbarTakeover != null)
+        {
+            try { ReleaseRetailToolbar(); }
+            catch (Exception exception)
+            {
+                if (!_toolbarReleaseLogged) Log($"Could not give the retail toolbar back; retrying: {exception}");
+                _toolbarReleaseLogged = true;
+            }
+        }
         if (_failed || !NativeUi.Ready)
             return;
 
@@ -848,7 +859,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             {
                 accepted = target.RetailDrop(item, ObjectName(item), surface.Panel.ToContent(point.X - surface.Location.X, point.Y - surface.Location.Y));
             }
-            catch (Exception exception) { _windowFailures[id](exception); }
+            catch (Exception exception) { DropFailed(id, exception); }
         }
         if (_loggedDrops++ < 5)
             Log($"Retail item 0x{item:X8} dropped on LegACEy window '{id}'; retail drag cancelled; accepted: {accepted}.");
@@ -1020,7 +1031,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (_owner._windows is not { } windows) return false;
             var window = windows.HitTest(_owner._pointer);
             if (window == null) return false;
-            try { return ItemDropRouting.DeliverTo(window, _owner.ContentOf, _owner._pointer, itemId, itemName, windows.Scale); }
+            // A shortcut dragged off a bar is only a bar's to take: no other window is offered it as an item.
+            try
+            {
+                return _owner._shortcutDrag.Slot != null
+                    ? ItemDropRouting.DeliverShortcutTo(window, _owner.ContentOf, _owner._pointer, itemId, windows.Scale)
+                    : ItemDropRouting.DeliverTo(window, _owner.ContentOf, _owner._pointer, itemId, itemName, windows.Scale);
+            }
             catch (Exception exception)
             {
                 if (_owner._windowFailures.TryGetValue(window.Id, out var failed)) failed(exception);
@@ -1440,9 +1457,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         try
         {
+            var switchOn = RetailToolbarSwitchOn();
+            // A give-back that failed is retried every frame until it lands, whatever state the toolbar is in: retail's toolbar is never left hidden.
+            if (_toolbarTakeover != null && (!_windowsEnabled || _toolbarFailed || !switchOn))
+            {
+                ReleaseRetailToolbar();
+                return;
+            }
             // Without windows the toolbar's surface cannot draw; DisableWindows has already given retail's toolbar back.
             if (!_windowsEnabled) return;
-            if (!RetailToolbarSwitchOn())
+            if (!switchOn)
             {
                 _toolbarFailed = false;
                 ReleaseRetailToolbar();
@@ -1451,7 +1475,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (_toolbarFailed) return;
             if (_toolbarSurface == null && !CreateRetailToolbar()) return;
             _toolbarPort!.Poll();
-            _toolbarTakeover!.Tick(false, GameDevice.ViewportSize(_device));
+            _toolbarTakeover!.Tick(_toolbarDragOffset != null, GameDevice.ViewportSize(_device));
             // The bar stands beside the toolbar only while the takeover holds retail's element; otherwise it closes with it.
             if (_toolbarTakeover.Holds) EnsureShortcutBar();
             else CloseShortcutBar();
@@ -1463,13 +1487,53 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
     }
 
+    /// <summary>The toolbar's frame was pressed: it follows the pointer until the button goes up. Refused while retail's UI is locked.</summary>
+    private void BeginToolbarDrag()
+    {
+        if (_toolbarTakeover?.CanDrag != true || _toolbarSurface is not { } surface) return;
+        _toolbarDragOffset = new Size(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y);
+    }
+
+    /// <summary>Moves the toolbar with the pointer, kept on screen. Stops when the takeover no longer lets it move.</summary>
+    private void DragToolbar(Point pointer)
+    {
+        if (_toolbarTakeover?.CanDrag != true || _toolbarSurface is not { } surface)
+        {
+            _toolbarDragOffset = null;
+            return;
+        }
+        var screen = GameDevice.ViewportSize(_device);
+        var size = surface.Bounds.Size;
+        var offset = _toolbarDragOffset!.Value;
+        surface.Location = new Point(
+            Math.Max(0, Math.Min(screen.Width - size.Width, pointer.X - offset.Width)),
+            Math.Max(0, Math.Min(screen.Height - size.Height, pointer.Y - offset.Height)));
+    }
+
+    /// <summary>
+    /// The button went up: retail's toolbar element moves to where the Dereth toolbar was dropped, so retail keeps and saves the place as it
+    /// does for a drag of its own. A failure gives retail's toolbar back.
+    /// </summary>
+    private void EndToolbarDrag()
+    {
+        _toolbarDragOffset = null;
+        if (_toolbarSurface is not { } surface) return;
+        try
+        {
+            if (_toolbarTakeover?.MoveTo(surface.Location) == true) Log($"Moved the Dereth toolbar to {surface.Location}.");
+        }
+        catch (Exception exception) { ToolbarFailed(exception); }
+    }
+
     /// <summary>Makes the toolbar window and takes retail's toolbar. False when the native addresses are not ready, so retail's toolbar is left alone.</summary>
     private bool CreateRetailToolbar()
     {
         if (!NativeUi.Ready || _device == IntPtr.Zero || !RetailPanelCatalogueValid() || !RetailToolbarCatalogueValid()) return false;
         _toolbarPort = new NativeRetailToolbarPort(Log, () => _retailPanels.Any(panel => panel.Holds) ? _inventoryWindowOpen : (bool?)null,
             () => _inGame, _selectionMeters, _appraisal, _inventory.TargetMode);
-        var toolbar = new RetailToolbar(_toolbarPort, ToggleMenuWindow, MoveToMainPack);
+        // A move of the selected stack splits by retail's amount while the toolbar that shows the amount is up, and only then.
+        _inventory.Split ??= new StackSplitter(new NativeRetailSplitPort());
+        var toolbar = new RetailToolbar(_toolbarPort, ToggleMenuWindow, MoveToMainPack, BeginToolbarDrag);
         toolbar.Measure(Avalonia.Size.Infinity);
         var size = toolbar.DesiredSize;
         // Drawn at LegACEy's window scale, as the other LegACEy windows are.
@@ -1612,6 +1676,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>Gives retail's toolbar back and drops the Dereth toolbar. A give-back that fails is logged and retried on the next call.</summary>
     private void ReleaseRetailToolbar()
     {
+        _inventory.Split = null;
         CloseShortcutBar();
         if (_toolbarTakeover != null)
         {
@@ -1631,6 +1696,17 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _toolbarRenderer = null;
         _toolbar = null;
         _toolbarPort = null;
+    }
+
+    /// <summary>
+    /// A failure while a window takes a retail drop goes to that window's error handler. The toolbar is not a managed window, so its
+    /// failure goes to the toolbar; a window with no handler disables the client UI, as a failed delivery does.
+    /// </summary>
+    private void DropFailed(string id, Exception exception)
+    {
+        if (id == ToolbarSurfaceId) ToolbarFailed(exception);
+        else if (_windowFailures.TryGetValue(id, out var failed)) failed(exception);
+        else Disable(exception);
     }
 
     private void ToolbarFailed(Exception exception)
@@ -1714,6 +1790,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     }
                     else if (_dragOffset != null)
                         DragBar(point);
+                    else if (_toolbarDragOffset != null)
+                        DragToolbar(point);
                     else
                     {
                         var handingOff = _handOff == null;
@@ -1751,6 +1829,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     }
                     if (_dragOffset != null)
                         EndBarDrag();
+                    if (_toolbarDragOffset != null)
+                        EndToolbarDrag();
                     eat = route.Eat;
                     break;
                 case InputAction.MouseWheel:
@@ -1939,6 +2019,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _hovered?.Panel.PointerLeave();
         _hovered = null;
         _dragOffset = null;
+        _toolbarDragOffset = null;
         _windows?.Release();
     }
 

@@ -19,18 +19,30 @@ public static class ShortcutEdits
     }
 
     /// <summary>
-    /// A drop from outside the bars (the Dereth inventory, a retail window, the world) on a slot: the item binds there. A shortcut already
-    /// there goes to the first empty slot to the right, and is lost when none is empty. A slot already holding the item is left alone.
+    /// A drop from outside the bars (the Dereth inventory, a retail window, the world) on a slot: the item binds there. An item already on
+    /// another slot leaves it first, as retail's drop does (CreateShortcutToItem removes the object before it adds it), so an item is bound
+    /// once. A shortcut already in the target slot goes to the first empty slot to the right, and is lost when none is empty. A slot
+    /// already holding the item is left alone.
     /// </summary>
     public static void Bind(IRetailToolbarPort port, int slot, uint objectId)
     {
-        var occupant = ObjectAt(port.Shortcuts, slot);
+        var shortcuts = port.Shortcuts;
+        var occupant = ObjectAt(shortcuts, slot);
         if (occupant == objectId) return;
+        if (IndexOf(shortcuts, objectId) is var held and >= 0) port.RemoveShortcut(held);
         if (occupant != 0) port.RemoveShortcut(slot);
         port.AddShortcut(slot, objectId);
         if (occupant == 0) return;
         var empty = FirstEmptyRightOf(port.Shortcuts, slot);
         if (empty >= 0) port.AddShortcut(empty, occupant);
+    }
+
+    /// <summary>The slot holding the object, or -1 when no slot holds it.</summary>
+    public static int IndexOf(IReadOnlyList<RetailShortcut> shortcuts, uint objectId)
+    {
+        foreach (var shortcut in shortcuts)
+            if (shortcut.ObjectId == objectId) return shortcut.Index;
+        return -1;
     }
 
     /// <summary>A drag begins: the shortcut in <paramref name="slot"/> leaves its slot. Nothing happens when the slot is empty.</summary>

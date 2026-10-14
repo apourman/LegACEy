@@ -94,6 +94,7 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     private readonly IRetailToolbarPort _port;
     private readonly Action _openMenu;
     private readonly Func<IReadOnlyList<uint>, bool> _moveToMainPack;
+    private readonly Action? _startMove;
     private readonly DerethMedallion _stance;
     private readonly Dictionary<RetailPanel, DerethMedallion> _windows = new();
     private readonly DerethMedallion _menu;
@@ -131,11 +132,13 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     /// <param name="port">Retail's toolbar, as the client reaches it.</param>
     /// <param name="openMenu">Opens or closes the LegACEy menu. The caller shows the menu's state with <see cref="SetMenuOpen"/>.</param>
     /// <param name="moveToMainPack">Moves the items to the player's main pack, in order, as a drop on the backpack does. True when one moved.</param>
-    public RetailToolbar(IRetailToolbarPort port, Action openMenu, Func<IReadOnlyList<uint>, bool> moveToMainPack)
+    /// <param name="startMove">Run on a press on the frame that no button or control takes, which starts the toolbar's move; null for none.</param>
+    public RetailToolbar(IRetailToolbarPort port, Action openMenu, Func<IReadOnlyList<uint>, bool> moveToMainPack, Action? startMove = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _openMenu = openMenu ?? throw new ArgumentNullException(nameof(openMenu));
         _moveToMainPack = moveToMainPack ?? throw new ArgumentNullException(nameof(moveToMainPack));
+        _startMove = startMove;
 
         _stance = new DerethMedallion(GlyphOf(port.Stance), 34, 21);
         ToolTip.SetTip(_stance, "Combat stance");
@@ -180,7 +183,14 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         backpack.Clicked += () => TogglePanel(RetailPanel.Inventory);
         row.Children.Add(Centred(backpack));
 
-        Child = new DerethFrame(DerethFrameArt.Window) { Child = new Border { Padding = new Thickness(4, 0), Child = row } };
+        // A transparent frame takes the press wherever no button or control does (a medallion marks its presses handled), so a press there
+        // starts the move.
+        var frame = new Border { Padding = new Thickness(4, 0), Background = Brushes.Transparent, Child = row };
+        frame.PointerPressed += (_, e) =>
+        {
+            if (e.GetCurrentPoint(frame).Properties.IsLeftButtonPressed) _startMove?.Invoke();
+        };
+        Child = new DerethFrame(DerethFrameArt.Window) { Child = frame };
         Refresh();
         port.Changed += Refresh;
     }

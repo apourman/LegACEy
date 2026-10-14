@@ -303,6 +303,53 @@ public sealed class RetailToolbarTests
         Assert.Null(meters.Mana(0x50000003));
     }
 
+    [Fact]
+    public void Another_objects_health_answer_leaves_the_selected_creatures_meter_alone()
+    {
+        var meters = new SelectionMeters();
+
+        meters.Receive(0xF7B0, GameEvent(0x01C0, 0x80000001, 0.25f));
+        // Another query (a fellowship member's, say) answers after it: the selected creature's answer stays.
+        meters.Receive(0xF7B0, GameEvent(0x01C0, 0x80000002, 0.9f));
+
+        Assert.Equal(0.25f, meters.Health(0x80000001));
+        Assert.Equal(0.9f, meters.Health(0x80000002));
+    }
+
+    [Fact]
+    public void Only_the_selected_objects_answers_are_kept()
+    {
+        var selected = 0x80000001u;
+        var meters = new SelectionMeters(() => selected);
+
+        meters.Receive(0xF7B0, GameEvent(0x01C0, 0x80000001, 0.25f));
+        meters.Receive(0xF7B0, GameEvent(0x01C0, 0x80000002, 0.9f));
+        Assert.Equal(0.25f, meters.Health(0x80000001));
+        Assert.Null(meters.Health(0x80000002));
+
+        // The selection moves on: the old object's answer is dropped with it.
+        selected = 0x80000002;
+        meters.KeepOnly(0x80000002);
+        Assert.Null(meters.Health(0x80000001));
+    }
+
+    [Fact]
+    public void The_snapshot_reports_a_change_in_each_input_and_nothing_when_none_moved()
+    {
+        var snapshot = new RetailToolbarSnapshot();
+        var selection = new RetailSelection(0x50000001, "Ivory Quarter Staff", SelectionKind.ItemWithMana, 0.82f);
+        var shortcuts = new[] { new RetailShortcut(0, 0x50000001) };
+        var none = ReadOnlySpan<RetailShortcut>.Empty;
+
+        Assert.True(snapshot.Update(RetailStance.Peace, 0, null, none));
+        Assert.False(snapshot.Update(RetailStance.Peace, 0, null, none));
+        Assert.True(snapshot.Update(RetailStance.Melee, 0, null, none));
+        Assert.True(snapshot.Update(RetailStance.Melee, 1 << (int)RetailPanel.Skills, null, none));
+        Assert.True(snapshot.Update(RetailStance.Melee, 1 << (int)RetailPanel.Skills, selection, none));
+        Assert.True(snapshot.Update(RetailStance.Melee, 1 << (int)RetailPanel.Skills, selection, shortcuts));
+        Assert.False(snapshot.Update(RetailStance.Melee, 1 << (int)RetailPanel.Skills, selection, shortcuts));
+    }
+
     /// <summary>A game event as the server sends it: the 0xF7B0 header, the character, a sequence number, the event type, then the body.</summary>
     private static byte[] GameEvent(uint eventType, uint objectId, float value, uint? success = null)
     {
