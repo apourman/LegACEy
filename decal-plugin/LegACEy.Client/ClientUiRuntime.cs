@@ -119,7 +119,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private IWindowPositionStore? _positionStore;
     // Each plugin's one settings value, per character, in its own file: a row keyed by the plugin's name whose X is the value.
     private readonly FileWindowPositionStore _settingsStore = new(IOPath.Combine(PluginDirectory, "plugin-settings.txt"));
-    private ShortcutRowChoice Row2Choice => new(_settingsStore);
+    private readonly ShortcutRowChoice _row2Choice;
     // The window whose frame shows a hovered corner, and the corner it shows.
     private string? _cornerWindowId;
     private DerethCorner _cornerApplied;
@@ -219,6 +219,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _appraisal = new AppraisalFeature(this, Log, spells: () => _portal?.ReadSpells(Log) ?? new Dictionary<uint, SpellInfo>(), game: this,
             names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None);
         _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal);
+        _row2Choice = new ShortcutRowChoice(_settingsStore);
     }
 
     public void Startup()
@@ -1476,8 +1477,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (_shortcutBar != null || !CanOpenWindows) return;
         _shortcutBar = OpenShortcutRow(1, 0, ShortcutRowWindowId, ToggleShortcutRow2);
-        if (Row2Choice.IsOn(SessionServer(), SessionCharacter())) ShowShortcutRow2();
-        SetRow2TagTip();
+        if (_row2Choice.IsOn(SessionServer(), SessionCharacter())) ShowShortcutRow2();
+        else SetRow2TagTip();
         Action refresh = () => { _shortcutBar?.Refresh(); _shortcutRow2?.Refresh(); };
         _inventory.Changed += refresh;
         _unsubscribeShortcutItems = () => _inventory.Changed -= refresh;
@@ -1499,9 +1500,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>Row 1's tag: turns row 2 off or on and saves the choice for the character.</summary>
     private void ToggleShortcutRow2()
     {
-        if (Row2Choice.Toggle(SessionServer(), SessionCharacter())) ShowShortcutRow2();
+        // Decided from what is on screen, so a choice that cannot be saved still turns row 2 off and on.
+        if (_shortcutRow2 == null) ShowShortcutRow2();
         else HideShortcutRow2();
-        SetRow2TagTip();
+        _row2Choice.Save(SessionServer(), SessionCharacter(), _shortcutRow2 != null);
     }
 
     private void ShowShortcutRow2()
@@ -1509,6 +1511,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_shortcutRow2 != null) return;
         // Row 2 starts at slot 9, the first slot after row 1's nine.
         _shortcutRow2 = OpenShortcutRow(2, ShortcutBar.SlotCount, ShortcutRow2WindowId, null);
+        SetRow2TagTip();
     }
 
     private void HideShortcutRow2()
@@ -1518,6 +1521,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _shortcutRow2 = null;
         ReleaseFeatureWindow(ShortcutRow2WindowId);
         bar.Dispose();
+        SetRow2TagTip();
     }
 
     private void SetRow2TagTip() => _shortcutBar?.SetTagTip(_shortcutRow2 != null ? "Hide shortcut row 2" : "Show shortcut row 2");
@@ -1536,8 +1540,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // height only because a window's title bar must be at least 1 and at most its height.
         var definition = new WindowDefinition(windowId, $"Shortcut row {row}", size.Width, size.Height,
             titleBarHeight: ShortcutBar.BarHeight, theme: new DerethClientTheme(), dragsFromContent: true);
-        var row1 = ShortcutBar.DefaultLocation(_toolbarSurface!.Bounds, size, WindowScale);
-        OpenWindowCore(definition, bar, row == 1 ? row1 : ShortcutBar.AboveRow(row1, WindowScale), ToolbarFailed);
+        var beside = ShortcutBar.DefaultLocation(_toolbarSurface!.Bounds, size, WindowScale);
+        // Row 2 goes above row 1 where row 1 is now, which the player may have moved.
+        var location = row == 1 ? beside : ShortcutBar.AboveRow(_windows?.Get(ShortcutRowWindowId)?.Location ?? beside, WindowScale);
+        OpenWindowCore(definition, bar, location, ToolbarFailed);
         return bar;
     }
 

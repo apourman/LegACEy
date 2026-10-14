@@ -103,6 +103,9 @@ public sealed class ShortcutBar : Decorator, IDisposable
             _tagPressAt = null;
             if (pressedAt is { } at && at == _pointer()) _tagClick?.Invoke();
         };
+        // A press that ends off the tag is not a click on it, so a stale press cannot toggle later.
+        RowTag.PointerExited += (_, _) => _tagPressAt = null;
+        RowTag.PointerCaptureLost += (_, _) => _tagPressAt = null;
         Child = hit;
         Refresh();
         port.Changed += Refresh;

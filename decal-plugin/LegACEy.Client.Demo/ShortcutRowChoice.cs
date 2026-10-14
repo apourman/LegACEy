@@ -15,11 +15,7 @@ public sealed class ShortcutRowChoice
 
     public bool IsOn(string server, string character) => _store.Load(server, character, Key) is not { Location.X: 0 };
 
-    /// <summary>Turns row 2 off when it is on, and on when it is off, saves the choice for the character, and returns it.</summary>
-    public bool Toggle(string server, string character)
-    {
-        var on = !IsOn(server, character);
+    /// <summary>Saves whether row 2 is on for the character.</summary>
+    public void Save(string server, string character, bool on) =>
         _store.Save(server, character, Key, (new System.Drawing.Point(on ? 1 : 0, 0), null));
-        return on;
-    }
 }
