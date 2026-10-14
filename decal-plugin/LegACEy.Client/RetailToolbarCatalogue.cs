@@ -38,10 +38,10 @@ internal static class RetailToolbarCatalogue
     internal const uint ShortCutManagerSlots = 0x005D68B0;
     /// <summary>ShortCutManager::AddShortCut writes the index at entry +4 and the object id at entry +8.</summary>
     internal const uint ShortCutManagerSlotWrites = 0x005D6903;
-    /// <summary>ClientCombatSystem::GetCombatSystem: returns the singleton from 0x0087166C, the receiver of SetCombatMode.</summary>
+    /// <summary>ClientCombatSystem::GetCombatSystem: returns the singleton from 0x0087166C, the receiver of ToggleCombatMode.</summary>
     internal const uint GetCombatSystem = 0x0056B210;
-    /// <summary>ClientCombatSystem::SetCombatMode (COMBAT_MODE mode, bool sendToServer), ThisCall, ret 8. Modes: 1 peace, 2 melee, 4 missile, 8 magic.</summary>
-    internal const uint SetCombatMode = 0x0056CB80;
+    /// <summary>ClientCombatSystem::ToggleCombatMode, ThisCall, no arguments: the stance button's click. Peace goes to the default stance, anything else to peace.</summary>
+    internal const uint ToggleCombatMode = 0x0056D610;
     /// <summary>The typed or slid split amount is written to the global 0x0081D7EC, clamped to [1, stack size].</summary>
     internal const uint SplitAmountWrite = 0x004BFC02;
     /// <summary>The stack size of the selected object (0x0081D7F0), the clamp's upper bound.</summary>
@@ -83,8 +83,8 @@ internal static class RetailToolbarCatalogue
             NativeUiCatalogue.Bytes("89 78 04 8B 56 08 89 50 08"), Source, "instruction reference (entry layout)"),
         new NativeUiEntry("ClientCombatSystem::GetCombatSystem", GetCombatSystem, NativeUiCatalogue.Bytes("A1 6C 16 87 00 C3"),
             Source, "Cdecl () -> ClientCombatSystem*, read from 0x0087166C"),
-        new NativeUiEntry("ClientCombatSystem::SetCombatMode", SetCombatMode, NativeUiCatalogue.Bytes("51 53 56 8B F1 8B 46 1C 57 8B 7C 24 14"),
-            Source, "ThisCall (COMBAT_MODE mode, bool sendToServer), ret 8; returns early when the mode is unchanged"),
+        new NativeUiEntry("ClientCombatSystem::ToggleCombatMode", ToggleCombatMode, NativeUiCatalogue.Bytes("56 8B F1 83 7E 1C 01 6A 01 75 11"),
+            Source, "ThisCall, no arguments: peace <-> the default stance, sent to the server (the stance button's click)"),
         new NativeUiEntry("gmToolbarUI split amount write (0x0081D7EC, clamped to the stack size)", SplitAmountWrite,
             NativeUiCatalogue.Bytes("89 35 EC D7 81 00"), Source, "instruction reference (mov [0x81D7EC], esi)"),
         new NativeUiEntry("gmToolbarUI split stack size read (0x0081D7F0)", SplitStackSizeRead, NativeUiCatalogue.Bytes("A1 F0 D7 81 00"),

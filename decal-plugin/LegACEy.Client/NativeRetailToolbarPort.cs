@@ -6,7 +6,7 @@ using LegACEy.Client.Demo;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
-/// The toolbar's port over the installed client. The stance is retail's combat system (SetCombatMode), the stance read is Decal's combat mode.
+/// The toolbar's port over the installed client. The stance click is retail's combat toggle (ToggleCombatMode), the stance read is Decal's combat mode.
 /// A panel opens or closes through gmPanelUI's notice, by its panel number; the notice needs gmPanelUI, found from the toolbar's element or
 /// else the inventory's. <see cref="Poll"/> raises <see cref="Changed"/> when the stance or the inventory's open state moved, once a frame.
 /// </summary>
@@ -29,12 +29,12 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     private delegate IntPtr GetCombatSystemFn();
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-    private delegate void SetCombatModeFn(IntPtr combatSystem, int mode, int sendToServer);
+    private delegate void ToggleCombatModeFn(IntPtr combatSystem);
 
     private static readonly GetCombatSystemFn GetCombatSystem = Marshal.GetDelegateForFunctionPointer<GetCombatSystemFn>(
         new IntPtr(RetailToolbarCatalogue.GetCombatSystem));
-    private static readonly SetCombatModeFn SetCombatModeNative = Marshal.GetDelegateForFunctionPointer<SetCombatModeFn>(
-        new IntPtr(RetailToolbarCatalogue.SetCombatMode));
+    private static readonly ToggleCombatModeFn ToggleCombatModeNative = Marshal.GetDelegateForFunctionPointer<ToggleCombatModeFn>(
+        new IntPtr(RetailToolbarCatalogue.ToggleCombatMode));
 
     public NativeRetailToolbarPort(Action<string> log, Func<bool?> takenInventoryOpen)
     {
@@ -46,12 +46,12 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
 
     public RetailStance Stance => (RetailStance)Bridge.Fact(BridgeFact.CombatMode);
 
-    /// <summary>Sets the stance through retail's combat system with the server told, as retail's own stance change does. No-op with no character.</summary>
-    public void SetStance(RetailStance stance)
+    /// <summary>The stance button's click: retail's own toggle (peace and the default stance), as retail's button does. No-op with no character.</summary>
+    public void ToggleStance()
     {
         var combatSystem = GetCombatSystem();
         if (combatSystem == IntPtr.Zero) return;
-        SetCombatModeNative(combatSystem, (int)stance, 1);
+        ToggleCombatModeNative(combatSystem);
     }
 
     public bool IsPanelOpen(RetailPanel panel)
