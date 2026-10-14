@@ -30,6 +30,8 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     private RetailStance _lastStance;
     private bool _lastInventoryOpen;
     private RetailSelection? _lastSelection;
+    // The selected object's name and kind, as read when its id was last seen; the meter is applied on top each read.
+    private RetailSelection? _described;
     private bool _noManagerLogged;
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -57,13 +59,29 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
 
     public RetailStance Stance => (RetailStance)Bridge.Fact(BridgeFact.CombatMode);
 
-    /// <summary>The selected object with its meter read from the server's answers; null when nothing is selected.</summary>
-    public RetailSelection? Selection => Bridge.Selection() switch
+    /// <summary>
+    /// The selected object with its meter read from the server's answers; null when nothing is selected. The name and kind are read when
+    /// the selection's id changes, not every frame.
+    /// </summary>
+    public RetailSelection? Selection
     {
-        { Kind: SelectionKind.Creature } creature => creature with { Meter = _meters.Health(creature.Id) },
-        { Kind: SelectionKind.ItemWithMana } item => item with { Meter = _meters.Mana(item.Id) },
-        var other => other
-    };
+        get
+        {
+            var id = (uint)Bridge.Fact(BridgeFact.CurrentSelection);
+            if (id == 0)
+            {
+                _described = null;
+                return null;
+            }
+            if (_described?.Id != id) _described = Bridge.Selection(id);
+            return _described switch
+            {
+                { Kind: SelectionKind.Creature } creature => creature with { Meter = _meters.Health(id) },
+                { Kind: SelectionKind.ItemWithMana } item => item with { Meter = _meters.Mana(id) },
+                var other => other
+            };
+        }
+    }
 
     /// <summary>
     /// Uses the selection as the hand button does. While retail waits for a target (a gem or kit in use), the selection is that target, as
@@ -79,13 +97,13 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     }
 
     /// <summary>
-    /// Examines the selection in the appraisal window, as the examination takeover does when retail's panel shows: the window shows the
-    /// cached appraisal or asks for one. Retail's examination panel is never opened.
+    /// Examines the selection in the appraisal window, as the examination takeover does when retail's panel shows: a plugin's selected
+    /// stored item first, else the game's selection, shown from the cached appraisal or asked for. Retail's examination panel is never opened.
     /// </summary>
     public void ExamineSelected()
     {
         var id = (uint)Bridge.Fact(BridgeFact.CurrentSelection);
-        if (id != 0) _appraisals.Examine(id);
+        if (_appraisals.ExamineSelection(id) == ExamineResult.Failed) _log("Could not examine the selection: the appraisal window could not show it.");
     }
 
     /// <summary>The stance button's click: retail's own toggle (peace and the default stance), as retail's button does. No-op with no character.</summary>

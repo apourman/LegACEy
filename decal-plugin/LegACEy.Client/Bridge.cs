@@ -200,11 +200,9 @@ public static unsafe class Bridge
         return found != 0 ? row.ToRead() : null;
     }
 
-    /// <summary>The selected object for the selection plaque, or null when nothing is selected or the world has no such object.</summary>
-    internal static RetailSelection? Selection()
+    /// <summary>The object with this id for the selection plaque, or null when the world has no such object.</summary>
+    internal static RetailSelection? Selection(uint id)
     {
-        var id = (uint)Fact(BridgeFact.CurrentSelection);
-        if (id == 0) return null;
         BridgeItem row;
         int found;
         Check(_calls.Item((int)id, &row, &found), nameof(Item));

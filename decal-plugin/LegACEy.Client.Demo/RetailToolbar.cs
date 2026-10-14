@@ -106,7 +106,7 @@ public sealed class RetailToolbar : Decorator
         row.Children.Add(Centred(_menu));
         row.Children.Add(Centred(new DerethDivider()));
         _use = Medallion(DerethGlyph.Use, 20, 16, "Use selected");
-        _use.Clicked += () => { if (_port.Selection is not null) _port.UseSelected(); };
+        _use.Clicked += _port.UseSelected;
         row.Children.Add(Centred(_use));
         _plaque = new Border
         {
@@ -120,7 +120,7 @@ public sealed class RetailToolbar : Decorator
         };
         row.Children.Add(Centred(_plaque));
         _examine = Medallion(DerethGlyph.Examine, 20, 16, "Examine selected");
-        _examine.Clicked += () => { if (_port.Selection is not null) _port.ExamineSelected(); };
+        _examine.Clicked += _port.ExamineSelected;
         row.Children.Add(Centred(_examine));
         row.Children.Add(Centred(new DerethDivider()));
         var backpack = Medallion(DerethGlyph.Backpack, 34, 21, "Inventory");
@@ -161,7 +161,9 @@ public sealed class RetailToolbar : Decorator
     private void ShowSelection(RetailSelection? selection)
     {
         _plaque.Child = PlaqueContent(selection);
+        // Dimmed and inactive while nothing is selected: they take no pointer, so they show no hover or press and do nothing.
         _use.Opacity = _examine.Opacity = selection is null ? DimmedOpacity : 1;
+        _use.IsHitTestVisible = _examine.IsHitTestVisible = selection is not null;
     }
 
     private static Control PlaqueContent(RetailSelection? selection)
@@ -178,8 +180,9 @@ public sealed class RetailToolbar : Decorator
             TextTrimming = TextTrimming.CharacterEllipsis
         };
         var content = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center, Children = { name } };
-        if (selection is { Kind: SelectionKind.Creature or SelectionKind.ItemWithMana } meter)
-            content.Children.Add(Meter(meter.Kind == SelectionKind.Creature ? HealthBrush : ManaBrush, meter.Meter ?? 0));
+        // No bar while the server's answer is pending, or for an item with no mana.
+        if (selection is { Kind: SelectionKind.Creature or SelectionKind.ItemWithMana, Meter: { } fraction } meter)
+            content.Children.Add(Meter(meter.Kind == SelectionKind.Creature ? HealthBrush : ManaBrush, fraction));
         return content;
     }
 

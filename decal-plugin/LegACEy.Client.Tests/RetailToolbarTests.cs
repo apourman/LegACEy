@@ -166,6 +166,10 @@ public sealed class RetailToolbarTests
         Assert.Null(meters.Health(0x50000002));
         Assert.Equal(0.82f, meters.Mana(0x50000002));
         Assert.Null(meters.Mana(0x80000001));
+
+        // An item with no mana answers with success 0: no reading, not an empty meter.
+        meters.Receive(0xF7B0, GameEvent(0x0264, 0x50000003, 0f, success: 0));
+        Assert.Null(meters.Mana(0x50000003));
     }
 
     /// <summary>A game event as the server sends it: the 0xF7B0 header, the character, a sequence number, the event type, then the body.</summary>
