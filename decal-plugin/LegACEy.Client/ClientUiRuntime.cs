@@ -119,6 +119,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private IWindowPositionStore? _positionStore;
     // Each plugin's one settings value, per character, in its own file: a row keyed by the plugin's name whose X is the value.
     private readonly FileWindowPositionStore _settingsStore = new(IOPath.Combine(PluginDirectory, "plugin-settings.txt"));
+    private ShortcutRowChoice Row2Choice => new(_settingsStore);
     // The window whose frame shows a hovered corner, and the corner it shows.
     private string? _cornerWindowId;
     private DerethCorner _cornerApplied;
@@ -146,9 +147,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _toolbarFailed;
     private bool _toolbarSwitch;
     private bool _toolbarReleaseLogged;
-    // Shortcut row 1: its own window beside the toolbar, held while the takeover is, and its refresh on inventory changes.
+    // Shortcut rows 1 and 2: their own windows beside the toolbar, held while the takeover is, and their refresh on inventory changes.
     private const string ShortcutRowWindowId = "shortcut-row-1";
+    private const string ShortcutRow2WindowId = "shortcut-row-2";
     private ShortcutBar? _shortcutBar;
+    private ShortcutBar? _shortcutRow2;
     private Action? _unsubscribeShortcutItems;
     private bool _inventoryWindowOpen;
     private DateTime _lastToolbarSwitchCheck;
@@ -1472,32 +1475,70 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private void EnsureShortcutBar()
     {
         if (_shortcutBar != null || !CanOpenWindows) return;
-        var bar = new ShortcutBar(1, 0, _toolbarPort!, ShortcutItemOf, _portal, () => NativeUi.IsUiLocked,
-            () => _windows?.BeginMove(ShortcutRowWindowId, _pointer));
-        bar.Measure(Avalonia.Size.Infinity);
-        var width = (int)Math.Ceiling(bar.DesiredSize.Width);
-        // No title bar: the bar drags from its content (DragsFromContent), so titleBarHeight is not used for a drag. It is set to the bar's
-        // height only because a window's title bar must be at least 1 and at most its height.
-        var definition = new WindowDefinition(ShortcutRowWindowId, "Shortcut row 1", width, ShortcutBar.BarHeight,
-            titleBarHeight: ShortcutBar.BarHeight, theme: new DerethClientTheme(), dragsFromContent: true);
-        var location = ShortcutBar.DefaultLocation(_toolbarSurface!.Bounds, new Size(width, ShortcutBar.BarHeight), WindowScale);
-        OpenWindowCore(definition, bar, location, ToolbarFailed);
-        _shortcutBar = bar;
-        Action refresh = bar.Refresh;
+        _shortcutBar = OpenShortcutRow(1, 0, ShortcutRowWindowId, ToggleShortcutRow2);
+        if (Row2Choice.IsOn(SessionServer(), SessionCharacter())) ShowShortcutRow2();
+        SetRow2TagTip();
+        Action refresh = () => { _shortcutBar?.Refresh(); _shortcutRow2?.Refresh(); };
         _inventory.Changed += refresh;
         _unsubscribeShortcutItems = () => _inventory.Changed -= refresh;
     }
 
-    /// <summary>Closes shortcut row 1, stops its refresh and frees its icons. Its saved position stays where the player left it.</summary>
+    /// <summary>Closes both shortcut rows, stops their refresh and frees their icons. Their saved positions stay where the player left them.</summary>
     private void CloseShortcutBar()
     {
         _unsubscribeShortcutItems?.Invoke();
         _unsubscribeShortcutItems = null;
+        HideShortcutRow2();
         if (_shortcutBar == null) return;
         var bar = _shortcutBar;
         _shortcutBar = null;
         ReleaseFeatureWindow(ShortcutRowWindowId);
         bar.Dispose();
+    }
+
+    /// <summary>Row 1's tag: turns row 2 off or on and saves the choice for the character.</summary>
+    private void ToggleShortcutRow2()
+    {
+        if (Row2Choice.Toggle(SessionServer(), SessionCharacter())) ShowShortcutRow2();
+        else HideShortcutRow2();
+        SetRow2TagTip();
+    }
+
+    private void ShowShortcutRow2()
+    {
+        if (_shortcutRow2 != null) return;
+        // Row 2 starts at slot 9, the first slot after row 1's nine.
+        _shortcutRow2 = OpenShortcutRow(2, ShortcutBar.SlotCount, ShortcutRow2WindowId, null);
+    }
+
+    private void HideShortcutRow2()
+    {
+        if (_shortcutRow2 == null) return;
+        var bar = _shortcutRow2;
+        _shortcutRow2 = null;
+        ReleaseFeatureWindow(ShortcutRow2WindowId);
+        bar.Dispose();
+    }
+
+    private void SetRow2TagTip() => _shortcutBar?.SetTagTip(_shortcutRow2 != null ? "Hide shortcut row 2" : "Show shortcut row 2");
+
+    /// <summary>
+    /// Opens a shortcut row as its own window. It has no title bar: the frame and the row tag drag it. Without a saved position it sits beside
+    /// the toolbar (row 1) or 4 DIP above row 1 (row 2).
+    /// </summary>
+    private ShortcutBar OpenShortcutRow(int row, int firstIndex, string windowId, Action? tagClick)
+    {
+        var bar = new ShortcutBar(row, firstIndex, _toolbarPort!, ShortcutItemOf, _portal, () => NativeUi.IsUiLocked,
+            () => _windows?.BeginMove(windowId, _pointer), () => _pointer, tagClick);
+        bar.Measure(Avalonia.Size.Infinity);
+        var size = new Size((int)Math.Ceiling(bar.DesiredSize.Width), ShortcutBar.BarHeight);
+        // No title bar: the bar drags from its content (DragsFromContent), so titleBarHeight is not used for a drag. It is set to the bar's
+        // height only because a window's title bar must be at least 1 and at most its height.
+        var definition = new WindowDefinition(windowId, $"Shortcut row {row}", size.Width, size.Height,
+            titleBarHeight: ShortcutBar.BarHeight, theme: new DerethClientTheme(), dragsFromContent: true);
+        var row1 = ShortcutBar.DefaultLocation(_toolbarSurface!.Bounds, size, WindowScale);
+        OpenWindowCore(definition, bar, row == 1 ? row1 : ShortcutBar.AboveRow(row1, WindowScale), ToolbarFailed);
+        return bar;
     }
 
     /// <summary>The icon and stack count of an object the player holds, from the inventory snapshot; null when it is not held.</summary>
