@@ -37,7 +37,7 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     private RetailStance _lastStance;
     private bool _lastInventoryOpen;
     private RetailSelection? _lastSelection;
-    // The selected object's name and kind, as read when its id was last seen; the meter is applied on top each read.
+    // The selected object's name, kind and stack count, as read when its id was last seen or it last changed; the meter is applied on top each read.
     private RetailSelection? _described;
     private bool _noManagerLogged;
 
@@ -73,8 +73,8 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     public RetailStance Stance => (RetailStance)Bridge.Fact(BridgeFact.CombatMode);
 
     /// <summary>
-    /// The selected object with its meter read from the server's answers; null when nothing is selected. The name and kind are read when
-    /// the selection's id changes, not every frame.
+    /// The selected object with its meter read from the server's answers; null when nothing is selected. The name, kind and stack count are
+    /// read when the selection's id changes, and again when the game reports the object changed.
     /// </summary>
     public RetailSelection? Selection
     {
@@ -95,6 +95,23 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
             };
         }
     }
+
+    /// <summary>
+    /// Retail's split amount: the global the drag reads for the selected stack. A write is clamped to [1, the stack's size] as retail's box
+    /// clamps it, and only lands while the stack the plaque shows is still the selection.
+    /// </summary>
+    public int SplitAmount
+    {
+        get => ReadInt(RetailToolbarCatalogue.SplitAmount);
+        set
+        {
+            var id = (uint)Bridge.Fact(BridgeFact.CurrentSelection);
+            if (_described is not { Kind: SelectionKind.Stack } || _described.Id != id) return;
+            Marshal.WriteInt32(new IntPtr(unchecked((int)RetailToolbarCatalogue.SplitAmount)), Math.Clamp(value, 1, Math.Max(1, ReadInt(RetailToolbarCatalogue.SplitStackSize))));
+        }
+    }
+
+    private static int ReadInt(uint address) => BitConverter.ToInt32(NativeUi.ReadMemory(address, 4), 0);
 
     /// <summary>
     /// Uses the selection as the hand button does. While retail waits for a target (a gem or kit in use), the selection is that target, as
@@ -176,12 +193,20 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
         Changed?.Invoke();
     }
 
+    /// <summary>The game reported an object changed (a stack's count moved, say): a selected object is read again on the next read.</summary>
+    public void ObjectChanged(uint id)
+    {
+        if (_described?.Id == id) _described = null;
+    }
+
     /// <summary>Raises <see cref="Changed"/> when the stance, the inventory's open state, the selection or the shortcut list moved since the last call.</summary>
     public void Poll()
     {
         var stance = Stance;
         var inventoryOpen = IsPanelOpen(RetailPanel.Inventory);
         var selection = Selection;
+        // A stack that shrank takes the split amount down with it, as retail's own box clamps it.
+        if (selection is { Kind: SelectionKind.Stack } && SplitAmount > ReadInt(RetailToolbarCatalogue.SplitStackSize)) SplitAmount = ReadInt(RetailToolbarCatalogue.SplitStackSize);
         var count = ReadShortcuts(_shortcutBuffer);
         if (stance == _lastStance && inventoryOpen == _lastInventoryOpen && selection == _lastSelection
             && _shortcutBuffer.AsSpan(0, count).SequenceEqual(_lastShortcuts.AsSpan(0, _lastShortcutCount))) return;

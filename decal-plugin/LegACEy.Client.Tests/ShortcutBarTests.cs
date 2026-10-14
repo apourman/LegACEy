@@ -192,6 +192,7 @@ public sealed class ShortcutBarTests
         public void SetPanelOpen(RetailPanel panel, bool open) { }
         public void UseShortcut(int index) => Used.Add(index);
         public RetailSelection? Selection => null;
+        public int SplitAmount { get; set; } = 1;
         public void UseSelected() { }
         public void ExamineSelected() { }
 

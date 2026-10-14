@@ -211,7 +211,7 @@ public static unsafe class Bridge
             : row.HasMana != 0 ? SelectionKind.ItemWithMana
             : row.StackCount > 1 ? SelectionKind.Stack
             : SelectionKind.Other;
-        return new RetailSelection(id, row.ToRead().Name, kind);
+        return new RetailSelection(id, row.ToRead().Name, kind, StackCount: row.StackCount);
     }
 
     internal static GameStateSnapshot ReadGameState() => new(Text(BridgeText.CharacterName), Text(BridgeText.ServerName),
