@@ -319,7 +319,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // The open container and the selection are part of the inventory snapshot, whoever changed them.
     public void ItemSelected() => _inventory.MarkStale();
     public void ContainerOpened() => _inventory.MarkStale();
-    public void InventoryChanged(uint id, uint container) => _inventory.ObjectChanged(id, container);
+    public void InventoryChanged(uint id, uint container)
+    {
+        _inventory.ObjectChanged(id, container);
+        _toolbarPort?.ObjectChanged(id);
+    }
 
     // InventoryPutObjInContainer, WieldObject and InventoryPutObjectIn3D (ACE's GameEventType).
     private static readonly uint[] InventoryMoveEvents = { 0x0022, 0x0023, 0x019A };

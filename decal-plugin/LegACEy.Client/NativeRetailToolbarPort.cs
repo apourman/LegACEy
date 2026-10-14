@@ -30,7 +30,7 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     private RetailStance _lastStance;
     private bool _lastInventoryOpen;
     private RetailSelection? _lastSelection;
-    // The selected object's name and kind, as read when its id was last seen; the meter is applied on top each read.
+    // The selected object's name, kind and stack count, as read when its id was last seen or it last changed; the meter is applied on top each read.
     private RetailSelection? _described;
     private bool _noManagerLogged;
 
@@ -60,8 +60,8 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     public RetailStance Stance => (RetailStance)Bridge.Fact(BridgeFact.CombatMode);
 
     /// <summary>
-    /// The selected object with its meter read from the server's answers; null when nothing is selected. The name and kind are read when
-    /// the selection's id changes, not every frame.
+    /// The selected object with its meter read from the server's answers; null when nothing is selected. The name, kind and stack count are
+    /// read when the selection's id changes, and again when the game reports the object changed.
     /// </summary>
     public RetailSelection? Selection
     {
@@ -73,13 +73,27 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
                 _described = null;
                 return null;
             }
-            if (_described?.Id != id) _described = Bridge.Selection(id);
+            if (_described?.Id != id) Describe(id);
             return _described switch
             {
                 { Kind: SelectionKind.Creature } creature => creature with { Meter = _meters.Health(id) },
                 { Kind: SelectionKind.ItemWithMana } item => item with { Meter = _meters.Mana(id) },
                 var other => other
             };
+        }
+    }
+
+    /// <summary>
+    /// Retail's split amount: the global the drag reads for the selected stack. Writes are clamped to [1, the stack's count], as retail's
+    /// own box clamps them, and do nothing while no stack is selected.
+    /// </summary>
+    public int SplitAmount
+    {
+        get => BitConverter.ToInt32(NativeUi.ReadMemory(RetailToolbarCatalogue.SplitAmount, 4), 0);
+        set
+        {
+            if (_described is not { Kind: SelectionKind.Stack } stack) return;
+            Marshal.WriteInt32(new IntPtr(unchecked((int)RetailToolbarCatalogue.SplitAmount)), Math.Clamp(value, 1, stack.StackCount));
         }
     }
 
@@ -140,6 +154,19 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
         NativeRetailPanelPort.SetPanelVisibility(manager, (uint)panel, open);
         _requested[panel] = open;
         Changed?.Invoke();
+    }
+
+    /// <summary>The game reported an object changed (a stack's count moved, say): a selected object is read again on the next read.</summary>
+    public void ObjectChanged(uint id)
+    {
+        if (_described?.Id == id) _described = null;
+    }
+
+    /// <summary>Describes the selected object, and brings the split amount down to the stack's count if a smaller stack now holds it.</summary>
+    private void Describe(uint id)
+    {
+        _described = Bridge.Selection(id);
+        if (_described is { Kind: SelectionKind.Stack } stack && SplitAmount > stack.StackCount) SplitAmount = stack.StackCount;
     }
 
     /// <summary>Raises <see cref="Changed"/> when the stance, the inventory's open state or the selection moved since the last call.</summary>

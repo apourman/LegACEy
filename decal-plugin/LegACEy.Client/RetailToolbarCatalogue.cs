@@ -42,6 +42,8 @@ internal static class RetailToolbarCatalogue
     internal const uint GetCombatSystem = 0x0056B210;
     /// <summary>ClientCombatSystem::ToggleCombatMode, ThisCall, no arguments: the stance button's click. Peace goes to the default stance, anything else to peace.</summary>
     internal const uint ToggleCombatMode = 0x0056D610;
+    /// <summary>The split amount global (int32): the amount retail splits off the selected stack when it is dragged. SplitAmountWrite and SplitAmountConsumer already byte-check this address.</summary>
+    internal const uint SplitAmount = 0x0081D7EC;
     /// <summary>The typed or slid split amount is written to the global 0x0081D7EC, clamped to [1, stack size].</summary>
     internal const uint SplitAmountWrite = 0x004BFC02;
     /// <summary>The stack size of the selected object (0x0081D7F0), the clamp's upper bound.</summary>
