@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
 using LegACEy.Client.DecalPlugin;
@@ -139,7 +141,7 @@ public sealed class RetailToolbarTests
         var creature = new RetailSelection(0x80000001, "Drudge Skulker", SelectionKind.Creature, 0.64f);
         var hurt = creature with { Meter = 0.3f };
         var staff = new RetailSelection(0x50000002, "Ivory Quarter Staff", SelectionKind.ItemWithMana, 0.82f);
-        var pyreals = new RetailSelection(0x50000003, "Pyreals", SelectionKind.Stack);
+        var pyreals = Pyreals(12500);
         var port = new FakeToolbarPort();
         using var panel = Open(port, out _);
         panel.Tick();
@@ -185,6 +187,105 @@ public sealed class RetailToolbarTests
     });
 
     [Fact]
+    public void Selecting_a_stack_shows_the_amount_box_at_retails_amount() => RenderThread.Run(() =>
+    {
+        var stack = Pyreals(12500);
+        var port = new FakeToolbarPort { Selection = stack, SplitAmount = 10 };
+        using var panel = Open(port, out var toolbar);
+        panel.Tick();
+
+        Assert.Equal("10", toolbar.AmountBox!.Text);
+        AssertDrawn(Render(p => { p.Selection = stack; p.SplitAmount = 10; }), panel);
+        // The box draws the figure: another amount draws differently, so the box is not a fixed picture.
+        Assert.NotEqual(Render(p => { p.Selection = stack; p.SplitAmount = 11; }), panel.Frame.Pixels.ToArray());
+    });
+
+    [Fact]
+    public void Typing_and_sliding_write_the_amount_clamped_to_one_and_the_stack() => RenderThread.Run(() =>
+    {
+        var port = new FakeToolbarPort { Selection = Pyreals(50), SplitAmount = 10 };
+        using var panel = Open(port, out var toolbar);
+        panel.Tick();
+
+        Click(panel, toolbar, toolbar.AmountBox!);
+        // Keys typed in the box go to the box, which holds the keyboard (retail text mode follows that).
+        Assert.True(panel.WantsKeyboard);
+        TypeReplacing(panel, "99999");
+        Assert.Equal(50, port.SplitAmount);
+        TypeReplacing(panel, "0");
+        Assert.Equal(1, port.SplitAmount);
+        TypeReplacing(panel, "7");
+        Assert.Equal(7, port.SplitAmount);
+
+        Slide(panel, toolbar, toolbar.AmountSlider!, 1.0);
+        Assert.Equal(50, port.SplitAmount);
+        Slide(panel, toolbar, toolbar.AmountSlider!, 0.0);
+        Assert.Equal(1, port.SplitAmount);
+    });
+
+    [Fact]
+    public void A_refresh_keeps_the_typed_amount_and_the_focus() => RenderThread.Run(() =>
+    {
+        var port = new FakeToolbarPort { Selection = Pyreals(500), SplitAmount = 10 };
+        using var panel = Open(port, out var toolbar);
+        panel.Tick();
+
+        Click(panel, toolbar, toolbar.AmountBox!);
+        TypeReplacing(panel, "12");
+        // The port changes something else (the stance, say) while the box is being typed in: the plaque is redrawn.
+        port.Raise();
+        panel.Tick();
+
+        Assert.True(panel.WantsKeyboard);
+        Assert.Equal("12", toolbar.AmountBox!.Text);
+        panel.TextInput("3");
+        Assert.Equal(123, port.SplitAmount);
+    });
+
+    [Fact]
+    public void A_split_typed_for_one_stack_is_not_written_once_another_stack_is_selected() => RenderThread.Run(() =>
+    {
+        var port = new FakeToolbarPort { Selection = Pyreals(500), SplitAmount = 10 };
+        using var panel = Open(port, out var toolbar);
+        panel.Tick();
+
+        Click(panel, toolbar, toolbar.AmountBox!);
+        TypeReplacing(panel, "5");
+        Assert.Equal(5, port.SplitAmount);
+        var writesBeforeSwitch = port.SplitWrites.Count;
+
+        // The player selects a smaller stack while the box still holds the first stack's figure. Retiring that box can
+        // move the focus, and a settle from it must not write the first stack's figure to the second.
+        port.Selection = new RetailSelection(0x50000007, "Arrows", SelectionKind.Stack, StackCount: 20);
+        port.Raise();
+        panel.Tick();
+        panel.ClearFocus();
+        panel.Tick();
+
+        Assert.DoesNotContain(5, port.SplitWrites.Skip(writesBeforeSwitch));
+    });
+
+    [Fact]
+    public void Only_a_stack_shows_the_amount_box() => RenderThread.Run(() =>
+    {
+        var port = new FakeToolbarPort { Selection = new RetailSelection(0x50000004, "Rat Tail", SelectionKind.Other) };
+        using var panel = Open(port, out var toolbar);
+        panel.Tick();
+        Assert.Null(toolbar.AmountBox);
+
+        port.Selection = Pyreals(12500);
+        port.Raise();
+        panel.Tick();
+        Assert.NotNull(toolbar.AmountBox);
+
+        // The stack is down to one: the game's kind is Other now, and the box goes.
+        port.Selection = new RetailSelection(0x50000003, "Pyreals", SelectionKind.Other, StackCount: 1);
+        port.Raise();
+        panel.Tick();
+        Assert.Null(toolbar.AmountBox);
+    });
+
+    [Fact]
     public void Health_and_mana_are_read_from_the_server_events_by_object_id()
     {
         var meters = new SelectionMeters();
@@ -219,6 +320,8 @@ public sealed class RetailToolbarTests
         return stream.ToArray();
     }
 
+    private static RetailSelection Pyreals(int count) => new(0x50000003, "Pyreals", SelectionKind.Stack, StackCount: count);
+
     /// <summary>A port that reads a panel as open only after it was asked to open it, as the native port does for the panels it cannot read yet.</summary>
     private sealed class RequestedOnlyPort : IRetailToolbarPort
     {
@@ -226,6 +329,7 @@ public sealed class RetailToolbarTests
 
         public RetailStance Stance => RetailStance.Peace;
         public RetailSelection? Selection => null;
+        public int SplitAmount { get; set; } = 1;
         public List<(RetailPanel Panel, bool Open)> Requests { get; } = new();
 
         public event Action? Changed;
@@ -261,6 +365,18 @@ public sealed class RetailToolbarTests
         public int StanceToggles { get; private set; }
         public List<(RetailPanel Panel, bool Open)> PanelRequests { get; } = new();
         public RetailSelection? Selection { get; set; }
+        private int _splitAmount = 1;
+        // Every write, in order, so a test can see what the plaque asked retail for.
+        public List<int> SplitWrites { get; } = new();
+        public int SplitAmount
+        {
+            get => _splitAmount;
+            set
+            {
+                _splitAmount = value;
+                SplitWrites.Add(value);
+            }
+        }
         public int UseCount { get; private set; }
         public int ExamineCount { get; private set; }
 
@@ -333,12 +449,37 @@ public sealed class RetailToolbarTests
     }
 
     /// <summary>A press and release at the middle of a medallion, where the player clicks.</summary>
-    private static void Click(AvaloniaPanel panel, RetailToolbar toolbar, DerethMedallion button)
+    private static void Click(AvaloniaPanel panel, RetailToolbar toolbar, Control button)
     {
         var centre = button.TranslatePoint(new Point(button.Bounds.Width / 2, button.Bounds.Height / 2), toolbar)!.Value;
         panel.PointerDown(centre.X, centre.Y);
         panel.PointerUp(centre.X, centre.Y);
         // The pointer moves on, as a player's does, so the button is not left in its hover art.
         panel.PointerLeave();
+    }
+
+    /// <summary>A player's drag of a slider's thumb, from where it sits to a fraction of the track (0 the left end, 1 the right).</summary>
+    private static void Slide(AvaloniaPanel panel, RetailToolbar toolbar, Slider slider, double toFraction)
+    {
+        // The thumb is laid out again after the last change, so the press finds it where the player sees it.
+        panel.Tick();
+        // The thumb is 6 DIP wide, so its centre runs from 3 to the width less 3. Its value sets where it sits.
+        double Centre(double fraction) => 3 + fraction * (slider.Bounds.Width - 6);
+        var fromFraction = (slider.Value - slider.Minimum) / (slider.Maximum - slider.Minimum);
+        var from = slider.TranslatePoint(new Point(Centre(fromFraction), slider.Bounds.Height / 2), toolbar)!.Value;
+        var to = slider.TranslatePoint(new Point(Centre(toFraction), slider.Bounds.Height / 2), toolbar)!.Value;
+        // The pointer leaves the slider between drags, as a player's does; without that the next press does not grab the thumb.
+        panel.PointerLeave();
+        panel.PointerDown(from.X, from.Y);
+        panel.PointerMove(to.X, to.Y);
+        panel.PointerUp(to.X, to.Y);
+        panel.PointerLeave();
+    }
+
+    /// <summary>Selects the box's text with Ctrl+A and types over it.</summary>
+    private static void TypeReplacing(AvaloniaPanel panel, string text)
+    {
+        panel.KeyDown(Key.A, KeyModifiers.Control);
+        panel.TextInput(text);
     }
 }

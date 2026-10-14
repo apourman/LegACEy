@@ -307,6 +307,7 @@ public sealed class ShortcutBarTests
             _shortcuts.RemoveAll(shortcut => shortcut.Index == index);
         }
         public RetailSelection? Selection => null;
+        public int SplitAmount { get; set; } = 1;
         public void UseSelected() { }
         public void ExamineSelected() { }
 

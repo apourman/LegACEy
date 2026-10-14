@@ -255,6 +255,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             catch (Exception exception) { Log($"Keys typed in LegACEy text boxes also reach the game: {exception.Message}"); }
             try { _inventory.TargetMode = new RetailTargetMode(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"Using an item on a target in LegACEy windows is off: {exception.Message}"); }
+            // A move of the selected stack splits by retail's amount only with the toolbar catalogue (its split entries) valid.
+            if (RetailToolbarCatalogueValid()) _inventory.Split = new StackSplitter(new NativeRetailSplitPort());
             LoadPlugins();
         }
         catch
@@ -331,7 +333,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // The open container and the selection are part of the inventory snapshot, whoever changed them.
     public void ItemSelected() => _inventory.MarkStale();
     public void ContainerOpened() => _inventory.MarkStale();
-    public void InventoryChanged(uint id, uint container) => _inventory.ObjectChanged(id, container);
+    public void InventoryChanged(uint id, uint container)
+    {
+        _inventory.ObjectChanged(id, container);
+        _toolbarPort?.ObjectChanged(id);
+    }
 
     // InventoryPutObjInContainer, WieldObject and InventoryPutObjectIn3D (ACE's GameEventType).
     private static readonly uint[] InventoryMoveEvents = { 0x0022, 0x0023, 0x019A };
