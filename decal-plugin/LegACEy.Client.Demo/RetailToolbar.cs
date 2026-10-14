@@ -50,6 +50,10 @@ public interface IRetailToolbarPort
     IReadOnlyList<RetailShortcut> Shortcuts { get; }
     /// <summary>Uses the shortcut in a slot, as the number key does.</summary>
     void UseShortcut(int index);
+    /// <summary>Puts an object into a slot as a shortcut, as retail's add does, so the server keeps it.</summary>
+    void AddShortcut(int index, uint objectId);
+    /// <summary>Takes the shortcut out of a slot, as retail's remove does, so the server drops it.</summary>
+    void RemoveShortcut(int index);
     /// <summary>The selected object, or null when nothing is selected.</summary>
     RetailSelection? Selection { get; }
     /// <summary>The amount retail splits off the selected stack when it is dragged. Set it clamped to 1 and the stack's count.</summary>
@@ -66,7 +70,7 @@ public interface IRetailToolbarPort
 /// The Dereth toolbar that replaces retail's: the stance, six window buttons and the LegACEy menu, then Use, a selection plaque, Examine
 /// and the backpack, in one row. The shortcut bars are not in it yet. It shows the port's state and asks the port for each change.
 /// </summary>
-public sealed class RetailToolbar : Decorator
+public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDropTarget
 {
     /// <summary>The window buttons, in the order the toolbar shows them, with the names their hover text shows.</summary>
     private static readonly (RetailPanel Panel, DerethGlyph Glyph, string Name)[] WindowButtons =
@@ -89,6 +93,7 @@ public sealed class RetailToolbar : Decorator
 
     private readonly IRetailToolbarPort _port;
     private readonly Action _openMenu;
+    private readonly Func<IReadOnlyList<uint>, bool> _moveToMainPack;
     private readonly DerethMedallion _stance;
     private readonly Dictionary<RetailPanel, DerethMedallion> _windows = new();
     private readonly DerethMedallion _menu;
@@ -125,10 +130,12 @@ public sealed class RetailToolbar : Decorator
 
     /// <param name="port">Retail's toolbar, as the client reaches it.</param>
     /// <param name="openMenu">Opens or closes the LegACEy menu. The caller shows the menu's state with <see cref="SetMenuOpen"/>.</param>
-    public RetailToolbar(IRetailToolbarPort port, Action openMenu)
+    /// <param name="moveToMainPack">Moves the items to the player's main pack, in order, as a drop on the backpack does. True when one moved.</param>
+    public RetailToolbar(IRetailToolbarPort port, Action openMenu, Func<IReadOnlyList<uint>, bool> moveToMainPack)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _openMenu = openMenu ?? throw new ArgumentNullException(nameof(openMenu));
+        _moveToMainPack = moveToMainPack ?? throw new ArgumentNullException(nameof(moveToMainPack));
 
         _stance = new DerethMedallion(GlyphOf(port.Stance), 34, 21);
         ToolTip.SetTip(_stance, "Combat stance");
@@ -180,6 +187,21 @@ public sealed class RetailToolbar : Decorator
 
     /// <summary>Shows the teal ring on the LegACEy menu button while the menu is open.</summary>
     public void SetMenuOpen(bool open) => _menu.IsOpen = open;
+
+    /// <summary>A drop on the backpack goes to the main pack, as retail's backpack takes it. Elsewhere on the toolbar it is not taken.</summary>
+    public bool RetailDrop(uint itemId, string itemName, Point position) => itemId != 0 && OnBackpack(position) && _moveToMainPack([itemId]);
+
+    /// <summary>A set of items dropped on the backpack goes to the main pack together. Elsewhere on the toolbar it is not taken.</summary>
+    public bool DropMany(IReadOnlyList<uint> itemIds, Point position) => OnBackpack(position) && _moveToMainPack(itemIds);
+
+    private bool OnBackpack(Point position)
+    {
+        var backpack = _windows[RetailPanel.Inventory];
+        return backpack.TranslatePoint(new Point(0, 0), this) is { } origin && new Rect(origin, backpack.Bounds.Size).Contains(position);
+    }
+
+    /// <summary>The toolbar draws no drop indicator; a drop is judged on release.</summary>
+    public void RetailDragOver(uint itemId, string itemName, Point? position) { }
 
     /// <summary>The button that opens a panel: a window button, or the backpack for the inventory.</summary>
     public DerethMedallion ButtonFor(RetailPanel panel) => _windows[panel];

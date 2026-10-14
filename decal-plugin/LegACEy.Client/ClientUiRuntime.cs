@@ -150,8 +150,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // Shortcut rows 1 and 2: their own windows beside the toolbar, held while the takeover is, and their refresh on inventory changes.
     private const string ShortcutRowWindowId = "shortcut-row-1";
     private const string ShortcutRow2WindowId = "shortcut-row-2";
+    // The Dereth toolbar's surface id. It is not a managed window, so drops reach it by its surface.
+    private const string ToolbarSurfaceId = "toolbar";
     private ShortcutBar? _shortcutBar;
     private ShortcutBar? _shortcutRow2;
+    // The slot a shortcut drag started from, shared by both rows: a drop on either row moves the shortcut.
+    private readonly ShortcutDragSource _shortcutDrag = new();
     private Action? _unsubscribeShortcutItems;
     private bool _inventoryWindowOpen;
     private DateTime _lastToolbarSwitchCheck;
@@ -1010,6 +1014,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         /// <summary>An item released outside every slot of a LegACEy window goes to the window under the pointer, if it takes retail drops.</summary>
         public bool DeliverAtPointer(uint itemId, string itemName)
         {
+            // The toolbar is not a managed window, so a drop on it is delivered to its own surface.
+            if (_owner.TopSurfaceAt(_owner._pointer) == ToolbarSurfaceId)
+                return _owner.DeliverToToolbar((content, point) => content is IRetailItemDropTarget target && target.RetailDrop(itemId, itemName, point));
             if (_owner._windows is not { } windows) return false;
             var window = windows.HitTest(_owner._pointer);
             if (window == null) return false;
@@ -1024,6 +1031,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
         public bool DeliverManyAtPointer(IReadOnlyList<uint> itemIds)
         {
+            if (_owner.TopSurfaceAt(_owner._pointer) == ToolbarSurfaceId)
+                return _owner.DeliverToToolbar((content, point) => content is IItemSetDropTarget target && target.DropMany(itemIds, point));
             if (_owner._windows is not { } windows) return false;
             var window = windows.HitTest(_owner._pointer);
             if (window == null) return false;
@@ -1460,7 +1469,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (!NativeUi.Ready || _device == IntPtr.Zero || !RetailPanelCatalogueValid() || !RetailToolbarCatalogueValid()) return false;
         _toolbarPort = new NativeRetailToolbarPort(Log, () => _retailPanels.Any(panel => panel.Holds) ? _inventoryWindowOpen : (bool?)null,
             () => _inGame, _selectionMeters, _appraisal, _inventory.TargetMode);
-        var toolbar = new RetailToolbar(_toolbarPort, ToggleMenuWindow);
+        var toolbar = new RetailToolbar(_toolbarPort, ToggleMenuWindow, MoveToMainPack);
         toolbar.Measure(Avalonia.Size.Infinity);
         var size = toolbar.DesiredSize;
         // Drawn at LegACEy's window scale, as the other LegACEy windows are.
@@ -1539,7 +1548,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private ShortcutBar OpenShortcutRow(int row, int firstIndex, string windowId, Action? tagClick)
     {
         var bar = new ShortcutBar(row, firstIndex, _toolbarPort!, ShortcutItemOf, _portal, () => NativeUi.IsUiLocked,
-            () => _windows?.BeginMove(windowId, _pointer), () => _pointer, tagClick);
+            () => _windows?.BeginMove(windowId, _pointer), () => _pointer, tagClick, new ItemDragHost(this), _shortcutDrag);
         bar.Measure(Avalonia.Size.Infinity);
         var size = new Size((int)Math.Ceiling(bar.DesiredSize.Width), ShortcutBar.BarHeight);
         // No title bar: the bar drags from its content (DragsFromContent), so titleBarHeight is not used for a drag. It is set to the bar's
@@ -1562,6 +1571,42 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         foreach (var worn in snapshot.Wielded)
             if (worn.Id == id) return new ShortcutItem(worn.Visual, worn.StackCount);
         return null;
+    }
+
+    /// <summary>
+    /// A LegACEy window's item released on the toolbar, as the toolbar's content takes it: only its backpack takes one. A shortcut dragged
+    /// off a bar is not an item drop: released on the backpack it is only removed from its bar.
+    /// </summary>
+    private bool DeliverToToolbar(Func<object, Avalonia.Point, bool> deliver)
+    {
+        if (_shortcutDrag.Slot != null || _toolbarSurface is not { } surface) return false;
+        var point = surface.Panel.ToContent(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y);
+        try { return deliver(surface.Panel.Content, point); }
+        catch (Exception exception)
+        {
+            ToolbarFailed(exception);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Moves the items to the main pack's free slots in order, as retail's backpack takes them. An item already in the main pack is skipped,
+    /// and the rest stop when the pack is full. True when one moved.
+    /// </summary>
+    private bool MoveToMainPack(IReadOnlyList<uint> itemIds)
+    {
+        var snapshot = _inventory.Snapshot;
+        var main = snapshot.MainPack;
+        using var free = snapshot.FreeSlots(main).GetEnumerator();
+        var moved = false;
+        foreach (var itemId in itemIds)
+        {
+            if (snapshot.Items.Any(item => item.Id == itemId && item.Container == main.Id)) continue;
+            if (!free.MoveNext()) break;
+            _inventory.MoveToContainer(itemId, main.Id, free.Current);
+            moved = true;
+        }
+        return moved;
     }
 
     /// <summary>Gives retail's toolbar back and drops the Dereth toolbar. A give-back that fails is logged and retried on the next call.</summary>
@@ -1865,7 +1910,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_barSurface is { Visible: true })
             surfaces.Add(new InputSurface("bar", _barSurface.Location.X, _barSurface.Location.Y, _barSurface.Bounds.Width, _barSurface.Bounds.Height, 0, _barSurface.Panel.WantsKeyboard));
         if (_toolbarSurface is { Visible: true })
-            surfaces.Add(new InputSurface("toolbar", _toolbarSurface.Location.X, _toolbarSurface.Location.Y, _toolbarSurface.Bounds.Width, _toolbarSurface.Bounds.Height, 0, _toolbarSurface.Panel.WantsKeyboard));
+            surfaces.Add(new InputSurface(ToolbarSurfaceId, _toolbarSurface.Location.X, _toolbarSurface.Location.Y, _toolbarSurface.Bounds.Width, _toolbarSurface.Bounds.Height, 0, _toolbarSurface.Panel.WantsKeyboard));
         if (_windows != null)
         {
             var z = _windows.ZOrder.Count;
@@ -1882,7 +1927,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private ScreenSurface? SurfaceById(string? id)
     {
         if (id == "bar") return _barSurface;
-        if (id == "toolbar") return _toolbarSurface;
+        if (id == ToolbarSurfaceId) return _toolbarSurface;
         if (id != null && _featureSurfaces.TryGetValue(id, out var surface)) return surface;
         return null;
     }

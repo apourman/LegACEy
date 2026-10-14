@@ -141,17 +141,91 @@ public sealed class ShortcutBarTests
     public void The_default_location_puts_the_bar_4_DIP_left_of_the_toolbar_with_its_bottom_level_with_it() =>
         Assert.Equal(new Point(724, 907), ShortcutBar.DefaultLocation(new Rectangle(1000, 900, 300, 48), new Size(321, 48), 0.85));
 
+    [Fact]
+    public void A_drop_on_an_empty_slot_binds_the_item_at_that_index() => RenderThread.Run(() =>
+    {
+        var port = new FakeShortcutPort(Array.Empty<RetailShortcut>());
+        using var panel = Open(port, new Dictionary<uint, ShortcutItem>(), out var bar);
+        panel.Tick();
+
+        Assert.True(bar.RetailDrop(0x100, string.Empty, Centre(bar, bar.SlotAt(3))));
+
+        Assert.Equal(new[] { "add 3 0x100" }, port.Edits);
+    });
+
+    [Fact]
+    public void A_drop_on_a_bound_slot_replaces_it_and_the_old_shortcut_goes_to_the_first_empty_slot_to_the_right() => RenderThread.Run(() =>
+    {
+        var port = new FakeShortcutPort(new[] { new RetailShortcut(2, 0x200) });
+        using var panel = Open(port, new Dictionary<uint, ShortcutItem>(), out var bar);
+        panel.Tick();
+
+        Assert.True(bar.RetailDrop(0x300, string.Empty, Centre(bar, bar.SlotAt(2))));
+
+        Assert.Equal(new[] { "remove 2", "add 2 0x300", "add 3 0x200" }, port.Edits);
+    });
+
+    [Fact]
+    public void A_shortcut_dragged_within_a_row_or_across_rows_moves_and_the_one_it_lands_on_takes_its_place() => RenderThread.Run(() =>
+    {
+        var port = new FakeShortcutPort(new[] { new RetailShortcut(0, 0x300), new RetailShortcut(1, 0x100), new RetailShortcut(4, 0x200) });
+        var drag = new FakeItemDragHost();
+        var source = new ShortcutDragSource();
+        using var row1 = Open(port, new Dictionary<uint, ShortcutItem>(), out var first, drag: drag, source: source);
+        using var row2 = Open(port, new Dictionary<uint, ShortcutItem>(), out var second, firstIndex: 9, drag: drag, source: source);
+        row1.Tick();
+        row2.Tick();
+
+        // The shortcut leaves its slot when the drag begins, and lands on release.
+        BeginDrag(row1, first, first.SlotAt(1));
+        Assert.Equal(new[] { "remove 1" }, port.Edits);
+        Release(row1, drag, first, first.SlotAt(4));
+        Assert.Equal(new[] { "remove 1", "remove 4", "add 4 0x100", "add 1 0x200" }, port.Edits);
+        port.Edits.Clear();
+
+        BeginDrag(row1, first, first.SlotAt(0));
+        Release(row1, drag, second, second.SlotAt(0));
+        Assert.Equal(new[] { "remove 0", "add 9 0x300" }, port.Edits);
+    });
+
+    [Fact]
+    public void A_drop_of_the_item_a_slot_already_holds_changes_nothing() => RenderThread.Run(() =>
+    {
+        var port = new FakeShortcutPort(new[] { new RetailShortcut(3, 0x100) });
+        using var panel = Open(port, new Dictionary<uint, ShortcutItem>(), out var bar);
+        panel.Tick();
+
+        Assert.True(bar.RetailDrop(0x100, string.Empty, Centre(bar, bar.SlotAt(3))));
+
+        Assert.Empty(port.Edits);
+    });
+
+    [Fact]
+    public void A_shortcut_dragged_off_the_bars_is_removed() => RenderThread.Run(() =>
+    {
+        var port = new FakeShortcutPort(new[] { new RetailShortcut(1, 0x100) });
+        var drag = new FakeItemDragHost();
+        using var panel = Open(port, new Dictionary<uint, ShortcutItem>(), out var bar, drag: drag);
+        panel.Tick();
+
+        BeginDrag(panel, bar, bar.SlotAt(1));
+        Release(panel, drag);
+
+        Assert.Equal(new[] { "remove 1" }, port.Edits);
+    });
+
     private static readonly ShortcutItem Potions = new(new ItemVisual(0x06001074, 0, 0, 0), 12);
     private static readonly ShortcutItem Swords = new(new ItemVisual(0x060010DA, 0, 0, 0), 1);
 
     /// <summary>A bar over a fake port, drawn in a window of its own. The items it shows are the ones <paramref name="held"/> holds.</summary>
     private static AvaloniaPanel Open(FakeShortcutPort port, IReadOnlyDictionary<uint, ShortcutItem> held, out ShortcutBar bar,
-        Func<bool>? locked = null, Action? startMove = null, int firstIndex = 0, Action? tagClick = null, Func<Point>? pointer = null)
+        Func<bool>? locked = null, Action? startMove = null, int firstIndex = 0, Action? tagClick = null, Func<Point>? pointer = null,
+        FakeItemDragHost? drag = null, ShortcutDragSource? source = null)
     {
         ShortcutBar? created = null;
         var panel = AvaloniaPanel.Create(() => created = new ShortcutBar(firstIndex == 0 ? 1 : 2, firstIndex, port,
             id => held.TryGetValue(id, out var item) ? item : null, null, locked ?? (() => false), startMove ?? (() => { }),
-            pointer ?? (() => new Point(0, 0)), tagClick), Width, Height);
+            pointer ?? (() => new Point(0, 0)), tagClick, drag ?? new FakeItemDragHost(), source ?? new ShortcutDragSource()), Width, Height);
         bar = created!;
         return panel;
     }
@@ -178,19 +252,60 @@ public sealed class ShortcutBarTests
         panel.PointerUp(centre.X, centre.Y);
     }
 
-    /// <summary>A fake of retail's toolbar for the shortcut row: its list, and the slots it was asked to use.</summary>
+    /// <summary>A press on a slot and a move 20 px to the right: the drag of its shortcut begins.</summary>
+    private static void BeginDrag(AvaloniaPanel panel, ShortcutBar bar, Control source)
+    {
+        var start = Centre(bar, source);
+        panel.PointerDown(start.X, start.Y);
+        panel.PointerMove(start.X + 20, start.Y);
+    }
+
+    /// <summary>
+    /// The release of a drag begun on a slot. The host hands it to <paramref name="target"/> of <paramref name="targetBar"/>, as the client
+    /// does for a window under the pointer. With no target the release is over nothing, and no LegACEy window takes it.
+    /// </summary>
+    private static void Release(AvaloniaPanel panel, FakeItemDragHost drag, ShortcutBar? targetBar = null, Control? target = null)
+    {
+        drag.Relay = (id, name) =>
+        {
+            if (targetBar == null || target == null) return false;
+            targetBar.RetailDrop(id, name, Centre(targetBar, target));
+            return true;
+        };
+        panel.PointerUp(0, 0);
+    }
+
+    /// <summary>The middle of a control, in the bar's coordinates: where the player points at it.</summary>
+    private static Avalonia.Point Centre(ShortcutBar bar, Control control) =>
+        control.TranslatePoint(new Avalonia.Point(control.Bounds.Width / 2, control.Bounds.Height / 2), bar)!.Value;
+
+    /// <summary>A fake of retail's toolbar for the shortcut row: its list, the slots it was asked to use, and each add and remove in order.</summary>
     private sealed class FakeShortcutPort : IRetailToolbarPort
     {
-        public FakeShortcutPort(IReadOnlyList<RetailShortcut> shortcuts) => Shortcuts = shortcuts;
+        private List<RetailShortcut> _shortcuts;
 
-        public IReadOnlyList<RetailShortcut> Shortcuts { get; private set; }
+        public FakeShortcutPort(IReadOnlyList<RetailShortcut> shortcuts) => _shortcuts = shortcuts.ToList();
+
+        public IReadOnlyList<RetailShortcut> Shortcuts => _shortcuts.OrderBy(shortcut => shortcut.Index).ToArray();
         public List<int> Used { get; } = new();
+        public List<string> Edits { get; } = new();
 
         public RetailStance Stance => RetailStance.Peace;
         public void ToggleStance() { }
         public bool IsPanelOpen(RetailPanel panel) => false;
         public void SetPanelOpen(RetailPanel panel, bool open) { }
         public void UseShortcut(int index) => Used.Add(index);
+        public void AddShortcut(int index, uint objectId)
+        {
+            Edits.Add($"add {index} 0x{objectId:X}");
+            _shortcuts.RemoveAll(shortcut => shortcut.Index == index);
+            _shortcuts.Add(new RetailShortcut(index, objectId));
+        }
+        public void RemoveShortcut(int index)
+        {
+            Edits.Add($"remove {index}");
+            _shortcuts.RemoveAll(shortcut => shortcut.Index == index);
+        }
         public RetailSelection? Selection => null;
         public int SplitAmount { get; set; } = 1;
         public void UseSelected() { }
@@ -200,7 +315,7 @@ public sealed class ShortcutBarTests
 
         public void Set(IReadOnlyList<RetailShortcut> shortcuts)
         {
-            Shortcuts = shortcuts;
+            _shortcuts = shortcuts.ToList();
             Changed?.Invoke();
         }
     }
