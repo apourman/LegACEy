@@ -188,6 +188,16 @@ public sealed class AppraisalFeature
     }
 
     /// <summary>
+    /// Examines the player's selection, as the examination takeover does: a plugin's selected stored item first, else the game's selection
+    /// (<paramref name="selection"/>, zero for none). Nothing thrown escapes.
+    /// </summary>
+    public ExamineResult ExamineSelection(uint selection)
+    {
+        if (ExamineStored()) return ExamineResult.Shown;
+        return selection == 0 ? ExamineResult.Failed : Examine(selection);
+    }
+
+    /// <summary>
     /// Shows an appraisal the server sent for an item that is not in the world (a Vault item, over the server channel): the same 0x00C9
     /// body, in the window, with the name, icon and stack count the caller has for it. It is not cached, and its inscription is read-only.
     /// Nothing thrown escapes: it is logged.
