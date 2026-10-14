@@ -76,8 +76,6 @@ public unsafe struct BridgeCalls
     /// <summary>(id, out flags): one world object's description flags (Decal's Behavior, ACE's ObjectDescriptionFlag), 0 when the world has
     /// no such object. Read for whether the appraisal window offers an inscription: the server's appraisal does not say an item is inscribable.</summary>
     public delegate* unmanaged[Stdcall]<int, int*, int> DescriptionFlags;
-    /// <summary>Actions.SetCombatMode(mode): the player's combat stance, Decal's values (1 peace, 2 melee, 4 missile, 8 magic).</summary>
-    public delegate* unmanaged[Stdcall]<int, int> SetCombatMode;
 }
 
 /// <summary>The integer facts <see cref="BridgeCalls.Fact"/> answers.</summary>

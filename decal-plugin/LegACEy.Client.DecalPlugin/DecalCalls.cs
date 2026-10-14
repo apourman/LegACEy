@@ -40,7 +40,6 @@ internal static unsafe class DecalCalls
         calls->Coverage = (delegate* unmanaged[Stdcall]<int, int*, int>)Pointer(new ReadCall(Coverage));
         calls->PluralName = (delegate* unmanaged[Stdcall]<int, byte*, int, int*, int>)Pointer(new TextCall(PluralName));
         calls->DescriptionFlags = (delegate* unmanaged[Stdcall]<int, int*, int>)Pointer(new ReadCall(DescriptionFlags));
-        calls->SetCombatMode = (delegate* unmanaged[Stdcall]<int, int>)Pointer(new Call1(SetCombatMode));
         return calls;
     }
 
@@ -207,7 +206,6 @@ internal static unsafe class DecalCalls
 
     private static int UseItem(int id, int state) => Act(() => CoreManager.Current.Actions.UseItem(id, state));
     private static int SelectItem(int id) => Act(() => CoreManager.Current.Actions.SelectItem(id));
-    private static int SetCombatMode(int mode) => Act(() => CoreManager.Current.Actions.SetCombatMode((CombatState)mode));
     // Every ID we ask for is the player's own (right-click, E, the window following the selection), so it skips Decal's ID queue,
     // which other plugins fill at login; Actions.RequestId would wait behind them. Only the latest one stays pending, as in retail.
     private static int RequestId(int id) => Act(() => CoreManager.Current.IDQueue.ShortcircuitID(id));

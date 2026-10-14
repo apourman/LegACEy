@@ -15,14 +15,16 @@ public sealed class RetailToolbarTests
     private const int Height = 60;
 
     [Fact]
-    public void Stance_shows_the_port_stance_and_a_click_asks_for_the_next_one() => RenderThread.Run(() =>
+    public void Stance_shows_the_port_stance_and_a_click_asks_the_port_to_toggle() => RenderThread.Run(() =>
     {
         var port = new FakeToolbarPort();
         using var panel = Open(port, out var toolbar);
         panel.Tick();
 
+        // Behaviour correction (spec story 14: the click changes stance as retail's button does): a click toggles, not cycles.
         Click(panel, toolbar, toolbar.StanceButton);
-        Assert.Equal(new[] { RetailStance.Melee }, port.StanceRequests);
+        Assert.Equal(1, port.StanceToggles);
+        Assert.Equal(RetailStance.Melee, port.Stance);
 
         // A stance change made by a key or by the game shows on the next frame, as a fresh toolbar in that stance draws it.
         port.Stance = RetailStance.Missile;
@@ -111,7 +113,7 @@ public sealed class RetailToolbarTests
 
         public event Action? Changed;
 
-        public void SetStance(RetailStance stance) { }
+        public void ToggleStance() { }
 
         public bool IsPanelOpen(RetailPanel panel) => _open.Contains(panel);
 
@@ -130,12 +132,17 @@ public sealed class RetailToolbarTests
         private readonly HashSet<RetailPanel> _open = new();
 
         public RetailStance Stance { get; set; } = RetailStance.Peace;
-        public List<RetailStance> StanceRequests { get; } = new();
+        public int StanceToggles { get; private set; }
         public List<(RetailPanel Panel, bool Open)> PanelRequests { get; } = new();
 
         public event Action? Changed;
 
-        public void SetStance(RetailStance stance) => StanceRequests.Add(stance);
+        // Retail's toggle: peace goes to the default stance (melee here) and anything else to peace.
+        public void ToggleStance()
+        {
+            StanceToggles++;
+            Stance = Stance == RetailStance.Peace ? RetailStance.Melee : RetailStance.Peace;
+        }
 
         public bool IsPanelOpen(RetailPanel panel) => _open.Contains(panel);
 

@@ -24,7 +24,8 @@ public interface IRetailToolbarPort
 {
     /// <summary>The player's combat stance.</summary>
     RetailStance Stance { get; }
-    void SetStance(RetailStance stance);
+    /// <summary>The stance button's click: retail's toggle, peace to the default stance and anything else to peace.</summary>
+    void ToggleStance();
     /// <summary>Retail's open state for a panel.</summary>
     bool IsPanelOpen(RetailPanel panel);
     void SetPanelOpen(RetailPanel panel, bool open);
@@ -65,7 +66,7 @@ public sealed class RetailToolbar : Decorator
 
         _stance = new DerethMedallion(GlyphOf(port.Stance), 34, 21);
         ToolTip.SetTip(_stance, "Combat stance");
-        _stance.Clicked += () => _port.SetStance(NextStance(_port.Stance));
+        _stance.Clicked += () => _port.ToggleStance();
 
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, Height = 32 };
         row.Children.Add(Centred(_stance));
@@ -149,14 +150,5 @@ public sealed class RetailToolbar : Decorator
         RetailStance.Missile => DerethGlyph.MissileStance,
         RetailStance.Magic => DerethGlyph.MagicStance,
         _ => DerethGlyph.PeaceStance
-    };
-
-    /// <summary>Peace, melee, missile, magic, then peace again. A stance the port does not know (0, no character) asks for peace.</summary>
-    private static RetailStance NextStance(RetailStance stance) => stance switch
-    {
-        RetailStance.Peace => RetailStance.Melee,
-        RetailStance.Melee => RetailStance.Missile,
-        RetailStance.Missile => RetailStance.Magic,
-        _ => RetailStance.Peace,
     };
 }

@@ -1,18 +1,19 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using LegACEy.Client.Demo;
 
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
-/// The toolbar's port over the installed client. The stance is Decal's combat mode. A panel opens or closes through gmPanelUI's notice, by
-/// its panel number; the notice needs gmPanelUI, found from the toolbar's element or else the inventory's. <see cref="Poll"/> raises
-/// <see cref="Changed"/> when the stance or the inventory's open state moved, once a frame.
+/// The toolbar's port over the installed client. The stance click is retail's combat toggle (ToggleCombatMode), the stance read is Decal's combat mode.
+/// A panel opens or closes through gmPanelUI's notice, by its panel number; the notice needs gmPanelUI, found from the toolbar's element or
+/// else the inventory's. <see cref="Poll"/> raises <see cref="Changed"/> when the stance or the inventory's open state moved, once a frame.
 /// </summary>
 /// <remarks>
 /// The inventory's open state comes from the LegACEy inventory window while its takeover holds retail's panel, and from retail's element
-/// otherwise. The other panels' open states are not read yet: the port returns what it last asked for. A close box or a key does not update
-/// that until the readers exist, so a window opened and closed that way reads as open here.
+/// otherwise. Another panel's open state comes from gmPanelUI's table when it lists the panel; a panel the table does not list returns what
+/// the port last asked for, so a close box or a key can leave that panel's state stale.
 /// </remarks>
 internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
 {
@@ -24,6 +25,17 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     private bool _lastInventoryOpen;
     private bool _noManagerLogged;
 
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate IntPtr GetCombatSystemFn();
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void ToggleCombatModeFn(IntPtr combatSystem);
+
+    private static readonly GetCombatSystemFn GetCombatSystem = Marshal.GetDelegateForFunctionPointer<GetCombatSystemFn>(
+        new IntPtr(RetailToolbarCatalogue.GetCombatSystem));
+    private static readonly ToggleCombatModeFn ToggleCombatModeNative = Marshal.GetDelegateForFunctionPointer<ToggleCombatModeFn>(
+        new IntPtr(RetailToolbarCatalogue.ToggleCombatMode));
+
     public NativeRetailToolbarPort(Action<string> log, Func<bool?> takenInventoryOpen)
     {
         _log = log;
@@ -34,11 +46,23 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
 
     public RetailStance Stance => (RetailStance)Bridge.Fact(BridgeFact.CombatMode);
 
-    public void SetStance(RetailStance stance) => Bridge.SetCombatMode((int)stance);
+    /// <summary>The stance button's click: retail's own toggle (peace and the default stance), as retail's button does. No-op with no character.</summary>
+    public void ToggleStance()
+    {
+        var combatSystem = GetCombatSystem();
+        if (combatSystem == IntPtr.Zero) return;
+        ToggleCombatModeNative(combatSystem);
+    }
 
     public bool IsPanelOpen(RetailPanel panel)
     {
-        if (panel != RetailPanel.Inventory) return _requested.TryGetValue(panel, out var requested) && requested;
+        if (panel != RetailPanel.Inventory)
+        {
+            var manager = PanelManager();
+            var listed = manager == IntPtr.Zero ? IntPtr.Zero : NativeRetailPanelPort.PanelElement(manager, (uint)panel);
+            if (listed != IntPtr.Zero) return NativeUi.IsVisible(listed);
+            return _requested.TryGetValue(panel, out var requested) && requested;
+        }
         if (_takenInventoryOpen() is bool taken) return taken;
         var element = NativeUi.GetElement(NativeUi.InventoryPanel);
         return element != IntPtr.Zero && NativeUi.IsVisible(element);
