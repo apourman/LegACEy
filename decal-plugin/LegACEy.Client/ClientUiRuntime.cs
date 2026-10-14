@@ -848,7 +848,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             {
                 accepted = target.RetailDrop(item, ObjectName(item), surface.Panel.ToContent(point.X - surface.Location.X, point.Y - surface.Location.Y));
             }
-            catch (Exception exception) { _windowFailures[id](exception); }
+            catch (Exception exception) { DropFailed(id, exception); }
         }
         if (_loggedDrops++ < 5)
             Log($"Retail item 0x{item:X8} dropped on LegACEy window '{id}'; retail drag cancelled; accepted: {accepted}.");
@@ -1020,7 +1020,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (_owner._windows is not { } windows) return false;
             var window = windows.HitTest(_owner._pointer);
             if (window == null) return false;
-            try { return ItemDropRouting.DeliverTo(window, _owner.ContentOf, _owner._pointer, itemId, itemName, windows.Scale); }
+            // A shortcut dragged off a bar is only a bar's to take: no other window is offered it as an item.
+            try
+            {
+                return _owner._shortcutDrag.Slot != null
+                    ? ItemDropRouting.DeliverShortcutTo(window, _owner.ContentOf, _owner._pointer, itemId, windows.Scale)
+                    : ItemDropRouting.DeliverTo(window, _owner.ContentOf, _owner._pointer, itemId, itemName, windows.Scale);
+            }
             catch (Exception exception)
             {
                 if (_owner._windowFailures.TryGetValue(window.Id, out var failed)) failed(exception);
@@ -1631,6 +1637,17 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _toolbarRenderer = null;
         _toolbar = null;
         _toolbarPort = null;
+    }
+
+    /// <summary>
+    /// A failure while a window takes a retail drop goes to that window's error handler. The toolbar is not a managed window, so its
+    /// failure goes to the toolbar; a window with no handler disables the client UI, as a failed delivery does.
+    /// </summary>
+    private void DropFailed(string id, Exception exception)
+    {
+        if (id == ToolbarSurfaceId) ToolbarFailed(exception);
+        else if (_windowFailures.TryGetValue(id, out var failed)) failed(exception);
+        else Disable(exception);
     }
 
     private void ToolbarFailed(Exception exception)

@@ -261,7 +261,8 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     {
         var objectId = ShortcutEdits.ObjectAt(_port.Shortcuts, index);
         if (objectId == 0) return;
-        _dragIcon = _drag.ShowDragIcon(IconOf(objectId), 1, retailDropIndicator: false, objectId);
+        // Zero: the icon is not an item, so no other window shows a drop indicator for it.
+        _dragIcon = _drag.ShowDragIcon(IconOf(objectId), 1, retailDropIndicator: false, itemId: 0);
         _dragSource.Slot = index;
         _dragSource.ObjectId = objectId;
         ShortcutEdits.Lift(_port, index);
