@@ -145,6 +145,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private RetailSurfaceRenderer? _toolbarRenderer;
     private RetailTakeoverLifecycle? _toolbarTakeover;
     private bool _toolbarFailed;
+    // The offset from the toolbar's corner to the pointer while its frame is dragged; null when it is not.
+    private Size? _toolbarDragOffset;
     private bool _toolbarSwitch;
     private bool _toolbarReleaseLogged;
     // Shortcut rows 1 and 2: their own windows beside the toolbar, held while the takeover is, and their refresh on inventory changes.
@@ -1462,7 +1464,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (_toolbarFailed) return;
             if (_toolbarSurface == null && !CreateRetailToolbar()) return;
             _toolbarPort!.Poll();
-            _toolbarTakeover!.Tick(false, GameDevice.ViewportSize(_device));
+            _toolbarTakeover!.Tick(_toolbarDragOffset != null, GameDevice.ViewportSize(_device));
             // The bar stands beside the toolbar only while the takeover holds retail's element; otherwise it closes with it.
             if (_toolbarTakeover.Holds) EnsureShortcutBar();
             else CloseShortcutBar();
@@ -1474,6 +1476,44 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
     }
 
+    /// <summary>The toolbar's frame was pressed: it follows the pointer until the button goes up. Refused while retail's UI is locked.</summary>
+    private void BeginToolbarDrag()
+    {
+        if (_toolbarTakeover?.CanDrag != true || _toolbarSurface is not { } surface) return;
+        _toolbarDragOffset = new Size(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y);
+    }
+
+    /// <summary>Moves the toolbar with the pointer, kept on screen. Stops when the takeover no longer lets it move.</summary>
+    private void DragToolbar(Point pointer)
+    {
+        if (_toolbarTakeover?.CanDrag != true || _toolbarSurface is not { } surface)
+        {
+            _toolbarDragOffset = null;
+            return;
+        }
+        var screen = GameDevice.ViewportSize(_device);
+        var size = surface.Bounds.Size;
+        var offset = _toolbarDragOffset!.Value;
+        surface.Location = new Point(
+            Math.Max(0, Math.Min(screen.Width - size.Width, pointer.X - offset.Width)),
+            Math.Max(0, Math.Min(screen.Height - size.Height, pointer.Y - offset.Height)));
+    }
+
+    /// <summary>
+    /// The button went up: retail's toolbar element moves to where the Dereth toolbar was dropped, so retail keeps and saves the place as it
+    /// does for a drag of its own. A failure gives retail's toolbar back.
+    /// </summary>
+    private void EndToolbarDrag()
+    {
+        _toolbarDragOffset = null;
+        if (_toolbarSurface is not { } surface) return;
+        try
+        {
+            if (_toolbarTakeover?.MoveTo(surface.Location) == true) Log($"Moved the Dereth toolbar to {surface.Location}.");
+        }
+        catch (Exception exception) { ToolbarFailed(exception); }
+    }
+
     /// <summary>Makes the toolbar window and takes retail's toolbar. False when the native addresses are not ready, so retail's toolbar is left alone.</summary>
     private bool CreateRetailToolbar()
     {
@@ -1482,7 +1522,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             () => _inGame, _selectionMeters, _appraisal, _inventory.TargetMode);
         // A move of the selected stack splits by retail's amount while the toolbar that shows the amount is up, and only then.
         _inventory.Split ??= new StackSplitter(new NativeRetailSplitPort());
-        var toolbar = new RetailToolbar(_toolbarPort, ToggleMenuWindow, MoveToMainPack);
+        var toolbar = new RetailToolbar(_toolbarPort, ToggleMenuWindow, MoveToMainPack, BeginToolbarDrag);
         toolbar.Measure(Avalonia.Size.Infinity);
         var size = toolbar.DesiredSize;
         // Drawn at LegACEy's window scale, as the other LegACEy windows are.
@@ -1739,6 +1779,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     }
                     else if (_dragOffset != null)
                         DragBar(point);
+                    else if (_toolbarDragOffset != null)
+                        DragToolbar(point);
                     else
                     {
                         var handingOff = _handOff == null;
@@ -1776,6 +1818,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     }
                     if (_dragOffset != null)
                         EndBarDrag();
+                    if (_toolbarDragOffset != null)
+                        EndToolbarDrag();
                     eat = route.Eat;
                     break;
                 case InputAction.MouseWheel:
@@ -1964,6 +2008,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _hovered?.Panel.PointerLeave();
         _hovered = null;
         _dragOffset = null;
+        _toolbarDragOffset = null;
         _windows?.Release();
     }
 
