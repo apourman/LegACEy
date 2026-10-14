@@ -144,6 +144,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private RetailTakeoverLifecycle? _toolbarTakeover;
     private bool _toolbarFailed;
     private bool _toolbarSwitch;
+    private bool _toolbarReleaseLogged;
+    private bool _inventoryWindowOpen;
     private DateTime _lastToolbarSwitchCheck;
     private readonly GameStatePort _gameState = new(new GameStateSnapshot("unknown-character", "unknown-server", 0, 0, 0, 0, 0, 0));
     private readonly GameStatePoller _gameStatePoller;
@@ -1252,7 +1254,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     IRetailPanel ILegACEyPluginHost.TakeOverRetailInventory(Action<bool> retailOpenChanged)
     {
         if (!NativeUi.Ready || !RetailPanelCatalogueValid()) return NoRetailPanel.Instance;
-        var takeover = new RetailPanelTakeover(new NativeRetailPanelPort(), retailOpenChanged, Log);
+        // The LegACEy inventory window's open state, which the toolbar's backpack shows while the takeover holds retail's panel.
+        var takeover = new RetailPanelTakeover(new NativeRetailPanelPort(), open => { _inventoryWindowOpen = open; retailOpenChanged(open); }, Log);
         _retailPanels.Add(takeover);
         return new RetailPanelHandle(this, takeover);
     }
@@ -1390,6 +1393,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         try
         {
+            // Without windows the toolbar's surface cannot draw; DisableWindows has already given retail's toolbar back.
+            if (!_windowsEnabled) return;
             if (!RetailToolbarSwitchOn())
             {
                 _toolbarFailed = false;
@@ -1412,7 +1417,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool CreateRetailToolbar()
     {
         if (!NativeUi.Ready || _device == IntPtr.Zero || !RetailPanelCatalogueValid()) return false;
-        _toolbarPort = new NativeRetailToolbarPort(Log);
+        _toolbarPort = new NativeRetailToolbarPort(Log, () => _retailPanels.Any(panel => panel.Holds) ? _inventoryWindowOpen : (bool?)null);
         var toolbar = new RetailToolbar(_toolbarPort, ToggleMenuWindow);
         toolbar.Measure(Avalonia.Size.Infinity);
         var size = toolbar.DesiredSize;
@@ -1436,10 +1441,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             try { _toolbarTakeover.Dispose(); }
             catch (Exception exception)
             {
-                Log($"Could not give the retail toolbar back; retrying: {exception}");
+                // With the switch off this runs every frame: the failure is logged once, and the give-back is retried each frame.
+                if (!_toolbarReleaseLogged) Log($"Could not give the retail toolbar back; retrying: {exception}");
+                _toolbarReleaseLogged = true;
                 return;
             }
             _toolbarTakeover = null;
+            _toolbarReleaseLogged = false;
         }
         _toolbarSurface?.Dispose();
         _toolbarSurface = null;

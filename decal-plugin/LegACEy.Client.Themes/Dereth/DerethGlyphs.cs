@@ -40,7 +40,6 @@ public static class DerethGlyphs
 
     private static readonly Dictionary<DerethGlyph, GlyphPart[]> Parts = new()
     {
-        // Generated from the mockup symbols (.artifacts/client-dereth-toolbar/mockups.html).
         [DerethGlyph.Social] = new GlyphPart[]
         {
             new("M5.8 8A3.2 3.2 0 1 0 12.2 8A3.2 3.2 0 1 0 5.8 8Z", false, 1.7, 1, null),

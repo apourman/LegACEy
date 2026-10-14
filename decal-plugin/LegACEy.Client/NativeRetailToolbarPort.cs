@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using LegACEy.Client.Demo;
 
 namespace LegACEy.Client.DecalPlugin;
@@ -9,17 +10,25 @@ namespace LegACEy.Client.DecalPlugin;
 /// <see cref="Changed"/> when the stance or the inventory's open state moved, once a frame.
 /// </summary>
 /// <remarks>
-/// Gap: only the inventory's open state is read so far. The other panels' elements are not known yet (ticket 01 is finding them), so
-/// their rings stay off until then. The notice itself works for every panel number.
+/// The inventory's open state comes from the LegACEy inventory window while its takeover holds retail's panel, and from retail's element
+/// otherwise. The other panels' open states are not read yet: the port returns what it last asked for. A close box or a key does not update
+/// that until the readers exist, so a window opened and closed that way reads as open here.
 /// </remarks>
 internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
 {
     private readonly Action<string> _log;
+    // Supplies the inventory window's open state while a takeover holds the panel; null when none does.
+    private readonly Func<bool?> _takenInventoryOpen;
+    private readonly Dictionary<RetailPanel, bool> _requested = new();
     private RetailStance _lastStance;
     private bool _lastInventoryOpen;
     private bool _noManagerLogged;
 
-    public NativeRetailToolbarPort(Action<string> log) => _log = log;
+    public NativeRetailToolbarPort(Action<string> log, Func<bool?> takenInventoryOpen)
+    {
+        _log = log;
+        _takenInventoryOpen = takenInventoryOpen;
+    }
 
     public event Action? Changed;
 
@@ -29,7 +38,8 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
 
     public bool IsPanelOpen(RetailPanel panel)
     {
-        if (panel != RetailPanel.Inventory) return false;
+        if (panel != RetailPanel.Inventory) return _requested.TryGetValue(panel, out var requested) && requested;
+        if (_takenInventoryOpen() is bool taken) return taken;
         var element = NativeUi.GetElement(NativeUi.InventoryPanel);
         return element != IntPtr.Zero && NativeUi.IsVisible(element);
     }
@@ -44,6 +54,8 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
             return;
         }
         NativeRetailPanelPort.SetPanelVisibility(manager, (uint)panel, open);
+        _requested[panel] = open;
+        Changed?.Invoke();
     }
 
     /// <summary>Raises <see cref="Changed"/> when the stance or the inventory's open state moved since the last call.</summary>

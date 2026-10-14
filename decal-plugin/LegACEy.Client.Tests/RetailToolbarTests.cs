@@ -88,6 +88,42 @@ public sealed class RetailToolbarTests
         AssertDrawn(Render(arrangeToolbar: t => t.SetMenuOpen(true)), panel);
     });
 
+    [Fact]
+    public void A_second_click_asks_to_close_a_window_the_port_only_knows_it_was_asked_to_open() => RenderThread.Run(() =>
+    {
+        var port = new RequestedOnlyPort();
+        using var panel = Open(port, out var toolbar);
+        panel.Tick();
+
+        Click(panel, toolbar, toolbar.ButtonFor(RetailPanel.Skills));
+        Click(panel, toolbar, toolbar.ButtonFor(RetailPanel.Skills));
+
+        Assert.Equal(new[] { (11, true), (11, false) }, port.Requests.Select(r => ((int)r.Panel, r.Open)));
+    });
+
+    /// <summary>A port that reads a panel as open only after it was asked to open it, as the native port does for the panels it cannot read yet.</summary>
+    private sealed class RequestedOnlyPort : IRetailToolbarPort
+    {
+        private readonly HashSet<RetailPanel> _open = new();
+
+        public RetailStance Stance => RetailStance.Peace;
+        public List<(RetailPanel Panel, bool Open)> Requests { get; } = new();
+
+        public event Action? Changed;
+
+        public void SetStance(RetailStance stance) { }
+
+        public bool IsPanelOpen(RetailPanel panel) => _open.Contains(panel);
+
+        public void SetPanelOpen(RetailPanel panel, bool open)
+        {
+            Requests.Add((panel, open));
+            if (open) _open.Add(panel);
+            else _open.Remove(panel);
+            Changed?.Invoke();
+        }
+    }
+
     /// <summary>A fake of retail's toolbar: it records what the toolbar asks, and applies a panel change at once, as retail does.</summary>
     private sealed class FakeToolbarPort : IRetailToolbarPort
     {

@@ -11,7 +11,10 @@ namespace LegACEy.Client.Demo;
 /// <summary>The combat stance, with Decal's combat mode values: 1 peace, 2 melee, 4 missile, 8 magic.</summary>
 public enum RetailStance { Peace = 1, Melee = 2, Missile = 4, Magic = 8 }
 
-/// <summary>Retail's panels, by the number gmPanelUI files each under. The window buttons and the backpack open these.</summary>
+/// <summary>
+/// Retail's panels, by the number gmPanelUI files each under: the element property 0x10000029 on each retail button in layout 0x21000016
+/// (the spec's panel numbers). The window buttons and the backpack open these.
+/// </summary>
 public enum RetailPanel { Options = 10, Skills = 11, Social = 12, Magic = 13, WorldMap = 16, Quests = 25, Inventory = 7 }
 
 /// <summary>
@@ -70,7 +73,7 @@ public sealed class RetailToolbar : Decorator
         foreach (var (panel, glyph, name) in WindowButtons)
         {
             var button = Medallion(glyph, 26, 16, name);
-            button.Clicked += () => _port.SetPanelOpen(panel, !_port.IsPanelOpen(panel));
+            button.Clicked += () => TogglePanel(panel);
             _windows.Add(panel, button);
             row.Children.Add(Centred(button));
         }
@@ -92,7 +95,7 @@ public sealed class RetailToolbar : Decorator
         row.Children.Add(Centred(new DerethDivider()));
         var backpack = Medallion(DerethGlyph.Backpack, 34, 21, "Inventory");
         _windows.Add(RetailPanel.Inventory, backpack);
-        backpack.Clicked += () => _port.SetPanelOpen(RetailPanel.Inventory, !_port.IsPanelOpen(RetailPanel.Inventory));
+        backpack.Clicked += () => TogglePanel(RetailPanel.Inventory);
         row.Children.Add(Centred(backpack));
 
         Child = new DerethFrame(DerethFrameArt.Window) { Child = new Border { Padding = new Thickness(4, 0), Child = row } };
@@ -109,6 +112,9 @@ public sealed class RetailToolbar : Decorator
     public DerethMedallion StanceButton => _stance;
 
     public DerethMedallion MenuButton => _menu;
+
+    /// <summary>Opens the panel if it is shut, and shuts it if it is open.</summary>
+    private void TogglePanel(RetailPanel panel) => _port.SetPanelOpen(panel, !_port.IsPanelOpen(panel));
 
     /// <summary>Shows the stance, the open windows and the backpack's ring from the port.</summary>
     private void Refresh()
@@ -145,6 +151,12 @@ public sealed class RetailToolbar : Decorator
         _ => DerethGlyph.PeaceStance
     };
 
-    /// <summary>Peace, melee, missile, magic, then peace again.</summary>
-    private static RetailStance NextStance(RetailStance stance) => stance == RetailStance.Magic ? RetailStance.Peace : (RetailStance)((int)stance * 2);
+    /// <summary>Peace, melee, missile, magic, then peace again. A stance the port does not know (0, no character) asks for peace.</summary>
+    private static RetailStance NextStance(RetailStance stance) => stance switch
+    {
+        RetailStance.Peace => RetailStance.Melee,
+        RetailStance.Melee => RetailStance.Missile,
+        RetailStance.Missile => RetailStance.Magic,
+        _ => RetailStance.Peace,
+    };
 }
