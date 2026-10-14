@@ -152,6 +152,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string ShortcutRow2WindowId = "shortcut-row-2";
     private ShortcutBar? _shortcutBar;
     private ShortcutBar? _shortcutRow2;
+    // The slot a shortcut drag started from, shared by both rows: a drop on either row moves the shortcut.
+    private readonly ShortcutDragSource _shortcutDrag = new();
     private Action? _unsubscribeShortcutItems;
     private bool _inventoryWindowOpen;
     private DateTime _lastToolbarSwitchCheck;
@@ -1004,6 +1006,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         /// <summary>An item released outside every slot of a LegACEy window goes to the window under the pointer, if it takes retail drops.</summary>
         public bool DeliverAtPointer(uint itemId, string itemName)
         {
+            // The toolbar is not a managed window, so a drop on it is delivered to its own surface.
+            if (_owner.TopSurfaceAt(_owner._pointer) == "toolbar") return _owner.DeliverToToolbar(itemId, itemName);
             if (_owner._windows is not { } windows) return false;
             var window = windows.HitTest(_owner._pointer);
             if (window == null) return false;
@@ -1454,7 +1458,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (!NativeUi.Ready || _device == IntPtr.Zero || !RetailPanelCatalogueValid() || !RetailToolbarCatalogueValid()) return false;
         _toolbarPort = new NativeRetailToolbarPort(Log, () => _retailPanels.Any(panel => panel.Holds) ? _inventoryWindowOpen : (bool?)null,
             () => _inGame, _selectionMeters, _appraisal, _inventory.TargetMode);
-        var toolbar = new RetailToolbar(_toolbarPort, ToggleMenuWindow);
+        var toolbar = new RetailToolbar(_toolbarPort, ToggleMenuWindow, MoveToMainPack);
         toolbar.Measure(Avalonia.Size.Infinity);
         var size = toolbar.DesiredSize;
         // Drawn at LegACEy's window scale, as the other LegACEy windows are.
@@ -1533,7 +1537,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private ShortcutBar OpenShortcutRow(int row, int firstIndex, string windowId, Action? tagClick)
     {
         var bar = new ShortcutBar(row, firstIndex, _toolbarPort!, ShortcutItemOf, _portal, () => NativeUi.IsUiLocked,
-            () => _windows?.BeginMove(windowId, _pointer), () => _pointer, tagClick);
+            () => _windows?.BeginMove(windowId, _pointer), () => _pointer, tagClick, new ItemDragHost(this), _shortcutDrag);
         bar.Measure(Avalonia.Size.Infinity);
         var size = new Size((int)Math.Ceiling(bar.DesiredSize.Width), ShortcutBar.BarHeight);
         // No title bar: the bar drags from its content (DragsFromContent), so titleBarHeight is not used for a drag. It is set to the bar's
@@ -1559,6 +1563,36 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>Gives retail's toolbar back and drops the Dereth toolbar. A give-back that fails is logged and retried on the next call.</summary>
+    /// <summary>An item from a LegACEy window released on the toolbar: the toolbar takes it only on its backpack.</summary>
+    private bool DeliverToToolbar(uint itemId, string itemName)
+    {
+        if (_toolbarSurface is not { } surface || surface.Panel.Content is not IRetailItemDropTarget target) return false;
+        try { return target.RetailDrop(itemId, itemName, surface.Panel.ToContent(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y)); }
+        catch (Exception exception)
+        {
+            ToolbarFailed(exception);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Moves an item to the main pack's first free slot, as retail's backpack takes it. Nothing moves when the item is already in the main
+    /// pack or the pack is full.
+    /// </summary>
+    private void MoveToMainPack(uint itemId)
+    {
+        var snapshot = _inventory.Snapshot;
+        var main = snapshot.MainPack;
+        if (snapshot.Items.Any(item => item.Id == itemId && item.Container == main.Id)) return;
+        var used = new HashSet<int>(snapshot.Items.Where(item => item.Container == main.Id).Select(item => item.Slot));
+        for (var slot = 0; slot < main.Capacity; slot++)
+        {
+            if (used.Contains(slot)) continue;
+            _inventory.MoveToContainer(itemId, main.Id, slot);
+            return;
+        }
+    }
+
     private void ReleaseRetailToolbar()
     {
         CloseShortcutBar();

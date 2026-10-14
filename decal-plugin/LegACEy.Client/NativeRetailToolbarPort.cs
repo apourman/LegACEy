@@ -50,12 +50,22 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void UseShortcutFn(IntPtr toolbar, int slot, bool fromKey);
 
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void AddShortcutFn(IntPtr toolbar, uint objectId, int slot, bool sendToServer);
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void RemoveShortcutInSlotNumFn(IntPtr toolbar, int slot, bool sendToServer);
+
     private static readonly GetCombatSystemFn GetCombatSystem = Marshal.GetDelegateForFunctionPointer<GetCombatSystemFn>(
         new IntPtr(RetailToolbarCatalogue.GetCombatSystem));
     private static readonly ToggleCombatModeFn ToggleCombatModeNative = Marshal.GetDelegateForFunctionPointer<ToggleCombatModeFn>(
         new IntPtr(RetailToolbarCatalogue.ToggleCombatMode));
     private static readonly UseShortcutFn UseShortcutNative = Marshal.GetDelegateForFunctionPointer<UseShortcutFn>(
         new IntPtr(RetailToolbarCatalogue.UseShortcut));
+    private static readonly AddShortcutFn AddShortcutNative = Marshal.GetDelegateForFunctionPointer<AddShortcutFn>(
+        new IntPtr(RetailToolbarCatalogue.AddShortcut));
+    private static readonly RemoveShortcutInSlotNumFn RemoveShortcutInSlotNumNative = Marshal.GetDelegateForFunctionPointer<RemoveShortcutInSlotNumFn>(
+        new IntPtr(RetailToolbarCatalogue.RemoveShortcutInSlotNum));
 
     public NativeRetailToolbarPort(Action<string> log, Func<bool?> takenInventoryOpen, Func<bool> inGame, SelectionMeters meters,
         AppraisalFeature appraisals, RetailTargetMode? targetMode)
@@ -157,9 +167,25 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     /// </summary>
     public void UseShortcut(int index)
     {
-        var toolbar = NativeUi.GetElement(NativeUi.RootToolbarField);
-        if (toolbar == IntPtr.Zero || Marshal.ReadIntPtr(toolbar) != new IntPtr(RetailToolbarCatalogue.GmToolbarUIVtable)) return;
-        UseShortcutNative(toolbar, index, true);
+        var toolbar = RetailToolbarElement();
+        if (toolbar != IntPtr.Zero) UseShortcutNative(toolbar, index, true);
+    }
+
+    /// <summary>
+    /// Puts the object into the slot through retail's add, which sends AddShortCut to the server and updates the list. The caller empties
+    /// the slot first, as retail's drop does.
+    /// </summary>
+    public void AddShortcut(int index, uint objectId)
+    {
+        var toolbar = RetailToolbarElement();
+        if (toolbar != IntPtr.Zero) AddShortcutNative(toolbar, objectId, index, true);
+    }
+
+    /// <summary>Takes the shortcut out of the slot through retail's remove, which sends RemoveShortCut to the server.</summary>
+    public void RemoveShortcut(int index)
+    {
+        var toolbar = RetailToolbarElement();
+        if (toolbar != IntPtr.Zero) RemoveShortcutInSlotNumNative(toolbar, index, true);
     }
 
     public void SetPanelOpen(RetailPanel panel, bool open)
@@ -211,6 +237,13 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
             if (entry != IntPtr.Zero) buffer[count++] = new RetailShortcut(slot, unchecked((uint)Marshal.ReadInt32(entry, 8)));
         }
         return count;
+    }
+
+    /// <summary>retail's gmToolbarUI element, when the element at the toolbar's id is that class; zero otherwise.</summary>
+    private static IntPtr RetailToolbarElement()
+    {
+        var toolbar = NativeUi.GetElement(NativeUi.RootToolbarField);
+        return toolbar != IntPtr.Zero && Marshal.ReadIntPtr(toolbar) == new IntPtr(RetailToolbarCatalogue.GmToolbarUIVtable) ? toolbar : IntPtr.Zero;
     }
 
     private static IntPtr PanelManager()

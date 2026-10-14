@@ -82,7 +82,7 @@ public sealed class RetailToolbarTests
             menuClicks++;
             // The client opens its menu, then tells the toolbar it is open.
             toolbar!.SetMenuOpen(true);
-        }), Width, Height);
+        }, _ => { }), Width, Height);
         panel.Tick();
 
         Click(panel, toolbar!, toolbar!.MenuButton);
@@ -155,6 +155,23 @@ public sealed class RetailToolbarTests
     });
 
     [Fact]
+    public void A_drop_on_the_backpack_moves_the_item_to_the_main_pack_and_a_drop_elsewhere_on_the_toolbar_is_not_taken() => RenderThread.Run(() =>
+    {
+        var moved = new List<uint>();
+        using var panel = Open(new FakeToolbarPort(), out var toolbar, moved.Add);
+        panel.Tick();
+
+        var backpack = toolbar.ButtonFor(RetailPanel.Inventory);
+        var backpackCentre = backpack.TranslatePoint(new Point(backpack.Bounds.Width / 2, backpack.Bounds.Height / 2), toolbar)!.Value;
+        var social = toolbar.ButtonFor(RetailPanel.Social);
+        var socialCentre = social.TranslatePoint(new Point(social.Bounds.Width / 2, social.Bounds.Height / 2), toolbar)!.Value;
+
+        Assert.True(toolbar.RetailDrop(0x500, string.Empty, backpackCentre));
+        Assert.False(toolbar.RetailDrop(0x500, string.Empty, socialCentre));
+        Assert.Equal(new[] { 0x500u }, moved);
+    });
+
+    [Fact]
     public void Health_and_mana_are_read_from_the_server_events_by_object_id()
     {
         var meters = new SelectionMeters();
@@ -218,6 +235,8 @@ public sealed class RetailToolbarTests
 
         public IReadOnlyList<RetailShortcut> Shortcuts => Array.Empty<RetailShortcut>();
         public void UseShortcut(int index) { }
+        public void AddShortcut(int index, uint objectId) { }
+        public void RemoveShortcut(int index) { }
     }
 
     /// <summary>A fake of retail's toolbar: it records what the toolbar asks, and applies a panel change at once, as retail does.</summary>
@@ -265,6 +284,8 @@ public sealed class RetailToolbarTests
 
         public IReadOnlyList<RetailShortcut> Shortcuts => Array.Empty<RetailShortcut>();
         public void UseShortcut(int index) { }
+        public void AddShortcut(int index, uint objectId) { }
+        public void RemoveShortcut(int index) { }
     }
 
     /// <summary>A toolbar in the given state, drawn once: what a player sees after a change must equal this.</summary>
@@ -290,10 +311,10 @@ public sealed class RetailToolbarTests
         Assert.Fail($"{differing.Count} pixels differ, from ({differing.Min(p => p.X)},{differing.Min(p => p.Y)}) to ({differing.Max(p => p.X)},{differing.Max(p => p.Y)}).");
     }
 
-    private static AvaloniaPanel Open(IRetailToolbarPort port, out RetailToolbar toolbar)
+    private static AvaloniaPanel Open(IRetailToolbarPort port, out RetailToolbar toolbar, Action<uint>? moveToMainPack = null)
     {
         RetailToolbar? created = null;
-        var panel = AvaloniaPanel.Create(() => created = new RetailToolbar(port, () => { }), Width, Height);
+        var panel = AvaloniaPanel.Create(() => created = new RetailToolbar(port, () => { }, moveToMainPack ?? (_ => { })), Width, Height);
         toolbar = created!;
         return panel;
     }
