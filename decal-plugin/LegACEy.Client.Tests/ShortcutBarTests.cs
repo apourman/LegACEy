@@ -6,6 +6,7 @@ using Avalonia;
 using Avalonia.Controls;
 using LegACEy.Client.Demo;
 using LegACEy.Client.PanelHost;
+using LegACEy.Client.Themes;
 using Xunit;
 using Point = System.Drawing.Point;
 using Size = System.Drawing.Size;
@@ -265,6 +266,55 @@ public sealed class ShortcutBarTests
         Assert.Equal(new[] { "remove 1" }, port.Edits);
     });
 
+    [Fact]
+    public void A_shown_shortcut_dragged_to_another_slot_moves_there_and_dragged_off_is_removed() => RenderThread.Run(() =>
+    {
+        var held = new Dictionary<uint, ShortcutItem> { [0x100] = Potions, [0x200] = Swords };
+        var port = new FakeShortcutPort(new[] { new RetailShortcut(1, 0x100), new RetailShortcut(2, 0x200) });
+        var drag = new FakeItemDragHost();
+        using var panel = Open(port, held, out var bar, drag: drag);
+        panel.Tick();
+
+        BeginDrag(panel, bar, bar.SlotAt(1));
+        Release(panel, drag, bar, bar.SlotAt(4));
+        Assert.Equal(new[] { new RetailShortcut(2, 0x200), new RetailShortcut(4, 0x100) }, port.Shortcuts);
+
+        panel.Tick();
+        BeginDrag(panel, bar, bar.SlotAt(2));
+        Release(panel, drag);
+        Assert.Equal(new[] { new RetailShortcut(4, 0x100) }, port.Shortcuts);
+    });
+
+    [Fact]
+    public void A_shortcut_drags_off_its_slot_while_retail_s_ui_is_locked() => RenderThread.Run(() =>
+    {
+        var port = new FakeShortcutPort(new[] { new RetailShortcut(1, 0x100) });
+        var drag = new FakeItemDragHost();
+        using var panel = Open(port, new Dictionary<uint, ShortcutItem>(), out var bar, locked: () => true, drag: drag);
+        panel.Tick();
+
+        BeginDrag(panel, bar, bar.SlotAt(1));
+        Release(panel, drag);
+
+        Assert.Equal(new[] { "remove 1" }, port.Edits);
+    });
+
+    [Fact]
+    public void An_item_dragged_over_the_bar_lights_the_slot_under_it_and_leaving_clears_it() => RenderThread.Run(() =>
+    {
+        using var panel = Open(new FakeShortcutPort(Array.Empty<RetailShortcut>()), new Dictionary<uint, ShortcutItem>(), out var bar);
+        panel.Tick();
+        var slot = (DerethSlot)bar.SlotAt(3);
+        var centre = slot.TranslatePoint(new Avalonia.Point(slot.Bounds.Width / 2, slot.Bounds.Height / 2), bar)!.Value;
+
+        bar.RetailDragOver(0x100, "Sword", centre);
+        Assert.True(slot.Selected);
+        Assert.False(((DerethSlot)bar.SlotAt(2)).Selected);
+
+        bar.RetailDragOver(0x100, "Sword", null);
+        Assert.False(slot.Selected);
+    });
+
     private static readonly ShortcutItem Potions = new(new ItemVisual(0x06001074, 0, 0, 0), 12);
     private static readonly ShortcutItem Swords = new(new ItemVisual(0x060010DA, 0, 0, 0), 1);
 
@@ -351,11 +401,14 @@ public sealed class ShortcutBarTests
             Edits.Add($"add {index} 0x{objectId:X}");
             _shortcuts.RemoveAll(shortcut => shortcut.Index == index);
             _shortcuts.Add(new RetailShortcut(index, objectId));
+            Changed?.Invoke();
         }
+        // Each edit announces the change, as retail's list does, so a bar redraws in the middle of a drag.
         public void RemoveShortcut(int index)
         {
             Edits.Add($"remove {index}");
             _shortcuts.RemoveAll(shortcut => shortcut.Index == index);
+            Changed?.Invoke();
         }
         public RetailSelection? Selection => null;
         public int SplitAmount { get; set; } = 1;

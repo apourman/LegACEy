@@ -56,7 +56,7 @@ internal static class NativeUiCatalogue
         Root("Toolbar", NativeUi.Toolbar, "installed client_local_English.dat, LayoutDesc 0x21000070 (placed from 0x21000016/0x10000191)")
     };
 
-    internal static bool Validate(Func<uint, int, byte[]> read, Action<string> log, IEnumerable<NativeUiEntry>? entries = null)
+    internal static bool Validate(Func<uint, int, byte[]> read, Action<string> log, IEnumerable<NativeUiEntry>? entries = null, string? failureSummary = null)
     {
         var failures = new List<string>();
         foreach (var entry in entries ?? Entries)
@@ -72,7 +72,7 @@ internal static class NativeUiCatalogue
                 (entry.ExpectedBytes.Length != 0 && !actual.SequenceEqual(entry.ExpectedBytes))) failures.Add(entry.Name);
         }
         foreach (var name in failures) log($"Native UI compatibility check failed: {name}.");
-        if (failures.Count != 0) log("Retail takeover disabled: the running client does not match the reviewed native UI catalogue.");
+        if (failures.Count != 0) log(failureSummary ?? "Retail takeover disabled: the running client does not match the reviewed native UI catalogue.");
         return failures.Count == 0;
     }
 
@@ -82,6 +82,6 @@ internal static class NativeUiCatalogue
     /// <summary>A pinned byte pattern written as hex pairs separated by spaces.</summary>
     internal static byte[] Bytes(string bytes) => bytes.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Select(value => Convert.ToByte(value, 16)).ToArray();
 
-    private static NativeUiEntry Root(string name, uint id, string source = "Chorizite.Common RootElementId") =>
+    internal static NativeUiEntry Root(string name, uint id, string source = "Chorizite.Common RootElementId") =>
         new($"RootElementId::{name}", null, Array.Empty<byte>(), source, "compile-time constant; not called", id);
 }

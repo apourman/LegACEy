@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Drawing;
 using Avalonia.Controls;
 using LegACEy.Client.Demo;
@@ -23,6 +24,24 @@ public sealed class PluginRegistryTests
         registry.SetServerActions(new[] { "channel.hello", "paperdoll.look" });
         Assert.Equal(new[] { "Paperdoll" }, Titles(registry));
     }
+
+    [Fact]
+    public void The_menu_s_UI_size_buttons_step_it_down_and_up() => RenderThread.Run(() =>
+    {
+        var host = new FakeHost();
+        var steps = new System.Collections.Generic.List<int>();
+        using var panel = LegACEy.Client.PanelHost.AvaloniaPanel.Create(
+            () => new PluginMenuPanel(new PluginRegistry(host, host.Log.Add), null, new UiSizeChoice(85, steps.Add)), 220, 240);
+        panel.Tick();
+        foreach (var label in new[] { "-", "+" })
+        {
+            var button = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(panel.Content).OfType<Button>().Single(b => b.Content as string == label);
+            var centre = Avalonia.VisualExtensions.TranslatePoint(button, new Avalonia.Point(button.Bounds.Width / 2, button.Bounds.Height / 2), panel.Content)!.Value;
+            panel.PointerDown(centre.X, centre.Y);
+            panel.PointerUp(centre.X, centre.Y);
+        }
+        Assert.Equal(new[] { -1, 1 }, steps);
+    });
 
     [Fact]
     public void SupportsAction_follows_the_servers_last_list()

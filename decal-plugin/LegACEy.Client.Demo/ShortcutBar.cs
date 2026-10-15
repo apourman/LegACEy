@@ -30,6 +30,9 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     private const double SlotSize = 30;
     private const double Gap = 3;
     private const double DragThreshold = 4;
+    // The slot index a drag over the bar would land on, lit while it is there.
+    private int? _dropAt;
+    private bool _refreshPending;
 
     private static readonly IBrush TagFace = DerethPalette.Brush(Color.Parse("#0B1117"));
     private static readonly IBrush TagEdge = DerethPalette.Brush(Color.Parse("#3A4A56"));
@@ -152,6 +155,13 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     /// <summary>Shows the port's shortcuts for this row, with the items the player holds. A slot whose item is gone shows empty.</summary>
     public void Refresh()
     {
+        // Replacing the pressed slot would end its pointer capture, and with it the drag; the bar catches up when the press ends.
+        if (_pressed != null || _dragIcon != null)
+        {
+            _refreshPending = true;
+            return;
+        }
+        _refreshPending = false;
         var shortcuts = _port.Shortcuts;
         for (var position = 0; position < SlotCount; position++)
         {
@@ -164,19 +174,33 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
             // The new slot is in place before the old icon goes, so nothing draws a disposed bitmap.
             previous?.Dispose();
         }
+        ShowDropAt();
     }
 
     /// <summary>Stops following the port and frees the icons. The bar's window is released by the client first.</summary>
     public void Dispose()
     {
         _port.Changed -= Refresh;
+        _refreshPending = false;
         CancelDrag();
         foreach (var icon in _icons) icon?.Dispose();
         Array.Clear(_icons, 0, _icons.Length);
     }
 
-    /// <summary>A drag over the bar draws no drop indicator yet; the drop is judged on release.</summary>
-    public void RetailDragOver(uint itemId, string itemName, Point? position) { }
+    /// <summary>An item or a shortcut dragged over the bar lights the slot it would land on.</summary>
+    public void RetailDragOver(uint itemId, string itemName, Point? position)
+    {
+        var at = position is { } point && (itemId != 0 || _dragSource.Slot != null) ? IndexAt(point) : null;
+        if (at == _dropAt) return;
+        _dropAt = at;
+        ShowDropAt();
+    }
+
+    private void ShowDropAt()
+    {
+        for (var position = 0; position < SlotCount; position++)
+            if (SlotAt(position) is DerethSlot slot) slot.Selected = _firstIndex + position == _dropAt;
+    }
 
     /// <summary>
     /// A drop on the bar. A shortcut dragged from a slot lands on the slot released on, swapping with its shortcut; released on the frame,
@@ -184,6 +208,8 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     /// </summary>
     public bool RetailDrop(uint itemId, string itemName, Point position)
     {
+        _dropAt = null;
+        ShowDropAt();
         if (_dragSource.Slot is { } from)
         {
             var objectId = _dragSource.ObjectId;
@@ -230,7 +256,8 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
         };
         slot.PointerMoved += (_, e) =>
         {
-            if (_pressed is not { } index || _dragIcon != null || _uiLocked()) return;
+            // Retail's lock only keeps the bars in place; shortcuts still move and come off while it is on.
+            if (_pressed is not { } index || _dragIcon != null) return;
             var point = e.GetPosition(this);
             if (Math.Abs(point.X - _pressAt.X) < DragThreshold && Math.Abs(point.Y - _pressAt.Y) < DragThreshold) return;
             StartDrag(index);
@@ -241,12 +268,9 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
             var wasPressed = _pressed != null;
             _pressed = null;
             if (!wasPressed) return;
-            if (_dragIcon != null)
-            {
-                EndDrag();
-                return;
-            }
-            if (view.Item != null && new Rect(slot.Bounds.Size).Contains(e.GetPosition(slot))) _port.UseShortcut(view.Index);
+            if (_dragIcon != null) EndDrag();
+            else if (view.Item != null && new Rect(slot.Bounds.Size).Contains(e.GetPosition(slot))) _port.UseShortcut(view.Index);
+            if (_refreshPending) Refresh();
         };
         // A capture that ends mid-drag cancels it. After a release the drag is already over, so this does nothing then.
         slot.PointerCaptureLost += (_, _) => CancelDrag();
@@ -287,11 +311,14 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     private void CancelDrag()
     {
         _pressed = null;
-        if (_dragIcon == null) return;
-        _dragIcon.Dispose();
-        _dragIcon = null;
-        if (_dragSource.Slot is { } from) ShortcutEdits.Restore(_port, from, _dragSource.ObjectId);
-        _dragSource.Slot = null;
+        if (_dragIcon != null)
+        {
+            _dragIcon.Dispose();
+            _dragIcon = null;
+            if (_dragSource.Slot is { } from) ShortcutEdits.Restore(_port, from, _dragSource.ObjectId);
+            _dragSource.Slot = null;
+        }
+        if (_refreshPending) Refresh();
     }
 
     /// <summary>The icon of an object the player holds, drawn as the slot draws it; null when there is no art or no item.</summary>

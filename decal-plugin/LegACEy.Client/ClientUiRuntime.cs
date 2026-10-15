@@ -60,6 +60,34 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool DeleteObject(IntPtr gdiObject);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool OpenClipboard(IntPtr owner);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EmptyClipboard();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetClipboardData(uint format, IntPtr data);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseClipboard();
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GlobalAlloc(uint flags, UIntPtr bytes);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GlobalLock(IntPtr memory);
+
+    [DllImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GlobalUnlock(IntPtr memory);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GlobalFree(IntPtr memory);
+
     [StructLayout(LayoutKind.Sequential)]
     private struct IconInfo
     {
@@ -89,11 +117,19 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string RetailPanelSwitchFile = "retail-inventory-native";
     // Beside the DLL: while this file exists, retail's toolbar stays retail's. Without it the Dereth toolbar replaces it.
     private const string RetailToolbarSwitchFile = "retail-toolbar-native";
+    // Beside the DLL: while this file exists, retail's chat windows stay retail's. Without it the Dereth chat window replaces them.
+    private const string RetailChatSwitchFile = "retail-chat-native";
 
-    // How big LegACEy windows show against their design size. The indicator bar keeps retail's size, and drag icons retail's 32 pixels.
-    // An Avalonia that cannot scale panels shows them at design size rather than failing every window.
-    // ponytail: one fixed size; make it a setting (small, medium, large) if players want to choose.
-    private static readonly double WindowScale = AvaloniaPanel.CanScale ? 0.85 : 1;
+    // How big LegACEy windows show against their design size, in percent: the player's UI size from the LegACEy menu, kept for every
+    // character. The indicator bar keeps retail's size, and drag icons retail's 32 pixels. An Avalonia that cannot scale panels shows them
+    // at design size rather than failing every window.
+    private const string UiSizeKey = "client-ui-size";
+    private const int DefaultUiSize = 85;
+    private const int SmallestUiSize = 60;
+    private const int LargestUiSize = 150;
+    private int _uiSize = DefaultUiSize;
+    private bool _uiSizeChanged;
+    private double WindowScale => AvaloniaPanel.CanScale ? _uiSize / 100.0 : 1;
 
     private const string MenuSlot = "LegACEy";
     private const string MenuWindowId = "plugin-menu";
@@ -119,6 +155,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private IWindowPositionStore? _positionStore;
     // Each plugin's one settings value, per character, in its own file: a row keyed by the plugin's name whose X is the value.
     private readonly FileWindowPositionStore _settingsStore = new(IOPath.Combine(PluginDirectory, "plugin-settings.txt"));
+    // The chat tabs each window of each character has: a row per server, character and window, missing means the six defaults.
+    private readonly FileRetailChatTabStore _chatTabs = new(IOPath.Combine(PluginDirectory, "chat-tabs.txt"), Log);
     private readonly ShortcutRowChoice _row2Choice;
     // The window whose frame shows a hovered corner, and the corner it shows.
     private string? _cornerWindowId;
@@ -165,6 +203,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private Action? _unsubscribeShortcutItems;
     private bool _inventoryWindowOpen;
     private DateTime _lastToolbarSwitchCheck;
+    // The Dereth chat window over retail's chat: its feature checks, port, window and the held retail chat windows. Held while the switch is on.
+    private const string ChatWindowId = RetailChatWindows.MainId;
+    private RetailChatNatives? _chatNatives;
+    private NativeRetailChatPort? _chatPort;
+    private RetailChatWindows? _chatWindows;
+    private RetailChatTakeover? _chatTakeover;
+    private bool _chatFailed;
+    private bool _chatReleaseLogged;
+    private bool _chatSwitch;
+    private DateTime _lastChatSwitchCheck;
     private readonly GameStatePort _gameState = new(new GameStateSnapshot("unknown-character", "unknown-server", 0, 0, 0, 0, 0, 0));
     private readonly GameStatePoller _gameStatePoller;
     private ClientUiFramework? _clientUi;
@@ -230,6 +278,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None);
         _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal);
         _row2Choice = new ShortcutRowChoice(_settingsStore);
+        if (_settingsStore.Load("", "", UiSizeKey) is { Location.X: var size and > 0 })
+            _uiSize = Math.Max(SmallestUiSize, Math.Min(LargestUiSize, size));
     }
 
     public void Startup()
@@ -435,6 +485,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         catch (Exception exception) { Log($"Could not give the retail panels back at logoff: {exception}"); }
         try { ReleaseRetailToolbar(); }
         catch (Exception exception) { Log($"Could not give the retail toolbar back at logoff: {exception}"); }
+        try { ReleaseRetailChat(); }
+        catch (Exception exception) { Log($"Could not give the retail chat back at logoff: {exception}"); }
         try { _plugins?.EndSession(); }
         catch (Exception exception) { Log($"Could not close plugin windows at logoff: {exception}"); }
         // Windows released their requests above; anything still outstanding fails as disconnected.
@@ -548,7 +600,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             SetMenuRing(false);
             return;
         }
-        var chrome = new ThemeWindowChrome(_portal!, MenuSlot, new PluginMenuPanel(_plugins!, _portal));
+        var chrome = new ThemeWindowChrome(_portal!, MenuSlot, new PluginMenuPanel(_plugins!, _portal,
+            AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, StepUiSize) : null));
         chrome.CloseRequested += (_, _) =>
         {
             _clientUi?.CloseWindow(MenuWindowId);
@@ -556,6 +609,34 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         };
         _clientUi.OpenWindow(new WindowDefinition(MenuWindowId, MenuWindowId, PluginMenuPanel.WindowWidth, PluginMenuPanel.WindowHeight), chrome, new Point(260, 120));
         SetMenuRing(true);
+    }
+
+    /// <summary>
+    /// The UI size stepped from the LegACEy menu: saved now, and applied on the next frame, outside the menu's own click, since applying it
+    /// closes the menu's window.
+    /// </summary>
+    private void StepUiSize(int steps)
+    {
+        var size = Math.Max(SmallestUiSize, Math.Min(LargestUiSize, _uiSize + steps * 5));
+        if (size == _uiSize) return;
+        _uiSize = size;
+        _settingsStore.Save("", "", UiSizeKey, (new Point(size, 0), null));
+        _uiSizeChanged = true;
+    }
+
+    /// <summary>
+    /// Rebuilds the LegACEy UI at the new size, as a relog does: every window closes and the session's windows, toolbar, bars and chat
+    /// open again at the new size, the menu with them. Plugin windows the player had open close.
+    /// </summary>
+    private void ApplyUiSize()
+    {
+        _uiSizeChanged = false;
+        if (!_inGame) return;
+        var menuOpen = _windows?.Get(MenuWindowId) != null;
+        Log($"UI size {_uiSize}%: rebuilding the LegACEy UI.");
+        Logoff();
+        LoginComplete();
+        if (menuOpen) Guard(ToggleMenuWindow);
     }
 
     /// <summary>The handle was pressed: the bar follows the pointer until the button goes up.</summary>
@@ -620,8 +701,20 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _toolbarReleaseLogged = true;
             }
         }
+        // The same for retail's chat windows: ReleaseRetailChat logs a failed give-back once per streak itself.
+        if (_failed && _chatTakeover != null)
+        {
+            try { ReleaseRetailChat(); }
+            catch (Exception exception)
+            {
+                if (!_chatReleaseLogged) Log($"Could not give the retail chat back; retrying: {exception}");
+                _chatReleaseLogged = true;
+            }
+        }
         if (_failed || !NativeUi.Ready)
             return;
+
+        if (_uiSizeChanged) ApplyUiSize();
 
         Guard(() =>
         {
@@ -641,6 +734,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             TakeOverNativeBar();
             _barRenderer!.RenderFrame(_inGame, _postUiDrawHook?.IsInstalled == true);
             TickRetailToolbar();
+            TickRetailChat();
             // Portal space at login comes before Decal's login complete: retail's inventory opened then is parked already,
             // and our window opens for it once the windows can.
             if (!_inGame) TickRetailPanels(loggingIn: true);
@@ -822,7 +916,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _retailDragName = item == 0 ? string.Empty : ObjectName(item);
         }
         // A Vault withdraw carries no world object, but our inventory still shows where it would go.
-        var top = item == 0 && !_itemDragActive ? null : TopSurfaceAt(_pointer);
+        // A shortcut dragged off a bar carries no item, but the bars still show the slot it would land on.
+        var top = item == 0 && !_itemDragActive && _shortcutDrag.Slot == null ? null : TopSurfaceAt(_pointer);
         if (top != null && retailItem != 0 && _retailDragIcon == null)
             _retailDragIcon = ShowDragIcon(ObjectIcon(item), 1);
         else if ((top == null || retailItem == 0) && _retailDragIcon != null)
@@ -927,7 +1022,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (_retailPanels.Count == 0 && _examination == null) return;
         // Logging in, the windows can't open yet; they will if the post-UI hook is in.
-        var enabled = (loggingIn ? _postUiDrawHook?.IsInstalled == true : CanOpenWindows) && RetailPanelSwitchOn();
+        var enabled = (loggingIn ? _postUiDrawHook?.IsInstalled == true : CanOpenWindows) && SwitchOn(RetailPanelSwitchFile, ref _lastRetailPanelSwitchCheck, ref _retailPanelSwitch);
         foreach (var takeover in _retailPanels.ToArray())
             takeover.Tick(enabled, canShow: !loggingIn);
         _examination?.Tick(enabled, canShow: !loggingIn);
@@ -942,17 +1037,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         foreach (var takeover in _retailPanels.ToArray())
             takeover.EndSession();
         _examination?.EndSession();
-    }
-
-    private bool RetailPanelSwitchOn()
-    {
-        var now = DateTime.UtcNow;
-        if (now - _lastRetailPanelSwitchCheck >= TimeSpan.FromSeconds(1))
-        {
-            _lastRetailPanelSwitchCheck = now;
-            _retailPanelSwitch = !File.Exists(IOPath.Combine(PluginDirectory, RetailPanelSwitchFile));
-        }
-        return _retailPanelSwitch;
     }
 
     /// <summary>A LegACEy window's content by its id, for the drop routing that the window manager's hit test drives.</summary>
@@ -1463,7 +1547,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         try
         {
-            var switchOn = RetailToolbarSwitchOn();
+            var switchOn = SwitchOn(RetailToolbarSwitchFile, ref _lastToolbarSwitchCheck, ref _toolbarSwitch);
             // A give-back that failed is retried every frame until it lands, whatever state the toolbar is in: retail's toolbar is never left hidden.
             // The toolbar needs only the post-UI draw, not the windows LoginComplete makes, so it takes over from portal space at login on.
             var canDraw = _postUiDrawHook?.IsInstalled == true;
@@ -1485,6 +1569,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             LoadToolbarPlace();
             _toolbarPort!.Poll();
             _toolbarTakeover!.Tick(_toolbarDragOffset != null, GameDevice.ViewportSize(_device));
+            // Until login completes, retail's toolbar stays held but ours is not drawn: its saved place is read only then, so it never
+            // shows at retail's place first and jumps.
+            if (!_inGame)
+            {
+                _toolbarSurface!.Visible = false;
+                CloseShortcutBar();
+                return;
+            }
             // The bar stands beside the toolbar only while the takeover holds retail's element; otherwise it closes with it.
             if (_toolbarTakeover.Holds) EnsureShortcutBar();
             else CloseShortcutBar();
@@ -1669,6 +1761,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (item.Id == id) return new ShortcutItem(item.Visual, item.StackCount);
         foreach (var worn in snapshot.Wielded)
             if (worn.Id == id) return new ShortcutItem(worn.Visual, worn.StackCount);
+        // A pack bound to a slot opens it, as retail's shortcut to a pack does; the main pack is the character itself.
+        foreach (var pack in snapshot.SidePacks.Prepend(snapshot.MainPack))
+            if (pack.Id == id) return new ShortcutItem(new ItemVisual(pack.Icon, 0, 0, 0), 1);
         return null;
     }
 
@@ -1753,15 +1848,209 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         catch (Exception releaseError) { Log($"Could not give the retail toolbar back: {releaseError}"); }
     }
 
-    private bool RetailToolbarSwitchOn()
+    private const int VkReturn = 0x0D;
+    // WM_KEYDOWN's lParam bit 24: an extended key, the keypad's Enter for VK_RETURN.
+    private const int ExtendedKey = 1 << 24;
+
+    /// <summary>
+    /// Gives the chat window's box the keyboard when retail's chat is held and neither a field of ours nor one of retail's has it. True when
+    /// it did, so the Enter is eaten. Never without the Enter entries: retail's hidden entry could not be let go then. A failure turns the
+    /// chat window off, not the whole UI.
+    /// </summary>
+    private bool TryFocusRetailChat()
+    {
+        try
+        {
+            if (_chatNatives?.Enter != true || _chatWindows?.Main is not { } main || _chatTakeover?.Holds != true) return false;
+            var focused = SurfaceById(_inputRouter.FocusedSurfaceId);
+            if (focused?.Panel.WantsKeyboard == true || _chatPort?.RetailFieldHasKeyboard() != false) return false;
+            main.FocusInput();
+            _inputRouter.FocusSurface(ChatWindowId);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            ChatFailed(exception);
+            return false;
+        }
+    }
+
+    private void TickRetailChat()
+    {
+        try
+        {
+            var switchOn = SwitchOn(RetailChatSwitchFile, ref _lastChatSwitchCheck, ref _chatSwitch);
+            // Turning the switch off and on again retries a chat window that failed.
+            if (!switchOn) _chatFailed = false;
+            // Retail's chat windows are given back if the switch goes off, the post-UI draw is gone, the LegACEy windows failed or it failed.
+            var canDraw = _postUiDrawHook?.IsInstalled == true && !(_windows != null && !_windowsEnabled);
+            if (_chatTakeover != null && (!canDraw || _chatFailed || !switchOn))
+            {
+                ReleaseRetailChat();
+                return;
+            }
+            if (!canDraw || !switchOn || _chatFailed) return;
+            // Retail's chat is held from portal space at login on, like the toolbar; the window opens once the windows can, and the port
+            // keeps the lines that come before it. Logoff gives it back, and character select holds it again.
+            if (_chatTakeover == null && !HoldRetailChat()) return;
+            _chatTakeover!.Tick(GameDevice.ViewportSize(_device));
+            if (!_inGame) return;
+            if (_chatWindows == null && !OpenRetailChat()) return;
+            _chatPort!.Poll();
+            _chatWindows?.Refresh();
+        }
+        catch (Exception exception)
+        {
+            ChatFailed(exception);
+        }
+    }
+
+    /// <summary>
+    /// Holds retail's chat windows hidden and starts the port, once its native addresses match. False when they do not, so retail's chat is
+    /// left alone and the next frame tries again. A port whose registrar is not ready yet attaches when the window opens.
+    /// </summary>
+    private bool HoldRetailChat()
+    {
+        if (!NativeUi.Ready || _device == IntPtr.Zero) return false;
+        var natives = ChatNatives();
+        if (!natives.ChatWindow) return false;
+        var roots = new List<IRetailTakeoverPort>();
+        foreach (var id in new[] { RetailChatCatalogue.MainChatWindow }.Concat(RetailChatCatalogue.FloatingChats))
+            roots.Add(new RetailChatTakeover.RootPort(id));
+        _chatPort = new NativeRetailChatPort(Log, natives, (opcode, payload) => _channelTransport?.SendAction(opcode, payload) ?? false);
+        _chatTakeover = new RetailChatTakeover(roots);
+        try { _chatPort.Attach(); }
+        catch (InvalidOperationException) { }
+        Log($"Retail's chat windows held: {roots.Count}.");
+        return true;
+    }
+
+    /// <summary>
+    /// Opens the Dereth chat window over the held retail chat. False when the windows cannot open yet, so the next frame tries again.
+    /// </summary>
+    private bool OpenRetailChat()
+    {
+        if (!CanOpenWindows) return false;
+        var port = _chatPort!;
+        var server = SessionServer();
+        var character = SessionCharacter();
+        var chats = new RetailChatWindows(port, _windows!, _positionStore!, _chatTabs, server, character, () => _pointer, (definition, content, location) => OpenWindowCore(definition, content, location, ChatFailed), ReleaseFeatureWindow,
+            copy: CopyToClipboard);
+        // The main window starts at the bottom left, above the toolbar, until the player moves it; its place is then kept per character.
+        var screen = _windows!.Screen;
+        var beside = new Point(12, Math.Max(0, screen.Height - (int)Math.Round(RetailChatWindows.DesignHeight * WindowScale) - 150));
+        _chatWindows = chats;
+        try
+        {
+            chats.Open(beside);
+            port.Attach();
+        }
+        catch
+        {
+            ReleaseRetailChat();
+            throw;
+        }
+        Log($"Dereth chat window ready with {chats.Windows.Count} window(s).");
+        return true;
+    }
+
+    private RetailChatNatives ChatNatives() => _chatNatives ??= ValidateChatNatives();
+
+    private RetailChatNatives ValidateChatNatives()
+    {
+        try
+        {
+            var natives = RetailChatCatalogue.Validate(NativeUi.ReadMemory, Log);
+            if (!natives.ChatWindow) Log("Dereth chat window is off: the running client does not match its native entries.");
+            return natives;
+        }
+        catch (Exception exception)
+        {
+            Log($"Dereth chat window is off: its native addresses could not be checked: {exception.Message}");
+            return new RetailChatNatives(false, false, false, false, false, false, false);
+        }
+    }
+
+    /// <summary>
+    /// Gives retail's chat windows back, stops the port and closes the Dereth chat window. A give-back that fails is logged and retried on the
+    /// next call, so retail's chat is never left hidden.
+    /// </summary>
+    private void ReleaseRetailChat()
+    {
+        if (_chatTakeover != null)
+        {
+            try { _chatTakeover.Release(); }
+            catch (Exception exception)
+            {
+                if (!_chatReleaseLogged) Log($"Could not give the retail chat back; retrying: {exception}");
+                _chatReleaseLogged = true;
+                return;
+            }
+            _chatTakeover = null;
+            _chatReleaseLogged = false;
+        }
+        // Cleared first, so a window that throws on close cannot leave them half released; the port is stopped whatever the windows do.
+        var windows = _chatWindows;
+        var port = _chatPort;
+        _chatWindows = null;
+        _chatPort = null;
+        try { windows?.Dispose(); }
+        finally { port?.Dispose(); }
+    }
+
+    /// <summary>
+    /// Puts text on the Windows clipboard as Unicode text, for text copied from the chat log. A clipboard another program holds is logged and
+    /// the copy is dropped; it never fails the chat.
+    /// </summary>
+    private void CopyToClipboard(string text)
+    {
+        const uint GmemMoveable = 0x0002;
+        const uint CfUnicodeText = 13;
+        if (!OpenClipboard(_gameWindow))
+        {
+            Log($"Could not copy chat text: the clipboard is busy ({Marshal.GetLastWin32Error()}).");
+            return;
+        }
+        var memory = IntPtr.Zero;
+        try
+        {
+            EmptyClipboard();
+            var bytes = (text.Length + 1) * 2;
+            memory = GlobalAlloc(GmemMoveable, (UIntPtr)bytes);
+            if (memory == IntPtr.Zero) return;
+            var target = GlobalLock(memory);
+            if (target == IntPtr.Zero) return;
+            Marshal.Copy(text.ToCharArray(), 0, target, text.Length);
+            Marshal.WriteInt16(target, text.Length * 2, 0);
+            GlobalUnlock(memory);
+            // The clipboard owns the memory once it takes it.
+            if (SetClipboardData(CfUnicodeText, memory) != IntPtr.Zero) memory = IntPtr.Zero;
+        }
+        finally
+        {
+            if (memory != IntPtr.Zero) GlobalFree(memory);
+            CloseClipboard();
+        }
+    }
+
+    private void ChatFailed(Exception exception)
+    {
+        _chatFailed = true;
+        Log($"Dereth chat window disabled; retail's chat is back: {exception}");
+        try { ReleaseRetailChat(); }
+        catch (Exception releaseError) { Log($"Could not give the retail chat back: {releaseError}"); }
+    }
+
+    /// <summary>Whether a feature's switch is on: on while its file is missing beside the DLL. The file is looked for once a second.</summary>
+    private static bool SwitchOn(string file, ref DateTime lastCheck, ref bool on)
     {
         var now = DateTime.UtcNow;
-        if (now - _lastToolbarSwitchCheck >= TimeSpan.FromSeconds(1))
+        if (now - lastCheck >= TimeSpan.FromSeconds(1))
         {
-            _lastToolbarSwitchCheck = now;
-            _toolbarSwitch = !File.Exists(IOPath.Combine(PluginDirectory, RetailToolbarSwitchFile));
+            lastCheck = now;
+            on = !File.Exists(IOPath.Combine(PluginDirectory, file));
         }
-        return _toolbarSwitch;
+        return on;
     }
 
     /// <summary>Translate Decal's raw messages into router decisions and Avalonia.Headless input. True eats the message.</summary>
@@ -1769,6 +2058,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (_failed || !_inGame || _barSurface == null)
             return false;
+        // Enter in the game, with retail's chat held and no field of ours taking keys, opens the Dereth chat window's box and eats the key.
+        // The keypad's Enter (an extended key) stays retail's, as the spike recommends.
+        if (message == InputRouterService.WmKeyDown && wParam == VkReturn && (lParam & ExtendedKey) == 0 && TryFocusRetailChat()) return true;
 
         var eat = false;
         if (message == WmSetCursor)
@@ -1869,6 +2161,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     {
                         _windows.Release();
                         SyncWindowLocations();
+                        // A chat failure here turns the chat window off, not the whole UI.
+                        try { _chatWindows?.Released(); }
+                        catch (Exception exception) { ChatFailed(exception); }
                     }
                     if (_dragOffset != null)
                         EndBarDrag();
@@ -2217,6 +2512,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // First: retail's panel must be given back before anything else is torn down.
         try { EndRetailPanels(); }
         catch (Exception exception) { Log($"Could not give the retail panels back during unload: {exception}"); }
+        // Unload runs no more frames, so a give-back that failed gets one more try here before the player is told.
+        try
+        {
+            ReleaseRetailChat();
+            if (_chatTakeover != null) ReleaseRetailChat();
+        }
+        catch (Exception exception) { Log($"Could not give the retail chat back during unload: {exception}"); }
+        if (_chatTakeover != null) Log("Retail's chat windows are still held after two tries at unload; they stay hidden until the client restarts.");
         try { ReleaseRetailToolbar(); }
         catch (Exception exception) { Log($"Could not give the retail toolbar back during unload: {exception}"); }
         if (_itemDragActive)
