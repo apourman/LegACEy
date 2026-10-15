@@ -313,6 +313,25 @@ public sealed class RetailChatTests
     });
 
     [Fact]
+    public void The_wheel_over_the_log_scrolls_it() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        using var panel = Open(port, out var window);
+        // At a text size other than the design size, as the chat windows draw.
+        window.TextScale = 1.2;
+        for (var n = 1; n <= 40; n++) port.Say(Line(RetailChatKind.System, $"line {n:D4} of the log"));
+        panel.Tick();
+        var log = window.GetVisualDescendants().OfType<ScrollViewer>().First(scroll => scroll.Content is StackPanel { Orientation: Orientation.Vertical });
+        var before = log.Offset.Y;
+        var centre = log.TranslatePoint(new Point(log.Bounds.Width / 2, log.Bounds.Height / 2), panel.Content)!.Value;
+
+        panel.MouseWheel(centre.X, centre.Y, 0, 3);
+        panel.Tick();
+
+        Assert.True(log.Offset.Y < before, $"offset {before} -> {log.Offset.Y}");
+    });
+
+    [Fact]
     public void Scrolled_up_new_lines_raise_the_jump_pill_and_leave_the_log_in_place() => RenderThread.Run(() =>
     {
         var port = new FakeChatPort();
