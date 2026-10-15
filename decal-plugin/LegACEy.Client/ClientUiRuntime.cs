@@ -231,6 +231,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     public void Startup()
     {
+        // ponytail: diagnostic for the toolbar click crash: every thrown exception, with where it was thrown. Remove once found.
+        AppDomain.CurrentDomain.FirstChanceException += (_, e) =>
+        {
+            if (_inFirstChance) return;
+            _inFirstChance = true;
+            try { Log($"First-chance {e.Exception.GetType().FullName}: {e.Exception.Message}\n{Environment.StackTrace}"); }
+            finally { _inFirstChance = false; }
+        };
         // Before the plugins load, which may need it; a failed start leaves no handler behind.
         AssemblyLoadContext.Default.Resolving += ResolveFromClientDirectory;
         try
@@ -1563,6 +1571,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         Log($"Dereth toolbar replacement ready; retail's toolbar window {Describe(window)}, its toolbar {Describe(inner)}.");
         return true;
     }
+
+    [ThreadStatic] private static bool _inFirstChance;
 
     [DllImport("kernel32.dll")]
     private static extern void GetCurrentThreadStackLimits(out IntPtr low, out IntPtr high);
