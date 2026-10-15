@@ -10,6 +10,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.Demo;
@@ -25,6 +26,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private const double MenuMaxHeight = 158;
     // How far a press may move before it is a drag (which selects text) rather than a click on a name.
     private const double ClickSlop = 4;
+    // The dark shadow under each line while the window is idle, so pale lines read over bright ground once the chrome has faded.
+    private static readonly IEffect LineShadow = new DropShadowDirectionEffect { Color = Colors.Black, Direction = 90, ShadowDepth = 1, BlurRadius = 1, Opacity = 1 };
     private readonly IRetailChatPort _port;
     private readonly Action? _startMove;
     private readonly List<RetailChatTab> _tabs;
@@ -41,6 +44,16 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private readonly TextBox _input;
     private readonly Border _menu = new() { IsVisible = false, ZIndex = 5 };
     private readonly Border _editor = new() { IsVisible = false, ZIndex = 6 };
+    private readonly DerethFrame _frame = new(DerethFrameArt.Window);
+    private readonly Border _groove;
+    private readonly List<Control> _chrome = new();
+    private readonly RetailChatFade _fade;
+    private readonly Func<bool> _uiUnlocked;
+    private readonly Func<DateTime> _clock;
+    private ScrollBar? _scrollBar;
+    // The line loop in Refresh can stop once the lines show their final opacities; any change of state or of the lines clears this.
+    private bool _linesSettled;
+    private bool _awake = true;
     private int _tab;
     private RetailTalkTarget _target = RetailTalkTargets.Local;
     private string? _lastTell;
@@ -52,8 +65,10 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     /// <param name="startMove">Run on a press on the tab strip's empty part, which starts the window's move; null for none.</param>
     /// <param name="tabs">The tabs; null for the six defaults.</param>
     /// <param name="tabsChanged">Run with the whole tab list after a tab is added, edited, moved or removed, so the caller can keep it.</param>
+    /// <param name="uiUnlocked">Whether retail's UI is unlocked for moving windows; the window does not fade while it is. Null for never.</param>
+    /// <param name="clock">The time, for the idle fade; null for the system's.</param>
     public RetailChatWindow(IRetailChatPort port, Action? startMove = null, IReadOnlyList<RetailChatTab>? tabs = null,
-        Action<IReadOnlyList<RetailChatTab>>? tabsChanged = null)
+        Action<IReadOnlyList<RetailChatTab>>? tabsChanged = null, Func<bool>? uiUnlocked = null, Func<DateTime>? clock = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _startMove = startMove;
@@ -61,6 +76,9 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _unread = _tabs.Select(_ => (0, false)).ToList();
         _tabsChanged = tabsChanged;
         _timestamps = port.TimestampsOn;
+        _fade = new RetailChatFade();
+        _clock = clock ?? (() => DateTime.Now);
+        _uiUnlocked = uiUnlocked ?? (() => false);
 
         // The tab strip: the tabs, then an empty part that drags the window.
         var tabRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Height = 19 };
@@ -77,22 +95,21 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         var tabBar = new Border { BorderBrush = DerethChatPalette.GoldDarkBrush, BorderThickness = new Thickness(0, 0, 0, 1), Margin = new Thickness(0, 0, 0, 5), Child = tabRow };
 
         // The log: a dark groove with a scroll bar, and the jump pill over its bottom edge while the player is scrolled up.
-        _scroll = new ScrollViewer { Content = _lines, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
-        _scroll.ScrollChanged += (_, _) => { if (AtEnd()) HidePill(); };
-        var logBox = new Border
+        // The groove fades with the chrome; the lines sit over it, inset by the groove's border and padding, and fade by their own age.
+        _groove = new Border
         {
             Background = DerethPalette.Brush(Color.FromArgb(0x99, 0x03, 0x06, 0x09)),
             BorderBrush = DerethPalette.GrooveEdgeBrush,
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(3),
-            Padding = new Thickness(6, 3),
-            Child = _scroll
+            CornerRadius = new CornerRadius(3)
         };
+        _scroll = new ScrollViewer { Content = _lines, Margin = new Thickness(7, 4), VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        _scroll.ScrollChanged += (_, _) => { if (AtEnd()) HidePill(); };
         _pill = DerethChatParts.JumpPill(_pillText);
         _pill.IsVisible = false;
         _pill.Margin = new Thickness(0, 0, 0, 6);
         _pill.PointerPressed += (_, e) => { JumpToEnd(); e.Handled = true; };
-        var logArea = new Grid { Children = { logBox, _pill }, Margin = new Thickness(0, 0, 0, 5) };
+        var logArea = new Grid { Children = { _groove, _scroll, _pill }, Margin = new Thickness(0, 0, 0, 5) };
 
         // The input row: the chip opens the talk-target menu; the box takes text; Send sends it.
         _chipHost.PointerPressed += (_, e) => { if (e.GetCurrentPoint(_chipHost).Properties.IsLeftButtonPressed) ToggleMenu(); };
@@ -122,7 +139,9 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         Grid.SetColumn(send, 2);
         inputRow.Children.Add(send);
 
-        var content = new Grid { Margin = new Thickness(9, 7, 9, 9), RowDefinitions = new RowDefinitions("Auto,*,Auto") };
+        // The frame's edge is inside its padding, so the content keeps the frame's inset that the window had when the frame wrapped it.
+        var inset = _frame.Padding;
+        var content = new Grid { Margin = new Thickness(inset.Left + 9, inset.Top + 7, inset.Right + 9, inset.Bottom + 9), RowDefinitions = new RowDefinitions("Auto,*,Auto") };
         content.Children.Add(tabBar);
         Grid.SetRow(logArea, 1);
         content.Children.Add(logArea);
@@ -139,7 +158,11 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         Grid.SetRow(_editor, 0);
         Grid.SetRowSpan(_editor, 3);
         content.Children.Add(_editor);
-        Child = new DerethFrame(DerethFrameArt.Window) { Child = content };
+        // The frame is a sibling of the content, not its parent, so it fades without the lines fading with it. The root is hit-testable
+        // all over, so the pointer counts as over the window wherever it is in the frame.
+        // The jump pill keeps its own visibility: it is the cue for lines that arrived while the log was scrolled up.
+        _chrome.AddRange(new Control[] { _frame, tabBar, _groove, inputRow });
+        Child = new Grid { Background = Brushes.Transparent, Children = { _frame, content } };
 
         RebuildTabs();
         // The chip shows Local until a tab picks its own target; All has none.
@@ -191,6 +214,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     public void Receive(RetailChatLine line)
     {
         if (_disposed) return;
+        _linesSettled = false;
         var dropped = _history.Add(line);
         if (line.Sender != null && (line.Kind == RetailChatKind.TellIn || line.Kind == RetailChatKind.TellOut)) _lastTell = line.Sender;
         if (dropped != null && _tabs[_tab].Shows(dropped) && _lines.Children.Count > 0) _lines.Children.RemoveAt(0);
@@ -222,6 +246,54 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _disposed = true;
         _port.LineReceived -= Receive;
         _port.TimestampsChanged -= OnTimestampsChanged;
+    }
+
+    /// <summary>
+    /// Applies the idle fade to what the window shows now. The host calls it once a frame, inside its guard, since the unlock check reads
+    /// retail's state; a test calls it after moving the clock.
+    /// </summary>
+    internal void Refresh()
+    {
+        if (_disposed) return;
+        // The unlock check is read only when nothing else keeps the window awake. An open tab editor counts like an open menu.
+        var awake = IsPointerOver || _input.IsFocused || _menu.IsVisible || _editor.IsVisible || _uiUnlocked();
+        var now = _clock();
+        _fade.Update(awake, now);
+        if (awake != _awake)
+        {
+            _awake = awake;
+            _linesSettled = false;
+        }
+        var chrome = _fade.ChromeOpacity(now);
+        foreach (var part in _chrome) SetOpacity(part, chrome);
+        _scrollBar ??= _scroll.GetVisualDescendants().OfType<ScrollBar>().FirstOrDefault(bar => bar.Orientation == Orientation.Vertical);
+        if (_scrollBar != null) SetOpacity(_scrollBar, chrome);
+        if (!_linesSettled) _linesSettled = ApplyLines(now);
+    }
+
+    /// <summary>
+    /// Sets each line's opacity, and its shadow, for the window's state. True when no line can change until the state or the lines do:
+    /// awake, or idle with every line faded out.
+    /// </summary>
+    private bool ApplyLines(DateTime now)
+    {
+        var idle = _fade.Idle;
+        var allGone = true;
+        foreach (var line in _lines.Children)
+        {
+            if (line.Tag is not DateTime arrived) continue;
+            var opacity = _fade.LineOpacity(arrived, now);
+            SetOpacity(line, opacity);
+            var effect = idle ? LineShadow : null;
+            if (line.Effect != effect) line.Effect = effect;
+            if (opacity > 0) allGone = false;
+        }
+        return !idle || allGone;
+    }
+
+    private static void SetOpacity(Control control, double opacity)
+    {
+        if (control.Opacity != opacity) control.Opacity = opacity;
     }
 
     private void OnTimestampsChanged()
@@ -327,6 +399,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private void RebuildLog()
     {
         _lines.Children.Clear();
+        _linesSettled = false;
         foreach (var line in _history.Lines)
             if (_tabs[_tab].Shows(line)) _lines.Children.Add(LineView(line));
         HidePill();
@@ -355,7 +428,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     {
         var brush = DerethPalette.Brush(ColourOf(line.Kind));
         var italic = line.Kind == RetailChatKind.Emote;
-        var view = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap, LineHeight = 15.6, Margin = new Thickness(0, 0, 0, 1) };
+        var view = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap, LineHeight = 15.6, Margin = new Thickness(0, 0, 0, 1), Tag = line.Time };
         var written = 0;
         void Add(Run run)
         {

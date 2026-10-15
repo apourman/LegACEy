@@ -1803,6 +1803,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (_chatWindow == null && !OpenRetailChat()) return;
             _chatPort!.Poll();
             _chatTakeover!.Tick(GameDevice.ViewportSize(_device));
+            // The idle fade reads retail's UI lock, so it runs here, inside the guard, not on a timer of its own.
+            _chatWindow?.Refresh();
         }
         catch (Exception exception)
         {
@@ -1825,8 +1827,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             roots.Add(new RetailChatTakeover.RootPort(id));
         var server = SessionServer();
         var character = SessionCharacter();
+        // Retail's UI is unlocked when a window may be moved; the chat then stays whole, so its frame can be found.
         var window = new RetailChatWindow(port, () => _windows?.BeginMove(ChatWindowId, _pointer), _chatTabs.Load(server, character),
-            tabs => _chatTabs.Save(server, character, tabs));
+            tabs => _chatTabs.Save(server, character, tabs), uiUnlocked: () => !NativeUi.IsUiLocked);
         // The window starts at the bottom left, above the toolbar, until the player moves it; its place is then kept per character.
         var screen = _windows!.Screen;
         var definition = new WindowDefinition(ChatWindowId, "Chat", ChatDesignWidth, ChatDesignHeight, titleBarHeight: 19, theme: new DerethClientTheme(),
