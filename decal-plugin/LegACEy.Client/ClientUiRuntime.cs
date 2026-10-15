@@ -877,7 +877,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _retailDragName = item == 0 ? string.Empty : ObjectName(item);
         }
         // A Vault withdraw carries no world object, but our inventory still shows where it would go.
-        var top = item == 0 && !_itemDragActive ? null : TopSurfaceAt(_pointer);
+        // A shortcut dragged off a bar carries no item, but the bars still show the slot it would land on.
+        var top = item == 0 && !_itemDragActive && _shortcutDrag.Slot == null ? null : TopSurfaceAt(_pointer);
         if (top != null && retailItem != 0 && _retailDragIcon == null)
             _retailDragIcon = ShowDragIcon(ObjectIcon(item), 1);
         else if ((top == null || retailItem == 0) && _retailDragIcon != null)
@@ -1724,6 +1725,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (item.Id == id) return new ShortcutItem(item.Visual, item.StackCount);
         foreach (var worn in snapshot.Wielded)
             if (worn.Id == id) return new ShortcutItem(worn.Visual, worn.StackCount);
+        // A pack bound to a slot opens it, as retail's shortcut to a pack does; the main pack is the character itself.
+        foreach (var pack in snapshot.SidePacks.Prepend(snapshot.MainPack))
+            if (pack.Id == id) return new ShortcutItem(new ItemVisual(pack.Icon, 0, 0, 0), 1);
         return null;
     }
 
