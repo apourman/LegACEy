@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -194,8 +195,69 @@ public sealed class RetailChatWindowsTests
         clock.Advance(TimeSpan.FromSeconds(1));
         desk.Tick();
 
-        Assert.Equal(0.0, Seen(StripPanel(main)));
-        Assert.Equal(0.0, Seen(StripPanel(torn)));
+        foreach (var window in new[] { main, torn })
+        {
+            Assert.Equal(0.0, Seen(StripPanel(window)));
+            Assert.Equal(0.0, Seen(Frame(window)));
+            Assert.Equal(0.0, Seen(InputBox(window)));
+        }
+    }));
+
+    [Fact]
+    public void A_window_covering_a_strip_keeps_the_tab_dropped_on_it() => RenderThread.Run(() => WithStore(path =>
+    {
+        var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };
+        using var desk = ChatDesk.Open(port, path, Character);
+        var main = desk.Main;
+        desk.Drag(desk.At(main, TabView(main, "Fellowship")), desk.Place(main, new System.Drawing.Point(600, 110)));
+        var torn = desk.Chat.Windows[1];
+
+        // A non-chat window covers the main window's Speech tab. A tab dropped there does not merge into the strip underneath.
+        var speech = desk.At(main, TabView(main, "Speech"));
+        desk.Cover(new System.Drawing.Point(speech.X - 100, speech.Y - 10));
+        desk.Drag(desk.At(torn, TabView(torn, "Fellowship")), speech);
+        desk.Tick();
+
+        Assert.Equal(2, desk.Chat.Windows.Count);
+        Assert.Equal(new[] { "Fellowship" }, Strip(torn));
+        Assert.DoesNotContain("Fellowship", Strip(main));
+    }));
+
+    [Fact]
+    public void A_tab_merged_on_release_does_not_reappear_when_the_chat_closes_before_the_next_frame() => RenderThread.Run(() => WithStore(path =>
+    {
+        var positions = new MemoryWindowPositionStore();
+        var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };
+        var desk = ChatDesk.Open(port, path, Character, positions);
+        var main = desk.Main;
+        desk.Drag(desk.At(main, TabView(main, "Fellowship")), desk.Place(main, new System.Drawing.Point(600, 110)));
+        var torn = desk.Chat.Windows[1];
+
+        // Dropped on the main strip: the torn-off window is retired at the next frame, and the chat closes before that frame.
+        desk.Drag(desk.At(torn, TabView(torn, "Fellowship")), desk.At(main, TabView(main, "Speech")));
+        desk.Dispose();
+
+        using var again = ChatDesk.Open(port, path, Character, positions);
+        Assert.Single(again.Chat.Windows);
+        Assert.Equal(new[] { "All", "Speech", "Allegiance", "Channels", "Tells", "Fellowship" }, Strip(again.Main));
+    }));
+
+    [Fact]
+    public void A_saved_window_row_whose_id_is_not_base64_is_ignored_and_the_other_windows_open() => RenderThread.Run(() => WithStore(path =>
+    {
+        var positions = new MemoryWindowPositionStore();
+        var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };
+        using (var desk = ChatDesk.Open(port, path, Character, positions))
+        {
+            var main = desk.Main;
+            desk.Drag(desk.At(main, TabView(main, "Fellowship")), desk.Place(main, new System.Drawing.Point(600, 110)));
+        }
+        File.AppendAllText(path, Convert.ToBase64String(Encoding.UTF8.GetBytes("server")) + "|" + Convert.ToBase64String(Encoding.UTF8.GetBytes(Character))
+            + "|not base64!|" + Convert.ToBase64String(Encoding.UTF8.GetBytes("x")) + "\n");
+
+        using var again = ChatDesk.Open(port, path, Character, positions);
+        Assert.Equal(2, again.Chat.Windows.Count);
+        Assert.Equal(new[] { "Fellowship" }, Strip(again.Chat.Windows[1]));
     }));
 
     [Fact]
@@ -232,6 +294,12 @@ public sealed class RetailChatWindowsTests
     /// <summary>The tab's label on a window's strip: the first text with that name, the strip being first in the window.</summary>
     private static TextBlock TabView(RetailChatWindow window, string name) =>
         window.GetVisualDescendants().OfType<TextBlock>().First(text => text.Text == name);
+
+    // The window's own frame is the first one in its tree: the window's child is the frame beside the content.
+    private static DerethFrame Frame(RetailChatWindow window) => window.GetVisualDescendants().OfType<DerethFrame>().First();
+
+    private static TextBox InputBox(RetailChatWindow window) =>
+        window.GetVisualDescendants().OfType<TextBox>().Single(box => box.Watermark == "Say something…");
 
     private static StackPanel StripPanel(RetailChatWindow window) =>
         window.GetVisualDescendants().OfType<StackPanel>().First(strip => strip.Orientation == Orientation.Horizontal && strip.Height == 19);
@@ -365,6 +433,9 @@ public sealed class RetailChatWindowsTests
             if (_panels.TryGetValue(_captured, out var panel)) panel.PointerLeave();
             _captured = null;
         }
+
+        /// <summary>A window of another kind, which covers the chat windows under it, as a LegACEy window that is not a chat does.</summary>
+        public void Cover(System.Drawing.Point at) => _windows.Open(new WindowDefinition("cover", "Cover", 200, 60), at);
 
         /// <summary>Runs the chat's frame work and every panel's frame, as the client's post-UI draw does.</summary>
         public void Tick()

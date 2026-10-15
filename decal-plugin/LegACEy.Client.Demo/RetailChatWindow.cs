@@ -87,7 +87,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _tornOff = tornOff;
         _tabs = (tabs ?? RetailChatTab.Defaults).ToList();
         _unread = _tabs.Select(_ => (0, false)).ToList();
-        _timestamps = port.TimestampsOn;
+        _timestamps = _port.TimestampsOn;
         _fade = new RetailChatFade();
         _clock = clock ?? (() => DateTime.Now);
         _uiUnlocked = uiUnlocked ?? (() => false);
@@ -195,9 +195,6 @@ public sealed class RetailChatWindow : Decorator, IDisposable
 
     /// <summary>Whether the window is torn off the main window.</summary>
     public bool TornOff => _tornOff;
-
-    /// <summary>The input box. Only the window and its tests reach it; the runtime gives it the keyboard with <see cref="FocusInput"/>.</summary>
-    internal TextBox Input => _input;
 
     /// <summary>Gives the box the keyboard: Enter in the game does this.</summary>
     public void FocusInput() => _input.Focus();
@@ -624,7 +621,6 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         var first = new StackPanel { Spacing = 2 };
         var allegiance = new StackPanel { Spacing = 0, Margin = new Thickness(8, 0, 0, 0) };
         var channels = new StackPanel { Spacing = 0, Margin = new Thickness(8, 0, 0, 0) };
-        var columns = new[] { first, allegiance, channels };
         for (var group = 0; group < RetailTalkTargets.Groups.Count; group++)
         {
             var column = group switch { 0 or 1 => first, 2 => allegiance, _ => channels };

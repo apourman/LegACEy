@@ -121,7 +121,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private IWindowPositionStore? _positionStore;
     // Each plugin's one settings value, per character, in its own file: a row keyed by the plugin's name whose X is the value.
     private readonly FileWindowPositionStore _settingsStore = new(IOPath.Combine(PluginDirectory, "plugin-settings.txt"));
-    // The chat tabs each character has: a row per server and character, missing means the six defaults.
+    // The chat tabs each window of each character has: a row per server, character and window, missing means the six defaults.
     private readonly FileRetailChatTabStore _chatTabs = new(IOPath.Combine(PluginDirectory, "chat-tabs.txt"), Log);
     private readonly ShortcutRowChoice _row2Choice;
     // The window whose frame shows a hovered corner, and the corner it shows.

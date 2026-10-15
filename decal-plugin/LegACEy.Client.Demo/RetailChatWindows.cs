@@ -88,9 +88,6 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     /// <summary>Every open window, the main window first.</summary>
     public IReadOnlyList<RetailChatWindow> Windows => _chats.Select(chat => chat.Window).ToArray();
 
-    /// <summary>The open windows' ids, in the same order as <see cref="Windows"/>.</summary>
-    public IReadOnlyList<string> Ids => _chats.Select(chat => chat.Id).ToArray();
-
     /// <summary>
     /// Opens the main window at <paramref name="beside"/> with its saved tabs, then each torn-off window saved for the character at its
     /// saved place. A window with no saved place opens at <paramref name="beside"/>.
@@ -126,11 +123,13 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
         _dragged = null;
         if (_disposed) return;
         var pointer = _pointer();
-        // The topmost window under the pointer that has a strip there. The dragged window is skipped, since it follows the pointer.
+        // The topmost window under the pointer, other than the dragged one (which follows the pointer), decides. A window that covers a
+        // chat strip, or any non-chat window, keeps the tab: the merge happens only where the strip is the thing under the pointer.
         foreach (var placed in _windows.ZOrder)
         {
             var target = Get(placed.Id);
-            if (target == null || target == dragged || !target.StripContains(ContentPoint(placed, pointer))) continue;
+            if (target == dragged || !placed.Bounds.Contains(pointer)) continue;
+            if (target == null || !target.StripContains(ContentPoint(placed, pointer))) return;
             target.AddTabs(dragged.Tabs);
             _retiring.Add(dragged);
             return;
@@ -191,20 +190,34 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
         _retiring.Add(window);
     }
 
-    /// <summary>Closes every window and releases it. Its tabs and place stay saved, so the next open restores them.</summary>
+    /// <summary>
+    /// Closes every window and releases it. A window that merged away is retired first, so its tab row goes and it cannot reappear on
+    /// restore. The other windows keep their rows: their tabs and place stay saved, so the next open restores them. Each window is released
+    /// on its own, so one that fails does not stop the rest; the first failure is rethrown after every window and the history are released.
+    /// </summary>
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        foreach (var (id, window) in _chats.ToArray())
+        Exception? first = null;
+        foreach (var window in _retiring.ToArray())
         {
-            _chats.RemoveAll(chat => chat.Window == window);
-            _closeSurface(id);
-            window.Dispose();
+            try { Retire(window); } catch (Exception error) { first ??= error; }
         }
         _retiring.Clear();
         _dragged = null;
-        _history.Dispose();
+        foreach (var (id, window) in _chats.ToArray())
+        {
+            try
+            {
+                _chats.RemoveAll(chat => chat.Window == window);
+                _closeSurface(id);
+                window.Dispose();
+            }
+            catch (Exception error) { first ??= error; }
+        }
+        try { _history.Dispose(); } catch (Exception error) { first ??= error; }
+        if (first != null) throw new InvalidOperationException("One or more Dereth chat windows failed to close.", first);
     }
 
     private RetailChatWindow ShowWindow(string id, IReadOnlyList<RetailChatTab> tabs, bool tornOff, Point location)
@@ -243,7 +256,7 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     private string NewTornId()
     {
         var saved = _store.Windows(_server, _character);
-        for (var number = 2; ; number++)
+        for (var number = 1; ; number++)
         {
             var id = TornIdPrefix + number.ToString(CultureInfo.InvariantCulture);
             if (_chats.All(chat => chat.Id != id) && !saved.Contains(id)) return id;
