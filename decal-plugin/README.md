@@ -71,10 +71,10 @@ gives retail's inventory and examination panels back; deleting it
 takes the panel over again. The file is only checked, never consumed. A drag that leaves the LegACEy window is handed to retail's own
 drag when retail's inventory lists show the item, so the world, NPCs and other retail windows take it as they would from retail.
 
-Creating an empty file named `retail-toolbar-takeover` beside the main DLL replaces retail's toolbar with the Dereth toolbar, drawn at
-retail's toolbar position. Press and drag the toolbar's frame (not a button) to move it, unless retail's UI is locked; the place is saved
-by retail. The two shortcut bars start beside the toolbar and move on their own. Deleting the file gives retail's toolbar back within a
-second. Without the file nothing changes. This is opt-in until the toolbar is play-tested.
+The Dereth toolbar replaces retail's toolbar, drawn at retail's toolbar position, from portal space at login on. Press and drag the toolbar's frame (not a button) to move it, unless retail's UI is locked; the place is saved
+by retail. The two shortcut bars start beside the toolbar and move on their own once the character is in game; row 2's tag
+shows or hides row 2. Creating an empty file named `retail-toolbar-native` beside the main DLL gives retail's toolbar back within a
+second; deleting it takes the toolbar over again.
 
 ## Tests
 

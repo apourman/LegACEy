@@ -87,8 +87,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // Beside the DLL: while this file exists, retail's inventory and examination panels stay retail's. Without it the LegACEy UI takes them
     // over; the examination takeover follows the same switch.
     private const string RetailPanelSwitchFile = "retail-inventory-native";
-    // Beside the DLL: while this file exists, the Dereth toolbar replaces retail's toolbar. Without it retail's toolbar is untouched.
-    private const string RetailToolbarSwitchFile = "retail-toolbar-takeover";
+    // Beside the DLL: while this file exists, retail's toolbar stays retail's. Without it the Dereth toolbar replaces it.
+    private const string RetailToolbarSwitchFile = "retail-toolbar-native";
 
     // How big LegACEy windows show against their design size. The indicator bar keeps retail's size, and drag icons retail's 32 pixels.
     // An Avalonia that cannot scale panels shows them at design size rather than failing every window.
@@ -1450,7 +1450,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Holds retail's toolbar and draws the Dereth toolbar at its place, while the switch file is beside the DLL. Off, retail's toolbar is
+    /// Holds retail's toolbar and draws the Dereth toolbar at its place, unless the switch file is beside the DLL. Off, retail's toolbar is
     /// given back and nothing new draws. A failure gives retail's toolbar back and stops the Dereth toolbar until the switch is turned off and on.
     /// </summary>
     private void TickRetailToolbar()
@@ -1723,7 +1723,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (now - _lastToolbarSwitchCheck >= TimeSpan.FromSeconds(1))
         {
             _lastToolbarSwitchCheck = now;
-            _toolbarSwitch = File.Exists(IOPath.Combine(PluginDirectory, RetailToolbarSwitchFile));
+            _toolbarSwitch = !File.Exists(IOPath.Combine(PluginDirectory, RetailToolbarSwitchFile));
         }
         return _toolbarSwitch;
     }
