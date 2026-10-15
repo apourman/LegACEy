@@ -170,12 +170,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _inventoryWindowOpen;
     private DateTime _lastToolbarSwitchCheck;
     // The Dereth chat window over retail's chat: its feature checks, port, window and the held retail chat windows. Held while the switch is on.
-    private const string ChatWindowId = "dereth-chat";
-    private const int ChatDesignWidth = 460;
-    private const int ChatDesignHeight = 200;
+    private const string ChatWindowId = RetailChatWindows.MainId;
     private RetailChatNatives? _chatNatives;
     private NativeRetailChatPort? _chatPort;
-    private RetailChatWindow? _chatWindow;
+    private RetailChatWindows? _chatWindows;
     private RetailChatTakeover? _chatTakeover;
     private bool _chatFailed;
     private bool _chatReleaseLogged;
@@ -1779,10 +1777,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private bool TryFocusRetailChat()
     {
-        if (_chatWindow == null || _chatTakeover?.Holds != true) return false;
+        if (_chatWindows?.Main is not { } main || _chatTakeover?.Holds != true) return false;
         var focused = SurfaceById(_inputRouter.FocusedSurfaceId);
         if (focused?.Panel.WantsKeyboard == true) return false;
-        _chatWindow.FocusInput();
+        main.FocusInput();
         _inputRouter.FocusSurface(ChatWindowId);
         return true;
     }
@@ -1800,11 +1798,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 return;
             }
             if (!canDraw || !switchOn || _chatFailed || !_inGame) return;
-            if (_chatWindow == null && !OpenRetailChat()) return;
+            if (_chatWindows == null && !OpenRetailChat()) return;
             _chatPort!.Poll();
             _chatTakeover!.Tick(GameDevice.ViewportSize(_device));
             // The idle fade reads retail's UI lock, so it runs here, inside the guard, not on a timer of its own.
-            _chatWindow?.Refresh();
+            _chatWindows?.Refresh();
         }
         catch (Exception exception)
         {
@@ -1828,19 +1826,17 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var server = SessionServer();
         var character = SessionCharacter();
         // Retail's UI is unlocked when a window may be moved; the chat then stays whole, so its frame can be found.
-        var window = new RetailChatWindow(port, () => _windows?.BeginMove(ChatWindowId, _pointer), _chatTabs.Load(server, character),
-            tabs => _chatTabs.Save(server, character, tabs), uiUnlocked: () => !NativeUi.IsUiLocked);
-        // The window starts at the bottom left, above the toolbar, until the player moves it; its place is then kept per character.
+        var chats = new RetailChatWindows(port, _windows!, _positionStore!, _chatTabs, server, character, () => !NativeUi.IsUiLocked,
+            () => _pointer, (definition, content, location) => OpenWindowCore(definition, content, location, ChatFailed), ReleaseFeatureWindow);
+        // The main window starts at the bottom left, above the toolbar, until the player moves it; its place is then kept per character.
         var screen = _windows!.Screen;
-        var definition = new WindowDefinition(ChatWindowId, "Chat", ChatDesignWidth, ChatDesignHeight, titleBarHeight: 19, theme: new DerethClientTheme(),
-            resizing: new WindowResizing(new Size(260, 120)), dragsFromContent: true);
-        var beside = new Point(12, Math.Max(0, screen.Height - (int)Math.Round(ChatDesignHeight * WindowScale) - 150));
+        var beside = new Point(12, Math.Max(0, screen.Height - (int)Math.Round(RetailChatWindows.DesignHeight * WindowScale) - 150));
         _chatPort = port;
-        _chatWindow = window;
+        _chatWindows = chats;
         _chatTakeover = new RetailChatTakeover(roots);
         try
         {
-            OpenWindowCore(definition, window, beside, ChatFailed);
+            chats.Open(beside);
             port.Attach();
         }
         catch
@@ -1848,7 +1844,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             ReleaseRetailChat();
             throw;
         }
-        Log($"Dereth chat window ready; retail's chat windows held: {roots.Count}.");
+        Log($"Dereth chat window ready with {chats.Windows.Count} window(s); retail's chat windows held: {roots.Count}.");
         return true;
     }
 
@@ -1887,9 +1883,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _chatTakeover = null;
             _chatReleaseLogged = false;
         }
-        ReleaseFeatureWindow(ChatWindowId);
-        _chatWindow?.Dispose();
-        _chatWindow = null;
+        _chatWindows?.Dispose();
+        _chatWindows = null;
         _chatPort?.Dispose();
         _chatPort = null;
     }
@@ -2031,6 +2026,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     {
                         _windows.Release();
                         SyncWindowLocations();
+                        _chatWindows?.Released();
                     }
                     if (_dragOffset != null)
                         EndBarDrag();

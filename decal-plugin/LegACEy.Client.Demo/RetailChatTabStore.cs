@@ -8,9 +8,10 @@ using System.Text;
 namespace LegACEy.Client.Demo;
 
 /// <summary>
-/// The chat tabs each character has, in a small text file beside the plugin: one row per server and character, holding the tab list. A
-/// character with no row, or a damaged one, has the six default tabs. Text is base64 encoded, so names can hold any punctuation. A save
-/// never writes over rows it could not read, and the file is replaced in one step, so a failed save leaves the old file as it was.
+/// The chat tabs each window of each character has, in a small text file beside the plugin: one row per server, character and window,
+/// holding that window's tab list. A window with no row, or a damaged one, has the six default tabs when it is the main window; a torn-off
+/// window with no row is not restored. Text is base64 encoded, so names can hold any punctuation. A save never writes over rows it could
+/// not read, and the file is replaced in one step, so a failed save leaves the old file as it was.
 /// </summary>
 public sealed class FileRetailChatTabStore
 {
@@ -26,21 +27,41 @@ public sealed class FileRetailChatTabStore
         _log = log ?? (_ => { });
     }
 
-    /// <summary>The character's tabs, or null when none are saved, the saved ones are damaged, or the file could not be read.</summary>
-    public IReadOnlyList<RetailChatTab>? Load(string server, string character)
+    /// <summary>The window's tabs, or null when none are saved, the saved ones are damaged, or the file could not be read.</summary>
+    public IReadOnlyList<RetailChatTab>? Load(string server, string character, string windowId)
     {
         lock (_sync)
         {
             if (!TryRows(out var rows)) return null;
-            return rows.TryGetValue(Key(server, character), out var payload) ? Parse(payload) : null;
+            return rows.TryGetValue(Key(server, character, windowId), out var payload) ? Parse(payload, windowId) : null;
+        }
+    }
+
+    /// <summary>The ids of the windows that have a row for the character, in id order.</summary>
+    public IReadOnlyList<string> Windows(string server, string character)
+    {
+        lock (_sync)
+        {
+            if (!TryRows(out var rows)) return Array.Empty<string>();
+            var prefix = CharacterKey(server, character) + "|";
+            return rows.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal))
+                .Select(key => Decode(key.Substring(prefix.Length)))
+                .OrderBy(id => id, StringComparer.Ordinal)
+                .ToArray();
         }
     }
 
     /// <summary>
-    /// Saves the character's tabs and keeps every other character's row. When the file could not be read, nothing is written, so the rows
-    /// that could not be read are not lost; the tabs stay in memory for this session.
+    /// Saves the window's tabs and keeps every other row. When the file could not be read, nothing is written, so the rows that could not
+    /// be read are not lost; the tabs stay in memory for this session.
     /// </summary>
-    public void Save(string server, string character, IReadOnlyList<RetailChatTab> tabs)
+    public void Save(string server, string character, string windowId, IReadOnlyList<RetailChatTab> tabs) =>
+        Write(server, character, windowId, Base64(string.Join("\n", tabs.Select(FormatTab))));
+
+    /// <summary>Removes the window's row: a torn-off window that merged back into the main window has none.</summary>
+    public void Remove(string server, string character, string windowId) => Write(server, character, windowId, null);
+
+    private void Write(string server, string character, string windowId, string? payload)
     {
         lock (_sync)
         {
@@ -49,7 +70,9 @@ public sealed class FileRetailChatTabStore
                 _log("Chat tabs not saved: the chat tabs file could not be read, so writing it would lose other rows.");
                 return;
             }
-            rows[Key(server, character)] = Base64(string.Join("\n", tabs.Select(FormatTab)));
+            var key = Key(server, character, windowId);
+            if (payload == null) rows.Remove(key);
+            else rows[key] = payload;
             var temp = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try
             {
@@ -71,7 +94,7 @@ public sealed class FileRetailChatTabStore
         }
     }
 
-    /// <summary>The rows in the file; false when the file exists but could not be read. A missing file has no rows.</summary>
+    /// <summary>The rows in the file, by key; false when the file exists but could not be read. A missing file has no rows.</summary>
     private bool TryRows(out Dictionary<string, string> rows)
     {
         rows = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -81,7 +104,7 @@ public sealed class FileRetailChatTabStore
             foreach (var line in File.ReadAllLines(_path))
             {
                 var fields = line.Split('|');
-                if (fields.Length == 3) rows[fields[0] + "|" + fields[1]] = fields[2];
+                if (fields.Length == 4) rows[fields[0] + "|" + fields[1] + "|" + fields[2]] = fields[3];
             }
             return true;
         }
@@ -110,10 +133,10 @@ public sealed class FileRetailChatTabStore
         (tab.Channels == null ? AllChannels : Base64(string.Join(",", tab.Channels)));
 
     /// <summary>
-    /// The tab list, or null for the defaults when any part is damaged: a blank name, a target that is neither none nor a talk target, or a
-    /// first tab that is not the All tab. A damaged row never reaches the window.
+    /// The tab list, or null for the defaults when any part is damaged: no tabs, a blank name, a target that is neither none nor a talk
+    /// target, or, for the main window, a first tab that is not the All tab. A damaged row never reaches the window.
     /// </summary>
-    private static IReadOnlyList<RetailChatTab>? Parse(string payload)
+    private static IReadOnlyList<RetailChatTab>? Parse(string payload, string windowId)
     {
         try
         {
@@ -132,8 +155,9 @@ public sealed class FileRetailChatTabStore
                     : Decode(fields[3]).Split(',').Where(channel => channel.Length > 0).ToArray();
                 tabs.Add(new RetailChatTab(name, (RetailChatKind)kinds, target.Length == 0 ? null : target, channels));
             }
+            if (tabs.Count == 0) return null;
             var all = RetailChatTab.Defaults[0];
-            if (tabs.Count == 0 || tabs[0].Name != all.Name || tabs[0].TargetId != all.TargetId) return null;
+            if (windowId == RetailChatWindows.MainId && (tabs[0].Name != all.Name || tabs[0].TargetId != all.TargetId)) return null;
             return tabs;
         }
         catch (FormatException)
@@ -142,7 +166,10 @@ public sealed class FileRetailChatTabStore
         }
     }
 
-    private static string Key(string server, string character) => Base64(server ?? string.Empty) + "|" + Base64(character ?? string.Empty);
+    private static string CharacterKey(string server, string character) =>
+        Base64(server ?? string.Empty) + "|" + Base64(character ?? string.Empty);
+
+    private static string Key(string server, string character, string windowId) => CharacterKey(server, character) + "|" + Base64(windowId);
 
     private static string Base64(string value) => Convert.ToBase64String(Encoding.UTF8.GetBytes(value));
 

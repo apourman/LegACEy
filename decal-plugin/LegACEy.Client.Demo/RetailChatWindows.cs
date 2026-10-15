@@ -1,0 +1,259 @@
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Globalization;
+using System.Linq;
+using Avalonia.Controls;
+using LegACEy.Client.Themes;
+
+namespace LegACEy.Client.Demo;
+
+/// <summary>
+/// What a chat window reports to its host: its tab list changed, a tab was dragged out of its strip, the strip's empty part was pressed to
+/// move the window, or a torn-off window's close medallion was pressed.
+/// </summary>
+public interface IRetailChatWindowHost
+{
+    void TabsChanged(RetailChatWindow window);
+    void TabDraggedOut(RetailChatWindow window, int index);
+    void MoveRequested(RetailChatWindow window);
+    void CloseRequested(RetailChatWindow window);
+}
+
+/// <summary>
+/// The Dereth chat windows a character has: the main window with All, and each tab torn off into a window of its own. Each window keeps its
+/// own tab list, and each is a LegACEy window, placed and sized in the window position store. A tab dragged out of a window opens a window
+/// that follows the pointer until it is released; released on another window's strip, the tab joins that window and the new window closes.
+/// A torn-off window's close medallion merges its tabs back into the main window. The windows and their tabs are kept per character, so the
+/// next open restores them.
+/// </summary>
+public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
+{
+    /// <summary>The main window's id: its window position and its tab list are kept under it.</summary>
+    public const string MainId = "dereth-chat";
+    public const int DesignWidth = 460;
+    public const int DesignHeight = 200;
+    private const string TornIdPrefix = "dereth-chat-";
+    // Where a torn-off window opens from the pointer: the tab it came from is under the pointer, so the window follows it.
+    private static readonly Size Grab = new(24, 9);
+    private readonly IRetailChatPort _port;
+    private readonly RetailChatHistory _history;
+    private readonly WindowManager _windows;
+    private readonly IWindowPositionStore _positions;
+    private readonly FileRetailChatTabStore _store;
+    private readonly string _server;
+    private readonly string _character;
+    private readonly Func<bool> _uiUnlocked;
+    private readonly Func<DateTime> _clock;
+    private readonly Func<Point> _pointer;
+    private readonly Action<WindowDefinition, Control, Point> _showSurface;
+    private readonly Action<string> _closeSurface;
+    private readonly List<(string Id, RetailChatWindow Window)> _chats = new();
+    // Windows to close at the next refresh: a close medallion is pressed inside its own window, which cannot be torn down there.
+    private readonly List<RetailChatWindow> _retiring = new();
+    // The window whose tab is being dragged: it follows the pointer until the release.
+    private RetailChatWindow? _dragged;
+    private bool _disposed;
+
+    /// <param name="port">Retail's chat, as the client reaches it.</param>
+    /// <param name="windows">The client's window manager: it places and moves every window.</param>
+    /// <param name="positions">The window position store, which a torn-off window's place is saved in.</param>
+    /// <param name="store">The tab lists, per window, per character.</param>
+    /// <param name="uiUnlocked">Whether retail's UI is unlocked for moving windows.</param>
+    /// <param name="pointer">The pointer's place on the screen, in pixels.</param>
+    /// <param name="showSurface">Shows a window's content as a LegACEy window with the definition, at the place given.</param>
+    /// <param name="closeSurface">Closes a window shown with <paramref name="showSurface"/>.</param>
+    /// <param name="clock">The time, for the idle fade; null for the system's.</param>
+    public RetailChatWindows(IRetailChatPort port, WindowManager windows, IWindowPositionStore positions, FileRetailChatTabStore store,
+        string server, string character, Func<bool> uiUnlocked, Func<Point> pointer, Action<WindowDefinition, Control, Point> showSurface,
+        Action<string> closeSurface, Func<DateTime>? clock = null)
+    {
+        _port = port ?? throw new ArgumentNullException(nameof(port));
+        _windows = windows ?? throw new ArgumentNullException(nameof(windows));
+        _positions = positions ?? throw new ArgumentNullException(nameof(positions));
+        _store = store ?? throw new ArgumentNullException(nameof(store));
+        _server = server ?? string.Empty;
+        _character = character ?? string.Empty;
+        _uiUnlocked = uiUnlocked ?? throw new ArgumentNullException(nameof(uiUnlocked));
+        _pointer = pointer ?? throw new ArgumentNullException(nameof(pointer));
+        _showSurface = showSurface ?? throw new ArgumentNullException(nameof(showSurface));
+        _closeSurface = closeSurface ?? throw new ArgumentNullException(nameof(closeSurface));
+        _clock = clock ?? (() => DateTime.Now);
+        _history = new RetailChatHistory(port);
+    }
+
+    /// <summary>The main window, or null before <see cref="Open"/>.</summary>
+    public RetailChatWindow? Main => Get(MainId);
+
+    /// <summary>Every open window, the main window first.</summary>
+    public IReadOnlyList<RetailChatWindow> Windows => _chats.Select(chat => chat.Window).ToArray();
+
+    /// <summary>The open windows' ids, in the same order as <see cref="Windows"/>.</summary>
+    public IReadOnlyList<string> Ids => _chats.Select(chat => chat.Id).ToArray();
+
+    /// <summary>
+    /// Opens the main window at <paramref name="beside"/> with its saved tabs, then each torn-off window saved for the character at its
+    /// saved place. A window with no saved place opens at <paramref name="beside"/>.
+    /// </summary>
+    public void Open(Point beside)
+    {
+        ShowWindow(MainId, _store.Load(_server, _character, MainId) ?? RetailChatTab.Defaults, tornOff: false, beside);
+        foreach (var id in _store.Windows(_server, _character))
+        {
+            if (id == MainId || _store.Load(_server, _character, id) is not { } tabs) continue;
+            ShowWindow(id, tabs, tornOff: true, beside);
+        }
+    }
+
+    /// <summary>
+    /// Closes the windows that were pressed shut, and applies the idle fade to every window. The host calls it once a frame, inside its
+    /// guard, since the fade reads retail's UI lock.
+    /// </summary>
+    public void Refresh()
+    {
+        if (_disposed) return;
+        foreach (var window in _retiring.ToArray()) Retire(window);
+        foreach (var (_, window) in _chats.ToArray()) window.Refresh();
+    }
+
+    /// <summary>
+    /// Called after the window manager releases a window that was moved. If that window was a tab being dragged, the tab joins the window
+    /// whose strip is under the pointer, and the dragged window closes; otherwise the window stays where it was dropped.
+    /// </summary>
+    public void Released()
+    {
+        if (_dragged is not { } dragged) return;
+        _dragged = null;
+        if (_disposed) return;
+        var pointer = _pointer();
+        // The topmost window under the pointer that has a strip there. The dragged window is skipped, since it follows the pointer.
+        foreach (var placed in _windows.ZOrder)
+        {
+            var target = Get(placed.Id);
+            if (target == null || target == dragged || !target.StripContains(ContentPoint(placed, pointer))) continue;
+            target.AddTabs(dragged.Tabs);
+            _retiring.Add(dragged);
+            return;
+        }
+    }
+
+    void IRetailChatWindowHost.TabsChanged(RetailChatWindow window)
+    {
+        if (_disposed || IdOf(window) is not { } id) return;
+        _store.Save(_server, _character, id, window.Tabs);
+    }
+
+    void IRetailChatWindowHost.TabDraggedOut(RetailChatWindow window, int index)
+    {
+        if (_disposed || _dragged != null || IdOf(window) is not { } sourceId) return;
+        var pointer = _pointer();
+        // A torn-off window's only tab is the window itself, so the window moves rather than a new one opening.
+        if (window.TornOff && window.Tabs.Count == 1)
+        {
+            if (_windows.BeginMove(sourceId, pointer)) _dragged = window;
+            return;
+        }
+        var id = NewTornId();
+        var tab = window.Tabs[index];
+        var at = new Point(pointer.X - Grab.Width, pointer.Y - Grab.Height);
+        // The new window is saved at its place before it opens, so it opens where it was dropped, not where a window of that id was last.
+        _positions.Save(_server, _character, id, (at, null));
+        _store.Save(_server, _character, id, new[] { tab });
+        RetailChatWindow torn;
+        try
+        {
+            torn = ShowWindow(id, new[] { tab }, tornOff: true, at);
+        }
+        catch
+        {
+            _store.Remove(_server, _character, id);
+            throw;
+        }
+        if (!_windows.BeginMove(id, pointer))
+        {
+            Retire(torn);
+            return;
+        }
+        window.TakeTab(index);
+        _dragged = torn;
+    }
+
+    void IRetailChatWindowHost.MoveRequested(RetailChatWindow window)
+    {
+        if (_disposed || IdOf(window) is not { } id) return;
+        _windows.BeginMove(id, _pointer());
+    }
+
+    void IRetailChatWindowHost.CloseRequested(RetailChatWindow window)
+    {
+        if (_disposed || !window.TornOff || Main is not { } main || _retiring.Contains(window)) return;
+        main.AddTabs(window.Tabs);
+        _retiring.Add(window);
+    }
+
+    /// <summary>Closes every window and releases it. Its tabs and place stay saved, so the next open restores them.</summary>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        foreach (var (id, window) in _chats.ToArray())
+        {
+            _chats.RemoveAll(chat => chat.Window == window);
+            _closeSurface(id);
+            window.Dispose();
+        }
+        _retiring.Clear();
+        _dragged = null;
+        _history.Dispose();
+    }
+
+    private RetailChatWindow ShowWindow(string id, IReadOnlyList<RetailChatTab> tabs, bool tornOff, Point location)
+    {
+        var window = new RetailChatWindow(_port, _history, this, tabs, tornOff, _uiUnlocked, _clock);
+        _chats.Add((id, window));
+        try
+        {
+            _showSurface(Definition(id), window, location);
+        }
+        catch
+        {
+            _chats.RemoveAll(chat => chat.Window == window);
+            window.Dispose();
+            throw;
+        }
+        return window;
+    }
+
+    /// <summary>Closes a window and forgets it. A torn-off window's tab list is removed, since its tabs have merged or gone.</summary>
+    private void Retire(RetailChatWindow window)
+    {
+        if (IdOf(window) is not { } id) return;
+        _chats.RemoveAll(chat => chat.Window == window);
+        if (window.TornOff) _store.Remove(_server, _character, id);
+        if (_dragged == window) _dragged = null;
+        _closeSurface(id);
+        window.Dispose();
+    }
+
+    private RetailChatWindow? Get(string id) => _chats.FirstOrDefault(chat => chat.Id == id).Window;
+
+    private string? IdOf(RetailChatWindow window) => _chats.FirstOrDefault(chat => chat.Window == window).Id;
+
+    /// <summary>The lowest torn-off id this character has neither open nor saved, so a new window never reuses another's tabs.</summary>
+    private string NewTornId()
+    {
+        var saved = _store.Windows(_server, _character);
+        for (var number = 2; ; number++)
+        {
+            var id = TornIdPrefix + number.ToString(CultureInfo.InvariantCulture);
+            if (_chats.All(chat => chat.Id != id) && !saved.Contains(id)) return id;
+        }
+    }
+
+    /// <summary>A point on the screen, in the window's own units: its place is in pixels, its content in DIPs.</summary>
+    private Avalonia.Point ContentPoint(ManagedWindow placed, Point pointer) =>
+        new((pointer.X - placed.Location.X) / _windows.Scale, (pointer.Y - placed.Location.Y) / _windows.Scale);
+
+    private static WindowDefinition Definition(string id) => new(id, "Chat", DesignWidth, DesignHeight, titleBarHeight: 19,
+        theme: new DerethClientTheme(), resizing: new WindowResizing(new Size(260, 120)), dragsFromContent: true);
+}
