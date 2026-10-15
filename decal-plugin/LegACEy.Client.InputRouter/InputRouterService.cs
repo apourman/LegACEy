@@ -34,6 +34,9 @@ public sealed class InputRouterService
     /// <summary>Lets go of the captured surface: the release then goes wherever the pointer is, as if nothing had captured it.</summary>
     public void ReleaseCapture() => _capturedSurfaceId = null;
 
+    /// <summary>Gives a surface the keyboard without a press: Enter in the game opens a surface's text box this way.</summary>
+    public void FocusSurface(string id) => _focusedSurfaceId = id;
+
     public InputRoute Route(NativeInputMessage message, IReadOnlyList<InputSurface> surfaces)
     {
         if (surfaces == null) throw new ArgumentNullException(nameof(surfaces));

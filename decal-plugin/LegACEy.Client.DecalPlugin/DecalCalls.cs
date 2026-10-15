@@ -72,6 +72,8 @@ internal static unsafe class DecalCalls
 
     // The augmentation count is ACE's AugmentationIncreasedCarryingCapacity (PropertyInt 230).
     private const int CarryingAugmentationProperty = 230;
+    private const int SocietyProperty = 281;
+    private const int HeritageProperty = 188;
 
     private static int ReadFact(BridgeFact fact)
     {
@@ -95,8 +97,25 @@ internal static unsafe class DecalCalls
             BridgeFact.OpenedContainer => core.Actions.OpenedContainer,
             BridgeFact.CurrentSelection => core.Actions.CurrentSelection,
             BridgeFact.CombatMode => (int)core.Actions.CombatMode,
+            BridgeFact.CharacterMembership => Membership(character),
             _ => throw new ArgumentOutOfRangeException(nameof(fact), fact, "Unknown bridge fact.")
         };
+    }
+
+    /// <summary>The allegiance, society and Olthoi bits of <see cref="BridgeFact.CharacterMembership"/>. Vassals are the followers count.</summary>
+    private static int Membership(CharacterFilter character)
+    {
+        var bits = 0;
+        if (character.Allegiance != null) bits |= 1;
+        if (character.Monarch != null) bits |= 2;
+        if (character.Patron != null) bits |= 4;
+        if (character.Followers > 0) bits |= 8;
+        // Faction1Bits (281): any of the three society bits.
+        if ((character.GetCharProperty(SocietyProperty) & 7) != 0) bits |= 16;
+        // HeritageGroup (188): 12 and 13 are the Olthoi heritages.
+        var heritage = character.GetCharProperty(HeritageProperty);
+        if (heritage == 12 || heritage == 13) bits |= 32;
+        return bits;
     }
 
     private static WorldObject? CharacterObject() => CoreManager.Current.WorldFilter[CoreManager.Current.CharacterFilter.Id];

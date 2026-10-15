@@ -110,6 +110,9 @@ internal static class RetailChatCatalogue
 
     internal static readonly IReadOnlyList<NativeUiEntry> Enter = new[]
     {
+        // The UIElementManager instance the port reads, and its active window at +0x32C: a function's first instructions (padding before it).
+        Entry("UIElementManager instance (0x0083E03C) and its active window (+0x32C)", 0x004F3D00, "A1 3C E0 83 00 56 8B B0 2C 03 00 00 85 F6",
+            "instruction reference (mov eax,[0x0083E03C]; mov esi,[eax+0x32C])"),
         // Past the prologue (push esi; mov esi, ecx; mov ecx, [esi+0x60C]), which a hook would change.
         Entry("ChatInterface::DeactivateChatEntry body", DeactivateChatEntry + 9, "8B 01 FF 90 08 01 00 00 8B 8E 0C 06 00 00 8B 11 FF 92 00 01 00 00",
             "ThisCall (ChatInterface*) at 0x004F3C20: the entry's vtable +0x108 and +0x100"),
