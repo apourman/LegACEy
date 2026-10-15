@@ -85,6 +85,18 @@ public static class DerethChatParts
         Child = new TextBlock { Text = "+", FontFamily = DerethPalette.Title, FontSize = 11, Foreground = DerethPalette.GoldBrush, VerticalAlignment = VerticalAlignment.Center }
     };
 
+    /// <summary>The text size button at the end of the tab strip, beside the add button.</summary>
+    public static Border TextSizeTab() => new()
+    {
+        Height = 17,
+        Padding = new Thickness(4, 0),
+        Margin = new Thickness(0, 0, 1, 0),
+        VerticalAlignment = VerticalAlignment.Bottom,
+        Background = Brushes.Transparent,
+        Cursor = new Cursor(StandardCursorType.Hand),
+        Child = new TextBlock { Text = "Aa", FontFamily = DerethPalette.Title, FontSize = 10, Foreground = DerethPalette.GoldBrush, VerticalAlignment = VerticalAlignment.Center }
+    };
+
     /// <summary>
     /// A torn-off window's close medallion, at the end of its tab strip: the frame's close X in a small button. A click merges the window's
     /// tabs back into the main window.

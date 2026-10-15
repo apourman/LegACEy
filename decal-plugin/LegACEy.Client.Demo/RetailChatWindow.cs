@@ -42,6 +42,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private readonly ScrollViewer _tabScroll;
     // The strip's fixed end: the add button, or a torn-off window's close medallion. It stays in view however many tabs scroll.
     private readonly Border _tabEnd = new() { Margin = new Thickness(2, 0, 0, 0) };
+    // Everything inside the frame: the tabs, the log and the input, drawn at the player's text size. The frame keeps the window's size.
+    private readonly LayoutTransformControl _scaled = new();
     // The tab a press started on, until the press is a click (which shows the tab) or a drag out of the strip.
     private int _pressedTab = -1;
     private readonly StackPanel _lines = new();
@@ -171,7 +173,9 @@ public sealed class RetailChatWindow : Decorator, IDisposable
 
         // The frame's edge is inside its padding, so the content keeps the frame's inset that the window had when the frame wrapped it.
         var inset = _frame.Padding;
-        var content = new Grid { Margin = new Thickness(inset.Left + 9, inset.Top + 7, inset.Right + 9, inset.Bottom + 9), RowDefinitions = new RowDefinitions("Auto,*,Auto") };
+        var content = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
+        _scaled.Margin = new Thickness(inset.Left + 9, inset.Top + 7, inset.Right + 9, inset.Bottom + 9);
+        _scaled.Child = content;
         content.Children.Add(tabBar);
         Grid.SetRow(logArea, 1);
         content.Children.Add(logArea);
@@ -192,7 +196,14 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         // all over, so the pointer counts as over the window wherever it is in the frame.
         // The jump pill keeps its own visibility: it is the cue for lines that arrived while the log was scrolled up.
         _chrome.AddRange(new Control[] { _frame, tabBar, _groove, inputRow });
-        Child = new Grid { Background = Brushes.Transparent, Children = { _frame, content } };
+        Child = new Grid { Background = Brushes.Transparent, Children = { _frame, _scaled } };
+        // Ctrl and the wheel change the text size, anywhere over the window.
+        AddHandler(PointerWheelChangedEvent, (_, e) =>
+        {
+            if (!e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.Delta.Y == 0) return;
+            _host.TextSizeStepped(Math.Sign(e.Delta.Y));
+            e.Handled = true;
+        }, RoutingStrategies.Tunnel);
 
         // A tab press that moves out of the strip is a drag; a press released on the tab is a click. Both are read from the window's own
         // events, so a press that moves outside the tab (where the tab itself gets no moves) still reaches the window.
@@ -317,9 +328,11 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     /// <summary>How far a point is outside the tab strip, or infinity before the window has been laid out.</summary>
     private double TabStripDistance(Point point)
     {
+        // Both corners, since the strip is drawn at the text size.
         var origin = _tabRow.TranslatePoint(default, this);
-        if (origin == null) return double.PositiveInfinity;
-        var strip = new Rect(origin.Value, _tabRow.Bounds.Size);
+        var corner = _tabRow.TranslatePoint(new Point(_tabRow.Bounds.Width, _tabRow.Bounds.Height), this);
+        if (origin == null || corner == null) return double.PositiveInfinity;
+        var strip = new Rect(origin.Value, corner.Value);
         return Math.Max(Math.Max(strip.Top - point.Y, point.Y - strip.Bottom), Math.Max(strip.Left - point.X, point.X - strip.Right));
     }
 
@@ -432,7 +445,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             // A torn-off window has no add button; its close medallion merges its tabs back into the main window.
             var close = DerethChatParts.CloseMedallion();
             close.Click += (_, _) => _host.CloseRequested(this);
-            _tabEnd.Child = close;
+            _tabEnd.Child = WithTextSize(close);
             return;
         }
         var add = DerethChatParts.AddTab();
@@ -442,7 +455,30 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             OpenEditor(-1);
             e.Handled = true;
         };
-        _tabEnd.Child = add;
+        _tabEnd.Child = WithTextSize(add);
+    }
+
+    /// <summary>The text size the window's content is drawn at, 1 for its design size.</summary>
+    public double TextScale
+    {
+        get => _scaled.LayoutTransform is ScaleTransform scale ? scale.ScaleX : 1;
+        set => _scaled.LayoutTransform = new ScaleTransform(value, value);
+    }
+
+    /// <summary>The strip's end with the text size button before it: a click makes the text larger, a right click smaller.</summary>
+    private Control WithTextSize(Control end)
+    {
+        var size = DerethChatParts.TextSizeTab();
+        ToolTip.SetTip(size, "Text size: click for larger, right-click for smaller (or Ctrl and the wheel)");
+        size.PointerPressed += (_, e) =>
+        {
+            var point = e.GetCurrentPoint(size).Properties;
+            if (point.IsLeftButtonPressed) _host.TextSizeStepped(1);
+            else if (point.IsRightButtonPressed) _host.TextSizeStepped(-1);
+            else return;
+            e.Handled = true;
+        };
+        return new StackPanel { Orientation = Orientation.Horizontal, Children = { size, end } };
     }
 
     /// <summary>Scrolls the tabs sideways by a wheel's notches: up or left shows the earlier tabs.</summary>

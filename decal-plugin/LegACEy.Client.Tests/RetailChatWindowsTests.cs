@@ -155,6 +155,27 @@ public sealed class RetailChatWindowsTests
     }));
 
     [Fact]
+    public void The_text_size_steps_every_window_and_is_kept_per_character() => RenderThread.Run(() => WithStore(path =>
+    {
+        var positions = new MemoryWindowPositionStore();
+        var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };
+        var first = ChatDesk.Open(port, path, Character, positions);
+        var main = first.Main;
+        first.Drag(first.At(main, TabView(main, "Fellowship")), first.Place(main, new System.Drawing.Point(600, 110)));
+        Assert.Equal(RetailChatWindows.DefaultTextSize / 100.0, first.Chat.Windows[1].TextScale);
+
+        first.Chat.TextSizeStepped(1);
+        first.Chat.TextSizeStepped(1);
+        Assert.All(first.Chat.Windows, window => Assert.Equal(1.4, window.TextScale, 3));
+        first.Dispose();
+
+        using var second = ChatDesk.Open(port, path, Character, positions);
+        Assert.Equal(140, second.Chat.TextSize);
+        using var other = ChatDesk.Open(port, path, "Bob", positions);
+        Assert.Equal(RetailChatWindows.DefaultTextSize, other.Chat.TextSize);
+    }));
+
+    [Fact]
     public void Unread_counts_work_in_a_torn_off_window_and_the_main_window() => RenderThread.Run(() => WithStore(path =>
     {
         var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };

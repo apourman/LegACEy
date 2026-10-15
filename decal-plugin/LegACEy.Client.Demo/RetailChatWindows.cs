@@ -18,6 +18,8 @@ public interface IRetailChatWindowHost
     void TabDraggedOut(RetailChatWindow window, int index);
     void MoveRequested(RetailChatWindow window);
     void CloseRequested(RetailChatWindow window);
+    /// <summary>The player stepped the text size up (1) or down (-1).</summary>
+    void TextSizeStepped(int steps);
 }
 
 /// <summary>
@@ -34,6 +36,12 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     public const int DesignWidth = 460;
     public const int DesignHeight = 200;
     private const string TornIdPrefix = "dereth-chat-";
+    // The text size of every chat window, in percent, kept per character in the position store.
+    private const string TextSizeKey = "dereth-chat-text-size";
+    public const int DefaultTextSize = 120;
+    private const int SmallestTextSize = 80;
+    private const int LargestTextSize = 200;
+    private int _textSize = DefaultTextSize;
     // Where a torn-off window opens from the pointer: the tab it came from is under the pointer, so the window follows it.
     private static readonly Size Grab = new(24, 9);
     private readonly IRetailChatPort _port;
@@ -97,6 +105,8 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     /// </summary>
     public void Open(Point beside)
     {
+        if (_positions.Load(_server, _character, TextSizeKey) is { Location.X: var saved and > 0 })
+            _textSize = Math.Max(SmallestTextSize, Math.Min(LargestTextSize, saved));
         ShowWindow(MainId, _store.Load(_server, _character, MainId) ?? RetailChatTab.Defaults, tornOff: false, beside);
         foreach (var id in _store.Windows(_server, _character))
         {
@@ -228,7 +238,7 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
 
     private RetailChatWindow ShowWindow(string id, IReadOnlyList<RetailChatTab> tabs, bool tornOff, Point location)
     {
-        var window = new RetailChatWindow(_port, _history, this, tabs, tornOff, clock: _clock, copy: _copy);
+        var window = new RetailChatWindow(_port, _history, this, tabs, tornOff, clock: _clock, copy: _copy) { TextScale = _textSize / 100.0 };
         _chats.Add((id, window));
         try
         {
@@ -252,6 +262,18 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
         if (_dragged == window) _dragged = null;
         _closeSurface(id);
         window.Dispose();
+    }
+
+    /// <summary>The text size of every chat window, in percent.</summary>
+    public int TextSize => _textSize;
+
+    public void TextSizeStepped(int steps)
+    {
+        var size = Math.Max(SmallestTextSize, Math.Min(LargestTextSize, _textSize + steps * 10));
+        if (size == _textSize) return;
+        _textSize = size;
+        _positions.Save(_server, _character, TextSizeKey, (new Point(size, 0), null));
+        foreach (var (_, window) in _chats) window.TextScale = size / 100.0;
     }
 
     private RetailChatWindow? Get(string id) => _chats.FirstOrDefault(chat => chat.Id == id).Window;
