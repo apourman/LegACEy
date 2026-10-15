@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.11](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.10...decal-plugin-v0.1.11) (2026-10-15)
+
+
+### Features
+
+* Dereth toolbar and shortcut bars ([#45](https://github.com/apourman/LegACEy/issues/45)) ([d6febb3](https://github.com/apourman/LegACEy/commit/d6febb3aa6a1d264ba2ee3ec5df84c338d7cf237))
+
 ## [0.1.10](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.9...decal-plugin-v0.1.10) (2026-10-13)
 
 
