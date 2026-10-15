@@ -1543,8 +1543,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _toolbar = toolbar;
         _toolbarSurface = new ScreenSurface(_device, panel);
         _toolbarRenderer = new RetailSurfaceRenderer(_toolbarSurface.Prepare, _toolbarSurface.DrawNow);
-        _toolbarTakeover = new RetailTakeoverLifecycle(new NativeBarPort(NativeUi.RootToolbarField), new SurfaceTakeoverPort(_toolbarSurface));
-        Log("Dereth toolbar replacement ready.");
+        _toolbarTakeover = new RetailTakeoverLifecycle(new NativeBarPort(NativeUi.ToolbarWindow), new SurfaceTakeoverPort(_toolbarSurface));
+        Log($"Dereth toolbar replacement ready; retail's toolbar window {(NativeUi.GetElement(NativeUi.ToolbarWindow) != IntPtr.Zero ? "found" : "absent")}, " +
+            $"its toolbar {(NativeUi.GetElement(NativeUi.Toolbar) != IntPtr.Zero ? "found" : "absent")}.");
         return true;
     }
 

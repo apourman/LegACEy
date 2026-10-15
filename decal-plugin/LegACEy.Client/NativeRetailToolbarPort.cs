@@ -294,13 +294,13 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     /// <summary>retail's gmToolbarUI element, when the element at the toolbar's id is that class; zero otherwise.</summary>
     private static IntPtr RetailToolbarElement()
     {
-        var toolbar = NativeUi.GetElement(NativeUi.RootToolbarField);
+        var toolbar = NativeUi.GetElement(NativeUi.Toolbar);
         return toolbar != IntPtr.Zero && Marshal.ReadIntPtr(toolbar) == new IntPtr(RetailToolbarCatalogue.GmToolbarUIVtable) ? toolbar : IntPtr.Zero;
     }
 
     private static IntPtr PanelManager()
     {
-        var manager = NativeRetailPanelPort.PanelManagerOf(NativeUi.GetElement(NativeUi.RootToolbarField));
+        var manager = NativeRetailPanelPort.PanelManagerOf(NativeUi.GetElement(NativeUi.Toolbar));
         return manager != IntPtr.Zero ? manager : NativeRetailPanelPort.PanelManagerOf(NativeUi.GetElement(NativeUi.InventoryPanel));
     }
 }
