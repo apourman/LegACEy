@@ -51,7 +51,9 @@ internal static class NativeUiCatalogue
         // limit is a constant in the window, not read at runtime. Both ids are checked by the DAT. In the process, the examination takeover
         // checks the root once per session before parking it (NativeExaminationPort.VerifyRoot: the field resolves beneath the root).
         Root("Examination", NativeUi.Examination, "installed client_local_English.dat, LayoutDesc 0x21000005 (placed from 0x2100006B/0x100005F2)"),
-        Root("ExaminationInscription", NativeUi.ExaminationInscription, "installed client_local_English.dat, LayoutDesc 0x2100006B (inscription field)")
+        Root("ExaminationInscription", NativeUi.ExaminationInscription, "installed client_local_English.dat, LayoutDesc 0x2100006B (inscription field)"),
+        Root("ToolbarWindow", NativeUi.ToolbarWindow, "installed client_local_English.dat, LayoutDesc 0x21000005 (placed from 0x21000070/0x10000602)"),
+        Root("Toolbar", NativeUi.Toolbar, "installed client_local_English.dat, LayoutDesc 0x21000070 (placed from 0x21000016/0x10000191)")
     };
 
     internal static bool Validate(Func<uint, int, byte[]> read, Action<string> log, IEnumerable<NativeUiEntry>? entries = null)

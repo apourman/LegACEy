@@ -72,6 +72,23 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void A_window_without_a_title_bar_moves_only_when_its_content_begins_the_move()
+    {
+        var manager = NewManager(300, 200);
+        manager.Open(new WindowDefinition("bar", "Bar", 120, 48, titleBarHeight: 48, dragsFromContent: true), new Point(10, 10));
+
+        // A press on the window is a click for its content: it does not start a move.
+        Assert.True(manager.Press(new Point(25, 25)));
+        manager.Move(new Point(200, 150));
+        Assert.Equal(new Point(10, 10), manager.Get("bar")!.Location);
+
+        Assert.True(manager.BeginMove("bar", new Point(25, 25)));
+        manager.Move(new Point(125, 65));
+        manager.Release();
+        Assert.Equal(new Point(110, 50), manager.Get("bar")!.Location);
+    }
+
+    [Fact]
     public void Positions_are_restored_only_for_the_same_server_character_and_window()
     {
         var path = Path.Combine(Path.GetTempPath(), "legacey-window-tests-" + Guid.NewGuid().ToString("N") + ".txt");
@@ -262,7 +279,7 @@ public sealed class WindowManagerTests
     [InlineData(443, 300, WindowEdges.Right)]
     [InlineData(101, 300, WindowEdges.Left)]
     [InlineData(200, 703, WindowEdges.Bottom)]
-    [InlineData(200, 101, WindowEdges.Top)]
+    [InlineData(200, 101, WindowEdges.None)]
     [InlineData(101, 101, WindowEdges.Left | WindowEdges.Top)]
     [InlineData(443, 703, WindowEdges.Right | WindowEdges.Bottom)]
     [InlineData(443, 101, WindowEdges.Right | WindowEdges.Top)]
@@ -280,6 +297,24 @@ public sealed class WindowManagerTests
 
         Assert.Equal("vault", hover.WindowId);
         Assert.Equal(expected, hover.Edges);
+    }
+
+    [Fact]
+    public void A_press_on_the_top_edge_moves_any_window_and_a_top_corner_still_resizes()
+    {
+        var manager = NewManager(1920, 1080);
+        manager.Open(Resizable("vault"), new Point(100, 100));
+        manager.Open(new WindowDefinition("bar", "Bar", 120, 40, dragsFromContent: true), new Point(600, 100));
+
+        Assert.Equal("vault", manager.MoveEdgeAt(new Point(200, 101)));
+        Assert.Null(manager.MoveEdgeAt(new Point(101, 101)));
+        Assert.Equal("bar", manager.MoveEdgeAt(new Point(650, 102)));
+        Assert.Null(manager.MoveEdgeAt(new Point(650, 120)));
+
+        manager.Press(new Point(650, 102));
+        manager.Move(new Point(700, 202));
+        manager.Release();
+        Assert.Equal(new Point(650, 200), manager.Get("bar")!.Location);
     }
 
     [Fact]

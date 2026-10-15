@@ -97,7 +97,9 @@ public enum BridgeFact
     /// <summary>Actions.OpenedContainer.</summary>
     OpenedContainer,
     /// <summary>Actions.CurrentSelection.</summary>
-    CurrentSelection
+    CurrentSelection,
+    /// <summary>Actions.CombatMode: the player's combat stance, Decal's values (1 peace, 2 melee, 4 missile, 8 magic).</summary>
+    CombatMode
 }
 
 /// <summary>The strings <see cref="BridgeCalls.Text"/> answers.</summary>
@@ -137,4 +139,8 @@ public unsafe struct BridgeItem
     /// <summary>The name in UTF-8, zero-padded.</summary>
     // ponytail: a longer name is cut at 128 bytes; AC item names are far shorter
     public fixed byte Name[NameCapacity];
+    /// <summary>1 when the object is a creature (Decal's Monster or Npc class), which the selection plaque gives a health meter.</summary>
+    public int IsCreature;
+    /// <summary>1 when the object has mana (Decal's MaximumMana), which the selection plaque gives a mana meter.</summary>
+    public int HasMana;
 }

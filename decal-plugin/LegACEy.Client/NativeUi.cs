@@ -27,6 +27,13 @@ internal static class NativeUi
     /// <summary>InventoryPanel_Field, the retail inventory panel root.</summary>
     public const uint InventoryPanel = 0x1000018B;
     /// <summary>
+    /// Retail's toolbar window: the framed panel placed in LayoutDesc 0x21000005 as 0x10000603 (from 0x21000070/0x10000602), holding the
+    /// toolbar. The takeover hides and moves this one. RootToolbar_Field (0x10000191) is only the base id and finds nothing.
+    /// </summary>
+    public const uint ToolbarWindow = 0x10000603;
+    /// <summary>Retail's gmToolbarUI: the stance, window buttons, selection, backpack and shortcut rows, placed in 0x21000070 as 0x1000001B (from 0x21000016/0x10000191).</summary>
+    public const uint Toolbar = 0x1000001B;
+    /// <summary>
     /// The examination panel's root: the window retail opens for an E-key appraisal. It is placed in LayoutDesc 0x21000005 as 0x100005F7,
     /// built from LayoutDesc 0x2100006B's top-level element 0x100005F2; the client registers it under the placed id, as it does the
     /// inventory (0x1000018B, built from 0x21000023/0x100001CC), so the base id finds nothing.

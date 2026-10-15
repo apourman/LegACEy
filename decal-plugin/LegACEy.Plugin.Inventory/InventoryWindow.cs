@@ -639,13 +639,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         id == 0 ? null : s.MainPack.Id == id ? s.MainPack : s.SidePacks.FirstOrDefault(pack => pack.Id == id);
 
     /// <summary>The first slot of a pack that holds no item, or -1 when the pack is full.</summary>
-    private static int FirstFree(InventorySnapshot s, InventoryPack pack)
-    {
-        var used = new HashSet<int>(s.Items.Where(item => item.Container == pack.Id).Select(item => item.Slot));
-        for (var slot = 0; slot < pack.Capacity; slot++)
-            if (!used.Contains(slot)) return slot;
-        return -1;
-    }
+    private static int FirstFree(InventorySnapshot s, InventoryPack pack) => s.FreeSlots(pack).DefaultIfEmpty(-1).First();
 
     /// <summary>The name, stack maximum and weenie class id (WCID) of an item the snapshot holds, carried or worn.</summary>
     private static (string Name, int StackMax, int Wcid) KindOf(InventorySnapshot s, uint id)
