@@ -1541,6 +1541,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             LoadToolbarPlace();
             _toolbarPort!.Poll();
             _toolbarTakeover!.Tick(_toolbarDragOffset != null, GameDevice.ViewportSize(_device));
+            // Until login completes, retail's toolbar stays held but ours is not drawn: its saved place is read only then, so it never
+            // shows at retail's place first and jumps.
+            if (!_inGame)
+            {
+                _toolbarSurface!.Visible = false;
+                CloseShortcutBar();
+                return;
+            }
             // The bar stands beside the toolbar only while the takeover holds retail's element; otherwise it closes with it.
             if (_toolbarTakeover.Holds) EnsureShortcutBar();
             else CloseShortcutBar();
