@@ -1821,7 +1821,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var roots = new List<IRetailTakeoverPort>();
         foreach (var id in new[] { RetailChatCatalogue.MainChatWindow }.Concat(RetailChatCatalogue.FloatingChats))
             roots.Add(new RetailChatTakeover.RootPort(id));
-        var window = new RetailChatWindow(port, () => _windows?.BeginMove(ChatWindowId, _pointer));
+        // Retail's UI is unlocked when a window may be moved; the chat then stays whole, so its frame can be found.
+        var window = new RetailChatWindow(port, () => _windows?.BeginMove(ChatWindowId, _pointer), uiUnlocked: () => !NativeUi.IsUiLocked);
         // The window starts at the bottom left, above the toolbar, until the player moves it; its place is then kept per character.
         var screen = _windows!.Screen;
         var definition = new WindowDefinition(ChatWindowId, "Chat", ChatDesignWidth, ChatDesignHeight, titleBarHeight: 19, theme: new DerethClientTheme(),
