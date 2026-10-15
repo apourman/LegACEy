@@ -21,7 +21,7 @@ internal static class RetailChatCatalogue
     /// <summary>gmMainChatUI (type 0x10000041), the root of LayoutDesc 0x21000006 that the main chat window embeds. A ChatInterface: the UIElement is at +4.</summary>
     internal const uint MainChat = 0x1000000E;
     /// <summary>The floating chat windows 1-4 (tags &lt;FCH1&gt;-&lt;FCH4&gt;, gmFloatyChatUI, type 0x10000040), placed in 0x21000005 from 0x2100005B/0x100004F7.</summary>
-    internal static readonly uint[] FloatingChats = { 0x10000505, 0x1000050E, 0x1000050F, 0x10000510 };
+    internal static readonly IReadOnlyList<uint> FloatingChats = new uint[] { 0x10000505, 0x1000050E, 0x1000050F, 0x10000510 };
 
     // Incoming: a NoticeHandler registered for notice 0x186B6 hears every line any chat window is shown.
     /// <summary>The NoticeRegistrar getter: returns [0x00838374].</summary>
