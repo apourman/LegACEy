@@ -47,7 +47,10 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     // Ports whose handler could not be unregistered: retail may still call it, so the port, its callback delegate and its memory live on.
     private static readonly List<NativeRetailChatPort> Stranded = new();
 
-    private static readonly Regex TellTag = new(@"<Tell:IIDString:[^:>]*:([^>]*)>(.*?)<\\Tell>", RegexOptions.Compiled);
+    // Retail's own lines close the tag with <\Tell>; Decal escapes a plugin's backslash, so plugin links close with <\\Tell>.
+    private static readonly Regex TellTag = new(@"<Tell:IIDString:[^:>]*:([^>]*)>(.*?)<\\{1,2}Tell>", RegexOptions.Compiled);
+    // Retail's text escapes: \n is a line break, \q a quote mark, and a backslash before any other character is that character (\[, \], \\).
+    private static readonly Regex Escape = new(@"\\(.)", RegexOptions.Compiled | RegexOptions.Singleline);
     private static readonly Regex ChannelPrefix = new(@"^\[([^\]]+)\]", RegexOptions.Compiled);
 
     // Delegates to fixed retail functions, made once: their addresses never change.
@@ -426,9 +429,11 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
             string? sender = null;
             var text = TellTag.Replace(raw, match =>
             {
-                sender ??= match.Groups[2].Value;
+                // A player's tag names them twice; a plugin's link (GoArrow's "Update Now") names a command, not a sender.
+                if (match.Groups[1].Value == match.Groups[2].Value) sender ??= match.Groups[2].Value;
                 return match.Groups[2].Value;
             });
+            text = Escape.Replace(text, match => match.Groups[1].Value switch { "n" => "\n", "q" => "\"", var other => other });
             var channel = ChannelPrefix.Match(text) is { Success: true } prefix ? prefix.Groups[1].Value : null;
             if (channel == "Olthoi") kind = RetailChatKind.Channel;
             return new RetailChatLine(kind, text, time, sender, channel);

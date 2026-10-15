@@ -40,6 +40,20 @@ public sealed class RetailChatNativeTests
     }
 
     [Fact]
+    public void Retail_s_text_escapes_show_as_the_characters_they_stand_for_and_a_plugin_link_shows_its_text()
+    {
+        Assert.Equal("[UB] Connected to UBNet", Parse(@"\[UB\] Connected to UBNet").Text);
+        Assert.Equal("Welcome\n\nFor help", Parse(@"Welcome\n\nFor help").Text);
+        Assert.Equal("The command \"myquests\" is off. C:\\ <{Mag-Tools}>", Parse(@"The command \qmyquests\q is off. C:\\ <\{Mag-Tools\}>").Text);
+
+        var link = Parse(@"Update? <Tell:IIDString:0:GoArrow_ChatCommand>Update Now<\\Tell>");
+        Assert.Equal("Update? Update Now", link.Text);
+        Assert.Null(link.Sender);
+
+        static RetailChatLine Parse(string raw) => NativeRetailChatPort.RetailChatTypes.Parse(RetailChatKind.Plugin, raw, Time);
+    }
+
+    [Fact]
     public void A_channel_prefix_names_the_room_and_an_Olthoi_room_is_a_channel_even_when_typed_as_allegiance()
     {
         var general = NativeRetailChatPort.RetailChatTypes.Parse(RetailChatKind.Channel, "[General] <Tell:IIDString:0:Kaelith>Kaelith<\\Tell> says, \"hi\"", Time);
