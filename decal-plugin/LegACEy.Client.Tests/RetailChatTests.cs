@@ -600,11 +600,15 @@ public sealed class RetailChatTests
     });
 
     [Fact]
-    public void An_idle_window_fades_its_frame_tabs_input_and_scrollbar_in_a_quarter_second_and_keeps_its_new_lines() => RenderThread.Run(() =>
+    public void A_window_left_alone_goes_idle_and_fades_its_frame_tabs_input_and_scrollbar_in_a_quarter_second_and_keeps_its_new_lines() => RenderThread.Run(() =>
     {
         var clock = new TestClock();
         var port = new FakeChatPort();
         using var panel = Open(port, out var window, clock: () => clock.Now);
+        panel.Tick();
+        window.Refresh();
+        // Left alone, it shows whole until it goes idle.
+        clock.Advance(RetailChatFade.IdleAfterSeconds);
         for (var n = 1; n <= 30; n++) port.Say(Line(RetailChatKind.System, $"line {n:D2} of the log", at: clock.Now));
         panel.Tick();
         window.Refresh();
@@ -634,7 +638,7 @@ public sealed class RetailChatTests
         using var panel = Open(port, out var window, clock: () => clock.Now);
         panel.Tick();
         window.Refresh();
-        clock.Advance(RetailChatFade.ChromeFadeSeconds);
+        clock.Advance(RetailChatFade.IdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
         window.Refresh();
         Assert.Equal(0.0, Seen(TabView(window, "All")));
 
@@ -643,7 +647,7 @@ public sealed class RetailChatTests
         Assert.Equal(1.0, Seen(TabView(window, "All")));
         panel.PointerLeave();
         window.Refresh();
-        clock.Advance(RetailChatFade.ChromeFadeSeconds);
+        clock.Advance(RetailChatFade.IdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
         window.Refresh();
         Assert.Equal(0.0, Seen(TabView(window, "All")));
 
@@ -660,7 +664,7 @@ public sealed class RetailChatTests
         Assert.Equal(1.0, Seen(TabView(window, "All")));
         Click(panel, ChipText(panel, "Local"));
         window.Refresh();
-        clock.Advance(RetailChatFade.ChromeFadeSeconds);
+        clock.Advance(RetailChatFade.IdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
         window.Refresh();
         Assert.Equal(0.0, Seen(TabView(window, "All")));
     });
@@ -673,6 +677,7 @@ public sealed class RetailChatTests
         using var panel = Open(port, out var window, clock: () => clock.Now);
         panel.Tick();
         window.Refresh();
+        clock.Advance(RetailChatFade.IdleAfterSeconds);
         port.Say(Line(RetailChatKind.System, "first line of the log", at: clock.Now));
         clock.Advance(9);
         port.Say(Line(RetailChatKind.System, "second line of the log", at: clock.Now));
@@ -697,7 +702,7 @@ public sealed class RetailChatTests
         Assert.Equal(1.0, Seen(TabView(window, "All")));
 
         window.Refresh();
-        clock.Advance(RetailChatFade.ChromeFadeSeconds);
+        clock.Advance(RetailChatFade.IdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
         window.Refresh();
         Assert.Equal(0.0, Seen(TabView(window, "All")));
     });

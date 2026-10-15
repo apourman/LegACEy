@@ -63,7 +63,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private ScrollBar? _scrollBar;
     // The line loop in Refresh can stop once the lines show their final opacities; any change of state or of the lines clears this.
     private bool _linesSettled;
-    private bool _awake = true;
+    private bool _idle;
     private int _tab;
     private RetailTalkTarget _target = RetailTalkTargets.Local;
     private int _missed;
@@ -359,10 +359,9 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     }
 
     /// <summary>
-    /// Applies the idle fade to what the window shows now. The host calls it once a frame, inside its guard, since the unlock check reads
-    /// retail's state; a test calls it after moving the clock.
+    /// Applies the idle fade to what the window shows now. The host calls it once a frame; a test calls it after moving the clock.
     /// </summary>
-    /// <param name="keepAwake">Whether the host keeps the window awake: it is being moved or resized, or retail's UI is unlocked.</param>
+    /// <param name="keepAwake">Whether the host keeps the window awake: it is being moved or resized.</param>
     internal void Refresh(bool keepAwake = false)
     {
         if (_disposed) return;
@@ -370,9 +369,9 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         var awake = keepAwake || IsPointerOver || _input.IsFocused || _menu.IsVisible || _editor.IsVisible;
         var now = _clock();
         _fade.Update(awake, now);
-        if (awake != _awake)
+        if (_fade.Idle != _idle)
         {
-            _awake = awake;
+            _idle = _fade.Idle;
             _linesSettled = false;
         }
         var chrome = _fade.ChromeOpacity(now);

@@ -210,10 +210,10 @@ public sealed class RetailChatWindowsTests
         desk.Drag(desk.At(main, TabView(main, "Fellowship")), desk.Place(main, new System.Drawing.Point(600, 110)));
         var torn = desk.Chat.Windows[1];
 
-        // Nothing is over the windows: both fade their tab strip over a quarter of a second, after the first idle frame.
+        // Nothing is over the windows: left alone, both go idle and fade their tab strip over a quarter of a second.
         clock.Advance(TimeSpan.FromSeconds(1));
         desk.Tick();
-        clock.Advance(TimeSpan.FromSeconds(1));
+        clock.Advance(TimeSpan.FromSeconds(RetailChatFade.IdleAfterSeconds + 1));
         desk.Tick();
 
         foreach (var window in new[] { main, torn })
@@ -248,7 +248,7 @@ public sealed class RetailChatWindowsTests
         // Let go and left alone, it fades as any window does.
         clock.Advance(TimeSpan.FromSeconds(1));
         desk.Tick();
-        clock.Advance(TimeSpan.FromSeconds(1));
+        clock.Advance(TimeSpan.FromSeconds(RetailChatFade.IdleAfterSeconds + 1));
         desk.Tick();
         Assert.Equal(0.0, Seen(Frame(torn)));
     }));
@@ -393,7 +393,7 @@ public sealed class RetailChatWindowsTests
             // Avalonia's platform services start with the first panel, and a chat window's cursors need them before its panel exists.
             AvaloniaPanel.Create(() => new Border(), 1, 1).Dispose();
             _windows = new WindowManager(new System.Drawing.Size(1920, 1080), positions, "server", character);
-            Chat = new RetailChatWindows(port, _windows, positions, new FileRetailChatTabStore(path), "server", character, () => false,
+            Chat = new RetailChatWindows(port, _windows, positions, new FileRetailChatTabStore(path), "server", character,
                 () => _pointer, Show, Close, clock);
         }
 

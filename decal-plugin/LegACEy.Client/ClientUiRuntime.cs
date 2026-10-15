@@ -1897,7 +1897,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (!_inGame) return;
             if (_chatWindows == null && !OpenRetailChat()) return;
             _chatPort!.Poll();
-            // The idle fade reads retail's UI lock, so it runs here, inside the guard, not on a timer of its own.
             _chatWindows?.Refresh();
         }
         catch (Exception exception)
@@ -1935,9 +1934,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var port = _chatPort!;
         var server = SessionServer();
         var character = SessionCharacter();
-        // Retail's UI is unlocked when a window may be moved; the chat then stays whole, so its frame can be found.
-        var chats = new RetailChatWindows(port, _windows!, _positionStore!, _chatTabs, server, character, () => !NativeUi.IsUiLocked,
-            () => _pointer, (definition, content, location) => OpenWindowCore(definition, content, location, ChatFailed), ReleaseFeatureWindow,
+        var chats = new RetailChatWindows(port, _windows!, _positionStore!, _chatTabs, server, character, () => _pointer, (definition, content, location) => OpenWindowCore(definition, content, location, ChatFailed), ReleaseFeatureWindow,
             copy: CopyToClipboard);
         // The main window starts at the bottom left, above the toolbar, until the player moves it; its place is then kept per character.
         var screen = _windows!.Screen;
