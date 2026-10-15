@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.11...decal-plugin-v0.2.0) (2026-10-15)
+
+
+### Features
+
+* **client:** Dereth chat window ([#48](https://github.com/apourman/LegACEy/issues/48)) ([e250f8e](https://github.com/apourman/LegACEy/commit/e250f8e16294c8e721d64534b6f71e9ab2a88c1d))
+
 ## [0.1.11](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.10...decal-plugin-v0.1.11) (2026-10-15)
 
 
