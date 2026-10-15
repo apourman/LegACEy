@@ -145,6 +145,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private ScreenSurface? _toolbarSurface;
     private RetailSurfaceRenderer? _toolbarRenderer;
     private RetailTakeoverLifecycle? _toolbarTakeover;
+    private ToolbarPlacePort? _toolbarPlace;
+    // Whether this character's saved toolbar place has been read since login.
+    private bool _toolbarPlaceLoaded;
     private bool _toolbarFailed;
     // The offset from the toolbar's corner to the pointer while its frame is dragged; null when it is not.
     private Size? _toolbarDragOffset;
@@ -417,6 +420,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         Guard(() => ApplyReset(_inputRouter.Route(new NativeInputMessage(InputRouterService.WmLogoff, IntPtr.Zero, IntPtr.Zero), GetInputSurfaces())));
         Guard(() => _hovered?.Panel.PointerLeave());
         _inGame = false;
+        // The next character reads its own toolbar place; until then the toolbar stands where retail's window is.
+        _toolbarPlaceLoaded = false;
+        if (_toolbarPlace != null) _toolbarPlace.Location = null;
         _inventory.Clear();
         Guard(() => _appraisal.Clear());
         Guard(() => _busyCursor?.Show(false));
@@ -1476,6 +1482,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             }
             if (_toolbarFailed) return;
             if (_toolbarSurface == null && !CreateRetailToolbar()) return;
+            LoadToolbarPlace();
             _toolbarPort!.Poll();
             _toolbarTakeover!.Tick(_toolbarDragOffset != null, GameDevice.ViewportSize(_device));
             // The bar stands beside the toolbar only while the takeover holds retail's element; otherwise it closes with it.
@@ -1487,6 +1494,25 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             ToolbarFailed(exception);
         }
+    }
+
+    private const string ToolbarPlaceId = "dereth-toolbar";
+
+    /// <summary>Once per login, puts the toolbar at this character's saved place, kept on screen. Until then it stands where retail's did.</summary>
+    private void LoadToolbarPlace()
+    {
+        if (_toolbarPlaceLoaded || !_inGame || _positionStore == null || _toolbarPlace == null || _toolbarSurface == null) return;
+        _toolbarPlaceLoaded = true;
+        if (_positionStore.Load(SessionServer(), SessionCharacter(), ToolbarPlaceId) is not { } saved) return;
+        var screen = GameDevice.ViewportSize(_device);
+        var size = _toolbarSurface.Bounds.Size;
+        _toolbarPlace.Location = new Point(Math.Max(0, Math.Min(screen.Width - size.Width, saved.Location.X)),
+            Math.Max(0, Math.Min(screen.Height - size.Height, saved.Location.Y)));
+    }
+
+    private void SaveToolbarPlace(Point location)
+    {
+        if (_inGame && _positionStore != null) _positionStore.Save(SessionServer(), SessionCharacter(), ToolbarPlaceId, (location, null));
     }
 
     /// <summary>Whether a screen point is on the toolbar's top edge, where a press moves it as a window's top edge does.</summary>
@@ -1517,8 +1543,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// The button went up: retail's toolbar element moves to where the Dereth toolbar was dropped, so retail keeps and saves the place as it
-    /// does for a drag of its own. A failure gives retail's toolbar back.
+    /// The button went up: the Dereth toolbar stays where it was dropped, and the place is saved for this character with the LegACEy
+    /// windows. A failure gives retail's toolbar back.
     /// </summary>
     private void EndToolbarDrag()
     {
@@ -1550,7 +1576,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _toolbar = toolbar;
         _toolbarSurface = new ScreenSurface(_device, panel);
         _toolbarRenderer = new RetailSurfaceRenderer(_toolbarSurface.Prepare, _toolbarSurface.DrawNow);
-        _toolbarTakeover = new RetailTakeoverLifecycle(new NativeBarPort(NativeUi.ToolbarWindow), new SurfaceTakeoverPort(_toolbarSurface));
+        _toolbarPlace = new ToolbarPlacePort(new NativeBarPort(NativeUi.ToolbarWindow), () => _toolbarSurface?.Bounds.Size ?? Size.Empty, SaveToolbarPlace);
+        _toolbarTakeover = new RetailTakeoverLifecycle(_toolbarPlace, new SurfaceTakeoverPort(_toolbarSurface));
         Log($"Dereth toolbar replacement ready; retail's toolbar window {(NativeUi.GetElement(NativeUi.ToolbarWindow) != IntPtr.Zero ? "found" : "absent")}, " +
             $"its toolbar {(NativeUi.GetElement(NativeUi.Toolbar) != IntPtr.Zero ? "found" : "absent")}.");
         return true;
@@ -1697,6 +1724,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 return;
             }
             _toolbarTakeover = null;
+            _toolbarPlace = null;
             _toolbarReleaseLogged = false;
         }
         _toolbarSurface?.Dispose();
@@ -2145,6 +2173,33 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         public void SetSaveLocation(bool save) { var element = Element; if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared."); NativeUi.SetSaveLocation(element, save); }
         public void MoveTo(Point location) { var element = Element; if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared."); NativeUi.MoveTo(element, location); }
         public bool IsUiLocked => NativeUi.IsUiLocked;
+    }
+
+    /// <summary>
+    /// Retail's toolbar window, held hidden, with the Dereth toolbar's own place and size: retail keeps its taller window (both shortcut
+    /// rows) on screen by its own height, which stopped the slimmer Dereth toolbar well short of the screen's bottom. A move is the
+    /// toolbar's alone and is saved with the LegACEy windows; retail's window stays where retail left it.
+    /// </summary>
+    private sealed class ToolbarPlacePort : IRetailTakeoverPort
+    {
+        private readonly NativeBarPort _native;
+        private readonly Func<Size> _size;
+        private readonly Action<Point> _moved;
+        public ToolbarPlacePort(NativeBarPort native, Func<Size> size, Action<Point> moved) { _native = native; _size = size; _moved = moved; }
+        /// <summary>The toolbar's own place; null until it is moved or loaded, when it stands where retail's window is.</summary>
+        public Point? Location { get; set; }
+        public bool Exists => _native.Exists;
+        public IntPtr ElementIdentity => _native.ElementIdentity;
+        public bool IsVisible => _native.IsVisible;
+        public Rectangle GetBounds() => new(Location ?? _native.GetBounds().Location, _size());
+        public void SetVisible(bool visible) => _native.SetVisible(visible);
+        public void SetSaveLocation(bool save) { }
+        public void MoveTo(Point location)
+        {
+            Location = location;
+            _moved(location);
+        }
+        public bool IsUiLocked => _native.IsUiLocked;
     }
 
     private sealed class SurfaceTakeoverPort : IRetailTakeoverSurface
