@@ -85,6 +85,20 @@ public static class DerethChatParts
         Child = new TextBlock { Text = "+", FontFamily = DerethPalette.Title, FontSize = 11, Foreground = DerethPalette.GoldBrush, VerticalAlignment = VerticalAlignment.Center }
     };
 
+    /// <summary>
+    /// A torn-off window's close medallion, at the end of its tab strip: the frame's close X in a small button. A click merges the window's
+    /// tabs back into the main window.
+    /// </summary>
+    public static DerethButton CloseMedallion() => new()
+    {
+        Width = 16,
+        Height = 16,
+        Padding = new Thickness(0),
+        Margin = new Thickness(3, 0, 0, 0),
+        VerticalAlignment = VerticalAlignment.Center,
+        Content = new DerethSprite(DerethSpriteArt.Close) { Width = 10, Height = 10 }
+    };
+
     /// <summary>The unread count on a tab: gold, or the brighter tell gold when a new tell from someone is in it.</summary>
     private static Border Badge(int count, bool tell) => new()
     {

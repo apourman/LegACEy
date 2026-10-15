@@ -402,7 +402,13 @@ public sealed class RetailChatTests
 
             // Bob's row is damaged: its tab list is not base64, so it cannot be read.
             File.AppendAllText(path, Convert.ToBase64String(Encoding.UTF8.GetBytes(Server)) + "|" + Convert.ToBase64String(Encoding.UTF8.GetBytes("Bob"))
-                + "|not tabs\n");
+                + "|" + Convert.ToBase64String(Encoding.UTF8.GetBytes(RetailChatWindows.MainId)) + "|not tabs\n");
+            // A line that is not a row, and a row whose window id is not base64, are not windows: they stay in the file as they are.
+            var unreadable = "a line this store does not read";
+            var badWindow = Convert.ToBase64String(Encoding.UTF8.GetBytes(Server)) + "|" + Convert.ToBase64String(Encoding.UTF8.GetBytes("Alice"))
+                + "|not base64!|" + Convert.ToBase64String(Encoding.UTF8.GetBytes("x"));
+            File.AppendAllText(path, unreadable + "\n" + badWindow + "\n");
+            Assert.Equal(new[] { RetailChatWindows.MainId }, new FileRetailChatTabStore(path).Windows(Server, "Alice"));
             using (var panel = Open(port, out var window, new FileRetailChatTabStore(path), "Bob"))
             {
                 Assert.Equal(new[] { "All", "Speech", "Fellowship", "Allegiance", "Channels", "Tells" }, Strip(window));
@@ -414,6 +420,11 @@ public sealed class RetailChatTests
                 Assert.Equal(new[] { "All", "Speech", "Fellowship", "Allegiance", "Channels", "Tells", "Hunting" }, Strip(window));
             using (var panel = Open(port, out var window, new FileRetailChatTabStore(path), "Bob"))
                 Assert.Equal(new[] { "All", "Speech", "Fellowship", "Allegiance", "Channels", "Tells", "Trade watch" }, Strip(window));
+
+            // The lines the store does not read are still in the file, as they were written.
+            var lines = File.ReadAllLines(path);
+            Assert.Contains(unreadable, lines);
+            Assert.Contains(badWindow, lines);
         }
         finally
         {
@@ -601,9 +612,10 @@ public sealed class RetailChatTests
         Func<DateTime>? clock = null, Func<bool>? uiUnlocked = null)
     {
         RetailChatWindow? created = null;
-        var tabs = store?.Load(Server, character);
-        var panel = AvaloniaPanel.Create(() => created = new RetailChatWindow(port, null, tabs, saved => store?.Save(Server, character, saved),
-            clock: clock ?? (() => Stamp), uiUnlocked: uiUnlocked), Width, Height);
+        var tabs = store?.Load(Server, character, RetailChatWindows.MainId);
+        var history = new RetailChatHistory(port);
+        var panel = AvaloniaPanel.Create(() => created = new RetailChatWindow(port, history, new SingleWindowHost(store, character), tabs,
+            uiUnlocked: uiUnlocked, clock: clock ?? (() => Stamp)), Width, Height);
         window = created!;
         return panel;
     }
@@ -736,8 +748,29 @@ public sealed class RetailChatTests
         Click(panel, panel.Content.GetVisualDescendants().OfType<Button>().First(button => button.Content as string == "Send"));
     }
 
+    /// <summary>The host of a window on its own: its tab list is kept under the main window's id; the other requests are not used.</summary>
+    private sealed class SingleWindowHost : IRetailChatWindowHost
+    {
+        private readonly FileRetailChatTabStore? _store;
+        private readonly string _character;
+
+        public SingleWindowHost(FileRetailChatTabStore? store, string character)
+        {
+            _store = store;
+            _character = character;
+        }
+
+        public void TabsChanged(RetailChatWindow window) => _store?.Save(Server, _character, RetailChatWindows.MainId, window.Tabs);
+
+        public void TabDraggedOut(RetailChatWindow window, int index) { }
+
+        public void MoveRequested(RetailChatWindow window) { }
+
+        public void CloseRequested(RetailChatWindow window) { }
+    }
+
     /// <summary>A fake of retail's chat: lines are raised by the test, sends and timestamp changes are recorded.</summary>
-    private sealed class FakeChatPort : IRetailChatPort
+    internal sealed class FakeChatPort : IRetailChatPort
     {
         public List<string> Sent { get; } = new();
         public RetailChatMembership Membership { get; set; } = Alone;

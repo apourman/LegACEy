@@ -26,16 +26,21 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private const double MenuMaxHeight = 158;
     // How far a press may move before it is a drag (which selects text) rather than a click on a name.
     private const double ClickSlop = 4;
+    // How far a tab press must move outside the tab strip before the tab is dragged out into a window of its own.
+    private const double TearOffSlop = 6;
     // The dark shadow under each line while the window is idle, so pale lines read over bright ground once the chrome has faded.
     private static readonly IEffect LineShadow = new DropShadowDirectionEffect { Color = Colors.Black, Direction = 90, ShadowDepth = 1, BlurRadius = 1, Opacity = 1 };
     private readonly IRetailChatPort _port;
-    private readonly Action? _startMove;
+    private readonly RetailChatHistory _history;
+    private readonly IRetailChatWindowHost _host;
+    private readonly bool _tornOff;
     private readonly List<RetailChatTab> _tabs;
     // Each tab's unread lines and whether one of them is a new tell from someone, by tab index.
     private readonly List<(int Missed, bool Tell)> _unread;
-    private readonly Action<IReadOnlyList<RetailChatTab>>? _tabsChanged;
-    private readonly RetailChatHistory _history = new();
     private readonly StackPanel _tabStrip = new() { Orientation = Orientation.Horizontal, Height = 19 };
+    private readonly Grid _tabRow;
+    // The tab a press started on, until the press is a click (which shows the tab) or a drag out of the strip.
+    private int _pressedTab = -1;
     private readonly StackPanel _lines = new();
     private readonly ScrollViewer _scroll;
     private readonly Border _pill;
@@ -56,43 +61,50 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private bool _awake = true;
     private int _tab;
     private RetailTalkTarget _target = RetailTalkTargets.Local;
-    private string? _lastTell;
     private int _missed;
     private bool _timestamps;
     private bool _disposed;
 
+    /// <summary>
+    /// The window's first tab that can be dragged, edited and moved: the main window's All tab is fixed at index 0, so the rest start at 1.
+    /// A torn-off window has no All tab, so every tab in it moves.
+    /// </summary>
+    private int First => _tornOff ? 0 : 1;
+
     /// <param name="port">Retail's chat, as the client reaches it.</param>
-    /// <param name="startMove">Run on a press on the tab strip's empty part, which starts the window's move; null for none.</param>
-    /// <param name="tabs">The tabs; null for the six defaults.</param>
-    /// <param name="tabsChanged">Run with the whole tab list after a tab is added, edited, moved or removed, so the caller can keep it.</param>
+    /// <param name="history">The lines kept for every window; the window shows its tabs' lines from it and takes each new one.</param>
+    /// <param name="host">The windows' host: it keeps the tab lists, opens tabs dragged out, closes torn-off windows and moves windows.</param>
+    /// <param name="tabs">The window's tabs; null for the six defaults.</param>
+    /// <param name="tornOff">Whether the window is torn off the main window: it has no All tab and no add button, and a close medallion merges it back.</param>
     /// <param name="uiUnlocked">Whether retail's UI is unlocked for moving windows; the window does not fade while it is. Null for never.</param>
     /// <param name="clock">The time, for the idle fade; null for the system's.</param>
-    public RetailChatWindow(IRetailChatPort port, Action? startMove = null, IReadOnlyList<RetailChatTab>? tabs = null,
-        Action<IReadOnlyList<RetailChatTab>>? tabsChanged = null, Func<bool>? uiUnlocked = null, Func<DateTime>? clock = null)
+    public RetailChatWindow(IRetailChatPort port, RetailChatHistory history, IRetailChatWindowHost host, IReadOnlyList<RetailChatTab>? tabs = null,
+        bool tornOff = false, Func<bool>? uiUnlocked = null, Func<DateTime>? clock = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
-        _startMove = startMove;
+        _history = history ?? throw new ArgumentNullException(nameof(history));
+        _host = host ?? throw new ArgumentNullException(nameof(host));
+        _tornOff = tornOff;
         _tabs = (tabs ?? RetailChatTab.Defaults).ToList();
         _unread = _tabs.Select(_ => (0, false)).ToList();
-        _tabsChanged = tabsChanged;
-        _timestamps = port.TimestampsOn;
+        _timestamps = _port.TimestampsOn;
         _fade = new RetailChatFade();
         _clock = clock ?? (() => DateTime.Now);
         _uiUnlocked = uiUnlocked ?? (() => false);
 
         // The tab strip: the tabs, then an empty part that drags the window.
-        var tabRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Height = 19 };
-        tabRow.Children.Add(_tabStrip);
+        _tabRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Height = 19 };
+        _tabRow.Children.Add(_tabStrip);
         var tabSpace = new Border { Background = Brushes.Transparent };
         tabSpace.PointerPressed += (_, e) =>
         {
             if (!e.GetCurrentPoint(tabSpace).Properties.IsLeftButtonPressed) return;
-            _startMove?.Invoke();
+            _host.MoveRequested(this);
             e.Handled = true;
         };
         Grid.SetColumn(tabSpace, 1);
-        tabRow.Children.Add(tabSpace);
-        var tabBar = new Border { BorderBrush = DerethChatPalette.GoldDarkBrush, BorderThickness = new Thickness(0, 0, 0, 1), Margin = new Thickness(0, 0, 0, 5), Child = tabRow };
+        _tabRow.Children.Add(tabSpace);
+        var tabBar = new Border { BorderBrush = DerethChatPalette.GoldDarkBrush, BorderThickness = new Thickness(0, 0, 0, 1), Margin = new Thickness(0, 0, 0, 5), Child = _tabRow };
 
         // The log: a dark groove with a scroll bar, and the jump pill over its bottom edge while the player is scrolled up.
         // The groove fades with the chrome; the lines sit over it, inset by the groove's border and padding, and fade by their own age.
@@ -164,17 +176,25 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _chrome.AddRange(new Control[] { _frame, tabBar, _groove, inputRow });
         Child = new Grid { Background = Brushes.Transparent, Children = { _frame, content } };
 
+        // A tab press that moves out of the strip is a drag; a press released on the tab is a click. Both are read from the window's own
+        // events, so a press that moves outside the tab (where the tab itself gets no moves) still reaches the window.
+        AddHandler(PointerMovedEvent, (_, e) => TabPointerMoved(e), RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(PointerReleasedEvent, (_, _) => TabPointerReleased(), RoutingStrategies.Bubble, handledEventsToo: true);
+
         RebuildTabs();
         // The chip shows Local until a tab picks its own target; All has none.
         SetTarget(_target);
         PickTab(0);
 
-        _port.LineReceived += Receive;
+        _history.LineAdded += OnLineAdded;
         _port.TimestampsChanged += OnTimestampsChanged;
     }
 
-    /// <summary>The input box. Only the window and its tests reach it; the runtime gives it the keyboard with <see cref="FocusInput"/>.</summary>
-    internal TextBox Input => _input;
+    /// <summary>The window's tabs, in strip order. The host keeps them; a torn-off window's list is its own.</summary>
+    public IReadOnlyList<RetailChatTab> Tabs => _tabs.ToArray();
+
+    /// <summary>Whether the window is torn off the main window.</summary>
+    public bool TornOff => _tornOff;
 
     /// <summary>Gives the box the keyboard: Enter in the game does this.</summary>
     public void FocusInput() => _input.Focus();
@@ -191,7 +211,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         var id = _tabs[index].TargetId;
         if (id == RetailChatTab.LastTellId)
         {
-            if (_lastTell != null) SetTarget(RetailTalkTarget.Tell(_lastTell));
+            if (_history.LastTellSender() is { } last) SetTarget(RetailTalkTarget.Tell(last));
         }
         else if (id != null)
         {
@@ -208,15 +228,13 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     }
 
     /// <summary>
-    /// Retail's line, from the port: kept, shown on this tab if the tab takes it, and counted on every other tab that takes it. A new tell
+    /// Retail's line, kept in the history: shown on this tab if the tab takes it, and counted on every other tab that takes it. A new tell
     /// from someone turns that tab's count gold. If the log is scrolled up, the line raises the jump pill.
     /// </summary>
-    public void Receive(RetailChatLine line)
+    private void OnLineAdded(RetailChatLine line, RetailChatLine? dropped)
     {
         if (_disposed) return;
         _linesSettled = false;
-        var dropped = _history.Add(line);
-        if (line.Sender != null && (line.Kind == RetailChatKind.TellIn || line.Kind == RetailChatKind.TellOut)) _lastTell = line.Sender;
         if (dropped != null && _tabs[_tab].Shows(dropped) && _lines.Children.Count > 0) _lines.Children.RemoveAt(0);
         var counted = false;
         for (var i = 0; i < _tabs.Count; i++)
@@ -244,8 +262,71 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        _port.LineReceived -= Receive;
+        _history.LineAdded -= OnLineAdded;
         _port.TimestampsChanged -= OnTimestampsChanged;
+    }
+
+    /// <summary>Adds tabs at the end, as a drop or a merge does, and shows the first of them. The host keeps the list.</summary>
+    public void AddTabs(IReadOnlyList<RetailChatTab> tabs)
+    {
+        if (_disposed || tabs.Count == 0) return;
+        var first = _tabs.Count;
+        foreach (var tab in tabs)
+        {
+            _tabs.Add(tab);
+            _unread.Add((0, false));
+        }
+        KeepTabs();
+        PickTab(first);
+    }
+
+    /// <summary>Takes a tab out of the window, as a drag out does, and returns it. The host keeps the list.</summary>
+    public RetailChatTab TakeTab(int index)
+    {
+        var tab = _tabs[index];
+        _tabs.RemoveAt(index);
+        _unread.RemoveAt(index);
+        CloseEditor();
+        KeepTabs();
+        PickTab(0);
+        return tab;
+    }
+
+    /// <summary>Whether a point, in the window's own units, lies on the tab strip.</summary>
+    public bool StripContains(Point point) => TabStripDistance(point) <= 0;
+
+    /// <summary>How far a point is outside the tab strip, or infinity before the window has been laid out.</summary>
+    private double TabStripDistance(Point point)
+    {
+        var origin = _tabRow.TranslatePoint(default, this);
+        if (origin == null) return double.PositiveInfinity;
+        var strip = new Rect(origin.Value, _tabRow.Bounds.Size);
+        return Math.Max(Math.Max(strip.Top - point.Y, point.Y - strip.Bottom), Math.Max(strip.Left - point.X, point.X - strip.Right));
+    }
+
+    /// <summary>A tab press that moves past the slop outside the strip is a drag out: the host makes it a window of its own.</summary>
+    private void TabPointerMoved(PointerEventArgs e)
+    {
+        if (_pressedTab < 0) return;
+        // The button may be up without the window seeing its release (the pointer left the window); a move with no button held is not a drag.
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            _pressedTab = -1;
+            return;
+        }
+        if (_pressedTab < First || TabStripDistance(e.GetPosition(this)) <= TearOffSlop) return;
+        var index = _pressedTab;
+        _pressedTab = -1;
+        _host.TabDraggedOut(this, index);
+    }
+
+    /// <summary>A press released on its tab, without a drag out, shows the tab.</summary>
+    private void TabPointerReleased()
+    {
+        if (_pressedTab < 0) return;
+        var index = _pressedTab;
+        _pressedTab = -1;
+        PickTab(index);
     }
 
     /// <summary>
@@ -314,17 +395,25 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             {
                 if (e.GetCurrentPoint(view).Properties.IsLeftButtonPressed)
                 {
-                    PickTab(index);
+                    _pressedTab = index;
                     e.Handled = true;
                 }
                 // The All tab is fixed; every other tab is edited with a right click.
-                else if (e.GetCurrentPoint(view).Properties.IsRightButtonPressed && index > 0)
+                else if (e.GetCurrentPoint(view).Properties.IsRightButtonPressed && index >= First)
                 {
                     OpenEditor(index);
                     e.Handled = true;
                 }
             };
             _tabStrip.Children.Add(view);
+        }
+        if (_tornOff)
+        {
+            // A torn-off window has no add button; its close medallion merges its tabs back into the main window.
+            var close = DerethChatParts.CloseMedallion();
+            close.Click += (_, _) => _host.CloseRequested(this);
+            _tabStrip.Children.Add(close);
+            return;
         }
         var add = DerethChatParts.AddTab();
         add.PointerPressed += (_, e) =>
@@ -336,17 +425,20 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _tabStrip.Children.Add(add);
     }
 
-    /// <summary>The tab dialog for a new tab (<paramref name="index"/> -1) or an existing one; the All tab (index 0) has none.</summary>
+    /// <summary>
+    /// The tab dialog for a new tab (<paramref name="index"/> -1) or an existing one. The main window's All tab (index 0) has none. A tab can
+    /// be removed while the window keeps another, so a torn-off window is never left with no tabs.
+    /// </summary>
     private void OpenEditor(int index)
     {
         var existing = index < 0 ? null : _tabs[index];
         var actions = new RetailChatTabEditActions(
             Save: tab => SaveTab(index, tab),
             Cancel: CloseEditor,
-            Remove: index > 0 ? (Action)(() => RemoveTab(index)) : null,
-            Move: index > 0 ? (Action<int>)(step => MoveTab(index, step)) : null,
-            CanMoveLeft: index > 1,
-            CanMoveRight: index > 0 && index < _tabs.Count - 1);
+            Remove: index >= First && _tabs.Count > 1 ? (Action)(() => TakeTab(index)) : null,
+            Move: index >= First ? (Action<int>)(step => MoveTab(index, step)) : null,
+            CanMoveLeft: index > First,
+            CanMoveRight: index >= First && index < _tabs.Count - 1);
         _editor.Child = RetailChatTabEditor.Create(existing, actions);
         _editor.IsVisible = true;
     }
@@ -375,15 +467,6 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         PickTab(index);
     }
 
-    private void RemoveTab(int index)
-    {
-        _tabs.RemoveAt(index);
-        _unread.RemoveAt(index);
-        CloseEditor();
-        KeepTabs();
-        PickTab(0);
-    }
-
     private void MoveTab(int index, int step)
     {
         var to = index + step;
@@ -394,7 +477,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         PickTab(to);
     }
 
-    private void KeepTabs() => _tabsChanged?.Invoke(_tabs.ToArray());
+    private void KeepTabs() => _host.TabsChanged(this);
 
     private void RebuildLog()
     {
@@ -485,9 +568,9 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             SendTyped();
             e.Handled = true;
         }
-        else if (e.Key == Key.Tab && string.IsNullOrEmpty(_input.Text) && _lastTell != null)
+        else if (e.Key == Key.Tab && string.IsNullOrEmpty(_input.Text) && _history.LastTellSender() is { } last)
         {
-            SetTarget(RetailTalkTarget.Tell(_lastTell));
+            SetTarget(RetailTalkTarget.Tell(last));
             e.Handled = true;
         }
         else if (e.Key == Key.Escape)
@@ -538,7 +621,6 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         var first = new StackPanel { Spacing = 2 };
         var allegiance = new StackPanel { Spacing = 0, Margin = new Thickness(8, 0, 0, 0) };
         var channels = new StackPanel { Spacing = 0, Margin = new Thickness(8, 0, 0, 0) };
-        var columns = new[] { first, allegiance, channels };
         for (var group = 0; group < RetailTalkTargets.Groups.Count; group++)
         {
             var column = group switch { 0 or 1 => first, 2 => allegiance, _ => channels };

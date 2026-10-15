@@ -62,23 +62,41 @@ public interface IRetailChatPort
 }
 
 /// <summary>
-/// The lines the chat window keeps: the last <see cref="Capacity"/>, nothing is written to disk. Older lines go when newer ones arrive.
+/// The lines the chat windows keep, shared by every window: the last <see cref="Capacity"/>, nothing is written to disk. It takes each line
+/// from the port once, then raises <see cref="LineAdded"/> for the windows, so a torn-off window's log starts with the lines already kept.
 /// </summary>
-public sealed class RetailChatHistory
+public sealed class RetailChatHistory : IDisposable
 {
     public const int Capacity = 1000;
+    private readonly IRetailChatPort _port;
     private readonly List<RetailChatLine> _lines = new();
+
+    public RetailChatHistory(IRetailChatPort port)
+    {
+        _port = port ?? throw new ArgumentNullException(nameof(port));
+        _port.LineReceived += Add;
+    }
 
     public IReadOnlyList<RetailChatLine> Lines => _lines;
 
-    /// <summary>Adds a line, and returns the oldest line that was dropped to keep the history at its capacity, or null.</summary>
-    public RetailChatLine? Add(RetailChatLine line)
+    /// <summary>Raised for each kept line, with the oldest line dropped to keep the history at its capacity, or null.</summary>
+    public event Action<RetailChatLine, RetailChatLine?>? LineAdded;
+
+    /// <summary>The partner of the last tell in the history, either way, or null when there is none.</summary>
+    public string? LastTellSender() => _lines.LastOrDefault(line => line.Sender != null && (line.Kind == RetailChatKind.TellIn || line.Kind == RetailChatKind.TellOut))?.Sender;
+
+    public void Dispose() => _port.LineReceived -= Add;
+
+    private void Add(RetailChatLine line)
     {
         _lines.Add(line);
-        if (_lines.Count <= Capacity) return null;
-        var dropped = _lines[0];
-        _lines.RemoveAt(0);
-        return dropped;
+        RetailChatLine? dropped = null;
+        if (_lines.Count > Capacity)
+        {
+            dropped = _lines[0];
+            _lines.RemoveAt(0);
+        }
+        LineAdded?.Invoke(line, dropped);
     }
 }
 
