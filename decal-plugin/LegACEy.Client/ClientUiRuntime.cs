@@ -1801,6 +1801,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (_chatWindow == null && !OpenRetailChat()) return;
             _chatPort!.Poll();
             _chatTakeover!.Tick(GameDevice.ViewportSize(_device));
+            // The idle fade reads retail's UI lock, so it runs here, inside the guard, not on a timer of its own.
+            _chatWindow?.Refresh();
         }
         catch (Exception exception)
         {

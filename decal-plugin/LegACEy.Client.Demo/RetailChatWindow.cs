@@ -10,7 +10,6 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Avalonia.Threading;
 using Avalonia.VisualTree;
 using LegACEy.Client.Themes;
 
@@ -27,10 +26,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private const double MenuMaxHeight = 158;
     // How far a press may move before it is a drag (which selects text) rather than a click on a name.
     private const double ClickSlop = 4;
-    // How often the idle fade is applied: a quarter second of fading takes about five steps.
-    private const int RefreshMs = 50;
-    // The mockup's dark text shadow, which keeps pale lines readable over bright ground once the chrome has faded.
-    private static readonly IEffect LineShadow = new DropShadowDirectionEffect { Color = Colors.Black, Direction = 90, ShadowDepth = 1, BlurRadius = 3 };
+    // The dark shadow under each line while the window is idle, so pale lines read over bright ground once the chrome has faded.
+    private static readonly IEffect LineShadow = new DropShadowDirectionEffect { Color = Colors.Black, Direction = 90, ShadowDepth = 1, BlurRadius = 1, Opacity = 1 };
     private readonly IRetailChatPort _port;
     private readonly Action? _startMove;
     private readonly IReadOnlyList<RetailChatTab> _tabs;
@@ -48,8 +45,11 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private readonly List<Control> _chrome = new();
     private readonly RetailChatFade _fade;
     private readonly Func<bool> _uiUnlocked;
-    private readonly DispatcherTimer _timer;
+    private readonly Func<DateTime> _clock;
     private ScrollBar? _scrollBar;
+    // The line loop in Refresh can stop once the lines show their final opacities; any change of state or of the lines clears this.
+    private bool _linesSettled;
+    private bool _awake = true;
     private int _tab;
     private RetailTalkTarget _target = RetailTalkTargets.Local;
     private string? _lastTell;
@@ -68,7 +68,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _startMove = startMove;
         _tabs = tabs ?? RetailChatTab.Defaults;
         _timestamps = port.TimestampsOn;
-        _fade = new RetailChatFade(clock ?? (() => DateTime.Now));
+        _fade = new RetailChatFade();
+        _clock = clock ?? (() => DateTime.Now);
         _uiUnlocked = uiUnlocked ?? (() => false);
 
         // The tab strip: the tabs, then an empty part that drags the window.
@@ -147,7 +148,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         content.Children.Add(_menu);
         // The frame is a sibling of the content, not its parent, so it fades without the lines fading with it. The root is hit-testable
         // all over, so the pointer counts as over the window wherever it is in the frame.
-        _chrome.AddRange(new Control[] { _frame, tabBar, _groove, inputRow, _pill });
+        // The jump pill keeps its own visibility: it is the cue for lines that arrived while the log was scrolled up.
+        _chrome.AddRange(new Control[] { _frame, tabBar, _groove, inputRow });
         Child = new Grid { Background = Brushes.Transparent, Children = { _frame, content } };
 
         RebuildTabs();
@@ -157,8 +159,6 @@ public sealed class RetailChatWindow : Decorator, IDisposable
 
         _port.LineReceived += Receive;
         _port.TimestampsChanged += OnTimestampsChanged;
-        _timer = new DispatcherTimer(TimeSpan.FromMilliseconds(RefreshMs), DispatcherPriority.Background, (_, _) => Refresh());
-        _timer.Start();
     }
 
     /// <summary>The input box. Only the window and its tests reach it; the runtime gives it the keyboard with <see cref="FocusInput"/>.</summary>
@@ -197,6 +197,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     public void Receive(RetailChatLine line)
     {
         if (_disposed) return;
+        _linesSettled = false;
         var dropped = _history.Add(line);
         if (line.Sender != null && (line.Kind == RetailChatKind.TellIn || line.Kind == RetailChatKind.TellOut)) _lastTell = line.Sender;
         if (dropped != null && _tabs[_tab].Shows(dropped) && _lines.Children.Count > 0) _lines.Children.RemoveAt(0);
@@ -216,25 +217,56 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        _timer.Stop();
         _port.LineReceived -= Receive;
         _port.TimestampsChanged -= OnTimestampsChanged;
     }
 
     /// <summary>
-    /// Applies the idle fade to what the window shows now. The window's timer calls it every <see cref="RefreshMs"/>; a test calls it
-    /// after moving the clock.
+    /// Applies the idle fade to what the window shows now. The host calls it once a frame, inside its guard, since the unlock check reads
+    /// retail's state; a test calls it after moving the clock.
     /// </summary>
-    public void Refresh()
+    internal void Refresh()
     {
         if (_disposed) return;
-        _fade.Update(IsPointerOver, _input.IsFocused, _menu.IsVisible, _uiUnlocked);
-        var chrome = _fade.ChromeOpacity;
-        foreach (var part in _chrome) part.Opacity = chrome;
+        // The unlock check is read only when nothing else keeps the window awake.
+        var awake = IsPointerOver || _input.IsFocused || _menu.IsVisible || _uiUnlocked();
+        var now = _clock();
+        _fade.Update(awake, now);
+        if (awake != _awake)
+        {
+            _awake = awake;
+            _linesSettled = false;
+        }
+        var chrome = _fade.ChromeOpacity(now);
+        foreach (var part in _chrome) SetOpacity(part, chrome);
         _scrollBar ??= _scroll.GetVisualDescendants().OfType<ScrollBar>().FirstOrDefault(bar => bar.Orientation == Orientation.Vertical);
-        if (_scrollBar != null) _scrollBar.Opacity = chrome;
+        if (_scrollBar != null) SetOpacity(_scrollBar, chrome);
+        if (!_linesSettled) _linesSettled = ApplyLines(now);
+    }
+
+    /// <summary>
+    /// Sets each line's opacity, and its shadow, for the window's state. True when no line can change until the state or the lines do:
+    /// awake, or idle with every line faded out.
+    /// </summary>
+    private bool ApplyLines(DateTime now)
+    {
+        var idle = _fade.Idle;
+        var allGone = true;
         foreach (var line in _lines.Children)
-            if (line.Tag is DateTime arrived) line.Opacity = _fade.LineOpacity(arrived);
+        {
+            if (line.Tag is not DateTime arrived) continue;
+            var opacity = _fade.LineOpacity(arrived, now);
+            SetOpacity(line, opacity);
+            var effect = idle ? LineShadow : null;
+            if (line.Effect != effect) line.Effect = effect;
+            if (opacity > 0) allGone = false;
+        }
+        return !idle || allGone;
+    }
+
+    private static void SetOpacity(Control control, double opacity)
+    {
+        if (control.Opacity != opacity) control.Opacity = opacity;
     }
 
     private void OnTimestampsChanged()
@@ -263,6 +295,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private void RebuildLog()
     {
         _lines.Children.Clear();
+        _linesSettled = false;
         foreach (var line in _history.Lines)
             if (_tabs[_tab].Shows(line)) _lines.Children.Add(LineView(line));
         HidePill();
@@ -291,7 +324,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     {
         var brush = DerethPalette.Brush(ColourOf(line.Kind));
         var italic = line.Kind == RetailChatKind.Emote;
-        var view = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap, LineHeight = 15.6, Margin = new Thickness(0, 0, 0, 1), Effect = LineShadow, Tag = line.Time };
+        var view = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap, LineHeight = 15.6, Margin = new Thickness(0, 0, 0, 1), Tag = line.Time };
         var written = 0;
         void Add(Run run)
         {

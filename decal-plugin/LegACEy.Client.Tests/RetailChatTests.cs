@@ -275,11 +275,11 @@ public sealed class RetailChatTests
         var scrollBar = window.GetVisualDescendants().OfType<ScrollBar>().First(bar => bar.Orientation == Orientation.Vertical);
         Assert.Equal(1.0, Seen(scrollBar));
 
-        clock.Advance(RetailChatFade.ChromeFadeSeconds / 2);
+        clock.Advance(0.125);
         window.Refresh();
         Assert.InRange(Seen(TabView(window, "All")), 0.2, 0.8);
 
-        clock.Advance(RetailChatFade.ChromeFadeSeconds / 2);
+        clock.Advance(0.125);
         window.Refresh();
         Assert.Equal(0.0, Seen(frame));
         Assert.Equal(0.0, Seen(TabView(window, "All")));
@@ -333,6 +333,8 @@ public sealed class RetailChatTests
         var clock = new TestClock();
         var port = new FakeChatPort();
         using var panel = Open(port, out var window, () => clock.Now);
+        panel.Tick();
+        window.Refresh();
         port.Say(Line(RetailChatKind.System, "first line of the log", at: clock.Now));
         clock.Advance(9);
         port.Say(Line(RetailChatKind.System, "second line of the log", at: clock.Now));
