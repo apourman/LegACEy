@@ -77,6 +77,14 @@ top edge (not a button) to move it anywhere on screen, unless retail's UI is loc
 shows or hides row 2. Creating an empty file named `retail-toolbar-native` beside the main DLL gives retail's toolbar back within a
 second; deleting it takes the toolbar over again.
 
+The Dereth chat window replaces retail's main and floating chat windows. It starts with six tabs (All, Speech, Fellowship, Allegiance,
+Channels, Tells); each tab shows its own kinds of line, talks to its own target and counts unread lines while out of view. Right-click a
+tab to rename, edit, reorder or remove it, and use + to add one. Drag a tab out of the strip into a window of its own, and drag it back to
+merge it; tabs are kept per character in `chat-tabs.txt` and window places and sizes in `window-positions.txt`. Enter opens the input and
+Escape leaves it. When idle, and while retail's UI is locked, the window fades to bare lines; hovering or pressing Enter brings it back.
+Retail's chat keeps running out of sight, so Decal plugins see chat as before. Creating an empty file named `retail-chat-native` beside
+the main DLL gives retail's chat back within a second; deleting it takes the chat over again.
+
 ## Tests
 
 Run the automated tests from the repository root:

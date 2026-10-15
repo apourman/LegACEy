@@ -117,8 +117,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string RetailPanelSwitchFile = "retail-inventory-native";
     // Beside the DLL: while this file exists, retail's toolbar stays retail's. Without it the Dereth toolbar replaces it.
     private const string RetailToolbarSwitchFile = "retail-toolbar-native";
-    // Beside the DLL: while this file exists, the Dereth chat window replaces retail's chat windows. Without it retail's chat is untouched.
-    private const string RetailChatSwitchFile = "retail-chat-takeover";
+    // Beside the DLL: while this file exists, retail's chat windows stay retail's. Without it the Dereth chat window replaces them.
+    private const string RetailChatSwitchFile = "retail-chat-native";
 
     // How big LegACEy windows show against their design size. The indicator bar keeps retail's size, and drag icons retail's 32 pixels.
     // An Avalonia that cannot scale panels shows them at design size rather than failing every window.
@@ -1994,7 +1994,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (now - _lastChatSwitchCheck >= TimeSpan.FromSeconds(1))
         {
             _lastChatSwitchCheck = now;
-            _chatSwitch = File.Exists(IOPath.Combine(PluginDirectory, RetailChatSwitchFile));
+            _chatSwitch = !File.Exists(IOPath.Combine(PluginDirectory, RetailChatSwitchFile));
         }
         return _chatSwitch;
     }
