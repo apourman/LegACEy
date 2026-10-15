@@ -18,12 +18,6 @@ internal static class RetailToolbarCatalogue
     internal const uint AddShortcut = 0x004BE630;
     /// <summary>gmToolbarUI::RemoveShortcutInSlotNum (int slot, bool sendToServer), ThisCall, ret 8. Returns the object id it removed.</summary>
     internal const uint RemoveShortcutInSlotNum = 0x004BE180;
-    /// <summary>gmPanelUI's notice sub-object reads the panel count at +0x0C (gmPanelUI+0x604) inside RecvNotice_SetPanelVisibility.</summary>
-    internal const uint PanelChildCount = 0x004BD394;
-    /// <summary>...and the panel table at +0x04 (gmPanelUI+0x5FC): {element, panelId} pairs, 8 bytes each.</summary>
-    internal const uint PanelChildTable = 0x004BD3A1;
-    /// <summary>The same loop compares the element (+0) for null and the panel id (+4) with the requested id.</summary>
-    internal const uint PanelChildPairs = 0x004BD3A5;
     /// <summary>PlayerModule::AddShortCut reads the ShortCutManager pointer at PlayerModule+0x04 (the manager is made on first use).</summary>
     internal const uint PlayerModuleShortCutManager = 0x005D39A3;
     /// <summary>ShortCutManager::AddShortCut rejects an index at or above 0x12 (18 slots), then reads the slot pointer at +4 + 4 * index.</summary>
@@ -34,6 +28,8 @@ internal static class RetailToolbarCatalogue
     internal const uint GetCombatSystem = 0x0056B210;
     /// <summary>ClientCombatSystem::ToggleCombatMode, ThisCall, no arguments: the stance button's click. Peace goes to the default stance, anything else to peace.</summary>
     internal const uint ToggleCombatMode = 0x0056D610;
+    /// <summary>CM_UI::SendNotice_SetPanelVisibility, Cdecl (uint panelId, bool visible): retail's window buttons call it to open or close a panel.</summary>
+    internal const uint SendNoticeSetPanelVisibility = 0x0047A4A0;
     /// <summary>The split amount global (int32): the amount retail splits off the selected stack when it is dragged. SplitAmountWrite and SplitAmountConsumer already byte-check this address.</summary>
     internal const uint SplitAmount = 0x0081D7EC;
     /// <summary>The selected stack's size (int32), the split amount's upper bound; SplitStackSizeRead already byte-checks this address.</summary>
@@ -73,12 +69,6 @@ internal static class RetailToolbarCatalogue
             Source, "ThisCall (uint objectId, short slot, bool sendToServer), ret 0xC"),
         new NativeUiEntry("gmToolbarUI::RemoveShortcutInSlotNum", RemoveShortcutInSlotNum, NativeUiCatalogue.Bytes("8B 44 24 04 85 C0 56 57 8B F9 7C 51"),
             Source, "ThisCall (int slot, bool sendToServer), ret 8"),
-        new NativeUiEntry("gmPanelUI panel count (notice sub-object +0x0C)", PanelChildCount, NativeUiCatalogue.Bytes("8B 46 0C 33 C9"),
-            Source, "instruction reference (child count)"),
-        new NativeUiEntry("gmPanelUI panel table (notice sub-object +0x04): {element, panelId}", PanelChildTable,
-            NativeUiCatalogue.Bytes("8B 46 04 57"), Source, "instruction reference (child table)"),
-        new NativeUiEntry("gmPanelUI panel table compares the element (+0) and the panel id (+4)", PanelChildPairs,
-            NativeUiCatalogue.Bytes("39 18 74 05 39 50 04 74 13"), Source, "instruction reference (pair layout)"),
         new NativeUiEntry("PlayerModule::AddShortCut reads the ShortCutManager at PlayerModule+0x04", PlayerModuleShortCutManager,
             NativeUiCatalogue.Bytes("8B 46 04 85 C0 75 1C"), Source, "instruction reference (manager pointer)"),
         new NativeUiEntry("ShortCutManager::AddShortCut bounds the 18 slots", ShortCutManagerSlots,
@@ -87,6 +77,9 @@ internal static class RetailToolbarCatalogue
             NativeUiCatalogue.Bytes("89 78 04 8B 56 08 89 50 08"), Source, "instruction reference (entry layout)"),
         new NativeUiEntry("ClientCombatSystem::GetCombatSystem", GetCombatSystem, NativeUiCatalogue.Bytes("A1 6C 16 87 00 C3"),
             Source, "Cdecl () -> ClientCombatSystem*, read from 0x0087166C"),
+        new NativeUiEntry("CM_UI::SendNotice_SetPanelVisibility", SendNoticeSetPanelVisibility,
+            NativeUiCatalogue.Bytes("E8 6B 03 00 00 8B 10 68 F8 D1 4D 00 8B C8 FF 52 10"), Source,
+            "Cdecl (uint panelId, bool visible) -> bool; the PDB's 0x0047A0A0 plus +0x400, as its neighbour EndCharacterSession"),
         new NativeUiEntry("ClientCombatSystem::ToggleCombatMode", ToggleCombatMode, NativeUiCatalogue.Bytes("56 8B F1 83 7E 1C 01 6A 01 75 11"),
             Source, "ThisCall, no arguments: peace <-> the default stance, sent to the server (the stance button's click)"),
         new NativeUiEntry("gmToolbarUI split amount write (0x0081D7EC, clamped to the stack size)", SplitAmountWrite,

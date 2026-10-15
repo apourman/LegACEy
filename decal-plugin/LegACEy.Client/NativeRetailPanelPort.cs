@@ -54,24 +54,6 @@ internal sealed class NativeRetailPanelPort : NativePanelPort
     internal static void SetPanelVisibility(IntPtr panelManager, uint panelId, bool visible) =>
         RecvNotice(IntPtr.Add(panelManager, NoticeHandlerOffset), panelId, visible ? 1u : 0u);
 
-    /// <summary>
-    /// The element gmPanelUI lists for a panel id, or zero when its table does not list it. The table is a pointer at the notice
-    /// sub-object's +0x04 (gmPanelUI+0x5FC) with a count at +0x0C; each entry is {element, panelId} in 8 bytes, as retail's loop reads it.
-    /// </summary>
-    internal static IntPtr PanelElement(IntPtr panelManager, uint panelId)
-    {
-        var notice = IntPtr.Add(panelManager, NoticeHandlerOffset);
-        var count = Marshal.ReadInt32(notice, 0x0C);
-        var table = Marshal.ReadIntPtr(notice, 0x04);
-        for (var i = 0; i < count && table != IntPtr.Zero; i++)
-        {
-            var entry = IntPtr.Add(table, 8 * i);
-            var element = Marshal.ReadIntPtr(entry);
-            if (element != IntPtr.Zero && (uint)Marshal.ReadInt32(entry, 4) == panelId) return element;
-        }
-        return IntPtr.Zero;
-    }
-
     private static IntPtr Parent(IntPtr element) =>
         element == IntPtr.Zero ? IntPtr.Zero : NativeUi.Virtual<NativeUi.GetParentFn>(element, NativeUi.GetParentSlot)(element);
 

@@ -8,8 +8,7 @@ namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
 /// The toolbar's port over the installed client. The stance click is retail's combat toggle (ToggleCombatMode), the stance read is Decal's combat mode.
-/// A panel opens or closes through gmPanelUI's notice, by its panel number; the notice needs gmPanelUI, found from the toolbar's element or
-/// else the inventory's. The selection is Decal's current selection; Use goes through Decal's UseItem and Examine through the appraisal
+/// A panel opens or closes through retail's own broadcast (CM_UI::SendNotice_SetPanelVisibility), by its panel number, as retail's buttons do. The selection is Decal's current selection; Use goes through Decal's UseItem and Examine through the appraisal
 /// window, never retail's examination panel. <see cref="Poll"/> raises <see cref="Changed"/> when the stance, any button's panel open state,
 /// the selection or the shortcut list moved, once a frame.
 /// </summary>
@@ -44,10 +43,12 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     // The selected id last seen, and whether the game reported the selected object changed since it was read.
     private uint _selectedId;
     private bool _rereadSelected;
-    private bool _noManagerLogged;
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate IntPtr GetCombatSystemFn();
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate byte SendNoticeSetPanelVisibilityFn(uint panelId, byte visible);
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void ToggleCombatModeFn(IntPtr combatSystem);
@@ -63,6 +64,8 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
 
     private static readonly GetCombatSystemFn GetCombatSystem = Marshal.GetDelegateForFunctionPointer<GetCombatSystemFn>(
         new IntPtr(RetailToolbarCatalogue.GetCombatSystem));
+    private static readonly SendNoticeSetPanelVisibilityFn SendNoticeSetPanelVisibility = Marshal.GetDelegateForFunctionPointer<SendNoticeSetPanelVisibilityFn>(
+        new IntPtr(RetailToolbarCatalogue.SendNoticeSetPanelVisibility));
     private static readonly ToggleCombatModeFn ToggleCombatModeNative = Marshal.GetDelegateForFunctionPointer<ToggleCombatModeFn>(
         new IntPtr(RetailToolbarCatalogue.ToggleCombatMode));
     private static readonly UseShortcutFn UseShortcutNative = Marshal.GetDelegateForFunctionPointer<UseShortcutFn>(
@@ -182,8 +185,7 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     {
         if (panel != RetailPanel.Inventory)
         {
-            var manager = PanelManager();
-            var listed = manager == IntPtr.Zero ? IntPtr.Zero : NativeRetailPanelPort.PanelElement(manager, (uint)panel);
+            var listed = NativeUi.GetElement(PanelElementId(panel));
             if (listed != IntPtr.Zero) return NativeUi.IsVisible(listed);
             return _requested.TryGetValue(panel, out var requested) && requested;
         }
@@ -231,14 +233,7 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
 
     public void SetPanelOpen(RetailPanel panel, bool open)
     {
-        var manager = PanelManager();
-        if (manager == IntPtr.Zero)
-        {
-            if (!_noManagerLogged) _log("Retail toolbar buttons are off: gmPanelUI was not found from the toolbar or the inventory.");
-            _noManagerLogged = true;
-            return;
-        }
-        NativeRetailPanelPort.SetPanelVisibility(manager, (uint)panel, open);
+        SendNoticeSetPanelVisibility((uint)panel, open ? (byte)1 : (byte)0);
         _requested[panel] = open;
         Changed?.Invoke();
     }
@@ -298,9 +293,18 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
         return toolbar != IntPtr.Zero && Marshal.ReadIntPtr(toolbar) == new IntPtr(RetailToolbarCatalogue.GmToolbarUIVtable) ? toolbar : IntPtr.Zero;
     }
 
-    private static IntPtr PanelManager()
+    /// <summary>
+    /// The element a panel shows in, by the id it is placed with under PanelPages (0x10000180) in LayoutDesc 0x2100006E, whose
+    /// property 0x10000029 is the panel number (installed client_local_English.dat).
+    /// </summary>
+    private static uint PanelElementId(RetailPanel panel) => panel switch
     {
-        var manager = NativeRetailPanelPort.PanelManagerOf(NativeUi.GetElement(NativeUi.Toolbar));
-        return manager != IntPtr.Zero ? manager : NativeRetailPanelPort.PanelManagerOf(NativeUi.GetElement(NativeUi.InventoryPanel));
-    }
+        RetailPanel.WorldMap => 0x1000018C,
+        RetailPanel.Options => 0x1000018D,
+        RetailPanel.Skills => 0x1000018E,
+        RetailPanel.Social => 0x1000018F,
+        RetailPanel.Magic => 0x10000190,
+        RetailPanel.Quests => 0x10000559,
+        _ => NativeUi.InventoryPanel
+    };
 }
