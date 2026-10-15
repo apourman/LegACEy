@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Layout;
@@ -23,7 +24,7 @@ public sealed record RetailChatTabEditActions(Action<RetailChatTab> Save, Action
 /// </summary>
 public static class RetailChatTabEditor
 {
-    private const int DialogWidth = 250;
+    private const int DialogWidth = 280;
     private const RetailChatKind NoKinds = 0;
     private const RetailChatKind NewTabKinds = RetailChatKind.Local | RetailChatKind.Emote | RetailChatKind.TellIn | RetailChatKind.TellOut
         | RetailChatKind.Fellowship | RetailChatKind.System | RetailChatKind.Combat;
@@ -139,7 +140,13 @@ public static class RetailChatTabEditor
         }
 
         name.TextChanged += (_, _) => Refresh();
-        name.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Commit(); e.Handled = true; } };
+        name.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter) Commit();
+            else if (e.Key == Key.Escape) actions.Cancel();
+            else return;
+            e.Handled = true;
+        };
         save.Click += (_, _) => Commit();
 
         // The moves and Remove are for an existing tab only; the window decides which moves are possible.
@@ -166,16 +173,22 @@ public static class RetailChatTabEditor
         buttons.Children.Add(save);
         Refresh();
 
-        var body = new StackPanel { Spacing = 4, Children = { titleRow, kindsHost, channelsHost, targetHost, buttons } };
+        var body = new StackPanel { Spacing = 3, Children = { titleRow, kindsHost, channelsHost, targetHost, buttons } };
+        // The dialog fills the window's height; a window too short for all of it scrolls, so Add and Save stay reachable.
         return new Border
         {
             Width = DialogWidth,
             HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(0, 4, 0, 0),
-            Child = new DerethFrame(DerethFrameArt.Window)
+            VerticalAlignment = VerticalAlignment.Stretch,
+            Margin = new Thickness(0, 2, 0, 0),
+            Child = new ScrollViewer
             {
-                Child = new Border { Padding = new Thickness(8, 6, 8, 7), Child = body }
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Content = new DerethFrame(DerethFrameArt.Window)
+                {
+                    Child = new Border { Padding = new Thickness(8, 5, 8, 6), Child = body }
+                }
             }
         };
     }

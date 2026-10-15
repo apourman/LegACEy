@@ -204,5 +204,9 @@ public sealed record RetailChatTab(string Name, RetailChatKind Kinds, string? Ta
     };
 
     public bool Shows(RetailChatLine line) =>
-        Kinds.HasFlag(line.Kind) && (line.Kind != RetailChatKind.Channel || Channels == null || (line.Channel != null && Channels.Contains(line.Channel)));
+        Kinds.HasFlag(line.Kind) && (line.Kind != RetailChatKind.Channel || Channels == null
+            || (line.Channel != null && Channels.Contains(line.Channel, StringComparer.OrdinalIgnoreCase)));
+
+    /// <summary>Whether the tab shows only tells, as the default Tells tab does: its unread tells are the ones that turn gold.</summary>
+    public bool TellsOnly => Kinds != 0 && (Kinds & ~(RetailChatKind.TellIn | RetailChatKind.TellOut)) == 0;
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
@@ -301,6 +302,9 @@ public sealed class RetailChatTests
         panel.Tick();
         Assert.Equal("Tells 2", TabText(window, "Tells"));
         Assert.Equal(DerethChatPalette.TellFill, BadgeFill(window, "Tells"));
+        // Speech and All count the tell too, but only the tell-only Tells tab goes gold.
+        Assert.Equal("Speech 2", TabText(window, "Speech"));
+        Assert.Equal(DerethChatPalette.GoldDark, BadgeFill(window, "Speech"));
         Assert.Equal("All 2", TabText(window, "All"));
 
         Click(panel, TabView(window, "Tells"));
@@ -369,6 +373,50 @@ public sealed class RetailChatTests
         RightClick(panel, TabView(window, "Allegiance chat"));
         Click(panel, DialogButton(panel, "Remove"));
         Assert.Equal(new[] { "All", "Speech", "Fellowship", "Channels", "Tells" }, Strip(window));
+    });
+
+    [Fact]
+    public void Escape_closes_the_tab_dialog_and_keeps_the_tabs() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        using var panel = Open(port, out var window);
+        RightClick(panel, TabView(window, "Allegiance"));
+        Click(panel, DialogName(panel));
+        panel.KeyDown(Key.Escape);
+        panel.Tick();
+        Assert.False(Shows(panel, "Edit tab"));
+        Assert.Equal(new[] { "All", "Speech", "Fellowship", "Allegiance", "Channels", "Tells" }, Strip(window));
+    });
+
+    [Fact]
+    public void A_damaged_row_for_one_character_leaves_the_other_characters_tabs_alone() => RenderThread.Run(() =>
+    {
+        var path = Path.Combine(Path.GetTempPath(), "legacey-chat-tabs-" + Guid.NewGuid().ToString("N") + ".txt");
+        try
+        {
+            var port = new FakeChatPort();
+            using (var panel = Open(port, out var window, new FileRetailChatTabStore(path), "Alice"))
+                AddTab(panel, window, "Hunting");
+
+            // Bob's row is damaged: its tab list is not base64, so it cannot be read.
+            File.AppendAllText(path, Convert.ToBase64String(Encoding.UTF8.GetBytes(Server)) + "|" + Convert.ToBase64String(Encoding.UTF8.GetBytes("Bob"))
+                + "|not tabs\n");
+            using (var panel = Open(port, out var window, new FileRetailChatTabStore(path), "Bob"))
+            {
+                Assert.Equal(new[] { "All", "Speech", "Fellowship", "Allegiance", "Channels", "Tells" }, Strip(window));
+                AddTab(panel, window, "Trade watch");
+            }
+
+            // Saving Bob's tabs keeps Alice's row, and Bob's new tabs are there after a restart.
+            using (var panel = Open(port, out var window, new FileRetailChatTabStore(path), "Alice"))
+                Assert.Equal(new[] { "All", "Speech", "Fellowship", "Allegiance", "Channels", "Tells", "Hunting" }, Strip(window));
+            using (var panel = Open(port, out var window, new FileRetailChatTabStore(path), "Bob"))
+                Assert.Equal(new[] { "All", "Speech", "Fellowship", "Allegiance", "Channels", "Tells", "Trade watch" }, Strip(window));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     });
 
     [Fact]
@@ -513,8 +561,9 @@ public sealed class RetailChatTests
         return true;
     }
 
-    /// <summary>The message box: the first text box, as the input row comes before any dialog in the window.</summary>
-    private static TextBox InputBox(RetailChatWindow window) => window.GetVisualDescendants().OfType<TextBox>().First();
+    /// <summary>The message box, found by its watermark: it fails loudly if the box moves or changes.</summary>
+    private static TextBox InputBox(RetailChatWindow window) =>
+        window.GetVisualDescendants().OfType<TextBox>().Single(box => box.Watermark == "Say something…");
 
     /// <summary>The point of a name's first letter in a log line, where the player presses it.</summary>
     private static Point NameLetter(AvaloniaPanel panel, string lineStart, string name)

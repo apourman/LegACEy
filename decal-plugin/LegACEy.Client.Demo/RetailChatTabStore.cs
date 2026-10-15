@@ -9,47 +9,73 @@ namespace LegACEy.Client.Demo;
 
 /// <summary>
 /// The chat tabs each character has, in a small text file beside the plugin: one row per server and character, holding the tab list. A
-/// character with no row, or a damaged one, has the six default tabs. Text is base64 encoded, so names can hold any punctuation.
+/// character with no row, or a damaged one, has the six default tabs. Text is base64 encoded, so names can hold any punctuation. A save
+/// never writes over rows it could not read, and the file is replaced in one step, so a failed save leaves the old file as it was.
 /// </summary>
 public sealed class FileRetailChatTabStore
 {
     private const string AllChannels = "*";
     private readonly string _path;
+    private readonly Action<string> _log;
     private readonly object _sync = new();
 
-    public FileRetailChatTabStore(string path)
+    public FileRetailChatTabStore(string path, Action<string>? log = null)
     {
         if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("A chat tabs file path is required.", nameof(path));
         _path = path;
+        _log = log ?? (_ => { });
     }
 
-    /// <summary>The character's tabs, or null when none are saved or the saved ones are damaged: the caller then uses the defaults.</summary>
+    /// <summary>The character's tabs, or null when none are saved, the saved ones are damaged, or the file could not be read.</summary>
     public IReadOnlyList<RetailChatTab>? Load(string server, string character)
     {
-        lock (_sync) return Rows().TryGetValue(Key(server, character), out var payload) ? Parse(payload) : null;
+        lock (_sync)
+        {
+            if (!TryRows(out var rows)) return null;
+            return rows.TryGetValue(Key(server, character), out var payload) ? Parse(payload) : null;
+        }
     }
 
+    /// <summary>
+    /// Saves the character's tabs and keeps every other character's row. When the file could not be read, nothing is written, so the rows
+    /// that could not be read are not lost; the tabs stay in memory for this session.
+    /// </summary>
     public void Save(string server, string character, IReadOnlyList<RetailChatTab> tabs)
     {
         lock (_sync)
         {
-            var rows = Rows();
+            if (!TryRows(out var rows))
+            {
+                _log("Chat tabs not saved: the chat tabs file could not be read, so writing it would lose other rows.");
+                return;
+            }
             rows[Key(server, character)] = Base64(string.Join("\n", tabs.Select(FormatTab)));
+            var temp = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try
             {
                 var directory = Path.GetDirectoryName(_path);
                 if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-                File.WriteAllLines(_path, rows.Select(pair => pair.Key + "|" + pair.Value));
+                File.WriteAllLines(temp, rows.Select(pair => pair.Key + "|" + pair.Value));
+                // Replace the old file in one step where it exists; a first save just moves the temporary file into place.
+                if (File.Exists(_path)) File.Replace(temp, _path, null);
+                else File.Move(temp, _path);
             }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                _log($"Chat tabs not saved to {_path}: {exception.Message}");
+            }
+            finally
+            {
+                TryDelete(temp);
+            }
         }
     }
 
-    private Dictionary<string, string> Rows()
+    /// <summary>The rows in the file; false when the file exists but could not be read. A missing file has no rows.</summary>
+    private bool TryRows(out Dictionary<string, string> rows)
     {
-        var rows = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (!File.Exists(_path)) return rows;
+        rows = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!File.Exists(_path)) return true;
         try
         {
             foreach (var line in File.ReadAllLines(_path))
@@ -57,10 +83,25 @@ public sealed class FileRetailChatTabStore
                 var fields = line.Split('|');
                 if (fields.Length == 3) rows[fields[0] + "|" + fields[1]] = fields[2];
             }
+            return true;
         }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
-        return rows;
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _log($"Chat tabs file {_path} could not be read: {exception.Message}");
+            return false;
+        }
+    }
+
+    private void TryDelete(string temp)
+    {
+        try
+        {
+            if (File.Exists(temp)) File.Delete(temp);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _log($"Could not remove the temporary chat tabs file {temp}: {exception.Message}");
+        }
     }
 
     /// <summary>A tab as name, kinds, target and channels: the target is empty for none, the channels are "*" for every channel.</summary>
@@ -68,6 +109,10 @@ public sealed class FileRetailChatTabStore
         Base64(tab.Name) + "|" + ((int)tab.Kinds).ToString(CultureInfo.InvariantCulture) + "|" + Base64(tab.TargetId ?? string.Empty) + "|" +
         (tab.Channels == null ? AllChannels : Base64(string.Join(",", tab.Channels)));
 
+    /// <summary>
+    /// The tab list, or null for the defaults when any part is damaged: a blank name, a target that is neither none nor a talk target, or a
+    /// first tab that is not the All tab. A damaged row never reaches the window.
+    /// </summary>
     private static IReadOnlyList<RetailChatTab>? Parse(string payload)
     {
         try
@@ -79,14 +124,17 @@ public sealed class FileRetailChatTabStore
                 if (fields.Length != 4 || !int.TryParse(fields[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var kinds) || kinds == 0)
                     return null;
                 var name = Decode(fields[0]);
-                if (name.Length == 0) return null;
+                if (name.Trim().Length == 0) return null;
                 var target = Decode(fields[2]);
+                if (target.Length > 0 && target != RetailChatTab.LastTellId && !RetailTalkTargets.All.Any(talk => talk.Id == target)) return null;
                 IReadOnlyList<string>? channels = fields[3] == AllChannels
                     ? null
                     : Decode(fields[3]).Split(',').Where(channel => channel.Length > 0).ToArray();
                 tabs.Add(new RetailChatTab(name, (RetailChatKind)kinds, target.Length == 0 ? null : target, channels));
             }
-            return tabs.Count == 0 ? null : tabs;
+            var all = RetailChatTab.Defaults[0];
+            if (tabs.Count == 0 || tabs[0].Name != all.Name || tabs[0].TargetId != all.TargetId) return null;
+            return tabs;
         }
         catch (FormatException)
         {

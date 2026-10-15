@@ -172,7 +172,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         }
         else if (id != null)
         {
-            SetTarget(RetailTalkTargets.All.First(target => target.Id == id));
+            // An id the window does not know falls back to Local, so a damaged tab can never throw.
+            SetTarget(RetailTalkTargets.All.FirstOrDefault(target => target.Id == id) ?? RetailTalkTargets.Local);
         }
     }
 
@@ -198,7 +199,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         {
             if (i == _tab || !_tabs[i].Shows(line)) continue;
             var (missed, tell) = _unread[i];
-            _unread[i] = (missed + 1, tell || line.Kind == RetailChatKind.TellIn);
+            // Gold is for a new tell on a tab that shows only tells (mockup B); Speech and All count the tell plain.
+            _unread[i] = (missed + 1, tell || (line.Kind == RetailChatKind.TellIn && _tabs[i].TellsOnly));
             counted = true;
         }
         if (counted) RebuildTabs();
