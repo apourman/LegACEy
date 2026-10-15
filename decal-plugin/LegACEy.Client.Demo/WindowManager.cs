@@ -198,7 +198,8 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
 /// <summary>
 /// Pure window behavior used by the plugin adapter and the tests. The first item in ZOrder is
 /// frontmost. Pointer coordinates are screen coordinates and all returned positions are clamped.
-/// A press in a resizable window's edge band, or in its corner square, resizes it; a press in its title bar moves it.
+/// A press in a resizable window's side or bottom band, or in its corner square, resizes it; a press on any window's top edge or in
+/// its title bar moves it.
 /// </summary>
 public sealed class WindowManager
 {
@@ -288,7 +289,20 @@ public sealed class WindowManager
         return window == null ? default : (window.Id, EdgesAt(window, point));
     }
 
-    /// <summary>Press a point. An edge or corner press resizes; a title-bar press moves. Either captures the window.</summary>
+    /// <summary>
+    /// The window whose top edge is under the pointer, where a press moves it; null elsewhere, over a corner or during a drag.
+    /// </summary>
+    public string? MoveEdgeAt(Point point)
+    {
+        if (_dragging != null) return null;
+        var window = HitTest(point);
+        return window != null && OnMoveEdge(window, point) ? window.Id : null;
+    }
+
+    private static bool OnMoveEdge(ManagedWindow window, Point point) =>
+        point.Y - window.Location.Y < ResizeBand && EdgesAt(window, point) == WindowEdges.None;
+
+    /// <summary>Press a point. An edge or corner press resizes; a top-edge or title-bar press moves. Either captures the window.</summary>
     public bool Press(Point point)
     {
         var window = HitTest(point);
@@ -301,7 +315,7 @@ public sealed class WindowManager
             _pressPoint = point;
             _pressBounds = window.Bounds;
         }
-        else if (!window.Definition.DragsFromContent && point.Y - window.Location.Y < window.TitleBarHeight)
+        else if (OnMoveEdge(window, point) || !window.Definition.DragsFromContent && point.Y - window.Location.Y < window.TitleBarHeight)
         {
             _dragging = window;
             _dragOffset = new Point(point.X - window.Location.X, point.Y - window.Location.Y);
@@ -359,7 +373,10 @@ public sealed class WindowManager
         }
     }
 
-    /// <summary>The edges a point is on: within <see cref="ResizeBand"/> of a side, or inside a corner square of <see cref="CornerBand"/>.</summary>
+    /// <summary>
+    /// The edges a point is on: within <see cref="ResizeBand"/> of a side or the bottom, or inside a corner square of
+    /// <see cref="CornerBand"/>. The top edge between the corners moves the window instead.
+    /// </summary>
     private static WindowEdges EdgesAt(ManagedWindow window, Point point)
     {
         if (window.Definition.Resizing == null) return WindowEdges.None;
@@ -373,7 +390,6 @@ public sealed class WindowManager
         var edges = WindowEdges.None;
         if (left < ResizeBand) edges |= WindowEdges.Left;
         if (right < ResizeBand) edges |= WindowEdges.Right;
-        if (top < ResizeBand) edges |= WindowEdges.Top;
         if (bottom < ResizeBand) edges |= WindowEdges.Bottom;
         return edges;
     }

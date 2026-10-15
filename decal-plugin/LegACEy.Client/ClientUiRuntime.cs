@@ -1491,6 +1491,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
     }
 
+    /// <summary>Whether a screen point is on the toolbar's top edge, where a press moves it as a window's top edge does.</summary>
+    private bool OnToolbarMoveEdge(Point point) =>
+        _toolbarSurface is { } surface && _toolbarTakeover?.Holds == true && point.Y - surface.Location.Y < WindowManager.ResizeBand;
+
     /// <summary>The toolbar's frame was pressed: it follows the pointer until the button goes up. Refused while retail's UI is locked.</summary>
     private void BeginToolbarDrag()
     {
@@ -1847,6 +1851,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                         _windows.Press(_pointer);
                         SyncWindowLocations();
                     }
+                    // The toolbar's top edge moves it, and the press goes no further: a button under the edge is not pressed.
+                    if (route.SurfaceId == ToolbarSurfaceId && OnToolbarMoveEdge(_pointer))
+                    {
+                        BeginToolbarDrag();
+                        eat = route.Eat;
+                        break;
+                    }
                     target.Panel.PointerDown(route.X, route.Y, ToKeyModifiers(route.Modifiers));
                     Log("Press: panel took the press.");
                     eat = route.Eat;
@@ -1944,12 +1955,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private IntPtr WindowCursorAt(Point point)
     {
-        if (_windows == null) return IntPtr.Zero;
-        if (_windows.Moving != null) return RetailCursor(DatCursorMove, IdcSizeAll);
-        var hover = _windows.HoverAt(point);
+        if (_toolbarDragOffset != null || _windows?.Moving != null) return RetailCursor(DatCursorMove, IdcSizeAll);
         // The pointer goes to a capture, else to the topmost surface under it, as the router decides. Only the window that owns
-        // it gets the resize cursor, so the retail bar and any other surface keep the game's cursor.
+        // it gets the move or resize cursor, so the retail bar and any other surface keep the game's cursor.
         var owner = _inputRouter.CapturedSurfaceId ?? InputRouterService.SurfaceAt(point.X, point.Y, GetInputSurfaces());
+        if (owner == ToolbarSurfaceId && OnToolbarMoveEdge(point)) return RetailCursor(DatCursorMove, IdcSizeAll);
+        if (_windows == null) return IntPtr.Zero;
+        if (owner != null && _windows.MoveEdgeAt(point) == owner) return RetailCursor(DatCursorMove, IdcSizeAll);
+        var hover = _windows.HoverAt(point);
         if (hover.WindowId == null || owner != hover.WindowId) return IntPtr.Zero;
         var horizontal = hover.Edges & (WindowEdges.Left | WindowEdges.Right);
         var vertical = hover.Edges & (WindowEdges.Top | WindowEdges.Bottom);
