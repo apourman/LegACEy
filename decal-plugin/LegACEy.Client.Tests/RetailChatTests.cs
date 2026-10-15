@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
@@ -262,11 +264,197 @@ public sealed class RetailChatTests
     });
 
     [Fact]
+    public void Other_tabs_count_the_lines_they_take_and_a_visit_clears_the_count() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        using var panel = Open(port, out var window);
+        Click(panel, TabView(window, "Fellowship"));
+        port.Say(Line(RetailChatKind.Local, "Orrin says, \"nice cloak\"", "Orrin"));
+        port.Say(Line(RetailChatKind.Emote, "Orrin bows deeply.", "Orrin"));
+        port.Say(Line(RetailChatKind.Fellowship, "[Fellowship] Big Dog says, \"pull the next room\"", "Big Dog", "Fellowship"));
+        port.Say(Line(RetailChatKind.Allegiance, "[Allegiance] Thorne says, \"monarch is on\"", "Thorne", "Allegiance"));
+        panel.Tick();
+
+        // The tab the player is on counts nothing; each other tab counts the lines it shows.
+        Assert.Equal("All 4", TabText(window, "All"));
+        Assert.Equal("Speech 2", TabText(window, "Speech"));
+        Assert.Equal("Fellowship", TabText(window, "Fellowship"));
+        Assert.Equal("Allegiance 1", TabText(window, "Allegiance"));
+        Assert.Equal("Channels", TabText(window, "Channels"));
+
+        Click(panel, TabView(window, "Speech"));
+        panel.Tick();
+        Assert.Equal("Speech", TabText(window, "Speech"));
+        Assert.Equal("All 4", TabText(window, "All"));
+    });
+
+    [Fact]
+    public void A_new_tell_from_someone_turns_its_tab_badge_gold_and_a_visit_clears_it() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        using var panel = Open(port, out var window);
+        Click(panel, TabView(window, "Fellowship"));
+        port.Say(Line(RetailChatKind.TellOut, "You tell Mirra, \"yes please\"", "Mirra"));
+        panel.Tick();
+        // A tell you sent is counted, but it is not a new tell from someone, so the badge keeps the plain colour.
+        Assert.Equal("Tells 1", TabText(window, "Tells"));
+        Assert.Equal(DerethChatPalette.GoldDark, BadgeFill(window, "Tells"));
+
+        port.Say(Line(RetailChatKind.TellIn, "Mirra tells you, \"still need the Vault key?\"", "Mirra"));
+        panel.Tick();
+        Assert.Equal("Tells 2", TabText(window, "Tells"));
+        Assert.Equal(DerethChatPalette.TellFill, BadgeFill(window, "Tells"));
+        // Speech and All count the tell too, but only the tell-only Tells tab goes gold.
+        Assert.Equal("Speech 2", TabText(window, "Speech"));
+        Assert.Equal(DerethChatPalette.GoldDark, BadgeFill(window, "Speech"));
+        Assert.Equal("All 2", TabText(window, "All"));
+
+        Click(panel, TabView(window, "Tells"));
+        panel.Tick();
+        Assert.Equal("Tells", TabText(window, "Tells"));
+        Assert.Equal("Tell Mirra", ChipText(panel, "Tell Mirra").Text);
+    });
+
+    [Fact]
+    public void The_plus_adds_a_tab_with_its_own_kinds_single_channels_and_default_target() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        using var panel = Open(port, out var window);
+        Click(panel, TabView(window, "+"));
+        panel.Tick();
+        Assert.True(Shows(panel, "New tab"));
+
+        // A tab needs a name and at least one kind: Add does nothing until both are there.
+        Click(panel, DialogButton(panel, "Add"));
+        Assert.True(Shows(panel, "New tab"));
+        Assert.Equal(6, Strip(window).Length);
+
+        Click(panel, DialogName(panel));
+        panel.TextInput("Trade watch");
+        // A new tab starts with Local, Tells, Fellowship, System and Combat on. Switch those off and take only the Trade channel.
+        foreach (var kind in new[] { "Local", "Tells", "Fellowship", "System", "Combat" }) Click(panel, DialogText(panel, kind));
+        Click(panel, DialogText(panel, "Trade"));
+        // Its default target is the Trade channel: eight presses of the target arrow reach it from Local.
+        for (var press = 0; press < 8; press++) Click(panel, DialogButton(panel, "›"));
+        Click(panel, DialogButton(panel, "Add"));
+        panel.Tick();
+        Assert.False(Shows(panel, "New tab"));
+        Assert.Equal("Trade watch", Strip(window)[^1]);
+
+        port.Say(Line(RetailChatKind.Channel, "[General] Kaelith says, \"anyone running tonight?\"", "Kaelith", "General"));
+        port.Say(Line(RetailChatKind.Channel, "[Trade] Orrin says, \"selling a Sword\"", "Orrin", "Trade"));
+        port.Say(Line(RetailChatKind.Local, "Orrin says, \"nice cloak\"", "Orrin"));
+        Click(panel, TabView(window, "Trade watch"));
+        panel.Tick();
+        Assert.True(Shows(panel, "selling a Sword"));
+        Assert.False(Shows(panel, "anyone running tonight"));
+        Assert.False(Shows(panel, "nice cloak"));
+        Assert.Equal("Trade", ChipText(panel, "Trade").Text);
+    });
+
+    [Fact]
+    public void A_tab_is_edited_from_its_right_click_reordered_and_removed_and_All_stays_put() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        using var panel = Open(port, out var window);
+        RightClick(panel, TabView(window, "All"));
+        Assert.False(Shows(panel, "Edit tab"));
+
+        RightClick(panel, TabView(window, "Allegiance"));
+        Assert.True(Shows(panel, "Edit tab"));
+        Click(panel, DialogButton(panel, "Left"));
+        Assert.Equal(new[] { "All", "Speech", "Allegiance", "Fellowship", "Channels", "Tells" }, Strip(window));
+
+        RightClick(panel, TabView(window, "Allegiance"));
+        Click(panel, DialogName(panel));
+        panel.KeyDown(Key.End);
+        panel.TextInput(" chat");
+        Click(panel, DialogButton(panel, "Save"));
+        Assert.Equal(new[] { "All", "Speech", "Allegiance chat", "Fellowship", "Channels", "Tells" }, Strip(window));
+
+        RightClick(panel, TabView(window, "Allegiance chat"));
+        Click(panel, DialogButton(panel, "Remove"));
+        Assert.Equal(new[] { "All", "Speech", "Fellowship", "Channels", "Tells" }, Strip(window));
+    });
+
+    [Fact]
+    public void Escape_closes_the_tab_dialog_and_keeps_the_tabs() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        using var panel = Open(port, out var window);
+        RightClick(panel, TabView(window, "Allegiance"));
+        Click(panel, DialogName(panel));
+        panel.KeyDown(Key.Escape);
+        panel.Tick();
+        Assert.False(Shows(panel, "Edit tab"));
+        Assert.Equal(new[] { "All", "Speech", "Fellowship", "Allegiance", "Channels", "Tells" }, Strip(window));
+    });
+
+    [Fact]
+    public void A_damaged_row_for_one_character_leaves_the_other_characters_tabs_alone() => RenderThread.Run(() =>
+    {
+        var path = Path.Combine(Path.GetTempPath(), "legacey-chat-tabs-" + Guid.NewGuid().ToString("N") + ".txt");
+        try
+        {
+            var port = new FakeChatPort();
+            using (var panel = Open(port, out var window, new FileRetailChatTabStore(path), "Alice"))
+                AddTab(panel, window, "Hunting");
+
+            // Bob's row is damaged: its tab list is not base64, so it cannot be read.
+            File.AppendAllText(path, Convert.ToBase64String(Encoding.UTF8.GetBytes(Server)) + "|" + Convert.ToBase64String(Encoding.UTF8.GetBytes("Bob"))
+                + "|not tabs\n");
+            using (var panel = Open(port, out var window, new FileRetailChatTabStore(path), "Bob"))
+            {
+                Assert.Equal(new[] { "All", "Speech", "Fellowship", "Allegiance", "Channels", "Tells" }, Strip(window));
+                AddTab(panel, window, "Trade watch");
+            }
+
+            // Saving Bob's tabs keeps Alice's row, and Bob's new tabs are there after a restart.
+            using (var panel = Open(port, out var window, new FileRetailChatTabStore(path), "Alice"))
+                Assert.Equal(new[] { "All", "Speech", "Fellowship", "Allegiance", "Channels", "Tells", "Hunting" }, Strip(window));
+            using (var panel = Open(port, out var window, new FileRetailChatTabStore(path), "Bob"))
+                Assert.Equal(new[] { "All", "Speech", "Fellowship", "Allegiance", "Channels", "Tells", "Trade watch" }, Strip(window));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    });
+
+    [Fact]
+    public void Tabs_are_kept_per_character_and_restored_after_a_restart() => RenderThread.Run(() =>
+    {
+        var path = Path.Combine(Path.GetTempPath(), "legacey-chat-tabs-" + Guid.NewGuid().ToString("N") + ".txt");
+        try
+        {
+            var port = new FakeChatPort();
+            using (var panel = Open(port, out var window, new FileRetailChatTabStore(path), "Alice"))
+            {
+                AddTab(panel, window, "Hunting");
+                RightClick(panel, TabView(window, "Channels"));
+                Click(panel, DialogButton(panel, "Remove"));
+            }
+
+            // A restart: a new store and window on the same file restore Alice's tabs.
+            using (var panel = Open(port, out var window, new FileRetailChatTabStore(path), "Alice"))
+                Assert.Equal(new[] { "All", "Speech", "Fellowship", "Allegiance", "Tells", "Hunting" }, Strip(window));
+
+            // Bob has no saved tabs, so he has the six defaults.
+            using (var panel = Open(port, out var window, new FileRetailChatTabStore(path), "Bob"))
+                Assert.Equal(new[] { "All", "Speech", "Fellowship", "Allegiance", "Channels", "Tells" }, Strip(window));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    });
+
+    [Fact]
     public void An_idle_window_fades_its_frame_tabs_input_and_scrollbar_in_a_quarter_second_and_keeps_its_new_lines() => RenderThread.Run(() =>
     {
         var clock = new TestClock();
         var port = new FakeChatPort();
-        using var panel = Open(port, out var window, () => clock.Now);
+        using var panel = Open(port, out var window, clock: () => clock.Now);
         for (var n = 1; n <= 30; n++) port.Say(Line(RetailChatKind.System, $"line {n:D2} of the log", at: clock.Now));
         panel.Tick();
         window.Refresh();
@@ -293,7 +481,7 @@ public sealed class RetailChatTests
     {
         var clock = new TestClock();
         var port = new FakeChatPort();
-        using var panel = Open(port, out var window, () => clock.Now);
+        using var panel = Open(port, out var window, clock: () => clock.Now);
         panel.Tick();
         window.Refresh();
         clock.Advance(RetailChatFade.ChromeFadeSeconds);
@@ -332,7 +520,7 @@ public sealed class RetailChatTests
     {
         var clock = new TestClock();
         var port = new FakeChatPort();
-        using var panel = Open(port, out var window, () => clock.Now);
+        using var panel = Open(port, out var window, clock: () => clock.Now);
         panel.Tick();
         window.Refresh();
         port.Say(Line(RetailChatKind.System, "first line of the log", at: clock.Now));
@@ -353,7 +541,7 @@ public sealed class RetailChatTests
     {
         var clock = new TestClock();
         var unlocked = true;
-        using var panel = Open(new FakeChatPort(), out var window, () => clock.Now, () => unlocked);
+        using var panel = Open(new FakeChatPort(), out var window, clock: () => clock.Now, uiUnlocked: () => unlocked);
         panel.Tick();
         clock.Advance(5);
         window.Refresh();
@@ -367,6 +555,8 @@ public sealed class RetailChatTests
     });
 
     // ---- helpers ----
+
+    private const string Server = "server";
 
     /// <summary>The window's clock: the test moves it, so the fade runs without sleeping.</summary>
     private sealed class TestClock
@@ -407,10 +597,13 @@ public sealed class RetailChatTests
     private static RetailChatLine Line(RetailChatKind kind, string text, string? sender = null, string? channel = null, DateTime? at = null) =>
         new(kind, text, at ?? Stamp, sender, channel);
 
-    private static AvaloniaPanel Open(FakeChatPort port, out RetailChatWindow window, Func<DateTime>? clock = null, Func<bool>? uiUnlocked = null)
+    private static AvaloniaPanel Open(FakeChatPort port, out RetailChatWindow window, FileRetailChatTabStore? store = null, string character = "Alice",
+        Func<DateTime>? clock = null, Func<bool>? uiUnlocked = null)
     {
         RetailChatWindow? created = null;
-        var panel = AvaloniaPanel.Create(() => created = new RetailChatWindow(port, clock: clock ?? (() => Stamp), uiUnlocked: uiUnlocked), Width, Height);
+        var tabs = store?.Load(Server, character);
+        var panel = AvaloniaPanel.Create(() => created = new RetailChatWindow(port, null, tabs, saved => store?.Save(Server, character, saved),
+            clock: clock ?? (() => Stamp), uiUnlocked: uiUnlocked), Width, Height);
         window = created!;
         return panel;
     }
@@ -418,6 +611,47 @@ public sealed class RetailChatTests
     /// <summary>The tab's label on the tab strip: the first label with that text, the strip being first in the window.</summary>
     private static TextBlock TabView(RetailChatWindow window, string name) =>
         window.GetVisualDescendants().OfType<TextBlock>().First(text => text.Text == name);
+
+    /// <summary>The tab as the player reads it: its name, then its unread count when it has one.</summary>
+    private static string TabText(RetailChatWindow window, string name) => TabText(TabBorder(window, name));
+
+    private static string TabText(Border tab) => string.Join(" ", tab.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text));
+
+    private static Border TabBorder(RetailChatWindow window, string name) => TabView(window, name).GetVisualAncestors().OfType<Border>().First();
+
+    /// <summary>The tab names left to right, as the strip shows them: the plus is not a tab.</summary>
+    private static string[] Strip(RetailChatWindow window) =>
+        ((StackPanel)TabBorder(window, "All").GetVisualParent()!).Children.OfType<Border>().Select(TabText).Where(text => text != "+").ToArray();
+
+    /// <summary>The fill of a tab's unread badge: the badge is the only border in a tab with a text child.</summary>
+    private static Color BadgeFill(RetailChatWindow window, string name) =>
+        ((SolidColorBrush)TabBorder(window, name).GetVisualDescendants().OfType<Border>().Single().Background!).Color;
+
+    /// <summary>The dialog for a new or an edited tab, found from its title: the first border above the title holds the dialog's controls.</summary>
+    private static Border Dialog(AvaloniaPanel panel) =>
+        panel.Content.GetVisualDescendants().OfType<TextBlock>().First(text => text.Text is "New tab" or "Edit tab").GetVisualAncestors().OfType<Border>().First();
+
+    private static TextBlock DialogText(AvaloniaPanel panel, string text) => Dialog(panel).GetVisualDescendants().OfType<TextBlock>().First(view => view.Text == text);
+
+    private static Button DialogButton(AvaloniaPanel panel, string content) => Dialog(panel).GetVisualDescendants().OfType<Button>().First(button => button.Content as string == content);
+
+    private static TextBox DialogName(AvaloniaPanel panel) => Dialog(panel).GetVisualDescendants().OfType<TextBox>().Single();
+
+    private static void AddTab(AvaloniaPanel panel, RetailChatWindow window, string name)
+    {
+        Click(panel, TabView(window, "+"));
+        Click(panel, DialogName(panel));
+        panel.TextInput(name);
+        Click(panel, DialogButton(panel, "Add"));
+    }
+
+    private static void RightClick(AvaloniaPanel panel, Control control)
+    {
+        panel.Tick();
+        var centre = control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), panel.Content)!.Value;
+        panel.RightClick(centre.X, centre.Y);
+        panel.PointerLeave();
+    }
 
     private static TextBlock ChipText(AvaloniaPanel panel, string label) =>
         panel.Content.GetVisualDescendants().OfType<TextBlock>().First(text => text.Text == label);
@@ -450,7 +684,9 @@ public sealed class RetailChatTests
         return true;
     }
 
-    private static TextBox InputBox(RetailChatWindow window) => window.GetVisualDescendants().OfType<TextBox>().Single();
+    /// <summary>The message box, found by its watermark: it fails loudly if the box moves or changes.</summary>
+    private static TextBox InputBox(RetailChatWindow window) =>
+        window.GetVisualDescendants().OfType<TextBox>().Single(box => box.Watermark == "Say something…");
 
     /// <summary>The point of a name's first letter in a log line, where the player presses it.</summary>
     private static Point NameLetter(AvaloniaPanel panel, string lineStart, string name)

@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using LegACEy.Client.Demo;
@@ -49,6 +51,8 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private readonly Action<string> _log;
     private readonly RetailChatNatives _natives;
     private readonly ConcurrentQueue<RetailChatLine> _pending = new();
+    // The channel names already logged as matching no tab channel, so each is logged once.
+    private readonly HashSet<string> _unmatchedChannels = new(StringComparer.OrdinalIgnoreCase);
     private readonly NoticeCallback _callback;
     private IntPtr _handler;
     private IntPtr _vtable;
@@ -124,9 +128,22 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     /// Raises the lines the callback queued, and the timestamp option's change, on the game thread. Called once a frame; the option is read
     /// once a second.
     /// </summary>
+    /// <summary>Logs a channel name that no tab can pick, once, so the real names show in a play-test.</summary>
+    private void NoteChannel(RetailChatLine line)
+    {
+        if (line.Kind != RetailChatKind.Channel || line.Channel == null) return;
+        if (RetailChatTab.ChannelNames.Any(name => string.Equals(name, line.Channel, StringComparison.OrdinalIgnoreCase))) return;
+        if (_unmatchedChannels.Add(line.Channel))
+            _log($"Chat channel \"{line.Channel}\" matches none of the tab channel names; its lines show in All and Channels only.");
+    }
+
     public void Poll()
     {
-        while (_pending.TryDequeue(out var line)) LineReceived?.Invoke(line);
+        while (_pending.TryDequeue(out var line))
+        {
+            NoteChannel(line);
+            LineReceived?.Invoke(line);
+        }
         var now = DateTime.UtcNow;
         if (now - _lastTimestampCheck >= TimestampCheckInterval)
         {

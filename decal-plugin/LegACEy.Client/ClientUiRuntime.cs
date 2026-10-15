@@ -121,6 +121,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private IWindowPositionStore? _positionStore;
     // Each plugin's one settings value, per character, in its own file: a row keyed by the plugin's name whose X is the value.
     private readonly FileWindowPositionStore _settingsStore = new(IOPath.Combine(PluginDirectory, "plugin-settings.txt"));
+    // The chat tabs each character has: a row per server and character, missing means the six defaults.
+    private readonly FileRetailChatTabStore _chatTabs = new(IOPath.Combine(PluginDirectory, "chat-tabs.txt"), Log);
     private readonly ShortcutRowChoice _row2Choice;
     // The window whose frame shows a hovered corner, and the corner it shows.
     private string? _cornerWindowId;
@@ -1823,8 +1825,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var roots = new List<IRetailTakeoverPort>();
         foreach (var id in new[] { RetailChatCatalogue.MainChatWindow }.Concat(RetailChatCatalogue.FloatingChats))
             roots.Add(new RetailChatTakeover.RootPort(id));
+        var server = SessionServer();
+        var character = SessionCharacter();
         // Retail's UI is unlocked when a window may be moved; the chat then stays whole, so its frame can be found.
-        var window = new RetailChatWindow(port, () => _windows?.BeginMove(ChatWindowId, _pointer), uiUnlocked: () => !NativeUi.IsUiLocked);
+        var window = new RetailChatWindow(port, () => _windows?.BeginMove(ChatWindowId, _pointer), _chatTabs.Load(server, character),
+            tabs => _chatTabs.Save(server, character, tabs), uiUnlocked: () => !NativeUi.IsUiLocked);
         // The window starts at the bottom left, above the toolbar, until the player moves it; its place is then kept per character.
         var screen = _windows!.Screen;
         var definition = new WindowDefinition(ChatWindowId, "Chat", ChatDesignWidth, ChatDesignHeight, titleBarHeight: 19, theme: new DerethClientTheme(),
