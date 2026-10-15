@@ -1022,7 +1022,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (_retailPanels.Count == 0 && _examination == null) return;
         // Logging in, the windows can't open yet; they will if the post-UI hook is in.
-        var enabled = (loggingIn ? _postUiDrawHook?.IsInstalled == true : CanOpenWindows) && RetailPanelSwitchOn();
+        var enabled = (loggingIn ? _postUiDrawHook?.IsInstalled == true : CanOpenWindows) && SwitchOn(RetailPanelSwitchFile, ref _lastRetailPanelSwitchCheck, ref _retailPanelSwitch);
         foreach (var takeover in _retailPanels.ToArray())
             takeover.Tick(enabled, canShow: !loggingIn);
         _examination?.Tick(enabled, canShow: !loggingIn);
@@ -1037,17 +1037,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         foreach (var takeover in _retailPanels.ToArray())
             takeover.EndSession();
         _examination?.EndSession();
-    }
-
-    private bool RetailPanelSwitchOn()
-    {
-        var now = DateTime.UtcNow;
-        if (now - _lastRetailPanelSwitchCheck >= TimeSpan.FromSeconds(1))
-        {
-            _lastRetailPanelSwitchCheck = now;
-            _retailPanelSwitch = !File.Exists(IOPath.Combine(PluginDirectory, RetailPanelSwitchFile));
-        }
-        return _retailPanelSwitch;
     }
 
     /// <summary>A LegACEy window's content by its id, for the drop routing that the window manager's hit test drives.</summary>
@@ -1558,7 +1547,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         try
         {
-            var switchOn = RetailToolbarSwitchOn();
+            var switchOn = SwitchOn(RetailToolbarSwitchFile, ref _lastToolbarSwitchCheck, ref _toolbarSwitch);
             // A give-back that failed is retried every frame until it lands, whatever state the toolbar is in: retail's toolbar is never left hidden.
             // The toolbar needs only the post-UI draw, not the windows LoginComplete makes, so it takes over from portal space at login on.
             var canDraw = _postUiDrawHook?.IsInstalled == true;
@@ -1890,7 +1879,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         try
         {
-            var switchOn = RetailChatSwitchOn();
+            var switchOn = SwitchOn(RetailChatSwitchFile, ref _lastChatSwitchCheck, ref _chatSwitch);
             // Turning the switch off and on again retries a chat window that failed.
             if (!switchOn) _chatFailed = false;
             // Retail's chat windows are given back if the switch goes off, the post-UI draw is gone, the LegACEy windows failed or it failed.
@@ -2055,26 +2044,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         catch (Exception releaseError) { Log($"Could not give the retail chat back: {releaseError}"); }
     }
 
-    private bool RetailChatSwitchOn()
+    /// <summary>Whether a feature's switch is on: on while its file is missing beside the DLL. The file is looked for once a second.</summary>
+    private static bool SwitchOn(string file, ref DateTime lastCheck, ref bool on)
     {
         var now = DateTime.UtcNow;
-        if (now - _lastChatSwitchCheck >= TimeSpan.FromSeconds(1))
+        if (now - lastCheck >= TimeSpan.FromSeconds(1))
         {
-            _lastChatSwitchCheck = now;
-            _chatSwitch = !File.Exists(IOPath.Combine(PluginDirectory, RetailChatSwitchFile));
+            lastCheck = now;
+            on = !File.Exists(IOPath.Combine(PluginDirectory, file));
         }
-        return _chatSwitch;
-    }
-
-    private bool RetailToolbarSwitchOn()
-    {
-        var now = DateTime.UtcNow;
-        if (now - _lastToolbarSwitchCheck >= TimeSpan.FromSeconds(1))
-        {
-            _lastToolbarSwitchCheck = now;
-            _toolbarSwitch = !File.Exists(IOPath.Combine(PluginDirectory, RetailToolbarSwitchFile));
-        }
-        return _toolbarSwitch;
+        return on;
     }
 
     /// <summary>Translate Decal's raw messages into router decisions and Avalonia.Headless input. True eats the message.</summary>

@@ -55,8 +55,12 @@ public sealed class RetailChatNativeTests
     }
 
     [Fact]
-    public void A_direct_tell_is_the_text_as_the_server_reads_it_padded_to_four_bytes_then_the_object_id() =>
+    public void A_direct_tell_is_the_text_as_the_server_reads_it_padded_to_four_bytes_then_the_object_id()
+    {
         Assert.Equal(new byte[] { 1, 0, (byte)'5', 0, 0x12, 0x40, 0x9B, 0x7A }, TalkDirectAction.Payload(0x7A9B4012, "5"));
+        // The server pads by characters: "é" is one character in two bytes, so one byte of padding, not none.
+        Assert.Equal(new byte[] { 1, 0, 0xC3, 0xA9, 0, 0x12, 0x40, 0x9B, 0x7A }, TalkDirectAction.Payload(0x7A9B4012, "é"));
+    }
 
     [Fact]
     public void A_channel_prefix_names_the_room_and_an_Olthoi_room_is_a_channel_even_when_typed_as_allegiance()

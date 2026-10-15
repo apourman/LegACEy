@@ -96,7 +96,15 @@ public sealed class RetailChatHistory : IDisposable
     public event Action<RetailChatLine, RetailChatLine?>? LineAdded;
 
     /// <summary>A tell to the partner of the last tell in the history, either way, or null when there is none.</summary>
-    public RetailTalkTarget? LastTell() => _lines.LastOrDefault(line => line.Sender != null && (line.Kind == RetailChatKind.TellIn || line.Kind == RetailChatKind.TellOut))?.TellBack;
+    public RetailTalkTarget? LastTell() => RecentTells(1).FirstOrDefault();
+
+    /// <summary>Tells to the partners of the last <paramref name="count"/> tells in the history, either way, newest first, one per name.</summary>
+    public IEnumerable<RetailTalkTarget> RecentTells(int count) => _lines
+        .Where(line => line.Sender != null && (line.Kind == RetailChatKind.TellIn || line.Kind == RetailChatKind.TellOut))
+        .Reverse()
+        .GroupBy(line => line.Sender)
+        .Select(group => group.First().TellBack!)
+        .Take(count);
 
     public void Dispose() => _port.LineReceived -= Add;
 
@@ -240,11 +248,14 @@ public static class TalkDirectAction
 {
     public const uint Opcode = 0x0032;
 
-    /// <summary>The payload: the text as the server reads it (length in characters, UTF-8, padded to four bytes with the length), then the id.</summary>
+    /// <summary>
+    /// The payload: the text as the server reads it (length in characters, UTF-8), then the id. The server pads by the length in characters,
+    /// not bytes, so the id lands where it looks for it whatever the text holds.
+    /// </summary>
     public static byte[] Payload(uint objectId, string text)
     {
         var bytes = System.Text.Encoding.UTF8.GetBytes(text);
-        var padding = (4 - (2 + bytes.Length) % 4) % 4;
+        var padding = (4 - (2 + text.Length) % 4) % 4;
         var payload = new byte[2 + bytes.Length + padding + 4];
         payload[0] = (byte)text.Length;
         payload[1] = (byte)(text.Length >> 8);

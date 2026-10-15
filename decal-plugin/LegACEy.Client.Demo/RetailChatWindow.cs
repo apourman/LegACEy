@@ -58,7 +58,6 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private readonly Border _groove;
     private readonly List<Control> _chrome = new();
     private readonly RetailChatFade _fade;
-    private readonly Func<bool> _uiUnlocked;
     private readonly Func<DateTime> _clock;
     private readonly Action<string> _copy;
     private ScrollBar? _scrollBar;
@@ -82,11 +81,10 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     /// <param name="host">The windows' host: it keeps the tab lists, opens tabs dragged out, closes torn-off windows and moves windows.</param>
     /// <param name="tabs">The window's tabs; null for the six defaults.</param>
     /// <param name="tornOff">Whether the window is torn off the main window: it has no All tab and no add button, and a close medallion merges it back.</param>
-    /// <param name="uiUnlocked">Whether retail's UI is unlocked for moving windows; the window does not fade while it is. Null for never.</param>
     /// <param name="clock">The time, for the idle fade; null for the system's.</param>
     /// <param name="copy">Puts text on the clipboard: a right click over text selected in the log copies it. Null copies nothing.</param>
     public RetailChatWindow(IRetailChatPort port, RetailChatHistory history, IRetailChatWindowHost host, IReadOnlyList<RetailChatTab>? tabs = null,
-        bool tornOff = false, Func<bool>? uiUnlocked = null, Func<DateTime>? clock = null, Action<string>? copy = null)
+        bool tornOff = false, Func<DateTime>? clock = null, Action<string>? copy = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _history = history ?? throw new ArgumentNullException(nameof(history));
@@ -97,7 +95,6 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _timestamps = _port.TimestampsOn;
         _fade = new RetailChatFade();
         _clock = clock ?? (() => DateTime.Now);
-        _uiUnlocked = uiUnlocked ?? (() => false);
         _copy = copy ?? (_ => { });
 
         // The tab strip: the tabs, which scroll sideways (by the wheel) when they do not fit, and its fixed end. The strip's empty part
@@ -369,8 +366,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     internal void Refresh(bool keepAwake = false)
     {
         if (_disposed) return;
-        // The unlock check is read only when nothing else keeps the window awake. An open tab editor counts like an open menu.
-        var awake = keepAwake || IsPointerOver || _input.IsFocused || _menu.IsVisible || _editor.IsVisible || _uiUnlocked();
+        // An open tab editor counts like an open menu.
+        var awake = keepAwake || IsPointerOver || _input.IsFocused || _menu.IsVisible || _editor.IsVisible;
         var now = _clock();
         _fade.Update(awake, now);
         if (awake != _awake)
@@ -737,13 +734,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     {
         var panel = new StackPanel { Spacing = 0 };
         panel.Children.Add(Heading("Recent tells"));
-        var tells = _history.Lines
-            .Where(line => line.Sender != null && (line.Kind == RetailChatKind.TellIn || line.Kind == RetailChatKind.TellOut))
-            .Reverse()
-            .GroupBy(line => line.Sender)
-            .Select(group => group.First().TellBack!)
-            .Take(3);
-        foreach (var tell in tells) panel.Children.Add(MenuItem(tell, membership, selected));
+        foreach (var tell in _history.RecentTells(3)) panel.Children.Add(MenuItem(tell, membership, selected));
         return panel;
     }
 

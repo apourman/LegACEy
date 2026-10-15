@@ -65,6 +65,8 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     // The channel names already logged as matching no tab channel, so each is logged once.
     private readonly HashSet<string> _unmatchedChannels = new(StringComparer.OrdinalIgnoreCase);
     private readonly NoticeCallback _callback;
+    private readonly Func<uint, byte[], bool> _sendAction;
+    private bool _membershipFailLogged;
     private IntPtr _handler;
     private IntPtr _vtable;
     private bool _attached;
@@ -105,10 +107,6 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         _natives = natives;
         _callback = OnNotice;
     }
-
-    private bool _membershipFailLogged;
-
-    private readonly Func<uint, byte[], bool> _sendAction;
 
     public event Action<RetailChatLine>? LineReceived;
     public event Action? TimestampsChanged;
@@ -237,14 +235,15 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         }
     }
 
-    /// <summary>
-    /// Sends the text through retail's chat box call: its receiver is the live communication system, and the call is the one at the box's
-    /// own send site, read as it is now. Returns false, sending nothing, when there is no receiver, as the box skips the send then.
-    /// </summary>
+    /// <summary>Tells an object by its id with retail's TalkDirect action, sent through the client's own send.</summary>
     public bool TellDirect(uint objectId, string text) => _sendAction(TalkDirectAction.Opcode, TalkDirectAction.Payload(objectId, text));
 
     public uint SelectedId => (uint)Bridge.Fact(BridgeFact.CurrentSelection);
 
+    /// <summary>
+    /// Sends the text through retail's chat box call: its receiver is the live communication system, and the call is the one at the box's
+    /// own send site, read as it is now. Returns false, sending nothing, when there is no receiver, as the box skips the send then.
+    /// </summary>
     public bool Send(string text)
     {
         var receiver = Marshal.ReadIntPtr(At(CommunicationSystem));
@@ -321,10 +320,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private ChatChannels OpenChannels()
     {
         if (!_natives.Channels || !TurbineChatUp()) return ChatChannels.None;
-        var system = Marshal.ReadIntPtr(At(PlayerSystem));
-        if (system == IntPtr.Zero) return ChatChannels.None;
-        var options1 = unchecked((uint)Marshal.ReadInt32(system, PlayerModule + 0x8C));
-        var options2 = unchecked((uint)Marshal.ReadInt32(system, PlayerModule + 0x90));
+        if (PlayerOptions(0x8C) is not { } options1 || PlayerOptions(0x90) is not { } options2) return ChatChannels.None;
         var open = ChatChannels.Olthoi;
         if (Bit(options2, 8)) open |= ChatChannels.General;
         if (Bit(options2, 9)) open |= ChatChannels.Trade;
@@ -344,16 +340,19 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private bool ReadTimestamps()
     {
         if (!_natives.Timestamp) return true;
-        var options = PlayerOptions2();
+        var options = PlayerOptions(0x90);
         return options == null || Bit(options.Value, 6);
     }
 
-    /// <summary>CharacterOptions2 of the player, read from the PlayerModule at its options offset; null when the player is not in the world.</summary>
-    private static uint? PlayerOptions2()
+    /// <summary>
+    /// A character options word of the player, read from the PlayerModule at its offset (0x8C CharacterOptions1, 0x90 CharacterOptions2); null
+    /// when the player is not in the world.
+    /// </summary>
+    private static uint? PlayerOptions(int offset)
     {
         var system = Marshal.ReadIntPtr(At(PlayerSystem));
         if (system == IntPtr.Zero) return null;
-        return unchecked((uint)Marshal.ReadInt32(system, PlayerModule + 0x90));
+        return unchecked((uint)Marshal.ReadInt32(system, PlayerModule + offset));
     }
 
     private static bool Bit(uint value, int bit) => ((value >> bit) & 1) != 0;

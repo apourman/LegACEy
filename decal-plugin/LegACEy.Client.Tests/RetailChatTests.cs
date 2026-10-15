@@ -687,17 +687,15 @@ public sealed class RetailChatTests
     });
 
     [Fact]
-    public void Fading_is_off_while_the_UI_is_unlocked_for_moving_windows() => RenderThread.Run(() =>
+    public void Fading_is_off_while_the_host_keeps_the_window_awake() => RenderThread.Run(() =>
     {
         var clock = new TestClock();
-        var unlocked = true;
-        using var panel = Open(new FakeChatPort(), out var window, clock: () => clock.Now, uiUnlocked: () => unlocked);
+        using var panel = Open(new FakeChatPort(), out var window, clock: () => clock.Now);
         panel.Tick();
         clock.Advance(5);
-        window.Refresh();
+        window.Refresh(keepAwake: true);
         Assert.Equal(1.0, Seen(TabView(window, "All")));
 
-        unlocked = false;
         window.Refresh();
         clock.Advance(RetailChatFade.ChromeFadeSeconds);
         window.Refresh();
@@ -748,13 +746,13 @@ public sealed class RetailChatTests
         new(kind, text, at ?? Stamp, sender, channel);
 
     private static AvaloniaPanel Open(FakeChatPort port, out RetailChatWindow window, FileRetailChatTabStore? store = null, string character = "Alice",
-        Func<DateTime>? clock = null, Func<bool>? uiUnlocked = null, Action<string>? copy = null)
+        Func<DateTime>? clock = null, Action<string>? copy = null)
     {
         RetailChatWindow? created = null;
         var tabs = store?.Load(Server, character, RetailChatWindows.MainId);
         var history = new RetailChatHistory(port);
         var panel = AvaloniaPanel.Create(() => created = new RetailChatWindow(port, history, new SingleWindowHost(store, character), tabs,
-            uiUnlocked: uiUnlocked, clock: clock ?? (() => Stamp), copy: copy), Width, Height);
+            clock: clock ?? (() => Stamp), copy: copy), Width, Height);
         window = created!;
         return panel;
     }

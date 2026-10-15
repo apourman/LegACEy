@@ -87,7 +87,8 @@ the main DLL gives retail's chat back within a second; deleting it takes the cha
 button (click larger, right-click smaller) or Ctrl and the wheel, per character.
 
 The LegACEy menu's UI size row scales every LegACEy window, the toolbar and the shortcut bars, from 60 to 150 percent (85 to start),
-for every character. A change rebuilds the LegACEy UI at once, as a relog does: plugin windows that were open close.
+for every character. A change rebuilds the LegACEy UI at once, as a relog does: plugin windows that were open close and the chat history
+clears.
 
 ## Tests
 
