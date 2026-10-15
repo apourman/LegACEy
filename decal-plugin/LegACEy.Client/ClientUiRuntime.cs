@@ -1548,11 +1548,27 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _toolbarSurface = new ScreenSurface(_device, panel);
         _toolbarRenderer = new RetailSurfaceRenderer(_toolbarSurface.Prepare, _toolbarSurface.DrawNow);
         _toolbarTakeover = new RetailTakeoverLifecycle(new NativeBarPort(NativeUi.ToolbarWindow), new SurfaceTakeoverPort(_toolbarSurface));
-        LegACEy.Client.Themes.UiTrace.Log = Log;
+        LegACEy.Client.Themes.UiTrace.Log = message => Log($"{message} [{StackLeft()}]");
+        // ponytail: diagnostic for the toolbar click crash: compile the port's methods now, not deep in a click.
+        foreach (var method in typeof(NativeRetailToolbarPort).GetMethods(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static
+                     | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly))
+            if (!method.IsAbstract && !method.ContainsGenericParameters) System.Runtime.CompilerServices.RuntimeHelpers.PrepareMethod(method.MethodHandle);
+        Log("Toolbar port methods compiled ahead.");
         var window = NativeUi.GetElement(NativeUi.ToolbarWindow);
         var inner = NativeUi.GetElement(NativeUi.Toolbar);
         Log($"Dereth toolbar replacement ready; retail's toolbar window {Describe(window)}, its toolbar {Describe(inner)}.");
         return true;
+    }
+
+    [DllImport("kernel32.dll")]
+    private static extern void GetCurrentThreadStackLimits(out IntPtr low, out IntPtr high);
+
+    // ponytail: diagnostic for the toolbar click crash; remove once the cause is known.
+    private static unsafe string StackLeft()
+    {
+        int here;
+        GetCurrentThreadStackLimits(out var low, out var high);
+        return $"stack {((long)&here - low.ToInt64()) / 1024} KB left of {(high.ToInt64() - low.ToInt64()) / 1024} KB";
     }
 
     // ponytail: diagnostic for the toolbar crash; remove once the cause is known.
@@ -1762,7 +1778,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _gameWindow = new IntPtr(hwnd);
         // ponytail: diagnostic for the stance-click crash; remove once the cause is known.
         var button = message == InputRouterService.WmLButtonUp || message == 0x0201;
-        if (button) Log($"Button message 0x{message:X4} at {(short)(lParam & 0xffff)},{(short)((lParam >> 16) & 0xffff)}; hand-off {_handOff != null}.");
+        if (button) Log($"Button message 0x{message:X4} at {(short)(lParam & 0xffff)},{(short)((lParam >> 16) & 0xffff)}; hand-off {_handOff != null}; {StackLeft()}.");
         if (_handOff != null)
             Guard(() => ContinueHandOff(message));
         if (message == InputRouterService.WmMouseMove)
