@@ -3,10 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
+using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Shapes;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Avalonia.Controls.Shapes;
 using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.Demo;
@@ -18,8 +21,10 @@ namespace LegACEy.Client.Demo;
 /// </summary>
 public sealed class RetailChatWindow : Decorator, IDisposable
 {
-    // The talk-target menu's height limit inside the window: the log's height, so a long list scrolls.
-    private const double MenuMaxHeight = 150;
+    // The talk-target menu's height limit inside the window: it scrolls only in a window smaller than the default size.
+    private const double MenuMaxHeight = 158;
+    // How far a press may move before it is a drag (which selects text) rather than a click on a name.
+    private const double ClickSlop = 4;
     private readonly IRetailChatPort _port;
     private readonly Action? _startMove;
     private readonly IReadOnlyList<RetailChatTab> _tabs;
@@ -64,7 +69,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         var tabBar = new Border { BorderBrush = DerethChatPalette.GoldDarkBrush, BorderThickness = new Thickness(0, 0, 0, 1), Margin = new Thickness(0, 0, 0, 5), Child = tabRow };
 
         // The log: a dark groove with a scroll bar, and the jump pill over its bottom edge while the player is scrolled up.
-        _scroll = new ScrollViewer { Content = _lines, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
+        _scroll = new ScrollViewer { Content = _lines, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         _scroll.ScrollChanged += (_, _) => { if (AtEnd()) HidePill(); };
         var logBox = new Border
         {
@@ -75,12 +80,11 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             Padding = new Thickness(6, 3),
             Child = _scroll
         };
-        _pill = DerethChatParts.JumpPill(string.Empty);
+        _pill = DerethChatParts.JumpPill(_pillText);
         _pill.IsVisible = false;
         _pill.Margin = new Thickness(0, 0, 0, 6);
         _pill.PointerPressed += (_, e) => { JumpToEnd(); e.Handled = true; };
-        var logArea = new Grid { Children = { logBox, _pill } };
-        logArea.Margin = new Thickness(0, 0, 0, 5);
+        var logArea = new Grid { Children = { logBox, _pill }, Margin = new Thickness(0, 0, 0, 5) };
 
         // The input row: the chip opens the talk-target menu; the box takes text; Send sends it.
         _chipHost.PointerPressed += (_, e) => { if (e.GetCurrentPoint(_chipHost).Properties.IsLeftButtonPressed) ToggleMenu(); };
@@ -89,7 +93,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             Watermark = "Say something…",
             Height = 19,
             MinHeight = 0,
-            Padding = new Thickness(6, 0),
+            Padding = new Thickness(4, 0),
             FontFamily = DerethPalette.Body,
             FontSize = 11,
             Foreground = DerethPalette.TextBrush,
@@ -116,8 +120,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         content.Children.Add(logArea);
         Grid.SetRow(inputRow, 2);
         content.Children.Add(inputRow);
-        // The menu lies over the log, above the input row.
-        Grid.SetRow(_menu, 1);
+        // The menu lies over the tabs and the log, above the input row.
+        Grid.SetRow(_menu, 0);
         Grid.SetRowSpan(_menu, 2);
         _menu.VerticalAlignment = VerticalAlignment.Bottom;
         _menu.HorizontalAlignment = HorizontalAlignment.Left;
@@ -126,22 +130,16 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         Child = new DerethFrame(DerethFrameArt.Window) { Child = content };
 
         RebuildTabs();
+        // The chip shows Local until a tab picks its own target; All has none.
         SetTarget(_target);
-        // Start on the first tab, which sets its target; the log is filled from the port's history, which starts empty.
         PickTab(0);
 
         _port.LineReceived += Receive;
         _port.TimestampsChanged += OnTimestampsChanged;
     }
 
-    /// <summary>The input box, for the runtime's focus and for tests.</summary>
-    public TextBox Input => _input;
-
-    /// <summary>The talk target now in force.</summary>
-    public RetailTalkTarget Target => _target;
-
-    /// <summary>How many lines arrived since the log was last at its end; the jump pill shows it.</summary>
-    public int MissedLines => _missed;
+    /// <summary>The input box. Only the window and its tests reach it; the runtime gives it the keyboard with <see cref="FocusInput"/>.</summary>
+    internal TextBox Input => _input;
 
     /// <summary>Gives the box the keyboard: Enter in the game does this.</summary>
     public void FocusInput() => _input.Focus();
@@ -187,7 +185,6 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         {
             _missed++;
             _pillText.Text = $"{_missed} new ↓";
-            _pill.Child = _pillText;
             _pill.IsVisible = true;
         }
     }
@@ -228,7 +225,6 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _lines.Children.Clear();
         foreach (var line in _history.Lines)
             if (_tabs[_tab].Shows(line)) _lines.Children.Add(LineView(line));
-        _missed = 0;
         HidePill();
         JumpToEnd();
     }
@@ -238,7 +234,6 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private void JumpToEnd()
     {
         _scroll.ScrollToEnd();
-        _missed = 0;
         HidePill();
     }
 
@@ -248,49 +243,55 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _pill.IsVisible = false;
     }
 
-    /// <summary>One line: the time, the text before the sender's name, the name (a click answers with a tell) and the rest, wrapped.</summary>
+    /// <summary>
+    /// One line as one selectable block: the time, the text before the sender's name, the name in its colour and the rest. A click on the
+    /// name, without a drag, answers with a tell to that name; a drag selects text as usual.
+    /// </summary>
     private Control LineView(RetailChatLine line)
     {
-        var colour = ColourOf(line.Kind);
+        var brush = DerethPalette.Brush(ColourOf(line.Kind));
         var italic = line.Kind == RetailChatKind.Emote;
-        var head = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top };
-        if (_timestamps) head.Children.Add(DerethChatParts.Timestamp(line.Time.ToString("HH:mm")));
+        var view = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap, LineHeight = 15.6, Margin = new Thickness(0, 0, 0, 1) };
+        var written = 0;
+        void Add(Run run)
+        {
+            view.Inlines!.Add(run);
+            written += run.Text!.Length;
+        }
+
+        if (_timestamps) Add(DerethChatParts.TimestampRun(line.Time.ToString("HH:mm") + " "));
         var rest = line.Text;
         var at = line.Sender == null ? -1 : line.Text.IndexOf(line.Sender, StringComparison.Ordinal);
-        if (at >= 0)
+        if (line.Sender != null && at >= 0)
         {
-            if (at > 0) head.Children.Add(DerethChatParts.LogText(line.Text.Substring(0, at), colour, italic));
-            var name = line.Sender!;
-            var nameView = new TextBlock
-            {
-                Text = name,
-                FontFamily = DerethPalette.Body,
-                FontSize = 11,
-                // The log text's line height, so a name sits on the same baseline as the words around it.
-                LineHeight = 15.6,
-                Foreground = DerethPalette.Brush(colour),
-                Cursor = new Cursor(StandardCursorType.Hand),
-                VerticalAlignment = VerticalAlignment.Top
-            };
-            nameView.PointerPressed += (_, e) =>
-            {
-                if (!e.GetCurrentPoint(nameView).Properties.IsLeftButtonPressed) return;
-                TellTo(name);
-                e.Handled = true;
-            };
-            head.Children.Add(nameView);
-            rest = line.Text.Substring(at + name.Length);
+            if (at > 0) Add(DerethChatParts.TextRun(line.Text.Substring(0, at), brush, italic));
+            var nameStart = written;
+            Add(DerethChatParts.TextRun(line.Sender, brush, italic));
+            WireNameClick(view, nameStart, written, line.Sender);
+            rest = line.Text.Substring(at + line.Sender.Length);
         }
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Margin = new Thickness(0, 0, 0, 1) };
-        grid.Children.Add(head);
-        if (rest.Length > 0)
+        if (rest.Length > 0) Add(DerethChatParts.TextRun(rest, brush, italic));
+        return view;
+    }
+
+    /// <summary>A click on the characters from <paramref name="start"/> to <paramref name="end"/>, without a drag, tells the name.</summary>
+    private void WireNameClick(SelectableTextBlock view, int start, int end, string name)
+    {
+        Point? pressed = null;
+        // Handled events too: the text block marks its own presses handled, and the click still has to reach the name.
+        view.AddHandler(InputElement.PointerPressedEvent, (_, e) =>
+            pressed = e.GetCurrentPoint(view).Properties.IsLeftButtonPressed ? e.GetPosition(view) : null,
+            RoutingStrategies.Bubble, handledEventsToo: true);
+        view.AddHandler(InputElement.PointerReleasedEvent, (_, e) =>
         {
-            var body = DerethChatParts.LogText(rest, colour, italic);
-            body.VerticalAlignment = VerticalAlignment.Top;
-            Grid.SetColumn(body, 1);
-            grid.Children.Add(body);
-        }
-        return grid;
+            var from = pressed;
+            pressed = null;
+            if (from is not { } origin) return;
+            var to = e.GetPosition(view);
+            if (Math.Abs(to.X - origin.X) + Math.Abs(to.Y - origin.Y) > ClickSlop) return;
+            var hit = view.TextLayout?.HitTestPoint(to);
+            if (hit is { IsInside: true } result && result.TextPosition >= start && result.TextPosition < end) TellTo(name);
+        }, RoutingStrategies.Bubble, handledEventsToo: true);
     }
 
     /// <summary>A click on a name, or Tab in an empty box: the next line answers with a tell to that name, and the box takes the keyboard.</summary>
@@ -320,12 +321,14 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         }
     }
 
-    /// <summary>Sends the box's text as the target says it, then clears the box. Blank text, or a selection tell with nothing selected, sends nothing.</summary>
+    /// <summary>
+    /// Sends the box's text as the target says it, then clears the box. Blank text, or a selection tell with nothing selected, sends nothing;
+    /// so does a send retail's chat could not take, and then the text stays in the box.
+    /// </summary>
     private void SendTyped()
     {
         var command = RetailChatCommands.Compose(_target, _input.Text ?? string.Empty, _port.SelectedName);
-        if (command == null) return;
-        _port.Send(command);
+        if (command == null || !_port.Send(command)) return;
         _input.Text = string.Empty;
     }
 
@@ -347,31 +350,30 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     }
 
     /// <summary>
-    /// The talk-target menu: retail's targets grouped, with the unusable ones dimmed and their reason beside them, and recent tells last.
-    /// Two columns, as the mockup lays them out: Nearby, Fellowship and Allegiance with the tells, then Channels.
+    /// The talk-target menu: retail's targets grouped, with the unusable ones dimmed and their reason beside them, and recent tells last. Three
+    /// columns, so every group and the recent tells show at the default window size: Nearby, Fellowship and the recent tells; Allegiance;
+    /// Channels.
     /// </summary>
     private Control BuildMenu()
     {
         var membership = _port.Membership;
         var selected = _port.SelectedName;
-        var first = new StackPanel { Spacing = 1, Margin = new Thickness(0) };
-        var second = new StackPanel { Spacing = 1, Margin = new Thickness(12, 0, 0, 0) };
+        var first = new StackPanel { Spacing = 2 };
+        var allegiance = new StackPanel { Spacing = 0, Margin = new Thickness(8, 0, 0, 0) };
+        var channels = new StackPanel { Spacing = 0, Margin = new Thickness(8, 0, 0, 0) };
+        var columns = new[] { first, allegiance, channels };
         for (var group = 0; group < RetailTalkTargets.Groups.Count; group++)
         {
-            var column = group == 3 ? second : first;
+            var column = group switch { 0 or 1 => first, 2 => allegiance, _ => channels };
             var (name, targets) = RetailTalkTargets.Groups[group];
             column.Children.Add(Heading(name));
             foreach (var target in targets) column.Children.Add(MenuItem(target, membership, selected));
-            if (group == 2) first.Children.Add(RecentTellsSection(membership, selected));
+            if (group == 1) first.Children.Add(RecentTellsSection(membership, selected));
         }
-        var columns = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto") };
-        columns.Children.Add(first);
-        Grid.SetColumn(second, 1);
-        columns.Children.Add(second);
-        // Taller than the window's log when every target is listed: it scrolls inside the window rather than running past its edge.
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Children = { first, allegiance, channels } };
         return new Border
         {
-            Padding = new Thickness(10, 8),
+            Padding = new Thickness(6, 5),
             CornerRadius = new CornerRadius(3),
             BorderBrush = DerethChatPalette.GoldDarkBrush,
             BorderThickness = new Thickness(1),
@@ -379,16 +381,16 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             Child = new ScrollViewer
             {
                 MaxHeight = MenuMaxHeight,
-                VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
-                Content = columns
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Content = row
             }
         };
     }
 
     private Control RecentTellsSection(RetailChatMembership membership, string? selected)
     {
-        var panel = new StackPanel { Spacing = 1 };
+        var panel = new StackPanel { Spacing = 0 };
         panel.Children.Add(Heading("Recent tells"));
         var names = _history.Lines
             .Where(line => line.Sender != null && (line.Kind == RetailChatKind.TellIn || line.Kind == RetailChatKind.TellOut))
@@ -407,7 +409,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         FontSize = 8,
         FontWeight = FontWeight.SemiBold,
         Foreground = DerethPalette.MutedBrush,
-        Margin = new Thickness(6, 4, 6, 1)
+        Margin = new Thickness(6, 2, 6, 0)
     };
 
     private Control MenuItem(RetailTalkTarget target, RetailChatMembership membership, string? selected)
@@ -416,20 +418,20 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         // A dimmed target says why; the selected object's name shows beside Selected, as the mockup shows it.
         var note = reason ?? (target.IsSelected ? selected : null);
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*") };
-        row.Children.Add(new Ellipse { Width = 6, Height = 6, Fill = DerethPalette.Brush(ColourOf(target.Colour)), Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center });
+        row.Children.Add(new Ellipse { Width = 6, Height = 6, Fill = DerethPalette.Brush(ColourOf(target.Colour)), Margin = new Thickness(0, 0, 5, 0), VerticalAlignment = VerticalAlignment.Center });
         var label = new TextBlock { Text = target.Label, FontFamily = DerethPalette.Title, FontSize = 11, Foreground = DerethPalette.CreamBrush, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(label, 1);
         row.Children.Add(label);
         if (note != null)
         {
-            var noteView = new TextBlock { Text = note, FontFamily = DerethPalette.Body, FontSize = 9, Foreground = DerethPalette.MutedBrush, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            var noteView = new TextBlock { Text = note, FontFamily = DerethPalette.Body, FontSize = 8, Foreground = DerethPalette.MutedBrush, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(noteView, 2);
             row.Children.Add(noteView);
         }
         var item = new Border
         {
-            Height = 17,
-            Padding = new Thickness(6, 0),
+            Height = 15,
+            Padding = new Thickness(4, 0),
             CornerRadius = new CornerRadius(3),
             BorderBrush = DerethPalette.TealBrush,
             BorderThickness = new Thickness(target.Id == _target.Id ? 1 : 0),

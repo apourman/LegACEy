@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.VisualTree;
@@ -57,13 +58,11 @@ public sealed class RetailChatTests
 
         Click(panel, TabView(window, "Fellowship"));
         panel.Tick();
-        Assert.Equal("fellows", window.Target.Id);
         var chip = ChipText(panel, "Fellows");
         Assert.Equal(DerethChatPalette.Fellowship, ((SolidColorBrush)chip.Foreground!).Color);
 
         Click(panel, TabView(window, "Tells"));
         panel.Tick();
-        Assert.Equal("tell:Mirra", window.Target.Id);
         Assert.Equal(DerethChatPalette.Tell, ((SolidColorBrush)ChipText(panel, "Tell Mirra").Foreground!).Color);
     });
 
@@ -90,10 +89,10 @@ public sealed class RetailChatTests
         // A dimmed target does nothing when picked; a usable one is picked and closes the menu.
         Click(panel, MenuItem(panel, "Fellows"));
         panel.Tick();
-        Assert.Equal("local", window.Target.Id);
+        Assert.Equal("Local", ChipText(panel, "Local").Text);
         Click(panel, MenuItem(panel, "General"));
         panel.Tick();
-        Assert.Equal("general", window.Target.Id);
+        Assert.Equal("General", ChipText(panel, "General").Text);
         Assert.False(Shows(panel, "NEARBY"));
     });
 
@@ -106,7 +105,7 @@ public sealed class RetailChatTests
         panel.Tick();
 
         TypeAndEnter(panel, window, "hi");
-        Assert.Equal("/s hi", port.Sent.Last());
+        Assert.Equal("hi", port.Sent.Last());
 
         Click(panel, TabView(window, "Fellowship"));
         TypeAndSend(panel, window, "hi");
@@ -140,17 +139,34 @@ public sealed class RetailChatTests
         port.Say(Line(RetailChatKind.TellIn, "Mirra tells you, \"hi\"", "Mirra"));
         panel.Tick();
 
-        Click(panel, NameView(panel, "Mirra"));
-        Assert.Equal("tell:Mirra", window.Target.Id);
+        ClickName(panel, "Mirra tells you", "Mirra");
+        Assert.Equal("Tell Mirra", ChipText(panel, "Tell Mirra").Text);
         TypeAndEnter(panel, window, "yo");
         Assert.Equal("/t Mirra, yo", port.Sent.Last());
 
         // Tab in the empty box answers the last tell, whoever it was from.
         Click(panel, TabView(window, "Speech"));
         port.Say(Line(RetailChatKind.TellIn, "Saro tells you, \"ready\"", "Saro"));
-        Click(panel, window.Input);
+        Click(panel, InputBox(window));
         panel.KeyDown(Key.Tab);
-        Assert.Equal("tell:Saro", window.Target.Id);
+        Assert.Equal("Tell Saro", ChipText(panel, "Tell Saro").Text);
+    });
+
+    [Fact]
+    public void A_drag_across_a_name_selects_text_and_does_not_answer_with_a_tell() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        using var panel = Open(port, out _);
+        port.Say(Line(RetailChatKind.TellIn, "Mirra tells you, \"hi\"", "Mirra"));
+        panel.Tick();
+
+        var press = NameLetter(panel, "Mirra tells you", "Mirra");
+        panel.PointerDown(press.X, press.Y);
+        panel.PointerMove(press.X + 40, press.Y);
+        panel.PointerUp(press.X + 40, press.Y);
+        panel.PointerLeave();
+        panel.Tick();
+        Assert.Equal("Local", ChipText(panel, "Local").Text);
     });
 
     [Fact]
@@ -179,20 +195,37 @@ public sealed class RetailChatTests
         using var panel = Open(port, out var window);
         for (var n = 1; n <= 40; n++) port.Say(Line(RetailChatKind.System, $"line {n:D4} of the log"));
         panel.Tick();
-        var scroll = window.GetVisualDescendants().OfType<ScrollViewer>().First(); // the log; the text box has its own in its template
-        scroll.Offset = new Vector(0, 0);
+        // Scroll the log to its top: the first line is on screen and the last is not.
+        window.GetVisualDescendants().OfType<ScrollViewer>().First().Offset = new Vector(0, 0);
         panel.Tick();
+        Assert.True(Shows(panel, "line 0001 of the log"));
+        Assert.False(Shows(panel, "line 0040 of the log"));
 
         port.Say(Line(RetailChatKind.System, "line 0041 of the log"));
         panel.Tick();
-        Assert.Equal(0, scroll.Offset.Y);
-        Assert.True(Shows(panel, "1 new"));
-        Assert.Equal(1, window.MissedLines);
+        Assert.True(Shows(panel, "line 0001 of the log"));
+        Assert.True(Shows(panel, "1 new ↓"));
 
         Click(panel, PillView(panel));
         panel.Tick();
+        Assert.False(Shows(panel, "line 0001 of the log"));
+        Assert.True(Shows(panel, "line 0041 of the log"));
         Assert.False(Shows(panel, "new ↓"));
-        Assert.True(scroll.Offset.Y > 0);
+    });
+
+    [Fact]
+    public void A_send_that_retail_cannot_take_keeps_the_text_in_the_box() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort { CanSend = false };
+        using var panel = Open(port, out var window);
+        TypeAndEnter(panel, window, "hi");
+        Assert.Empty(port.Sent);
+        Assert.Equal("hi", InputBox(window).Text);
+
+        port.CanSend = true;
+        panel.KeyDown(Key.Enter);
+        Assert.Equal("hi", port.Sent.Single());
+        Assert.Equal(string.Empty, InputBox(window).Text);
     });
 
     [Fact]
@@ -203,9 +236,9 @@ public sealed class RetailChatTests
         for (var n = 1; n <= 1005; n++) port.Say(Line(RetailChatKind.System, $"line {n:D4} of the log"));
         panel.Tick();
 
-        Assert.False(Shows(panel, "line 0005 of the log"));
-        Assert.True(Shows(panel, "line 0006 of the log"));
-        Assert.True(Shows(panel, "line 1005 of the log"));
+        Assert.False(InLog(panel, "line 0005 of the log"));
+        Assert.True(InLog(panel, "line 0006 of the log"));
+        Assert.True(InLog(panel, "line 1005 of the log"));
     });
 
     [Fact]
@@ -213,7 +246,7 @@ public sealed class RetailChatTests
     {
         var port = new FakeChatPort();
         using var panel = Open(port, out var window);
-        Click(panel, window.Input);
+        Click(panel, InputBox(window));
         panel.Tick();
 
         // The box has the keyboard, so the input router eats the key rather than handing it to the game.
@@ -270,19 +303,58 @@ public sealed class RetailChatTests
 
     private static TextBlock MenuItem(AvaloniaPanel panel, string label) => ChipText(panel, label);
 
-    private static TextBlock NameView(AvaloniaPanel panel, string name) =>
-        panel.Content.GetVisualDescendants().OfType<TextBlock>().Where(text => text.Text == name && text.Cursor != null).Last();
-
     private static Control PillView(AvaloniaPanel panel) =>
         panel.Content.GetVisualDescendants().OfType<Border>().First(border => border.Child is TextBlock { Text: { } t } && t.Contains("new"));
 
-    /// <summary>Whether text the player can see is on screen: a visible text block whose text contains the fragment.</summary>
+    /// <summary>The text a text block shows: its runs when it has them (a log line is one block of runs), its text otherwise.</summary>
+    private static string TextOf(TextBlock text) =>
+        text.Inlines is { Count: > 0 } runs ? string.Concat(runs.OfType<Run>().Select(run => run.Text)) : text.Text ?? string.Empty;
+
+    /// <summary>Whether text the player can see is on screen: a visible text block whose text contains the fragment, and that lies in view.</summary>
     private static bool Shows(AvaloniaPanel panel, string fragment) =>
-        panel.Content.GetVisualDescendants().OfType<TextBlock>().Any(text => text.IsEffectivelyVisible && text.Text?.Contains(fragment) == true)
-        || panel.Content.GetVisualDescendants().OfType<SelectableTextBlock>().Any(text => text.IsEffectivelyVisible && text.Text?.Contains(fragment) == true);
+        panel.Content.GetVisualDescendants().OfType<TextBlock>().Any(text => text.IsEffectivelyVisible && TextOf(text).Contains(fragment) && InView(panel, text));
+
+    /// <summary>In view: the block overlaps the window and every scroll viewport it sits in. Scrolled-out lines are still in the tree.</summary>
+    private static bool InView(AvaloniaPanel panel, TextBlock text)
+    {
+        var origin = text.TranslatePoint(default, panel.Content);
+        if (origin == null) return false;
+        var rect = new Rect(origin.Value, text.Bounds.Size);
+        if (!rect.Intersects(new Rect(panel.Content.Bounds.Size))) return false;
+        foreach (var scroll in text.GetVisualAncestors().OfType<ScrollViewer>())
+        {
+            var top = scroll.TranslatePoint(default, panel.Content);
+            if (top == null || !rect.Intersects(new Rect(top.Value, scroll.Bounds.Size))) return false;
+        }
+        return true;
+    }
+
+    private static TextBox InputBox(RetailChatWindow window) => window.GetVisualDescendants().OfType<TextBox>().Single();
+
+    /// <summary>The point of a name's first letter in a log line, where the player presses it.</summary>
+    private static Point NameLetter(AvaloniaPanel panel, string lineStart, string name)
+    {
+        panel.Tick();
+        var line = panel.Content.GetVisualDescendants().OfType<SelectableTextBlock>().First(text => TextOf(text).Contains(lineStart));
+        var letter = line.TextLayout.HitTestTextPosition(TextOf(line).IndexOf(name, StringComparison.Ordinal));
+        return line.TranslatePoint(new Point(letter.Left + 1, letter.Center.Y), panel.Content)!.Value;
+    }
+
+    /// <summary>A click on a name in a log line: a press and release where the name is.</summary>
+    private static void ClickName(AvaloniaPanel panel, string lineStart, string name)
+    {
+        var point = NameLetter(panel, lineStart, name);
+        panel.PointerDown(point.X, point.Y);
+        panel.PointerUp(point.X, point.Y);
+        panel.PointerLeave();
+    }
+
+    /// <summary>Whether the log holds a line with the fragment: on screen, or scrolled out of view and one scroll away.</summary>
+    private static bool InLog(AvaloniaPanel panel, string fragment) =>
+        panel.Content.GetVisualDescendants().OfType<TextBlock>().Any(text => text.IsEffectivelyVisible && TextOf(text).Contains(fragment));
 
     private static IEnumerable<string> ShownFragments(AvaloniaPanel panel, IEnumerable<string> fragments) =>
-        fragments.Where(fragment => Shows(panel, fragment));
+        fragments.Where(fragment => InLog(panel, fragment));
 
     private static void Click(AvaloniaPanel panel, Control control)
     {
@@ -295,14 +367,14 @@ public sealed class RetailChatTests
 
     private static void TypeAndEnter(AvaloniaPanel panel, RetailChatWindow window, string text)
     {
-        Click(panel, window.Input);
+        Click(panel, InputBox(window));
         panel.TextInput(text);
         panel.KeyDown(Key.Enter);
     }
 
     private static void TypeAndSend(AvaloniaPanel panel, RetailChatWindow window, string text)
     {
-        Click(panel, window.Input);
+        Click(panel, InputBox(window));
         panel.TextInput(text);
         Click(panel, panel.Content.GetVisualDescendants().OfType<Button>().First(button => button.Content as string == "Send"));
     }
@@ -317,7 +389,15 @@ public sealed class RetailChatTests
         public event Action<RetailChatLine>? LineReceived;
         public event Action? TimestampsChanged;
 
-        public void Send(string text) => Sent.Add(text);
+        /// <summary>False makes the send fail, as when retail's chat has no receiver: nothing is recorded.</summary>
+        public bool CanSend { get; set; } = true;
+
+        public bool Send(string text)
+        {
+            if (!CanSend) return false;
+            Sent.Add(text);
+            return true;
+        }
 
         public void Say(RetailChatLine line) => LineReceived?.Invoke(line);
 

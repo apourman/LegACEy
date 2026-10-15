@@ -2371,8 +2371,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // First: retail's panel must be given back before anything else is torn down.
         try { EndRetailPanels(); }
         catch (Exception exception) { Log($"Could not give the retail panels back during unload: {exception}"); }
-        try { ReleaseRetailChat(); }
+        // Unload runs no more frames, so a give-back that failed gets one more try here before the player is told.
+        try
+        {
+            ReleaseRetailChat();
+            if (_chatTakeover != null) ReleaseRetailChat();
+        }
         catch (Exception exception) { Log($"Could not give the retail chat back during unload: {exception}"); }
+        if (_chatTakeover != null) Log("Retail's chat windows are still held after two tries at unload; they stay hidden until the client restarts.");
         try { ReleaseRetailToolbar(); }
         catch (Exception exception) { Log($"Could not give the retail toolbar back during unload: {exception}"); }
         if (_itemDragActive)

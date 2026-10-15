@@ -49,8 +49,8 @@ public interface IRetailChatPort
 {
     /// <summary>Raised for each line retail shows in chat, in order, on the game thread.</summary>
     event Action<RetailChatLine>? LineReceived;
-    /// <summary>Sends text as the player typed it: the command or message goes to retail's chat parser, as the chat box's own send does.</summary>
-    void Send(string text);
+    /// <summary>Sends text to retail's chat parser, as the chat box's own send does. False when nothing was sent (retail's chat has no receiver).</summary>
+    bool Send(string text);
     /// <summary>What the player is in now. Read when the talk-target menu opens.</summary>
     RetailChatMembership Membership { get; }
     /// <summary>The selected object's name, or null when nothing is selected.</summary>
@@ -107,8 +107,9 @@ public enum TalkNeed { None, Selection, Fellowship, Allegiance, Monarch, Patron,
 public static class RetailTalkTargets
 {
     public const string SelectedId = "selected";
+    public const string LocalId = "local";
 
-    public static readonly RetailTalkTarget Local = new("local", "Local", "/s", RetailChatKind.Local);
+    public static readonly RetailTalkTarget Local = new(LocalId, "Local", "/s", RetailChatKind.Local);
     public static readonly RetailTalkTarget Selected = new(SelectedId, "Selected", "/t", RetailChatKind.TellIn, TalkNeed.Selection);
     public static readonly RetailTalkTarget Fellows = new("fellows", "Fellows", "/f", RetailChatKind.Fellowship, TalkNeed.Fellowship);
     public static readonly RetailTalkTarget Allegiance = new("alleg", "Allegiance", "/gu", RetailChatKind.Allegiance, TalkNeed.Allegiance);
@@ -162,14 +163,15 @@ public static class RetailTalkTargets
 public static class RetailChatCommands
 {
     /// <summary>
-    /// The text to send, or null when there is nothing to send. Text that starts with a slash or an @ passes through as typed; anything else
-    /// gets the target's command, and a selected-object tell needs the selection's name.
+    /// The text to send, or null when there is nothing to send. Text that starts with a slash or an @ passes through as typed, and so does
+    /// anything typed for Local: retail's box sends speech and emotes from the raw text. Other targets get their command, and a
+    /// selected-object tell needs the selection's name.
     /// </summary>
     public static string? Compose(RetailTalkTarget target, string typed, string? selectedName)
     {
         var text = typed.Trim();
         if (text.Length == 0) return null;
-        if (text[0] == '/' || text[0] == '@') return text;
+        if (text[0] == '/' || text[0] == '@' || target.Id == RetailTalkTargets.LocalId) return text;
         if (target.IsSelected)
             return selectedName == null ? null : $"/t {selectedName}, {text}";
         if (target.Name != null) return $"/t {target.Name}, {text}";
@@ -186,7 +188,8 @@ public sealed record RetailChatTab(string Name, RetailChatKind Kinds, string? Ta
     /// <summary>The six tabs every player starts with.</summary>
     public static readonly IReadOnlyList<RetailChatTab> Defaults = new[]
     {
-        new RetailChatTab("All", (RetailChatKind)0x3FF, null),
+        new RetailChatTab("All", RetailChatKind.Local | RetailChatKind.Emote | RetailChatKind.TellIn | RetailChatKind.TellOut | RetailChatKind.Fellowship
+            | RetailChatKind.Allegiance | RetailChatKind.Channel | RetailChatKind.System | RetailChatKind.Plugin | RetailChatKind.Combat, null),
         new RetailChatTab("Speech", RetailChatKind.Local | RetailChatKind.Emote | RetailChatKind.TellIn | RetailChatKind.TellOut, RetailTalkTargets.Local.Id),
         new RetailChatTab("Fellowship", RetailChatKind.Fellowship, RetailTalkTargets.Fellows.Id),
         new RetailChatTab("Allegiance", RetailChatKind.Allegiance, RetailTalkTargets.Allegiance.Id),

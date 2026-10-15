@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using LegACEy.Client.Demo;
@@ -26,17 +24,27 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private const uint TurbineChatHolder = 0x00870BE4;
     private const uint CommunicationSystem = 0x008717FC;
     private const uint EmptyWide = 0x00818340;
-    // The E8 that calls OnChatCommand from ChatInterface::ProcessCommand, and its target is read live (see the send recipe).
+    private const uint UIElementManager = 0x0083E03C;
+    // The E8 that calls OnChatCommand from ChatInterface::ProcessCommand; its rel32 is read live (see Send).
     private const uint SendCallSite = 0x004F5DAB;
     private const uint NoticeChatLine = 0x186B6;
-    // The notice handler's slot the notice loop calls, and how many slots its vtable copy holds: only this slot is ever called.
+    // The notice handler's slot the notice loop calls, and the vtable copy's size: only this slot is ever called.
     private const int NoticeSlot = 0x38;
     private const int VtableBytes = 0x40;
-    // The notice's arguments are the chat type, the text, its timestamp prefix and the target; the text is the StringInfo's +0x80 literal.
+    // The notice's text is a StringInfo whose literal sits at +0x80.
     private const int StringLiteral = 0x80;
+    // The chat object's source window, read from the main chat: [ChatInterface+0x5FC]. Sends fall back to 1 when it cannot be read.
+    private const int SourceWindowOffset = 0x5FC;
+    private const uint DefaultSourceWindow = 1;
+    private static readonly TimeSpan TimestampCheckInterval = TimeSpan.FromSeconds(1);
 
     private static readonly Regex TellTag = new(@"<Tell:IIDString:[^:>]*:([^>]*)>(.*?)<\\Tell>", RegexOptions.Compiled);
     private static readonly Regex ChannelPrefix = new(@"^\[([^\]]+)\]", RegexOptions.Compiled);
+
+    // Delegates to fixed retail functions, made once: their addresses never change.
+    private static readonly DeactivateChatEntryFn DeactivateEntry = Marshal.GetDelegateForFunctionPointer<DeactivateChatEntryFn>(At(RetailChatCatalogue.DeactivateChatEntry));
+    private static readonly PStringBaseFromWideFn ConstructString = Marshal.GetDelegateForFunctionPointer<PStringBaseFromWideFn>(At(0x00402730));
+    private static readonly PStringBaseReleaseFn ReleaseString = Marshal.GetDelegateForFunctionPointer<PStringBaseReleaseFn>(At(0x004011B0));
 
     private readonly Action<string> _log;
     private readonly RetailChatNatives _natives;
@@ -46,6 +54,10 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private IntPtr _vtable;
     private bool _attached;
     private bool _timestamps = true;
+    private DateTime _lastTimestampCheck = DateTime.MinValue;
+    // The OnChatCommand delegate for the call site's target last read, so a send reuses it.
+    private IntPtr _sendTarget;
+    private OnChatCommandFn? _send;
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void RegisterNoticeHandlerFn(IntPtr registrar, uint notice, IntPtr handler);
@@ -64,6 +76,9 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void PStringBaseReleaseFn(IntPtr self);
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void DeactivateChatEntryFn(IntPtr chat);
 
     /// <param name="log">Writes a line to the client's log.</param>
     /// <param name="natives">Which chat features the running client matched; a feature that did not match is off.</param>
@@ -90,59 +105,55 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         NativeUi.Virtual<RegisterNoticeHandlerFn>(registrar, 0x04)(registrar, NoticeChatLine, _handler);
         _attached = true;
         _timestamps = ReadTimestamps();
+        _lastTimestampCheck = DateTime.UtcNow;
     }
 
     /// <summary>
     /// Unregisters the handler, on unload and logoff. Must run on the game thread and never from inside the callback, which the notice
-    /// sender is still walking.
+    /// sender is still walking. If it throws, the handler may still be registered and <see cref="Dispose"/> keeps its memory.
     /// </summary>
     public void Detach()
     {
         if (!_attached) return;
         var registrar = Marshal.ReadIntPtr(At(RegistrarGetter));
-        _attached = false;
         if (registrar != IntPtr.Zero) NativeUi.Virtual<UnRegisterAllNoticeHandlersFn>(registrar, 0x0C)(registrar, _handler);
+        _attached = false;
     }
 
-    /// <summary>Raises the lines the callback queued, and the timestamp option's change, on the game thread. Called once a frame.</summary>
+    /// <summary>
+    /// Raises the lines the callback queued, and the timestamp option's change, on the game thread. Called once a frame; the option is read
+    /// once a second.
+    /// </summary>
     public void Poll()
     {
         while (_pending.TryDequeue(out var line)) LineReceived?.Invoke(line);
-        var timestamps = ReadTimestamps();
-        if (timestamps != _timestamps)
+        var now = DateTime.UtcNow;
+        if (now - _lastTimestampCheck >= TimestampCheckInterval)
         {
-            _timestamps = timestamps;
-            TimestampsChanged?.Invoke();
+            _lastTimestampCheck = now;
+            var timestamps = ReadTimestamps();
+            if (timestamps != _timestamps)
+            {
+                _timestamps = timestamps;
+                TimestampsChanged?.Invoke();
+            }
         }
         if (_natives.Enter) ReleaseRetailEntryFocus();
     }
 
-    /// <summary>
-    /// Retail's hidden chat entry keeps the keyboard when the player presses Enter while retail's chat is held. Each frame it is let go, so
-    /// the typed keys reach our input. The chat object is the gmMainChatUI element less its UIElement offset of 4.
-    /// </summary>
-    private static void ReleaseRetailEntryFocus()
-    {
-        var main = NativeUi.GetElement(RetailChatCatalogue.MainChat);
-        if (main == IntPtr.Zero) return;
-        var chat = IntPtr.Add(main, -4);
-        var entry = Marshal.ReadIntPtr(chat, 0x60C);
-        var manager = Marshal.ReadIntPtr(At(0x0083E03C));
-        if (manager == IntPtr.Zero || entry == IntPtr.Zero) return;
-        var window = Marshal.ReadIntPtr(manager, 0x32C);
-        if (window == IntPtr.Zero || Marshal.ReadIntPtr(window, 0x1A4) != entry) return;
-        Marshal.GetDelegateForFunctionPointer<DeactivateChatEntryFn>(At(RetailChatCatalogue.DeactivateChatEntry))(chat);
-    }
-
-    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-    private delegate void DeactivateChatEntryFn(IntPtr chat);
-
-    private static IntPtr At(uint address) => new(unchecked((int)address));
-
+    /// <summary>Unregisters the handler, then frees its memory. A failed unregister keeps the memory, since the handler may still be called.</summary>
     public void Dispose()
     {
         try { Detach(); }
-        catch (Exception exception) { _log($"Could not unregister the retail chat handler: {exception.Message}"); }
+        catch (Exception exception)
+        {
+            _log($"Could not unregister the retail chat handler; its memory is kept: {exception.Message}");
+            return;
+        }
+        if (_handler != IntPtr.Zero) Marshal.FreeHGlobal(_handler);
+        if (_vtable != IntPtr.Zero) Marshal.FreeHGlobal(_vtable);
+        _handler = IntPtr.Zero;
+        _vtable = IntPtr.Zero;
     }
 
     public bool TimestampsOn => _timestamps;
@@ -179,16 +190,18 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
 
     /// <summary>
     /// Sends the text through retail's chat box call: its receiver is the live communication system, and the call is the one at the box's
-    /// own send site, read as it is now. Skipped when there is no receiver, as the box skips it.
+    /// own send site, read as it is now. Returns false, sending nothing, when there is no receiver, as the box skips the send then.
     /// </summary>
-    public void Send(string text)
+    public bool Send(string text)
     {
-        if (!_natives.Send) throw new InvalidOperationException("Retail's chat send is off: the running client does not match its native entries.");
         var receiver = Marshal.ReadIntPtr(At(CommunicationSystem));
-        if (receiver == IntPtr.Zero) return;
-        var rel = Marshal.ReadInt32(At(SendCallSite + 1));
-        var onChatCommand = IntPtr.Add(At(SendCallSite + 5), rel);
-        var call = Marshal.GetDelegateForFunctionPointer<OnChatCommandFn>(onChatCommand);
+        if (receiver == IntPtr.Zero) return false;
+        var target = IntPtr.Add(At(SendCallSite + 5), Marshal.ReadInt32(At(SendCallSite + 1)));
+        if (target != _sendTarget)
+        {
+            _send = Marshal.GetDelegateForFunctionPointer<OnChatCommandFn>(target);
+            _sendTarget = target;
+        }
 
         // A PStringBase<wchar_t> starts as the empty string, then takes the text: the same steps as the box's own copy.
         var command = Marshal.AllocHGlobal(4);
@@ -196,16 +209,16 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         try
         {
             Marshal.WriteIntPtr(command, Marshal.ReadIntPtr(At(EmptyWide)));
-            var construct = Marshal.GetDelegateForFunctionPointer<PStringBaseFromWideFn>(At(0x00402730));
-            construct(command, wide);
-            call(receiver, command, 1);
-            Marshal.GetDelegateForFunctionPointer<PStringBaseReleaseFn>(At(0x004011B0))(command);
+            ConstructString(command, wide);
+            _send!(receiver, command, SourceWindow());
+            ReleaseString(command);
         }
         finally
         {
             Marshal.FreeHGlobal(wide);
             Marshal.FreeHGlobal(command);
         }
+        return true;
     }
 
     /// <summary>The handler object and its vtable: a copy of retail's own NoticeHandler vtable, with our callback in the notice slot.</summary>
@@ -230,8 +243,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
             var kind = RetailChatTypes.KindOf(chatType);
             if (kind is not { } known) return;
             var raw = ReadWide(Marshal.ReadIntPtr(text, StringLiteral));
-            var line = RetailChatTypes.Parse(known, raw, DateTime.Now);
-            _pending.Enqueue(line);
+            _pending.Enqueue(RetailChatTypes.Parse(known, raw, DateTime.Now));
         }
         catch
         {
@@ -287,6 +299,44 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     }
 
     private static bool Bit(uint value, int bit) => ((value >> bit) & 1) != 0;
+
+    /// <summary>
+    /// The chat-window source the send carries: the main chat's [ChatInterface+0x5FC] (ChatInterface is the gmMainChatUI element less 4).
+    /// Falls back to 1 when the main chat is not there or cannot be read.
+    /// </summary>
+    private static uint SourceWindow()
+    {
+        try
+        {
+            var main = NativeUi.GetElement(RetailChatCatalogue.MainChat);
+            if (main == IntPtr.Zero) return DefaultSourceWindow;
+            var source = Marshal.ReadInt32(IntPtr.Add(main, -4), SourceWindowOffset);
+            return source == 0 ? DefaultSourceWindow : unchecked((uint)source);
+        }
+        catch (Exception)
+        {
+            return DefaultSourceWindow;
+        }
+    }
+
+    /// <summary>
+    /// Retail's hidden chat entry keeps the keyboard when the player presses Enter while retail's chat is held. Each frame it is let go, so
+    /// the typed keys reach our input. The chat object is the gmMainChatUI element less its UIElement offset of 4.
+    /// </summary>
+    private static void ReleaseRetailEntryFocus()
+    {
+        var main = NativeUi.GetElement(RetailChatCatalogue.MainChat);
+        if (main == IntPtr.Zero) return;
+        var chat = IntPtr.Add(main, -4);
+        var entry = Marshal.ReadIntPtr(chat, 0x60C);
+        var manager = Marshal.ReadIntPtr(At(UIElementManager));
+        if (manager == IntPtr.Zero || entry == IntPtr.Zero) return;
+        var window = Marshal.ReadIntPtr(manager, 0x32C);
+        if (window == IntPtr.Zero || Marshal.ReadIntPtr(window, 0x1A4) != entry) return;
+        DeactivateEntry(chat);
+    }
+
+    private static IntPtr At(uint address) => new(unchecked((int)address));
 
     /// <summary>The chat type's entry in the table of kinds: the spike note's section 3. Plugin lines have no type of their own.</summary>
     internal static class RetailChatTypes

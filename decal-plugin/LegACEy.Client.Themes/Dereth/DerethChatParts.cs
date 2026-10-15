@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
+using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -20,13 +22,13 @@ public static class DerethChatPalette
     public static readonly Color Combat = Color.Parse("#D9906E");
     /// <summary>The time at the start of a line: quieter than any message colour.</summary>
     public static readonly Color Timestamp = Color.Parse("#5D6870");
-    /// <summary>The dark outline of a selected tab and of the chip: the theme's gold, shaded.</summary>
-    public static readonly Color GoldDark = Color.Parse("#7A5E30");
-    public static readonly IBrush GoldDarkBrush = DerethPalette.Brush(GoldDark);
-    /// <summary>The tab strip's and the chip's dark fill.</summary>
+    /// <summary>The chip's dark fill.</summary>
     public static readonly Color ChipFill = Color.Parse("#0B1117");
     /// <summary>The jump pill's fill, and the talk-target menu's hovered row.</summary>
     public static readonly Color PillFill = Color.Parse("#0E1923");
+    /// <summary>The dark outline of a selected tab and of the chip: the theme's gold, shaded.</summary>
+    public static readonly Color GoldDark = Color.Parse("#7A5E30");
+    public static readonly IBrush GoldDarkBrush = DerethPalette.Brush(GoldDark);
 }
 
 /// <summary>
@@ -35,6 +37,9 @@ public static class DerethChatPalette
 /// </summary>
 public static class DerethChatParts
 {
+    /// <summary>The chip's caret: the mockup's small up-pointing triangle, in gold.</summary>
+    private const string CaretData = "M1.5 6.5L5 2.5L8.5 6.5Z";
+
     /// <summary>A tab label on the tab strip. The selected tab shows the dark fill and the gold outline, as the mockup does.</summary>
     public static Border Tab(string text, bool selected)
     {
@@ -60,7 +65,7 @@ public static class DerethChatParts
         };
     }
 
-    /// <summary>The target chip: the target's label in the target's colour, on the dark fill with a gold outline.</summary>
+    /// <summary>The target chip: the target's label in the target's colour, a gold caret, on the dark fill with a gold outline.</summary>
     public static Border Chip(string label, Color colour)
     {
         var text = new TextBlock
@@ -69,6 +74,15 @@ public static class DerethChatParts
             FontFamily = DerethPalette.Title,
             FontSize = 11,
             Foreground = DerethPalette.Brush(colour),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var caret = new Path
+        {
+            Data = Geometry.Parse(CaretData),
+            Fill = DerethPalette.GoldBrush,
+            Stretch = Stretch.Fill,
+            Width = 8,
+            Height = 8,
             VerticalAlignment = VerticalAlignment.Center
         };
         return new Border
@@ -80,12 +94,12 @@ public static class DerethChatParts
             BorderBrush = DerethChatPalette.GoldDarkBrush,
             Background = DerethPalette.Brush(DerethChatPalette.ChipFill),
             Cursor = new Cursor(StandardCursorType.Hand),
-            Child = text
+            Child = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { text, caret } }
         };
     }
 
-    /// <summary>The jump pill: how many lines arrived while the log was scrolled up. A click jumps back to the newest line.</summary>
-    public static Border JumpPill(string text) => new()
+    /// <summary>The jump pill: how many lines arrived while the log was scrolled up, in the given label. A click jumps back to the newest line.</summary>
+    public static Border JumpPill(TextBlock label) => new()
     {
         Padding = new Thickness(9, 2),
         CornerRadius = new CornerRadius(9),
@@ -95,29 +109,25 @@ public static class DerethChatParts
         HorizontalAlignment = HorizontalAlignment.Center,
         VerticalAlignment = VerticalAlignment.Bottom,
         Cursor = new Cursor(StandardCursorType.Hand),
-        Child = new TextBlock { Text = text, FontFamily = DerethPalette.Title, FontSize = 10, Foreground = DerethPalette.CreamBrush }
+        Child = label
     };
 
-    /// <summary>A line's text: the Dereth body font at 11 DIP, with the mockup's 1.42 line height.</summary>
-    public static SelectableTextBlock LogText(string text, Color colour, bool italic = false) => new()
+    /// <summary>A line's text run: the Dereth body font at 11 DIP. The line's text is one selectable block of these runs.</summary>
+    public static Run TextRun(string text, IBrush brush, bool italic = false) => new()
     {
         Text = text,
         FontFamily = DerethPalette.Body,
         FontSize = 11,
-        LineHeight = 15.6,
         FontStyle = italic ? FontStyle.Italic : FontStyle.Normal,
-        Foreground = DerethPalette.Brush(colour),
-        TextWrapping = TextWrapping.Wrap
+        Foreground = brush
     };
 
-    /// <summary>A line's time, in the quiet timestamp colour and the mockup's 9.5 DIP mono figures.</summary>
-    public static TextBlock Timestamp(string text) => new()
+    /// <summary>A line's time, in the quiet timestamp colour and the mockup's 9.5 DIP mono figures, as a run.</summary>
+    public static Run TimestampRun(string text) => new()
     {
         Text = text,
         FontFamily = new FontFamily("ui-monospace, Cascadia Mono, Consolas, monospace"),
         FontSize = 9.5,
-        Foreground = DerethPalette.Brush(DerethChatPalette.Timestamp),
-        Margin = new Thickness(0, 0, 5, 0),
-        VerticalAlignment = VerticalAlignment.Center
+        Foreground = DerethPalette.Brush(DerethChatPalette.Timestamp)
     };
 }
