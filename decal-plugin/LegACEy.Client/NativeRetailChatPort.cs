@@ -100,6 +100,8 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         _callback = OnNotice;
     }
 
+    private bool _membershipFailLogged;
+
     public event Action<RetailChatLine>? LineReceived;
     public event Action? TimestampsChanged;
 
@@ -206,7 +208,15 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     {
         get
         {
-            var facts = (int)Bridge.Fact(BridgeFact.CharacterMembership);
+            // A membership Decal cannot read dims the targets it gates; it never fails the chat.
+            int facts;
+            try { facts = Bridge.Fact(BridgeFact.CharacterMembership); }
+            catch (COMException exception)
+            {
+                if (!_membershipFailLogged) _log($"Could not read the character's allegiance and society; their talk targets are dimmed: {exception.Message}");
+                _membershipFailLogged = true;
+                facts = 0;
+            }
             return new RetailChatMembership(
                 Fellowship: _natives.Fellowship && InFellowship(),
                 Allegiance: (facts & 1) != 0,

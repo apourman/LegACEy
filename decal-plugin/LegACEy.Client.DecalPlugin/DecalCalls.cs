@@ -106,16 +106,23 @@ internal static unsafe class DecalCalls
     private static int Membership(CharacterFilter character)
     {
         var bits = 0;
-        if (character.Allegiance != null) bits |= 1;
-        if (character.Monarch != null) bits |= 2;
-        if (character.Patron != null) bits |= 4;
-        if (character.Followers > 0) bits |= 8;
+        if (Has(() => character.Allegiance != null)) bits |= 1;
+        if (Has(() => character.Monarch != null)) bits |= 2;
+        if (Has(() => character.Patron != null)) bits |= 4;
+        if (Has(() => character.Followers > 0)) bits |= 8;
         // Faction1Bits (281): any of the three society bits.
         if ((character.GetCharProperty(SocietyProperty) & 7) != 0) bits |= 16;
         // HeritageGroup (188): 12 and 13 are the Olthoi heritages.
         var heritage = character.GetCharProperty(HeritageProperty);
         if (heritage == 12 || heritage == 13) bits |= 32;
         return bits;
+    }
+
+    // Decal's allegiance getters throw for a character with no allegiance, monarch or patron rather than return null.
+    private static bool Has(Func<bool> read)
+    {
+        try { return read(); }
+        catch (Exception exception) when (exception is NullReferenceException or COMException) { return false; }
     }
 
     private static WorldObject? CharacterObject() => CoreManager.Current.WorldFilter[CoreManager.Current.CharacterFilter.Id];
