@@ -5,8 +5,8 @@ namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
 /// The native entries the Dereth chat window's port uses: retail's chat windows (takeover), the line every chat window is shown (incoming),
-/// the path retail's own chat box sends through (send), the chat timestamp option, the channel options, fellowship membership and the chat
-/// entry's keyboard focus (Enter). Each feature has its own list, checked on its own, because Decal patches call sites and prologues at
+/// the path retail's own chat box sends through (send), the chat timestamp option, the channel options, fellowship membership and the
+/// keyboard focus of the chat entry and of retail's other fields (Enter). Each feature has its own list, checked on its own, because Decal patches call sites and prologues at
 /// runtime: a mismatch costs that feature only. One dependency is shared on purpose: the CPlayerSystem getter is in both the timestamp and
 /// the channel lists, so its mismatch turns both off. Every address and byte list was read from the installed end-of-retail acclient.exe
 /// (SHA-256 bca95bbe...); acclient.pdb (a near build) gave the names. The recipes are in the chat spike note; the port adds the constants it reads.
@@ -120,7 +120,13 @@ internal static class RetailChatCatalogue
             "instruction reference"),
         Entry("ChatInterface::HandleEnterKey compares the window's focused child with the entry (+0x60C)", 0x004F5F4F,
             "8B CF E8 DA A3 F6 FF 3B 86 0C 06 00 00 75 40", "instruction reference"),
-        Entry("UIElement focused child (+0x1A4)", 0x00460330, "8B 81 A4 01 00 00 C3", "ThisCall () -> UIElement*")
+        Entry("UIElement focused child (+0x1A4)", 0x00460330, "8B 81 A4 01 00 00 C3", "ThisCall () -> UIElement*"),
+        // Retail's keyboard focus element, read so Enter is left to a retail field that has the keyboard. Past each function's first
+        // instruction, which a hook would change.
+        Entry("UIElement::GetHasFocus compares the element with UIElementManager's focus element (+0x328)", 0x0046031A,
+            "8B B0 28 03 00 00 33 D2 3B F1 0F 94 C2 8A C2 5E C3", "ThisCall () -> bool at 0x00460310 (instance [0x0083E03C])"),
+        Entry("UIElementManager::SetFocusElement body reads and stores the focus element at +0x328", 0x0045B992,
+            "8B 8E 28 03 00 00 8B 01 FF 90 B4 00 00 00 85 FF 89 BE 28 03 00 00", "instruction reference (SetFocusElement at 0x0045B970)")
     };
 
     /// <summary>Checks each feature's list on its own: a mismatch, or an address that cannot be read, turns that feature off and logs it.</summary>

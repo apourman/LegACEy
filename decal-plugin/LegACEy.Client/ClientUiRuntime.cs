@@ -60,6 +60,34 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool DeleteObject(IntPtr gdiObject);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool OpenClipboard(IntPtr owner);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EmptyClipboard();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetClipboardData(uint format, IntPtr data);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseClipboard();
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GlobalAlloc(uint flags, UIntPtr bytes);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GlobalLock(IntPtr memory);
+
+    [DllImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GlobalUnlock(IntPtr memory);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GlobalFree(IntPtr memory);
+
     [StructLayout(LayoutKind.Sequential)]
     private struct IconInfo
     {
@@ -634,6 +662,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             {
                 if (!_toolbarReleaseLogged) Log($"Could not give the retail toolbar back; retrying: {exception}");
                 _toolbarReleaseLogged = true;
+            }
+        }
+        // The same for retail's chat windows: ReleaseRetailChat logs a failed give-back once per streak itself.
+        if (_failed && _chatTakeover != null)
+        {
+            try { ReleaseRetailChat(); }
+            catch (Exception exception)
+            {
+                if (!_chatReleaseLogged) Log($"Could not give the retail chat back; retrying: {exception}");
+                _chatReleaseLogged = true;
             }
         }
         if (_failed || !NativeUi.Ready)
@@ -1771,18 +1809,30 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     private const int VkReturn = 0x0D;
+    // WM_KEYDOWN's lParam bit 24: an extended key, the keypad's Enter for VK_RETURN.
+    private const int ExtendedKey = 1 << 24;
 
     /// <summary>
-    /// Gives the chat window's box the keyboard when retail's chat is held and no field of ours has it. True when it did, so the Enter is eaten.
+    /// Gives the chat window's box the keyboard when retail's chat is held and neither a field of ours nor one of retail's has it. True when
+    /// it did, so the Enter is eaten. Never without the Enter entries: retail's hidden entry could not be let go then. A failure turns the
+    /// chat window off, not the whole UI.
     /// </summary>
     private bool TryFocusRetailChat()
     {
-        if (_chatWindows?.Main is not { } main || _chatTakeover?.Holds != true) return false;
-        var focused = SurfaceById(_inputRouter.FocusedSurfaceId);
-        if (focused?.Panel.WantsKeyboard == true) return false;
-        main.FocusInput();
-        _inputRouter.FocusSurface(ChatWindowId);
-        return true;
+        try
+        {
+            if (_chatNatives?.Enter != true || _chatWindows?.Main is not { } main || _chatTakeover?.Holds != true) return false;
+            var focused = SurfaceById(_inputRouter.FocusedSurfaceId);
+            if (focused?.Panel.WantsKeyboard == true || _chatPort?.RetailFieldHasKeyboard() != false) return false;
+            main.FocusInput();
+            _inputRouter.FocusSurface(ChatWindowId);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            ChatFailed(exception);
+            return false;
+        }
     }
 
     private void TickRetailChat()
@@ -1790,6 +1840,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         try
         {
             var switchOn = RetailChatSwitchOn();
+            // Turning the switch off and on again retries a chat window that failed.
+            if (!switchOn) _chatFailed = false;
             // Retail's chat windows are given back if the switch goes off, the post-UI draw is gone, the player has left the world or it failed.
             var canDraw = _postUiDrawHook?.IsInstalled == true;
             if (_chatTakeover != null && (!canDraw || _chatFailed || !switchOn || !_inGame))
@@ -1827,7 +1879,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var character = SessionCharacter();
         // Retail's UI is unlocked when a window may be moved; the chat then stays whole, so its frame can be found.
         var chats = new RetailChatWindows(port, _windows!, _positionStore!, _chatTabs, server, character, () => !NativeUi.IsUiLocked,
-            () => _pointer, (definition, content, location) => OpenWindowCore(definition, content, location, ChatFailed), ReleaseFeatureWindow);
+            () => _pointer, (definition, content, location) => OpenWindowCore(definition, content, location, ChatFailed), ReleaseFeatureWindow,
+            copy: CopyToClipboard);
         // The main window starts at the bottom left, above the toolbar, until the player moves it; its place is then kept per character.
         var screen = _windows!.Screen;
         var beside = new Point(12, Math.Max(0, screen.Height - (int)Math.Round(RetailChatWindows.DesignHeight * WindowScale) - 150));
@@ -1883,10 +1936,48 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _chatTakeover = null;
             _chatReleaseLogged = false;
         }
-        _chatWindows?.Dispose();
+        // Cleared first, so a window that throws on close cannot leave them half released; the port is stopped whatever the windows do.
+        var windows = _chatWindows;
+        var port = _chatPort;
         _chatWindows = null;
-        _chatPort?.Dispose();
         _chatPort = null;
+        try { windows?.Dispose(); }
+        finally { port?.Dispose(); }
+    }
+
+    /// <summary>
+    /// Puts text on the Windows clipboard as Unicode text, for text copied from the chat log. A clipboard another program holds is logged and
+    /// the copy is dropped; it never fails the chat.
+    /// </summary>
+    private void CopyToClipboard(string text)
+    {
+        const uint GmemMoveable = 0x0002;
+        const uint CfUnicodeText = 13;
+        if (!OpenClipboard(_gameWindow))
+        {
+            Log($"Could not copy chat text: the clipboard is busy ({Marshal.GetLastWin32Error()}).");
+            return;
+        }
+        var memory = IntPtr.Zero;
+        try
+        {
+            EmptyClipboard();
+            var bytes = (text.Length + 1) * 2;
+            memory = GlobalAlloc(GmemMoveable, (UIntPtr)bytes);
+            if (memory == IntPtr.Zero) return;
+            var target = GlobalLock(memory);
+            if (target == IntPtr.Zero) return;
+            Marshal.Copy(text.ToCharArray(), 0, target, text.Length);
+            Marshal.WriteInt16(target, text.Length * 2, 0);
+            GlobalUnlock(memory);
+            // The clipboard owns the memory once it takes it.
+            if (SetClipboardData(CfUnicodeText, memory) != IntPtr.Zero) memory = IntPtr.Zero;
+        }
+        finally
+        {
+            if (memory != IntPtr.Zero) GlobalFree(memory);
+            CloseClipboard();
+        }
     }
 
     private void ChatFailed(Exception exception)
@@ -1925,7 +2016,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_failed || !_inGame || _barSurface == null)
             return false;
         // Enter in the game, with retail's chat held and no field of ours taking keys, opens the Dereth chat window's box and eats the key.
-        if (message == InputRouterService.WmKeyDown && wParam == VkReturn && TryFocusRetailChat()) return true;
+        // The keypad's Enter (an extended key) stays retail's, as the spike recommends.
+        if (message == InputRouterService.WmKeyDown && wParam == VkReturn && (lParam & ExtendedKey) == 0 && TryFocusRetailChat()) return true;
 
         var eat = false;
         if (message == WmSetCursor)
@@ -2026,7 +2118,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     {
                         _windows.Release();
                         SyncWindowLocations();
-                        _chatWindows?.Released();
+                        // A chat failure here turns the chat window off, not the whole UI.
+                        try { _chatWindows?.Released(); }
+                        catch (Exception exception) { ChatFailed(exception); }
                     }
                     if (_dragOffset != null)
                         EndBarDrag();

@@ -16,7 +16,8 @@ namespace LegACEy.Client.DecalPlugin;
 /// </summary>
 /// <remarks>
 /// Every address was checked against the installed acclient.exe by <see cref="RetailChatCatalogue"/>. The chat features that do not check
-/// are off: their reads return what the window shows without them (no timestamps, no room targets, no fellowship target).
+/// are off: their reads return what the window shows without them (timestamps on, as retail's default; room targets and the fellowship
+/// target dimmed; Enter left to retail).
 /// </remarks>
 internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
 {
@@ -38,7 +39,13 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     // The chat object's source window, read from the main chat: [ChatInterface+0x5FC]. Sends fall back to 1 when it cannot be read.
     private const int SourceWindowOffset = 0x5FC;
     private const uint DefaultSourceWindow = 1;
+    // UIElementManager's keyboard focus element: SetFocusElement stores it, UIElement::GetHasFocus compares with it.
+    private const int FocusElementOffset = 0x328;
+    // The PlayerModule inside CPlayerSystem: CharacterOptions1 is at +0x8C of it, CharacterOptions2 at +0x90.
+    private const int PlayerModule = 0x34;
     private static readonly TimeSpan TimestampCheckInterval = TimeSpan.FromSeconds(1);
+    // Ports whose handler could not be unregistered: retail may still call it, so the port, its callback delegate and its memory live on.
+    private static readonly List<NativeRetailChatPort> Stranded = new();
 
     private static readonly Regex TellTag = new(@"<Tell:IIDString:[^:>]*:([^>]*)>(.*?)<\\Tell>", RegexOptions.Compiled);
     private static readonly Regex ChannelPrefix = new(@"^\[([^\]]+)\]", RegexOptions.Compiled);
@@ -108,8 +115,11 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         if (registrar == IntPtr.Zero) throw new InvalidOperationException("Retail's notice registrar is not ready.");
         NativeUi.Virtual<RegisterNoticeHandlerFn>(registrar, 0x04)(registrar, NoticeChatLine, _handler);
         _attached = true;
-        _timestamps = ReadTimestamps();
         _lastTimestampCheck = DateTime.UtcNow;
+        var timestamps = ReadTimestamps();
+        if (timestamps == _timestamps) return;
+        _timestamps = timestamps;
+        TimestampsChanged?.Invoke();
     }
 
     /// <summary>
@@ -124,10 +134,6 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         _attached = false;
     }
 
-    /// <summary>
-    /// Raises the lines the callback queued, and the timestamp option's change, on the game thread. Called once a frame; the option is read
-    /// once a second.
-    /// </summary>
     /// <summary>Logs a channel name that no tab can pick, once, so the real names show in a play-test.</summary>
     private void NoteChannel(RetailChatLine line)
     {
@@ -137,6 +143,10 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
             _log($"Chat channel \"{line.Channel}\" matches none of the tab channel names; its lines show in All and Channels only.");
     }
 
+    /// <summary>
+    /// Raises the lines the callback queued, and the timestamp option's change, on the game thread. Called once a frame; the option is read
+    /// once a second.
+    /// </summary>
     public void Poll()
     {
         while (_pending.TryDequeue(out var line))
@@ -158,12 +168,16 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         if (_natives.Enter) ReleaseRetailEntryFocus();
     }
 
-    /// <summary>Unregisters the handler, then frees its memory. A failed unregister keeps the memory, since the handler may still be called.</summary>
+    /// <summary>
+    /// Unregisters the handler, then frees its memory. A failed unregister keeps the port alive for good, with its callback and memory,
+    /// since retail may still call the handler.
+    /// </summary>
     public void Dispose()
     {
         try { Detach(); }
         catch (Exception exception)
         {
+            lock (Stranded) Stranded.Add(this);
             _log($"Could not unregister the retail chat handler; its memory is kept: {exception.Message}");
             return;
         }
@@ -223,15 +237,17 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         // A PStringBase<wchar_t> starts as the empty string, then takes the text: the same steps as the box's own copy.
         var command = Marshal.AllocHGlobal(4);
         var wide = Marshal.StringToHGlobalUni(text);
+        var constructed = false;
         try
         {
             Marshal.WriteIntPtr(command, Marshal.ReadIntPtr(At(EmptyWide)));
             ConstructString(command, wide);
+            constructed = true;
             _send!(receiver, command, SourceWindow());
-            ReleaseString(command);
         }
         finally
         {
+            if (constructed) ReleaseString(command);
             Marshal.FreeHGlobal(wide);
             Marshal.FreeHGlobal(command);
         }
@@ -277,20 +293,23 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     }
 
     /// <summary>
-    /// The channels the player hears, from the character options: with Turbine chat down every room is off, as retail's own rule says.
-    /// Off when the channel option's catalogue does not match.
+    /// The rooms the player hears, from the character options: with Turbine chat down every room is off, the allegiance's and Olthoi's
+    /// included, as retail's own rule says. Off when the channel option's catalogue does not match.
     /// </summary>
     private ChatChannels OpenChannels()
     {
         if (!_natives.Channels || !TurbineChatUp()) return ChatChannels.None;
-        var options = PlayerOptions2();
-        if (options == null) return ChatChannels.None;
-        var open = ChatChannels.None;
-        if (Bit(options.Value, 8)) open |= ChatChannels.General;
-        if (Bit(options.Value, 9)) open |= ChatChannels.Trade;
-        if (Bit(options.Value, 10)) open |= ChatChannels.Lfg;
-        if (Bit(options.Value, 11)) open |= ChatChannels.Roleplay;
-        if (Bit(options.Value, 19)) open |= ChatChannels.Society;
+        var system = Marshal.ReadIntPtr(At(PlayerSystem));
+        if (system == IntPtr.Zero) return ChatChannels.None;
+        var options1 = unchecked((uint)Marshal.ReadInt32(system, PlayerModule + 0x8C));
+        var options2 = unchecked((uint)Marshal.ReadInt32(system, PlayerModule + 0x90));
+        var open = ChatChannels.Olthoi;
+        if (Bit(options2, 8)) open |= ChatChannels.General;
+        if (Bit(options2, 9)) open |= ChatChannels.Trade;
+        if (Bit(options2, 10)) open |= ChatChannels.Lfg;
+        if (Bit(options2, 11)) open |= ChatChannels.Roleplay;
+        if (Bit(options2, 19)) open |= ChatChannels.Society;
+        if (Bit(options1, 30)) open |= ChatChannels.Allegiance;
         return open;
     }
 
@@ -312,7 +331,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     {
         var system = Marshal.ReadIntPtr(At(PlayerSystem));
         if (system == IntPtr.Zero) return null;
-        return unchecked((uint)Marshal.ReadInt32(system, 0x34 + 0x90));
+        return unchecked((uint)Marshal.ReadInt32(system, PlayerModule + 0x90));
     }
 
     private static bool Bit(uint value, int bit) => ((value >> bit) & 1) != 0;
@@ -334,6 +353,21 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         {
             return DefaultSourceWindow;
         }
+    }
+
+    /// <summary>
+    /// Whether a retail element other than the hidden chat entry has the keyboard (a split amount, a name box): Enter is then that field's.
+    /// False when the Enter entries did not match, as Enter is not taken then.
+    /// </summary>
+    public bool RetailFieldHasKeyboard()
+    {
+        if (!_natives.Enter) return false;
+        var manager = Marshal.ReadIntPtr(At(UIElementManager));
+        if (manager == IntPtr.Zero) return false;
+        var focused = Marshal.ReadIntPtr(manager, FocusElementOffset);
+        if (focused == IntPtr.Zero) return false;
+        var main = NativeUi.GetElement(RetailChatCatalogue.MainChat);
+        return main == IntPtr.Zero || Marshal.ReadIntPtr(IntPtr.Add(main, -4), 0x60C) != focused;
     }
 
     /// <summary>
