@@ -19,10 +19,19 @@ public sealed class RetailChatCatalogueTests
     [Fact]
     public void PatchedOptionalEntryLeavesTheWindowOn()
     {
-        var natives = RetailChatCatalogue.Validate(Client(patched: RetailChatCatalogue.DeactivateChatEntry), _ => { });
+        var natives = RetailChatCatalogue.Validate(Client(patched: RetailChatCatalogue.Enter[0].Address), _ => { });
 
         Assert.False(natives.Enter);
         Assert.True(natives.ChatWindow);
+    }
+
+    [Fact]
+    public void PatchedLineNoticeTurnsTheWindowOff()
+    {
+        var natives = RetailChatCatalogue.Validate(Client(patched: RetailChatCatalogue.Incoming[4].Address), _ => { });
+
+        Assert.False(natives.Incoming);
+        Assert.False(natives.ChatWindow);
     }
 
     // A running client that matches the catalogue, with one address's first byte changed as a runtime patch would.
