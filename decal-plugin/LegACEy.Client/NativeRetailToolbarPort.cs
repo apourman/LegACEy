@@ -173,6 +173,7 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     /// <summary>The stance button's click: retail's own toggle (peace and the default stance), as retail's button does. No-op with no character.</summary>
     public void ToggleStance()
     {
+        _log("Stance click.");
         var combatSystem = GetCombatSystem();
         if (combatSystem == IntPtr.Zero) return;
         // ponytail: diagnostic for the stance-click crash; remove once the cause is known.

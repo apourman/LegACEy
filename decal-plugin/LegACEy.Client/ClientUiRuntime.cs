@@ -1477,7 +1477,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (_toolbarFailed) return;
             if (_toolbarSurface == null && !CreateRetailToolbar()) return;
             _toolbarPort!.Poll();
-            _toolbarTakeover!.Tick(_toolbarDragOffset != null, GameDevice.ViewportSize(_device));
+            var viewport = GameDevice.ViewportSize(_device);
+            // ponytail: diagnostic for the toolbar crash; remove once the cause is known.
+            if (_toolbarTakeover!.Tick(_toolbarDragOffset != null, viewport)) Log($"Toolbar takeover: viewport {viewport} or retail's toolbar changed; holds {_toolbarTakeover.Holds}, in game {_inGame}.");
             // The bar stands beside the toolbar only while the takeover holds retail's element; otherwise it closes with it.
             if (_toolbarTakeover.Holds) EnsureShortcutBar();
             else CloseShortcutBar();
@@ -1546,10 +1548,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _toolbarSurface = new ScreenSurface(_device, panel);
         _toolbarRenderer = new RetailSurfaceRenderer(_toolbarSurface.Prepare, _toolbarSurface.DrawNow);
         _toolbarTakeover = new RetailTakeoverLifecycle(new NativeBarPort(NativeUi.ToolbarWindow), new SurfaceTakeoverPort(_toolbarSurface));
-        Log($"Dereth toolbar replacement ready; retail's toolbar window {(NativeUi.GetElement(NativeUi.ToolbarWindow) != IntPtr.Zero ? "found" : "absent")}, " +
-            $"its toolbar {(NativeUi.GetElement(NativeUi.Toolbar) != IntPtr.Zero ? "found" : "absent")}.");
+        var window = NativeUi.GetElement(NativeUi.ToolbarWindow);
+        var inner = NativeUi.GetElement(NativeUi.Toolbar);
+        Log($"Dereth toolbar replacement ready; retail's toolbar window {Describe(window)}, its toolbar {Describe(inner)}.");
         return true;
     }
+
+    // ponytail: diagnostic for the toolbar crash; remove once the cause is known.
+    private static string Describe(IntPtr element) => element == IntPtr.Zero ? "absent"
+        : $"0x{element.ToInt32():X8} vtable 0x{Marshal.ReadInt32(element):X8} MoveTo 0x{NativeUiMovement.ResolveMoveTo(element).ToInt32():X8}";
 
     /// <summary>
     /// Shows shortcut row 1 as its own window beside the toolbar, once the takeover holds the toolbar and the windows can open. Its
@@ -2128,8 +2135,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         public bool IsVisible { get { var element = Element; return element != IntPtr.Zero && NativeUi.IsVisible(element); } }
         public Rectangle GetBounds() { var element = Element; if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared."); return NativeUi.GetBounds(element); }
         public void SetVisible(bool visible) { var element = Element; if (element != IntPtr.Zero) NativeUi.SetVisible(element, visible); }
-        public void SetSaveLocation(bool save) { var element = Element; if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared."); NativeUi.SetSaveLocation(element, save); }
-        public void MoveTo(Point location) { var element = Element; if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared."); NativeUi.MoveTo(element, location); }
+        // ponytail: the 0x{id} logs are diagnostics for the toolbar crash; remove once the cause is known.
+        public void SetSaveLocation(bool save) { var element = Element; if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared."); Log($"0x{_rootId:X8}: save location {save}."); NativeUi.SetSaveLocation(element, save); }
+        public void MoveTo(Point location)
+        {
+            var element = Element;
+            if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared.");
+            Log($"0x{_rootId:X8}: native move to {location} through 0x{NativeUiMovement.ResolveMoveTo(element).ToInt32():X8}.");
+            NativeUi.MoveTo(element, location);
+            Log($"0x{_rootId:X8}: native move returned.");
+        }
         public bool IsUiLocked => NativeUi.IsUiLocked;
     }
 
