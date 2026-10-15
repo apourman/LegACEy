@@ -4,7 +4,9 @@ using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
@@ -259,7 +261,126 @@ public sealed class RetailChatTests
         Assert.Equal(InputAction.KeyDown, route.Action);
     });
 
+    [Fact]
+    public void An_idle_window_fades_its_frame_tabs_input_and_scrollbar_in_a_quarter_second_and_keeps_its_new_lines() => RenderThread.Run(() =>
+    {
+        var clock = new TestClock();
+        var port = new FakeChatPort();
+        using var panel = Open(port, out var window, () => clock.Now);
+        for (var n = 1; n <= 30; n++) port.Say(Line(RetailChatKind.System, $"line {n:D2} of the log", at: clock.Now));
+        panel.Tick();
+        window.Refresh();
+        // The first frame is the window's own; the Send button draws its frame too.
+        var frame = window.GetVisualDescendants().OfType<DerethFrame>().First();
+        var scrollBar = window.GetVisualDescendants().OfType<ScrollBar>().First(bar => bar.Orientation == Orientation.Vertical);
+        Assert.Equal(1.0, Seen(scrollBar));
+
+        clock.Advance(0.125);
+        window.Refresh();
+        Assert.InRange(Seen(TabView(window, "All")), 0.2, 0.8);
+
+        clock.Advance(0.125);
+        window.Refresh();
+        Assert.Equal(0.0, Seen(frame));
+        Assert.Equal(0.0, Seen(TabView(window, "All")));
+        Assert.Equal(0.0, Seen(InputBox(window)));
+        Assert.Equal(0.0, Seen(scrollBar));
+        Assert.Equal(1.0, Seen(LineOf(panel, "line 30 of the log")));
+    });
+
+    [Fact]
+    public void Hover_typing_or_an_open_menu_brings_an_idle_window_back() => RenderThread.Run(() =>
+    {
+        var clock = new TestClock();
+        var port = new FakeChatPort();
+        using var panel = Open(port, out var window, () => clock.Now);
+        panel.Tick();
+        window.Refresh();
+        clock.Advance(RetailChatFade.ChromeFadeSeconds);
+        window.Refresh();
+        Assert.Equal(0.0, Seen(TabView(window, "All")));
+
+        panel.PointerMove(Width / 2, Height / 2);
+        window.Refresh();
+        Assert.Equal(1.0, Seen(TabView(window, "All")));
+        panel.PointerLeave();
+        window.Refresh();
+        clock.Advance(RetailChatFade.ChromeFadeSeconds);
+        window.Refresh();
+        Assert.Equal(0.0, Seen(TabView(window, "All")));
+
+        Click(panel, InputBox(window));
+        clock.Advance(1);
+        window.Refresh();
+        Assert.Equal(1.0, Seen(InputBox(window)));
+        Assert.Equal(1.0, Seen(TabView(window, "All")));
+
+        Click(panel, ChipText(panel, "Local"));
+        panel.PointerLeave();
+        clock.Advance(1);
+        window.Refresh();
+        Assert.Equal(1.0, Seen(TabView(window, "All")));
+        Click(panel, ChipText(panel, "Local"));
+        window.Refresh();
+        clock.Advance(RetailChatFade.ChromeFadeSeconds);
+        window.Refresh();
+        Assert.Equal(0.0, Seen(TabView(window, "All")));
+    });
+
+    [Fact]
+    public void Lines_fade_out_ten_seconds_after_they_arrive_while_idle_and_all_show_while_awake() => RenderThread.Run(() =>
+    {
+        var clock = new TestClock();
+        var port = new FakeChatPort();
+        using var panel = Open(port, out var window, () => clock.Now);
+        panel.Tick();
+        window.Refresh();
+        port.Say(Line(RetailChatKind.System, "first line of the log", at: clock.Now));
+        clock.Advance(9);
+        port.Say(Line(RetailChatKind.System, "second line of the log", at: clock.Now));
+        clock.Advance(2);
+        window.Refresh();
+        Assert.Equal(0.0, Seen(LineOf(panel, "first line")));
+        Assert.Equal(1.0, Seen(LineOf(panel, "second line")));
+
+        panel.PointerMove(Width / 2, Height / 2);
+        window.Refresh();
+        Assert.Equal(1.0, Seen(LineOf(panel, "first line")));
+    });
+
+    [Fact]
+    public void Fading_is_off_while_the_UI_is_unlocked_for_moving_windows() => RenderThread.Run(() =>
+    {
+        var clock = new TestClock();
+        var unlocked = true;
+        using var panel = Open(new FakeChatPort(), out var window, () => clock.Now, () => unlocked);
+        panel.Tick();
+        clock.Advance(5);
+        window.Refresh();
+        Assert.Equal(1.0, Seen(TabView(window, "All")));
+
+        unlocked = false;
+        window.Refresh();
+        clock.Advance(RetailChatFade.ChromeFadeSeconds);
+        window.Refresh();
+        Assert.Equal(0.0, Seen(TabView(window, "All")));
+    });
+
     // ---- helpers ----
+
+    /// <summary>The window's clock: the test moves it, so the fade runs without sleeping.</summary>
+    private sealed class TestClock
+    {
+        public DateTime Now { get; private set; } = Stamp;
+
+        public void Advance(double seconds) => Now = Now.AddSeconds(seconds);
+    }
+
+    /// <summary>How opaque a part shows on screen: its opacity times its ancestors'.</summary>
+    private static double Seen(Visual part) => part.GetSelfAndVisualAncestors().OfType<Visual>().Aggregate(1.0, (seen, visual) => seen * visual.Opacity);
+
+    private static TextBlock LineOf(AvaloniaPanel panel, string fragment) =>
+        panel.Content.GetVisualDescendants().OfType<TextBlock>().First(text => TextOf(text).Contains(fragment));
 
     private static readonly RetailChatMembership Alone = new(Fellowship: false, Allegiance: false, Monarch: false, Patron: false, Vassals: false,
         Society: false, Olthoi: false, Open: ChatChannels.General | ChatChannels.Trade | ChatChannels.Lfg | ChatChannels.Roleplay);
@@ -283,13 +404,13 @@ public sealed class RetailChatTests
         yield return Line(RetailChatKind.Combat, "You hit the Drudge Skulker for 42 points of slashing damage!");
     }
 
-    private static RetailChatLine Line(RetailChatKind kind, string text, string? sender = null, string? channel = null) =>
-        new(kind, text, Stamp, sender, channel);
+    private static RetailChatLine Line(RetailChatKind kind, string text, string? sender = null, string? channel = null, DateTime? at = null) =>
+        new(kind, text, at ?? Stamp, sender, channel);
 
-    private static AvaloniaPanel Open(FakeChatPort port, out RetailChatWindow window)
+    private static AvaloniaPanel Open(FakeChatPort port, out RetailChatWindow window, Func<DateTime>? clock = null, Func<bool>? uiUnlocked = null)
     {
         RetailChatWindow? created = null;
-        var panel = AvaloniaPanel.Create(() => created = new RetailChatWindow(port), Width, Height);
+        var panel = AvaloniaPanel.Create(() => created = new RetailChatWindow(port, clock: clock ?? (() => Stamp), uiUnlocked: uiUnlocked), Width, Height);
         window = created!;
         return panel;
     }
