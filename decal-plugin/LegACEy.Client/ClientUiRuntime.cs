@@ -1759,12 +1759,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             return eat;
         }
         _gameWindow = new IntPtr(hwnd);
+        // ponytail: diagnostic for the stance-click crash; remove once the cause is known.
+        var button = message == InputRouterService.WmLButtonUp || message == 0x0201;
+        if (button) Log($"Button message 0x{message:X4} at {(short)(lParam & 0xffff)},{(short)((lParam >> 16) & 0xffff)}; hand-off {_handOff != null}.");
         if (_handOff != null)
             Guard(() => ContinueHandOff(message));
         if (message == InputRouterService.WmMouseMove)
             _pointer = new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff));
         if (message == InputRouterService.WmLButtonUp && _inputRouter.CapturedSurfaceId == null)
             Guard(() => HandleRetailDrop(new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff))));
+        if (button) Log("Button message: retail drop checked.");
         if (message == InputRouterService.WmMouseWheel)
         {
             var point = new NativePoint
@@ -1780,6 +1784,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var route = _inputRouter.Route(
             new NativeInputMessage(message, new IntPtr(wParam), new IntPtr(lParam)),
             GetInputSurfaces());
+        if (button) Log($"Button message: routed {route.Action} to '{route.SurfaceId}' at {route.X},{route.Y}, eat {route.Eat}.");
         GuardInput(route, () =>
         {
             var target = route.SurfaceId == null ? null : SurfaceById(route.SurfaceId);
@@ -1816,7 +1821,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 case InputAction.PointerDown:
                     // The window that had focus loses it to this one, and so does retail's focused element (a split amount box).
                     SurfaceById(route.ClearFocusSurfaceId)?.Panel.ClearFocus();
+                    Log("Press: clearing retail's keyboard focus.");
                     _retailDrag?.ClearKeyboardFocus();
+                    Log("Press: retail's keyboard focus cleared.");
                     _pointer = new Point(route.X + target!.Location.X, route.Y + target.Location.Y);
                     if (route.SurfaceId != null && _windows?.Get(route.SurfaceId) != null)
                     {
@@ -1824,6 +1831,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                         SyncWindowLocations();
                     }
                     target.Panel.PointerDown(route.X, route.Y, ToKeyModifiers(route.Modifiers));
+                    Log("Press: panel took the press.");
                     eat = route.Eat;
                     break;
                 case InputAction.RightClick:
@@ -1832,6 +1840,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     break;
                 case InputAction.PointerUp:
                     target!.Panel.PointerUp(route.X, route.Y);
+                    Log("Release: panel took the release.");
                     if (_windows?.IsDragging == true)
                     {
                         _windows.Release();
@@ -1875,6 +1884,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (route.Eat)
                 eat = true;
         });
+        if (button) Log($"Button message handled; eaten {eat}.");
         return eat;
     }
 
