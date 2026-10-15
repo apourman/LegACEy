@@ -231,14 +231,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     public void Startup()
     {
-        // ponytail: diagnostic for the toolbar click crash: every thrown exception, with where it was thrown. Remove once found.
-        AppDomain.CurrentDomain.FirstChanceException += (_, e) =>
-        {
-            if (_inFirstChance) return;
-            _inFirstChance = true;
-            try { Log($"First-chance {e.Exception.GetType().FullName}: {e.Exception.Message}\n{Environment.StackTrace}"); }
-            finally { _inFirstChance = false; }
-        };
         // Before the plugins load, which may need it; a failed start leaves no handler behind.
         AssemblyLoadContext.Default.Resolving += ResolveFromClientDirectory;
         try
@@ -1485,9 +1477,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (_toolbarFailed) return;
             if (_toolbarSurface == null && !CreateRetailToolbar()) return;
             _toolbarPort!.Poll();
-            var viewport = GameDevice.ViewportSize(_device);
-            // ponytail: diagnostic for the toolbar crash; remove once the cause is known.
-            if (_toolbarTakeover!.Tick(_toolbarDragOffset != null, viewport)) Log($"Toolbar takeover: viewport {viewport} or retail's toolbar changed; holds {_toolbarTakeover.Holds}, in game {_inGame}.");
+            _toolbarTakeover!.Tick(_toolbarDragOffset != null, GameDevice.ViewportSize(_device));
             // The bar stands beside the toolbar only while the takeover holds retail's element; otherwise it closes with it.
             if (_toolbarTakeover.Holds) EnsureShortcutBar();
             else CloseShortcutBar();
@@ -1560,34 +1550,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _toolbarSurface = new ScreenSurface(_device, panel);
         _toolbarRenderer = new RetailSurfaceRenderer(_toolbarSurface.Prepare, _toolbarSurface.DrawNow);
         _toolbarTakeover = new RetailTakeoverLifecycle(new NativeBarPort(NativeUi.ToolbarWindow), new SurfaceTakeoverPort(_toolbarSurface));
-        LegACEy.Client.Themes.UiTrace.Log = message => Log($"{message} [{StackLeft()}]");
-        // ponytail: diagnostic for the toolbar click crash: compile the port's methods now, not deep in a click.
-        foreach (var method in typeof(NativeRetailToolbarPort).GetMethods(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static
-                     | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly))
-            if (!method.IsAbstract && !method.ContainsGenericParameters) System.Runtime.CompilerServices.RuntimeHelpers.PrepareMethod(method.MethodHandle);
-        Log("Toolbar port methods compiled ahead.");
-        var window = NativeUi.GetElement(NativeUi.ToolbarWindow);
-        var inner = NativeUi.GetElement(NativeUi.Toolbar);
-        Log($"Dereth toolbar replacement ready; retail's toolbar window {Describe(window)}, its toolbar {Describe(inner)}.");
+        Log($"Dereth toolbar replacement ready; retail's toolbar window {(NativeUi.GetElement(NativeUi.ToolbarWindow) != IntPtr.Zero ? "found" : "absent")}, " +
+            $"its toolbar {(NativeUi.GetElement(NativeUi.Toolbar) != IntPtr.Zero ? "found" : "absent")}.");
         return true;
     }
-
-    [ThreadStatic] private static bool _inFirstChance;
-
-    [DllImport("kernel32.dll")]
-    private static extern void GetCurrentThreadStackLimits(out IntPtr low, out IntPtr high);
-
-    // ponytail: diagnostic for the toolbar click crash; remove once the cause is known.
-    private static unsafe string StackLeft()
-    {
-        int here;
-        GetCurrentThreadStackLimits(out var low, out var high);
-        return $"stack {((long)&here - low.ToInt64()) / 1024} KB left of {(high.ToInt64() - low.ToInt64()) / 1024} KB";
-    }
-
-    // ponytail: diagnostic for the toolbar crash; remove once the cause is known.
-    private static string Describe(IntPtr element) => element == IntPtr.Zero ? "absent"
-        : $"0x{element.ToInt32():X8} vtable 0x{Marshal.ReadInt32(element):X8} MoveTo 0x{NativeUiMovement.ResolveMoveTo(element).ToInt32():X8}";
 
     /// <summary>
     /// Shows shortcut row 1 as its own window beside the toolbar, once the takeover holds the toolbar and the windows can open. Its
@@ -1790,16 +1756,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             return eat;
         }
         _gameWindow = new IntPtr(hwnd);
-        // ponytail: diagnostic for the stance-click crash; remove once the cause is known.
-        var button = message == InputRouterService.WmLButtonUp || message == 0x0201;
-        if (button) Log($"Button message 0x{message:X4} at {(short)(lParam & 0xffff)},{(short)((lParam >> 16) & 0xffff)}; hand-off {_handOff != null}; {StackLeft()}.");
         if (_handOff != null)
             Guard(() => ContinueHandOff(message));
         if (message == InputRouterService.WmMouseMove)
             _pointer = new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff));
         if (message == InputRouterService.WmLButtonUp && _inputRouter.CapturedSurfaceId == null)
             Guard(() => HandleRetailDrop(new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff))));
-        if (button) Log("Button message: retail drop checked.");
         if (message == InputRouterService.WmMouseWheel)
         {
             var point = new NativePoint
@@ -1815,7 +1777,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var route = _inputRouter.Route(
             new NativeInputMessage(message, new IntPtr(wParam), new IntPtr(lParam)),
             GetInputSurfaces());
-        if (button) Log($"Button message: routed {route.Action} to '{route.SurfaceId}' at {route.X},{route.Y}, eat {route.Eat}.");
         GuardInput(route, () =>
         {
             var target = route.SurfaceId == null ? null : SurfaceById(route.SurfaceId);
@@ -1852,9 +1813,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 case InputAction.PointerDown:
                     // The window that had focus loses it to this one, and so does retail's focused element (a split amount box).
                     SurfaceById(route.ClearFocusSurfaceId)?.Panel.ClearFocus();
-                    Log("Press: clearing retail's keyboard focus.");
                     _retailDrag?.ClearKeyboardFocus();
-                    Log("Press: retail's keyboard focus cleared.");
                     _pointer = new Point(route.X + target!.Location.X, route.Y + target.Location.Y);
                     if (route.SurfaceId != null && _windows?.Get(route.SurfaceId) != null)
                     {
@@ -1869,7 +1828,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                         break;
                     }
                     target.Panel.PointerDown(route.X, route.Y, ToKeyModifiers(route.Modifiers));
-                    Log("Press: panel took the press.");
                     eat = route.Eat;
                     break;
                 case InputAction.RightClick:
@@ -1878,7 +1836,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     break;
                 case InputAction.PointerUp:
                     target!.Panel.PointerUp(route.X, route.Y);
-                    Log("Release: panel took the release.");
                     if (_windows?.IsDragging == true)
                     {
                         _windows.Release();
@@ -1922,7 +1879,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (route.Eat)
                 eat = true;
         });
-        if (button) Log($"Button message handled; eaten {eat}.");
         return eat;
     }
 
@@ -2185,16 +2141,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         public bool IsVisible { get { var element = Element; return element != IntPtr.Zero && NativeUi.IsVisible(element); } }
         public Rectangle GetBounds() { var element = Element; if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared."); return NativeUi.GetBounds(element); }
         public void SetVisible(bool visible) { var element = Element; if (element != IntPtr.Zero) NativeUi.SetVisible(element, visible); }
-        // ponytail: the 0x{id} logs are diagnostics for the toolbar crash; remove once the cause is known.
-        public void SetSaveLocation(bool save) { var element = Element; if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared."); Log($"0x{_rootId:X8}: save location {save}."); NativeUi.SetSaveLocation(element, save); }
-        public void MoveTo(Point location)
-        {
-            var element = Element;
-            if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared.");
-            Log($"0x{_rootId:X8}: native move to {location} through 0x{NativeUiMovement.ResolveMoveTo(element).ToInt32():X8}.");
-            NativeUi.MoveTo(element, location);
-            Log($"0x{_rootId:X8}: native move returned.");
-        }
+        public void SetSaveLocation(bool save) { var element = Element; if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared."); NativeUi.SetSaveLocation(element, save); }
+        public void MoveTo(Point location) { var element = Element; if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared."); NativeUi.MoveTo(element, location); }
         public bool IsUiLocked => NativeUi.IsUiLocked;
     }
 

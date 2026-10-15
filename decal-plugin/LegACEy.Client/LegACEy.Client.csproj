@@ -21,6 +21,11 @@
     <PublishReadyToRun>true</PublishReadyToRun>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Not precompiled: these subclass Avalonia controls, and crossgen's x86 layout of their fields did not match the runtime's (a
+         toolbar medallion read its Clicked handler from the wrong offset and crashed the game on click, 14 Oct). They JIT instead. -->
+    <PublishReadyToRunExclude Include="LegACEy.Client.Themes.dll;LegACEy.Client.Demo.dll" />
+  </ItemGroup>
+  <ItemGroup>
     <TrimmerRootAssembly Include="Avalonia;Avalonia.Base;Avalonia.Controls;Avalonia.Dialogs;Avalonia.Markup;Avalonia.Markup.Xaml;Avalonia.Skia;Avalonia.Themes.Simple;Avalonia.Headless;SkiaSharp;HarfBuzzSharp;Reloaded.Hooks;Reloaded.Hooks.Definitions;Reloaded.Memory;Reloaded.Memory.Buffers;Reloaded.Assembler" />
     <!-- The plugin API surface. netstandard is a pure facade; its root keeps the type forwards plugins bind through (trimming
          strips forwards nothing in the graph uses). The rest keeps the everyday framework code whole. Checked once on 10 Oct with

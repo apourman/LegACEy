@@ -165,14 +165,6 @@ public sealed unsafe class Plugin : FilterBase
         var coreclrPath = IOPath.Combine(runtime, "coreclr.dll");
         if (!File.Exists(coreclrPath)) throw new FileNotFoundException($"The .NET runtime is missing: {coreclrPath} was not found.");
 
-        // ponytail: diagnostic for the toolbar click crash: the runtime writes a dump beside the DLL when it fails fast. Remove once found.
-        Environment.SetEnvironmentVariable("DOTNET_DbgEnableMiniDump", "1");
-        Environment.SetEnvironmentVariable("DOTNET_DbgMiniDumpType", "1");
-        // ponytail: experiment for the toolbar click crash: runtime stubs in plain read-write-execute memory.
-        // ponytail: experiment for the toolbar click crash: ignore precompiled code and compile everything at run time.
-        Environment.SetEnvironmentVariable("DOTNET_ReadyToRun", "0");
-        Environment.SetEnvironmentVariable("DOTNET_DbgMiniDumpName", IOPath.Combine(Directory, "legacey-crash-%p.dmp"));
-        Environment.SetEnvironmentVariable("DOTNET_CreateDumpDiagnostics", "1");
         var watch = Stopwatch.StartNew();
         var coreclr = LoadLibraryEx(coreclrPath, IntPtr.Zero, LoadWithAlteredSearchPath);
         if (coreclr == IntPtr.Zero)

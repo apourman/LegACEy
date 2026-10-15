@@ -385,9 +385,7 @@ public sealed class AvaloniaPanel : IDisposable
             Invalidate();
             _pointerPosition = ToContent(x, y);
             _mouseButtons &= ~RawInputModifiers.LeftMouseButton;
-            UiTrace.Log?.Invoke("Panel: sending the release to Avalonia.");
             SendPointer(RawPointerEventType.LeftButtonUp, ToContent(x, y));
-            UiTrace.Log?.Invoke("Panel: Avalonia took the release.");
         });
     }
 
