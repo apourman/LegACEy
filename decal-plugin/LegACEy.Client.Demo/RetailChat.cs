@@ -179,11 +179,17 @@ public static class RetailChatCommands
     }
 }
 
-/// <summary>A tab: the kinds of line it shows, and the talk target it sets when picked. The Tells tab's target is the last tell's partner.</summary>
-public sealed record RetailChatTab(string Name, RetailChatKind Kinds, string? TargetId)
+/// <summary>
+/// A tab: the kinds of line it shows, and the talk target it sets when picked. The Tells tab's target is the last tell's partner. Channel
+/// lines show only for the <see cref="Channels"/> named (as the line names them, "General"), or for every channel when that is null.
+/// </summary>
+public sealed record RetailChatTab(string Name, RetailChatKind Kinds, string? TargetId, IReadOnlyList<string>? Channels = null)
 {
     /// <summary>The target key that means "the last tell's partner".</summary>
     public const string LastTellId = "last-tell";
+
+    /// <summary>The channels a tab can pick one by one, as the channel lines name them.</summary>
+    public static readonly IReadOnlyList<string> ChannelNames = new[] { "General", "Trade", "LFG", "Roleplay", "Society", "Olthoi" };
 
     /// <summary>The six tabs every player starts with.</summary>
     public static readonly IReadOnlyList<RetailChatTab> Defaults = new[]
@@ -197,5 +203,6 @@ public sealed record RetailChatTab(string Name, RetailChatKind Kinds, string? Ta
         new RetailChatTab("Tells", RetailChatKind.TellIn | RetailChatKind.TellOut, LastTellId)
     };
 
-    public bool Shows(RetailChatLine line) => Kinds.HasFlag(line.Kind);
+    public bool Shows(RetailChatLine line) =>
+        Kinds.HasFlag(line.Kind) && (line.Kind != RetailChatKind.Channel || Channels == null || (line.Channel != null && Channels.Contains(line.Channel)));
 }

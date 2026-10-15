@@ -27,7 +27,10 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private const double ClickSlop = 4;
     private readonly IRetailChatPort _port;
     private readonly Action? _startMove;
-    private readonly IReadOnlyList<RetailChatTab> _tabs;
+    private readonly List<RetailChatTab> _tabs;
+    // Each tab's unread lines and whether one of them is a new tell from someone, by tab index.
+    private readonly List<(int Missed, bool Tell)> _unread;
+    private readonly Action<IReadOnlyList<RetailChatTab>>? _tabsChanged;
     private readonly RetailChatHistory _history = new();
     private readonly StackPanel _tabStrip = new() { Orientation = Orientation.Horizontal, Height = 19 };
     private readonly StackPanel _lines = new();
@@ -37,6 +40,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private readonly ContentControl _chipHost = new();
     private readonly TextBox _input;
     private readonly Border _menu = new() { IsVisible = false, ZIndex = 5 };
+    private readonly Border _editor = new() { IsVisible = false, ZIndex = 6 };
     private int _tab;
     private RetailTalkTarget _target = RetailTalkTargets.Local;
     private string? _lastTell;
@@ -47,11 +51,15 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     /// <param name="port">Retail's chat, as the client reaches it.</param>
     /// <param name="startMove">Run on a press on the tab strip's empty part, which starts the window's move; null for none.</param>
     /// <param name="tabs">The tabs; null for the six defaults.</param>
-    public RetailChatWindow(IRetailChatPort port, Action? startMove = null, IReadOnlyList<RetailChatTab>? tabs = null)
+    /// <param name="tabsChanged">Run with the whole tab list after a tab is added, edited, moved or removed, so the caller can keep it.</param>
+    public RetailChatWindow(IRetailChatPort port, Action? startMove = null, IReadOnlyList<RetailChatTab>? tabs = null,
+        Action<IReadOnlyList<RetailChatTab>>? tabsChanged = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _startMove = startMove;
-        _tabs = tabs ?? RetailChatTab.Defaults;
+        _tabs = (tabs ?? RetailChatTab.Defaults).ToList();
+        _unread = _tabs.Select(_ => (0, false)).ToList();
+        _tabsChanged = tabsChanged;
         _timestamps = port.TimestampsOn;
 
         // The tab strip: the tabs, then an empty part that drags the window.
@@ -127,6 +135,10 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _menu.HorizontalAlignment = HorizontalAlignment.Left;
         _menu.Margin = new Thickness(0, 0, 0, 26);
         content.Children.Add(_menu);
+        // The tab dialog covers the whole window while it is open, centred.
+        Grid.SetRow(_editor, 0);
+        Grid.SetRowSpan(_editor, 3);
+        content.Children.Add(_editor);
         Child = new DerethFrame(DerethFrameArt.Window) { Child = content };
 
         RebuildTabs();
@@ -144,11 +156,12 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     /// <summary>Gives the box the keyboard: Enter in the game does this.</summary>
     public void FocusInput() => _input.Focus();
 
-    /// <summary>Picks a tab, as a click does: the log shows its lines and its talk target is set.</summary>
+    /// <summary>Picks a tab, as a click does: the log shows its lines, its talk target is set and its unread count is cleared.</summary>
     public void PickTab(int index)
     {
         if (index < 0 || index >= _tabs.Count) return;
         _tab = index;
+        _unread[index] = (0, false);
         RebuildTabs();
         CloseMenu();
         RebuildLog();
@@ -170,13 +183,25 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _chipHost.Content = DerethChatParts.Chip(target.Label, ColourOf(target.Colour));
     }
 
-    /// <summary>Retail's line, from the port: kept, shown on this tab if the tab takes it, and counted if the log is scrolled up.</summary>
+    /// <summary>
+    /// Retail's line, from the port: kept, shown on this tab if the tab takes it, and counted on every other tab that takes it. A new tell
+    /// from someone turns that tab's count gold. If the log is scrolled up, the line raises the jump pill.
+    /// </summary>
     public void Receive(RetailChatLine line)
     {
         if (_disposed) return;
         var dropped = _history.Add(line);
         if (line.Sender != null && (line.Kind == RetailChatKind.TellIn || line.Kind == RetailChatKind.TellOut)) _lastTell = line.Sender;
         if (dropped != null && _tabs[_tab].Shows(dropped) && _lines.Children.Count > 0) _lines.Children.RemoveAt(0);
+        var counted = false;
+        for (var i = 0; i < _tabs.Count; i++)
+        {
+            if (i == _tab || !_tabs[i].Shows(line)) continue;
+            var (missed, tell) = _unread[i];
+            _unread[i] = (missed + 1, tell || line.Kind == RetailChatKind.TellIn);
+            counted = true;
+        }
+        if (counted) RebuildTabs();
         if (!_tabs[_tab].Shows(line)) return;
         var atEnd = AtEnd();
         _lines.Children.Add(LineView(line));
@@ -209,16 +234,93 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         for (var i = 0; i < _tabs.Count; i++)
         {
             var index = i;
-            var view = DerethChatParts.Tab(_tabs[i].Name, i == _tab);
+            var (missed, tell) = _unread[i];
+            var view = DerethChatParts.Tab(_tabs[i].Name, i == _tab, missed, tell);
             view.PointerPressed += (_, e) =>
             {
-                if (!e.GetCurrentPoint(view).Properties.IsLeftButtonPressed) return;
-                PickTab(index);
-                e.Handled = true;
+                if (e.GetCurrentPoint(view).Properties.IsLeftButtonPressed)
+                {
+                    PickTab(index);
+                    e.Handled = true;
+                }
+                // The All tab is fixed; every other tab is edited with a right click.
+                else if (e.GetCurrentPoint(view).Properties.IsRightButtonPressed && index > 0)
+                {
+                    OpenEditor(index);
+                    e.Handled = true;
+                }
             };
             _tabStrip.Children.Add(view);
         }
+        var add = DerethChatParts.AddTab();
+        add.PointerPressed += (_, e) =>
+        {
+            if (!e.GetCurrentPoint(add).Properties.IsLeftButtonPressed) return;
+            OpenEditor(-1);
+            e.Handled = true;
+        };
+        _tabStrip.Children.Add(add);
     }
+
+    /// <summary>The tab dialog for a new tab (<paramref name="index"/> -1) or an existing one; the All tab (index 0) has none.</summary>
+    private void OpenEditor(int index)
+    {
+        var existing = index < 0 ? null : _tabs[index];
+        var actions = new RetailChatTabEditActions(
+            Save: tab => SaveTab(index, tab),
+            Cancel: CloseEditor,
+            Remove: index > 0 ? (Action)(() => RemoveTab(index)) : null,
+            Move: index > 0 ? (Action<int>)(step => MoveTab(index, step)) : null,
+            CanMoveLeft: index > 1,
+            CanMoveRight: index > 0 && index < _tabs.Count - 1);
+        _editor.Child = RetailChatTabEditor.Create(existing, actions);
+        _editor.IsVisible = true;
+    }
+
+    private void CloseEditor()
+    {
+        _editor.IsVisible = false;
+        _editor.Child = null;
+    }
+
+    /// <summary>Adds the tab at the end, or replaces the one at <paramref name="index"/>, then shows it and keeps the list.</summary>
+    private void SaveTab(int index, RetailChatTab tab)
+    {
+        if (index < 0)
+        {
+            _tabs.Add(tab);
+            _unread.Add((0, false));
+            index = _tabs.Count - 1;
+        }
+        else
+        {
+            _tabs[index] = tab;
+        }
+        CloseEditor();
+        KeepTabs();
+        PickTab(index);
+    }
+
+    private void RemoveTab(int index)
+    {
+        _tabs.RemoveAt(index);
+        _unread.RemoveAt(index);
+        CloseEditor();
+        KeepTabs();
+        PickTab(0);
+    }
+
+    private void MoveTab(int index, int step)
+    {
+        var to = index + step;
+        (_tabs[index], _tabs[to]) = (_tabs[to], _tabs[index]);
+        (_unread[index], _unread[to]) = (_unread[to], _unread[index]);
+        CloseEditor();
+        KeepTabs();
+        PickTab(to);
+    }
+
+    private void KeepTabs() => _tabsChanged?.Invoke(_tabs.ToArray());
 
     private void RebuildLog()
     {

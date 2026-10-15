@@ -1,3 +1,4 @@
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
@@ -26,9 +27,12 @@ public static class DerethChatPalette
     public static readonly Color ChipFill = Color.Parse("#0B1117");
     /// <summary>The jump pill's fill, and the talk-target menu's hovered row.</summary>
     public static readonly Color PillFill = Color.Parse("#0E1923");
-    /// <summary>The dark outline of a selected tab and of the chip: the theme's gold, shaded.</summary>
+    /// <summary>The dark outline of a selected tab and of the chip: the theme's gold, shaded. Also the fill of a tab's unread count.</summary>
     public static readonly Color GoldDark = Color.Parse("#7A5E30");
     public static readonly IBrush GoldDarkBrush = DerethPalette.Brush(GoldDark);
+    /// <summary>The fill of a tab's unread count when a new tell from someone is in it, and the cream text on it.</summary>
+    public static readonly Color TellFill = Color.Parse("#8A6E22");
+    public static readonly Color TellText = Color.Parse("#FFF3CF");
 }
 
 /// <summary>
@@ -40,8 +44,11 @@ public static class DerethChatParts
     /// <summary>The chip's caret: the mockup's small up-pointing triangle, in gold.</summary>
     private const string CaretData = "M1.5 6.5L5 2.5L8.5 6.5Z";
 
-    /// <summary>A tab label on the tab strip. The selected tab shows the dark fill and the gold outline, as the mockup does.</summary>
-    public static Border Tab(string text, bool selected)
+    /// <summary>
+    /// A tab label on the tab strip. The selected tab shows the dark fill and the gold outline, as the mockup does. A tab with lines it has
+    /// not shown carries its count in a badge after the name; a new tell from someone makes the badge the tell colour.
+    /// </summary>
+    public static Border Tab(string text, bool selected, int missed = 0, bool tell = false)
     {
         var label = new TextBlock
         {
@@ -51,6 +58,8 @@ public static class DerethChatParts
             Foreground = selected ? DerethPalette.CreamBrush : DerethPalette.MutedBrush,
             VerticalAlignment = VerticalAlignment.Center
         };
+        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { label } };
+        if (missed > 0) content.Children.Add(Badge(missed, tell));
         return new Border
         {
             Height = selected ? 19 : 17,
@@ -61,9 +70,41 @@ public static class DerethChatParts
             BorderBrush = selected ? DerethChatPalette.GoldDarkBrush : Brushes.Transparent,
             Background = selected ? DerethPalette.Brush(Color.FromArgb(0xD9, 0x03, 0x06, 0x09)) : Brushes.Transparent,
             Cursor = new Cursor(StandardCursorType.Hand),
-            Child = label
+            Child = content
         };
     }
+
+    /// <summary>The tab strip's plus: a new tab's dialog opens from it.</summary>
+    public static Border AddTab() => new()
+    {
+        Height = 17,
+        Padding = new Thickness(5, 0),
+        Margin = new Thickness(0, 0, 1, 0),
+        VerticalAlignment = VerticalAlignment.Bottom,
+        Cursor = new Cursor(StandardCursorType.Hand),
+        Child = new TextBlock { Text = "+", FontFamily = DerethPalette.Title, FontSize = 11, Foreground = DerethPalette.GoldBrush, VerticalAlignment = VerticalAlignment.Center }
+    };
+
+    /// <summary>The unread count on a tab: gold, or the brighter tell gold when a new tell from someone is in it.</summary>
+    private static Border Badge(int count, bool tell) => new()
+    {
+        MinWidth = 9,
+        Height = 12,
+        Padding = new Thickness(3, 0),
+        CornerRadius = new CornerRadius(6),
+        VerticalAlignment = VerticalAlignment.Center,
+        Background = DerethPalette.Brush(tell ? DerethChatPalette.TellFill : DerethChatPalette.GoldDark),
+        Child = new TextBlock
+        {
+            Text = count.ToString(CultureInfo.InvariantCulture),
+            FontFamily = DerethPalette.Body,
+            FontSize = 8,
+            FontWeight = FontWeight.Bold,
+            Foreground = tell ? DerethPalette.Brush(DerethChatPalette.TellText) : DerethPalette.CreamBrush,
+            TextAlignment = TextAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        }
+    };
 
     /// <summary>The target chip: the target's label in the target's colour, a gold caret, on the dark fill with a gold outline.</summary>
     public static Border Chip(string label, Color colour)
