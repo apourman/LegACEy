@@ -1,0 +1,326 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
+using LegACEy.Client.Demo;
+
+namespace LegACEy.Client.DecalPlugin;
+
+/// <summary>
+/// Retail's chat over the installed client, the port the Dereth chat window uses. Incoming lines come through our own notice handler on
+/// retail's chat notice (0x186B6): its strings are copied and queued in the callback, and <see cref="Poll"/> raises them on the game thread
+/// between frames. A send calls the live target of retail's own chat box call, so the chat parser and plugins' command handlers see it.
+/// Membership comes from the native reads that were checked, and from Decal's allegiance and society facts through the bridge.
+/// </summary>
+/// <remarks>
+/// Every address was checked against the installed acclient.exe by <see cref="RetailChatCatalogue"/>. The chat features that do not check
+/// are off: their reads return what the window shows without them (no timestamps, no room targets, no fellowship target).
+/// </remarks>
+internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
+{
+    private const uint RegistrarGetter = 0x00838374;
+    private const uint PlayerSystem = 0x0087119C;
+    private const uint FellowshipSystem = 0x0087150C;
+    private const uint TurbineChatHolder = 0x00870BE4;
+    private const uint CommunicationSystem = 0x008717FC;
+    private const uint EmptyWide = 0x00818340;
+    // The E8 that calls OnChatCommand from ChatInterface::ProcessCommand, and its target is read live (see the send recipe).
+    private const uint SendCallSite = 0x004F5DAB;
+    private const uint NoticeChatLine = 0x186B6;
+    // The notice handler's slot the notice loop calls, and how many slots its vtable copy holds: only this slot is ever called.
+    private const int NoticeSlot = 0x38;
+    private const int VtableBytes = 0x40;
+    // The notice's arguments are the chat type, the text, its timestamp prefix and the target; the text is the StringInfo's +0x80 literal.
+    private const int StringLiteral = 0x80;
+
+    private static readonly Regex TellTag = new(@"<Tell:IIDString:[^:>]*:([^>]*)>(.*?)<\\Tell>", RegexOptions.Compiled);
+    private static readonly Regex ChannelPrefix = new(@"^\[([^\]]+)\]", RegexOptions.Compiled);
+
+    private readonly Action<string> _log;
+    private readonly RetailChatNatives _natives;
+    private readonly ConcurrentQueue<RetailChatLine> _pending = new();
+    private readonly NoticeCallback _callback;
+    private IntPtr _handler;
+    private IntPtr _vtable;
+    private bool _attached;
+    private bool _timestamps = true;
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void RegisterNoticeHandlerFn(IntPtr registrar, uint notice, IntPtr handler);
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void UnRegisterAllNoticeHandlersFn(IntPtr registrar, IntPtr handler);
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void NoticeCallback(IntPtr handler, uint chatType, IntPtr text, IntPtr timestampPrefix, uint targetWindow);
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void OnChatCommandFn(IntPtr communicationSystem, IntPtr command, uint sourceWindow);
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void PStringBaseFromWideFn(IntPtr self, IntPtr text);
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void PStringBaseReleaseFn(IntPtr self);
+
+    /// <param name="log">Writes a line to the client's log.</param>
+    /// <param name="natives">Which chat features the running client matched; a feature that did not match is off.</param>
+    public NativeRetailChatPort(Action<string> log, RetailChatNatives natives)
+    {
+        _log = log ?? throw new ArgumentNullException(nameof(log));
+        _natives = natives;
+        _callback = OnNotice;
+    }
+
+    public event Action<RetailChatLine>? LineReceived;
+    public event Action? TimestampsChanged;
+
+    /// <summary>
+    /// Registers the incoming-line handler with retail's notice registrar. Called once the takeover holds retail's chat, and again after a
+    /// detach. Must run on the game thread.
+    /// </summary>
+    public void Attach()
+    {
+        if (_attached) return;
+        if (_vtable == IntPtr.Zero) BuildHandler();
+        var registrar = Marshal.ReadIntPtr(At(RegistrarGetter));
+        if (registrar == IntPtr.Zero) throw new InvalidOperationException("Retail's notice registrar is not ready.");
+        NativeUi.Virtual<RegisterNoticeHandlerFn>(registrar, 0x04)(registrar, NoticeChatLine, _handler);
+        _attached = true;
+        _timestamps = ReadTimestamps();
+    }
+
+    /// <summary>
+    /// Unregisters the handler, on unload and logoff. Must run on the game thread and never from inside the callback, which the notice
+    /// sender is still walking.
+    /// </summary>
+    public void Detach()
+    {
+        if (!_attached) return;
+        var registrar = Marshal.ReadIntPtr(At(RegistrarGetter));
+        _attached = false;
+        if (registrar != IntPtr.Zero) NativeUi.Virtual<UnRegisterAllNoticeHandlersFn>(registrar, 0x0C)(registrar, _handler);
+    }
+
+    /// <summary>Raises the lines the callback queued, and the timestamp option's change, on the game thread. Called once a frame.</summary>
+    public void Poll()
+    {
+        while (_pending.TryDequeue(out var line)) LineReceived?.Invoke(line);
+        var timestamps = ReadTimestamps();
+        if (timestamps != _timestamps)
+        {
+            _timestamps = timestamps;
+            TimestampsChanged?.Invoke();
+        }
+        if (_natives.Enter) ReleaseRetailEntryFocus();
+    }
+
+    /// <summary>
+    /// Retail's hidden chat entry keeps the keyboard when the player presses Enter while retail's chat is held. Each frame it is let go, so
+    /// the typed keys reach our input. The chat object is the gmMainChatUI element less its UIElement offset of 4.
+    /// </summary>
+    private static void ReleaseRetailEntryFocus()
+    {
+        var main = NativeUi.GetElement(RetailChatCatalogue.MainChat);
+        if (main == IntPtr.Zero) return;
+        var chat = IntPtr.Add(main, -4);
+        var entry = Marshal.ReadIntPtr(chat, 0x60C);
+        var manager = Marshal.ReadIntPtr(At(0x0083E03C));
+        if (manager == IntPtr.Zero || entry == IntPtr.Zero) return;
+        var window = Marshal.ReadIntPtr(manager, 0x32C);
+        if (window == IntPtr.Zero || Marshal.ReadIntPtr(window, 0x1A4) != entry) return;
+        Marshal.GetDelegateForFunctionPointer<DeactivateChatEntryFn>(At(RetailChatCatalogue.DeactivateChatEntry))(chat);
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void DeactivateChatEntryFn(IntPtr chat);
+
+    private static IntPtr At(uint address) => new(unchecked((int)address));
+
+    public void Dispose()
+    {
+        try { Detach(); }
+        catch (Exception exception) { _log($"Could not unregister the retail chat handler: {exception.Message}"); }
+    }
+
+    public bool TimestampsOn => _timestamps;
+
+    public string? SelectedName
+    {
+        get
+        {
+            var id = (uint)Bridge.Fact(BridgeFact.CurrentSelection);
+            return id == 0 ? null : Bridge.Selection(id)?.Name;
+        }
+    }
+
+    /// <summary>
+    /// What the player is in: the bridge's allegiance and society facts, the fellowship pointer and the channel options. A feature that did not
+    /// match its catalogue reads as not in it, so its talk targets are dimmed.
+    /// </summary>
+    public RetailChatMembership Membership
+    {
+        get
+        {
+            var facts = (int)Bridge.Fact(BridgeFact.CharacterMembership);
+            return new RetailChatMembership(
+                Fellowship: _natives.Fellowship && InFellowship(),
+                Allegiance: (facts & 1) != 0,
+                Monarch: (facts & 2) != 0,
+                Patron: (facts & 4) != 0,
+                Vassals: (facts & 8) != 0,
+                Society: (facts & 16) != 0,
+                Olthoi: (facts & 32) != 0,
+                Open: OpenChannels());
+        }
+    }
+
+    /// <summary>
+    /// Sends the text through retail's chat box call: its receiver is the live communication system, and the call is the one at the box's
+    /// own send site, read as it is now. Skipped when there is no receiver, as the box skips it.
+    /// </summary>
+    public void Send(string text)
+    {
+        if (!_natives.Send) throw new InvalidOperationException("Retail's chat send is off: the running client does not match its native entries.");
+        var receiver = Marshal.ReadIntPtr(At(CommunicationSystem));
+        if (receiver == IntPtr.Zero) return;
+        var rel = Marshal.ReadInt32(At(SendCallSite + 1));
+        var onChatCommand = IntPtr.Add(At(SendCallSite + 5), rel);
+        var call = Marshal.GetDelegateForFunctionPointer<OnChatCommandFn>(onChatCommand);
+
+        // A PStringBase<wchar_t> starts as the empty string, then takes the text: the same steps as the box's own copy.
+        var command = Marshal.AllocHGlobal(4);
+        var wide = Marshal.StringToHGlobalUni(text);
+        try
+        {
+            Marshal.WriteIntPtr(command, Marshal.ReadIntPtr(At(EmptyWide)));
+            var construct = Marshal.GetDelegateForFunctionPointer<PStringBaseFromWideFn>(At(0x00402730));
+            construct(command, wide);
+            call(receiver, command, 1);
+            Marshal.GetDelegateForFunctionPointer<PStringBaseReleaseFn>(At(0x004011B0))(command);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(wide);
+            Marshal.FreeHGlobal(command);
+        }
+    }
+
+    /// <summary>The handler object and its vtable: a copy of retail's own NoticeHandler vtable, with our callback in the notice slot.</summary>
+    private void BuildHandler()
+    {
+        var copy = NativeUi.ReadMemory(RetailChatCatalogue.NoticeHandlerVtable, VtableBytes);
+        _vtable = Marshal.AllocHGlobal(VtableBytes);
+        Marshal.Copy(copy, 0, _vtable, VtableBytes);
+        Marshal.WriteIntPtr(_vtable, NoticeSlot, Marshal.GetFunctionPointerForDelegate(_callback));
+        _handler = Marshal.AllocHGlobal(4);
+        Marshal.WriteIntPtr(_handler, _vtable);
+    }
+
+    /// <summary>
+    /// Copies the line out of retail's strings before returning: they belong to the caller and are gone once the notice ends. Never throws
+    /// into the client.
+    /// </summary>
+    private void OnNotice(IntPtr handler, uint chatType, IntPtr text, IntPtr timestampPrefix, uint targetWindow)
+    {
+        try
+        {
+            var kind = RetailChatTypes.KindOf(chatType);
+            if (kind is not { } known) return;
+            var raw = ReadWide(Marshal.ReadIntPtr(text, StringLiteral));
+            var line = RetailChatTypes.Parse(known, raw, DateTime.Now);
+            _pending.Enqueue(line);
+        }
+        catch
+        {
+            // A line that cannot be read is dropped; the client keeps running.
+        }
+    }
+
+    private static string ReadWide(IntPtr pointer) => pointer == IntPtr.Zero ? string.Empty : Marshal.PtrToStringUni(pointer) ?? string.Empty;
+
+    private static bool InFellowship()
+    {
+        var system = Marshal.ReadIntPtr(At(FellowshipSystem));
+        return system != IntPtr.Zero && Marshal.ReadIntPtr(system, 0x10) != IntPtr.Zero;
+    }
+
+    /// <summary>
+    /// The channels the player hears, from the character options: with Turbine chat down every room is off, as retail's own rule says.
+    /// Off when the channel option's catalogue does not match.
+    /// </summary>
+    private ChatChannels OpenChannels()
+    {
+        if (!_natives.Channels || !TurbineChatUp()) return ChatChannels.None;
+        var options = PlayerOptions2();
+        if (options == null) return ChatChannels.None;
+        var open = ChatChannels.None;
+        if (Bit(options.Value, 8)) open |= ChatChannels.General;
+        if (Bit(options.Value, 9)) open |= ChatChannels.Trade;
+        if (Bit(options.Value, 10)) open |= ChatChannels.Lfg;
+        if (Bit(options.Value, 11)) open |= ChatChannels.Roleplay;
+        if (Bit(options.Value, 19)) open |= ChatChannels.Society;
+        return open;
+    }
+
+    private static bool TurbineChatUp()
+    {
+        var holder = Marshal.ReadIntPtr(At(TurbineChatHolder));
+        return holder != IntPtr.Zero && Marshal.ReadInt32(holder, 0x0C) != 0;
+    }
+
+    private bool ReadTimestamps()
+    {
+        if (!_natives.Timestamp) return true;
+        var options = PlayerOptions2();
+        return options == null || Bit(options.Value, 6);
+    }
+
+    /// <summary>CharacterOptions2 of the player, read from the PlayerModule at its options offset; null when the player is not in the world.</summary>
+    private static uint? PlayerOptions2()
+    {
+        var system = Marshal.ReadIntPtr(At(PlayerSystem));
+        if (system == IntPtr.Zero) return null;
+        return unchecked((uint)Marshal.ReadInt32(system, 0x34 + 0x90));
+    }
+
+    private static bool Bit(uint value, int bit) => ((value >> bit) & 1) != 0;
+
+    /// <summary>The chat type's entry in the table of kinds: the spike note's section 3. Plugin lines have no type of their own.</summary>
+    internal static class RetailChatTypes
+    {
+        /// <summary>The kind retail's chat type stands for, or null for a type the main chat does not show (errors, type 26).</summary>
+        public static RetailChatKind? KindOf(uint chatType) => chatType switch
+        {
+            2 => RetailChatKind.Local,
+            12 => RetailChatKind.Emote,
+            3 or 31 => RetailChatKind.TellIn,
+            4 => RetailChatKind.TellOut,
+            19 => RetailChatKind.Fellowship,
+            18 or 10 or 11 => RetailChatKind.Allegiance,
+            8 or 9 or 27 or 28 or 29 or 30 or 32 => RetailChatKind.Channel,
+            6 or 7 or 17 or 21 or 22 => RetailChatKind.Combat,
+            26 => null,
+            _ => RetailChatKind.System
+        };
+
+        /// <summary>
+        /// A line from the notice's text: the sender's tag becomes the plain name, and the sender and the channel are read from the text. An
+        /// Allegiance-typed line that names Olthoi is an Olthoi room line.
+        /// </summary>
+        public static RetailChatLine Parse(RetailChatKind kind, string raw, DateTime time)
+        {
+            string? sender = null;
+            var text = TellTag.Replace(raw, match =>
+            {
+                sender ??= match.Groups[2].Value;
+                return match.Groups[2].Value;
+            });
+            var channel = ChannelPrefix.Match(text) is { Success: true } prefix ? prefix.Groups[1].Value : null;
+            if (channel == "Olthoi") kind = RetailChatKind.Channel;
+            return new RetailChatLine(kind, text, time, sender, channel);
+        }
+    }
+}

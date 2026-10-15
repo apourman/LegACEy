@@ -99,7 +99,12 @@ public enum BridgeFact
     /// <summary>Actions.CurrentSelection.</summary>
     CurrentSelection,
     /// <summary>Actions.CombatMode: the player's combat stance, Decal's values (1 peace, 2 melee, 4 missile, 8 magic).</summary>
-    CombatMode
+    CombatMode,
+    /// <summary>
+    /// The player's allegiance and society facts as bits: 1 in an allegiance, 2 with a monarch, 4 with a patron, 8 with vassals, 16 in a
+    /// society, 32 an Olthoi (heritage 12 or 13). Decal reads them from CharacterFilter.
+    /// </summary>
+    CharacterMembership
 }
 
 /// <summary>The strings <see cref="BridgeCalls.Text"/> answers.</summary>

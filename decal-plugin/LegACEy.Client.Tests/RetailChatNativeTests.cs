@@ -1,0 +1,91 @@
+using System;
+using System.Drawing;
+using LegACEy.Client.Demo;
+using LegACEy.Client.DecalPlugin;
+
+namespace LegACEy.Client.Tests;
+
+/// <summary>What the native chat port reads from retail's notice: its chat types, its sender tags and its room prefixes.</summary>
+public sealed class RetailChatNativeTests
+{
+    private static readonly DateTime Time = new(2026, 10, 15, 21, 2, 0);
+
+    [Theory]
+    [InlineData(2u, RetailChatKind.Local)]
+    [InlineData(12u, RetailChatKind.Emote)]
+    [InlineData(3u, RetailChatKind.TellIn)]
+    [InlineData(31u, RetailChatKind.TellIn)]
+    [InlineData(4u, RetailChatKind.TellOut)]
+    [InlineData(19u, RetailChatKind.Fellowship)]
+    [InlineData(18u, RetailChatKind.Allegiance)]
+    [InlineData(27u, RetailChatKind.Channel)]
+    [InlineData(32u, RetailChatKind.Channel)]
+    [InlineData(6u, RetailChatKind.Combat)]
+    [InlineData(0u, RetailChatKind.System)]
+    public void Retail_chat_types_map_to_the_kinds_the_tabs_show(uint chatType, RetailChatKind kind) =>
+        Assert.Equal(kind, NativeRetailChatPort.RetailChatTypes.KindOf(chatType));
+
+    [Fact]
+    public void Type_26_is_errors_and_retail_main_chat_does_not_show_it() =>
+        Assert.Null(NativeRetailChatPort.RetailChatTypes.KindOf(26));
+
+    [Fact]
+    public void A_sender_tag_becomes_the_plain_name_and_names_the_sender()
+    {
+        var line = NativeRetailChatPort.RetailChatTypes.Parse(RetailChatKind.TellIn, "<Tell:IIDString:4:Mirra>Mirra<\\Tell> tells you, \"hi\"", Time);
+
+        Assert.Equal("Mirra tells you, \"hi\"", line.Text);
+        Assert.Equal("Mirra", line.Sender);
+        Assert.Null(line.Channel);
+    }
+
+    [Fact]
+    public void A_channel_prefix_names_the_room_and_an_Olthoi_room_is_a_channel_even_when_typed_as_allegiance()
+    {
+        var general = NativeRetailChatPort.RetailChatTypes.Parse(RetailChatKind.Channel, "[General] <Tell:IIDString:0:Kaelith>Kaelith<\\Tell> says, \"hi\"", Time);
+        Assert.Equal(RetailChatKind.Channel, general.Kind);
+        Assert.Equal("General", general.Channel);
+        Assert.Equal("Kaelith", general.Sender);
+
+        var olthoi = NativeRetailChatPort.RetailChatTypes.Parse(RetailChatKind.Allegiance, "[Olthoi] <Tell:IIDString:0:Saro>Saro<\\Tell> says, \"LF2M\"", Time);
+        Assert.Equal(RetailChatKind.Channel, olthoi.Kind);
+        Assert.Equal("Olthoi", olthoi.Channel);
+    }
+
+    [Fact]
+    public void Every_chat_root_that_shows_is_held_hidden_and_given_back_visible_on_release()
+    {
+        var roots = new[] { new FakeRoot(true), new FakeRoot(true), new FakeRoot(false) };
+        var takeover = new RetailChatTakeover(roots);
+
+        takeover.Tick(new Size(1000, 800));
+
+        Assert.True(takeover.Holds);
+        Assert.False(roots[0].Visible);
+        Assert.False(roots[1].Visible);
+
+        takeover.Release();
+
+        Assert.False(takeover.Holds);
+        Assert.True(roots[0].Visible);
+        Assert.True(roots[1].Visible);
+        // A root that was already hidden stays hidden: the takeover gives back what it took.
+        Assert.False(roots[2].Visible);
+    }
+
+    /// <summary>A retail chat root: its visibility is the state the takeover hides and restores.</summary>
+    private sealed class FakeRoot : IRetailTakeoverPort
+    {
+        public FakeRoot(bool visible) => Visible = visible;
+
+        public bool Visible { get; private set; }
+        public bool Exists => true;
+        public IntPtr ElementIdentity => new(1);
+        public bool IsVisible => Visible;
+        public Rectangle GetBounds() => new(0, 0, 10, 10);
+        public void SetVisible(bool visible) => Visible = visible;
+        public void SetSaveLocation(bool save) { }
+        public void MoveTo(Point location) { }
+        public bool IsUiLocked => false;
+    }
+}
