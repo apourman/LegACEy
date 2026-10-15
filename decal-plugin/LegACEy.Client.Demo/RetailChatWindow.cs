@@ -67,6 +67,9 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private int _tab;
     private RetailTalkTarget _target = RetailTalkTargets.Local;
     private int _missed;
+    // The sent line Up and Down have brought back, or null while the box holds the player's own text, kept in _draft while they browse.
+    private int? _recall;
+    private string _draft = string.Empty;
     private bool _timestamps;
     private bool _disposed;
 
@@ -159,6 +162,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             VerticalContentAlignment = VerticalAlignment.Center
         };
         _input.KeyDown += OnInputKeyDown;
+        // Up and Down before the box's own caret keys, as retail's chat brings back what was sent.
+        _input.AddHandler(KeyDownEvent, OnInputRecall, RoutingStrategies.Tunnel);
         var send = new DerethButton { Content = "Send", Width = 40, Height = 20, Padding = new Thickness(0), FontSize = 11, Foreground = DerethPalette.CreamBrush };
         send.Click += (_, _) => SendTyped();
         var inputRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 4, Height = 21 };
@@ -652,6 +657,20 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         }
     }
 
+    private void OnInputRecall(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Up && e.Key != Key.Down) return;
+        e.Handled = true;
+        var sent = _history.Sent;
+        var at = Math.Min(_recall ?? sent.Count, sent.Count);
+        var to = e.Key == Key.Up ? Math.Max(0, at - 1) : Math.Min(sent.Count, at + 1);
+        if (to == at) return;
+        if (_recall == null) _draft = _input.Text ?? string.Empty;
+        _recall = to == sent.Count ? null : to;
+        _input.Text = _recall is { } line ? sent[line] : _draft;
+        _input.CaretIndex = _input.Text.Length;
+    }
+
     private void LeaveInput()
     {
         CloseMenu();
@@ -671,6 +690,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             if (!_port.TellDirect(direct, typed.Trim())) return;
         }
         else if (RetailChatCommands.Compose(_target, typed, _port.SelectedName) is not { } command || !_port.Send(command)) return;
+        _history.AddSent(typed.Trim());
+        _recall = null;
         _input.Text = string.Empty;
     }
 

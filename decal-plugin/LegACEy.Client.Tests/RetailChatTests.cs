@@ -136,6 +136,36 @@ public sealed class RetailChatTests
     });
 
     [Fact]
+    public void Up_and_Down_bring_back_what_was_sent_and_then_the_unsent_text() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        using var panel = Open(port, out var window);
+        TypeAndEnter(panel, window, "/vt go");
+        TypeAndEnter(panel, window, "hi");
+        TypeAndEnter(panel, window, "hi");
+        var box = InputBox(window);
+        Click(panel, box);
+        panel.TextInput("draft");
+
+        panel.KeyDown(Key.Up);
+        Assert.Equal("hi", box.Text);
+        panel.KeyDown(Key.Up);
+        Assert.Equal("/vt go", box.Text);
+        panel.KeyDown(Key.Up);
+        Assert.Equal("/vt go", box.Text);
+        panel.KeyDown(Key.Down);
+        panel.KeyDown(Key.Down);
+        Assert.Equal("draft", box.Text);
+
+        panel.KeyDown(Key.Up);
+        panel.KeyDown(Key.Up);
+        panel.KeyDown(Key.Enter);
+        Assert.Equal("/vt go", port.Sent.Last());
+        panel.KeyDown(Key.Up);
+        Assert.Equal("/vt go", box.Text);
+    });
+
+    [Fact]
     public void A_name_click_and_Tab_in_an_empty_input_set_a_tell_target() => RenderThread.Run(() =>
     {
         var port = new FakeChatPort();
