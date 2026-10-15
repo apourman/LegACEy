@@ -1459,13 +1459,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             var switchOn = RetailToolbarSwitchOn();
             // A give-back that failed is retried every frame until it lands, whatever state the toolbar is in: retail's toolbar is never left hidden.
-            if (_toolbarTakeover != null && (!_windowsEnabled || _toolbarFailed || !switchOn))
+            // The toolbar needs only the post-UI draw, not the windows LoginComplete makes, so it takes over from portal space at login on.
+            var canDraw = _postUiDrawHook?.IsInstalled == true;
+            if (_toolbarTakeover != null && (!canDraw || _toolbarFailed || !switchOn))
             {
                 ReleaseRetailToolbar();
                 return;
             }
-            // Without windows the toolbar's surface cannot draw; DisableWindows has already given retail's toolbar back.
-            if (!_windowsEnabled) return;
+            // Without the post-UI draw the toolbar's surface cannot draw; DisableWindows has already given retail's toolbar back.
+            if (!canDraw) return;
             if (!switchOn)
             {
                 _toolbarFailed = false;
