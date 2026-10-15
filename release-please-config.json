@@ -25,7 +25,7 @@
       "changelog-path": "CHANGELOG.md",
       "initial-version": "0.1.0",
       "include-component-in-tag": true,
-      "versioning": "always-bump-patch",
+      "bump-minor-pre-major": true,
       "draft": true,
       "force-tag-creation": true,
       "changelog-sections": [
