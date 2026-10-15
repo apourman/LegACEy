@@ -1540,12 +1540,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // A move of the selected stack splits by retail's amount while the toolbar that shows the amount is up, and only then.
         _inventory.Split ??= new StackSplitter(new NativeRetailSplitPort());
         var toolbar = new RetailToolbar(_toolbarPort, ToggleMenuWindow, MoveToMainPack, BeginToolbarDrag);
-        toolbar.Measure(Avalonia.Size.Infinity);
-        var size = toolbar.DesiredSize;
-        // Drawn at LegACEy's window scale, as the other LegACEy windows are.
+        // Drawn at LegACEy's window scale, as the other LegACEy windows are. The Dereth theme makes it larger than it measures
+        // without one, so it is measured again under the theme and the panel takes that size, rounded up so no edge is cut.
         var scale = WindowScale;
-        var panel = ObservePanel(AvaloniaPanel.Create(() => toolbar, (int)Math.Round(size.Width * scale), (int)Math.Round(size.Height * scale), scale), ToolbarFailed);
+        var panel = ObservePanel(AvaloniaPanel.Create(() => toolbar, 1, 1, scale), ToolbarFailed);
         panel.ApplyTheme(new DerethClientTheme());
+        toolbar.Measure(Avalonia.Size.Infinity);
+        panel.Resize((int)Math.Ceiling(toolbar.DesiredSize.Width * scale), (int)Math.Ceiling(toolbar.DesiredSize.Height * scale));
         _toolbar = toolbar;
         _toolbarSurface = new ScreenSurface(_device, panel);
         _toolbarRenderer = new RetailSurfaceRenderer(_toolbarSurface.Prepare, _toolbarSurface.DrawNow);
