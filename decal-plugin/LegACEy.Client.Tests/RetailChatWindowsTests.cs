@@ -204,6 +204,35 @@ public sealed class RetailChatWindowsTests
     }));
 
     [Fact]
+    public void A_window_does_not_fade_while_it_is_dragged() => RenderThread.Run(() => WithStore(path =>
+    {
+        var clock = new DeskClock(Stamp);
+        var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };
+        using var desk = ChatDesk.Open(port, path, Character, clock: () => clock.Now);
+        var main = desk.Main;
+
+        // A tab is dragged out and held: the new window follows the pointer, and seconds pass before the drop.
+        var drop = desk.Place(main, new System.Drawing.Point(600, 110));
+        desk.Hold(desk.At(main, TabView(main, "Fellowship")), drop);
+        var torn = desk.Chat.Windows[1];
+        for (var frame = 0; frame < 3; frame++)
+        {
+            clock.Advance(TimeSpan.FromSeconds(1));
+            desk.Tick();
+        }
+        Assert.Equal(1.0, Seen(StripPanel(torn)));
+        Assert.Equal(1.0, Seen(Frame(torn)));
+        desk.Release();
+
+        // Let go and left alone, it fades as any window does.
+        clock.Advance(TimeSpan.FromSeconds(1));
+        desk.Tick();
+        clock.Advance(TimeSpan.FromSeconds(1));
+        desk.Tick();
+        Assert.Equal(0.0, Seen(Frame(torn)));
+    }));
+
+    [Fact]
     public void A_window_covering_a_strip_keeps_the_tab_dropped_on_it() => RenderThread.Run(() => WithStore(path =>
     {
         var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };
@@ -403,6 +432,13 @@ public sealed class RetailChatWindowsTests
         /// </summary>
         public void Drag(System.Drawing.Point from, params System.Drawing.Point[] through)
         {
+            Hold(from, through);
+            Release();
+        }
+
+        /// <summary>A left press where <paramref name="from"/> is and moves through each of the points, with the button still held.</summary>
+        public void Hold(System.Drawing.Point from, params System.Drawing.Point[] through)
+        {
             Tick();
             _pointer = from;
             Windows.Press(from);
@@ -422,9 +458,14 @@ public sealed class RetailChatWindowsTests
                 var (moveX, moveY) = Local(captured, point);
                 _panels[_captured].PointerMove(moveX, moveY);
             }
-            var end = Windows.Get(_captured)!;
+        }
+
+        /// <summary>Lets go of the held button where the pointer is.</summary>
+        public void Release()
+        {
+            var end = Windows.Get(_captured!)!;
             var (endX, endY) = Local(end, _pointer);
-            _panels[_captured].PointerUp(endX, endY);
+            _panels[_captured!].PointerUp(endX, endY);
             if (Windows.IsDragging)
             {
                 Windows.Release();

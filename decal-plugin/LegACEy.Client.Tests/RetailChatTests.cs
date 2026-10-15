@@ -193,6 +193,100 @@ public sealed class RetailChatTests
     });
 
     [Fact]
+    public void A_player_with_timestamps_off_sees_none_from_the_first_line() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort { TimestampsOn = false };
+        using var panel = Open(port, out _);
+        port.Say(Line(RetailChatKind.System, "Welcome to Asheron's Call."));
+        panel.Tick();
+
+        Assert.True(Shows(panel, "Welcome to Asheron"));
+        Assert.False(Shows(panel, "21:02"));
+    });
+
+    [Fact]
+    public void Allegiance_and_Olthoi_are_dimmed_like_the_other_rooms_when_turbine_chat_is_down() => RenderThread.Run(() =>
+    {
+        // Turbine chat is down: no room is open, though the player is in an allegiance with a monarch, and is an Olthoi.
+        var port = new FakeChatPort { Membership = Alone with { Allegiance = true, Monarch = true, Olthoi = true, Open = ChatChannels.None } };
+        using var panel = Open(port, out _);
+        Click(panel, ChipText(panel, "Local"));
+        panel.Tick();
+
+        Assert.Equal("channel is off", MenuNote(panel, "Allegiance"));
+        Assert.Equal("channel is off", MenuNote(panel, "Olthoi"));
+        Assert.Null(MenuNote(panel, "Monarch"));
+
+        // Picking a dimmed room does nothing; the monarch, who is not a room, is still picked.
+        Click(panel, MenuLabel(panel, "Allegiance"));
+        Assert.Equal("Local", ChipText(panel, "Local").Text);
+        Click(panel, MenuLabel(panel, "Monarch"));
+        Assert.Equal("Monarch", ChipText(panel, "Monarch").Text);
+    });
+
+    [Fact]
+    public void The_Tells_tab_with_no_tell_yet_sends_nothing_until_a_name_is_picked() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort { Membership = Alone with { Fellowship = true } };
+        using var panel = Open(port, out var window);
+
+        // Fellowship first: its target must not carry over to the Tells tab.
+        Click(panel, TabView(window, "Fellowship"));
+        Click(panel, TabView(window, "Tells"));
+        panel.Tick();
+        Assert.Equal("Tell…", ChipText(panel, "Tell…").Text);
+        TypeAndEnter(panel, window, "hi");
+        Assert.Empty(port.Sent);
+        Assert.Equal("hi", InputBox(window).Text);
+
+        // A tell arrives; a click on its name names the target, and the waiting text goes to that name.
+        port.Say(Line(RetailChatKind.TellIn, "Mirra tells you, \"there?\"", "Mirra"));
+        ClickName(panel, "Mirra tells you", "Mirra");
+        panel.KeyDown(Key.Enter);
+        Assert.Equal("/t Mirra, hi", port.Sent.Single());
+    });
+
+    [Fact]
+    public void Enter_in_a_blank_box_leaves_it_and_sends_nothing() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        using var panel = Open(port, out var window);
+        Click(panel, InputBox(window));
+        panel.Tick();
+        Assert.True(panel.WantsKeyboard);
+
+        panel.KeyDown(Key.Enter);
+        panel.Tick();
+
+        Assert.False(panel.WantsKeyboard);
+        Assert.Empty(port.Sent);
+    });
+
+    [Fact]
+    public void A_right_click_over_selected_log_text_copies_it() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        var copied = new List<string>();
+        using var panel = Open(port, out _, copy: copied.Add);
+        port.Say(Line(RetailChatKind.TellIn, "Mirra tells you, \"still need the Vault key?\"", "Mirra"));
+        panel.Tick();
+
+        // Nothing selected: a right click copies nothing.
+        var press = NameLetter(panel, "Mirra tells you", "Mirra");
+        panel.RightClick(press.X, press.Y);
+        Assert.Empty(copied);
+
+        // A drag across the name selects it; a right click over it copies the selected text.
+        panel.PointerDown(press.X, press.Y);
+        panel.PointerMove(press.X + 40, press.Y);
+        panel.PointerUp(press.X + 40, press.Y);
+        panel.RightClick(press.X + 20, press.Y);
+
+        var text = Assert.Single(copied);
+        Assert.StartsWith("Mir", text);
+    });
+
+    [Fact]
     public void Scrolled_up_new_lines_raise_the_jump_pill_and_leave_the_log_in_place() => RenderThread.Run(() =>
     {
         var port = new FakeChatPort();
@@ -200,7 +294,7 @@ public sealed class RetailChatTests
         for (var n = 1; n <= 40; n++) port.Say(Line(RetailChatKind.System, $"line {n:D4} of the log"));
         panel.Tick();
         // Scroll the log to its top: the first line is on screen and the last is not.
-        window.GetVisualDescendants().OfType<ScrollViewer>().First().Offset = new Vector(0, 0);
+        window.GetVisualDescendants().OfType<ScrollViewer>().First(scroll => scroll.Content is StackPanel { Orientation: Orientation.Vertical }).Offset = new Vector(0, 0);
         panel.Tick();
         Assert.True(Shows(panel, "line 0001 of the log"));
         Assert.False(Shows(panel, "line 0040 of the log"));
@@ -609,13 +703,13 @@ public sealed class RetailChatTests
         new(kind, text, at ?? Stamp, sender, channel);
 
     private static AvaloniaPanel Open(FakeChatPort port, out RetailChatWindow window, FileRetailChatTabStore? store = null, string character = "Alice",
-        Func<DateTime>? clock = null, Func<bool>? uiUnlocked = null)
+        Func<DateTime>? clock = null, Func<bool>? uiUnlocked = null, Action<string>? copy = null)
     {
         RetailChatWindow? created = null;
         var tabs = store?.Load(Server, character, RetailChatWindows.MainId);
         var history = new RetailChatHistory(port);
         var panel = AvaloniaPanel.Create(() => created = new RetailChatWindow(port, history, new SingleWindowHost(store, character), tabs,
-            uiUnlocked: uiUnlocked, clock: clock ?? (() => Stamp)), Width, Height);
+            uiUnlocked: uiUnlocked, clock: clock ?? (() => Stamp), copy: copy), Width, Height);
         window = created!;
         return panel;
     }
@@ -669,6 +763,15 @@ public sealed class RetailChatTests
         panel.Content.GetVisualDescendants().OfType<TextBlock>().First(text => text.Text == label);
 
     private static TextBlock MenuItem(AvaloniaPanel panel, string label) => ChipText(panel, label);
+
+    /// <summary>A target's label in the open menu: a menu row starts with its colour dot, which sets it apart from a tab of the same name.</summary>
+    private static TextBlock MenuLabel(AvaloniaPanel panel, string label) =>
+        panel.Content.GetVisualDescendants().OfType<TextBlock>().First(text => text.Text == label && text.GetVisualParent() is Grid row
+            && row.Children.OfType<Avalonia.Controls.Shapes.Ellipse>().Any());
+
+    /// <summary>The note beside a target in the open menu (why it is dimmed), or null when it has none.</summary>
+    private static string? MenuNote(AvaloniaPanel panel, string label) =>
+        ((Grid)MenuLabel(panel, label).GetVisualParent()!).Children.OfType<TextBlock>().Skip(1).FirstOrDefault()?.Text;
 
     private static Control PillView(AvaloniaPanel panel) =>
         panel.Content.GetVisualDescendants().OfType<Border>().First(border => border.Child is TextBlock { Text: { } t } && t.Contains("new"));
@@ -775,7 +878,7 @@ public sealed class RetailChatTests
         public List<string> Sent { get; } = new();
         public RetailChatMembership Membership { get; set; } = Alone;
         public string? SelectedName { get; set; }
-        public bool TimestampsOn { get; private set; } = true;
+        public bool TimestampsOn { get; set; } = true;
         public event Action<RetailChatLine>? LineReceived;
         public event Action? TimestampsChanged;
 

@@ -39,6 +39,9 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private readonly List<(int Missed, bool Tell)> _unread;
     private readonly StackPanel _tabStrip = new() { Orientation = Orientation.Horizontal, Height = 19 };
     private readonly Grid _tabRow;
+    private readonly ScrollViewer _tabScroll;
+    // The strip's fixed end: the add button, or a torn-off window's close medallion. It stays in view however many tabs scroll.
+    private readonly Border _tabEnd = new() { Margin = new Thickness(2, 0, 0, 0) };
     // The tab a press started on, until the press is a click (which shows the tab) or a drag out of the strip.
     private int _pressedTab = -1;
     private readonly StackPanel _lines = new();
@@ -55,6 +58,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private readonly RetailChatFade _fade;
     private readonly Func<bool> _uiUnlocked;
     private readonly Func<DateTime> _clock;
+    private readonly Action<string> _copy;
     private ScrollBar? _scrollBar;
     // The line loop in Refresh can stop once the lines show their final opacities; any change of state or of the lines clears this.
     private bool _linesSettled;
@@ -78,8 +82,9 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     /// <param name="tornOff">Whether the window is torn off the main window: it has no All tab and no add button, and a close medallion merges it back.</param>
     /// <param name="uiUnlocked">Whether retail's UI is unlocked for moving windows; the window does not fade while it is. Null for never.</param>
     /// <param name="clock">The time, for the idle fade; null for the system's.</param>
+    /// <param name="copy">Puts text on the clipboard: a right click over text selected in the log copies it. Null copies nothing.</param>
     public RetailChatWindow(IRetailChatPort port, RetailChatHistory history, IRetailChatWindowHost host, IReadOnlyList<RetailChatTab>? tabs = null,
-        bool tornOff = false, Func<bool>? uiUnlocked = null, Func<DateTime>? clock = null)
+        bool tornOff = false, Func<bool>? uiUnlocked = null, Func<DateTime>? clock = null, Action<string>? copy = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _history = history ?? throw new ArgumentNullException(nameof(history));
@@ -91,19 +96,32 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _fade = new RetailChatFade();
         _clock = clock ?? (() => DateTime.Now);
         _uiUnlocked = uiUnlocked ?? (() => false);
+        _copy = copy ?? (_ => { });
 
-        // The tab strip: the tabs, then an empty part that drags the window.
-        _tabRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Height = 19 };
-        _tabRow.Children.Add(_tabStrip);
-        var tabSpace = new Border { Background = Brushes.Transparent };
+        // The tab strip: the tabs, which scroll sideways (by the wheel) when they do not fit, and its fixed end. The strip's empty part
+        // drags the window.
+        _tabScroll = new ScrollViewer
+        {
+            Content = _tabStrip,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled
+        };
+        _tabScroll.AddHandler(PointerWheelChangedEvent, (_, e) =>
+        {
+            ScrollTabs(e.Delta.Y + e.Delta.X);
+            e.Handled = true;
+        }, RoutingStrategies.Tunnel);
+        var tabSpace = new Border { Background = Brushes.Transparent, Child = _tabScroll };
         tabSpace.PointerPressed += (_, e) =>
         {
             if (!e.GetCurrentPoint(tabSpace).Properties.IsLeftButtonPressed) return;
             _host.MoveRequested(this);
             e.Handled = true;
         };
-        Grid.SetColumn(tabSpace, 1);
+        _tabRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Height = 19 };
         _tabRow.Children.Add(tabSpace);
+        Grid.SetColumn(_tabEnd, 1);
+        _tabRow.Children.Add(_tabEnd);
         var tabBar = new Border { BorderBrush = DerethChatPalette.GoldDarkBrush, BorderThickness = new Thickness(0, 0, 0, 1), Margin = new Thickness(0, 0, 0, 5), Child = _tabRow };
 
         // The log: a dark groove with a scroll bar, and the jump pill over its bottom edge while the player is scrolled up.
@@ -211,7 +229,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         var id = _tabs[index].TargetId;
         if (id == RetailChatTab.LastTellId)
         {
-            if (_history.LastTellSender() is { } last) SetTarget(RetailTalkTarget.Tell(last));
+            // With no tell yet, the target waits for a name: the previous tab's target must not take the line.
+            SetTarget(_history.LastTellSender() is { } last ? RetailTalkTarget.Tell(last) : RetailTalkTarget.UnnamedTell);
         }
         else if (id != null)
         {
@@ -333,11 +352,12 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     /// Applies the idle fade to what the window shows now. The host calls it once a frame, inside its guard, since the unlock check reads
     /// retail's state; a test calls it after moving the clock.
     /// </summary>
-    internal void Refresh()
+    /// <param name="keepAwake">Whether the host keeps the window awake: it is being moved or resized, or retail's UI is unlocked.</param>
+    internal void Refresh(bool keepAwake = false)
     {
         if (_disposed) return;
         // The unlock check is read only when nothing else keeps the window awake. An open tab editor counts like an open menu.
-        var awake = IsPointerOver || _input.IsFocused || _menu.IsVisible || _editor.IsVisible || _uiUnlocked();
+        var awake = keepAwake || IsPointerOver || _input.IsFocused || _menu.IsVisible || _editor.IsVisible || _uiUnlocked();
         var now = _clock();
         _fade.Update(awake, now);
         if (awake != _awake)
@@ -412,7 +432,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             // A torn-off window has no add button; its close medallion merges its tabs back into the main window.
             var close = DerethChatParts.CloseMedallion();
             close.Click += (_, _) => _host.CloseRequested(this);
-            _tabStrip.Children.Add(close);
+            _tabEnd.Child = close;
             return;
         }
         var add = DerethChatParts.AddTab();
@@ -422,7 +442,14 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             OpenEditor(-1);
             e.Handled = true;
         };
-        _tabStrip.Children.Add(add);
+        _tabEnd.Child = add;
+    }
+
+    /// <summary>Scrolls the tabs sideways by a wheel's notches: up or left shows the earlier tabs.</summary>
+    private void ScrollTabs(double notches)
+    {
+        var max = Math.Max(0, _tabScroll.Extent.Width - _tabScroll.Viewport.Width);
+        _tabScroll.Offset = new Vector(Math.Min(max, Math.Max(0, _tabScroll.Offset.X - notches * 40)), 0);
     }
 
     /// <summary>
@@ -531,6 +558,13 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             rest = line.Text.Substring(at + line.Sender.Length);
         }
         if (rest.Length > 0) Add(DerethChatParts.TextRun(rest, brush, italic));
+        // A right click over the line's selected text copies it; the game's own right click never sees it.
+        view.AddHandler(InputElement.PointerPressedEvent, (_, e) =>
+        {
+            if (!e.GetCurrentPoint(view).Properties.IsRightButtonPressed || string.IsNullOrEmpty(view.SelectedText)) return;
+            _copy(view.SelectedText);
+            e.Handled = true;
+        }, RoutingStrategies.Bubble, handledEventsToo: true);
         return view;
     }
 
@@ -563,7 +597,13 @@ public sealed class RetailChatWindow : Decorator, IDisposable
 
     private void OnInputKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter)
+        if (e.Key == Key.Enter && string.IsNullOrWhiteSpace(_input.Text))
+        {
+            // Enter in a blank box leaves it, as retail's chat key toggles its entry.
+            LeaveInput();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Enter)
         {
             SendTyped();
             e.Handled = true;
@@ -575,10 +615,15 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         }
         else if (e.Key == Key.Escape)
         {
-            CloseMenu();
-            TopLevel.GetTopLevel(this)?.FocusManager?.ClearFocus();
+            LeaveInput();
             e.Handled = true;
         }
+    }
+
+    private void LeaveInput()
+    {
+        CloseMenu();
+        TopLevel.GetTopLevel(this)?.FocusManager?.ClearFocus();
     }
 
     /// <summary>

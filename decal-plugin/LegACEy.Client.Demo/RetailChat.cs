@@ -20,7 +20,10 @@ public enum RetailChatKind
     Combat = 512
 }
 
-/// <summary>The channels the player hears, as retail's options say. A talk target for a room is off when its bit is not set.</summary>
+/// <summary>
+/// The rooms the player can talk in, as retail's options say. A talk target for a room is off when its bit is not set; with Turbine chat
+/// down every room is off, the allegiance's and Olthoi's too.
+/// </summary>
 [Flags]
 public enum ChatChannels
 {
@@ -29,7 +32,9 @@ public enum ChatChannels
     Trade = 2,
     Lfg = 4,
     Roleplay = 8,
-    Society = 16
+    Society = 16,
+    Allegiance = 32,
+    Olthoi = 64
 }
 
 /// <summary>
@@ -114,6 +119,12 @@ public sealed record RetailTalkTarget(string Id, string Label, string Command, R
     /// <summary>A tell to a player's name.</summary>
     public static RetailTalkTarget Tell(string name) => new("tell:" + name, "Tell " + name, "/t", RetailChatKind.TellIn, TalkNeed.None, ChatChannels.None, name);
 
+    /// <summary>A tell with no name yet, as the Tells tab sets before any tell: it sends nothing until Tab or a name click names it.</summary>
+    public static readonly RetailTalkTarget UnnamedTell = new("tell:", "Tell…", "/t", RetailChatKind.TellIn);
+
+    /// <summary>Whether the target is a tell still waiting for its name.</summary>
+    public bool IsUnnamedTell => Id == UnnamedTell.Id;
+
     /// <summary>Whether the target is the selected object, whose name the command takes.</summary>
     public bool IsSelected => Id == RetailTalkTargets.SelectedId;
 }
@@ -130,7 +141,7 @@ public static class RetailTalkTargets
     public static readonly RetailTalkTarget Local = new(LocalId, "Local", "/s", RetailChatKind.Local);
     public static readonly RetailTalkTarget Selected = new(SelectedId, "Selected", "/t", RetailChatKind.TellIn, TalkNeed.Selection);
     public static readonly RetailTalkTarget Fellows = new("fellows", "Fellows", "/f", RetailChatKind.Fellowship, TalkNeed.Fellowship);
-    public static readonly RetailTalkTarget Allegiance = new("alleg", "Allegiance", "/gu", RetailChatKind.Allegiance, TalkNeed.Allegiance);
+    public static readonly RetailTalkTarget Allegiance = new("alleg", "Allegiance", "/gu", RetailChatKind.Allegiance, TalkNeed.Allegiance, ChatChannels.Allegiance);
     public static readonly RetailTalkTarget Monarch = new("monarch", "Monarch", "/m", RetailChatKind.Allegiance, TalkNeed.Monarch);
     public static readonly RetailTalkTarget Patron = new("patron", "Patron", "/p", RetailChatKind.Allegiance, TalkNeed.Patron);
     public static readonly RetailTalkTarget Vassals = new("vassals", "Vassals", "/v", RetailChatKind.Allegiance, TalkNeed.Vassals);
@@ -139,7 +150,7 @@ public static class RetailTalkTargets
     public static readonly RetailTalkTarget Lfg = new("lfg", "LFG", "/lfg", RetailChatKind.Channel, TalkNeed.None, ChatChannels.Lfg);
     public static readonly RetailTalkTarget Roleplay = new("roleplay", "Roleplay", "/roleplay", RetailChatKind.Channel, TalkNeed.None, ChatChannels.Roleplay);
     public static readonly RetailTalkTarget Society = new("society", "Society", "/society", RetailChatKind.Channel, TalkNeed.Society, ChatChannels.Society);
-    public static readonly RetailTalkTarget Olthoi = new("olthoi", "Olthoi", "/olthoi", RetailChatKind.Channel, TalkNeed.Olthoi);
+    public static readonly RetailTalkTarget Olthoi = new("olthoi", "Olthoi", "/olthoi", RetailChatKind.Channel, TalkNeed.Olthoi, ChatChannels.Olthoi);
 
     /// <summary>The menu's groups, in its order. Recent tells follow them.</summary>
     public static readonly IReadOnlyList<(string Group, IReadOnlyList<RetailTalkTarget> Targets)> Groups = new (string, IReadOnlyList<RetailTalkTarget>)[]
@@ -183,13 +194,14 @@ public static class RetailChatCommands
     /// <summary>
     /// The text to send, or null when there is nothing to send. Text that starts with a slash or an @ passes through as typed, and so does
     /// anything typed for Local: retail's box sends speech and emotes from the raw text. Other targets get their command, and a
-    /// selected-object tell needs the selection's name.
+    /// selected-object tell needs the selection's name; a tell with no name yet sends nothing.
     /// </summary>
     public static string? Compose(RetailTalkTarget target, string typed, string? selectedName)
     {
         var text = typed.Trim();
         if (text.Length == 0) return null;
         if (text[0] == '/' || text[0] == '@' || target.Id == RetailTalkTargets.LocalId) return text;
+        if (target.IsUnnamedTell) return null;
         if (target.IsSelected)
             return selectedName == null ? null : $"/t {selectedName}, {text}";
         if (target.Name != null) return $"/t {target.Name}, {text}";

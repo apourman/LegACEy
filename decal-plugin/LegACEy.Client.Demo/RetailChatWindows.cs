@@ -48,6 +48,7 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     private readonly Func<Point> _pointer;
     private readonly Action<WindowDefinition, Control, Point> _showSurface;
     private readonly Action<string> _closeSurface;
+    private readonly Action<string>? _copy;
     private readonly List<(string Id, RetailChatWindow Window)> _chats = new();
     // Windows to close at the next refresh: a close medallion is pressed inside its own window, which cannot be torn down there.
     private readonly List<RetailChatWindow> _retiring = new();
@@ -64,9 +65,10 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     /// <param name="showSurface">Shows a window's content as a LegACEy window with the definition, at the place given.</param>
     /// <param name="closeSurface">Closes a window shown with <paramref name="showSurface"/>.</param>
     /// <param name="clock">The time, for the idle fade; null for the system's.</param>
+    /// <param name="copy">Puts text on the clipboard, for text copied from a log; null copies nothing.</param>
     public RetailChatWindows(IRetailChatPort port, WindowManager windows, IWindowPositionStore positions, FileRetailChatTabStore store,
         string server, string character, Func<bool> uiUnlocked, Func<Point> pointer, Action<WindowDefinition, Control, Point> showSurface,
-        Action<string> closeSurface, Func<DateTime>? clock = null)
+        Action<string> closeSurface, Func<DateTime>? clock = null, Action<string>? copy = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _windows = windows ?? throw new ArgumentNullException(nameof(windows));
@@ -79,6 +81,7 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
         _showSurface = showSurface ?? throw new ArgumentNullException(nameof(showSurface));
         _closeSurface = closeSurface ?? throw new ArgumentNullException(nameof(closeSurface));
         _clock = clock ?? (() => DateTime.Now);
+        _copy = copy;
         _history = new RetailChatHistory(port);
     }
 
@@ -103,14 +106,17 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     }
 
     /// <summary>
-    /// Closes the windows that were pressed shut, and applies the idle fade to every window. The host calls it once a frame, inside its
-    /// guard, since the fade reads retail's UI lock.
+    /// Closes the windows that were pressed shut, and applies the idle fade to every window. A window stays awake while retail's UI is
+    /// unlocked, and while it is dragged, moved or resized. The host calls it once a frame, inside its guard, since the fade reads retail's
+    /// UI lock.
     /// </summary>
     public void Refresh()
     {
         if (_disposed) return;
         foreach (var window in _retiring.ToArray()) Retire(window);
-        foreach (var (_, window) in _chats.ToArray()) window.Refresh();
+        var unlocked = _uiUnlocked();
+        var held = (_windows.Moving ?? _windows.Resizing)?.Id;
+        foreach (var (id, window) in _chats.ToArray()) window.Refresh(unlocked || window == _dragged || id == held);
     }
 
     /// <summary>
@@ -222,7 +228,7 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
 
     private RetailChatWindow ShowWindow(string id, IReadOnlyList<RetailChatTab> tabs, bool tornOff, Point location)
     {
-        var window = new RetailChatWindow(_port, _history, this, tabs, tornOff, _uiUnlocked, _clock);
+        var window = new RetailChatWindow(_port, _history, this, tabs, tornOff, clock: _clock, copy: _copy);
         _chats.Add((id, window));
         try
         {
