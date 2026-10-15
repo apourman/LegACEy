@@ -120,10 +120,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // Beside the DLL: while this file exists, retail's chat windows stay retail's. Without it the Dereth chat window replaces them.
     private const string RetailChatSwitchFile = "retail-chat-native";
 
-    // How big LegACEy windows show against their design size. The indicator bar keeps retail's size, and drag icons retail's 32 pixels.
-    // An Avalonia that cannot scale panels shows them at design size rather than failing every window.
-    // ponytail: one fixed size; make it a setting (small, medium, large) if players want to choose.
-    private static readonly double WindowScale = AvaloniaPanel.CanScale ? 0.85 : 1;
+    // How big LegACEy windows show against their design size, in percent: the player's UI size from the LegACEy menu, kept for every
+    // character. The indicator bar keeps retail's size, and drag icons retail's 32 pixels. An Avalonia that cannot scale panels shows them
+    // at design size rather than failing every window.
+    private const string UiSizeKey = "client-ui-size";
+    private const int DefaultUiSize = 85;
+    private const int SmallestUiSize = 60;
+    private const int LargestUiSize = 150;
+    private int _uiSize = DefaultUiSize;
+    private bool _uiSizeChanged;
+    private double WindowScale => AvaloniaPanel.CanScale ? _uiSize / 100.0 : 1;
 
     private const string MenuSlot = "LegACEy";
     private const string MenuWindowId = "plugin-menu";
@@ -272,6 +278,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None);
         _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal);
         _row2Choice = new ShortcutRowChoice(_settingsStore);
+        if (_settingsStore.Load("", "", UiSizeKey) is { Location.X: var size and > 0 })
+            _uiSize = Math.Max(SmallestUiSize, Math.Min(LargestUiSize, size));
     }
 
     public void Startup()
@@ -592,7 +600,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             SetMenuRing(false);
             return;
         }
-        var chrome = new ThemeWindowChrome(_portal!, MenuSlot, new PluginMenuPanel(_plugins!, _portal));
+        var chrome = new ThemeWindowChrome(_portal!, MenuSlot, new PluginMenuPanel(_plugins!, _portal,
+            AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, StepUiSize) : null));
         chrome.CloseRequested += (_, _) =>
         {
             _clientUi?.CloseWindow(MenuWindowId);
@@ -600,6 +609,34 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         };
         _clientUi.OpenWindow(new WindowDefinition(MenuWindowId, MenuWindowId, PluginMenuPanel.WindowWidth, PluginMenuPanel.WindowHeight), chrome, new Point(260, 120));
         SetMenuRing(true);
+    }
+
+    /// <summary>
+    /// The UI size stepped from the LegACEy menu: saved now, and applied on the next frame, outside the menu's own click, since applying it
+    /// closes the menu's window.
+    /// </summary>
+    private void StepUiSize(int steps)
+    {
+        var size = Math.Max(SmallestUiSize, Math.Min(LargestUiSize, _uiSize + steps * 5));
+        if (size == _uiSize) return;
+        _uiSize = size;
+        _settingsStore.Save("", "", UiSizeKey, (new Point(size, 0), null));
+        _uiSizeChanged = true;
+    }
+
+    /// <summary>
+    /// Rebuilds the LegACEy UI at the new size, as a relog does: every window closes and the session's windows, toolbar, bars and chat
+    /// open again at the new size, the menu with them. Plugin windows the player had open close.
+    /// </summary>
+    private void ApplyUiSize()
+    {
+        _uiSizeChanged = false;
+        if (!_inGame) return;
+        var menuOpen = _windows?.Get(MenuWindowId) != null;
+        Log($"UI size {_uiSize}%: rebuilding the LegACEy UI.");
+        Logoff();
+        LoginComplete();
+        if (menuOpen) Guard(ToggleMenuWindow);
     }
 
     /// <summary>The handle was pressed: the bar follows the pointer until the button goes up.</summary>
@@ -676,6 +713,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         if (_failed || !NativeUi.Ready)
             return;
+
+        if (_uiSizeChanged) ApplyUiSize();
 
         Guard(() =>
         {

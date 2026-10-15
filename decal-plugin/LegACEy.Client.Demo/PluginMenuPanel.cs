@@ -10,7 +10,12 @@ using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.Demo;
 
-/// <summary>The LegACEy menu: one row per menu entry of a visible plugin. Picking a row runs that entry.</summary>
+/// <summary>The UI size the menu shows, in percent, and the step it asks for (1 larger, -1 smaller).</summary>
+public sealed record UiSizeChoice(int Percent, Action<int> Step);
+
+/// <summary>
+/// The LegACEy menu: one row per menu entry of a visible plugin, and the UI size at the bottom. Picking a row runs that entry.
+/// </summary>
 public sealed class PluginMenuPanel : UserControl
 {
     public const int WindowWidth = 220;
@@ -21,11 +26,19 @@ public sealed class PluginMenuPanel : UserControl
     private readonly StackPanel _rows = new();
     private readonly List<WriteableBitmap> _icons = new();
 
-    public PluginMenuPanel(PluginRegistry registry, IGameArtSource? art)
+    public PluginMenuPanel(PluginRegistry registry, IGameArtSource? art, UiSizeChoice? uiSize = null)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _art = art;
-        Content = _rows;
+        var layout = new DockPanel();
+        if (uiSize != null)
+        {
+            var footer = UiSizeRow(uiSize);
+            DockPanel.SetDock(footer, Dock.Bottom);
+            layout.Children.Add(footer);
+        }
+        layout.Children.Add(_rows);
+        Content = layout;
         Rebuild();
         registry.MenuChanged += OnMenuChanged;
         DetachedFromVisualTree += (_, _) =>
@@ -69,6 +82,26 @@ public sealed class PluginMenuPanel : UserControl
             button.Click += (_, _) => _registry.RunMenuEntry(item);
             _rows.Children.Add(button);
         }
+    }
+
+    private static Control UiSizeRow(UiSizeChoice choice)
+    {
+        Button Step(string text, int steps)
+        {
+            var button = new Button { Content = text, Width = 26, HorizontalContentAlignment = HorizontalAlignment.Center, Margin = new Thickness(2, 0) };
+            button.Click += (_, _) => choice.Step(steps);
+            return button;
+        }
+        var row = new DockPanel { Margin = new Thickness(8, 4) };
+        var label = new TextBlock { Text = "UI size", Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center };
+        var controls = new StackPanel { Orientation = Orientation.Horizontal };
+        controls.Children.Add(Step("-", -1));
+        controls.Children.Add(new TextBlock { Text = $"{choice.Percent}%", Foreground = Brushes.White, Width = 40, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
+        controls.Children.Add(Step("+", 1));
+        DockPanel.SetDock(controls, Dock.Right);
+        row.Children.Add(controls);
+        row.Children.Add(label);
+        return row;
     }
 
     private void DisposeIcons()

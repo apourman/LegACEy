@@ -83,7 +83,11 @@ tab to rename, edit, reorder or remove it, and use + to add one. Drag a tab out 
 merge it; tabs are kept per character in `chat-tabs.txt` and window places and sizes in `window-positions.txt`. Enter opens the input and
 Escape leaves it. When idle, and while retail's UI is locked, the window fades to bare lines; hovering or pressing Enter brings it back.
 Retail's chat keeps running out of sight, so Decal plugins see chat as before. Creating an empty file named `retail-chat-native` beside
-the main DLL gives retail's chat back within a second; deleting it takes the chat over again.
+the main DLL gives retail's chat back within a second; deleting it takes the chat over again. The chat's text size is set by its Aa
+button (click larger, right-click smaller) or Ctrl and the wheel, per character.
+
+The LegACEy menu's UI size row scales every LegACEy window, the toolbar and the shortcut bars, from 60 to 150 percent (85 to start),
+for every character. A change rebuilds the LegACEy UI at once, as a relog does: plugin windows that were open close.
 
 ## Tests
 
