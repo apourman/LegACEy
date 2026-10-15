@@ -175,7 +175,10 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     {
         var combatSystem = GetCombatSystem();
         if (combatSystem == IntPtr.Zero) return;
+        // ponytail: diagnostic for the stance-click crash; remove once the cause is known.
+        _log($"Stance click: toggling combat mode from {Stance} through 0x{combatSystem.ToInt32():X8}.");
         ToggleCombatModeNative(combatSystem);
+        _log($"Stance click: toggle returned; stance now {Stance}.");
     }
 
     public bool IsPanelOpen(RetailPanel panel)
