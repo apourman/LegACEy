@@ -157,6 +157,32 @@ public sealed class RetailChatTests
     });
 
     [Fact]
+    public void An_NPC_is_told_by_its_object_id_and_a_player_by_name() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        using var panel = Open(port, out var window);
+        port.Say(new RetailChatLine(RetailChatKind.TellIn, "Professor tells you, \"which level?\"", Stamp, "Professor", SenderId: 0x7A9B4012));
+        port.Say(new RetailChatLine(RetailChatKind.TellIn, "Mirra tells you, \"hi\"", Stamp, "Mirra", SenderId: 0x50000004));
+        panel.Tick();
+
+        ClickName(panel, "Professor tells you", "Professor");
+        TypeAndEnter(panel, window, "5");
+        Assert.Equal("direct 0x7A9B4012 5", port.Sent.Last());
+        // A typed command still goes as typed.
+        TypeAndEnter(panel, window, "/e waves");
+        Assert.Equal("/e waves", port.Sent.Last());
+
+        ClickName(panel, "Mirra tells you", "Mirra");
+        TypeAndEnter(panel, window, "yo");
+        Assert.Equal("/t Mirra, yo", port.Sent.Last());
+    });
+
+    [Fact]
+    public void A_tell_tag_s_object_id_names_the_sender_even_past_0x7FFFFFFF() =>
+        Assert.Equal(0x80000123u, LegACEy.Client.DecalPlugin.NativeRetailChatPort.RetailChatTypes.Parse(RetailChatKind.TellIn,
+            "<Tell:IIDString:-2147483357:Guard>Guard<\\Tell> tells you, \"halt\"", Stamp).SenderId);
+
+    [Fact]
     public void A_drag_across_a_name_selects_text_and_does_not_answer_with_a_tell() => RenderThread.Run(() =>
     {
         var port = new FakeChatPort();
@@ -891,6 +917,16 @@ public sealed class RetailChatTests
         {
             if (!CanSend) return false;
             Sent.Add(text);
+            return true;
+        }
+
+        public uint SelectedId { get; set; }
+
+        /// <summary>A direct tell is recorded as "direct 0xID text".</summary>
+        public bool TellDirect(uint objectId, string text)
+        {
+            if (!CanSend) return false;
+            Sent.Add($"direct 0x{objectId:X8} {text}");
             return true;
         }
 

@@ -48,7 +48,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private static readonly List<NativeRetailChatPort> Stranded = new();
 
     // Retail's own lines close the tag with <\Tell>; Decal escapes a plugin's backslash, so plugin links close with <\\Tell>.
-    private static readonly Regex TellTag = new(@"<Tell:IIDString:[^:>]*:([^>]*)>(.*?)<\\{1,2}Tell>", RegexOptions.Compiled);
+    private static readonly Regex TellTag = new(@"<Tell:IIDString:([^:>]*):([^>]*)>(.*?)<\\{1,2}Tell>", RegexOptions.Compiled);
     // Retail's text escapes: \n is a line break, \q a quote mark, and a backslash before any other character is that character (\[, \], \\).
     private static readonly Regex Escape = new(@"\\(.)", RegexOptions.Compiled | RegexOptions.Singleline);
     private static readonly Regex ChannelPrefix = new(@"^\[([^\]]+)\]", RegexOptions.Compiled);
@@ -96,14 +96,18 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
 
     /// <param name="log">Writes a line to the client's log.</param>
     /// <param name="natives">Which chat features the running client matched; a feature that did not match is off.</param>
-    public NativeRetailChatPort(Action<string> log, RetailChatNatives natives)
+    /// <param name="sendAction">Sends a retail game action (opcode, payload) through the client's own send; false when it was not sent.</param>
+    public NativeRetailChatPort(Action<string> log, RetailChatNatives natives, Func<uint, byte[], bool> sendAction)
     {
+        _sendAction = sendAction ?? throw new ArgumentNullException(nameof(sendAction));
         _log = log ?? throw new ArgumentNullException(nameof(log));
         _natives = natives;
         _callback = OnNotice;
     }
 
     private bool _membershipFailLogged;
+
+    private readonly Func<uint, byte[], bool> _sendAction;
 
     public event Action<RetailChatLine>? LineReceived;
     public event Action? TimestampsChanged;
@@ -236,6 +240,10 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     /// Sends the text through retail's chat box call: its receiver is the live communication system, and the call is the one at the box's
     /// own send site, read as it is now. Returns false, sending nothing, when there is no receiver, as the box skips the send then.
     /// </summary>
+    public bool TellDirect(uint objectId, string text) => _sendAction(TalkDirectAction.Opcode, TalkDirectAction.Payload(objectId, text));
+
+    public uint SelectedId => (uint)Bridge.Fact(BridgeFact.CurrentSelection);
+
     public bool Send(string text)
     {
         var receiver = Marshal.ReadIntPtr(At(CommunicationSystem));
@@ -427,16 +435,22 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         public static RetailChatLine Parse(RetailChatKind kind, string raw, DateTime time)
         {
             string? sender = null;
+            uint senderId = 0;
             var text = TellTag.Replace(raw, match =>
             {
                 // A player's tag names them twice; a plugin's link (GoArrow's "Update Now") names a command, not a sender.
-                if (match.Groups[1].Value == match.Groups[2].Value) sender ??= match.Groups[2].Value;
-                return match.Groups[2].Value;
+                if (match.Groups[2].Value == match.Groups[3].Value && sender == null)
+                {
+                    sender = match.Groups[3].Value;
+                    // Retail writes the id with %d, so an id past 0x7FFFFFFF is negative.
+                    if (long.TryParse(match.Groups[1].Value, out var id)) senderId = unchecked((uint)id);
+                }
+                return match.Groups[3].Value;
             });
             text = Escape.Replace(text, match => match.Groups[1].Value switch { "n" => "\n", "q" => "\"", var other => other });
             var channel = ChannelPrefix.Match(text) is { Success: true } prefix ? prefix.Groups[1].Value : null;
             if (channel == "Olthoi") kind = RetailChatKind.Channel;
-            return new RetailChatLine(kind, text, time, sender, channel);
+            return new RetailChatLine(kind, text, time, sender, channel, senderId);
         }
     }
 }

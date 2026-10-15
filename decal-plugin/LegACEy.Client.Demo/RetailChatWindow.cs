@@ -241,7 +241,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         if (id == RetailChatTab.LastTellId)
         {
             // With no tell yet, the target waits for a name: the previous tab's target must not take the line.
-            SetTarget(_history.LastTellSender() is { } last ? RetailTalkTarget.Tell(last) : RetailTalkTarget.UnnamedTell);
+            SetTarget(_history.LastTell() ?? RetailTalkTarget.UnnamedTell);
         }
         else if (id != null)
         {
@@ -590,7 +590,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             if (at > 0) Add(DerethChatParts.TextRun(line.Text.Substring(0, at), brush, italic));
             var nameStart = written;
             Add(DerethChatParts.TextRun(line.Sender, brush, italic));
-            WireNameClick(view, nameStart, written, line.Sender);
+            WireNameClick(view, nameStart, written, line.TellBack!);
             rest = line.Text.Substring(at + line.Sender.Length);
         }
         if (rest.Length > 0) Add(DerethChatParts.TextRun(rest, brush, italic));
@@ -605,7 +605,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     }
 
     /// <summary>A click on the characters from <paramref name="start"/> to <paramref name="end"/>, without a drag, tells the name.</summary>
-    private void WireNameClick(SelectableTextBlock view, int start, int end, string name)
+    private void WireNameClick(SelectableTextBlock view, int start, int end, RetailTalkTarget tell)
     {
         Point? pressed = null;
         // Handled events too: the text block marks its own presses handled, and the click still has to reach the name.
@@ -620,14 +620,14 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             var to = e.GetPosition(view);
             if (Math.Abs(to.X - origin.X) + Math.Abs(to.Y - origin.Y) > ClickSlop) return;
             var hit = view.TextLayout?.HitTestPoint(to);
-            if (hit is { IsInside: true } result && result.TextPosition >= start && result.TextPosition < end) TellTo(name);
+            if (hit is { IsInside: true } result && result.TextPosition >= start && result.TextPosition < end) TellTo(tell);
         }, RoutingStrategies.Bubble, handledEventsToo: true);
     }
 
     /// <summary>A click on a name, or Tab in an empty box: the next line answers with a tell to that name, and the box takes the keyboard.</summary>
-    private void TellTo(string name)
+    private void TellTo(RetailTalkTarget tell)
     {
-        SetTarget(RetailTalkTarget.Tell(name));
+        SetTarget(tell);
         _input.Focus();
     }
 
@@ -644,9 +644,9 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             SendTyped();
             e.Handled = true;
         }
-        else if (e.Key == Key.Tab && string.IsNullOrEmpty(_input.Text) && _history.LastTellSender() is { } last)
+        else if (e.Key == Key.Tab && string.IsNullOrEmpty(_input.Text) && _history.LastTell() is { } last)
         {
-            SetTarget(RetailTalkTarget.Tell(last));
+            SetTarget(last);
             e.Handled = true;
         }
         else if (e.Key == Key.Escape)
@@ -668,8 +668,13 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     /// </summary>
     private void SendTyped()
     {
-        var command = RetailChatCommands.Compose(_target, _input.Text ?? string.Empty, _port.SelectedName);
-        if (command == null || !_port.Send(command)) return;
+        var typed = _input.Text ?? string.Empty;
+        var direct = RetailChatCommands.DirectTo(_target, typed, _port.SelectedId);
+        if (direct != 0)
+        {
+            if (!_port.TellDirect(direct, typed.Trim())) return;
+        }
+        else if (RetailChatCommands.Compose(_target, typed, _port.SelectedName) is not { } command || !_port.Send(command)) return;
         _input.Text = string.Empty;
     }
 
@@ -732,13 +737,13 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     {
         var panel = new StackPanel { Spacing = 0 };
         panel.Children.Add(Heading("Recent tells"));
-        var names = _history.Lines
+        var tells = _history.Lines
             .Where(line => line.Sender != null && (line.Kind == RetailChatKind.TellIn || line.Kind == RetailChatKind.TellOut))
-            .Select(line => line.Sender!)
             .Reverse()
-            .Distinct()
+            .GroupBy(line => line.Sender)
+            .Select(group => group.First().TellBack!)
             .Take(3);
-        foreach (var name in names) panel.Children.Add(MenuItem(RetailTalkTarget.Tell(name), membership, selected));
+        foreach (var tell in tells) panel.Children.Add(MenuItem(tell, membership, selected));
         return panel;
     }
 

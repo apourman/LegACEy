@@ -54,6 +54,10 @@ public sealed class RetailChatNativeTests
     }
 
     [Fact]
+    public void A_direct_tell_is_the_text_as_the_server_reads_it_padded_to_four_bytes_then_the_object_id() =>
+        Assert.Equal(new byte[] { 1, 0, (byte)'5', 0, 0x12, 0x40, 0x9B, 0x7A }, TalkDirectAction.Payload(0x7A9B4012, "5"));
+
+    [Fact]
     public void A_channel_prefix_names_the_room_and_an_Olthoi_room_is_a_channel_even_when_typed_as_allegiance()
     {
         var general = NativeRetailChatPort.RetailChatTypes.Parse(RetailChatKind.Channel, "[General] <Tell:IIDString:0:Kaelith>Kaelith<\\Tell> says, \"hi\"", Time);

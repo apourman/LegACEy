@@ -41,7 +41,11 @@ public enum ChatChannels
 /// A line as the chat window shows it. <see cref="Text"/> is the line as retail words it, with the sender's name in it; <see cref="Sender"/>
 /// is the name a click answers with a tell (the other party's, for a tell either way); <see cref="Channel"/> is a channel's name.
 /// </summary>
-public sealed record RetailChatLine(RetailChatKind Kind, string Text, DateTime Time, string? Sender = null, string? Channel = null);
+public sealed record RetailChatLine(RetailChatKind Kind, string Text, DateTime Time, string? Sender = null, string? Channel = null, uint SenderId = 0)
+{
+    /// <summary>A tell back to the line's sender, by object id when the line named one, or null when the line has no sender.</summary>
+    public RetailTalkTarget? TellBack => Sender == null ? null : RetailTalkTarget.Tell(Sender, SenderId);
+}
 
 /// <summary>What the player is in, for dimming talk targets: fellowship, allegiance and its ranks, society, Olthoi, and the open channels.</summary>
 public sealed record RetailChatMembership(bool Fellowship, bool Allegiance, bool Monarch, bool Patron, bool Vassals, bool Society, bool Olthoi,
@@ -56,10 +60,14 @@ public interface IRetailChatPort
     event Action<RetailChatLine>? LineReceived;
     /// <summary>Sends text to retail's chat parser, as the chat box's own send does. False when nothing was sent (retail's chat has no receiver).</summary>
     bool Send(string text);
+    /// <summary>Tells an object by its id, as retail does for an NPC, which a tell by name cannot reach. False when nothing was sent.</summary>
+    bool TellDirect(uint objectId, string text);
     /// <summary>What the player is in now. Read when the talk-target menu opens.</summary>
     RetailChatMembership Membership { get; }
     /// <summary>The selected object's name, or null when nothing is selected.</summary>
     string? SelectedName { get; }
+    /// <summary>The selected object's id, or 0 when nothing is selected.</summary>
+    uint SelectedId { get; }
     /// <summary>The game's chat timestamp option.</summary>
     bool TimestampsOn { get; }
     /// <summary>Raised when the timestamp option changes; the window redraws its lines.</summary>
@@ -87,8 +95,8 @@ public sealed class RetailChatHistory : IDisposable
     /// <summary>Raised for each kept line, with the oldest line dropped to keep the history at its capacity, or null.</summary>
     public event Action<RetailChatLine, RetailChatLine?>? LineAdded;
 
-    /// <summary>The partner of the last tell in the history, either way, or null when there is none.</summary>
-    public string? LastTellSender() => _lines.LastOrDefault(line => line.Sender != null && (line.Kind == RetailChatKind.TellIn || line.Kind == RetailChatKind.TellOut))?.Sender;
+    /// <summary>A tell to the partner of the last tell in the history, either way, or null when there is none.</summary>
+    public RetailTalkTarget? LastTell() => _lines.LastOrDefault(line => line.Sender != null && (line.Kind == RetailChatKind.TellIn || line.Kind == RetailChatKind.TellOut))?.TellBack;
 
     public void Dispose() => _port.LineReceived -= Add;
 
@@ -113,11 +121,13 @@ public sealed class RetailChatHistory : IDisposable
 /// <param name="Need">Who can use it: a membership test, or none.</param>
 /// <param name="Channel">The channel option that must be on, or None.</param>
 /// <param name="Name">The name a tell goes to, or null when the target is a command.</param>
+/// <param name="ObjectId">The object a tell goes to, when its line named one; 0 when only the name is known.</param>
 public sealed record RetailTalkTarget(string Id, string Label, string Command, RetailChatKind Colour, TalkNeed Need = TalkNeed.None,
-    ChatChannels Channel = ChatChannels.None, string? Name = null)
+    ChatChannels Channel = ChatChannels.None, string? Name = null, uint ObjectId = 0)
 {
-    /// <summary>A tell to a player's name.</summary>
-    public static RetailTalkTarget Tell(string name) => new("tell:" + name, "Tell " + name, "/t", RetailChatKind.TellIn, TalkNeed.None, ChatChannels.None, name);
+    /// <summary>A tell to a name, and to its object when the id is known: an NPC is told by its id, as a tell by name reaches only players.</summary>
+    public static RetailTalkTarget Tell(string name, uint objectId = 0) =>
+        new("tell:" + name, "Tell " + name, "/t", RetailChatKind.TellIn, TalkNeed.None, ChatChannels.None, name, objectId);
 
     /// <summary>A tell with no name yet, as the Tells tab sets before any tell: it sends nothing until Tab or a name click names it.</summary>
     public static readonly RetailTalkTarget UnnamedTell = new("tell:", "Tell…", "/t", RetailChatKind.TellIn);
@@ -206,6 +216,45 @@ public static class RetailChatCommands
             return selectedName == null ? null : $"/t {selectedName}, {text}";
         if (target.Name != null) return $"/t {target.Name}, {text}";
         return $"{target.Command} {text}";
+    }
+
+    /// <summary>
+    /// The object a line is told to directly, or 0 when it goes as a command. A tell to an object that is not a player (an NPC) goes
+    /// directly, since retail's tell by name reaches only players; so does a line for Selected while an NPC is selected. Typed commands
+    /// always go as typed.
+    /// </summary>
+    public static uint DirectTo(RetailTalkTarget target, string typed, uint selectedId)
+    {
+        var text = typed.Trim();
+        if (text.Length == 0 || text[0] == '/' || text[0] == '@') return 0;
+        var id = target.IsSelected ? selectedId : target.Name != null ? target.ObjectId : 0;
+        return id != 0 && !IsPlayer(id) ? id : 0;
+    }
+
+    // The server's player object ids (ACE's ObjectGuid.PlayerMin to PlayerMax).
+    private static bool IsPlayer(uint id) => id >= 0x50000001 && id <= 0x5FFFFFFF;
+}
+
+/// <summary>Retail's TalkDirect game action (0x0032): a tell to an object by its id, the way retail tells an NPC.</summary>
+public static class TalkDirectAction
+{
+    public const uint Opcode = 0x0032;
+
+    /// <summary>The payload: the text as the server reads it (length in characters, UTF-8, padded to four bytes with the length), then the id.</summary>
+    public static byte[] Payload(uint objectId, string text)
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(text);
+        var padding = (4 - (2 + bytes.Length) % 4) % 4;
+        var payload = new byte[2 + bytes.Length + padding + 4];
+        payload[0] = (byte)text.Length;
+        payload[1] = (byte)(text.Length >> 8);
+        Array.Copy(bytes, 0, payload, 2, bytes.Length);
+        var at = 2 + bytes.Length + padding;
+        payload[at] = (byte)objectId;
+        payload[at + 1] = (byte)(objectId >> 8);
+        payload[at + 2] = (byte)(objectId >> 16);
+        payload[at + 3] = (byte)(objectId >> 24);
+        return payload;
     }
 }
 
