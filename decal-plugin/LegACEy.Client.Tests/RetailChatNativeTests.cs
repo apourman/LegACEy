@@ -49,6 +49,7 @@ public sealed class RetailChatNativeTests
         var link = Parse(@"Update? <Tell:IIDString:0:GoArrow_ChatCommand>Update Now<\\Tell>");
         Assert.Equal("Update? Update Now", link.Text);
         Assert.Null(link.Sender);
+        Assert.Equal("- +Seed Alpha", Parse(@"<Tell:IIDString:221112:1609564160>-<\\\\Tell> +Seed Alpha").Text);
 
         static RetailChatLine Parse(string raw) => NativeRetailChatPort.RetailChatTypes.Parse(RetailChatKind.Plugin, raw, Time);
     }

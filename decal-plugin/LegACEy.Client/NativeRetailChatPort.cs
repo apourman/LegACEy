@@ -47,8 +47,9 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     // Ports whose handler could not be unregistered: retail may still call it, so the port, its callback delegate and its memory live on.
     private static readonly List<NativeRetailChatPort> Stranded = new();
 
-    // Retail's own lines close the tag with <\Tell>; Decal escapes a plugin's backslash, so plugin links close with <\\Tell>.
-    private static readonly Regex TellTag = new(@"<Tell:IIDString:([^:>]*):([^>]*)>(.*?)<\\{1,2}Tell>", RegexOptions.Compiled);
+    // Retail's own lines close the tag with <\Tell>; each escaping a plugin's text goes through doubles the backslash, so plugin links
+    // close with two or more.
+    private static readonly Regex TellTag = new(@"<Tell:IIDString:([^:>]*):([^>]*)>(.*?)<\\+Tell>", RegexOptions.Compiled);
     // Retail's text escapes: \n is a line break, \q a quote mark, and a backslash before any other character is that character (\[, \], \\).
     private static readonly Regex Escape = new(@"\\(.)", RegexOptions.Compiled | RegexOptions.Singleline);
     private static readonly Regex ChannelPrefix = new(@"^\[([^\]]+)\]", RegexOptions.Compiled);
