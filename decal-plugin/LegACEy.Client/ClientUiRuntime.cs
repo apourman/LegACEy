@@ -1842,17 +1842,21 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             var switchOn = RetailChatSwitchOn();
             // Turning the switch off and on again retries a chat window that failed.
             if (!switchOn) _chatFailed = false;
-            // Retail's chat windows are given back if the switch goes off, the post-UI draw is gone, the player has left the world or it failed.
-            var canDraw = _postUiDrawHook?.IsInstalled == true;
-            if (_chatTakeover != null && (!canDraw || _chatFailed || !switchOn || !_inGame))
+            // Retail's chat windows are given back if the switch goes off, the post-UI draw is gone, the LegACEy windows failed or it failed.
+            var canDraw = _postUiDrawHook?.IsInstalled == true && !(_windows != null && !_windowsEnabled);
+            if (_chatTakeover != null && (!canDraw || _chatFailed || !switchOn))
             {
                 ReleaseRetailChat();
                 return;
             }
-            if (!canDraw || !switchOn || _chatFailed || !_inGame) return;
+            if (!canDraw || !switchOn || _chatFailed) return;
+            // Retail's chat is held from portal space at login on, like the toolbar; the window opens once the windows can, and the port
+            // keeps the lines that come before it. Logoff gives it back, and character select holds it again.
+            if (_chatTakeover == null && !HoldRetailChat()) return;
+            _chatTakeover!.Tick(GameDevice.ViewportSize(_device));
+            if (!_inGame) return;
             if (_chatWindows == null && !OpenRetailChat()) return;
             _chatPort!.Poll();
-            _chatTakeover!.Tick(GameDevice.ViewportSize(_device));
             // The idle fade reads retail's UI lock, so it runs here, inside the guard, not on a timer of its own.
             _chatWindows?.Refresh();
         }
@@ -1863,18 +1867,32 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Holds retail's chat windows and opens the Dereth chat window, once its native addresses match. False when they do not, or the windows
-    /// cannot open yet, so retail's chat is left alone and the next frame tries again.
+    /// Holds retail's chat windows hidden and starts the port, once its native addresses match. False when they do not, so retail's chat is
+    /// left alone and the next frame tries again. A port whose registrar is not ready yet attaches when the window opens.
     /// </summary>
-    private bool OpenRetailChat()
+    private bool HoldRetailChat()
     {
-        if (!CanOpenWindows || !NativeUi.Ready || _device == IntPtr.Zero) return false;
+        if (!NativeUi.Ready || _device == IntPtr.Zero) return false;
         var natives = ChatNatives();
         if (!natives.ChatWindow) return false;
-        var port = new NativeRetailChatPort(Log, natives);
         var roots = new List<IRetailTakeoverPort>();
         foreach (var id in new[] { RetailChatCatalogue.MainChatWindow }.Concat(RetailChatCatalogue.FloatingChats))
             roots.Add(new RetailChatTakeover.RootPort(id));
+        _chatPort = new NativeRetailChatPort(Log, natives);
+        _chatTakeover = new RetailChatTakeover(roots);
+        try { _chatPort.Attach(); }
+        catch (InvalidOperationException) { }
+        Log($"Retail's chat windows held: {roots.Count}.");
+        return true;
+    }
+
+    /// <summary>
+    /// Opens the Dereth chat window over the held retail chat. False when the windows cannot open yet, so the next frame tries again.
+    /// </summary>
+    private bool OpenRetailChat()
+    {
+        if (!CanOpenWindows) return false;
+        var port = _chatPort!;
         var server = SessionServer();
         var character = SessionCharacter();
         // Retail's UI is unlocked when a window may be moved; the chat then stays whole, so its frame can be found.
@@ -1884,9 +1902,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // The main window starts at the bottom left, above the toolbar, until the player moves it; its place is then kept per character.
         var screen = _windows!.Screen;
         var beside = new Point(12, Math.Max(0, screen.Height - (int)Math.Round(RetailChatWindows.DesignHeight * WindowScale) - 150));
-        _chatPort = port;
         _chatWindows = chats;
-        _chatTakeover = new RetailChatTakeover(roots);
         try
         {
             chats.Open(beside);
@@ -1897,7 +1913,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             ReleaseRetailChat();
             throw;
         }
-        Log($"Dereth chat window ready with {chats.Windows.Count} window(s); retail's chat windows held: {roots.Count}.");
+        Log($"Dereth chat window ready with {chats.Windows.Count} window(s).");
         return true;
     }
 
