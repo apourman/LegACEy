@@ -85,12 +85,16 @@ public sealed class DerethMedallion : Decorator
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
+        UiTrace.Log?.Invoke($"Medallion {_glyph}: release, pressed {_pressed}.");
         base.OnPointerReleased(e);
         var wasPressed = _pressed;
         _pressed = false;
         e.Handled = true;
         InvalidateVisual();
-        if (wasPressed && new Rect(Bounds.Size).Contains(e.GetPosition(this))) Clicked?.Invoke();
+        var inside = new Rect(Bounds.Size).Contains(e.GetPosition(this));
+        UiTrace.Log?.Invoke($"Medallion {_glyph}: inside {inside}, clicking {wasPressed && inside}.");
+        if (wasPressed && inside) Clicked?.Invoke();
+        UiTrace.Log?.Invoke($"Medallion {_glyph}: click handled.");
     }
 
     public override void Render(DrawingContext context)

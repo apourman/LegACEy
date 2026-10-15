@@ -1548,6 +1548,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _toolbarSurface = new ScreenSurface(_device, panel);
         _toolbarRenderer = new RetailSurfaceRenderer(_toolbarSurface.Prepare, _toolbarSurface.DrawNow);
         _toolbarTakeover = new RetailTakeoverLifecycle(new NativeBarPort(NativeUi.ToolbarWindow), new SurfaceTakeoverPort(_toolbarSurface));
+        LegACEy.Client.Themes.UiTrace.Log = Log;
         var window = NativeUi.GetElement(NativeUi.ToolbarWindow);
         var inner = NativeUi.GetElement(NativeUi.Toolbar);
         Log($"Dereth toolbar replacement ready; retail's toolbar window {Describe(window)}, its toolbar {Describe(inner)}.");
