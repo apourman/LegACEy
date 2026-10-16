@@ -120,12 +120,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string RetailToolbarSwitchFile = "retail-toolbar-native";
     // Beside the DLL: while this file exists, retail's chat windows stay retail's. Without it the Dereth chat window replaces them.
     private const string RetailChatSwitchFile = "retail-chat-native";
-    // Beside the DLL: while this file exists, retail's vitals windows are held and the Dereth vitals window draws in their place. Without it
-    // nothing changes (opt-in until the play-test signs it off).
-    private const string RetailVitalsSwitchFile = "retail-vitals-takeover";
-    // Beside the DLL: while this file exists, the Dereth radar takes over retail's radar. Opt-in until the play-test signs it off: without
-    // the file retail's radar stays as it is.
-    private const string RetailRadarSwitchFile = "retail-radar-takeover";
+    // Beside the DLL: while this file exists, retail's vitals windows stay retail's. Without it the Dereth vitals window replaces them.
+    private const string RetailVitalsSwitchFile = "retail-vitals-native";
+    // Beside the DLL: while this file exists, retail's radar stays retail's. Without it the Dereth radar replaces it.
+    private const string RetailRadarSwitchFile = "retail-radar-native";
 
     // How big LegACEy windows show against their design size, in percent: the player's UI size from the LegACEy menu, kept for every
     // character. The indicator bar keeps retail's size, and drag icons retail's 32 pixels. An Avalonia that cannot scale panels shows them
@@ -2094,14 +2092,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Holds retail's radar and draws the Dereth radar over it while the opt-in switch file is beside the DLL. Off, retail's radar is left
-    /// as it is and nothing new draws. A failure gives retail's radar back and stops the Dereth radar until the switch is turned off and on.
+    /// Holds retail's radar and draws the Dereth radar over it unless the <c>retail-radar-native</c> file is beside the DLL. Off, retail's
+    /// radar is left as it is and nothing new draws. A failure gives retail's radar back and stops the Dereth radar until the switch is turned off and on.
     /// </summary>
     private void TickRetailRadar()
     {
         try
         {
-            var switchOn = SwitchOn(RetailRadarSwitchFile, ref _lastRadarSwitchCheck, ref _radarSwitch, onWhenMissing: false);
+            var switchOn = SwitchOn(RetailRadarSwitchFile, ref _lastRadarSwitchCheck, ref _radarSwitch);
             // Turning the switch off and on again retries a radar that failed.
             if (!switchOn) _radarFailed = false;
             // Retail's radar is given back if the switch goes off, the post-UI draw is gone, or the LegACEy windows failed.
@@ -2236,28 +2234,27 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Whether a feature's switch is on. By default it is on while its file is missing beside the DLL; an opt-in switch is on while the file
-    /// exists. The file is looked for once a second.
+    /// Whether a feature's switch is on: on while its file is missing beside the DLL. The file is looked for once a second.
     /// </summary>
-    private static bool SwitchOn(string file, ref DateTime lastCheck, ref bool on, bool onWhenMissing = true)
+    private static bool SwitchOn(string file, ref DateTime lastCheck, ref bool on)
     {
         var now = DateTime.UtcNow;
         if (now - lastCheck >= TimeSpan.FromSeconds(1))
         {
             lastCheck = now;
-            on = File.Exists(IOPath.Combine(PluginDirectory, file)) != onWhenMissing;
+            on = !File.Exists(IOPath.Combine(PluginDirectory, file));
         }
         return on;
     }
 
     /// <summary>
-    /// Holds retail's vitals windows and draws the Dereth vitals window at their place, while the vitals switch file is beside the DLL.
-    /// Without the file nothing is held and nothing draws. Each frame the takeover is given the state, and the player's clock.
+    /// Holds retail's vitals windows and draws the Dereth vitals window at their place, unless the <c>retail-vitals-native</c> file is beside
+    /// the DLL; with it nothing is held and nothing draws. Each frame the takeover is given the state, and the player's clock.
     /// </summary>
     private void TickRetailVitals()
     {
         _vitals ??= new RetailVitalsTakeover(HoldRetailVitals, RetailVitalsPlace, OpenVitals, Log);
-        var switchOn = SwitchOn(RetailVitalsSwitchFile, ref _lastVitalsSwitchCheck, ref _vitalsSwitch, onWhenMissing: false);
+        var switchOn = SwitchOn(RetailVitalsSwitchFile, ref _lastVitalsSwitchCheck, ref _vitalsSwitch);
         // Retail's vitals are held from portal space at login on, like chat; the window opens in game.
         var canDraw = _postUiDrawHook?.IsInstalled == true && !(_windows != null && !_windowsEnabled);
         // The player picked the other layout: the window closes now, and the Tick below opens the chosen one where it was left.
