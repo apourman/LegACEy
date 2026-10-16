@@ -31,7 +31,6 @@ public sealed class DerethVitalsWindow : UserControl
     private const double SideGap = 10, SideCornerRadius = 4;
     private const double GearDiameter = 11, GearGlyphSize = 7;
     private static readonly IBrush Plaque = DerethPalette.Brush(Color.FromArgb(0xC7, 8, 16, 22));
-    private static readonly IBrush GoldDark = DerethPalette.Brush(Color.Parse("#7A5E30"));
 
     private readonly IGameStatePort _game;
     private readonly Func<bool> _uiLocked;
@@ -79,21 +78,21 @@ public sealed class DerethVitalsWindow : UserControl
 
         // Stacked is the Dereth frame; the strip is a slim plaque, as the mockup's.
         Control frame = side
-            ? new Border { CornerRadius = new CornerRadius(4), Background = Plaque, BorderBrush = GoldDark, BorderThickness = new Thickness(1), Padding = new Thickness(6, 3, 8, 3), Child = lines }
+            ? new Border { CornerRadius = new CornerRadius(SideCornerRadius), Background = Plaque, BorderBrush = DerethPalette.GoldDarkBrush, BorderThickness = new Thickness(1), Padding = new Thickness(6, 3, 8, 3), Child = lines }
             : new DerethFrame(DerethFrameArt.Window) { Child = new Border { Margin = new Thickness(2, 0), Child = lines } };
 
         // The gear switches to the other layout. It shows while the pointer is over the window, as the grip does, and a click on it is the
         // gear's own, not a move.
         _gear = new DerethMedallion(DerethGlyph.Options, GearDiameter, GearGlyphSize)
         {
-            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top,
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
             Margin = new Thickness(0, 1, 1, 0), Opacity = 0
         };
         _gear.Clicked += () => _chose?.Invoke(side ? VitalsLayout.Stacked : VitalsLayout.SideBySide);
         ToolTip.SetTip(_gear, side ? "Switch to stacked" : "Switch to side by side");
 
-        _grip.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right;
-        _grip.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Bottom;
+        _grip.HorizontalAlignment = HorizontalAlignment.Right;
+        _grip.VerticalAlignment = VerticalAlignment.Bottom;
         _grip.Margin = new Thickness(0, 0, 2, 2);
         // Hidden until the pointer is over the window, as the mockup's grip is.
         _grip.Opacity = 0;
@@ -117,7 +116,7 @@ public sealed class DerethVitalsWindow : UserControl
     }
 
     /// <summary>The stacked window's definition: 220 by 64 DIPs, stretching wider from 150 to 460 DIPs, in the Dereth theme.</summary>
-    public static WindowDefinition Definition(string id, Func<bool> uiLocked) => new(id, "Vitals", DesignWidth, DesignHeight,
+    private static WindowDefinition StackedDefinition(Func<bool> uiLocked) => new(StackedId, "Vitals", DesignWidth, DesignHeight,
         theme: new DerethClientTheme(),
         resizing: new WindowResizing(new System.Drawing.Size(MinimumWidth, DesignHeight), new System.Drawing.Size(MaximumWidth, DesignHeight), uiLocked),
         dragsFromContent: true);
@@ -127,12 +126,12 @@ public sealed class DerethVitalsWindow : UserControl
     /// stacked window opens; each keeps its own size.
     /// </summary>
     public static WindowDefinition DefinitionOf(VitalsLayout layout, Func<bool> uiLocked) =>
-        layout == VitalsLayout.SideBySide ? SideBySideDefinition(uiLocked) : Definition(StackedId, uiLocked);
+        layout == VitalsLayout.SideBySide ? SideBySideDefinition(uiLocked) : StackedDefinition(uiLocked);
 
     private static WindowDefinition SideBySideDefinition(Func<bool> uiLocked) => new(SideBySideId, "Vitals", SideDesignWidth, SideDesignHeight,
         // No title bar: the strip drags from its content, so its title bar is one pixel tall.
         titleBarHeight: 1, theme: new DerethClientTheme(),
-        resizing: new WindowResizing(new System.Drawing.Size(SideMinimumWidth, SideMinimumHeight), new System.Drawing.Size(SideMaximumWidth, SideMaximumHeight), uiLocked),
+        resizing: new WindowResizing(new System.Drawing.Size(SideMinimumWidth, SideMinimumHeight), new System.Drawing.Size(SideMaximumWidth, SideMaximumHeight), uiLocked, noCorners: true),
         sharesLocationWith: StackedId, dragsFromContent: true);
 
     /// <summary>Whether the stretch grip shows: it is hidden while retail's UI is locked.</summary>
@@ -146,8 +145,11 @@ public sealed class DerethVitalsWindow : UserControl
     {
         _model.Update(_game.Current, now);
         var pulse = _model.PulseAt(now);
-        foreach (var reading in _model.Bars)
+        // An index loop: a foreach over the interface allocates an enumerator on every frame.
+        var bars = _model.Bars;
+        for (var i = 0; i < bars.Count; i++)
         {
+            var reading = bars[i];
             var row = _rows[reading.Vital];
             row.Bar.Show(reading.Fraction, reading.TrailFraction, reading.Pulsing, pulse);
             if (reading.Current == row.Current && reading.Max == row.Max) continue;
@@ -169,11 +171,11 @@ public sealed class DerethVitalsWindow : UserControl
         };
         var row = new Row
         {
-            Bar = new DerethVitalBar(light, mid, dark, side ? SideCornerRadius : null) { VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center },
+            Bar = new DerethVitalBar(light, mid, dark, side ? SideCornerRadius : null) { VerticalAlignment = VerticalAlignment.Center },
             Label = new TextBlock
             {
                 FontFamily = DerethPalette.Title, FontSize = 9, Foreground = DerethPalette.CreamBrush,
-                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 6, 0)
             }
         };
@@ -181,9 +183,9 @@ public sealed class DerethVitalsWindow : UserControl
         {
             // The strip's bars fill its height, so they grow thicker with it.
             row.Bar.Height = double.NaN;
-            row.Bar.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Stretch;
+            row.Bar.VerticalAlignment = VerticalAlignment.Stretch;
         }
-        var glyphBezel = new DerethVitalGlyph(glyph, light) { Margin = new Thickness(0, 0, side ? 4 : 6, 0), VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
+        var glyphBezel = new DerethVitalGlyph(glyph, light) { Margin = new Thickness(0, 0, side ? 4 : 6, 0), VerticalAlignment = VerticalAlignment.Center };
         DockPanel.SetDock(glyphBezel, Dock.Left);
         // The bar fills the line; the value sits over its right end.
         var bar = new Grid { Children = { row.Bar, row.Label } };

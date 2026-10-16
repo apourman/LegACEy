@@ -16,18 +16,24 @@ public sealed class WindowResizing
 {
     /// <param name="maximum">The largest size; null for as big as the screen. A maximum height equal to the minimum fixes the height.</param>
     /// <param name="locked">Whether the window is locked against resizing now, such as while retail's UI is locked. Null: never locked.</param>
-    public WindowResizing(Size minimum, Size? maximum = null, Func<bool>? locked = null)
+    /// <param name="noCorners">
+    /// No corner squares: a press near two edges is the edges' press, and the corners are the content's to move from. For a strip whose
+    /// content starts its own moves.
+    /// </param>
+    public WindowResizing(Size minimum, Size? maximum = null, Func<bool>? locked = null, bool noCorners = false)
     {
         if (minimum.Width <= 0 || minimum.Height <= 0) throw new ArgumentOutOfRangeException(nameof(minimum));
         if (maximum is { } top && (top.Width < minimum.Width || top.Height < minimum.Height)) throw new ArgumentOutOfRangeException(nameof(maximum));
         Minimum = minimum;
         Maximum = maximum;
         Locked = locked;
+        NoCorners = noCorners;
     }
 
     public Size Minimum { get; }
     public Size? Maximum { get; }
     public Func<bool>? Locked { get; }
+    public bool NoCorners { get; }
 
     /// <summary>Whether the height is fixed: the window has no top or bottom edge to drag.</summary>
     public bool FixedHeight => Maximum is { } top && top.Height == Minimum.Height;
@@ -216,9 +222,9 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
 /// <summary>
 /// Pure window behavior used by the plugin adapter and the tests. The first item in ZOrder is
 /// frontmost. Pointer coordinates are screen coordinates and all returned positions are clamped.
-/// A press in a resizable window's side or bottom band, or in its corner square, resizes it, within its <see cref="WindowResizing"/>: its
-/// minimum and maximum hold on every edge, a fixed height has no top or bottom edge, and a locked window does not resize. A press on any
-/// window's top edge or in its title bar moves it.
+/// A press in a resizable window's side or bottom band, or in its corner square unless it has no corners, resizes it, within its
+/// <see cref="WindowResizing"/>: its minimum and maximum hold on every edge, a fixed height has no top or bottom edge, and a locked window
+/// does not resize. A press on any window's top edge or in its title bar moves it.
 /// </summary>
 public sealed class WindowManager
 {
@@ -226,8 +232,8 @@ public sealed class WindowManager
     public const int ResizeBand = 6;
 
     /// <summary>
-    /// The corner square's size: a press this near both edges of a corner is that corner. It matches the frame's corner
-    /// piece, so the grip is as easy to find as the art shows it.
+    /// The corner square's size in screen pixels, which do not scale with the window's UI scale: a press this near both edges of a corner is
+    /// that corner. It matches the frame's corner piece, so the grip is as easy to find as the art shows it.
     /// </summary>
     public const int CornerBand = 16;
 
@@ -394,7 +400,7 @@ public sealed class WindowManager
 
     /// <summary>
     /// The edges a point is on: within <see cref="ResizeBand"/> of a side or the bottom, or inside a corner square of
-    /// <see cref="CornerBand"/>. The top edge between the corners moves the window instead.
+    /// <see cref="CornerBand"/> pixels, unless the window has no corners. The top edge between the corners moves the window instead.
     /// </summary>
     private static WindowEdges EdgesAt(ManagedWindow window, Point point)
     {
@@ -405,9 +411,9 @@ public sealed class WindowManager
         var right = bounds.Right - 1 - point.X;
         var top = point.Y - bounds.Top;
         var bottom = bounds.Bottom - 1 - point.Y;
-        // A window with a fixed height has no top or bottom edge, so its corners are its side bands. A strip too short for two corner squares
-        // and a side band at each end has no corners either: its sides are its edges, and what lies between them is its content's to drag.
-        if (!resizing.FixedHeight && window.Height >= 2 * (CornerBand + ResizeBand) && Math.Min(left, right) < CornerBand && Math.Min(top, bottom) < CornerBand)
+        // A window with a fixed height has no top or bottom edge, so its corners are its side bands. A window with no corners has its sides
+        // and bottom as its edges; what lies between them is its content's to drag.
+        if (!resizing.FixedHeight && !resizing.NoCorners && Math.Min(left, right) < CornerBand && Math.Min(top, bottom) < CornerBand)
             return (left < right ? WindowEdges.Left : WindowEdges.Right) | (top < bottom ? WindowEdges.Top : WindowEdges.Bottom);
         var edges = WindowEdges.None;
         if (left < ResizeBand) edges |= WindowEdges.Left;
@@ -471,7 +477,7 @@ public sealed class WindowManager
     /// <summary>The definition at this manager's scale: what its window measures on screen.</summary>
     private WindowDefinition Scaled(WindowDefinition definition) => Scale == 1 ? definition : new WindowDefinition(
         definition.Id, definition.Title, Scaled(definition.Width), Scaled(definition.Height), Scaled(definition.TitleBarHeight), definition.Theme,
-        definition.Resizing is { } resizing ? new WindowResizing(Scaled(resizing.Minimum), resizing.Maximum is { } top ? Scaled(top) : null, resizing.Locked) : null,
+        definition.Resizing is { } resizing ? new WindowResizing(Scaled(resizing.Minimum), resizing.Maximum is { } top ? Scaled(top) : null, resizing.Locked, resizing.NoCorners) : null,
         definition.SharesLocationWith, definition.DragsFromContent);
 
     private Size Scaled(Size size, double? scale = null) => new(Scaled(size.Width, scale), Scaled(size.Height, scale));

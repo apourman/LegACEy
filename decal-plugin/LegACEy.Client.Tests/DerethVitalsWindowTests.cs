@@ -15,7 +15,6 @@ namespace LegACEy.Client.Tests;
 
 public sealed class DerethVitalsWindowTests
 {
-    private const string Id = "dereth-vitals";
     private const string Server = "Thistledown";
     private static readonly Size Screen = new(1000, 800);
 
@@ -46,7 +45,7 @@ public sealed class DerethVitalsWindowTests
     public void The_window_opens_at_220_by_64_and_stretches_only_wider_from_150_to_460() => RenderThread.Run(() =>
     {
         var windows = Windows(new MemoryWindowPositionStore(), "Alice");
-        var window = windows.Open(DerethVitalsWindow.Definition(Id, () => false), new Point(100, 100));
+        var window = windows.Open(DerethVitalsWindow.DefinitionOf(VitalsLayout.Stacked, () => false), new Point(100, 100));
         Assert.Equal(new Size(220, 64), window.Size);
 
         StretchBy(windows, window, 400);
@@ -60,7 +59,7 @@ public sealed class DerethVitalsWindowTests
     public void Pressing_the_bottom_edge_and_dragging_leaves_the_fixed_height_at_64() => RenderThread.Run(() =>
     {
         var windows = Windows(new MemoryWindowPositionStore(), "Alice");
-        var window = windows.Open(DerethVitalsWindow.Definition(Id, () => false), new Point(100, 100));
+        var window = windows.Open(DerethVitalsWindow.DefinitionOf(VitalsLayout.Stacked, () => false), new Point(100, 100));
         var placed = window.Location;
 
         windows.Press(new Point(window.Bounds.Left + 110, window.Bounds.Bottom - 2));
@@ -76,7 +75,7 @@ public sealed class DerethVitalsWindowTests
     {
         var locked = true;
         var windows = Windows(new MemoryWindowPositionStore(), "Alice");
-        var window = windows.Open(DerethVitalsWindow.Definition(Id, () => locked), new Point(100, 100));
+        var window = windows.Open(DerethVitalsWindow.DefinitionOf(VitalsLayout.Stacked, () => locked), new Point(100, 100));
         var view = new DerethVitalsWindow(Game(), () => locked, () => { });
 
         view.Refresh(TimeSpan.Zero);
@@ -98,7 +97,7 @@ public sealed class DerethVitalsWindowTests
     {
         var store = new MemoryWindowPositionStore();
         var before = Windows(store, "Alice");
-        var window = before.Open(DerethVitalsWindow.Definition(Id, () => false), new Point(100, 100));
+        var window = before.Open(DerethVitalsWindow.DefinitionOf(VitalsLayout.Stacked, () => false), new Point(100, 100));
         StretchBy(before, window, 80);
         // A drag of the top band moves the window with no title bar.
         before.Press(new Point(window.Location.X + 100, window.Location.Y + 2));
@@ -106,12 +105,12 @@ public sealed class DerethVitalsWindowTests
         before.Release();
         var placed = window.Location;
 
-        var again = Windows(store, "Alice").Open(DerethVitalsWindow.Definition(Id, () => false), new Point(0, 0));
+        var again = Windows(store, "Alice").Open(DerethVitalsWindow.DefinitionOf(VitalsLayout.Stacked, () => false), new Point(0, 0));
         Assert.Equal(placed, again.Location);
         Assert.Equal(300, again.Width);
         Assert.Equal(64, again.Height);
 
-        var other = Windows(store, "Bob").Open(DerethVitalsWindow.Definition(Id, () => false), new Point(0, 0));
+        var other = Windows(store, "Bob").Open(DerethVitalsWindow.DefinitionOf(VitalsLayout.Stacked, () => false), new Point(0, 0));
         Assert.Equal(new Size(220, 64), other.Size);
     });
 
@@ -212,10 +211,40 @@ public sealed class DerethVitalsWindowTests
         var strip = windows.Open(DerethVitalsWindow.DefinitionOf(VitalsLayout.SideBySide, () => false), new Point(100, 100));
 
         // The first bar's glyph sits inside the strip's left 16 DIPs: a press there is the content's move, not a corner resize.
-        Assert.True(windows.Press(new Point(strip.Location.X + 12, strip.Location.Y + 11)));
+        var at = new Point(strip.Location.X + 12, strip.Location.Y + 11);
+        Assert.True(windows.Press(at));
         Assert.Null(windows.Resizing);
         windows.Release();
+        // The content starts the move, as the view does on a press that should drag it.
+        Assert.True(windows.BeginMove(strip.Id, at));
+        Assert.Same(strip, windows.Moving);
+        windows.Release();
         Assert.Equal(strip.Size, new Size((int)Math.Round(440 * uiScale), (int)Math.Round(22 * uiScale)));
+    });
+
+    // A stretched strip is taller in pixels, so a height-based corner rule would give it corner squares over the glyph again.
+    [Theory]
+    [InlineData(1.5, 440, 30)]
+    [InlineData(1.5, 880, 40)]
+    [InlineData(2.0, 440, 22)]
+    public void A_press_on_the_strips_glyph_moves_it_at_any_scale_and_height(double uiScale, int width, int height) => RenderThread.Run(() =>
+    {
+        var windows = new WindowManager(new Size(2000, 1000), new MemoryWindowPositionStore(), Server, "Alice", uiScale);
+        var strip = windows.Open(DerethVitalsWindow.DefinitionOf(VitalsLayout.SideBySide, () => false), new Point(100, 100));
+        Grip(windows, strip, (int)Math.Round(width * uiScale) - strip.Width, (int)Math.Round(height * uiScale) - strip.Height);
+        Assert.Equal(new Size((int)Math.Round(width * uiScale), (int)Math.Round(height * uiScale)), strip.Size);
+
+        var glyph = GlyphOf(uiScale, width, height);
+        foreach (var point in new[] { glyph.Location, new Point(glyph.X + glyph.Width / 2, glyph.Y + glyph.Height / 2) })
+        {
+            var at = new Point(strip.Location.X + point.X, strip.Location.Y + point.Y);
+            Assert.True(windows.Press(at));
+            Assert.Null(windows.Resizing);
+            windows.Release();
+            Assert.True(windows.BeginMove(strip.Id, at));
+            Assert.Same(strip, windows.Moving);
+            windows.Release();
+        }
     });
 
     [Fact]
@@ -313,6 +342,18 @@ public sealed class DerethVitalsWindowTests
     }
 
     private static List<DerethVitalBar> Bars(DerethVitalsWindow view) => view.GetLogicalDescendants().OfType<DerethVitalBar>().ToList();
+
+    /// <summary>The first bar's glyph in the strip's pixels, as a panel at <paramref name="uiScale"/> lays it out.</summary>
+    private static Rectangle GlyphOf(double uiScale, int width, int height)
+    {
+        var view = new DerethVitalsWindow(Game(), () => false, () => { }, VitalsLayout.SideBySide);
+        using var panel = AvaloniaPanel.Create(() => view, (int)Math.Round(width * uiScale), (int)Math.Round(height * uiScale), uiScale);
+        panel.Tick();
+        var glyph = panel.Content.GetVisualDescendants().OfType<DerethVitalGlyph>().First();
+        var origin = Avalonia.VisualExtensions.TranslatePoint(glyph, new Avalonia.Point(0, 0), panel.Content)!.Value;
+        return new Rectangle((int)Math.Round(origin.X * uiScale), (int)Math.Round(origin.Y * uiScale),
+            (int)Math.Round(glyph.Bounds.Width * uiScale), (int)Math.Round(glyph.Bounds.Height * uiScale));
+    }
 
     /// <summary>The value labels, in retail's order.</summary>
     private static List<string> Labels(DerethVitalsWindow view) =>
