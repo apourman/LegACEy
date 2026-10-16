@@ -46,14 +46,14 @@ public sealed class DerethMedallion : Decorator
     public DerethGlyph Glyph
     {
         get => _glyph;
-        set { if (_glyph == value) return; _glyph = value; InvalidateVisual(); }
+        set { _glyph = value; InvalidateVisual(); }
     }
 
     /// <summary>Shows the teal ring: the window or the menu it opens is open.</summary>
     public bool IsOpen
     {
         get => _open;
-        set { if (_open == value) return; _open = value; InvalidateVisual(); }
+        set { _open = value; InvalidateVisual(); }
     }
 
     protected override void OnPointerEntered(PointerEventArgs e)

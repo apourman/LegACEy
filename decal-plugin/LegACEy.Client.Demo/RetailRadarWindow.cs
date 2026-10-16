@@ -239,9 +239,14 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         _coordinatesPlaque.IsVisible = frame.Coordinates != null;
         // Without retail's lock natives the port's UiLocked does nothing, so the button is not shown.
         _lock.IsVisible = _port.UiLockAvailable;
-        _lock.Glyph = _port.UiLocked ? DerethGlyph.Lock : DerethGlyph.Unlock;
-        _lock.IsOpen = _port.UiLocked;
-        ToolTip.SetTip(_lock, _port.UiLocked ? UnlockTip : LockTip);
+        // The medallion redraws on every set, so it is set only when the lock changes.
+        var locked = _port.UiLocked;
+        if (_lock.IsOpen != locked)
+        {
+            _lock.Glyph = locked ? DerethGlyph.Lock : DerethGlyph.Unlock;
+            _lock.IsOpen = locked;
+            ToolTip.SetTip(_lock, locked ? UnlockTip : LockTip);
+        }
 
         _groundRow.Show(Options.Ground);
         _northRow.Show(Options.NorthUp);
