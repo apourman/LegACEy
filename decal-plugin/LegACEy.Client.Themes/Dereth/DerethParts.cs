@@ -16,6 +16,8 @@ public static class DerethPalette
 {
     public static readonly Color Gold = Color.Parse("#C9A45C");
     public static readonly Color Cream = Color.Parse("#EFE3C4");
+    /// <summary>The dark gold: a bezel's rim and a plaque's border.</summary>
+    public static readonly Color GoldDark = Color.Parse("#7A5E30");
     public static readonly Color Text = Color.Parse("#D7D9D6");
     public static readonly Color Muted = Color.Parse("#8E979E");
     public static readonly Color Invalid = Color.Parse("#D9584A");
@@ -32,6 +34,7 @@ public static class DerethPalette
     public static readonly FontFamily Body = new("Segoe UI, Tahoma, avares://LegACEy.Client.Themes/Assets#Liberation Sans");
 
     public static readonly IBrush GoldBrush = Brush(Gold);
+    public static readonly IBrush GoldDarkBrush = Brush(GoldDark);
     public static readonly IBrush CreamBrush = Brush(Cream);
     public static readonly IBrush TextBrush = Brush(Text);
     public static readonly IBrush MutedBrush = Brush(Muted);

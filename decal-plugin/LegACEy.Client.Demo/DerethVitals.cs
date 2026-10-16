@@ -6,6 +6,9 @@ namespace LegACEy.Client.Demo;
 /// <summary>The three vitals, in retail's order.</summary>
 public enum Vital { Health, Stamina, Mana }
 
+/// <summary>The vitals window's layout: stacked (A, the default) or side by side (D).</summary>
+public enum VitalsLayout { Stacked = 0, SideBySide = 1 }
+
 /// <summary>One vital's bar as the window shows it: how full it is, how far its pale trail reaches, and its numbers.</summary>
 public readonly struct VitalReading
 {

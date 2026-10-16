@@ -25,7 +25,7 @@ public sealed class DerethVitalGlyph : Control
     /// <summary>The bezel's diameter in DIPs.</summary>
     public const double BezelSize = 13;
     private const double GlyphSize = 9;
-    private static readonly IPen RimPen = new Pen(DerethPalette.Brush(Color.Parse("#7A5E30")), 1);
+    private static readonly IPen RimPen = new Pen(DerethPalette.GoldDarkBrush, 1);
     private static readonly IBrush Face = new RadialGradientBrush
     {
         Center = new RelativePoint(0.5, 0.38, RelativeUnit.Relative),
@@ -72,6 +72,8 @@ public sealed class DerethVitalBar : Control
     private readonly Pen _glow;
     private readonly Pen _edge;
     private readonly IBrush _fill;
+    // The groove's corner radius; a bar's default is half its height, a pill.
+    private readonly double? _cornerRadius;
     private double _fraction;
     private double _trail;
     private bool _pulsing;
@@ -84,8 +86,10 @@ public sealed class DerethVitalBar : Control
     /// <summary>Whether the edge pulses, as last shown.</summary>
     public bool Pulsing => _pulsing;
 
-    public DerethVitalBar(Color light, Color mid, Color dark)
+    /// <param name="cornerRadius">The corners' radius in DIPs; null for a pill, half the bar's height.</param>
+    public DerethVitalBar(Color light, Color mid, Color dark, double? cornerRadius = null)
     {
+        _cornerRadius = cornerRadius;
         Height = BarHeight;
         _glow = new Pen(_glowBrush, 2);
         _edge = new Pen(_edgeBrush, 1);
@@ -121,13 +125,14 @@ public sealed class DerethVitalBar : Control
     {
         var width = Bounds.Width;
         var height = Bounds.Height;
-        context.DrawRectangle(DerethPalette.GrooveBrush, GrooveEdge, new RoundedRect(new Rect(0, 0, width, height), height / 2));
+        var outer = _cornerRadius ?? height / 2;
+        context.DrawRectangle(DerethPalette.GrooveBrush, GrooveEdge, new RoundedRect(new Rect(0, 0, width, height), outer));
 
-        // Retail's fill sits 1 DIP inside the groove.
+        // Retail's fill sits 1 DIP inside the groove, so its corners are 1 DIP tighter.
         var left = 1.0;
         var span = width - 2;
         var inner = height - 2;
-        var radius = inner / 2;
+        var radius = Math.Max(0, outer - 1);
         var trailEnd = left + span * _trail;
         var fillEnd = left + span * _fraction;
         if (trailEnd > left)
@@ -137,8 +142,8 @@ public sealed class DerethVitalBar : Control
 
         if (!_pulsing) return;
         // The edge pulses with a glow just outside it, so the warning is the only thing on the window that moves.
-        context.DrawRectangle(null, _glow, new RoundedRect(new Rect(-1, -1, width + 2, height + 2), (height + 2) / 2));
-        context.DrawRectangle(null, _edge, new RoundedRect(new Rect(0.5, 0.5, width - 1, height - 1), height / 2));
+        context.DrawRectangle(null, _glow, new RoundedRect(new Rect(-1, -1, width + 2, height + 2), outer + 1));
+        context.DrawRectangle(null, _edge, new RoundedRect(new Rect(0.5, 0.5, width - 1, height - 1), outer));
     }
 
     private static double Clamp(double value) => Math.Max(0, Math.Min(1, value));
