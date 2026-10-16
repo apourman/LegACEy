@@ -275,6 +275,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private readonly BridgeInventoryPort _inventory = new(Log);
     private readonly AppraisalFeature _appraisal;
     private RetailBusyCursor? _busyCursor;
+    private SelectionGlow? _selectionGlow;
     private RetailTextMode? _textMode;
     // The inventory as plugins and windows get it: the bridge port, with an Assess also asking for the appraisal window.
     private readonly AppraisingInventoryPort _appraisingInventory;
@@ -352,6 +353,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             catch (Exception exception) { Log($"Item drag and drop disabled: {exception.Message}"); }
             try { _busyCursor = new RetailBusyCursor(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"The busy cursor while an appraisal loads is off: {exception.Message}"); }
+            try { _selectionGlow = new SelectionGlow(NativeUi.ReadMemory, Log); }
+            catch (Exception exception) { Log($"The selection glow is off: {exception.Message}"); }
             try { _textMode = new RetailTextMode(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"Keys typed in LegACEy text boxes also reach the game: {exception.Message}"); }
             try { _inventory.TargetMode = new RetailTargetMode(NativeUi.ReadMemory, Log); }
@@ -383,6 +386,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             _postUiDrawHook?.Dispose();
             _postUiDrawHook = null;
+            Guard(() => _selectionGlow?.Show(0));
             RestoreNativeBar();
             TearDown();
             _serverChannel?.Dispose();
@@ -522,6 +526,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _inventory.Clear();
         Guard(() => _appraisal.Clear());
         Guard(() => _busyCursor?.Show(false));
+        Guard(() => _selectionGlow?.Show(0));
         Guard(() => _textMode?.Hold(false));
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up client UI at logoff: {exception}"); }
@@ -787,6 +792,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _inventory.Flush(_inGame);
             _inventory.TargetMode?.Tick();
             _busyCursor?.Show(_inGame && _appraisal.Waiting);
+            _selectionGlow?.Show(_inGame ? (uint)Bridge.Fact(BridgeFact.CurrentSelection) : 0);
             _textMode?.Hold(_inGame && SurfaceById(_inputRouter.FocusedSurfaceId)?.Panel.WantsKeyboard == true);
             _serverChannel?.Tick();
             if (_barSurface == null)
