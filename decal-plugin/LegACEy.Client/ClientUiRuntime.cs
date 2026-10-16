@@ -1452,10 +1452,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (!NativeUi.Ready || !RetailPanelCatalogueValid()) return NoRetailPanel.Instance;
         // The LegACEy inventory window's open state, which the toolbar's backpack shows while the takeover holds retail's panel.
-        // test-inventory-in-place beside the DLL leaves retail's panel on screen, to see whether its paperdoll is what re-textures the
-        // player after an equip.
-        var takeover = new RetailPanelTakeover(new NativeRetailPanelPort(), open => { _inventoryWindowOpen = open; retailOpenChanged(open); }, Log,
-            () => File.Exists(IOPath.Combine(PluginDirectory, "test-inventory-in-place")));
+        var takeover = new RetailPanelTakeover(new NativeRetailPanelPort(), open => { _inventoryWindowOpen = open; retailOpenChanged(open); }, Log);
         _retailPanels.Add(takeover);
         return new RetailPanelHandle(this, takeover);
     }
