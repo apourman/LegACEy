@@ -81,13 +81,28 @@ public sealed class GroundDat : IGroundSource, IDisposable
 
     public GroundDat(PortalDat portal)
     {
-        _portal = new PortalDat(portal.Path);
         var directory = Path.GetDirectoryName(portal.Path)!;
-        _cell = new PortalDat(Path.Combine(directory, "client_cell_1.dat"));
-        var highRes = Path.Combine(directory, "client_highres.dat");
-        _highRes = File.Exists(highRes) ? new PortalDat(highRes) : null;
-        var region = _portal.ReadFile(RegionId) ?? throw new InvalidDataException("RegionDesc 0x13000000 is not in portal.dat.");
-        (_heights, _surfaces) = ReadRegion(region);
+        _portal = new PortalDat(portal.Path);
+        PortalDat? cell = null;
+        PortalDat? highRes = null;
+        try
+        {
+            cell = new PortalDat(Path.Combine(directory, "client_cell_1.dat"));
+            var highResPath = Path.Combine(directory, "client_highres.dat");
+            highRes = File.Exists(highResPath) ? new PortalDat(highResPath) : null;
+            var region = _portal.ReadFile(RegionId) ?? throw new InvalidDataException("RegionDesc 0x13000000 is not in portal.dat.");
+            (_heights, _surfaces) = ReadRegion(region);
+        }
+        catch
+        {
+            // The constructor failed, so there is no GroundDat to dispose: close the DATs it opened.
+            _portal.Dispose();
+            cell?.Dispose();
+            highRes?.Dispose();
+            throw;
+        }
+        _cell = cell;
+        _highRes = highRes;
     }
 
     public GroundLandblock? ReadLandblock(int x, int y)
