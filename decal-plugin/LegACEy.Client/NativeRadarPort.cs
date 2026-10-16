@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using LegACEy.Client.Demo;
 
 namespace LegACEy.Client.DecalPlugin;
@@ -11,13 +12,20 @@ namespace LegACEy.Client.DecalPlugin;
 /// is set as retail's radar lock button sets it.
 /// </summary>
 /// <remarks>Every address was checked against the installed acclient.exe by <see cref="RetailHudCatalogue"/>; a feature that did not check
-/// reads as empty. Call on the game thread only.</remarks>
+/// reads as empty. Build it once <see cref="NativeUi.Ready"/>, and call it on the game thread only.</remarks>
 internal sealed unsafe class NativeRadarPort : IRadarPort
 {
+    /// <summary>How far from the player objects are read: the Dereth radar's widest zoom, in metres.</summary>
+    internal const float Range = 150f;
+    // A bucket table over a million entries is not CObjectMaint's (retail's holds a few thousand objects): the layout moved, so read nothing.
+    private const uint MaxHashMask = 0xFFFFF;
+    private static readonly KeyValuePair<RadarColor, (float R, float G, float B)>[] Palette = RadarColors.Retail.ToArray();
+
     private readonly RetailHudNatives _natives;
     private readonly Func<uint, string?> _name;
     private readonly Action<uint> _select;
-    // ponytail: names are kept for the session, one short string per object seen; prune if a long session shows it.
+    // ponytail: names are kept for the session, one short string per object seen, empty ones too (no WorldFilter call per frame); a name
+    // Decal learns after the object is first seen is not picked up, and nothing is pruned. Retry empty names now and then if 05 shows either.
     private readonly Dictionary<uint, string> _names = new();
 
     /// <param name="natives">Which HUD features the running client matched.</param>
@@ -45,26 +53,29 @@ internal sealed unsafe class NativeRadarPort : IRadarPort
         get
         {
             var objects = new List<RadarObject>();
-            if (!_natives.Objects || !_natives.Player) return objects;
+            if (!_natives.Objects) return objects;
+            var player = PlayerObject();
             var maint = Global(RetailHudCatalogue.ObjectMaint);
-            var smartBox = Global(RetailHudCatalogue.SmartBox);
-            if (maint == null || smartBox == null) return objects;
+            if (player == null || maint == null) return objects;
             var buckets = (byte**)Pointer(maint, RetailHudCatalogue.MaintBuckets);
             var mask = *(uint*)(maint + RetailHudCatalogue.MaintMask);
-            // A table this large is not a hash table: the layout moved, so read nothing.
-            if (buckets == null || mask > 0xFFFFF) return objects;
-            var playerId = *(uint*)(smartBox + RetailHudCatalogue.SmartBoxPlayerId);
+            if (buckets == null || mask > MaxHashMask) return objects;
+            var playerId = *(uint*)(Global(RetailHudCatalogue.SmartBox) + RetailHudCatalogue.SmartBoxPlayerId);
+            var here = PositionOf(player);
             for (var bucket = 0u; bucket <= mask; bucket++)
                 for (var node = buckets[bucket]; node != null; node = Pointer(node, RetailHudCatalogue.ObjectNext))
                 {
                     var id = *(uint*)(node + RetailHudCatalogue.ObjectId);
                     // Retail's radar skips the player and objects in no cell (in a pack, or not placed yet).
                     if (id == playerId || Pointer(node, RetailHudCatalogue.ObjectInCell) == null || *(uint*)(node + RetailHudCatalogue.ObjectCell) == 0) continue;
+                    // Out of range costs two reads: the weenie, name and colour are only looked up for what the radar can show.
+                    var position = PositionOf(node);
+                    var (east, north) = here.OffsetTo(position);
+                    if (east * east + north * north > Range * Range) continue;
                     var weenie = ((delegate* unmanaged[Cdecl]<uint, byte*>)RetailHudCatalogue.GetWeenieObject)(id);
                     if (weenie == null || Pointer(weenie, RetailHudCatalogue.WeeniePhysics) == null) continue;
                     if ((*(uint*)(weenie + RetailHudCatalogue.WeenieFlags) & RetailHudCatalogue.UiHidden) != 0) continue;
-                    objects.Add(new RadarObject(id, Name(id), Colour(weenie), (RadarBehavior)(*(int*)(weenie + RetailHudCatalogue.WeenieBehavior)),
-                        PositionOf(node)));
+                    objects.Add(new RadarObject(id, Name(id), Colour(weenie), (RadarBehavior)(*(int*)(weenie + RetailHudCatalogue.WeenieBehavior)), position));
                 }
             return objects;
         }
@@ -74,16 +85,16 @@ internal sealed unsafe class NativeRadarPort : IRadarPort
 
     public bool UiLocked
     {
-        get => NativeUi.IsUiLocked;
+        get => _natives.Lock && NativeUi.IsUiLocked;
         set
         {
             if (!_natives.Lock || value == UiLocked) return;
-            // As retail's radar lock button: PlayerModule::SetLockUI on CPlayerSystem (0x0087119C) +0x34, then the lock-changed message
-            // every window updates on, through UIElementManager (0x0083E03C). Both globals are checked by NativeUiCatalogue.
-            var playerSystem = Global(0x0087119C);
-            var manager = Global(0x0083E03C);
+            // As retail's radar lock button: PlayerModule::SetLockUI on its CPlayerSystem's PlayerModule, then the lock-changed message every
+            // window updates on, through UIElementManager. The Lock list checks the button's calls, receivers and the manager global.
+            var playerSystem = ((delegate* unmanaged[Cdecl]<byte*>)RetailHudCatalogue.GetPlayerSystem)();
+            var manager = Global(NativeUi.Manager);
             if (playerSystem == null || manager == null) return;
-            ((delegate* unmanaged[Thiscall]<byte*, byte, void>)RetailHudCatalogue.SetLockUi)(playerSystem + 0x34, value ? (byte)1 : (byte)0);
+            ((delegate* unmanaged[Thiscall]<byte*, byte, void>)RetailHudCatalogue.SetLockUi)(playerSystem + RetailToolbarCatalogue.PlayerModuleOffset, value ? (byte)1 : (byte)0);
             ((delegate* unmanaged[Thiscall]<byte*, uint, int, void>)RetailHudCatalogue.BroadcastGlobalMessage)(manager, RetailHudCatalogue.UiLockChangedMessage, 0);
         }
     }
@@ -102,10 +113,8 @@ internal sealed unsafe class NativeRadarPort : IRadarPort
 
     private string Name(uint id)
     {
-        if (_names.TryGetValue(id, out var known)) return known;
-        var name = _name(id);
-        if (!string.IsNullOrEmpty(name)) _names[id] = name!;
-        return name ?? string.Empty;
+        if (!_names.TryGetValue(id, out var name)) _names[id] = name = _name(id) ?? string.Empty;
+        return name;
     }
 
     // The colour retail draws the object in: its own GetBlipColor (fellowship, player killer, portal, vendor and creature rules), matched
@@ -114,7 +123,7 @@ internal sealed unsafe class NativeRadarPort : IRadarPort
     {
         var rgba = stackalloc float[4];
         ((delegate* unmanaged[Cdecl]<float*, byte*, float*>)RetailHudCatalogue.GetBlipColor)(rgba, weenie);
-        foreach (var colour in RadarColors.Retail)
+        foreach (var colour in Palette)
             if (colour.Value == (rgba[0], rgba[1], rgba[2])) return colour.Key;
         return RadarColor.White;
     }

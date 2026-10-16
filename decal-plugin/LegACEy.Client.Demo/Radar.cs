@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Avalonia.Media;
 
 namespace LegACEy.Client.Demo;
@@ -69,13 +70,30 @@ public static class RadarColors
 /// </summary>
 public readonly record struct RadarPosition(uint Cell, float X, float Y, float Z)
 {
-    /// <summary>Outdoor cells are 1 to 64 (0x40); indoor and dungeon cells start at 0x100, as retail's SmartBox::is_player_outside tests.</summary>
+    /// <summary>Outdoors when the cell (the low 16 bits) is below 0x100, as retail's SmartBox::is_player_outside tests; indoor and dungeon
+    /// cells start at 0x100.</summary>
     public bool Outdoors => (Cell & 0xFFFF) < 0x100;
 
     /// <summary>Metres east and north from here to <paramref name="other"/>, across landblocks.</summary>
     public (float East, float North) OffsetTo(RadarPosition other) => (
         ((int)(other.Cell >> 24) - (int)(Cell >> 24)) * 192f + other.X - X,
         ((int)((other.Cell >> 16) & 0xFF) - (int)((Cell >> 16) & 0xFF)) * 192f + other.Y - Y);
+
+    /// <summary>
+    /// Retail's map coordinates as its radar writes them, such as "33.6N, 56.7E". CPlayerSystem::InqPlayerCoords counts 24 m cells across
+    /// the world: north = (landblock y × 8 + ⌊y / 24⌋ − 1024) × 0.1 + 0.5, east the same with x; negative is south and west.
+    /// </summary>
+    public string Coordinates
+    {
+        get
+        {
+            var north = Coordinate((Cell >> 16) & 0xFF, Y);
+            var east = Coordinate(Cell >> 24, X);
+            return string.Format(CultureInfo.InvariantCulture, "{0:0.0}{1}, {2:0.0}{3}", Math.Abs(north), north < 0 ? 'S' : 'N', Math.Abs(east), east < 0 ? 'W' : 'E');
+        }
+    }
+
+    private static double Coordinate(uint landblock, float metres) => (landblock * 8 + Math.Floor(metres / 24) - 1024) * 0.1 + 0.5;
 }
 
 /// <summary>The player: where, and the compass heading in degrees (0 north, 90 east).</summary>
@@ -96,7 +114,10 @@ public interface IRadarPort
 {
     /// <summary>The player, or null outside the world.</summary>
     RadarPlayer? Player { get; }
-    /// <summary>Every object retail has placed in the world (those around the player), but the player, with its position this frame.</summary>
+    /// <summary>
+    /// Every object retail has placed in the world within 150 m of the player (level distance, the radar's widest zoom), but the player, with
+    /// its position this frame. Empty while the player is not in the world.
+    /// </summary>
     IReadOnlyList<RadarObject> Objects { get; }
     /// <summary>Selects the object, as clicking it in the world does.</summary>
     void Select(uint id);

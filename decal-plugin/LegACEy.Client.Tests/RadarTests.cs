@@ -23,29 +23,44 @@ public sealed class RadarTests
         Assert.Equal((6f, 191f), here.OffsetTo(there));
     }
 
+    [Theory]
+    [InlineData(0xC6A90014u, 60f, 84f, "33.6N, 56.7E")] // Arwic: landblock 0xC6A9, the cell 2 east and 3 north of its corner
+    [InlineData(0x00000001u, 0f, 0f, "101.9S, 101.9W")]
+    public void CoordinatesAreRetailsByThe24MetreCell(uint cell, float x, float y, string coordinates) =>
+        Assert.Equal(coordinates, new RadarPosition(cell, x, y, 0f).Coordinates);
+
+    // Decal hooks a function by rewriting its first instruction; the port calls these at their entries, so a hook there must change nothing.
+    [Theory]
+    [InlineData(RetailHudCatalogue.GetWeenieObject)]
+    [InlineData(RetailHudCatalogue.GetBlipColor)]
+    [InlineData(RetailHudCatalogue.GetPlayerSystem)]
+    [InlineData(RetailHudCatalogue.SetLockUi)]
+    [InlineData(RetailHudCatalogue.BroadcastGlobalMessage)]
+    public void HookedEntryOfACalledFunctionKeepsEveryFeature(uint entry) =>
+        Assert.Equal(new RetailHudNatives(true, true, true, true, true), RetailHudCatalogue.Validate(Client(patched: entry), _ => { }));
+
     [Fact]
-    public void PatchedObjectEntryTurnsOnlyTheRadarOff()
+    public void PatchedObjectBodyTurnsOnlyTheRadarOff()
     {
         var messages = new List<string>();
 
-        var natives = RetailHudCatalogue.Validate(Client(patched: RetailHudCatalogue.GetWeenieObject), messages.Add);
+        // Inside GetWeenieObject's checked body (its call through ACCObjectMaint).
+        var natives = RetailHudCatalogue.Validate(Client(patched: RetailHudCatalogue.GetWeenieObject + 15), messages.Add);
 
         Assert.Equal(new RetailHudNatives(true, true, true, false, true), natives);
         Assert.False(natives.RadarWindow);
         Assert.Contains(messages, message => message.Contains("radar objects is off"));
     }
 
-    // A running client that matches the catalogue, with one address's first byte changed as a runtime patch would.
+    // A running client that holds the catalogue's bytes, with the byte at one address patched as a hook would (a jmp opcode).
     private static Func<uint, int, byte[]> Client(uint? patched = null)
     {
-        var bytes = new[] { RetailHudCatalogue.VitalsTakeover, RetailHudCatalogue.RadarTakeover, RetailHudCatalogue.Player, RetailHudCatalogue.Objects, RetailHudCatalogue.Lock }
-            .SelectMany(list => list).Where(entry => entry.Address != null).ToDictionary(entry => entry.Address!.Value, entry => entry.ExpectedBytes);
-        return (address, count) =>
-        {
-            var copy = bytes[address].Take(count).ToArray();
-            if (address == patched) copy[0] = 0xE9;
-            return copy;
-        };
+        var memory = new Dictionary<uint, byte>();
+        foreach (var entry in new[] { RetailHudCatalogue.VitalsTakeover, RetailHudCatalogue.RadarTakeover, RetailHudCatalogue.Player, RetailHudCatalogue.Objects, RetailHudCatalogue.Lock }
+            .SelectMany(list => list))
+            for (var i = 0; i < entry.ExpectedBytes.Length; i++) memory[entry.Address!.Value + (uint)i] = entry.ExpectedBytes[i];
+        if (patched is uint at) memory[at] = 0xE9;
+        return (address, count) => Enumerable.Range(0, count).Select(i => memory.TryGetValue(address + (uint)i, out var value) ? value : (byte)0xCC).ToArray();
     }
 }
 
