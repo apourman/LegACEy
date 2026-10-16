@@ -225,6 +225,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private readonly Stopwatch _vitalsClock = Stopwatch.StartNew();
     private int? _loggedVitae;
     private bool _vitaeReadLogged;
+    private TimeSpan _nextVitaeRead;
     private readonly GameStatePort _gameState = new(new GameStateSnapshot("unknown-character", "unknown-server", 0, 0, 0, 0, 0, 0));
     private readonly GameStatePoller _gameStatePoller;
     private ClientUiFramework? _clientUi;
@@ -2082,7 +2083,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // Retail's vitals are held from portal space at login on, like chat; the window opens in game.
         var canDraw = _postUiDrawHook?.IsInstalled == true && !(_windows != null && !_windowsEnabled);
         _vitals.Tick(switchOn, canDraw, _inGame, GameDevice.ViewportSize(_device), _vitalsClock.Elapsed);
-        if (switchOn && _inGame) LogVitae();
+        if (_inGame && _vitals.Holds) LogVitae();
     }
 
     /// <summary>Retail's vitals windows, held, once the running client's addresses match. Null leaves retail's alone; the next frame asks again.</summary>
@@ -2103,10 +2104,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         return Point.Empty;
     }
 
-    /// <summary>Opens the Dereth vitals window at <paramref name="at"/>, in the window store's place for this character once it has one.</summary>
-    private IRetailVitalsWindow OpenVitals(Point at)
+    /// <summary>
+    /// Opens the Dereth vitals window at <paramref name="at"/>, in the window store's place for this character once it has one. Null while
+    /// the windows cannot open yet, so the next frame asks again.
+    /// </summary>
+    private IRetailVitalsWindow? OpenVitals(Point at)
     {
-        if (!CanOpenWindows) throw new InvalidOperationException("LegACEy windows are unavailable until the post-UI renderer is ready.");
+        if (!CanOpenWindows) return null;
         var view = new DerethVitalsWindow(_gameState, () => NativeUi.IsUiLocked, () => _windows?.BeginMove(DerethVitalsWindowId, _pointer));
         OpenWindowCore(DerethVitalsWindow.Definition(DerethVitalsWindowId, () => NativeUi.IsUiLocked), view, at, VitalsFailed);
         return new VitalsWindowHandle(this, view);
@@ -2128,10 +2132,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// Logs the raw vitae value when it changes, so the play-test can settle its unit. The vitals draw no hatching from it until the unit is
-    /// known; the value is read only while the window is held.
+    /// known. It is read at most once a second, and only while retail's vitals are held.
     /// </summary>
     private void LogVitae()
     {
+        var now = _vitalsClock.Elapsed;
+        if (now < _nextVitaeRead) return;
+        _nextVitaeRead = now + TimeSpan.FromSeconds(1);
         int vitae;
         try { vitae = Bridge.Fact(BridgeFact.Vitae); }
         catch (Exception exception)
@@ -2628,8 +2635,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         catch (Exception exception) { Log($"Could not give the retail chat back during unload: {exception}"); }
         if (_chatTakeover != null) Log("Retail's chat windows are still held after two tries at unload; they stay hidden until the client restarts.");
-        // The vitals window closes before the windows do, and retail's vitals come back.
-        _vitals?.Dispose();
+        // The vitals window closes before the windows do, and retail's vitals come back. Unload runs no more frames, so a give-back that
+        // failed gets one more try here before the player is told, as chat does.
+        try
+        {
+            _vitals?.Release();
+            if (_vitals?.Holds == true) _vitals.Release();
+        }
+        catch (Exception exception) { Log($"Could not give the retail vitals back during unload: {exception}"); }
+        if (_vitals?.Holds == true) Log("Retail's vitals windows are still held after two tries at unload; they stay hidden until the client restarts.");
         _vitals = null;
         try { ReleaseRetailToolbar(); }
         catch (Exception exception) { Log($"Could not give the retail toolbar back during unload: {exception}"); }

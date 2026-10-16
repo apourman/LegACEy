@@ -21,6 +21,7 @@ public sealed class RetailVitalsTakeoverTests
         public List<string> Log { get; } = new();
         public FakeWindow? Window { get; private set; }
         public Exception? OpenFailure { get; set; }
+        public bool NotReady { get; set; }
         public RetailVitalsTakeover Takeover { get; }
 
         public Harness()
@@ -31,6 +32,7 @@ public sealed class RetailVitalsTakeoverTests
                 at =>
                 {
                     if (OpenFailure != null) throw OpenFailure;
+                    if (NotReady) return null;
                     Opened.Add(at);
                     return Window = new FakeWindow();
                 },
@@ -85,6 +87,44 @@ public sealed class RetailVitalsTakeoverTests
         harness.Tick();
         Assert.Equal(new[] { Place }, harness.Opened);
         Assert.False(harness.Stacked.Visible);
+    }
+
+    [Fact]
+    public void A_window_that_is_not_ready_to_open_yet_opens_on_a_later_frame_without_disabling_the_takeover()
+    {
+        var harness = new Harness { NotReady = true };
+
+        harness.Tick(seconds: 1);
+        Assert.Empty(harness.Opened);
+        Assert.Empty(harness.Log);
+
+        harness.NotReady = false;
+        harness.Tick(seconds: 2);
+
+        Assert.Equal(new[] { Place }, harness.Opened);
+        Assert.Equal(new[] { Seconds(2) }, harness.Window!.Refreshes);
+        Assert.Empty(harness.Log);
+        Assert.False(harness.Stacked.Visible);
+    }
+
+    [Fact]
+    public void A_give_back_that_throws_once_is_still_held_and_the_retry_gives_retail_back()
+    {
+        var harness = new Harness();
+        harness.Tick();
+        harness.Stacked.FailNextShow = true;
+
+        harness.Takeover.Release();
+
+        Assert.False(harness.Stacked.Visible);
+        Assert.True(harness.Takeover.Holds);
+        Assert.Single(harness.Log);
+
+        harness.Takeover.Dispose();
+
+        Assert.True(harness.Stacked.Visible);
+        Assert.False(harness.Takeover.Holds);
+        Assert.Single(harness.Log);
     }
 
     [Fact]
@@ -152,11 +192,21 @@ public sealed class RetailVitalsTakeoverTests
         public FakeRoot(bool visible) => Visible = visible;
 
         public bool Visible { get; private set; }
+        /// <summary>Makes the next call that shows retail's element throw, as a native call that fails once does.</summary>
+        public bool FailNextShow { get; set; }
         public bool Exists => true;
         public IntPtr ElementIdentity => new(1);
         public bool IsVisible => Visible;
         public Rectangle GetBounds() => new(0, 0, 10, 10);
-        public void SetVisible(bool visible) => Visible = visible;
+        public void SetVisible(bool visible)
+        {
+            if (visible && FailNextShow)
+            {
+                FailNextShow = false;
+                throw new InvalidOperationException("the native call failed");
+            }
+            Visible = visible;
+        }
         public void SetSaveLocation(bool save) { }
         public void MoveTo(Point location) { }
         public bool IsUiLocked => false;

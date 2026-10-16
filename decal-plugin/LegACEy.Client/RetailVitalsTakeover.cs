@@ -19,7 +19,7 @@ internal sealed class RetailVitalsTakeover : IDisposable
 {
     private readonly Func<RetailHeldWindows?> _hold;
     private readonly Func<Point> _retailAt;
-    private readonly Func<Point, IRetailVitalsWindow> _open;
+    private readonly Func<Point, IRetailVitalsWindow?> _open;
     private readonly Action<string> _log;
     private RetailHeldWindows? _held;
     private Point _place;
@@ -29,8 +29,11 @@ internal sealed class RetailVitalsTakeover : IDisposable
 
     /// <param name="hold">Holds retail's vitals windows. Null when the running client does not match its native entries: retail's stay.</param>
     /// <param name="retailAt">Where retail's vitals stand. Read as they are held, so the window opens where retail's were.</param>
-    /// <param name="open">Opens LegACEy's vitals window at a place. It throws when the windows cannot open yet.</param>
-    public RetailVitalsTakeover(Func<RetailHeldWindows?> hold, Func<Point> retailAt, Func<Point, IRetailVitalsWindow> open, Action<string> log)
+    /// <param name="open">
+    /// Opens LegACEy's vitals window at a place. Null while the windows cannot open yet: retail's stay held and the next frame asks again.
+    /// It throws only when opening fails, which turns the takeover off until the switch is turned off and on.
+    /// </param>
+    public RetailVitalsTakeover(Func<RetailHeldWindows?> hold, Func<Point> retailAt, Func<Point, IRetailVitalsWindow?> open, Action<string> log)
     {
         _hold = hold ?? throw new ArgumentNullException(nameof(hold));
         _retailAt = retailAt ?? throw new ArgumentNullException(nameof(retailAt));
@@ -57,13 +60,16 @@ internal sealed class RetailVitalsTakeover : IDisposable
             _held!.Tick(viewport);
             if (!inGame) return;
             _window ??= _open(_place);
-            _window.Refresh(now);
+            _window?.Refresh(now);
         }
         catch (Exception exception)
         {
             Fail(exception);
         }
     }
+
+    /// <summary>Whether retail's vitals are held. A give-back that failed is still held until a later one lands.</summary>
+    public bool Holds => _held != null;
 
     /// <summary>Gives retail's vitals back and closes LegACEy's window. The next switch-on, login or frame holds them again.</summary>
     public void Release()
