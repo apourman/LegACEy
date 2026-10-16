@@ -11,22 +11,40 @@ using WindowHover = (string? WindowId, LegACEy.Client.Demo.WindowEdges Edges);
 
 namespace LegACEy.Client.Demo;
 
-/// <summary>How a window resizes: freely, down to a minimum size.</summary>
+/// <summary>How a window resizes: freely, down to a minimum size, or between a minimum and a maximum.</summary>
 public sealed class WindowResizing
 {
-    public WindowResizing(Size minimum)
+    /// <param name="maximum">The largest size; null for as big as the screen. A maximum height equal to the minimum fixes the height.</param>
+    /// <param name="locked">Whether the window is locked against resizing now, such as while retail's UI is locked. Null: never locked.</param>
+    public WindowResizing(Size minimum, Size? maximum = null, Func<bool>? locked = null)
     {
         if (minimum.Width <= 0 || minimum.Height <= 0) throw new ArgumentOutOfRangeException(nameof(minimum));
+        if (maximum is { } top && (top.Width < minimum.Width || top.Height < minimum.Height)) throw new ArgumentOutOfRangeException(nameof(maximum));
         Minimum = minimum;
+        Maximum = maximum;
+        Locked = locked;
     }
 
     public Size Minimum { get; }
+    public Size? Maximum { get; }
+    public Func<bool>? Locked { get; }
 
-    /// <summary><paramref name="wanted"/>, no smaller than the minimum and no bigger than <paramref name="max"/>.</summary>
-    public Size Fit(Size wanted, Size max) => new(Clamp(wanted.Width, Minimum.Width, max.Width), Clamp(wanted.Height, Minimum.Height, max.Height));
+    /// <summary>Whether the height is fixed: the window has no top or bottom edge to drag.</summary>
+    public bool FixedHeight => Maximum is { } top && top.Height == Minimum.Height;
+
+    /// <summary>Whether a press on the edges resizes the window now.</summary>
+    internal bool CanResize => Locked?.Invoke() != true;
+
+    /// <summary><paramref name="wanted"/>, within the minimum, the maximum and <paramref name="max"/>.</summary>
+    public Size Fit(Size wanted, Size max) => new(
+        Clamp(wanted.Width, Minimum.Width, Limit(Maximum?.Width, max.Width)),
+        Clamp(wanted.Height, Minimum.Height, Limit(Maximum?.Height, max.Height)));
 
     /// <summary>One axis. The minimum wins over the maximum when the screen is too small for it.</summary>
     internal static int Clamp(int wanted, int minimum, int max) => Math.Max(minimum, Math.Min(max, wanted));
+
+    /// <summary>One axis's largest length: its maximum, or the screen's when there is none.</summary>
+    internal static int Limit(int? maximum, int screen) => maximum is { } top ? Math.Min(top, screen) : screen;
 }
 
 /// <summary>Dimensions and identity for a LegACEy window.</summary>
@@ -198,8 +216,9 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
 /// <summary>
 /// Pure window behavior used by the plugin adapter and the tests. The first item in ZOrder is
 /// frontmost. Pointer coordinates are screen coordinates and all returned positions are clamped.
-/// A press in a resizable window's side or bottom band, or in its corner square, resizes it; a press on any window's top edge or in
-/// its title bar moves it.
+/// A press in a resizable window's side or bottom band, or in its corner square, resizes it, within its <see cref="WindowResizing"/>: its
+/// minimum and maximum hold on every edge, a fixed height has no top or bottom edge, and a locked window does not resize. A press on any
+/// window's top edge or in its title bar moves it.
 /// </summary>
 public sealed class WindowManager
 {
@@ -379,18 +398,20 @@ public sealed class WindowManager
     /// </summary>
     private static WindowEdges EdgesAt(ManagedWindow window, Point point)
     {
-        if (window.Definition.Resizing == null) return WindowEdges.None;
+        var resizing = window.Definition.Resizing;
+        if (resizing == null || !resizing.CanResize) return WindowEdges.None;
         var bounds = window.Bounds;
         var left = point.X - bounds.Left;
         var right = bounds.Right - 1 - point.X;
         var top = point.Y - bounds.Top;
         var bottom = bounds.Bottom - 1 - point.Y;
-        if (Math.Min(left, right) < CornerBand && Math.Min(top, bottom) < CornerBand)
+        // A window with a fixed height has no top or bottom edge, so its corners are its side bands.
+        if (!resizing.FixedHeight && Math.Min(left, right) < CornerBand && Math.Min(top, bottom) < CornerBand)
             return (left < right ? WindowEdges.Left : WindowEdges.Right) | (top < bottom ? WindowEdges.Top : WindowEdges.Bottom);
         var edges = WindowEdges.None;
         if (left < ResizeBand) edges |= WindowEdges.Left;
         if (right < ResizeBand) edges |= WindowEdges.Right;
-        if (bottom < ResizeBand) edges |= WindowEdges.Bottom;
+        if (!resizing.FixedHeight && bottom < ResizeBand) edges |= WindowEdges.Bottom;
         return edges;
     }
 
@@ -400,10 +421,10 @@ public sealed class WindowManager
         var resizing = window.Definition.Resizing!;
         var (x, width) = ResizeAxis(_pressBounds.X, _pressBounds.Width, point.X - _pressPoint.X,
             (_resizeEdges & WindowEdges.Left) != 0, (_resizeEdges & WindowEdges.Right) != 0,
-            resizing.Minimum.Width, _screen.Width);
+            resizing.Minimum.Width, resizing.Maximum?.Width ?? int.MaxValue, _screen.Width);
         var (y, height) = ResizeAxis(_pressBounds.Y, _pressBounds.Height, point.Y - _pressPoint.Y,
             (_resizeEdges & WindowEdges.Top) != 0, (_resizeEdges & WindowEdges.Bottom) != 0,
-            resizing.Minimum.Height, _screen.Height);
+            resizing.Minimum.Height, resizing.Maximum?.Height ?? int.MaxValue, _screen.Height);
         window.Location = new Point(x, y);
         window.Size = new Size(width, height);
         window.PreferredLocation = window.Location;
@@ -412,16 +433,16 @@ public sealed class WindowManager
 
     /// <summary>One axis of a resize. A moving start edge keeps the end edge fixed; a moving end edge stops at the screen.</summary>
     private static (int Start, int Length) ResizeAxis(int start, int length, int delta, bool startMoves, bool endMoves,
-        int minimum, int screen)
+        int minimum, int maximum, int screen)
     {
         if (!startMoves && !endMoves) return (start, length);
         if (startMoves)
         {
             var end = start + length;
-            var fitted = WindowResizing.Clamp(length - delta, minimum, end);
+            var fitted = WindowResizing.Clamp(length - delta, minimum, Math.Min(end, maximum));
             return (end - fitted, fitted);
         }
-        return (start, WindowResizing.Clamp(length + delta, minimum, screen - start));
+        return (start, WindowResizing.Clamp(length + delta, minimum, Math.Min(screen - start, maximum)));
     }
 
     private void EndDrag()
@@ -449,7 +470,8 @@ public sealed class WindowManager
     /// <summary>The definition at this manager's scale: what its window measures on screen.</summary>
     private WindowDefinition Scaled(WindowDefinition definition) => Scale == 1 ? definition : new WindowDefinition(
         definition.Id, definition.Title, Scaled(definition.Width), Scaled(definition.Height), Scaled(definition.TitleBarHeight), definition.Theme,
-        definition.Resizing is { } resizing ? new WindowResizing(Scaled(resizing.Minimum)) : null, definition.SharesLocationWith, definition.DragsFromContent);
+        definition.Resizing is { } resizing ? new WindowResizing(Scaled(resizing.Minimum), resizing.Maximum is { } top ? Scaled(top) : null, resizing.Locked) : null,
+        definition.SharesLocationWith, definition.DragsFromContent);
 
     private Size Scaled(Size size, double? scale = null) => new(Scaled(size.Width, scale), Scaled(size.Height, scale));
     private int Scaled(int length, double? scale = null) => Math.Max(1, (int)Math.Round(length * (scale ?? Scale)));

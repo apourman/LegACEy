@@ -182,6 +182,23 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void A_maximum_holds_when_the_left_edge_is_dragged_and_the_right_edge_stays_put()
+    {
+        var manager = NewManager(1920, 1080);
+        manager.Open(new WindowDefinition("vitals", "Vitals", 220, 64, resizing: new WindowResizing(new Size(150, 64), new Size(460, 64))),
+            new Point(500, 100));
+
+        Assert.True(manager.Press(new Point(503, 130)));
+        manager.Move(new Point(-97, 130));
+        manager.Release();
+
+        var window = manager.Get("vitals")!;
+        Assert.Equal(new Size(460, 64), window.Size);
+        Assert.Equal(new Point(260, 100), window.Location);
+        Assert.Equal(720, window.Bounds.Right);
+    }
+
+    [Fact]
     public void Dragging_the_top_left_corner_moves_the_left_and_top_edges_and_keeps_the_opposite_corner()
     {
         var manager = NewManager(1920, 1080);
