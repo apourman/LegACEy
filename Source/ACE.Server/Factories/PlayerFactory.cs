@@ -30,16 +30,13 @@ namespace ACE.Server.Factories
             ClientServerSkillsMismatch
         }
 
-        public static CreateResult Create(CharacterCreateInfo characterCreateInfo, Weenie weenie, ObjectGuid guid, uint accountId, WeenieType weenieType, out Player player)
+        /// <summary>
+        /// Sets the heritage, gender and every appearance property character creation chooses: the setup, tables, palettes and face.
+        /// The client builds the character's look, and the armor fitted to it, from these.
+        /// </summary>
+        public static void SetAppearance(Player player, CharacterCreateInfo characterCreateInfo)
         {
             var heritageGroup = DatManager.PortalDat.CharGen.HeritageGroups[(uint)characterCreateInfo.Heritage];
-
-            if (weenieType == WeenieType.Admin)
-                player = new Admin(weenie, guid, accountId);
-            else if (weenieType == WeenieType.Sentinel)
-                player = new Sentinel(weenie, guid, accountId);
-            else
-                player = new Player(weenie, guid, accountId);
 
             player.SetProperty(PropertyInt.HeritageGroup, (int)characterCreateInfo.Heritage);
             player.SetProperty(PropertyString.HeritageGroup, heritageGroup.Name);
@@ -98,6 +95,22 @@ namespace ACE.Server.Factories
 
             // Eye Color
             player.SetProperty(PropertyDataId.EyesPalette, sex.EyeColorList[(int)characterCreateInfo.Appearance.EyeColor]);
+        }
+
+        public static CreateResult Create(CharacterCreateInfo characterCreateInfo, Weenie weenie, ObjectGuid guid, uint accountId, WeenieType weenieType, out Player player)
+        {
+            var heritageGroup = DatManager.PortalDat.CharGen.HeritageGroups[(uint)characterCreateInfo.Heritage];
+
+            if (weenieType == WeenieType.Admin)
+                player = new Admin(weenie, guid, accountId);
+            else if (weenieType == WeenieType.Sentinel)
+                player = new Sentinel(weenie, guid, accountId);
+            else
+                player = new Player(weenie, guid, accountId);
+
+            SetAppearance(player, characterCreateInfo);
+
+            var sex = heritageGroup.Genders[(int)characterCreateInfo.Gender];
 
             // skip over this for olthoi, use the weenie defaults
             if (!player.IsOlthoiPlayer)

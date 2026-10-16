@@ -242,6 +242,11 @@ namespace ACE.MarketDev
             player.Character.Name = name;
             player.Location = new Position(StartLocation);
 
+            // the look character creation gives a default Aluvian male: without it a real client can draw the character's armor white
+            var look = new CharacterCreateInfo { Heritage = HeritageGroup.Aluvian, Gender = 1 };
+            look.Appearance.SkinHue = look.Appearance.HairHue = 0.5;
+            PlayerFactory.SetAppearance(player, look);
+
             // as character creation does (PlayerFactory): without them a real client walks by default, with no tooltips or chat channels
             player.SetCharacterOption(CharacterOption.CharacterOptions1Default, true);
             player.SetCharacterOption(CharacterOption.CharacterOptions2Default, true);
