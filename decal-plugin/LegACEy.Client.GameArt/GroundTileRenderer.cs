@@ -11,7 +11,7 @@ namespace LegACEy.Client.GameArt;
 /// north-west, and buildings and walls as outlines with a soft shadow. Trees and plants are not drawn: GroundDat leaves out static
 /// objects under 6 m² and over 400 m², and those between are drawn as walls, as the buildings are.
 /// </summary>
-public static class GroundTileRenderer
+internal static class GroundTileRenderer
 {
     /// <summary>The tile's width and height: a landblock is 192 m across at 2 px per metre.</summary>
     public const int Size = 384;
@@ -32,8 +32,8 @@ public static class GroundTileRenderer
     private static readonly Rgb BuildingHighlight = new(0xC9, 0xA4, 0x5C);
     private static readonly Rgb SceneryFill = new(0x5A, 0x52, 0x48);
     private static readonly Rgb SceneryLine = new(0x2A, 0x24, 0x1E);
-    private static readonly Vec2 ShadowOffset = new(1.6f, -1.6f); // east and south, away from the north-west light
-    private static readonly Vec2 HighlightOffset = new(-0.5f, 0.5f);
+    private static readonly GroundPoint ShadowOffset = new(1.6f, -1.6f); // east and south, away from the north-west light
+    private static readonly GroundPoint HighlightOffset = new(-0.5f, 0.5f);
     private static readonly (float X, float Y, float Z) LightDirection = Normalize(-1, 1, 1.6f);
 
     /// <summary>Renders the tile of <paramref name="centre"/>.</summary>
@@ -225,25 +225,25 @@ public static class GroundTileRenderer
     }
 
     /// <summary>Every footprint of the nearby landblocks, moved into the centre's metres.</summary>
-    private static List<(Vec2[] Hull, bool Building)> Place(GroundLandblock centre, IReadOnlyList<GroundLandblock> around)
+    private static List<(GroundPoint[] Hull, bool Building)> Place(GroundLandblock centre, IReadOnlyList<GroundLandblock> around)
     {
-        var placed = new List<(Vec2[], bool)>();
+        var placed = new List<(GroundPoint[], bool)>();
         foreach (var block in around)
         {
-            var offset = new Vec2((block.X - centre.X) * 192f, (block.Y - centre.Y) * 192f);
+            var offset = new GroundPoint((block.X - centre.X) * 192f, (block.Y - centre.Y) * 192f);
             foreach (var footprint in block.Footprints)
                 placed.Add((Shift(footprint.Hull, offset), footprint.Building));
         }
         return placed;
     }
 
-    private static Vec2[] Shift(IReadOnlyList<Vec2> hull, Vec2 by) => hull.Select(p => new Vec2(p.X + by.X, p.Y + by.Y)).ToArray();
+    private static GroundPoint[] Shift(IReadOnlyList<GroundPoint> hull, GroundPoint by) => hull.Select(p => new GroundPoint(p.X + by.X, p.Y + by.Y)).ToArray();
 
     /// <summary>
     /// Calls <paramref name="visit"/> with each pixel near the hull and its signed distance in metres from the hull's edges
     /// (positive inside a counter-clockwise hull). Pixels farther than <paramref name="reach"/> from it are not visited.
     /// </summary>
-    private static void Visit(Vec2[] hull, float reach, Action<int, float> visit)
+    private static void Visit(GroundPoint[] hull, float reach, Action<int, float> visit)
     {
         var minX = hull.Min(p => p.X) - reach;
         var maxX = hull.Max(p => p.X) + reach;
@@ -261,7 +261,7 @@ public static class GroundTileRenderer
         }
     }
 
-    private static float Signed(Vec2[] hull, float x, float y)
+    private static float Signed(GroundPoint[] hull, float x, float y)
     {
         var least = float.MaxValue;
         for (var i = 0; i < hull.Length; i++)
@@ -277,10 +277,10 @@ public static class GroundTileRenderer
         return least;
     }
 
-    private static void Fill(Rgb[] canvas, Vec2[] hull, Rgb colour, float alpha) =>
+    private static void Fill(Rgb[] canvas, GroundPoint[] hull, Rgb colour, float alpha) =>
         Visit(hull, PixelMetres, (i, s) => canvas[i] = Mix(canvas[i], colour, alpha * Clamp01((s / PixelMetres) + .5f)));
 
-    private static void Stroke(Rgb[] canvas, Vec2[] hull, float halfWidth, Rgb colour, float alpha) =>
+    private static void Stroke(Rgb[] canvas, GroundPoint[] hull, float halfWidth, Rgb colour, float alpha) =>
         Visit(hull, halfWidth + PixelMetres, (i, s) =>
             canvas[i] = Mix(canvas[i], colour, alpha * Clamp01(((halfWidth - Math.Abs(s)) / PixelMetres) + .5f)));
 

@@ -6,9 +6,9 @@ using System.Linq;
 namespace LegACEy.Client.GameArt;
 
 /// <summary>A point on the ground, in metres.</summary>
-public readonly struct Vec2
+public readonly struct GroundPoint
 {
-    public Vec2(float x, float y) { X = x; Y = y; }
+    public GroundPoint(float x, float y) { X = x; Y = y; }
     public float X { get; }
     public float Y { get; }
 }
@@ -19,9 +19,9 @@ public readonly struct Vec2
 /// </summary>
 public sealed class GroundFootprint
 {
-    public GroundFootprint(bool building, IReadOnlyList<Vec2> hull) { Building = building; Hull = hull; }
+    public GroundFootprint(bool building, IReadOnlyList<GroundPoint> hull) { Building = building; Hull = hull; }
     public bool Building { get; }
-    public IReadOnlyList<Vec2> Hull { get; }
+    public IReadOnlyList<GroundPoint> Hull { get; }
 }
 
 /// <summary>One landblock's ground: its 9 × 9 vertices and the footprints of its buildings and walls.</summary>
@@ -197,16 +197,16 @@ public sealed class GroundDat : IGroundSource, IDisposable
     }
 
     /// <summary>The convex hull of a model's vertices from above, placed by the frame; null for an id that isn't a model.</summary>
-    private Vec2[]? Outline(uint model, Frame frame)
+    private GroundPoint[]? Outline(uint model, Frame frame)
     {
         if ((model >> 24) is not (0x01 or 0x02)) return null;
         var points = ModelPoints(model, 0);
         if (points.Length == 0) return null;
-        var placed = new Vec2[points.Length];
+        var placed = new GroundPoint[points.Length];
         for (var i = 0; i < points.Length; i++)
         {
             var p = frame.Rotate(points[i]) + frame.Origin;
-            placed[i] = new Vec2(p.X, p.Y);
+            placed[i] = new GroundPoint(p.X, p.Y);
         }
         var hull = Hull(placed);
         return hull.Length < 3 ? null : hull;
@@ -243,11 +243,11 @@ public sealed class GroundDat : IGroundSource, IDisposable
     }
 
     /// <summary>Andrew's monotone chain, counter-clockwise, without collinear points.</summary>
-    private static Vec2[] Hull(Vec2[] points)
+    private static GroundPoint[] Hull(GroundPoint[] points)
     {
         var sorted = points.OrderBy(p => p.X).ThenBy(p => p.Y).ToList();
         if (sorted.Count < 3) return sorted.ToArray();
-        var hull = new List<Vec2>();
+        var hull = new List<GroundPoint>();
         foreach (var pass in new[] { sorted, Enumerable.Reverse(sorted).ToList() })
         {
             var start = hull.Count;
@@ -262,9 +262,9 @@ public sealed class GroundDat : IGroundSource, IDisposable
         return hull.ToArray();
     }
 
-    private static float Cross(Vec2 o, Vec2 a, Vec2 b) => ((a.X - o.X) * (b.Y - o.Y)) - ((a.Y - o.Y) * (b.X - o.X));
+    private static float Cross(GroundPoint o, GroundPoint a, GroundPoint b) => ((a.X - o.X) * (b.Y - o.Y)) - ((a.Y - o.Y) * (b.X - o.X));
 
-    private static float Area(Vec2[] polygon)
+    private static float Area(GroundPoint[] polygon)
     {
         var sum = 0f;
         for (var i = 0; i < polygon.Length; i++)

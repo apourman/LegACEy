@@ -19,7 +19,7 @@ public sealed class GroundTilesTests
         for (var x = 0; x < 9; x++)
             for (var y = 0; y < 9; y++)
                 terrain[(x * 9) + y] = (ushort)(((x <= 3 ? Green : Red) << 2) | (y == 2 ? 1 : 0));
-        var building = new GroundFootprint(true, new[] { new Vec2(100, 100), new Vec2(120, 100), new Vec2(120, 120), new Vec2(100, 120) });
+        var building = new GroundFootprint(true, new[] { new GroundPoint(100, 100), new GroundPoint(120, 100), new GroundPoint(120, 120), new GroundPoint(100, 120) });
         var block = new GroundLandblock(0xC6, 0xA9, terrain, new float[81], new[] { building });
 
         var tile = GroundTileRenderer.Render(block, new[] { block }, Texture);
