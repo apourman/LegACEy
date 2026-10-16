@@ -83,8 +83,26 @@ tab to rename, edit, reorder or remove it, and use + to add one. Drag a tab out 
 merge it; tabs are kept per character in `chat-tabs.txt` and window places and sizes in `window-positions.txt`. Enter opens the input and
 Escape leaves it. Left alone for 15 seconds, the window fades to bare lines; hovering or pressing Enter brings it back.
 Retail's chat keeps running out of sight, so Decal plugins see chat as before. Creating an empty file named `retail-chat-native` beside
-the main DLL gives retail's chat back within a second; deleting it takes the chat over again. The chat's text size is set by its Aa
+the main DLL gives retail's chat back within a second; deleting it takes the chat over again. In the chat box, Up and Down bring back what you sent, Ctrl+V pastes, and Ctrl+C and Ctrl+X copy. A drag
+in the log selects across lines and copies as you let go; Ctrl+C copies it again without the game seeing the key, until you click
+outside the chat. The chat's text size is set by its Aa
 button (click larger, right-click smaller) or Ctrl and the wheel, per character.
+
+Retail's Lock UI locks every LegACEy window too: while it is on, none moves or resizes, and none shows resize grips or corners.
+
+The Dereth vitals window replaces retail's vitals, at retail's place. Health, stamina and mana show current / max in retail's colours; a
+drop leaves a pale trail, and health pulses under a quarter. The gear shown on hover switches between the stacked window and a slim
+side-by-side strip; each layout keeps its own size, and the choice is kept per character. Drag the corner grip or the bottom edge to
+draw the window larger or smaller (up to twice its size), and a side edge to stretch its bars longer. Creating an empty file named `retail-vitals-native` beside the main DLL gives retail's vitals back within
+a second; deleting it takes them over again.
+
+The Dereth radar replaces retail's radar, at retail's place: the land around the player from the DATs, dots in retail's radar colours, a
+heading tape above and the coordinates below. Hover a dot to name it with its distance and direction, click it to select it, and use the
+wheel to zoom. The bezel's lock button locks and unlocks retail's UI; its gear opens the options (Show ground, North up, Range rings,
+Zoom), kept per character. With the UI unlocked, hovering the radar shows gold corners: drag one, or an edge, to draw it larger or smaller,
+from its 1× layout to three times it; it
+opens at twice. Creating an empty file named `retail-radar-native` beside the main DLL gives retail's radar back within a
+second; deleting it takes the radar over again.
 
 The LegACEy menu's UI size row scales every LegACEy window, the toolbar and the shortcut bars, from 60 to 150 percent (85 to start),
 for every character. A change rebuilds the LegACEy UI at once, as a relog does: plugin windows that were open close and the chat history

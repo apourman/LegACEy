@@ -77,16 +77,25 @@ public interface IRetailChatPort
 /// <summary>
 /// The lines the chat windows keep, shared by every window: the last <see cref="Capacity"/>, nothing is written to disk. It takes each line
 /// from the port once, then raises <see cref="LineAdded"/> for the windows, so a torn-off window's log starts with the lines already kept.
+/// It also keeps what the player sent, for Up and Down in any window's box to bring back.
 /// </summary>
 public sealed class RetailChatHistory : IDisposable
 {
     public const int Capacity = 1000;
+    public const int SentCapacity = 100;
     private readonly IRetailChatPort _port;
     private readonly List<RetailChatLine> _lines = new();
+    private readonly List<string> _sent = new();
 
-    public RetailChatHistory(IRetailChatPort port)
+    /// <param name="carried">A history the chat had before its windows were rebuilt, such as for a new UI size: its lines and sent text carry on here.</param>
+    public RetailChatHistory(IRetailChatPort port, RetailChatHistory? carried = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
+        if (carried != null)
+        {
+            _lines.AddRange(carried._lines);
+            _sent.AddRange(carried._sent);
+        }
         _port.LineReceived += Add;
     }
 
@@ -105,6 +114,16 @@ public sealed class RetailChatHistory : IDisposable
         .GroupBy(line => line.Sender)
         .Select(group => group.First().TellBack!)
         .Take(count);
+
+    /// <summary>What the player sent, oldest first: the last <see cref="SentCapacity"/>, a line sent twice running kept once.</summary>
+    public IReadOnlyList<string> Sent => _sent;
+
+    public void AddSent(string text)
+    {
+        if (_sent.Count > 0 && _sent[_sent.Count - 1] == text) return;
+        _sent.Add(text);
+        if (_sent.Count > SentCapacity) _sent.RemoveAt(0);
+    }
 
     public void Dispose() => _port.LineReceived -= Add;
 

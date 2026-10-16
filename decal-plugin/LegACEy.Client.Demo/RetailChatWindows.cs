@@ -56,6 +56,7 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     private readonly Action<WindowDefinition, Control, Point> _showSurface;
     private readonly Action<string> _closeSurface;
     private readonly Action<string>? _copy;
+    private readonly Func<string?>? _paste;
     private readonly List<(string Id, RetailChatWindow Window)> _chats = new();
     // Windows to close at the next refresh: a close medallion is pressed inside its own window, which cannot be torn down there.
     private readonly List<RetailChatWindow> _retiring = new();
@@ -71,10 +72,12 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     /// <param name="showSurface">Shows a window's content as a LegACEy window with the definition, at the place given.</param>
     /// <param name="closeSurface">Closes a window shown with <paramref name="showSurface"/>.</param>
     /// <param name="clock">The time, for the idle fade; null for the system's.</param>
-    /// <param name="copy">Puts text on the clipboard, for text copied from a log; null copies nothing.</param>
+    /// <param name="copy">Puts text on the clipboard, for text copied from a log or a box; null copies nothing.</param>
+    /// <param name="paste">Reads the clipboard's text, for Ctrl+V in a box; null pastes nothing.</param>
+    /// <param name="carried">The history of the chat windows these replace, such as before a UI size change; null starts empty.</param>
     public RetailChatWindows(IRetailChatPort port, WindowManager windows, IWindowPositionStore positions, FileRetailChatTabStore store,
         string server, string character, Func<Point> pointer, Action<WindowDefinition, Control, Point> showSurface,
-        Action<string> closeSurface, Func<DateTime>? clock = null, Action<string>? copy = null)
+        Action<string> closeSurface, Func<DateTime>? clock = null, Action<string>? copy = null, Func<string?>? paste = null, RetailChatHistory? carried = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _windows = windows ?? throw new ArgumentNullException(nameof(windows));
@@ -87,7 +90,21 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
         _closeSurface = closeSurface ?? throw new ArgumentNullException(nameof(closeSurface));
         _clock = clock ?? (() => DateTime.Now);
         _copy = copy;
-        _history = new RetailChatHistory(port);
+        _paste = paste;
+        _history = new RetailChatHistory(port, carried);
+    }
+
+    /// <summary>The lines and sent text every window shares.</summary>
+    public RetailChatHistory History => _history;
+
+    /// <summary>The text selected in a window's log, or empty when no window has any.</summary>
+    public string LogSelection => _chats.Select(chat => chat.Window.LogSelection).FirstOrDefault(text => text.Length > 0) ?? string.Empty;
+
+    /// <summary>Lets go of every log's selection but the one in <paramref name="windowId"/>'s window, as a click outside it does.</summary>
+    public void ClearLogSelections(string? windowId = null)
+    {
+        foreach (var (id, window) in _chats)
+            if (id != windowId) window.ClearLogSelection();
     }
 
     /// <summary>The main window, or null before <see cref="Open"/>.</summary>
@@ -233,7 +250,7 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
 
     private RetailChatWindow ShowWindow(string id, IReadOnlyList<RetailChatTab> tabs, bool tornOff, Point location)
     {
-        var window = new RetailChatWindow(_port, _history, this, tabs, tornOff, clock: _clock, copy: _copy) { TextScale = _textSize / 100.0 };
+        var window = new RetailChatWindow(_port, _history, this, tabs, tornOff, clock: _clock, copy: _copy, paste: _paste) { TextScale = _textSize / 100.0 };
         _chats.Add((id, window));
         try
         {

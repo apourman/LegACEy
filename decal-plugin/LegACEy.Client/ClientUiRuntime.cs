@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
+using System.Threading.Tasks;
 using Avalonia.Input;
 using Avalonia.Controls;
 using Avalonia.Media;
@@ -75,6 +76,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CloseClipboard();
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetClipboardData(uint format);
+
+    [DllImport("user32.dll")]
+    private static extern short GetKeyState(int virtualKey);
+
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr GlobalAlloc(uint flags, UIntPtr bytes);
 
@@ -119,6 +126,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string RetailToolbarSwitchFile = "retail-toolbar-native";
     // Beside the DLL: while this file exists, retail's chat windows stay retail's. Without it the Dereth chat window replaces them.
     private const string RetailChatSwitchFile = "retail-chat-native";
+    // Beside the DLL: while this file exists, retail's vitals windows stay retail's. Without it the Dereth vitals window replaces them.
+    private const string RetailVitalsSwitchFile = "retail-vitals-native";
+    // Beside the DLL: while this file exists, retail's radar stays retail's. Without it the Dereth radar replaces it.
+    private const string RetailRadarSwitchFile = "retail-radar-native";
 
     // How big LegACEy windows show against their design size, in percent: the player's UI size from the LegACEy menu, kept for every
     // character. The indicator bar keeps retail's size, and drag icons retail's 32 pixels. An Avalonia that cannot scale panels shows them
@@ -181,7 +192,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private NativeRetailToolbarPort? _toolbarPort;
     private RetailToolbar? _toolbar;
     private ScreenSurface? _toolbarSurface;
-    private RetailSurfaceRenderer? _toolbarRenderer;
     private RetailTakeoverLifecycle? _toolbarTakeover;
     private ToolbarPlacePort? _toolbarPlace;
     // Whether this character's saved toolbar place has been read since login.
@@ -208,11 +218,41 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private RetailChatNatives? _chatNatives;
     private NativeRetailChatPort? _chatPort;
     private RetailChatWindows? _chatWindows;
-    private RetailChatTakeover? _chatTakeover;
+    private RetailHeldWindows? _chatTakeover;
     private bool _chatFailed;
     private bool _chatReleaseLogged;
     private bool _chatSwitch;
     private DateTime _lastChatSwitchCheck;
+    // The Dereth vitals window over retail's vitals: held while its switch is on. Its natives are checked once; the player's clock times its trails.
+    private RetailVitalsTakeover? _vitals;
+    private RetailHudNatives? _hudNatives;
+    private bool _vitalsSwitch;
+    private DateTime _lastVitalsSwitchCheck;
+    private readonly Stopwatch _vitalsClock = Stopwatch.StartNew();
+    // The layout the player picked on the vitals gear, kept per character; the window reopens in it on the next frame.
+    private readonly VitalsLayoutChoice _vitalsLayouts;
+    private bool _vitalsLayoutPicked;
+    private int? _loggedVitae;
+    private bool _vitaeReadLogged;
+    private TimeSpan _nextVitaeRead;
+    // The Dereth radar over retail's radar: its natives, held root, port, window and ground. Held while the switch is on.
+    private const string RadarWindowId = "dereth-radar";
+    private const string RadarOptionsKey = "dereth-radar-options";
+    private NativeRadarPort? _radarPort;
+    // The chat's history kept over a UI size rebuild, for the chat windows that open next; a logoff drops it.
+    private RetailChatHistory? _carriedChatHistory;
+    // Set while a Ctrl+C that copied chat text is down, so its character and key-up are kept from the game too.
+    private bool _eatingCtrlC;
+    // Where retail's radar stood when it was held; the Dereth radar opens there. Null when retail's radar was not found.
+    private Point? _radarPlace;
+    private RetailHeldWindows? _radarTakeover;
+    private RetailRadarWindow? _radar;
+    private Task<GroundDat?>? _radarDatLoad;
+    private GroundTiles? _radarTiles;
+    private bool _radarFailed;
+    private bool _radarReleaseLogged;
+    private bool _radarSwitch;
+    private DateTime _lastRadarSwitchCheck;
     private readonly GameStatePort _gameState = new(new GameStateSnapshot("unknown-character", "unknown-server", 0, 0, 0, 0, 0, 0));
     private readonly GameStatePoller _gameStatePoller;
     private ClientUiFramework? _clientUi;
@@ -278,6 +318,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None);
         _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal);
         _row2Choice = new ShortcutRowChoice(_settingsStore);
+        _vitalsLayouts = new VitalsLayoutChoice(_settingsStore);
         if (_settingsStore.Load("", "", UiSizeKey) is { Location.X: var size and > 0 })
             _uiSize = Math.Max(SmallestUiSize, Math.Min(LargestUiSize, size));
     }
@@ -470,6 +511,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         Guard(() => ApplyReset(_inputRouter.Route(new NativeInputMessage(InputRouterService.WmLogoff, IntPtr.Zero, IntPtr.Zero), GetInputSurfaces())));
         Guard(() => _hovered?.Panel.PointerLeave());
         _inGame = false;
+        _carriedChatHistory = null;
         // The next character reads its own toolbar place; until then the toolbar stands where retail's window is.
         _toolbarPlaceLoaded = false;
         if (_toolbarPlace != null) _toolbarPlace.Location = null;
@@ -487,6 +529,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         catch (Exception exception) { Log($"Could not give the retail toolbar back at logoff: {exception}"); }
         try { ReleaseRetailChat(); }
         catch (Exception exception) { Log($"Could not give the retail chat back at logoff: {exception}"); }
+        // The Dereth vitals window closes and retail's vitals come back; the next login holds them again while the switch is on.
+        _vitals?.Release();
+        try { ReleaseRetailRadar(); }
+        catch (Exception exception) { Log($"Could not give the retail radar back at logoff: {exception}"); }
         try { _plugins?.EndSession(); }
         catch (Exception exception) { Log($"Could not close plugin windows at logoff: {exception}"); }
         // Windows released their requests above; anything still outstanding fails as disconnected.
@@ -559,7 +605,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_device == IntPtr.Zero) return;
         _positionStore = new FileWindowPositionStore(IOPath.Combine(PluginDirectory, "window-positions.txt"));
         if (!AvaloniaPanel.CanScale) Log("This Avalonia cannot scale panels; LegACEy windows show at their design size.");
-        _windows = new WindowManager(GameDevice.ViewportSize(_device), _positionStore, SessionServer(), SessionCharacter(), WindowScale);
+        _windows = new WindowManager(GameDevice.ViewportSize(_device), _positionStore, SessionServer(), SessionCharacter(), WindowScale, () => NativeUi.IsUiLocked);
         _windowsEnabled = EnsurePostUiDrawHook();
     }
 
@@ -634,7 +680,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (!_inGame) return;
         var menuOpen = _windows?.Get(MenuWindowId) != null;
         Log($"UI size {_uiSize}%: rebuilding the LegACEy UI.");
+        // The chat's lines and sent text outlive the rebuild: it is the same character still playing.
+        var chatHistory = _chatWindows?.History ?? _carriedChatHistory;
         Logoff();
+        _carriedChatHistory = chatHistory;
         LoginComplete();
         if (menuOpen) Guard(ToggleMenuWindow);
     }
@@ -711,6 +760,18 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _chatReleaseLogged = true;
             }
         }
+        // The same for retail's radar: a failed give-back is retried each frame, logged once per streak, as chat's is.
+        if (_failed && _radarTakeover != null)
+        {
+            try { ReleaseRetailRadar(); }
+            catch (Exception exception)
+            {
+                if (!_radarReleaseLogged) Log($"Could not give the retail radar back; retrying: {exception}");
+                _radarReleaseLogged = true;
+            }
+        }
+        // The same for retail's vitals: Release logs a failed give-back once per streak itself.
+        if (_failed && _vitals?.Holds == true) _vitals.Release();
         if (_failed || !NativeUi.Ready)
             return;
 
@@ -735,6 +796,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _barRenderer!.RenderFrame(_inGame, _postUiDrawHook?.IsInstalled == true);
             TickRetailToolbar();
             TickRetailChat();
+            TickRetailVitals();
+            TickRetailRadar();
             // Portal space at login comes before Decal's login complete: retail's inventory opened then is parked already,
             // and our window opens for it once the windows can.
             if (!_inGame) TickRetailPanels(loggingIn: true);
@@ -787,7 +850,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             var maxTick = surfaces.Count == 0 ? 0 : surfaces.Max(surface => surface.LastTickMilliseconds);
             var maxUpload = surfaces.Count == 0 ? 0 : surfaces.Max(surface => surface.LastUploadMilliseconds);
             var dirtyRectangles = surfaces.Sum(surface => surface.LastDirtyRectangleCount);
-            Log($"UI performance sample: maxUiFrame={uiFrame.TotalMilliseconds:F2}ms maxPostUiDraw={postUiDraw.TotalMilliseconds:F2}ms surfaces={surfaces.Count} maxPanelTick={maxTick:F2}ms maxTextureUpload={maxUpload:F2}ms dirtyRects={dirtyRectangles} privateBytes={process.PrivateMemorySize64} virtualBytes={process.VirtualMemorySize64}.");
+            Log($"UI performance sample: maxUiFrame={uiFrame.TotalMilliseconds:F2}ms maxPostUiDraw={postUiDraw.TotalMilliseconds:F2}ms surfaces={surfaces.Count} maxPanelTick={maxTick:F2}ms maxTextureUpload={maxUpload:F2}ms dirtyRects={dirtyRectangles} privateBytes={process.PrivateMemorySize64} virtualBytes={process.VirtualMemorySize64} managedBytes={GC.GetTotalMemory(false)}.");
         }
         catch (Exception exception)
         {
@@ -823,7 +886,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_failed) return;
         ThrowIfTestFailureRequested();
         Guard(() => _barRenderer?.DrawAfterRetailUi());
-        Guard(() => _toolbarRenderer?.DrawAfterRetailUi());
+        Guard(() => _toolbarSurface?.DrawNow());
         if (_failed || !_windowsEnabled || _windows == null)
             return;
         _drawnModelViews.Clear();
@@ -1580,7 +1643,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             // The bar stands beside the toolbar only while the takeover holds retail's element; otherwise it closes with it.
             if (_toolbarTakeover.Holds) EnsureShortcutBar();
             else CloseShortcutBar();
-            _toolbarRenderer!.RenderFrame(_inGame, _postUiDrawHook?.IsInstalled == true);
+            // Drawn after retail's UI, under the LegACEy windows: drawn before it, retail's portal space would paint over it on a teleport.
+            _toolbarSurface!.Prepare();
         }
         catch (Exception exception)
         {
@@ -1667,7 +1731,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         panel.Resize((int)Math.Ceiling(toolbar.DesiredSize.Width * scale), (int)Math.Ceiling(toolbar.DesiredSize.Height * scale));
         _toolbar = toolbar;
         _toolbarSurface = new ScreenSurface(_device, panel);
-        _toolbarRenderer = new RetailSurfaceRenderer(_toolbarSurface.Prepare, _toolbarSurface.DrawNow);
         _toolbarPlace = new ToolbarPlacePort(new NativeBarPort(NativeUi.ToolbarWindow), () => _toolbarSurface?.Bounds.Size ?? Size.Empty, SaveToolbarPlace);
         _toolbarTakeover = new RetailTakeoverLifecycle(_toolbarPlace, new SurfaceTakeoverPort(_toolbarSurface));
         Log($"Dereth toolbar replacement ready; retail's toolbar window {(NativeUi.GetElement(NativeUi.ToolbarWindow) != IntPtr.Zero ? "found" : "absent")}, " +
@@ -1824,7 +1887,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         _toolbarSurface?.Dispose();
         _toolbarSurface = null;
-        _toolbarRenderer = null;
         _toolbar = null;
         _toolbarPort = null;
     }
@@ -1916,9 +1978,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (!natives.ChatWindow) return false;
         var roots = new List<IRetailTakeoverPort>();
         foreach (var id in new[] { RetailChatCatalogue.MainChatWindow }.Concat(RetailChatCatalogue.FloatingChats))
-            roots.Add(new RetailChatTakeover.RootPort(id));
+            roots.Add(new RetailHeldWindows.RootPort(id));
         _chatPort = new NativeRetailChatPort(Log, natives, (opcode, payload) => _channelTransport?.SendAction(opcode, payload) ?? false);
-        _chatTakeover = new RetailChatTakeover(roots);
+        _chatTakeover = new RetailHeldWindows(roots);
         try { _chatPort.Attach(); }
         catch (InvalidOperationException) { }
         Log($"Retail's chat windows held: {roots.Count}.");
@@ -1935,7 +1997,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var server = SessionServer();
         var character = SessionCharacter();
         var chats = new RetailChatWindows(port, _windows!, _positionStore!, _chatTabs, server, character, () => _pointer, (definition, content, location) => OpenWindowCore(definition, content, location, ChatFailed), ReleaseFeatureWindow,
-            copy: CopyToClipboard);
+            copy: CopyToClipboard, paste: PasteFromClipboard, carried: _carriedChatHistory);
+        _carriedChatHistory = null;
         // The main window starts at the bottom left, above the toolbar, until the player moves it; its place is then kept per character.
         var screen = _windows!.Screen;
         var beside = new Point(12, Math.Max(0, screen.Height - (int)Math.Round(RetailChatWindows.DesignHeight * WindowScale) - 150));
@@ -1999,6 +2062,33 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
+    /// Ctrl+C while text is selected in a chat log copies it, and the game sees none of the C's down, character or up, so it does not act on
+    /// the key. A press outside the chat windows lets go of the selection, so the key is the game's again. True eats the message. A field of
+    /// ours with the keyboard gets its keys as before: the chat box copies the log's selection itself.
+    /// </summary>
+    private bool CopyChatSelection(int message, int wParam, int lParam)
+    {
+        const int VkControl = 0x11, VkC = 0x43, CtrlC = 0x03;
+        if (_chatWindows is not { } chats) return false;
+        if (message is InputRouterService.WmLButtonDown or InputRouterService.WmRButtonDown)
+        {
+            var at = new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff));
+            Guard(() => chats.ClearLogSelections(_windows?.HitTest(at)?.Id));
+            return false;
+        }
+        if (_eatingCtrlC && (message == InputRouterService.WmChar && wParam == CtrlC || message == InputRouterService.WmKeyUp && wParam == VkC))
+        {
+            if (message == InputRouterService.WmKeyUp) _eatingCtrlC = false;
+            return true;
+        }
+        if (message != InputRouterService.WmKeyDown || wParam != VkC || (GetKeyState(VkControl) & 0x8000) == 0) return false;
+        if (SurfaceById(_inputRouter.FocusedSurfaceId)?.Panel.WantsKeyboard == true || chats.LogSelection is not { Length: > 0 } selection) return false;
+        CopyToClipboard(selection);
+        _eatingCtrlC = true;
+        return true;
+    }
+
+    /// <summary>
     /// Puts text on the Windows clipboard as Unicode text, for text copied from the chat log. A clipboard another program holds is logged and
     /// the copy is dropped; it never fails the chat.
     /// </summary>
@@ -2033,6 +2123,30 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
     }
 
+    /// <summary>The Windows clipboard's Unicode text, for Ctrl+V in a chat box; null when it holds none or another program holds it.</summary>
+    private string? PasteFromClipboard()
+    {
+        const uint CfUnicodeText = 13;
+        if (!OpenClipboard(_gameWindow))
+        {
+            Log($"Could not paste into the chat: the clipboard is busy ({Marshal.GetLastWin32Error()}).");
+            return null;
+        }
+        try
+        {
+            var memory = GetClipboardData(CfUnicodeText);
+            if (memory == IntPtr.Zero) return null;
+            var source = GlobalLock(memory);
+            if (source == IntPtr.Zero) return null;
+            try { return Marshal.PtrToStringUni(source); }
+            finally { GlobalUnlock(memory); }
+        }
+        finally
+        {
+            CloseClipboard();
+        }
+    }
+
     private void ChatFailed(Exception exception)
     {
         _chatFailed = true;
@@ -2041,7 +2155,152 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         catch (Exception releaseError) { Log($"Could not give the retail chat back: {releaseError}"); }
     }
 
-    /// <summary>Whether a feature's switch is on: on while its file is missing beside the DLL. The file is looked for once a second.</summary>
+    /// <summary>
+    /// Holds retail's radar and draws the Dereth radar over it unless the <c>retail-radar-native</c> file is beside the DLL. Off, retail's
+    /// radar is left as it is and nothing new draws. A failure gives retail's radar back and stops the Dereth radar until the switch is turned off and on.
+    /// </summary>
+    private void TickRetailRadar()
+    {
+        try
+        {
+            var switchOn = SwitchOn(RetailRadarSwitchFile, ref _lastRadarSwitchCheck, ref _radarSwitch);
+            // Turning the switch off and on again retries a radar that failed.
+            if (!switchOn) _radarFailed = false;
+            // Retail's radar is given back if the switch goes off, the post-UI draw is gone, or the LegACEy windows failed.
+            var canDraw = _postUiDrawHook?.IsInstalled == true && !(_windows != null && !_windowsEnabled);
+            if (_radarTakeover != null && (!canDraw || _radarFailed || !switchOn))
+                ReleaseRetailRadar();
+            // Switched off, the ground's DATs go too once no radar reads them; switching on loads them again.
+            if (!switchOn && _radar == null && _radarDatLoad != null) DisposeRadarGround();
+            if (!canDraw || !switchOn || _radarFailed) return;
+            if (_radarTakeover == null && !HoldRetailRadar()) return;
+            _radarTakeover!.Tick(GameDevice.ViewportSize(_device));
+            if (!_inGame) return;
+            if (_radar == null && !OpenRetailRadar()) return;
+            _radar?.Refresh();
+        }
+        catch (Exception exception)
+        {
+            RadarFailed(exception);
+        }
+    }
+
+    /// <summary>Holds retail's radar hidden and starts the radar's port, once its native addresses match. False when they do not.</summary>
+    private bool HoldRetailRadar()
+    {
+        if (!NativeUi.Ready || _device == IntPtr.Zero || _portal == null) return false;
+        var natives = HudNatives();
+        if (!natives.RadarWindow) return false;
+        _radarPort = new NativeRadarPort(natives, ObjectName, Bridge.SelectItem);
+        // Read before the radar is held, so the Dereth radar opens where retail's was.
+        var retail = NativeUi.GetElement(RetailHudCatalogue.Radar);
+        _radarPlace = retail == IntPtr.Zero ? null : NativeUi.GetBounds(retail).Location;
+        _radarTakeover = new RetailHeldWindows(RetailHudCatalogue.RadarWindows);
+        // The ground's DATs open off the UI thread; the radar draws dots on dark until its first tiles are built.
+        _radarDatLoad ??= LoadRadarGround(_portal);
+        Log("Retail's radar held.");
+        return true;
+    }
+
+    private static Task<GroundDat?> LoadRadarGround(PortalDat portal) => Task.Run(() =>
+    {
+        try { return new GroundDat(portal); }
+        catch (Exception exception)
+        {
+            Log($"Dereth radar has no ground; it draws dots on dark: {exception.Message}");
+            return null;
+        }
+    });
+
+    // The ground's tiles, once its DATs have opened; null before that or without them.
+    private GroundTiles? RadarGround()
+    {
+        if (_radarTiles != null) return _radarTiles;
+        if (_radarDatLoad is not { IsCompletedSuccessfully: true } load || load.Result is not { } dat) return null;
+        return _radarTiles = new GroundTiles(dat, Log);
+    }
+
+    /// <summary>Opens the Dereth radar over the held retail radar. False when the windows cannot open yet, so the next frame tries again.</summary>
+    private bool OpenRetailRadar()
+    {
+        if (!CanOpenWindows || _radarPort == null) return false;
+        var screen = _windows!.Screen;
+        var at = _radarPlace ?? new Point(Math.Max(0, screen.Width - (int)Math.Round(RetailRadarWindow.DesignWidth * WindowScale) - 12), 12);
+        var port = _radarPort;
+        var window = new RetailRadarWindow(port, RadarGround, LoadRadarOptions(), SaveRadarOptions, () => (uint)Bridge.Fact(BridgeFact.CurrentSelection),
+            () => _windows?.BeginMove(RadarWindowId, _pointer));
+        // The radar has no title bar: it drags from its frame, so its title bar is only one pixel tall.
+        var definition = new WindowDefinition(RadarWindowId, "Radar", RetailRadarWindow.DesignWidth, RetailRadarWindow.DesignHeight, titleBarHeight: 1,
+            theme: new DerethClientTheme(), resizing: RetailRadarWindow.Resizing(() => port.UiLocked), dragsFromContent: true);
+        _radar = window;
+        try { OpenWindowCore(definition, window, at, RadarFailed); }
+        catch
+        {
+            _radar = null;
+            throw;
+        }
+        Log("Dereth radar ready.");
+        return true;
+    }
+
+    /// <summary>The radar's options for this character, or the defaults before they are saved.</summary>
+    private RadarOptions LoadRadarOptions() =>
+        _settingsStore.Load(SessionServer(), SessionCharacter(), RadarOptionsKey) is { Location: var saved }
+            ? RadarOptions.Decode(saved.X, saved.Y)
+            : new RadarOptions();
+
+    private void SaveRadarOptions(RadarOptions options)
+    {
+        var (flags, zoom) = options.Encode();
+        _settingsStore.Save(SessionServer(), SessionCharacter(), RadarOptionsKey, (new Point(flags, zoom), null));
+    }
+
+    /// <summary>Gives retail's radar back and closes the Dereth radar. A give-back that fails is logged and retried on the next call.</summary>
+    private void ReleaseRetailRadar()
+    {
+        if (_radarTakeover != null)
+        {
+            try { _radarTakeover.Release(); }
+            catch (Exception exception)
+            {
+                if (!_radarReleaseLogged) Log($"Could not give the retail radar back; retrying: {exception}");
+                _radarReleaseLogged = true;
+                return;
+            }
+            _radarTakeover = null;
+            _radarReleaseLogged = false;
+        }
+        // Cleared first, as chat's is, so a radar that throws on close cannot leave the port and window half released.
+        var radar = _radar;
+        _radarPort = null;
+        _radar = null;
+        radar?.Dispose();
+        ReleaseFeatureWindow(RadarWindowId);
+    }
+
+    /// <summary>Drops the ground's DATs at unload or switch-off, after the radar that reads them is gone. A load still running is disposed when it lands.</summary>
+    private void DisposeRadarGround()
+    {
+        if (_radarDatLoad is { } load)
+        {
+            if (load.IsCompletedSuccessfully) load.Result?.Dispose();
+            else _ = load.ContinueWith(task => { if (task.IsCompletedSuccessfully) task.Result?.Dispose(); }, TaskScheduler.Default);
+        }
+        _radarDatLoad = null;
+        _radarTiles = null;
+    }
+
+    private void RadarFailed(Exception exception)
+    {
+        _radarFailed = true;
+        Log($"Dereth radar disabled; retail's radar is back: {exception}");
+        try { ReleaseRetailRadar(); }
+        catch (Exception releaseError) { Log($"Could not give the retail radar back: {releaseError}"); }
+    }
+
+    /// <summary>
+    /// Whether a feature's switch is on: on while its file is missing beside the DLL. The file is looked for once a second.
+    /// </summary>
     private static bool SwitchOn(string file, ref DateTime lastCheck, ref bool on)
     {
         var now = DateTime.UtcNow;
@@ -2053,6 +2312,125 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         return on;
     }
 
+    /// <summary>
+    /// Holds retail's vitals windows and draws the Dereth vitals window at their place, unless the <c>retail-vitals-native</c> file is beside
+    /// the DLL; with it nothing is held and nothing draws. Each frame the takeover is given the state, and the player's clock.
+    /// </summary>
+    private void TickRetailVitals()
+    {
+        _vitals ??= new RetailVitalsTakeover(HoldRetailVitals, RetailVitalsPlace, OpenVitals, Log);
+        var switchOn = SwitchOn(RetailVitalsSwitchFile, ref _lastVitalsSwitchCheck, ref _vitalsSwitch);
+        // Retail's vitals are held from portal space at login on, like chat; the window opens in game.
+        var canDraw = _postUiDrawHook?.IsInstalled == true && !(_windows != null && !_windowsEnabled);
+        // The player picked the other layout: the window closes now, and the Tick below opens the chosen one where it was left.
+        if (_vitalsLayoutPicked)
+        {
+            _vitalsLayoutPicked = false;
+            _vitals.CloseWindow();
+        }
+        _vitals.Tick(switchOn, canDraw, _inGame, GameDevice.ViewportSize(_device), _vitalsClock.Elapsed);
+        if (_inGame && _vitals.Holds) LogVitae();
+    }
+
+    /// <summary>Retail's vitals windows, held, once the running client's addresses match. Null leaves retail's alone; the next frame asks again.</summary>
+    private RetailHeldWindows? HoldRetailVitals()
+    {
+        if (!NativeUi.Ready || _device == IntPtr.Zero) return null;
+        return HudNatives().Vitals ? new RetailHeldWindows(RetailHudCatalogue.VitalsWindows, oneShows: true) : null;
+    }
+
+    /// <summary>
+    /// Where retail's vitals stand: the place of whichever of its two windows is shown. The window opens there until the player moves it. With
+    /// neither shown, the first that exists.
+    /// </summary>
+    private static Point RetailVitalsPlace()
+    {
+        var first = IntPtr.Zero;
+        foreach (var id in RetailHudCatalogue.VitalsWindows)
+        {
+            var element = NativeUi.GetElement(id);
+            if (element == IntPtr.Zero) continue;
+            if (NativeUi.IsVisible(element)) return NativeUi.GetBounds(element).Location;
+            if (first == IntPtr.Zero) first = element;
+        }
+        return first == IntPtr.Zero ? Point.Empty : NativeUi.GetBounds(first).Location;
+    }
+
+    /// <summary>
+    /// Opens the Dereth vitals window in the character's layout at <paramref name="at"/>, in the window store's place for this character once it
+    /// has one. Null while the windows cannot open yet, so the next frame asks again.
+    /// </summary>
+    private IRetailVitalsWindow? OpenVitals(Point at)
+    {
+        if (!CanOpenWindows) return null;
+        var layout = _vitalsLayouts.Load(SessionServer(), SessionCharacter());
+        var definition = DerethVitalsWindow.DefinitionOf(layout, () => NativeUi.IsUiLocked);
+        var view = new DerethVitalsWindow(_gameState, () => NativeUi.IsUiLocked, () => _windows?.BeginMove(definition.Id, _pointer), layout, ChooseVitalsLayout);
+        OpenWindowCore(definition, view, at, VitalsFailed);
+        return new VitalsWindowHandle(this, view, definition.Id);
+    }
+
+    /// <summary>Keeps the layout the player picked for the character. The window reopens in it on the next frame, not inside the click.</summary>
+    private void ChooseVitalsLayout(VitalsLayout layout)
+    {
+        _vitalsLayouts.Save(SessionServer(), SessionCharacter(), layout);
+        _vitalsLayoutPicked = true;
+    }
+
+    private void VitalsFailed(Exception exception) => _vitals?.Fail(exception);
+
+    private RetailHudNatives HudNatives() => _hudNatives ??= ValidateHudNatives();
+
+    private RetailHudNatives ValidateHudNatives()
+    {
+        try { return RetailHudCatalogue.Validate(NativeUi.ReadMemory, Log); }
+        catch (Exception exception)
+        {
+            Log($"Dereth HUD is off: its native addresses could not be checked: {exception.Message}");
+            return new RetailHudNatives(false, false, false, false, false);
+        }
+    }
+
+    /// <summary>
+    /// Logs the raw vitae value when it changes, so the play-test can settle its unit. The vitals draw no hatching from it until the unit is
+    /// known. It is read at most once a second, and only while retail's vitals are held.
+    /// </summary>
+    private void LogVitae()
+    {
+        var now = _vitalsClock.Elapsed;
+        if (now < _nextVitaeRead) return;
+        _nextVitaeRead = now + TimeSpan.FromSeconds(1);
+        int vitae;
+        try { vitae = Bridge.Fact(BridgeFact.Vitae); }
+        catch (Exception exception)
+        {
+            // Logged once, not every frame: the vitals keep drawing without the vitae value.
+            if (!_vitaeReadLogged) Log($"Could not read the vitae fact: {exception.Message}");
+            _vitaeReadLogged = true;
+            return;
+        }
+        if (vitae == _loggedVitae) return;
+        _loggedVitae = vitae;
+        Log($"Dereth vitals: CharacterFilter.Vitae is {vitae} (unit unconfirmed; no vitae hatching is drawn).");
+    }
+
+    private sealed class VitalsWindowHandle : IRetailVitalsWindow
+    {
+        private readonly ClientUiRuntime _owner;
+        private readonly DerethVitalsWindow _view;
+        private readonly string _windowId;
+
+        public VitalsWindowHandle(ClientUiRuntime owner, DerethVitalsWindow view, string windowId)
+        {
+            _owner = owner;
+            _view = view;
+            _windowId = windowId;
+        }
+
+        public void Refresh(TimeSpan now) => _view.Refresh(now);
+        public void Dispose() => _owner.ReleaseFeatureWindow(_windowId);
+    }
+
     /// <summary>Translate Decal's raw messages into router decisions and Avalonia.Headless input. True eats the message.</summary>
     public bool WindowMessage(int hwnd, int message, int wParam, int lParam)
     {
@@ -2061,6 +2439,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // Enter in the game, with retail's chat held and no field of ours taking keys, opens the Dereth chat window's box and eats the key.
         // The keypad's Enter (an extended key) stays retail's, as the spike recommends.
         if (message == InputRouterService.WmKeyDown && wParam == VkReturn && (lParam & ExtendedKey) == 0 && TryFocusRetailChat()) return true;
+        if (CopyChatSelection(message, wParam, lParam)) return true;
 
         var eat = false;
         if (message == WmSetCursor)
@@ -2184,7 +2563,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     eat = route.Eat;
                     break;
                 case InputAction.TextInput:
-                    target!.Panel.TextInput(((char)route.KeyCode).ToString());
+                    // Control characters (Ctrl+V's 0x16, Backspace's 0x08) are keys the box has had already, not text to type.
+                    if (route.KeyCode >= 0x20 && route.KeyCode != 0x7F) target!.Panel.TextInput(((char)route.KeyCode).ToString());
                     eat = route.Eat;
                     break;
                 case InputAction.ClearFocus:
@@ -2520,8 +2900,28 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         catch (Exception exception) { Log($"Could not give the retail chat back during unload: {exception}"); }
         if (_chatTakeover != null) Log("Retail's chat windows are still held after two tries at unload; they stay hidden until the client restarts.");
+        // The vitals window closes before the windows do, and retail's vitals come back. Unload runs no more frames, so a give-back that
+        // failed gets one more try here before the player is told, as chat does.
+        try
+        {
+            _vitals?.Release();
+            if (_vitals?.Holds == true) _vitals.Release();
+        }
+        catch (Exception exception) { Log($"Could not give the retail vitals back during unload: {exception}"); }
+        if (_vitals?.Holds == true) Log("Retail's vitals windows are still held after two tries at unload; they stay hidden until the client restarts.");
+        // Kept while still held, so a disabled UI's frames go on retrying the give-back.
+        else _vitals = null;
         try { ReleaseRetailToolbar(); }
         catch (Exception exception) { Log($"Could not give the retail toolbar back during unload: {exception}"); }
+        // The radar gets the same two tries as chat.
+        try
+        {
+            ReleaseRetailRadar();
+            if (_radarTakeover != null) ReleaseRetailRadar();
+        }
+        catch (Exception exception) { Log($"Could not give the retail radar back during unload: {exception}"); }
+        if (_radarTakeover != null) Log("Retail's radar is still held after two tries at unload; it stays hidden until the client restarts.");
+        DisposeRadarGround();
         if (_itemDragActive)
             try { _retailDrag?.ClearDropIndicator(); } catch (Exception exception) { Log($"Could not clear the inventory drop indicator: {exception.Message}"); }
         _itemDragActive = false;

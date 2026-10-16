@@ -10,6 +10,34 @@ namespace LegACEy.Client.Tests;
 
 public sealed class WindowManagerTests
 {
+    [Fact]
+    public void While_the_UI_is_locked_no_window_moves_or_resizes_and_none_shows_resize_edges()
+    {
+        var locked = true;
+        var windows = new WindowManager(new Size(1000, 800), new MemoryWindowPositionStore(), "Thistledown", "Alice", uiLocked: () => locked);
+        var window = windows.Open(new WindowDefinition("chat", "Chat", 300, 200, resizing: new WindowResizing(new Size(100, 100))), new Point(100, 100));
+        var title = new Point(200, 110);
+        var corner = new Point(window.Bounds.Right - 2, window.Bounds.Bottom - 2);
+
+        Assert.True(windows.Press(title));
+        windows.Move(new Point(400, 300));
+        windows.Release();
+        Assert.True(windows.Press(corner));
+        windows.Move(new Point(corner.X + 100, corner.Y + 100));
+        windows.Release();
+        Assert.False(windows.BeginMove("chat", title));
+        Assert.Equal(WindowEdges.None, windows.HoverAt(corner).Edges);
+        Assert.Null(windows.MoveEdgeAt(new Point(200, 101)));
+        Assert.Equal(new Rectangle(100, 100, 300, 200), window.Bounds);
+
+        locked = false;
+        Assert.NotEqual(WindowEdges.None, windows.HoverAt(corner).Edges);
+        windows.Press(title);
+        windows.Move(new Point(250, 110));
+        windows.Release();
+        Assert.Equal(new Point(150, 100), window.Location);
+    }
+
     // The Vault's sizing: 294 is the narrowest grid-aligned width that keeps the header at about 290.
     private static readonly WindowResizing VaultSizing = new(new Size(290, 306));
 
@@ -179,6 +207,23 @@ public sealed class WindowManagerTests
         var window = manager.Get("vault")!;
         Assert.Equal(new Size(374, 606), window.Size);
         Assert.Equal(new Point(100, 100), window.Location);
+    }
+
+    [Fact]
+    public void A_maximum_holds_when_the_left_edge_is_dragged_and_the_right_edge_stays_put()
+    {
+        var manager = NewManager(1920, 1080);
+        manager.Open(new WindowDefinition("vitals", "Vitals", 220, 64, resizing: new WindowResizing(new Size(150, 64), new Size(460, 64))),
+            new Point(500, 100));
+
+        Assert.True(manager.Press(new Point(503, 130)));
+        manager.Move(new Point(-97, 130));
+        manager.Release();
+
+        var window = manager.Get("vitals")!;
+        Assert.Equal(new Size(460, 64), window.Size);
+        Assert.Equal(new Point(260, 100), window.Location);
+        Assert.Equal(720, window.Bounds.Right);
     }
 
     [Fact]

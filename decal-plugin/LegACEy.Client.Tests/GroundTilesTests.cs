@@ -1,0 +1,192 @@
+using System.Collections.Concurrent;
+using System.IO;
+using System.Threading;
+using LegACEy.Client.GameArt;
+using Xunit;
+
+namespace LegACEy.Client.Tests;
+
+public sealed class GroundTilesTests
+{
+    private const ushort Arwic = 0xC6A9;
+    private const int Green = 3, Red = 6, Road = 0x20;
+
+    [Fact]
+    public void A_hand_made_landblock_puts_its_road_terrain_seam_and_building_where_they_belong()
+    {
+        // The west half is green, the east red; a road runs along the row of vertices at y = 48 m; a 20 m building sits at 100 to 120 m.
+        var terrain = new ushort[81];
+        for (var x = 0; x < 9; x++)
+            for (var y = 0; y < 9; y++)
+                terrain[(x * 9) + y] = (ushort)(((x <= 3 ? Green : Red) << 2) | (y == 2 ? 1 : 0));
+        var building = new GroundFootprint(true, new[] { new GroundPoint(100, 100), new GroundPoint(120, 100), new GroundPoint(120, 120), new GroundPoint(100, 120) });
+        var block = new GroundLandblock(0xC6, 0xA9, terrain, new float[81], new[] { building });
+
+        var tile = GroundTileRenderer.Render(block, new[] { block }, Texture);
+
+        Assert.Equal(384, tile.Width);
+        // The road is blue, along the road vertices; the green and red are far from the seam.
+        Assert.True(IsBlue(At(tile, 30, 48)), "road");
+        Assert.True(IsGreen(At(tile, 30, 20)), "green west of the seam");
+        Assert.True(IsRed(At(tile, 130, 30)), "red east of the seam");
+        // The seam is the cell between the green and red vertices (72 to 96 m): blended, not one or the other.
+        var seam = At(tile, 84, 30);
+        Assert.True(seam.R > 40 && seam.G > 40, $"seam blends, got {seam}");
+        // The building is opaque and flat, and its shadow falls east of it on the ground, not on the building.
+        Assert.Equal((107f, 85f, 60f), At(tile, 110, 110));
+        var shadowed = At(tile, 120.5f, 110);
+        var clear = At(tile, 135, 110);
+        Assert.True(Luma(shadowed) < .9 * Luma(clear), $"shadow {shadowed} against {clear}");
+    }
+
+    [Fact]
+    public void A_slope_shades_evenly_up_to_the_edges_of_a_tile_with_its_neighbours_in_place()
+    {
+        // Heights rise 3 m per metre east and north across the 3 x 3, so the slope is the same everywhere and so should the shading be.
+        var around = new List<GroundLandblock>();
+        for (var dx = -1; dx <= 1; dx++)
+            for (var dy = -1; dy <= 1; dy++)
+                around.Add(Slope(0xC6 + dx, 0xA9 + dy));
+
+        var tile = GroundTileRenderer.Render(around[4], around, _ => null);
+
+        var red = Enumerable.Range(0, tile.Width * tile.Height).Select(i => tile.Pixels[(i * 4) + 2]).ToArray();
+        var centre = red[(192 * 384) + 192];
+        var uneven = red.Select((value, i) => (value, i)).Where(p => Math.Abs(p.value - centre) > 1).Take(3)
+            .Select(p => (Column: p.i % 384, Row: p.i / 384)).ToList();
+        Assert.True(uneven.Count == 0, $"the shading is {centre} at the centre but differs at {string.Join(", ", uneven)}");
+    }
+
+    private static GroundLandblock Slope(int x, int y)
+    {
+        var height = new float[81];
+        for (var vx = 0; vx < 9; vx++)
+            for (var vy = 0; vy < 9; vy++)
+                height[(vx * 9) + vy] = 3 * (((x - 0xC6) * 192) + (vx * 24) + ((y - 0xA9) * 192) + (vy * 24));
+        return new GroundLandblock(x, y, new ushort[81], height, Array.Empty<GroundFootprint>());
+    }
+
+    [Fact]
+    public void Building_a_tile_runs_off_the_calling_thread()
+    {
+        var source = new FakeGround();
+        source.Gate.Reset();
+        var tiles = new GroundTiles(source);
+
+        tiles.Follow(Arwic);
+
+        // Follow returned while the source is still held: nothing was read on this thread.
+        Assert.Null(tiles.Tile(Arwic));
+        source.Gate.Set();
+        Assert.True(WaitFor(() => tiles.Tile(Arwic) != null));
+        Assert.DoesNotContain(Environment.CurrentManagedThreadId, source.ReadingThreads);
+    }
+
+    [Fact]
+    public void Moving_the_player_keeps_the_3_by_3_and_drops_the_landblocks_farther_off()
+    {
+        var tiles = new GroundTiles(new FakeGround());
+
+        tiles.Follow(Arwic);
+        Assert.True(WaitFor(() => tiles.Tile(Arwic) != null));
+
+        tiles.Follow(0xC6AA); // one landblock north: Arwic is still around the player
+        Assert.NotNull(tiles.Tile(Arwic));
+
+        tiles.Follow(0xC0A0); // far off: Arwic is dropped at once, and the new one is built
+        Assert.Null(tiles.Tile(Arwic));
+        Assert.True(WaitFor(() => tiles.Tile(0xC0A0) != null));
+    }
+
+    [Fact]
+    public void A_build_that_fails_is_logged_and_not_kept_so_the_next_follow_builds_it_again()
+    {
+        var logged = new ConcurrentQueue<string>();
+        var tiles = new GroundTiles(new FlakyGround(), logged.Enqueue);
+
+        tiles.Follow(Arwic);
+        Assert.True(WaitFor(() => !logged.IsEmpty));
+        Assert.Null(tiles.Tile(Arwic));
+
+        tiles.Follow(0xC6AA); // Arwic is still in the 3 x 3, so it is started again
+        Assert.True(WaitFor(() => tiles.Tile(Arwic) != null));
+    }
+
+    private static GameImage? Texture(uint type) => type switch
+    {
+        Green => Solid(0x00, 0xC0, 0x00),
+        Red => Solid(0x00, 0x00, 0xC0),
+        Road => Solid(0xFF, 0x00, 0x00),
+        _ => null,
+    };
+
+    private static GameImage Solid(byte b, byte g, byte r)
+    {
+        var pixels = new byte[4 * 4 * 4];
+        for (var i = 0; i < pixels.Length; i += 4)
+        {
+            pixels[i] = b;
+            pixels[i + 1] = g;
+            pixels[i + 2] = r;
+            pixels[i + 3] = 0xFF;
+        }
+        return new GameImage(4, 4, pixels);
+    }
+
+    private static (float R, float G, float B) At(GameImage tile, float x, float y)
+    {
+        var column = (int)(x * 2);
+        var row = (int)(384 - (y * 2));
+        var i = ((row * tile.Width) + column) * 4;
+        return (tile.Pixels[i + 2], tile.Pixels[i + 1], tile.Pixels[i]);
+    }
+
+    private static bool IsBlue((float R, float G, float B) c) => c.B > 150 && c.R < 60 && c.G < 60;
+    private static bool IsGreen((float R, float G, float B) c) => c.G > 120 && c.R < 40;
+    private static bool IsRed((float R, float G, float B) c) => c.R > 120 && c.G < 40;
+    private static double Luma((float R, float G, float B) c) => c.R + c.G + c.B;
+
+    private static bool WaitFor(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline) return false;
+            Thread.Sleep(5);
+        }
+        return true;
+    }
+
+    /// <summary>Flat ground whose first read of Arwic fails, as a DAT that is busy or damaged might.</summary>
+    private sealed class FlakyGround : IGroundSource
+    {
+        private readonly FakeGround _ground = new();
+        private int _failures = 1;
+
+        public GroundLandblock? ReadLandblock(int x, int y)
+        {
+            if (x == 0xC6 && y == 0xA9 && Interlocked.Exchange(ref _failures, 0) == 1) throw new IOException("client_cell_1.dat is busy.");
+            return _ground.ReadLandblock(x, y);
+        }
+
+        public GameImage? TerrainTexture(uint terrainType) => _ground.TerrainTexture(terrainType);
+    }
+
+    /// <summary>Flat ground of one type; reads can be held at <see cref="Gate"/> to show they happen off the caller's thread.</summary>
+    private sealed class FakeGround : IGroundSource
+    {
+        public ManualResetEventSlim Gate { get; } = new(true);
+        public List<int> ReadingThreads { get; } = new();
+
+        public GroundLandblock? ReadLandblock(int x, int y)
+        {
+            lock (ReadingThreads) ReadingThreads.Add(Environment.CurrentManagedThreadId);
+            Gate.Wait(TimeSpan.FromSeconds(10));
+            var terrain = new ushort[81];
+            Array.Fill(terrain, (ushort)(Green << 2));
+            return new GroundLandblock(x, y, terrain, new float[81], Array.Empty<GroundFootprint>());
+        }
+
+        public GameImage? TerrainTexture(uint terrainType) => Texture(terrainType);
+    }
+}

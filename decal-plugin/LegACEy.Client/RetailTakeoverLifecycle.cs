@@ -165,6 +165,9 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
         return _native.GetBounds();
     }
 
+    /// <summary>Gives the element back hidden, whatever it was at capture: retail has since shown another window in its place.</summary>
+    public void GiveBackHidden() => _originalVisible = false;
+
     public void Dispose()
     {
         if (_disposed && !_captured) return;

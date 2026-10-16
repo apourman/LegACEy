@@ -46,7 +46,14 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private readonly LayoutTransformControl _scaled = new();
     // The tab a press started on, until the press is a click (which shows the tab) or a drag out of the strip.
     private int _pressedTab = -1;
-    private readonly StackPanel _lines = new();
+    // The log's lines. A transparent face, so a press in the gap between two lines still starts a selection.
+    private readonly StackPanel _lines = new() { Background = Brushes.Transparent };
+    // A selection across the log's lines: where the press was, and whether the drag has gone far enough to be one. The selected text is kept
+    // for Ctrl+C and the right click.
+    private (SelectableTextBlock Line, int Index)? _anchor;
+    private Point _anchorPoint;
+    private bool _dragging;
+    private string _logSelection = string.Empty;
     private readonly ScrollViewer _scroll;
     private readonly Border _pill;
     private readonly TextBlock _pillText = new() { FontFamily = DerethPalette.Title, FontSize = 10, Foreground = DerethPalette.CreamBrush };
@@ -60,6 +67,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private readonly RetailChatFade _fade;
     private readonly Func<DateTime> _clock;
     private readonly Action<string> _copy;
+    private readonly Func<string?> _paste;
     private ScrollBar? _scrollBar;
     // The line loop in Refresh can stop once the lines show their final opacities; any change of state or of the lines clears this.
     private bool _linesSettled;
@@ -67,6 +75,9 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private int _tab;
     private RetailTalkTarget _target = RetailTalkTargets.Local;
     private int _missed;
+    // The sent line Up and Down have brought back, or null while the box holds the player's own text, kept in _draft while they browse.
+    private int? _recall;
+    private string _draft = string.Empty;
     private bool _timestamps;
     private bool _disposed;
 
@@ -82,9 +93,13 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     /// <param name="tabs">The window's tabs; null for the six defaults.</param>
     /// <param name="tornOff">Whether the window is torn off the main window: it has no All tab and no add button, and a close medallion merges it back.</param>
     /// <param name="clock">The time, for the idle fade; null for the system's.</param>
-    /// <param name="copy">Puts text on the clipboard: a right click over text selected in the log copies it. Null copies nothing.</param>
+    /// <param name="copy">
+    /// Puts text on the clipboard: text selected in the log is copied when the button goes up, and again on a right click over it; Ctrl+C and
+    /// Ctrl+X copy the box's selection. Null copies nothing.
+    /// </param>
+    /// <param name="paste">Reads the clipboard's text, for Ctrl+V in the box. Null pastes nothing.</param>
     public RetailChatWindow(IRetailChatPort port, RetailChatHistory history, IRetailChatWindowHost host, IReadOnlyList<RetailChatTab>? tabs = null,
-        bool tornOff = false, Func<DateTime>? clock = null, Action<string>? copy = null)
+        bool tornOff = false, Func<DateTime>? clock = null, Action<string>? copy = null, Func<string?>? paste = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _history = history ?? throw new ArgumentNullException(nameof(history));
@@ -96,6 +111,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _fade = new RetailChatFade();
         _clock = clock ?? (() => DateTime.Now);
         _copy = copy ?? (_ => { });
+        _paste = paste ?? (() => null);
 
         // The tab strip: the tabs, which scroll sideways (by the wheel) when they do not fit, and its fixed end. The strip's empty part
         // drags the window.
@@ -134,6 +150,10 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         };
         _scroll = new ScrollViewer { Content = _lines, Margin = new Thickness(7, 4), VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         _scroll.ScrollChanged += (_, _) => { if (AtEnd()) HidePill(); };
+        // The log selects as one text: a drag runs from line to line. Tunnel handlers, ahead of each line's own selection.
+        _lines.AddHandler(PointerPressedEvent, OnLogPressed, RoutingStrategies.Tunnel);
+        _lines.AddHandler(PointerMovedEvent, OnLogMoved, RoutingStrategies.Tunnel);
+        _lines.AddHandler(PointerReleasedEvent, OnLogReleased, RoutingStrategies.Tunnel);
         _pill = DerethChatParts.JumpPill(_pillText);
         _pill.IsVisible = false;
         _pill.Margin = new Thickness(0, 0, 0, 6);
@@ -145,7 +165,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _input = new TextBox
         {
             Watermark = "Say something…",
-            Height = 19,
+            // The row's height, as the chip and Send are, so their edges line up.
+            Height = 21,
             MinHeight = 0,
             Padding = new Thickness(4, 0),
             FontFamily = DerethPalette.Body,
@@ -159,7 +180,20 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             VerticalContentAlignment = VerticalAlignment.Center
         };
         _input.KeyDown += OnInputKeyDown;
-        var send = new DerethButton { Content = "Send", Width = 40, Height = 20, Padding = new Thickness(0), FontSize = 11, Foreground = DerethPalette.CreamBrush };
+        // Up and Down before the box's own caret keys, as retail's chat brings back what was sent.
+        _input.AddHandler(KeyDownEvent, OnInputRecall, RoutingStrategies.Tunnel);
+        // The game's clipboard, not Avalonia's: an in-game panel has none of its own.
+        _input.AddHandler(KeyDownEvent, OnInputClipboard, RoutingStrategies.Tunnel);
+        // As tall as the row, so no half pixel is split above and below it at a small UI size, and its word centred on its capital.
+        var send = new DerethButton
+        {
+            Width = 40, Padding = new Thickness(0), Foreground = DerethPalette.CreamBrush,
+            Content = DerethPalette.CentreInk(new TextBlock
+            {
+                Text = "Send", FontFamily = DerethPalette.Title, FontSize = 11,
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+            })
+        };
         send.Click += (_, _) => SendTyped();
         var inputRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 4, Height = 21 };
         inputRow.Children.Add(_chipHost);
@@ -540,6 +574,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
 
     private void RebuildLog()
     {
+        ClearLogSelection();
         _lines.Children.Clear();
         _linesSettled = false;
         foreach (var line in _history.Lines)
@@ -590,15 +625,118 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             rest = line.Text.Substring(at + line.Sender.Length);
         }
         if (rest.Length > 0) Add(DerethChatParts.TextRun(rest, brush, italic));
-        // A right click over the line's selected text copies it; the game's own right click never sees it.
-        view.AddHandler(InputElement.PointerPressedEvent, (_, e) =>
-        {
-            if (!e.GetCurrentPoint(view).Properties.IsRightButtonPressed || string.IsNullOrEmpty(view.SelectedText)) return;
-            _copy(view.SelectedText);
-            e.Handled = true;
-        }, RoutingStrategies.Bubble, handledEventsToo: true);
         return view;
     }
+
+    /// <summary>The text selected in the log, its lines joined by line breaks; empty when nothing is.</summary>
+    public string LogSelection => _logSelection;
+
+    /// <summary>Lets go of the log's selection, as a click elsewhere does.</summary>
+    public void ClearLogSelection()
+    {
+        _anchor = null;
+        _dragging = false;
+        _logSelection = string.Empty;
+        foreach (var child in _lines.Children)
+            if (child is SelectableTextBlock line && line.SelectionStart != line.SelectionEnd) line.SelectionStart = line.SelectionEnd = 0;
+    }
+
+    private void OnLogPressed(object? sender, PointerPressedEventArgs e)
+    {
+        var point = e.GetCurrentPoint(_lines);
+        if (point.Properties.IsRightButtonPressed)
+        {
+            // A right click over the log copies what is selected; the game's own right click never sees it.
+            if (_logSelection.Length == 0) return;
+            _copy(_logSelection);
+            e.Handled = true;
+            return;
+        }
+        if (!point.Properties.IsLeftButtonPressed) return;
+        ClearLogSelection();
+        _anchor = LogHit(point.Position);
+        _anchorPoint = point.Position;
+        // The lines' own selection would stop at their edge; a name's click handler still sees the press.
+        e.Handled = true;
+    }
+
+    private void OnLogMoved(object? sender, PointerEventArgs e)
+    {
+        if (_anchor is not { } anchor || !e.GetCurrentPoint(_lines).Properties.IsLeftButtonPressed) return;
+        var at = e.GetPosition(_lines);
+        if (!_dragging)
+        {
+            if (Math.Abs(at.X - _anchorPoint.X) + Math.Abs(at.Y - _anchorPoint.Y) <= ClickSlop) return;
+            _dragging = true;
+            // Held from here on, so the drag goes on over the scroll bar or past the log's edge.
+            e.Pointer.Capture(_lines);
+        }
+        Select(anchor, LogHit(at));
+    }
+
+    private void OnLogReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_anchor == null || e.InitialPressMouseButton != MouseButton.Left) return;
+        var dragged = _dragging;
+        _anchor = null;
+        _dragging = false;
+        if (!dragged) return;
+        e.Pointer.Capture(null);
+        // Copied as the button goes up, as classic chat clients do, so it can be pasted into the box.
+        if (_logSelection.Length > 0) _copy(_logSelection);
+    }
+
+    /// <summary>The line and character under a point in the log: above the first line its start, below the last its end.</summary>
+    private (SelectableTextBlock Line, int Index)? LogHit(Point point)
+    {
+        SelectableTextBlock? last = null;
+        foreach (var child in _lines.Children)
+        {
+            if (child is not SelectableTextBlock line) continue;
+            var bounds = line.Bounds;
+            if (point.Y < bounds.Top) return (line, 0);
+            // A line owns the gap under it, up to the next line.
+            if (point.Y < bounds.Bottom + line.Margin.Bottom)
+                return (line, line.TextLayout.HitTestPoint(new Point(point.X - bounds.X, point.Y - bounds.Y)).TextPosition);
+            last = line;
+        }
+        return last == null ? null : (last, LineText(last).Length);
+    }
+
+    /// <summary>Selects from <paramref name="from"/> to <paramref name="to"/>, either way round, across the lines between.</summary>
+    private void Select((SelectableTextBlock Line, int Index) from, (SelectableTextBlock Line, int Index)? to)
+    {
+        if (to is not { } end) return;
+        int first = _lines.Children.IndexOf(from.Line), last = _lines.Children.IndexOf(end.Line);
+        // A line gone from the log, as the oldest goes when the history is full, ends the selection.
+        if (first < 0 || last < 0)
+        {
+            ClearLogSelection();
+            return;
+        }
+        var (start, finish) = first < last || first == last && from.Index <= end.Index ? (from, end) : (end, from);
+        (first, last) = (Math.Min(first, last), Math.Max(first, last));
+        var text = new System.Text.StringBuilder();
+        for (var i = 0; i < _lines.Children.Count; i++)
+        {
+            if (_lines.Children[i] is not SelectableTextBlock line) continue;
+            if (i < first || i > last)
+            {
+                if (line.SelectionStart != line.SelectionEnd) line.SelectionStart = line.SelectionEnd = 0;
+                continue;
+            }
+            var whole = LineText(line);
+            var head = i == first ? Math.Min(start.Index, whole.Length) : 0;
+            var tail = i == last ? Math.Min(finish.Index, whole.Length) : whole.Length;
+            line.SelectionStart = head;
+            line.SelectionEnd = tail;
+            if (i > first) text.Append("\r\n");
+            text.Append(whole, head, tail - head);
+        }
+        _logSelection = text.ToString();
+    }
+
+    private static string LineText(SelectableTextBlock line) => line.Inlines?.Text ?? line.Text ?? string.Empty;
 
     /// <summary>A click on the characters from <paramref name="start"/> to <paramref name="end"/>, without a drag, tells the name.</summary>
     private void WireNameClick(SelectableTextBlock view, int start, int end, RetailTalkTarget tell)
@@ -652,6 +790,49 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         }
     }
 
+    private void OnInputClipboard(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyModifiers != KeyModifiers.Control || e.Key is not (Key.C or Key.X or Key.V)) return;
+        e.Handled = true;
+        var text = _input.Text ?? string.Empty;
+        int start = Math.Min(_input.SelectionStart, _input.SelectionEnd), end = Math.Max(_input.SelectionStart, _input.SelectionEnd);
+        if (e.Key != Key.V)
+        {
+            // Nothing selected in the box: Ctrl+C copies what is selected in the log.
+            if (end == start)
+            {
+                if (e.Key == Key.C && _logSelection.Length > 0) _copy(_logSelection);
+                return;
+            }
+            _copy(text.Substring(start, end - start));
+            if (e.Key == Key.C) return;
+            Replace(string.Empty);
+            return;
+        }
+        // One line: a pasted line break or tab becomes a space.
+        if (_paste() is { Length: > 0 } pasted) Replace(pasted.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' ').Replace('\t', ' '));
+
+        void Replace(string with)
+        {
+            _input.Text = text.Substring(0, start) + with + text.Substring(end);
+            _input.SelectionStart = _input.SelectionEnd = _input.CaretIndex = start + with.Length;
+        }
+    }
+
+    private void OnInputRecall(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Up && e.Key != Key.Down) return;
+        e.Handled = true;
+        var sent = _history.Sent;
+        var at = Math.Min(_recall ?? sent.Count, sent.Count);
+        var to = e.Key == Key.Up ? Math.Max(0, at - 1) : Math.Min(sent.Count, at + 1);
+        if (to == at) return;
+        if (_recall == null) _draft = _input.Text ?? string.Empty;
+        _recall = to == sent.Count ? null : to;
+        _input.Text = _recall is { } line ? sent[line] : _draft;
+        _input.CaretIndex = _input.Text.Length;
+    }
+
     private void LeaveInput()
     {
         CloseMenu();
@@ -671,6 +852,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             if (!_port.TellDirect(direct, typed.Trim())) return;
         }
         else if (RetailChatCommands.Compose(_target, typed, _port.SelectedName) is not { } command || !_port.Send(command)) return;
+        _history.AddSent(typed.Trim());
+        _recall = null;
         _input.Text = string.Empty;
     }
 

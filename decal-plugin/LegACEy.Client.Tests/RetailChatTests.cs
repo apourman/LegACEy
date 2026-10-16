@@ -136,6 +136,112 @@ public sealed class RetailChatTests
     });
 
     [Fact]
+    public void Up_and_Down_bring_back_what_was_sent_and_then_the_unsent_text() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        using var panel = Open(port, out var window);
+        TypeAndEnter(panel, window, "/vt go");
+        TypeAndEnter(panel, window, "hi");
+        TypeAndEnter(panel, window, "hi");
+        var box = InputBox(window);
+        Click(panel, box);
+        panel.TextInput("draft");
+
+        panel.KeyDown(Key.Up);
+        Assert.Equal("hi", box.Text);
+        panel.KeyDown(Key.Up);
+        Assert.Equal("/vt go", box.Text);
+        panel.KeyDown(Key.Up);
+        Assert.Equal("/vt go", box.Text);
+        panel.KeyDown(Key.Down);
+        panel.KeyDown(Key.Down);
+        Assert.Equal("draft", box.Text);
+
+        panel.KeyDown(Key.Up);
+        panel.KeyDown(Key.Up);
+        panel.KeyDown(Key.Enter);
+        Assert.Equal("/vt go", port.Sent.Last());
+        panel.KeyDown(Key.Up);
+        Assert.Equal("/vt go", box.Text);
+    });
+
+    [Fact]
+    public void Ctrl_V_pastes_the_clipboard_into_the_box_and_Ctrl_C_and_Ctrl_X_copy_its_selection() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        var clipboard = "the Vault key\r\nat Yaraq";
+        using var panel = Open(port, out var window, copy: text => clipboard = text, paste: () => clipboard);
+        var box = InputBox(window);
+        Click(panel, box);
+        panel.TextInput("bring ");
+
+        panel.KeyDown(Key.V, KeyModifiers.Control);
+        Assert.Equal("bring the Vault key at Yaraq", box.Text);
+        Assert.Equal(box.Text.Length, box.CaretIndex);
+
+        // "Vault" selected: Ctrl+C copies it, Ctrl+X copies it and takes it out, and Ctrl+V puts it back over a selection.
+        box.SelectionStart = 10;
+        box.SelectionEnd = 15;
+        panel.KeyDown(Key.C, KeyModifiers.Control);
+        Assert.Equal("Vault", clipboard);
+        panel.KeyDown(Key.X, KeyModifiers.Control);
+        Assert.Equal("bring the  key at Yaraq", box.Text);
+        box.SelectionStart = 0;
+        box.SelectionEnd = 5;
+        panel.KeyDown(Key.V, KeyModifiers.Control);
+        Assert.Equal("Vault the  key at Yaraq", box.Text);
+        Assert.Empty(port.Sent);
+    });
+
+    [Fact]
+    public void A_rebuilt_chat_keeps_the_log_and_what_was_sent_from_the_history_it_carries() => RenderThread.Run(() =>
+    {
+        // The chat before a UI size change: a line in the log and a line sent.
+        var before = new FakeChatPort();
+        var old = new RetailChatHistory(before);
+        before.Say(Line(RetailChatKind.TellIn, "Mirra tells you, \"still need the Vault key?\"", "Mirra"));
+        old.AddSent("/vt go");
+        old.Dispose();
+
+        // After it: a new port, and windows on a history that carries the old one.
+        var port = new FakeChatPort();
+        var history = new RetailChatHistory(port, old);
+        RetailChatWindow? window = null;
+        using var panel = AvaloniaPanel.Create(() => window = new RetailChatWindow(port, history, new SingleWindowHost(null, "Alice"), clock: () => Stamp), Width, Height);
+        panel.Tick();
+        Assert.True(InLog(panel, "still need the Vault key"));
+
+        var box = InputBox(window!);
+        Click(panel, box);
+        panel.KeyDown(Key.Up);
+        Assert.Equal("/vt go", box.Text);
+    });
+
+    [Fact]
+    public void The_chat_window_renders_to_pngs_when_asked() => RenderThread.Run(() =>
+    {
+        // Looked at by a person, not asserted: LEGACEY_CHAT_RENDER names the folder the PNGs are written to.
+        var folder = Environment.GetEnvironmentVariable("LEGACEY_CHAT_RENDER");
+        if (folder == null) return;
+        Directory.CreateDirectory(folder);
+        foreach (var scale in new[] { 0.75, 1.0, 1.5 })
+        {
+            var port = new FakeChatPort();
+            var history = new RetailChatHistory(port);
+            using var panel = AvaloniaPanel.Create(() => new RetailChatWindow(port, history, new SingleWindowHost(null, "Alice"), clock: () => Stamp),
+                (int)Math.Round(Width * scale), (int)Math.Round(Height * scale), scale);
+            port.Say(Line(RetailChatKind.TellIn, "Mirra tells you, \"still need the Vault key?\"", "Mirra"));
+            panel.Tick();
+            var frame = panel.Frame;
+            using var bitmap = new Avalonia.Media.Imaging.WriteableBitmap(new PixelSize(frame.Width, frame.Height), new Vector(96, 96),
+                Avalonia.Platform.PixelFormat.Bgra8888, Avalonia.Platform.AlphaFormat.Premul);
+            using (var locked = bitmap.Lock())
+                System.Runtime.InteropServices.Marshal.Copy(frame.Pixels, 0, locked.Address, frame.Pixels.Length);
+            bitmap.Save(Path.Combine(folder, $"chat-{scale * 100:0}.png"));
+        }
+    });
+
+    [Fact]
     public void A_name_click_and_Tab_in_an_empty_input_set_a_tell_target() => RenderThread.Run(() =>
     {
         var port = new FakeChatPort();
@@ -289,7 +395,7 @@ public sealed class RetailChatTests
     });
 
     [Fact]
-    public void A_right_click_over_selected_log_text_copies_it() => RenderThread.Run(() =>
+    public void Selecting_log_text_copies_it_and_a_right_click_over_it_copies_it_again() => RenderThread.Run(() =>
     {
         var port = new FakeChatPort();
         var copied = new List<string>();
@@ -302,14 +408,44 @@ public sealed class RetailChatTests
         panel.RightClick(press.X, press.Y);
         Assert.Empty(copied);
 
-        // A drag across the name selects it; a right click over it copies the selected text.
+        // A drag across the name selects it and copies it when the button goes up; a right click over it copies it again.
         panel.PointerDown(press.X, press.Y);
         panel.PointerMove(press.X + 40, press.Y);
         panel.PointerUp(press.X + 40, press.Y);
-        panel.RightClick(press.X + 20, press.Y);
-
         var text = Assert.Single(copied);
         Assert.StartsWith("Mir", text);
+
+        panel.RightClick(press.X + 20, press.Y);
+        Assert.Equal(new[] { text, text }, copied);
+    });
+
+    [Fact]
+    public void A_drag_selects_across_lines_and_Ctrl_C_in_the_box_copies_it() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        var copied = new List<string>();
+        using var panel = Open(port, out var window, copy: copied.Add);
+        port.Say(Line(RetailChatKind.TellIn, "Mirra tells you, \"still need the Vault key?\"", "Mirra"));
+        port.Say(Line(RetailChatKind.TellIn, "Thorne tells you, \"meet at Yaraq\"", "Thorne"));
+
+        // From Mirra's name, down past the end of Thorne's line: the rest of the first line and all of the second, its time included.
+        var from = NameLetter(panel, "Mirra tells you", "Mirra");
+        var to = NameLetter(panel, "Thorne tells you", "Thorne");
+        panel.PointerDown(from.X, from.Y);
+        panel.PointerMove(from.X + 20, to.Y);
+        panel.PointerMove(Width - 20, to.Y);
+        panel.PointerUp(Width - 20, to.Y);
+        var text = Assert.Single(copied);
+        Assert.Equal("Mirra tells you, \"still need the Vault key?\"\r\n" + Stamp.ToString("HH:mm") + " Thorne tells you, \"meet at Yaraq\"", text);
+        Assert.Equal(text, window.LogSelection);
+
+        // Ctrl+C in the box, with nothing selected there, copies the log's selection; a click in the log lets it go.
+        Click(panel, InputBox(window));
+        panel.KeyDown(Key.C, KeyModifiers.Control);
+        Assert.Equal(new[] { text, text }, copied);
+        panel.PointerDown(from.X, from.Y);
+        panel.PointerUp(from.X, from.Y);
+        Assert.Equal(string.Empty, window.LogSelection);
     });
 
     [Fact]
@@ -751,13 +887,13 @@ public sealed class RetailChatTests
         new(kind, text, at ?? Stamp, sender, channel);
 
     private static AvaloniaPanel Open(FakeChatPort port, out RetailChatWindow window, FileRetailChatTabStore? store = null, string character = "Alice",
-        Func<DateTime>? clock = null, Action<string>? copy = null)
+        Func<DateTime>? clock = null, Action<string>? copy = null, Func<string?>? paste = null)
     {
         RetailChatWindow? created = null;
         var tabs = store?.Load(Server, character, RetailChatWindows.MainId);
         var history = new RetailChatHistory(port);
         var panel = AvaloniaPanel.Create(() => created = new RetailChatWindow(port, history, new SingleWindowHost(store, character), tabs,
-            clock: clock ?? (() => Stamp), copy: copy), Width, Height);
+            clock: clock ?? (() => Stamp), copy: copy, paste: paste), Width, Height);
         window = created!;
         return panel;
     }
@@ -896,7 +1032,7 @@ public sealed class RetailChatTests
     {
         Click(panel, InputBox(window));
         panel.TextInput(text);
-        Click(panel, panel.Content.GetVisualDescendants().OfType<Button>().First(button => button.Content as string == "Send"));
+        Click(panel, panel.Content.GetVisualDescendants().OfType<Button>().First(button => (button.Content as TextBlock)?.Text == "Send"));
     }
 
     /// <summary>The host of a window on its own: its tab list is kept under the main window's id; the other requests are not used.</summary>

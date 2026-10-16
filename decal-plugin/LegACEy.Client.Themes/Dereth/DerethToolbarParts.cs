@@ -20,7 +20,6 @@ public sealed class DerethMedallion : Decorator
     private static readonly IBrush PressedFace = DerethPalette.Brush(Color.Parse("#03070A"));
     private static readonly IBrush NormalFace = Radial(Color.Parse("#1B2832"), Color.Parse("#081016"));
     private static readonly IBrush HoverFace = Radial(Color.Parse("#263643"), Color.Parse("#0E1923"));
-    private static readonly Dictionary<string, Geometry> Shapes = new(StringComparer.Ordinal);
 
     private readonly double _diameter;
     private readonly double _glyphSize;
@@ -107,25 +106,8 @@ public sealed class DerethMedallion : Decorator
         context.DrawEllipse(null, InnerPen, centre, radius - 1.5, radius - 1.5);
 
         var colour = _open ? DerethPalette.TealText : _hover ? GoldLight : DerethPalette.Gold;
-        var scale = _glyphSize / DerethGlyphs.Grid;
         var offset = (_diameter - _glyphSize) / 2;
-        using (context.PushTransform(Matrix.CreateScale(scale, scale) * Matrix.CreateTranslation(offset, offset)))
-            foreach (var part in DerethGlyphs.PartsOf(_glyph))
-                DrawPart(context, part, colour);
-    }
-
-    private static void DrawPart(DrawingContext context, GlyphPart part, Color colour)
-    {
-        if (!Shapes.TryGetValue(part.Data, out var shape))
-            Shapes[part.Data] = shape = Geometry.Parse(part.Data);
-        var brush = new SolidColorBrush(colour, part.Opacity);
-        if (part.Filled)
-        {
-            context.DrawGeometry(brush, null, shape);
-            return;
-        }
-        var pen = new Pen(brush, part.StrokeWidth, part.Dash is null ? null : new DashStyle(part.Dash, 0), PenLineCap.Round, PenLineJoin.Round);
-        context.DrawGeometry(null, pen, shape);
+        DerethGlyphs.Draw(context, _glyph, _glyphSize, offset, offset, colour);
     }
 
     private static RadialGradientBrush Radial(Color centre, Color edge) => new()

@@ -1,0 +1,263 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Media;
+
+namespace LegACEy.Client.Themes;
+
+/// <summary>
+/// The round scope of the Dereth radar: the ground turned under the dots, the range rings, the dots and the marker for the player. The
+/// window sets what it shows; the scope draws it, and a hovered dot's label beside it.
+/// </summary>
+public sealed class DerethRadarScope : Control
+{
+    private static readonly Color Teal = DerethPalette.TealText;
+    private static readonly Color Cream = DerethPalette.Cream;
+    private static readonly Color Gold = DerethPalette.Gold;
+    private static readonly Color Navy = Color.Parse("#081016");
+    private static readonly IBrush Darken = DerethPalette.Brush(Color.FromArgb(0x40, 10, 18, 25));
+    private static readonly IBrush Disc = new RadialGradientBrush
+    {
+        GradientStops = { new GradientStop(Color.Parse("#122C2C").WithAlpha(0xEB), 0), new GradientStop(Color.Parse("#04090D").WithAlpha(0xF0), 1) }
+    };
+    private static readonly IBrush Vignette = new RadialGradientBrush
+    {
+        GradientStops = { new GradientStop(Color.FromArgb(0, 4, 9, 13), 0.55), new GradientStop(Color.FromArgb(0x99, 4, 9, 13), 1) }
+    };
+    private static readonly IBrush Cross = DerethPalette.Brush(Teal.WithAlpha(0x1A));
+    private static readonly IPen CrossPen = new Pen(Cross, 0.6);
+    private static readonly IBrush RingBrush = DerethPalette.Brush(Gold.WithAlpha(0x2E));
+    private static readonly IPen RingPen = new Pen(RingBrush, 0.8);
+    private static readonly IPen OutlinePen = new Pen(DerethPalette.Brush(Color.FromArgb(0xC0, 0, 0, 0)), 0.6);
+    private static readonly IBrush MarkerBrush = DerethPalette.Brush(Cream);
+    private static readonly Geometry Marker = Geometry.Parse("M0,-4.5 L3.2,3.5 L0,2 L-3.2,3.5 Z");
+    private static readonly IPen SelectedPen = new Pen(DerethPalette.TealBrush, 1);
+    private static readonly IPen HoveredPen = new Pen(DerethPalette.Brush(Cream.WithAlpha(0xB3)), 1);
+    private static readonly IBrush LabelFill = DerethPalette.Brush(Navy.WithAlpha(0xD9));
+    private static readonly IPen LabelEdge = new Pen(DerethPalette.GoldBrush, 1);
+    private static readonly Typeface LabelFace = new(DerethPalette.Title);
+
+    private IReadOnlyList<(IImage Image, Rect Metres)> _tiles = Array.Empty<(IImage Image, Rect Metres)>();
+    private IReadOnlyList<(Point At, Color Colour, double Opacity, bool Selected, bool Hovered)> _dots = Array.Empty<(Point At, Color Colour, double Opacity, bool Selected, bool Hovered)>();
+    // The dots' brushes by colour and alpha, made once each: a dot's alpha takes only a few values.
+    private readonly Dictionary<(Color Colour, byte Alpha), IBrush> _dotBrushes = new();
+    private (string Text, Point At)? _label;
+    private double _turn, _arrow, _pixelsPerMetre = 1;
+    private bool _rings;
+
+    /// <summary>The clockwise turn of the world on screen, in degrees.</summary>
+    public double Turn { get => _turn; set { if (_turn == value) return; _turn = value; InvalidateVisual(); } }
+
+    /// <summary>DIPs per metre of range.</summary>
+    public double PixelsPerMetre { get => _pixelsPerMetre; set { if (_pixelsPerMetre == value) return; _pixelsPerMetre = value; InvalidateVisual(); } }
+
+    /// <summary>Whether the range rings show.</summary>
+    public bool Rings { get => _rings; set { if (_rings == value) return; _rings = value; InvalidateVisual(); } }
+
+    /// <summary>The marker's angle in degrees: 0 points up, the way the scope is turned to face.</summary>
+    public double Arrow { get => _arrow; set { if (_arrow == value) return; _arrow = value; InvalidateVisual(); } }
+
+    public IReadOnlyList<(IImage Image, Rect Metres)> Tiles
+    {
+        get => _tiles;
+        set { if (ReferenceEquals(_tiles, value)) return; _tiles = value; InvalidateVisual(); }
+    }
+
+    public IReadOnlyList<(Point At, Color Colour, double Opacity, bool Selected, bool Hovered)> Dots
+    {
+        get => _dots;
+        set { if (ReferenceEquals(_dots, value)) return; _dots = value; InvalidateVisual(); }
+    }
+
+    /// <summary>The hovered dot's label and the dot's point, so the label sits beside it; null for none.</summary>
+    public (string Text, Point At)? Label
+    {
+        get => _label;
+        set { if (_label == value) return; _label = value; InvalidateVisual(); }
+    }
+
+    public override void Render(DrawingContext context)
+    {
+        base.Render(context);
+        var size = Math.Min(Bounds.Width, Bounds.Height);
+        if (size <= 0) return;
+        var radius = size / 2;
+        var centre = new Point(radius, radius);
+        using (context.PushGeometryClip(new EllipseGeometry(new Rect(0, 0, size, size))))
+        {
+            context.DrawEllipse(Disc, null, centre, radius, radius);
+            // The ground: the world turned and scaled so the player is at the centre, then darkened a little to sit under the dots.
+            using (context.PushTransform(Matrix.CreateScale(PixelsPerMetre, PixelsPerMetre) * Matrix.CreateRotation(Turn * Math.PI / 180) * Matrix.CreateTranslation(centre)))
+                foreach (var tile in _tiles)
+                    context.DrawImage(tile.Image, new Rect(tile.Image.Size), tile.Metres);
+            if (_tiles.Count > 0) context.DrawEllipse(Darken, null, centre, radius, radius);
+            context.DrawEllipse(Vignette, null, centre, radius, radius);
+            DrawCrosshair(context, centre, radius);
+            if (Rings) DrawRings(context, centre, radius);
+            foreach (var dot in _dots) DrawDot(context, dot);
+            using (context.PushTransform(Matrix.CreateRotation(Arrow * Math.PI / 180) * Matrix.CreateTranslation(centre)))
+                context.DrawGeometry(MarkerBrush, null, Marker);
+        }
+        if (_label is { } label) DrawLabel(context, size, label);
+    }
+
+    private static void DrawCrosshair(DrawingContext context, Point centre, double radius)
+    {
+        context.DrawLine(CrossPen, new Point(centre.X, 0), new Point(centre.X, radius * 2));
+        context.DrawLine(CrossPen, new Point(0, centre.Y), new Point(radius * 2, centre.Y));
+    }
+
+    private static void DrawRings(DrawingContext context, Point centre, double radius)
+    {
+        foreach (var fraction in new[] { 1.0 / 3, 2.0 / 3, 1 })
+            context.DrawEllipse(null, RingPen, centre, radius * fraction, radius * fraction);
+    }
+
+    private void DrawDot(DrawingContext context, (Point At, Color Colour, double Opacity, bool Selected, bool Hovered) dot)
+    {
+        var alpha = (byte)Math.Round(dot.Opacity * 255);
+        var key = (dot.Colour, alpha);
+        if (!_dotBrushes.TryGetValue(key, out var colour)) _dotBrushes[key] = colour = DerethPalette.Brush(dot.Colour.WithAlpha(alpha));
+        context.DrawEllipse(colour, OutlinePen, dot.At, 1.9, 1.9);
+        if (dot.Selected) context.DrawEllipse(null, SelectedPen, dot.At, 4.5, 4.5);
+        if (dot.Hovered) context.DrawEllipse(null, HoveredPen, dot.At, 4.5, 4.5);
+    }
+
+    // The label sits to the lower right of the hovered dot, and moves in where the scope's edge would cut it.
+    private static void DrawLabel(DrawingContext context, double size, (string Text, Point At) label)
+    {
+        var text = new FormattedText(label.Text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, LabelFace, 9.5, DerethPalette.CreamBrush);
+        var box = new Rect(0, 0, text.Width + 10, text.Height + 3);
+        var x = Math.Max(2, Math.Min(label.At.X + 6, size - box.Width - 2));
+        var y = Math.Max(2, Math.Min(label.At.Y + 6, size - box.Height - 2));
+        var place = new Rect(x, y, box.Width, box.Height);
+        context.DrawRectangle(LabelFill, LabelEdge, new RoundedRect(place, 3));
+        context.DrawText(text, new Point(x + 5, y + 1.5));
+    }
+}
+
+/// <summary>
+/// The bezel round the scope: the gold rings, and the compass letters on the rim, turned with the world (north in teal, the minor points
+/// muted). It takes no pointer, so the scope underneath it does.
+/// </summary>
+public sealed class DerethRadarBezel : Control
+{
+    // The rings sit outside the scope's edge, as the bezel's box shadows do in the mockup: each as (distance from the edge, pen).
+    private static readonly (double Outset, IPen Pen)[] Rings =
+    {
+        (1, new Pen(DerethPalette.Brush(Color.Parse("#7A5E30")), 1.5)),
+        (3.5, new Pen(DerethPalette.Brush(Color.Parse("#0A1218")), 1.5)),
+        (5, new Pen(DerethPalette.Brush(DerethPalette.Gold), 1)),
+        (6.5, new Pen(DerethPalette.Brush(Color.Parse("#2B2112")), 1.5)),
+    };
+    private const double ScopeRadius = 59;
+    // The letters sit inside the rim, as retail's do.
+    private const double LetterRadius = ScopeRadius - 6;
+    private static readonly (string Text, double Bearing)[] Letters = { ("N", 0), ("E", 90), ("S", 180), ("W", 270) };
+
+    private static readonly Color GoldLight = Color.Parse("#D9B66A");
+    private double _turn;
+    private FormattedText[]? _letters;
+    private FormattedText[]? _minors;
+
+    /// <summary>The clockwise turn of the world on screen, in degrees. The letters turn with it.</summary>
+    public double Turn { get => _turn; set { if (_turn == value) return; _turn = value; InvalidateVisual(); } }
+
+    public override void Render(DrawingContext context)
+    {
+        base.Render(context);
+        var centre = new Point(Bounds.Width / 2, Bounds.Height / 2);
+        foreach (var (outset, pen) in Rings)
+            context.DrawEllipse(null, pen, centre, ScopeRadius + outset, ScopeRadius + outset);
+        _letters ??= Letters.Select(letter => Face(letter.Text, letter.Text == "N" ? DerethPalette.TealBrush : DerethPalette.Brush(GoldLight), 10)).ToArray();
+        _minors ??= new[] { Face("·", DerethPalette.MutedBrush, 6), Face("·", DerethPalette.MutedBrush, 6), Face("·", DerethPalette.MutedBrush, 6), Face("·", DerethPalette.MutedBrush, 6) };
+        for (var i = 0; i < Letters.Length; i++)
+            Place(context, _letters[i], centre, Letters[i].Bearing, DerethPalette.InkShift(new Typeface(DerethPalette.Title), 10));
+        for (var i = 0; i < _minors.Length; i++)
+            Place(context, _minors[i], centre, 45 + 90 * i);
+    }
+
+    // A letter at its bearing: its screen angle is the bearing turned by the world's turn, clockwise from up.
+    // The shift centres a letter's capital on its point (see DerethPalette.InkShift); the dots need none.
+    private void Place(DrawingContext context, FormattedText text, Point centre, double bearing, double shift = 0)
+    {
+        var angle = (bearing + Turn) * Math.PI / 180;
+        var at = new Point(centre.X + Math.Sin(angle) * LetterRadius, centre.Y - Math.Cos(angle) * LetterRadius);
+        context.DrawText(text, new Point(at.X - text.Width / 2, at.Y - text.Height / 2 + shift));
+    }
+
+    private static FormattedText Face(string text, IBrush brush, double size) =>
+        new(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface(DerethPalette.Title), size, brush);
+}
+
+/// <summary>
+/// The heading tape above the scope: ticks every 5 degrees across 120 degrees of view, the compass points on the 45s (north in teal),
+/// faded at its ends, and the heading in degrees at its centre.
+/// </summary>
+public sealed class DerethHeadingTape : Control
+{
+    private static readonly Color GoldLight = Color.Parse("#D9B66A");
+    private const double Span = 120;
+    // Ticks this close to the centre stay clear of the heading readout.
+    private const double ClearOfCentre = 11;
+    private static readonly string[] Points = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
+    private static readonly IBrush NorthBrush = DerethPalette.Brush(DerethPalette.TealText);
+    private static readonly IBrush PointBrush = DerethPalette.Brush(GoldLight);
+    private static readonly IPen NorthPen = new Pen(NorthBrush, 0.8);
+    private static readonly IPen PointPen = new Pen(PointBrush, 0.8);
+    private static readonly IPen TickPen = new Pen(DerethPalette.Brush(GoldLight.WithAlpha(0x80)), 0.6);
+    private double _heading;
+    private FormattedText[]? _labels;
+    private FormattedText? _readout;
+    private int _readoutDegrees;
+
+    /// <summary>The heading in degrees: 0 north, 90 east.</summary>
+    public double Heading { get => _heading; set { if (_heading == value) return; _heading = value; InvalidateVisual(); } }
+
+    public override void Render(DrawingContext context)
+    {
+        base.Render(context);
+        var width = Bounds.Width;
+        var height = Bounds.Height;
+        var middle = width / 2;
+        // The compass labels are the same at every heading, so they are made once.
+        _labels ??= Points.Select((point, i) => new FormattedText(point, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+            new Typeface(DerethPalette.Title), point.Length > 1 ? 6 : 8, i == 0 ? NorthBrush : PointBrush)).ToArray();
+        var first = Math.Floor((Heading - Span / 2) / 5) * 5;
+        for (var degrees = first; degrees <= Heading + Span / 2; degrees += 5)
+        {
+            var x = middle + (degrees - Heading) / Span * width;
+            var edge = Math.Max(0, (1 - Math.Abs(x - middle) / middle) * 1.3);
+            var near = Math.Abs(x - middle) < ClearOfCentre;
+            var turned = ((degrees % 360) + 360) % 360;
+            if (turned % 45 == 0)
+            {
+                var index = (int)(turned / 45);
+                var label = _labels[index];
+                using (context.PushOpacity(edge))
+                {
+                    context.DrawText(label, new Point(x - label.Width / 2, 1 + DerethPalette.InkShift(new Typeface(DerethPalette.Title), Points[index].Length > 1 ? 6 : 8)));
+                    if (!near) context.DrawLine(index == 0 ? NorthPen : PointPen, new Point(x, height - 5), new Point(x, height));
+                }
+            }
+            else if (!near)
+            {
+                var tick = turned % 15 == 0 ? 4 : 2.5;
+                using (context.PushOpacity(edge))
+                    context.DrawLine(TickPen, new Point(x, height - tick), new Point(x, height));
+            }
+        }
+        // The readout is made again only when the degrees it shows change.
+        var degreesShown = (int)Math.Round(Heading) % 360;
+        if (_readout == null || degreesShown != _readoutDegrees)
+        {
+            _readoutDegrees = degreesShown;
+            _readout = new FormattedText(degreesShown.ToString("000", CultureInfo.InvariantCulture) + "°", CultureInfo.InvariantCulture,
+                FlowDirection.LeftToRight, new Typeface(DerethPalette.Title), 6.5, DerethPalette.CreamBrush);
+        }
+        context.DrawText(_readout, new Point(middle - _readout.Width / 2, 9 + DerethPalette.InkShift(new Typeface(DerethPalette.Title), 6.5)));
+    }
+}

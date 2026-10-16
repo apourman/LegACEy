@@ -11,22 +11,78 @@ using WindowHover = (string? WindowId, LegACEy.Client.Demo.WindowEdges Edges);
 
 namespace LegACEy.Client.Demo;
 
-/// <summary>How a window resizes: freely, down to a minimum size.</summary>
+/// <summary>How a window resizes: freely, down to a minimum size, or between a minimum and a maximum.</summary>
 public sealed class WindowResizing
 {
-    public WindowResizing(Size minimum)
+    /// <param name="maximum">The largest size; null for as big as the screen. A maximum height equal to the minimum fixes the height.</param>
+    /// <param name="locked">Whether the window is locked against resizing now, such as while retail's UI is locked. Null: never locked.</param>
+    /// <param name="noCorners">
+    /// No corner squares: a press near two edges is the edges' press, and the corners are the content's to move from. For a strip whose
+    /// content starts its own moves.
+    /// </param>
+    /// <param name="shape">
+    /// The narrowest and widest the window may be for its height, as width over height. A window whose content scales with its height keeps
+    /// its content's shape this way; a drag on one axis carries the other along when it would leave the range. Null: any shape.
+    /// </param>
+    public WindowResizing(Size minimum, Size? maximum = null, Func<bool>? locked = null, bool noCorners = false, (double Narrowest, double Widest)? shape = null)
     {
         if (minimum.Width <= 0 || minimum.Height <= 0) throw new ArgumentOutOfRangeException(nameof(minimum));
+        if (maximum is { } top && (top.Width < minimum.Width || top.Height < minimum.Height)) throw new ArgumentOutOfRangeException(nameof(maximum));
+        if (shape is { } range && (range.Narrowest <= 0 || range.Widest < range.Narrowest)) throw new ArgumentOutOfRangeException(nameof(shape));
         Minimum = minimum;
+        Maximum = maximum;
+        Locked = locked;
+        NoCorners = noCorners;
+        Shape = shape;
     }
 
     public Size Minimum { get; }
+    public Size? Maximum { get; }
+    public Func<bool>? Locked { get; }
+    public bool NoCorners { get; }
+    public (double Narrowest, double Widest)? Shape { get; }
 
-    /// <summary><paramref name="wanted"/>, no smaller than the minimum and no bigger than <paramref name="max"/>.</summary>
-    public Size Fit(Size wanted, Size max) => new(Clamp(wanted.Width, Minimum.Width, max.Width), Clamp(wanted.Height, Minimum.Height, max.Height));
+    /// <summary>Whether the height is fixed: the window has no top or bottom edge to drag.</summary>
+    public bool FixedHeight => Maximum is { } top && top.Height == Minimum.Height;
+
+    /// <summary>Whether a press on the edges resizes the window now.</summary>
+    internal bool CanResize => Locked?.Invoke() != true;
+
+    /// <summary><paramref name="wanted"/>, within the minimum, the maximum and <paramref name="max"/>.</summary>
+    public Size Fit(Size wanted, Size max) => Shaped(new(
+        Clamp(wanted.Width, Minimum.Width, Limit(Maximum?.Width, max.Width)),
+        Clamp(wanted.Height, Minimum.Height, Limit(Maximum?.Height, max.Height))), widthLeads: true, max);
+
+    /// <summary>
+    /// <paramref name="size"/> brought into <see cref="Shape"/>: the leading axis stays and the other follows, within the limits; when the
+    /// other reaches a limit, the leading axis gives way instead.
+    /// </summary>
+    internal Size Shaped(Size size, bool widthLeads, Size max)
+    {
+        if (Shape is not { } range) return size;
+        var ratio = (double)size.Width / size.Height;
+        var wanted = Math.Max(range.Narrowest, Math.Min(range.Widest, ratio));
+        if (wanted == ratio) return size;
+        int widest = Limit(Maximum?.Width, max.Width), tallest = Limit(Maximum?.Height, max.Height);
+        if (widthLeads)
+        {
+            var height = Clamp((int)Math.Round(size.Width / wanted), Minimum.Height, tallest);
+            return new Size(Clamp(Within(size.Width, height, range), Minimum.Width, widest), height);
+        }
+        var width = Clamp((int)Math.Round(size.Height * wanted), Minimum.Width, widest);
+        var within = Math.Max((int)Math.Ceiling(width / range.Widest), Math.Min((int)Math.Floor(width / range.Narrowest), size.Height));
+        return new Size(width, Clamp(within, Minimum.Height, tallest));
+    }
+
+    // A width brought within the shape's range for a height.
+    private static int Within(int width, int height, (double Narrowest, double Widest) range) =>
+        Math.Max((int)Math.Ceiling(height * range.Narrowest), Math.Min((int)Math.Floor(height * range.Widest), width));
 
     /// <summary>One axis. The minimum wins over the maximum when the screen is too small for it.</summary>
     internal static int Clamp(int wanted, int minimum, int max) => Math.Max(minimum, Math.Min(max, wanted));
+
+    /// <summary>One axis's largest length: its maximum, or the screen's when there is none.</summary>
+    internal static int Limit(int? maximum, int screen) => maximum is { } top ? Math.Min(top, screen) : screen;
 }
 
 /// <summary>Dimensions and identity for a LegACEy window.</summary>
@@ -198,8 +254,9 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
 /// <summary>
 /// Pure window behavior used by the plugin adapter and the tests. The first item in ZOrder is
 /// frontmost. Pointer coordinates are screen coordinates and all returned positions are clamped.
-/// A press in a resizable window's side or bottom band, or in its corner square, resizes it; a press on any window's top edge or in
-/// its title bar moves it.
+/// A press in a resizable window's side or bottom band, or in its corner square unless it has no corners, resizes it, within its
+/// <see cref="WindowResizing"/>: its minimum and maximum hold on every edge, a fixed height has no top or bottom edge, and a locked window
+/// does not resize. A press on any window's top edge or in its title bar moves it. While retail's UI is locked no window moves or resizes.
 /// </summary>
 public sealed class WindowManager
 {
@@ -207,8 +264,8 @@ public sealed class WindowManager
     public const int ResizeBand = 6;
 
     /// <summary>
-    /// The corner square's size: a press this near both edges of a corner is that corner. It matches the frame's corner
-    /// piece, so the grip is as easy to find as the art shows it.
+    /// The corner square's size in screen pixels, which do not scale with the window's UI scale: a press this near both edges of a corner is
+    /// that corner. It matches the frame's corner piece, so the grip is as easy to find as the art shows it.
     /// </summary>
     public const int CornerBand = 16;
 
@@ -222,13 +279,16 @@ public sealed class WindowManager
     private WindowEdges _resizeEdges;
     private Point _pressPoint;
     private Rectangle _pressBounds;
+    private readonly Func<bool>? _uiLocked;
 
     /// <param name="scale">
     /// How big windows show, against the sizes their definitions give: 0.85 shows a 400 pixel wide window 340 pixels wide. Sizes,
     /// title bars and minimums are scaled on open; saved sizes stay at design size, so a scale change keeps a window's proportions.
     /// </param>
-    public WindowManager(Size screen, IWindowPositionStore positions, string server, string character, double scale = 1)
+    /// <param name="uiLocked">Whether retail's UI is locked: then no window moves or resizes, and none shows resize edges. Null: never locked.</param>
+    public WindowManager(Size screen, IWindowPositionStore positions, string server, string character, double scale = 1, Func<bool>? uiLocked = null)
     {
+        _uiLocked = uiLocked;
         if (scale <= 0) throw new ArgumentOutOfRangeException(nameof(scale));
         Scale = scale;
         if (screen.Width <= 0 || screen.Height <= 0) throw new ArgumentOutOfRangeException(nameof(screen));
@@ -246,6 +306,8 @@ public sealed class WindowManager
     public ManagedWindow? Resizing => _resizeEdges == WindowEdges.None ? null : _dragging;
     /// <summary>The window a title-bar drag is moving, or null.</summary>
     public ManagedWindow? Moving => _resizeEdges == WindowEdges.None ? _dragging : null;
+    /// <summary>Whether retail's UI is locked, so no window moves or resizes.</summary>
+    public bool Locked => _uiLocked?.Invoke() == true;
 
     public ManagedWindow Open(WindowDefinition definition, Point requestedLocation)
     {
@@ -286,7 +348,7 @@ public sealed class WindowManager
         if (_dragging != null)
             return _resizeEdges == WindowEdges.None ? default : (_dragging.Id, _resizeEdges);
         var window = HitTest(point);
-        return window == null ? default : (window.Id, EdgesAt(window, point));
+        return window == null ? default : (window.Id, Locked ? WindowEdges.None : EdgesAt(window, point));
     }
 
     /// <summary>
@@ -294,7 +356,7 @@ public sealed class WindowManager
     /// </summary>
     public string? MoveEdgeAt(Point point)
     {
-        if (_dragging != null) return null;
+        if (_dragging != null || Locked) return null;
         var window = HitTest(point);
         return window != null && OnMoveEdge(window, point) ? window.Id : null;
     }
@@ -308,6 +370,8 @@ public sealed class WindowManager
         var window = HitTest(point);
         if (window == null) return false;
         BringToFront(window.Id);
+        // A locked UI keeps the press on the window, so it does not reach the game, but starts no drag.
+        if (Locked) return true;
         _resizeEdges = EdgesAt(window, point);
         if (_resizeEdges != WindowEdges.None)
         {
@@ -327,7 +391,7 @@ public sealed class WindowManager
     public bool BeginMove(string id, Point point)
     {
         var window = Get(id);
-        if (window == null || _dragging != null) return false;
+        if (window == null || _dragging != null || Locked) return false;
         _resizeEdges = WindowEdges.None;
         _dragging = window;
         _dragOffset = new Point(point.X - window.Location.X, point.Y - window.Location.Y);
@@ -375,22 +439,25 @@ public sealed class WindowManager
 
     /// <summary>
     /// The edges a point is on: within <see cref="ResizeBand"/> of a side or the bottom, or inside a corner square of
-    /// <see cref="CornerBand"/>. The top edge between the corners moves the window instead.
+    /// <see cref="CornerBand"/> pixels, unless the window has no corners. The top edge between the corners moves the window instead.
     /// </summary>
     private static WindowEdges EdgesAt(ManagedWindow window, Point point)
     {
-        if (window.Definition.Resizing == null) return WindowEdges.None;
+        var resizing = window.Definition.Resizing;
+        if (resizing == null || !resizing.CanResize) return WindowEdges.None;
         var bounds = window.Bounds;
         var left = point.X - bounds.Left;
         var right = bounds.Right - 1 - point.X;
         var top = point.Y - bounds.Top;
         var bottom = bounds.Bottom - 1 - point.Y;
-        if (Math.Min(left, right) < CornerBand && Math.Min(top, bottom) < CornerBand)
+        // A window with a fixed height has no top or bottom edge, so its corners are its side bands. A window with no corners has its sides
+        // and bottom as its edges; what lies between them is its content's to drag.
+        if (!resizing.FixedHeight && !resizing.NoCorners && Math.Min(left, right) < CornerBand && Math.Min(top, bottom) < CornerBand)
             return (left < right ? WindowEdges.Left : WindowEdges.Right) | (top < bottom ? WindowEdges.Top : WindowEdges.Bottom);
         var edges = WindowEdges.None;
         if (left < ResizeBand) edges |= WindowEdges.Left;
         if (right < ResizeBand) edges |= WindowEdges.Right;
-        if (bottom < ResizeBand) edges |= WindowEdges.Bottom;
+        if (!resizing.FixedHeight && bottom < ResizeBand) edges |= WindowEdges.Bottom;
         return edges;
     }
 
@@ -400,28 +467,32 @@ public sealed class WindowManager
         var resizing = window.Definition.Resizing!;
         var (x, width) = ResizeAxis(_pressBounds.X, _pressBounds.Width, point.X - _pressPoint.X,
             (_resizeEdges & WindowEdges.Left) != 0, (_resizeEdges & WindowEdges.Right) != 0,
-            resizing.Minimum.Width, _screen.Width);
+            resizing.Minimum.Width, resizing.Maximum?.Width ?? int.MaxValue, _screen.Width);
         var (y, height) = ResizeAxis(_pressBounds.Y, _pressBounds.Height, point.Y - _pressPoint.Y,
             (_resizeEdges & WindowEdges.Top) != 0, (_resizeEdges & WindowEdges.Bottom) != 0,
-            resizing.Minimum.Height, _screen.Height);
-        window.Location = new Point(x, y);
-        window.Size = new Size(width, height);
+            resizing.Minimum.Height, resizing.Maximum?.Height ?? int.MaxValue, _screen.Height);
+        // A window that keeps its shape carries the other axis along; a pressed start edge keeps its opposite edge where it was.
+        var size = resizing.Shaped(new Size(width, height), (_resizeEdges & (WindowEdges.Left | WindowEdges.Right)) != 0, _screen);
+        if ((_resizeEdges & WindowEdges.Left) != 0) x = _pressBounds.Right - size.Width;
+        if ((_resizeEdges & WindowEdges.Top) != 0) y = _pressBounds.Bottom - size.Height;
+        window.Size = size;
+        window.Location = Clamp(new Point(x, y), size);
         window.PreferredLocation = window.Location;
         window.PreferredSize = window.Size;
     }
 
     /// <summary>One axis of a resize. A moving start edge keeps the end edge fixed; a moving end edge stops at the screen.</summary>
     private static (int Start, int Length) ResizeAxis(int start, int length, int delta, bool startMoves, bool endMoves,
-        int minimum, int screen)
+        int minimum, int maximum, int screen)
     {
         if (!startMoves && !endMoves) return (start, length);
         if (startMoves)
         {
             var end = start + length;
-            var fitted = WindowResizing.Clamp(length - delta, minimum, end);
+            var fitted = WindowResizing.Clamp(length - delta, minimum, Math.Min(end, maximum));
             return (end - fitted, fitted);
         }
-        return (start, WindowResizing.Clamp(length + delta, minimum, screen - start));
+        return (start, WindowResizing.Clamp(length + delta, minimum, Math.Min(screen - start, maximum)));
     }
 
     private void EndDrag()
@@ -449,7 +520,8 @@ public sealed class WindowManager
     /// <summary>The definition at this manager's scale: what its window measures on screen.</summary>
     private WindowDefinition Scaled(WindowDefinition definition) => Scale == 1 ? definition : new WindowDefinition(
         definition.Id, definition.Title, Scaled(definition.Width), Scaled(definition.Height), Scaled(definition.TitleBarHeight), definition.Theme,
-        definition.Resizing is { } resizing ? new WindowResizing(Scaled(resizing.Minimum)) : null, definition.SharesLocationWith, definition.DragsFromContent);
+        definition.Resizing is { } resizing ? new WindowResizing(Scaled(resizing.Minimum), resizing.Maximum is { } top ? Scaled(top) : null, resizing.Locked, resizing.NoCorners, resizing.Shape) : null,
+        definition.SharesLocationWith, definition.DragsFromContent);
 
     private Size Scaled(Size size, double? scale = null) => new(Scaled(size.Width, scale), Scaled(size.Height, scale));
     private int Scaled(int length, double? scale = null) => Math.Max(1, (int)Math.Round(length * (scale ?? Scale)));

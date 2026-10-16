@@ -7,6 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="LegACEy.Client.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- the item icon outline rule, shared with the Market API (Source/Shared) -->
     <Compile Include="..\..\Source\Shared\ItemIconOutline.cs" Link="ItemIconOutline.cs" />
   </ItemGroup>

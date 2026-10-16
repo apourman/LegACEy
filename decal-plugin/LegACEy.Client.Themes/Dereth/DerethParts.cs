@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
@@ -8,6 +10,7 @@ using Avalonia.Data;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.VisualTree;
 
 namespace LegACEy.Client.Themes;
 
@@ -16,6 +19,8 @@ public static class DerethPalette
 {
     public static readonly Color Gold = Color.Parse("#C9A45C");
     public static readonly Color Cream = Color.Parse("#EFE3C4");
+    /// <summary>The dark gold: a bezel's rim and a plaque's border.</summary>
+    public static readonly Color GoldDark = Color.Parse("#7A5E30");
     public static readonly Color Text = Color.Parse("#D7D9D6");
     public static readonly Color Muted = Color.Parse("#8E979E");
     public static readonly Color Invalid = Color.Parse("#D9584A");
@@ -32,6 +37,7 @@ public static class DerethPalette
     public static readonly FontFamily Body = new("Segoe UI, Tahoma, avares://LegACEy.Client.Themes/Assets#Liberation Sans");
 
     public static readonly IBrush GoldBrush = Brush(Gold);
+    public static readonly IBrush GoldDarkBrush = Brush(GoldDark);
     public static readonly IBrush CreamBrush = Brush(Cream);
     public static readonly IBrush TextBrush = Brush(Text);
     public static readonly IBrush MutedBrush = Brush(Muted);
@@ -46,6 +52,37 @@ public static class DerethPalette
     public static readonly IBrush InvalidWashBrush = Brush(Invalid.WithAlpha(0x40));
 
     public static IBrush Brush(Color color) => new SolidColorBrush(color);
+
+    private static readonly Dictionary<(Typeface, double), double> InkShifts = new();
+
+    /// <summary>
+    /// How far to move a line of <paramref name="face"/> at <paramref name="size"/> down (up when negative) so its capitals and digits sit in
+    /// the middle of its line box. A line box centres the font's ascent and descent, and Palatino's ascent leaves room for accents above the
+    /// capitals, so they would sit low in a plaque. Measured from the glyphs of the font the system gives, so a fallback font is centred too.
+    /// </summary>
+    public static double InkShift(Typeface face, double size)
+    {
+        if (InkShifts.TryGetValue((face, size), out var shift)) return shift;
+        var text = new FormattedText("H0", CultureInfo.InvariantCulture, FlowDirection.LeftToRight, face, size, Brushes.Black);
+        var ink = text.BuildGeometry(default)?.Bounds ?? default;
+        shift = ink.Height > 0 ? Math.Round(text.Height / 2 - (ink.Top + ink.Bottom) / 2, 2) : 0;
+        return InkShifts[(face, size)] = shift;
+    }
+
+    /// <summary>
+    /// Draws <paramref name="text"/> with its capitals and digits centred in its line box (see <see cref="InkShift"/>), by the font and size it
+    /// has once it is shown; its layout is not changed.
+    /// </summary>
+    public static T CentreInk<T>(T text) where T : TextBlock
+    {
+        void Shift() => text.RenderTransform = new TranslateTransform(0, InkShift(new Typeface(text.FontFamily, text.FontStyle, text.FontWeight), text.FontSize));
+        text.AttachedToVisualTree += (_, _) => Shift();
+        text.PropertyChanged += (_, e) =>
+        {
+            if (text.IsAttachedToVisualTree() && (e.Property == TextBlock.FontSizeProperty || e.Property == TextBlock.FontFamilyProperty)) Shift();
+        };
+        return text;
+    }
 
     /// <summary>The same colour at another alpha.</summary>
     public static Color WithAlpha(this Color color, byte alpha) => Color.FromArgb(alpha, color.R, color.G, color.B);

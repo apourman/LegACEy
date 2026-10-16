@@ -79,7 +79,7 @@ public sealed class RetailChatNativeTests
     public void Every_chat_root_that_shows_is_held_hidden_and_given_back_visible_on_release()
     {
         var roots = new[] { new FakeRoot(true), new FakeRoot(true), new FakeRoot(false) };
-        var takeover = new RetailChatTakeover(roots);
+        var takeover = new RetailHeldWindows(roots);
 
         takeover.Tick(new Size(1000, 800));
 
@@ -94,6 +94,26 @@ public sealed class RetailChatNativeTests
         Assert.True(roots[1].Visible);
         // A root that was already hidden stays hidden: the takeover gives back what it took.
         Assert.False(roots[2].Visible);
+    }
+
+    [Fact]
+    public void Of_two_vitals_windows_release_shows_only_the_one_retail_showed_last()
+    {
+        var stacked = new FakeRoot(true);
+        var side = new FakeRoot(false);
+        var takeover = new RetailHeldWindows(new[] { stacked, side }, oneShows: true);
+        takeover.Tick(new Size(1000, 800));
+
+        // The player turns on side-by-side vitals while both are held: retail hides the stacked one (already hidden) and shows the other.
+        stacked.SetVisible(false);
+        side.SetVisible(true);
+        takeover.Tick(new Size(1000, 800));
+        Assert.False(side.Visible);
+
+        takeover.Release();
+
+        Assert.False(stacked.Visible);
+        Assert.True(side.Visible);
     }
 
     /// <summary>A retail chat root: its visibility is the state the takeover hides and restores.</summary>
