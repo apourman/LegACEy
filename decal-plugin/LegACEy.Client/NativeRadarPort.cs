@@ -24,9 +24,11 @@ internal sealed unsafe class NativeRadarPort : IRadarPort
     private readonly RetailHudNatives _natives;
     private readonly Func<uint, string?> _name;
     private readonly Action<uint> _select;
-    // ponytail: names are kept for the session, one short string per object seen, empty ones too (no WorldFilter call per frame); a name
-    // Decal learns after the object is first seen is not picked up, and nothing is pruned. Retry empty names now and then if 05 shows either.
-    private readonly Dictionary<uint, string> _names = new();
+    // How often an object Decal had no name for is asked again, in milliseconds.
+    private const long NameRetryMs = 1000;
+    // ponytail: names are kept for the session, one short string per object seen (no WorldFilter call per frame); an empty one is asked
+    // again at most once a second, so a name Decal learns late shows. Nothing is pruned; prune on landblock change if memory shows it.
+    private readonly Dictionary<uint, (string Name, long RetryAt)> _names = new();
 
     /// <param name="natives">Which HUD features the running client matched.</param>
     /// <param name="name">An object's name from Decal's WorldFilter, or null when Decal has none yet.</param>
@@ -115,7 +117,10 @@ internal sealed unsafe class NativeRadarPort : IRadarPort
 
     private string Name(uint id)
     {
-        if (!_names.TryGetValue(id, out var name)) _names[id] = name = _name(id) ?? string.Empty;
+        var now = Environment.TickCount64;
+        if (_names.TryGetValue(id, out var known) && (known.Name.Length > 0 || now < known.RetryAt)) return known.Name;
+        var name = _name(id) ?? string.Empty;
+        _names[id] = (name, now + NameRetryMs);
         return name;
     }
 
