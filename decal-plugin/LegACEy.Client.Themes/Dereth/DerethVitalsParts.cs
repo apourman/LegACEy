@@ -25,7 +25,7 @@ public sealed class DerethVitalGlyph : Control
     /// <summary>The bezel's diameter in DIPs.</summary>
     public const double BezelSize = 13;
     private const double GlyphSize = 9;
-    private static readonly IPen RimPen = new Pen(DerethPalette.Brush(Color.Parse("#7A5E30")), 1);
+    private static readonly IPen RimPen = new Pen(DerethPalette.GoldDarkBrush, 1);
     private static readonly IBrush Face = new RadialGradientBrush
     {
         Center = new RelativePoint(0.5, 0.38, RelativeUnit.Relative),

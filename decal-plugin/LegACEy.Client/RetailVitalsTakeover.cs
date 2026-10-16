@@ -72,8 +72,8 @@ internal sealed class RetailVitalsTakeover : IDisposable
     public bool Holds => _held != null;
 
     /// <summary>
-    /// Closes LegACEy's window, and the next frame opens it again: at the place it was left, in the layout the character has now. Retail's
-    /// vitals stay held.
+    /// Closes LegACEy's window. The next <see cref="Tick"/> opens it again, at the place it was left, in the layout the character has now.
+    /// Retail's vitals stay held.
     /// </summary>
     public void CloseWindow()
     {

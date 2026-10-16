@@ -2254,7 +2254,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var switchOn = SwitchOn(RetailVitalsSwitchFile, ref _lastVitalsSwitchCheck, ref _vitalsSwitch, onWhenMissing: false);
         // Retail's vitals are held from portal space at login on, like chat; the window opens in game.
         var canDraw = _postUiDrawHook?.IsInstalled == true && !(_windows != null && !_windowsEnabled);
-        // The player picked the other layout: the window closes now, and the next frame opens the chosen one where it was left.
+        // The player picked the other layout: the window closes now, and the Tick below opens the chosen one where it was left.
         if (_vitalsLayoutPicked)
         {
             _vitalsLayoutPicked = false;
@@ -2272,8 +2272,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Where retail's vitals stand: the place of the one of the two windows retail shows, the side-by-side one when its option is on. The window
-    /// opens there until the player moves it. With neither shown, the first that exists.
+    /// Where retail's vitals stand: the place of whichever of its two windows is shown. The window opens there until the player moves it. With
+    /// neither shown, the first that exists.
     /// </summary>
     private static Point RetailVitalsPlace()
     {
