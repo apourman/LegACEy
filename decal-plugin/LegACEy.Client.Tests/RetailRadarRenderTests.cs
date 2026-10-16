@@ -48,7 +48,7 @@ public sealed class RetailRadarRenderTests
         port.Objects.AddRange(Scene());
         RetailRadarWindow? window = null;
         var panel = AvaloniaPanel.Create(() => window = new RetailRadarWindow(port, () => ground, options, _ => { }, () => 0, () => { }),
-            RetailRadarWindow.Width * scale, RetailRadarWindow.Height * scale, scale);
+            RetailRadarWindow.DesignWidth * scale, RetailRadarWindow.DesignHeight * scale, scale);
         try
         {
             // The ground builds off the UI thread: draw each frame until its tiles are in, or the wait runs out.

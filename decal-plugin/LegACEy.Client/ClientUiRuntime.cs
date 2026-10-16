@@ -729,8 +729,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _chatReleaseLogged = true;
             }
         }
-        // The same for retail's radar: a failed give-back is retried each frame, as chat's is.
-        if (_failed && _radarTakeover != null) ReleaseRetailRadar();
+        // The same for retail's radar: a failed give-back is retried each frame, logged once per streak, as chat's is.
+        if (_failed && _radarTakeover != null)
+        {
+            try { ReleaseRetailRadar(); }
+            catch (Exception exception)
+            {
+                if (!_radarReleaseLogged) Log($"Could not give the retail radar back; retrying: {exception}");
+                _radarReleaseLogged = true;
+            }
+        }
         if (_failed || !NativeUi.Ready)
             return;
 
@@ -2111,7 +2119,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (!NativeUi.Ready || _device == IntPtr.Zero || _portal == null) return false;
         var natives = RadarNatives();
         if (!natives.RadarWindow) return false;
-        _radarPort = new NativeRadarPort(natives, id => Bridge.Item(id)?.Name, Bridge.SelectItem);
+        _radarPort = new NativeRadarPort(natives, ObjectName, Bridge.SelectItem);
         _radarTakeover = new RetailHeldWindows(RetailHudCatalogue.RadarWindows);
         // The ground's DATs open off the UI thread; the radar draws dots on dark until its first tiles are built.
         _radarDatLoad ??= LoadRadarGround(_portal);
@@ -2142,11 +2150,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (!CanOpenWindows || _radarPort == null) return false;
         var screen = _windows!.Screen;
-        var beside = new Point(Math.Max(0, screen.Width - (int)Math.Round(RetailRadarWindow.Width * WindowScale) - 12), 12);
+        var beside = new Point(Math.Max(0, screen.Width - (int)Math.Round(RetailRadarWindow.DesignWidth * WindowScale) - 12), 12);
         var window = new RetailRadarWindow(_radarPort, RadarGround, LoadRadarOptions(), SaveRadarOptions, () => (uint)Bridge.Fact(BridgeFact.CurrentSelection),
             () => _windows?.BeginMove(RadarWindowId, _pointer));
         // The radar has no title bar: it drags from its frame, so its title bar is only one pixel tall.
-        var definition = new WindowDefinition(RadarWindowId, "Radar", RetailRadarWindow.Width, RetailRadarWindow.Height, titleBarHeight: 1,
+        var definition = new WindowDefinition(RadarWindowId, "Radar", RetailRadarWindow.DesignWidth, RetailRadarWindow.DesignHeight, titleBarHeight: 1,
             theme: new DerethClientTheme(), dragsFromContent: true);
         _radar = window;
         try { OpenWindowCore(definition, window, beside, RadarFailed); }
@@ -2203,15 +2211,22 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _radarTakeover = null;
             _radarReleaseLogged = false;
         }
+        // Cleared first, as chat's is, so a radar that throws on close cannot leave the port and window half released.
+        var radar = _radar;
         _radarPort = null;
         _radar = null;
+        radar?.Dispose();
         ReleaseFeatureWindow(RadarWindowId);
     }
 
-    /// <summary>Drops the ground's DATs at unload, after the radar that reads them is gone.</summary>
+    /// <summary>Drops the ground's DATs at unload, after the radar that reads them is gone. A load still running is disposed when it lands.</summary>
     private void DisposeRadarGround()
     {
-        if (_radarDatLoad is { IsCompletedSuccessfully: true } load) load.Result?.Dispose();
+        if (_radarDatLoad is { } load)
+        {
+            if (load.IsCompletedSuccessfully) load.Result?.Dispose();
+            else _ = load.ContinueWith(task => { if (task.IsCompletedSuccessfully) task.Result?.Dispose(); }, TaskScheduler.Default);
+        }
         _radarDatLoad = null;
         _radarTiles = null;
     }
@@ -2220,7 +2235,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         _radarFailed = true;
         Log($"Dereth radar disabled; retail's radar is back: {exception}");
-        ReleaseRetailRadar();
+        try { ReleaseRetailRadar(); }
+        catch (Exception releaseError) { Log($"Could not give the retail radar back: {releaseError}"); }
     }
 
     /// <summary>Whether a feature's switch is on: on while its file is missing beside the DLL. The file is looked for once a second.</summary>
@@ -2704,7 +2720,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_chatTakeover != null) Log("Retail's chat windows are still held after two tries at unload; they stay hidden until the client restarts.");
         try { ReleaseRetailToolbar(); }
         catch (Exception exception) { Log($"Could not give the retail toolbar back during unload: {exception}"); }
-        ReleaseRetailRadar();
+        // The radar gets the same two tries as chat.
+        try
+        {
+            ReleaseRetailRadar();
+            if (_radarTakeover != null) ReleaseRetailRadar();
+        }
+        catch (Exception exception) { Log($"Could not give the retail radar back during unload: {exception}"); }
+        if (_radarTakeover != null) Log("Retail's radar is still held after two tries at unload; it stays hidden until the client restarts.");
         DisposeRadarGround();
         if (_itemDragActive)
             try { _retailDrag?.ClearDropIndicator(); } catch (Exception exception) { Log($"Could not clear the inventory drop indicator: {exception.Message}"); }

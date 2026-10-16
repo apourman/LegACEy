@@ -17,10 +17,10 @@ namespace LegACEy.Client.Demo;
 /// selects it, the wheel zooms, and the bezel holds retail's UI lock and an options popover. It reads the game once a frame through
 /// <see cref="Refresh"/>; every other change is made from what was read last.
 /// </summary>
-public sealed class RetailRadarWindow : Decorator
+public sealed class RetailRadarWindow : Decorator, IDisposable
 {
-    /// <summary>The window's size in DIPs.</summary>
-    public new const int Width = 146, Height = 174;
+    /// <summary>The window's design size in DIPs.</summary>
+    public const int DesignWidth = 146, DesignHeight = 174;
     /// <summary>Where the scope's top-left sits in the window, in DIPs.</summary>
     public static readonly Point ScopeOrigin = new(14, 28);
     // The scope's diameter: 118 DIPs across, so its radius is 59.
@@ -38,6 +38,9 @@ public sealed class RetailRadarWindow : Decorator
     private readonly Action _startMove;
     // Each landblock's tile as a bitmap, converted once per tile and dropped once it leaves the nine around the player.
     private readonly Dictionary<ushort, (GameImage Source, WriteableBitmap Bitmap)> _bitmaps = new();
+    // The tiles drawn last read, and the landblocks among them; both refilled each read, so the lists are kept rather than made anew.
+    private readonly List<(IImage Image, Rect Metres)> _drawnTiles = new();
+    private readonly HashSet<ushort> _wanted = new();
     private readonly DerethRadarScope _scope = new() { Width = Diameter, Height = Diameter, Margin = new Thickness(ScopeOrigin.X, ScopeOrigin.Y, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
     private readonly DerethRadarBezel _bezel;
     private readonly DerethHeadingTape _tape = new();
@@ -53,6 +56,9 @@ public sealed class RetailRadarWindow : Decorator
     private uint? _hovered;
     private uint? _pressed;
     private int _tilesDrawn;
+    // One tile is converted to a bitmap per read; the rest wait for later reads.
+    private bool _convertedThisRead;
+    private bool _disposed;
 
     public RadarOptions Options { get; private set; }
 
@@ -140,7 +146,7 @@ public sealed class RetailRadarWindow : Decorator
 
         var grid = new Grid
         {
-            Width = Width, Height = Height, Background = Brushes.Transparent,
+            Width = DesignWidth, Height = DesignHeight, Background = Brushes.Transparent,
             Children = { _scope, _bezel, tape, _coordinatesPlaque, _lock, _gear, _popover }
         };
         // A press on the frame, where no dot or control takes it, closes the options and moves the radar unless the UI is locked.
@@ -157,7 +163,18 @@ public sealed class RetailRadarWindow : Decorator
     {
         _player = _port.Player;
         _objects = _player == null ? Array.Empty<RadarObject>() : _port.Objects;
+        _convertedThisRead = false;
         Rebuild();
+    }
+
+    /// <summary>Frees the ground's bitmaps. The window draws nothing after this, and a later read converts none.</summary>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _drawnTiles.Clear();
+        foreach (var (_, bitmap) in _bitmaps.Values) bitmap.Dispose();
+        _bitmaps.Clear();
     }
 
     private void Change(RadarOptions options)
@@ -210,13 +227,16 @@ public sealed class RetailRadarWindow : Decorator
         }
         _scope.Dots = dots;
         var hovered = _hovered is { } id ? frame.Dots.FirstOrDefault(dot => dot.Id == id) : null;
-        HoverLabel = hovered == null ? null : RadarScope.Label(hovered);
-        _scope.Label = HoverLabel;
+        (string Text, Point At)? label = hovered == null ? null : (RadarScope.Label(hovered), hovered.At);
+        HoverLabel = label?.Text;
+        _scope.Label = label;
 
         _bezel.Turn = frame.Turn;
         _tape.Heading = frame.Heading;
         _coordinates.Text = frame.Coordinates ?? string.Empty;
         _coordinatesPlaque.IsVisible = frame.Coordinates != null;
+        // Without retail's lock natives the port's UiLocked does nothing, so the button is not shown.
+        _lock.IsVisible = _port.UiLockAvailable;
         _lock.Glyph = _port.UiLocked ? DerethGlyph.Lock : DerethGlyph.Unlock;
         _lock.IsOpen = _port.UiLocked;
         ToolTip.SetTip(_lock, _port.UiLocked ? UnlockTip : LockTip);
@@ -230,8 +250,8 @@ public sealed class RetailRadarWindow : Decorator
     // The tiles of the ground that are built, each with its bitmap. Outdoors only, and only while the ground is on.
     private List<(IImage Image, Rect Metres)> GroundFor(RadarScopeFrame frame)
     {
-        var tiles = new List<(IImage Image, Rect Metres)>(frame.Tiles.Count);
-        var wanted = new HashSet<ushort>();
+        _drawnTiles.Clear();
+        _wanted.Clear();
         var ground = frame.Tiles.Count > 0 ? _ground() : null;
         if (ground != null && _player != null)
         {
@@ -240,22 +260,29 @@ public sealed class RetailRadarWindow : Decorator
             foreach (var tile in frame.Tiles)
             {
                 if (ground.Tile(tile.Landblock) is not { } image || BitmapOf(tile.Landblock, image) is not { } bitmap) continue;
-                tiles.Add((bitmap, tile.Metres));
-                wanted.Add(tile.Landblock);
+                _drawnTiles.Add((bitmap, tile.Metres));
+                _wanted.Add(tile.Landblock);
             }
         }
-        foreach (var landblock in _bitmaps.Keys.Where(landblock => !wanted.Contains(landblock)).ToArray())
-        {
-            _bitmaps[landblock].Bitmap.Dispose();
-            _bitmaps.Remove(landblock);
-        }
-        return tiles;
+        // Each drawn tile holds one bitmap, so more bitmaps than drawn tiles means some landblock left: only then is the dictionary swept.
+        if (_bitmaps.Count > _wanted.Count)
+            foreach (var landblock in _bitmaps.Keys.ToArray())
+            {
+                if (_wanted.Contains(landblock)) continue;
+                _bitmaps[landblock].Bitmap.Dispose();
+                _bitmaps.Remove(landblock);
+            }
+        return _drawnTiles;
     }
 
-    // A landblock's bitmap, converted once for each image the ground builds.
+    // A landblock's bitmap, converted once for each image the ground builds. One conversion is made a read, so a landblock crossing
+    // does not convert nine tiles on the UI thread at once: the tiles not converted yet are left out until a later read.
     private WriteableBitmap? BitmapOf(ushort landblock, GameImage image)
     {
+        if (_disposed) return null;
         if (_bitmaps.TryGetValue(landblock, out var known) && ReferenceEquals(known.Source, image)) return known.Bitmap;
+        if (_convertedThisRead) return null;
+        _convertedThisRead = true;
         var bitmap = GameArtImageExtension.CreateBitmap(image);
         if (bitmap == null) return null;
         if (known.Bitmap != null) known.Bitmap.Dispose();

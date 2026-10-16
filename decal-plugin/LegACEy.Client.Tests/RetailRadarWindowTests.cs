@@ -62,6 +62,16 @@ public sealed class RetailRadarWindowTests
     });
 
     [Fact]
+    public void The_lock_button_is_not_shown_where_retail_has_no_lock() => RenderThread.Run(() =>
+    {
+        var port = PortWith();
+        port.UiLockAvailable = false;
+        using var panel = Open(port, out _);
+
+        Assert.False(Medallion(panel, "Lock UI").IsVisible);
+    });
+
+    [Fact]
     public void The_options_popover_toggles_north_up_and_saves_the_change() => RenderThread.Run(() =>
     {
         RadarOptions? saved = null;
@@ -82,7 +92,10 @@ public sealed class RetailRadarWindowTests
         using var panel = Open(port, out var window, ground: ground);
         WaitForGround(ground);
 
+        // One tile is converted to a bitmap a read, so the nine come in over nine reads.
         window.Refresh();
+        Assert.Equal(1, window.TilesDrawn);
+        for (var read = 1; read < 9; read++) window.Refresh();
         Assert.Equal(9, window.TilesDrawn);
 
         port.Player = new RadarPlayer(new RadarPosition(Indoors, 60, 84, 0), 0);
@@ -139,7 +152,7 @@ public sealed class RetailRadarWindowTests
     {
         RetailRadarWindow? created = null;
         var panel = AvaloniaPanel.Create(() => created = new RetailRadarWindow(port, () => ground, options ?? new RadarOptions(), saved ?? (_ => { }),
-            () => 0, startMove ?? (() => { })), RetailRadarWindow.Width, RetailRadarWindow.Height);
+            () => 0, startMove ?? (() => { })), RetailRadarWindow.DesignWidth, RetailRadarWindow.DesignHeight);
         window = created!;
         window.Refresh();
         panel.Tick();

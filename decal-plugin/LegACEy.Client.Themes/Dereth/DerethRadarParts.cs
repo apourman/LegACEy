@@ -42,7 +42,9 @@ public sealed class DerethRadarScope : Control
 
     private IReadOnlyList<(IImage Image, Rect Metres)> _tiles = Array.Empty<(IImage Image, Rect Metres)>();
     private IReadOnlyList<(Point At, Color Colour, double Opacity, bool Selected, bool Hovered)> _dots = Array.Empty<(Point At, Color Colour, double Opacity, bool Selected, bool Hovered)>();
-    private string? _label;
+    // The dots' brushes by colour and alpha, made once each: a dot's alpha takes only a few values.
+    private readonly Dictionary<(Color Colour, byte Alpha), IBrush> _dotBrushes = new();
+    private (string Text, Point At)? _label;
     private double _turn, _arrow, _pixelsPerMetre = 1;
     private bool _rings;
 
@@ -70,8 +72,8 @@ public sealed class DerethRadarScope : Control
         set { _dots = value; InvalidateVisual(); }
     }
 
-    /// <summary>The hovered dot's label, drawn beside the hovered dot; null for none.</summary>
-    public string? Label
+    /// <summary>The hovered dot's label and the dot's point, so the label sits beside it; null for none.</summary>
+    public (string Text, Point At)? Label
     {
         get => _label;
         set { _label = value; InvalidateVisual(); }
@@ -99,7 +101,7 @@ public sealed class DerethRadarScope : Control
             using (context.PushTransform(Matrix.CreateRotation(Arrow * Math.PI / 180) * Matrix.CreateTranslation(centre)))
                 context.DrawGeometry(MarkerBrush, null, Marker);
         }
-        if (_label != null) DrawLabel(context, size);
+        if (_label is { } label) DrawLabel(context, size, label);
     }
 
     private static void DrawCrosshair(DrawingContext context, Point centre, double radius)
@@ -114,25 +116,23 @@ public sealed class DerethRadarScope : Control
             context.DrawEllipse(null, RingPen, centre, radius * fraction, radius * fraction);
     }
 
-    private static void DrawDot(DrawingContext context, (Point At, Color Colour, double Opacity, bool Selected, bool Hovered) dot)
+    private void DrawDot(DrawingContext context, (Point At, Color Colour, double Opacity, bool Selected, bool Hovered) dot)
     {
-        var colour = DerethPalette.Brush(dot.Colour.WithAlpha((byte)Math.Round(dot.Opacity * 255)));
+        var alpha = (byte)Math.Round(dot.Opacity * 255);
+        var key = (dot.Colour, alpha);
+        if (!_dotBrushes.TryGetValue(key, out var colour)) _dotBrushes[key] = colour = DerethPalette.Brush(dot.Colour.WithAlpha(alpha));
         context.DrawEllipse(colour, OutlinePen, dot.At, 1.9, 1.9);
         if (dot.Selected) context.DrawEllipse(null, SelectedPen, dot.At, 4.5, 4.5);
         if (dot.Hovered) context.DrawEllipse(null, HoveredPen, dot.At, 4.5, 4.5);
     }
 
     // The label sits to the lower right of the hovered dot, and moves in where the scope's edge would cut it.
-    private void DrawLabel(DrawingContext context, double size)
+    private static void DrawLabel(DrawingContext context, double size, (string Text, Point At) label)
     {
-        (Point At, Color Colour, double Opacity, bool Selected, bool Hovered)? hovered = null;
-        foreach (var dot in _dots)
-            if (dot.Hovered) hovered = dot;
-        if (hovered is not { } at) return;
-        var text = new FormattedText(_label!, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, LabelFace, 9.5, DerethPalette.CreamBrush);
+        var text = new FormattedText(label.Text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, LabelFace, 9.5, DerethPalette.CreamBrush);
         var box = new Rect(0, 0, text.Width + 10, text.Height + 3);
-        var x = Math.Max(2, Math.Min(at.At.X + 6, size - box.Width - 2));
-        var y = Math.Max(2, Math.Min(at.At.Y + 6, size - box.Height - 2));
+        var x = Math.Max(2, Math.Min(label.At.X + 6, size - box.Width - 2));
+        var y = Math.Max(2, Math.Min(label.At.Y + 6, size - box.Height - 2));
         var place = new Rect(x, y, box.Width, box.Height);
         context.DrawRectangle(LabelFill, LabelEdge, new RoundedRect(place, 3));
         context.DrawText(text, new Point(x + 5, y + 1.5));
@@ -145,10 +145,13 @@ public sealed class DerethRadarScope : Control
 /// </summary>
 public sealed class DerethRadarBezel : Control
 {
-    // The rings sit outside the scope's edge, as the bezel's box shadows do in the mockup: each as (distance from the edge, colour, width).
-    private static readonly (double Outset, Color Colour, double Width)[] Rings =
+    // The rings sit outside the scope's edge, as the bezel's box shadows do in the mockup: each as (distance from the edge, pen).
+    private static readonly (double Outset, IPen Pen)[] Rings =
     {
-        (1, Color.Parse("#7A5E30"), 1.5), (3.5, Color.Parse("#0A1218"), 1.5), (5, DerethPalette.Gold, 1), (6.5, Color.Parse("#2B2112"), 1.5)
+        (1, new Pen(DerethPalette.Brush(Color.Parse("#7A5E30")), 1.5)),
+        (3.5, new Pen(DerethPalette.Brush(Color.Parse("#0A1218")), 1.5)),
+        (5, new Pen(DerethPalette.Brush(DerethPalette.Gold), 1)),
+        (6.5, new Pen(DerethPalette.Brush(Color.Parse("#2B2112")), 1.5)),
     };
     private const double ScopeRadius = 59;
     // The letters sit inside the rim, as retail's do.
@@ -167,8 +170,8 @@ public sealed class DerethRadarBezel : Control
     {
         base.Render(context);
         var centre = new Point(Bounds.Width / 2, Bounds.Height / 2);
-        foreach (var (outset, colour, width) in Rings)
-            context.DrawEllipse(null, new Pen(DerethPalette.Brush(colour), width), centre, ScopeRadius + outset, ScopeRadius + outset);
+        foreach (var (outset, pen) in Rings)
+            context.DrawEllipse(null, pen, centre, ScopeRadius + outset, ScopeRadius + outset);
         _letters ??= Letters.Select(letter => Face(letter.Text, letter.Text == "N" ? DerethPalette.TealBrush : DerethPalette.Brush(GoldLight), 10)).ToArray();
         _minors ??= new[] { Face("·", DerethPalette.MutedBrush, 6), Face("·", DerethPalette.MutedBrush, 6), Face("·", DerethPalette.MutedBrush, 6), Face("·", DerethPalette.MutedBrush, 6) };
         for (var i = 0; i < Letters.Length; i++)
@@ -200,7 +203,15 @@ public sealed class DerethHeadingTape : Control
     // Ticks this close to the centre stay clear of the heading readout.
     private const double ClearOfCentre = 11;
     private static readonly string[] Points = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
+    private static readonly IBrush NorthBrush = DerethPalette.Brush(DerethPalette.TealText);
+    private static readonly IBrush PointBrush = DerethPalette.Brush(GoldLight);
+    private static readonly IPen NorthPen = new Pen(NorthBrush, 0.8);
+    private static readonly IPen PointPen = new Pen(PointBrush, 0.8);
+    private static readonly IPen TickPen = new Pen(DerethPalette.Brush(GoldLight.WithAlpha(0x80)), 0.6);
     private double _heading;
+    private FormattedText[]? _labels;
+    private FormattedText? _readout;
+    private int _readoutDegrees;
 
     /// <summary>The heading in degrees: 0 north, 90 east.</summary>
     public double Heading { get => _heading; set { _heading = value; InvalidateVisual(); } }
@@ -211,6 +222,9 @@ public sealed class DerethHeadingTape : Control
         var width = Bounds.Width;
         var height = Bounds.Height;
         var middle = width / 2;
+        // The compass labels are the same at every heading, so they are made once.
+        _labels ??= Points.Select((point, i) => new FormattedText(point, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+            new Typeface(DerethPalette.Title), point.Length > 1 ? 6 : 8, i == 0 ? NorthBrush : PointBrush)).ToArray();
         var first = Math.Floor((Heading - Span / 2) / 5) * 5;
         for (var degrees = first; degrees <= Heading + Span / 2; degrees += 5)
         {
@@ -220,25 +234,29 @@ public sealed class DerethHeadingTape : Control
             var turned = ((degrees % 360) + 360) % 360;
             if (turned % 45 == 0)
             {
-                var point = Points[(int)(turned / 45)];
-                var brush = DerethPalette.Brush(point == "N" ? DerethPalette.TealText : GoldLight);
-                var label = new FormattedText(point, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface(DerethPalette.Title),
-                    point.Length > 1 ? 6 : 8, brush);
+                var index = (int)(turned / 45);
+                var label = _labels[index];
                 using (context.PushOpacity(edge))
                 {
                     context.DrawText(label, new Point(x - label.Width / 2, 1));
-                    if (!near) context.DrawLine(new Pen(brush, 0.8), new Point(x, height - 5), new Point(x, height));
+                    if (!near) context.DrawLine(index == 0 ? NorthPen : PointPen, new Point(x, height - 5), new Point(x, height));
                 }
             }
             else if (!near)
             {
                 var tick = turned % 15 == 0 ? 4 : 2.5;
                 using (context.PushOpacity(edge))
-                    context.DrawLine(new Pen(DerethPalette.Brush(GoldLight.WithAlpha(0x80)), 0.6), new Point(x, height - tick), new Point(x, height));
+                    context.DrawLine(TickPen, new Point(x, height - tick), new Point(x, height));
             }
         }
-        var readout = new FormattedText(((int)Math.Round(Heading) % 360).ToString("000", CultureInfo.InvariantCulture) + "°", CultureInfo.InvariantCulture,
-            FlowDirection.LeftToRight, new Typeface(DerethPalette.Title), 6.5, DerethPalette.CreamBrush);
-        context.DrawText(readout, new Point(middle - readout.Width / 2, 9));
+        // The readout is made again only when the degrees it shows change.
+        var degreesShown = (int)Math.Round(Heading) % 360;
+        if (_readout == null || degreesShown != _readoutDegrees)
+        {
+            _readoutDegrees = degreesShown;
+            _readout = new FormattedText(degreesShown.ToString("000", CultureInfo.InvariantCulture) + "°", CultureInfo.InvariantCulture,
+                FlowDirection.LeftToRight, new Typeface(DerethPalette.Title), 6.5, DerethPalette.CreamBrush);
+        }
+        context.DrawText(_readout, new Point(middle - _readout.Width / 2, 9));
     }
 }
