@@ -62,8 +62,8 @@ public interface IGroundSource
 /// <summary>
 /// The ground's DATs, read as ACE.DatLoader reads them: client_cell_1.dat for each landblock's vertices (CellLandblock) and its
 /// buildings and walls (LandblockInfo), and client_portal.dat for the height table and terrain textures (RegionDesc) and for the
-/// models the footprints come from. client_highres.dat supplies a terrain texture where it is larger. The cell and high-res DATs
-/// are opened beside the portal, which the caller keeps owning.
+/// models the footprints come from. client_highres.dat supplies a terrain texture where it is larger. GroundDat opens its own
+/// copies of the portal, cell and high-res DATs beside the given portal, so its reads never wait on the caller's portal.
 /// </summary>
 public sealed class GroundDat : IGroundSource, IDisposable
 {
@@ -81,12 +81,12 @@ public sealed class GroundDat : IGroundSource, IDisposable
 
     public GroundDat(PortalDat portal)
     {
-        _portal = portal;
+        _portal = new PortalDat(portal.Path);
         var directory = Path.GetDirectoryName(portal.Path)!;
         _cell = new PortalDat(Path.Combine(directory, "client_cell_1.dat"));
         var highRes = Path.Combine(directory, "client_highres.dat");
         _highRes = File.Exists(highRes) ? new PortalDat(highRes) : null;
-        var region = portal.ReadFile(RegionId) ?? throw new InvalidDataException("RegionDesc 0x13000000 is not in portal.dat.");
+        var region = _portal.ReadFile(RegionId) ?? throw new InvalidDataException("RegionDesc 0x13000000 is not in portal.dat.");
         (_heights, _surfaces) = ReadRegion(region);
     }
 
@@ -121,6 +121,7 @@ public sealed class GroundDat : IGroundSource, IDisposable
 
     public void Dispose()
     {
+        _portal.Dispose();
         _cell.Dispose();
         _highRes?.Dispose();
     }
