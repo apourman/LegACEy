@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.IO;
 using System.Threading;
 using LegACEy.Client.GameArt;
 using Xunit;
@@ -96,6 +98,20 @@ public sealed class GroundTilesTests
         Assert.True(WaitFor(() => tiles.Tile(0xC0A0) != null));
     }
 
+    [Fact]
+    public void A_build_that_fails_is_logged_and_not_kept_so_the_next_follow_builds_it_again()
+    {
+        var logged = new ConcurrentQueue<string>();
+        var tiles = new GroundTiles(new FlakyGround(), logged.Enqueue);
+
+        tiles.Follow(Arwic);
+        Assert.True(WaitFor(() => !logged.IsEmpty));
+        Assert.Null(tiles.Tile(Arwic));
+
+        tiles.Follow(0xC6AA); // Arwic is still in the 3 x 3, so it is started again
+        Assert.True(WaitFor(() => tiles.Tile(Arwic) != null));
+    }
+
     private static GameImage? Texture(uint type) => type switch
     {
         Green => Solid(0x00, 0xC0, 0x00),
@@ -139,6 +155,21 @@ public sealed class GroundTilesTests
             Thread.Sleep(5);
         }
         return true;
+    }
+
+    /// <summary>Flat ground whose first read of Arwic fails, as a DAT that is busy or damaged might.</summary>
+    private sealed class FlakyGround : IGroundSource
+    {
+        private readonly FakeGround _ground = new();
+        private int _failures = 1;
+
+        public GroundLandblock? ReadLandblock(int x, int y)
+        {
+            if (x == 0xC6 && y == 0xA9 && Interlocked.Exchange(ref _failures, 0) == 1) throw new IOException("client_cell_1.dat is busy.");
+            return _ground.ReadLandblock(x, y);
+        }
+
+        public GameImage? TerrainTexture(uint terrainType) => _ground.TerrainTexture(terrainType);
     }
 
     /// <summary>Flat ground of one type; reads can be held at <see cref="Gate"/> to show they happen off the caller's thread.</summary>

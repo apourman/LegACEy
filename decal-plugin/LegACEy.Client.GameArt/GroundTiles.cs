@@ -12,13 +12,19 @@ namespace LegACEy.Client.GameArt;
 public sealed class GroundTiles
 {
     private readonly IGroundSource _source;
+    private readonly Action<string>? _log;
     private readonly object _gate = new();
     private readonly HashSet<ushort> _wanted = new();
     private readonly HashSet<ushort> _building = new();
-    private readonly Dictionary<ushort, GameImage?> _tiles = new(); // a null entry is a landblock that could not be drawn
+    private readonly Dictionary<ushort, GameImage?> _tiles = new(); // a null entry is a landblock with no ground data
     private ushort? _centre;
 
-    public GroundTiles(IGroundSource source) => _source = source;
+    /// <param name="log">Told why a landblock's tile could not be built; that landblock is tried again on the next <see cref="Follow"/>.</param>
+    public GroundTiles(IGroundSource source, Action<string>? log = null)
+    {
+        _source = source;
+        _log = log;
+    }
 
     /// <summary>
     /// The player is in landblock <paramref name="landblock"/> (0xXXYY: the high 16 bits of its id). Cheap when the landblock
@@ -58,6 +64,7 @@ public sealed class GroundTiles
         }
 
         GameImage? tile = null;
+        Exception? failure = null;
         try
         {
             var x = id >> 8;
@@ -74,17 +81,18 @@ public sealed class GroundTiles
                 tile = GroundTileRenderer.Render(centre, around, _source.TerrainTexture);
             }
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            // A landblock whose DATs can't be read has no ground, and the radar falls back to dots on dark.
-            tile = null;
+            failure = exception;
         }
 
+        // A failure is not kept, so the next Follow starts the landblock again. It is logged once the build has let go of it.
         lock (_gate)
         {
             _building.Remove(id);
-            if (_wanted.Contains(id)) _tiles[id] = tile;
+            if (failure == null && _wanted.Contains(id)) _tiles[id] = tile;
         }
+        if (failure != null) _log?.Invoke($"The ground of landblock {id:X4} could not be drawn: {failure.Message}");
     }
 
     private static IEnumerable<(int X, int Y)> Neighbours(int x, int y)
