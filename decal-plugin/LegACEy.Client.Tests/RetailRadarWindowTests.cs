@@ -146,6 +146,25 @@ public sealed class RetailRadarWindowTests
         Assert.True(reopened.Options.Rings);
     });
 
+    [Fact]
+    public void A_radar_with_nothing_moving_draws_no_new_frame() => RenderThread.Run(() =>
+    {
+        var port = PortWith(new RadarObject(7, "Mirra", RadarColor.Gold, RadarBehavior.ShowAlways, Near(east: 20, north: 20)));
+        using var panel = Open(port, out var window);
+        window.Refresh();
+        panel.Tick();
+        var captures = panel.FrameCaptureCount;
+
+        window.Refresh();
+        panel.Tick();
+        Assert.Equal(captures, panel.FrameCaptureCount);
+
+        port.Player = new RadarPlayer(new RadarPosition(Outdoors, 60, 84, 0), 90);
+        window.Refresh();
+        panel.Tick();
+        Assert.Equal(captures + 1, panel.FrameCaptureCount);
+    });
+
     // A radar window over the port and ground, shown at its size, with its frame drawn once.
     private static AvaloniaPanel Open(FakeRadarPort port, out RetailRadarWindow window, GroundTiles? ground = null, RadarOptions? options = null,
         Action<RadarOptions>? saved = null, Action? startMove = null)

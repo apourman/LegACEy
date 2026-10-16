@@ -38,7 +38,8 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     private readonly Action _startMove;
     // Each landblock's tile as a bitmap, converted once per tile and dropped once it leaves the nine around the player.
     private readonly Dictionary<ushort, (GameImage Source, WriteableBitmap Bitmap)> _bitmaps = new();
-    // The tiles drawn last read, and the landblocks among them; both refilled each read, so the lists are kept rather than made anew.
+    // The tiles drawn last read, and the landblocks among them; both refilled each read, so the lists are kept rather than made anew. The
+    // scope is given a copy only when the tiles change, and the dots only when they change, so a still radar draws no new frame.
     private readonly List<(IImage Image, Rect Metres)> _drawnTiles = new();
     private readonly HashSet<ushort> _wanted = new();
     private readonly DerethRadarScope _scope = new() { Width = Diameter, Height = Diameter, Margin = new Thickness(ScopeOrigin.X, ScopeOrigin.Y, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
@@ -173,6 +174,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         if (_disposed) return;
         _disposed = true;
         _drawnTiles.Clear();
+        _scope.Tiles = Array.Empty<(IImage Image, Rect Metres)>();
         foreach (var (_, bitmap) in _bitmaps.Values) bitmap.Dispose();
         _bitmaps.Clear();
     }
@@ -212,7 +214,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         _frame = frame;
         var tiles = GroundFor(frame);
         _tilesDrawn = tiles.Count;
-        _scope.Tiles = tiles;
+        if (!tiles.SequenceEqual(_scope.Tiles)) _scope.Tiles = tiles.ToArray();
         _scope.Turn = frame.Turn;
         _scope.PixelsPerMetre = frame.PixelsPerMetre;
         _scope.Rings = Options.Rings;
@@ -225,7 +227,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
             var dot = frame.Dots[i];
             dots[i] = (dot.At, RadarColors.Rgb(dot.Colour), dot.Alpha, dot.Id == selected, dot.Id == _hovered);
         }
-        _scope.Dots = dots;
+        if (!dots.SequenceEqual(_scope.Dots)) _scope.Dots = dots;
         var hovered = _hovered is { } id ? frame.Dots.FirstOrDefault(dot => dot.Id == id) : null;
         (string Text, Point At)? label = hovered == null ? null : (RadarScope.Label(hovered), hovered.At);
         HoverLabel = label?.Text;

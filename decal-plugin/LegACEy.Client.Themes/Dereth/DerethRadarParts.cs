@@ -49,34 +49,34 @@ public sealed class DerethRadarScope : Control
     private bool _rings;
 
     /// <summary>The clockwise turn of the world on screen, in degrees.</summary>
-    public double Turn { get => _turn; set { _turn = value; InvalidateVisual(); } }
+    public double Turn { get => _turn; set { if (_turn == value) return; _turn = value; InvalidateVisual(); } }
 
     /// <summary>DIPs per metre of range.</summary>
-    public double PixelsPerMetre { get => _pixelsPerMetre; set { _pixelsPerMetre = value; InvalidateVisual(); } }
+    public double PixelsPerMetre { get => _pixelsPerMetre; set { if (_pixelsPerMetre == value) return; _pixelsPerMetre = value; InvalidateVisual(); } }
 
     /// <summary>Whether the range rings show.</summary>
-    public bool Rings { get => _rings; set { _rings = value; InvalidateVisual(); } }
+    public bool Rings { get => _rings; set { if (_rings == value) return; _rings = value; InvalidateVisual(); } }
 
     /// <summary>The marker's angle in degrees: 0 points up, the way the scope is turned to face.</summary>
-    public double Arrow { get => _arrow; set { _arrow = value; InvalidateVisual(); } }
+    public double Arrow { get => _arrow; set { if (_arrow == value) return; _arrow = value; InvalidateVisual(); } }
 
     public IReadOnlyList<(IImage Image, Rect Metres)> Tiles
     {
         get => _tiles;
-        set { _tiles = value; InvalidateVisual(); }
+        set { if (ReferenceEquals(_tiles, value)) return; _tiles = value; InvalidateVisual(); }
     }
 
     public IReadOnlyList<(Point At, Color Colour, double Opacity, bool Selected, bool Hovered)> Dots
     {
         get => _dots;
-        set { _dots = value; InvalidateVisual(); }
+        set { if (ReferenceEquals(_dots, value)) return; _dots = value; InvalidateVisual(); }
     }
 
     /// <summary>The hovered dot's label and the dot's point, so the label sits beside it; null for none.</summary>
     public (string Text, Point At)? Label
     {
         get => _label;
-        set { _label = value; InvalidateVisual(); }
+        set { if (_label == value) return; _label = value; InvalidateVisual(); }
     }
 
     public override void Render(DrawingContext context)
@@ -164,7 +164,7 @@ public sealed class DerethRadarBezel : Control
     private FormattedText[]? _minors;
 
     /// <summary>The clockwise turn of the world on screen, in degrees. The letters turn with it.</summary>
-    public double Turn { get => _turn; set { _turn = value; InvalidateVisual(); } }
+    public double Turn { get => _turn; set { if (_turn == value) return; _turn = value; InvalidateVisual(); } }
 
     public override void Render(DrawingContext context)
     {
@@ -214,7 +214,7 @@ public sealed class DerethHeadingTape : Control
     private int _readoutDegrees;
 
     /// <summary>The heading in degrees: 0 north, 90 east.</summary>
-    public double Heading { get => _heading; set { _heading = value; InvalidateVisual(); } }
+    public double Heading { get => _heading; set { if (_heading == value) return; _heading = value; InvalidateVisual(); } }
 
     public override void Render(DrawingContext context)
     {
