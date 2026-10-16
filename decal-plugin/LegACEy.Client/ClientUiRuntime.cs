@@ -236,6 +236,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string RadarWindowId = "dereth-radar";
     private const string RadarOptionsKey = "dereth-radar-options";
     private NativeRadarPort? _radarPort;
+    // Where retail's radar stood when it was held; the Dereth radar opens there. Null when retail's radar was not found.
+    private Point? _radarPlace;
     private RetailHeldWindows? _radarTakeover;
     private RetailRadarWindow? _radar;
     private Task<GroundDat?>? _radarDatLoad;
@@ -2129,6 +2131,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var natives = HudNatives();
         if (!natives.RadarWindow) return false;
         _radarPort = new NativeRadarPort(natives, ObjectName, Bridge.SelectItem);
+        // Read before the radar is held, so the Dereth radar opens where retail's was.
+        var retail = NativeUi.GetElement(RetailHudCatalogue.Radar);
+        _radarPlace = retail == IntPtr.Zero ? null : NativeUi.GetBounds(retail).Location;
         _radarTakeover = new RetailHeldWindows(RetailHudCatalogue.RadarWindows);
         // The ground's DATs open off the UI thread; the radar draws dots on dark until its first tiles are built.
         _radarDatLoad ??= LoadRadarGround(_portal);
@@ -2159,14 +2164,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (!CanOpenWindows || _radarPort == null) return false;
         var screen = _windows!.Screen;
-        var beside = new Point(Math.Max(0, screen.Width - (int)Math.Round(RetailRadarWindow.DesignWidth * WindowScale) - 12), 12);
+        var at = _radarPlace ?? new Point(Math.Max(0, screen.Width - (int)Math.Round(RetailRadarWindow.DesignWidth * WindowScale) - 12), 12);
         var window = new RetailRadarWindow(_radarPort, RadarGround, LoadRadarOptions(), SaveRadarOptions, () => (uint)Bridge.Fact(BridgeFact.CurrentSelection),
             () => _windows?.BeginMove(RadarWindowId, _pointer));
         // The radar has no title bar: it drags from its frame, so its title bar is only one pixel tall.
         var definition = new WindowDefinition(RadarWindowId, "Radar", RetailRadarWindow.DesignWidth, RetailRadarWindow.DesignHeight, titleBarHeight: 1,
             theme: new DerethClientTheme(), dragsFromContent: true);
         _radar = window;
-        try { OpenWindowCore(definition, window, beside, RadarFailed); }
+        try { OpenWindowCore(definition, window, at, RadarFailed); }
         catch
         {
             _radar = null;
