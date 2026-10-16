@@ -7,7 +7,7 @@ public enum DerethGlyph
 {
     PeaceStance, MeleeStance, MissileStance, MagicStance,
     Social, Magic, Skills, Quests, WorldMap, Options, LegACEy,
-    Use, Examine, Backpack
+    Use, Examine, Backpack, Lock, Unlock
 }
 
 /// <summary>One drawn part of a glyph: an SVG path on a 24-unit grid, filled or stroked, at an opacity.</summary>
@@ -113,6 +113,18 @@ public static class DerethGlyphs
             new("M7.5 12A4.5 4.5 0 1 0 16.5 12A4.5 4.5 0 1 0 7.5 12Z", true, 0, 0.35, null),
             new("M7.5 12A4.5 4.5 0 1 0 16.5 12A4.5 4.5 0 1 0 7.5 12Z", false, 1.6, 1, null),
             new("M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1", false, 1.6, 1, null),
+        },
+        [DerethGlyph.Lock] = new GlyphPart[]
+        {
+            new("M7 10.5H17A2 2 0 0 1 19 12.5V18.5A2 2 0 0 1 17 20.5H7A2 2 0 0 1 5 18.5V12.5A2 2 0 0 1 7 10.5Z", true, 0, 0.3, null),
+            new("M7 10.5H17A2 2 0 0 1 19 12.5V18.5A2 2 0 0 1 17 20.5H7A2 2 0 0 1 5 18.5V12.5A2 2 0 0 1 7 10.5Z", false, 2.4, 1, null),
+            new("M8 10.5V7.5a4 4 0 0 1 8 0v3", false, 2.4, 1, null),
+        },
+        [DerethGlyph.Unlock] = new GlyphPart[]
+        {
+            new("M7 10.5H17A2 2 0 0 1 19 12.5V18.5A2 2 0 0 1 17 20.5H7A2 2 0 0 1 5 18.5V12.5A2 2 0 0 1 7 10.5Z", true, 0, 0.3, null),
+            new("M7 10.5H17A2 2 0 0 1 19 12.5V18.5A2 2 0 0 1 17 20.5H7A2 2 0 0 1 5 18.5V12.5A2 2 0 0 1 7 10.5Z", false, 2.4, 1, null),
+            new("M8 10.5V7.5a4 4 0 0 1 7.6-1.7", false, 2.4, 1, null),
         },
         [DerethGlyph.LegACEy] = new GlyphPart[]
         {

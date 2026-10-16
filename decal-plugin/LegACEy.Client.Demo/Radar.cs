@@ -123,4 +123,6 @@ public interface IRadarPort
     void Select(uint id);
     /// <summary>Retail's UI lock, as its radar's lock button reads and sets it.</summary>
     bool UiLocked { get; set; }
+    /// <summary>Whether retail's UI lock can be read and set: false when the running client does not match its lock natives.</summary>
+    bool UiLockAvailable { get; }
 }

@@ -83,6 +83,8 @@ internal sealed unsafe class NativeRadarPort : IRadarPort
 
     public void Select(uint id) => _select(id);
 
+    public bool UiLockAvailable => _natives.Lock;
+
     public bool UiLocked
     {
         get => _natives.Lock && NativeUi.IsUiLocked;
