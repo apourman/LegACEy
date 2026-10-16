@@ -13,15 +13,23 @@ namespace LegACEy.Client.DecalPlugin;
 /// </summary>
 internal sealed class RetailHeldWindows : IDisposable
 {
+    private readonly List<IRetailTakeoverPort> _ports;
     private readonly List<RetailTakeoverLifecycle> _roots;
+    private readonly bool _oneShows;
+    private int _shown = -1;
 
-    public RetailHeldWindows(IEnumerable<IRetailTakeoverPort> roots)
+    /// <param name="roots">Retail's windows.</param>
+    /// <param name="oneShows">Retail shows one of these windows at a time (the vitals, by its side-by-side option): release shows only the
+    /// one retail showed last, since a window retail hides while held is already hidden and cannot be seen going.</param>
+    public RetailHeldWindows(IEnumerable<IRetailTakeoverPort> roots, bool oneShows = false)
     {
-        _roots = roots.Select(root => new RetailTakeoverLifecycle(root, HeldSurface.Instance)).ToList();
+        _ports = roots.ToList();
+        _roots = _ports.Select(root => new RetailTakeoverLifecycle(root, HeldSurface.Instance)).ToList();
+        _oneShows = oneShows;
     }
 
     /// <summary>Holds retail's windows placed with these ids.</summary>
-    public RetailHeldWindows(IEnumerable<uint> placedIds) : this(placedIds.Select(id => (IRetailTakeoverPort)new RootPort(id))) { }
+    public RetailHeldWindows(IEnumerable<uint> placedIds, bool oneShows = false) : this(placedIds.Select(id => (IRetailTakeoverPort)new RootPort(id)), oneShows) { }
 
     /// <summary>Whether any retail window is held hidden.</summary>
     public bool Holds => _roots.Any(root => root.Holds);
@@ -29,7 +37,12 @@ internal sealed class RetailHeldWindows : IDisposable
     /// <summary>Hides any held retail window that shows, and gives a held one back if it is gone. Called every frame.</summary>
     public void Tick(Size viewport)
     {
-        foreach (var root in _roots) root.Tick(false, viewport);
+        for (var i = 0; i < _roots.Count; i++)
+        {
+            // Every held window is hidden, so one that shows was just shown by retail.
+            if (_oneShows && _ports[i].IsVisible) _shown = i;
+            _roots[i].Tick(false, viewport);
+        }
     }
 
     /// <summary>
@@ -39,9 +52,10 @@ internal sealed class RetailHeldWindows : IDisposable
     public void Release()
     {
         List<Exception>? failures = null;
-        foreach (var root in _roots)
+        for (var i = 0; i < _roots.Count; i++)
         {
-            try { root.Dispose(); }
+            if (_oneShows && i != _shown) _roots[i].GiveBackHidden();
+            try { _roots[i].Dispose(); }
             catch (Exception exception) { (failures ??= new List<Exception>()).Add(exception); }
         }
         if (failures != null) throw new AggregateException("Could not give retail's windows back.", failures);
