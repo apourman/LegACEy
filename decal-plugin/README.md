@@ -86,6 +86,8 @@ Retail's chat keeps running out of sight, so Decal plugins see chat as before. C
 the main DLL gives retail's chat back within a second; deleting it takes the chat over again. The chat's text size is set by its Aa
 button (click larger, right-click smaller) or Ctrl and the wheel, per character.
 
+Retail's Lock UI locks every LegACEy window too: while it is on, none moves or resizes, and none shows resize grips or corners.
+
 The Dereth vitals window replaces retail's vitals, at retail's place. Health, stamina and mana show current / max in retail's colours; a
 drop leaves a pale trail, and health pulses under a quarter. The gear shown on hover switches between the stacked window and a slim
 side-by-side strip; each layout keeps its own size, and the choice is kept per character. Drag the corner grip or the bottom edge to

@@ -256,7 +256,7 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
 /// frontmost. Pointer coordinates are screen coordinates and all returned positions are clamped.
 /// A press in a resizable window's side or bottom band, or in its corner square unless it has no corners, resizes it, within its
 /// <see cref="WindowResizing"/>: its minimum and maximum hold on every edge, a fixed height has no top or bottom edge, and a locked window
-/// does not resize. A press on any window's top edge or in its title bar moves it.
+/// does not resize. A press on any window's top edge or in its title bar moves it. While retail's UI is locked no window moves or resizes.
 /// </summary>
 public sealed class WindowManager
 {
@@ -279,13 +279,16 @@ public sealed class WindowManager
     private WindowEdges _resizeEdges;
     private Point _pressPoint;
     private Rectangle _pressBounds;
+    private readonly Func<bool>? _uiLocked;
 
     /// <param name="scale">
     /// How big windows show, against the sizes their definitions give: 0.85 shows a 400 pixel wide window 340 pixels wide. Sizes,
     /// title bars and minimums are scaled on open; saved sizes stay at design size, so a scale change keeps a window's proportions.
     /// </param>
-    public WindowManager(Size screen, IWindowPositionStore positions, string server, string character, double scale = 1)
+    /// <param name="uiLocked">Whether retail's UI is locked: then no window moves or resizes, and none shows resize edges. Null: never locked.</param>
+    public WindowManager(Size screen, IWindowPositionStore positions, string server, string character, double scale = 1, Func<bool>? uiLocked = null)
     {
+        _uiLocked = uiLocked;
         if (scale <= 0) throw new ArgumentOutOfRangeException(nameof(scale));
         Scale = scale;
         if (screen.Width <= 0 || screen.Height <= 0) throw new ArgumentOutOfRangeException(nameof(screen));
@@ -303,6 +306,8 @@ public sealed class WindowManager
     public ManagedWindow? Resizing => _resizeEdges == WindowEdges.None ? null : _dragging;
     /// <summary>The window a title-bar drag is moving, or null.</summary>
     public ManagedWindow? Moving => _resizeEdges == WindowEdges.None ? _dragging : null;
+    /// <summary>Whether retail's UI is locked, so no window moves or resizes.</summary>
+    public bool Locked => _uiLocked?.Invoke() == true;
 
     public ManagedWindow Open(WindowDefinition definition, Point requestedLocation)
     {
@@ -343,7 +348,7 @@ public sealed class WindowManager
         if (_dragging != null)
             return _resizeEdges == WindowEdges.None ? default : (_dragging.Id, _resizeEdges);
         var window = HitTest(point);
-        return window == null ? default : (window.Id, EdgesAt(window, point));
+        return window == null ? default : (window.Id, Locked ? WindowEdges.None : EdgesAt(window, point));
     }
 
     /// <summary>
@@ -351,7 +356,7 @@ public sealed class WindowManager
     /// </summary>
     public string? MoveEdgeAt(Point point)
     {
-        if (_dragging != null) return null;
+        if (_dragging != null || Locked) return null;
         var window = HitTest(point);
         return window != null && OnMoveEdge(window, point) ? window.Id : null;
     }
@@ -365,6 +370,8 @@ public sealed class WindowManager
         var window = HitTest(point);
         if (window == null) return false;
         BringToFront(window.Id);
+        // A locked UI keeps the press on the window, so it does not reach the game, but starts no drag.
+        if (Locked) return true;
         _resizeEdges = EdgesAt(window, point);
         if (_resizeEdges != WindowEdges.None)
         {
@@ -384,7 +391,7 @@ public sealed class WindowManager
     public bool BeginMove(string id, Point point)
     {
         var window = Get(id);
-        if (window == null || _dragging != null) return false;
+        if (window == null || _dragging != null || Locked) return false;
         _resizeEdges = WindowEdges.None;
         _dragging = window;
         _dragOffset = new Point(point.X - window.Location.X, point.Y - window.Location.Y);
