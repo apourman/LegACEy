@@ -192,7 +192,7 @@ public sealed class RetailRadarWindowTests
     private static Point DotAt(RetailRadarWindow window, uint id)
     {
         var dot = window.Frame!.Dots.Single(candidate => candidate.Id == id);
-        return new Point(RetailRadarWindow.ScopeOrigin.X + dot.At.X, RetailRadarWindow.ScopeOrigin.Y + dot.At.Y);
+        return new Point(RetailRadarWindow.ScopeOrigin.X + dot.At.X, RetailRadarWindow.ScopeOrigin.Y + dot.At.Y) * RetailRadarWindow.Scale;
     }
 
     private static void Hover(AvaloniaPanel panel, RetailRadarWindow window, uint id)
@@ -213,7 +213,7 @@ public sealed class RetailRadarWindowTests
 
     private static void Wheel(AvaloniaPanel panel, RetailRadarWindow window, int notches)
     {
-        var centre = new Point(RetailRadarWindow.ScopeOrigin.X + 59, RetailRadarWindow.ScopeOrigin.Y + 59);
+        var centre = new Point(RetailRadarWindow.ScopeOrigin.X + 59, RetailRadarWindow.ScopeOrigin.Y + 59) * RetailRadarWindow.Scale;
         panel.MouseWheel(centre.X, centre.Y, 0, notches);
         panel.Tick();
     }

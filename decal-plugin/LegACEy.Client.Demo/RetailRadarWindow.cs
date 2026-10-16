@@ -19,9 +19,13 @@ namespace LegACEy.Client.Demo;
 /// </summary>
 public sealed class RetailRadarWindow : Decorator, IDisposable
 {
-    /// <summary>The window's design size in DIPs.</summary>
-    public const int DesignWidth = 146, DesignHeight = 174;
-    /// <summary>Where the scope's top-left sits in the window, in DIPs.</summary>
+    /// <summary>How much larger than its layout the radar draws: the whole radar, bezel and controls included, at twice its layout size.</summary>
+    public const int Scale = 2;
+    // The layout's size, before the scale.
+    private const int LayoutWidth = 146, LayoutHeight = 174;
+    /// <summary>The window's design size in DIPs, the layout at its scale.</summary>
+    public const int DesignWidth = LayoutWidth * Scale, DesignHeight = LayoutHeight * Scale;
+    /// <summary>Where the scope's top-left sits in the layout, in layout units (a window DIP is this times <see cref="Scale"/>).</summary>
     public static readonly Point ScopeOrigin = new(14, 28);
     // The scope's diameter: 118 DIPs across, so its radius is 59.
     private const double Diameter = 118;
@@ -147,7 +151,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
 
         var grid = new Grid
         {
-            Width = DesignWidth, Height = DesignHeight, Background = Brushes.Transparent,
+            Width = LayoutWidth, Height = LayoutHeight, Background = Brushes.Transparent,
             Children = { _scope, _bezel, tape, _coordinatesPlaque, _lock, _gear, _popover }
         };
         // A press on the frame, where no dot or control takes it, closes the options and moves the radar unless the UI is locked.
@@ -156,7 +160,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
             CloseOptions();
             if (!e.Handled && !_port.UiLocked) _startMove();
         };
-        Child = grid;
+        Child = new LayoutTransformControl { LayoutTransform = new ScaleTransform(Scale, Scale), Child = grid };
     }
 
     /// <summary>Reads the player and the objects around them, and draws the radar. The host calls it once a frame.</summary>
