@@ -46,7 +46,14 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private readonly LayoutTransformControl _scaled = new();
     // The tab a press started on, until the press is a click (which shows the tab) or a drag out of the strip.
     private int _pressedTab = -1;
-    private readonly StackPanel _lines = new();
+    // The log's lines. A transparent face, so a press in the gap between two lines still starts a selection.
+    private readonly StackPanel _lines = new() { Background = Brushes.Transparent };
+    // A selection across the log's lines: where the press was, and whether the drag has gone far enough to be one. The selected text is kept
+    // for Ctrl+C and the right click.
+    private (SelectableTextBlock Line, int Index)? _anchor;
+    private Point _anchorPoint;
+    private bool _dragging;
+    private string _logSelection = string.Empty;
     private readonly ScrollViewer _scroll;
     private readonly Border _pill;
     private readonly TextBlock _pillText = new() { FontFamily = DerethPalette.Title, FontSize = 10, Foreground = DerethPalette.CreamBrush };
@@ -143,6 +150,10 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         };
         _scroll = new ScrollViewer { Content = _lines, Margin = new Thickness(7, 4), VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         _scroll.ScrollChanged += (_, _) => { if (AtEnd()) HidePill(); };
+        // The log selects as one text: a drag runs from line to line. Tunnel handlers, ahead of each line's own selection.
+        _lines.AddHandler(PointerPressedEvent, OnLogPressed, RoutingStrategies.Tunnel);
+        _lines.AddHandler(PointerMovedEvent, OnLogMoved, RoutingStrategies.Tunnel);
+        _lines.AddHandler(PointerReleasedEvent, OnLogReleased, RoutingStrategies.Tunnel);
         _pill = DerethChatParts.JumpPill(_pillText);
         _pill.IsVisible = false;
         _pill.Margin = new Thickness(0, 0, 0, 6);
@@ -563,6 +574,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
 
     private void RebuildLog()
     {
+        ClearLogSelection();
         _lines.Children.Clear();
         _linesSettled = false;
         foreach (var line in _history.Lines)
@@ -613,20 +625,118 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             rest = line.Text.Substring(at + line.Sender.Length);
         }
         if (rest.Length > 0) Add(DerethChatParts.TextRun(rest, brush, italic));
-        // Text selected in the line is copied when the button goes up, as classic chat clients do, so it can be pasted into the box.
-        view.AddHandler(InputElement.PointerReleasedEvent, (_, e) =>
-        {
-            if (e.InitialPressMouseButton == MouseButton.Left && !string.IsNullOrEmpty(view.SelectedText)) _copy(view.SelectedText);
-        }, RoutingStrategies.Bubble, handledEventsToo: true);
-        // A right click over the line's selected text copies it; the game's own right click never sees it.
-        view.AddHandler(InputElement.PointerPressedEvent, (_, e) =>
-        {
-            if (!e.GetCurrentPoint(view).Properties.IsRightButtonPressed || string.IsNullOrEmpty(view.SelectedText)) return;
-            _copy(view.SelectedText);
-            e.Handled = true;
-        }, RoutingStrategies.Bubble, handledEventsToo: true);
         return view;
     }
+
+    /// <summary>The text selected in the log, its lines joined by line breaks; empty when nothing is.</summary>
+    public string LogSelection => _logSelection;
+
+    /// <summary>Lets go of the log's selection, as a click elsewhere does.</summary>
+    public void ClearLogSelection()
+    {
+        _anchor = null;
+        _dragging = false;
+        _logSelection = string.Empty;
+        foreach (var child in _lines.Children)
+            if (child is SelectableTextBlock line && line.SelectionStart != line.SelectionEnd) line.SelectionStart = line.SelectionEnd = 0;
+    }
+
+    private void OnLogPressed(object? sender, PointerPressedEventArgs e)
+    {
+        var point = e.GetCurrentPoint(_lines);
+        if (point.Properties.IsRightButtonPressed)
+        {
+            // A right click over the log copies what is selected; the game's own right click never sees it.
+            if (_logSelection.Length == 0) return;
+            _copy(_logSelection);
+            e.Handled = true;
+            return;
+        }
+        if (!point.Properties.IsLeftButtonPressed) return;
+        ClearLogSelection();
+        _anchor = LogHit(point.Position);
+        _anchorPoint = point.Position;
+        // The lines' own selection would stop at their edge; a name's click handler still sees the press.
+        e.Handled = true;
+    }
+
+    private void OnLogMoved(object? sender, PointerEventArgs e)
+    {
+        if (_anchor is not { } anchor || !e.GetCurrentPoint(_lines).Properties.IsLeftButtonPressed) return;
+        var at = e.GetPosition(_lines);
+        if (!_dragging)
+        {
+            if (Math.Abs(at.X - _anchorPoint.X) + Math.Abs(at.Y - _anchorPoint.Y) <= ClickSlop) return;
+            _dragging = true;
+            // Held from here on, so the drag goes on over the scroll bar or past the log's edge.
+            e.Pointer.Capture(_lines);
+        }
+        Select(anchor, LogHit(at));
+    }
+
+    private void OnLogReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_anchor == null || e.InitialPressMouseButton != MouseButton.Left) return;
+        var dragged = _dragging;
+        _anchor = null;
+        _dragging = false;
+        if (!dragged) return;
+        e.Pointer.Capture(null);
+        // Copied as the button goes up, as classic chat clients do, so it can be pasted into the box.
+        if (_logSelection.Length > 0) _copy(_logSelection);
+    }
+
+    /// <summary>The line and character under a point in the log: above the first line its start, below the last its end.</summary>
+    private (SelectableTextBlock Line, int Index)? LogHit(Point point)
+    {
+        SelectableTextBlock? last = null;
+        foreach (var child in _lines.Children)
+        {
+            if (child is not SelectableTextBlock line) continue;
+            var bounds = line.Bounds;
+            if (point.Y < bounds.Top) return (line, 0);
+            // A line owns the gap under it, up to the next line.
+            if (point.Y < bounds.Bottom + line.Margin.Bottom)
+                return (line, line.TextLayout.HitTestPoint(new Point(point.X - bounds.X, point.Y - bounds.Y)).TextPosition);
+            last = line;
+        }
+        return last == null ? null : (last, LineText(last).Length);
+    }
+
+    /// <summary>Selects from <paramref name="from"/> to <paramref name="to"/>, either way round, across the lines between.</summary>
+    private void Select((SelectableTextBlock Line, int Index) from, (SelectableTextBlock Line, int Index)? to)
+    {
+        if (to is not { } end) return;
+        int first = _lines.Children.IndexOf(from.Line), last = _lines.Children.IndexOf(end.Line);
+        // A line gone from the log, as the oldest goes when the history is full, ends the selection.
+        if (first < 0 || last < 0)
+        {
+            ClearLogSelection();
+            return;
+        }
+        var (start, finish) = first < last || first == last && from.Index <= end.Index ? (from, end) : (end, from);
+        (first, last) = (Math.Min(first, last), Math.Max(first, last));
+        var text = new System.Text.StringBuilder();
+        for (var i = 0; i < _lines.Children.Count; i++)
+        {
+            if (_lines.Children[i] is not SelectableTextBlock line) continue;
+            if (i < first || i > last)
+            {
+                if (line.SelectionStart != line.SelectionEnd) line.SelectionStart = line.SelectionEnd = 0;
+                continue;
+            }
+            var whole = LineText(line);
+            var head = i == first ? Math.Min(start.Index, whole.Length) : 0;
+            var tail = i == last ? Math.Min(finish.Index, whole.Length) : whole.Length;
+            line.SelectionStart = head;
+            line.SelectionEnd = tail;
+            if (i > first) text.Append("\r\n");
+            text.Append(whole, head, tail - head);
+        }
+        _logSelection = text.ToString();
+    }
+
+    private static string LineText(SelectableTextBlock line) => line.Inlines?.Text ?? line.Text ?? string.Empty;
 
     /// <summary>A click on the characters from <paramref name="start"/> to <paramref name="end"/>, without a drag, tells the name.</summary>
     private void WireNameClick(SelectableTextBlock view, int start, int end, RetailTalkTarget tell)
@@ -688,7 +798,12 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         int start = Math.Min(_input.SelectionStart, _input.SelectionEnd), end = Math.Max(_input.SelectionStart, _input.SelectionEnd);
         if (e.Key != Key.V)
         {
-            if (end == start) return;
+            // Nothing selected in the box: Ctrl+C copies what is selected in the log.
+            if (end == start)
+            {
+                if (e.Key == Key.C && _logSelection.Length > 0) _copy(_logSelection);
+                return;
+            }
             _copy(text.Substring(start, end - start));
             if (e.Key == Key.C) return;
             Replace(string.Empty);

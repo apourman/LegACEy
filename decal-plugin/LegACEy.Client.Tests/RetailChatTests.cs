@@ -420,6 +420,35 @@ public sealed class RetailChatTests
     });
 
     [Fact]
+    public void A_drag_selects_across_lines_and_Ctrl_C_in_the_box_copies_it() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        var copied = new List<string>();
+        using var panel = Open(port, out var window, copy: copied.Add);
+        port.Say(Line(RetailChatKind.TellIn, "Mirra tells you, \"still need the Vault key?\"", "Mirra"));
+        port.Say(Line(RetailChatKind.TellIn, "Thorne tells you, \"meet at Yaraq\"", "Thorne"));
+
+        // From Mirra's name, down past the end of Thorne's line: the rest of the first line and all of the second, its time included.
+        var from = NameLetter(panel, "Mirra tells you", "Mirra");
+        var to = NameLetter(panel, "Thorne tells you", "Thorne");
+        panel.PointerDown(from.X, from.Y);
+        panel.PointerMove(from.X + 20, to.Y);
+        panel.PointerMove(Width - 20, to.Y);
+        panel.PointerUp(Width - 20, to.Y);
+        var text = Assert.Single(copied);
+        Assert.Equal("Mirra tells you, \"still need the Vault key?\"\r\n" + Stamp.ToString("HH:mm") + " Thorne tells you, \"meet at Yaraq\"", text);
+        Assert.Equal(text, window.LogSelection);
+
+        // Ctrl+C in the box, with nothing selected there, copies the log's selection; a click in the log lets it go.
+        Click(panel, InputBox(window));
+        panel.KeyDown(Key.C, KeyModifiers.Control);
+        Assert.Equal(new[] { text, text }, copied);
+        panel.PointerDown(from.X, from.Y);
+        panel.PointerUp(from.X, from.Y);
+        Assert.Equal(string.Empty, window.LogSelection);
+    });
+
+    [Fact]
     public void The_wheel_over_the_log_scrolls_it() => RenderThread.Run(() =>
     {
         var port = new FakeChatPort();

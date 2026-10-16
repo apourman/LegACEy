@@ -97,6 +97,16 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     /// <summary>The lines and sent text every window shares.</summary>
     public RetailChatHistory History => _history;
 
+    /// <summary>The text selected in a window's log, or empty when no window has any.</summary>
+    public string LogSelection => _chats.Select(chat => chat.Window.LogSelection).FirstOrDefault(text => text.Length > 0) ?? string.Empty;
+
+    /// <summary>Lets go of every log's selection but the one in <paramref name="windowId"/>'s window, as a click outside it does.</summary>
+    public void ClearLogSelections(string? windowId = null)
+    {
+        foreach (var (id, window) in _chats)
+            if (id != windowId) window.ClearLogSelection();
+    }
+
     /// <summary>The main window, or null before <see cref="Open"/>.</summary>
     public RetailChatWindow? Main => Get(MainId);
 

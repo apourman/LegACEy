@@ -79,6 +79,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     [DllImport("user32.dll")]
     private static extern IntPtr GetClipboardData(uint format);
 
+    [DllImport("user32.dll")]
+    private static extern short GetKeyState(int virtualKey);
+
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr GlobalAlloc(uint flags, UIntPtr bytes);
 
@@ -239,6 +242,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private NativeRadarPort? _radarPort;
     // The chat's history kept over a UI size rebuild, for the chat windows that open next; a logoff drops it.
     private RetailChatHistory? _carriedChatHistory;
+    // Set while a Ctrl+C that copied chat text is down, so its character and key-up are kept from the game too.
+    private bool _eatingCtrlC;
     // Where retail's radar stood when it was held; the Dereth radar opens there. Null when retail's radar was not found.
     private Point? _radarPlace;
     private RetailHeldWindows? _radarTakeover;
@@ -2059,6 +2064,33 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
+    /// Ctrl+C while text is selected in a chat log copies it, and the game sees none of the C's down, character or up, so it does not act on
+    /// the key. A press outside the chat windows lets go of the selection, so the key is the game's again. True eats the message. A field of
+    /// ours with the keyboard gets its keys as before: the chat box copies the log's selection itself.
+    /// </summary>
+    private bool CopyChatSelection(int message, int wParam, int lParam)
+    {
+        const int VkControl = 0x11, VkC = 0x43, CtrlC = 0x03;
+        if (_chatWindows is not { } chats) return false;
+        if (message is InputRouterService.WmLButtonDown or InputRouterService.WmRButtonDown)
+        {
+            var at = new Point((short)(lParam & 0xffff), (short)((lParam >> 16) & 0xffff));
+            Guard(() => chats.ClearLogSelections(_windows?.HitTest(at)?.Id));
+            return false;
+        }
+        if (_eatingCtrlC && (message == InputRouterService.WmChar && wParam == CtrlC || message == InputRouterService.WmKeyUp && wParam == VkC))
+        {
+            if (message == InputRouterService.WmKeyUp) _eatingCtrlC = false;
+            return true;
+        }
+        if (message != InputRouterService.WmKeyDown || wParam != VkC || (GetKeyState(VkControl) & 0x8000) == 0) return false;
+        if (SurfaceById(_inputRouter.FocusedSurfaceId)?.Panel.WantsKeyboard == true || chats.LogSelection is not { Length: > 0 } selection) return false;
+        CopyToClipboard(selection);
+        _eatingCtrlC = true;
+        return true;
+    }
+
+    /// <summary>
     /// Puts text on the Windows clipboard as Unicode text, for text copied from the chat log. A clipboard another program holds is logged and
     /// the copy is dropped; it never fails the chat.
     /// </summary>
@@ -2409,6 +2441,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // Enter in the game, with retail's chat held and no field of ours taking keys, opens the Dereth chat window's box and eats the key.
         // The keypad's Enter (an extended key) stays retail's, as the spike recommends.
         if (message == InputRouterService.WmKeyDown && wParam == VkReturn && (lParam & ExtendedKey) == 0 && TryFocusRetailChat()) return true;
+        if (CopyChatSelection(message, wParam, lParam)) return true;
 
         var eat = false;
         if (message == WmSetCursor)
