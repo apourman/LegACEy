@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2](https://github.com/apourman/LegACEy/compare/v0.8.1...v0.8.2) (2026-10-16)
+
+
+### Bug Fixes
+
+* seeded characters get a real character look ([#51](https://github.com/apourman/LegACEy/issues/51)) ([ff1a6e0](https://github.com/apourman/LegACEy/commit/ff1a6e0069a85f0d76d7214fd469c3d8c7bcb134))
+
 ## [0.8.1](https://github.com/apourman/LegACEy/compare/v0.8.0...v0.8.1) (2026-10-13)
 
 
