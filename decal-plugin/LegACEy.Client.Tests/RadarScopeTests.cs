@@ -1,0 +1,166 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Avalonia;
+using LegACEy.Client.Demo;
+using Xunit;
+
+namespace LegACEy.Client.Tests;
+
+/// <summary>The radar's geometry and rules, with retail's coordinates: what the window draws, hovers and selects, with no game and no window.</summary>
+public sealed class RadarScopeTests
+{
+    // Arwic's landblock 0xC6A9, outdoors (the cell's low bits below 0x100), 60 m east and 84 m north of its corner.
+    private const uint Outdoors = 0xC6A90014;
+    private const double Radius = 59;
+    private static readonly RadarOptions Default = new();
+
+    [Fact]
+    public void Heading_up_turns_the_world_so_the_way_the_player_faces_is_up()
+    {
+        // Facing east: what lies east is ahead (up on the scope), what lies north is to the left.
+        var player = Player(heading: 90);
+        var objects = new[] { Object(1, east: 20, north: 0), Object(2, east: 0, north: 20) };
+
+        var frame = RadarScope.Build(player, objects, Default, Radius);
+
+        var ahead = Dot(frame, 1);
+        Assert.Equal(Radius, ahead.At.X, 2);
+        Assert.True(ahead.At.Y < Radius - 10);
+        var left = Dot(frame, 2);
+        Assert.True(left.At.X < Radius - 10);
+        Assert.Equal(Radius, left.At.Y, 2);
+    }
+
+    [Fact]
+    public void North_up_keeps_north_on_top_whatever_the_heading()
+    {
+        var player = Player(heading: 90);
+        var objects = new[] { Object(1, east: 20, north: 0), Object(2, east: 0, north: 20) };
+
+        var frame = RadarScope.Build(player, objects, Default with { NorthUp = true }, Radius);
+
+        var east = Dot(frame, 1);
+        Assert.True(east.At.X > Radius + 10);
+        var north = Dot(frame, 2);
+        Assert.True(north.At.Y < Radius - 10);
+    }
+
+    [Fact]
+    public void A_dot_sits_at_its_distance_scaled_to_the_range()
+    {
+        // 35 m of a 70 m range is half the scope's radius from the centre.
+        var frame = RadarScope.Build(Player(0), new[] { Object(1, east: 35, north: 0) }, Default, Radius);
+
+        var dot = Dot(frame, 1);
+        var from = Math.Sqrt(Math.Pow(dot.At.X - Radius, 2) + Math.Pow(dot.At.Y - Radius, 2));
+        Assert.Equal(Radius / 2, from, 2);
+    }
+
+    [Fact]
+    public void Objects_retail_never_shows_stay_hidden_and_others_draw_in_retail_colours()
+    {
+        var objects = new[]
+        {
+            Object(1, east: 5, north: 0, RadarBehavior.ShowNever),
+            Object(2, east: 6, north: 0, RadarBehavior.ShowMovement, RadarColor.Red),
+            Object(3, east: 7, north: 0, RadarBehavior.ShowAlways, RadarColor.Gold)
+        };
+
+        var frame = RadarScope.Build(Player(0), objects, Default, Radius);
+
+        Assert.DoesNotContain(frame.Dots, dot => dot.Id == 1);
+        Assert.Equal(RadarColor.Red, Dot(frame, 2).Colour);
+        Assert.Equal(RadarColor.Gold, Dot(frame, 3).Colour);
+    }
+
+    [Fact]
+    public void Dots_beyond_the_range_are_not_drawn_and_the_range_is_the_zoom()
+    {
+        var far = Object(1, east: 90, north: 0);
+
+        Assert.Empty(RadarScope.Build(Player(0), new[] { far }, Default with { Zoom = 70 }, Radius).Dots);
+        Assert.Single(RadarScope.Build(Player(0), new[] { far }, Default with { Zoom = 150 }, Radius).Dots);
+    }
+
+    [Fact]
+    public void A_dot_more_than_5_metres_off_the_player_height_is_drawn_faded()
+    {
+        var level = Object(1, east: 10, north: 0, z: 0);
+        var above = Object(2, east: 11, north: 0, z: 6);
+
+        var frame = RadarScope.Build(Player(0), new[] { level, above }, Default, Radius);
+
+        Assert.Equal(1.0, Dot(frame, 1).Alpha);
+        Assert.Equal(0.65, Dot(frame, 2).Alpha, 3);
+    }
+
+    [Fact]
+    public void Hover_reaches_6_pixels_and_reports_name_distance_and_compass_direction()
+    {
+        // North-east of the player: 20 m east and 20 m north, which is 28 m away.
+        var frame = RadarScope.Build(Player(heading: 30), new[] { Object(1, east: 20, north: 20, name: "Mirra") }, Default, Radius);
+        var dot = Dot(frame, 1);
+
+        Assert.Same(dot, RadarScope.Hit(frame, new Point(dot.At.X + 5, dot.At.Y)));
+        Assert.Null(RadarScope.Hit(frame, new Point(dot.At.X + 7, dot.At.Y)));
+        Assert.Equal("Mirra · 28 m NE", RadarScope.Label(dot));
+    }
+
+    [Fact]
+    public void Ground_is_the_nine_landblocks_around_the_player_outdoors_only()
+    {
+        var outdoors = RadarScope.Build(Player(0), Array.Empty<RadarObject>(), Default, Radius);
+        var indoors = RadarScope.Build(Player(0, cell: 0xC6A90100), Array.Empty<RadarObject>(), Default, Radius);
+        var off = RadarScope.Build(Player(0), Array.Empty<RadarObject>(), Default with { Ground = false }, Radius);
+
+        Assert.Equal(9, outdoors.Tiles.Count);
+        Assert.Empty(indoors.Tiles);
+        Assert.Empty(off.Tiles);
+        // The player's own landblock: its corner is 60 m west and 84 m south of the player.
+        Assert.Equal(new Rect(-60, -108, 192, 192), outdoors.Tiles.Single(tile => tile.Landblock == 0xC6A9).Metres);
+    }
+
+    [Fact]
+    public void Coordinates_are_retails_form_for_the_player_and_none_without_a_player()
+    {
+        Assert.Equal("33.6N, 56.7E", RadarScope.Build(Player(0), Array.Empty<RadarObject>(), Default, Radius).Coordinates);
+        Assert.Null(RadarScope.Build(null, Array.Empty<RadarObject>(), Default, Radius).Coordinates);
+    }
+
+    [Theory]
+    [InlineData(70, 10, 25)]
+    [InlineData(70, -10, 150)]
+    [InlineData(25, 1, 25)]
+    [InlineData(150, -1, 150)]
+    public void Wheel_up_zooms_in_and_down_zooms_out_within_25_and_150_metres(int range, int notches, int expected) =>
+        Assert.Equal(expected, RadarZoom.Wheel(range, notches));
+
+    [Fact]
+    public void The_zoom_options_step_through_the_presets_from_the_current_range()
+    {
+        Assert.Equal(40, RadarZoom.Next(25));
+        Assert.Equal(110, RadarZoom.Next(70));
+        Assert.Equal(25, RadarZoom.Next(150));
+    }
+
+    [Fact]
+    public void Options_round_trip_through_the_two_numbers_kept_per_character()
+    {
+        var options = new RadarOptions(Ground: false, NorthUp: true, Rings: true, Zoom: 110);
+
+        var (flags, zoom) = options.Encode();
+
+        Assert.Equal(options, RadarOptions.Decode(flags, zoom));
+    }
+
+    private static RadarPlayer Player(float heading, uint cell = Outdoors) =>
+        new(new RadarPosition(cell, 60, 84, 0), heading);
+
+    // East and north of the player, in the same landblock.
+    private static RadarObject Object(uint id, float east, float north, RadarBehavior behaviour = RadarBehavior.ShowAlways,
+        RadarColor colour = RadarColor.Yellow, float z = 0, string name = "Object") =>
+        new(id, name, colour, behaviour, new RadarPosition(Outdoors, 60 + east, 84 + north, z));
+
+    private static RadarScopeDot Dot(RadarScopeFrame frame, uint id) => frame.Dots.Single(dot => dot.Id == id);
+}
