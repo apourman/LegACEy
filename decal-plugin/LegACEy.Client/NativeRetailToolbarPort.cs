@@ -42,14 +42,10 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     private RetailSelection? _described;
     // The selected id last seen, and whether the game reported the selected object changed since it was read.
     private uint _selectedId;
-    // The stack whose split amount was last set to its whole count; 0 when the selection is not a stack.
-    private uint _splitStackId;
-    // A newly selected stack still waiting for retail's size to match its count, and the polls spent waiting; it is set whole at most
-    // this many times, so a mismatch that lasts does not keep overwriting the player's amount.
-    private uint _splitPendingId;
-    private int _splitWaits;
-    private const int MaxSplitWaits = 30;
     private bool _rereadSelected;
+    // The amount the player chose in the split tab and the stack it is for, while it stays selected; any other stack splits whole.
+    private uint _chosenSplitStackId;
+    private int _chosenSplitAmount;
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate IntPtr GetCombatSystemFn();
@@ -140,19 +136,27 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     };
 
     /// <summary>
-    /// Retail's split amount: the global the drag reads for the selected stack. A write is clamped to [1, the stack's size] as retail's box
-    /// clamps it, and only lands while the stack the plaque shows is still the selection.
+    /// The selected stack's split amount: the whole stack, unless the player chose an amount for this stack, held within [1, the stack's size].
+    /// Retail sets its own amount back to 1 on a selection change, which would split one off by default; <see cref="Poll"/> writes this
+    /// amount over retail's global each frame, so retail's drag and LegACEy's both split by it. A write only lands while the stack the tab
+    /// shows is still the selection.
     /// </summary>
     public int SplitAmount
     {
-        get => ReadInt(RetailToolbarCatalogue.SplitAmount);
+        get => Described() is { Kind: SelectionKind.Stack } stack ? SplitAmountFor(stack) : ReadInt(RetailToolbarCatalogue.SplitAmount);
         set
         {
             var id = (uint)Bridge.Fact(BridgeFact.CurrentSelection);
             if (Described() is not { Kind: SelectionKind.Stack } stack || stack.Id != id) return;
-            Marshal.WriteInt32(new IntPtr(unchecked((int)RetailToolbarCatalogue.SplitAmount)), Math.Clamp(value, 1, Math.Max(1, ReadInt(RetailToolbarCatalogue.SplitStackSize))));
+            (_chosenSplitStackId, _chosenSplitAmount) = (stack.Id, value);
+            WriteSplitAmount(SplitAmountFor(stack));
         }
     }
+
+    private int SplitAmountFor(RetailSelection stack) =>
+        stack.Id == _chosenSplitStackId ? Math.Clamp(_chosenSplitAmount, 1, Math.Max(1, stack.StackCount)) : Math.Max(1, stack.StackCount);
+
+    private static void WriteSplitAmount(int amount) => Marshal.WriteInt32(new IntPtr(unchecked((int)RetailToolbarCatalogue.SplitAmount)), amount);
 
     /// <summary>A global int32 of retail's, read in place. Its address is checked by the catalogue before the takeover is on.</summary>
     private static int ReadInt(uint address) => Marshal.ReadInt32(new IntPtr(unchecked((int)address)));
@@ -255,27 +259,16 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     public void Poll()
     {
         var described = Described();
-        var amountBefore = SplitAmount;
-        // A newly selected stack splits whole, as retail's own box starts it, so a plain drag moves all of it. A stack that shrank takes the
-        // split amount down with it, as retail's box clamps it.
-        if (described is { Kind: SelectionKind.Stack } stack)
-        {
-            var size = ReadInt(RetailToolbarCatalogue.SplitStackSize);
-            if (stack.Id != _splitStackId)
-            {
-                if (stack.Id != _splitPendingId) (_splitPendingId, _splitWaits) = (stack.Id, 0);
-                SplitAmount = size;
-                // Retail may set the stack's size a few frames after the selection; until it matches, the next poll sets the amount again.
-                if (size == stack.StackCount || ++_splitWaits >= MaxSplitWaits) (_splitStackId, _splitPendingId) = (stack.Id, 0);
-            }
-            else if (SplitAmount > size) SplitAmount = size;
-        }
-        else (_splitStackId, _splitPendingId) = (0, 0);
+        // A chosen amount lasts while its stack stays selected; selected again later, the stack splits whole.
+        if (described?.Id != _chosenSplitStackId) _chosenSplitStackId = 0;
+        // Retail's global holds the selected stack's amount (see SplitAmount), whatever retail last wrote to it; a stack that shrank takes the
+        // amount down with it.
+        if (described is { Kind: SelectionKind.Stack } stack && ReadInt(RetailToolbarCatalogue.SplitAmount) != SplitAmountFor(stack))
+            WriteSplitAmount(SplitAmountFor(stack));
         var count = ReadShortcuts(_shortcutBuffer);
         var kind = described is null ? SelectionKind.Other : KindOf(described);
         var meter = described is null ? null : MeterOf(described);
-        // A set amount shows in the split tab even when nothing else moved.
-        if (_snapshot.Update(Stance, OpenPanels(), described, kind, meter, _shortcutBuffer.AsSpan(0, count)) | SplitAmount != amountBefore) Changed?.Invoke();
+        if (_snapshot.Update(Stance, OpenPanels(), described, kind, meter, _shortcutBuffer.AsSpan(0, count))) Changed?.Invoke();
     }
 
     /// <summary>The window panels the buttons show, as a bit each at its panel number: a set bit is an open panel.</summary>
