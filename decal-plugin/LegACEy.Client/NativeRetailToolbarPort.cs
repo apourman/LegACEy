@@ -42,6 +42,13 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     private RetailSelection? _described;
     // The selected id last seen, and whether the game reported the selected object changed since it was read.
     private uint _selectedId;
+    // The stack whose split amount was last set to its whole count; 0 when the selection is not a stack.
+    private uint _splitStackId;
+    // A newly selected stack still waiting for retail's size to match its count, and the polls spent waiting; it is set whole at most
+    // this many times, so a mismatch that lasts does not keep overwriting the player's amount.
+    private uint _splitPendingId;
+    private int _splitWaits;
+    private const int MaxSplitWaits = 30;
     private bool _rereadSelected;
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -248,12 +255,27 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     public void Poll()
     {
         var described = Described();
-        // A stack that shrank takes the split amount down with it, as retail's own box clamps it.
-        if (described is { Kind: SelectionKind.Stack } && SplitAmount > ReadInt(RetailToolbarCatalogue.SplitStackSize)) SplitAmount = ReadInt(RetailToolbarCatalogue.SplitStackSize);
+        var amountBefore = SplitAmount;
+        // A newly selected stack splits whole, as retail's own box starts it, so a plain drag moves all of it. A stack that shrank takes the
+        // split amount down with it, as retail's box clamps it.
+        if (described is { Kind: SelectionKind.Stack } stack)
+        {
+            var size = ReadInt(RetailToolbarCatalogue.SplitStackSize);
+            if (stack.Id != _splitStackId)
+            {
+                if (stack.Id != _splitPendingId) (_splitPendingId, _splitWaits) = (stack.Id, 0);
+                SplitAmount = size;
+                // Retail may set the stack's size a few frames after the selection; until it matches, the next poll sets the amount again.
+                if (size == stack.StackCount || ++_splitWaits >= MaxSplitWaits) (_splitStackId, _splitPendingId) = (stack.Id, 0);
+            }
+            else if (SplitAmount > size) SplitAmount = size;
+        }
+        else (_splitStackId, _splitPendingId) = (0, 0);
         var count = ReadShortcuts(_shortcutBuffer);
         var kind = described is null ? SelectionKind.Other : KindOf(described);
         var meter = described is null ? null : MeterOf(described);
-        if (_snapshot.Update(Stance, OpenPanels(), described, kind, meter, _shortcutBuffer.AsSpan(0, count))) Changed?.Invoke();
+        // A set amount shows in the split tab even when nothing else moved.
+        if (_snapshot.Update(Stance, OpenPanels(), described, kind, meter, _shortcutBuffer.AsSpan(0, count)) | SplitAmount != amountBefore) Changed?.Invoke();
     }
 
     /// <summary>The window panels the buttons show, as a bit each at its panel number: a set bit is an open panel.</summary>
