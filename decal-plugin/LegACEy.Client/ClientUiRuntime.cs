@@ -192,7 +192,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private NativeRetailToolbarPort? _toolbarPort;
     private RetailToolbar? _toolbar;
     private ScreenSurface? _toolbarSurface;
-    private RetailSurfaceRenderer? _toolbarRenderer;
     private RetailTakeoverLifecycle? _toolbarTakeover;
     private ToolbarPlacePort? _toolbarPlace;
     // Whether this character's saved toolbar place has been read since login.
@@ -887,7 +886,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_failed) return;
         ThrowIfTestFailureRequested();
         Guard(() => _barRenderer?.DrawAfterRetailUi());
-        Guard(() => _toolbarRenderer?.DrawAfterRetailUi());
+        Guard(() => _toolbarSurface?.DrawNow());
         if (_failed || !_windowsEnabled || _windows == null)
             return;
         _drawnModelViews.Clear();
@@ -1633,11 +1632,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             LoadToolbarPlace();
             _toolbarPort!.Poll();
             _toolbarTakeover!.Tick(_toolbarDragOffset != null, GameDevice.ViewportSize(_device));
-            if (_toolbarTakeover.Holds != _toolbarHeld)
-            {
-                _toolbarHeld = _toolbarTakeover.Holds;
-                Log(_toolbarHeld ? "Retail's toolbar held." : $"Retail's toolbar no longer held; its window {(_toolbarPlace!.Exists ? "is there" : "is missing")}.");
-            }
             // Until login completes, retail's toolbar stays held but ours is not drawn: its saved place is read only then, so it never
             // shows at retail's place first and jumps.
             if (!_inGame)
@@ -1649,15 +1643,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             // The bar stands beside the toolbar only while the takeover holds retail's element; otherwise it closes with it.
             if (_toolbarTakeover.Holds) EnsureShortcutBar();
             else CloseShortcutBar();
-            _toolbarRenderer!.RenderFrame(_inGame, _postUiDrawHook?.IsInstalled == true);
+            // Drawn after retail's UI, under the LegACEy windows: drawn before it, retail's portal space would paint over it on a teleport.
+            _toolbarSurface!.Prepare();
         }
         catch (Exception exception)
         {
             ToolbarFailed(exception);
         }
     }
-
-    private bool _toolbarHeld;
 
     private const string ToolbarPlaceId = "dereth-toolbar";
 
@@ -1738,7 +1731,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         panel.Resize((int)Math.Ceiling(toolbar.DesiredSize.Width * scale), (int)Math.Ceiling(toolbar.DesiredSize.Height * scale));
         _toolbar = toolbar;
         _toolbarSurface = new ScreenSurface(_device, panel);
-        _toolbarRenderer = new RetailSurfaceRenderer(_toolbarSurface.Prepare, _toolbarSurface.DrawNow);
         _toolbarPlace = new ToolbarPlacePort(new NativeBarPort(NativeUi.ToolbarWindow), () => _toolbarSurface?.Bounds.Size ?? Size.Empty, SaveToolbarPlace);
         _toolbarTakeover = new RetailTakeoverLifecycle(_toolbarPlace, new SurfaceTakeoverPort(_toolbarSurface));
         Log($"Dereth toolbar replacement ready; retail's toolbar window {(NativeUi.GetElement(NativeUi.ToolbarWindow) != IntPtr.Zero ? "found" : "absent")}, " +
@@ -1895,7 +1887,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         _toolbarSurface?.Dispose();
         _toolbarSurface = null;
-        _toolbarRenderer = null;
         _toolbar = null;
         _toolbarPort = null;
     }
