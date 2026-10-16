@@ -757,6 +757,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _radarReleaseLogged = true;
             }
         }
+        // The same for retail's vitals: Release logs a failed give-back once per streak itself.
+        if (_failed && _vitals?.Holds == true) _vitals.Release();
         if (_failed || !NativeUi.Ready)
             return;
 
@@ -2839,7 +2841,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         catch (Exception exception) { Log($"Could not give the retail vitals back during unload: {exception}"); }
         if (_vitals?.Holds == true) Log("Retail's vitals windows are still held after two tries at unload; they stay hidden until the client restarts.");
-        _vitals = null;
+        // Kept while still held, so a disabled UI's frames go on retrying the give-back.
+        else _vitals = null;
         try { ReleaseRetailToolbar(); }
         catch (Exception exception) { Log($"Could not give the retail toolbar back during unload: {exception}"); }
         // The radar gets the same two tries as chat.
