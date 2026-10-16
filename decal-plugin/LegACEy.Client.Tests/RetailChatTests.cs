@@ -166,6 +166,34 @@ public sealed class RetailChatTests
     });
 
     [Fact]
+    public void Ctrl_V_pastes_the_clipboard_into_the_box_and_Ctrl_C_and_Ctrl_X_copy_its_selection() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        var clipboard = "the Vault key\r\nat Yaraq";
+        using var panel = Open(port, out var window, copy: text => clipboard = text, paste: () => clipboard);
+        var box = InputBox(window);
+        Click(panel, box);
+        panel.TextInput("bring ");
+
+        panel.KeyDown(Key.V, KeyModifiers.Control);
+        Assert.Equal("bring the Vault key at Yaraq", box.Text);
+        Assert.Equal(box.Text.Length, box.CaretIndex);
+
+        // "Vault" selected: Ctrl+C copies it, Ctrl+X copies it and takes it out, and Ctrl+V puts it back over a selection.
+        box.SelectionStart = 10;
+        box.SelectionEnd = 15;
+        panel.KeyDown(Key.C, KeyModifiers.Control);
+        Assert.Equal("Vault", clipboard);
+        panel.KeyDown(Key.X, KeyModifiers.Control);
+        Assert.Equal("bring the  key at Yaraq", box.Text);
+        box.SelectionStart = 0;
+        box.SelectionEnd = 5;
+        panel.KeyDown(Key.V, KeyModifiers.Control);
+        Assert.Equal("Vault the  key at Yaraq", box.Text);
+        Assert.Empty(port.Sent);
+    });
+
+    [Fact]
     public void A_name_click_and_Tab_in_an_empty_input_set_a_tell_target() => RenderThread.Run(() =>
     {
         var port = new FakeChatPort();
@@ -319,7 +347,7 @@ public sealed class RetailChatTests
     });
 
     [Fact]
-    public void A_right_click_over_selected_log_text_copies_it() => RenderThread.Run(() =>
+    public void Selecting_log_text_copies_it_and_a_right_click_over_it_copies_it_again() => RenderThread.Run(() =>
     {
         var port = new FakeChatPort();
         var copied = new List<string>();
@@ -332,14 +360,15 @@ public sealed class RetailChatTests
         panel.RightClick(press.X, press.Y);
         Assert.Empty(copied);
 
-        // A drag across the name selects it; a right click over it copies the selected text.
+        // A drag across the name selects it and copies it when the button goes up; a right click over it copies it again.
         panel.PointerDown(press.X, press.Y);
         panel.PointerMove(press.X + 40, press.Y);
         panel.PointerUp(press.X + 40, press.Y);
-        panel.RightClick(press.X + 20, press.Y);
-
         var text = Assert.Single(copied);
         Assert.StartsWith("Mir", text);
+
+        panel.RightClick(press.X + 20, press.Y);
+        Assert.Equal(new[] { text, text }, copied);
     });
 
     [Fact]
@@ -781,13 +810,13 @@ public sealed class RetailChatTests
         new(kind, text, at ?? Stamp, sender, channel);
 
     private static AvaloniaPanel Open(FakeChatPort port, out RetailChatWindow window, FileRetailChatTabStore? store = null, string character = "Alice",
-        Func<DateTime>? clock = null, Action<string>? copy = null)
+        Func<DateTime>? clock = null, Action<string>? copy = null, Func<string?>? paste = null)
     {
         RetailChatWindow? created = null;
         var tabs = store?.Load(Server, character, RetailChatWindows.MainId);
         var history = new RetailChatHistory(port);
         var panel = AvaloniaPanel.Create(() => created = new RetailChatWindow(port, history, new SingleWindowHost(store, character), tabs,
-            clock: clock ?? (() => Stamp), copy: copy), Width, Height);
+            clock: clock ?? (() => Stamp), copy: copy, paste: paste), Width, Height);
         window = created!;
         return panel;
     }

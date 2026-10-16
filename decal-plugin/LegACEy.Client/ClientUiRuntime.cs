@@ -76,6 +76,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CloseClipboard();
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetClipboardData(uint format);
+
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr GlobalAlloc(uint flags, UIntPtr bytes);
 
@@ -1985,7 +1988,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var server = SessionServer();
         var character = SessionCharacter();
         var chats = new RetailChatWindows(port, _windows!, _positionStore!, _chatTabs, server, character, () => _pointer, (definition, content, location) => OpenWindowCore(definition, content, location, ChatFailed), ReleaseFeatureWindow,
-            copy: CopyToClipboard);
+            copy: CopyToClipboard, paste: PasteFromClipboard);
         // The main window starts at the bottom left, above the toolbar, until the player moves it; its place is then kept per character.
         var screen = _windows!.Screen;
         var beside = new Point(12, Math.Max(0, screen.Height - (int)Math.Round(RetailChatWindows.DesignHeight * WindowScale) - 150));
@@ -2079,6 +2082,30 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         finally
         {
             if (memory != IntPtr.Zero) GlobalFree(memory);
+            CloseClipboard();
+        }
+    }
+
+    /// <summary>The Windows clipboard's Unicode text, for Ctrl+V in a chat box; null when it holds none or another program holds it.</summary>
+    private string? PasteFromClipboard()
+    {
+        const uint CfUnicodeText = 13;
+        if (!OpenClipboard(_gameWindow))
+        {
+            Log($"Could not paste into the chat: the clipboard is busy ({Marshal.GetLastWin32Error()}).");
+            return null;
+        }
+        try
+        {
+            var memory = GetClipboardData(CfUnicodeText);
+            if (memory == IntPtr.Zero) return null;
+            var source = GlobalLock(memory);
+            if (source == IntPtr.Zero) return null;
+            try { return Marshal.PtrToStringUni(source); }
+            finally { GlobalUnlock(memory); }
+        }
+        finally
+        {
             CloseClipboard();
         }
     }
@@ -2498,7 +2525,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     eat = route.Eat;
                     break;
                 case InputAction.TextInput:
-                    target!.Panel.TextInput(((char)route.KeyCode).ToString());
+                    // Control characters (Ctrl+V's 0x16, Backspace's 0x08) are keys the box has had already, not text to type.
+                    if (route.KeyCode >= 0x20 && route.KeyCode != 0x7F) target!.Panel.TextInput(((char)route.KeyCode).ToString());
                     eat = route.Eat;
                     break;
                 case InputAction.ClearFocus:

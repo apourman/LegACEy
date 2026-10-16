@@ -60,6 +60,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private readonly RetailChatFade _fade;
     private readonly Func<DateTime> _clock;
     private readonly Action<string> _copy;
+    private readonly Func<string?> _paste;
     private ScrollBar? _scrollBar;
     // The line loop in Refresh can stop once the lines show their final opacities; any change of state or of the lines clears this.
     private bool _linesSettled;
@@ -85,9 +86,13 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     /// <param name="tabs">The window's tabs; null for the six defaults.</param>
     /// <param name="tornOff">Whether the window is torn off the main window: it has no All tab and no add button, and a close medallion merges it back.</param>
     /// <param name="clock">The time, for the idle fade; null for the system's.</param>
-    /// <param name="copy">Puts text on the clipboard: a right click over text selected in the log copies it. Null copies nothing.</param>
+    /// <param name="copy">
+    /// Puts text on the clipboard: text selected in the log is copied when the button goes up, and again on a right click over it; Ctrl+C and
+    /// Ctrl+X copy the box's selection. Null copies nothing.
+    /// </param>
+    /// <param name="paste">Reads the clipboard's text, for Ctrl+V in the box. Null pastes nothing.</param>
     public RetailChatWindow(IRetailChatPort port, RetailChatHistory history, IRetailChatWindowHost host, IReadOnlyList<RetailChatTab>? tabs = null,
-        bool tornOff = false, Func<DateTime>? clock = null, Action<string>? copy = null)
+        bool tornOff = false, Func<DateTime>? clock = null, Action<string>? copy = null, Func<string?>? paste = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _history = history ?? throw new ArgumentNullException(nameof(history));
@@ -99,6 +104,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _fade = new RetailChatFade();
         _clock = clock ?? (() => DateTime.Now);
         _copy = copy ?? (_ => { });
+        _paste = paste ?? (() => null);
 
         // The tab strip: the tabs, which scroll sideways (by the wheel) when they do not fit, and its fixed end. The strip's empty part
         // drags the window.
@@ -164,6 +170,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _input.KeyDown += OnInputKeyDown;
         // Up and Down before the box's own caret keys, as retail's chat brings back what was sent.
         _input.AddHandler(KeyDownEvent, OnInputRecall, RoutingStrategies.Tunnel);
+        // The game's clipboard, not Avalonia's: an in-game panel has none of its own.
+        _input.AddHandler(KeyDownEvent, OnInputClipboard, RoutingStrategies.Tunnel);
         var send = new DerethButton { Content = "Send", Width = 40, Height = 20, Padding = new Thickness(0), FontSize = 11, Foreground = DerethPalette.CreamBrush };
         send.Click += (_, _) => SendTyped();
         var inputRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 4, Height = 21 };
@@ -595,6 +603,11 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             rest = line.Text.Substring(at + line.Sender.Length);
         }
         if (rest.Length > 0) Add(DerethChatParts.TextRun(rest, brush, italic));
+        // Text selected in the line is copied when the button goes up, as classic chat clients do, so it can be pasted into the box.
+        view.AddHandler(InputElement.PointerReleasedEvent, (_, e) =>
+        {
+            if (e.InitialPressMouseButton == MouseButton.Left && !string.IsNullOrEmpty(view.SelectedText)) _copy(view.SelectedText);
+        }, RoutingStrategies.Bubble, handledEventsToo: true);
         // A right click over the line's selected text copies it; the game's own right click never sees it.
         view.AddHandler(InputElement.PointerPressedEvent, (_, e) =>
         {
@@ -654,6 +667,30 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         {
             LeaveInput();
             e.Handled = true;
+        }
+    }
+
+    private void OnInputClipboard(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyModifiers != KeyModifiers.Control || e.Key is not (Key.C or Key.X or Key.V)) return;
+        e.Handled = true;
+        var text = _input.Text ?? string.Empty;
+        int start = Math.Min(_input.SelectionStart, _input.SelectionEnd), end = Math.Max(_input.SelectionStart, _input.SelectionEnd);
+        if (e.Key != Key.V)
+        {
+            if (end == start) return;
+            _copy(text.Substring(start, end - start));
+            if (e.Key == Key.C) return;
+            Replace(string.Empty);
+            return;
+        }
+        // One line: a pasted line break or tab becomes a space.
+        if (_paste() is { Length: > 0 } pasted) Replace(pasted.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' ').Replace('\t', ' '));
+
+        void Replace(string with)
+        {
+            _input.Text = text.Substring(0, start) + with + text.Substring(end);
+            _input.SelectionStart = _input.SelectionEnd = _input.CaretIndex = start + with.Length;
         }
     }
 
