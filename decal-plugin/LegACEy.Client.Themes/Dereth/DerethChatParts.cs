@@ -135,14 +135,14 @@ public static class DerethChatParts
     /// <summary>The target chip: the target's label in the target's colour, a gold caret, on the dark fill with a gold outline.</summary>
     public static Border Chip(string label, Color colour)
     {
-        var text = new TextBlock
+        var text = DerethPalette.CentreInk(new TextBlock
         {
             Text = label,
             FontFamily = DerethPalette.Title,
             FontSize = 11,
             Foreground = DerethPalette.Brush(colour),
             VerticalAlignment = VerticalAlignment.Center
-        };
+        });
         var caret = new Path
         {
             Data = Geometry.Parse(CaretData),

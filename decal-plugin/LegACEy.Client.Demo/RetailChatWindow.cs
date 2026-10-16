@@ -154,7 +154,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _input = new TextBox
         {
             Watermark = "Say something…",
-            Height = 19,
+            // The row's height, as the chip and Send are, so their edges line up.
+            Height = 21,
             MinHeight = 0,
             Padding = new Thickness(4, 0),
             FontFamily = DerethPalette.Body,
@@ -172,7 +173,16 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _input.AddHandler(KeyDownEvent, OnInputRecall, RoutingStrategies.Tunnel);
         // The game's clipboard, not Avalonia's: an in-game panel has none of its own.
         _input.AddHandler(KeyDownEvent, OnInputClipboard, RoutingStrategies.Tunnel);
-        var send = new DerethButton { Content = "Send", Width = 40, Height = 20, Padding = new Thickness(0), FontSize = 11, Foreground = DerethPalette.CreamBrush };
+        // As tall as the row, so no half pixel is split above and below it at a small UI size, and its word centred on its capital.
+        var send = new DerethButton
+        {
+            Width = 40, Padding = new Thickness(0), Foreground = DerethPalette.CreamBrush,
+            Content = DerethPalette.CentreInk(new TextBlock
+            {
+                Text = "Send", FontFamily = DerethPalette.Title, FontSize = 11,
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+            })
+        };
         send.Click += (_, _) => SendTyped();
         var inputRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 4, Height = 21 };
         inputRow.Children.Add(_chipHost);

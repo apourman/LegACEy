@@ -198,12 +198,13 @@ public sealed class DerethVitalsWindow : UserControl
             CurrentText = new Run(),
             MaxText = new Run { FontSize = side ? 7 : 7.6, Foreground = DerethPalette.Brush(Color.Parse("#B49A6A")) }
         };
-        row.Label = new TextBlock
+        // Centred on its digits, not on Palatino's tall line box, so it sits in the middle of its plaque.
+        row.Label = DerethPalette.CentreInk(new TextBlock
         {
             FontFamily = DerethPalette.Title, FontSize = side ? 9.5 : 10.5, Foreground = DerethPalette.CreamBrush,
             HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
             Inlines = { row.CurrentText, row.MaxText }
-        };
+        });
         var bezel = new DerethVitalGlyph(glyph, light, side ? SideBezel : StackedBezel) { VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(bezel, 0);
 

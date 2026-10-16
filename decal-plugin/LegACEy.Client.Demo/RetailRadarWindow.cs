@@ -99,7 +99,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         _startMove = startMove ?? throw new ArgumentNullException(nameof(startMove));
 
         _bezel = new DerethRadarBezel { Width = Diameter + 22, Height = Diameter + 22, Margin = new Thickness(ScopeOrigin.X - 11, ScopeOrigin.Y - 11, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, IsHitTestVisible = false };
-        _coordinates = new TextBlock { FontFamily = DerethPalette.Title, FontSize = 10, Foreground = DerethPalette.CreamBrush };
+        _coordinates = DerethPalette.CentreInk(new TextBlock { FontFamily = DerethPalette.Title, FontSize = 10, Foreground = DerethPalette.CreamBrush });
         _coordinatesPlaque = new Border
         {
             CornerRadius = new CornerRadius(9), Background = Plaque, BorderBrush = GoldDark, BorderThickness = new Thickness(1), Padding = new Thickness(8, 1),

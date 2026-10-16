@@ -218,6 +218,30 @@ public sealed class RetailChatTests
     });
 
     [Fact]
+    public void The_chat_window_renders_to_pngs_when_asked() => RenderThread.Run(() =>
+    {
+        // Looked at by a person, not asserted: LEGACEY_CHAT_RENDER names the folder the PNGs are written to.
+        var folder = Environment.GetEnvironmentVariable("LEGACEY_CHAT_RENDER");
+        if (folder == null) return;
+        Directory.CreateDirectory(folder);
+        foreach (var scale in new[] { 0.75, 1.0, 1.5 })
+        {
+            var port = new FakeChatPort();
+            var history = new RetailChatHistory(port);
+            using var panel = AvaloniaPanel.Create(() => new RetailChatWindow(port, history, new SingleWindowHost(null, "Alice"), clock: () => Stamp),
+                (int)Math.Round(Width * scale), (int)Math.Round(Height * scale), scale);
+            port.Say(Line(RetailChatKind.TellIn, "Mirra tells you, \"still need the Vault key?\"", "Mirra"));
+            panel.Tick();
+            var frame = panel.Frame;
+            using var bitmap = new Avalonia.Media.Imaging.WriteableBitmap(new PixelSize(frame.Width, frame.Height), new Vector(96, 96),
+                Avalonia.Platform.PixelFormat.Bgra8888, Avalonia.Platform.AlphaFormat.Premul);
+            using (var locked = bitmap.Lock())
+                System.Runtime.InteropServices.Marshal.Copy(frame.Pixels, 0, locked.Address, frame.Pixels.Length);
+            bitmap.Save(Path.Combine(folder, $"chat-{scale * 100:0}.png"));
+        }
+    });
+
+    [Fact]
     public void A_name_click_and_Tab_in_an_empty_input_set_a_tell_target() => RenderThread.Run(() =>
     {
         var port = new FakeChatPort();
@@ -979,7 +1003,7 @@ public sealed class RetailChatTests
     {
         Click(panel, InputBox(window));
         panel.TextInput(text);
-        Click(panel, panel.Content.GetVisualDescendants().OfType<Button>().First(button => button.Content as string == "Send"));
+        Click(panel, panel.Content.GetVisualDescendants().OfType<Button>().First(button => (button.Content as TextBlock)?.Text == "Send"));
     }
 
     /// <summary>The host of a window on its own: its tab list is kept under the main window's id; the other requests are not used.</summary>

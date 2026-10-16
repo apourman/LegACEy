@@ -175,17 +175,18 @@ public sealed class DerethRadarBezel : Control
         _letters ??= Letters.Select(letter => Face(letter.Text, letter.Text == "N" ? DerethPalette.TealBrush : DerethPalette.Brush(GoldLight), 10)).ToArray();
         _minors ??= new[] { Face("·", DerethPalette.MutedBrush, 6), Face("·", DerethPalette.MutedBrush, 6), Face("·", DerethPalette.MutedBrush, 6), Face("·", DerethPalette.MutedBrush, 6) };
         for (var i = 0; i < Letters.Length; i++)
-            Place(context, _letters[i], centre, Letters[i].Bearing);
+            Place(context, _letters[i], centre, Letters[i].Bearing, DerethPalette.InkShift(new Typeface(DerethPalette.Title), 10));
         for (var i = 0; i < _minors.Length; i++)
             Place(context, _minors[i], centre, 45 + 90 * i);
     }
 
     // A letter at its bearing: its screen angle is the bearing turned by the world's turn, clockwise from up.
-    private void Place(DrawingContext context, FormattedText text, Point centre, double bearing)
+    // The shift centres a letter's capital on its point (see DerethPalette.InkShift); the dots need none.
+    private void Place(DrawingContext context, FormattedText text, Point centre, double bearing, double shift = 0)
     {
         var angle = (bearing + Turn) * Math.PI / 180;
         var at = new Point(centre.X + Math.Sin(angle) * LetterRadius, centre.Y - Math.Cos(angle) * LetterRadius);
-        context.DrawText(text, new Point(at.X - text.Width / 2, at.Y - text.Height / 2));
+        context.DrawText(text, new Point(at.X - text.Width / 2, at.Y - text.Height / 2 + shift));
     }
 
     private static FormattedText Face(string text, IBrush brush, double size) =>
@@ -238,7 +239,7 @@ public sealed class DerethHeadingTape : Control
                 var label = _labels[index];
                 using (context.PushOpacity(edge))
                 {
-                    context.DrawText(label, new Point(x - label.Width / 2, 1));
+                    context.DrawText(label, new Point(x - label.Width / 2, 1 + DerethPalette.InkShift(new Typeface(DerethPalette.Title), Points[index].Length > 1 ? 6 : 8)));
                     if (!near) context.DrawLine(index == 0 ? NorthPen : PointPen, new Point(x, height - 5), new Point(x, height));
                 }
             }
@@ -257,6 +258,6 @@ public sealed class DerethHeadingTape : Control
             _readout = new FormattedText(degreesShown.ToString("000", CultureInfo.InvariantCulture) + "°", CultureInfo.InvariantCulture,
                 FlowDirection.LeftToRight, new Typeface(DerethPalette.Title), 6.5, DerethPalette.CreamBrush);
         }
-        context.DrawText(_readout, new Point(middle - _readout.Width / 2, 9));
+        context.DrawText(_readout, new Point(middle - _readout.Width / 2, 9 + DerethPalette.InkShift(new Typeface(DerethPalette.Title), 6.5)));
     }
 }

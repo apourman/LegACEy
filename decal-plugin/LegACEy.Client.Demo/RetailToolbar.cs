@@ -164,7 +164,8 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         _plaqueContent = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center, Children = { _name, _amountSlot, _meterSlot } };
         _plaque = new Border
         {
-            Width = 150,
+            // Wide enough for a long NPC's name, such as "Ulgrim the Unpleasant, Bartender"; a longer one ends in an ellipsis, named in full on hover.
+            Width = 220,
             Height = 31,
             CornerRadius = new CornerRadius(3),
             Background = DerethPalette.GrooveBrush,
@@ -238,6 +239,7 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     private void ShowSelection(RetailSelection? selection)
     {
         _name.Text = selection?.Name ?? "Nothing selected";
+        ToolTip.SetTip(_plaque, selection?.Name);
         _name.FontStyle = selection is null ? FontStyle.Italic : FontStyle.Normal;
         _name.Foreground = selection is null ? DerethPalette.MutedBrush : DerethPalette.CreamBrush;
         // A stack's amount row stays while that stack stays selected; another object drops it.

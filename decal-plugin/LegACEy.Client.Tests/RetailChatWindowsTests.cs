@@ -113,7 +113,7 @@ public sealed class RetailChatWindowsTests
 
         // The torn-off window has no add button; its close medallion merges it back.
         Assert.DoesNotContain("+", Strip(torn));
-        desk.Click(torn, torn.GetVisualDescendants().OfType<DerethButton>().Single(button => button.Content is not string));
+        desk.Click(torn, torn.GetVisualDescendants().OfType<DerethButton>().Single(button => button.Content is not (string or TextBlock { Text: "Send" })));
         desk.Tick();
 
         Assert.Single(desk.Chat.Windows);
