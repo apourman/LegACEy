@@ -38,6 +38,33 @@ public sealed class GroundTilesTests
     }
 
     [Fact]
+    public void A_slope_shades_evenly_up_to_the_edges_of_a_tile_with_its_neighbours_in_place()
+    {
+        // Heights rise 3 m per metre east and north across the 3 x 3, so the slope is the same everywhere and so should the shading be.
+        var around = new List<GroundLandblock>();
+        for (var dx = -1; dx <= 1; dx++)
+            for (var dy = -1; dy <= 1; dy++)
+                around.Add(Slope(0xC6 + dx, 0xA9 + dy));
+
+        var tile = GroundTileRenderer.Render(around[4], around, _ => null);
+
+        var red = Enumerable.Range(0, tile.Width * tile.Height).Select(i => tile.Pixels[(i * 4) + 2]).ToArray();
+        var centre = red[(192 * 384) + 192];
+        var uneven = red.Select((value, i) => (value, i)).Where(p => Math.Abs(p.value - centre) > 1).Take(3)
+            .Select(p => (Column: p.i % 384, Row: p.i / 384)).ToList();
+        Assert.True(uneven.Count == 0, $"the shading is {centre} at the centre but differs at {string.Join(", ", uneven)}");
+    }
+
+    private static GroundLandblock Slope(int x, int y)
+    {
+        var height = new float[81];
+        for (var vx = 0; vx < 9; vx++)
+            for (var vy = 0; vy < 9; vy++)
+                height[(vx * 9) + vy] = 3 * (((x - 0xC6) * 192) + (vx * 24) + ((y - 0xA9) * 192) + (vy * 24));
+        return new GroundLandblock(x, y, new ushort[81], height, Array.Empty<GroundFootprint>());
+    }
+
+    [Fact]
     public void Building_a_tile_runs_off_the_calling_thread()
     {
         var source = new FakeGround();

@@ -42,11 +42,12 @@ public static class GroundTileRenderer
     {
         var textures = new GameImage?[RoadType + 1];
         for (var type = 0; type < textures.Length; type++) textures[type] = texture((uint)type);
+        var blocks = Grid(centre, around);
 
         var canvas = new Rgb[Size * Size];
         Parallel.For(0, Size, row =>
         {
-            for (var col = 0; col < Size; col++) canvas[(row * Size) + col] = Ground(centre, textures, col, row);
+            for (var col = 0; col < Size; col++) canvas[(row * Size) + col] = Ground(blocks, textures, col, row);
         });
 
         var footprints = Place(centre, around);
@@ -66,7 +67,15 @@ public static class GroundTileRenderer
         return ToImage(canvas);
     }
 
-    private static Rgb Ground(GroundLandblock block, GameImage?[] textures, int col, int row)
+    /// <summary>The landblocks by their offset from the centre, in landblocks; the centre is at (0, 0).</summary>
+    private static Dictionary<(int X, int Y), GroundLandblock> Grid(GroundLandblock centre, IReadOnlyList<GroundLandblock> around)
+    {
+        var grid = new Dictionary<(int X, int Y), GroundLandblock> { [(0, 0)] = centre };
+        foreach (var block in around) grid[(block.X - centre.X, block.Y - centre.Y)] = block;
+        return grid;
+    }
+
+    private static Rgb Ground(IReadOnlyDictionary<(int X, int Y), GroundLandblock> blocks, GameImage?[] textures, int col, int row)
     {
         var x = (col + .5f) * PixelMetres;
         var y = (Size - row - .5f) * PixelMetres;
@@ -76,10 +85,10 @@ public static class GroundTileRenderer
         var vy = (int)gy;
         var fx = gx - vx;
         var fy = gy - vy;
-        var c00 = Vertex(block, vx, vy);
-        var c10 = Vertex(block, vx + 1, vy);
-        var c01 = Vertex(block, vx, vy + 1);
-        var c11 = Vertex(block, vx + 1, vy + 1);
+        var c00 = Vertex(blocks, vx, vy);
+        var c10 = Vertex(blocks, vx + 1, vy);
+        var c01 = Vertex(blocks, vx, vy + 1);
+        var c11 = Vertex(blocks, vx + 1, vy + 1);
 
         // Blend the four corners' textures, with noise so the seams look painted rather than bilinear.
         var j1 = (Noise(x / 3.5f, y / 3.5f) - .5f) * .55f;
@@ -129,22 +138,33 @@ public static class GroundTileRenderer
         }
 
         // Hills: shade by the slope against the light.
-        var hx = Height(block, x + 1.5f, y) - Height(block, x - 1.5f, y);
-        var hy = Height(block, x, y + 1.5f) - Height(block, x, y - 1.5f);
+        var hx = Height(blocks, x + 1.5f, y) - Height(blocks, x - 1.5f, y);
+        var hy = Height(blocks, x, y + 1.5f) - Height(blocks, x, y - 1.5f);
         var normal = Normalize(-hx / 3, -hy / 3, 1);
         var lit = Clamp01((normal.X * LightDirection.X) + (normal.Y * LightDirection.Y) + (normal.Z * LightDirection.Z));
         return colour * (.55f + (.6f * lit));
     }
 
-    /// <summary>A vertex of the 9 × 9 grid; the grid's own edge vertices are shared with its neighbours, so these are never outside it.</summary>
-    private static (int Type, int Road, float Height) Vertex(GroundLandblock block, int vx, int vy)
+    /// <summary>
+    /// A vertex of the landblock grid. A vertex past the centre's edge is the neighbour's vertex on the shared edge, so the slope
+    /// is the same on both sides of the edge; where that neighbour is not in the grid, the centre's own edge repeats.
+    /// </summary>
+    private static (int Type, int Road, float Height) Vertex(IReadOnlyDictionary<(int X, int Y), GroundLandblock> blocks, int vx, int vy)
     {
-        var k = (Math.Min(Math.Max(vx, 0), 8) * 9) + Math.Min(Math.Max(vy, 0), 8);
+        var dx = vx < 0 ? -1 : vx > 8 ? 1 : 0;
+        var dy = vy < 0 ? -1 : vy > 8 ? 1 : 0;
+        if (!blocks.TryGetValue((dx, dy), out var block))
+        {
+            dx = 0;
+            dy = 0;
+            block = blocks[(0, 0)];
+        }
+        var k = (Math.Min(Math.Max(vx - (8 * dx), 0), 8) * 9) + Math.Min(Math.Max(vy - (8 * dy), 0), 8);
         var word = block.Terrain[k];
         return ((word & 0x7C) >> 2, word & 0x3, block.Height[k]);
     }
 
-    private static float Height(GroundLandblock block, float x, float y)
+    private static float Height(IReadOnlyDictionary<(int X, int Y), GroundLandblock> blocks, float x, float y)
     {
         var gx = x / CellMetres;
         var gy = y / CellMetres;
@@ -152,10 +172,10 @@ public static class GroundTileRenderer
         var vy = (int)gy;
         var fx = gx - vx;
         var fy = gy - vy;
-        var a = Vertex(block, vx, vy).Height;
-        var b = Vertex(block, vx + 1, vy).Height;
-        var c = Vertex(block, vx, vy + 1).Height;
-        var d = Vertex(block, vx + 1, vy + 1).Height;
+        var a = Vertex(blocks, vx, vy).Height;
+        var b = Vertex(blocks, vx + 1, vy).Height;
+        var c = Vertex(blocks, vx, vy + 1).Height;
+        var d = Vertex(blocks, vx + 1, vy + 1).Height;
         return (((a * (1 - fx)) + (b * fx)) * (1 - fy)) + (((c * (1 - fx)) + (d * fx)) * fy);
     }
 
