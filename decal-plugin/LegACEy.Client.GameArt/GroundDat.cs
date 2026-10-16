@@ -55,7 +55,7 @@ public interface IGroundSource
     /// <summary>The landblock at column x and row y (each 0 to 254), or null where the DATs have none.</summary>
     GroundLandblock? ReadLandblock(int x, int y);
 
-    /// <summary>A terrain type's texture (premultiplied BGRA, repeating once per 24 m cell), or null.</summary>
+    /// <summary>A terrain type's texture (straight-alpha BGRA, repeating once per 24 m cell), or null. The tile reads only its colour.</summary>
     GameImage? TerrainTexture(uint terrainType);
 }
 
@@ -128,22 +128,11 @@ public sealed class GroundDat : IGroundSource, IDisposable
     private GameImage? DecodeTerrain(uint terrainType)
     {
         if (!_surfaces.TryGetValue(terrainType, out var surfaceTexture)) return null;
-        var data = _portal.ReadFile(surfaceTexture);
-        if (data == null) return null;
-
-        // SurfaceTexture: its id, an unknown int and byte, then its render surfaces. The last is the full-size one.
-        var reader = new BinaryReader(new MemoryStream(data));
-        reader.ReadUInt32();
-        reader.ReadInt32();
-        reader.ReadByte();
-        var count = reader.ReadInt32();
-        if (count <= 0) return null;
-        uint surface = 0;
-        for (var i = 0; i < count; i++) surface = reader.ReadUInt32();
-
-        var image = _portal.ReadImage(surface);
-        var highRes = _highRes?.ReadImage(surface);
-        return highRes != null && (image == null || highRes.Width > image.Width) ? highRes : image;
+        var surfaces = DatModels.ReadSurfaceTextureSurfaces(_portal, surfaceTexture);
+        if (surfaces.Length == 0) return null;
+        // The last render surface is the full size. client_highres.dat's copy wins where it has one, so the low-res isn't decoded.
+        var surface = surfaces[surfaces.Length - 1];
+        return (_highRes == null ? null : DatModels.ReadRenderSurface(_highRes, surface)) ?? DatModels.ReadRenderSurface(_portal, surface);
     }
 
     /// <summary>LandblockInfo: the static objects, then the buildings with their portals (read past, as they aren't drawn).</summary>

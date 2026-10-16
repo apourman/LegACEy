@@ -144,24 +144,42 @@ internal static class DatModels
     /// </summary>
     public static GameImage? ReadTexture(PortalDat dat, uint surfaceTextureId, Func<uint[], uint[]> recolor, bool clipped)
     {
-        var reader = Open(dat, surfaceTextureId);
-        if (reader == null) return null;
-        reader.ReadUInt32();
-        reader.ReadInt32();
-        reader.ReadByte();
-        var count = reader.ReadInt32();
-        for (var i = 0; i < count; i++)
+        foreach (var id in ReadSurfaceTextureSurfaces(dat, surfaceTextureId))
         {
-            var image = DecodeImage(dat, reader.ReadUInt32(), recolor, clipped);
+            var image = DecodeImage(dat, id, recolor, clipped);
             if (image != null) return image;
         }
         return null;
     }
 
+    /// <summary>A terrain texture's render surface, decoded with the palette it carries; straight-alpha BGRA.</summary>
+    internal static GameImage? ReadRenderSurface(PortalDat dat, uint id) => DecodeImage(dat, id, palette => palette, clipped: false);
+
+    /// <summary>The render surfaces a SurfaceTexture lists, in order (the last is the full-size one); none if it is missing.</summary>
+    internal static uint[] ReadSurfaceTextureSurfaces(PortalDat dat, uint surfaceTextureId)
+    {
+        var data = dat.ReadFile(surfaceTextureId);
+        if (data == null) return Array.Empty<uint>();
+        // SurfaceTexture: its id, an unknown int and byte, then its render surfaces.
+        var reader = new BinaryReader(new MemoryStream(data));
+        reader.ReadUInt32();
+        reader.ReadInt32();
+        reader.ReadByte();
+        var surfaces = new uint[Math.Max(0, reader.ReadInt32())];
+        for (var i = 0; i < surfaces.Length; i++) surfaces[i] = reader.ReadUInt32();
+        return surfaces;
+    }
+
     private static GameImage? DecodeImage(PortalDat dat, uint id, Func<uint[], uint[]> recolor, bool clipped)
     {
         var data = dat.ReadFile(id);
-        if (data == null || data.Length < 24) return null;
+        return data == null ? null : DecodeSurface(data, dat.ReadPalette, recolor, clipped);
+    }
+
+    /// <summary>A RenderSurface file (a 24-byte header, then the pixels) decoded to straight-alpha BGRA; palettes are read through <paramref name="readPalette"/>.</summary>
+    internal static GameImage? DecodeSurface(byte[] data, Func<uint, uint[]?> readPalette, Func<uint[], uint[]> recolor, bool clipped)
+    {
+        if (data.Length < 24) return null;
         var width = BitConverter.ToInt32(data, 8);
         var height = BitConverter.ToInt32(data, 12);
         var format = BitConverter.ToUInt32(data, 16);
@@ -179,10 +197,26 @@ internal static class DatModels
                 for (var i = 0; i < width * height; i++)
                     Set(pixels, i, data[source + (i * 3)], data[source + (i * 3) + 1], data[source + (i * 3) + 2], 0xFF);
                 break;
+            case 23: // R5G6B5: 16 bits, red in the top five
+                if (length < pixels.Length / 2) return null;
+                for (var i = 0; i < width * height; i++)
+                {
+                    var word = BitConverter.ToUInt16(data, source + (i * 2));
+                    Set(pixels, i, Scale(word & 0x1F, 31), Scale((word >> 5) & 0x3F, 63), Scale(word >> 11, 31), 0xFF);
+                }
+                break;
+            case 26: // A4R4G4B4: 16 bits, four 4-bit channels
+                if (length < pixels.Length / 2) return null;
+                for (var i = 0; i < width * height; i++)
+                {
+                    var word = BitConverter.ToUInt16(data, source + (i * 2));
+                    Set(pixels, i, (byte)((word & 0xF) * 17), (byte)(((word >> 4) & 0xF) * 17), (byte)(((word >> 8) & 0xF) * 17), (byte)((word >> 12) * 17));
+                }
+                break;
             case 101: // INDEX16
             case 41: // P8
                 {
-                    var own = dat.ReadPalette(BitConverter.ToUInt32(data, source + length));
+                    var own = readPalette(BitConverter.ToUInt32(data, source + length));
                     if (own == null) return null;
                     var palette = recolor(own);
                     for (var i = 0; i < width * height; i++)
@@ -280,6 +314,9 @@ internal static class DatModels
         pixels[(index * 4) + 2] = r;
         pixels[(index * 4) + 3] = a;
     }
+
+    /// <summary>A channel of <paramref name="max"/> steps, widened to 0 to 255.</summary>
+    private static byte Scale(int value, int max) => (byte)(value * 255 / max);
 }
 
 /// <summary>DXT1/3/5 block decoding to straight-alpha BGRA.</summary>
