@@ -2107,10 +2107,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             // Retail's radar is given back if the switch goes off, the post-UI draw is gone, or the LegACEy windows failed.
             var canDraw = _postUiDrawHook?.IsInstalled == true && !(_windows != null && !_windowsEnabled);
             if (_radarTakeover != null && (!canDraw || _radarFailed || !switchOn))
-            {
                 ReleaseRetailRadar();
-                return;
-            }
+            // Switched off, the ground's DATs go too once no radar reads them; switching on loads them again.
+            if (!switchOn && _radar == null && _radarDatLoad != null) DisposeRadarGround();
             if (!canDraw || !switchOn || _radarFailed) return;
             if (_radarTakeover == null && !HoldRetailRadar()) return;
             _radarTakeover!.Tick(GameDevice.ViewportSize(_device));
@@ -2216,7 +2215,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         ReleaseFeatureWindow(RadarWindowId);
     }
 
-    /// <summary>Drops the ground's DATs at unload, after the radar that reads them is gone. A load still running is disposed when it lands.</summary>
+    /// <summary>Drops the ground's DATs at unload or switch-off, after the radar that reads them is gone. A load still running is disposed when it lands.</summary>
     private void DisposeRadarGround()
     {
         if (_radarDatLoad is { } load)
