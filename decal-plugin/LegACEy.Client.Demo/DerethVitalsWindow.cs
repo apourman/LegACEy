@@ -31,10 +31,12 @@ public sealed class DerethVitalsWindow : UserControl
         public DockPanel Line = null!;
         public DerethVitalBar Bar = null!;
         public TextBlock Label = null!;
+        // The values the label and tooltip show, so they are set only when a value changes.
+        public int Current = -1, Max = -1;
     }
 
     /// <param name="game">The game's state, read on each <see cref="Refresh"/>.</param>
-    /// <param name="uiLocked">Whether retail's UI is locked: the grip hides, and a press on the window does not start a move.</param>
+    /// <param name="uiLocked">Whether retail's UI is locked: the grip hides, and a press on the content doesn't start a move.</param>
     /// <param name="startMove">Starts the window's move from the pointer's place, on a press on the window that should drag it.</param>
     public DerethVitalsWindow(IGameStatePort game, Func<bool> uiLocked, Action startMove)
     {
@@ -94,6 +96,9 @@ public sealed class DerethVitalsWindow : UserControl
         {
             var row = _rows[reading.Vital];
             row.Bar.Show(reading.Fraction, reading.TrailFraction, reading.Pulsing, pulse);
+            if (reading.Current == row.Current && reading.Max == row.Max) continue;
+            row.Current = reading.Current;
+            row.Max = reading.Max;
             row.Label.Text = reading.Label;
             ToolTip.SetTip(row.Line, reading.Tooltip);
         }
@@ -102,11 +107,11 @@ public sealed class DerethVitalsWindow : UserControl
 
     private static Row Line(Vital vital)
     {
-        var (glyph, tint, light, mid, dark) = vital switch
+        var (glyph, light, mid, dark) = vital switch
         {
-            Vital.Health => (DerethGlyph.Heart, DerethVitalsPalette.HealthLight, DerethVitalsPalette.HealthLight, DerethVitalsPalette.HealthMid, DerethVitalsPalette.HealthDark),
-            Vital.Stamina => (DerethGlyph.Sword, DerethVitalsPalette.StaminaLight, DerethVitalsPalette.StaminaLight, DerethVitalsPalette.StaminaMid, DerethVitalsPalette.StaminaDark),
-            _ => (DerethGlyph.ManaSerpent, DerethVitalsPalette.ManaLight, DerethVitalsPalette.ManaLight, DerethVitalsPalette.ManaMid, DerethVitalsPalette.ManaDark)
+            Vital.Health => (DerethGlyph.Heart, DerethVitalsPalette.HealthLight, DerethVitalsPalette.HealthMid, DerethVitalsPalette.HealthDark),
+            Vital.Stamina => (DerethGlyph.Sword, DerethVitalsPalette.StaminaLight, DerethVitalsPalette.StaminaMid, DerethVitalsPalette.StaminaDark),
+            _ => (DerethGlyph.ManaSerpent, DerethVitalsPalette.ManaLight, DerethVitalsPalette.ManaMid, DerethVitalsPalette.ManaDark)
         };
         var row = new Row
         {
@@ -118,7 +123,7 @@ public sealed class DerethVitalsWindow : UserControl
                 Margin = new Thickness(0, 0, 6, 0)
             }
         };
-        var glyphBezel = new DerethVitalGlyph(glyph, tint) { Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
+        var glyphBezel = new DerethVitalGlyph(glyph, light) { Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
         DockPanel.SetDock(glyphBezel, Dock.Left);
         // The bar fills the line; the value sits over its right end.
         var bar = new Grid { Children = { row.Bar, row.Label } };

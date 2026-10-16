@@ -7,7 +7,7 @@ namespace LegACEy.Client.Demo;
 public enum Vital { Health, Stamina, Mana }
 
 /// <summary>One vital's bar as the window shows it: how full it is, how far its pale trail reaches, and its numbers.</summary>
-public sealed class VitalReading
+public readonly struct VitalReading
 {
     internal VitalReading(Vital vital, int current, int max, double trailFraction, bool pulsing)
     {
@@ -54,16 +54,18 @@ public sealed class VitalsModel
         [Vital.Health] = new Track(), [Vital.Stamina] = new Track(), [Vital.Mana] = new Track()
     };
 
-    /// <summary>The bars as of the last <see cref="Update"/>, in retail's order.</summary>
-    public IReadOnlyList<VitalReading> Bars { get; private set; } = Array.Empty<VitalReading>();
+    private readonly VitalReading[] _bars = new VitalReading[3];
+
+    /// <summary>The bars as of the last <see cref="Update"/>, in retail's order. Filled in place, so an update allocates nothing.</summary>
+    public IReadOnlyList<VitalReading> Bars => _bars;
 
     /// <summary>Reads the game's values at <paramref name="now"/>, the player's clock.</summary>
-    public void Update(GameStateSnapshot state, TimeSpan now) => Bars = new[]
+    public void Update(GameStateSnapshot state, TimeSpan now)
     {
-        Read(Vital.Health, state.Health, state.MaxHealth, now),
-        Read(Vital.Stamina, state.Stamina, state.MaxStamina, now),
-        Read(Vital.Mana, state.Mana, state.MaxMana, now)
-    };
+        _bars[0] = Read(Vital.Health, state.Health, state.MaxHealth, now);
+        _bars[1] = Read(Vital.Stamina, state.Stamina, state.MaxStamina, now);
+        _bars[2] = Read(Vital.Mana, state.Mana, state.MaxMana, now);
+    }
 
     /// <summary>The pulse's strength at <paramref name="now"/>: a cycle a second, from 0 to 1.</summary>
     public double PulseAt(TimeSpan now) => 0.5 + 0.5 * Math.Sin(2 * Math.PI * now.TotalSeconds);

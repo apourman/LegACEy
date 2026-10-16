@@ -216,8 +216,9 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
 /// <summary>
 /// Pure window behavior used by the plugin adapter and the tests. The first item in ZOrder is
 /// frontmost. Pointer coordinates are screen coordinates and all returned positions are clamped.
-/// A press in a resizable window's side or bottom band, or in its corner square, resizes it; a press on any window's top edge or in
-/// its title bar moves it.
+/// A press in a resizable window's side or bottom band, or in its corner square, resizes it, within its <see cref="WindowResizing"/>: its
+/// minimum and maximum hold on every edge, a fixed height has no top or bottom edge, and a locked window does not resize. A press on any
+/// window's top edge or in its title bar moves it.
 /// </summary>
 public sealed class WindowManager
 {

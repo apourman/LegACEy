@@ -66,15 +66,29 @@ public sealed class DerethVitalBar : Control
     private static readonly IPen GrooveEdge = new Pen(DerethPalette.GrooveEdgeBrush, 1);
     private static readonly IBrush Trail = DerethPalette.Brush(Color.FromArgb(0x8C, 0xFF, 0xEC, 0xC8));
     private static readonly Color PulseRed = Color.Parse("#E0554E");
+    // The pulse's glow and edge: a pen and brush each, made once; Show sets the brushes' opacity, so drawing allocates nothing.
+    private readonly SolidColorBrush _glowBrush = new(PulseRed);
+    private readonly SolidColorBrush _edgeBrush = new(PulseRed);
+    private readonly Pen _glow;
+    private readonly Pen _edge;
     private readonly IBrush _fill;
     private double _fraction;
     private double _trail;
     private bool _pulsing;
     private double _pulse;
 
+    /// <summary>How full the fill is, from 0 to 1, as last shown.</summary>
+    public double Fraction => _fraction;
+    /// <summary>How far the pale trail reaches, from 0 to 1, as last shown.</summary>
+    public double TrailFraction => _trail;
+    /// <summary>Whether the edge pulses, as last shown.</summary>
+    public bool Pulsing => _pulsing;
+
     public DerethVitalBar(Color light, Color mid, Color dark)
     {
         Height = BarHeight;
+        _glow = new Pen(_glowBrush, 2);
+        _edge = new Pen(_edgeBrush, 1);
         _fill = new LinearGradientBrush
         {
             StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative),
@@ -85,14 +99,21 @@ public sealed class DerethVitalBar : Control
 
     /// <summary>
     /// Sets the values, as fractions of the vital's max: the fill, the trail's end (drawn from the fill's end when it reaches past it), and
-    /// while <paramref name="pulsing"/> the pulse's strength from 0 to 1.
+    /// while <paramref name="pulsing"/> the pulse's strength from 0 to 1. The bar is redrawn only when one of them changes.
     /// </summary>
     public void Show(double fraction, double trail, bool pulsing, double pulse)
     {
-        _fraction = Clamp(fraction);
-        _trail = Math.Max(_fraction, Clamp(trail));
+        var shownFraction = Clamp(fraction);
+        var shownTrail = Math.Max(shownFraction, Clamp(trail));
+        // The pulse's phase moves nothing while health is not pulsing.
+        var shownPulse = pulsing ? Clamp(pulse) : 0;
+        if (shownFraction == _fraction && shownTrail == _trail && pulsing == _pulsing && shownPulse == _pulse) return;
+        _fraction = shownFraction;
+        _trail = shownTrail;
         _pulsing = pulsing;
-        _pulse = Clamp(pulse);
+        _pulse = shownPulse;
+        _glowBrush.Opacity = 0.5 * _pulse;
+        _edgeBrush.Opacity = 0.35 + 0.65 * _pulse;
         InvalidateVisual();
     }
 
@@ -116,10 +137,8 @@ public sealed class DerethVitalBar : Control
 
         if (!_pulsing) return;
         // The edge pulses with a glow just outside it, so the warning is the only thing on the window that moves.
-        var glow = new Pen(new SolidColorBrush(PulseRed, 0.5 * _pulse), 2);
-        context.DrawRectangle(null, glow, new RoundedRect(new Rect(-1, -1, width + 2, height + 2), (height + 2) / 2));
-        var edge = new Pen(new SolidColorBrush(PulseRed, 0.35 + 0.65 * _pulse), 1);
-        context.DrawRectangle(null, edge, new RoundedRect(new Rect(0.5, 0.5, width - 1, height - 1), height / 2));
+        context.DrawRectangle(null, _glow, new RoundedRect(new Rect(-1, -1, width + 2, height + 2), (height + 2) / 2));
+        context.DrawRectangle(null, _edge, new RoundedRect(new Rect(0.5, 0.5, width - 1, height - 1), height / 2));
     }
 
     private static double Clamp(double value) => Math.Max(0, Math.Min(1, value));

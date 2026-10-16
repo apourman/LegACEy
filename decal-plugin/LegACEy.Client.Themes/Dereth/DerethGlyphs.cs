@@ -67,6 +67,10 @@ public static class DerethGlyphs
         context.DrawGeometry(null, pen, shape);
     }
 
+    // The sword's blade and hilt, shared by the melee stance and the vitals' sword.
+    private const string SwordBlade = "M20.5 3.5l-.6 4L10 17.4 6.6 14 16.5 4.1z";
+    private const string SwordHilt = "M5 12.5l6.5 6.5M7.2 16.8L3.5 20.5";
+
     private static readonly Dictionary<DerethGlyph, GlyphPart[]> Parts = new()
     {
         [DerethGlyph.Heart] = new GlyphPart[]
@@ -75,9 +79,9 @@ public static class DerethGlyphs
         },
         [DerethGlyph.Sword] = new GlyphPart[]
         {
-            new("M20.5 3.5l-.6 4L10 17.4 6.6 14 16.5 4.1z", true, 0, 0.35, null),
-            new("M20.5 3.5l-.6 4L10 17.4 6.6 14 16.5 4.1z", false, 2.2, 1, null),
-            new("M5 12.5l6.5 6.5M7.2 16.8L3.5 20.5", false, 2.2, 1, null),
+            new(SwordBlade, true, 0, 0.35, null),
+            new(SwordBlade, false, 2.2, 1, null),
+            new(SwordHilt, false, 2.2, 1, null),
         },
         [DerethGlyph.ManaSerpent] = new GlyphPart[]
         {
@@ -144,8 +148,8 @@ public static class DerethGlyphs
         },
         [DerethGlyph.MeleeStance] = new GlyphPart[]
         {
-            new("M20.5 3.5l-.6 4L10 17.4 6.6 14 16.5 4.1z", false, 1.7, 1, null),
-            new("M5 12.5l6.5 6.5M7.2 16.8L3.5 20.5", false, 1.7, 1, null),
+            new(SwordBlade, false, 1.7, 1, null),
+            new(SwordHilt, false, 1.7, 1, null),
         },
         [DerethGlyph.MissileStance] = new GlyphPart[]
         {
