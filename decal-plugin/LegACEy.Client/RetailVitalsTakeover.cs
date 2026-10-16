@@ -71,15 +71,23 @@ internal sealed class RetailVitalsTakeover : IDisposable
     /// <summary>Whether retail's vitals are held. A give-back that failed is still held until a later one lands.</summary>
     public bool Holds => _held != null;
 
+    /// <summary>
+    /// Closes LegACEy's window, and the next frame opens it again: at the place it was left, in the layout the character has now. Retail's
+    /// vitals stay held.
+    /// </summary>
+    public void CloseWindow()
+    {
+        if (_window == null) return;
+        var window = _window;
+        _window = null;
+        try { window.Dispose(); }
+        catch (Exception exception) { _log($"Could not close the Dereth vitals window: {exception}"); }
+    }
+
     /// <summary>Gives retail's vitals back and closes LegACEy's window. The next switch-on, login or frame holds them again.</summary>
     public void Release()
     {
-        if (_window != null)
-        {
-            try { _window.Dispose(); }
-            catch (Exception exception) { _log($"Could not close the Dereth vitals window: {exception}"); }
-            _window = null;
-        }
+        CloseWindow();
         if (_held == null) return;
         try { _held.Release(); }
         catch (Exception exception)

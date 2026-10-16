@@ -123,7 +123,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // Beside the DLL: while this file exists, retail's vitals windows are held and the Dereth vitals window draws in their place. Without it
     // nothing changes (opt-in until the play-test signs it off).
     private const string RetailVitalsSwitchFile = "retail-vitals-takeover";
-    private const string DerethVitalsWindowId = "dereth-vitals";
     // Beside the DLL: while this file exists, the Dereth radar takes over retail's radar. Opt-in until the play-test signs it off: without
     // the file retail's radar stays as it is.
     private const string RetailRadarSwitchFile = "retail-radar-takeover";
@@ -227,6 +226,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _vitalsSwitch;
     private DateTime _lastVitalsSwitchCheck;
     private readonly Stopwatch _vitalsClock = Stopwatch.StartNew();
+    // The layout the player picked on the vitals gear, kept per character; the window reopens in it on the next frame.
+    private readonly VitalsLayoutChoice _vitalsLayouts;
+    private bool _vitalsLayoutPicked;
     private int? _loggedVitae;
     private bool _vitaeReadLogged;
     private TimeSpan _nextVitaeRead;
@@ -307,6 +309,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None);
         _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal);
         _row2Choice = new ShortcutRowChoice(_settingsStore);
+        _vitalsLayouts = new VitalsLayoutChoice(_settingsStore);
         if (_settingsStore.Load("", "", UiSizeKey) is { Location.X: var size and > 0 })
             _uiSize = Math.Max(SmallestUiSize, Math.Min(LargestUiSize, size));
     }
@@ -2251,6 +2254,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var switchOn = SwitchOn(RetailVitalsSwitchFile, ref _lastVitalsSwitchCheck, ref _vitalsSwitch, onWhenMissing: false);
         // Retail's vitals are held from portal space at login on, like chat; the window opens in game.
         var canDraw = _postUiDrawHook?.IsInstalled == true && !(_windows != null && !_windowsEnabled);
+        // The player picked the other layout: the window closes now, and the next frame opens the chosen one where it was left.
+        if (_vitalsLayoutPicked)
+        {
+            _vitalsLayoutPicked = false;
+            _vitals.CloseWindow();
+        }
         _vitals.Tick(switchOn, canDraw, _inGame, GameDevice.ViewportSize(_device), _vitalsClock.Elapsed);
         if (_inGame && _vitals.Holds) LogVitae();
     }
@@ -2262,27 +2271,42 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         return HudNatives().Vitals ? new RetailHeldWindows(RetailHudCatalogue.VitalsWindows, oneShows: true) : null;
     }
 
-    /// <summary>Where retail's vitals stand: the first of the two windows the layout places. The window opens there until the player moves it.</summary>
+    /// <summary>
+    /// Where retail's vitals stand: the place of the one of the two windows retail shows, the side-by-side one when its option is on. The window
+    /// opens there until the player moves it. With neither shown, the first that exists.
+    /// </summary>
     private static Point RetailVitalsPlace()
     {
+        var first = IntPtr.Zero;
         foreach (var id in RetailHudCatalogue.VitalsWindows)
         {
             var element = NativeUi.GetElement(id);
-            if (element != IntPtr.Zero) return NativeUi.GetBounds(element).Location;
+            if (element == IntPtr.Zero) continue;
+            if (NativeUi.IsVisible(element)) return NativeUi.GetBounds(element).Location;
+            if (first == IntPtr.Zero) first = element;
         }
-        return Point.Empty;
+        return first == IntPtr.Zero ? Point.Empty : NativeUi.GetBounds(first).Location;
     }
 
     /// <summary>
-    /// Opens the Dereth vitals window at <paramref name="at"/>, in the window store's place for this character once it has one. Null while
-    /// the windows cannot open yet, so the next frame asks again.
+    /// Opens the Dereth vitals window in the character's layout at <paramref name="at"/>, in the window store's place for this character once it
+    /// has one. Null while the windows cannot open yet, so the next frame asks again.
     /// </summary>
     private IRetailVitalsWindow? OpenVitals(Point at)
     {
         if (!CanOpenWindows) return null;
-        var view = new DerethVitalsWindow(_gameState, () => NativeUi.IsUiLocked, () => _windows?.BeginMove(DerethVitalsWindowId, _pointer));
-        OpenWindowCore(DerethVitalsWindow.Definition(DerethVitalsWindowId, () => NativeUi.IsUiLocked), view, at, VitalsFailed);
-        return new VitalsWindowHandle(this, view);
+        var layout = _vitalsLayouts.Load(SessionServer(), SessionCharacter());
+        var definition = DerethVitalsWindow.DefinitionOf(layout, () => NativeUi.IsUiLocked);
+        var view = new DerethVitalsWindow(_gameState, () => NativeUi.IsUiLocked, () => _windows?.BeginMove(definition.Id, _pointer), layout, ChooseVitalsLayout);
+        OpenWindowCore(definition, view, at, VitalsFailed);
+        return new VitalsWindowHandle(this, view, definition.Id);
+    }
+
+    /// <summary>Keeps the layout the player picked for the character. The window reopens in it on the next frame, not inside the click.</summary>
+    private void ChooseVitalsLayout(VitalsLayout layout)
+    {
+        _vitalsLayouts.Save(SessionServer(), SessionCharacter(), layout);
+        _vitalsLayoutPicked = true;
     }
 
     private void VitalsFailed(Exception exception) => _vitals?.Fail(exception);
@@ -2326,15 +2350,17 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         private readonly ClientUiRuntime _owner;
         private readonly DerethVitalsWindow _view;
+        private readonly string _windowId;
 
-        public VitalsWindowHandle(ClientUiRuntime owner, DerethVitalsWindow view)
+        public VitalsWindowHandle(ClientUiRuntime owner, DerethVitalsWindow view, string windowId)
         {
             _owner = owner;
             _view = view;
+            _windowId = windowId;
         }
 
         public void Refresh(TimeSpan now) => _view.Refresh(now);
-        public void Dispose() => _owner.ReleaseFeatureWindow(DerethVitalsWindowId);
+        public void Dispose() => _owner.ReleaseFeatureWindow(_windowId);
     }
 
     /// <summary>Translate Decal's raw messages into router decisions and Avalonia.Headless input. True eats the message.</summary>

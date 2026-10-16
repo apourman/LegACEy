@@ -405,8 +405,9 @@ public sealed class WindowManager
         var right = bounds.Right - 1 - point.X;
         var top = point.Y - bounds.Top;
         var bottom = bounds.Bottom - 1 - point.Y;
-        // A window with a fixed height has no top or bottom edge, so its corners are its side bands.
-        if (!resizing.FixedHeight && Math.Min(left, right) < CornerBand && Math.Min(top, bottom) < CornerBand)
+        // A window with a fixed height has no top or bottom edge, so its corners are its side bands. A strip too short for two corner squares
+        // and a side band at each end has no corners either: its sides are its edges, and what lies between them is its content's to drag.
+        if (!resizing.FixedHeight && window.Height >= 2 * (CornerBand + ResizeBand) && Math.Min(left, right) < CornerBand && Math.Min(top, bottom) < CornerBand)
             return (left < right ? WindowEdges.Left : WindowEdges.Right) | (top < bottom ? WindowEdges.Top : WindowEdges.Bottom);
         var edges = WindowEdges.None;
         if (left < ResizeBand) edges |= WindowEdges.Left;
