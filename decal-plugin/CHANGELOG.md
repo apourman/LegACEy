@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.2.0...decal-plugin-v0.3.0) (2026-10-16)
+
+
+### Features
+
+* **client:** Dereth vitals and radar ([#50](https://github.com/apourman/LegACEy/issues/50)) ([4759720](https://github.com/apourman/LegACEy/commit/475972058b24b9decfa74c641df90eb1a7979fd0))
+
 ## [0.2.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.1.11...decal-plugin-v0.2.0) (2026-10-15)
 
 
