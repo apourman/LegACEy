@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Layout;
 using Avalonia.Media;
 using LegACEy.Client.Themes;
@@ -9,28 +10,27 @@ using LegACEy.Client.Themes;
 namespace LegACEy.Client.Demo;
 
 /// <summary>
-/// LegACEy's vitals window in one of two layouts. Stacked (A): retail's three bars in retail's order and colours, in a Dereth frame, each
-/// with its glyph in a bezel at the left and current / max at the right. Side by side (D): the same three bars in one row on a slim
-/// plaque, sharing the width equally. Either way a pale trail stays behind a drop, health pulses at its edge under a quarter, and a gear
+/// LegACEy's vitals window in one of two layouts, both in the gilded frame. Stacked (A): retail's three bars in retail's order and colours on
+/// an ornate gilded plate, each with its glyph in an engraved gold bezel at the left and current / max on a plaque at the right. Side by side
+/// (D): the same parts in one row on a slim gilded plate, sharing the width equally, with a gold lozenge between vitals. Either way a pale trail stays behind a drop, health pulses at its edge under a quarter, and a gear
 /// shown on hover switches the layout. Its values come from the game's state each frame.
 /// </summary>
 public sealed class DerethVitalsWindow : UserControl
 {
     /// <summary>The stacked window's design size in DIPs.</summary>
-    public const int DesignWidth = 220, DesignHeight = 64;
+    public const int DesignWidth = 252, DesignHeight = 84;
     /// <summary>How wide the stacked window stretches, in DIPs; its height does not change.</summary>
-    public const int MinimumWidth = 150, MaximumWidth = 460;
+    public const int MinimumWidth = 180, MaximumWidth = 480;
     /// <summary>The side-by-side strip's design size in DIPs.</summary>
-    public const int SideDesignWidth = 440, SideDesignHeight = 22;
+    public const int SideDesignWidth = 440, SideDesignHeight = 26;
     /// <summary>How far the strip stretches in DIPs: wider, and taller so its bars grow thicker.</summary>
-    public const int SideMinimumWidth = 260, SideMaximumWidth = 880, SideMinimumHeight = 16, SideMaximumHeight = 40;
+    public const int SideMinimumWidth = 260, SideMaximumWidth = 880, SideMinimumHeight = 20, SideMaximumHeight = 40;
     /// <summary>The stacked window's id, and the strip's: each layout keeps its own size under its own id.</summary>
     public const string StackedId = "dereth-vitals", SideBySideId = "dereth-vitals-side";
 
-    // The strip's gap between bars, and its plaque: the mockup's slim plaque, a little more opaque than the radar's.
-    private const double SideGap = 10, SideCornerRadius = 4;
+    // The bezels' diameters, stacked and in the strip, and the stacked window's value plaque, in DIPs.
+    private const double StackedBezel = 17.6, SideBezel = 14.4, PlaqueWidth = 44, PlaqueHeight = 15;
     private const double GearDiameter = 11, GearGlyphSize = 7;
-    private static readonly IBrush Plaque = DerethPalette.Brush(Color.FromArgb(0xC7, 8, 16, 22));
 
     private readonly IGameStatePort _game;
     private readonly Func<bool> _uiLocked;
@@ -42,9 +42,10 @@ public sealed class DerethVitalsWindow : UserControl
 
     private sealed class Row
     {
-        public DockPanel Line = null!;
+        public Grid Line = null!;
         public DerethVitalBar Bar = null!;
         public TextBlock Label = null!;
+        public Run CurrentText = null!, MaxText = null!;
         // The values the label and tooltip show, so they are set only when a value changes.
         public int Current = -1, Max = -1;
     }
@@ -62,31 +63,34 @@ public sealed class DerethVitalsWindow : UserControl
         _chose = chose;
         var side = layout == VitalsLayout.SideBySide;
 
-        var lines = side ? new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*") } : new Grid { RowDefinitions = new RowDefinitions("*,*,*") };
+        // Stacked: three rows 21 DIPs apart inside the ornate plate. Side by side: three equal parts with a lozenge between each.
+        var lines = side
+            ? new Grid { ColumnDefinitions = new ColumnDefinitions("*,14,*,14,*"), Margin = new Thickness(8, 0) }
+            : new Grid { RowDefinitions = new RowDefinitions("*,*,*"), Margin = new Thickness(13.2, 10.5, 9, 10.5) };
         foreach (var vital in new[] { Vital.Health, Vital.Stamina, Vital.Mana })
         {
             var row = Line(vital, side);
             _rows[vital] = row;
-            if (side)
-            {
-                Grid.SetColumn(row.Line, (int)vital);
-                row.Line.Margin = new Thickness(vital == Vital.Health ? 0 : SideGap / 2, 0, vital == Vital.Mana ? 0 : SideGap / 2, 0);
-            }
+            if (side) Grid.SetColumn(row.Line, 2 * (int)vital);
             else Grid.SetRow(row.Line, (int)vital);
             lines.Children.Add(row.Line);
         }
+        if (side)
+            foreach (var column in new[] { 1, 3 })
+            {
+                var lozenge = new DerethLozenge { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+                Grid.SetColumn(lozenge, column);
+                lines.Children.Add(lozenge);
+            }
 
-        // Stacked is the Dereth frame; the strip is a slim plaque, as the mockup's.
-        Control frame = side
-            ? new Border { CornerRadius = new CornerRadius(SideCornerRadius), Background = Plaque, BorderBrush = DerethPalette.GoldDarkBrush, BorderThickness = new Thickness(1), Padding = new Thickness(6, 3, 8, 3), Child = lines }
-            : new DerethFrame(DerethFrameArt.Window) { Child = new Border { Margin = new Thickness(2, 0), Child = lines } };
+        var frame = new DerethGildedPlate(side ? 4 : 6, ornate: !side) { Child = lines };
 
         // The gear switches to the other layout. It shows while the pointer is over the window, as the grip does, and a click on it is the
         // gear's own, not a move.
         _gear = new DerethMedallion(DerethGlyph.Options, GearDiameter, GearGlyphSize)
         {
             HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(0, 1, 1, 0), Opacity = 0
+            Margin = side ? new Thickness(0, 1, 1, 0) : new Thickness(0, 2, 16, 0), Opacity = 0
         };
         _gear.Clicked += () => _chose?.Invoke(side ? VitalsLayout.Stacked : VitalsLayout.SideBySide);
         ToolTip.SetTip(_gear, side ? "Switch to stacked" : "Switch to side by side");
@@ -115,7 +119,7 @@ public sealed class DerethVitalsWindow : UserControl
         Refresh(TimeSpan.Zero);
     }
 
-    /// <summary>The stacked window's definition: 220 by 64 DIPs, stretching wider from 150 to 460 DIPs, in the Dereth theme.</summary>
+    /// <summary>The stacked window's definition: 252 by 84 DIPs, stretching wider from 180 to 480 DIPs, in the Dereth theme.</summary>
     private static WindowDefinition StackedDefinition(Func<bool> uiLocked) => new(StackedId, "Vitals", DesignWidth, DesignHeight,
         theme: new DerethClientTheme(),
         resizing: new WindowResizing(new System.Drawing.Size(MinimumWidth, DesignHeight), new System.Drawing.Size(MaximumWidth, DesignHeight), uiLocked),
@@ -151,11 +155,12 @@ public sealed class DerethVitalsWindow : UserControl
         {
             var reading = bars[i];
             var row = _rows[reading.Vital];
-            row.Bar.Show(reading.Fraction, reading.TrailFraction, reading.Pulsing, pulse);
+            row.Bar.Show(reading.Fraction, reading.TrailFraction, reading.Pulsing, pulse, now);
             if (reading.Current == row.Current && reading.Max == row.Max) continue;
             row.Current = reading.Current;
             row.Max = reading.Max;
-            row.Label.Text = reading.Label;
+            row.CurrentText.Text = reading.Current.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            row.MaxText.Text = "/" + reading.Max.ToString(System.Globalization.CultureInfo.InvariantCulture);
             ToolTip.SetTip(row.Line, reading.Tooltip);
         }
         _grip.IsVisible = !_uiLocked();
@@ -171,25 +176,39 @@ public sealed class DerethVitalsWindow : UserControl
         };
         var row = new Row
         {
-            Bar = new DerethVitalBar(light, mid, dark, side ? SideCornerRadius : null) { VerticalAlignment = VerticalAlignment.Center },
-            Label = new TextBlock
-            {
-                FontFamily = DerethPalette.Title, FontSize = 9, Foreground = DerethPalette.CreamBrush,
-                HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 6, 0)
-            }
+            Bar = new DerethVitalBar(light, mid, dark, ticks: !side),
+            CurrentText = new Run(),
+            MaxText = new Run { FontSize = side ? 7 : 7.6, Foreground = DerethPalette.Brush(Color.Parse("#B49A6A")) }
         };
+        row.Label = new TextBlock
+        {
+            FontFamily = DerethPalette.Title, FontSize = side ? 9.5 : 10.5, Foreground = DerethPalette.CreamBrush,
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+            Inlines = { row.CurrentText, row.MaxText }
+        };
+        var bezel = new DerethVitalGlyph(glyph, light, side ? SideBezel : StackedBezel) { VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(bezel, 0);
+
+        Control bar;
+        Control value;
         if (side)
         {
-            // The strip's bars fill its height, so they grow thicker with it.
+            // The strip's bars fill a third of its height, so they grow thicker as it is stretched taller.
             row.Bar.Height = double.NaN;
-            row.Bar.VerticalAlignment = VerticalAlignment.Stretch;
+            bar = new Grid { RowDefinitions = new RowDefinitions("17*,18*,17*"), Margin = new Thickness(13, 0, 10, 0), Children = { row.Bar } };
+            Grid.SetRow(row.Bar, 1);
+            value = row.Label;
         }
-        var glyphBezel = new DerethVitalGlyph(glyph, light) { Margin = new Thickness(0, 0, side ? 4 : 6, 0), VerticalAlignment = VerticalAlignment.Center };
-        DockPanel.SetDock(glyphBezel, Dock.Left);
-        // The bar fills the line; the value sits over its right end.
-        var bar = new Grid { Children = { row.Bar, row.Label } };
-        row.Line = new DockPanel { LastChildFill = true, Background = Brushes.Transparent, Children = { glyphBezel, bar } };
+        else
+        {
+            row.Bar.VerticalAlignment = VerticalAlignment.Center;
+            bar = new Border { Margin = new Thickness(11.2, 0, 11, 0), Child = row.Bar };
+            row.Label.Margin = new Thickness(0, 0, 4, 0);
+            value = new DerethValuePlaque { Width = PlaqueWidth, Height = PlaqueHeight, VerticalAlignment = VerticalAlignment.Center, Child = row.Label };
+        }
+        Grid.SetColumn(bar, 1);
+        Grid.SetColumn(value, 2);
+        row.Line = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Background = Brushes.Transparent, Children = { bezel, bar, value } };
         return row;
     }
 }
