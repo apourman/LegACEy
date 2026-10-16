@@ -19,12 +19,15 @@ public sealed class DerethVitalsWindow : UserControl
 {
     /// <summary>The stacked window's design size in DIPs.</summary>
     public const int DesignWidth = 252, DesignHeight = 84;
-    /// <summary>How wide the stacked window stretches, in DIPs; its height does not change.</summary>
-    public const int MinimumWidth = 180, MaximumWidth = 480;
+    /// <summary>
+    /// How the stacked window resizes, in DIPs. Its height sets how large it draws, from three quarters of its design size to twice it; its
+    /// width stretches the bars, from 180 to 480 DIPs at that scale.
+    /// </summary>
+    public const int MinimumHeight = 63, MaximumHeight = 168, LayoutMinimumWidth = 180, LayoutMaximumWidth = 480;
     /// <summary>The side-by-side strip's design size in DIPs.</summary>
     public const int SideDesignWidth = 440, SideDesignHeight = 26;
-    /// <summary>How far the strip stretches in DIPs: wider, and taller so its bars grow thicker.</summary>
-    public const int SideMinimumWidth = 260, SideMaximumWidth = 880, SideMinimumHeight = 20, SideMaximumHeight = 40;
+    /// <summary>How the strip resizes, as the stacked window does: its height sets its scale, and its width stretches it from 260 to 880 DIPs at that scale.</summary>
+    public const int SideMinimumHeight = 20, SideMaximumHeight = 52, SideLayoutMinimumWidth = 260, SideLayoutMaximumWidth = 880;
     /// <summary>The stacked window's id, and the strip's: each layout keeps its own size under its own id.</summary>
     public const string StackedId = "dereth-vitals", SideBySideId = "dereth-vitals-side";
 
@@ -115,15 +118,30 @@ public sealed class DerethVitalsWindow : UserControl
         };
         root.PointerEntered += (_, _) => _grip.Opacity = _gear.Opacity = 0.9;
         root.PointerExited += (_, _) => _grip.Opacity = _gear.Opacity = 0;
-        Content = root;
+        // Drawn at the window's height over its layout height, so stretching it taller draws it larger.
+        Content = new HeightScaled(side ? SideDesignHeight : DesignHeight) { Child = root };
         Refresh(TimeSpan.Zero);
     }
 
-    /// <summary>The stacked window's definition: 252 by 84 DIPs, stretching wider from 180 to 480 DIPs, in the Dereth theme.</summary>
+    /// <summary>The stacked window's definition: 252 by 84 DIPs, drawn larger as it is stretched taller and wider as it is stretched wider, in the Dereth theme.</summary>
     private static WindowDefinition StackedDefinition(Func<bool> uiLocked) => new(StackedId, "Vitals", DesignWidth, DesignHeight,
         theme: new DerethClientTheme(),
-        resizing: new WindowResizing(new System.Drawing.Size(MinimumWidth, DesignHeight), new System.Drawing.Size(MaximumWidth, DesignHeight), uiLocked),
+        resizing: ScaledResizing(DesignHeight, MinimumHeight, MaximumHeight, LayoutMinimumWidth, LayoutMaximumWidth, uiLocked, noCorners: false),
         dragsFromContent: true);
+
+    /// <summary>
+    /// Resizing for a window drawn at its height over <paramref name="layoutHeight"/>: between the two heights, and as narrow and as wide as
+    /// the layout widths at that scale.
+    /// </summary>
+    private static WindowResizing ScaledResizing(int layoutHeight, int minimumHeight, int maximumHeight, int layoutMinimumWidth, int layoutMaximumWidth,
+        Func<bool> uiLocked, bool noCorners)
+    {
+        double narrowest = (double)layoutMinimumWidth / layoutHeight, widest = (double)layoutMaximumWidth / layoutHeight;
+        return new WindowResizing(
+            new System.Drawing.Size((int)Math.Ceiling(minimumHeight * narrowest), minimumHeight),
+            new System.Drawing.Size((int)Math.Floor(maximumHeight * widest), maximumHeight),
+            uiLocked, noCorners, (narrowest, widest));
+    }
 
     /// <summary>
     /// The window's definition in <paramref name="layout"/>. The strip opens where the stacked window was left, and where it is left is where the
@@ -135,7 +153,7 @@ public sealed class DerethVitalsWindow : UserControl
     private static WindowDefinition SideBySideDefinition(Func<bool> uiLocked) => new(SideBySideId, "Vitals", SideDesignWidth, SideDesignHeight,
         // No title bar: the strip drags from its content, so its title bar is one pixel tall.
         titleBarHeight: 1, theme: new DerethClientTheme(),
-        resizing: new WindowResizing(new System.Drawing.Size(SideMinimumWidth, SideMinimumHeight), new System.Drawing.Size(SideMaximumWidth, SideMaximumHeight), uiLocked, noCorners: true),
+        resizing: ScaledResizing(SideDesignHeight, SideMinimumHeight, SideMaximumHeight, SideLayoutMinimumWidth, SideLayoutMaximumWidth, uiLocked, noCorners: true),
         sharesLocationWith: StackedId, dragsFromContent: true);
 
     /// <summary>Whether the stretch grip shows: it is hidden while retail's UI is locked.</summary>
@@ -193,7 +211,7 @@ public sealed class DerethVitalsWindow : UserControl
         Control value;
         if (side)
         {
-            // The strip's bars fill a third of its height, so they grow thicker as it is stretched taller.
+            // The strip's bars fill a third of its height.
             row.Bar.Height = double.NaN;
             bar = new Grid { RowDefinitions = new RowDefinitions("17*,18*,17*"), Margin = new Thickness(13, 0, 10, 0), Children = { row.Bar } };
             Grid.SetRow(row.Bar, 1);

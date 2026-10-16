@@ -20,20 +20,27 @@ public sealed class WindowResizing
     /// No corner squares: a press near two edges is the edges' press, and the corners are the content's to move from. For a strip whose
     /// content starts its own moves.
     /// </param>
-    public WindowResizing(Size minimum, Size? maximum = null, Func<bool>? locked = null, bool noCorners = false)
+    /// <param name="shape">
+    /// The narrowest and widest the window may be for its height, as width over height. A window whose content scales with its height keeps
+    /// its content's shape this way; a drag on one axis carries the other along when it would leave the range. Null: any shape.
+    /// </param>
+    public WindowResizing(Size minimum, Size? maximum = null, Func<bool>? locked = null, bool noCorners = false, (double Narrowest, double Widest)? shape = null)
     {
         if (minimum.Width <= 0 || minimum.Height <= 0) throw new ArgumentOutOfRangeException(nameof(minimum));
         if (maximum is { } top && (top.Width < minimum.Width || top.Height < minimum.Height)) throw new ArgumentOutOfRangeException(nameof(maximum));
+        if (shape is { } range && (range.Narrowest <= 0 || range.Widest < range.Narrowest)) throw new ArgumentOutOfRangeException(nameof(shape));
         Minimum = minimum;
         Maximum = maximum;
         Locked = locked;
         NoCorners = noCorners;
+        Shape = shape;
     }
 
     public Size Minimum { get; }
     public Size? Maximum { get; }
     public Func<bool>? Locked { get; }
     public bool NoCorners { get; }
+    public (double Narrowest, double Widest)? Shape { get; }
 
     /// <summary>Whether the height is fixed: the window has no top or bottom edge to drag.</summary>
     public bool FixedHeight => Maximum is { } top && top.Height == Minimum.Height;
@@ -42,9 +49,34 @@ public sealed class WindowResizing
     internal bool CanResize => Locked?.Invoke() != true;
 
     /// <summary><paramref name="wanted"/>, within the minimum, the maximum and <paramref name="max"/>.</summary>
-    public Size Fit(Size wanted, Size max) => new(
+    public Size Fit(Size wanted, Size max) => Shaped(new(
         Clamp(wanted.Width, Minimum.Width, Limit(Maximum?.Width, max.Width)),
-        Clamp(wanted.Height, Minimum.Height, Limit(Maximum?.Height, max.Height)));
+        Clamp(wanted.Height, Minimum.Height, Limit(Maximum?.Height, max.Height))), widthLeads: true, max);
+
+    /// <summary>
+    /// <paramref name="size"/> brought into <see cref="Shape"/>: the leading axis stays and the other follows, within the limits; when the
+    /// other reaches a limit, the leading axis gives way instead.
+    /// </summary>
+    internal Size Shaped(Size size, bool widthLeads, Size max)
+    {
+        if (Shape is not { } range) return size;
+        var ratio = (double)size.Width / size.Height;
+        var wanted = Math.Max(range.Narrowest, Math.Min(range.Widest, ratio));
+        if (wanted == ratio) return size;
+        int widest = Limit(Maximum?.Width, max.Width), tallest = Limit(Maximum?.Height, max.Height);
+        if (widthLeads)
+        {
+            var height = Clamp((int)Math.Round(size.Width / wanted), Minimum.Height, tallest);
+            return new Size(Clamp(Within(size.Width, height, range), Minimum.Width, widest), height);
+        }
+        var width = Clamp((int)Math.Round(size.Height * wanted), Minimum.Width, widest);
+        var within = Math.Max((int)Math.Ceiling(width / range.Widest), Math.Min((int)Math.Floor(width / range.Narrowest), size.Height));
+        return new Size(width, Clamp(within, Minimum.Height, tallest));
+    }
+
+    // A width brought within the shape's range for a height.
+    private static int Within(int width, int height, (double Narrowest, double Widest) range) =>
+        Math.Max((int)Math.Ceiling(height * range.Narrowest), Math.Min((int)Math.Floor(height * range.Widest), width));
 
     /// <summary>One axis. The minimum wins over the maximum when the screen is too small for it.</summary>
     internal static int Clamp(int wanted, int minimum, int max) => Math.Max(minimum, Math.Min(max, wanted));
@@ -432,8 +464,12 @@ public sealed class WindowManager
         var (y, height) = ResizeAxis(_pressBounds.Y, _pressBounds.Height, point.Y - _pressPoint.Y,
             (_resizeEdges & WindowEdges.Top) != 0, (_resizeEdges & WindowEdges.Bottom) != 0,
             resizing.Minimum.Height, resizing.Maximum?.Height ?? int.MaxValue, _screen.Height);
-        window.Location = new Point(x, y);
-        window.Size = new Size(width, height);
+        // A window that keeps its shape carries the other axis along; a pressed start edge keeps its opposite edge where it was.
+        var size = resizing.Shaped(new Size(width, height), (_resizeEdges & (WindowEdges.Left | WindowEdges.Right)) != 0, _screen);
+        if ((_resizeEdges & WindowEdges.Left) != 0) x = _pressBounds.Right - size.Width;
+        if ((_resizeEdges & WindowEdges.Top) != 0) y = _pressBounds.Bottom - size.Height;
+        window.Size = size;
+        window.Location = Clamp(new Point(x, y), size);
         window.PreferredLocation = window.Location;
         window.PreferredSize = window.Size;
     }
@@ -477,7 +513,7 @@ public sealed class WindowManager
     /// <summary>The definition at this manager's scale: what its window measures on screen.</summary>
     private WindowDefinition Scaled(WindowDefinition definition) => Scale == 1 ? definition : new WindowDefinition(
         definition.Id, definition.Title, Scaled(definition.Width), Scaled(definition.Height), Scaled(definition.TitleBarHeight), definition.Theme,
-        definition.Resizing is { } resizing ? new WindowResizing(Scaled(resizing.Minimum), resizing.Maximum is { } top ? Scaled(top) : null, resizing.Locked, resizing.NoCorners) : null,
+        definition.Resizing is { } resizing ? new WindowResizing(Scaled(resizing.Minimum), resizing.Maximum is { } top ? Scaled(top) : null, resizing.Locked, resizing.NoCorners, resizing.Shape) : null,
         definition.SharesLocationWith, definition.DragsFromContent);
 
     private Size Scaled(Size size, double? scale = null) => new(Scaled(size.Width, scale), Scaled(size.Height, scale));

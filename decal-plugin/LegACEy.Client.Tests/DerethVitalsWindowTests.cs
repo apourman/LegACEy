@@ -42,32 +42,53 @@ public sealed class DerethVitalsWindowTests
     }
 
     [Fact]
-    public void The_window_opens_at_252_by_84_and_stretches_only_wider_from_180_to_480() => RenderThread.Run(() =>
+    public void The_window_opens_at_252_by_84_and_stretches_wider_up_to_480_then_draws_larger() => RenderThread.Run(() =>
     {
         var windows = Windows(new MemoryWindowPositionStore(), "Alice");
         var window = windows.Open(DerethVitalsWindow.DefinitionOf(VitalsLayout.Stacked, () => false), new Point(100, 100));
         Assert.Equal(new Size(252, 84), window.Size);
 
-        StretchBy(windows, window, 400);
+        StretchBy(windows, window, 228);
         Assert.Equal(new Size(480, 84), window.Size);
 
-        StretchBy(windows, window, -600);
-        Assert.Equal(new Size(180, 84), window.Size);
+        // Past 480 at this scale the height follows, so the window draws larger instead of its bars growing longer.
+        StretchBy(windows, window, 80);
+        Assert.Equal(new Size(560, 98), window.Size);
+
+        StretchBy(windows, window, -1000);
+        Assert.Equal(new Size(135, 63), window.Size);
     });
 
     [Fact]
-    public void Pressing_the_bottom_edge_and_dragging_leaves_the_fixed_height_at_84() => RenderThread.Run(() =>
+    public void The_grip_and_the_bottom_edge_draw_the_window_larger_up_to_twice_its_size() => RenderThread.Run(() =>
     {
         var windows = Windows(new MemoryWindowPositionStore(), "Alice");
         var window = windows.Open(DerethVitalsWindow.DefinitionOf(VitalsLayout.Stacked, () => false), new Point(100, 100));
         var placed = window.Location;
 
-        windows.Press(new Point(window.Bounds.Left + 110, window.Bounds.Bottom - 2));
-        windows.Move(new Point(window.Bounds.Left + 110, window.Bounds.Bottom + 60));
-        windows.Release();
-
-        Assert.Equal(84, window.Height);
+        Grip(windows, window, 252, 84);
+        Assert.Equal(new Size(504, 168), window.Size);
         Assert.Equal(placed, window.Location);
+
+        Grip(windows, window, -252, -84);
+        // A taller window needs a wider one to keep its bars 180 DIPs long at its scale: the bottom edge carries the width along.
+        windows.Press(new Point(window.Bounds.Left + 110, window.Bounds.Bottom - 2));
+        windows.Move(new Point(window.Bounds.Left + 110, window.Bounds.Bottom + 40));
+        windows.Release();
+        Assert.Equal(new Size(270, 126), window.Size);
+        Assert.Equal(placed, window.Location);
+    });
+
+    [Fact]
+    public void The_content_draws_at_the_windows_height_over_84() => RenderThread.Run(() =>
+    {
+        var view = new DerethVitalsWindow(Game(), () => false, () => { });
+        using var panel = AvaloniaPanel.Create(() => view, 504, 168, 1);
+        panel.Tick();
+        var bar = Bars(view)[0];
+        var left = Avalonia.VisualExtensions.TranslatePoint(bar, new Avalonia.Point(0, 0), panel.Content)!.Value;
+        var right = Avalonia.VisualExtensions.TranslatePoint(bar, new Avalonia.Point(bar.Bounds.Width, bar.Bounds.Height), panel.Content)!.Value;
+        Assert.Equal(DerethVitalBar.BarHeight * 2, right.Y - left.Y, 3);
     });
 
     [Fact]
@@ -79,14 +100,14 @@ public sealed class DerethVitalsWindowTests
         var view = new DerethVitalsWindow(Game(), () => locked, () => { });
 
         view.Refresh(TimeSpan.Zero);
-        StretchBy(windows, window, 300);
+        StretchBy(windows, window, 228);
 
         Assert.False(view.GripVisible);
         Assert.Equal(252, window.Width);
 
         locked = false;
         view.Refresh(TimeSpan.Zero);
-        StretchBy(windows, window, 300);
+        StretchBy(windows, window, 228);
 
         Assert.True(view.GripVisible);
         Assert.Equal(480, window.Width);
@@ -194,7 +215,7 @@ public sealed class DerethVitalsWindowTests
     });
 
     [Fact]
-    public void The_side_by_side_strip_stretches_wider_and_taller_within_260_to_880_and_20_to_40() => RenderThread.Run(() =>
+    public void The_side_by_side_strip_stretches_wider_and_draws_larger_as_it_grows_taller() => RenderThread.Run(() =>
     {
         var windows = Windows(new MemoryWindowPositionStore(), "Alice");
         var strip = windows.Open(DerethVitalsWindow.DefinitionOf(VitalsLayout.SideBySide, () => false), new Point(100, 100));
@@ -203,11 +224,12 @@ public sealed class DerethVitalsWindowTests
         Grip(windows, strip, 200, 10);
         Assert.Equal(new Size(640, 36), strip.Size);
 
+        // As tall as twice its height; as wide as the screen lets it.
         Grip(windows, strip, 1000, 100);
-        Assert.Equal(new Size(880, 40), strip.Size);
+        Assert.Equal(new Size(900, 52), strip.Size);
 
         Grip(windows, strip, -1000, -100);
-        Assert.Equal(new Size(260, 20), strip.Size);
+        Assert.Equal(new Size(200, 20), strip.Size);
     });
 
     // At a larger UI size the strip is taller, and must still have no corners to catch the first bar's glyph.
@@ -300,15 +322,16 @@ public sealed class DerethVitalsWindowTests
         var low = new GameStateSnapshot("Alice", Server, 80, 412, 250, 380, 298, 298);
         foreach (var scale in new[] { 1.0, 2.0 })
         {
-            foreach (var width in new[] { 252, 332 })
+            // The stacked window at its default, stretched wider, and drawn larger.
+            foreach (var (width, height) in new[] { (252, 84), (332, 84), (504, 168) })
             {
-                var name = $"{width}-{scale:0}x.png";
+                var name = $"{width}x{height}-{scale:0}x.png";
                 // The low state is health dropping from full at one second, so its trail shows.
-                Render(Path.Combine(folder, "full-" + name), VitalsLayout.Stacked, width, DerethVitalsWindow.DesignHeight, scale, (full, 0));
-                Render(Path.Combine(folder, "low-" + name), VitalsLayout.Stacked, width, DerethVitalsWindow.DesignHeight, scale, (full, 0), (low, 1));
+                Render(Path.Combine(folder, "full-" + name), VitalsLayout.Stacked, width, height, scale, (full, 0));
+                Render(Path.Combine(folder, "low-" + name), VitalsLayout.Stacked, width, height, scale, (full, 0), (low, 1));
             }
-            // The side-by-side strip at its smallest, its default and its largest.
-            foreach (var (width, height) in new[] { (260, 20), (440, 26), (880, 40) })
+            // The side-by-side strip at its smallest, its default and drawn larger.
+            foreach (var (width, height) in new[] { (200, 20), (440, 26), (880, 52) })
             {
                 var name = $"{width}x{height}-{scale:0}x.png";
                 Render(Path.Combine(folder, "side-full-" + name), VitalsLayout.SideBySide, width, height, scale, (full, 0));
@@ -360,8 +383,9 @@ public sealed class DerethVitalsWindowTests
         panel.Tick();
         var glyph = panel.Content.GetVisualDescendants().OfType<DerethVitalGlyph>().First();
         var origin = Avalonia.VisualExtensions.TranslatePoint(glyph, new Avalonia.Point(0, 0), panel.Content)!.Value;
+        var end = Avalonia.VisualExtensions.TranslatePoint(glyph, new Avalonia.Point(glyph.Bounds.Width, glyph.Bounds.Height), panel.Content)!.Value;
         return new Rectangle((int)Math.Round(origin.X * uiScale), (int)Math.Round(origin.Y * uiScale),
-            (int)Math.Round(glyph.Bounds.Width * uiScale), (int)Math.Round(glyph.Bounds.Height * uiScale));
+            (int)Math.Round((end.X - origin.X) * uiScale), (int)Math.Round((end.Y - origin.Y) * uiScale));
     }
 
     /// <summary>The value labels, in retail's order.</summary>

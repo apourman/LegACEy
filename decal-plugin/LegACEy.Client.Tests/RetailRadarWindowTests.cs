@@ -13,6 +13,29 @@ namespace LegACEy.Client.Tests;
 /// <summary>The Dereth radar window, driven as a player does, against a fake of the radar's port and a fake ground.</summary>
 public sealed class RetailRadarWindowTests
 {
+    [Fact]
+    public void Dragging_an_edge_or_corner_draws_the_radar_larger_or_smaller_keeping_its_shape()
+    {
+        var windows = new WindowManager(new System.Drawing.Size(1600, 1000), new MemoryWindowPositionStore(), "Thistledown", "Alice");
+        var radar = windows.Open(new WindowDefinition("radar", "Radar", RetailRadarWindow.DesignWidth, RetailRadarWindow.DesignHeight, titleBarHeight: 1,
+            resizing: RetailRadarWindow.Resizing(() => false), dragsFromContent: true), new System.Drawing.Point(100, 100));
+        Assert.Equal(new System.Drawing.Size(292, 348), radar.Size);
+
+        void Drag(System.Drawing.Point grab, int dx, int dy)
+        {
+            windows.Press(grab);
+            windows.Move(new System.Drawing.Point(grab.X + dx, grab.Y + dy));
+            windows.Release();
+        }
+        // The right edge alone brings the height along; the corner goes no larger than three times the layout, nor smaller than it.
+        Drag(new System.Drawing.Point(radar.Bounds.Right - 2, radar.Bounds.Top + 100), 73, 0);
+        Assert.Equal(new System.Drawing.Size(365, 435), radar.Size);
+        Drag(new System.Drawing.Point(radar.Bounds.Right - 2, radar.Bounds.Bottom - 2), 500, 500);
+        Assert.Equal(new System.Drawing.Size(438, 522), radar.Size);
+        Drag(new System.Drawing.Point(radar.Bounds.Right - 2, radar.Bounds.Bottom - 2), -500, -500);
+        Assert.Equal(new System.Drawing.Size(146, 174), radar.Size);
+    }
+
     private const uint Outdoors = 0xC6A90014;
     private const uint Indoors = 0xC6A90100;
 

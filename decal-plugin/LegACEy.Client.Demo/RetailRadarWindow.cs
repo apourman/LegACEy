@@ -19,13 +19,17 @@ namespace LegACEy.Client.Demo;
 /// </summary>
 public sealed class RetailRadarWindow : Decorator, IDisposable
 {
-    /// <summary>How much larger than its layout the radar draws: the whole radar, bezel and controls included, at twice its layout size.</summary>
+    /// <summary>
+    /// How much larger than its layout the radar opens: the whole radar, bezel and controls included, at twice its layout size. Resizing the
+    /// window draws it larger or smaller, from <see cref="MinimumScale"/> to <see cref="MaximumScale"/>, keeping its shape.
+    /// </summary>
     public const int Scale = 2;
+    private const double MinimumScale = 1, MaximumScale = 3;
     // The layout's size, before the scale.
     private const int LayoutWidth = 146, LayoutHeight = 174;
     /// <summary>The window's design size in DIPs, the layout at its scale.</summary>
     public const int DesignWidth = LayoutWidth * Scale, DesignHeight = LayoutHeight * Scale;
-    /// <summary>Where the scope's top-left sits in the layout, in layout units (a window DIP is this times <see cref="Scale"/>).</summary>
+    /// <summary>Where the scope's top-left sits in the layout, in layout units (a window DIP is this times the radar's scale).</summary>
     public static readonly Point ScopeOrigin = new(14, 28);
     // The scope's diameter: 118 DIPs across, so its radius is 59.
     private const double Diameter = 118;
@@ -160,8 +164,14 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
             CloseOptions();
             if (!e.Handled && !_port.UiLocked) _startMove();
         };
-        Child = new LayoutTransformControl { LayoutTransform = new ScaleTransform(Scale, Scale), Child = grid };
+        Child = new HeightScaled(LayoutHeight) { Child = grid };
     }
+
+    /// <summary>How the radar resizes: from its layout size to three times it, keeping its shape, unless retail's UI is locked.</summary>
+    public static WindowResizing Resizing(Func<bool> uiLocked) => new(
+        new System.Drawing.Size((int)(LayoutWidth * MinimumScale), (int)(LayoutHeight * MinimumScale)),
+        new System.Drawing.Size((int)(LayoutWidth * MaximumScale), (int)(LayoutHeight * MaximumScale)),
+        uiLocked, shape: ((double)LayoutWidth / LayoutHeight, (double)LayoutWidth / LayoutHeight));
 
     /// <summary>Reads the player and the objects around them, and draws the radar. The host calls it once a frame.</summary>
     public void Refresh()

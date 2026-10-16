@@ -2166,7 +2166,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             () => _windows?.BeginMove(RadarWindowId, _pointer));
         // The radar has no title bar: it drags from its frame, so its title bar is only one pixel tall.
         var definition = new WindowDefinition(RadarWindowId, "Radar", RetailRadarWindow.DesignWidth, RetailRadarWindow.DesignHeight, titleBarHeight: 1,
-            theme: new DerethClientTheme(), dragsFromContent: true);
+            theme: new DerethClientTheme(), resizing: RetailRadarWindow.Resizing(() => NativeUi.IsUiLocked), dragsFromContent: true);
         _radar = window;
         try { OpenWindowCore(definition, window, at, RadarFailed); }
         catch
