@@ -79,7 +79,7 @@ public sealed class RetailChatNativeTests
     public void Every_chat_root_that_shows_is_held_hidden_and_given_back_visible_on_release()
     {
         var roots = new[] { new FakeRoot(true), new FakeRoot(true), new FakeRoot(false) };
-        var takeover = new RetailChatTakeover(roots);
+        var takeover = new RetailHeldWindows(roots);
 
         takeover.Tick(new Size(1000, 800));
 
