@@ -187,27 +187,30 @@ public sealed class RetailToolbarTests
     });
 
     [Fact]
-    public void Selecting_a_stack_shows_the_amount_box_at_retails_amount() => RenderThread.Run(() =>
+    public void Selecting_a_stack_shows_the_split_tab_at_retails_amount() => RenderThread.Run(() =>
     {
-        var stack = Pyreals(12500);
-        var port = new FakeToolbarPort { Selection = stack, SplitAmount = 10 };
-        using var panel = Open(port, out var toolbar);
+        var port = new FakeToolbarPort { Selection = Pyreals(12500), SplitAmount = 10 };
+        using var panel = OpenTab(port, out var tab);
         panel.Tick();
+        var ten = panel.Frame.Pixels.ToArray();
 
-        Assert.Equal("10", toolbar.AmountBox!.Text);
-        AssertDrawn(Render(p => { p.Selection = stack; p.SplitAmount = 10; }), panel);
+        Assert.True(tab.IsShown);
+        Assert.Equal("10", tab.AmountBox!.Text);
         // The box draws the figure: another amount draws differently, so the box is not a fixed picture.
-        Assert.NotEqual(Render(p => { p.Selection = stack; p.SplitAmount = 11; }), panel.Frame.Pixels.ToArray());
+        port.SplitAmount = 11;
+        port.Raise();
+        panel.Tick();
+        Assert.NotEqual(ten, panel.Frame.Pixels.ToArray());
     });
 
     [Fact]
-    public void Typing_and_sliding_write_the_amount_clamped_to_one_and_the_stack() => RenderThread.Run(() =>
+    public void Typing_sliding_and_the_buttons_write_the_amount_clamped_to_one_and_the_stack() => RenderThread.Run(() =>
     {
         var port = new FakeToolbarPort { Selection = Pyreals(50), SplitAmount = 10 };
-        using var panel = Open(port, out var toolbar);
+        using var panel = OpenTab(port, out var tab);
         panel.Tick();
 
-        Click(panel, toolbar, toolbar.AmountBox!);
+        Click(panel, tab, tab.AmountBox!);
         // Keys typed in the box go to the box, which holds the keyboard (retail text mode follows that).
         Assert.True(panel.WantsKeyboard);
         TypeReplacing(panel, "99999");
@@ -217,9 +220,23 @@ public sealed class RetailToolbarTests
         TypeReplacing(panel, "7");
         Assert.Equal(7, port.SplitAmount);
 
-        Slide(panel, toolbar, toolbar.AmountSlider!, 1.0);
+        Slide(panel, tab, tab.AmountSlider!, 1.0);
         Assert.Equal(50, port.SplitAmount);
-        Slide(panel, toolbar, toolbar.AmountSlider!, 0.0);
+        Slide(panel, tab, tab.AmountSlider!, 0.0);
+        Assert.Equal(1, port.SplitAmount);
+
+        Click(panel, tab, tab.FewerButton!);
+        Assert.Equal(1, port.SplitAmount);
+        Click(panel, tab, tab.MoreButton!);
+        Assert.Equal(2, port.SplitAmount);
+        Click(panel, tab, tab.HalfButton!);
+        Assert.Equal(25, port.SplitAmount);
+        Assert.Equal("25", tab.AmountBox!.Text);
+        Click(panel, tab, tab.AllButton!);
+        Assert.Equal(50, port.SplitAmount);
+        Click(panel, tab, tab.MoreButton!);
+        Assert.Equal(50, port.SplitAmount);
+        Click(panel, tab, tab.OneButton!);
         Assert.Equal(1, port.SplitAmount);
     });
 
@@ -227,17 +244,17 @@ public sealed class RetailToolbarTests
     public void A_refresh_keeps_the_typed_amount_and_the_focus() => RenderThread.Run(() =>
     {
         var port = new FakeToolbarPort { Selection = Pyreals(500), SplitAmount = 10 };
-        using var panel = Open(port, out var toolbar);
+        using var panel = OpenTab(port, out var tab);
         panel.Tick();
 
-        Click(panel, toolbar, toolbar.AmountBox!);
+        Click(panel, tab, tab.AmountBox!);
         TypeReplacing(panel, "12");
-        // The port changes something else (the stance, say) while the box is being typed in: the plaque is redrawn.
+        // The port changes something else (the stance, say) while the box is being typed in: the tab is refreshed.
         port.Raise();
         panel.Tick();
 
         Assert.True(panel.WantsKeyboard);
-        Assert.Equal("12", toolbar.AmountBox!.Text);
+        Assert.Equal("12", tab.AmountBox!.Text);
         panel.TextInput("3");
         Assert.Equal(123, port.SplitAmount);
     });
@@ -246,10 +263,10 @@ public sealed class RetailToolbarTests
     public void A_split_typed_for_one_stack_is_not_written_once_another_stack_is_selected() => RenderThread.Run(() =>
     {
         var port = new FakeToolbarPort { Selection = Pyreals(500), SplitAmount = 10 };
-        using var panel = Open(port, out var toolbar);
+        using var panel = OpenTab(port, out var tab);
         panel.Tick();
 
-        Click(panel, toolbar, toolbar.AmountBox!);
+        Click(panel, tab, tab.AmountBox!);
         TypeReplacing(panel, "5");
         Assert.Equal(5, port.SplitAmount);
         var writesBeforeSwitch = port.SplitWrites.Count;
@@ -266,23 +283,24 @@ public sealed class RetailToolbarTests
     });
 
     [Fact]
-    public void Only_a_stack_shows_the_amount_box() => RenderThread.Run(() =>
+    public void Only_a_stack_shows_the_split_tab() => RenderThread.Run(() =>
     {
         var port = new FakeToolbarPort { Selection = new RetailSelection(0x50000004, "Rat Tail", SelectionKind.Other) };
-        using var panel = Open(port, out var toolbar);
+        using var panel = OpenTab(port, out var tab);
         panel.Tick();
-        Assert.Null(toolbar.AmountBox);
+        Assert.False(tab.IsShown);
 
         port.Selection = Pyreals(12500);
         port.Raise();
         panel.Tick();
-        Assert.NotNull(toolbar.AmountBox);
+        Assert.True(tab.IsShown);
 
-        // The stack is down to one: the game's kind is Other now, and the box goes.
+        // The stack is down to one: the game's kind is Other now, and the tab goes.
         port.Selection = new RetailSelection(0x50000003, "Pyreals", SelectionKind.Other, StackCount: 1);
         port.Raise();
         panel.Tick();
-        Assert.Null(toolbar.AmountBox);
+        Assert.False(tab.IsShown);
+        Assert.Null(tab.AmountBox);
     });
 
     [Fact]
@@ -495,10 +513,18 @@ public sealed class RetailToolbarTests
         return panel;
     }
 
-    /// <summary>A press and release at the middle of a medallion, where the player clicks.</summary>
-    private static void Click(AvaloniaPanel panel, RetailToolbar toolbar, Control button)
+    private static AvaloniaPanel OpenTab(IRetailToolbarPort port, out StackSplitTab tab)
     {
-        var centre = button.TranslatePoint(new Point(button.Bounds.Width / 2, button.Bounds.Height / 2), toolbar)!.Value;
+        StackSplitTab? created = null;
+        var panel = AvaloniaPanel.Create(() => created = new StackSplitTab(port), (int)StackSplitTab.TabWidth, 64);
+        tab = created!;
+        return panel;
+    }
+
+    /// <summary>A press and release at the middle of a control, where the player clicks.</summary>
+    private static void Click(AvaloniaPanel panel, Control root, Control button)
+    {
+        var centre = button.TranslatePoint(new Point(button.Bounds.Width / 2, button.Bounds.Height / 2), root)!.Value;
         panel.PointerDown(centre.X, centre.Y);
         panel.PointerUp(centre.X, centre.Y);
         // The pointer moves on, as a player's does, so the button is not left in its hover art.
@@ -506,15 +532,15 @@ public sealed class RetailToolbarTests
     }
 
     /// <summary>A player's drag of a slider's thumb, from where it sits to a fraction of the track (0 the left end, 1 the right).</summary>
-    private static void Slide(AvaloniaPanel panel, RetailToolbar toolbar, Slider slider, double toFraction)
+    private static void Slide(AvaloniaPanel panel, Control root, Slider slider, double toFraction)
     {
         // The thumb is laid out again after the last change, so the press finds it where the player sees it.
         panel.Tick();
-        // The thumb is 6 DIP wide, so its centre runs from 3 to the width less 3. Its value sets where it sits.
-        double Centre(double fraction) => 3 + fraction * (slider.Bounds.Width - 6);
+        // The thumb is 9 DIP wide, so its centre runs from 4.5 to the width less 4.5. Its value sets where it sits.
+        double Centre(double fraction) => 4.5 + fraction * (slider.Bounds.Width - 9);
         var fromFraction = (slider.Value - slider.Minimum) / (slider.Maximum - slider.Minimum);
-        var from = slider.TranslatePoint(new Point(Centre(fromFraction), slider.Bounds.Height / 2), toolbar)!.Value;
-        var to = slider.TranslatePoint(new Point(Centre(toFraction), slider.Bounds.Height / 2), toolbar)!.Value;
+        var from = slider.TranslatePoint(new Point(Centre(fromFraction), slider.Bounds.Height / 2), root)!.Value;
+        var to = slider.TranslatePoint(new Point(Centre(toFraction), slider.Bounds.Height / 2), root)!.Value;
         // The pointer leaves the slider between drags, as a player's does; without that the next press does not grab the thumb.
         panel.PointerLeave();
         panel.PointerDown(from.X, from.Y);
