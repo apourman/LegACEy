@@ -8,7 +8,8 @@ namespace LegACEy.Client.GameArt;
 /// <summary>
 /// Draws a landblock's ground as one 384 × 384 image, 2 px per metre, north up: terrain textures blended per 24 m cell with a
 /// little noise at the seams, roads as bands along the edges between road vertices, hills shaded with the light from the
-/// north-west, and buildings and walls as outlines with a soft shadow. Trees and scenery are not drawn (GroundDat leaves them out).
+/// north-west, and buildings and walls as outlines with a soft shadow. Trees and plants are not drawn: GroundDat leaves out static
+/// objects under 6 m² and over 400 m², and those between are drawn as walls, as the buildings are.
 /// </summary>
 public static class GroundTileRenderer
 {
