@@ -316,13 +316,13 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     /// <summary>
     /// A release outside every slot: an item goes to the LegACEy window under the pointer, if that window takes it (a Vault deposit).
-    /// Packs stay here.
+    /// Packs are never given to a LegACEy window, and the main pack is the character, so neither ever goes to the ground.
     /// </summary>
     private void HandOffOutside(uint dragged)
     {
         var snapshot = _port.Snapshot;
-        if (_dragHost == null || PackOf(snapshot, dragged) != null || !snapshot.Contains(dragged)) return;
-        if (_dragHost.DeliverAtPointer(dragged, KindOf(snapshot, dragged).Name)) return;
+        if (_dragHost == null || !snapshot.Contains(dragged) || snapshot.MainPack.Id == dragged) return;
+        if (PackOf(snapshot, dragged) == null && _dragHost.DeliverAtPointer(dragged, KindOf(snapshot, dragged).Name)) return;
         // Retail did not take the drag when it left the window (the retail panel shows no element for the item): only a release over
         // the world sends anything.
         if (_dragHost.DropTargetAtPointer() == ItemDropTarget.World) _port.DropOnGround(dragged);
