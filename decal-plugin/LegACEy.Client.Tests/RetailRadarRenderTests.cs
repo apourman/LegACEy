@@ -40,9 +40,10 @@ public sealed class RetailRadarRenderTests
         Render(folder, "radar-north-up-1x.png", 1, ground, new RadarOptions(NorthUp: true));
         Render(folder, "radar-dark-1x.png", 1, null, new RadarOptions(Ground: false));
         Render(folder, "radar-options-2x.png", 2, ground, new RadarOptions(Rings: true), openOptions: true);
+        Render(folder, "radar-hover-1x.png", 1, ground, new RadarOptions(), hover: true);
     });
 
-    private static void Render(string folder, string file, int scale, GroundTiles? ground, RadarOptions options, bool openOptions = false)
+    private static void Render(string folder, string file, int scale, GroundTiles? ground, RadarOptions options, bool openOptions = false, bool hover = false)
     {
         var port = new FakeRadarPort { Player = new RadarPlayer(new RadarPosition(Cell, 96, 96, 0), 270) };
         port.Objects.AddRange(Scene());
@@ -68,6 +69,12 @@ public sealed class RetailRadarRenderTests
                 panel.PointerDown(at.X * scale, at.Y * scale);
                 panel.PointerUp(at.X * scale, at.Y * scale);
                 window!.Refresh();
+                panel.Tick();
+            }
+            if (hover)
+            {
+                // The pointer over the frame's corner, with the UI unlocked: the resize corners show.
+                panel.PointerMove(4 * scale, 4 * scale);
                 panel.Tick();
             }
             Save(panel, Path.Combine(folder, file));

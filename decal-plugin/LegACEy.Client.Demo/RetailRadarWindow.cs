@@ -56,6 +56,9 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     private readonly TextBlock _coordinates;
     private readonly Border _coordinatesPlaque;
     private readonly DerethMedallion _lock;
+    // The resize corners, shown while the pointer is over the radar and the UI is unlocked.
+    private readonly DerethCornerMarks _corners = new() { IsVisible = false };
+    private bool _pointerOver;
     private readonly DerethMedallion _gear;
     private readonly Control _popover;
     private readonly OptionRow _groundRow, _northRow, _ringsRow, _zoomRow;
@@ -156,8 +159,10 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         var grid = new Grid
         {
             Width = LayoutWidth, Height = LayoutHeight, Background = Brushes.Transparent,
-            Children = { _scope, _bezel, tape, _coordinatesPlaque, _lock, _gear, _popover }
+            Children = { _scope, _bezel, tape, _coordinatesPlaque, _lock, _gear, _popover, _corners }
         };
+        grid.PointerEntered += (_, _) => { _pointerOver = true; ShowCorners(); };
+        grid.PointerExited += (_, _) => { _pointerOver = false; ShowCorners(); };
         // A press on the frame, where no dot or control takes it, closes the options and moves the radar unless the UI is locked.
         grid.PointerPressed += (_, e) =>
         {
@@ -166,6 +171,11 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         };
         Child = new HeightScaled(LayoutHeight) { Child = grid };
     }
+
+    /// <summary>Whether the resize corners show: while the pointer is over the radar and the UI is unlocked.</summary>
+    public bool CornersVisible => _corners.IsVisible;
+
+    private void ShowCorners() => _corners.IsVisible = _pointerOver && !_port.UiLocked;
 
     /// <summary>How the radar resizes: from its layout size to three times it, keeping its shape, unless retail's UI is locked.</summary>
     public static WindowResizing Resizing(Func<bool> uiLocked) => new(
@@ -261,6 +271,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
             _lock.IsOpen = locked;
             ToolTip.SetTip(_lock, locked ? UnlockTip : LockTip);
         }
+        ShowCorners();
 
         _groundRow.Show(Options.Ground);
         _northRow.Show(Options.NorthUp);

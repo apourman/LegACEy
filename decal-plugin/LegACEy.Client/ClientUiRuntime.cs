@@ -2162,11 +2162,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (!CanOpenWindows || _radarPort == null) return false;
         var screen = _windows!.Screen;
         var at = _radarPlace ?? new Point(Math.Max(0, screen.Width - (int)Math.Round(RetailRadarWindow.DesignWidth * WindowScale) - 12), 12);
-        var window = new RetailRadarWindow(_radarPort, RadarGround, LoadRadarOptions(), SaveRadarOptions, () => (uint)Bridge.Fact(BridgeFact.CurrentSelection),
+        var port = _radarPort;
+        var window = new RetailRadarWindow(port, RadarGround, LoadRadarOptions(), SaveRadarOptions, () => (uint)Bridge.Fact(BridgeFact.CurrentSelection),
             () => _windows?.BeginMove(RadarWindowId, _pointer));
         // The radar has no title bar: it drags from its frame, so its title bar is only one pixel tall.
         var definition = new WindowDefinition(RadarWindowId, "Radar", RetailRadarWindow.DesignWidth, RetailRadarWindow.DesignHeight, titleBarHeight: 1,
-            theme: new DerethClientTheme(), resizing: RetailRadarWindow.Resizing(() => NativeUi.IsUiLocked), dragsFromContent: true);
+            theme: new DerethClientTheme(), resizing: RetailRadarWindow.Resizing(() => port.UiLocked), dragsFromContent: true);
         _radar = window;
         try { OpenWindowCore(definition, window, at, RadarFailed); }
         catch

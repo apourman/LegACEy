@@ -14,6 +14,35 @@ namespace LegACEy.Client.Tests;
 public sealed class RetailRadarWindowTests
 {
     [Fact]
+    public void Hovering_shows_the_resize_corners_only_while_the_UI_is_unlocked() => RenderThread.Run(() =>
+    {
+        var port = PortWith();
+        using var panel = Open(port, out var window);
+        Assert.False(window.CornersVisible);
+
+        panel.PointerMove(6, 6);
+        panel.Tick();
+        Assert.True(window.CornersVisible);
+
+        // Locking while the pointer is over the radar hides them, and the window no longer resizes.
+        port.UiLocked = true;
+        window.Refresh();
+        Assert.False(window.CornersVisible);
+        var windows = new WindowManager(new System.Drawing.Size(1600, 1000), new MemoryWindowPositionStore(), "Thistledown", "Alice");
+        var radar = windows.Open(new WindowDefinition("radar", "Radar", RetailRadarWindow.DesignWidth, RetailRadarWindow.DesignHeight, titleBarHeight: 1,
+            resizing: RetailRadarWindow.Resizing(() => port.UiLocked), dragsFromContent: true), new System.Drawing.Point(100, 100));
+        var corner = new System.Drawing.Point(radar.Bounds.Right - 2, radar.Bounds.Bottom - 2);
+        windows.Press(corner);
+        windows.Move(new System.Drawing.Point(corner.X + 100, corner.Y + 100));
+        windows.Release();
+        Assert.Equal(new System.Drawing.Size(292, 348), radar.Size);
+
+        port.UiLocked = false;
+        window.Refresh();
+        Assert.True(window.CornersVisible);
+    });
+
+    [Fact]
     public void Dragging_an_edge_or_corner_draws_the_radar_larger_or_smaller_keeping_its_shape()
     {
         var windows = new WindowManager(new System.Drawing.Size(1600, 1000), new MemoryWindowPositionStore(), "Thistledown", "Alice");

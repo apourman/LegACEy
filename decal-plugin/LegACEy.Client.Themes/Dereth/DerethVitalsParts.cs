@@ -425,3 +425,26 @@ public sealed class DerethStretchGrip : Control
             context.DrawLine(Ridge, new Point(Math.Max(0, c - GripSize), Math.Min(GripSize, c)), new Point(Math.Min(GripSize, c), Math.Max(0, c - GripSize)));
     }
 }
+
+/// <summary>
+/// Gold brackets in a window's four corners, shown on hover while the window can be resized from them. It fills the window and takes no
+/// pointer, so presses fall through to the corners the window manager resizes from.
+/// </summary>
+public sealed class DerethCornerMarks : Control
+{
+    // Each bracket's arm and its inset from the edge, in DIPs.
+    private const double Arm = 8, Inset = 1.5;
+    private static readonly IPen Edge = new Pen(DerethPalette.GoldBrush, 1.6, lineCap: PenLineCap.Round);
+
+    public DerethCornerMarks() => IsHitTestVisible = false;
+
+    public override void Render(DrawingContext context)
+    {
+        double left = Inset, top = Inset, right = Bounds.Width - Inset, bottom = Bounds.Height - Inset;
+        foreach (var (x, y, dx, dy) in new[] { (left, top, 1, 1), (right, top, -1, 1), (left, bottom, 1, -1), (right, bottom, -1, -1) })
+        {
+            context.DrawLine(Edge, new Point(x, y), new Point(x + dx * Arm, y));
+            context.DrawLine(Edge, new Point(x, y), new Point(x, y + dy * Arm));
+        }
+    }
+}
