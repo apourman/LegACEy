@@ -208,7 +208,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private RetailChatNatives? _chatNatives;
     private NativeRetailChatPort? _chatPort;
     private RetailChatWindows? _chatWindows;
-    private RetailChatTakeover? _chatTakeover;
+    private RetailHeldWindows? _chatTakeover;
     private bool _chatFailed;
     private bool _chatReleaseLogged;
     private bool _chatSwitch;
@@ -1916,9 +1916,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (!natives.ChatWindow) return false;
         var roots = new List<IRetailTakeoverPort>();
         foreach (var id in new[] { RetailChatCatalogue.MainChatWindow }.Concat(RetailChatCatalogue.FloatingChats))
-            roots.Add(new RetailChatTakeover.RootPort(id));
+            roots.Add(new RetailHeldWindows.RootPort(id));
         _chatPort = new NativeRetailChatPort(Log, natives, (opcode, payload) => _channelTransport?.SendAction(opcode, payload) ?? false);
-        _chatTakeover = new RetailChatTakeover(roots);
+        _chatTakeover = new RetailHeldWindows(roots);
         try { _chatPort.Attach(); }
         catch (InvalidOperationException) { }
         Log($"Retail's chat windows held: {roots.Count}.");

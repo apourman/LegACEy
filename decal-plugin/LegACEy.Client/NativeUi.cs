@@ -42,7 +42,9 @@ internal static class NativeUi
     /// <summary>The examination layout's inscription field (0x2100006B): it sits under <see cref="Examination"/>.</summary>
     public const uint ExaminationInscription = 0x1000013E;
 
-    private static readonly IntPtr ManagerInstance = new(0x0083E03C);
+    /// <summary>UIElementManager::s_pInstance: the UI element manager's pointer.</summary>
+    internal const uint Manager = 0x0083E03C;
+    private static readonly IntPtr ManagerInstance = new(Manager);
     private static bool _ready;
 
     [DllImport("kernel32.dll", SetLastError = true)]

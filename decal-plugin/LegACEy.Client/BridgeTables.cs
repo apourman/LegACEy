@@ -104,7 +104,9 @@ public enum BridgeFact
     /// The player's allegiance and society facts as bits: 1 in an allegiance, 2 with a monarch, 4 with a patron, 8 with vassals, 16 in a
     /// society, 32 an Olthoi (heritage 12 or 13). Decal reads them from CharacterFilter.
     /// </summary>
-    CharacterMembership
+    CharacterMembership,
+    /// <summary>CharacterFilter.Vitae: Decal's vitae penalty. Its unit (percent lost or percent kept) is not confirmed yet.</summary>
+    Vitae
 }
 
 /// <summary>The strings <see cref="BridgeCalls.Text"/> answers.</summary>
