@@ -9,7 +9,7 @@ namespace LegACEy.Client.DecalPlugin;
 /// <summary>
 /// A look-only preview of a battle-royale storm: the eight landblocks around one safe landblock are filled with drifting purple fog,
 /// drawn as nested translucent walls that the game's depth buffer hides behind terrain and buildings, plus a tint while the camera is
-/// inside it. Game positions become render positions through an offset measured while retail draws a part (<see cref="Calibrate"/>).
+/// inside it. Game positions (z-up) become render positions (y-up, relative to the viewer's landblock) through an offset measured while retail draws a part (<see cref="Calibrate"/>).
 /// </summary>
 internal sealed unsafe class StormFog : IDisposable
 {
@@ -44,7 +44,7 @@ internal sealed unsafe class StormFog : IDisposable
     {
         var cell = *(uint*)(part + 0x7C);
         var origin = new Vector3(*(float*)(part + 0xB4), *(float*)(part + 0xB8), *(float*)(part + 0xBC));
-        _offset = GetTransform(_device, TransformWorld).Translation - Global(cell, origin);
+        _offset = GetTransform(_device, TransformWorld).Translation - Render(Global(cell, origin));
         _view = GetTransform(_device, TransformView);
         _projection = GetTransform(_device, TransformProjection);
         Calibrated = true;
@@ -52,7 +52,7 @@ internal sealed unsafe class StormFog : IDisposable
         if (player && !_logged)
         {
             _logged = true;
-            _log($"Storm fog: the player's part at cell 0x{cell:X8} {origin} draws at {_offset + Global(cell, origin)}; game-to-render offset {_offset}.");
+            _log($"Storm fog: the player's part at cell 0x{cell:X8} {origin} draws at {_offset + Render(Global(cell, origin))}; game-to-render offset {_offset}.");
         }
     }
 
@@ -114,14 +114,14 @@ internal sealed unsafe class StormFog : IDisposable
                     var (sx, sy) = Corners[corner % 4];
                     float x = centre.X + sx * half, y = centre.Y + sy * half;
                     var u = corner * half * 2 / 96 + drift;
-                    walls[corner * 2] = new(x, y, Bottom, color, u, time * 0.02f);
-                    walls[corner * 2 + 1] = new(x, y, Top, color, u, (Top - Bottom) / 128 + time * 0.02f);
+                    walls[corner * 2] = new(Render(new Vector3(x, y, Bottom)), color, u, time * 0.02f);
+                    walls[corner * 2 + 1] = new(Render(new Vector3(x, y, Top)), color, u, (Top - Bottom) / 128 + time * 0.02f);
                 }
                 DrawPrimitiveUP(_device, TriangleStrip, 8, walls, sizeof(FogVertex));
             }
 
             // Inside the storm the whole view is tinted.
-            if (Matrix4x4.Invert(_view, out var camera) && InStorm(camera.Translation - _offset))
+            if (Matrix4x4.Invert(_view, out var camera) && InStorm(Render(camera.Translation - _offset)))
             {
                 UseFixedFunction(_device, FvfXyzRhw | FvfDiffuse);
                 SetTexture(_device, 0, IntPtr.Zero);
@@ -149,6 +149,9 @@ internal sealed unsafe class StormFog : IDisposable
         var y = MathF.Floor(position.Y / Block) - SafeY;
         return Math.Abs(x) <= 1 && Math.Abs(y) <= 1 && !(x == 0 && y == 0);
     }
+
+    /// <summary>Game space is z-up; retail renders y-up, swapping y and z (its own inverse).</summary>
+    private static Vector3 Render(Vector3 game) => new(game.X, game.Z, game.Y);
 
     /// <summary>A cell's position in one space for the whole world: landblock x and y (the id's top two bytes) times 192 m, plus the origin.</summary>
     private static Vector3 Global(uint cell, Vector3 origin) => new((cell >> 24) * Block + origin.X, ((cell >> 16) & 0xFF) * Block + origin.Y, origin.Z);
@@ -189,9 +192,9 @@ internal sealed unsafe class StormFog : IDisposable
         _noise = IntPtr.Zero;
     }
 
-    private readonly struct FogVertex(float x, float y, float z, uint color, float u, float v)
+    private readonly struct FogVertex(Vector3 position, uint color, float u, float v)
     {
-        public readonly float X = x, Y = y, Z = z;
+        public readonly float X = position.X, Y = position.Y, Z = position.Z;
         public readonly uint Color = color;
         public readonly float U = u, V = v;
     }
