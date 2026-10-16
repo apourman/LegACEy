@@ -237,6 +237,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string RadarWindowId = "dereth-radar";
     private const string RadarOptionsKey = "dereth-radar-options";
     private NativeRadarPort? _radarPort;
+    // The chat's history kept over a UI size rebuild, for the chat windows that open next; a logoff drops it.
+    private RetailChatHistory? _carriedChatHistory;
     // Where retail's radar stood when it was held; the Dereth radar opens there. Null when retail's radar was not found.
     private Point? _radarPlace;
     private RetailHeldWindows? _radarTakeover;
@@ -505,6 +507,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         Guard(() => ApplyReset(_inputRouter.Route(new NativeInputMessage(InputRouterService.WmLogoff, IntPtr.Zero, IntPtr.Zero), GetInputSurfaces())));
         Guard(() => _hovered?.Panel.PointerLeave());
         _inGame = false;
+        _carriedChatHistory = null;
         // The next character reads its own toolbar place; until then the toolbar stands where retail's window is.
         _toolbarPlaceLoaded = false;
         if (_toolbarPlace != null) _toolbarPlace.Location = null;
@@ -673,7 +676,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (!_inGame) return;
         var menuOpen = _windows?.Get(MenuWindowId) != null;
         Log($"UI size {_uiSize}%: rebuilding the LegACEy UI.");
+        // The chat's lines and sent text outlive the rebuild: it is the same character still playing.
+        var chatHistory = _chatWindows?.History ?? _carriedChatHistory;
         Logoff();
+        _carriedChatHistory = chatHistory;
         LoginComplete();
         if (menuOpen) Guard(ToggleMenuWindow);
     }
@@ -1988,7 +1994,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var server = SessionServer();
         var character = SessionCharacter();
         var chats = new RetailChatWindows(port, _windows!, _positionStore!, _chatTabs, server, character, () => _pointer, (definition, content, location) => OpenWindowCore(definition, content, location, ChatFailed), ReleaseFeatureWindow,
-            copy: CopyToClipboard, paste: PasteFromClipboard);
+            copy: CopyToClipboard, paste: PasteFromClipboard, carried: _carriedChatHistory);
+        _carriedChatHistory = null;
         // The main window starts at the bottom left, above the toolbar, until the player moves it; its place is then kept per character.
         var screen = _windows!.Screen;
         var beside = new Point(12, Math.Max(0, screen.Height - (int)Math.Round(RetailChatWindows.DesignHeight * WindowScale) - 150));

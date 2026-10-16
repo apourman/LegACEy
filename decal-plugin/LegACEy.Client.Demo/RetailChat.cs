@@ -87,9 +87,15 @@ public sealed class RetailChatHistory : IDisposable
     private readonly List<RetailChatLine> _lines = new();
     private readonly List<string> _sent = new();
 
-    public RetailChatHistory(IRetailChatPort port)
+    /// <param name="carried">A history the chat had before its windows were rebuilt, such as for a new UI size: its lines and sent text carry on here.</param>
+    public RetailChatHistory(IRetailChatPort port, RetailChatHistory? carried = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
+        if (carried != null)
+        {
+            _lines.AddRange(carried._lines);
+            _sent.AddRange(carried._sent);
+        }
         _port.LineReceived += Add;
     }
 

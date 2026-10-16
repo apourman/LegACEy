@@ -74,9 +74,10 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     /// <param name="clock">The time, for the idle fade; null for the system's.</param>
     /// <param name="copy">Puts text on the clipboard, for text copied from a log or a box; null copies nothing.</param>
     /// <param name="paste">Reads the clipboard's text, for Ctrl+V in a box; null pastes nothing.</param>
+    /// <param name="carried">The history of the chat windows these replace, such as before a UI size change; null starts empty.</param>
     public RetailChatWindows(IRetailChatPort port, WindowManager windows, IWindowPositionStore positions, FileRetailChatTabStore store,
         string server, string character, Func<Point> pointer, Action<WindowDefinition, Control, Point> showSurface,
-        Action<string> closeSurface, Func<DateTime>? clock = null, Action<string>? copy = null, Func<string?>? paste = null)
+        Action<string> closeSurface, Func<DateTime>? clock = null, Action<string>? copy = null, Func<string?>? paste = null, RetailChatHistory? carried = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _windows = windows ?? throw new ArgumentNullException(nameof(windows));
@@ -90,8 +91,11 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
         _clock = clock ?? (() => DateTime.Now);
         _copy = copy;
         _paste = paste;
-        _history = new RetailChatHistory(port);
+        _history = new RetailChatHistory(port, carried);
     }
+
+    /// <summary>The lines and sent text every window shares.</summary>
+    public RetailChatHistory History => _history;
 
     /// <summary>The main window, or null before <see cref="Open"/>.</summary>
     public RetailChatWindow? Main => Get(MainId);

@@ -194,6 +194,30 @@ public sealed class RetailChatTests
     });
 
     [Fact]
+    public void A_rebuilt_chat_keeps_the_log_and_what_was_sent_from_the_history_it_carries() => RenderThread.Run(() =>
+    {
+        // The chat before a UI size change: a line in the log and a line sent.
+        var before = new FakeChatPort();
+        var old = new RetailChatHistory(before);
+        before.Say(Line(RetailChatKind.TellIn, "Mirra tells you, \"still need the Vault key?\"", "Mirra"));
+        old.AddSent("/vt go");
+        old.Dispose();
+
+        // After it: a new port, and windows on a history that carries the old one.
+        var port = new FakeChatPort();
+        var history = new RetailChatHistory(port, old);
+        RetailChatWindow? window = null;
+        using var panel = AvaloniaPanel.Create(() => window = new RetailChatWindow(port, history, new SingleWindowHost(null, "Alice"), clock: () => Stamp), Width, Height);
+        panel.Tick();
+        Assert.True(InLog(panel, "still need the Vault key"));
+
+        var box = InputBox(window!);
+        Click(panel, box);
+        panel.KeyDown(Key.Up);
+        Assert.Equal("/vt go", box.Text);
+    });
+
+    [Fact]
     public void A_name_click_and_Tab_in_an_empty_input_set_a_tell_target() => RenderThread.Run(() =>
     {
         var port = new FakeChatPort();
