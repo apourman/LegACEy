@@ -204,6 +204,30 @@ public sealed class RetailToolbarTests
     });
 
     [Fact]
+    public void A_stack_selected_once_the_tab_is_up_writes_no_amount() => RenderThread.Run(() =>
+    {
+        // As the client makes it: an empty 1 × 1 panel under the Dereth theme, sized to the tab once a stack is selected.
+        var port = new FakeToolbarPort();
+        StackSplitTab? created = null;
+        using var panel = AvaloniaPanel.Create(() => created = new StackSplitTab(port), 1, 1);
+        panel.ApplyTheme(new LegACEy.Client.Themes.DerethClientTheme());
+        panel.Tick();
+        var tab = created!;
+
+        port.Selection = Pyreals(50);
+        port.SplitAmount = 50;
+        port.SplitWrites.Clear();
+        port.Raise();
+        tab.Measure(Size.Infinity);
+        panel.Resize((int)Math.Ceiling(tab.DesiredSize.Width), (int)Math.Ceiling(tab.DesiredSize.Height));
+        panel.Tick();
+        panel.Tick();
+
+        Assert.Empty(port.SplitWrites);
+        Assert.Equal("50", tab.AmountBox!.Text);
+    });
+
+    [Fact]
     public void Typing_sliding_and_the_buttons_write_the_amount_clamped_to_one_and_the_stack() => RenderThread.Run(() =>
     {
         var port = new FakeToolbarPort { Selection = Pyreals(50), SplitAmount = 10 };

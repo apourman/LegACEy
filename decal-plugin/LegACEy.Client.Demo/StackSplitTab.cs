@@ -103,7 +103,11 @@ public sealed class StackSplitTab : Decorator
         box.KeyDown += (_, e) => { if (e.Key == Key.Enter) Settle(box); };
         slider.PropertyChanged += (_, e) =>
         {
-            if (e.Property == RangeBase.ValueProperty && slider == _amountSlider) Apply((int)Math.Round(slider.Value), slider);
+            if (e.Property != RangeBase.ValueProperty || slider != _amountSlider || _amountBusy) return;
+            // Only the player's slide writes. Laying the slider out moves its value too (to 1 before its range arrives), and that write
+            // would choose an amount nobody chose; the slider is put back on the amount instead.
+            if (slider.IsPointerOver || slider.IsFocused) Apply((int)Math.Round(slider.Value), slider);
+            else ShowAmount(_amountSize);
         };
 
         FewerButton = AmountButton("−", "One fewer", box, () => _port.SplitAmount - 1);
