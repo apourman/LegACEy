@@ -210,7 +210,7 @@ public sealed class RetailToolbarTests
         var port = new FakeToolbarPort();
         StackSplitTab? created = null;
         using var panel = AvaloniaPanel.Create(() => created = new StackSplitTab(port), 1, 1);
-        panel.ApplyTheme(new LegACEy.Client.Themes.DerethClientTheme());
+        panel.ApplyTheme(new DerethClientTheme());
         panel.Tick();
         var tab = created!;
 

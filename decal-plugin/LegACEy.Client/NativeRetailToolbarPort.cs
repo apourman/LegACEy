@@ -46,7 +46,6 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     // The amount the player chose in the split tab and the stack it is for, while it stays selected; any other stack splits whole.
     private uint _chosenSplitStackId;
     private int _chosenSplitAmount;
-    private int _splitLogs;
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate IntPtr GetCombatSystemFn();
@@ -266,9 +265,6 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
         // amount down with it.
         if (described is { Kind: SelectionKind.Stack } stack && ReadInt(RetailToolbarCatalogue.SplitAmount) != SplitAmountFor(stack))
         {
-            // ponytail: diagnostic for the split default; remove once it is understood.
-            if (_splitLogs++ < 20)
-                _log($"Split diag: stack 0x{stack.Id:X8} count {stack.StackCount}, retail amount {ReadInt(RetailToolbarCatalogue.SplitAmount)}, retail size {ReadInt(RetailToolbarCatalogue.SplitStackSize)}, writing {SplitAmountFor(stack)}.");
             WriteSplitAmount(SplitAmountFor(stack));
         }
         var count = ReadShortcuts(_shortcutBuffer);
