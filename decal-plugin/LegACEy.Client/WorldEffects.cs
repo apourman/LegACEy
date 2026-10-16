@@ -10,17 +10,20 @@ using static LegACEy.Client.DecalPlugin.D3D9;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
-/// A gold glow around the selected object, seen through walls. While retail draws a part, <c>CPhysicsPart::Draw</c> keeps the part in a
+/// Effects drawn into retail's 3D world: the selection outline and the storm fog preview (<see cref="StormFog"/>).
+/// The outline is a gold glow around the selected object, seen through walls. While retail draws a part, <c>CPhysicsPart::Draw</c> keeps the part in a
 /// global; each of the device's indexed draws made for a part of the selected object is drawn again, flat white with no depth test, into
 /// a mask. After retail's world (<c>SmartBox::Draw</c>), the mask is spread into a glow texture by drawing it several times offset, and the
 /// glow is added to the screen in gold everywhere but the mask itself, which leaves a rim. Only the game thread draws.
 /// </summary>
-internal sealed unsafe class SelectionOutline : IDisposable
+internal sealed unsafe class WorldEffects : IDisposable
 {
     private const string Source = "acclient.pdb (C:\\Turbine\\Asheron's Call, a near build; +0xAD0 near 0x50E000, +0xA0 near 0x455000) for names; our objdump read of installed acclient.exe";
     private const uint SmartBoxDrawAddress = 0x00455610;
     // CPhysicsPart* being drawn by CPhysicsPart::Draw, zero otherwise; part +0xE0 is its CPhysicsObj, whose +0x8 is the object id.
     private static readonly int* DrawingPart = (int*)0x008EE3D8;
+    // The player's CPhysicsObj, kept by CPhysicsObj::SetPlayer.
+    private static readonly int* PlayerObject = (int*)0x00844D68;
     private const uint Gold = 0xFFFFC040;
     // Glow taps: radius in pixels and brightness, eight directions each.
     private static readonly (float Radius, int Weight)[] Rings = { (2, 0x60), (4, 0x40), (6, 0x28) };
@@ -33,7 +36,11 @@ internal sealed unsafe class SelectionOutline : IDisposable
             NativeUiCatalogue.Bytes("8B 0D 40 03 87 00 85 ED 0F 95 C2 89 35 D8 E3 8E 00 8B 01 52 8D 56 78 52 57 FF 50 70 83 E8 02 C7 05 D8 E3 8E 00 00 00 00 00"),
             Source, "the global read during the device's draws"),
         new NativeUiEntry("CPhysicsPart::get_physobj_id", 0x0050DF60, NativeUiCatalogue.Bytes("8B 81 E0 00 00 00 85 C0 74 04 8B 40 08 C3"),
-            Source, "the layout read here: part +0xE0 is the CPhysicsObj, object +0x8 its id")
+            Source, "the layout read here: part +0xE0 is the CPhysicsObj, object +0x8 its id"),
+        new NativeUiEntry("CPhysicsObj::SetPlayer", 0x0050FF90, NativeUiCatalogue.Bytes("8B 44 24 04 A3 68 4D 84 00 C3"),
+            Source, "Cdecl (CPhysicsObj*): the player global read here"),
+        new NativeUiEntry("Position::get_offset", 0x0050AA4D, NativeUiCatalogue.Bytes("D9 44 24 14 D8 47 3C 8B 44 24 30 D9 44 24 18 83 C4 0C D8 47 40"),
+            Source, "the layout read here: Position +0x4 is the cell id, +0x3C the origin; a part's draw position is part +0x78")
     };
 
     [Function(CallingConventions.MicrosoftThiscall)]
@@ -50,16 +57,18 @@ internal sealed unsafe class SelectionOutline : IDisposable
     private readonly IHook<SmartBoxDrawFn> _smartBoxHook;
     private readonly IHook<DrawIndexedFn> _drawHook;
     private readonly IHook<ResetFn> _resetHook;
+    private readonly StormFog _fog;
     private GCHandle _root;
     private IntPtr _mask, _glow;
     private int _width, _height;
     private bool _masked, _failed, _firstLogged, _missLogged;
     private int _draws, _missedFrames;
 
-    private SelectionOutline(IntPtr device, Action<string> log)
+    private WorldEffects(IntPtr device, Action<string> log)
     {
         _device = device;
         _log = log;
+        _fog = new StormFog(device, log);
         _root = GCHandle.Alloc(this);
         _smartBoxHook = ReloadedHooks.Instance.CreateHook<SmartBoxDrawFn>(OnSmartBoxDraw, SmartBoxDrawAddress);
         _drawHook = ReloadedHooks.Instance.CreateHook<DrawIndexedFn>(OnDrawIndexed, Method(device, DrawIndexedPrimitiveSlot).ToInt64());
@@ -69,15 +78,15 @@ internal sealed unsafe class SelectionOutline : IDisposable
         _smartBoxHook.Activate();
     }
 
-    /// <summary>The outline, or null when the running client does not match its native entries.</summary>
-    public static SelectionOutline? Create(IntPtr device, Func<uint, int, byte[]> readMemory, Action<string> log)
+    /// <summary>The effects, or null when the running client does not match their native entries.</summary>
+    public static WorldEffects? Create(IntPtr device, Func<uint, int, byte[]> readMemory, Action<string> log)
     {
         if (!NativeUiCatalogue.Validate(readMemory, log, Entries))
         {
-            log("The selection outline is off: the running client does not match its native entries.");
+            log("The selection outline and storm fog are off: the running client does not match their native entries.");
             return null;
         }
-        return new SelectionOutline(device, log);
+        return new WorldEffects(device, log);
     }
 
     /// <summary>The object to outline, zero for none. Set each frame.</summary>
@@ -87,7 +96,15 @@ internal sealed unsafe class SelectionOutline : IDisposable
     {
         var original = _drawHook.OriginalFunction;
         var result = original(device, type, baseVertex, minIndex, vertices, startIndex, primitives);
-        if (result < 0 || Selected == 0 || _failed || device != _device || !DrawsSelected()) return result;
+        var part = *DrawingPart;
+        if (result < 0 || part == 0 || _failed || device != _device) return result;
+        try
+        {
+            var player = *(int*)(part + 0xE0) == *PlayerObject;
+            if (!_fog.Calibrated || (player && !_fog.FromPlayer)) _fog.Calibrate(part, player);
+        }
+        catch (Exception exception) { Fail(exception); }
+        if (Selected == 0 || !DrawsSelected()) return result;
         try { DrawIntoMask(() => original(device, type, baseVertex, minIndex, vertices, startIndex, primitives)); }
         catch (Exception exception) { Fail(exception); }
         return result;
@@ -151,6 +168,11 @@ internal sealed unsafe class SelectionOutline : IDisposable
     private void OnSmartBoxDraw(IntPtr smartBox)
     {
         _smartBoxHook.OriginalFunction(smartBox);
+        if (!_failed)
+        {
+            try { _fog.Draw(); }
+            catch (Exception exception) { Fail(exception); }
+        }
         if (!_masked && Selected != 0 && !_missLogged && ++_missedFrames == 300)
         {
             _missLogged = true;
@@ -292,7 +314,7 @@ internal sealed unsafe class SelectionOutline : IDisposable
     private void Fail(Exception exception)
     {
         _failed = true;
-        try { _log($"The selection outline is off after an error: {exception}"); }
+        try { _log($"World effects are off after an error: {exception}"); }
         catch { /* Reporting must never escape the native callback. */ }
     }
 
@@ -303,6 +325,7 @@ internal sealed unsafe class SelectionOutline : IDisposable
         _drawHook.Disable();
         _resetHook.Disable();
         ReleaseTextures();
+        _fog.Dispose();
         if (_root.IsAllocated) _root.Free();
     }
 }

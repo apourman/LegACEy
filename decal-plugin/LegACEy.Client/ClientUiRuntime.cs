@@ -275,7 +275,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private readonly BridgeInventoryPort _inventory = new(Log);
     private readonly AppraisalFeature _appraisal;
     private RetailBusyCursor? _busyCursor;
-    private SelectionOutline? _selectionOutline;
+    private WorldEffects? _worldEffects;
     private RetailTextMode? _textMode;
     // The inventory as plugins and windows get it: the bridge port, with an Assess also asking for the appraisal window.
     private readonly AppraisingInventoryPort _appraisingInventory;
@@ -384,8 +384,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             _postUiDrawHook?.Dispose();
             _postUiDrawHook = null;
-            _selectionOutline?.Dispose();
-            _selectionOutline = null;
+            _worldEffects?.Dispose();
+            _worldEffects = null;
             RestoreNativeBar();
             TearDown();
             _serverChannel?.Dispose();
@@ -525,7 +525,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _inventory.Clear();
         Guard(() => _appraisal.Clear());
         Guard(() => _busyCursor?.Show(false));
-        if (_selectionOutline != null) _selectionOutline.Selected = 0;
+        if (_worldEffects != null) _worldEffects.Selected = 0;
         Guard(() => _textMode?.Hold(false));
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up client UI at logoff: {exception}"); }
@@ -586,8 +586,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
         _barSurface.Panel.ApplyTheme(CurrentTheme());
         EnsurePostUiDrawHook();
-        try { _selectionOutline ??= SelectionOutline.Create(_device, NativeUi.ReadMemory, Log); }
-        catch (Exception exception) { Log($"The selection outline is off: {exception.Message}"); }
+        try { _worldEffects ??= WorldEffects.Create(_device, NativeUi.ReadMemory, Log); }
+        catch (Exception exception) { Log($"The selection outline and storm fog are off: {exception.Message}"); }
         Log("Indicator bar replacement ready.");
         WarmUpDerethTheme();
     }
@@ -793,7 +793,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _inventory.Flush(_inGame);
             _inventory.TargetMode?.Tick();
             _busyCursor?.Show(_inGame && _appraisal.Waiting);
-            if (_selectionOutline != null) _selectionOutline.Selected = _inGame ? (uint)Bridge.Fact(BridgeFact.CurrentSelection) : 0;
+            if (_worldEffects != null) _worldEffects.Selected = _inGame ? (uint)Bridge.Fact(BridgeFact.CurrentSelection) : 0;
             _textMode?.Hold(_inGame && SurfaceById(_inputRouter.FocusedSurfaceId)?.Panel.WantsKeyboard == true);
             _serverChannel?.Tick();
             if (_barSurface == null)

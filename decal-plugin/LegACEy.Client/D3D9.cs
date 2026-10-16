@@ -24,6 +24,7 @@ internal static unsafe class D3D9
     private const int GetDepthStencilSurfaceSlot = 40;
     private const int ClearSlot = 43;
     private const int SetTransformSlot = 44;
+    private const int GetTransformSlot = 45;
     private const int SetViewportSlot = 47;
     private const int GetViewportSlot = 48;
     private const int SetMaterialSlot = 49;
@@ -62,7 +63,7 @@ internal static unsafe class D3D9
         BlendOp = 171, ScissorTestEnable = 174, SeparateAlphaBlendEnable = 206
     }
 
-    public enum StageState { ColorOp = 1, ColorArg1 = 2, ColorArg2 = 3, AlphaOp = 4, AlphaArg1 = 5, TexCoordIndex = 11, TextureTransformFlags = 24 }
+    public enum StageState { ColorOp = 1, ColorArg1 = 2, ColorArg2 = 3, AlphaOp = 4, AlphaArg1 = 5, AlphaArg2 = 6, TexCoordIndex = 11, TextureTransformFlags = 24 }
 
     public enum SamplerState { AddressU = 1, AddressV = 2, MagFilter = 5, MinFilter = 6, MipFilter = 7 }
 
@@ -70,7 +71,7 @@ internal static unsafe class D3D9
     public const int OpDisable = 1, OpSelectArg1 = 2, OpModulate = 4, ArgDiffuse = 0, ArgCurrent = 1, ArgTexture = 2, ArgFactor = 3, ArgComplement = 0x10;
     public const int FilterNone = 0, FilterPoint = 1, FilterLinear = 2, AddressWrap = 1, AddressClamp = 3;
     public const int CmpLessEqual = 4, CmpGreaterEqual = 7, CullNone = 1, FillSolid = 3, ShadeGouraud = 2;
-    public const int BlendOne = 2, BlendInvSrcAlpha = 6, BlendOpAdd = 1;
+    public const int BlendOne = 2, BlendSrcAlpha = 5, BlendInvSrcAlpha = 6, BlendOpAdd = 1;
 
     /// <summary>D3DSURFACE_DESC.</summary>
     [StructLayout(LayoutKind.Sequential)]
@@ -246,6 +247,13 @@ internal static unsafe class D3D9
     // D3DMATRIX is row-major with row vectors, the same layout and convention as System.Numerics.Matrix4x4.
     public static void SetTransform(IntPtr device, int state, Matrix4x4 matrix) =>
         Check(((delegate* unmanaged[Stdcall]<IntPtr, int, Matrix4x4*, int>)Vt(device)[SetTransformSlot])(device, state, &matrix), "SetTransform");
+
+    public static Matrix4x4 GetTransform(IntPtr device, int state)
+    {
+        Matrix4x4 matrix;
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, Matrix4x4*, int>)Vt(device)[GetTransformSlot])(device, state, &matrix), "GetTransform");
+        return matrix;
+    }
 
     public static void SetMaterial(IntPtr device, Material material) =>
         Check(((delegate* unmanaged[Stdcall]<IntPtr, Material*, int>)Vt(device)[SetMaterialSlot])(device, &material), "SetMaterial");
