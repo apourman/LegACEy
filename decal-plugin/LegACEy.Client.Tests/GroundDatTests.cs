@@ -28,6 +28,7 @@ public sealed class GroundDatTests
         Assert.Equal(30, arwic.Footprints.Count(f => f.Building));
         Assert.All(arwic.Footprints, f => Assert.True(f.Hull.Count >= 3));
         Assert.Equal(512, ground.TerrainTexture(3)!.Width);
+        Assert.All(new uint[] { 3, 6, 8, 9 }, type => Assert.NotNull(ground.TerrainTexture(type)));
 
         var around = new List<GroundLandblock> { arwic };
         for (var dx = -1; dx <= 1; dx++)
