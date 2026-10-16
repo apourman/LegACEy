@@ -891,26 +891,29 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         ThrowIfTestFailureRequested();
         Guard(() => _barRenderer?.DrawAfterRetailUi());
         Guard(() => _toolbarSurface?.DrawNow());
-        Guard(() => _splitTabSurface?.DrawNow());
-        if (_failed || !_windowsEnabled || _windows == null)
-            return;
-        _drawnModelViews.Clear();
-        foreach (var window in _windows.ZOrder.Reverse())
+        var windows = !_failed && _windowsEnabled && _windows != null;
+        if (windows)
         {
-            var surface = SurfaceById(window.Id);
-            surface?.DrawNow();
-            DrawModelViews(surface);
-            if (_firstPostUiWindow)
+            _drawnModelViews.Clear();
+            foreach (var window in _windows!.ZOrder.Reverse())
             {
-                _firstPostUiWindow = false;
-                Log("LegACEy post-UI window draw reached through retail RenderDeviceD3D.EndScene.");
+                var surface = SurfaceById(window.Id);
+                surface?.DrawNow();
+                DrawModelViews(surface);
+                if (_firstPostUiWindow)
+                {
+                    _firstPostUiWindow = false;
+                    Log("LegACEy post-UI window draw reached through retail RenderDeviceD3D.EndScene.");
+                }
             }
+            ReleaseModelRenderers(_drawnModelViews);
+            if (_windows.Resizing is { } resizing && _device != IntPtr.Zero)
+                Guard(() => ScreenSurface.DrawOutline(_device, resizing.Bounds, ResizeOutline));
         }
-        ReleaseModelRenderers(_drawnModelViews);
-        if (_windows.Resizing is { } resizing && _device != IntPtr.Zero)
-            Guard(() => ScreenSurface.DrawOutline(_device, resizing.Bounds, ResizeOutline));
+        // The split tab stands over the windows: it is up only while a stack is selected, and an inventory kept over the toolbar would hide it.
+        if (!_failed) Guard(() => _splitTabSurface?.DrawNow());
         // An item dragged out of a LegACEy window draws above everything.
-        Guard(() => _dragIconSurface?.DrawNow());
+        if (windows) Guard(() => _dragIconSurface?.DrawNow());
     }
 
     /// <summary>
@@ -2748,8 +2751,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             surfaces.Add(new InputSurface("bar", _barSurface.Location.X, _barSurface.Location.Y, _barSurface.Bounds.Width, _barSurface.Bounds.Height, 0, _barSurface.Panel.WantsKeyboard));
         if (_toolbarSurface is { Visible: true })
             surfaces.Add(new InputSurface(ToolbarSurfaceId, _toolbarSurface.Location.X, _toolbarSurface.Location.Y, _toolbarSurface.Bounds.Width, _toolbarSurface.Bounds.Height, 0, _toolbarSurface.Panel.WantsKeyboard));
+        // Above every window, as it draws.
         if (_splitTabSurface is { Visible: true } split)
-            surfaces.Add(new InputSurface(SplitTabSurfaceId, split.Location.X, split.Location.Y, split.Bounds.Width, split.Bounds.Height, 0, split.Panel.WantsKeyboard));
+            surfaces.Add(new InputSurface(SplitTabSurfaceId, split.Location.X, split.Location.Y, split.Bounds.Width, split.Bounds.Height, (_windows?.ZOrder.Count ?? 0) + 1, split.Panel.WantsKeyboard));
         if (_windows != null)
         {
             var z = _windows.ZOrder.Count;
