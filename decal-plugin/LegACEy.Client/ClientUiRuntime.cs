@@ -850,7 +850,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             var maxTick = surfaces.Count == 0 ? 0 : surfaces.Max(surface => surface.LastTickMilliseconds);
             var maxUpload = surfaces.Count == 0 ? 0 : surfaces.Max(surface => surface.LastUploadMilliseconds);
             var dirtyRectangles = surfaces.Sum(surface => surface.LastDirtyRectangleCount);
-            Log($"UI performance sample: maxUiFrame={uiFrame.TotalMilliseconds:F2}ms maxPostUiDraw={postUiDraw.TotalMilliseconds:F2}ms surfaces={surfaces.Count} maxPanelTick={maxTick:F2}ms maxTextureUpload={maxUpload:F2}ms dirtyRects={dirtyRectangles} privateBytes={process.PrivateMemorySize64} virtualBytes={process.VirtualMemorySize64}.");
+            Log($"UI performance sample: maxUiFrame={uiFrame.TotalMilliseconds:F2}ms maxPostUiDraw={postUiDraw.TotalMilliseconds:F2}ms surfaces={surfaces.Count} maxPanelTick={maxTick:F2}ms maxTextureUpload={maxUpload:F2}ms dirtyRects={dirtyRectangles} privateBytes={process.PrivateMemorySize64} virtualBytes={process.VirtualMemorySize64} managedBytes={GC.GetTotalMemory(false)}.");
         }
         catch (Exception exception)
         {
@@ -1452,7 +1452,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (!NativeUi.Ready || !RetailPanelCatalogueValid()) return NoRetailPanel.Instance;
         // The LegACEy inventory window's open state, which the toolbar's backpack shows while the takeover holds retail's panel.
-        var takeover = new RetailPanelTakeover(new NativeRetailPanelPort(), open => { _inventoryWindowOpen = open; retailOpenChanged(open); }, Log);
+        // test-inventory-in-place beside the DLL leaves retail's panel on screen, to see whether its paperdoll is what re-textures the
+        // player after an equip.
+        var takeover = new RetailPanelTakeover(new NativeRetailPanelPort(), open => { _inventoryWindowOpen = open; retailOpenChanged(open); }, Log,
+            () => File.Exists(IOPath.Combine(PluginDirectory, "test-inventory-in-place")));
         _retailPanels.Add(takeover);
         return new RetailPanelHandle(this, takeover);
     }

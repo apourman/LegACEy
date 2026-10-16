@@ -41,6 +41,7 @@ internal sealed class RetailPanelTakeover : IDisposable
     private readonly IRetailPanelPort _port;
     private readonly Action<bool> _openChanged;
     private readonly Action<string> _log;
+    private readonly Func<bool> _leaveInPlace;
     // The panel we hold, and the layout's place and save-location for it: kept until the restore succeeds.
     private IntPtr _identity;
     private bool _parked;
@@ -54,8 +55,10 @@ internal sealed class RetailPanelTakeover : IDisposable
     private bool _failed;
     private bool _disposed;
 
-    public RetailPanelTakeover(IRetailPanelPort port, Action<bool> openChanged, Action<string> log)
+    /// <param name="leaveInPlace">A test: while true, a panel taken over is left where retail shows it instead of parked off-screen.</param>
+    public RetailPanelTakeover(IRetailPanelPort port, Action<bool> openChanged, Action<string> log, Func<bool>? leaveInPlace = null)
     {
+        _leaveInPlace = leaveInPlace ?? (() => false);
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _openChanged = openChanged ?? throw new ArgumentNullException(nameof(openChanged));
         _log = log ?? throw new ArgumentNullException(nameof(log));
@@ -151,7 +154,7 @@ internal sealed class RetailPanelTakeover : IDisposable
         _parked = true;
         _restoreFailed = false;
         Repark();
-        _log($"Parked the retail panel off-screen; its place is {_original}.");
+        _log($"Parked the retail panel {(_parkedAt == _original ? "in place (test)" : "off-screen")}; its place is {_original}.");
     }
 
     /// <summary>Moves the panel to the parked place. A panel that does not land there (clamped by the client) fails the takeover.</summary>
@@ -159,9 +162,10 @@ internal sealed class RetailPanelTakeover : IDisposable
     {
         _parkedAt = null;
         _port.SetSaveLocation(false);
-        _port.MoveTo(Parked);
+        var target = _leaveInPlace() ? _original : Parked;
+        _port.MoveTo(target);
         _parkedAt = _port.Location;
-        if (_parkedAt != Parked) throw new InvalidOperationException($"Retail placed the parked panel at {_parkedAt}, not {Parked}.");
+        if (_parkedAt != target) throw new InvalidOperationException($"Retail placed the parked panel at {_parkedAt}, not {target}.");
     }
 
     /// <summary>Counts a frame without the panel open, and closes our window once the gap is longer than a transition.</summary>
