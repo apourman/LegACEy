@@ -99,7 +99,7 @@ public sealed class VitalsModel
 
         var fraction = max > 0 ? Math.Min(1, Math.Max(0, current / (double)max)) : 0;
         var trailFraction = max > 0 ? Math.Min(1, track.Trail / max) : 0;
-        return new VitalReading(vital, current, max, trailFraction, vital == Vital.Health && fraction < LowFraction);
+        return new VitalReading(vital, current, max, trailFraction, vital == Vital.Health && max > 0 && fraction < LowFraction);
     }
 
     /// <summary>One vital's history between updates.</summary>

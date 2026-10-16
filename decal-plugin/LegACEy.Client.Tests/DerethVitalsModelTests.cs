@@ -55,5 +55,9 @@ public sealed class DerethVitalsModelTests
         Assert.True(model.Bars[0].Pulsing);
         Assert.False(model.Bars[1].Pulsing);
         Assert.False(model.Bars[2].Pulsing);
+
+        // Before the game sends a max, health is 0 / 0 and does not pulse.
+        model.Update(State(0, maxHealth: 0), Seconds(0.2));
+        Assert.False(model.Bars[0].Pulsing);
     }
 }
