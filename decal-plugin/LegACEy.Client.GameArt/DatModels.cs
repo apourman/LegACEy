@@ -267,7 +267,7 @@ internal static class DatModels
 
     private static Vec3 ReadVector(BinaryReader reader) => new(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
 
-    private static Frame ReadFrame(BinaryReader reader)
+    internal static Frame ReadFrame(BinaryReader reader)
     {
         var origin = ReadVector(reader);
         return new Frame(origin, reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());

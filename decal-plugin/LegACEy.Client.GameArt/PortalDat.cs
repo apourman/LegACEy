@@ -48,9 +48,12 @@ public sealed class PortalDat : IDisposable, IGameArtSource
     /// </summary>
     public GameImage? ReadImage(uint id)
     {
-        if (!_images.TryGetValue(id, out var image))
-            _images.Add(id, image = DecodeImage(id));
-        return image;
+        lock (_stream)
+        {
+            if (!_images.TryGetValue(id, out var image))
+                _images.Add(id, image = DecodeImage(id));
+            return image;
+        }
     }
 
     /// <summary>
