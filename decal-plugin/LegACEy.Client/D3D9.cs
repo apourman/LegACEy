@@ -16,7 +16,12 @@ internal static unsafe class D3D9
     // QueryInterface 0, AddRef 1, Release 2.
     private const int ReleaseSlot = 2;
     // IDirect3DDevice9
+    public const int ResetSlot = 16;
     private const int CreateTextureSlot = 23;
+    private const int SetRenderTargetSlot = 37;
+    private const int GetRenderTargetSlot = 38;
+    private const int SetDepthStencilSurfaceSlot = 39;
+    private const int GetDepthStencilSurfaceSlot = 40;
     private const int ClearSlot = 43;
     private const int SetTransformSlot = 44;
     private const int SetViewportSlot = 47;
@@ -29,11 +34,15 @@ internal static unsafe class D3D9
     private const int SetTextureSlot = 65;
     private const int SetTextureStageStateSlot = 67;
     private const int SetSamplerStateSlot = 69;
+    public const int DrawIndexedPrimitiveSlot = 82;
     private const int DrawPrimitiveUPSlot = 83;
     private const int SetFVFSlot = 89;
     private const int SetVertexShaderSlot = 92;
     private const int SetPixelShaderSlot = 107;
+    // IDirect3DSurface9 (after IDirect3DResource9 3-10 and GetContainer 11)
+    private const int GetDescSlot = 12;
     // IDirect3DTexture9 (after IDirect3DResource9 3-10 and IDirect3DBaseTexture9 11-16)
+    private const int GetSurfaceLevelSlot = 18;
     private const int LockRectSlot = 19;
     private const int UnlockRectSlot = 20;
     // IDirect3DStateBlock9 (GetDevice 3, Capture 4)
@@ -43,13 +52,13 @@ internal static unsafe class D3D9
     public const uint FvfXyz = 0x002, FvfXyzRhw = 0x004, FvfNormal = 0x010, FvfDiffuse = 0x040, FvfTex1 = 0x100;
     public const int LineStrip = 3, TriangleList = 4, TriangleStrip = 5;
     public const int TransformView = 2, TransformProjection = 3, TransformWorld = 256;
-    private const int StateBlockAll = 1, FormatA8R8G8B8 = 21, PoolManaged = 1, ClearZBuffer = 2;
+    private const int StateBlockAll = 1, FormatA8R8G8B8 = 21, PoolDefault = 0, PoolManaged = 1, UsageRenderTarget = 1, ClearTarget = 1, ClearZBuffer = 2;
 
     public enum RenderState
     {
         ZEnable = 7, FillMode = 8, ShadeMode = 9, ZWriteEnable = 14, AlphaTestEnable = 15, SrcBlend = 19, DestBlend = 20,
         CullMode = 22, ZFunc = 23, AlphaRef = 24, AlphaFunc = 25, AlphaBlendEnable = 27, FogEnable = 28, SpecularEnable = 29,
-        StencilEnable = 52, Lighting = 137, Ambient = 139, ColorVertex = 141, NormalizeNormals = 143, ColorWriteEnable = 168,
+        StencilEnable = 52, TextureFactor = 60, Lighting = 137, Ambient = 139, ColorVertex = 141, NormalizeNormals = 143, ColorWriteEnable = 168,
         BlendOp = 171, ScissorTestEnable = 174, SeparateAlphaBlendEnable = 206
     }
 
@@ -58,10 +67,17 @@ internal static unsafe class D3D9
     public enum SamplerState { AddressU = 1, AddressV = 2, MagFilter = 5, MinFilter = 6, MipFilter = 7 }
 
     // D3DTOP, D3DTA, D3DTEXF, D3DTADDRESS, D3DCMP, D3DCULL, D3DFILL, D3DSHADE, D3DBLEND and D3DBLENDOP values.
-    public const int OpDisable = 1, OpSelectArg1 = 2, OpModulate = 4, ArgDiffuse = 0, ArgTexture = 2;
+    public const int OpDisable = 1, OpSelectArg1 = 2, OpModulate = 4, ArgDiffuse = 0, ArgCurrent = 1, ArgTexture = 2, ArgFactor = 3, ArgComplement = 0x10;
     public const int FilterNone = 0, FilterPoint = 1, FilterLinear = 2, AddressWrap = 1, AddressClamp = 3;
     public const int CmpLessEqual = 4, CmpGreaterEqual = 7, CullNone = 1, FillSolid = 3, ShadeGouraud = 2;
     public const int BlendOne = 2, BlendInvSrcAlpha = 6, BlendOpAdd = 1;
+
+    /// <summary>D3DSURFACE_DESC.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct SurfaceDesc
+    {
+        public int Format, Type, Usage, Pool, MultiSampleType, MultiSampleQuality, Width, Height;
+    }
 
     /// <summary>D3DLIGHT9.</summary>
     [StructLayout(LayoutKind.Sequential)]
@@ -151,6 +167,61 @@ internal static unsafe class D3D9
         }
         Check(unlock(texture, 0), "UnlockRect");
     }
+
+    /// <summary>An A8R8G8B8 render-target texture in the default pool: it must be released before the device resets.</summary>
+    public static IntPtr CreateRenderTexture(IntPtr device, int width, int height)
+    {
+        IntPtr texture;
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, int, int, int, int, int, IntPtr*, IntPtr, int>)Vt(device)[CreateTextureSlot])(
+            device, width, height, 1, UsageRenderTarget, FormatA8R8G8B8, PoolDefault, &texture, IntPtr.Zero), "CreateTexture");
+        return texture;
+    }
+
+    /// <summary>The texture's top level, with a reference the caller releases.</summary>
+    public static IntPtr SurfaceOf(IntPtr texture)
+    {
+        IntPtr surface;
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, IntPtr*, int>)Vt(texture)[GetSurfaceLevelSlot])(texture, 0, &surface), "GetSurfaceLevel");
+        return surface;
+    }
+
+    public static SurfaceDesc Describe(IntPtr surface)
+    {
+        SurfaceDesc desc;
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, SurfaceDesc*, int>)Vt(surface)[GetDescSlot])(surface, &desc), "GetDesc");
+        return desc;
+    }
+
+    /// <summary>Render target 0, with a reference the caller releases.</summary>
+    public static IntPtr RenderTarget(IntPtr device)
+    {
+        IntPtr surface;
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, IntPtr*, int>)Vt(device)[GetRenderTargetSlot])(device, 0, &surface), "GetRenderTarget");
+        return surface;
+    }
+
+    /// <summary>Sets render target 0, which also resets the viewport to the whole target.</summary>
+    public static void SetRenderTarget(IntPtr device, IntPtr surface) =>
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, IntPtr, int>)Vt(device)[SetRenderTargetSlot])(device, 0, surface), "SetRenderTarget");
+
+    /// <summary>The depth-stencil surface, with a reference the caller releases; zero when none is set.</summary>
+    public static IntPtr DepthStencil(IntPtr device)
+    {
+        // D3DERR_NOTFOUND when none is set; the zero it leaves is the answer.
+        var surface = IntPtr.Zero;
+        ((delegate* unmanaged[Stdcall]<IntPtr, IntPtr*, int>)Vt(device)[GetDepthStencilSurfaceSlot])(device, &surface);
+        return surface;
+    }
+
+    public static void SetDepthStencil(IntPtr device, IntPtr surface) =>
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, IntPtr, int>)Vt(device)[SetDepthStencilSurfaceSlot])(device, surface), "SetDepthStencilSurface");
+
+    /// <summary>Clears the whole render target to one colour.</summary>
+    public static void ClearTargetTo(IntPtr device, uint argb) =>
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, int*, int, uint, float, int, int>)Vt(device)[ClearSlot])(device, 0, null, ClearTarget, argb, 1, 0), "Clear");
+
+    /// <summary>The address of a device method, for hooking it.</summary>
+    public static IntPtr Method(IntPtr device, int slot) => (IntPtr)Vt(device)[slot];
 
     public static Rectangle Viewport(IntPtr device)
     {
