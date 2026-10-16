@@ -1178,6 +1178,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         /// <summary>An item released outside every slot of a LegACEy window goes to the window under the pointer, if it takes retail drops.</summary>
         public bool DeliverAtPointer(uint itemId, string itemName)
         {
+            Log($"DIAG release of 0x{itemId:X8} ({itemName}) at {_owner._pointer}: top surface '{_owner.TopSurfaceAt(_owner._pointer)}'.");
             // The toolbar is not a managed window, so a drop on it is delivered to its own surface.
             if (_owner.TopSurfaceAt(_owner._pointer) == ToolbarSurfaceId)
                 return _owner.DeliverToToolbar((content, point) => content is IRetailItemDropTarget target && target.RetailDrop(itemId, itemName, point));
