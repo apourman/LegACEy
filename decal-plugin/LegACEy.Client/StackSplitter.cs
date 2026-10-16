@@ -25,6 +25,8 @@ internal sealed class StackSplitter
 
     public StackSplitter(IRetailSplitPort port) => _port = port;
 
+    public System.Action<string>? Log { get; set; }
+
     /// <summary>Splits the item to the ground by retail's amount. False when the move is the caller's to make.</summary>
     public bool TrySplitTo3D(uint itemId)
     {
@@ -45,6 +47,8 @@ internal sealed class StackSplitter
     private int? Amount(uint itemId)
     {
         var amount = _port.SplitAmount;
+        // ponytail: diagnostic for the split default; remove once it is understood.
+        Log?.Invoke($"Split diag: move of 0x{itemId:X8}, selected 0x{_port.SelectedId:X8}, retail amount {amount}, retail size {_port.StackSize}.");
         return itemId != 0 && _port.SelectedId == itemId && amount >= 1 && amount < _port.StackSize ? amount : null;
     }
 }
