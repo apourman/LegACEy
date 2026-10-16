@@ -77,7 +77,7 @@ public sealed class GroundDat : IGroundSource, IDisposable
     private readonly float[] _heights;
     private readonly Dictionary<uint, uint> _surfaces;
     private readonly Dictionary<uint, GameImage?> _textures = new();
-    private readonly Dictionary<uint, Vec3[]> _modelPoints = new();
+    private readonly Dictionary<(uint Model, int Depth), Vec3[]> _modelPoints = new(); // a setup cut off at a depth has fewer points than at none
 
     public GroundDat(PortalDat portal)
     {
@@ -202,7 +202,7 @@ public sealed class GroundDat : IGroundSource, IDisposable
     {
         if (depth > MaxModelDepth) return Array.Empty<Vec3>();
         lock (_modelPoints)
-            if (_modelPoints.TryGetValue(model, out var known)) return known;
+            if (_modelPoints.TryGetValue((model, depth), out var known)) return known;
 
         var points = new List<Vec3>();
         if ((model >> 24) == 0x01)
@@ -223,7 +223,7 @@ public sealed class GroundDat : IGroundSource, IDisposable
         }
 
         var result = points.ToArray();
-        lock (_modelPoints) _modelPoints[model] = result;
+        lock (_modelPoints) _modelPoints[(model, depth)] = result;
         return result;
     }
 
