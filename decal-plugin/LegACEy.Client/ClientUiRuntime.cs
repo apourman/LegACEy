@@ -1633,6 +1633,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             LoadToolbarPlace();
             _toolbarPort!.Poll();
             _toolbarTakeover!.Tick(_toolbarDragOffset != null, GameDevice.ViewportSize(_device));
+            if (_toolbarTakeover.Holds != _toolbarHeld)
+            {
+                _toolbarHeld = _toolbarTakeover.Holds;
+                Log(_toolbarHeld ? "Retail's toolbar held." : $"Retail's toolbar no longer held; its window {(_toolbarPlace!.Exists ? "is there" : "is missing")}.");
+            }
             // Until login completes, retail's toolbar stays held but ours is not drawn: its saved place is read only then, so it never
             // shows at retail's place first and jumps.
             if (!_inGame)
@@ -1651,6 +1656,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             ToolbarFailed(exception);
         }
     }
+
+    private bool _toolbarHeld;
 
     private const string ToolbarPlaceId = "dereth-toolbar";
 

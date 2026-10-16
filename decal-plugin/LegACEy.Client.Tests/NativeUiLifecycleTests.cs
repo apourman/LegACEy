@@ -303,6 +303,24 @@ public sealed class NativeUiLifecycleTests
     }
 
     [Fact]
+    public void SameElementBackStillHiddenIsHeldAgain()
+    {
+        var port = new FakePort { Visible = true };
+        var surface = new FakeSurface();
+        using var lifecycle = new RetailTakeoverLifecycle(port, surface);
+        lifecycle.Tick();
+        port.Exists = false;
+        lifecycle.Tick();
+        Assert.False(surface.Visible);
+        Assert.False(lifecycle.Holds);
+        port.Exists = true;
+        lifecycle.Tick();
+        Assert.True(surface.Visible);
+        Assert.True(lifecycle.Holds);
+        Assert.False(port.Visible);
+    }
+
+    [Fact]
     public void ResolutionRecoveryWaitsForMissingElementToReturn()
     {
         var port = new FakePort { Visible = true, Bounds = new Rectangle(200, 220, 149, 29) };

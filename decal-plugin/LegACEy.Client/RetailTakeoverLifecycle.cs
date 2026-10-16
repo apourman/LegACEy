@@ -32,6 +32,7 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
     private bool _captured;
     private bool _originalVisible;
     private bool _disposed;
+    private bool _missing;
     private IntPtr _elementIdentity;
     private Size? _viewport;
     private Point _lastNativeLocation;
@@ -51,7 +52,7 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
     }
 
     /// <summary>Whether retail's element is held: hidden by this takeover, with its surface standing where the element was.</summary>
-    public bool Holds => !_disposed && _captured;
+    public bool Holds => !_disposed && _captured && !_missing;
 
     public bool CanDrag
     {
@@ -89,9 +90,11 @@ internal sealed class RetailTakeoverLifecycle : IDisposable
                 _resizeLocation = _preferredLocation ?? _lastNativeLocation;
             if (viewport.HasValue)
                 _viewport = viewport;
-            if (!_native.Exists)
+            // Retail's element can be missing for a while (portal space) and come back the same instance, still hidden by this takeover:
+            // the capture is kept for it, or nothing would take it again. Another instance is a fresh start, above.
+            _missing = !_native.Exists;
+            if (_missing)
             {
-                _captured = false;
                 _surface.Visible = false;
                 return viewportChanged || isDragging;
             }
