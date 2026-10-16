@@ -73,4 +73,5 @@ internal sealed class FakeRadarPort : IRadarPort
     public List<uint> Selected { get; } = new();
     public void Select(uint id) => Selected.Add(id);
     public bool UiLocked { get; set; }
+    public bool UiLockAvailable { get; set; } = true;
 }

@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
+using System.Threading.Tasks;
 using Avalonia.Input;
 using Avalonia.Controls;
 using Avalonia.Media;
@@ -123,6 +124,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // nothing changes (opt-in until the play-test signs it off).
     private const string RetailVitalsSwitchFile = "retail-vitals-takeover";
     private const string DerethVitalsWindowId = "dereth-vitals";
+    // Beside the DLL: while this file exists, the Dereth radar takes over retail's radar. Opt-in until the play-test signs it off: without
+    // the file retail's radar stays as it is.
+    private const string RetailRadarSwitchFile = "retail-radar-takeover";
 
     // How big LegACEy windows show against their design size, in percent: the player's UI size from the LegACEy menu, kept for every
     // character. The indicator bar keeps retail's size, and drag icons retail's 32 pixels. An Avalonia that cannot scale panels shows them
@@ -226,6 +230,18 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private int? _loggedVitae;
     private bool _vitaeReadLogged;
     private TimeSpan _nextVitaeRead;
+    // The Dereth radar over retail's radar: its natives, held root, port, window and ground. Held while the switch is on.
+    private const string RadarWindowId = "dereth-radar";
+    private const string RadarOptionsKey = "dereth-radar-options";
+    private NativeRadarPort? _radarPort;
+    private RetailHeldWindows? _radarTakeover;
+    private RetailRadarWindow? _radar;
+    private Task<GroundDat?>? _radarDatLoad;
+    private GroundTiles? _radarTiles;
+    private bool _radarFailed;
+    private bool _radarReleaseLogged;
+    private bool _radarSwitch;
+    private DateTime _lastRadarSwitchCheck;
     private readonly GameStatePort _gameState = new(new GameStateSnapshot("unknown-character", "unknown-server", 0, 0, 0, 0, 0, 0));
     private readonly GameStatePoller _gameStatePoller;
     private ClientUiFramework? _clientUi;
@@ -502,6 +518,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         catch (Exception exception) { Log($"Could not give the retail chat back at logoff: {exception}"); }
         // The Dereth vitals window closes and retail's vitals come back; the next login holds them again while the switch is on.
         _vitals?.Release();
+        try { ReleaseRetailRadar(); }
+        catch (Exception exception) { Log($"Could not give the retail radar back at logoff: {exception}"); }
         try { _plugins?.EndSession(); }
         catch (Exception exception) { Log($"Could not close plugin windows at logoff: {exception}"); }
         // Windows released their requests above; anything still outstanding fails as disconnected.
@@ -726,6 +744,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _chatReleaseLogged = true;
             }
         }
+        // The same for retail's radar: a failed give-back is retried each frame, logged once per streak, as chat's is.
+        if (_failed && _radarTakeover != null)
+        {
+            try { ReleaseRetailRadar(); }
+            catch (Exception exception)
+            {
+                if (!_radarReleaseLogged) Log($"Could not give the retail radar back; retrying: {exception}");
+                _radarReleaseLogged = true;
+            }
+        }
         if (_failed || !NativeUi.Ready)
             return;
 
@@ -751,6 +779,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             TickRetailToolbar();
             TickRetailChat();
             TickRetailVitals();
+            TickRetailRadar();
             // Portal space at login comes before Decal's login complete: retail's inventory opened then is parked already,
             // and our window opens for it once the windows can.
             if (!_inGame) TickRetailPanels(loggingIn: true);
@@ -2058,6 +2087,146 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
+    /// Holds retail's radar and draws the Dereth radar over it while the opt-in switch file is beside the DLL. Off, retail's radar is left
+    /// as it is and nothing new draws. A failure gives retail's radar back and stops the Dereth radar until the switch is turned off and on.
+    /// </summary>
+    private void TickRetailRadar()
+    {
+        try
+        {
+            var switchOn = SwitchOn(RetailRadarSwitchFile, ref _lastRadarSwitchCheck, ref _radarSwitch, onWhenMissing: false);
+            // Turning the switch off and on again retries a radar that failed.
+            if (!switchOn) _radarFailed = false;
+            // Retail's radar is given back if the switch goes off, the post-UI draw is gone, or the LegACEy windows failed.
+            var canDraw = _postUiDrawHook?.IsInstalled == true && !(_windows != null && !_windowsEnabled);
+            if (_radarTakeover != null && (!canDraw || _radarFailed || !switchOn))
+            {
+                ReleaseRetailRadar();
+                return;
+            }
+            if (!canDraw || !switchOn || _radarFailed) return;
+            if (_radarTakeover == null && !HoldRetailRadar()) return;
+            _radarTakeover!.Tick(GameDevice.ViewportSize(_device));
+            if (!_inGame) return;
+            if (_radar == null && !OpenRetailRadar()) return;
+            _radar?.Refresh();
+        }
+        catch (Exception exception)
+        {
+            RadarFailed(exception);
+        }
+    }
+
+    /// <summary>Holds retail's radar hidden and starts the radar's port, once its native addresses match. False when they do not.</summary>
+    private bool HoldRetailRadar()
+    {
+        if (!NativeUi.Ready || _device == IntPtr.Zero || _portal == null) return false;
+        var natives = HudNatives();
+        if (!natives.RadarWindow) return false;
+        _radarPort = new NativeRadarPort(natives, ObjectName, Bridge.SelectItem);
+        _radarTakeover = new RetailHeldWindows(RetailHudCatalogue.RadarWindows);
+        // The ground's DATs open off the UI thread; the radar draws dots on dark until its first tiles are built.
+        _radarDatLoad ??= LoadRadarGround(_portal);
+        Log("Retail's radar held.");
+        return true;
+    }
+
+    private static Task<GroundDat?> LoadRadarGround(PortalDat portal) => Task.Run(() =>
+    {
+        try { return new GroundDat(portal); }
+        catch (Exception exception)
+        {
+            Log($"Dereth radar has no ground; it draws dots on dark: {exception.Message}");
+            return null;
+        }
+    });
+
+    // The ground's tiles, once its DATs have opened; null before that or without them.
+    private GroundTiles? RadarGround()
+    {
+        if (_radarTiles != null) return _radarTiles;
+        if (_radarDatLoad is not { IsCompletedSuccessfully: true } load || load.Result is not { } dat) return null;
+        return _radarTiles = new GroundTiles(dat, Log);
+    }
+
+    /// <summary>Opens the Dereth radar over the held retail radar. False when the windows cannot open yet, so the next frame tries again.</summary>
+    private bool OpenRetailRadar()
+    {
+        if (!CanOpenWindows || _radarPort == null) return false;
+        var screen = _windows!.Screen;
+        var beside = new Point(Math.Max(0, screen.Width - (int)Math.Round(RetailRadarWindow.DesignWidth * WindowScale) - 12), 12);
+        var window = new RetailRadarWindow(_radarPort, RadarGround, LoadRadarOptions(), SaveRadarOptions, () => (uint)Bridge.Fact(BridgeFact.CurrentSelection),
+            () => _windows?.BeginMove(RadarWindowId, _pointer));
+        // The radar has no title bar: it drags from its frame, so its title bar is only one pixel tall.
+        var definition = new WindowDefinition(RadarWindowId, "Radar", RetailRadarWindow.DesignWidth, RetailRadarWindow.DesignHeight, titleBarHeight: 1,
+            theme: new DerethClientTheme(), dragsFromContent: true);
+        _radar = window;
+        try { OpenWindowCore(definition, window, beside, RadarFailed); }
+        catch
+        {
+            _radar = null;
+            throw;
+        }
+        Log("Dereth radar ready.");
+        return true;
+    }
+
+    /// <summary>The radar's options for this character, or the defaults before they are saved.</summary>
+    private RadarOptions LoadRadarOptions() =>
+        _settingsStore.Load(SessionServer(), SessionCharacter(), RadarOptionsKey) is { Location: var saved }
+            ? RadarOptions.Decode(saved.X, saved.Y)
+            : new RadarOptions();
+
+    private void SaveRadarOptions(RadarOptions options)
+    {
+        var (flags, zoom) = options.Encode();
+        _settingsStore.Save(SessionServer(), SessionCharacter(), RadarOptionsKey, (new Point(flags, zoom), null));
+    }
+
+    /// <summary>Gives retail's radar back and closes the Dereth radar. A give-back that fails is logged and retried on the next call.</summary>
+    private void ReleaseRetailRadar()
+    {
+        if (_radarTakeover != null)
+        {
+            try { _radarTakeover.Release(); }
+            catch (Exception exception)
+            {
+                if (!_radarReleaseLogged) Log($"Could not give the retail radar back; retrying: {exception}");
+                _radarReleaseLogged = true;
+                return;
+            }
+            _radarTakeover = null;
+            _radarReleaseLogged = false;
+        }
+        // Cleared first, as chat's is, so a radar that throws on close cannot leave the port and window half released.
+        var radar = _radar;
+        _radarPort = null;
+        _radar = null;
+        radar?.Dispose();
+        ReleaseFeatureWindow(RadarWindowId);
+    }
+
+    /// <summary>Drops the ground's DATs at unload, after the radar that reads them is gone. A load still running is disposed when it lands.</summary>
+    private void DisposeRadarGround()
+    {
+        if (_radarDatLoad is { } load)
+        {
+            if (load.IsCompletedSuccessfully) load.Result?.Dispose();
+            else _ = load.ContinueWith(task => { if (task.IsCompletedSuccessfully) task.Result?.Dispose(); }, TaskScheduler.Default);
+        }
+        _radarDatLoad = null;
+        _radarTiles = null;
+    }
+
+    private void RadarFailed(Exception exception)
+    {
+        _radarFailed = true;
+        Log($"Dereth radar disabled; retail's radar is back: {exception}");
+        try { ReleaseRetailRadar(); }
+        catch (Exception releaseError) { Log($"Could not give the retail radar back: {releaseError}"); }
+    }
+
+    /// <summary>
     /// Whether a feature's switch is on. By default it is on while its file is missing beside the DLL; an opt-in switch is on while the file
     /// exists. The file is looked for once a second.
     /// </summary>
@@ -2647,6 +2816,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _vitals = null;
         try { ReleaseRetailToolbar(); }
         catch (Exception exception) { Log($"Could not give the retail toolbar back during unload: {exception}"); }
+        // The radar gets the same two tries as chat.
+        try
+        {
+            ReleaseRetailRadar();
+            if (_radarTakeover != null) ReleaseRetailRadar();
+        }
+        catch (Exception exception) { Log($"Could not give the retail radar back during unload: {exception}"); }
+        if (_radarTakeover != null) Log("Retail's radar is still held after two tries at unload; it stays hidden until the client restarts.");
+        DisposeRadarGround();
         if (_itemDragActive)
             try { _retailDrag?.ClearDropIndicator(); } catch (Exception exception) { Log($"Could not clear the inventory drop indicator: {exception.Message}"); }
         _itemDragActive = false;
