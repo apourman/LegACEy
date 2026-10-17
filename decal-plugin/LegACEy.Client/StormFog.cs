@@ -20,7 +20,6 @@ internal sealed unsafe class StormFog : IDisposable
     private const uint Purple = 0x7020A0;
     // Thick fog inside the storm: clear to here, solid purple from here (metres along the view), reached this far inside.
     private const float ThickFogStart = 4, ThickFogEnd = 60, FadeIn = 30;
-    private const int FogLinear = 3;
     private static readonly (int X, int Y)[] Corners = { (-1, -1), (1, -1), (1, 1), (-1, 1) };
 
     private readonly IntPtr _device;
@@ -47,40 +46,46 @@ internal sealed unsafe class StormFog : IDisposable
 
     // How far into the storm the camera is, 0 at its edge to 1 at FadeIn metres in.
     private float _strength;
-
-    private static readonly RenderState[] FogStates = { RenderState.FogEnable, RenderState.FogColor, RenderState.FogTableMode, RenderState.FogStart, RenderState.FogEnd };
-    private readonly int[] _retailFog = new int[5];
-
-    /// <summary>
-    /// Inside the storm, one of retail's world draws gets thick purple pixel fog, measured against the depth of each pixel. Retail's own fog
-    /// states are kept and put back by <see cref="EndThickFog"/> after the draw, so its state cache never sees ours.
-    /// </summary>
-    public void BeginThickFog()
-    {
-        for (var i = 0; i < FogStates.Length; i++) _retailFog[i] = GetRenderState(_device, FogStates[i]);
-        SetRenderState(_device, RenderState.FogEnable, 1);
-        SetRenderState(_device, RenderState.FogColor, unchecked((int)(0xFF000000 | PassFogColor())));
-        SetRenderState(_device, RenderState.FogTableMode, FogLinear);
-        SetRenderState(_device, RenderState.FogStart, BitConverter.SingleToInt32Bits(ThickFogStart));
-        SetRenderState(_device, RenderState.FogEnd, BitConverter.SingleToInt32Bits(ThickFogEnd + (1 - _strength) * 1000));
-    }
+    // Retail's fog option: LScape::UseTime asks for the world fog only while it is set.
+    private static readonly byte* FogOption = (byte*)0x0081DBF8;
+    private bool _heldFogOption;
 
     /// <summary>
-    /// Retail draws many surfaces in passes blended onto the last. Fogging each in purple adds purple once per pass, which washes out to
-    /// white; an added pass gets black fog (it adds nothing far off), a multiplying pass white (it changes nothing), any other purple.
+    /// Thickens retail's own world fog (<c>CRegionDesc::GetWorldFog</c>'s answer) inside the storm, so retail fogs every pass and shader
+    /// itself: nearer, and purple, the deeper the camera is in. With no region fog, the storm's own stands in.
     /// </summary>
-    private uint PassFogColor()
+    public void Thicken(bool hasFog, ref float near, ref float far, ref uint color)
     {
-        const int Zero = 1, One = 2, DestColor = 9;
-        if (GetRenderState(_device, RenderState.AlphaBlendEnable) == 0) return Purple;
-        if (GetRenderState(_device, RenderState.DestBlend) == One) return 0x000000;
-        var source = GetRenderState(_device, RenderState.SrcBlend);
-        return source is Zero or DestColor ? 0xFFFFFF : Purple;
+        if (!hasFog)
+        {
+            near = ThickFogEnd * 10;
+            far = ThickFogEnd * 20;
+            color = 0xFF000000 | Purple;
+        }
+        near += (ThickFogStart - near) * _strength;
+        far += (ThickFogEnd - far) * _strength;
+        uint mixed = color & 0xFF000000;
+        for (var shift = 0; shift < 24; shift += 8)
+        {
+            float from = (color >> shift) & 0xFF, to = (Purple >> shift) & 0xFF;
+            mixed |= (uint)(from + (to - from) * _strength) << shift;
+        }
+        color = mixed;
     }
 
-    public void EndThickFog()
+    /// <summary>Holds retail's fog option on while the camera is in the storm, so turning fog off does not clear the storm; then gives it back.</summary>
+    private void HoldFogOption()
     {
-        for (var i = 0; i < FogStates.Length; i++) SetRenderState(_device, FogStates[i], _retailFog[i]);
+        if (CameraInStorm && *FogOption == 0)
+        {
+            *FogOption = 1;
+            _heldFogOption = true;
+        }
+        else if (!CameraInStorm && _heldFogOption)
+        {
+            *FogOption = 0;
+            _heldFogOption = false;
+        }
     }
 
     /// <summary>Measures the game-to-render offset from a part being drawn: its game position against the device's world transform.</summary>
@@ -164,8 +169,9 @@ internal sealed unsafe class StormFog : IDisposable
                 DrawPrimitiveUP(_device, TriangleStrip, 8, walls, sizeof(FogVertex));
             }
 
-            // Inside the storm the world was drawn in thick fog; a light tint covers what retail draws without fog.
+            // Inside the storm retail drew the world in thick fog (Thicken); a light tint covers what it draws without fog.
             _strength = Matrix4x4.Invert(_view, out var camera) ? Math.Clamp(StormDepth(Render(camera.Translation - _offset)) / FadeIn, 0, 1) : 0;
+            HoldFogOption();
             if (CameraInStorm)
             {
                 UseFixedFunction(_device, FvfXyzRhw | FvfDiffuse);
@@ -233,6 +239,8 @@ internal sealed unsafe class StormFog : IDisposable
 
     public void Dispose()
     {
+        _strength = 0;
+        HoldFogOption();
         Release(_noise);
         _noise = IntPtr.Zero;
     }

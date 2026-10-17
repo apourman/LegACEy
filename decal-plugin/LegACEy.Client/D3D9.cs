@@ -31,7 +31,6 @@ internal static unsafe class D3D9
     private const int SetLightSlot = 51;
     private const int LightEnableSlot = 53;
     private const int SetRenderStateSlot = 57;
-    private const int GetRenderStateSlot = 58;
     private const int CreateStateBlockSlot = 59;
     private const int SetTextureSlot = 65;
     private const int SetTextureStageStateSlot = 67;
@@ -59,7 +58,7 @@ internal static unsafe class D3D9
     public enum RenderState
     {
         ZEnable = 7, FillMode = 8, ShadeMode = 9, ZWriteEnable = 14, AlphaTestEnable = 15, SrcBlend = 19, DestBlend = 20,
-        CullMode = 22, ZFunc = 23, AlphaRef = 24, AlphaFunc = 25, AlphaBlendEnable = 27, FogEnable = 28, FogColor = 34, FogTableMode = 35, FogStart = 36, FogEnd = 37, SpecularEnable = 29,
+        CullMode = 22, ZFunc = 23, AlphaRef = 24, AlphaFunc = 25, AlphaBlendEnable = 27, FogEnable = 28, SpecularEnable = 29,
         StencilEnable = 52, TextureFactor = 60, Lighting = 137, Ambient = 139, ColorVertex = 141, NormalizeNormals = 143, ColorWriteEnable = 168,
         BlendOp = 171, ScissorTestEnable = 174, SeparateAlphaBlendEnable = 206
     }
@@ -267,13 +266,6 @@ internal static unsafe class D3D9
 
     public static void SetRenderState(IntPtr device, RenderState state, int value) =>
         Check(((delegate* unmanaged[Stdcall]<IntPtr, RenderState, int, int>)Vt(device)[SetRenderStateSlot])(device, state, value), "SetRenderState");
-
-    public static int GetRenderState(IntPtr device, RenderState state)
-    {
-        int value;
-        Check(((delegate* unmanaged[Stdcall]<IntPtr, RenderState, int*, int>)Vt(device)[GetRenderStateSlot])(device, state, &value), "GetRenderState");
-        return value;
-    }
 
     public static void SetTexture(IntPtr device, int stage, IntPtr texture) =>
         Check(((delegate* unmanaged[Stdcall]<IntPtr, int, IntPtr, int>)Vt(device)[SetTextureSlot])(device, stage, texture), "SetTexture");
