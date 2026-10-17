@@ -69,8 +69,9 @@ internal sealed unsafe class WorldEffects : IDisposable
 
     private readonly GetObjectFn _getObject = Marshal.GetDelegateForFunctionPointer<GetObjectFn>(new IntPtr(GetObjectAddress));
     private readonly DrawPartsFn _drawParts = Marshal.GetDelegateForFunctionPointer<DrawPartsFn>(new IntPtr(PartArrayDrawAddress));
-    // While the selection, culled this frame, is drawn into the mask only.
-    private bool _forcing;
+    // While retail draws its world: parts drawn outside it (retail's 3D paperdoll in the inventory, with its own camera) are not measured or
+    // outlined. While the selection, culled this frame, is drawn into the mask only.
+    private bool _inWorld, _forcing;
 
     private readonly IntPtr _device;
     private readonly Action<string> _log;
@@ -148,7 +149,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         }
         var result = original(device, type, baseVertex, minIndex, vertices, startIndex, primitives);
         var part = *DrawingPart;
-        if (result < 0 || part == 0 || _failed || device != _device) return result;
+        if (result < 0 || part == 0 || !_inWorld || _failed || device != _device) return result;
         try
         {
             var player = *(int*)(part + 0xE0) == *PlayerObject;
@@ -219,7 +220,9 @@ internal sealed unsafe class WorldEffects : IDisposable
     private void OnSmartBoxDraw(IntPtr smartBox)
     {
         var drawStart = _clock.ElapsedTicks;
-        _smartBoxHook.OriginalFunction(smartBox);
+        _inWorld = true;
+        try { _smartBoxHook.OriginalFunction(smartBox); }
+        finally { _inWorld = false; }
         _lastRetailDrawTicks = _clock.ElapsedTicks - drawStart;
         _retailDrawTicks += _lastRetailDrawTicks;
         if (_lastRetailDrawTicks > _worstRetailDrawTicks) _worstRetailDrawTicks = _lastRetailDrawTicks;
