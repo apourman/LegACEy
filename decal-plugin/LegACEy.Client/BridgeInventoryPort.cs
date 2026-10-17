@@ -12,13 +12,9 @@ namespace LegACEy.Client.DecalPlugin;
 internal sealed class BridgeInventoryPort : IInventoryPort
 {
     private readonly InventoryRefresh _refresh;
-    private readonly Action<string> _log;
 
-    public BridgeInventoryPort(Action<string> log)
-    {
-        _log = log;
+    public BridgeInventoryPort(Action<string> log) =>
         _refresh = new InventoryRefresh(() => InventorySnapshotBuilder.Build(new BridgeInventoryReader()), log);
-    }
 
     public InventorySnapshot Snapshot => _refresh.Snapshot;
 
@@ -84,7 +80,6 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     public void DropOnGround(uint itemId)
     {
         if (Split?.TrySplitTo3D(itemId) == true) return;
-        _log($"DIAG drop to ground: sending DropItem for 0x{itemId:X8}.");
         Bridge.DropItem(itemId);
     }
 
