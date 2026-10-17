@@ -86,6 +86,11 @@ internal sealed unsafe class WorldEffects : IDisposable
     // Timing for the log: time this frame spent in the effects' own work, the worst frame since the last summary, and the last world frame.
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private long _effectTicks, _worstEffectTicks, _lastWorld, _lastSummary, _lastHitchLog, _windowTicks, _windowFrames;
+    // For the 30 s summary: world draws, frames shown, hitches, and time in retail's own world draw.
+    private long _worldDraws, _presents, _hitches, _retailDrawTicks, _worstRetailDrawTicks, _lastRetailDrawTicks;
+
+    /// <summary>Counts a frame shown; called once per retail EndScene.</summary>
+    public void Presented() => _presents++;
 
     private WorldEffects(IntPtr device, Action<string> log)
     {
@@ -213,7 +218,12 @@ internal sealed unsafe class WorldEffects : IDisposable
 
     private void OnSmartBoxDraw(IntPtr smartBox)
     {
+        var drawStart = _clock.ElapsedTicks;
         _smartBoxHook.OriginalFunction(smartBox);
+        _lastRetailDrawTicks = _clock.ElapsedTicks - drawStart;
+        _retailDrawTicks += _lastRetailDrawTicks;
+        if (_lastRetailDrawTicks > _worstRetailDrawTicks) _worstRetailDrawTicks = _lastRetailDrawTicks;
+        _worldDraws++;
         if (!_failed)
         {
             try
@@ -251,16 +261,23 @@ internal sealed unsafe class WorldEffects : IDisposable
             _windowTicks += now - _lastWorld;
             _windowFrames++;
         }
-        if (_lastWorld != 0 && frame > 50 && Ms(now - _lastHitchLog) > 2000)
+        if (_lastWorld != 0 && frame > 50)
         {
-            _lastHitchLog = now;
-            _log($"World effects: a {frame:F0} ms world frame, {Ms(_effectTicks):F2} ms of it in the effects; storm strength {_fog.Strength:F2}, selection 0x{Selected:X8}.");
+            _hitches++;
+            if (Ms(now - _lastHitchLog) > 2000)
+            {
+                _lastHitchLog = now;
+                _log($"World effects: a {frame:F0} ms world frame; retail's world draw {Ms(_lastRetailDrawTicks):F1} ms, the effects {Ms(_effectTicks):F2} ms; storm strength {_fog.Strength:F2}, selection 0x{Selected:X8}.");
+            }
         }
-        if (Ms(now - _lastSummary) > 30000)
+        var window = Ms(now - _lastSummary);
+        if (window > 30000)
         {
+            if (_lastSummary != 0)
+                _log($"World effects, last {window / 1000:F0} s: {_worldDraws * 1000 / window:F0} world draws/s, {_presents * 1000 / window:F0} frames shown/s, {_hitches} frames over 50 ms; " +
+                     $"retail's world draw {Ms(_retailDrawTicks) / Math.Max(1, _worldDraws):F1} ms average, {Ms(_worstRetailDrawTicks):F0} ms worst; the effects {Ms(_worstEffectTicks):F2} ms worst.");
             _lastSummary = now;
-            _log($"World effects: worst frame {Ms(_worstEffectTicks):F2} ms in the effects over the last 30 s.");
-            _worstEffectTicks = 0;
+            _worstEffectTicks = _worldDraws = _presents = _hitches = _retailDrawTicks = _worstRetailDrawTicks = 0;
         }
         _lastWorld = now;
         _effectTicks = 0;

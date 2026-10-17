@@ -895,6 +895,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>Called by IDirect3DDevice9.EndScene after retail and Decal UI drawing.</summary>
     private void DrawAfterRetailUi()
     {
+        _worldEffects?.Presented();
         var timer = Stopwatch.StartNew();
         try { DrawAfterRetailUiCore(); }
         finally { if (timer.Elapsed > _maxPostUiDraw) _maxPostUiDraw = timer.Elapsed; }
