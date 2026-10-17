@@ -30,7 +30,8 @@ internal sealed unsafe class StormFog : IDisposable
 
     private readonly IntPtr _device;
     private readonly Action<string> _log;
-    private bool _logged;
+    private bool _logged, _measured;
+    private int _offsetLogs;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private IntPtr _noise;
     private Vector3 _offset;
@@ -59,9 +60,17 @@ internal sealed unsafe class StormFog : IDisposable
     {
         var cell = *(uint*)(part + 0x7C);
         var origin = new Vector3(*(float*)(part + 0xB4), *(float*)(part + 0xB8), *(float*)(part + 0xBC));
-        _offset = GetTransform(_device, TransformWorld).Translation - Render(Global(cell, origin));
+        // Retail renders relative to a landblock corner, so the offset is whole landblocks; rounding drops a part's small measuring error.
+        var offset = Snap(GetTransform(_device, TransformWorld).Translation - Render(Global(cell, origin)));
+        // The camera is the same for every part of the world; the offset is taken from another part only while the player's is not drawn.
         _view = GetTransform(_device, TransformView);
         _projection = GetTransform(_device, TransformProjection);
+        if ((player || !FromPlayer) && offset != _offset)
+        {
+            if (_measured && _offsetLogs++ < 20) _log($"Storm fog: game-to-render offset {_offset} -> {offset}, from {(player ? "the player" : "another object")} at cell 0x{cell:X8}.");
+            _offset = offset;
+        }
+        _measured = true;
         Calibrated = true;
         FromPlayer |= player;
         if (player && !_logged)
@@ -74,7 +83,8 @@ internal sealed unsafe class StormFog : IDisposable
     /// <summary>Draws the storm after retail's world, then waits for the next frame's measure.</summary>
     public void Draw()
     {
-        if (!Calibrated) return;
+        // A frame with nothing measured (no part drawn yet) keeps the last measure, so the fog does not blink out for a frame.
+        if (!_measured) return;
         Calibrated = FromPlayer = false;
         if (_noise == IntPtr.Zero) _noise = MakeNoise();
         var saved = SaveState(_device);
@@ -194,6 +204,9 @@ internal sealed unsafe class StormFog : IDisposable
     /// <summary>Distance from the safe landblock's centre, measured square: the half-size of the wall square through the position.</summary>
     private static float FromCentre(Vector3 position) =>
         MathF.Max(MathF.Abs(position.X - (SafeX + 0.5f) * Block), MathF.Abs(position.Y - (SafeY + 0.5f) * Block));
+
+    private static Vector3 Snap(Vector3 offset) =>
+        new(MathF.Round(offset.X / Block) * Block, MathF.Round(offset.Y / Block) * Block, MathF.Round(offset.Z / Block) * Block);
 
     /// <summary>Game space is z-up; retail renders y-up, swapping y and z (its own inverse).</summary>
     private static Vector3 Render(Vector3 game) => new(game.X, game.Z, game.Y);
