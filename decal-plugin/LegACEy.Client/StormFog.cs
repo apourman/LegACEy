@@ -17,7 +17,10 @@ internal sealed unsafe class StormFog : IDisposable
     // ponytail: preview constants; the server sends the zone once the storm is a real feature.
     private const int SafeX = 0x97, SafeY = 0x22;
     private const float Block = 192, Bottom = -50, Top = 450;
-    private const int Layers = 5, NoiseSize = 128;
+    // From outside, the fog bank is many faint walls across each edge of the ring, so where terrain cuts them there is no hard seam to jump
+    // about as retail reshapes the terrain with distance: Bank metres deep, 1/e of what is behind showing through every BankThickness metres.
+    private const int Layers = 24, NoiseSize = 128;
+    private const float Bank = 40, BankThickness = 20;
     private const uint Grey = 0xC8CDCF;
     // Inside: fog thick enough that 1/e of the scene shows through every Thickness metres, reached FadeIn metres past the edge.
     // Slices run from the first to the last distance, spaced wider with distance as the fog changes less there.
@@ -116,14 +119,18 @@ internal sealed unsafe class StormFog : IDisposable
             var cameraAt = Matrix4x4.Invert(_view, out var camera) ? Render(camera.Translation - _offset) : (Vector3?)null;
             var centre = new Vector2((SafeX + 0.5f) * Block, (SafeY + 0.5f) * Block);
             var walls = stackalloc FogVertex[10];
-            for (var layer = 0; layer < Layers; layer++)
+            var step = Bank / Layers;
+            var alpha = 1 - MathF.Exp(-step / BankThickness);
+            for (var wall = 0; wall < Layers * 2; wall++)
             {
-                // The safe landblock's edge is the storm's wall, so the innermost layer is the thickest.
-                var half = Block / 2 + layer * Block / (Layers - 1);
+                // Half of the walls run in from the safe landblock's edge, half in from the ring's outer edge.
+                var layer = wall % Layers;
+                var half = wall < Layers ? Block / 2 + layer * step : Block * 1.5f - layer * step;
                 // A wall fades out within 10 m of the camera, so passing through it does not flash it across the screen.
                 var near = cameraAt is { } at ? Math.Clamp(MathF.Abs(FromCentre(at) - half) / 10, 0, 1) : 1;
-                var color = (uint)((layer == 0 ? 0x90 : 0x40) * near) << 24 | Grey;
-                var drift = (layer % 2 == 0 ? 1 : -1) * time * 0.03f;
+                var color = (uint)(alpha * near * 255) << 24 | Grey;
+                // Each wall's noise is offset and drifts its own way, so the wisps of neighbouring walls do not line up.
+                var drift = (wall % 2 == 0 ? 1 : -1) * time * 0.03f + wall * 0.37f;
                 for (var corner = 0; corner <= 4; corner++)
                 {
                     var (sx, sy) = Corners[corner % 4];
