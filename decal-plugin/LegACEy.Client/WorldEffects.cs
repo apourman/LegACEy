@@ -152,8 +152,11 @@ internal sealed unsafe class WorldEffects : IDisposable
         if (result < 0 || part == 0 || !_inWorld || _failed || device != _device) return result;
         try
         {
-            var player = *(int*)(part + 0xE0) == *PlayerObject;
-            if (!_fog.Calibrated || (player && !_fog.FromPlayer)) Timed(() => _fog.Calibrate(part, player));
+            // Only objects in a world cell: the sky's objects (and anything else not in the world) are drawn with their own camera.
+            var physicsObject = *(int*)(part + 0xE0);
+            var player = physicsObject == *PlayerObject;
+            if (physicsObject != 0 && *(int*)(physicsObject + 0x90) != 0 && (!_fog.Calibrated || (player && !_fog.FromPlayer)))
+                Timed(() => _fog.Calibrate(part, player));
         }
         catch (Exception exception) { Fail(exception); }
         if (Selected == 0 || !DrawsSelected()) return result;
