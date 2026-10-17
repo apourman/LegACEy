@@ -44,6 +44,8 @@ internal sealed unsafe class StormFog : IDisposable
     /// <summary>Whether the camera was inside the storm at the last frame drawn.</summary>
     public bool CameraInStorm => _strength > 0;
 
+    public float Strength => _strength;
+
     // How far into the storm the camera is, 0 at its edge to 1 at FadeIn metres in.
     private float _strength;
     // Retail's fog option: LScape::UseTime asks for the world fog only while it is set.

@@ -46,6 +46,8 @@ internal sealed unsafe class WorldEffects : IDisposable
             Source, "Cdecl (float time, float* near, float* far, RGBAUnion* color) -> has fog; hooked, the storm thickens the answer"),
         new NativeUiEntry("LScape::UseTime asks for the world fog only with the fog option 0x0081DBF8 set", 0x00506526,
             NativeUiCatalogue.Bytes("A0 F8 DB 81 00 84 C0 0F 84 96 01 00 00 8B 0D 40 03 87 00 50"), Source, "the fog option held on in the storm"),
+        new NativeUiEntry("CPhysicsObj::leave_cell clears the object's cell", 0x00511A77, NativeUiCatalogue.Bytes("C7 86 90 00 00 00 00 00 00 00 5E C2 04 00"),
+            Source, "the layout read here: CPhysicsObj +0x90 is its CObjCell, zero once out of the world (picked up, gone)"),
         new NativeUiEntry("CPhysicsObj::GetObjectA", GetObjectAddress, NativeUiCatalogue.Bytes("8B 0D 64 4D 84 00 85 C9 74 0B 8B 44 24 04 50"),
             Source, "Cdecl (object id): CObjectMaint lookup, null when the object is not in the world"),
         new NativeUiEntry("CPartArray::Draw", PartArrayDrawAddress, NativeUiCatalogue.Bytes("56 57 8B F9 8B 47 58 33 F6 85 C0 76 1C 8D 49 00 8B 47 5C 8B 0C B0 85 C9 74 07 6A 00"),
@@ -87,8 +89,11 @@ internal sealed unsafe class WorldEffects : IDisposable
     private GCHandle _root;
     private IntPtr _mask, _glow;
     private int _width, _height;
-    private bool _masked, _failed, _firstLogged, _missLogged;
-    private int _draws, _missedFrames;
+    private bool _masked, _failed, _firstLogged;
+    private int _draws;
+    // Timing for the log: time this frame spent in the effects' own work, the worst frame since the last summary, and the last world frame.
+    private readonly Stopwatch _clock = Stopwatch.StartNew();
+    private long _effectTicks, _worstEffectTicks, _lastWorld, _lastSummary, _lastHitchLog;
 
     private WorldEffects(IntPtr device, Action<string> log)
     {
@@ -126,7 +131,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         if (_forcing)
         {
             // Not on screen: the selection is drawn here only so the outline shows through what culled it.
-            try { if (DrawsSelected()) DrawIntoMask(() => original(device, type, baseVertex, minIndex, vertices, startIndex, primitives)); }
+            try { if (DrawsSelected()) Timed(() => DrawIntoMask(() => original(device, type, baseVertex, minIndex, vertices, startIndex, primitives))); }
             catch (Exception exception) { Fail(exception); }
             return 0;
         }
@@ -136,11 +141,11 @@ internal sealed unsafe class WorldEffects : IDisposable
         try
         {
             var player = *(int*)(part + 0xE0) == *PlayerObject;
-            if (!_fog.Calibrated || (player && !_fog.FromPlayer)) _fog.Calibrate(part, player);
+            if (!_fog.Calibrated || (player && !_fog.FromPlayer)) Timed(() => _fog.Calibrate(part, player));
         }
         catch (Exception exception) { Fail(exception); }
         if (Selected == 0 || !DrawsSelected()) return result;
-        try { DrawIntoMask(() => original(device, type, baseVertex, minIndex, vertices, startIndex, primitives)); }
+        try { Timed(() => DrawIntoMask(() => original(device, type, baseVertex, minIndex, vertices, startIndex, primitives))); }
         catch (Exception exception) { Fail(exception); }
         return result;
     }
@@ -223,20 +228,47 @@ internal sealed unsafe class WorldEffects : IDisposable
         {
             try
             {
-                _fog.Draw();
-                if (!_masked && Selected != 0) DrawCulledSelection();
+                Timed(_fog.Draw);
+                if (!_masked && Selected != 0) Timed(DrawCulledSelection);
             }
             catch (Exception exception) { Fail(exception); }
         }
-        if (!_masked && Selected != 0 && !_missLogged && ++_missedFrames == 300)
+        try
         {
-            _missLogged = true;
-            _log($"Selection outline: 300 world frames with 0x{Selected:X8} selected and none of its draws seen.");
+            if (_masked && !_failed) Timed(Composite);
         }
-        if (!_masked || _failed) return;
-        try { Composite(); }
         catch (Exception exception) { Fail(exception); }
         finally { _masked = false; _draws = 0; }
+        LogTiming();
+    }
+
+    private void Timed(Action work)
+    {
+        var start = _clock.ElapsedTicks;
+        try { work(); }
+        finally { _effectTicks += _clock.ElapsedTicks - start; }
+    }
+
+    /// <summary>Logs a world frame over 50 ms with the effects' share of it, and every 30 s the effects' worst frame.</summary>
+    private void LogTiming()
+    {
+        var now = _clock.ElapsedTicks;
+        double Ms(long ticks) => ticks * 1000.0 / Stopwatch.Frequency;
+        if (_effectTicks > _worstEffectTicks) _worstEffectTicks = _effectTicks;
+        var frame = Ms(now - _lastWorld);
+        if (_lastWorld != 0 && frame > 50 && Ms(now - _lastHitchLog) > 2000)
+        {
+            _lastHitchLog = now;
+            _log($"World effects: a {frame:F0} ms world frame, {Ms(_effectTicks):F2} ms of it in the effects; storm strength {_fog.Strength:F2}, selection 0x{Selected:X8}.");
+        }
+        if (Ms(now - _lastSummary) > 30000)
+        {
+            _lastSummary = now;
+            _log($"World effects: worst frame {Ms(_worstEffectTicks):F2} ms in the effects over the last 30 s.");
+            _worstEffectTicks = 0;
+        }
+        _lastWorld = now;
+        _effectTicks = 0;
     }
 
     /// <summary>
@@ -246,12 +278,10 @@ internal sealed unsafe class WorldEffects : IDisposable
     private void DrawCulledSelection()
     {
         var physicsObject = _getObject(Selected);
-        if (physicsObject == IntPtr.Zero) return;
+        // Out of the world (picked up into a pack, or gone): no cell, and its parts keep the place it was last drawn.
+        if (physicsObject == IntPtr.Zero || Marshal.ReadIntPtr(physicsObject, 0x90) == IntPtr.Zero) return;
         var parts = Marshal.ReadIntPtr(physicsObject, 0x10);
         if (parts == IntPtr.Zero || Marshal.ReadInt32(parts, 0x58) == 0) return;
-        // An item in a pack has no place in the world: its first part's draw cell is zero.
-        var first = Marshal.ReadIntPtr(Marshal.ReadIntPtr(parts, 0x5C));
-        if (first == IntPtr.Zero || Marshal.ReadInt32(first, 0x7C) == 0) return;
         _forcing = true;
         try { _drawParts(parts, IntPtr.Zero); }
         finally { _forcing = false; }
