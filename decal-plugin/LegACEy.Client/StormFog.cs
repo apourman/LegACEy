@@ -7,9 +7,10 @@ using static LegACEy.Client.DecalPlugin.D3D9;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
-/// A look-only preview of a battle-royale storm: the eight landblocks around one safe landblock are filled with drifting purple fog,
-/// drawn as nested translucent walls that the game's depth buffer hides behind terrain and buildings, plus a tint while the camera is
-/// inside it. Game positions (z-up) become render positions (y-up, relative to the viewer's landblock) through an offset measured while retail draws a part (<see cref="Calibrate"/>).
+/// A look-only preview of a battle-royale storm: the eight landblocks around one safe landblock are filled with grey fog. From outside,
+/// nested translucent walls show the fog bank, hidden by the game's depth buffer behind terrain and buildings. Inside, the view fades into
+/// fog with distance: camera-facing slices, each depth-tested against retail's scene, so a pixel is fogged by every slice in front of it.
+/// Game positions (z-up) become render positions (y-up, relative to the viewer's landblock) through an offset measured while retail draws a part (<see cref="Calibrate"/>).
 /// </summary>
 internal sealed unsafe class StormFog : IDisposable
 {
@@ -17,9 +18,11 @@ internal sealed unsafe class StormFog : IDisposable
     private const int SafeX = 0x97, SafeY = 0x22;
     private const float Block = 192, Bottom = -50, Top = 450;
     private const int Layers = 5, NoiseSize = 128;
-    private const uint Purple = 0x7020A0;
-    // Thick fog inside the storm: clear to here, solid purple from here (metres along the view), reached this far inside.
-    private const float ThickFogStart = 4, ThickFogEnd = 60, FadeIn = 30;
+    private const uint Grey = 0xC8CDCF;
+    // Inside: fog thick enough that 1/e of the scene shows through every Thickness metres, reached FadeIn metres past the edge.
+    // Slices run from the first to the last distance, spaced wider with distance as the fog changes less there.
+    private const float Thickness = 45, FadeIn = 30, FirstSlice = 3, LastSlice = 400;
+    private const int Slices = 24;
     private static readonly (int X, int Y)[] Corners = { (-1, -1), (1, -1), (1, 1), (-1, 1) };
 
     private readonly IntPtr _device;
@@ -48,48 +51,6 @@ internal sealed unsafe class StormFog : IDisposable
 
     // How far into the storm the camera is, 0 at its edge to 1 at FadeIn metres in.
     private float _strength;
-    // Retail's fog option: LScape::UseTime asks for the world fog only while it is set.
-    private static readonly byte* FogOption = (byte*)0x0081DBF8;
-    private bool _heldFogOption;
-
-    /// <summary>
-    /// Thickens retail's own world fog (<c>CRegionDesc::GetWorldFog</c>'s answer) inside the storm, so retail fogs every pass and shader
-    /// itself: nearer, and purple, the deeper the camera is in. With no region fog, the storm's own stands in.
-    /// </summary>
-    public void Thicken(bool hasFog, ref float near, ref float far, ref uint color)
-    {
-        if (!hasFog)
-        {
-            near = ThickFogEnd * 10;
-            far = ThickFogEnd * 20;
-            color = 0xFF000000 | Purple;
-        }
-        near += (ThickFogStart - near) * _strength;
-        far += (ThickFogEnd - far) * _strength;
-        uint mixed = color & 0xFF000000;
-        for (var shift = 0; shift < 24; shift += 8)
-        {
-            float from = (color >> shift) & 0xFF, to = (Purple >> shift) & 0xFF;
-            mixed |= (uint)(from + (to - from) * _strength) << shift;
-        }
-        color = mixed;
-    }
-
-    /// <summary>Holds retail's fog option on while the camera is in the storm, so turning fog off does not clear the storm; then gives it back.</summary>
-    private void HoldFogOption()
-    {
-        if (CameraInStorm && *FogOption == 0)
-        {
-            *FogOption = 1;
-            _heldFogOption = true;
-        }
-        else if (!CameraInStorm && _heldFogOption)
-        {
-            *FogOption = 0;
-            _heldFogOption = false;
-        }
-    }
-
     /// <summary>Measures the game-to-render offset from a part being drawn: its game position against the device's world transform.</summary>
     public void Calibrate(int part, bool player)
     {
@@ -161,7 +122,7 @@ internal sealed unsafe class StormFog : IDisposable
                 var half = Block / 2 + layer * Block / (Layers - 1);
                 // A wall fades out within 10 m of the camera, so passing through it does not flash it across the screen.
                 var near = cameraAt is { } at ? Math.Clamp(MathF.Abs(FromCentre(at) - half) / 10, 0, 1) : 1;
-                var color = (uint)((layer == 0 ? 0xB0 : 0x50) * near) << 24 | Purple;
+                var color = (uint)((layer == 0 ? 0x90 : 0x40) * near) << 24 | Grey;
                 var drift = (layer % 2 == 0 ? 1 : -1) * time * 0.03f;
                 for (var corner = 0; corner <= 4; corner++)
                 {
@@ -174,29 +135,46 @@ internal sealed unsafe class StormFog : IDisposable
                 DrawPrimitiveUP(_device, TriangleStrip, 8, walls, sizeof(FogVertex));
             }
 
-            // Inside the storm retail drew the world in thick fog (Thicken); a light tint covers what it draws without fog.
             _strength = cameraAt is { } where ? Math.Clamp(StormDepth(where) / FadeIn, 0, 1) : 0;
-            HoldFogOption();
-            if (CameraInStorm)
-            {
-                UseFixedFunction(_device, FvfXyzRhw | FvfDiffuse);
-                SetTexture(_device, 0, IntPtr.Zero);
-                SetRenderState(_device, RenderState.ZEnable, 0);
-                SetStageState(_device, 0, StageState.ColorOp, OpSelectArg1);
-                SetStageState(_device, 0, StageState.ColorArg1, ArgDiffuse);
-                SetStageState(_device, 0, StageState.AlphaOp, OpSelectArg1);
-                SetStageState(_device, 0, StageState.AlphaArg1, ArgDiffuse);
-                var screen = Viewport(_device);
-                var tint = (uint)(0x28 * _strength) << 24 | Purple;
-                var quad = stackalloc TintVertex[]
-                {
-                    new(screen.Left, screen.Top, tint), new(screen.Right, screen.Top, tint),
-                    new(screen.Left, screen.Bottom, tint), new(screen.Right, screen.Bottom, tint)
-                };
-                DrawPrimitiveUP(_device, TriangleStrip, 2, quad, sizeof(TintVertex));
-            }
+            if (CameraInStorm) DrawSlices();
         }
         finally { RestoreState(saved); }
+    }
+
+    /// <summary>
+    /// The fog inside: camera-facing grey slices from near to far, each covering the screen and hidden where retail's scene is nearer.
+    /// A slice's alpha is the fog over the gap since the last one, so a pixel behind every slice to distance d is fogged 1 - e^(-d / Thickness).
+    /// </summary>
+    private void DrawSlices()
+    {
+        UseFixedFunction(_device, FvfXyz | FvfDiffuse);
+        SetTexture(_device, 0, IntPtr.Zero);
+        SetStageState(_device, 0, StageState.ColorOp, OpSelectArg1);
+        SetStageState(_device, 0, StageState.ColorArg1, ArgDiffuse);
+        SetStageState(_device, 0, StageState.AlphaOp, OpSelectArg1);
+        SetStageState(_device, 0, StageState.AlphaArg1, ArgDiffuse);
+        // In view space: the camera at the origin, looking along +z, or -z under a right-handed projection.
+        SetTransform(_device, TransformWorld, Matrix4x4.Identity);
+        SetTransform(_device, TransformView, Matrix4x4.Identity);
+        var forward = _projection.M34 >= 0 ? 1 : -1;
+        // The last slice stays inside the far plane (from the projection: far = M43 / (forward - M33)), or the sky behind would show.
+        var lastSlice = MathF.Min(LastSlice, MathF.Abs(_projection.M43 / (forward - _projection.M33)) * 0.98f);
+        var quad = stackalloc SliceVertex[4];
+        var last = 0f;
+        for (var i = 0; i < Slices; i++)
+        {
+            var distance = FirstSlice * MathF.Pow(lastSlice / FirstSlice, i / (Slices - 1f));
+            var alpha = 1 - MathF.Exp(-(distance - last) / Thickness * _strength);
+            last = distance;
+            // Wider than the view, so the slice covers the screen whatever the aspect.
+            float x = distance / _projection.M11 * 1.2f, y = distance / _projection.M22 * 1.2f, z = distance * forward;
+            var color = (uint)(alpha * 255) << 24 | Grey;
+            quad[0] = new(-x, y, z, color);
+            quad[1] = new(x, y, z, color);
+            quad[2] = new(-x, -y, z, color);
+            quad[3] = new(x, -y, z, color);
+            DrawPrimitiveUP(_device, TriangleStrip, 2, quad, sizeof(SliceVertex));
+        }
     }
 
     /// <summary>Metres inside the storm ring to its nearer edge (the safe landblock's, or the ring's outer one); negative outside it.</summary>
@@ -248,8 +226,6 @@ internal sealed unsafe class StormFog : IDisposable
 
     public void Dispose()
     {
-        _strength = 0;
-        HoldFogOption();
         Release(_noise);
         _noise = IntPtr.Zero;
     }
@@ -261,9 +237,9 @@ internal sealed unsafe class StormFog : IDisposable
         public readonly float U = u, V = v;
     }
 
-    private readonly struct TintVertex(float x, float y, uint color)
+    private readonly struct SliceVertex(float x, float y, float z, uint color)
     {
-        public readonly float X = x, Y = y, Z = 0, Rhw = 1;
+        public readonly float X = x, Y = y, Z = z;
         public readonly uint Color = color;
     }
 }

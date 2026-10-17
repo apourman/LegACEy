@@ -19,7 +19,7 @@ namespace LegACEy.Client.DecalPlugin;
 internal sealed unsafe class WorldEffects : IDisposable
 {
     private const string Source = "acclient.pdb (C:\\Turbine\\Asheron's Call, a near build; +0xAD0 near 0x50E000, +0xA0 near 0x455000) for names; our objdump read of installed acclient.exe";
-    private const uint WorldFogAddress = 0x004FF480, SmartBoxDrawAddress = 0x00455610, GetObjectAddress = 0x0050FF60, PartArrayDrawAddress = 0x00518E00;
+    private const uint SmartBoxDrawAddress = 0x00455610, GetObjectAddress = 0x0050FF60, PartArrayDrawAddress = 0x00518E00;
     // CPhysicsPart* being drawn by CPhysicsPart::Draw, zero otherwise; part +0xE0 is its CPhysicsObj, whose +0x8 is the object id.
     private static readonly int* DrawingPart = (int*)0x008EE3D8;
     // The player's CPhysicsObj, kept by CPhysicsObj::SetPlayer.
@@ -42,10 +42,6 @@ internal sealed unsafe class WorldEffects : IDisposable
         new NativeUiEntry("Position::get_offset", 0x0050AA4D, NativeUiCatalogue.Bytes("D9 44 24 14 D8 47 3C 8B 44 24 30 D9 44 24 18 83 C4 0C D8 47 40"),
             Source, "the layout read here: Position +0x4 is the cell id, +0x3C the origin; a part's draw position is part +0x78"),
         // Ends before the call into CObjectMaint, in case a hook patches it.
-        new NativeUiEntry("CRegionDesc::GetWorldFog", WorldFogAddress, NativeUiCatalogue.Bytes("A1 7C 24 84 00 85 C0 74 21 8B 48 50 85 C9 74 1A 8B 44 24 10"),
-            Source, "Cdecl (float time, float* near, float* far, RGBAUnion* color) -> has fog; hooked, the storm thickens the answer"),
-        new NativeUiEntry("LScape::UseTime asks for the world fog only with the fog option 0x0081DBF8 set", 0x00506526,
-            NativeUiCatalogue.Bytes("A0 F8 DB 81 00 84 C0 0F 84 96 01 00 00 8B 0D 40 03 87 00 50"), Source, "the fog option held on in the storm"),
         new NativeUiEntry("CPhysicsObj::leave_cell clears the object's cell", 0x00511A77, NativeUiCatalogue.Bytes("C7 86 90 00 00 00 00 00 00 00 5E C2 04 00"),
             Source, "the layout read here: CPhysicsObj +0x90 is its CObjCell, zero once out of the world (picked up, gone)"),
         new NativeUiEntry("CPhysicsObj::GetObjectA", GetObjectAddress, NativeUiCatalogue.Bytes("8B 0D 64 4D 84 00 85 C9 74 0B 8B 44 24 04 50"),
@@ -65,9 +61,6 @@ internal sealed unsafe class WorldEffects : IDisposable
     [Function(CallingConventions.Stdcall)]
     private delegate int ResetFn(IntPtr device, IntPtr parameters);
 
-    [Function(CallingConventions.Cdecl)]
-    private delegate int WorldFogFn(float time, float* near, float* far, uint* color);
-
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate IntPtr GetObjectFn(uint objectId);
 
@@ -84,7 +77,6 @@ internal sealed unsafe class WorldEffects : IDisposable
     private readonly IHook<SmartBoxDrawFn> _smartBoxHook;
     private readonly IHook<DrawIndexedFn> _drawHook;
     private readonly IHook<ResetFn> _resetHook;
-    private readonly IHook<WorldFogFn> _worldFogHook;
     private readonly StormFog _fog;
     private GCHandle _root;
     private IntPtr _mask, _glow;
@@ -104,8 +96,6 @@ internal sealed unsafe class WorldEffects : IDisposable
         _smartBoxHook = ReloadedHooks.Instance.CreateHook<SmartBoxDrawFn>(OnSmartBoxDraw, SmartBoxDrawAddress);
         _drawHook = ReloadedHooks.Instance.CreateHook<DrawIndexedFn>(OnDrawIndexed, Method(device, DrawIndexedPrimitiveSlot).ToInt64());
         _resetHook = ReloadedHooks.Instance.CreateHook<ResetFn>(OnReset, Method(device, ResetSlot).ToInt64());
-        _worldFogHook = ReloadedHooks.Instance.CreateHook<WorldFogFn>(OnWorldFog, WorldFogAddress);
-        _worldFogHook.Activate();
         _resetHook.Activate();
         _drawHook.Activate();
         _smartBoxHook.Activate();
@@ -202,22 +192,6 @@ internal sealed unsafe class WorldEffects : IDisposable
             RestoreState(saved);
             Release(target);
             Release(depth);
-        }
-    }
-
-    private int OnWorldFog(float time, float* near, float* far, uint* color)
-    {
-        var hasFog = _worldFogHook.OriginalFunction(time, near, far, color);
-        if (_failed || !_fog.CameraInStorm) return hasFog;
-        try
-        {
-            _fog.Thicken(hasFog != 0, ref *near, ref *far, ref *color);
-            return 1;
-        }
-        catch (Exception exception)
-        {
-            Fail(exception);
-            return hasFog;
         }
     }
 
@@ -424,7 +398,6 @@ internal sealed unsafe class WorldEffects : IDisposable
     public void Dispose()
     {
         // A hook that could not be disabled stays rooted, still calling back here.
-        _worldFogHook.Disable();
         _smartBoxHook.Disable();
         _drawHook.Disable();
         _resetHook.Disable();
