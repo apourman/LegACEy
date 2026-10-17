@@ -150,13 +150,16 @@ internal sealed unsafe class StormFog : IDisposable
             SetSamplerState(_device, 0, SamplerState.AddressV, AddressWrap);
 
             var time = (float)_clock.Elapsed.TotalSeconds;
+            var cameraAt = Matrix4x4.Invert(_view, out var camera) ? Render(camera.Translation - _offset) : (Vector3?)null;
             var centre = new Vector2((SafeX + 0.5f) * Block, (SafeY + 0.5f) * Block);
             var walls = stackalloc FogVertex[10];
             for (var layer = 0; layer < Layers; layer++)
             {
                 // The safe landblock's edge is the storm's wall, so the innermost layer is the thickest.
                 var half = Block / 2 + layer * Block / (Layers - 1);
-                var color = (uint)(layer == 0 ? 0xB0 : 0x50) << 24 | Purple;
+                // A wall fades out within 10 m of the camera, so passing through it does not flash it across the screen.
+                var near = cameraAt is { } at ? Math.Clamp(MathF.Abs(FromCentre(at) - half) / 10, 0, 1) : 1;
+                var color = (uint)((layer == 0 ? 0xB0 : 0x50) * near) << 24 | Purple;
                 var drift = (layer % 2 == 0 ? 1 : -1) * time * 0.03f;
                 for (var corner = 0; corner <= 4; corner++)
                 {
@@ -170,7 +173,7 @@ internal sealed unsafe class StormFog : IDisposable
             }
 
             // Inside the storm retail drew the world in thick fog (Thicken); a light tint covers what it draws without fog.
-            _strength = Matrix4x4.Invert(_view, out var camera) ? Math.Clamp(StormDepth(Render(camera.Translation - _offset)) / FadeIn, 0, 1) : 0;
+            _strength = cameraAt is { } where ? Math.Clamp(StormDepth(where) / FadeIn, 0, 1) : 0;
             HoldFogOption();
             if (CameraInStorm)
             {
@@ -197,9 +200,13 @@ internal sealed unsafe class StormFog : IDisposable
     /// <summary>Metres inside the storm ring to its nearer edge (the safe landblock's, or the ring's outer one); negative outside it.</summary>
     internal static float StormDepth(Vector3 position)
     {
-        var fromCentre = MathF.Max(MathF.Abs(position.X - (SafeX + 0.5f) * Block), MathF.Abs(position.Y - (SafeY + 0.5f) * Block));
+        var fromCentre = FromCentre(position);
         return MathF.Min(fromCentre - Block / 2, Block * 1.5f - fromCentre);
     }
+
+    /// <summary>Distance from the safe landblock's centre, measured square: the half-size of the wall square through the position.</summary>
+    private static float FromCentre(Vector3 position) =>
+        MathF.Max(MathF.Abs(position.X - (SafeX + 0.5f) * Block), MathF.Abs(position.Y - (SafeY + 0.5f) * Block));
 
     /// <summary>Game space is z-up; retail renders y-up, swapping y and z (its own inverse).</summary>
     private static Vector3 Render(Vector3 game) => new(game.X, game.Z, game.Y);
