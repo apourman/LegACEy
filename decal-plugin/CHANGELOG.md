@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.3.0...decal-plugin-v0.4.0) (2026-10-17)
+
+
+### Features
+
+* **client:** selection outline and stack split tab ([#54](https://github.com/apourman/LegACEy/issues/54)) ([b91d1d8](https://github.com/apourman/LegACEy/commit/b91d1d85ece047d612c8f2ff53b92600ceb5bc95))
+
 ## [0.3.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.2.0...decal-plugin-v0.3.0) (2026-10-16)
 
 
