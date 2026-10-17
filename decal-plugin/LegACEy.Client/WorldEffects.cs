@@ -85,7 +85,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     private int _draws;
     // Timing for the log: time this frame spent in the effects' own work, the worst frame since the last summary, and the last world frame.
     private readonly Stopwatch _clock = Stopwatch.StartNew();
-    private long _effectTicks, _worstEffectTicks, _lastWorld, _lastSummary, _lastHitchLog;
+    private long _effectTicks, _worstEffectTicks, _lastWorld, _lastSummary, _lastHitchLog, _windowTicks, _windowFrames;
 
     private WorldEffects(IntPtr device, Action<string> log)
     {
@@ -114,6 +114,22 @@ internal sealed unsafe class WorldEffects : IDisposable
 
     /// <summary>The object to outline, zero for none. Set each frame.</summary>
     public uint Selected { get; set; }
+
+    /// <summary>Whether the storm fog draws; logged when it changes.</summary>
+    public bool FogOn
+    {
+        get => _fogOn;
+        set
+        {
+            if (value == _fogOn) return;
+            var average = _windowFrames == 0 ? 0 : _windowTicks * 1000.0 / Stopwatch.Frequency / _windowFrames;
+            _log($"World effects: storm fog {(value ? "on" : "off")}; with it {(_fogOn ? "on" : "off")}, world frames averaged {average:F1} ms over {_windowFrames}.");
+            _windowTicks = _windowFrames = 0;
+            _fogOn = value;
+        }
+    }
+
+    private bool _fogOn = true;
 
     private int OnDrawIndexed(IntPtr device, int type, int baseVertex, uint minIndex, uint vertices, uint startIndex, uint primitives)
     {
@@ -202,7 +218,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         {
             try
             {
-                Timed(_fog.Draw);
+                if (_fogOn) Timed(_fog.Draw);
                 if (!_masked && Selected != 0) Timed(DrawCulledSelection);
             }
             catch (Exception exception) { Fail(exception); }
@@ -230,6 +246,11 @@ internal sealed unsafe class WorldEffects : IDisposable
         double Ms(long ticks) => ticks * 1000.0 / Stopwatch.Frequency;
         if (_effectTicks > _worstEffectTicks) _worstEffectTicks = _effectTicks;
         var frame = Ms(now - _lastWorld);
+        if (_lastWorld != 0)
+        {
+            _windowTicks += now - _lastWorld;
+            _windowFrames++;
+        }
         if (_lastWorld != 0 && frame > 50 && Ms(now - _lastHitchLog) > 2000)
         {
             _lastHitchLog = now;
