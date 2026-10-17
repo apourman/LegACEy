@@ -18,6 +18,9 @@ internal sealed unsafe class StormFog : IDisposable
     private const float Block = 192, Bottom = -50, Top = 450;
     private const int Layers = 5, NoiseSize = 128;
     private const uint Purple = 0x7020A0;
+    // Thick fog inside the storm: clear to here, solid purple from here (metres along the view).
+    private const float ThickFogStart = 4, ThickFogEnd = 60;
+    private const int FogLinear = 3;
     private static readonly (int X, int Y)[] Corners = { (-1, -1), (1, -1), (1, 1), (-1, 1) };
 
     private readonly IntPtr _device;
@@ -38,6 +41,31 @@ internal sealed unsafe class StormFog : IDisposable
     public bool Calibrated { get; private set; }
 
     public bool FromPlayer { get; private set; }
+
+    /// <summary>Whether the camera was inside the storm at the last frame drawn.</summary>
+    public bool CameraInStorm { get; private set; }
+
+    private static readonly RenderState[] FogStates = { RenderState.FogEnable, RenderState.FogColor, RenderState.FogTableMode, RenderState.FogStart, RenderState.FogEnd };
+    private readonly int[] _retailFog = new int[5];
+
+    /// <summary>
+    /// Inside the storm, one of retail's world draws gets thick purple pixel fog, measured against the depth of each pixel. Retail's own fog
+    /// states are kept and put back by <see cref="EndThickFog"/> after the draw, so its state cache never sees ours.
+    /// </summary>
+    public void BeginThickFog()
+    {
+        for (var i = 0; i < FogStates.Length; i++) _retailFog[i] = GetRenderState(_device, FogStates[i]);
+        SetRenderState(_device, RenderState.FogEnable, 1);
+        SetRenderState(_device, RenderState.FogColor, unchecked((int)(0xFF000000 | Purple)));
+        SetRenderState(_device, RenderState.FogTableMode, FogLinear);
+        SetRenderState(_device, RenderState.FogStart, BitConverter.SingleToInt32Bits(ThickFogStart));
+        SetRenderState(_device, RenderState.FogEnd, BitConverter.SingleToInt32Bits(ThickFogEnd));
+    }
+
+    public void EndThickFog()
+    {
+        for (var i = 0; i < FogStates.Length; i++) SetRenderState(_device, FogStates[i], _retailFog[i]);
+    }
 
     /// <summary>Measures the game-to-render offset from a part being drawn: its game position against the device's world transform.</summary>
     public void Calibrate(int part, bool player)
@@ -120,8 +148,9 @@ internal sealed unsafe class StormFog : IDisposable
                 DrawPrimitiveUP(_device, TriangleStrip, 8, walls, sizeof(FogVertex));
             }
 
-            // Inside the storm the whole view is tinted.
-            if (Matrix4x4.Invert(_view, out var camera) && InStorm(Render(camera.Translation - _offset)))
+            // Inside the storm the world was drawn in thick fog; a light tint covers what retail draws without fog.
+            CameraInStorm = Matrix4x4.Invert(_view, out var camera) && InStorm(Render(camera.Translation - _offset));
+            if (CameraInStorm)
             {
                 UseFixedFunction(_device, FvfXyzRhw | FvfDiffuse);
                 SetTexture(_device, 0, IntPtr.Zero);
@@ -131,7 +160,7 @@ internal sealed unsafe class StormFog : IDisposable
                 SetStageState(_device, 0, StageState.AlphaOp, OpSelectArg1);
                 SetStageState(_device, 0, StageState.AlphaArg1, ArgDiffuse);
                 var screen = Viewport(_device);
-                var tint = 0x60u << 24 | Purple;
+                var tint = 0x28u << 24 | Purple;
                 var quad = stackalloc TintVertex[]
                 {
                     new(screen.Left, screen.Top, tint), new(screen.Right, screen.Top, tint),

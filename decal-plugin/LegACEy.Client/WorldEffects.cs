@@ -19,7 +19,7 @@ namespace LegACEy.Client.DecalPlugin;
 internal sealed unsafe class WorldEffects : IDisposable
 {
     private const string Source = "acclient.pdb (C:\\Turbine\\Asheron's Call, a near build; +0xAD0 near 0x50E000, +0xA0 near 0x455000) for names; our objdump read of installed acclient.exe";
-    private const uint SmartBoxDrawAddress = 0x00455610;
+    private const uint SmartBoxDrawAddress = 0x00455610, GetObjectAddress = 0x0050FF60, PartArrayDrawAddress = 0x00518E00;
     // CPhysicsPart* being drawn by CPhysicsPart::Draw, zero otherwise; part +0xE0 is its CPhysicsObj, whose +0x8 is the object id.
     private static readonly int* DrawingPart = (int*)0x008EE3D8;
     // The player's CPhysicsObj, kept by CPhysicsObj::SetPlayer.
@@ -40,7 +40,14 @@ internal sealed unsafe class WorldEffects : IDisposable
         new NativeUiEntry("CPhysicsObj::SetPlayer", 0x0050FF90, NativeUiCatalogue.Bytes("8B 44 24 04 A3 68 4D 84 00 C3"),
             Source, "Cdecl (CPhysicsObj*): the player global read here"),
         new NativeUiEntry("Position::get_offset", 0x0050AA4D, NativeUiCatalogue.Bytes("D9 44 24 14 D8 47 3C 8B 44 24 30 D9 44 24 18 83 C4 0C D8 47 40"),
-            Source, "the layout read here: Position +0x4 is the cell id, +0x3C the origin; a part's draw position is part +0x78")
+            Source, "the layout read here: Position +0x4 is the cell id, +0x3C the origin; a part's draw position is part +0x78"),
+        // Ends before the call into CObjectMaint, in case a hook patches it.
+        new NativeUiEntry("CPhysicsObj::GetObjectA", GetObjectAddress, NativeUiCatalogue.Bytes("8B 0D 64 4D 84 00 85 C9 74 0B 8B 44 24 04 50"),
+            Source, "Cdecl (object id): CObjectMaint lookup, null when the object is not in the world"),
+        new NativeUiEntry("CPartArray::Draw", PartArrayDrawAddress, NativeUiCatalogue.Bytes("56 57 8B F9 8B 47 58 33 F6 85 C0 76 1C 8D 49 00 8B 47 5C 8B 0C B0 85 C9 74 07 6A 00"),
+            Source, "ThisCall (Position*, unused): CPhysicsPart::Draw(0) for each part; part count +0x58, parts +0x5C"),
+        new NativeUiEntry("CPhysicsObj::SetLuminosity reads the part array", 0x00512374, NativeUiCatalogue.Bytes("8B 4E 10 85 C9 74 76"),
+            Source, "the layout read here: CPhysicsObj +0x10 is its CPartArray")
     };
 
     [Function(CallingConventions.MicrosoftThiscall)]
@@ -51,6 +58,17 @@ internal sealed unsafe class WorldEffects : IDisposable
 
     [Function(CallingConventions.Stdcall)]
     private delegate int ResetFn(IntPtr device, IntPtr parameters);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate IntPtr GetObjectFn(uint objectId);
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void DrawPartsFn(IntPtr partArray, IntPtr position);
+
+    private readonly GetObjectFn _getObject = Marshal.GetDelegateForFunctionPointer<GetObjectFn>(new IntPtr(GetObjectAddress));
+    private readonly DrawPartsFn _drawParts = Marshal.GetDelegateForFunctionPointer<DrawPartsFn>(new IntPtr(PartArrayDrawAddress));
+    // While retail draws its world; while the selection, culled this frame, is drawn into the mask only.
+    private bool _inWorld, _forcing;
 
     private readonly IntPtr _device;
     private readonly Action<string> _log;
@@ -95,7 +113,25 @@ internal sealed unsafe class WorldEffects : IDisposable
     private int OnDrawIndexed(IntPtr device, int type, int baseVertex, uint minIndex, uint vertices, uint startIndex, uint primitives)
     {
         var original = _drawHook.OriginalFunction;
+        if (_forcing)
+        {
+            // Not on screen: the selection is drawn here only so the outline shows through what culled it.
+            try { if (DrawsSelected()) DrawIntoMask(() => original(device, type, baseVertex, minIndex, vertices, startIndex, primitives)); }
+            catch (Exception exception) { Fail(exception); }
+            return 0;
+        }
+        var thick = _inWorld && _fog.CameraInStorm && !_failed && device == _device;
+        if (thick)
+        {
+            try { _fog.BeginThickFog(); }
+            catch (Exception exception) { Fail(exception); thick = false; }
+        }
         var result = original(device, type, baseVertex, minIndex, vertices, startIndex, primitives);
+        if (thick)
+        {
+            try { _fog.EndThickFog(); }
+            catch (Exception exception) { Fail(exception); }
+        }
         var part = *DrawingPart;
         if (result < 0 || part == 0 || _failed || device != _device) return result;
         try
@@ -167,10 +203,16 @@ internal sealed unsafe class WorldEffects : IDisposable
 
     private void OnSmartBoxDraw(IntPtr smartBox)
     {
-        _smartBoxHook.OriginalFunction(smartBox);
+        _inWorld = true;
+        try { _smartBoxHook.OriginalFunction(smartBox); }
+        finally { _inWorld = false; }
         if (!_failed)
         {
-            try { _fog.Draw(); }
+            try
+            {
+                _fog.Draw();
+                if (!_masked && Selected != 0) DrawCulledSelection();
+            }
             catch (Exception exception) { Fail(exception); }
         }
         if (!_masked && Selected != 0 && !_missLogged && ++_missedFrames == 300)
@@ -182,6 +224,24 @@ internal sealed unsafe class WorldEffects : IDisposable
         try { Composite(); }
         catch (Exception exception) { Fail(exception); }
         finally { _masked = false; _draws = 0; }
+    }
+
+    /// <summary>
+    /// Has retail draw the selected object's parts again, into the mask only: indoors, retail culls what is in rooms out of view.
+    /// ponytail: a culled object's draw position is where retail last placed it; a moving one may lag until it is in view again.
+    /// </summary>
+    private void DrawCulledSelection()
+    {
+        var physicsObject = _getObject(Selected);
+        if (physicsObject == IntPtr.Zero) return;
+        var parts = Marshal.ReadIntPtr(physicsObject, 0x10);
+        if (parts == IntPtr.Zero || Marshal.ReadInt32(parts, 0x58) == 0) return;
+        // An item in a pack has no place in the world: its first part's draw cell is zero.
+        var first = Marshal.ReadIntPtr(Marshal.ReadIntPtr(parts, 0x5C));
+        if (first == IntPtr.Zero || Marshal.ReadInt32(first, 0x7C) == 0) return;
+        _forcing = true;
+        try { _drawParts(parts, IntPtr.Zero); }
+        finally { _forcing = false; }
     }
 
     /// <summary>Spreads the mask into the glow texture, then adds the glow to the screen in gold outside the mask.</summary>
