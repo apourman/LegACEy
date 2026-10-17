@@ -18,8 +18,8 @@ internal sealed unsafe class StormFog : IDisposable
     private const float Block = 192, Bottom = -50, Top = 450;
     private const int Layers = 5, NoiseSize = 128;
     private const uint Purple = 0x7020A0;
-    // Thick fog inside the storm: clear to here, solid purple from here (metres along the view).
-    private const float ThickFogStart = 4, ThickFogEnd = 60;
+    // Thick fog inside the storm: clear to here, solid purple from here (metres along the view), reached this far inside.
+    private const float ThickFogStart = 4, ThickFogEnd = 60, FadeIn = 30;
     private const int FogLinear = 3;
     private static readonly (int X, int Y)[] Corners = { (-1, -1), (1, -1), (1, 1), (-1, 1) };
 
@@ -43,7 +43,10 @@ internal sealed unsafe class StormFog : IDisposable
     public bool FromPlayer { get; private set; }
 
     /// <summary>Whether the camera was inside the storm at the last frame drawn.</summary>
-    public bool CameraInStorm { get; private set; }
+    public bool CameraInStorm => _strength > 0;
+
+    // How far into the storm the camera is, 0 at its edge to 1 at FadeIn metres in.
+    private float _strength;
 
     private static readonly RenderState[] FogStates = { RenderState.FogEnable, RenderState.FogColor, RenderState.FogTableMode, RenderState.FogStart, RenderState.FogEnd };
     private readonly int[] _retailFog = new int[5];
@@ -56,10 +59,23 @@ internal sealed unsafe class StormFog : IDisposable
     {
         for (var i = 0; i < FogStates.Length; i++) _retailFog[i] = GetRenderState(_device, FogStates[i]);
         SetRenderState(_device, RenderState.FogEnable, 1);
-        SetRenderState(_device, RenderState.FogColor, unchecked((int)(0xFF000000 | Purple)));
+        SetRenderState(_device, RenderState.FogColor, unchecked((int)(0xFF000000 | PassFogColor())));
         SetRenderState(_device, RenderState.FogTableMode, FogLinear);
         SetRenderState(_device, RenderState.FogStart, BitConverter.SingleToInt32Bits(ThickFogStart));
-        SetRenderState(_device, RenderState.FogEnd, BitConverter.SingleToInt32Bits(ThickFogEnd));
+        SetRenderState(_device, RenderState.FogEnd, BitConverter.SingleToInt32Bits(ThickFogEnd + (1 - _strength) * 1000));
+    }
+
+    /// <summary>
+    /// Retail draws many surfaces in passes blended onto the last. Fogging each in purple adds purple once per pass, which washes out to
+    /// white; an added pass gets black fog (it adds nothing far off), a multiplying pass white (it changes nothing), any other purple.
+    /// </summary>
+    private uint PassFogColor()
+    {
+        const int Zero = 1, One = 2, DestColor = 9;
+        if (GetRenderState(_device, RenderState.AlphaBlendEnable) == 0) return Purple;
+        if (GetRenderState(_device, RenderState.DestBlend) == One) return 0x000000;
+        var source = GetRenderState(_device, RenderState.SrcBlend);
+        return source is Zero or DestColor ? 0xFFFFFF : Purple;
     }
 
     public void EndThickFog()
@@ -149,7 +165,7 @@ internal sealed unsafe class StormFog : IDisposable
             }
 
             // Inside the storm the world was drawn in thick fog; a light tint covers what retail draws without fog.
-            CameraInStorm = Matrix4x4.Invert(_view, out var camera) && InStorm(Render(camera.Translation - _offset));
+            _strength = Matrix4x4.Invert(_view, out var camera) ? Math.Clamp(StormDepth(Render(camera.Translation - _offset)) / FadeIn, 0, 1) : 0;
             if (CameraInStorm)
             {
                 UseFixedFunction(_device, FvfXyzRhw | FvfDiffuse);
@@ -160,7 +176,7 @@ internal sealed unsafe class StormFog : IDisposable
                 SetStageState(_device, 0, StageState.AlphaOp, OpSelectArg1);
                 SetStageState(_device, 0, StageState.AlphaArg1, ArgDiffuse);
                 var screen = Viewport(_device);
-                var tint = 0x28u << 24 | Purple;
+                var tint = (uint)(0x28 * _strength) << 24 | Purple;
                 var quad = stackalloc TintVertex[]
                 {
                     new(screen.Left, screen.Top, tint), new(screen.Right, screen.Top, tint),
@@ -172,11 +188,11 @@ internal sealed unsafe class StormFog : IDisposable
         finally { RestoreState(saved); }
     }
 
-    private static bool InStorm(Vector3 position)
+    /// <summary>Metres inside the storm ring to its nearer edge (the safe landblock's, or the ring's outer one); negative outside it.</summary>
+    internal static float StormDepth(Vector3 position)
     {
-        var x = MathF.Floor(position.X / Block) - SafeX;
-        var y = MathF.Floor(position.Y / Block) - SafeY;
-        return Math.Abs(x) <= 1 && Math.Abs(y) <= 1 && !(x == 0 && y == 0);
+        var fromCentre = MathF.Max(MathF.Abs(position.X - (SafeX + 0.5f) * Block), MathF.Abs(position.Y - (SafeY + 0.5f) * Block));
+        return MathF.Min(fromCentre - Block / 2, Block * 1.5f - fromCentre);
     }
 
     /// <summary>Game space is z-up; retail renders y-up, swapping y and z (its own inverse).</summary>
