@@ -1,11 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Templates;
-using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -86,8 +82,6 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     private static readonly IBrush TrackBrush = DerethPalette.Brush(Color.Parse("#0B1117"));
     private static readonly IBrush HealthBrush = Gradient(Color.Parse("#7E211B"), Color.Parse("#D9584A"));
     private static readonly IBrush ManaBrush = Gradient(Color.Parse("#24507F"), Color.Parse("#5AA0E0"));
-    private static readonly IBrush AmountEdge = DerethPalette.Brush(Color.Parse("#7A5E30"));
-    private static readonly IBrush ThumbBrush = Gradient(Color.Parse("#7A5E30"), Color.Parse("#D9B66A"));
     // Use and Examine show dimmed while nothing is selected, as retail shows them.
     private const double DimmedOpacity = 0.4;
 
@@ -106,29 +100,14 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     {
         FontFamily = DerethPalette.Title,
         FontSize = 11,
-        // The mockup's name line is 11 DIP tall, so the amount row fits under it in the plaque's 31.
+        // The mockup's name line is 11 DIP tall, so the meter fits under it in the plaque's 31.
         LineHeight = 11,
         TextAlignment = TextAlignment.Center,
         TextWrapping = TextWrapping.NoWrap,
         TextTrimming = TextTrimming.CharacterEllipsis
     };
-    private readonly Border _amountSlot = new() { IsVisible = false };
     private readonly Border _meterSlot = new() { IsVisible = false };
     private readonly StackPanel _plaqueContent;
-    // The amount row of the stack being split: its stack, the count it shows, whether a write is in progress, and its controls.
-    private uint _amountStackId;
-    private int _amountSize;
-    private bool _amountBusy;
-    private Grid? _amountRow;
-    private TextBox? _amountBox;
-    private Slider? _amountSlider;
-
-    /// <summary>The stack's amount box, shown while a stack is selected; null otherwise.</summary>
-    public TextBox? AmountBox => _amountBox;
-
-    /// <summary>The stack's amount slider, shown while a stack is selected; null otherwise.</summary>
-    public Slider? AmountSlider => _amountSlider;
-
     /// <param name="port">Retail's toolbar, as the client reaches it.</param>
     /// <param name="openMenu">Opens or closes the LegACEy menu. The caller shows the menu's state with <see cref="SetMenuOpen"/>.</param>
     /// <param name="moveToMainPack">Moves the items to the player's main pack, in order, as a drop on the backpack does. True when one moved.</param>
@@ -161,7 +140,7 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         _use = Medallion(DerethGlyph.Use, 20, 16, "Use selected");
         _use.Clicked += _port.UseSelected;
         row.Children.Add(Centred(_use));
-        _plaqueContent = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center, Children = { _name, _amountSlot, _meterSlot } };
+        _plaqueContent = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center, Children = { _name, _meterSlot } };
         _plaque = new Border
         {
             // Wide enough for a long NPC's name, such as "Ulgrim the Unpleasant, Bartender"; a longer one ends in an ellipsis, named in full on hover.
@@ -225,6 +204,9 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
 
     public DerethMedallion ExamineButton => _examine;
 
+    /// <summary>The selection plaque; the client centres the split tab over it.</summary>
+    public Control Plaque => _plaque;
+
     /// <summary>Opens the panel if it is shut, and shuts it if it is open.</summary>
     private void TogglePanel(RetailPanel panel) => _port.SetPanelOpen(panel, !_port.IsPanelOpen(panel));
 
@@ -242,11 +224,6 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         ToolTip.SetTip(_plaque, selection?.Name);
         _name.FontStyle = selection is null ? FontStyle.Italic : FontStyle.Normal;
         _name.Foreground = selection is null ? DerethPalette.MutedBrush : DerethPalette.CreamBrush;
-        // A stack's amount row stays while that stack stays selected; another object drops it.
-        var stack = selection is { Kind: SelectionKind.Stack } stackSelection ? stackSelection : null;
-        _amountSlot.IsVisible = stack is not null;
-        var row = stack is null ? ForgetAmount() : AmountRow(stack);
-        if (!ReferenceEquals(_amountSlot.Child, row)) _amountSlot.Child = row;
         // No bar while the server's answer is pending, or for an item with no mana.
         Control? meter = selection is { Kind: SelectionKind.Creature or SelectionKind.ItemWithMana, Meter: { } fraction } meterSelection
             ? Meter(meterSelection.Kind == SelectionKind.Creature ? HealthBrush : ManaBrush, fraction)
@@ -257,117 +234,6 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         _use.Opacity = _examine.Opacity = selection is null ? DimmedOpacity : 1;
         _use.IsHitTestVisible = _examine.IsHitTestVisible = selection is not null;
     }
-
-    /// <summary>The amount row for a stack: the same row while the stack stays selected, a new one for another stack.</summary>
-    private Control AmountRow(RetailSelection stack)
-    {
-        if (_amountRow is null || _amountStackId != stack.Id) BuildAmountRow(stack.Id);
-        ShowAmount(stack.StackCount);
-        return _amountRow!;
-    }
-
-    /// <summary>Drops the amount row once no stack is selected. Its controls are no longer the current ones, so their focus-loss writes nothing.</summary>
-    private Control? ForgetAmount()
-    {
-        _amountStackId = 0;
-        _amountRow = null;
-        _amountBox = null;
-        _amountSlider = null;
-        return null;
-    }
-
-    /// <summary>
-    /// The amount box and slider of a split. Typing or sliding writes the amount, clamped to 1 and the stack's count; the box takes the
-    /// clamped figure when it loses focus or Enter is pressed. Events from a row that is no longer the current one write nothing.
-    /// </summary>
-    private void BuildAmountRow(uint stackId)
-    {
-        var box = new TextBox
-        {
-            Foreground = DerethPalette.TextBrush, CaretBrush = DerethPalette.GoldBrush, FontFamily = DerethPalette.Body, FontSize = 8,
-            Background = TrackBrush, BorderBrush = AmountEdge, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(2),
-            Padding = new Thickness(0), MinHeight = 0, Height = 11, TextAlignment = TextAlignment.Right,
-            HorizontalContentAlignment = HorizontalAlignment.Right, VerticalContentAlignment = VerticalAlignment.Center
-        };
-        var slider = new Slider
-        {
-            Minimum = 1, TickFrequency = 1, IsSnapToTickEnabled = true, Template = AmountSliderTemplate(),
-            VerticalAlignment = VerticalAlignment.Center, Height = 10
-        };
-        _amountStackId = stackId;
-        _amountBox = box;
-        _amountSlider = slider;
-        box.TextChanged += (_, _) =>
-        {
-            // Only typing writes: the text the plaque sets itself can raise this event after the refresh that set it.
-            if (box == _amountBox && box.IsFocused && int.TryParse(box.Text, NumberStyles.None, CultureInfo.InvariantCulture, out var typed)) Apply(typed, box);
-        };
-        box.LostFocus += (_, _) => Settle(box);
-        box.KeyDown += (_, e) => { if (e.Key == Key.Enter) Settle(box); };
-        slider.PropertyChanged += (_, e) =>
-        {
-            if (e.Property == RangeBase.ValueProperty && slider == _amountSlider) Apply((int)Math.Round(slider.Value), slider);
-        };
-        Grid.SetColumn(slider, 1);
-        _amountRow = new Grid { ColumnDefinitions = new ColumnDefinitions("46,*"), ColumnSpacing = 5, Children = { box, slider } };
-    }
-
-    /// <summary>Shows the stack's amount at the port's figure, clamped to the count. A box being typed in keeps its text.</summary>
-    private void ShowAmount(int size)
-    {
-        _amountSize = size;
-        var amount = Between(_port.SplitAmount, 1, size);
-        _amountBusy = true;
-        try
-        {
-            _amountSlider!.Maximum = size;
-            _amountSlider.Value = amount;
-            if (!_amountBox!.IsFocused) _amountBox.Text = amount.ToString(CultureInfo.InvariantCulture);
-        }
-        finally { _amountBusy = false; }
-    }
-
-    /// <summary>Writes an amount, clamped to 1 and the count, and shows it in the control that did not set it; source null shows it in both.</summary>
-    private void Apply(int amount, Control? source)
-    {
-        if (_amountBusy || _amountBox is null || _amountSlider is null) return;
-        _amountBusy = true;
-        try
-        {
-            amount = Between(amount, 1, _amountSize);
-            _port.SplitAmount = amount;
-            if (source != _amountBox) _amountBox.Text = amount.ToString(CultureInfo.InvariantCulture);
-            if (source != _amountSlider) _amountSlider.Value = amount;
-        }
-        finally { _amountBusy = false; }
-    }
-
-    /// <summary>Enter or losing focus settles the box on the figure typed, or the amount in force when none parses.</summary>
-    private void Settle(TextBox box)
-    {
-        if (box != _amountBox) return;
-        Apply(int.TryParse(box.Text, NumberStyles.None, CultureInfo.InvariantCulture, out var typed) ? typed : _port.SplitAmount, null);
-    }
-
-    /// <summary>A dark track with a gold thumb, as the retail amount slider draws.</summary>
-    private static FuncControlTemplate<Slider> AmountSliderTemplate() => new((_, scope) =>
-    {
-        var track = new Track
-        {
-            Name = "PART_Track",
-            Orientation = Orientation.Horizontal,
-            [!RangeBase.MinimumProperty] = new TemplateBinding(RangeBase.MinimumProperty),
-            [!RangeBase.MaximumProperty] = new TemplateBinding(RangeBase.MaximumProperty),
-            [!RangeBase.ValueProperty] = new Binding(nameof(RangeBase.Value)) { Mode = BindingMode.TwoWay, RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) }
-        };
-        track.Thumb = new Thumb { Template = new FuncControlTemplate<Thumb>((_, _) => new Border { Width = 6, Height = 10, CornerRadius = new CornerRadius(2), Background = ThumbBrush }) };
-        scope.Register(track.Name, track);
-        return new Border
-        {
-            Height = 4, CornerRadius = new CornerRadius(2), Background = TrackBrush, BorderBrush = DerethPalette.GrooveEdgeBrush,
-            BorderThickness = new Thickness(1), VerticalAlignment = VerticalAlignment.Center, Child = track
-        };
-    });
 
     /// <summary>A 5 DIP bar filled to <paramref name="fraction"/> of its width.</summary>
     private static Control Meter(IBrush fill, float fraction)
@@ -399,9 +265,6 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         control.VerticalAlignment = VerticalAlignment.Center;
         return control;
     }
-
-    /// <summary>The value held within [<paramref name="low"/>, <paramref name="high"/>]. netstandard2.0 has no Math.Clamp.</summary>
-    private static int Between(int value, int low, int high) => Math.Min(Math.Max(value, low), high);
 
     private static IBrush Gradient(Color from, Color to) => new LinearGradientBrush
     {

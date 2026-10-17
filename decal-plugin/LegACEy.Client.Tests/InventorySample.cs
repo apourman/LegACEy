@@ -29,7 +29,9 @@ internal static class InventorySample
 
     /// <summary>The whole sample: main pack open or a side pack open, with one item selected.</summary>
     /// <param name="extra">Items added to the main pack's sample, for a test that needs one more.</param>
-    public static InventorySnapshot Snapshot(uint openContainer = Character, uint selected = 0, int burden = 4212, IEnumerable<InventoryItem>? extra = null)
+    /// <param name="sackOnGround">The first side pack has been dropped: its slot is empty.</param>
+    public static InventorySnapshot Snapshot(uint openContainer = Character, uint selected = 0, int burden = 4212, IEnumerable<InventoryItem>? extra = null,
+        bool sackOnGround = false)
     {
         var main = new InventoryPack(Character, "Main Pack", BackpackIcon, 96);
         var sides = new List<InventoryPack>
@@ -38,6 +40,7 @@ internal static class InventorySample
             new(Potions, "Potions", SackIcon, 24),
         };
         for (var empty = 0; empty < 5; empty++) sides.Add(new InventoryPack(0, string.Empty, 0, 0));
+        if (sackOnGround) sides[0] = new InventoryPack(0, string.Empty, 0, 0);
 
         var items = new List<InventoryItem>
         {

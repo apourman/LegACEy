@@ -43,6 +43,9 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     // The selected id last seen, and whether the game reported the selected object changed since it was read.
     private uint _selectedId;
     private bool _rereadSelected;
+    // The amount the player chose in the split tab and the stack it is for, while it stays selected; any other stack splits whole.
+    private uint _chosenSplitStackId;
+    private int _chosenSplitAmount;
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate IntPtr GetCombatSystemFn();
@@ -133,19 +136,27 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     };
 
     /// <summary>
-    /// Retail's split amount: the global the drag reads for the selected stack. A write is clamped to [1, the stack's size] as retail's box
-    /// clamps it, and only lands while the stack the plaque shows is still the selection.
+    /// The selected stack's split amount: the whole stack, unless the player chose an amount for this stack, held within [1, the stack's size].
+    /// Retail sets its own amount back to 1 on a selection change, which would split one off by default; <see cref="Poll"/> writes this
+    /// amount over retail's global each frame, so retail's drag and LegACEy's both split by it. A write only lands while the stack the tab
+    /// shows is still the selection.
     /// </summary>
     public int SplitAmount
     {
-        get => ReadInt(RetailToolbarCatalogue.SplitAmount);
+        get => Described() is { Kind: SelectionKind.Stack } stack ? SplitAmountFor(stack) : ReadInt(RetailToolbarCatalogue.SplitAmount);
         set
         {
             var id = (uint)Bridge.Fact(BridgeFact.CurrentSelection);
             if (Described() is not { Kind: SelectionKind.Stack } stack || stack.Id != id) return;
-            Marshal.WriteInt32(new IntPtr(unchecked((int)RetailToolbarCatalogue.SplitAmount)), Math.Clamp(value, 1, Math.Max(1, ReadInt(RetailToolbarCatalogue.SplitStackSize))));
+            (_chosenSplitStackId, _chosenSplitAmount) = (stack.Id, value);
+            WriteSplitAmount(SplitAmountFor(stack));
         }
     }
+
+    private int SplitAmountFor(RetailSelection stack) =>
+        stack.Id == _chosenSplitStackId ? Math.Clamp(_chosenSplitAmount, 1, Math.Max(1, stack.StackCount)) : Math.Max(1, stack.StackCount);
+
+    private static void WriteSplitAmount(int amount) => Marshal.WriteInt32(new IntPtr(unchecked((int)RetailToolbarCatalogue.SplitAmount)), amount);
 
     /// <summary>A global int32 of retail's, read in place. Its address is checked by the catalogue before the takeover is on.</summary>
     private static int ReadInt(uint address) => Marshal.ReadInt32(new IntPtr(unchecked((int)address)));
@@ -248,8 +259,14 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
     public void Poll()
     {
         var described = Described();
-        // A stack that shrank takes the split amount down with it, as retail's own box clamps it.
-        if (described is { Kind: SelectionKind.Stack } && SplitAmount > ReadInt(RetailToolbarCatalogue.SplitStackSize)) SplitAmount = ReadInt(RetailToolbarCatalogue.SplitStackSize);
+        // A chosen amount lasts while its stack stays selected; selected again later, the stack splits whole.
+        if (described?.Id != _chosenSplitStackId) _chosenSplitStackId = 0;
+        // Retail's global holds the selected stack's amount (see SplitAmount), whatever retail last wrote to it; a stack that shrank takes the
+        // amount down with it.
+        if (described is { Kind: SelectionKind.Stack } stack && ReadInt(RetailToolbarCatalogue.SplitAmount) != SplitAmountFor(stack))
+        {
+            WriteSplitAmount(SplitAmountFor(stack));
+        }
         var count = ReadShortcuts(_shortcutBuffer);
         var kind = described is null ? SelectionKind.Other : KindOf(described);
         var meter = described is null ? null : MeterOf(described);

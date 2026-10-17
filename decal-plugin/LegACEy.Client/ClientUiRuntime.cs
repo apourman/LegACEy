@@ -206,6 +206,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string ShortcutRow2WindowId = "shortcut-row-2";
     // The Dereth toolbar's surface id. It is not a managed window, so drops reach it by its surface.
     private const string ToolbarSurfaceId = "toolbar";
+    // The selected stack's split tab: its own surface over the toolbar's plaque, shown while a stack is selected.
+    private const string SplitTabSurfaceId = "toolbar-split";
+    private StackSplitTab? _splitTab;
+    private ScreenSurface? _splitTabSurface;
     private ShortcutBar? _shortcutBar;
     private ShortcutBar? _shortcutRow2;
     // The slot a shortcut drag started from, shared by both rows: a drop on either row moves the shortcut.
@@ -271,6 +275,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private readonly BridgeInventoryPort _inventory = new(Log);
     private readonly AppraisalFeature _appraisal;
     private RetailBusyCursor? _busyCursor;
+    private WorldEffects? _worldEffects;
     private RetailTextMode? _textMode;
     // The inventory as plugins and windows get it: the bridge port, with an Assess also asking for the appraisal window.
     private readonly AppraisingInventoryPort _appraisingInventory;
@@ -379,6 +384,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             _postUiDrawHook?.Dispose();
             _postUiDrawHook = null;
+            _worldEffects?.Dispose();
+            _worldEffects = null;
             RestoreNativeBar();
             TearDown();
             _serverChannel?.Dispose();
@@ -518,6 +525,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _inventory.Clear();
         Guard(() => _appraisal.Clear());
         Guard(() => _busyCursor?.Show(false));
+        if (_worldEffects != null) _worldEffects.Selected = 0;
         Guard(() => _textMode?.Hold(false));
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up client UI at logoff: {exception}"); }
@@ -578,6 +586,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
         _barSurface.Panel.ApplyTheme(CurrentTheme());
         EnsurePostUiDrawHook();
+        try { _worldEffects ??= WorldEffects.Create(_device, NativeUi.ReadMemory, Log); }
+        catch (Exception exception) { Log($"The selection outline and storm fog are off: {exception.Message}"); }
         Log("Indicator bar replacement ready.");
         WarmUpDerethTheme();
     }
@@ -783,6 +793,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _inventory.Flush(_inGame);
             _inventory.TargetMode?.Tick();
             _busyCursor?.Show(_inGame && _appraisal.Waiting);
+            if (_worldEffects != null)
+            {
+                _worldEffects.Selected = _inGame ? (uint)Bridge.Fact(BridgeFact.CurrentSelection) : 0;
+            }
             _textMode?.Hold(_inGame && SurfaceById(_inputRouter.FocusedSurfaceId)?.Panel.WantsKeyboard == true);
             _serverChannel?.Tick();
             if (_barSurface == null)
@@ -887,25 +901,29 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         ThrowIfTestFailureRequested();
         Guard(() => _barRenderer?.DrawAfterRetailUi());
         Guard(() => _toolbarSurface?.DrawNow());
-        if (_failed || !_windowsEnabled || _windows == null)
-            return;
-        _drawnModelViews.Clear();
-        foreach (var window in _windows.ZOrder.Reverse())
+        var windows = !_failed && _windowsEnabled && _windows != null;
+        if (windows)
         {
-            var surface = SurfaceById(window.Id);
-            surface?.DrawNow();
-            DrawModelViews(surface);
-            if (_firstPostUiWindow)
+            _drawnModelViews.Clear();
+            foreach (var window in _windows!.ZOrder.Reverse())
             {
-                _firstPostUiWindow = false;
-                Log("LegACEy post-UI window draw reached through retail RenderDeviceD3D.EndScene.");
+                var surface = SurfaceById(window.Id);
+                surface?.DrawNow();
+                DrawModelViews(surface);
+                if (_firstPostUiWindow)
+                {
+                    _firstPostUiWindow = false;
+                    Log("LegACEy post-UI window draw reached through retail RenderDeviceD3D.EndScene.");
+                }
             }
+            ReleaseModelRenderers(_drawnModelViews);
+            if (_windows.Resizing is { } resizing && _device != IntPtr.Zero)
+                Guard(() => ScreenSurface.DrawOutline(_device, resizing.Bounds, ResizeOutline));
         }
-        ReleaseModelRenderers(_drawnModelViews);
-        if (_windows.Resizing is { } resizing && _device != IntPtr.Zero)
-            Guard(() => ScreenSurface.DrawOutline(_device, resizing.Bounds, ResizeOutline));
+        // The split tab stands over the windows: it is up only while a stack is selected, and an inventory kept over the toolbar would hide it.
+        if (!_failed) Guard(() => _splitTabSurface?.DrawNow());
         // An item dragged out of a LegACEy window draws above everything.
-        Guard(() => _dragIconSurface?.DrawNow());
+        if (windows) Guard(() => _dragIconSurface?.DrawNow());
     }
 
     /// <summary>
@@ -1637,6 +1655,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (!_inGame)
             {
                 _toolbarSurface!.Visible = false;
+                if (_splitTabSurface != null) _splitTabSurface.Visible = false;
                 CloseShortcutBar();
                 return;
             }
@@ -1645,11 +1664,35 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             else CloseShortcutBar();
             // Drawn after retail's UI, under the LegACEy windows: drawn before it, retail's portal space would paint over it on a teleport.
             _toolbarSurface!.Prepare();
+            PrepareSplitTab();
         }
         catch (Exception exception)
         {
             ToolbarFailed(exception);
         }
+    }
+
+    /// <summary>
+    /// Shows the split tab while the toolbar shows and a stack is selected, at its content's size, centred over the plaque and standing on
+    /// the toolbar's top edge; below the toolbar when there is no room above it.
+    /// </summary>
+    private void PrepareSplitTab()
+    {
+        if (_splitTab is not { } tab || _splitTabSurface is not { } surface || _toolbar is not { } toolbar || _toolbarSurface is not { } bar) return;
+        surface.Visible = bar.Visible && tab.IsShown;
+        if (surface.Visible)
+        {
+            var scale = WindowScale;
+            tab.Measure(Avalonia.Size.Infinity);
+            int width = (int)Math.Ceiling(tab.DesiredSize.Width * scale), height = (int)Math.Ceiling(tab.DesiredSize.Height * scale);
+            if (surface.Panel.Frame.Width != width || surface.Panel.Frame.Height != height) surface.Panel.Resize(width, height);
+            var plaque = Avalonia.VisualExtensions.TranslatePoint(toolbar.Plaque, new Avalonia.Point(toolbar.Plaque.Bounds.Width / 2, 0), toolbar) ?? default;
+            var screen = GameDevice.ViewportSize(_device);
+            var x = bar.Location.X + (int)Math.Round(plaque.X * scale) - width / 2;
+            var y = bar.Location.Y - height;
+            surface.Location = new Point(Math.Max(0, Math.Min(screen.Width - width, x)), y >= 0 ? y : bar.Bounds.Bottom);
+        }
+        surface.Prepare();
     }
 
     private const string ToolbarPlaceId = "dereth-toolbar";
@@ -1731,6 +1774,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         panel.Resize((int)Math.Ceiling(toolbar.DesiredSize.Width * scale), (int)Math.Ceiling(toolbar.DesiredSize.Height * scale));
         _toolbar = toolbar;
         _toolbarSurface = new ScreenSurface(_device, panel);
+        _splitTab = new StackSplitTab(_toolbarPort);
+        var splitPanel = ObservePanel(AvaloniaPanel.Create(() => _splitTab, 1, 1, scale), ToolbarFailed);
+        splitPanel.ApplyTheme(new DerethClientTheme());
+        _splitTabSurface = new ScreenSurface(_device, splitPanel);
         _toolbarPlace = new ToolbarPlacePort(new NativeBarPort(NativeUi.ToolbarWindow), () => _toolbarSurface?.Bounds.Size ?? Size.Empty, SaveToolbarPlace);
         _toolbarTakeover = new RetailTakeoverLifecycle(_toolbarPlace, new SurfaceTakeoverPort(_toolbarSurface));
         Log($"Dereth toolbar replacement ready; retail's toolbar window {(NativeUi.GetElement(NativeUi.ToolbarWindow) != IntPtr.Zero ? "found" : "absent")}, " +
@@ -1888,6 +1935,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _toolbarSurface?.Dispose();
         _toolbarSurface = null;
         _toolbar = null;
+        _splitTabSurface?.Dispose();
+        _splitTabSurface = null;
+        _splitTab = null;
         _toolbarPort = null;
     }
 
@@ -1897,7 +1947,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void DropFailed(string id, Exception exception)
     {
-        if (id == ToolbarSurfaceId) ToolbarFailed(exception);
+        if (id is ToolbarSurfaceId or SplitTabSurfaceId) ToolbarFailed(exception);
         else if (_windowFailures.TryGetValue(id, out var failed)) failed(exception);
         else Disable(exception);
     }
@@ -2711,6 +2761,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             surfaces.Add(new InputSurface("bar", _barSurface.Location.X, _barSurface.Location.Y, _barSurface.Bounds.Width, _barSurface.Bounds.Height, 0, _barSurface.Panel.WantsKeyboard));
         if (_toolbarSurface is { Visible: true })
             surfaces.Add(new InputSurface(ToolbarSurfaceId, _toolbarSurface.Location.X, _toolbarSurface.Location.Y, _toolbarSurface.Bounds.Width, _toolbarSurface.Bounds.Height, 0, _toolbarSurface.Panel.WantsKeyboard));
+        // Above every window, as it draws.
+        if (_splitTabSurface is { Visible: true } split)
+            surfaces.Add(new InputSurface(SplitTabSurfaceId, split.Location.X, split.Location.Y, split.Bounds.Width, split.Bounds.Height, (_windows?.ZOrder.Count ?? 0) + 1, split.Panel.WantsKeyboard));
         if (_windows != null)
         {
             var z = _windows.ZOrder.Count;
@@ -2728,6 +2781,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (id == "bar") return _barSurface;
         if (id == ToolbarSurfaceId) return _toolbarSurface;
+        if (id == SplitTabSurfaceId) return _splitTabSurface;
         if (id != null && _featureSurfaces.TryGetValue(id, out var surface)) return surface;
         return null;
     }

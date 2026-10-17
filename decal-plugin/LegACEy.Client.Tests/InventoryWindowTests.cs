@@ -171,6 +171,44 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
+    public void A_side_pack_released_over_the_world_is_dropped_but_the_main_pack_is_not() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        var outside = new Avalonia.Point(-50, -50);
+        host.Drag.Target = ItemDropTarget.World;
+
+        DragOut(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Sack), outside);
+        Assert.Equal(new[] { $"drop 0x{InventorySample.Sack:X8}" }, InventoryDriver.Sent(port));
+
+        DragOut(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Character), outside);
+        Assert.Single(InventoryDriver.Sent(port));
+    });
+
+    [Fact]
+    public void A_side_pack_dropped_on_the_ground_goes_back_into_an_empty_side_slot() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        host.Drag.Target = ItemDropTarget.World;
+        DragOut(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Sack), new Avalonia.Point(-50, -50));
+
+        // The pack lies on the ground now: it is no longer in the snapshot, and its side slot is empty.
+        port.Push(InventorySample.Snapshot(sackOnGround: true));
+        var empty = InventoryDriver.Slots(host.Host).Single(slot =>
+        {
+            var id = InventoryDriver.Id(slot);
+            return id.Place == SlotPlace.Pack && id.Container == 0 && id.SlotIndex == 0;
+        });
+        var target = (IRetailItemDropTarget)host.Window;
+
+        Assert.True(target.RetailDrop(InventorySample.Sack, "Sack", InventoryDriver.Centre(host.Host, empty)));
+        Assert.Equal($"move 0x{InventorySample.Sack:X8} to 0x{InventorySample.Character:X8} slot 0", InventoryDriver.Sent(port).Last());
+    });
+
+    [Fact]
     public void A_drag_that_leaves_the_window_goes_to_retail_when_retail_takes_it() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();
