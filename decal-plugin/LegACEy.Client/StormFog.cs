@@ -7,16 +7,16 @@ using static LegACEy.Client.DecalPlugin.D3D9;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
-/// A look-only preview of a battle-royale storm: the eight landblocks around one safe landblock are filled with grey fog. From outside,
+/// A look-only battle-royale storm: the ring of landblocks around the <see cref="Zone"/>'s safe landblock is filled with grey fog. From outside,
 /// nested translucent walls show the fog bank, hidden by the game's depth buffer behind terrain and buildings. Inside, the view fades into
 /// fog with distance: camera-facing slices, each depth-tested against retail's scene, so a pixel is fogged by every slice in front of it.
 /// Game positions (z-up) become render positions (y-up, relative to the viewer's landblock) through an offset measured while retail draws a part (<see cref="Calibrate"/>).
 /// </summary>
 internal sealed unsafe class StormFog : IDisposable
 {
-    // ponytail: preview constants; the server sends the zone once the storm is a real feature.
-    private const int SafeX = 0x97, SafeY = 0x22;
     private const float Block = 192, Bottom = -50, Top = 450;
+    // The ring's edges, as distances from the safe landblock's centre: its own edge, and the outer edge one landblock further out.
+    private const float Inner = Block / 2, Outer = Block * 1.5f;
     // From outside, the fog bank is many faint walls across each edge of the ring, so where terrain cuts them there is no hard seam to jump
     // about as retail reshapes the terrain with distance: Bank metres deep, 1/e of what is behind showing through every BankThickness metres.
     private const int Layers = 24, NoiseSize = 128;
@@ -29,32 +29,27 @@ internal sealed unsafe class StormFog : IDisposable
     private static readonly (int X, int Y)[] Corners = { (-1, -1), (1, -1), (1, 1), (-1, 1) };
 
     private readonly IntPtr _device;
-    private readonly Action<string> _log;
-    private bool _logged, _measured;
-    private int _offsetLogs;
+    private bool _measured;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private IntPtr _noise;
     private Vector3 _offset;
     private Matrix4x4 _view, _projection;
+    // How far into the storm the camera is, 0 at its edge to 1 at FadeIn metres in.
+    private float _strength;
 
-    public StormFog(IntPtr device, Action<string> log)
+    public StormFog(IntPtr device)
     {
         _device = device;
-        _log = log;
     }
+
+    /// <summary>The safe landblock the storm rings, as landblock x and y; null means no storm is drawn.</summary>
+    public (int X, int Y)? Zone { get; set; }
 
     /// <summary>A part was measured this frame; the player's own part, the better measure, once <see cref="FromPlayer"/>.</summary>
     public bool Calibrated { get; private set; }
 
     public bool FromPlayer { get; private set; }
 
-    /// <summary>Whether the camera was inside the storm at the last frame drawn.</summary>
-    public bool CameraInStorm => _strength > 0;
-
-    public float Strength => _strength;
-
-    // How far into the storm the camera is, 0 at its edge to 1 at FadeIn metres in.
-    private float _strength;
     /// <summary>Measures the game-to-render offset from a part being drawn: its game position against the device's world transform.</summary>
     public void Calibrate(int part, bool player)
     {
@@ -65,19 +60,10 @@ internal sealed unsafe class StormFog : IDisposable
         // The camera is the same for every part of the world; the offset is taken from another part only while the player's is not drawn.
         _view = GetTransform(_device, TransformView);
         _projection = GetTransform(_device, TransformProjection);
-        if ((player || !FromPlayer) && offset != _offset)
-        {
-            if (_measured && _offsetLogs++ < 20) _log($"Storm fog: game-to-render offset {_offset} -> {offset}, from {(player ? "the player" : "another object")} at cell 0x{cell:X8}.");
-            _offset = offset;
-        }
+        if ((player || !FromPlayer) && offset != _offset) _offset = offset;
         _measured = true;
         Calibrated = true;
         FromPlayer |= player;
-        if (player && !_logged)
-        {
-            _logged = true;
-            _log($"Storm fog: the player's part at cell 0x{cell:X8} {origin} draws at {_offset + Render(Global(cell, origin))}; game-to-render offset {_offset}.");
-        }
     }
 
     /// <summary>Draws the storm after retail's world, then waits for the next frame's measure.</summary>
@@ -86,6 +72,7 @@ internal sealed unsafe class StormFog : IDisposable
         // A frame with nothing measured (no part drawn yet) keeps the last measure, so the fog does not blink out for a frame.
         if (!_measured) return;
         Calibrated = FromPlayer = false;
+        if (Zone is not { } zone) return;
         if (_noise == IntPtr.Zero) _noise = MakeNoise();
         var saved = SaveState(_device);
         try
@@ -126,8 +113,8 @@ internal sealed unsafe class StormFog : IDisposable
             SetSamplerState(_device, 0, SamplerState.AddressV, AddressWrap);
 
             var time = (float)_clock.Elapsed.TotalSeconds;
-            var cameraAt = Matrix4x4.Invert(_view, out var camera) ? Render(camera.Translation - _offset) : (Vector3?)null;
-            var centre = new Vector2((SafeX + 0.5f) * Block, (SafeY + 0.5f) * Block);
+            var eye = Matrix4x4.Invert(_view, out var camera) ? Render(camera.Translation - _offset) : (Vector3?)null;
+            var centre = Centre(zone);
             var walls = stackalloc FogVertex[10];
             var step = Bank / Layers;
             var alpha = 1 - MathF.Exp(-step / BankThickness);
@@ -135,25 +122,25 @@ internal sealed unsafe class StormFog : IDisposable
             {
                 // Half of the walls run in from the safe landblock's edge, half in from the ring's outer edge.
                 var layer = wall % Layers;
-                var half = wall < Layers ? Block / 2 + layer * step : Block * 1.5f - layer * step;
+                var halfWidth = wall < Layers ? Inner + layer * step : Outer - layer * step;
                 // A wall fades out within 10 m of the camera, so passing through it does not flash it across the screen.
-                var near = cameraAt is { } at ? Math.Clamp(MathF.Abs(FromCentre(at) - half) / 10, 0, 1) : 1;
-                var color = (uint)(alpha * near * 255) << 24 | Grey;
+                var fade = eye is { } p ? Math.Clamp(MathF.Abs(FromCentre(p, zone) - halfWidth) / 10, 0, 1) : 1;
+                var color = (uint)(alpha * fade * 255) << 24 | Grey;
                 // Each wall's noise is offset and drifts its own way, so the wisps of neighbouring walls do not line up.
                 var drift = (wall % 2 == 0 ? 1 : -1) * time * 0.03f + wall * 0.37f;
                 for (var corner = 0; corner <= 4; corner++)
                 {
                     var (sx, sy) = Corners[corner % 4];
-                    float x = centre.X + sx * half, y = centre.Y + sy * half;
-                    var u = corner * half * 2 / 96 + drift;
+                    float x = centre.X + sx * halfWidth, y = centre.Y + sy * halfWidth;
+                    var u = corner * halfWidth * 2 / 96 + drift;
                     walls[corner * 2] = new(Render(new Vector3(x, y, Bottom)), color, u, time * 0.02f);
                     walls[corner * 2 + 1] = new(Render(new Vector3(x, y, Top)), color, u, (Top - Bottom) / 128 + time * 0.02f);
                 }
                 DrawPrimitiveUP(_device, TriangleStrip, 8, walls, sizeof(FogVertex));
             }
 
-            _strength = cameraAt is { } where ? Math.Clamp(StormDepth(where) / FadeIn, 0, 1) : 0;
-            if (CameraInStorm) DrawSlices();
+            _strength = eye is { } inside ? Math.Clamp(StormDepth(inside, zone) / FadeIn, 0, 1) : 0;
+            if (_strength > 0) DrawSlices();
         }
         finally { RestoreState(saved); }
     }
@@ -195,15 +182,21 @@ internal sealed unsafe class StormFog : IDisposable
     }
 
     /// <summary>Metres inside the storm ring to its nearer edge (the safe landblock's, or the ring's outer one); negative outside it.</summary>
-    internal static float StormDepth(Vector3 position)
+    internal static float StormDepth(Vector3 position, (int X, int Y) zone)
     {
-        var fromCentre = FromCentre(position);
-        return MathF.Min(fromCentre - Block / 2, Block * 1.5f - fromCentre);
+        var fromCentre = FromCentre(position, zone);
+        return MathF.Min(fromCentre - Inner, Outer - fromCentre);
     }
 
+    /// <summary>The safe landblock's centre, in render space.</summary>
+    private static Vector2 Centre((int X, int Y) zone) => new((zone.X + 0.5f) * Block, (zone.Y + 0.5f) * Block);
+
     /// <summary>Distance from the safe landblock's centre, measured square: the half-size of the wall square through the position.</summary>
-    private static float FromCentre(Vector3 position) =>
-        MathF.Max(MathF.Abs(position.X - (SafeX + 0.5f) * Block), MathF.Abs(position.Y - (SafeY + 0.5f) * Block));
+    private static float FromCentre(Vector3 position, (int X, int Y) zone)
+    {
+        var centre = Centre(zone);
+        return MathF.Max(MathF.Abs(position.X - centre.X), MathF.Abs(position.Y - centre.Y));
+    }
 
     private static Vector3 Snap(Vector3 offset) =>
         new(MathF.Round(offset.X / Block) * Block, MathF.Round(offset.Y / Block) * Block, MathF.Round(offset.Z / Block) * Block);

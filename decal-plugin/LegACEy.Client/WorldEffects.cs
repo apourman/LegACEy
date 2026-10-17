@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Reloaded.Hooks;
 using Reloaded.Hooks.Definitions;
@@ -82,22 +81,13 @@ internal sealed unsafe class WorldEffects : IDisposable
     private GCHandle _root;
     private IntPtr _mask, _glow;
     private int _width, _height;
-    private bool _masked, _failed, _firstLogged;
-    private int _draws;
-    // Timing for the log: time this frame spent in the effects' own work, the worst frame since the last summary, and the last world frame.
-    private readonly Stopwatch _clock = Stopwatch.StartNew();
-    private long _effectTicks, _worstEffectTicks, _lastWorld, _lastSummary, _lastHitchLog, _windowTicks, _windowFrames;
-    // For the 30 s summary: world draws, frames shown, hitches, and time in retail's own world draw.
-    private long _worldDraws, _presents, _hitches, _retailDrawTicks, _worstRetailDrawTicks, _lastRetailDrawTicks;
-
-    /// <summary>Counts a frame shown; called once per retail EndScene.</summary>
-    public void Presented() => _presents++;
+    private bool _masked, _failed;
 
     private WorldEffects(IntPtr device, Action<string> log)
     {
         _device = device;
         _log = log;
-        _fog = new StormFog(device, log);
+        _fog = new StormFog(device);
         _root = GCHandle.Alloc(this);
         _smartBoxHook = ReloadedHooks.Instance.CreateHook<SmartBoxDrawFn>(OnSmartBoxDraw, SmartBoxDrawAddress);
         _drawHook = ReloadedHooks.Instance.CreateHook<DrawIndexedFn>(OnDrawIndexed, Method(device, DrawIndexedPrimitiveSlot).ToInt64());
@@ -121,29 +111,13 @@ internal sealed unsafe class WorldEffects : IDisposable
     /// <summary>The object to outline, zero for none. Set each frame.</summary>
     public uint Selected { get; set; }
 
-    /// <summary>Whether the storm fog draws; logged when it changes.</summary>
-    public bool FogOn
-    {
-        get => _fogOn;
-        set
-        {
-            if (value == _fogOn) return;
-            var average = _windowFrames == 0 ? 0 : _windowTicks * 1000.0 / Stopwatch.Frequency / _windowFrames;
-            _log($"World effects: storm fog {(value ? "on" : "off")}; with it {(_fogOn ? "on" : "off")}, world frames averaged {average:F1} ms over {_windowFrames}.");
-            _windowTicks = _windowFrames = 0;
-            _fogOn = value;
-        }
-    }
-
-    private bool _fogOn = true;
-
     private int OnDrawIndexed(IntPtr device, int type, int baseVertex, uint minIndex, uint vertices, uint startIndex, uint primitives)
     {
         var original = _drawHook.OriginalFunction;
         if (_forcing)
         {
             // Not on screen: the selection is drawn here only so the outline shows through what culled it.
-            try { if (DrawsSelected()) Timed(() => DrawIntoMask(() => original(device, type, baseVertex, minIndex, vertices, startIndex, primitives))); }
+            try { if (DrawsSelected()) DrawIntoMask(() => original(device, type, baseVertex, minIndex, vertices, startIndex, primitives)); }
             catch (Exception exception) { Fail(exception); }
             return 0;
         }
@@ -156,11 +130,11 @@ internal sealed unsafe class WorldEffects : IDisposable
             var physicsObject = *(int*)(part + 0xE0);
             var player = physicsObject == *PlayerObject;
             if (physicsObject != 0 && *(int*)(physicsObject + 0x90) != 0 && (!_fog.Calibrated || (player && !_fog.FromPlayer)))
-                Timed(() => _fog.Calibrate(part, player));
+                _fog.Calibrate(part, player);
         }
         catch (Exception exception) { Fail(exception); }
         if (Selected == 0 || !DrawsSelected()) return result;
-        try { Timed(() => DrawIntoMask(() => original(device, type, baseVertex, minIndex, vertices, startIndex, primitives))); }
+        try { DrawIntoMask(() => original(device, type, baseVertex, minIndex, vertices, startIndex, primitives)); }
         catch (Exception exception) { Fail(exception); }
         return result;
     }
@@ -206,7 +180,6 @@ internal sealed unsafe class WorldEffects : IDisposable
                 SetStageState(_device, 1, StageState.AlphaOp, OpDisable);
                 draw();
                 _masked = true;
-                _draws++;
             }
             finally { Release(mask); }
         }
@@ -222,71 +195,24 @@ internal sealed unsafe class WorldEffects : IDisposable
 
     private void OnSmartBoxDraw(IntPtr smartBox)
     {
-        var drawStart = _clock.ElapsedTicks;
         _inWorld = true;
         try { _smartBoxHook.OriginalFunction(smartBox); }
         finally { _inWorld = false; }
-        _lastRetailDrawTicks = _clock.ElapsedTicks - drawStart;
-        _retailDrawTicks += _lastRetailDrawTicks;
-        if (_lastRetailDrawTicks > _worstRetailDrawTicks) _worstRetailDrawTicks = _lastRetailDrawTicks;
-        _worldDraws++;
         if (!_failed)
         {
             try
             {
-                if (_fogOn) Timed(_fog.Draw);
-                if (!_masked && Selected != 0) Timed(DrawCulledSelection);
+                _fog.Draw();
+                if (!_masked && Selected != 0) DrawCulledSelection();
             }
             catch (Exception exception) { Fail(exception); }
         }
         try
         {
-            if (_masked && !_failed) Timed(Composite);
+            if (_masked && !_failed) Composite();
         }
         catch (Exception exception) { Fail(exception); }
-        finally { _masked = false; _draws = 0; }
-        LogTiming();
-    }
-
-    private void Timed(Action work)
-    {
-        var start = _clock.ElapsedTicks;
-        try { work(); }
-        finally { _effectTicks += _clock.ElapsedTicks - start; }
-    }
-
-    /// <summary>Logs a world frame over 50 ms with the effects' share of it, and every 30 s the effects' worst frame.</summary>
-    private void LogTiming()
-    {
-        var now = _clock.ElapsedTicks;
-        double Ms(long ticks) => ticks * 1000.0 / Stopwatch.Frequency;
-        if (_effectTicks > _worstEffectTicks) _worstEffectTicks = _effectTicks;
-        var frame = Ms(now - _lastWorld);
-        if (_lastWorld != 0)
-        {
-            _windowTicks += now - _lastWorld;
-            _windowFrames++;
-        }
-        if (_lastWorld != 0 && frame > 50)
-        {
-            _hitches++;
-            if (Ms(now - _lastHitchLog) > 2000)
-            {
-                _lastHitchLog = now;
-                _log($"World effects: a {frame:F0} ms world frame; retail's world draw {Ms(_lastRetailDrawTicks):F1} ms, the effects {Ms(_effectTicks):F2} ms; storm strength {_fog.Strength:F2}, selection 0x{Selected:X8}.");
-            }
-        }
-        var window = Ms(now - _lastSummary);
-        if (window > 30000)
-        {
-            if (_lastSummary != 0)
-                _log($"World effects, last {window / 1000:F0} s: {_worldDraws * 1000 / window:F0} world draws/s, {_presents * 1000 / window:F0} frames shown/s, {_hitches} frames over 50 ms; " +
-                     $"retail's world draw {Ms(_retailDrawTicks) / Math.Max(1, _worldDraws):F1} ms average, {Ms(_worstRetailDrawTicks):F0} ms worst; the effects {Ms(_worstEffectTicks):F2} ms worst.");
-            _lastSummary = now;
-            _worstEffectTicks = _worldDraws = _presents = _hitches = _retailDrawTicks = _worstRetailDrawTicks = 0;
-        }
-        _lastWorld = now;
-        _effectTicks = 0;
+        finally { _masked = false; }
     }
 
     /// <summary>
@@ -308,11 +234,6 @@ internal sealed unsafe class WorldEffects : IDisposable
     /// <summary>Spreads the mask into the glow texture, then adds the glow to the screen in gold outside the mask.</summary>
     private void Composite()
     {
-        if (!_firstLogged)
-        {
-            _firstLogged = true;
-            _log($"Selection outline: first frame drew {_draws} draws of 0x{Selected:X8} into the mask.");
-        }
         var target = RenderTarget(_device);
         var saved = SaveState(_device);
         var glow = SurfaceOf(_glow);

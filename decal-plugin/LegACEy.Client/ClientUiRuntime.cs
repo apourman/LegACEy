@@ -130,10 +130,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string RetailVitalsSwitchFile = "retail-vitals-native";
     // Beside the DLL: while this file exists, retail's radar stays retail's. Without it the Dereth radar replaces it.
     private const string RetailRadarSwitchFile = "retail-radar-native";
-    // ponytail: a preview switch, beside the DLL, that stops drawing the storm fog; for comparing frame times with it on and off.
-    private const string StormFogSwitchFile = "storm-fog-off";
-    private DateTime _lastStormFogSwitchCheck;
-    private bool _stormFogSwitch = true;
 
     // How big LegACEy windows show against their design size, in percent: the player's UI size from the LegACEy menu, kept for every
     // character. The indicator bar keeps retail's size, and drag icons retail's 32 pixels. An Avalonia that cannot scale panels shows them
@@ -800,7 +796,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (_worldEffects != null)
             {
                 _worldEffects.Selected = _inGame ? (uint)Bridge.Fact(BridgeFact.CurrentSelection) : 0;
-                _worldEffects.FogOn = SwitchOn(StormFogSwitchFile, ref _lastStormFogSwitchCheck, ref _stormFogSwitch);
             }
             _textMode?.Hold(_inGame && SurfaceById(_inputRouter.FocusedSurfaceId)?.Panel.WantsKeyboard == true);
             _serverChannel?.Tick();
@@ -895,7 +890,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>Called by IDirect3DDevice9.EndScene after retail and Decal UI drawing.</summary>
     private void DrawAfterRetailUi()
     {
-        _worldEffects?.Presented();
         var timer = Stopwatch.StartNew();
         try { DrawAfterRetailUiCore(); }
         finally { if (timer.Elapsed > _maxPostUiDraw) _maxPostUiDraw = timer.Elapsed; }
