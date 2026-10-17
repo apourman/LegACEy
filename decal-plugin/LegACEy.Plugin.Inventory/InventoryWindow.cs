@@ -80,6 +80,9 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private (Point Point, uint Dragged, bool External)? _indicatorAt;
     // The item of a retail drag over this window (another retail window's item, or one of the retail inventory's), zero when none.
     private uint _retailItem;
+    // Side packs this window dropped on the ground. Once on the ground a pack is not in the snapshot, so a retail drop of it back
+    // is an outside item; these ids say it is a pack, which goes to a side slot as an own pack does.
+    private readonly HashSet<uint> _packsOnGround = new();
     private bool _withdrawOver;
     // A press on a slot: a click on release, or a drag once it moves past the threshold. The item or pack being dragged is _dragged, zero when none.
     private InventorySlotId? _press;
@@ -325,7 +328,9 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         if (PackOf(snapshot, dragged) == null && _dragHost.DeliverAtPointer(dragged, KindOf(snapshot, dragged).Name)) return;
         // Retail did not take the drag when it left the window (the retail panel shows no element for the item): only a release over
         // the world sends anything.
-        if (_dragHost.DropTargetAtPointer() == ItemDropTarget.World) _port.DropOnGround(dragged);
+        if (_dragHost.DropTargetAtPointer() != ItemDropTarget.World) return;
+        if (PackOf(snapshot, dragged) != null) _packsOnGround.Add(dragged);
+        _port.DropOnGround(dragged);
     }
 
     /// <summary>
@@ -394,8 +399,10 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var target = SlotAt(position)?.Tag as InventorySlotId;
         if (target == null && external) target = new InventorySlotId(SlotPlace.Pack, 0, OpenPack(snapshot).Id, -1, null);
         if (target == null) return false;
-        var drop = Judge(_port, itemId, target, external);
+        var pack = _packsOnGround.Contains(itemId);
+        var drop = pack ? PackOnto(snapshot, itemId, target) : Judge(_port, itemId, target, external);
         if (drop?.Accepted != true) return false;
+        _packsOnGround.Remove(itemId);
         drop.Value.Send(_port);
         return true;
     }
