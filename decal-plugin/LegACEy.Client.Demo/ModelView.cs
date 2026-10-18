@@ -8,8 +8,9 @@ namespace LegACEy.Client.Demo;
 
 /// <summary>
 /// A 3D view any LegACEy window can contain: the host draws <see cref="Model"/> on the game device over this control's
-/// bounds, after the window's own frame. Dragging sideways turns the model, dragging up and down moves the view along it, and the
-/// wheel zooms toward the height under the pointer. <see cref="Border.Child"/>
+/// bounds, after the window's own frame. Dragging turns the model: sideways around its upright axis, up and down tilting it toward or
+/// away from the viewer, so an item that lies on its side can be stood up. Dragging with Shift held moves the view up and down the
+/// model instead, and the wheel zooms toward the height under the pointer. <see cref="Border.Child"/>
 /// shows through where nothing is drawn, for a status line while the model loads.
 /// </summary>
 public sealed class ModelView : Border
@@ -20,19 +21,31 @@ public sealed class ModelView : Border
     public const float MaxZoom = 12f;
 
     private Avalonia.Point? _dragFrom;
+    private bool _panning;
 
     public ModelView()
     {
         Background = Brushes.Transparent;
         ClipToBounds = true;
-        PointerPressed += (_, e) => { _dragFrom = e.GetPosition(this); e.Pointer.Capture(this); e.Handled = true; };
+        PointerPressed += (_, e) =>
+        {
+            _dragFrom = e.GetPosition(this);
+            _panning = (e.KeyModifiers & KeyModifiers.Shift) != 0;
+            e.Pointer.Capture(this);
+            e.Handled = true;
+        };
         PointerMoved += (_, e) =>
         {
             if (_dragFrom is not { } from) return;
             var point = e.GetPosition(this);
-            Yaw += (float)(point.X - from.X) * 0.01f;
-            // The model follows the pointer: dragging down shows more of what is above.
-            Focus = Clamp01(Focus + (float)((point.Y - from.Y) / ViewHeight()) * Framing / Zoom);
+            if (_panning)
+                // The model follows the pointer: dragging down shows more of what is above.
+                Focus = Clamp01(Focus + (float)((point.Y - from.Y) / ViewHeight()) * Framing / Zoom);
+            else
+            {
+                Yaw += (float)(point.X - from.X) * 0.01f;
+                Pitch += (float)(point.Y - from.Y) * 0.01f;
+            }
             _dragFrom = point;
         };
         PointerReleased += (_, e) => { _dragFrom = null; e.Pointer.Capture(null); };
@@ -57,6 +70,9 @@ public sealed class ModelView : Border
     /// <summary>Turn around Z, in radians. Starts facing the viewer (models face +Y; the camera looks along +Y).</summary>
     public float Yaw { get; set; } = (float)Math.PI;
 
+    /// <summary>Tilt around the horizontal axis across the view, in radians: dragging down tips the model's top toward the viewer. Starts upright.</summary>
+    public float Pitch { get; set; }
+
     public float Zoom { get; set; } = 1f;
 
     /// <summary>The height the view centres on, as a share of the model's height: 0 its feet, 1 its top.</summary>
@@ -66,6 +82,7 @@ public sealed class ModelView : Border
     public void ResetView()
     {
         Yaw = (float)Math.PI;
+        Pitch = 0f;
         Zoom = 1f;
         Focus = 0.5f;
     }

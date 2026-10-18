@@ -9,13 +9,21 @@ namespace LegACEy.Client.Tests;
 public sealed class ModelViewTests
 {
     [Fact]
-    public void Dragging_down_moves_the_view_up_the_model_and_the_wheel_zooms_toward_the_pointer() => RenderThread.Run(() =>
+    public void Dragging_turns_and_tilts_the_model_and_Shift_dragging_moves_the_view_up_it() => RenderThread.Run(() =>
     {
         ModelView? view = null;
         using var panel = AvaloniaPanel.Create(() => view = new ModelView(), 100, 200);
 
-        // Down the whole view at zoom 1: the view moves up by the framing's share of the model, as far as the top allows.
         panel.PointerDown(50, 100);
+        panel.PointerMove(80, 150);
+        panel.PointerUp(80, 150);
+        Assert.Equal((float)Math.PI + 0.3f, view!.Yaw, 3);
+        Assert.Equal(0.5f, view.Pitch, 3);
+        Assert.Equal(0.5f, view.Focus, 3);
+        view.ResetView();
+
+        // Down the whole view at zoom 1: the view moves up by the framing's share of the model, as far as the top allows.
+        panel.PointerDown(50, 100, KeyModifiers.Shift);
         panel.PointerMove(50, 150);
         panel.PointerUp(50, 150);
         Assert.Equal(0.5f + 0.25f * ModelView.Framing, view!.Focus, 3);

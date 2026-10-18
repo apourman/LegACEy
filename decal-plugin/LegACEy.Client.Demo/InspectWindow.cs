@@ -39,7 +39,7 @@ public sealed class InspectWindow
         };
         var hint = new TextBlock
         {
-            Text = "Drag to turn", FontSize = 11.5, FontFamily = DerethPalette.Body, Foreground = DerethPalette.MutedBrush,
+            Text = "Drag to turn · Shift-drag to move", FontSize = 11.5, FontFamily = DerethPalette.Body, Foreground = DerethPalette.MutedBrush,
             HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 5, 0, 0),
         };
         DockPanel.SetDock(hint, Dock.Bottom);
