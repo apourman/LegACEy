@@ -428,6 +428,17 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // The open container and the selection are part of the inventory snapshot, whoever changed them.
     public void ItemSelected() => _inventory.MarkStale();
     public void ContainerOpened() => _inventory.MarkStale();
+
+    /// <summary>/legacey (or @legacey) opens or closes the LegACEy menu, so it can be reached without the Dereth toolbar.</summary>
+    public bool CommandLine(string text)
+    {
+        if (_failed || !_inGame) return false;
+        var command = text.Trim();
+        if (!command.Equals("/legacey", StringComparison.OrdinalIgnoreCase) && !command.Equals("@legacey", StringComparison.OrdinalIgnoreCase))
+            return false;
+        Guard(ToggleMenuWindow);
+        return true;
+    }
     public void InventoryChanged(uint id, uint container)
     {
         _inventory.ObjectChanged(id, container);
@@ -628,7 +639,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             return;
         }
         var chrome = new ThemeWindowChrome(_portal!, MenuTitle, new PluginMenuPanel(_plugins!, _portal,
-            AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, StepUiSize) : null));
+            AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, StepUiSize) : null, WindowChoices()));
         chrome.CloseRequested += (_, _) =>
         {
             _clientUi?.CloseWindow(MenuWindowId);
@@ -636,6 +647,37 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         };
         _clientUi.OpenWindow(new WindowDefinition(MenuWindowId, MenuWindowId, PluginMenuPanel.WindowWidth, PluginMenuPanel.WindowHeight), chrome, new Point(260, 120));
         SetMenuRing(true);
+    }
+
+    /// <summary>
+    /// The windows the LegACEy menu switches between LegACEy's and retail's, each by its switch file beside the DLL, so the choice holds for
+    /// every character on this install. Custom is the default; a change is read on the next frame.
+    /// </summary>
+    private IReadOnlyList<UiWindowChoice> WindowChoices() => new[]
+    {
+        Choice("Inventory", RetailPanelSwitchFile, () => _lastRetailPanelSwitchCheck = default),
+        Choice("Toolbar", RetailToolbarSwitchFile, () => _lastToolbarSwitchCheck = default),
+        Choice("Chat", RetailChatSwitchFile, () => _lastChatSwitchCheck = default),
+        Choice("Vitals", RetailVitalsSwitchFile, () => _lastVitalsSwitchCheck = default),
+        Choice("Radar", RetailRadarSwitchFile, () => _lastRadarSwitchCheck = default)
+    };
+
+    private static UiWindowChoice Choice(string title, string file, Action recheck)
+    {
+        var path = IOPath.Combine(PluginDirectory, file);
+        return new UiWindowChoice(title, () => !File.Exists(path), custom =>
+        {
+            try
+            {
+                if (custom) File.Delete(path);
+                else File.WriteAllText(path, string.Empty);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                Log($"Could not switch the {title} window: {exception.Message}");
+            }
+            recheck();
+        });
     }
 
     /// <summary>

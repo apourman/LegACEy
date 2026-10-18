@@ -19,7 +19,6 @@ and database remain in the repository's upstream-compatible `Source/` and
 | `LegACEy.Client.GameArt` | Game DAT art loading |
 | `LegACEy.Client.Themes` | Shared UI themes and controls |
 | `LegACEy.Client.Demo` | Framework windows and controls, and the plugin API (`ILegACEyPlugin`, `ILegACEyClient`) |
-| `LegACEy.Plugin.Paperdoll` | The 3D paperdoll plugin, built into `Plugins/Paperdoll/` |
 | `LegACEy.Plugin.Vault` | The account Vault plugin, built into `Plugins/Vault/` |
 | `LegACEy.Plugin.Inventory` | The inventory window, built into `Plugins/Inventory/` |
 | `LegACEy.Client.Tests` | Automated tests without an installed Decal runtime |
@@ -107,6 +106,10 @@ second; deleting it takes the radar over again.
 The LegACEy menu's UI size row scales every LegACEy window, the toolbar and the shortcut bars, from 60 to 150 percent (85 to start),
 for every character. A change rebuilds the LegACEy UI at once, as a relog does: plugin windows that were open close and the chat history
 clears.
+
+The LegACEy menu's Windows section switches each of the inventory, toolbar, chat, vitals and radar between LegACEy's window (Custom, the
+default) and retail's (Native). It creates or deletes that window's switch file above, so the choice holds for every character on the
+install. `/legacey` in chat opens or closes the menu, so it can be reached with retail's toolbar too.
 
 ## Tests
 

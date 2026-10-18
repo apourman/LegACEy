@@ -60,11 +60,14 @@ public sealed unsafe class BridgeTests : IDisposable
         events.ItemSelected();
         events.ContainerOpened();
         events.Logoff();
+        client.Eat = true;
+        var line = System.Text.Encoding.UTF8.GetBytes("/legacey é");
+        fixed (byte* bytes = line) Assert.Equal(1, events.CommandLine(bytes, line.Length));
 
         Assert.Equal(new[]
         {
             "frame", "message 1234 201 1 14000A", "message 1234 200 0 0", "server F7B0 B0-F7-00-00-01-02-03", "login",
-            "inventory 80000010 50000001", "selected", "container", "logoff"
+            "inventory 80000010 50000001", "selected", "container", "logoff", "command /legacey é"
         }, client.Seen);
 
         // The bridge-backed ports read the client's Decal facts and send its actions back out through the calls-out table.
@@ -170,6 +173,11 @@ public sealed unsafe class BridgeTests : IDisposable
         public void ContainerOpened() => See("container");
         public void InventoryChanged(uint id, uint container) => See($"inventory {id:X} {container:X}");
         public void Shutdown() => See("shutdown");
+        public bool CommandLine(string text)
+        {
+            See($"command {text}");
+            return Eat;
+        }
         public void Disable(Exception exception) => Disabled.Add(exception);
     }
 
