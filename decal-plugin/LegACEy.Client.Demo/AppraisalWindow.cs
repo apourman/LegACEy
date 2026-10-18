@@ -39,30 +39,23 @@ public sealed class AppraisalWindow
     private readonly DerethWindow _window;
     private readonly ScrollViewer _scroll;
     private readonly ContentControl _foot;
-    private readonly DerethButton _inspectButton;
-    private readonly Avalonia.Controls.Shapes.Path _inspectGlyph;
-    // The details the body shows when not inspecting, and the shown object's Inspect view, built when the player first asks for it.
-    private Control _details;
-    private Control? _inspectView;
+    private readonly Button _inspectButton;
     private AppraisalContent _content;
-    // Builds an Inspect view; null when inspecting is not available, and the button is hidden.
-    private Func<AppraisalContent, Control>? _inspect;
-    private bool _inspecting;
+    // Opens the Inspect window for the shown object; null hides the button.
+    private Action<AppraisalContent>? _inspect;
     // The inscription field in the foot, and the item it writes for. Null when the foot holds no field.
     private InscriptionField? _field;
     private uint _footObject;
 
     private AppraisalWindow(DerethWindow window, ScrollViewer scroll, ContentControl foot, int height, InscriptionField? field, uint footObject,
-        DerethButton inspectButton, Avalonia.Controls.Shapes.Path inspectGlyph, Control details, AppraisalContent content)
+        Button inspectButton, AppraisalContent content)
     {
         _window = window;
         _scroll = scroll;
         _foot = foot;
         _inspectButton = inspectButton;
-        _inspectGlyph = inspectGlyph;
-        _details = details;
         _content = content;
-        inspectButton.Click += (_, _) => SetInspecting(!_inspecting);
+        inspectButton.Click += (_, _) => _inspect?.Invoke(_content);
         _field = field;
         _footObject = footObject;
         Height = height;
@@ -76,17 +69,14 @@ public sealed class AppraisalWindow
     /// <summary>Runs when the player closes the window with its close box.</summary>
     public Action? Close { get; set; }
 
-    /// <summary>Whether the body shows the Inspect view instead of the details.</summary>
-    public bool Inspecting => _inspecting;
-
     /// <summary>
     /// The window for an appraisal, at the height its content needs. <paramref name="inscribe"/> saves an inscription on an item and returns
     /// whether it was sent. <paramref name="measure"/> measures a control as the window draws it, at the UI size: there each line rounds to whole
-    /// pixels, so the unscaled measure used without it can come out short and scroll the last line. <paramref name="inspect"/> builds the
-    /// Inspect view for an object; null leaves the Inspect button out.
+    /// pixels, so the unscaled measure used without it can come out short and scroll the last line. <paramref name="inspect"/> opens the
+    /// Inspect window for an object; null leaves the Inspect button out.
     /// </summary>
     public static AppraisalWindow Create(AppraisalContent content, IGameArtSource? art, Func<uint, string, bool> inscribe,
-        Func<Control, Size, Size>? measure = null, Func<AppraisalContent, Control>? inspect = null)
+        Func<Control, Size, Size>? measure = null, Action<AppraisalContent>? inspect = null)
     {
         var layout = Layout(content, inscribe);
         var scroll = Scroll(layout.Body);
@@ -102,14 +92,9 @@ public sealed class AppraisalWindow
         var height = measure == null
             ? layout.Height
             : Math.Min(MaxHeight, (int)Math.Ceiling(measure(window, new Size(Width, double.PositiveInfinity)).Height - 0.001));
-        var view = new AppraisalWindow(window, scroll, foot, height, layout.Field, content.ObjectId, button, glyph, layout.Body, content);
+        var view = new AppraisalWindow(window, scroll, foot, height, layout.Field, content.ObjectId, button, content);
         view.SetInspect(inspect);
-        window.CloseRequested += (_, _) =>
-        {
-            // A window opened again starts on the details.
-            view.SetInspecting(false);
-            view.Close?.Invoke();
-        };
+        window.CloseRequested += (_, _) => view.Close?.Invoke();
         return view;
     }
 
@@ -118,17 +103,14 @@ public sealed class AppraisalWindow
     /// inscription field with unsaved text is kept only for the same item, and then it takes the refreshed saved text (Escape restores that).
     /// Another item's appraisal replaces the field: the typed text is dropped, unsent.
     /// </summary>
-    public void Show(AppraisalContent content, IGameArtSource? art, Func<uint, string, bool> inscribe, Func<AppraisalContent, Control>? inspect = null)
+    public void Show(AppraisalContent content, IGameArtSource? art, Func<uint, string, bool> inscribe, Action<AppraisalContent>? inspect = null)
     {
         var layout = Layout(content, inscribe);
+        _content = content;
+        SetInspect(inspect);
         _window.Title = content.Name;
         _window.SetIcon(Icon(content.Visual, art));
-        // Another object gets its own Inspect view; a fresh appraisal of the same object keeps the one it has, model and all.
-        if (content.ObjectId != _content.ObjectId) _inspectView = null;
-        _content = content;
-        _details = layout.Body;
-        SetInspect(inspect);
-        _scroll.Content = _inspecting ? InspectView() : layout.Body;
+        _scroll.Content = layout.Body;
         if (_field is { Unsaved: true } kept && layout.Field != null && content.ObjectId == _footObject)
         {
             kept.Rebase(content.Inscription?.Text ?? string.Empty);
@@ -140,26 +122,11 @@ public sealed class AppraisalWindow
         _footObject = content.ObjectId;
     }
 
-    /// <summary>Shows the Inspect view (true) or the details. The Inspect view shows only while inspecting is available.</summary>
-    public void SetInspecting(bool on)
-    {
-        _inspecting = on && _inspect != null;
-        _scroll.Content = _inspecting ? InspectView() : _details;
-        _scroll.Offset = default;
-        _foot.IsVisible = !_inspecting;
-        _inspectGlyph.Stroke = _inspecting ? DerethPalette.TealBrush : DerethPalette.MutedBrush;
-        _inspectGlyph.Fill = _inspecting ? DerethPalette.Brush(DerethPalette.Teal.WithAlpha(0x40)) : null;
-        ToolTip.SetTip(_inspectButton, _inspecting ? "Back to the details" : "Inspect");
-    }
-
-    private void SetInspect(Func<AppraisalContent, Control>? inspect)
+    private void SetInspect(Action<AppraisalContent>? inspect)
     {
         _inspect = inspect;
         _inspectButton.IsVisible = inspect != null;
-        if (inspect == null && _inspecting) SetInspecting(false);
     }
-
-    private Control InspectView() => _inspectView ??= _inspect!(_content);
 
     /// <summary>The window is replaced by a new one: its inscription field no longer saves what is typed in it.</summary>
     public void Retire() => _field?.Detach();
@@ -212,7 +179,7 @@ public sealed class AppraisalWindow
         VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
     };
 
-    private static Control? Icon(ItemVisual? visual, IGameArtSource? art)
+    internal static Control? Icon(ItemVisual? visual, IGameArtSource? art)
     {
         if (visual == null || art == null) return null;
         var image = ItemIcon.Draw(art, visual.Underlay, visual.Icon, visual.Overlay, 0, visual.UiEffects, visual.Plate);

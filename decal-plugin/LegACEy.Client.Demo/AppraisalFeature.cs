@@ -23,6 +23,7 @@ public sealed class AppraisalFeature
     // response (a plugin's silent ID, say) does not open the window.
     private const long RequestTimeoutMs = 10_000;
     private static readonly Point DefaultLocation = new(240, 100);
+    private static readonly Point InspectLocation = new(580, 100);
 
     private readonly ILegACEyPluginHost _host;
     private readonly Action<string> _log;
@@ -32,8 +33,7 @@ public sealed class AppraisalFeature
     private readonly IAppraisalGame _game;
     private readonly Func<Avalonia.Controls.Control, Avalonia.Size, Avalonia.Size>? _measure;
     private readonly Func<bool> _canInspect;
-    // Items another character wears, from an Inspect view: the world has no name or icon for them, so their appraisal takes these.
-    private readonly Dictionary<uint, WornGear> _worn = new();
+    private InspectWindow? _inspect;
     private readonly Dictionary<uint, AppraisalResponse> _responses = new();
     private uint _requested;
     private long _requestedAt;
@@ -49,7 +49,7 @@ public sealed class AppraisalFeature
     /// <param name="spells">The spell table's names and descriptions by id, read when a window is built. Null names no spells: each is shown by its id.</param>
     /// <param name="names">The creature type and title names, read when a window is built. Null names none.</param>
     /// <param name="measure">Measures a control as the window draws it, at the UI size; the window opens at the height that shows its content. Null measures it unscaled.</param>
-    /// <param name="canInspect">Whether the server answers paperdoll.inspect, for the window's Inspect button. Null never shows it.</param>
+    /// <param name="canInspect">Whether the server answers paperdoll.inspect, for the appraisal window's Inspect button. Null never shows it.</param>
     public AppraisalFeature(ILegACEyPluginHost host, Action<string> log, Func<long>? clock = null, IAppraisalGame? game = null,
         Func<IReadOnlyDictionary<uint, SpellInfo>>? spells = null, Func<CharacterNames>? names = null,
         Func<Avalonia.Controls.Control, Avalonia.Size, Avalonia.Size>? measure = null, Func<bool>? canInspect = null)
@@ -162,16 +162,17 @@ public sealed class AppraisalFeature
     public void Clear()
     {
         _responses.Clear();
-        _worn.Clear();
         _requested = 0;
         _shownId = 0;
         Shown = null;
         _view?.Retire();
         _view = null;
         _hidden = false;
+        _inspect = null;
         try
         {
             _host.CloseWindow(WindowId);
+            _host.CloseWindow(InspectWindow.WindowId);
         }
         catch (Exception exception)
         {
@@ -237,9 +238,9 @@ public sealed class AppraisalFeature
         var content = stored != null
             ? AppraisalContent.From(response, _spells(), _game.CharacterName, carried: false, _names(), world: stored)
             : AppraisalContent.From(response, _spells(), _game.CharacterName, _game.IsCarried(id), _names(), _game.ValidLocationsOf(id),
-                _game.CoverageOf(id), _game.WorldObjectOf(id) ?? WornRead(id), _game.PluralNameOf(id), _game.DescriptionFlagsOf(id));
+                _game.CoverageOf(id), _game.WorldObjectOf(id), _game.PluralNameOf(id), _game.DescriptionFlagsOf(id));
         var art = _host.Art;
-        var inspect = _canInspect() ? Inspect : (Func<AppraisalContent, Avalonia.Controls.Control>?)null;
+        var inspect = _canInspect() ? Inspect : (Action<AppraisalContent>?)null;
         // A window the client released (its surface failed or closed on its own) is neither open nor hidden: the view is stale, so the next
         // appraisal builds a new one.
         if (_view != null && !_hidden && !_host.IsWindowOpen(WindowId)) _view = null;
@@ -288,21 +289,38 @@ public sealed class AppraisalFeature
         return true;
     }
 
-    private Avalonia.Controls.Control Inspect(AppraisalContent content) =>
-        new AppraisalInspect(_host.ServerChannel, _host.PortalPath, _host.Art, content.ObjectId, content.IsCreature, AppraiseWorn);
+    /// <summary>
+    /// Opens the Inspect window on the object, or shows it there when the window is already open (or hidden by its close box). Nothing
+    /// thrown escapes: it is logged.
+    /// </summary>
+    private void Inspect(AppraisalContent content) => Inspect(content.ObjectId, content.Name, content.Visual);
 
-    /// <summary>A slot clicked in an Inspect view: the window turns to that item's details.</summary>
-    private void AppraiseWorn(WornGear item)
+    /// <summary>Opens the Inspect window on an object (zero for the player), as the appraisal window's Inspect button does.</summary>
+    public void Inspect(uint objectId, string name, ItemVisual? visual)
     {
-        if (_worn.Count >= CacheLimit) _worn.Clear();
-        _worn[item.Id] = item;
-        _view?.SetInspecting(false);
-        Examine(item.Id);
+        try
+        {
+            var window = _inspect ??= new InspectWindow(_host.ServerChannel, _host.PortalPath);
+            window.Show(objectId, name, AppraisalWindow.Icon(visual, _host.Art));
+            if (_host.IsWindowOpen(InspectWindow.WindowId)) return;
+            var definition = new WindowDefinition(InspectWindow.WindowId, "Inspect", InspectWindow.Width, InspectWindow.Height,
+                DerethWindow.TitleBarHeight, new DerethClientTheme(), InspectWindow.Sizing);
+            var opened = _host.OpenWindow(definition, InspectLocation, close =>
+            {
+                window.Close = close;
+                return window.Window;
+            }, error =>
+            {
+                _log($"The inspect window failed: {error.Message}");
+                if (ReferenceEquals(_inspect, window)) _inspect = null;
+            }, ownChrome: true);
+            if (!opened) _inspect = null;
+        }
+        catch (Exception exception)
+        {
+            _log($"Could not inspect: {exception.Message}");
+        }
     }
-
-    private InventoryObjectRead? WornRead(uint id) => _worn.TryGetValue(id, out var item)
-        ? new InventoryObjectRead(id, item.Name, 0, 0, 0, 0, 0, 0, 0, false, 0, item.Visual)
-        : null;
 
     /// <summary>
     /// Saves an inscription on an item and returns whether it was sent. The server sends no reply, so the item is appraised again: that

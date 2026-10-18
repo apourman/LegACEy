@@ -4,16 +4,17 @@ using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Layout;
 using Avalonia.Media;
+using LegACEy.Client.Demo;
 using LegACEy.Client.Themes;
 
-namespace LegACEy.Client.Demo;
+namespace LegACEy.Plugin.Inventory;
 
 /// <summary>
 /// The faint carved picture of what goes in an empty paperdoll slot. The glyphs are drawn here, not taken from the DAT: line art
 /// for jewellery, clothing, weapons and the shield; a small figure with the covered part lit for armour; coloured diamonds for
 /// the aetheria. Each is engraved, a dark shadow 1 px below and right of the cut, and nearly transparent.
 /// </summary>
-public static class PaperdollGlyphs
+internal static class InventoryGlyphs
 {
     private const double Size = 30;
     // 22% for line art. The figure's parts are small, so it sits a little stronger, about 35%.

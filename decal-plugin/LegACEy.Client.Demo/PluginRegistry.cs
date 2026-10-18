@@ -302,6 +302,8 @@ public sealed class PluginRegistry
 
         public bool IsAppraisalOpen => _registry._host.IsWindowOpen(AppraisalFeature.WindowId);
 
+        public void Inspect(uint objectId, string name, ItemVisual? visual) => _registry._host.Inspect(objectId, name ?? string.Empty, visual);
+
         public void SelectForExamination(Action? examine) =>
             _registry._host.SelectForExamination(examine == null ? null : () => _registry.Guarded(_entry, examine));
 

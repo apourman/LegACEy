@@ -65,9 +65,9 @@ checks first takes the file; the `[pid N]` prefix shows which one.
 
 The LegACEy Inventory replaces retail's inventory panel: it parks retail's panel and opens and closes its own window with it (by key,
 toolbar or item). The appraisal window likewise replaces retail's examination window: when retail's examination panel shows, it is parked
-and closed, and the appraised object opens in LegACEy's window. Its header's Inspect button turns the window into a 3D view of the
-object: a character (yourself or anyone in sight) stands in the inventory's paperdoll with what they wear, and clicking a worn item
-appraises it. It needs a server with `paperdoll.inspect`. Creating an empty file named `retail-inventory-native` beside the main DLL
+and closed, and the appraised object opens in LegACEy's window. Its header's Inspect button opens the Inspect window: the object's 3D
+paperdoll alone, which drags to turn (it needs a server with `paperdoll.inspect`). The expand button in the inventory's doll area opens
+the same window on your own character. Creating an empty file named `retail-inventory-native` beside the main DLL
 gives retail's inventory and examination panels back; deleting it
 takes the panel over again. The file is only checked, never consumed. A drag that leaves the LegACEy window is handed to retail's own
 drag when retail's inventory lists show the item, so the world, NPCs and other retail windows take it as they would from retail.

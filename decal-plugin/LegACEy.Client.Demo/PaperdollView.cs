@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -10,8 +9,8 @@ using LegACEy.Client.GameArt;
 namespace LegACEy.Client.Demo;
 
 /// <summary>
-/// A 3D look in a <see cref="ModelView"/>: the player's own (asked with paperdoll.look), or any object's in sight (paperdoll.inspect,
-/// which also says what it wears, raised as <see cref="GearRead"/>). It asks the server how the object looks, builds the model from portal.dat
+/// A 3D look in a <see cref="ModelView"/>: the player's own (paperdoll.look), or any object's in sight (paperdoll.inspect). It asks the
+/// server how the object looks, builds the model from portal.dat
 /// off the game thread, and asks again on each paperdoll.changed. It asks only while it is in a visual tree; the owner must take
 /// it out of the tree to stop it asking. The status line shows while the model loads or cannot be had.
 /// </summary>
@@ -41,9 +40,6 @@ public sealed class PaperdollView : Border
 
     /// <summary>Turns, zooms and moves the view back to its first one: facing the viewer, the whole character, centred.</summary>
     public void ResetView() => _view.ResetView();
-
-    /// <summary>What the inspected object wears, each time the server answers. Never raised for the player's own look.</summary>
-    public event Action<IReadOnlyList<WornGear>>? GearRead;
 
     private void Start()
     {
@@ -78,13 +74,9 @@ public sealed class PaperdollView : Border
                 return;
             }
             CharacterAppearance appearance;
-            IReadOnlyList<WornGear>? gear = null;
             try
             {
-                if (_target == 0)
-                    appearance = PaperdollProtocol.ReadLook(reply.Body);
-                else
-                    (appearance, gear) = PaperdollProtocol.ReadInspect(reply.Body);
+                appearance = PaperdollProtocol.ReadLook(reply.Body);
             }
             catch (Exception exception)
             {
@@ -92,7 +84,6 @@ public sealed class PaperdollView : Border
                 _status.Text = $"The server sent a look this client can't read: {exception.Message}";
                 return;
             }
-            if (gear != null) GearRead?.Invoke(gear);
             // ~0.25 s of dat reads and decoding: off the game thread, with its own file handle
             Task.Run(() =>
             {

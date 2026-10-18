@@ -100,8 +100,8 @@ public sealed class InventoryPluginTests
         Assert.NotNull(client.Windows.Get(Vertical));
 
         var window = client.Panel(Vertical);
-        // The close box is the header's one button that is neither a layout nor the equipment toggle.
-        InventoryDriver.Press(window, window.Content!.GetVisualDescendants().OfType<DerethButton>().Single(button => button.Tag == null && button.Name != "EquipmentToggle"));
+        // The close box is the header's one button that is neither a layout nor the equipment toggle (the doll's expand button is not in the header).
+        InventoryDriver.Press(window, window.Content!.GetVisualDescendants().OfType<DerethButton>().Single(button => button.Tag == null && button.Name is not ("EquipmentToggle" or "ExpandDoll")));
 
         Assert.Null(client.Windows.Get(Vertical));
         Assert.Equal(1, client.Retail.CloseCalls);
@@ -212,6 +212,24 @@ public sealed class InventoryPluginTests
         InventoryDriver.PressLayout(client.Panel(Horizontal), InventoryLayout.Vertical);
         cells = InventoryDriver.Slots(client.Panel(Vertical)).Where(slot => InventoryDriver.Id(slot).Place == SlotPlace.Cell).ToArray();
         Assert.Equal(96, cells.Length);
+    });
+
+    [Fact]
+    public void The_doll_s_expand_button_inspects_the_character_and_shows_only_with_the_model() => RenderThread.Run(() =>
+    {
+        using var client = new FakeInventoryClient(new MemoryWindowPositionStore()) { ServerChannel = new ServerChannelClient(new LookTransport()) };
+        client.ServerActions.Add(PaperdollProtocol.Look);
+        client.SaveSettings(VerticalSlotsOff);
+        new InventoryPlugin().Start(client);
+        client.Retail!.Toggle();
+        var expand = Avalonia.LogicalTree.LogicalExtensions.GetLogicalDescendants(client.Panel(Vertical).Content).OfType<DerethButton>().Single(b => b.Name == "ExpandDoll");
+        Assert.True(expand.IsVisible);
+
+        expand.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(new[] { 0u }, client.Inspected);
+
+        client.Retail.Toggle();
+        Assert.False(expand.IsVisible);
     });
 
     [Fact]
@@ -459,6 +477,8 @@ public sealed class InventoryPluginTests
         public void SaveSettings(int value) => _store.Save("Server", Character, SettingsKey, (new Point(value, 0), null));
         public void AddMenuEntry(string title, uint iconId, Action action) => MenuEntries.Add((title, iconId, action));
         public void ShowAppraisal(byte[] appraisal, string name, ItemVisual? visual, int stackCount) { }
+        public void Inspect(uint objectId, string name, ItemVisual? visual) => Inspected.Add(objectId);
+        public List<uint> Inspected { get; } = new();
         public bool IsAppraisalOpen => false;
         public void SelectForExamination(Action? examine) { }
         public void ToggleWindow(string id, string title, int width, int height, Point defaultLocation, Func<Control> createContent) =>

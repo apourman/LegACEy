@@ -38,7 +38,7 @@ public sealed record AppraisalSection(string Heading, IReadOnlyList<AppraisalRow
 /// draws this model and nothing else, so the rules that build it are tested without drawing. Built by <see cref="From"/>.
 /// </summary>
 public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Visual, string TypeLine, IReadOnlyList<AppraisalFigure> Figures,
-    IReadOnlyList<AppraisalSection> Sections, string Description, AppraisalInscription? Inscription, string Subtitle = "", bool IsCreature = false)
+    IReadOnlyList<AppraisalSection> Sections, string Description, AppraisalInscription? Inscription, string Subtitle = "")
 {
     // The server's property ids (ACE.Entity PropertyInt, PropertyString and PropertyDataId).
     private const uint ItemTypeInt = 1, EncumbranceValInt = 5, ValueInt = 19, ItemWorkmanshipInt = 105, SalvagedItemsInt = 170;
@@ -170,8 +170,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
             sections,
             response.Strings.TryGetValue(LongDescString, out var description) ? description : string.Empty,
             AppraisalInscription.From(response, characterName, carried, descriptionFlags),
-            hasCreatureProfile ? TitleOf(response, names ?? CharacterNames.None) : string.Empty,
-            hasCreatureProfile);
+            hasCreatureProfile ? TitleOf(response, names ?? CharacterNames.None) : string.Empty);
     }
 
     /// <summary>A portal id the response sent, or zero when it did not.</summary>

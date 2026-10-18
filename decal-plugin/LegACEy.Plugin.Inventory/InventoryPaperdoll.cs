@@ -5,15 +5,16 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using LegACEy.Client.Demo;
 using LegACEy.Client.Themes;
 
-namespace LegACEy.Client.Demo;
+namespace LegACEy.Plugin.Inventory;
 
 /// <summary>
 /// The paperdoll block: retail's paperdoll (224×214 at 32 px) with every slot scaled to the 35 px pitch. The doll area is the
 /// one control the 3D character fills; the Slots toggle sits above it, left of the aetheria row. Slots are placed by <see cref="Show"/>.
 /// </summary>
-public sealed class PaperdollCanvas : Canvas
+internal sealed class InventoryPaperdoll : Canvas
 {
     // Retail's cells are 32 px; the Dereth pitch is 35 px. Each retail position is scaled to it, then the 34 px cell is centred in the pitch.
     private const int RetailCell = 32;
@@ -59,7 +60,7 @@ public sealed class PaperdollCanvas : Canvas
     };
     private readonly TextBlock _slotsLabel = new() { Text = "Slots", FontSize = 11, FontFamily = DerethPalette.Body, VerticalAlignment = VerticalAlignment.Center };
 
-    public PaperdollCanvas()
+    public InventoryPaperdoll()
     {
         Width = Scale(RetailWidth);
         Height = Scale(RetailHeight);
@@ -85,7 +86,23 @@ public sealed class PaperdollCanvas : Canvas
         SetLeft(SlotsToggle, Scale(RetailToggleLeft));
         SetTop(SlotsToggle, ToggleTop);
         Children.Add(SlotsToggle);
+
+        // In the doll area's bottom-right corner, over the character.
+        var expand = new Avalonia.Controls.Shapes.Path
+        {
+            Data = Geometry.Parse(ExpandGlyph), Width = 12, Height = 12, StrokeThickness = 1.2, UseLayoutRounding = false, Stroke = DerethPalette.CreamBrush,
+        };
+        ExpandButton = new DerethButton { Name = "ExpandDoll", Width = 20, Height = 20, Content = expand, IsVisible = false };
+        ToolTip.SetTip(ExpandButton, "Inspect in a larger window");
+        SetLeft(ExpandButton, GetLeft(DollArea) + DollArea.Width - ExpandButton.Width - 4);
+        SetTop(ExpandButton, Height - ExpandButton.Height - 4);
+        Children.Add(ExpandButton);
     }
+
+    private const string ExpandGlyph = "M1,4.5 V1 H4.5 M7.5,1 H11 V4.5 M11,7.5 V11 H7.5 M4.5,11 H1 V7.5";
+
+    /// <summary>Opens the character in the Inspect window. Shown only while the 3D character is.</summary>
+    public DerethButton ExpandButton { get; }
 
     /// <summary>The doll area: empty while the armour slots show, and the 3D character once a doll is put in it.</summary>
     public Border DollArea { get; }

@@ -114,45 +114,39 @@ public sealed class AppraisalTests
     });
 
     [Fact]
-    public void Inspect_swaps_a_creature_s_details_for_its_paperdoll_and_back() => OnWindowThread(() =>
-    {
-        var host = new FakeAppraisalHost();
-        var inspect = true;
-        var appraisals = new AppraisalFeature(host, _ => { }, canInspect: () => inspect);
-        appraisals.Request(Potion);
-        appraisals.Receive(new ServerAppraisal(Potion)
-        {
-            Strings = { [1] = "Saro" },
-            Creature = new CreatureWrite(10, 20, new uint[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }, 0x5, 0x6),
-        }.Build());
-        var window = host.LastWindow!;
-        var button = window.GetLogicalDescendants().OfType<DerethButton>().Single(b => b.Name == "InspectButton");
-        Assert.True(button.IsVisible);
-
-        button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-        Assert.Single(window.GetLogicalDescendants().OfType<PaperdollCanvas>());
-        button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-        Assert.Empty(window.GetLogicalDescendants().OfType<PaperdollCanvas>());
-
-        // A server without paperdoll.inspect: the next appraisal hides the button.
-        inspect = false;
-        appraisals.Receive(new ServerAppraisal(Potion) { Strings = { [1] = "Saro" } }.Build());
-        Assert.False(button.IsVisible);
-    });
-
-    [Fact]
-    public void Inspecting_an_item_shows_its_model_without_paperdoll_slots() => OnWindowThread(() =>
+    public void Inspect_opens_one_paperdoll_window_that_follows_the_inspected_object() => OnWindowThread(() =>
     {
         var host = new FakeAppraisalHost();
         var appraisals = new AppraisalFeature(host, _ => { }, canInspect: () => true);
-        appraisals.Request(Potion);
-        appraisals.Receive(new ServerAppraisal(Potion) { Strings = { [1] = "Breastplate" } }.Build());
-        var window = host.LastWindow!;
-        window.GetLogicalDescendants().OfType<DerethButton>().Single(b => b.Name == "InspectButton")
-            .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        void Appraise(uint id, string name)
+        {
+            appraisals.Request(id);
+            appraisals.Receive(new ServerAppraisal(id) { Strings = { [1] = name } }.Build());
+        }
+        Appraise(Potion, "Saro");
+        var button = host.LastWindow!.GetLogicalDescendants().OfType<DerethButton>().Single(b => b.Name == "InspectButton");
 
-        Assert.Single(window.GetLogicalDescendants().OfType<PaperdollView>());
-        Assert.Empty(window.GetLogicalDescendants().OfType<PaperdollCanvas>());
+        button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        var inspect = host.LastWindow!;
+        Assert.Equal(InspectWindow.WindowId, host.LastDefinition!.Id);
+        Assert.Equal("Saro", inspect.Title);
+        Assert.Single(inspect.GetLogicalDescendants().OfType<PaperdollView>());
+
+        Appraise(Potion + 1, "Breastplate");
+        button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(2, host.Opened);
+        Assert.Equal("Breastplate", inspect.Title);
+    });
+
+    [Fact]
+    public void A_server_without_inspect_shows_no_Inspect_button() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost();
+        var appraisals = new AppraisalFeature(host, _ => { });
+        appraisals.Request(Potion);
+        appraisals.Receive(new ServerAppraisal(Potion) { Strings = { [1] = "Saro" } }.Build());
+
+        Assert.False(host.LastWindow!.GetLogicalDescendants().OfType<DerethButton>().Single(b => b.Name == "InspectButton").IsVisible);
     });
 
     [Fact]
@@ -1585,6 +1579,8 @@ public sealed class AppraisalTests
         public int? LoadPluginSettings(string plugin) => null;
         public void SavePluginSettings(string plugin, int value) { }
         public void ShowAppraisal(byte[] appraisal, string name, ItemVisual? visual, int stackCount) { }
+        public void Inspect(uint objectId, string name, ItemVisual? visual) => Inspected.Add(objectId);
+        public List<uint> Inspected { get; } = new();
         public void SelectForExamination(Action? examine) { }
 
         private sealed class NoArt : IGameArtSource

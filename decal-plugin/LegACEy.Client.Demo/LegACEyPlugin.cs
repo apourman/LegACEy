@@ -62,6 +62,11 @@ public interface ILegACEyClient
     /// then the appraisal, as a 0x00C9 event carries it) that the server sent the plugin, and the name, icon and stack count are the plugin's own.
     /// </summary>
     void ShowAppraisal(byte[] appraisal, string name, ItemVisual? visual, int stackCount);
+    /// <summary>
+    /// Opens the Inspect window on an object's 3D paperdoll, or puts the object in it when it is open. Zero is the player, which needs
+    /// only paperdoll.look; any other object needs paperdoll.inspect. The name and icon head the window.
+    /// </summary>
+    void Inspect(uint objectId, string name, ItemVisual? visual);
     /// <summary>True while the appraisal window is open, so a plugin's own selection can follow it as the game's selection does.</summary>
     bool IsAppraisalOpen { get; }
     /// <summary>
@@ -118,6 +123,8 @@ public interface ILegACEyPluginHost
     int? LoadPluginSettings(string plugin);
     /// <summary>Saves a plugin's one settings value for the current character.</summary>
     void SavePluginSettings(string plugin, int value);
+    /// <summary>Opens the Inspect window. See <see cref="ILegACEyClient.Inspect"/>.</summary>
+    void Inspect(uint objectId, string name, ItemVisual? visual);
     /// <summary>Shows a stored item's appraisal in the appraisal window. See <see cref="ILegACEyClient.ShowAppraisal"/>.</summary>
     void ShowAppraisal(byte[] appraisal, string name, ItemVisual? visual, int stackCount);
     /// <summary>A plugin's selection for examining. See <see cref="ILegACEyClient.SelectForExamination"/>.</summary>

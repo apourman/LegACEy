@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-using System.Linq;
 using ACE.Server.WorldObjects;
 
 namespace ACE.Server.ClientChannel
@@ -23,8 +21,7 @@ namespace ACE.Server.ClientChannel
 
         /// <summary>
         /// Request: u32 guid of an object the player can see or holds (their own guid for themselves). Reply: that object's look, as
-        /// <see cref="Look"/> sends it, then u16 count of what it wears: (u32 guid, u32 wielded location, u32 icon, u32 underlay,
-        /// u32 overlay, u32 ui effects, string name). Only creatures wear anything.
+        /// <see cref="Look"/> sends the player's.
         /// </summary>
         public const string Inspect = "paperdoll.inspect";
 
@@ -38,26 +35,9 @@ namespace ACE.Server.ClientChannel
                     guid = reader.BaseStream.Length == 4 ? reader.ReadUInt32() : 0;
                 var target = guid == context.Player.Guid.Full ? context.Player : context.Player.FindObject(guid, Player.SearchLocations.Everywhere);
                 if (target == null)
-                {
                     context.Fail(ChannelStatus.BadRequest, "That is not in sight.");
-                    return;
-                }
-                context.Reply(ChannelWire.Body(w =>
-                {
-                    w.Write(Body(target));
-                    var worn = target is Creature creature ? creature.EquippedObjects.Values.ToList() : new List<WorldObject>();
-                    w.Write((ushort)worn.Count);
-                    foreach (var item in worn)
-                    {
-                        w.Write(item.Guid.Full);
-                        w.Write((uint)(item.CurrentWieldedLocation ?? 0));
-                        w.Write(item.IconId);
-                        w.Write(item.IconUnderlayId ?? 0);
-                        w.Write(item.IconOverlayId ?? 0);
-                        w.Write((uint)(item.UiEffects ?? 0));
-                        ChannelWire.WriteString(w, item.Name);
-                    }
-                }));
+                else
+                    context.Reply(Body(target));
             });
         }
 

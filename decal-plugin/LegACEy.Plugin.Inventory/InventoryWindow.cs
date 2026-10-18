@@ -60,7 +60,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private PaperdollView? _doll;
     private readonly Dictionary<ItemVisual, WriteableBitmap?> _images = new();
     private readonly DerethWindow _frame;
-    private readonly PaperdollCanvas _paperdoll = new();
+    private readonly InventoryPaperdoll _paperdoll = new();
     // Its columns start under the contents line's name, as the pack row's do in the horizontal layout.
     private readonly DerethSlotGrid _grid = new() { ColumnAlignment = HorizontalAlignment.Left };
     private readonly TextBlock _contentsName = Label(string.Empty, TextBrush, 13);
@@ -137,6 +137,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         AddHandler(InputElement.PointerExitedEvent, (_, _) => Hover(0), handledEventsToo: true);
 
         _paperdoll.SlotsPressed += ToggleSlots;
+        _paperdoll.ExpandButton.Click += (_, _) => InspectRequested?.Invoke();
         _paperdoll.SetSlotsOn(_showSlots);
         // Subscribe only once the first render has worked, so a failing render leaves no subscriber behind.
         Render(_port.Snapshot);
@@ -148,6 +149,9 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     /// <summary>Raised when the player changes the layout or the Slots toggle. The settings are the new ones.</summary>
     public event Action<InventorySettings>? SettingsChanged;
+
+    /// <summary>Raised when the player asks to see the character in the larger Inspect window.</summary>
+    public event Action? InspectRequested;
 
     /// <summary>Raised when the header's close box is pressed.</summary>
     public event EventHandler? CloseRequested;
@@ -216,7 +220,11 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     }
 
     /// <summary>The 3D character is in the doll area only while the armour slots are off and the window is shown, so it asks for looks only then.</summary>
-    private void UpdateDoll() => DollArea.Child = _doll != null && !_showSlots && !_suspended ? _doll : null;
+    private void UpdateDoll()
+    {
+        DollArea.Child = _doll != null && !_showSlots && !_suspended ? _doll : null;
+        _paperdoll.ExpandButton.IsVisible = DollArea.Child != null;
+    }
 
     private void ToggleSlots()
     {
@@ -707,7 +715,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private DerethSlot WornSlot(InventorySnapshot snapshot, Dictionary<PaperdollSlot, WieldedItem> worn, PaperdollSlot slot)
     {
         if (!worn.TryGetValue(slot, out var item))
-            return new DerethSlot(PaperdollGlyphs.For(slot)) { Tag = new InventorySlotId(SlotPlace.Paperdoll, 0, 0, -1, slot) };
+            return new DerethSlot(InventoryGlyphs.For(slot)) { Tag = new InventorySlotId(SlotPlace.Paperdoll, 0, 0, -1, slot) };
         return Slot(new InventorySlotId(SlotPlace.Paperdoll, item.Id, 0, -1, slot), Layers(item.Visual, item.StackCount), item.Id == snapshot.Selected);
     }
 
