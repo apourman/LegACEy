@@ -11,8 +11,8 @@ using Avalonia.Styling;
 namespace LegACEy.Client.Themes;
 
 /// <summary>
-/// The Dereth theme: navy panels, a gold frame, a slim gold scrollbar and navy tooltips, with the chrome drawn by the shared
-/// Dereth parts. It does not use AC chrome, so a Dereth window is opened without the retail theme over it.
+/// The Dereth theme: retail's look, updated: stone panels, a gold frame, a gold thumb on retail's blue scrollbar and stone tooltips, with
+/// the chrome drawn by the shared Dereth parts. It does not use AC chrome, so a Dereth window is opened without the retail theme over it.
 /// </summary>
 public sealed class DerethClientTheme : IClientTheme
 {
@@ -20,9 +20,11 @@ public sealed class DerethClientTheme : IClientTheme
     private static readonly IBrush ThumbBrush = new LinearGradientBrush
     {
         StartPoint = new RelativePoint(0, 0.5, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 0.5, RelativeUnit.Relative),
-        GradientStops = { new GradientStop(Color.Parse("#7A5E30"), 0), new GradientStop(Color.Parse("#D9B66A"), 0.5), new GradientStop(Color.Parse("#7A5E30"), 1) }
+        GradientStops = { new GradientStop(Color.Parse("#8A6326"), 0), new GradientStop(Color.Parse("#DDC47D"), 0.5), new GradientStop(Color.Parse("#8A6326"), 1) }
     };
-    private static readonly IBrush NavyBrush = DerethPalette.Brush(Color.Parse("#060B10"));
+    private static readonly IBrush NavyBrush = DerethPalette.Brush(Color.Parse("#18160F"));
+    /// <summary>Retail's scrollbar blue, darkened so the gold thumb stands out on it.</summary>
+    private static readonly IBrush GrooveBlue = DerethPalette.Brush(Color.Parse("#00135C"));
     private static readonly ControlTheme ScrollBarControlTheme = new(typeof(ScrollBar))
     {
         Setters = { new Setter(TemplatedControl.TemplateProperty, ScrollBarTemplate()) }
@@ -57,7 +59,7 @@ public sealed class DerethClientTheme : IClientTheme
         var horizontal = new Style(x => x.OfType<ScrollBar>().Class(":horizontal"));
         horizontal.Setters.Add(new Setter(Layoutable.HeightProperty, ScrollBarThickness));
         styles.Add(horizontal);
-        // Tooltips use the navy face wherever their owner sits, as the AC and simple themes do.
+        // Tooltips use the stone face wherever their owner sits, as the AC and simple themes do.
         var tips = new Style(x => x.Is<Control>());
         tips.Setters.Add(new Setter(ClientToolTips.ThemeProperty, ToolTipControlTheme));
         styles.Add(tips);
@@ -65,7 +67,7 @@ public sealed class DerethClientTheme : IClientTheme
     }
 
     /// <summary>
-    /// A dark groove with a gold thumb and page buttons that fill the track. The parts are registered by name, so the
+    /// Retail's blue groove with a gold thumb and page buttons that fill the track. The parts are registered by name, so the
     /// ScrollBar finds the track and the page buttons, and a click on the groove pages the view.
     /// </summary>
     private static FuncControlTemplate<ScrollBar> ScrollBarTemplate() => new((owner, scope) =>
@@ -95,7 +97,7 @@ public sealed class DerethClientTheme : IClientTheme
         scope.Register(track.Name, track);
         return new Border
         {
-            Background = DerethPalette.GrooveBrush, BorderBrush = DerethPalette.GrooveEdgeBrush,
+            Background = GrooveBlue, BorderBrush = DerethPalette.GrooveEdgeBrush,
             BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3), Child = track
         };
     });

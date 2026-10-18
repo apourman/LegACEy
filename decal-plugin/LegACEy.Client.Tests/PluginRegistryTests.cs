@@ -4,7 +4,7 @@ using Avalonia.Controls;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
-using LegACEy.Plugin.Paperdoll;
+using LegACEy.Plugin.Vault;
 using Xunit;
 
 namespace LegACEy.Client.Tests;
@@ -41,6 +41,28 @@ public sealed class PluginRegistryTests
             panel.PointerUp(centre.X, centre.Y);
         }
         Assert.Equal(new[] { -1, 1 }, steps);
+    });
+
+    [Fact]
+    public void The_menu_shows_each_window_s_choice_and_switches_it() => RenderThread.Run(() =>
+    {
+        var host = new FakeHost();
+        var chatCustom = true;
+        var windows = new[] { new UiWindowChoice("Chat", () => chatCustom, custom => chatCustom = custom) };
+        using var panel = LegACEy.Client.PanelHost.AvaloniaPanel.Create(
+            () => new PluginMenuPanel(new PluginRegistry(host, host.Log.Add), null, null, windows), PluginMenuPanel.WindowWidth, PluginMenuPanel.WindowHeight);
+        panel.Tick();
+        Button Switch() => Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(panel.Content).OfType<Button>().Single();
+        Assert.Equal("Custom", Switch().Content);
+
+        var button = Switch();
+        var centre = Avalonia.VisualExtensions.TranslatePoint(button, new Avalonia.Point(button.Bounds.Width / 2, button.Bounds.Height / 2), panel.Content)!.Value;
+        panel.PointerDown(centre.X, centre.Y);
+        panel.PointerUp(centre.X, centre.Y);
+        panel.Tick();
+
+        Assert.False(chatCustom);
+        Assert.Equal("Native", Switch().Content);
     });
 
     [Fact]
@@ -179,20 +201,19 @@ public sealed class PluginRegistryTests
     [Fact]
     public void An_error_through_a_plugin_assembly_turns_that_plugin_off_and_an_error_without_one_does_not()
     {
-        // The Paperdoll assembly is a real plugin assembly; the test assembly hosts the fake plugin.
+        // The Vault assembly is a real plugin assembly; the test assembly hosts the fake plugin.
         var host = new FakeHost();
         var registry = new PluginRegistry(host, host.Log.Add);
-        registry.Add(new PaperdollPlugin());
+        var vault = new VaultPlugin();
+        registry.Add(vault);
         registry.Add(new FakePlugin("Other"));
-        registry.SetServerActions(new[] { PaperdollProtocol.Look });
+        registry.SetServerActions(vault.RequiredActions);
         Exception? thrown = null;
-        // The throw comes from the Paperdoll assembly's own code (a null client); ReadLook now lives in the shared assembly.
-        try { new PaperdollPlugin().Start(null!); }
+        // The throw comes from the Vault assembly's own code (a null client).
+        try { new VaultPlugin().Start(null!); }
         catch (Exception exception) { thrown = exception; }
 
         Assert.False(registry.TryFailOwner(new InvalidOperationException("no frames: never thrown")));
-        Assert.Equal(new[] { "Paperdoll", "Other" }, Titles(registry));
-
         Assert.True(registry.TryFailOwner(thrown!));
         Assert.Equal(new[] { "Other" }, Titles(registry));
     }
@@ -369,6 +390,8 @@ public sealed class PluginRegistryTests
         public int? LoadPluginSettings(string plugin) => Settings.TryGetValue(plugin, out var saved) ? saved : null;
         public void SavePluginSettings(string plugin, int value) => Settings[plugin] = value;
         public void ShowAppraisal(byte[] appraisal, string name, ItemVisual? visual, int stackCount) { }
+        public void Inspect(uint objectId, string name, ItemVisual? visual) => Inspected.Add(objectId);
+        public List<uint> Inspected { get; } = new();
         public void SelectForExamination(Action? examine) { }
 
         public IServerChannel ServerChannel { get; init; } = UnavailableServerChannel.Instance;

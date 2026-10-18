@@ -297,7 +297,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
             var kind = RetailChatTypes.KindOf(chatType);
             if (kind is not { } known) return;
             var raw = ReadWide(Marshal.ReadIntPtr(text, StringLiteral));
-            _pending.Enqueue(RetailChatTypes.Parse(known, raw, DateTime.Now));
+            _pending.Enqueue(RetailChatTypes.Parse(known, raw, DateTime.Now, chatType));
         }
         catch
         {
@@ -432,7 +432,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         /// A line from the notice's text: the sender's tag becomes the plain name, and the sender and the channel are read from the text. An
         /// Allegiance-typed line that names Olthoi is an Olthoi room line.
         /// </summary>
-        public static RetailChatLine Parse(RetailChatKind kind, string raw, DateTime time)
+        public static RetailChatLine Parse(RetailChatKind kind, string raw, DateTime time, uint? type = null)
         {
             string? sender = null;
             uint senderId = 0;
@@ -450,7 +450,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
             text = Escape.Replace(text, match => match.Groups[1].Value switch { "n" => "\n", "q" => "\"", var other => other });
             var channel = ChannelPrefix.Match(text) is { Success: true } prefix ? prefix.Groups[1].Value : null;
             if (channel == "Olthoi") kind = RetailChatKind.Channel;
-            return new RetailChatLine(kind, text, time, sender, channel, senderId);
+            return new RetailChatLine(kind, text, time, sender, channel, senderId, type);
         }
     }
 }

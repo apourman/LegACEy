@@ -22,7 +22,7 @@ internal static class InventoryGlyphs
     private const double FigureOpacity = 0.35;
 
     private static readonly IBrush CutLine = DerethPalette.Brush(Color.Parse("#B9A27A"));
-    private static readonly IBrush FigureDim = DerethPalette.Brush(Color.Parse("#46525E"));
+    private static readonly IBrush FigureDim = DerethPalette.Brush(Color.Parse("#5E5444"));
     private static readonly IBrush Shadow = DerethPalette.Brush(Colors.Black);
 
     private static readonly Dictionary<PaperdollSlot, string> Lines = new()

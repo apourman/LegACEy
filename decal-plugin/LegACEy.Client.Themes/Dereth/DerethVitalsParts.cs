@@ -20,7 +20,7 @@ public static class DerethVitalsPalette
 }
 
 /// <summary>
-/// The gilded vitals' shared gold: the vertical gold of rules and caps, the round gold of a bezel or stud, and the navy inside them.
+/// The gilded vitals' shared gold: the vertical gold of rules and caps, the round gold of a bezel or stud, and the stone inside them.
 /// </summary>
 internal static class DerethGilt
 {
@@ -30,8 +30,8 @@ internal static class DerethGilt
         EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
         GradientStops =
         {
-            new GradientStop(Color.Parse("#F3DDA2"), 0), new GradientStop(Color.Parse("#C9A45C"), 0.4),
-            new GradientStop(Color.Parse("#7A5E30"), 0.75), new GradientStop(Color.Parse("#B08A44"), 1)
+            new GradientStop(Color.Parse("#F3DDA2"), 0), new GradientStop(Color.Parse("#DBB86A"), 0.4),
+            new GradientStop(Color.Parse("#8A6326"), 0.75), new GradientStop(Color.Parse("#B08A44"), 1)
         }
     };
     public static readonly IBrush GoldRound = new RadialGradientBrush
@@ -42,8 +42,8 @@ internal static class DerethGilt
         RadiusY = new RelativeScalar(0.72, RelativeUnit.Relative),
         GradientStops =
         {
-            new GradientStop(Color.Parse("#FFF1C8"), 0), new GradientStop(Color.Parse("#D9B66A"), 0.35),
-            new GradientStop(Color.Parse("#7A5E30"), 0.78), new GradientStop(Color.Parse("#3A2A12"), 1)
+            new GradientStop(Color.Parse("#FFF1C8"), 0), new GradientStop(Color.Parse("#DDC47D"), 0.35),
+            new GradientStop(Color.Parse("#8A6326"), 0.78), new GradientStop(Color.Parse("#3A2A12"), 1)
         }
     };
     public static readonly IBrush NavyRound = new RadialGradientBrush
@@ -52,13 +52,13 @@ internal static class DerethGilt
         GradientOrigin = new RelativePoint(0.5, 0.4, RelativeUnit.Relative),
         RadiusX = new RelativeScalar(0.65, RelativeUnit.Relative),
         RadiusY = new RelativeScalar(0.65, RelativeUnit.Relative),
-        GradientStops = { new GradientStop(Color.Parse("#14283A"), 0), new GradientStop(Color.Parse("#091420"), 0.7), new GradientStop(Color.Parse("#04080C"), 1) }
+        GradientStops = { new GradientStop(Color.Parse("#2A261A"), 0), new GradientStop(Color.Parse("#18160F"), 0.7), new GradientStop(Color.Parse("#0A0906"), 1) }
     };
-    public static readonly IBrush Inlay = DerethPalette.Brush(Color.Parse("#0A1620"));
+    public static readonly IBrush Inlay = DerethPalette.Brush(Color.Parse("#100E09"));
     public static readonly IPen Outline = new Pen(DerethPalette.Brush(Color.Parse("#2A1C0C")), 0.5);
     public static readonly IPen GoldDarkHair = new Pen(DerethPalette.GoldDarkBrush, 0.5);
 
-    /// <summary>A gold lozenge with a navy heart, centred on (x, y), <paramref name="radius"/> from centre to point.</summary>
+    /// <summary>A gold lozenge with a stone heart, centred on (x, y), <paramref name="radius"/> from centre to point.</summary>
     public static void Lozenge(DrawingContext context, double x, double y, double radius)
     {
         context.DrawGeometry(GoldVertical, Outline, Diamond(x, y, radius));
@@ -96,7 +96,7 @@ internal static class DerethGilt
 }
 
 /// <summary>
-/// The gilded vitals plate: navy with a faint gold damask, the Dereth double gold rule on chamfered corners and, when ornate, a ringed corner
+/// The gilded vitals plate: stone with a faint gold damask, the Dereth double gold rule on chamfered corners and, when ornate, a ringed corner
 /// with a filigree scroll at each corner, a gold lozenge on the top edge and a gold stud on the bottom edge. Its child sits on top.
 /// </summary>
 public sealed class DerethGildedPlate : Decorator
@@ -105,7 +105,7 @@ public sealed class DerethGildedPlate : Decorator
     {
         StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative),
         EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
-        GradientStops = { new GradientStop(Color.Parse("#112230"), 0), new GradientStop(Color.Parse("#0A1620"), 0.35), new GradientStop(Color.Parse("#050A0E"), 1) }
+        GradientStops = { new GradientStop(Color.Parse("#221E14"), 0), new GradientStop(Color.Parse("#100E09"), 0.35), new GradientStop(Color.Parse("#0A0805"), 1) }
     };
     // The damask: gold lozenge outlines on a 12 DIP grid, faint enough that the bars read first.
     private static readonly IPen Damask = new Pen(DerethPalette.Brush(DerethPalette.Gold.WithAlpha(0x1A)), 0.4);
@@ -182,10 +182,10 @@ public sealed class DerethGildedPlate : Decorator
     }
 }
 
-/// <summary>A vital's numbers' plaque: chamfered navy with a dark gold edge. Its child, the value, sits inside.</summary>
+/// <summary>A vital's numbers' plaque: chamfered stone with a dark gold edge. Its child, the value, sits inside.</summary>
 public sealed class DerethValuePlaque : Decorator
 {
-    private static readonly IBrush Face = DerethPalette.Brush(Color.Parse("#05090D"));
+    private static readonly IBrush Face = DerethPalette.Brush(Color.Parse("#0A0805"));
     private static readonly IPen Edge = new Pen(DerethPalette.GoldDarkBrush, 0.9);
 
     public override void Render(DrawingContext context) =>
@@ -206,7 +206,7 @@ public sealed class DerethLozenge : Control
     public override void Render(DrawingContext context) => DerethGilt.Lozenge(context, Radius, Radius, Radius);
 }
 
-/// <summary>A vital's glyph in a gold bezel with an engraved rim of 16 ticks, the glyph in the vital's colour on navy.</summary>
+/// <summary>A vital's glyph in a gold bezel with an engraved rim of 16 ticks, the glyph in the vital's colour on stone.</summary>
 public sealed class DerethVitalGlyph : Control
 {
     private static readonly IPen Tick = new Pen(DerethPalette.Brush(Color.Parse("#4A3414")), 0.5);
@@ -258,7 +258,7 @@ public sealed class DerethVitalBar : Control
     {
         StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative),
         EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
-        GradientStops = { new GradientStop(Color.Parse("#020406"), 0), new GradientStop(Color.Parse("#0B141C"), 0.55), new GradientStop(Color.Parse("#05080C"), 1) }
+        GradientStops = { new GradientStop(Color.Parse("#040302"), 0), new GradientStop(Color.Parse("#16130C"), 0.55), new GradientStop(Color.Parse("#080705"), 1) }
     };
     private static readonly IPen GrooveEdge = new Pen(DerethPalette.GrooveEdgeBrush, 0.7);
     private static readonly IBrush Highlight = DerethPalette.Brush(Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF));

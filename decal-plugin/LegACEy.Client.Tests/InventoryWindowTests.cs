@@ -386,6 +386,19 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
+    public void Dropping_on_the_doll_wields_the_item_in_its_slot_even_while_that_slot_is_hidden() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: false);
+        var doll = host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DollArea");
+
+        InventoryDriver.Drop(host.Host, host.Cells[9], doll);
+
+        Assert.Equal(new[] { $"wield 0x{InventorySample.Cap:X8} to Head" }, InventoryDriver.Sent(port));
+    });
+
+    [Fact]
     public void A_drag_from_our_inventory_shows_its_icon_without_retail_s_drop_indicator() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();

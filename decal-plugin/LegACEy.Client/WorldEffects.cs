@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using LegACEy.Client.Demo;
 using Reloaded.Hooks;
 using Reloaded.Hooks.Definitions;
 using Reloaded.Hooks.Definitions.X86;
@@ -13,7 +14,8 @@ namespace LegACEy.Client.DecalPlugin;
 /// The outline is a gold glow around the selected object, seen through walls. While retail draws a part, <c>CPhysicsPart::Draw</c> keeps the part in a
 /// global; each of the device's indexed draws made for a part of the selected object is drawn again, flat white with no depth test, into
 /// a mask. After retail's world (<c>SmartBox::Draw</c>), the mask is spread into a glow texture by drawing it several times offset, and the
-/// glow is added to the screen in gold everywhere but the mask itself, which leaves a rim. Only the game thread draws.
+/// glow is added to the screen in gold everywhere but the mask itself, which leaves a rim. The player's own parts go into the mask's alpha,
+/// and no rim is drawn over them: the player stands in front of what they select. Only the game thread draws.
 /// </summary>
 internal sealed unsafe class WorldEffects : IDisposable
 {
@@ -24,6 +26,9 @@ internal sealed unsafe class WorldEffects : IDisposable
     // The player's CPhysicsObj, kept by CPhysicsObj::SetPlayer.
     private static readonly int* PlayerObject = (int*)0x00844D68;
     private const uint Gold = 0xFFFFC040;
+    // ColorWriteEnable: the selection into the mask's colour, the player into its alpha.
+    private const int SelectionChannels = 0x7, PlayerChannels = 0x8;
+    private const int ArgAlphaReplicate = 0x20;
     // Glow taps: radius in pixels and brightness, eight directions each.
     private static readonly (float Radius, int Weight)[] Rings = { (2, 0x60), (4, 0x40), (6, 0x28) };
 
@@ -43,6 +48,8 @@ internal sealed unsafe class WorldEffects : IDisposable
         // Ends before the call into CObjectMaint, in case a hook patches it.
         new NativeUiEntry("CPhysicsObj::leave_cell clears the object's cell", 0x00511A77, NativeUiCatalogue.Bytes("C7 86 90 00 00 00 00 00 00 00 5E C2 04 00"),
             Source, "the layout read here: CPhysicsObj +0x90 is its CObjCell, zero once out of the world (picked up, gone)"),
+        new NativeUiEntry("gmRadarUI::DrawObjects reads an object's cell id", 0x004DA0E4, NativeUiCatalogue.Bytes("8B 88 90 00 00 00 85 C9 0F 84 03 02 00 00 8B 48 4C 85 C9"),
+            Source, "the layout read here: CPhysicsObj +0x4C is its cell id; the weather is off in indoor cells"),
         new NativeUiEntry("CPhysicsObj::GetObjectA", GetObjectAddress, NativeUiCatalogue.Bytes("8B 0D 64 4D 84 00 85 C9 74 0B 8B 44 24 04 50"),
             Source, "Cdecl (object id): CObjectMaint lookup, null when the object is not in the world"),
         new NativeUiEntry("CPartArray::Draw", PartArrayDrawAddress, NativeUiCatalogue.Bytes("56 57 8B F9 8B 47 58 33 F6 85 C0 76 1C 8D 49 00 8B 47 5C 8B 0C B0 85 C9 74 07 6A 00"),
@@ -78,16 +85,21 @@ internal sealed unsafe class WorldEffects : IDisposable
     private readonly IHook<DrawIndexedFn> _drawHook;
     private readonly IHook<ResetFn> _resetHook;
     private readonly StormFog _fog;
+    private readonly Weather _weather;
+    private readonly CombatText _combat;
     private GCHandle _root;
     private IntPtr _mask, _glow;
     private int _width, _height;
-    private bool _masked, _failed;
+    // _masked: the mask is cleared this frame; _outlined: the selection is in it.
+    private bool _masked, _outlined, _failed;
 
     private WorldEffects(IntPtr device, Action<string> log)
     {
         _device = device;
         _log = log;
         _fog = new StormFog(device);
+        _weather = new Weather(device, _fog);
+        _combat = new CombatText(device, log);
         _root = GCHandle.Alloc(this);
         _smartBoxHook = ReloadedHooks.Instance.CreateHook<SmartBoxDrawFn>(OnSmartBoxDraw, SmartBoxDrawAddress);
         _drawHook = ReloadedHooks.Instance.CreateHook<DrawIndexedFn>(OnDrawIndexed, Method(device, DrawIndexedPrimitiveSlot).ToInt64());
@@ -102,11 +114,20 @@ internal sealed unsafe class WorldEffects : IDisposable
     {
         if (!NativeUiCatalogue.Validate(readMemory, log, Entries))
         {
-            log("The selection outline and storm fog are off: the running client does not match their native entries.");
+            log("The selection outline, storm fog and weather are off: the running client does not match their native entries.");
             return null;
         }
         return new WorldEffects(device, log);
     }
+
+    /// <summary>The safe landblock the storm fog rings, as landblock x and y, or null for no storm.</summary>
+    public (int X, int Y)? StormZone { get => _fog.Zone; set => _fog.Zone = value; }
+
+    /// <summary>Floating combat text over the targets of the hits the server reports.</summary>
+    public CombatText Combat => _combat;
+
+    /// <summary>The weather and the landblock in the middle of it, or null for clear skies.</summary>
+    public (WeatherKind Kind, int X, int Y)? Weather { get => _weather.Current; set => _weather.Current = value; }
 
     /// <summary>The object to outline, zero for none. Set each frame.</summary>
     public uint Selected { get; set; }
@@ -117,24 +138,30 @@ internal sealed unsafe class WorldEffects : IDisposable
         if (_forcing)
         {
             // Not on screen: the selection is drawn here only so the outline shows through what culled it.
-            try { if (DrawsSelected()) DrawIntoMask(() => original(device, type, baseVertex, minIndex, vertices, startIndex, primitives)); }
+            try { if (DrawsSelected()) DrawIntoMask(() => original(device, type, baseVertex, minIndex, vertices, startIndex, primitives), SelectionChannels); }
             catch (Exception exception) { Fail(exception); }
             return 0;
         }
         var result = original(device, type, baseVertex, minIndex, vertices, startIndex, primitives);
         var part = *DrawingPart;
         if (result < 0 || part == 0 || !_inWorld || _failed || device != _device) return result;
+        var channels = 0;
         try
         {
             // Only objects in a world cell: the sky's objects (and anything else not in the world) are drawn with their own camera.
             var physicsObject = *(int*)(part + 0xE0);
             var player = physicsObject == *PlayerObject;
-            if (physicsObject != 0 && *(int*)(physicsObject + 0x90) != 0 && (!_fog.Calibrated || (player && !_fog.FromPlayer)))
-                _fog.Calibrate(part, player);
+            if (physicsObject != 0 && *(int*)(physicsObject + 0x90) != 0)
+            {
+                if (!_fog.Calibrated || (player && !_fog.FromPlayer)) _fog.Calibrate(part, player);
+                var id = *(uint*)(physicsObject + 0x8);
+                if (_combat.Tracks(id)) _combat.Saw(id, GetTransform(_device, TransformWorld).Translation - _fog.Offset);
+                if (Selected != 0) channels = id == Selected ? SelectionChannels : player ? PlayerChannels : 0;
+            }
         }
         catch (Exception exception) { Fail(exception); }
-        if (Selected == 0 || !DrawsSelected()) return result;
-        try { DrawIntoMask(() => original(device, type, baseVertex, minIndex, vertices, startIndex, primitives)); }
+        if (channels == 0) return result;
+        try { DrawIntoMask(() => original(device, type, baseVertex, minIndex, vertices, startIndex, primitives), channels); }
         catch (Exception exception) { Fail(exception); }
         return result;
     }
@@ -147,8 +174,8 @@ internal sealed unsafe class WorldEffects : IDisposable
         return physicsObject != 0 && *(uint*)(physicsObject + 0x8) == Selected;
     }
 
-    /// <summary>Repeats one draw into the mask, flat white and through anything in front, then puts the device back.</summary>
-    private void DrawIntoMask(Action draw)
+    /// <summary>Repeats one draw into the mask's channels, flat white and through anything in front, then puts the device back.</summary>
+    private void DrawIntoMask(Action draw, int channels)
     {
         var target = RenderTarget(_device);
         var depth = DepthStencil(_device);
@@ -162,6 +189,7 @@ internal sealed unsafe class WorldEffects : IDisposable
             {
                 SetRenderTarget(_device, mask);
                 SetDepthStencil(_device, IntPtr.Zero);
+                SetRenderState(_device, RenderState.ColorWriteEnable, 0xF);
                 if (!_masked) ClearTargetTo(_device, 0);
                 SetViewport(_device, viewport);
                 SetRenderState(_device, RenderState.ZEnable, 0);
@@ -170,7 +198,7 @@ internal sealed unsafe class WorldEffects : IDisposable
                 SetRenderState(_device, RenderState.AlphaTestEnable, 0);
                 SetRenderState(_device, RenderState.FogEnable, 0);
                 SetRenderState(_device, RenderState.StencilEnable, 0);
-                SetRenderState(_device, RenderState.ColorWriteEnable, 0xF);
+                SetRenderState(_device, RenderState.ColorWriteEnable, channels);
                 SetRenderState(_device, RenderState.TextureFactor, unchecked((int)0xFFFFFFFF));
                 SetStageState(_device, 0, StageState.ColorOp, OpSelectArg1);
                 SetStageState(_device, 0, StageState.ColorArg1, ArgFactor);
@@ -180,6 +208,7 @@ internal sealed unsafe class WorldEffects : IDisposable
                 SetStageState(_device, 1, StageState.AlphaOp, OpDisable);
                 draw();
                 _masked = true;
+                _outlined |= channels == SelectionChannels;
             }
             finally { Release(mask); }
         }
@@ -203,16 +232,20 @@ internal sealed unsafe class WorldEffects : IDisposable
             try
             {
                 _fog.Draw();
-                if (!_masked && Selected != 0) DrawCulledSelection();
+                var player = *PlayerObject;
+                _weather.PlayerCell = player != 0 ? *(uint*)(player + 0x4C) : 0;
+                _weather.Draw();
+                _combat.Draw(_fog);
+                if (!_outlined && Selected != 0) DrawCulledSelection();
             }
             catch (Exception exception) { Fail(exception); }
         }
         try
         {
-            if (_masked && !_failed) Composite();
+            if (_outlined && !_failed) Composite();
         }
         catch (Exception exception) { Fail(exception); }
-        finally { _masked = false; }
+        finally { _masked = _outlined = false; }
     }
 
     /// <summary>
@@ -254,7 +287,7 @@ internal sealed unsafe class WorldEffects : IDisposable
             SetRenderState(_device, RenderState.BlendOp, BlendOpAdd);
             SetRenderState(_device, RenderState.SrcBlend, BlendOne);
             SetRenderState(_device, RenderState.DestBlend, BlendOne);
-            for (var stage = 0; stage < 2; stage++)
+            for (var stage = 0; stage < 3; stage++)
             {
                 SetStageState(_device, stage, StageState.TexCoordIndex, 0);
                 SetStageState(_device, stage, StageState.TextureTransformFlags, 0);
@@ -287,18 +320,24 @@ internal sealed unsafe class WorldEffects : IDisposable
                 }
             }
 
-            // The rim: glow times gold, times one minus the mask, added to the screen.
+            // The rim: glow times gold, times one minus the mask's colour and alpha, added to the screen.
             SetRenderTarget(_device, target);
             SetTexture(_device, 0, _glow);
             SetTexture(_device, 1, _mask);
+            SetTexture(_device, 2, _mask);
             SetRenderState(_device, RenderState.TextureFactor, unchecked((int)Gold));
             SetStageState(_device, 1, StageState.ColorOp, OpModulate);
             SetStageState(_device, 1, StageState.ColorArg1, ArgTexture | ArgComplement);
             SetStageState(_device, 1, StageState.ColorArg2, ArgCurrent);
             SetStageState(_device, 1, StageState.AlphaOp, OpSelectArg1);
             SetStageState(_device, 1, StageState.AlphaArg1, ArgCurrent);
-            SetStageState(_device, 2, StageState.ColorOp, OpDisable);
-            SetStageState(_device, 2, StageState.AlphaOp, OpDisable);
+            SetStageState(_device, 2, StageState.ColorOp, OpModulate);
+            SetStageState(_device, 2, StageState.ColorArg1, ArgTexture | ArgComplement | ArgAlphaReplicate);
+            SetStageState(_device, 2, StageState.ColorArg2, ArgCurrent);
+            SetStageState(_device, 2, StageState.AlphaOp, OpSelectArg1);
+            SetStageState(_device, 2, StageState.AlphaArg1, ArgCurrent);
+            SetStageState(_device, 3, StageState.ColorOp, OpDisable);
+            SetStageState(_device, 3, StageState.AlphaOp, OpDisable);
             Quad(0, 0);
         }
         finally
@@ -368,6 +407,8 @@ internal sealed unsafe class WorldEffects : IDisposable
         _resetHook.Disable();
         ReleaseTextures();
         _fog.Dispose();
+        _weather.Dispose();
+        _combat.Dispose();
         if (_root.IsAllocated) _root.Free();
     }
 }

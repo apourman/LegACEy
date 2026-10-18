@@ -67,6 +67,7 @@ public sealed unsafe class Plugin : FilterBase
             core.FilterInitComplete -= OnFilterInitComplete;
             core.RenderFrame -= OnRenderFrame;
             core.WindowMessage -= OnWindowMessage;
+            core.CommandLineText -= OnCommandLineText;
             core.ItemSelected -= OnItemSelected;
             core.ContainerOpened -= OnContainerOpened;
         });
@@ -105,6 +106,7 @@ public sealed unsafe class Plugin : FilterBase
             core.CharacterFilter.Logoff += OnLogoff;
             core.RenderFrame += OnRenderFrame;
             core.WindowMessage += OnWindowMessage;
+            core.CommandLineText += OnCommandLineText;
             core.EchoFilter.ServerDispatch += OnServerDispatch;
             // The open container and the selection are part of the inventory snapshot, whoever changed them.
             core.ItemSelected += OnItemSelected;
@@ -132,6 +134,18 @@ public sealed unsafe class Plugin : FilterBase
             if (_events->WindowMessage(e.Hwnd, e.Msg, e.WParam, e.LParam) != 0) e.Eat = true;
         }
         catch (Exception exception) { Log($"Could not pass a window message to LegACEy: {exception.Message}"); }
+    }
+
+    private void OnCommandLineText(object? sender, ChatParserInterceptEventArgs e)
+    {
+        try
+        {
+            if (_events->CommandLine == null || string.IsNullOrEmpty(e.Text)) return;
+            var text = Encoding.UTF8.GetBytes(e.Text);
+            fixed (byte* bytes = text)
+                if (_events->CommandLine(bytes, text.Length) != 0) e.Eat = true;
+        }
+        catch (Exception exception) { Log($"Could not pass a chat line to LegACEy: {exception.Message}"); }
     }
 
     private void OnServerDispatch(object? sender, NetworkMessageEventArgs e)

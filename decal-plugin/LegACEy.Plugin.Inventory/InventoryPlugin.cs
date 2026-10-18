@@ -107,6 +107,7 @@ public sealed class InventoryPlugin : ILegACEyPlugin
             Hide(view, close);
             _retail?.Close();
         };
+        window.InspectRequested += () => client.Inspect(0, string.Empty, null);
         window.SettingsChanged += settings =>
         {
             // The new settings are the plugin's from here on, even if the client cannot save them, so the other view opens from

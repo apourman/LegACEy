@@ -134,7 +134,8 @@ public sealed class PluginRegistry
     }
 
     /// <summary>Whether the server's last channel.hello registered the action. Nothing registered before the first answer.</summary>
-    private bool SupportsAction(string action) => _serverActions.Contains(action);
+    /// <summary>True when the server registered the action (the list from channel.hello).</summary>
+    public bool SupportsAction(string action) => _serverActions.Contains(action);
 
     private bool IsVisible(PluginEntry entry) => entry.Enabled && entry.RequiredActions.All(SupportsAction);
 
@@ -300,6 +301,8 @@ public sealed class PluginRegistry
             _registry._host.ShowAppraisal(appraisal ?? throw new ArgumentNullException(nameof(appraisal)), name ?? string.Empty, visual, stackCount);
 
         public bool IsAppraisalOpen => _registry._host.IsWindowOpen(AppraisalFeature.WindowId);
+
+        public void Inspect(uint objectId, string name, ItemVisual? visual) => _registry._host.Inspect(objectId, name ?? string.Empty, visual);
 
         public void SelectForExamination(Action? examine) =>
             _registry._host.SelectForExamination(examine == null ? null : () => _registry.Guarded(_entry, examine));

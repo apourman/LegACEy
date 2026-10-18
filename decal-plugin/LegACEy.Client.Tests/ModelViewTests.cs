@@ -9,13 +9,29 @@ namespace LegACEy.Client.Tests;
 public sealed class ModelViewTests
 {
     [Fact]
-    public void Dragging_down_moves_the_view_up_the_model_and_the_wheel_zooms_toward_the_pointer() => RenderThread.Run(() =>
+    public void Dragging_turns_and_tilts_the_model_and_Shift_dragging_moves_the_view_up_it() => RenderThread.Run(() =>
     {
         ModelView? view = null;
         using var panel = AvaloniaPanel.Create(() => view = new ModelView(), 100, 200);
 
+        // Upright and facing the viewer, a model's front (+Y) faces the camera (-Y).
+        Assert.Equal(-1, System.Numerics.Vector3.Transform(System.Numerics.Vector3.UnitY, view!.Orientation).Y, 3);
+
+        // A drag down pulls the front down with the pointer, so it faces the floor; a sideways drag then turns it about the view's
+        // upright axis, so the front keeps facing the floor.
+        panel.PointerDown(50, 50);
+        panel.PointerMove(50, 50 + Math.PI / 2 / 0.01);
+        panel.PointerUp(50, 50 + Math.PI / 2 / 0.01);
+        Assert.Equal(-1, System.Numerics.Vector3.Transform(System.Numerics.Vector3.UnitY, view.Orientation).Z, 2);
+        panel.PointerDown(20, 100);
+        panel.PointerMove(80, 100);
+        panel.PointerUp(80, 100);
+        Assert.Equal(-1, System.Numerics.Vector3.Transform(System.Numerics.Vector3.UnitY, view.Orientation).Z, 2);
+        Assert.Equal(0.5f, view.Focus, 3);
+        view.ResetView();
+
         // Down the whole view at zoom 1: the view moves up by the framing's share of the model, as far as the top allows.
-        panel.PointerDown(50, 100);
+        panel.PointerDown(50, 100, KeyModifiers.Shift);
         panel.PointerMove(50, 150);
         panel.PointerUp(50, 150);
         Assert.Equal(0.5f + 0.25f * ModelView.Framing, view!.Focus, 3);

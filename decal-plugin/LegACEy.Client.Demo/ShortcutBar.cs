@@ -34,9 +34,9 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     private int? _dropAt;
     private bool _refreshPending;
 
-    private static readonly IBrush TagFace = DerethPalette.Brush(Color.Parse("#0B1117"));
-    private static readonly IBrush TagEdge = DerethPalette.Brush(Color.Parse("#3A4A56"));
-    private static readonly IBrush EmptyKey = DerethPalette.Brush(Color.Parse("#2C3B47"));
+    private static readonly IBrush TagFace = DerethPalette.Brush(Color.Parse("#0A0906"));
+    private static readonly IBrush TagEdge = DerethPalette.Brush(Color.Parse("#4A3F2A"));
+    private static readonly IBrush EmptyKey = DerethPalette.Brush(Color.Parse("#3E3626"));
 
     private readonly IRetailToolbarPort _port;
     private readonly Func<uint, ShortcutItem?> _itemOf;
@@ -55,7 +55,8 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     // The drag of a shortcut from a slot: its icon while it is held.
     private IDisposable? _dragIcon;
     // The tag first, then one slot per shortcut.
-    private readonly StackPanel _row = new() { Orientation = Orientation.Horizontal, Spacing = Gap, VerticalAlignment = VerticalAlignment.Center };
+    // The toolbar's row height inside the same frame, so at any UI size both bars round to the same height.
+    private readonly StackPanel _row = new() { Orientation = Orientation.Horizontal, Spacing = Gap, Height = 32 };
     private readonly ShortcutSlotView?[] _shown = new ShortcutSlotView?[SlotCount];
     // The icon each slot's art was drawn into; a slot's icon is disposed when the slot is rebuilt or the bar closes.
     private readonly WriteableBitmap?[] _icons = new WriteableBitmap?[SlotCount];
@@ -100,7 +101,7 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
         // A transparent square takes the pointer over the whole frame, as the medallions do; a frame alone takes none.
         var hit = new Border
         {
-            Background = Brushes.Transparent, Height = BarHeight,
+            Background = Brushes.Transparent,
             Child = new DerethFrame(DerethFrameArt.Window) { Child = new Border { Padding = new Thickness(4, 0), Child = _row } }
         };
         // A slot marks its presses handled, so only the frame and the tag, and the gaps between slots, reach this press.
@@ -148,9 +149,9 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
             toolbar.Bottom - (int)Math.Round(bar.Height * scale));
     }
 
-    /// <summary>The place for a bar 4 DIP above another bar at <paramref name="row"/>: the same left edge, its top 4 DIP above the other's.</summary>
-    public static System.Drawing.Point AboveRow(System.Drawing.Point row, double scale) =>
-        new(row.X, row.Y - (int)Math.Round(4 * scale) - (int)Math.Round(BarHeight * scale));
+    /// <summary>The place for a bar <paramref name="height"/> DIPs tall 4 DIP above another bar at <paramref name="row"/>: the same left edge, its bottom 4 DIP above the other's top.</summary>
+    public static System.Drawing.Point AboveRow(System.Drawing.Point row, int height, double scale) =>
+        new(row.X, row.Y - (int)Math.Round(4 * scale) - (int)Math.Round(height * scale));
 
     /// <summary>Shows the port's shortcuts for this row, with the items the player holds. A slot whose item is gone shows empty.</summary>
     public void Refresh()

@@ -19,6 +19,8 @@ internal interface IClientEvents
     void ContainerOpened();
     void InventoryChanged(uint id, uint container);
     void Shutdown();
+    /// <summary>A line the player typed into chat. True eats it, so retail does not send it.</summary>
+    bool CommandLine(string text);
     /// <summary>Switches LegACEy UI off after a failure that reached the bridge.</summary>
     void Disable(Exception exception);
 }
@@ -71,7 +73,7 @@ public static unsafe class Bridge
             {
                 Frame = &OnFrame, WindowMessage = &OnWindowMessage, ServerMessage = &OnServerMessage, LoginComplete = &OnLoginComplete,
                 Logoff = &OnLogoff, ItemSelected = &OnItemSelected, ContainerOpened = &OnContainerOpened,
-                InventoryChanged = &OnInventoryChanged, Shutdown = &OnShutdown
+                InventoryChanged = &OnInventoryChanged, Shutdown = &OnShutdown, CommandLine = &OnCommandLine
             };
             return 0;
         }
@@ -115,6 +117,14 @@ public static unsafe class Bridge
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
     private static void OnInventoryChanged(int id, int container) => Raise(client => client.InventoryChanged((uint)id, (uint)container));
+
+    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
+    private static int OnCommandLine(byte* text, int length)
+    {
+        if (_client is not { } client) return 0;
+        try { return client.CommandLine(Encoding.UTF8.GetString(text, length)) ? 1 : 0; }
+        catch (Exception exception) { Fail(client, exception); return 0; }
+    }
 
     /// <summary>A failed shutdown switches the UI off too, which gives retail's panels back; the client is gone either way.</summary>
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]

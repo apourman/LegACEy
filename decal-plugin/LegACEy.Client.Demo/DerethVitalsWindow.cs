@@ -66,9 +66,10 @@ public sealed class DerethVitalsWindow : UserControl
         _chose = chose;
         var side = layout == VitalsLayout.SideBySide;
 
-        // Stacked: three rows 21 DIPs apart inside the ornate plate. Side by side: three equal parts with a lozenge between each.
+        // Stacked: three rows 21 DIPs apart inside the ornate plate. Side by side: three equal parts with a lozenge between each, inset on both
+        // sides past the gear in the top-right corner, so the gear never covers the last value.
         var lines = side
-            ? new Grid { ColumnDefinitions = new ColumnDefinitions("*,14,*,14,*"), Margin = new Thickness(8, 0) }
+            ? new Grid { ColumnDefinitions = new ColumnDefinitions("*,14,*,14,*"), Margin = new Thickness(13, 0) }
             : new Grid { RowDefinitions = new RowDefinitions("*,*,*"), Margin = new Thickness(13.2, 10.5, 9, 10.5) };
         foreach (var vital in new[] { Vital.Health, Vital.Stamina, Vital.Mana })
         {

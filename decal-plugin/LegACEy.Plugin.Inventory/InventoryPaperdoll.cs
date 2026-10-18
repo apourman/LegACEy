@@ -12,7 +12,7 @@ namespace LegACEy.Plugin.Inventory;
 
 /// <summary>
 /// The paperdoll block: retail's paperdoll (224×214 at 32 px) with every slot scaled to the 35 px pitch. The doll area is the
-/// one control the 3D character fills; the Slots toggle sits under it. Slots are placed by <see cref="Show"/>.
+/// one control the 3D character fills; the Slots toggle sits above it, left of the aetheria row. Slots are placed by <see cref="Show"/>.
 /// </summary>
 internal sealed class InventoryPaperdoll : Canvas
 {
@@ -20,10 +20,14 @@ internal sealed class InventoryPaperdoll : Canvas
     private const int RetailCell = 32;
     private const int RetailWidth = 224;
     private const int RetailHeight = 214;
-    private const int RetailDollLeft = 51;
-    private const int RetailDollWidth = 100;
+    // The armour columns' left edges. Retail's doll area (51 to 151) leaves its outer columns hanging over its sides, so the doll area here is
+    // drawn round the columns instead, the same 2 DIPs clear of them on each side.
+    private const int RetailArmourLeft = 48;
+    private const int RetailArmourRight = 120;
+    private const double DollClearance = 2;
+    // The Slots toggle sits in the doll column's top strip, left of the aetheria row, so the doll runs down to the column's foot.
     private const int RetailToggleLeft = 48;
-    private const int RetailToggleTop = 190;
+    private const int ToggleTop = 10;
 
     private static readonly (PaperdollSlot Slot, int X, int Y)[] Positions =
     {
@@ -37,9 +41,9 @@ internal sealed class InventoryPaperdoll : Canvas
         (PaperdollSlot.Cloak, 192, 44), (PaperdollSlot.Shirt, 192, 80), (PaperdollSlot.Pants, 192, 116),
     };
 
-    // The panel keeps its full size, and whatever is put in it (the 3D character) is inset to clear the rows around it: the aetheria
-    // cells end at y 44 and the Slots toggle starts at y 220. With the 1 px border, the inside runs from y 46 to y 219.
-    private static readonly Thickness DollInset = new(0, 45, 0, 21);
+    // The panel keeps its full size, and whatever is put in it (the 3D character) is inset to clear the aetheria cells and the Slots toggle
+    // above it, which end at y 44. With the 1 px border, the inside runs from y 46 to the foot.
+    private static readonly Thickness DollInset = new(0, 45, 0, 0);
 
     /// <summary>The armour slots, which sit over the doll and show only while the Slots toggle is on.</summary>
     private static readonly HashSet<PaperdollSlot> Armour = new()
@@ -62,11 +66,13 @@ internal sealed class InventoryPaperdoll : Canvas
         Height = Scale(RetailHeight);
         DollArea = new Border
         {
-            Width = Scale(RetailDollWidth), Height = Height, CornerRadius = new CornerRadius(3), Padding = DollInset,
+            Name = "DollArea",
+            Width = Scale(RetailArmourRight) - Scale(RetailArmourLeft) + DerethSlotGrid.CellSize + 2 * DollClearance, Height = Height,
+            CornerRadius = new CornerRadius(3), Padding = DollInset,
             BorderBrush = DerethPalette.GrooveEdgeBrush, BorderThickness = new Thickness(1),
-            Background = new RadialGradientBrush { GradientStops = { new GradientStop(Color.Parse("#16222C"), 0), new GradientStop(Color.Parse("#05090D"), 1) } },
+            Background = new RadialGradientBrush { GradientStops = { new GradientStop(Color.Parse("#2A2519"), 0), new GradientStop(Color.Parse("#0A0805"), 1) } },
         };
-        SetLeft(DollArea, Scale(RetailDollLeft));
+        SetLeft(DollArea, Scale(RetailArmourLeft) + 1 - DollClearance);
         Children.Add(DollArea);
 
         // A plain row, not a framed button: the toggle reads as text under the doll, as the retail checkbox does. It acts on release.
@@ -79,9 +85,25 @@ internal sealed class InventoryPaperdoll : Canvas
             if (e.InitialPressMouseButton == MouseButton.Left) SlotsPressed?.Invoke();
         };
         SetLeft(SlotsToggle, Scale(RetailToggleLeft));
-        SetTop(SlotsToggle, Scale(RetailToggleTop) + 6);
+        SetTop(SlotsToggle, ToggleTop);
         Children.Add(SlotsToggle);
+
+        // In the doll area's bottom-right corner, over the character.
+        var expand = new Avalonia.Controls.Shapes.Path
+        {
+            Data = Geometry.Parse(ExpandGlyph), Width = 12, Height = 12, StrokeThickness = 1.2, UseLayoutRounding = false, Stroke = DerethPalette.CreamBrush,
+        };
+        ExpandButton = new DerethButton { Name = "ExpandDoll", Width = 20, Height = 20, Content = expand, IsVisible = false };
+        ToolTip.SetTip(ExpandButton, "Inspect in a larger window");
+        SetLeft(ExpandButton, GetLeft(DollArea) + DollArea.Width - ExpandButton.Width - 4);
+        SetTop(ExpandButton, Height - ExpandButton.Height - 4);
+        Children.Add(ExpandButton);
     }
+
+    private const string ExpandGlyph = "M1,4.5 V1 H4.5 M7.5,1 H11 V4.5 M11,7.5 V11 H7.5 M4.5,11 H1 V7.5";
+
+    /// <summary>Opens the character in the Inspect window. Shown only while the 3D character is.</summary>
+    public DerethButton ExpandButton { get; }
 
     /// <summary>The doll area: empty while the armour slots show, and the 3D character once a doll is put in it.</summary>
     public Border DollArea { get; }

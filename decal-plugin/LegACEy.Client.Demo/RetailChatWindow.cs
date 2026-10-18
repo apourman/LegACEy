@@ -143,7 +143,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         // The groove fades with the chrome; the lines sit over it, inset by the groove's border and padding, and fade by their own age.
         _groove = new Border
         {
-            Background = DerethPalette.Brush(Color.FromArgb(0x99, 0x03, 0x06, 0x09)),
+            Background = DerethPalette.Brush(Color.FromArgb(0x99, 0x07, 0x07, 0x05)),
             BorderBrush = DerethPalette.GrooveEdgeBrush,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(3)
@@ -165,8 +165,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _input = new TextBox
         {
             Watermark = "Say something…",
-            // The row's height, as the chip and Send are, so their edges line up.
-            Height = 21,
+            // The chip's height, centred in the row: Send's gold line sits 1 DIP inside its 21 DIP frame, so all three edges line up.
+            Height = 19,
             MinHeight = 0,
             Padding = new Thickness(4, 0),
             FontFamily = DerethPalette.Body,
@@ -258,6 +258,17 @@ public sealed class RetailChatWindow : Decorator, IDisposable
 
     /// <summary>Gives the box the keyboard: Enter in the game does this.</summary>
     public void FocusInput() => _input.Focus();
+
+    /// <summary>Puts text into the box at the caret, apart from any word beside it, and gives the box the keyboard to finish the line.</summary>
+    public void Insert(string text)
+    {
+        var typed = _input.Text ?? string.Empty;
+        var at = Math.Min(Math.Max(_input.CaretIndex, 0), typed.Length);
+        var with = (at > 0 && typed[at - 1] != ' ' ? " " : string.Empty) + text + (at < typed.Length && typed[at] != ' ' ? " " : string.Empty);
+        _input.Text = typed.Insert(at, with);
+        _input.SelectionStart = _input.SelectionEnd = _input.CaretIndex = at + with.Length;
+        _input.Focus();
+    }
 
     /// <summary>Picks a tab, as a click does: the log shows its lines, its talk target is set and its unread count is cleared.</summary>
     public void PickTab(int index)
@@ -603,7 +614,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     /// </summary>
     private Control LineView(RetailChatLine line)
     {
-        var brush = DerethPalette.Brush(ColourOf(line.Kind));
+        var brush = DerethPalette.Brush(line.Type is { } type ? DerethChatPalette.OfType(type) : ColourOf(line.Kind));
         var italic = line.Kind == RetailChatKind.Emote;
         var view = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap, LineHeight = 15.6, Margin = new Thickness(0, 0, 0, 1), Tag = line.Time };
         var written = 0;
@@ -840,7 +851,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     }
 
     /// <summary>
-    /// Sends the box's text as the target says it, then clears the box. Blank text, or a selection tell with nothing selected, sends nothing;
+    /// Sends the box's text as the target says it, then clears the box and leaves it, as retail's chat entry does: Enter or a click starts
+    /// the next line. Blank text, or a selection tell with nothing selected, sends nothing;
     /// so does a send retail's chat could not take, and then the text stays in the box.
     /// </summary>
     private void SendTyped()
@@ -855,6 +867,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _history.AddSent(typed.Trim());
         _recall = null;
         _input.Text = string.Empty;
+        LeaveInput();
     }
 
     private void ToggleMenu()
@@ -901,7 +914,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             CornerRadius = new CornerRadius(3),
             BorderBrush = DerethChatPalette.GoldDarkBrush,
             BorderThickness = new Thickness(1),
-            Background = DerethPalette.Brush(Color.FromArgb(0xFF, 0x08, 0x10, 0x16)),
+            Background = DerethPalette.Brush(Color.FromArgb(0xFF, 0x18, 0x16, 0x0F)),
             Child = new ScrollViewer
             {
                 MaxHeight = MenuMaxHeight,
@@ -971,13 +984,13 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         return item;
     }
 
-    /// <summary>The colour of a kind of line: one per kind, from the Dereth chat palette.</summary>
+    /// <summary>The colour of a kind of line, for a line without retail's chat type: one per kind, from the Dereth chat palette.</summary>
     internal static Color ColourOf(RetailChatKind kind) => kind switch
     {
         RetailChatKind.Local => DerethChatPalette.Say,
         RetailChatKind.Emote => DerethChatPalette.Emote,
         RetailChatKind.TellIn => DerethChatPalette.Tell,
-        RetailChatKind.TellOut => DerethChatPalette.Tell,
+        RetailChatKind.TellOut => DerethChatPalette.TellOut,
         RetailChatKind.Fellowship => DerethChatPalette.Fellowship,
         RetailChatKind.Allegiance => DerethChatPalette.Allegiance,
         RetailChatKind.Channel => DerethChatPalette.Channel,

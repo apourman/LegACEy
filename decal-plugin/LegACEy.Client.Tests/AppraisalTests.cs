@@ -114,6 +114,42 @@ public sealed class AppraisalTests
     });
 
     [Fact]
+    public void Inspect_opens_one_paperdoll_window_that_follows_the_inspected_object() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost();
+        var appraisals = new AppraisalFeature(host, _ => { }, canInspect: () => true);
+        void Appraise(uint id, string name)
+        {
+            appraisals.Request(id);
+            appraisals.Receive(new ServerAppraisal(id) { Strings = { [1] = name } }.Build());
+        }
+        Appraise(Potion, "Saro");
+        var button = host.LastWindow!.GetLogicalDescendants().OfType<DerethButton>().Single(b => b.Name == "InspectButton");
+
+        button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        var inspect = host.LastWindow!;
+        Assert.Equal(InspectWindow.WindowId, host.LastDefinition!.Id);
+        Assert.Equal("Saro", inspect.Title);
+        Assert.Single(inspect.GetLogicalDescendants().OfType<PaperdollView>());
+
+        Appraise(Potion + 1, "Breastplate");
+        button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(2, host.Opened);
+        Assert.Equal("Breastplate", inspect.Title);
+    });
+
+    [Fact]
+    public void A_server_without_inspect_shows_no_Inspect_button() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost();
+        var appraisals = new AppraisalFeature(host, _ => { });
+        appraisals.Request(Potion);
+        appraisals.Receive(new ServerAppraisal(Potion) { Strings = { [1] = "Saro" } }.Build());
+
+        Assert.False(host.LastWindow!.GetLogicalDescendants().OfType<DerethButton>().Single(b => b.Name == "InspectButton").IsVisible);
+    });
+
+    [Fact]
     public void An_appraisal_is_awaited_from_the_request_until_its_response_and_not_when_shown_from_the_cache() => OnWindowThread(() =>
     {
         var appraisals = new AppraisalFeature(new FakeAppraisalHost(), _ => { }, game: new FakeAppraisalGame());
@@ -1543,6 +1579,8 @@ public sealed class AppraisalTests
         public int? LoadPluginSettings(string plugin) => null;
         public void SavePluginSettings(string plugin, int value) { }
         public void ShowAppraisal(byte[] appraisal, string name, ItemVisual? visual, int stackCount) { }
+        public void Inspect(uint objectId, string name, ItemVisual? visual) => Inspected.Add(objectId);
+        public List<uint> Inspected { get; } = new();
         public void SelectForExamination(Action? examine) { }
 
         private sealed class NoArt : IGameArtSource

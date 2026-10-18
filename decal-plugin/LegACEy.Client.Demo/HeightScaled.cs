@@ -16,9 +16,6 @@ public sealed class HeightScaled : Decorator
     /// <param name="layoutHeight">The child's height before the scale, in DIPs.</param>
     public HeightScaled(double layoutHeight) => _layoutHeight = layoutHeight;
 
-    /// <summary>How much larger than its layout the child draws now.</summary>
-    public double Scale => _transform.ScaleX;
-
     private double ScaleFor(Size size) => !double.IsInfinity(size.Height) && size.Height > 0 ? size.Height / _layoutHeight : 1;
 
     protected override Size MeasureOverride(Size availableSize)
@@ -33,10 +30,14 @@ public sealed class HeightScaled : Decorator
     {
         if (Child is not { } child) return finalSize;
         var scale = ScaleFor(finalSize);
-        if (scale != _transform.ScaleX) _transform.ScaleX = _transform.ScaleY = scale;
         child.RenderTransformOrigin = RelativePoint.TopLeft;
         child.RenderTransform = _transform;
         child.Arrange(new Rect(0, 0, finalSize.Width / scale, _layoutHeight));
+        // Layout rounding snaps the child to the window's pixels before the scale applies, so it can come out a pixel larger than its layout
+        // size, and the scale would carry its right and bottom edges past the window. Each axis is scaled to fit the arranged size exactly.
+        var scaleX = child.Bounds.Width > 0 ? finalSize.Width / child.Bounds.Width : scale;
+        var scaleY = child.Bounds.Height > 0 ? finalSize.Height / child.Bounds.Height : scale;
+        if (scaleX != _transform.ScaleX || scaleY != _transform.ScaleY) (_transform.ScaleX, _transform.ScaleY) = (scaleX, scaleY);
         return finalSize;
     }
 }

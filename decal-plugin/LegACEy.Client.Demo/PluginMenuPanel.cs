@@ -13,20 +13,24 @@ namespace LegACEy.Client.Demo;
 /// <summary>The UI size the menu shows, in percent, and the step it asks for (1 larger, -1 smaller).</summary>
 public sealed record UiSizeChoice(int Percent, Action<int> Step);
 
+/// <summary>A window the player can have as LegACEy's (custom) or retail's (native): whether it is custom now, and the switch.</summary>
+public sealed record UiWindowChoice(string Title, Func<bool> IsCustom, Action<bool> SetCustom);
+
 /// <summary>
-/// The LegACEy menu: one row per menu entry of a visible plugin, and the UI size at the bottom. Picking a row runs that entry.
+/// The LegACEy menu: the windows the player can switch between custom and native, one row per menu entry of a visible plugin, and the
+/// UI size at the bottom. Picking a plugin row runs that entry.
 /// </summary>
 public sealed class PluginMenuPanel : UserControl
 {
     public const int WindowWidth = 220;
-    public const int WindowHeight = 240;
+    public const int WindowHeight = 250;
 
     private readonly PluginRegistry _registry;
     private readonly IGameArtSource? _art;
     private readonly StackPanel _rows = new();
     private readonly List<WriteableBitmap> _icons = new();
 
-    public PluginMenuPanel(PluginRegistry registry, IGameArtSource? art, UiSizeChoice? uiSize = null)
+    public PluginMenuPanel(PluginRegistry registry, IGameArtSource? art, UiSizeChoice? uiSize = null, IReadOnlyList<UiWindowChoice>? windows = null)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _art = art;
@@ -37,7 +41,13 @@ public sealed class PluginMenuPanel : UserControl
             DockPanel.SetDock(footer, Dock.Bottom);
             layout.Children.Add(footer);
         }
-        layout.Children.Add(_rows);
+        if (windows is { Count: > 0 })
+        {
+            var section = WindowsSection(windows);
+            DockPanel.SetDock(section, Dock.Top);
+            layout.Children.Add(section);
+        }
+        layout.Children.Add(new ScrollViewer { Content = _rows, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled });
         Content = layout;
         Rebuild();
         registry.MenuChanged += OnMenuChanged;
@@ -54,20 +64,7 @@ public sealed class PluginMenuPanel : UserControl
     {
         _rows.Children.Clear();
         DisposeIcons();
-        var entries = _registry.VisibleMenuEntries;
-        if (entries.Count == 0)
-        {
-            _rows.Children.Add(new TextBlock
-            {
-                Text = "No LegACEy plugins are available on this server.",
-                Foreground = Brushes.Gray,
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(8)
-            });
-            return;
-        }
-
-        foreach (var item in entries)
+        foreach (var item in _registry.VisibleMenuEntries)
         {
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
             var icon = GameArtImageExtension.CreateBitmap(_art, item.IconId);
@@ -82,6 +79,30 @@ public sealed class PluginMenuPanel : UserControl
             button.Click += (_, _) => _registry.RunMenuEntry(item);
             _rows.Children.Add(button);
         }
+    }
+
+    /// <summary>"Windows": a row per window with a button that shows Custom or Native and switches it.</summary>
+    private static Control WindowsSection(IReadOnlyList<UiWindowChoice> windows)
+    {
+        var section = new StackPanel { Margin = new Thickness(8, 4, 8, 6) };
+        section.Children.Add(new TextBlock { Text = "Windows", Foreground = Brushes.White, FontWeight = FontWeight.Bold, Margin = new Thickness(0, 0, 0, 2) });
+        foreach (var window in windows)
+        {
+            var button = new Button { Width = 70, HorizontalContentAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 1) };
+            void Show() => button.Content = window.IsCustom() ? "Custom" : "Native";
+            Show();
+            button.Click += (_, _) =>
+            {
+                window.SetCustom(!window.IsCustom());
+                Show();
+            };
+            var row = new DockPanel();
+            DockPanel.SetDock(button, Dock.Right);
+            row.Children.Add(button);
+            row.Children.Add(new TextBlock { Text = window.Title, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center });
+            section.Children.Add(row);
+        }
+        return section;
     }
 
     private static Control UiSizeRow(UiSizeChoice choice)

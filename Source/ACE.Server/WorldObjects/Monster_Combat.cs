@@ -376,6 +376,8 @@ namespace ACE.Server.WorldObjects
         {
             var tryDamage = (int)Math.Round(amount);
             var damage = -UpdateVitalDelta(Health, -tryDamage);
+            // source is null only for damage-over-time ticks.
+            if (damage > 0) ClientChannel.CombatTextChannelActions.Damaged(this, (uint)damage, damageType, crit, periodic: source == null);
 
             // TODO: update monster stamina?
 

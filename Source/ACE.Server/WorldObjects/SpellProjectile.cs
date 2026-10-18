@@ -778,6 +778,7 @@ namespace ACE.Server.WorldObjects
 
                 amount = (uint)-target.UpdateVitalDelta(target.Health, (int)-Math.Round(damage));
                 target.DamageHistory.Add(ProjectileSource, Spell.DamageType, amount);
+                ClientChannel.CombatTextChannelActions.Damaged(target, amount, Spell.DamageType, critical, periodic: false);
 
                 //if (targetPlayer != null && targetPlayer.Fellowship != null)
                     //targetPlayer.Fellowship.OnVitalUpdate(targetPlayer);

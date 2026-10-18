@@ -281,6 +281,8 @@ namespace ACE.Server
             ACE.Server.Market.Vault.Initialize();
             ACE.Server.ClientChannel.ChannelHelloActions.Register();
             ACE.Server.ClientChannel.PaperdollChannelActions.Register();
+            ACE.Server.ClientChannel.StormChannelActions.Register();
+            ACE.Server.ClientChannel.WeatherChannelActions.Register();
             ACE.Server.ClientChannel.StationChannelActions.Register();
 
             if (ConfigManager.Config.Server.ServerPerformanceMonitorAutoStart)

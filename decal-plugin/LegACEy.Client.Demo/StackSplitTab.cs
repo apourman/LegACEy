@@ -21,9 +21,9 @@ public sealed class StackSplitTab : Decorator
     /// <summary>The tab's width, the selection plaque's, so it sits square over it.</summary>
     public const double TabWidth = 220;
 
-    private static readonly IBrush TrackBrush = DerethPalette.Brush(Color.Parse("#0B1117"));
-    private static readonly IBrush AmountEdge = DerethPalette.Brush(Color.Parse("#7A5E30"));
-    private static readonly IBrush ThumbBrush = DerethPalette.Brush(Color.Parse("#D9B66A"));
+    private static readonly IBrush TrackBrush = DerethPalette.Brush(Color.Parse("#0A0906"));
+    private static readonly IBrush AmountEdge = DerethPalette.Brush(Color.Parse("#8A6326"));
+    private static readonly IBrush ThumbBrush = DerethPalette.Brush(Color.Parse("#DDC47D"));
 
     private readonly IRetailToolbarPort _port;
     // The controls of the stack being split: its stack, the count it shows, whether a write is in progress, and its controls.
@@ -79,11 +79,12 @@ public sealed class StackSplitTab : Decorator
     /// </summary>
     private void Build(uint stackId)
     {
+        // 18 DIPs tall: the buttons beside it are 20, with their gold line 1 DIP inside the frame, so the edges line up.
         var box = new TextBox
         {
             Foreground = DerethPalette.CreamBrush, CaretBrush = DerethPalette.GoldBrush, FontFamily = DerethPalette.Body, FontSize = 12,
             Background = TrackBrush, BorderBrush = AmountEdge, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(2),
-            Padding = new Thickness(4, 0), MinHeight = 0, Height = 20, Width = 58, TextAlignment = TextAlignment.Right,
+            Padding = new Thickness(6, 0), MinHeight = 0, Height = 18, Width = 58, TextAlignment = TextAlignment.Right,
             HorizontalContentAlignment = HorizontalAlignment.Right, VerticalContentAlignment = VerticalAlignment.Center
         };
         var slider = new Slider

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -35,9 +36,9 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     private const double Diameter = 118;
     private const double Radius = Diameter / 2;
     private const string LockTip = "Lock UI", UnlockTip = "Unlock UI", OptionsTip = "Radar options";
-    private static readonly IBrush Plaque = DerethPalette.Brush(Avalonia.Media.Color.FromArgb(0xD9, 8, 16, 22));
-    private static readonly IBrush GoldDark = DerethPalette.Brush(Avalonia.Media.Color.Parse("#7A5E30"));
-    private static readonly IBrush Groove = DerethPalette.Brush(Avalonia.Media.Color.Parse("#0B1117"));
+    private static readonly IBrush Plaque = DerethPalette.Brush(Avalonia.Media.Color.FromArgb(0xD9, 0x18, 0x16, 0x0F));
+    private static readonly IBrush GoldDark = DerethPalette.Brush(Avalonia.Media.Color.Parse("#8A6326"));
+    private static readonly IBrush Groove = DerethPalette.Brush(Avalonia.Media.Color.Parse("#0A0906"));
 
     private readonly IRadarPort _port;
     private readonly Func<GroundTiles?> _ground;
@@ -87,7 +88,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     /// <param name="ground">The ground's tiles, or null until they can be built.</param>
     /// <param name="options">The options kept for this character.</param>
     /// <param name="saved">Told each time an option or the zoom changes, to keep it for the character.</param>
-    /// <param name="selected">The selected object's id, or 0, for the teal ring.</param>
+    /// <param name="selected">The selected object's id, or 0, for the green ring.</param>
     /// <param name="startMove">Starts the window's move, from a press on the frame when the UI is not locked.</param>
     public RetailRadarWindow(IRadarPort port, Func<GroundTiles?> ground, RadarOptions options, Action<RadarOptions> saved, Func<uint> selected, Action startMove)
     {
@@ -103,8 +104,17 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         _coordinatesPlaque = new Border
         {
             CornerRadius = new CornerRadius(9), Background = Plaque, BorderBrush = GoldDark, BorderThickness = new Thickness(1), Padding = new Thickness(8, 1),
-            Margin = new Thickness(0, ScopeOrigin.Y + Diameter + 10, 0, 0), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top,
-            IsHitTestVisible = false, Child = _coordinates
+            Margin = new Thickness(0, ScopeOrigin.Y + Diameter + 8, 0, 0), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top,
+            Cursor = new Cursor(StandardCursorType.Hand), Child = _coordinates
+        };
+        ToolTip.SetTip(_coordinatesPlaque, "Click to paste in chat");
+        // The press is the plaque's, so it does not move the radar; the release over it is the click.
+        _coordinatesPlaque.PointerPressed += (_, e) => { CloseOptions(); e.Handled = true; };
+        _coordinatesPlaque.PointerReleased += (_, e) =>
+        {
+            e.Handled = true;
+            if (new Rect(_coordinatesPlaque.Bounds.Size).Contains(e.GetPosition(_coordinatesPlaque)) && _coordinates.Text is { Length: > 0 } text)
+                CoordinatesClicked?.Invoke(text);
         };
         var tape = new Border
         {
@@ -171,6 +181,9 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         };
         Child = new HeightScaled(LayoutHeight) { Child = grid };
     }
+
+    /// <summary>The coordinates plaque was clicked, with the coordinates it shows.</summary>
+    public event Action<string>? CoordinatesClicked;
 
     /// <summary>Whether the resize corners show: while the pointer is over the radar and the UI is unlocked.</summary>
     public bool CornersVisible => _corners.IsVisible;

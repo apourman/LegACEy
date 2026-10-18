@@ -9,26 +9,50 @@ using Avalonia.Media;
 
 namespace LegACEy.Client.Themes;
 
-/// <summary>The Dereth chat window's message colours and small parts, from the chat mockup (direction B): one colour per kind of line.</summary>
+/// <summary>
+/// The Dereth chat window's message colours, retail's own (ChatInterface::BuildChatColorLookupTable): one per chat type, and one per kind of
+/// line for a line without a type and for the talk targets' colours.
+/// </summary>
 public static class DerethChatPalette
 {
-    public static readonly Color Say = Color.Parse("#EFE3C4");
-    public static readonly Color Emote = Color.Parse("#BDB39A");
-    public static readonly Color Tell = Color.Parse("#E8C66A");
-    public static readonly Color Fellowship = Color.Parse("#86D394");
-    public static readonly Color Allegiance = Color.Parse("#7DB8EA");
-    public static readonly Color Channel = Color.Parse("#5FC9C4");
-    public static readonly Color System = Color.Parse("#8E979E");
-    public static readonly Color Plugin = Color.Parse("#A6CF6E");
-    public static readonly Color Combat = Color.Parse("#D9906E");
+    public static readonly Color Say = Color.Parse("#FFFFFF");
+    public static readonly Color Emote = Color.Parse("#D2D2C8");
+    public static readonly Color Tell = Color.Parse("#FFFF3F");
+    public static readonly Color TellOut = Color.Parse("#D2D264");
+    public static readonly Color Fellowship = Tell;
+    public static readonly Color Allegiance = Color.Parse("#EE921E");
+    public static readonly Color Channel = Color.Parse("#B4DCF0");
+    public static readonly Color System = Color.Parse("#FF7FFF");
+    /// <summary>Retail's colour for a type it gives none of its own, such as a broadcast.</summary>
+    public static readonly Color Plugin = Color.Parse("#80FF7F");
+    public static readonly Color Combat = Color.Parse("#FF3F3F");
+
+    /// <summary>The colour retail draws a line of this chat type (eChatTypes) in.</summary>
+    public static Color OfType(uint type) => type switch
+    {
+        2 => Say,
+        12 => Emote,
+        3 or 10 or 19 or 31 => Tell,
+        4 or 11 => TellOut,
+        8 or 9 => Color.Parse("#FF9696"),
+        18 or 33 => Allegiance,
+        14 or 27 or 28 or 29 or 30 or 32 => Channel,
+        6 or 15 or 21 => Combat,
+        22 => Color.Parse("#F57572"),
+        7 or 17 => Color.Parse("#3FBFFF"),
+        13 => Color.Parse("#3FDCDC"),
+        5 => System,
+        26 => Color.Parse("#FF0000"),
+        _ => Plugin
+    };
     /// <summary>The time at the start of a line: quieter than any message colour.</summary>
-    public static readonly Color Timestamp = Color.Parse("#5D6870");
+    public static readonly Color Timestamp = Color.Parse("#8A8370");
     /// <summary>The chip's dark fill.</summary>
-    public static readonly Color ChipFill = Color.Parse("#0B1117");
+    public static readonly Color ChipFill = Color.Parse("#0A0906");
     /// <summary>The jump pill's fill, and the talk-target menu's hovered row.</summary>
-    public static readonly Color PillFill = Color.Parse("#0E1923");
+    public static readonly Color PillFill = Color.Parse("#2A2219");
     /// <summary>The dark outline of a selected tab and of the chip: the theme's gold, shaded. Also the fill of a tab's unread count.</summary>
-    public static readonly Color GoldDark = Color.Parse("#7A5E30");
+    public static readonly Color GoldDark = Color.Parse("#8A6326");
     public static readonly IBrush GoldDarkBrush = DerethPalette.Brush(GoldDark);
     /// <summary>The fill of a tab's unread count when a new tell from someone is in it, and the cream text on it.</summary>
     public static readonly Color TellFill = Color.Parse("#8A6E22");
@@ -68,7 +92,7 @@ public static class DerethChatParts
             CornerRadius = new CornerRadius(4, 4, 0, 0),
             BorderThickness = new Thickness(1, 1, 1, 0),
             BorderBrush = selected ? DerethChatPalette.GoldDarkBrush : Brushes.Transparent,
-            Background = selected ? DerethPalette.Brush(Color.FromArgb(0xD9, 0x03, 0x06, 0x09)) : Brushes.Transparent,
+            Background = selected ? DerethPalette.Brush(Color.FromArgb(0xD9, 0x2A, 0x22, 0x19)) : Brushes.Transparent,
             Cursor = new Cursor(StandardCursorType.Hand),
             Child = content
         };

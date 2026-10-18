@@ -137,6 +137,29 @@ public sealed class AvaloniaPanel : IDisposable
     }
 
     /// <summary>
+    /// The size <paramref name="control"/> takes when drawn at <paramref name="scale"/>, in DIPs. Layout rounding snaps each part of a scaled
+    /// layout to whole pixels, so at 85% a 30 DIP slot (25.5 px) takes 26 px: a window sized from an unscaled measure cuts its last pixels off.
+    /// The control is measured in a throwaway window at the scale and taken out of it again, so it can then be shown in its own panel.
+    /// </summary>
+    public static Size MeasureAt(Control control, Size available, double scale)
+    {
+        if (control == null) throw new ArgumentNullException(nameof(control));
+        if (scale != 1 && !CanScale) scale = 1;
+        EnsureRuntimeInitialized();
+        var window = CreateWindow(control, 1, 1, scale);
+        try
+        {
+            control.Measure(available);
+            return control.DesiredSize;
+        }
+        finally
+        {
+            window.Content = null;
+            window.Close();
+        }
+    }
+
+    /// <summary>
     /// Initialize Avalonia with CPU Skia and a BGRA headless framebuffer once per process, binding
     /// its dispatcher to the calling thread.
     /// </summary>

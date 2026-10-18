@@ -19,7 +19,6 @@ and database remain in the repository's upstream-compatible `Source/` and
 | `LegACEy.Client.GameArt` | Game DAT art loading |
 | `LegACEy.Client.Themes` | Shared UI themes and controls |
 | `LegACEy.Client.Demo` | Framework windows and controls, and the plugin API (`ILegACEyPlugin`, `ILegACEyClient`) |
-| `LegACEy.Plugin.Paperdoll` | The 3D paperdoll plugin, built into `Plugins/Paperdoll/` |
 | `LegACEy.Plugin.Vault` | The account Vault plugin, built into `Plugins/Vault/` |
 | `LegACEy.Plugin.Inventory` | The inventory window, built into `Plugins/Inventory/` |
 | `LegACEy.Client.Tests` | Automated tests without an installed Decal runtime |
@@ -66,7 +65,9 @@ checks first takes the file; the `[pid N]` prefix shows which one.
 
 The LegACEy Inventory replaces retail's inventory panel: it parks retail's panel and opens and closes its own window with it (by key,
 toolbar or item). The appraisal window likewise replaces retail's examination window: when retail's examination panel shows, it is parked
-and closed, and the appraised object opens in LegACEy's window. Creating an empty file named `retail-inventory-native` beside the main DLL
+and closed, and the appraised object opens in LegACEy's window. Its header's Inspect button opens the Inspect window: the object's 3D
+paperdoll alone, which drags to turn (it needs a server with `paperdoll.inspect`). The expand button in the inventory's doll area opens
+the same window on your own character. Creating an empty file named `retail-inventory-native` beside the main DLL
 gives retail's inventory and examination panels back; deleting it
 takes the panel over again. The file is only checked, never consumed. A drag that leaves the LegACEy window is handed to retail's own
 drag when retail's inventory lists show the item, so the world, NPCs and other retail windows take it as they would from retail.
@@ -107,6 +108,10 @@ second; deleting it takes the radar over again.
 The LegACEy menu's UI size row scales every LegACEy window, the toolbar and the shortcut bars, from 60 to 150 percent (85 to start),
 for every character. A change rebuilds the LegACEy UI at once, as a relog does: plugin windows that were open close and the chat history
 clears.
+
+The LegACEy menu's Windows section switches each of the inventory, toolbar, chat, vitals and radar between LegACEy's window (Custom, the
+default) and retail's (Native). It creates or deletes that window's switch file above, so the choice holds for every character on the
+install. `/legacey` in chat opens or closes the menu, so it can be reached with retail's toolbar too.
 
 ## Tests
 

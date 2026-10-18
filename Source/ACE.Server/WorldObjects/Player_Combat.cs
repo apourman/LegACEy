@@ -424,6 +424,7 @@ namespace ACE.Server.WorldObjects
 
             // update health
             var damageTaken = (uint)-UpdateVitalDelta(Health, (int)-amount);
+            ClientChannel.CombatTextChannelActions.Damaged(this, damageTaken, damageType, false, periodic: true);
 
             // update stamina
             //UpdateVitalDelta(Stamina, -1);
@@ -507,6 +508,7 @@ namespace ACE.Server.WorldObjects
             // update health
             var damageTaken = (uint)-UpdateVitalDelta(Health, (int)-amount);
             DamageHistory.Add(source, damageType, damageTaken);
+            ClientChannel.CombatTextChannelActions.Damaged(this, damageTaken, damageType, crit, periodic: false);
 
             // update stamina
             if (CombatMode != CombatMode.NonCombat)

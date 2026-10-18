@@ -61,7 +61,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private readonly Dictionary<ItemVisual, WriteableBitmap?> _images = new();
     private readonly DerethWindow _frame;
     private readonly InventoryPaperdoll _paperdoll = new();
-    private readonly DerethSlotGrid _grid = new();
+    // Its columns start under the contents line's name, as the pack row's do in the horizontal layout.
+    private readonly DerethSlotGrid _grid = new() { ColumnAlignment = HorizontalAlignment.Left };
     private readonly TextBlock _contentsName = Label(string.Empty, TextBrush, 13);
     private readonly TextBlock _contentsCount = Label(string.Empty, MutedBrush, 13);
     // The pack list: a column in the vertical layout, a strip of tabs in the horizontal one.
@@ -136,6 +137,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         AddHandler(InputElement.PointerExitedEvent, (_, _) => Hover(0), handledEventsToo: true);
 
         _paperdoll.SlotsPressed += ToggleSlots;
+        _paperdoll.ExpandButton.Click += (_, _) => InspectRequested?.Invoke();
         _paperdoll.SetSlotsOn(_showSlots);
         // Subscribe only once the first render has worked, so a failing render leaves no subscriber behind.
         Render(_port.Snapshot);
@@ -147,6 +149,9 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     /// <summary>Raised when the player changes the layout or the Slots toggle. The settings are the new ones.</summary>
     public event Action<InventorySettings>? SettingsChanged;
+
+    /// <summary>Raised when the player asks to see the character in the larger Inspect window.</summary>
+    public event Action? InspectRequested;
 
     /// <summary>Raised when the header's close box is pressed.</summary>
     public event EventHandler? CloseRequested;
@@ -215,7 +220,11 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     }
 
     /// <summary>The 3D character is in the doll area only while the armour slots are off and the window is shown, so it asks for looks only then.</summary>
-    private void UpdateDoll() => DollArea.Child = _doll != null && !_showSlots && !_suspended ? _doll : null;
+    private void UpdateDoll()
+    {
+        DollArea.Child = _doll != null && !_showSlots && !_suspended ? _doll : null;
+        _paperdoll.ExpandButton.IsVisible = DollArea.Child != null;
+    }
 
     private void ToggleSlots()
     {
@@ -305,8 +314,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             return;
         }
         if (dragged == 0) return;
-        // Over a slot the drop is judged as it always was: a refused one sends nothing.
-        if (SlotAt(point)?.Tag is InventorySlotId target)
+        // Over a slot, or the doll, the drop is judged as it always was: a refused one sends nothing.
+        if ((carried.Count > 1 ? SlotAt(point)?.Tag as InventorySlotId : DropAt(point, dragged)?.Target) is { } target)
         {
             var drop = carried.Count > 1 ? JudgeSet(_port.Snapshot, carried, target) : Judge(_port, dragged, target);
             if (drop?.Accepted == true) drop.Value.Send(_port);
@@ -396,7 +405,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         if (_disposed || itemId == 0) return false;
         var snapshot = _port.Snapshot;
         var external = !snapshot.Contains(itemId);
-        var target = SlotAt(position)?.Tag as InventorySlotId;
+        var target = DropAt(position, itemId)?.Target;
         if (target == null && external) target = new InventorySlotId(SlotPlace.Pack, 0, OpenPack(snapshot).Id, -1, null);
         if (target == null) return false;
         var pack = _packsOnGround.Contains(itemId);
@@ -476,19 +485,40 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private void ShowIndicator(Point point, uint dragged, bool external)
     {
         _indicatorAt = (point, dragged, external);
-        var slot = SlotAt(point);
-        var drop = slot?.Tag is not InventorySlotId target ? null
-            : _carried.Count > 1 && !external ? JudgeSet(_port.Snapshot, _carried, target) : Judge(_port, dragged, target, external);
-        if (slot == null || drop == null)
+        var set = _carried.Count > 1 && !external;
+        var at = set ? SlotAt(point) is { Tag: InventorySlotId tag } slot ? (slot, tag) : default((Control Shown, InventorySlotId Target)?) : DropAt(point, dragged);
+        var drop = at is not { } place ? null : set ? JudgeSet(_port.Snapshot, _carried, place.Target) : Judge(_port, dragged, place.Target, external);
+        if (at == null || drop == null)
         {
             _dropIndicator.IsVisible = false;
             return;
         }
-        Light(slot, drop.Value.Accepted ? GoldBrush : InvalidBrush);
+        Light(at.Value.Shown, drop.Value.Accepted ? GoldBrush : InvalidBrush);
     }
 
+    /// <summary>
+    /// Where one item dropped at the point goes, and what lights up for it: the slot under the point, or, over the doll, the paperdoll
+    /// slot the item is worn in (an empty one first, else the first it fits). That slot lights when it shows; a hidden armour slot lights
+    /// the doll. Null where nothing takes a drop.
+    /// </summary>
+    private (Control Shown, InventorySlotId Target)? DropAt(Point point, uint item)
+    {
+        if (SlotAt(point) is { Tag: InventorySlotId tag } under) return (under, tag);
+        if (!Over(DollArea, point)) return null;
+        var fits = Enum.GetValues(typeof(PaperdollSlot)).Cast<PaperdollSlot>().Where(slot => _port.WieldMask(item, slot) != 0).ToList();
+        if (fits.Count == 0) return null;
+        var worn = new HashSet<PaperdollSlot>(_port.Snapshot.Wielded.SelectMany(wielded => wielded.Slots));
+        var into = fits.Where(slot => !worn.Contains(slot)).DefaultIfEmpty(fits[0]).First();
+        var shown = _paperdoll.GetVisualDescendants().OfType<DerethSlot>()
+            .FirstOrDefault(slot => slot.Tag is InventorySlotId { Place: SlotPlace.Paperdoll } id && id.Equipment == into);
+        return (shown ?? (Control)DollArea, shown?.Tag as InventorySlotId ?? new InventorySlotId(SlotPlace.Paperdoll, 0, 0, -1, into));
+    }
+
+    private bool Over(Control control, Point point) =>
+        control.IsEffectivelyVisible && control.TranslatePoint(default, this) is { } origin && new Rect(origin, control.Bounds.Size).Contains(point);
+
     /// <summary>Shows the drop indicator over the slot, in the colour.</summary>
-    private void Light(DerethSlot slot, IBrush brush)
+    private void Light(Control slot, IBrush brush)
     {
         if (slot.TranslatePoint(default, this) is not { } origin)
         {
@@ -926,11 +956,12 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var toggles = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 3, VerticalAlignment = VerticalAlignment.Center };
         toggles.Children.Add(LayoutToggle(InventoryLayout.Vertical, StackedGlyph));
         toggles.Children.Add(LayoutToggle(InventoryLayout.Horizontal, SideBySideGlyph));
+        // Set apart from the layout pair by the spacing and its 5 DIP margin: 8, the header's gap before the close box.
         toggles.Children.Add(EquipmentToggle());
         return toggles;
     }
 
-    /// <summary>A header button that shows or collapses the equipment and paperdoll section. Lit teal while the section shows.</summary>
+    /// <summary>A header button that shows or collapses the equipment and paperdoll section. Lit green while the section shows.</summary>
     private Control EquipmentToggle()
     {
         var icon = new Path
@@ -939,13 +970,13 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             Stroke = _collapsed ? MutedBrush : DerethPalette.TealBrush,
             Fill = _collapsed ? null : DerethPalette.Brush(DerethPalette.Teal.WithAlpha(0x40)),
         };
-        var button = new DerethButton { Width = 24, Height = 24, Name = "EquipmentToggle", Content = icon, Margin = new Thickness(4, 0, 0, 0) };
+        var button = new DerethButton { Width = 24, Height = 24, Name = "EquipmentToggle", Content = icon, Margin = new Thickness(5, 0, 0, 0) };
         ToolTip.SetTip(button, _collapsed ? "Show equipment" : "Hide equipment");
         button.Click += (_, _) => SettingsChanged?.Invoke(new InventorySettings(_layout, _showSlots, !_collapsed));
         return button;
     }
 
-    /// <summary>A header button that switches to its layout. The window's own layout is lit teal.</summary>
+    /// <summary>A header button that switches to its layout. The window's own layout is lit green.</summary>
     private Control LayoutToggle(InventoryLayout layout, string glyph)
     {
         var active = layout == _layout;

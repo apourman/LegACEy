@@ -109,8 +109,26 @@ public sealed class ShortcutBarTests
     });
 
     [Fact]
+    public void A_bar_sized_by_its_measure_at_85_percent_keeps_its_last_slot_inside_the_frame() => RenderThread.Run(() =>
+    {
+        // At 85% each 30 DIP slot lays out as 26 px, not 25.5: a window sized from the unscaled width cut the ninth slot into the frame.
+        var port = new FakeShortcutPort(Array.Empty<RetailShortcut>());
+        ShortcutBar Bar() => new(1, 0, port, _ => null, null, () => false, () => { }, () => new Point(0, 0), null, new FakeItemDragHost(), new ShortcutDragSource());
+        var measured = AvaloniaPanel.MeasureAt(Bar(), Avalonia.Size.Infinity, 0.85);
+        ShortcutBar? bar = null;
+        using var panel = AvaloniaPanel.Create(() => bar = Bar(), (int)Math.Ceiling(measured.Width * 0.85 - 0.001), (int)Math.Ceiling(measured.Height * 0.85 - 0.001), 0.85);
+        panel.Tick();
+
+        var last = bar!.SlotAt(ShortcutBar.SlotCount - 1);
+        var right = last.TranslatePoint(new Avalonia.Point(last.Bounds.Width, 0), panel.Content)!.Value.X;
+        // The frame's edge is 8 DIPs; the slot ends inside it with room to spare, as the tag does on the left.
+        var tag = bar.RowTag.TranslatePoint(default, panel.Content)!.Value.X;
+        Assert.InRange(panel.Content.Bounds.Width - right, tag - 1.5, tag + 1.5);
+    });
+
+    [Fact]
     public void AboveRow_puts_the_bar_4_DIP_above_with_the_same_left_edge() =>
-        Assert.Equal(new Point(724, 856), ShortcutBar.AboveRow(new Point(724, 900), 0.85));
+        Assert.Equal(new Point(724, 856), ShortcutBar.AboveRow(new Point(724, 900), ShortcutBar.BarHeight, 0.85));
 
     [Fact]
     public void Row_2_is_on_for_a_character_with_no_saved_choice() =>

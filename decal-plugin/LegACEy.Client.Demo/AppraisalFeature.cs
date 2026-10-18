@@ -23,6 +23,7 @@ public sealed class AppraisalFeature
     // response (a plugin's silent ID, say) does not open the window.
     private const long RequestTimeoutMs = 10_000;
     private static readonly Point DefaultLocation = new(240, 100);
+    private static readonly Point InspectLocation = new(580, 100);
 
     private readonly ILegACEyPluginHost _host;
     private readonly Action<string> _log;
@@ -30,6 +31,9 @@ public sealed class AppraisalFeature
     private readonly Func<IReadOnlyDictionary<uint, SpellInfo>> _spells;
     private readonly Func<CharacterNames> _names;
     private readonly IAppraisalGame _game;
+    private readonly Func<Avalonia.Controls.Control, Avalonia.Size, Avalonia.Size>? _measure;
+    private readonly Func<bool> _canInspect;
+    private InspectWindow? _inspect;
     private readonly Dictionary<uint, AppraisalResponse> _responses = new();
     private uint _requested;
     private long _requestedAt;
@@ -44,15 +48,20 @@ public sealed class AppraisalFeature
     /// <param name="game">The character, the inventory and the inscription action. Null means none: nothing is editable and nothing is sent.</param>
     /// <param name="spells">The spell table's names and descriptions by id, read when a window is built. Null names no spells: each is shown by its id.</param>
     /// <param name="names">The creature type and title names, read when a window is built. Null names none.</param>
+    /// <param name="measure">Measures a control as the window draws it, at the UI size; the window opens at the height that shows its content. Null measures it unscaled.</param>
+    /// <param name="canInspect">Whether the server answers paperdoll.inspect, for the appraisal window's Inspect button. Null never shows it.</param>
     public AppraisalFeature(ILegACEyPluginHost host, Action<string> log, Func<long>? clock = null, IAppraisalGame? game = null,
-        Func<IReadOnlyDictionary<uint, SpellInfo>>? spells = null, Func<CharacterNames>? names = null)
+        Func<IReadOnlyDictionary<uint, SpellInfo>>? spells = null, Func<CharacterNames>? names = null,
+        Func<Avalonia.Controls.Control, Avalonia.Size, Avalonia.Size>? measure = null, Func<bool>? canInspect = null)
     {
+        _canInspect = canInspect ?? (() => false);
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _log = log ?? throw new ArgumentNullException(nameof(log));
         _clock = clock ?? new Func<long>(() => Stopwatch.GetTimestamp() * 1000 / Stopwatch.Frequency);
         _spells = spells ?? (() => new Dictionary<uint, SpellInfo>());
         _names = names ?? (() => CharacterNames.None);
         _game = game ?? NoAppraisalGame.Instance;
+        _measure = measure;
     }
 
     /// <summary>What the window shows: the content of the last appraisal the window opened for, or null when it has opened for none.</summary>
@@ -159,9 +168,11 @@ public sealed class AppraisalFeature
         _view?.Retire();
         _view = null;
         _hidden = false;
+        _inspect = null;
         try
         {
             _host.CloseWindow(WindowId);
+            _host.CloseWindow(InspectWindow.WindowId);
         }
         catch (Exception exception)
         {
@@ -229,18 +240,19 @@ public sealed class AppraisalFeature
             : AppraisalContent.From(response, _spells(), _game.CharacterName, _game.IsCarried(id), _names(), _game.ValidLocationsOf(id),
                 _game.CoverageOf(id), _game.WorldObjectOf(id), _game.PluralNameOf(id), _game.DescriptionFlagsOf(id));
         var art = _host.Art;
+        var inspect = _canInspect() ? Inspect : (Action<AppraisalContent>?)null;
         // A window the client released (its surface failed or closed on its own) is neither open nor hidden: the view is stale, so the next
         // appraisal builds a new one.
         if (_view != null && !_hidden && !_host.IsWindowOpen(WindowId)) _view = null;
         // One window serves the session: it takes the next appraisal in place, at the size the player left it.
         if (_view == null)
         {
-            _view = AppraisalWindow.Create(content, art, Inscribe);
+            _view = AppraisalWindow.Create(content, art, Inscribe, _measure, inspect);
             _hidden = false;
         }
         else
         {
-            _view.Show(content, art, Inscribe);
+            _view.Show(content, art, Inscribe, inspect);
         }
         var view = _view;
         // An open window already shows the content. A hidden one comes back as it was, with the content just swapped in.
@@ -275,6 +287,39 @@ public sealed class AppraisalFeature
         _shownId = response.ObjectId;
         Shown = content;
         return true;
+    }
+
+    /// <summary>
+    /// Opens the Inspect window on the object, or shows it there when the window is already open (or hidden by its close box). Nothing
+    /// thrown escapes: it is logged.
+    /// </summary>
+    private void Inspect(AppraisalContent content) => Inspect(content.ObjectId, content.Name, content.Visual);
+
+    /// <summary>Opens the Inspect window on an object (zero for the player), as the appraisal window's Inspect button does.</summary>
+    public void Inspect(uint objectId, string name, ItemVisual? visual)
+    {
+        try
+        {
+            var window = _inspect ??= new InspectWindow(_host.ServerChannel, _host.PortalPath);
+            window.Show(objectId, name, AppraisalWindow.Icon(visual, _host.Art));
+            if (_host.IsWindowOpen(InspectWindow.WindowId)) return;
+            var definition = new WindowDefinition(InspectWindow.WindowId, "Inspect", InspectWindow.Width, InspectWindow.Height,
+                DerethWindow.TitleBarHeight, new DerethClientTheme(), InspectWindow.Sizing);
+            var opened = _host.OpenWindow(definition, InspectLocation, close =>
+            {
+                window.Close = close;
+                return window.Window;
+            }, error =>
+            {
+                _log($"The inspect window failed: {error.Message}");
+                if (ReferenceEquals(_inspect, window)) _inspect = null;
+            }, ownChrome: true);
+            if (!opened) _inspect = null;
+        }
+        catch (Exception exception)
+        {
+            _log($"Could not inspect: {exception.Message}");
+        }
     }
 
     /// <summary>
