@@ -1087,6 +1087,20 @@ namespace ACE.Server.Command.Handlers
             session.Player.Teleport(RealmPolicy.InRealm(session.Player.Location, realmToEnter.Id));
         }
 
+        // stormfog
+        [CommandHandler("stormfog", AccessLevel.Admin, CommandHandlerFlag.RequiresWorld, 0,
+            "Toggles storm fog around the landblock you stand in, for testing the LegACEy client's fog.",
+            "The adjacent landblocks fill with fog for every LegACEy client; run it again in the same landblock to clear it, or in another to move it.\n" +
+            "In memory only: a restart clears it.")]
+        public static void HandleStormFog(Session session, params string[] parameters)
+        {
+            var location = session.Player.Location;
+            var zone = ACE.Server.ClientChannel.StormChannelActions.Toggle((byte)location.LandblockX, (byte)location.LandblockY);
+            ChatPacket.SendServerMessage(session, zone is { } z
+                ? $"Storm fog on around landblock 0x{z.X:X2}{z.Y:X2}."
+                : "Storm fog off.", ChatMessageType.Broadcast);
+        }
+
         // instance create <template id or name> | instance list
         [CommandHandler("instance", AccessLevel.Admin, CommandHandlerFlag.RequiresWorld, 1,
             "Creates a private, temporary copy of a dungeon template and enters it, or lists the live copies.",

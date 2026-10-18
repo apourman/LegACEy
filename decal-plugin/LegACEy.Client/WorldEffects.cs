@@ -108,6 +108,9 @@ internal sealed unsafe class WorldEffects : IDisposable
         return new WorldEffects(device, log);
     }
 
+    /// <summary>The safe landblock the storm fog rings, as landblock x and y, or null for no storm.</summary>
+    public (int X, int Y)? StormZone { get => _fog.Zone; set => _fog.Zone = value; }
+
     /// <summary>The object to outline, zero for none. Set each frame.</summary>
     public uint Selected { get; set; }
 

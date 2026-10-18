@@ -341,6 +341,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             {
                 _channelTransport = new GameChannelTransport(NativeUi.ReadMemory, () => _inGame, Log);
                 _serverChannel = new ServerChannelClient(_channelTransport);
+                _serverChannel.Subscribe(StormProtocol.Changed, ShowStorm);
             }
             catch (Exception exception) { Log($"LegACEy server channel disabled: {exception.Message}"); }
             try { _retailDrag = new RetailItemDrag(NativeUi.ReadMemory, Log); }
@@ -503,7 +504,23 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private void RequestServerActions()
     {
         _plugins?.SetServerActions(null);
-        _serverChannel?.Request(ChannelHello.Action, Array.Empty<byte>(), reply => _plugins?.SetServerActions(ServerActionsFrom(reply)));
+        _serverChannel?.Request(ChannelHello.Action, Array.Empty<byte>(), reply =>
+        {
+            var actions = ServerActionsFrom(reply).ToArray();
+            _plugins?.SetServerActions(actions);
+            if (actions.Contains(StormProtocol.Zone))
+                _serverChannel?.Request(StormProtocol.Zone, Array.Empty<byte>(), zone => { if (zone.Ok) ShowStorm(zone.Body); });
+        });
+    }
+
+    /// <summary>The storm fog test's zone, from the server: the ring of landblocks around it fills with fog.</summary>
+    private void ShowStorm(byte[] body)
+    {
+        try
+        {
+            if (_worldEffects != null) _worldEffects.StormZone = StormProtocol.ReadZone(body);
+        }
+        catch (Exception exception) { Log($"Could not read the storm zone: {exception.Message}"); }
     }
 
     private static IEnumerable<string> ServerActionsFrom(ChannelReply reply)
@@ -529,7 +546,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _inventory.Clear();
         Guard(() => _appraisal.Clear());
         Guard(() => _busyCursor?.Show(false));
-        if (_worldEffects != null) _worldEffects.Selected = 0;
+        if (_worldEffects != null)
+        {
+            _worldEffects.Selected = 0;
+            _worldEffects.StormZone = null;
+        }
         Guard(() => _textMode?.Hold(false));
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up client UI at logoff: {exception}"); }
