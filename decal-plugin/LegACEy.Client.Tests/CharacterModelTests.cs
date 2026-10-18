@@ -18,6 +18,8 @@ public sealed class CharacterModelTests
         var naked = CharacterModel.Build(dat, Appearance());
         Assert.InRange(naked.TriangleCount, 300, 2000);
         Assert.InRange(naked.Top - naked.Bottom, 1.6f, 2.0f); // a standing human, about 1.8 m
+        // Narrower than tall, so the view frames a character by its height alone.
+        Assert.True(2 * naked.Radius < naked.Top - naked.Bottom, $"radius {naked.Radius}");
         Assert.All(naked.Meshes, mesh => Assert.True(mesh.Texture.Width > 1, "every body surface has a decoded texture"));
 
         // clothing table 0x1000002E's sleeves for this setup: four arm parts swapped and recoloured

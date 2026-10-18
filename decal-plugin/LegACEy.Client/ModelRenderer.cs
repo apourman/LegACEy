@@ -26,8 +26,13 @@ internal sealed unsafe class ModelRenderer : IDisposable
     {
         area.Intersect(Viewport(_device));
         if (area.Width <= 0 || area.Height <= 0) return;
-        // A flat or empty model, or no zoom, gives no camera distance: CreateLookAt would make NaNs. ModelView keeps zoom in 0.6-6.
-        if (!(model.Top > model.Bottom) || !(zoom > 0)) return;
+        // The camera stands back far enough for the model's height. A model wider than it is tall (a shield, a sword lying down) is
+        // fitted by its width at any turn instead, so it shows whole; a character keeps its tight height framing. An empty model or
+        // no zoom gives no distance: CreateLookAt would make NaNs.
+        var height = model.Top - model.Bottom;
+        var span = 2 * model.Radius > height ? Math.Max(height, 2 * model.Radius * area.Height / (float)area.Width) : height;
+        var fit = span * LegACEy.Client.Demo.ModelView.Framing / 2 / MathF.Tan(FieldOfView / 2);
+        if (!(fit > 0) || !(zoom > 0)) return;
         if (!ReferenceEquals(model, _model)) Load(model);
 
         var saved = SaveState(_device);
@@ -38,7 +43,7 @@ internal sealed unsafe class ModelRenderer : IDisposable
             ClearDepth(_device, area, 1f);
 
             var middle = model.Bottom + (model.Top - model.Bottom) * focus;
-            var distance = (model.Top - model.Bottom) * LegACEy.Client.Demo.ModelView.Framing / 2 / MathF.Tan(FieldOfView / 2) / zoom;
+            var distance = fit / zoom;
             // System.Numerics builds the same right-handed matrices as D3DX's RotationZ, LookAtRH and PerspectiveFovRH.
             SetTransform(_device, TransformWorld, Matrix4x4.CreateRotationZ(yaw));
             SetTransform(_device, TransformView, Matrix4x4.CreateLookAt(new Vector3(0, -distance, middle), new Vector3(0, 0, middle), Vector3.UnitZ));

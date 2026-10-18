@@ -16,7 +16,8 @@ public sealed class ModelView : Border
 {
     // The model's height the view shows at zoom 1, as a share of the model: the renderer's framing. Tight, so the character fills its view.
     public const float Framing = 1.06f;
-    public const float MaxZoom = 6f;
+    public const float MinZoom = 0.3f;
+    public const float MaxZoom = 12f;
 
     private Avalonia.Point? _dragFrom;
 
@@ -40,7 +41,7 @@ public sealed class ModelView : Border
             // The height under the pointer stays under it as the zoom changes.
             var offset = (float)(0.5 - e.GetPosition(this).Y / ViewHeight()) * Framing;
             var under = Focus + offset / Zoom;
-            Zoom = Math.Max(0.6f, Math.Min(MaxZoom, Zoom * (e.Delta.Y > 0 ? 1.1f : 1 / 1.1f)));
+            Zoom = Math.Max(MinZoom, Math.Min(MaxZoom, Zoom * (e.Delta.Y > 0 ? 1.1f : 1 / 1.1f)));
             Focus = Clamp01(under - offset / Zoom);
             e.Handled = true;
         };

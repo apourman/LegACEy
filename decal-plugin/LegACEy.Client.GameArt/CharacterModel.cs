@@ -75,15 +75,21 @@ public sealed class CharacterModel
         Meshes = meshes;
         var min = float.MaxValue;
         var max = float.MinValue;
+        var radius = 0f;
         foreach (var mesh in meshes)
             foreach (var vertex in mesh.Vertices)
             {
                 min = Math.Min(min, vertex.Z);
                 max = Math.Max(max, vertex.Z);
+                radius = Math.Max(radius, vertex.X * vertex.X + vertex.Y * vertex.Y);
             }
         Bottom = meshes.Count == 0 ? 0 : min;
         Top = meshes.Count == 0 ? 0 : max;
+        Radius = (float)Math.Sqrt(radius);
     }
+
+    /// <summary>The farthest any part reaches from the vertical axis the view turns the model around: half its widest at any turn.</summary>
+    public float Radius { get; }
 
     public IReadOnlyList<ModelMesh> Meshes { get; }
     public float Bottom { get; }
