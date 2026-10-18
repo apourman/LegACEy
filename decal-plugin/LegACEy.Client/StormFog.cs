@@ -14,7 +14,8 @@ namespace LegACEy.Client.DecalPlugin;
 /// </summary>
 internal sealed unsafe class StormFog : IDisposable
 {
-    private const float Block = 192, Bottom = -50, Top = 450;
+    internal const float Block = 192;
+    private const float Bottom = -50, Top = 450;
     // The ring's edges, as distances from the safe landblock's centre: its own edge, and the outer edge one landblock further out.
     private const float Inner = Block / 2, Outer = Block * 1.5f;
     // From outside, the fog bank is many faint walls across each edge of the ring, so where terrain cuts them there is no hard seam to jump
@@ -29,13 +30,21 @@ internal sealed unsafe class StormFog : IDisposable
     private static readonly (int X, int Y)[] Corners = { (-1, -1), (1, -1), (1, 1), (-1, 1) };
 
     private readonly IntPtr _device;
-    private bool _measured;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private IntPtr _noise;
-    private Vector3 _offset;
-    private Matrix4x4 _view, _projection;
-    // How far into the storm the camera is, 0 at its edge to 1 at FadeIn metres in.
-    private float _strength;
+
+    /// <summary>A part has been measured, so <see cref="Offset"/>, <see cref="View"/> and <see cref="Projection"/> hold the last frame's camera.</summary>
+    public bool Measured { get; private set; }
+
+    /// <summary>Global render position (game position, y and z swapped) plus this is retail's render position.</summary>
+    public Vector3 Offset { get; private set; }
+
+    public Matrix4x4 View { get; private set; }
+
+    public Matrix4x4 Projection { get; private set; }
+
+    /// <summary>The camera's global game position (z-up), or null before the first measure.</summary>
+    public Vector3? Eye => Measured && Matrix4x4.Invert(View, out var camera) ? Render(camera.Translation - Offset) : null;
 
     public StormFog(IntPtr device)
     {
@@ -58,10 +67,10 @@ internal sealed unsafe class StormFog : IDisposable
         // Retail renders relative to a landblock corner, so the offset is whole landblocks; rounding drops a part's small measuring error.
         var offset = Snap(GetTransform(_device, TransformWorld).Translation - Render(Global(cell, origin)));
         // The camera is the same for every part of the world; the offset is taken from another part only while the player's is not drawn.
-        _view = GetTransform(_device, TransformView);
-        _projection = GetTransform(_device, TransformProjection);
-        if ((player || !FromPlayer) && offset != _offset) _offset = offset;
-        _measured = true;
+        View = GetTransform(_device, TransformView);
+        Projection = GetTransform(_device, TransformProjection);
+        if (player || !FromPlayer) Offset = offset;
+        Measured = true;
         Calibrated = true;
         FromPlayer |= player;
     }
@@ -70,7 +79,7 @@ internal sealed unsafe class StormFog : IDisposable
     public void Draw()
     {
         // A frame with nothing measured (no part drawn yet) keeps the last measure, so the fog does not blink out for a frame.
-        if (!_measured) return;
+        if (!Measured) return;
         Calibrated = FromPlayer = false;
         if (Zone is not { } zone) return;
         if (_noise == IntPtr.Zero) _noise = MakeNoise();
@@ -78,23 +87,7 @@ internal sealed unsafe class StormFog : IDisposable
         try
         {
             UseFixedFunction(_device, FvfXyz | FvfDiffuse | FvfTex1);
-            SetTransform(_device, TransformWorld, Matrix4x4.CreateTranslation(_offset));
-            SetTransform(_device, TransformView, _view);
-            SetTransform(_device, TransformProjection, _projection);
-            SetRenderState(_device, RenderState.ZEnable, 1);
-            SetRenderState(_device, RenderState.ZFunc, CmpLessEqual);
-            SetRenderState(_device, RenderState.ZWriteEnable, 0);
-            SetRenderState(_device, RenderState.Lighting, 0);
-            SetRenderState(_device, RenderState.FogEnable, 0);
-            SetRenderState(_device, RenderState.AlphaTestEnable, 0);
-            SetRenderState(_device, RenderState.StencilEnable, 0);
-            SetRenderState(_device, RenderState.CullMode, CullNone);
-            SetRenderState(_device, RenderState.ColorWriteEnable, 0xF);
-            SetRenderState(_device, RenderState.AlphaBlendEnable, 1);
-            SetRenderState(_device, RenderState.SeparateAlphaBlendEnable, 0);
-            SetRenderState(_device, RenderState.BlendOp, BlendOpAdd);
-            SetRenderState(_device, RenderState.SrcBlend, BlendSrcAlpha);
-            SetRenderState(_device, RenderState.DestBlend, BlendInvSrcAlpha);
+            UseWorldCamera();
             SetTexture(_device, 0, _noise);
             SetStageState(_device, 0, StageState.ColorOp, OpModulate);
             SetStageState(_device, 0, StageState.ColorArg1, ArgTexture);
@@ -113,7 +106,7 @@ internal sealed unsafe class StormFog : IDisposable
             SetSamplerState(_device, 0, SamplerState.AddressV, AddressWrap);
 
             var time = (float)_clock.Elapsed.TotalSeconds;
-            var eye = Matrix4x4.Invert(_view, out var camera) ? Render(camera.Translation - _offset) : (Vector3?)null;
+            var eye = Eye;
             var centre = Centre(zone);
             var walls = stackalloc FogVertex[10];
             var step = Bank / Layers;
@@ -139,17 +132,40 @@ internal sealed unsafe class StormFog : IDisposable
                 DrawPrimitiveUP(_device, TriangleStrip, 8, walls, sizeof(FogVertex));
             }
 
-            _strength = eye is { } inside ? Math.Clamp(StormDepth(inside, zone) / FadeIn, 0, 1) : 0;
-            if (_strength > 0) DrawSlices();
+            var strength = eye is { } inside ? Math.Clamp(StormDepth(inside, zone) / FadeIn, 0, 1) : 0;
+            if (strength > 0) DrawHaze(Grey, Thickness, strength);
         }
         finally { RestoreState(saved); }
     }
 
+    /// <summary>Retail's camera and game-space world, depth-tested against its scene but not writing depth, blended by alpha.</summary>
+    public void UseWorldCamera()
+    {
+        SetTransform(_device, TransformWorld, Matrix4x4.CreateTranslation(Offset));
+        SetTransform(_device, TransformView, View);
+        SetTransform(_device, TransformProjection, Projection);
+        SetRenderState(_device, RenderState.ZEnable, 1);
+        SetRenderState(_device, RenderState.ZFunc, CmpLessEqual);
+        SetRenderState(_device, RenderState.ZWriteEnable, 0);
+        SetRenderState(_device, RenderState.Lighting, 0);
+        SetRenderState(_device, RenderState.FogEnable, 0);
+        SetRenderState(_device, RenderState.AlphaTestEnable, 0);
+        SetRenderState(_device, RenderState.StencilEnable, 0);
+        SetRenderState(_device, RenderState.CullMode, CullNone);
+        SetRenderState(_device, RenderState.ColorWriteEnable, 0xF);
+        SetRenderState(_device, RenderState.AlphaBlendEnable, 1);
+        SetRenderState(_device, RenderState.SeparateAlphaBlendEnable, 0);
+        SetRenderState(_device, RenderState.BlendOp, BlendOpAdd);
+        SetRenderState(_device, RenderState.SrcBlend, BlendSrcAlpha);
+        SetRenderState(_device, RenderState.DestBlend, BlendInvSrcAlpha);
+    }
+
     /// <summary>
     /// The fog inside: camera-facing grey slices from near to far, each covering the screen and hidden where retail's scene is nearer.
-    /// A slice's alpha is the fog over the gap since the last one, so a pixel behind every slice to distance d is fogged 1 - e^(-d / Thickness).
+    /// A slice's alpha is the fog over the gap since the last one, so a pixel behind every slice to distance d is fogged 1 - e^(-d / thickness).
+    /// Expects <see cref="UseWorldCamera"/>'s states; leaves the world and view transforms at identity.
     /// </summary>
-    private void DrawSlices()
+    public void DrawHaze(uint color, float thickness, float strength)
     {
         UseFixedFunction(_device, FvfXyz | FvfDiffuse);
         SetTexture(_device, 0, IntPtr.Zero);
@@ -160,23 +176,23 @@ internal sealed unsafe class StormFog : IDisposable
         // In view space: the camera at the origin, looking along +z, or -z under a right-handed projection.
         SetTransform(_device, TransformWorld, Matrix4x4.Identity);
         SetTransform(_device, TransformView, Matrix4x4.Identity);
-        var forward = _projection.M34 >= 0 ? 1 : -1;
+        var forward = Projection.M34 >= 0 ? 1 : -1;
         // The last slice stays inside the far plane (from the projection: far = M43 / (forward - M33)), or the sky behind would show.
-        var lastSlice = MathF.Min(LastSlice, MathF.Abs(_projection.M43 / (forward - _projection.M33)) * 0.98f);
+        var lastSlice = MathF.Min(LastSlice, MathF.Abs(Projection.M43 / (forward - Projection.M33)) * 0.98f);
         var quad = stackalloc SliceVertex[4];
         var last = 0f;
         for (var i = 0; i < Slices; i++)
         {
             var distance = FirstSlice * MathF.Pow(lastSlice / FirstSlice, i / (Slices - 1f));
-            var alpha = 1 - MathF.Exp(-(distance - last) / Thickness * _strength);
+            var alpha = 1 - MathF.Exp(-(distance - last) / thickness * strength);
             last = distance;
             // Wider than the view, so the slice covers the screen whatever the aspect.
-            float x = distance / _projection.M11 * 1.2f, y = distance / _projection.M22 * 1.2f, z = distance * forward;
-            var color = (uint)(alpha * 255) << 24 | Grey;
-            quad[0] = new(-x, y, z, color);
-            quad[1] = new(x, y, z, color);
-            quad[2] = new(-x, -y, z, color);
-            quad[3] = new(x, -y, z, color);
+            float x = distance / Projection.M11 * 1.2f, y = distance / Projection.M22 * 1.2f, z = distance * forward;
+            var argb = (uint)(alpha * 255) << 24 | color;
+            quad[0] = new(-x, y, z, argb);
+            quad[1] = new(x, y, z, argb);
+            quad[2] = new(-x, -y, z, argb);
+            quad[3] = new(x, -y, z, argb);
             DrawPrimitiveUP(_device, TriangleStrip, 2, quad, sizeof(SliceVertex));
         }
     }
@@ -202,7 +218,7 @@ internal sealed unsafe class StormFog : IDisposable
         new(MathF.Round(offset.X / Block) * Block, MathF.Round(offset.Y / Block) * Block, MathF.Round(offset.Z / Block) * Block);
 
     /// <summary>Game space is z-up; retail renders y-up, swapping y and z (its own inverse).</summary>
-    private static Vector3 Render(Vector3 game) => new(game.X, game.Z, game.Y);
+    internal static Vector3 Render(Vector3 game) => new(game.X, game.Z, game.Y);
 
     /// <summary>A cell's position in one space for the whole world: landblock x and y (the id's top two bytes) times 192 m, plus the origin.</summary>
     private static Vector3 Global(uint cell, Vector3 origin) => new((cell >> 24) * Block + origin.X, ((cell >> 16) & 0xFF) * Block + origin.Y, origin.Z);

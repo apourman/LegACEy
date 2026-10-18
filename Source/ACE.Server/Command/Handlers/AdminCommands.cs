@@ -1101,6 +1101,34 @@ namespace ACE.Server.Command.Handlers
                 : "Storm fog off.", ChatMessageType.Broadcast);
         }
 
+        // snow [light | blizzard | off]
+        [CommandHandler("snow", AccessLevel.Admin, CommandHandlerFlag.RequiresWorld, 0,
+            "Snows around the landblock you stand in, for testing the LegACEy client's snow.",
+            "[light | blizzard | off]\nLight (the default) or blizzard snow falls on your landblock and the 8 around it for every LegACEy client; off stops it.\n" +
+            "In memory only: a restart clears it.")]
+        public static void HandleSnow(Session session, params string[] parameters)
+        {
+            var word = parameters.Length > 0 ? parameters[0].ToLowerInvariant() : "light";
+            var intensity = word switch
+            {
+                "light" => ACE.Server.ClientChannel.SnowChannelActions.Intensity.Light,
+                "blizzard" => ACE.Server.ClientChannel.SnowChannelActions.Intensity.Blizzard,
+                "off" => ACE.Server.ClientChannel.SnowChannelActions.Intensity.None,
+                _ => (ACE.Server.ClientChannel.SnowChannelActions.Intensity?)null,
+            };
+            if (intensity is not { } chosen)
+            {
+                ChatPacket.SendServerMessage(session, "Usage: @snow [light | blizzard | off]", ChatMessageType.Broadcast);
+                return;
+            }
+            var location = session.Player.Location;
+            ACE.Server.ClientChannel.SnowChannelActions.Set(chosen, (byte)location.LandblockX, (byte)location.LandblockY);
+            ChatPacket.SendServerMessage(session, chosen == ACE.Server.ClientChannel.SnowChannelActions.Intensity.None
+                ? "Snow off."
+                : $"{(chosen == ACE.Server.ClientChannel.SnowChannelActions.Intensity.Blizzard ? "Blizzard" : "Light snow")} around landblock 0x{location.LandblockX:X2}{location.LandblockY:X2}.",
+                ChatMessageType.Broadcast);
+        }
+
         // instance create <template id or name> | instance list
         [CommandHandler("instance", AccessLevel.Admin, CommandHandlerFlag.RequiresWorld, 1,
             "Creates a private, temporary copy of a dungeon template and enters it, or lists the live copies.",

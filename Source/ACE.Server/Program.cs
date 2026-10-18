@@ -282,6 +282,7 @@ namespace ACE.Server
             ACE.Server.ClientChannel.ChannelHelloActions.Register();
             ACE.Server.ClientChannel.PaperdollChannelActions.Register();
             ACE.Server.ClientChannel.StormChannelActions.Register();
+            ACE.Server.ClientChannel.SnowChannelActions.Register();
             ACE.Server.ClientChannel.StationChannelActions.Register();
 
             if (ConfigManager.Config.Server.ServerPerformanceMonitorAutoStart)
