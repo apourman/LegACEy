@@ -58,7 +58,8 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     // Creatures and characters (ACE.Entity PropertyInt and PropertyString), as OpenAC's creature appraisal reads them (CreatureAppraisalRows, MIT).
     private const uint LevelInt = 25, CreatureTypeInt = 2, HeritageGroupInt = 188, GenderInt = 113, TitleIdInt = 261, RankInt = 30,
         FollowersInt = 35, DeathsInt = 43, ChessRankInt = 181, FishingSkillInt = 192, TitlesEarnedInt = 262, AgeInt = 125,
-        FactionBitsInt = 281, SocietyCelHanInt = 287, SocietyEldWebInt = 288, SocietyRadBloInt = 289;
+        FactionBitsInt = 281, SocietyCelHanInt = 287, SocietyEldWebInt = 288, SocietyRadBloInt = 289,
+        PlayerKillerStatusInt = 134;
     private const uint DamageRatingInt = 307, DamageResistRatingInt = 308, CritRatingInt = 313, CritDamageRatingInt = 314,
         CritResistRatingInt = 315, CritDamageResistRatingInt = 316, DotResistRatingInt = 350, LifeResistRatingInt = 351;
     private const uint MonarchsTitleString = 21, PatronsTitleString = 35, FellowshipString = 10, DateOfBirthString = 43, TemplateString = 5;
@@ -737,6 +738,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     /// </summary>
     private static IEnumerable<AppraisalRow> CharacterRows(AppraisalResponse response)
     {
+        if (PkStatusText(Int(response, PlayerKillerStatusInt)) is { } pk) yield return new AppraisalRow("PK Status", pk);
         if (StringOf(response, DateOfBirthString) is { } arrived) yield return new AppraisalRow("Arrived in Dereth", arrived);
         if (response.Ints.TryGetValue(AgeInt, out var age))
             yield return new AppraisalRow("Time in Dereth", AppraisalOtherLines.Breakdown(Math.Max(0, age), AppraisalOtherLines.CooldownUnits, compact: true));
@@ -746,6 +748,16 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
         if (response.Ints.TryGetValue(TitlesEarnedInt, out var titles)) yield return new AppraisalRow("Titles Earned", Invariant(titles));
         yield return new AppraisalRow("* = Unenchantable", string.Empty);
     }
+
+    /// <summary>The server's PlayerKillerStatus (ACE.Entity) in words; a status a character cannot have is left out.</summary>
+    private static string? PkStatusText(int status) => status switch
+    {
+        0x02 => "Non-Player Killer",
+        0x04 => "Player Killer",
+        0x20 => "Free",
+        0x40 => "Player Killer Lite",
+        _ => null,
+    };
 
     private static string? StringOf(AppraisalResponse response, uint property) =>
         response.Strings.TryGetValue(property, out var text) && text.Length > 0 ? text : null;
