@@ -10,6 +10,8 @@ internal sealed class DatSetup
     public uint[] Parts = Array.Empty<uint>();
     public Vec3[] Scales = Array.Empty<Vec3>();
     public Frame[] Frames = Array.Empty<Frame>();
+    // Where a held item attaches, by ParentLocation: the part it is held by, and its frame relative to that part.
+    public Dictionary<uint, (int Part, Frame Frame)> Holding = new();
 }
 
 internal readonly struct DatUv
@@ -77,9 +79,14 @@ internal static class DatModels
             setup.Scales = new Vec3[count];
             for (var i = 0; i < count; i++) setup.Scales[i] = ReadVector(reader);
         }
-        // holding locations, then connection points: key, part id, frame
-        for (var table = 0; table < 2; table++)
-            reader.BaseStream.Seek(reader.ReadInt32() * (4 + 4 + 28), SeekOrigin.Current);
+        // holding locations (key, part id, frame), then connection points, which aren't needed
+        for (int i = 0, holding = reader.ReadInt32(); i < holding; i++)
+        {
+            var key = reader.ReadUInt32();
+            var part = reader.ReadInt32();
+            setup.Holding[key] = (part, ReadFrame(reader));
+        }
+        reader.BaseStream.Seek(reader.ReadInt32() * (4 + 4 + 28), SeekOrigin.Current);
         // the first placement is the default pose; its hooks, and the placements after it, aren't needed
         if (reader.ReadInt32() > 0)
         {

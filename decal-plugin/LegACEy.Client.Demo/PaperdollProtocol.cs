@@ -13,9 +13,24 @@ public static class PaperdollProtocol
 
     public static byte[] InspectBody(uint objectId) => ChannelWire.Body(writer => writer.Write(objectId));
 
+    /// <summary>A look: the object's own, then (from servers that send them) what it holds, each with its holding location and scale.</summary>
     public static CharacterAppearance ReadLook(byte[] body)
     {
         var reader = ChannelWire.Reader(body);
+        var look = ReadOne(reader);
+        if (reader.BaseStream.Position >= reader.BaseStream.Length) return look;
+        var held = new List<HeldItem>();
+        for (int i = 0, count = reader.ReadUInt16(); i < count; i++)
+        {
+            var location = reader.ReadUInt32();
+            var scale = reader.ReadSingle();
+            held.Add(new HeldItem(location, scale, ReadOne(reader)));
+        }
+        return new CharacterAppearance(look.SetupId, look.PaletteId, look.SubPalettes, look.TextureChanges, look.PartChanges, held);
+    }
+
+    private static CharacterAppearance ReadOne(System.IO.BinaryReader reader)
+    {
         var setup = reader.ReadUInt32();
         var palette = Known(reader.ReadUInt32(), 0x04000000);
         var palettes = new List<SubPalette>();

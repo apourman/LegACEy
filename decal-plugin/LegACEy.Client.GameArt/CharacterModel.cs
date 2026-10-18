@@ -10,8 +10,10 @@ namespace LegACEy.Client.GameArt;
 /// </summary>
 public sealed class CharacterAppearance
 {
-    public CharacterAppearance(uint setupId, uint paletteId, IReadOnlyList<SubPalette> subPalettes, IReadOnlyList<TextureChange> textureChanges, IReadOnlyList<PartChange> partChanges)
+    public CharacterAppearance(uint setupId, uint paletteId, IReadOnlyList<SubPalette> subPalettes, IReadOnlyList<TextureChange> textureChanges, IReadOnlyList<PartChange> partChanges,
+        IReadOnlyList<HeldItem>? held = null)
     {
+        Held = held ?? Array.Empty<HeldItem>();
         SetupId = setupId;
         PaletteId = paletteId;
         SubPalettes = subPalettes;
@@ -24,6 +26,18 @@ public sealed class CharacterAppearance
     public IReadOnlyList<SubPalette> SubPalettes { get; }
     public IReadOnlyList<TextureChange> TextureChanges { get; }
     public IReadOnlyList<PartChange> PartChanges { get; }
+
+    /// <summary>What the character holds (a wielded weapon or shield): drawn apart from the body, at its holding location.</summary>
+    public IReadOnlyList<HeldItem> Held { get; }
+}
+
+/// <summary>An item held at one of the setup's holding locations (ACE's ParentLocation: 1 right hand, 2 left hand, 3 shield and so on).</summary>
+public sealed class HeldItem
+{
+    public HeldItem(uint location, float scale, CharacterAppearance look) { Location = location; Scale = scale; Look = look; }
+    public uint Location { get; }
+    public float Scale { get; }
+    public CharacterAppearance Look { get; }
 }
 
 public readonly struct SubPalette
@@ -118,6 +132,26 @@ public sealed class CharacterModel
     public static CharacterModel Build(PortalDat dat, CharacterAppearance appearance)
     {
         var setup = DatModels.ReadSetup(dat, appearance.SetupId) ?? throw new InvalidDataException($"Setup {appearance.SetupId:X8} is not in portal.dat.");
+        var ordered = new List<ModelMesh>();
+        AddParts(dat, setup, appearance, ordered, null);
+        // Each held item in its own setup's default pose, scaled, then placed by the holding location on its part, then by that part.
+        foreach (var held in appearance.Held)
+        {
+            if (!setup.Holding.TryGetValue(held.Location, out var holding) || holding.Part < 0 || holding.Part >= setup.Frames.Length) continue;
+            if (DatModels.ReadSetup(dat, held.Look.SetupId) is not { } itemSetup) continue;
+            var part = setup.Frames[holding.Part];
+            var at = holding.Frame;
+            var scale = held.Scale > 0 ? held.Scale : 1;
+            AddParts(dat, itemSetup, held.Look, ordered, (v => part.Origin + part.Rotate(at.Origin + at.Rotate(new Vec3(v.X * scale, v.Y * scale, v.Z * scale))),
+                n => part.Rotate(at.Rotate(n))));
+        }
+        return new CharacterModel(ordered);
+    }
+
+    /// <summary>One setup's parts, posed and dressed, added to the meshes; a held item's placement then moves each vertex and turns each normal into the model.</summary>
+    private static void AddParts(PortalDat dat, DatSetup setup, CharacterAppearance appearance, List<ModelMesh> ordered,
+        (Func<Vec3, Vec3> Move, Func<Vec3, Vec3> Turn)? held)
+    {
         var parts = (uint[])setup.Parts.Clone();
         foreach (var change in appearance.PartChanges)
             if (change.Part < parts.Length)
@@ -129,7 +163,6 @@ public sealed class CharacterModel
             swaps[(change.Part, change.OldTexture)] = change.NewTexture;
 
         var meshes = new Dictionary<(uint Surface, uint Texture), ModelMesh?>();
-        var ordered = new List<ModelMesh>();
         for (var part = 0; part < parts.Length; part++)
         {
             var model = DatModels.ReadGfxObj(dat, parts[part]);
@@ -154,12 +187,20 @@ public sealed class CharacterModel
                         var b = reverse ? i : i + 1;
                         foreach (var corner in new[] { 0, a, b })
                             if (model.Vertices.TryGetValue(polygon.Vertices[corner], out var vertex))
-                                mesh.Vertices.Add(Place(vertex, uvs[corner], frame, scale, reverse));
+                            {
+                                var placed = Place(vertex, uvs[corner], frame, scale, reverse);
+                                if (held is { } into)
+                                {
+                                    var p = into.Move(new Vec3(placed.X, placed.Y, placed.Z));
+                                    var n = into.Turn(new Vec3(placed.NX, placed.NY, placed.NZ));
+                                    (placed.X, placed.Y, placed.Z, placed.NX, placed.NY, placed.NZ) = (p.X, p.Y, p.Z, n.X, n.Y, n.Z);
+                                }
+                                mesh.Vertices.Add(placed);
+                            }
                     }
                 }
             }
         }
-        return new CharacterModel(ordered);
 
         ModelMesh? MeshFor(uint surfaceId, int part)
         {
