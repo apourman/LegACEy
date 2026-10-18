@@ -21,9 +21,9 @@ public sealed class StackSplitTab : Decorator
     /// <summary>The tab's width, the selection plaque's, so it sits square over it.</summary>
     public const double TabWidth = 220;
 
-    private static readonly IBrush TrackBrush = DerethPalette.Brush(Color.Parse("#0B1117"));
-    private static readonly IBrush AmountEdge = DerethPalette.Brush(Color.Parse("#7A5E30"));
-    private static readonly IBrush ThumbBrush = DerethPalette.Brush(Color.Parse("#D9B66A"));
+    private static readonly IBrush TrackBrush = DerethPalette.Brush(Color.Parse("#0A0906"));
+    private static readonly IBrush AmountEdge = DerethPalette.Brush(Color.Parse("#8A6326"));
+    private static readonly IBrush ThumbBrush = DerethPalette.Brush(Color.Parse("#DDC47D"));
 
     private readonly IRetailToolbarPort _port;
     // The controls of the stack being split: its stack, the count it shows, whether a write is in progress, and its controls.

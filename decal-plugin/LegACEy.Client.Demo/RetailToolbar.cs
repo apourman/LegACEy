@@ -79,7 +79,7 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         (RetailPanel.Options, DerethGlyph.Options, "Options"),
     };
 
-    private static readonly IBrush TrackBrush = DerethPalette.Brush(Color.Parse("#0B1117"));
+    private static readonly IBrush TrackBrush = DerethPalette.Brush(Color.Parse("#0A0906"));
     private static readonly IBrush HealthBrush = Gradient(Color.Parse("#7E211B"), Color.Parse("#D9584A"));
     private static readonly IBrush ManaBrush = Gradient(Color.Parse("#24507F"), Color.Parse("#5AA0E0"));
     // Use and Examine show dimmed while nothing is selected, as retail shows them.
@@ -175,7 +175,7 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         port.Changed += Refresh;
     }
 
-    /// <summary>Shows the teal ring on the LegACEy menu button while the menu is open.</summary>
+    /// <summary>Shows the green ring on the LegACEy menu button while the menu is open.</summary>
     public void SetMenuOpen(bool open) => _menu.IsOpen = open;
 
     /// <summary>A drop on the backpack goes to the main pack, as retail's backpack takes it. Elsewhere on the toolbar it is not taken.</summary>

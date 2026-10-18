@@ -143,7 +143,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         // The groove fades with the chrome; the lines sit over it, inset by the groove's border and padding, and fade by their own age.
         _groove = new Border
         {
-            Background = DerethPalette.Brush(Color.FromArgb(0x99, 0x03, 0x06, 0x09)),
+            Background = DerethPalette.Brush(Color.FromArgb(0x99, 0x07, 0x07, 0x05)),
             BorderBrush = DerethPalette.GrooveEdgeBrush,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(3)
@@ -903,7 +903,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             CornerRadius = new CornerRadius(3),
             BorderBrush = DerethChatPalette.GoldDarkBrush,
             BorderThickness = new Thickness(1),
-            Background = DerethPalette.Brush(Color.FromArgb(0xFF, 0x08, 0x10, 0x16)),
+            Background = DerethPalette.Brush(Color.FromArgb(0xFF, 0x18, 0x16, 0x0F)),
             Child = new ScrollViewer
             {
                 MaxHeight = MenuMaxHeight,

@@ -9,17 +9,17 @@ namespace LegACEy.Client.Themes;
 
 /// <summary>
 /// A round gold medallion with a glyph: a window button, the stance, Use, Examine or the backpack. Normal, hover and pressed
-/// art, and the teal ring while <see cref="IsOpen"/>. A click is a release over the medallion after a press on it.
+/// art, and the green ring while <see cref="IsOpen"/>. A click is a release over the medallion after a press on it.
 /// </summary>
 public sealed class DerethMedallion : Decorator
 {
-    private static readonly Color GoldLight = Color.Parse("#D9B66A");
-    private static readonly IPen RimPen = new Pen(DerethPalette.Brush(Color.Parse("#7A5E30")), 1);
-    private static readonly IPen InnerPen = new Pen(DerethPalette.Brush(Color.Parse("#D9B66A").WithAlpha(0x59)), 1);
+    private static readonly Color GoldLight = Color.Parse("#DDC47D");
+    private static readonly IPen RimPen = new Pen(DerethPalette.Brush(Color.Parse("#8A6326")), 1);
+    private static readonly IPen InnerPen = new Pen(DerethPalette.Brush(Color.Parse("#DDC47D").WithAlpha(0x59)), 1);
     private static readonly IPen RingPen = new Pen(DerethPalette.TealBrush, 2.5);
-    private static readonly IBrush PressedFace = DerethPalette.Brush(Color.Parse("#03070A"));
-    private static readonly IBrush NormalFace = Radial(Color.Parse("#1B2832"), Color.Parse("#081016"));
-    private static readonly IBrush HoverFace = Radial(Color.Parse("#263643"), Color.Parse("#0E1923"));
+    private static readonly IBrush PressedFace = DerethPalette.Brush(Color.Parse("#0A0805"));
+    private static readonly IBrush NormalFace = Radial(Color.Parse("#2E2A1E"), Color.Parse("#18160F"));
+    private static readonly IBrush HoverFace = Radial(Color.Parse("#3E3826"), Color.Parse("#221E14"));
 
     private readonly double _diameter;
     private readonly double _glyphSize;
@@ -49,7 +49,7 @@ public sealed class DerethMedallion : Decorator
         set { _glyph = value; InvalidateVisual(); }
     }
 
-    /// <summary>Shows the teal ring: the window or the menu it opens is open.</summary>
+    /// <summary>Shows the green ring: the window or the menu it opens is open.</summary>
     public bool IsOpen
     {
         get => _open;
@@ -98,7 +98,7 @@ public sealed class DerethMedallion : Decorator
         var radius = _diameter / 2;
         if (_open)
         {
-            // The teal ring sits 1 to 3.5 DIPs outside the medallion, as its box-shadow does in the mockup.
+            // The green ring sits 1 to 3.5 DIPs outside the medallion, as its box-shadow does in the mockup.
             context.DrawEllipse(null, RingPen, centre, radius + 2.25, radius + 2.25);
         }
         var face = _pressed ? PressedFace : _hover ? HoverFace : NormalFace;
@@ -123,7 +123,7 @@ public sealed class DerethMedallion : Decorator
 /// <summary>The gold divider between groups of toolbar buttons: 1 DIP wide, 26 tall, with 3 DIPs either side.</summary>
 public sealed class DerethDivider : Control
 {
-    private static readonly IBrush Brush = DerethPalette.Brush(Color.Parse("#7A5E30"));
+    private static readonly IBrush Brush = DerethPalette.Brush(Color.Parse("#8A6326"));
 
     public DerethDivider()
     {

@@ -17,22 +17,22 @@ namespace LegACEy.Client.Themes;
 /// <summary>The Dereth palette and fonts. Titles are Palatino, text is Segoe UI, as the game's installed fonts are.</summary>
 public static class DerethPalette
 {
-    public static readonly Color Gold = Color.Parse("#C9A45C");
-    public static readonly Color Cream = Color.Parse("#EFE3C4");
+    public static readonly Color Gold = Color.Parse("#DBB86A");
+    public static readonly Color Cream = Color.Parse("#F6EFD9");
     /// <summary>The dark gold: a bezel's rim and a plaque's border.</summary>
-    public static readonly Color GoldDark = Color.Parse("#7A5E30");
-    public static readonly Color Text = Color.Parse("#D7D9D6");
-    public static readonly Color Muted = Color.Parse("#8E979E");
+    public static readonly Color GoldDark = Color.Parse("#8A6326");
+    public static readonly Color Text = Color.Parse("#F2EFE6");
+    public static readonly Color Muted = Color.Parse("#A39A86");
     public static readonly Color Invalid = Color.Parse("#D9584A");
     /// <summary>The green of a value a buff or spell raised, as retail colours it.</summary>
     public static readonly Color Raised = Color.Parse("#8ED17A");
-    public static readonly Color Groove = Color.Parse("#05080C");
-    public static readonly Color GrooveEdge = Color.Parse("#2A3542");
-    public static readonly Color Navy = Color.Parse("#081016");
+    public static readonly Color Groove = Color.Parse("#080705");
+    public static readonly Color GrooveEdge = Color.Parse("#4A3F2A");
+    public static readonly Color Navy = Color.Parse("#18160F");
     /// <summary>The selection colour: a selected slot's wash, border and glow.</summary>
-    public static readonly Color Teal = Color.Parse("#3FB3AE");
-    /// <summary>Teal text, such as the "N selected" line.</summary>
-    public static readonly Color TealText = Color.Parse("#5FC9C4");
+    public static readonly Color Teal = Color.Parse("#3FCF5F");
+    /// <summary>Green text, such as the "N selected" line.</summary>
+    public static readonly Color TealText = Color.Parse("#4CF08C");
     public static readonly FontFamily Title = new("Palatino Linotype, Palatino, Georgia, serif");
     public static readonly FontFamily Body = new("Segoe UI, Tahoma, avares://LegACEy.Client.Themes/Assets#Liberation Sans");
 
@@ -156,7 +156,7 @@ public sealed class DerethFrame : Decorator
 
     /// <summary>
     /// The hovered corner brightens over its whole corner piece, and three grip ticks sit in the frame's inner corner, past
-    /// the 8 px lip, as diagonals across the navy.
+    /// the 8 px lip, as diagonals across the stone.
     /// </summary>
     private void DrawGrip(DrawingContext context, double width, double height, double corner)
     {
@@ -215,7 +215,7 @@ public sealed class DerethRule : DerethThreeSlice
 
 /// <summary>
 /// The search field: the sheet's field around a text box that shows its placeholder while empty. It brightens on hover and
-/// turns teal while focused. <see cref="Text"/> is what the
+/// turns green while focused. <see cref="Text"/> is what the
 /// player has typed, and <see cref="TextChanged"/> fires on every edit. It knows nothing of what the text filters.
 /// </summary>
 public sealed class DerethSearchField : DerethThreeSlice
@@ -459,17 +459,17 @@ public sealed class DerethSlotGrid : UserControl
 }
 
 /// <summary>
-/// A slot: a slate well with a thin rim around its content, as in the concept art. Selected, it shows a teal wash behind the
-/// content, a 2 px teal border and a glow inset inside the slot, so the glow never spills into a neighbouring slot.
+/// A slot: a dark well with a thin rim around its content, as in the concept art. Selected, it shows a green wash behind the
+/// content, a 2 px green border and a glow inset inside the slot, so the glow never spills into a neighbouring slot.
 /// </summary>
 public sealed class DerethSlot : Grid
 {
     private static readonly IBrush WellBrush = new LinearGradientBrush
     {
         StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
-        GradientStops = { new GradientStop(Color.Parse("#1A252D"), 0), new GradientStop(Color.Parse("#10181E"), 1) }
+        GradientStops = { new GradientStop(Color.Parse("#2A2519"), 0), new GradientStop(Color.Parse("#17140D"), 1) }
     };
-    private static readonly IBrush RimBrush = DerethPalette.Brush(Color.Parse("#2F3E48"));
+    private static readonly IBrush RimBrush = DerethPalette.Brush(Color.Parse("#4A3F2A"));
 
     private static readonly IBrush WashBrush = new RadialGradientBrush
     {

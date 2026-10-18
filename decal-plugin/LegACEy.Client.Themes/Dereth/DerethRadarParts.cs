@@ -17,15 +17,15 @@ public sealed class DerethRadarScope : Control
     private static readonly Color Teal = DerethPalette.TealText;
     private static readonly Color Cream = DerethPalette.Cream;
     private static readonly Color Gold = DerethPalette.Gold;
-    private static readonly Color Navy = Color.Parse("#081016");
-    private static readonly IBrush Darken = DerethPalette.Brush(Color.FromArgb(0x40, 10, 18, 25));
+    private static readonly Color Navy = Color.Parse("#18160F");
+    private static readonly IBrush Darken = DerethPalette.Brush(Color.FromArgb(0x40, 22, 20, 12));
     private static readonly IBrush Disc = new RadialGradientBrush
     {
-        GradientStops = { new GradientStop(Color.Parse("#122C2C").WithAlpha(0xEB), 0), new GradientStop(Color.Parse("#04090D").WithAlpha(0xF0), 1) }
+        GradientStops = { new GradientStop(Color.Parse("#2A2A1A").WithAlpha(0xEB), 0), new GradientStop(Color.Parse("#0A0906").WithAlpha(0xF0), 1) }
     };
     private static readonly IBrush Vignette = new RadialGradientBrush
     {
-        GradientStops = { new GradientStop(Color.FromArgb(0, 4, 9, 13), 0.55), new GradientStop(Color.FromArgb(0x99, 4, 9, 13), 1) }
+        GradientStops = { new GradientStop(Color.FromArgb(0, 8, 7, 4), 0.55), new GradientStop(Color.FromArgb(0x99, 8, 7, 4), 1) }
     };
     private static readonly IBrush Cross = DerethPalette.Brush(Teal.WithAlpha(0x1A));
     private static readonly IPen CrossPen = new Pen(Cross, 0.6);
@@ -140,7 +140,7 @@ public sealed class DerethRadarScope : Control
 }
 
 /// <summary>
-/// The bezel round the scope: the gold rings, and the compass letters on the rim, turned with the world (north in teal, the minor points
+/// The bezel round the scope: the gold rings, and the compass letters on the rim, turned with the world (north in green, the minor points
 /// muted). It takes no pointer, so the scope underneath it does.
 /// </summary>
 public sealed class DerethRadarBezel : Control
@@ -148,8 +148,8 @@ public sealed class DerethRadarBezel : Control
     // The rings sit outside the scope's edge, as the bezel's box shadows do in the mockup: each as (distance from the edge, pen).
     private static readonly (double Outset, IPen Pen)[] Rings =
     {
-        (1, new Pen(DerethPalette.Brush(Color.Parse("#7A5E30")), 1.5)),
-        (3.5, new Pen(DerethPalette.Brush(Color.Parse("#0A1218")), 1.5)),
+        (1, new Pen(DerethPalette.Brush(Color.Parse("#8A6326")), 1.5)),
+        (3.5, new Pen(DerethPalette.Brush(Color.Parse("#0E0B06")), 1.5)),
         (5, new Pen(DerethPalette.Brush(DerethPalette.Gold), 1)),
         (6.5, new Pen(DerethPalette.Brush(Color.Parse("#2B2112")), 1.5)),
     };
@@ -158,7 +158,7 @@ public sealed class DerethRadarBezel : Control
     private const double LetterRadius = ScopeRadius - 6;
     private static readonly (string Text, double Bearing)[] Letters = { ("N", 0), ("E", 90), ("S", 180), ("W", 270) };
 
-    private static readonly Color GoldLight = Color.Parse("#D9B66A");
+    private static readonly Color GoldLight = Color.Parse("#DDC47D");
     private double _turn;
     private FormattedText[]? _letters;
     private FormattedText[]? _minors;
@@ -194,12 +194,12 @@ public sealed class DerethRadarBezel : Control
 }
 
 /// <summary>
-/// The heading tape above the scope: ticks every 5 degrees across 120 degrees of view, the compass points on the 45s (north in teal),
+/// The heading tape above the scope: ticks every 5 degrees across 120 degrees of view, the compass points on the 45s (north in green),
 /// faded at its ends, and the heading in degrees at its centre.
 /// </summary>
 public sealed class DerethHeadingTape : Control
 {
-    private static readonly Color GoldLight = Color.Parse("#D9B66A");
+    private static readonly Color GoldLight = Color.Parse("#DDC47D");
     private const double Span = 120;
     // Ticks this close to the centre stay clear of the heading readout.
     private const double ClearOfCentre = 11;

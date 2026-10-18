@@ -34,9 +34,9 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     private int? _dropAt;
     private bool _refreshPending;
 
-    private static readonly IBrush TagFace = DerethPalette.Brush(Color.Parse("#0B1117"));
-    private static readonly IBrush TagEdge = DerethPalette.Brush(Color.Parse("#3A4A56"));
-    private static readonly IBrush EmptyKey = DerethPalette.Brush(Color.Parse("#2C3B47"));
+    private static readonly IBrush TagFace = DerethPalette.Brush(Color.Parse("#0A0906"));
+    private static readonly IBrush TagEdge = DerethPalette.Brush(Color.Parse("#4A3F2A"));
+    private static readonly IBrush EmptyKey = DerethPalette.Brush(Color.Parse("#3E3626"));
 
     private readonly IRetailToolbarPort _port;
     private readonly Func<uint, ShortcutItem?> _itemOf;

@@ -35,9 +35,9 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     private const double Diameter = 118;
     private const double Radius = Diameter / 2;
     private const string LockTip = "Lock UI", UnlockTip = "Unlock UI", OptionsTip = "Radar options";
-    private static readonly IBrush Plaque = DerethPalette.Brush(Avalonia.Media.Color.FromArgb(0xD9, 8, 16, 22));
-    private static readonly IBrush GoldDark = DerethPalette.Brush(Avalonia.Media.Color.Parse("#7A5E30"));
-    private static readonly IBrush Groove = DerethPalette.Brush(Avalonia.Media.Color.Parse("#0B1117"));
+    private static readonly IBrush Plaque = DerethPalette.Brush(Avalonia.Media.Color.FromArgb(0xD9, 0x18, 0x16, 0x0F));
+    private static readonly IBrush GoldDark = DerethPalette.Brush(Avalonia.Media.Color.Parse("#8A6326"));
+    private static readonly IBrush Groove = DerethPalette.Brush(Avalonia.Media.Color.Parse("#0A0906"));
 
     private readonly IRadarPort _port;
     private readonly Func<GroundTiles?> _ground;
@@ -87,7 +87,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     /// <param name="ground">The ground's tiles, or null until they can be built.</param>
     /// <param name="options">The options kept for this character.</param>
     /// <param name="saved">Told each time an option or the zoom changes, to keep it for the character.</param>
-    /// <param name="selected">The selected object's id, or 0, for the teal ring.</param>
+    /// <param name="selected">The selected object's id, or 0, for the green ring.</param>
     /// <param name="startMove">Starts the window's move, from a press on the frame when the UI is not locked.</param>
     public RetailRadarWindow(IRadarPort port, Func<GroundTiles?> ground, RadarOptions options, Action<RadarOptions> saved, Func<uint> selected, Action startMove)
     {

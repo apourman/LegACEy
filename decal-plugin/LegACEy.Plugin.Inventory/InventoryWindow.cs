@@ -932,7 +932,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         return toggles;
     }
 
-    /// <summary>A header button that shows or collapses the equipment and paperdoll section. Lit teal while the section shows.</summary>
+    /// <summary>A header button that shows or collapses the equipment and paperdoll section. Lit green while the section shows.</summary>
     private Control EquipmentToggle()
     {
         var icon = new Path
@@ -947,7 +947,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         return button;
     }
 
-    /// <summary>A header button that switches to its layout. The window's own layout is lit teal.</summary>
+    /// <summary>A header button that switches to its layout. The window's own layout is lit green.</summary>
     private Control LayoutToggle(InventoryLayout layout, string glyph)
     {
         var active = layout == _layout;

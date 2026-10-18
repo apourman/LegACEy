@@ -46,13 +46,13 @@ public static class DerethChatPalette
         _ => Plugin
     };
     /// <summary>The time at the start of a line: quieter than any message colour.</summary>
-    public static readonly Color Timestamp = Color.Parse("#5D6870");
+    public static readonly Color Timestamp = Color.Parse("#8A8370");
     /// <summary>The chip's dark fill.</summary>
-    public static readonly Color ChipFill = Color.Parse("#0B1117");
+    public static readonly Color ChipFill = Color.Parse("#0A0906");
     /// <summary>The jump pill's fill, and the talk-target menu's hovered row.</summary>
-    public static readonly Color PillFill = Color.Parse("#0E1923");
+    public static readonly Color PillFill = Color.Parse("#2A2219");
     /// <summary>The dark outline of a selected tab and of the chip: the theme's gold, shaded. Also the fill of a tab's unread count.</summary>
-    public static readonly Color GoldDark = Color.Parse("#7A5E30");
+    public static readonly Color GoldDark = Color.Parse("#8A6326");
     public static readonly IBrush GoldDarkBrush = DerethPalette.Brush(GoldDark);
     /// <summary>The fill of a tab's unread count when a new tell from someone is in it, and the cream text on it.</summary>
     public static readonly Color TellFill = Color.Parse("#8A6E22");
@@ -92,7 +92,7 @@ public static class DerethChatParts
             CornerRadius = new CornerRadius(4, 4, 0, 0),
             BorderThickness = new Thickness(1, 1, 1, 0),
             BorderBrush = selected ? DerethChatPalette.GoldDarkBrush : Brushes.Transparent,
-            Background = selected ? DerethPalette.Brush(Color.FromArgb(0xD9, 0x03, 0x06, 0x09)) : Brushes.Transparent,
+            Background = selected ? DerethPalette.Brush(Color.FromArgb(0xD9, 0x2A, 0x22, 0x19)) : Brushes.Transparent,
             Cursor = new Cursor(StandardCursorType.Hand),
             Child = content
         };

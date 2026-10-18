@@ -68,7 +68,7 @@ internal sealed class InventoryPaperdoll : Canvas
             Width = Scale(RetailArmourRight) - Scale(RetailArmourLeft) + DerethSlotGrid.CellSize + 2 * DollClearance, Height = Height,
             CornerRadius = new CornerRadius(3), Padding = DollInset,
             BorderBrush = DerethPalette.GrooveEdgeBrush, BorderThickness = new Thickness(1),
-            Background = new RadialGradientBrush { GradientStops = { new GradientStop(Color.Parse("#16222C"), 0), new GradientStop(Color.Parse("#05090D"), 1) } },
+            Background = new RadialGradientBrush { GradientStops = { new GradientStop(Color.Parse("#2A2519"), 0), new GradientStop(Color.Parse("#0A0805"), 1) } },
         };
         SetLeft(DollArea, Scale(RetailArmourLeft) + 1 - DollClearance);
         Children.Add(DollArea);
