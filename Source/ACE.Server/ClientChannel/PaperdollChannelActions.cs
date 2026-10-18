@@ -27,17 +27,20 @@ namespace ACE.Server.ClientChannel
 
         public static void Register()
         {
-            ServerChannel.Register(Look, context => context.Reply(Body(context.Player)));
+            ServerChannel.Register(Look, context => context.Reply(LookBody(context.Player)));
             ServerChannel.Register(Inspect, context =>
             {
                 uint guid;
                 using (var reader = context.Body())
                     guid = reader.BaseStream.Length == 4 ? reader.ReadUInt32() : 0;
                 var target = guid == context.Player.Guid.Full ? context.Player : context.Player.FindObject(guid, Player.SearchLocations.Everywhere);
-                if (target == null)
-                    context.Fail(ChannelStatus.BadRequest, "That is not in sight.");
+                if (target != null)
+                    context.Reply(LookBody(target));
+                // Not in the world: it may be in the player's Vault, which looks it up off the world thread.
+                else if (guid != 0 && Market.Vault.Available)
+                    Market.VaultAppraisal.Look(context, guid);
                 else
-                    context.Reply(Body(target));
+                    context.Fail(ChannelStatus.BadRequest, "That is not in sight.");
             });
         }
 
@@ -47,7 +50,7 @@ namespace ACE.Server.ClientChannel
                 ServerChannel.Push(player, Changed, System.Array.Empty<byte>());
         }
 
-        private static byte[] Body(WorldObject player)
+        internal static byte[] LookBody(WorldObject player)
         {
             var look = player.CalculateObjDesc();
 

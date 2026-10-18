@@ -3,6 +3,7 @@ using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 using ACE.Server.ClientChannel;
+using ACE.Server.Market;
 using ACE.Server.Tests.Market;
 
 namespace ACE.Server.Tests.ClientChannel
@@ -43,6 +44,25 @@ namespace ACE.Server.Tests.ClientChannel
                 var reply = ChannelTestClient.Request(player, PaperdollChannelActions.Inspect, BitConverter.GetBytes(0x7FFFFFF0u));
 
                 Assert.AreEqual(ChannelStatus.BadRequest, reply.Status);
+            }
+        }
+
+        [TestMethod]
+        public void Inspect_VaultItem_SendsItsLook()
+        {
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
+            var guid = item.Guid.ClientGUID;
+            using (VaultTestWorld.Online(player))
+            {
+                var held = ChannelTestClient.Request(player, PaperdollChannelActions.Inspect, BitConverter.GetBytes(guid));
+                Assert.AreEqual(ChannelStatus.Ok, held.Status);
+                Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, guid).Outcome);
+
+                var stored = ChannelTestClient.Request(player, PaperdollChannelActions.Inspect, BitConverter.GetBytes(guid));
+
+                Assert.AreEqual(ChannelStatus.Ok, stored.Status, stored.Status == ChannelStatus.Ok ? "" : ChannelTestClient.Text(stored.Body));
+                CollectionAssert.AreEqual(held.Body, stored.Body);
             }
         }
     }
