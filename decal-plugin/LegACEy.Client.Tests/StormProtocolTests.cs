@@ -18,4 +18,11 @@ public sealed class StormProtocolTests
         Assert.Equal((WeatherKind.Thunderstorm, 0xA9, 0xB4), WeatherProtocol.Read(new byte[] { 3, 0xA9, 0xB4 }));
         Assert.Null(WeatherProtocol.Read(new byte[] { 0 }));
     }
+
+    [Fact]
+    public void A_hit_reads_as_its_target_damage_type_and_flags()
+    {
+        var body = new byte[] { 0x01, 0x00, 0x00, 0x80, 120, 0, 0, 0, 0x10, 0, 0, 0, 1 };
+        Assert.Equal((0x80000001u, 120u, 0x10u, true, false), CombatTextProtocol.ReadHit(body));
+    }
 }

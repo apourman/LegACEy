@@ -82,6 +82,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     private readonly IHook<ResetFn> _resetHook;
     private readonly StormFog _fog;
     private readonly Weather _weather;
+    private readonly CombatText _combat;
     private GCHandle _root;
     private IntPtr _mask, _glow;
     private int _width, _height;
@@ -93,6 +94,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         _log = log;
         _fog = new StormFog(device);
         _weather = new Weather(device, _fog);
+        _combat = new CombatText(device, log);
         _root = GCHandle.Alloc(this);
         _smartBoxHook = ReloadedHooks.Instance.CreateHook<SmartBoxDrawFn>(OnSmartBoxDraw, SmartBoxDrawAddress);
         _drawHook = ReloadedHooks.Instance.CreateHook<DrawIndexedFn>(OnDrawIndexed, Method(device, DrawIndexedPrimitiveSlot).ToInt64());
@@ -115,6 +117,9 @@ internal sealed unsafe class WorldEffects : IDisposable
 
     /// <summary>The safe landblock the storm fog rings, as landblock x and y, or null for no storm.</summary>
     public (int X, int Y)? StormZone { get => _fog.Zone; set => _fog.Zone = value; }
+
+    /// <summary>Floating combat text over the targets of the hits the server reports.</summary>
+    public CombatText Combat => _combat;
 
     /// <summary>The weather and the landblock in the middle of it, or null for clear skies.</summary>
     public (WeatherKind Kind, int X, int Y)? Weather { get => _weather.Current; set => _weather.Current = value; }
@@ -140,8 +145,12 @@ internal sealed unsafe class WorldEffects : IDisposable
             // Only objects in a world cell: the sky's objects (and anything else not in the world) are drawn with their own camera.
             var physicsObject = *(int*)(part + 0xE0);
             var player = physicsObject == *PlayerObject;
-            if (physicsObject != 0 && *(int*)(physicsObject + 0x90) != 0 && (!_fog.Calibrated || (player && !_fog.FromPlayer)))
-                _fog.Calibrate(part, player);
+            if (physicsObject != 0 && *(int*)(physicsObject + 0x90) != 0)
+            {
+                if (!_fog.Calibrated || (player && !_fog.FromPlayer)) _fog.Calibrate(part, player);
+                var id = *(uint*)(physicsObject + 0x8);
+                if (_combat.Tracks(id)) _combat.Saw(id, GetTransform(_device, TransformWorld).Translation - _fog.Offset);
+            }
         }
         catch (Exception exception) { Fail(exception); }
         if (Selected == 0 || !DrawsSelected()) return result;
@@ -217,6 +226,7 @@ internal sealed unsafe class WorldEffects : IDisposable
                 var player = *PlayerObject;
                 _weather.PlayerCell = player != 0 ? *(uint*)(player + 0x4C) : 0;
                 _weather.Draw();
+                _combat.Draw(_fog);
                 if (!_masked && Selected != 0) DrawCulledSelection();
             }
             catch (Exception exception) { Fail(exception); }
@@ -383,6 +393,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         ReleaseTextures();
         _fog.Dispose();
         _weather.Dispose();
+        _combat.Dispose();
         if (_root.IsAllocated) _root.Free();
     }
 }

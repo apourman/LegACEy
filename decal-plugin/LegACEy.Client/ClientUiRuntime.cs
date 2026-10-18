@@ -344,6 +344,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _serverChannel = new ServerChannelClient(_channelTransport);
                 _serverChannel.Subscribe(StormProtocol.Changed, ShowStorm);
                 _serverChannel.Subscribe(WeatherProtocol.Changed, ShowWeather);
+                _serverChannel.Subscribe(CombatTextProtocol.Hit, ShowHit);
             }
             catch (Exception exception) { Log($"LegACEy server channel disabled: {exception.Message}"); }
             try { _retailDrag = new RetailItemDrag(NativeUi.ReadMemory, Log); }
@@ -537,6 +538,17 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         catch (Exception exception) { Log($"Could not read the weather: {exception.Message}"); }
     }
 
+    /// <summary>A hit anywhere in sight, from the server: its number rises over the target.</summary>
+    private void ShowHit(byte[] body)
+    {
+        try
+        {
+            var hit = CombatTextProtocol.ReadHit(body);
+            _worldEffects?.Combat.Add(hit.Target, hit.Amount, hit.DamageType, hit.Critical, hit.Periodic);
+        }
+        catch (Exception exception) { Log($"Could not read a hit: {exception.Message}"); }
+    }
+
     private static IEnumerable<string> ServerActionsFrom(ChannelReply reply)
     {
         if (!reply.Ok) return Array.Empty<string>();
@@ -565,6 +577,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _worldEffects.Selected = 0;
             _worldEffects.StormZone = null;
             _worldEffects.Weather = null;
+            _worldEffects.Combat.Clear();
         }
         Guard(() => _textMode?.Hold(false));
         try { _clientUi?.EndSession(); }
