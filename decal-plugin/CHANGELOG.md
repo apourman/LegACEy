@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.4.0...decal-plugin-v0.5.0) (2026-10-18)
+
+
+### Features
+
+* realms and dungeon instances ([#56](https://github.com/apourman/LegACEy/issues/56)) ([e110cec](https://github.com/apourman/LegACEy/commit/e110cecbe0ca7464f23eed69b756351e298ff024))
+
 ## [0.4.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.3.0...decal-plugin-v0.4.0) (2026-10-17)
 
 
