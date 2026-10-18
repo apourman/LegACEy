@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.6.0...decal-plugin-v0.6.1) (2026-10-18)
+
+
+### Bug Fixes
+
+* **client:** the release package no longer expects the Paperdoll plugin ([#62](https://github.com/apourman/LegACEy/issues/62)) ([b2b13b6](https://github.com/apourman/LegACEy/commit/b2b13b6720520a7bc2dc1c7df9adbd48858cee84))
+
 ## [0.6.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.5.0...decal-plugin-v0.6.0) (2026-10-18)
 
 
