@@ -267,6 +267,23 @@ namespace ACE.Server.Tests.Market
             return told;
         }
 
+        [TestMethod]
+        public void ModifyLong_ChangesAMarketSetting_ForTheNextVaultTransfer()
+        {
+            try
+            {
+                AdminCommands.HandleModifyServerLongProperty(null, MarketSettings.ChannelSeconds.Key, "7");
+
+                // the shard row is written now, not at the next 5-minute sync
+                Assert.AreEqual(7, MarketSettings.Get(MarketSettings.ChannelSeconds));
+            }
+            finally
+            {
+                MarketTestDatabase.Execute(Db, $"DELETE FROM config_properties_long WHERE `key` = '{MarketSettings.ChannelSeconds.Key}';");
+                PropertyManager.ResyncVariables();
+            }
+        }
+
         private static bool Paused()
         {
             using var shard = MarketTestDatabase.CreateContext(Db);
