@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.5.0...decal-plugin-v0.6.0) (2026-10-18)
+
+
+### Features
+
+* Dereth UI polish, weather and combat text ([#59](https://github.com/apourman/LegACEy/issues/59)) ([e69e967](https://github.com/apourman/LegACEy/commit/e69e9671eea77e278bbf1ee605170579e7cc182b))
+
 ## [0.5.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.4.0...decal-plugin-v0.5.0) (2026-10-18)
 
 
