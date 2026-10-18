@@ -13,9 +13,9 @@ public sealed class StormProtocolTests
     }
 
     [Fact]
-    public void Snow_reads_as_its_intensity_and_landblock_and_none_as_null()
+    public void Weather_reads_as_its_kind_and_landblock_and_clear_skies_as_null()
     {
-        Assert.Equal((SnowIntensity.Blizzard, 0xA9, 0xB4), SnowProtocol.ReadSnow(new byte[] { 2, 0xA9, 0xB4 }));
-        Assert.Null(SnowProtocol.ReadSnow(new byte[] { 0 }));
+        Assert.Equal((WeatherKind.Thunderstorm, 0xA9, 0xB4), WeatherProtocol.Read(new byte[] { 3, 0xA9, 0xB4 }));
+        Assert.Null(WeatherProtocol.Read(new byte[] { 0 }));
     }
 }

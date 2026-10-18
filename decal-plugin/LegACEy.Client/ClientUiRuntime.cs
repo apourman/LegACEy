@@ -343,7 +343,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _channelTransport = new GameChannelTransport(NativeUi.ReadMemory, () => _inGame, Log);
                 _serverChannel = new ServerChannelClient(_channelTransport);
                 _serverChannel.Subscribe(StormProtocol.Changed, ShowStorm);
-                _serverChannel.Subscribe(SnowProtocol.Changed, ShowSnow);
+                _serverChannel.Subscribe(WeatherProtocol.Changed, ShowWeather);
             }
             catch (Exception exception) { Log($"LegACEy server channel disabled: {exception.Message}"); }
             try { _retailDrag = new RetailItemDrag(NativeUi.ReadMemory, Log); }
@@ -512,8 +512,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _plugins?.SetServerActions(actions);
             if (actions.Contains(StormProtocol.Zone))
                 _serverChannel?.Request(StormProtocol.Zone, Array.Empty<byte>(), zone => { if (zone.Ok) ShowStorm(zone.Body); });
-            if (actions.Contains(SnowProtocol.Zone))
-                _serverChannel?.Request(SnowProtocol.Zone, Array.Empty<byte>(), snow => { if (snow.Ok) ShowSnow(snow.Body); });
+            if (actions.Contains(WeatherProtocol.Zone))
+                _serverChannel?.Request(WeatherProtocol.Zone, Array.Empty<byte>(), weather => { if (weather.Ok) ShowWeather(weather.Body); });
         });
     }
 
@@ -527,14 +527,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         catch (Exception exception) { Log($"Could not read the storm zone: {exception.Message}"); }
     }
 
-    /// <summary>The snow test's weather, from the server: snow on the 3×3 landblocks around its landblock.</summary>
-    private void ShowSnow(byte[] body)
+    /// <summary>The weather test's weather, from the server: snow, a blizzard or a thunderstorm on the 3×3 landblocks around its landblock.</summary>
+    private void ShowWeather(byte[] body)
     {
         try
         {
-            if (_worldEffects != null) _worldEffects.Snow = SnowProtocol.ReadSnow(body);
+            if (_worldEffects != null) _worldEffects.Weather = WeatherProtocol.Read(body);
         }
-        catch (Exception exception) { Log($"Could not read the snow: {exception.Message}"); }
+        catch (Exception exception) { Log($"Could not read the weather: {exception.Message}"); }
     }
 
     private static IEnumerable<string> ServerActionsFrom(ChannelReply reply)
@@ -564,7 +564,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             _worldEffects.Selected = 0;
             _worldEffects.StormZone = null;
-            _worldEffects.Snow = null;
+            _worldEffects.Weather = null;
         }
         Guard(() => _textMode?.Hold(false));
         try { _clientUi?.EndSession(); }

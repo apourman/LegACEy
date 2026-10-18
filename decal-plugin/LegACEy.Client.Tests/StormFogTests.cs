@@ -16,16 +16,16 @@ public sealed class StormFogTests
         Assert.Equal(depth, StormFog.StormDepth(new Vector3(x, y, 0), (0x97, 0x22)), 3);
 
     [Fact]
-    public void A_snowflake_wraps_into_the_box_around_the_camera_and_falls_only_inside_the_snow()
+    public void A_snowflake_wraps_into_the_box_around_the_camera_and_falls_only_inside_the_weather()
     {
         var middle = new Vector3(29088, 6624, 60);
-        var flake = Snowfall.Wrap(new Vector3(5, 7, -1000), middle);
+        var flake = Weather.Wrap(new Vector3(5, 7, -1000), middle);
         Assert.InRange(flake.X, middle.X - 20, middle.X + 20);
         Assert.InRange(flake.Z, middle.Z - 12, middle.Z + 12);
-        Assert.True(Vector3.Distance(flake, Snowfall.Wrap(flake + new Vector3(40, -80, 24), middle)) < 0.01f);
-        // The snow covers landblock 0x9722 and the 8 around it: 288 m each way from its centre.
+        Assert.True(Vector3.Distance(flake, Weather.Wrap(flake + new Vector3(40, -80, 24), middle)) < 0.01f);
+        // The weather covers landblock 0x9722 and the 8 around it: 288 m each way from its centre.
         var centre = new Vector2(29088, 6624);
-        Assert.Equal(288, Snowfall.Depth(middle, centre), 3);
-        Assert.True(Snowfall.Depth(middle + new Vector3(300, 0, 0), centre) < 0);
+        Assert.Equal(288, Weather.Depth(middle, centre), 3);
+        Assert.True(Weather.Depth(middle + new Vector3(300, 0, 0), centre) < 0);
     }
 }

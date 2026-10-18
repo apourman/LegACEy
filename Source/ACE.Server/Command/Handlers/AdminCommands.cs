@@ -36,6 +36,8 @@ using Position = ACE.Entity.Position;
 
 namespace ACE.Server.Command.Handlers
 {
+    using WeatherKind = ACE.Server.ClientChannel.WeatherChannelActions.Kind;
+
     public static class AdminCommands
     {
         private static readonly ILog log = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
@@ -1103,30 +1105,41 @@ namespace ACE.Server.Command.Handlers
 
         // snow [light | blizzard | off]
         [CommandHandler("snow", AccessLevel.Admin, CommandHandlerFlag.RequiresWorld, 0,
-            "Snows around the landblock you stand in, for testing the LegACEy client's snow.",
-            "[light | blizzard | off]\nLight (the default) or blizzard snow falls on your landblock and the 8 around it for every LegACEy client; off stops it.\n" +
-            "In memory only: a restart clears it.")]
+            "Snows around the landblock you stand in, for testing the LegACEy client's weather.",
+            "[light | blizzard | off]\nLight (the default) or blizzard snow falls on your landblock and the 8 around it for every LegACEy client, " +
+            "replacing any other weather; off clears it.\nIn memory only: a restart clears it.")]
         public static void HandleSnow(Session session, params string[] parameters)
         {
-            var word = parameters.Length > 0 ? parameters[0].ToLowerInvariant() : "light";
-            var intensity = word switch
+            var kind = (parameters.Length > 0 ? parameters[0].ToLowerInvariant() : "light") switch
             {
-                "light" => ACE.Server.ClientChannel.SnowChannelActions.Intensity.Light,
-                "blizzard" => ACE.Server.ClientChannel.SnowChannelActions.Intensity.Blizzard,
-                "off" => ACE.Server.ClientChannel.SnowChannelActions.Intensity.None,
-                _ => (ACE.Server.ClientChannel.SnowChannelActions.Intensity?)null,
+                "light" => WeatherKind.Snow,
+                "blizzard" => WeatherKind.Blizzard,
+                "off" => WeatherKind.None,
+                _ => (WeatherKind?)null,
             };
-            if (intensity is not { } chosen)
-            {
-                ChatPacket.SendServerMessage(session, "Usage: @snow [light | blizzard | off]", ChatMessageType.Broadcast);
-                return;
-            }
+            if (kind is { } chosen) SetWeather(session, chosen, chosen == WeatherKind.Blizzard ? "Blizzard" : "Light snow");
+            else ChatPacket.SendServerMessage(session, "Usage: @snow [light | blizzard | off]", ChatMessageType.Broadcast);
+        }
+
+        // thunderstorm [off]
+        [CommandHandler("thunderstorm", AccessLevel.Admin, CommandHandlerFlag.RequiresWorld, 0,
+            "Brings a stormy night to the landblock you stand in, for testing the LegACEy client's weather.",
+            "[off]\nHeavy rain, a dark sky and lightning strikes on your landblock and the 8 around it for every LegACEy client, " +
+            "replacing any other weather; off clears it.\nIn memory only: a restart clears it.")]
+        public static void HandleThunderstorm(Session session, params string[] parameters)
+        {
+            if (parameters.Length == 0) SetWeather(session, WeatherKind.Thunderstorm, "Thunderstorm");
+            else if (parameters[0].Equals("off", StringComparison.OrdinalIgnoreCase)) SetWeather(session, WeatherKind.None, null);
+            else ChatPacket.SendServerMessage(session, "Usage: @thunderstorm [off]", ChatMessageType.Broadcast);
+        }
+
+        private static void SetWeather(Session session, WeatherKind kind, string name)
+        {
             var location = session.Player.Location;
-            ACE.Server.ClientChannel.SnowChannelActions.Set(chosen, (byte)location.LandblockX, (byte)location.LandblockY);
-            ChatPacket.SendServerMessage(session, chosen == ACE.Server.ClientChannel.SnowChannelActions.Intensity.None
-                ? "Snow off."
-                : $"{(chosen == ACE.Server.ClientChannel.SnowChannelActions.Intensity.Blizzard ? "Blizzard" : "Light snow")} around landblock 0x{location.LandblockX:X2}{location.LandblockY:X2}.",
-                ChatMessageType.Broadcast);
+            ACE.Server.ClientChannel.WeatherChannelActions.Set(kind, (byte)location.LandblockX, (byte)location.LandblockY);
+            ChatPacket.SendServerMessage(session, kind == WeatherKind.None
+                ? "Weather cleared."
+                : $"{name} around landblock 0x{location.LandblockX:X2}{location.LandblockY:X2}.", ChatMessageType.Broadcast);
         }
 
         // instance create <template id or name> | instance list

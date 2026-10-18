@@ -45,7 +45,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         new NativeUiEntry("CPhysicsObj::leave_cell clears the object's cell", 0x00511A77, NativeUiCatalogue.Bytes("C7 86 90 00 00 00 00 00 00 00 5E C2 04 00"),
             Source, "the layout read here: CPhysicsObj +0x90 is its CObjCell, zero once out of the world (picked up, gone)"),
         new NativeUiEntry("gmRadarUI::DrawObjects reads an object's cell id", 0x004DA0E4, NativeUiCatalogue.Bytes("8B 88 90 00 00 00 85 C9 0F 84 03 02 00 00 8B 48 4C 85 C9"),
-            Source, "the layout read here: CPhysicsObj +0x4C is its cell id; the snow is off in indoor cells"),
+            Source, "the layout read here: CPhysicsObj +0x4C is its cell id; the weather is off in indoor cells"),
         new NativeUiEntry("CPhysicsObj::GetObjectA", GetObjectAddress, NativeUiCatalogue.Bytes("8B 0D 64 4D 84 00 85 C9 74 0B 8B 44 24 04 50"),
             Source, "Cdecl (object id): CObjectMaint lookup, null when the object is not in the world"),
         new NativeUiEntry("CPartArray::Draw", PartArrayDrawAddress, NativeUiCatalogue.Bytes("56 57 8B F9 8B 47 58 33 F6 85 C0 76 1C 8D 49 00 8B 47 5C 8B 0C B0 85 C9 74 07 6A 00"),
@@ -81,7 +81,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     private readonly IHook<DrawIndexedFn> _drawHook;
     private readonly IHook<ResetFn> _resetHook;
     private readonly StormFog _fog;
-    private readonly Snowfall _snow;
+    private readonly Weather _weather;
     private GCHandle _root;
     private IntPtr _mask, _glow;
     private int _width, _height;
@@ -92,7 +92,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         _device = device;
         _log = log;
         _fog = new StormFog(device);
-        _snow = new Snowfall(device, _fog);
+        _weather = new Weather(device, _fog);
         _root = GCHandle.Alloc(this);
         _smartBoxHook = ReloadedHooks.Instance.CreateHook<SmartBoxDrawFn>(OnSmartBoxDraw, SmartBoxDrawAddress);
         _drawHook = ReloadedHooks.Instance.CreateHook<DrawIndexedFn>(OnDrawIndexed, Method(device, DrawIndexedPrimitiveSlot).ToInt64());
@@ -107,7 +107,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     {
         if (!NativeUiCatalogue.Validate(readMemory, log, Entries))
         {
-            log("The selection outline, storm fog and snow are off: the running client does not match their native entries.");
+            log("The selection outline, storm fog and weather are off: the running client does not match their native entries.");
             return null;
         }
         return new WorldEffects(device, log);
@@ -116,8 +116,8 @@ internal sealed unsafe class WorldEffects : IDisposable
     /// <summary>The safe landblock the storm fog rings, as landblock x and y, or null for no storm.</summary>
     public (int X, int Y)? StormZone { get => _fog.Zone; set => _fog.Zone = value; }
 
-    /// <summary>How hard it snows and the landblock in the middle of the snow, or null for none.</summary>
-    public (SnowIntensity Intensity, int X, int Y)? Snow { get => _snow.Snow; set => _snow.Snow = value; }
+    /// <summary>The weather and the landblock in the middle of it, or null for clear skies.</summary>
+    public (WeatherKind Kind, int X, int Y)? Weather { get => _weather.Current; set => _weather.Current = value; }
 
     /// <summary>The object to outline, zero for none. Set each frame.</summary>
     public uint Selected { get; set; }
@@ -215,8 +215,8 @@ internal sealed unsafe class WorldEffects : IDisposable
             {
                 _fog.Draw();
                 var player = *PlayerObject;
-                _snow.PlayerCell = player != 0 ? *(uint*)(player + 0x4C) : 0;
-                _snow.Draw();
+                _weather.PlayerCell = player != 0 ? *(uint*)(player + 0x4C) : 0;
+                _weather.Draw();
                 if (!_masked && Selected != 0) DrawCulledSelection();
             }
             catch (Exception exception) { Fail(exception); }
@@ -382,7 +382,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         _resetHook.Disable();
         ReleaseTextures();
         _fog.Dispose();
-        _snow.Dispose();
+        _weather.Dispose();
         if (_root.IsAllocated) _root.Free();
     }
 }
