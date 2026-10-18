@@ -4,26 +4,17 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 using ACE.Server.ClientChannel;
 using ACE.Server.Market;
-using ACE.Server.Tests.Market;
+using ACE.Server.Tests.ClientChannel;
 
-namespace ACE.Server.Tests.ClientChannel
+namespace ACE.Server.Tests.Market
 {
-    [TestClass]
-    public class PaperdollInspectTests
+    // In the Vault tests: the started world is shared, and starts once a run.
+    public partial class VaultTests
     {
-        [ClassInitialize]
-        public static void TestSetup(TestContext context)
-        {
-            VaultTestWorld.Start();
-            PaperdollChannelActions.Register();
-        }
-
-        [ClassCleanup]
-        public static void TestCleanup() => VaultTestWorld.Stop();
-
         [TestMethod]
         public void Inspect_Self_SendsTheSameLookAsLook()
         {
+            PaperdollChannelActions.Register();
             var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
             using (VaultTestWorld.Online(player))
             {
@@ -38,6 +29,7 @@ namespace ACE.Server.Tests.ClientChannel
         [TestMethod]
         public void Inspect_UnknownObject_Fails()
         {
+            PaperdollChannelActions.Register();
             var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
             using (VaultTestWorld.Online(player))
             {
