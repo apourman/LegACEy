@@ -134,7 +134,8 @@ public sealed class PluginRegistry
     }
 
     /// <summary>Whether the server's last channel.hello registered the action. Nothing registered before the first answer.</summary>
-    private bool SupportsAction(string action) => _serverActions.Contains(action);
+    /// <summary>True when the server registered the action (the list from channel.hello).</summary>
+    public bool SupportsAction(string action) => _serverActions.Contains(action);
 
     private bool IsVisible(PluginEntry entry) => entry.Enabled && entry.RequiredActions.All(SupportsAction);
 

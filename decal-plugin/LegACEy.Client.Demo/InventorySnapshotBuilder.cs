@@ -154,7 +154,7 @@ public static class InventorySnapshotBuilder
     }
 
     /// <summary>The paperdoll slots an equip mask covers, in paperdoll order. A multi-slot mask covers every slot it touches.</summary>
-    private static IReadOnlyList<PaperdollSlot> SlotsFor(uint equipMask) =>
+    internal static IReadOnlyList<PaperdollSlot> SlotsFor(uint equipMask) =>
         SlotMasks.Where(pair => Covers(equipMask, pair.Slot) != 0).Select(pair => pair.Slot).ToArray();
 
     /// <summary>The burden limit the server enforces: 150 per strength point, plus a bonus per augmentation capped at 150.</summary>

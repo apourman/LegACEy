@@ -8,10 +8,30 @@ public static class PaperdollProtocol
 {
     public const string Look = "paperdoll.look";
     public const string Changed = "paperdoll.changed";
+    public const string Inspect = "paperdoll.inspect";
 
-    public static CharacterAppearance ReadLook(byte[] body)
+    public static CharacterAppearance ReadLook(byte[] body) => ReadLook(ChannelWire.Reader(body));
+
+    public static byte[] InspectBody(uint objectId) => ChannelWire.Body(writer => writer.Write(objectId));
+
+    /// <summary>An object's look, then what it wears (nothing, for anything but a creature).</summary>
+    public static (CharacterAppearance Look, IReadOnlyList<WornGear> Gear) ReadInspect(byte[] body)
     {
         var reader = ChannelWire.Reader(body);
+        var look = ReadLook(reader);
+        var gear = new List<WornGear>();
+        for (int i = 0, count = reader.ReadUInt16(); i < count; i++)
+        {
+            var id = reader.ReadUInt32();
+            var location = reader.ReadUInt32();
+            var visual = new ItemVisual(reader.ReadUInt32(), reader.ReadUInt32(), reader.ReadUInt32(), reader.ReadUInt32());
+            gear.Add(new WornGear(id, location, visual, ChannelWire.ReadString(reader)));
+        }
+        return (look, gear);
+    }
+
+    private static CharacterAppearance ReadLook(System.IO.BinaryReader reader)
+    {
         var setup = reader.ReadUInt32();
         var palette = Known(reader.ReadUInt32(), 0x04000000);
         var palettes = new List<SubPalette>();
@@ -32,3 +52,6 @@ public static class PaperdollProtocol
     /// </summary>
     private static uint Known(uint id, uint type) => id != 0 && (id & 0xFF000000) == 0 ? id | type : id;
 }
+
+/// <summary>An item someone wears, as paperdoll.inspect sends it: its id, the slots it is wielded in (an EquipMask), its icon and name.</summary>
+public sealed record WornGear(uint Id, uint Location, ItemVisual Visual, string Name);

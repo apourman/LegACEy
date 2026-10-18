@@ -60,7 +60,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private PaperdollView? _doll;
     private readonly Dictionary<ItemVisual, WriteableBitmap?> _images = new();
     private readonly DerethWindow _frame;
-    private readonly InventoryPaperdoll _paperdoll = new();
+    private readonly PaperdollCanvas _paperdoll = new();
     // Its columns start under the contents line's name, as the pack row's do in the horizontal layout.
     private readonly DerethSlotGrid _grid = new() { ColumnAlignment = HorizontalAlignment.Left };
     private readonly TextBlock _contentsName = Label(string.Empty, TextBrush, 13);
@@ -707,7 +707,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private DerethSlot WornSlot(InventorySnapshot snapshot, Dictionary<PaperdollSlot, WieldedItem> worn, PaperdollSlot slot)
     {
         if (!worn.TryGetValue(slot, out var item))
-            return new DerethSlot(InventoryGlyphs.For(slot)) { Tag = new InventorySlotId(SlotPlace.Paperdoll, 0, 0, -1, slot) };
+            return new DerethSlot(PaperdollGlyphs.For(slot)) { Tag = new InventorySlotId(SlotPlace.Paperdoll, 0, 0, -1, slot) };
         return Slot(new InventorySlotId(SlotPlace.Paperdoll, item.Id, 0, -1, slot), Layers(item.Visual, item.StackCount), item.Id == snapshot.Selected);
     }
 

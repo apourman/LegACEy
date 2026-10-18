@@ -5,16 +5,15 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
-using LegACEy.Client.Demo;
 using LegACEy.Client.Themes;
 
-namespace LegACEy.Plugin.Inventory;
+namespace LegACEy.Client.Demo;
 
 /// <summary>
 /// The paperdoll block: retail's paperdoll (224×214 at 32 px) with every slot scaled to the 35 px pitch. The doll area is the
 /// one control the 3D character fills; the Slots toggle sits above it, left of the aetheria row. Slots are placed by <see cref="Show"/>.
 /// </summary>
-internal sealed class InventoryPaperdoll : Canvas
+public sealed class PaperdollCanvas : Canvas
 {
     // Retail's cells are 32 px; the Dereth pitch is 35 px. Each retail position is scaled to it, then the 34 px cell is centred in the pitch.
     private const int RetailCell = 32;
@@ -60,7 +59,7 @@ internal sealed class InventoryPaperdoll : Canvas
     };
     private readonly TextBlock _slotsLabel = new() { Text = "Slots", FontSize = 11, FontFamily = DerethPalette.Body, VerticalAlignment = VerticalAlignment.Center };
 
-    public InventoryPaperdoll()
+    public PaperdollCanvas()
     {
         Width = Scale(RetailWidth);
         Height = Scale(RetailHeight);

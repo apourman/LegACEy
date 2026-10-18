@@ -114,6 +114,48 @@ public sealed class AppraisalTests
     });
 
     [Fact]
+    public void Inspect_swaps_a_creature_s_details_for_its_paperdoll_and_back() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost();
+        var inspect = true;
+        var appraisals = new AppraisalFeature(host, _ => { }, canInspect: () => inspect);
+        appraisals.Request(Potion);
+        appraisals.Receive(new ServerAppraisal(Potion)
+        {
+            Strings = { [1] = "Saro" },
+            Creature = new CreatureWrite(10, 20, new uint[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }, 0x5, 0x6),
+        }.Build());
+        var window = host.LastWindow!;
+        var button = window.GetLogicalDescendants().OfType<DerethButton>().Single(b => b.Name == "InspectButton");
+        Assert.True(button.IsVisible);
+
+        button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Assert.Single(window.GetLogicalDescendants().OfType<PaperdollCanvas>());
+        button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Assert.Empty(window.GetLogicalDescendants().OfType<PaperdollCanvas>());
+
+        // A server without paperdoll.inspect: the next appraisal hides the button.
+        inspect = false;
+        appraisals.Receive(new ServerAppraisal(Potion) { Strings = { [1] = "Saro" } }.Build());
+        Assert.False(button.IsVisible);
+    });
+
+    [Fact]
+    public void Inspecting_an_item_shows_its_model_without_paperdoll_slots() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost();
+        var appraisals = new AppraisalFeature(host, _ => { }, canInspect: () => true);
+        appraisals.Request(Potion);
+        appraisals.Receive(new ServerAppraisal(Potion) { Strings = { [1] = "Breastplate" } }.Build());
+        var window = host.LastWindow!;
+        window.GetLogicalDescendants().OfType<DerethButton>().Single(b => b.Name == "InspectButton")
+            .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+        Assert.Single(window.GetLogicalDescendants().OfType<PaperdollView>());
+        Assert.Empty(window.GetLogicalDescendants().OfType<PaperdollCanvas>());
+    });
+
+    [Fact]
     public void An_appraisal_is_awaited_from_the_request_until_its_response_and_not_when_shown_from_the_cache() => OnWindowThread(() =>
     {
         var appraisals = new AppraisalFeature(new FakeAppraisalHost(), _ => { }, game: new FakeAppraisalGame());

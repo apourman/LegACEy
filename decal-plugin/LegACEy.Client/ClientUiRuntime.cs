@@ -314,7 +314,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _gameStatePoller = new GameStatePoller(_gameState, Bridge.ReadGameState,
             error => Log($"Character stats temporarily unavailable; keeping UI active and retrying: {error.Message}"));
         _appraisal = new AppraisalFeature(this, Log, spells: () => _portal?.ReadSpells(Log) ?? new Dictionary<uint, SpellInfo>(), game: this,
-            names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None, measure: (control, available) => AvaloniaPanel.MeasureAt(control, available, WindowScale));
+            names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None, measure: (control, available) => AvaloniaPanel.MeasureAt(control, available, WindowScale),
+            canInspect: () => _plugins?.SupportsAction(PaperdollProtocol.Inspect) == true);
         _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal);
         _row2Choice = new ShortcutRowChoice(_settingsStore);
         _vitalsLayouts = new VitalsLayoutChoice(_settingsStore);
