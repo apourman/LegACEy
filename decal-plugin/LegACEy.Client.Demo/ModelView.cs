@@ -14,8 +14,8 @@ namespace LegACEy.Client.Demo;
 /// </summary>
 public sealed class ModelView : Border
 {
-    // The model's height the view shows at zoom 1, as a share of the model: the renderer's framing.
-    public const float Framing = 1.2f;
+    // The model's height the view shows at zoom 1, as a share of the model: the renderer's framing. Tight, so the character fills its view.
+    public const float Framing = 1.06f;
     public const float MaxZoom = 6f;
 
     private Avalonia.Point? _dragFrom;

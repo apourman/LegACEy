@@ -229,7 +229,7 @@ public sealed class InventoryPluginTests
         var model = Assert.Single(ModelViews(panel));
         Assert.Equal(new[] { PaperdollProtocol.Look }, transport.Actions);
 
-        // The model stays clear of the aetheria row above it and the Slots toggle below it, which the host draws over the model.
+        // The model stays clear of the aetheria row and the Slots toggle above it, which the host draws over the model.
         InventoryDriver.Tick(panel);
         var bounds = OnPanel(model, panel);
         Assert.False(bounds.Intersects(OnPanel(InventoryDriver.SlotOrNull(panel, PaperdollSlot.AetheriaOne)!, panel)));

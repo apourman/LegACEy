@@ -12,7 +12,7 @@ namespace LegACEy.Plugin.Inventory;
 
 /// <summary>
 /// The paperdoll block: retail's paperdoll (224×214 at 32 px) with every slot scaled to the 35 px pitch. The doll area is the
-/// one control the 3D character fills; the Slots toggle sits under it. Slots are placed by <see cref="Show"/>.
+/// one control the 3D character fills; the Slots toggle sits above it, left of the aetheria row. Slots are placed by <see cref="Show"/>.
 /// </summary>
 internal sealed class InventoryPaperdoll : Canvas
 {
@@ -25,8 +25,9 @@ internal sealed class InventoryPaperdoll : Canvas
     private const int RetailArmourLeft = 48;
     private const int RetailArmourRight = 120;
     private const double DollClearance = 2;
+    // The Slots toggle sits in the doll column's top strip, left of the aetheria row, so the doll runs down to the column's foot.
     private const int RetailToggleLeft = 48;
-    private const int RetailToggleTop = 190;
+    private const int ToggleTop = 10;
 
     private static readonly (PaperdollSlot Slot, int X, int Y)[] Positions =
     {
@@ -40,9 +41,9 @@ internal sealed class InventoryPaperdoll : Canvas
         (PaperdollSlot.Cloak, 192, 44), (PaperdollSlot.Shirt, 192, 80), (PaperdollSlot.Pants, 192, 116),
     };
 
-    // The panel keeps its full size, and whatever is put in it (the 3D character) is inset to clear the rows around it: the aetheria
-    // cells end at y 44 and the Slots toggle starts at y 220. With the 1 px border, the inside runs from y 46 to y 219.
-    private static readonly Thickness DollInset = new(0, 45, 0, 21);
+    // The panel keeps its full size, and whatever is put in it (the 3D character) is inset to clear the aetheria cells and the Slots toggle
+    // above it, which end at y 44. With the 1 px border, the inside runs from y 46 to the foot.
+    private static readonly Thickness DollInset = new(0, 45, 0, 0);
 
     /// <summary>The armour slots, which sit over the doll and show only while the Slots toggle is on.</summary>
     private static readonly HashSet<PaperdollSlot> Armour = new()
@@ -83,7 +84,7 @@ internal sealed class InventoryPaperdoll : Canvas
             if (e.InitialPressMouseButton == MouseButton.Left) SlotsPressed?.Invoke();
         };
         SetLeft(SlotsToggle, Scale(RetailToggleLeft));
-        SetTop(SlotsToggle, Scale(RetailToggleTop) + 6);
+        SetTop(SlotsToggle, ToggleTop);
         Children.Add(SlotsToggle);
     }
 
