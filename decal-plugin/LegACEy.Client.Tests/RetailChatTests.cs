@@ -284,6 +284,21 @@ public sealed class RetailChatTests
     });
 
     [Fact]
+    public void A_line_draws_in_retail_s_colour_for_its_chat_type() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        using var panel = Open(port, out _);
+        port.Say(new RetailChatLine(RetailChatKind.Channel, "[General] Saro says, \"hi\"", Stamp, Type: 27));
+        port.Say(new RetailChatLine(RetailChatKind.Channel, "Saro says to Healers, \"heal\"", Stamp, Type: 8));
+        panel.Tick();
+
+        Assert.Equal(Color.Parse("#B4DCF0"), Ink(LineOf(panel, "[General] Saro")));
+        Assert.Equal(Color.Parse("#FF9696"), Ink(LineOf(panel, "to Healers")));
+
+        static Color Ink(TextBlock line) => ((SolidColorBrush)line.Inlines!.OfType<Run>().Last().Foreground!).Color;
+    });
+
+    [Fact]
     public void A_tell_tag_s_object_id_names_the_sender_even_past_0x7FFFFFFF() =>
         Assert.Equal(0x80000123u, LegACEy.Client.DecalPlugin.NativeRetailChatPort.RetailChatTypes.Parse(RetailChatKind.TellIn,
             "<Tell:IIDString:-2147483357:Guard>Guard<\\Tell> tells you, \"halt\"", Stamp).SenderId);

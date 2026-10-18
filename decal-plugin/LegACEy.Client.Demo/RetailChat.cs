@@ -39,9 +39,11 @@ public enum ChatChannels
 
 /// <summary>
 /// A line as the chat window shows it. <see cref="Text"/> is the line as retail words it, with the sender's name in it; <see cref="Sender"/>
-/// is the name a click answers with a tell (the other party's, for a tell either way); <see cref="Channel"/> is a channel's name.
+/// is the name a click answers with a tell (the other party's, for a tell either way); <see cref="Channel"/> is a channel's name;
+/// <see cref="Type"/> is retail's chat type, which picks the line's colour, or null when the line has none.
 /// </summary>
-public sealed record RetailChatLine(RetailChatKind Kind, string Text, DateTime Time, string? Sender = null, string? Channel = null, uint SenderId = 0)
+public sealed record RetailChatLine(RetailChatKind Kind, string Text, DateTime Time, string? Sender = null, string? Channel = null, uint SenderId = 0,
+    uint? Type = null)
 {
     /// <summary>A tell back to the line's sender, by object id when the line named one, or null when the line has no sender.</summary>
     public RetailTalkTarget? TellBack => Sender == null ? null : RetailTalkTarget.Tell(Sender, SenderId);

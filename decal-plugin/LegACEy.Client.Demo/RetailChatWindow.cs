@@ -603,7 +603,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     /// </summary>
     private Control LineView(RetailChatLine line)
     {
-        var brush = DerethPalette.Brush(ColourOf(line.Kind));
+        var brush = DerethPalette.Brush(line.Type is { } type ? DerethChatPalette.OfType(type) : ColourOf(line.Kind));
         var italic = line.Kind == RetailChatKind.Emote;
         var view = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap, LineHeight = 15.6, Margin = new Thickness(0, 0, 0, 1), Tag = line.Time };
         var written = 0;
@@ -971,13 +971,13 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         return item;
     }
 
-    /// <summary>The colour of a kind of line: one per kind, from the Dereth chat palette.</summary>
+    /// <summary>The colour of a kind of line, for a line without retail's chat type: one per kind, from the Dereth chat palette.</summary>
     internal static Color ColourOf(RetailChatKind kind) => kind switch
     {
         RetailChatKind.Local => DerethChatPalette.Say,
         RetailChatKind.Emote => DerethChatPalette.Emote,
         RetailChatKind.TellIn => DerethChatPalette.Tell,
-        RetailChatKind.TellOut => DerethChatPalette.Tell,
+        RetailChatKind.TellOut => DerethChatPalette.TellOut,
         RetailChatKind.Fellowship => DerethChatPalette.Fellowship,
         RetailChatKind.Allegiance => DerethChatPalette.Allegiance,
         RetailChatKind.Channel => DerethChatPalette.Channel,
