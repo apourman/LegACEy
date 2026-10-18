@@ -38,6 +38,8 @@
     <MSBuild Projects="..\LegACEy.Plugin.Vault\LegACEy.Plugin.Vault.csproj;..\LegACEy.Plugin.Inventory\LegACEy.Plugin.Inventory.csproj" Targets="GetTargetPath">
       <Output TaskParameter="TargetOutputs" ItemName="LegACEyPluginAssembly" />
     </MSBuild>
+    <!-- Cleared first, so a plugin that was removed from the build stops loading. -->
+    <RemoveDir Directories="$(OutDir)Plugins" />
     <Copy SourceFiles="@(LegACEyPluginAssembly);@(LegACEyPluginAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" DestinationFolder="$(OutDir)Plugins\%(Filename)" />
   </Target>
 </Project>
