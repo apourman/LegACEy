@@ -154,7 +154,7 @@ namespace ACE.Server.WorldObjects
             var target = spell.School == MagicSchool.ItemEnchantment && !spell.HasItemCategory ? item : this;
 
             // Retrieve enchantment on target and remove it, if present
-            var propertiesEnchantmentRegistry = target.EnchantmentManager.GetEnchantment(spellId, item.Guid.Full);
+            var propertiesEnchantmentRegistry = target.EnchantmentManager.GetEnchantment(spellId, item.Guid.ClientGUID);
 
             if (propertiesEnchantmentRegistry != null)
             {

@@ -11,7 +11,7 @@ public partial class CharacterPropertiesSpellBar
     /// <summary>
     /// Id of the character this property belongs to
     /// </summary>
-    public uint CharacterId { get; set; }
+    public ulong CharacterId { get; set; }
 
     /// <summary>
     /// Id of Spell Bar

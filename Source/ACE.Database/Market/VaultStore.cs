@@ -104,10 +104,11 @@ namespace ACE.Database.Market
         /// </summary>
         public static Dictionary<uint, VaultItem> Owned(uint accountId, IReadOnlyList<uint> itemGuids)
         {
-            var guids = itemGuids.ToList();
+            var guids = itemGuids.Select(guid => (ulong)guid).ToList();
 
+            // Vault items are dynamic, so their guids fit in 32 bits
             using (var context = new ShardDbContext())
-                return context.MarketVaultItems.AsNoTracking().Where(r => r.AccountId == accountId && guids.Contains(r.ItemGuid)).ToDictionary(r => r.ItemGuid);
+                return context.MarketVaultItems.AsNoTracking().Where(r => r.AccountId == accountId && guids.Contains(r.ItemGuid)).ToDictionary(r => (uint)r.ItemGuid);
         }
 
         /// <summary>
@@ -129,7 +130,7 @@ namespace ACE.Database.Market
             if (wcid != null)
                 rows = rows.Where(r => r.Wcid == wcid.Value);
 
-            return rows.OrderBy(r => r.ItemGuid).Select(r => r.ItemGuid).ToList();
+            return rows.OrderBy(r => r.ItemGuid).Select(r => (uint)r.ItemGuid).ToList();
         }
 
         /// <summary>

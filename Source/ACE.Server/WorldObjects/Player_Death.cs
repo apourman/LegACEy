@@ -15,6 +15,7 @@ using ACE.Server.Managers;
 using ACE.Server.Network.Structure;
 using ACE.Server.Network.GameEvent.Events;
 using ACE.Server.Network.GameMessages.Messages;
+using ACE.Server.Realms;
 
 namespace ACE.Server.WorldObjects
 {
@@ -83,10 +84,11 @@ namespace ACE.Server.WorldObjects
 
                 // instead, we get all of the players in the lifestone landblock + adjacent landblocks,
                 // and possibly limit that to some radius around the landblock?
-                var lifestoneBlock = LandblockManager.GetLandblock(new LandblockId(Sanctuary.Landblock << 16 | 0xFFFF), true);
+                var lifestone = RealmPolicy.InHomeRealm(this, Sanctuary);
+                var lifestoneBlock = LandblockManager.GetLandblock(new LandblockId(lifestone.Landblock << 16 | 0xFFFF), lifestone.Instance ?? 0, true);
 
                 // We enqueue the work onto the target landblock to ensure thread-safety. It's highly likely the lifestoneBlock is far away, and part of a different landblock group (and thus different thread).
-                lifestoneBlock.EnqueueAction(new ActionEventDelegate(() => lifestoneBlock.EnqueueBroadcast(excludePlayers, true, Sanctuary, LocalBroadcastRangeSq, broadcastMsg)));
+                lifestoneBlock.EnqueueAction(new ActionEventDelegate(() => lifestoneBlock.EnqueueBroadcast(excludePlayers, true, lifestone, LocalBroadcastRangeSq, broadcastMsg)));
             }
 
             return deathMessage;
@@ -136,7 +138,7 @@ namespace ACE.Server.WorldObjects
 
             var spellID = (uint)SpellId.Vitae;
             var spell = new Spell(spellID);
-            var vitaeEnchantment = new Enchantment(this, Guid.Full, spellID, 0, (EnchantmentMask)spell.StatModType, vitae);
+            var vitaeEnchantment = new Enchantment(this, Guid.ClientGUID, spellID, 0, (EnchantmentMask)spell.StatModType, vitae);
             Session.Network.EnqueueSend(new GameEventMagicUpdateEnchantment(Session, vitaeEnchantment));
         }
 
@@ -252,8 +254,9 @@ namespace ACE.Server.WorldObjects
         /// </summary>
         public void ThreadSafeTeleportOnDeath()
         {
-            // teleport to sanctuary or best location
-            var newPosition = Sanctuary ?? Instantiation ?? Location;
+            // teleport to sanctuary or best location, in the player's home realm as a recall goes
+            var bindPoint = Sanctuary ?? Instantiation;
+            var newPosition = bindPoint != null ? RealmPolicy.InHomeRealm(this, bindPoint) : Location;
 
             WorldManager.ThreadSafeTeleport(this, newPosition, new ActionEventDelegate(() =>
             {
@@ -337,7 +340,7 @@ namespace ACE.Server.WorldObjects
 
             if (step < SuicideMessages.Count)
             {
-                EnqueueBroadcast(new GameMessageHearSpeech(SuicideMessages[step], GetNameWithSuffix(), Guid.Full, ChatMessageType.Speech), LocalBroadcastRange);
+                EnqueueBroadcast(new GameMessageHearSpeech(SuicideMessages[step], GetNameWithSuffix(), Guid.ClientGUID, ChatMessageType.Speech), LocalBroadcastRange);
 
                 OnTalk(SuicideMessages[step]);
 
@@ -546,7 +549,7 @@ namespace ACE.Server.WorldObjects
                     }
                     else
                     {
-                        log.WarnFormat("Couldn't find death item stack 0x{0:X8}:{1} for player {2}", deathItem.WorldObject.Guid.Full, deathItem.WorldObject.Name, Name);
+                        log.WarnFormat("Couldn't find death item stack 0x{0:X8}:{1} for player {2}", deathItem.WorldObject.Guid, deathItem.WorldObject.Name, Name);
                     }
                 }
                 else
@@ -558,7 +561,7 @@ namespace ACE.Server.WorldObjects
                     }
                     else
                     {
-                        log.WarnFormat("Couldn't find death item 0x{0:X8}:{1} for player {2}", deathItem.WorldObject.Guid.Full, deathItem.WorldObject.Name, Name);
+                        log.WarnFormat("Couldn't find death item 0x{0:X8}:{1} for player {2}", deathItem.WorldObject.Guid, deathItem.WorldObject.Name, Name);
                     }
                 }
             }
@@ -984,7 +987,7 @@ namespace ACE.Server.WorldObjects
             if (MinimumTimeSincePk == null || (PropertyManager.GetBool("pk_server_safe_training_academy").Item && RecallsDisabled))
                 return;
 
-            if (PkLevel == PKLevel.NPK && !PropertyManager.GetBool("pk_server").Item && !PropertyManager.GetBool("pkl_server").Item)
+            if (PkLevel == PKLevel.NPK && !PropertyManager.GetBool("pk_server").Item && !PropertyManager.GetBool("pkl_server").Item && !InPvpRealm)
             {
                 MinimumTimeSincePk = null;
                 return;
@@ -1000,7 +1003,7 @@ namespace ACE.Server.WorldObjects
             var werror = WeenieError.None;
             var pkLevel = PkLevel;
 
-            if (PropertyManager.GetBool("pk_server").Item)
+            if (PropertyManager.GetBool("pk_server").Item || InPvpRealm)
                 pkLevel = PKLevel.PK;
             else if (PropertyManager.GetBool("pkl_server").Item)
                 pkLevel = PKLevel.PKLite;

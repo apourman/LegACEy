@@ -33,9 +33,11 @@ namespace ACE.Server.WorldObjects
             foreach (var link in LinkedInstances)
             {
                 WorldObject wo = null;
-                var biota = biotas.FirstOrDefault(b => b.Id == link.Guid);
+                // the child is in this object's landblock copy, loaded or not (an offline house)
+                var guid = new ObjectGuid(link.Guid, Guid.Instance);
+                var biota = biotas.FirstOrDefault(b => b.Id == guid.Full);
                 if (biota == null)
-                    wo = WorldObjectFactory.CreateWorldObject(DatabaseManager.World.GetCachedWeenie(link.WeenieClassId), new ObjectGuid(link.Guid));
+                    wo = WorldObjectFactory.CreateWorldObject(DatabaseManager.World.GetCachedWeenie(link.WeenieClassId), guid);
                 else
                 {
                     wo = WorldObjectFactory.CreateWorldObject(biota);
@@ -44,7 +46,8 @@ namespace ACE.Server.WorldObjects
 
                 if (wo == null) continue;
 
-                wo.Location = new Position(link.ObjCellId, link.OriginX, link.OriginY, link.OriginZ, link.AnglesX, link.AnglesY, link.AnglesZ, link.AnglesW);
+                // in the copy before SetLinkProperties reads it, e.g. as a portal's link-spot destination
+                wo.Location = new Position(link.ObjCellId, link.OriginX, link.OriginY, link.OriginZ, link.AnglesX, link.AnglesY, link.AnglesZ, link.AnglesW) { Instance = Position.InstanceOrNull(guid.Instance) };
                 parent.SetLinkProperties(wo);
                 CurrentLandblock?.AddWorldObject(wo);
                 if (wo.PhysicsObj != null)

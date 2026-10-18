@@ -29,7 +29,7 @@ namespace ACE.Server.WorldObjects
             set { if (value.HasValue) SetProperty(PropertyInt.PetClass, value.Value); else RemoveProperty(PropertyInt.PetClass); }
         }
 
-        public uint? Pet
+        public ulong? Pet
         {
             get => GetProperty(PropertyInstanceId.Pet);
             set { if (value.HasValue) SetProperty(PropertyInstanceId.Pet, value.Value); else RemoveProperty(PropertyInstanceId.Pet); }
@@ -596,10 +596,10 @@ namespace ACE.Server.WorldObjects
             // ensure target is summoning essence? source.TargetType is Misc
 
             // ensure both source and target are in player's inventory
-            if (player.FindObject(source.Guid.Full, Player.SearchLocations.MyInventory) == null)
+            if (player.FindObject(source.Guid, Player.SearchLocations.MyInventory) == null)
                 return WeenieError.YouDoNotPassCraftingRequirements;
 
-            if (player.FindObject(target.Guid.Full, Player.SearchLocations.MyInventory) == null)
+            if (player.FindObject(target.Guid, Player.SearchLocations.MyInventory) == null)
                 return WeenieError.YouDoNotPassCraftingRequirements;
 
             return WeenieError.None;

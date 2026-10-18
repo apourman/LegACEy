@@ -10,7 +10,7 @@ namespace ACE.Server.Network.GameEvent.Events
             : base(GameEventType.FellowshipUpdateFellow, GameMessageGroup.UIQueue, session, 84) // 84 is the max seen in retail pcaps
         {
             // Information about fellow being added
-            Writer.Write(player.Guid.Full);
+            Writer.WriteGuid(player.Guid);
 
             // TODO: move this to Fellow network structure
             Writer.Write(0u);           // cpCached - Perhaps cp stored up before distribution?

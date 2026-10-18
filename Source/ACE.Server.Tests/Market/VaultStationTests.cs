@@ -176,12 +176,12 @@ namespace ACE.Server.Tests.Market
             var player = ConnectedPlayer();
             var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
             // an item id and an index: the body every vault action reads the start of
-            var body = ChannelWire.Body(w => { w.Write(item.Guid.Full); w.Write(0); });
+            var body = ChannelWire.Body(w => { w.Write(item.Guid.ClientGUID); w.Write(0); });
             var actions = new[] { VaultChannelActions.List, VaultChannelActions.Deposit, VaultChannelActions.Withdraw, VaultChannelActions.Check, VaultChannelActions.Move };
 
             foreach (var action in actions)
                 Assert.AreEqual(ChannelStatus.NoStation, Request(player, action, body).Status, action);
-            Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full), "a refused deposit moved nothing");
+            Assert.IsNotNull(player.GetInventoryItem(item.Guid.ClientGUID), "a refused deposit moved nothing");
             Assert.IsFalse(player.IsVaultChannelling, "a refused deposit started no channel");
 
             using (ChannelSeconds(1))
@@ -277,7 +277,7 @@ namespace ACE.Server.Tests.Market
 
             var body = new BinaryReader(new MemoryStream(push.Body), Encoding.UTF8);
             Assert.AreEqual(station, ChannelWire.ReadString(body), "the station name");
-            Assert.AreEqual(item.Guid.Full, body.ReadUInt32(), "the station object's guid");
+            Assert.AreEqual(item.Guid.ClientGUID, body.ReadUInt32(), "the station object's guid");
         }
     }
 }

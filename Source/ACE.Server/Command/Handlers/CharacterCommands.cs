@@ -70,9 +70,9 @@ namespace ACE.Server.Command.Handlers
                 player.Character.IsDeleted = true;
                 player.CharacterChangesDetected = true;                
                 player.Session.LogOffPlayer(true);
-                PlayerManager.HandlePlayerDelete(player.Character.Id);
+                PlayerManager.HandlePlayerDelete(player.Guid.ClientGUID);
 
-                var success = PlayerManager.ProcessDeletedPlayer(player.Character.Id);
+                var success = PlayerManager.ProcessDeletedPlayer(player.Guid.ClientGUID);
                 if (success)
                     CommandHandlerHelper.WriteOutputInfo(session, $"Successfully {(isOnline ? "booted and " : "")}deleted character {foundPlayer.Name} (0x{foundPlayer.Guid}).", ChatMessageType.Broadcast);
                 else
@@ -80,7 +80,7 @@ namespace ACE.Server.Command.Handlers
             }
             else
             {
-                var existingCharId = foundPlayer.Guid.Full; //DatabaseManager.Shard.BaseDatabase.GetCharacterStubByName(foundPlayer.Name).Id;
+                var existingCharId = foundPlayer.Guid.ClientGUID; //DatabaseManager.Shard.BaseDatabase.GetCharacterStubByName(foundPlayer.Name).Id;
 
                 DatabaseManager.Shard.GetCharacter(existingCharId, character =>
                 {
@@ -93,11 +93,11 @@ namespace ACE.Server.Command.Handlers
                             if (result)
                             {
                                 var deleteOfflineChain = new ActionChain();
-                                deleteOfflineChain.AddAction(WorldManager.ActionQueue, () => PlayerManager.HandlePlayerDelete(character.Id));
+                                deleteOfflineChain.AddAction(WorldManager.ActionQueue, () => PlayerManager.HandlePlayerDelete(existingCharId));
                                 deleteOfflineChain.AddDelayForOneTick();
                                 deleteOfflineChain.AddAction(WorldManager.ActionQueue, () =>
                                 {
-                                    var success = PlayerManager.ProcessDeletedPlayer(character.Id);
+                                    var success = PlayerManager.ProcessDeletedPlayer(existingCharId);
                                     if (success)
                                         CommandHandlerHelper.WriteOutputInfo(session, $"Successfully {(isOnline ? "booted and " : "")}deleted character {foundPlayer.Name} (0x{foundPlayer.Guid}).", ChatMessageType.Broadcast);
                                     else

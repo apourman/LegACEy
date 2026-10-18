@@ -16,7 +16,7 @@ public partial class BiotaPropertiesBookPageData
     /// <summary>
     /// Id of the Book object this page belongs to
     /// </summary>
-    public uint ObjectId { get; set; }
+    public ulong ObjectId { get; set; }
 
     /// <summary>
     /// Id of the page number for this page
@@ -26,7 +26,7 @@ public partial class BiotaPropertiesBookPageData
     /// <summary>
     /// Id of the Author of this page
     /// </summary>
-    public uint AuthorId { get; set; }
+    public ulong AuthorId { get; set; }
 
     /// <summary>
     /// Character Name of the Author of this page

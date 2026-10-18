@@ -11,7 +11,7 @@ public partial class CharacterPropertiesShortcutBar
     /// <summary>
     /// Id of the character this property belongs to
     /// </summary>
-    public uint CharacterId { get; set; }
+    public ulong CharacterId { get; set; }
 
     /// <summary>
     /// Position (Slot) on the Shortcut Bar for this Object
@@ -21,7 +21,7 @@ public partial class CharacterPropertiesShortcutBar
     /// <summary>
     /// Guid of the object at this Slot
     /// </summary>
-    public uint ShortcutObjectId { get; set; }
+    public ulong ShortcutObjectId { get; set; }
 
     public virtual Character Character { get; set; }
 }

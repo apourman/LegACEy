@@ -11,7 +11,7 @@ public partial class BiotaPropertiesEnchantmentRegistry
     /// <summary>
     /// Id of the object this property belongs to
     /// </summary>
-    public uint ObjectId { get; set; }
+    public ulong ObjectId { get; set; }
 
     /// <summary>
     /// Which PackableList this Enchantment goes in (enchantmentMask)
@@ -56,7 +56,7 @@ public partial class BiotaPropertiesEnchantmentRegistry
     /// <summary>
     /// Id of the object that cast this spell
     /// </summary>
-    public uint CasterObjectId { get; set; }
+    public ulong CasterObjectId { get; set; }
 
     /// <summary>
     /// ???

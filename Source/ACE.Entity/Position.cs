@@ -17,6 +17,41 @@ namespace ACE.Entity
 
         public uint Landblock { get => landblockId.Raw >> 16; }
 
+        // The landblock copy this position is in, as saved. Null is the base world.
+        public uint? Instance { get; set; }
+
+        /// <summary>
+        /// An instance id is [ephemeral:1 | realm:15][shortInstance:16]. Realm 0, short instance 0 is the base world.
+        /// A persistent realm's primary copy is InstanceIDFromVars(realmId, 0, false).
+        /// </summary>
+        public static uint InstanceIDFromVars(ushort realmId, ushort shortInstance, bool isEphemeral)
+        {
+            if (realmId > 0x7FFF)
+                throw new ArgumentOutOfRangeException(nameof(realmId), realmId, "a realm id has 15 bits");
+
+            return (isEphemeral ? 0x80000000u : 0u) | (uint)realmId << 16 | shortInstance;
+        }
+
+        public static void ParseInstanceID(uint instance, out bool isEphemeral, out ushort realmId, out ushort shortInstance)
+        {
+            isEphemeral = IsEphemeralInstance(instance);
+            realmId = (ushort)((instance >> 16) & 0x7FFF);
+            shortInstance = (ushort)instance;
+        }
+
+        /// <summary>
+        /// An ephemeral copy never saves and is destroyed, except for its players, when it unloads
+        /// </summary>
+        public static bool IsEphemeralInstance(uint instance) => (instance & 0x80000000u) != 0;
+
+        /// <summary>True if this position is in an ephemeral copy</summary>
+        public bool IsEphemeral => IsEphemeralInstance(Instance ?? 0);
+
+        /// <summary>
+        /// The Instance value for a position in this landblock copy: null for the base world, as saved positions have it
+        /// </summary>
+        public static uint? InstanceOrNull(uint instance) => instance == 0 ? (uint?)null : instance;
+
         // FIXME: this is returning landblock + cell
         public uint Cell { get => landblockId.Raw; }
 
@@ -109,10 +144,10 @@ namespace ACE.Entity
             if (rotate180)
             {
                 var rotate = new Quaternion(0, 0, qz, qw) * Quaternion.CreateFromYawPitchRoll(0, 0, (float)Math.PI);
-                return new Position(LandblockId.Raw, PositionX + dx, PositionY + dy, PositionZ + bumpHeight, 0f, 0f, rotate.Z, rotate.W);
+                return new Position(LandblockId.Raw, PositionX + dx, PositionY + dy, PositionZ + bumpHeight, 0f, 0f, rotate.Z, rotate.W) { Instance = Instance };
             }
             else
-                return new Position(LandblockId.Raw, PositionX + dx, PositionY + dy, PositionZ + bumpHeight, 0f, 0f, qz, qw);
+                return new Position(LandblockId.Raw, PositionX + dx, PositionY + dy, PositionZ + bumpHeight, 0f, 0f, qz, qw) { Instance = Instance };
         }
 
         /// <summary>
@@ -215,6 +250,7 @@ namespace ACE.Entity
             LandblockId = new LandblockId(pos.LandblockId.Raw);
             Pos = pos.Pos;
             Rotation = pos.Rotation;
+            Instance = pos.Instance;
         }
 
         public Position(uint blockCellID, float newPositionX, float newPositionY, float newPositionZ, float newRotationX, float newRotationY, float newRotationZ, float newRotationW, bool relativePos = false)
@@ -519,7 +555,7 @@ namespace ACE.Entity
 
         public bool Equals(Position p)
         {
-            return p != null && Cell == p.Cell && Pos.Equals(p.Pos) && Rotation.Equals(p.Rotation);
+            return p != null && Cell == p.Cell && (Instance ?? 0) == (p.Instance ?? 0) && Pos.Equals(p.Pos) && Rotation.Equals(p.Rotation);
         }
     }
 }

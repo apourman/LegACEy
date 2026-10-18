@@ -11,12 +11,12 @@ public partial class CharacterPropertiesFriendList
     /// <summary>
     /// Id of the character this property belongs to
     /// </summary>
-    public uint CharacterId { get; set; }
+    public ulong CharacterId { get; set; }
 
     /// <summary>
     /// Id of Friend
     /// </summary>
-    public uint FriendId { get; set; }
+    public ulong FriendId { get; set; }
 
     public virtual Character Character { get; set; }
 }

@@ -11,8 +11,9 @@ using ACE.Entity;
 using ACE.Entity.Enum;
 using ACE.Entity.Enum.Properties;
 using ACE.Entity.Models;
-using ACE.Server.WorldObjects;
 using ACE.Server.Managers;
+using ACE.Server.Realms;
+using ACE.Server.WorldObjects;
 
 namespace ACE.Server.Factories
 {
@@ -400,6 +401,12 @@ namespace ACE.Server.Factories
                 instantiation = new Position(spellFreeRide.PositionObjCellId.Value, spellFreeRide.PositionOriginX.Value, spellFreeRide.PositionOriginY.Value, spellFreeRide.PositionOriginZ.Value, spellFreeRide.PositionAnglesX.Value, spellFreeRide.PositionAnglesY.Value, spellFreeRide.PositionAnglesZ.Value, spellFreeRide.PositionAnglesW.Value);
 
             player.Instantiation = new Position(instantiation);
+
+            var configuredHomeRealm = PropertyManager.GetLong("default_home_realm").Item;
+            var homeRealm = RealmPolicy.HomeRealmOf(configuredHomeRealm, RealmManager.Exists);
+            if (homeRealm != configuredHomeRealm)
+                log.Warn($"[REALMS] default_home_realm {configuredHomeRealm} is not a loaded realm; {player.Name} is given the base world as home");
+            player.SetProperty(PropertyInt.HomeRealm, homeRealm);
 
             if (!player.IsOlthoiPlayer)
             {

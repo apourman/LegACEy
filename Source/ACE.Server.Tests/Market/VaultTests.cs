@@ -39,7 +39,7 @@ namespace ACE.Server.Tests.Market
             var depositor = VaultTestWorld.NewPlayer(account);
             var sibling = VaultTestWorld.NewPlayer(account);
             var item = VaultTestWorld.Give(depositor, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
-            var guid = item.Guid.Full;
+            var guid = item.Guid.ClientGUID;
             var burdenBefore = depositor.EncumbranceVal ?? 0;
 
             var result = VaultTestWorld.Deposit(depositor, guid);
@@ -53,7 +53,7 @@ namespace ACE.Server.Tests.Market
             {
                 var listed = VaultStore.List(player.Character.AccountId).Single(r => r.ItemGuid == guid);
                 Assert.AreEqual(account, listed.AccountId);
-                Assert.AreEqual(depositor.Guid.Full, listed.CharacterId);
+                Assert.AreEqual(depositor.Guid.ClientGUID, listed.CharacterId);
                 Assert.AreEqual(VaultItemState.Held, listed.State);
                 Assert.AreEqual(VaultTestWorld.SwordWcid, listed.Wcid);
                 Assert.AreEqual(item.Name, listed.Name);
@@ -70,7 +70,7 @@ namespace ACE.Server.Tests.Market
             item.SetProperty(PropertyString.Inscription, "for the vault");
             item.SetProperty(PropertyInt.NumTimesTinkered, 3);
             VaultTestWorld.Give(depositor, item);
-            var guid = item.Guid.Full;
+            var guid = item.Guid.ClientGUID;
             Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(depositor, guid).Outcome);
 
             var result = VaultTestWorld.Withdraw(withdrawer, guid);
@@ -86,7 +86,7 @@ namespace ACE.Server.Tests.Market
             Assert.AreEqual(0, VaultStore.List(withdrawer.Character.AccountId).Count(r => r.ItemGuid == guid), "the Vault row is gone");
             Assert.AreEqual(0, Count($"SELECT COUNT(*) FROM market_vault_item WHERE item_Guid = {guid};"));
             VaultTestWorld.OnWorldThread(() => { }); // let any follow-up save settle
-            Assert.AreEqual(withdrawer.Guid.Full, (uint)Count($"SELECT value FROM biota_properties_i_i_d WHERE object_Id = {guid} AND type = {(int)PropertyInstanceId.Container};"), "the database has the item in the withdrawing character's pack");
+            Assert.AreEqual(withdrawer.Guid.ClientGUID, (uint)Count($"SELECT value FROM biota_properties_i_i_d WHERE object_Id = {guid} AND type = {(int)PropertyInstanceId.Container};"), "the database has the item in the withdrawing character's pack");
         }
 
         // ---- deposit refusals
@@ -126,11 +126,11 @@ namespace ACE.Server.Tests.Market
             var item = VaultTestWorld.NewItem(VaultTestWorld.SwordWcid);
             Assert.IsTrue(player.TryEquipObject(item, EquipMask.MeleeWeapon));
 
-            var result = VaultTestWorld.Deposit(player, item.Guid.Full);
+            var result = VaultTestWorld.Deposit(player, item.Guid.ClientGUID);
 
             Assert.AreEqual(VaultOutcome.Worn, result.Outcome, result.Message);
             Assert.IsTrue(player.EquippedObjects.ContainsKey(item.Guid), "still worn");
-            Assert.AreEqual(0, Count($"SELECT COUNT(*) FROM market_vault_item WHERE item_Guid = {item.Guid.Full};"));
+            Assert.AreEqual(0, Count($"SELECT COUNT(*) FROM market_vault_item WHERE item_Guid = {item.Guid.ClientGUID};"));
         }
 
         [TestMethod]
@@ -162,12 +162,12 @@ namespace ACE.Server.Tests.Market
 
             try
             {
-                Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, first.Guid.Full).Outcome);
+                Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, first.Guid.ClientGUID).Outcome);
 
-                var result = VaultTestWorld.Deposit(player, second.Guid.Full);
+                var result = VaultTestWorld.Deposit(player, second.Guid.ClientGUID);
 
                 Assert.AreEqual(VaultOutcome.VaultFull, result.Outcome, result.Message);
-                Assert.IsNotNull(player.GetInventoryItem(second.Guid.Full), "the second item stays in the pack");
+                Assert.IsNotNull(player.GetInventoryItem(second.Guid.ClientGUID), "the second item stays in the pack");
                 Assert.AreEqual(1, VaultStore.Count(account));
             }
             finally
@@ -195,7 +195,7 @@ namespace ACE.Server.Tests.Market
             var account = VaultTestWorld.NewAccountId();
             var player = VaultTestWorld.NewPlayer(account);
             var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
-            var guid = item.Guid.Full;
+            var guid = item.Guid.ClientGUID;
             Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, guid).Outcome);
 
             player.ItemCapacity = 0; // the pack has no room
@@ -240,17 +240,17 @@ namespace ACE.Server.Tests.Market
             var stored = VaultTestWorld.NewItem(VaultTestWorld.SwordWcid);
             stored.Unique = 1;
             VaultTestWorld.Give(player, stored);
-            Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, stored.Guid.Full).Outcome);
+            Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, stored.Guid.ClientGUID).Outcome);
 
             var carried = VaultTestWorld.NewItem(VaultTestWorld.SwordWcid); // the player picks up a second one of the same unique weenie
             carried.Unique = 1;
             VaultTestWorld.Give(player, carried);
 
-            var result = VaultTestWorld.Withdraw(player, stored.Guid.Full);
+            var result = VaultTestWorld.Withdraw(player, stored.Guid.ClientGUID);
 
             Assert.AreEqual(VaultOutcome.UniqueLimit, result.Outcome, result.Message);
-            Assert.IsNull(player.GetInventoryItem(stored.Guid.Full));
-            Assert.AreEqual(1, Count($"SELECT COUNT(*) FROM market_vault_item WHERE item_Guid = {stored.Guid.Full};"));
+            Assert.IsNull(player.GetInventoryItem(stored.Guid.ClientGUID));
+            Assert.AreEqual(1, Count($"SELECT COUNT(*) FROM market_vault_item WHERE item_Guid = {stored.Guid.ClientGUID};"));
         }
 
         [TestMethod]
@@ -278,7 +278,7 @@ namespace ACE.Server.Tests.Market
             item.Biota.PropertiesEnchantmentRegistry.Add(new EntityEnchantment { SpellId = 1234, LayerId = 1, CasterObjectId = 0x50000099, Duration = 1800, PowerLevel = 6, StatModType = EnchantmentTypeFlags.Float | EnchantmentTypeFlags.SingleStat, StatModKey = 1, StatModValue = 1.5f });
             item.ChangesDetected = true;
             VaultTestWorld.Give(player, item);
-            var guid = item.Guid.Full;
+            var guid = item.Guid.ClientGUID;
             Assert.AreEqual(1, Count($"SELECT COUNT(*) FROM biota_properties_enchantment_registry WHERE object_Id = {guid};"), "the test item starts with a cast-on enchantment");
 
             Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, guid).Outcome);
@@ -297,7 +297,7 @@ namespace ACE.Server.Tests.Market
             VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
             var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
             VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
-            var guid = item.Guid.Full;
+            var guid = item.Guid.ClientGUID;
             var slot = item.PlacementPosition;
 
             VaultResult result;
@@ -320,7 +320,7 @@ namespace ACE.Server.Tests.Market
             var account = VaultTestWorld.NewAccountId();
             var player = VaultTestWorld.NewPlayer(account);
             var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
-            var guid = item.Guid.Full;
+            var guid = item.Guid.ClientGUID;
 
             player.IsLoggingOut = true;
 
@@ -342,7 +342,7 @@ namespace ACE.Server.Tests.Market
             var account = VaultTestWorld.NewAccountId();
             var player = VaultTestWorld.NewPlayer(account);
             var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
-            var guid = item.Guid.Full;
+            var guid = item.Guid.ClientGUID;
             Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, guid).Outcome);
 
             // what a restart does: the startup check, then loads of the character's possessions and of landblock objects
@@ -350,7 +350,7 @@ namespace ACE.Server.Tests.Market
             Assert.IsTrue(Vault.Available);
             Assert.AreEqual(1, VaultStore.List(account).Count(r => r.ItemGuid == guid), "still in the Vault");
 
-            var possessed = DatabaseManager.Shard.BaseDatabase.GetPossessedBiotasInParallel(player.Guid.Full);
+            var possessed = DatabaseManager.Shard.BaseDatabase.GetPossessedBiotasInParallel(player.Guid.ClientGUID);
             Assert.IsFalse(possessed.Inventory.Concat(possessed.WieldedItems).Any(b => b.Id == guid), "the character's load doesn't bring it back");
 
             // a landblock loads objects that have a location and no container or wielder; the item has none of the three
@@ -364,7 +364,7 @@ namespace ACE.Server.Tests.Market
             var account = VaultTestWorld.NewAccountId();
             var player = VaultTestWorld.NewPlayer(account);
             var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
-            var guid = item.Guid.Full;
+            var guid = item.Guid.ClientGUID;
             Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, guid).Outcome);
 
             // the player's own save covers only what they still possess
@@ -389,17 +389,17 @@ namespace ACE.Server.Tests.Market
 
             VaultTestWorld.OnWorldThread(() =>
             {
-                Vault.Deposit(player, first.Guid.Full, r => { firstResult = r; done.Set(); });
-                Vault.Deposit(player, second.Guid.Full, r => secondResult = r);
+                Vault.Deposit(player, first.Guid.ClientGUID, r => { firstResult = r; done.Set(); });
+                Vault.Deposit(player, second.Guid.ClientGUID, r => secondResult = r);
             });
 
             Assert.AreEqual(VaultOutcome.Busy, secondResult.Outcome, secondResult.Message);
             Assert.IsTrue(done.Wait(TimeSpan.FromSeconds(30)));
             Assert.AreEqual(VaultOutcome.Deposited, firstResult.Outcome);
-            Assert.IsNotNull(player.GetInventoryItem(second.Guid.Full), "the refused item stays in the pack");
+            Assert.IsNotNull(player.GetInventoryItem(second.Guid.ClientGUID), "the refused item stays in the pack");
 
             // once the first is done the player can go on
-            Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, second.Guid.Full).Outcome);
+            Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, second.Guid.ClientGUID).Outcome);
         }
 
         [TestMethod]
@@ -417,8 +417,8 @@ namespace ACE.Server.Tests.Market
         {
             var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
             var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
-            Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, item.Guid.Full).Outcome);
-            return (player, item.Guid.Full);
+            Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, item.Guid.ClientGUID).Outcome);
+            return (player, item.Guid.ClientGUID);
         }
 
         private static (Player player, WorldObject item) NewItem(Action<WorldObject> configure, uint wcid = VaultTestWorld.SwordWcid)
@@ -444,7 +444,7 @@ namespace ACE.Server.Tests.Market
         private static void AssertDepositRefused((Player player, WorldObject item) carried, VaultOutcome expected)
         {
             var (player, item) = carried;
-            var guid = item.Guid.Full;
+            var guid = item.Guid.ClientGUID;
             var vaultBefore = VaultStore.Count(player.Character.AccountId);
 
             var result = VaultTestWorld.Deposit(player, guid);

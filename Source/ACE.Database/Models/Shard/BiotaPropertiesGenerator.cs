@@ -16,7 +16,7 @@ public partial class BiotaPropertiesGenerator
     /// <summary>
     /// Id of the object this property belongs to
     /// </summary>
-    public uint ObjectId { get; set; }
+    public ulong ObjectId { get; set; }
 
     public float Probability { get; set; }
 

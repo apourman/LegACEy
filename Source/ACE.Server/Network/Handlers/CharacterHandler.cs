@@ -321,7 +321,7 @@ namespace ACE.Server.Network.Handlers
                 {
                     session.Network.EnqueueSend(new GameMessageCharacterList(session.Characters, session));
 
-                    PlayerManager.HandlePlayerDelete(character.Id);
+                    PlayerManager.HandlePlayerDelete((uint)character.Id); // characters are players, so 32-bit
                 }
                 else
                     session.SendCharacterError(CharacterError.Delete);

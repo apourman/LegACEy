@@ -184,8 +184,11 @@ namespace ACE.Server.Command.Handlers
             };
             if (!CommandParameterHelpers.ResolveACEParameters(session, parameters, aceParams)) return;
 
+            // coordinates name a place in the caller's landblock copy
+            aceParams[1].AsPosition.Instance = session.Player.Location.Instance;
+
             // Check if water block
-            var landblock = LScape.get_landblock(aceParams[1].AsPosition.LandblockId.Raw);
+            var landblock = LScape.get_landblock(aceParams[1].AsPosition.LandblockId.Raw, aceParams[1].AsPosition.Instance ?? 0);
             if (landblock.WaterType == LandDefs.WaterType.EntirelyWater)
             {
                 ChatPacket.SendServerMessage(session, $"Landblock 0x{aceParams[1].AsPosition.LandblockId.Landblock:X4} is entirely filled with water, and is impassable", ChatMessageType.Broadcast);

@@ -111,7 +111,7 @@ namespace ACE.Server.WorldObjects
                 return new ActivationResult(false);
             }
 
-            if (UseLockTimestamp != null && activator.Guid.Full != LastUnlocker)
+            if (UseLockTimestamp != null && activator.Guid.ClientGUID != LastUnlocker)
             {
                 var currentTime = Time.GetUnixTime();
 
@@ -125,7 +125,7 @@ namespace ACE.Server.WorldObjects
 
             if (IsOpen)
             {
-                if (Viewer == player.Guid.Full)
+                if (Viewer == player.Guid.ClientGUID)
                 {
                     // current player has this chest open, close it
                     Close(player);

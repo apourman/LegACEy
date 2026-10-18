@@ -34,7 +34,7 @@ namespace ACE.Server.WorldObjects
         {
             if (Fellowship != null)
             {
-                if (Guid.Full != Fellowship.FellowshipLeaderGuid)
+                if (Guid.ClientGUID != Fellowship.FellowshipLeaderGuid)
                 {
                     Session.Network.EnqueueSend(new GameEventWeenieError(Session, WeenieError.YouMustBeLeaderOfFellowship));
                     return;
@@ -63,13 +63,13 @@ namespace ACE.Server.WorldObjects
         {
             if (Fellowship == null) return;
 
-            if (Guid.Full != Fellowship.FellowshipLeaderGuid)
+            if (Guid.ClientGUID != Fellowship.FellowshipLeaderGuid)
             {
                 Session.Network.EnqueueSend(new GameEventWeenieError(Session, WeenieError.YouMustBeLeaderOfFellowship));
                 return;
             }
 
-            if (Guid.Full == dismissGuid)
+            if (Guid.ClientGUID == dismissGuid)
             {
                 Session.Network.EnqueueSend(new GameMessageSystemChat("You can't dismiss yourself from the fellowship", ChatMessageType.Broadcast));
                 return;
@@ -102,7 +102,7 @@ namespace ACE.Server.WorldObjects
             }
             else if (Fellowship != null)
             {
-                if (Guid.Full == Fellowship.FellowshipLeaderGuid || Fellowship.Open)
+                if (Guid.ClientGUID == Fellowship.FellowshipLeaderGuid || Fellowship.Open)
                     Fellowship.AddFellowshipMember(this, newPlayer);
                 else
                     Session.Network.EnqueueSend(new GameEventWeenieError(Session, WeenieError.YouMustBeLeaderOfFellowship));
@@ -111,10 +111,10 @@ namespace ACE.Server.WorldObjects
 
         public void FellowshipNewLeader(uint newLeaderGuid)
         {
-            if (Fellowship == null || Guid.Full == newLeaderGuid)
+            if (Fellowship == null || Guid.ClientGUID == newLeaderGuid)
                 return;
 
-            if (Guid.Full != Fellowship.FellowshipLeaderGuid)
+            if (Guid.ClientGUID != Fellowship.FellowshipLeaderGuid)
             {
                 log.Warn($"{Name} tried to assign new fellowship leader from {Fellowship.FellowshipLeaderGuid:X8} to {newLeaderGuid:X8}");
                 return;

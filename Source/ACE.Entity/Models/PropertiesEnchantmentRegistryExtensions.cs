@@ -276,7 +276,7 @@ namespace ACE.Entity.Models
             }
         }
 
-        public static bool TryRemoveEnchantment(this ICollection<PropertiesEnchantmentRegistry> value, int spellId, uint casterObjectId, ReaderWriterLockSlim rwLock)
+        public static bool TryRemoveEnchantment(this ICollection<PropertiesEnchantmentRegistry> value, int spellId, ulong casterObjectId, ReaderWriterLockSlim rwLock)
         {
             if (value == null)
                 return false;

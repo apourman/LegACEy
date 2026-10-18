@@ -32,7 +32,7 @@ namespace ACE.Server.Network.Structure
 
             if (house == null) return;
 
-            HouseOwner = house.HouseOwner ?? 0;
+            HouseOwner = new ObjectGuid(house.HouseOwner ?? 0).ClientGUID;
 
             OpenStatus = house.OpenStatus;
 
@@ -75,7 +75,7 @@ namespace ACE.Server.Network.Structure
         {
             writer.Write(restrictions.Version);
             writer.Write(Convert.ToUInt32(restrictions.OpenStatus));
-            writer.Write(restrictions.MonarchID.Full);
+            writer.WriteGuid(restrictions.MonarchID);
             writer.Write(restrictions.Table);
         }
 
@@ -99,7 +99,7 @@ namespace ACE.Server.Network.Structure
 
             foreach (var kvp in sorted)
             {
-                writer.Write(kvp.Key.Full);
+                writer.WriteGuid(kvp.Key);
                 writer.Write(kvp.Value);
             }
         }

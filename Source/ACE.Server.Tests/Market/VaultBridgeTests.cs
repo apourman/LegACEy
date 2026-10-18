@@ -44,7 +44,7 @@ namespace ACE.Server.Tests.Market
                 StringAssert.Contains(TicketMessage(ticket), "20 trade notes");
 
                 Assert.AreEqual(20, NotesInPacks(player), "the notes are in the character's pack");
-                CollectionAssert.AreEqual(new[] { 20L }, DatabaseNoteStacks(player.Guid.Full), "the database has them in the pack");
+                CollectionAssert.AreEqual(new[] { 20L }, DatabaseNoteStacks(player.Guid.ClientGUID), "the database has them in the pack");
                 Assert.AreEqual(30, Ledger.GetBalance(account));
 
                 var transfer = SingleTransfer(account, TransferKind.NoteWithdraw);
@@ -98,7 +98,7 @@ namespace ACE.Server.Tests.Market
             }
 
             Assert.AreEqual(0, NotesInPacks(player));
-            Assert.AreEqual(0, DatabaseNoteStacks(player.Guid.Full).Count);
+            Assert.AreEqual(0, DatabaseNoteStacks(player.Guid.ClientGUID).Count);
             Assert.AreEqual(balanceRow, BalanceRow(account), "the balance row is exactly as before");
         }
 
@@ -124,7 +124,7 @@ namespace ACE.Server.Tests.Market
             }
 
             Assert.AreEqual(0, NotesInPacks(player));
-            Assert.AreEqual(0, DatabaseNoteStacks(player.Guid.Full).Count);
+            Assert.AreEqual(0, DatabaseNoteStacks(player.Guid.ClientGUID).Count);
             Assert.AreEqual(balanceRow, BalanceRow(account), "the balance row is exactly as before");
         }
 
@@ -177,15 +177,15 @@ namespace ACE.Server.Tests.Market
                 Assert.AreEqual(0, NotesInPacks(player), "the full pack took none of them now");
             }
 
-            CollectionAssert.AreEqual(new[] { 20L }, DatabaseNoteStacks(player.Guid.Full), "the database has the notes in the character's pack");
+            CollectionAssert.AreEqual(new[] { 20L }, DatabaseNoteStacks(player.Guid.ClientGUID), "the database has the notes in the character's pack");
 
             // the next login loads the character's possessions from the database
-            var possessed = DatabaseManager.Shard.BaseDatabase.GetPossessedBiotasInParallel(player.Guid.Full);
+            var possessed = DatabaseManager.Shard.BaseDatabase.GetPossessedBiotasInParallel(player.Guid.ClientGUID);
             var loaded = new Player(player.Biota, possessed.Inventory, possessed.WieldedItems, player.Character, null);
             var notes = loaded.GetTradeNotes().Where(n => n.WeenieClassId == TradeNoteWcid).ToList();
 
             Assert.AreEqual(20, notes.Sum(n => n.StackSize ?? 1), "the notes are in the pack after reconnecting");
-            Assert.IsTrue(notes.All(n => n.OwnerId == player.Guid.Full && n.ContainerId == player.Guid.Full), "the character owns them");
+            Assert.IsTrue(notes.All(n => n.OwnerId == player.Guid.ClientGUID && n.ContainerId == player.Guid.ClientGUID), "the character owns them");
         }
 
         // ---- items
@@ -217,7 +217,7 @@ namespace ACE.Server.Tests.Market
             VaultTestWorld.WaitUntil(() => player.GetInventoryItem(guid) != null, "the item to reach the pack");
             Assert.IsNull(VaultStore.Get(guid), "the Vault row is gone");
             Assert.IsFalse(player.IsFrozen ?? false);
-            Assert.AreEqual(player.Guid.Full, (uint)Count($"SELECT value FROM biota_properties_i_i_d WHERE object_Id = {guid} AND type = {(int)PropertyInstanceId.Container};"));
+            Assert.AreEqual(player.Guid.ClientGUID, (uint)Count($"SELECT value FROM biota_properties_i_i_d WHERE object_Id = {guid} AND type = {(int)PropertyInstanceId.Container};"));
         }
 
         [TestMethod]
@@ -312,16 +312,16 @@ namespace ACE.Server.Tests.Market
                 var entries = items.ToDictionary(item => item.GetProperty("itemGuid").GetUInt32());
 
                 Assert.AreEqual(2, entries.Count, "pack contents are included and worn items are omitted");
-                Assert.IsTrue(entries.ContainsKey(allowed.Guid.Full));
-                Assert.IsTrue(entries.ContainsKey(attuned.Guid.Full));
-                Assert.IsFalse(entries.ContainsKey(worn.Guid.Full));
-                Assert.AreEqual(JsonValueKind.Null, entries[allowed.Guid.Full].GetProperty("refusalCode").ValueKind);
-                Assert.AreEqual("attuned", entries[attuned.Guid.Full].GetProperty("refusalCode").GetString());
-                Assert.AreEqual(allowed.Name, entries[allowed.Guid.Full].GetProperty("name").GetString());
-                Assert.AreEqual(allowed.StackSize ?? 1, entries[allowed.Guid.Full].GetProperty("stackSize").GetInt32());
-                Assert.IsNotNull(entries[allowed.Guid.Full].GetProperty("icon"));
-                Assert.IsNotNull(player.GetInventoryItem(allowed.Guid.Full), "the snapshot did not remove the item");
-                Assert.IsNotNull(player.GetInventoryItem(attuned.Guid.Full), "a refused item stays in the pack");
+                Assert.IsTrue(entries.ContainsKey(allowed.Guid.ClientGUID));
+                Assert.IsTrue(entries.ContainsKey(attuned.Guid.ClientGUID));
+                Assert.IsFalse(entries.ContainsKey(worn.Guid.ClientGUID));
+                Assert.AreEqual(JsonValueKind.Null, entries[allowed.Guid.ClientGUID].GetProperty("refusalCode").ValueKind);
+                Assert.AreEqual("attuned", entries[attuned.Guid.ClientGUID].GetProperty("refusalCode").GetString());
+                Assert.AreEqual(allowed.Name, entries[allowed.Guid.ClientGUID].GetProperty("name").GetString());
+                Assert.AreEqual(allowed.StackSize ?? 1, entries[allowed.Guid.ClientGUID].GetProperty("stackSize").GetInt32());
+                Assert.IsNotNull(entries[allowed.Guid.ClientGUID].GetProperty("icon"));
+                Assert.IsNotNull(player.GetInventoryItem(allowed.Guid.ClientGUID), "the snapshot did not remove the item");
+                Assert.IsNotNull(player.GetInventoryItem(attuned.Guid.ClientGUID), "a refused item stays in the pack");
                 Assert.AreEqual(0, VaultStore.Count(player.Character.AccountId));
             }
         }
@@ -368,7 +368,7 @@ namespace ACE.Server.Tests.Market
             using (ChannelSeconds(3))
             using (VaultTestWorld.Online(player))
             {
-                ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
+                ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.ClientGUID));
                 VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == TicketProgress.AwaitingConfirmation, "the in-game confirmation request");
 
                 Assert.IsNotNull(player.ConfirmationManager);
@@ -382,10 +382,10 @@ namespace ACE.Server.Tests.Market
                 Assert.AreEqual($"{TicketStatus.Done}|{TicketStore.Ok}", WaitForTicket(ticket));
             }
 
-            VaultTestWorld.WaitUntil(() => VaultStore.Get(item.Guid.Full) != null, "the deposited Vault row");
-            Assert.IsNull(player.GetInventoryItem(item.Guid.Full));
+            VaultTestWorld.WaitUntil(() => VaultStore.Get(item.Guid.ClientGUID) != null, "the deposited Vault row");
+            Assert.IsNull(player.GetInventoryItem(item.Guid.ClientGUID));
             Assert.AreEqual(0L, Count($"SELECT COUNT(*) FROM market_ticket WHERE id = {ticket} AND status <> '{TicketStatus.Done}';"));
-            Assert.AreEqual(0L, Count($"SELECT COUNT(*) FROM market_vault_item WHERE item_Guid = {item.Guid.Full} AND account_Id <> {player.Character.AccountId};"));
+            Assert.AreEqual(0L, Count($"SELECT COUNT(*) FROM market_vault_item WHERE item_Guid = {item.Guid.ClientGUID} AND account_Id <> {player.Character.AccountId};"));
         }
 
         [TestMethod]
@@ -396,14 +396,14 @@ namespace ACE.Server.Tests.Market
 
             using (VaultTestWorld.Online(player))
             {
-                var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
+                var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.ClientGUID));
                 VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == TicketProgress.AwaitingConfirmation, "the in-game confirmation request");
                 var context = PendingConfirmationContext(player);
                 VaultTestWorld.OnWorldThread(() => player.ConfirmationManager.HandleResponse(ConfirmationType.Yes_No, context, false));
 
                 Assert.AreEqual($"{TicketStatus.Failed}|{GameBridge.DeclinedResultCode}", WaitForTicket(ticket));
-                Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full));
-                Assert.IsNull(VaultStore.Get(item.Guid.Full));
+                Assert.IsNotNull(player.GetInventoryItem(item.Guid.ClientGUID));
+                Assert.IsNull(VaultStore.Get(item.Guid.ClientGUID));
             }
         }
 
@@ -417,11 +417,11 @@ namespace ACE.Server.Tests.Market
             {
                 VaultTestWorld.OnWorldThread(() => Assert.IsTrue(player.ConfirmationManager.EnqueueSend(new Confirmation_Custom(player.Guid, () => { }), "Existing question")));
                 var oldContext = PendingConfirmationContext(player);
-                var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
+                var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.ClientGUID));
 
                 Assert.AreEqual($"{TicketStatus.Failed}|{GameBridge.ConfirmationBusyResultCode}", WaitForTicket(ticket));
                 Assert.AreEqual(oldContext, PendingConfirmationContext(player), "the existing popup remains open");
-                Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full));
+                Assert.IsNotNull(player.GetInventoryItem(item.Guid.ClientGUID));
                 var failed = ReadTicket(ticket);
                 Assert.IsNull(failed.Progress, "a terminal ticket has no stale progress stage");
                 Assert.IsNull(failed.ProgressTime);
@@ -439,7 +439,7 @@ namespace ACE.Server.Tests.Market
 
             using (VaultTestWorld.Online(player))
             {
-                var first = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
+                var first = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.ClientGUID));
                 VaultTestWorld.WaitUntil(() => ReadTicket(first).Progress == TicketProgress.AwaitingConfirmation, "the first confirmation request");
                 var oldContext = PendingConfirmationContext(player);
 
@@ -452,7 +452,7 @@ namespace ACE.Server.Tests.Market
                 AfterQueuedWork(); // anything the late Yes queued has run, writes included
                 Assert.AreEqual(timedOut, TicketOutcome(first), "a late Yes leaves the timed-out ticket's status and result as they were");
 
-                var second = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
+                var second = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.ClientGUID));
                 VaultTestWorld.WaitUntil(() => ReadTicket(second).Progress == TicketProgress.AwaitingConfirmation, "the next confirmation request");
                 var newContext = PendingConfirmationContext(player);
 
@@ -463,7 +463,7 @@ namespace ACE.Server.Tests.Market
 
                 VaultTestWorld.OnWorldThread(() => player.ConfirmationManager.HandleResponse(ConfirmationType.Yes_No, newContext, false));
                 Assert.AreEqual($"{TicketStatus.Failed}|{GameBridge.DeclinedResultCode}", WaitForTicket(second));
-                Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full));
+                Assert.IsNotNull(player.GetInventoryItem(item.Guid.ClientGUID));
             }
         }
 
@@ -475,7 +475,7 @@ namespace ACE.Server.Tests.Market
 
             using (VaultTestWorld.Online(movedPlayer))
             {
-                var ticket = NewTicket(movedPlayer, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: movedItem.Guid.Full));
+                var ticket = NewTicket(movedPlayer, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: movedItem.Guid.ClientGUID));
                 VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == TicketProgress.AwaitingConfirmation, "the confirmation before pack re-check");
                 var context = PendingConfirmationContext(movedPlayer);
                 VaultTestWorld.OnWorldThread(() =>
@@ -485,7 +485,7 @@ namespace ACE.Server.Tests.Market
                 });
 
                 Assert.AreEqual($"{TicketStatus.Failed}|not_in_pack", WaitForTicket(ticket));
-                Assert.IsNull(VaultStore.Get(movedItem.Guid.Full));
+                Assert.IsNull(VaultStore.Get(movedItem.Guid.ClientGUID));
             }
 
             var fightingPlayer = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
@@ -494,7 +494,7 @@ namespace ACE.Server.Tests.Market
 
             using (VaultTestWorld.Online(fightingPlayer))
             {
-                var ticket = NewTicket(fightingPlayer, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: fightingItem.Guid.Full));
+                var ticket = NewTicket(fightingPlayer, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: fightingItem.Guid.ClientGUID));
                 VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == TicketProgress.AwaitingConfirmation, "the confirmation before fight re-check");
                 var context = PendingConfirmationContext(fightingPlayer);
                 VaultTestWorld.OnWorldThread(() =>
@@ -504,7 +504,7 @@ namespace ACE.Server.Tests.Market
                 });
 
                 Assert.AreEqual($"{TicketStatus.Failed}|recent_player_fight", WaitForTicket(ticket));
-                Assert.IsNotNull(fightingPlayer.GetInventoryItem(fightingItem.Guid.Full));
+                Assert.IsNotNull(fightingPlayer.GetInventoryItem(fightingItem.Guid.ClientGUID));
                 Assert.IsFalse(fightingPlayer.IsVaultChannelling);
             }
         }
@@ -517,7 +517,7 @@ namespace ACE.Server.Tests.Market
 
             using (VaultTestWorld.Online(player))
             {
-                var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
+                var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.ClientGUID));
                 VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == TicketProgress.AwaitingConfirmation, "the confirmation before death");
                 var context = PendingConfirmationContext(player);
 
@@ -528,9 +528,9 @@ namespace ACE.Server.Tests.Market
                 });
 
                 Assert.AreEqual($"{TicketStatus.Failed}|interrupted", WaitForTicket(ticket));
-                Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full));
+                Assert.IsNotNull(player.GetInventoryItem(item.Guid.ClientGUID));
                 Assert.IsFalse(player.IsVaultChannelling);
-                Assert.IsNull(VaultStore.Get(item.Guid.Full));
+                Assert.IsNull(VaultStore.Get(item.Guid.ClientGUID));
             }
         }
 
@@ -543,7 +543,7 @@ namespace ACE.Server.Tests.Market
             using (ChannelSeconds(3))
             using (VaultTestWorld.Online(player))
             {
-                var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
+                var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.ClientGUID));
                 VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == TicketProgress.AwaitingConfirmation, "the confirmation request");
                 MarketTestDatabase.Execute(Db, $"UPDATE market_ticket SET claimed_Time = UTC_TIMESTAMP(6) - INTERVAL 25 SECOND WHERE id = {ticket};");
                 var context = PendingConfirmationContext(player);
@@ -563,7 +563,7 @@ namespace ACE.Server.Tests.Market
             var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
             var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
             var online = VaultTestWorld.Online(player);
-            var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
+            var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.ClientGUID));
             VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == TicketProgress.AwaitingConfirmation, "the confirmation request");
             var context = PendingConfirmationContext(player);
 
@@ -573,8 +573,8 @@ namespace ACE.Server.Tests.Market
             Assert.AreEqual($"{TicketStatus.Failed}|{GameBridge.Offline}", WaitForTicket(ticket));
             Assert.IsNull(PendingConfirmationContextOrNull(player));
             Assert.IsFalse(BridgeIsRunning(ticket));
-            Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full));
-            Assert.IsNull(VaultStore.Get(item.Guid.Full));
+            Assert.IsNotNull(player.GetInventoryItem(item.Guid.ClientGUID));
+            Assert.IsNull(VaultStore.Get(item.Guid.ClientGUID));
         }
 
         [TestMethod]
@@ -583,7 +583,7 @@ namespace ACE.Server.Tests.Market
             var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
             var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
             var originalLogin = VaultTestWorld.Online(player);
-            var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
+            var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.ClientGUID));
             VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == TicketProgress.AwaitingConfirmation, "the confirmation request");
             var context = PendingConfirmationContext(player);
 
@@ -595,8 +595,8 @@ namespace ACE.Server.Tests.Market
 
                 Assert.AreEqual($"{TicketStatus.Failed}|{GameBridge.Offline}", WaitForTicket(ticket));
                 Assert.IsFalse(reloggedPlayer.IsVaultChannelling);
-                Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full));
-                Assert.IsNull(VaultStore.Get(item.Guid.Full));
+                Assert.IsNotNull(player.GetInventoryItem(item.Guid.ClientGUID));
+                Assert.IsNull(VaultStore.Get(item.Guid.ClientGUID));
             }
         }
 
@@ -632,7 +632,7 @@ namespace ACE.Server.Tests.Market
             using (ChannelSeconds(30))
             using (VaultTestWorld.Online(player))
             {
-                var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.Full));
+                var ticket = NewTicket(player, TicketKind.VaultDeposit, new TicketPayload(ItemGuid: item.Guid.ClientGUID));
                 VaultTestWorld.WaitUntil(() => ReadTicket(ticket).Progress == TicketProgress.AwaitingConfirmation, "the confirmation request");
                 var context = PendingConfirmationContext(player);
                 VaultTestWorld.OnWorldThread(() => player.ConfirmationManager.HandleResponse(ConfirmationType.Yes_No, context, true));
@@ -640,8 +640,8 @@ namespace ACE.Server.Tests.Market
 
                 VaultTestWorld.OnWorldThread(() => player.TakeDamage(NewPk(), DamageType.Slash, 1, BodyPart.Chest));
                 Assert.AreEqual($"{TicketStatus.Failed}|interrupted", WaitForTicket(ticket));
-                Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full));
-                Assert.IsNull(VaultStore.Get(item.Guid.Full));
+                Assert.IsNotNull(player.GetInventoryItem(item.Guid.ClientGUID));
+                Assert.IsNull(VaultStore.Get(item.Guid.ClientGUID));
             }
         }
 
@@ -734,7 +734,7 @@ namespace ACE.Server.Tests.Market
         {
             using var shard = MarketTestDatabase.CreateContext(Db);
 
-            var result = TicketStore.Create(shard, accountId ?? player.Character.AccountId, player.Guid.Full, kind, payload, Guid.NewGuid().ToString("N"), DateTime.UtcNow);
+            var result = TicketStore.Create(shard, accountId ?? player.Character.AccountId, player.Guid.ClientGUID, kind, payload, Guid.NewGuid().ToString("N"), DateTime.UtcNow);
             Assert.AreEqual(TicketCreateOutcome.Created, result.Outcome);
 
             return result.Ticket.Id;
@@ -746,7 +746,7 @@ namespace ACE.Server.Tests.Market
         private static long NewClaimedTicket(Player player, string kind, TicketPayload payload)
         {
             MarketTestDatabase.Execute(Db, "INSERT INTO market_ticket (kind, account_Id, character_Id, payload, status, idempotency_Key, created_Time, claimed_Time) " +
-                $"VALUES ('{kind}', {player.Character.AccountId}, {player.Guid.Full}, '{payload.ToJson()}', '{TicketStatus.Claimed}', '{Guid.NewGuid():N}', UTC_TIMESTAMP(6), UTC_TIMESTAMP(6));");
+                $"VALUES ('{kind}', {player.Character.AccountId}, {player.Guid.ClientGUID}, '{payload.ToJson()}', '{TicketStatus.Claimed}', '{Guid.NewGuid():N}', UTC_TIMESTAMP(6), UTC_TIMESTAMP(6));");
 
             return Count($"SELECT MAX(id) FROM market_ticket WHERE account_Id = {player.Character.AccountId} AND kind = '{kind}';");
         }

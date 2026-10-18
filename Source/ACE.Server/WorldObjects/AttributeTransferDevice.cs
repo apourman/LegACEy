@@ -60,7 +60,7 @@ namespace ACE.Server.WorldObjects
                 return;
             }
 
-            var device = player.FindObject(Guid.Full, Player.SearchLocations.MyInventory);
+            var device = player.FindObject(Guid, Player.SearchLocations.MyInventory);
             if (device == null)
             {
                 player.SendWeenieError(WeenieError.YouHaveFailedToAlterAttributes);

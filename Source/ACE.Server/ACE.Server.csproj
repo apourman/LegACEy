@@ -289,7 +289,9 @@
     <None Include="..\..\Database\Base\**" CopyToOutputDirectory="PreserveNewest" LinkBase="DatabaseSetupScripts\Base\" />
     <None Include="..\..\Database\Updates\**" CopyToOutputDirectory="PreserveNewest" LinkBase="DatabaseSetupScripts\Updates\" />
     <None Include="..\..\Database\Optional\**" CopyToOutputDirectory="PreserveNewest" LinkBase="DatabaseSetupScripts\Optional\" />
-    <None Include="..\..\Content\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Content\" />
+    <None Include="..\..\Content\**" Exclude="..\..\Content\realms\test\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Content\" />
+    <!-- test realms load on Debug builds only; a release leaves their ids free -->
+    <None Include="..\..\Content\realms\test\**" CopyToOutputDirectory="PreserveNewest" LinkBase="Content\realms\" Condition="'$(Configuration)' == 'Debug'" />
   </ItemGroup>
 
   <Target Name="PreBuild" BeforeTargets="PreBuildEvent">

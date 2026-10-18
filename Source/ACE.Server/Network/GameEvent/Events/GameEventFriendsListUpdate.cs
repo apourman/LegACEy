@@ -79,7 +79,7 @@ namespace ACE.Server.Network.GameEvent.Events
                         isOnline = false;
                 }
 
-                Writer.Write(f.FriendId);           // Friend's ID
+                Writer.WriteGuid(f.FriendId);       // Friend's ID
                 Writer.Write(isOnline ? 1u : 0u);   // Whether this friend is online
                 Writer.Write(0u);                   // Whether the friend should appear to be offline
                 Writer.WriteString16L(friendName);  // Name of the friend

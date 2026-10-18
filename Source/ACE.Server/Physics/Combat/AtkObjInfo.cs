@@ -4,7 +4,7 @@ namespace ACE.Server.Physics.Combat
 {
     public class AtkObjInfo
     {
-        public uint ObjectID;
+        public ulong ObjectID;
         public Quadrant HitLocation;
     }
 }

@@ -58,7 +58,7 @@ namespace ACE.Server.Managers
                 return Players[monarch.Guid].Allegiance;
 
             // try to load biota
-            var allegianceID = DatabaseManager.Shard.BaseDatabase.GetAllegianceID(monarch.Guid.Full);
+            var allegianceID = DatabaseManager.Shard.BaseDatabase.GetAllegianceID(monarch.Guid.ClientGUID);
             var biota = allegianceID != null ? DatabaseManager.Shard.BaseDatabase.GetBiota(allegianceID.Value) : null;
 
             Allegiance allegiance;
@@ -78,7 +78,7 @@ namespace ACE.Server.Managers
             if (biota == null)
             {
                 allegiance = WorldObjectFactory.CreateNewWorldObject("allegiance") as Allegiance;
-                allegiance.MonarchId = monarch.Guid.Full;
+                allegiance.MonarchId = monarch.Guid.ClientGUID;
                 allegiance.Init(monarch.Guid);
 
                 allegiance.SaveBiotaToDatabase();
@@ -336,8 +336,8 @@ namespace ACE.Server.Managers
             LoadPlayer(vassal);
 
             // maintain approved vassals list
-            if (allegiance != null && allegiance.HasApprovedVassal(vassal.Guid.Full))
-                allegiance.RemoveApprovedVassal(vassal.Guid.Full);
+            if (allegiance != null && allegiance.HasApprovedVassal(vassal.Guid.ClientGUID))
+                allegiance.RemoveApprovedVassal(vassal.Guid.ClientGUID);
         }
 
         /// <summary>
@@ -451,7 +451,7 @@ namespace ACE.Server.Managers
                 // walk the allegiance tree from this node, update monarch ids
                 vassalNode.Walk((node) =>
                 {
-                    node.Player.UpdateProperty(PropertyInstanceId.Monarch, vassalNode.PlayerGuid.Full, true);
+                    node.Player.UpdateProperty(PropertyInstanceId.Monarch, vassalNode.PlayerGuid.ClientGUID, true);
 
                     node.Player.SaveBiotaToDatabase();
 

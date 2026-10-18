@@ -70,6 +70,10 @@ namespace ACE.Server.WorldObjects
                 actionChain.EnqueueChain();
             }
 
+            // a character logging in inside a pvp realm is PK; anywhere else their login status is left as saved
+            if (InPvpRealm)
+                SyncPkStatusWithRealm(leftPvpRealm: false, broadcast: false);
+
             HandlePreOrderItems();
 
             // SendSelf will trigger the entrance into portal space
@@ -146,7 +150,7 @@ namespace ACE.Server.WorldObjects
 
         public void SendTurbineChatChannels(bool breakAllegiance = false)
         {
-            var allegianceChannel = Allegiance != null && !breakAllegiance ? Allegiance.Biota.Id : 0u;
+            var allegianceChannel = Allegiance != null && !breakAllegiance ? Allegiance.Guid.ClientGUID : 0u;
 
             var societyChannel = Society switch
             {
@@ -286,7 +290,7 @@ namespace ACE.Server.WorldObjects
 
                 foreach (var friend in inverseFriends)
                 {
-                    var playerFriend = new CharacterPropertiesFriendList { CharacterId = friend.Guid.Full, FriendId = Guid.Full };
+                    var playerFriend = new CharacterPropertiesFriendList { CharacterId = friend.Guid.ClientGUID, FriendId = Guid.ClientGUID };
                     friend.Session.Network.EnqueueSend(new GameEventFriendsListUpdate(friend.Session, GameEventFriendsListUpdate.FriendsUpdateTypeFlag.FriendStatusChanged, playerFriend, true, isOnline));
                     friend.SendMessage(msg);
                 }

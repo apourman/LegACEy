@@ -19,6 +19,7 @@ using ACE.Server.Factories.Enum;
 using ACE.Server.Managers;
 using ACE.Server.Network.GameEvent.Events;
 using ACE.Server.Network.GameMessages.Messages;
+using ACE.Server.Realms;
 
 using log4net;
 
@@ -314,7 +315,7 @@ namespace ACE.Server.WorldObjects.Managers
 
                     if (player != null)
                     {
-                        var wo = player.FindObject(WorldObject.Guid.Full, Player.SearchLocations.Everywhere, out _, out Container rootOwner, out bool wasEquipped);
+                        var wo = player.FindObject(WorldObject.Guid, Player.SearchLocations.Everywhere, out _, out Container rootOwner, out bool wasEquipped);
 
                         WorldObject.DeleteObject(rootOwner);
                     }
@@ -1046,7 +1047,8 @@ namespace ACE.Server.WorldObjects.Managers
                     {
                         var currentPos = creature.Location;
 
-                        var newPos = new Position();
+                        // a walk within the creature's own landblock copy
+                        var newPos = new Position { Instance = currentPos.Instance };
                         newPos.LandblockId = new LandblockId(emote.ObjCellId ?? currentPos.LandblockId.Raw);
 
                         newPos.Pos = new Vector3(emote.OriginX ?? currentPos.Pos.X, emote.OriginY ?? currentPos.Pos.Y, emote.OriginZ ?? currentPos.Pos.Z);
@@ -1124,9 +1126,9 @@ namespace ACE.Server.WorldObjects.Managers
                     var name = WorldObject.CreatureType == CreatureType.Olthoi ? WorldObject.Name + "&" : WorldObject.Name;
 
                     if (emote.Extent > 0)
-                        WorldObject.EnqueueBroadcast(new GameMessageHearRangedSpeech(message, name, WorldObject.Guid.Full, emote.Extent, ChatMessageType.Emote), WorldObject.LocalBroadcastRange);
+                        WorldObject.EnqueueBroadcast(new GameMessageHearRangedSpeech(message, name, WorldObject.Guid.ClientGUID, emote.Extent, ChatMessageType.Emote), WorldObject.LocalBroadcastRange);
                     else
-                        WorldObject.EnqueueBroadcast(new GameMessageHearSpeech(message, name, WorldObject.Guid.Full, ChatMessageType.Emote), WorldObject.LocalBroadcastRange);
+                        WorldObject.EnqueueBroadcast(new GameMessageHearSpeech(message, name, WorldObject.Guid.ClientGUID, ChatMessageType.Emote), WorldObject.LocalBroadcastRange);
                     break;
 
                 case EmoteType.SetAltRacialSkills:
@@ -1349,7 +1351,7 @@ namespace ACE.Server.WorldObjects.Managers
                         {
                             if (emote.ObjCellId.Value > 0)
                             {
-                                var destination = new Position(emote.ObjCellId.Value, emote.OriginX.Value, emote.OriginY.Value, emote.OriginZ.Value, emote.AnglesX.Value, emote.AnglesY.Value, emote.AnglesZ.Value, emote.AnglesW.Value);
+                                var destination = RealmPolicy.TeleportDestination(new Position(emote.ObjCellId.Value, emote.OriginX.Value, emote.OriginY.Value, emote.OriginZ.Value, emote.AnglesX.Value, emote.AnglesY.Value, emote.AnglesZ.Value, emote.AnglesW.Value), player.Location.Instance);
 
                                 WorldObject.AdjustDungeon(destination);
                                 WorldManager.ThreadSafeTeleport(player, destination);

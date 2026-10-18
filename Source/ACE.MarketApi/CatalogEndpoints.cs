@@ -127,9 +127,9 @@ namespace ACE.MarketApi
                 nextCursor = new ListingCatalog.Cursor(sort.Value, descending, cursorKey(last), last.Listing.Id).Encode();
             }
 
-            var items = AppraisalItem.Load(shard, gameData, page.Select(r => r.Listing.ItemGuid).ToList());
+            var items = AppraisalItem.Load(shard, gameData, page.Select(r => (uint)r.Listing.ItemGuid).ToList());
 
-            return Results.Json(new BrowseResponse(page.Select(r => ApiContractViews.Listing(ListingCatalog.View(r, items[r.Listing.ItemGuid]))).ToList(), nextCursor));
+            return Results.Json(new BrowseResponse(page.Select(r => ApiContractViews.Listing(ListingCatalog.View(r, items[(uint)r.Listing.ItemGuid]))).ToList(), nextCursor));
         }
 
         /// <summary>
@@ -166,7 +166,7 @@ namespace ACE.MarketApi
             if (row == null)
                 return MarketHttp.Error(StatusCodes.Status404NotFound, "not_found");
 
-            var item = AppraisalItem.Load(shard, gameData, new[] { row.Listing.ItemGuid })[row.Listing.ItemGuid];
+            var item = AppraisalItem.Load(shard, gameData, new[] { (uint)row.Listing.ItemGuid })[(uint)row.Listing.ItemGuid];
 
             return Results.Json(ApiContractViews.Detail(ListingCatalog.Detail(row, item, rules)));
         }

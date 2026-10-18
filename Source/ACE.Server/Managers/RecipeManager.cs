@@ -372,10 +372,10 @@ namespace ACE.Server.Managers
 
             if (modified != null)
             {
-                if (modified.Contains(source.Guid.Full))
+                if (modified.Contains(source.Guid.ClientGUID))
                     UpdateObj(player, source);
 
-                if (modified.Contains(target.Guid.Full))
+                if (modified.Contains(target.Guid.ClientGUID))
                     UpdateObj(player, target);
             }
 
@@ -410,7 +410,7 @@ namespace ACE.Server.Managers
             // only run this for items in the player's inventory
             // ie. skip for items on landblock, such as chorizite ore
 
-            var invObj = player.FindObject(obj.Guid.Full, Player.SearchLocations.MyInventory);
+            var invObj = player.FindObject(obj.Guid, Player.SearchLocations.MyInventory);
 
             if (invObj != null)
                 player.MoveItemToFirstContainerSlot(obj);
@@ -789,11 +789,11 @@ namespace ACE.Server.Managers
                 log.Warn($"{player.Name}.RecipeManager.VerifyUse({source.Name} ({source.Guid}), {target.Name} ({target.Guid})) - source not usable, falling back on defaults");
 
                 // re-verify
-                if (player.FindObject(source.Guid.Full, Player.SearchLocations.MyInventory) == null)
+                if (player.FindObject(source.Guid, Player.SearchLocations.MyInventory) == null)
                     return false;
 
                 // almost always MyInventory, but sometimes can be applied to equipped
-                if (player.FindObject(target.Guid.Full, Player.SearchLocations.MyInventory | Player.SearchLocations.MyEquippedItems) == null)
+                if (player.FindObject(target.Guid, Player.SearchLocations.MyInventory | Player.SearchLocations.MyEquippedItems) == null)
                     return false;
 
                 return true;
@@ -817,7 +817,7 @@ namespace ACE.Server.Managers
             if (usable.HasFlag(Usable.Remote))
                 searchLocations |= Player.SearchLocations.LocationsICanMove;    // TODO: moveto for this type
 
-            return player.FindObject(obj.Guid.Full, searchLocations) != null;
+            return player.FindObject(obj.Guid, searchLocations) != null;
         }
 
         public static bool Debug = false;
@@ -884,7 +884,7 @@ namespace ACE.Server.Managers
 
             foreach (var requirement in iidReqs)
             {
-                uint? value = obj.GetProperty((PropertyInstanceId)requirement.Stat);
+                ulong? value = obj.GetProperty((PropertyInstanceId)requirement.Stat);
                 double? normalized = value != null ? (double?)Convert.ToDouble(value.Value) : null;
 
                 if (Debug)
@@ -1119,12 +1119,12 @@ namespace ACE.Server.Managers
 
         public static void DestroyItem(Player player, Recipe recipe, WorldObject item, uint amount, string msg)
         {
-            if (item.OwnerId == player.Guid.Full || player.GetInventoryItem(item.Guid) != null)
+            if (item.OwnerId == player.Guid.ClientGUID || player.GetInventoryItem(item.Guid) != null)
             {
                 if (!player.TryConsumeFromInventoryWithNetworking(item, (int)amount))
                     log.Warn($"RecipeManager.DestroyItem({player.Name}, {item.Name}, {amount}, {msg}): failed to remove {item.Name}");
             }
-            else if (item.WielderId == player.Guid.Full)
+            else if (item.WielderId == player.Guid.ClientGUID)
             {
                 if (!player.TryDequipObjectWithNetworking(item.Guid, out _, Player.DequipObjectAction.ConsumeItem))
                     log.Warn($"RecipeManager.DestroyItem({player.Name}, {item.Name}, {amount}, {msg}): failed to remove {item.Name}");
@@ -1263,7 +1263,7 @@ namespace ACE.Server.Managers
                 return;
             }
             player.UpdateProperty(targetMod, prop, value);
-            modified.Add(targetMod.Guid.Full);
+            modified.Add(targetMod.Guid.ClientGUID);
 
             if (Debug)
                 Console.WriteLine($"{targetMod.Name}.SetProperty({prop}, {value}) - {op}");
@@ -1282,27 +1282,27 @@ namespace ACE.Server.Managers
             {
                 case ModificationOperation.SetValue:
                     player.UpdateProperty(targetMod, prop, value);
-                    modified.Add(targetMod.Guid.Full);
+                    modified.Add(targetMod.Guid.ClientGUID);
                     if (Debug) Console.WriteLine($"{targetMod.Name}.SetProperty({prop}, {value}) - {op}");
                     break;
                 case ModificationOperation.Add:
                     player.UpdateProperty(targetMod, prop, (targetMod.GetProperty(prop) ?? 0) + value);
-                    modified.Add(targetMod.Guid.Full);
+                    modified.Add(targetMod.Guid.ClientGUID);
                     if (Debug) Console.WriteLine($"{targetMod.Name}.IncProperty({prop}, {value}) - {op}");
                     break;
                 case ModificationOperation.CopyFromSourceToTarget:
                     player.UpdateProperty(target, prop, sourceMod.GetProperty(prop) ?? 0);
-                    modified.Add(target.Guid.Full);
+                    modified.Add(target.Guid.ClientGUID);
                     if (Debug) Console.WriteLine($"{target.Name}.SetProperty({prop}, {sourceMod.GetProperty(prop) ?? 0}) - {op}");
                     break;
                 case ModificationOperation.CopyFromSourceToResult:
                     player.UpdateProperty(result, prop, player.GetProperty(prop) ?? 0);     // ??
-                    modified.Add(result.Guid.Full);
+                    modified.Add(result.Guid.ClientGUID);
                     if (Debug) Console.WriteLine($"{result.Name}.SetProperty({prop}, {player.GetProperty(prop) ?? 0}) - {op}");
                     break;
                 case ModificationOperation.AddSpell:
                     targetMod.Biota.GetOrAddKnownSpell(intMod.Stat, target.BiotaDatabaseLock, out var added);
-                    modified.Add(targetMod.Guid.Full);
+                    modified.Add(targetMod.Guid.ClientGUID);
                     if (added)
                         targetMod.ChangesDetected = true;
                     if (Debug) Console.WriteLine($"{targetMod.Name}.AddSpell({intMod.Stat}) - {op}");
@@ -1311,14 +1311,14 @@ namespace ACE.Server.Managers
                     var bits = targetMod.GetProperty(prop) ?? 0;
                     bits |= value;
                     player.UpdateProperty(targetMod, prop, bits);
-                    modified.Add(targetMod.Guid.Full);
+                    modified.Add(targetMod.Guid.ClientGUID);
                     if (Debug) Console.WriteLine($"{targetMod.Name}.SetProperty({prop}, 0x{bits:X}) - {op}");
                     break;
                 case ModificationOperation.SetBitsOff:
                     bits = targetMod.GetProperty(prop) ?? 0;
                     bits &= ~value;
                     player.UpdateProperty(targetMod, prop, bits);
-                    modified.Add(targetMod.Guid.Full);
+                    modified.Add(targetMod.Guid.ClientGUID);
                     if (Debug) Console.WriteLine($"{targetMod.Name}.SetProperty({prop}, 0x{bits:X}) - {op}");
                     break;
                 default:
@@ -1340,22 +1340,22 @@ namespace ACE.Server.Managers
             {
                 case ModificationOperation.SetValue:
                     player.UpdateProperty(targetMod, prop, value);
-                    modified.Add(targetMod.Guid.Full);
+                    modified.Add(targetMod.Guid.ClientGUID);
                     if (Debug) Console.WriteLine($"{targetMod.Name}.SetProperty({prop}, {value}) - {op}");
                     break;
                 case ModificationOperation.Add:
                     player.UpdateProperty(targetMod, prop, (targetMod.GetProperty(prop) ?? 0) + value);
-                    modified.Add(targetMod.Guid.Full);
+                    modified.Add(targetMod.Guid.ClientGUID);
                     if (Debug) Console.WriteLine($"{targetMod.Name}.IncProperty({prop}, {value}) - {op}");
                     break;
                 case ModificationOperation.CopyFromSourceToTarget:
                     player.UpdateProperty(target, prop, sourceMod.GetProperty(prop) ?? 0);
-                    modified.Add(target.Guid.Full);
+                    modified.Add(target.Guid.ClientGUID);
                     if (Debug) Console.WriteLine($"{target.Name}.SetProperty({prop}, {sourceMod.GetProperty(prop) ?? 0}) - {op}");
                     break;
                 case ModificationOperation.CopyFromSourceToResult:
                     player.UpdateProperty(result, prop, player.GetProperty(prop) ?? 0);
-                    modified.Add(result.Guid.Full);
+                    modified.Add(result.Guid.ClientGUID);
                     if (Debug) Console.WriteLine($"{result.Name}.SetProperty({prop}, {player.GetProperty(prop) ?? 0}) - {op}");
                     break;
                 default:
@@ -1377,17 +1377,17 @@ namespace ACE.Server.Managers
             {
                 case ModificationOperation.SetValue:
                     player.UpdateProperty(targetMod, prop, value);
-                    modified.Add(targetMod.Guid.Full);
+                    modified.Add(targetMod.Guid.ClientGUID);
                     if (Debug) Console.WriteLine($"{targetMod.Name}.SetProperty({prop}, {value}) - {op}");
                     break;
                 case ModificationOperation.CopyFromSourceToTarget:
                     player.UpdateProperty(target, prop, sourceMod.GetProperty(prop) ?? sourceMod.Name);
-                    modified.Add(target.Guid.Full);
+                    modified.Add(target.Guid.ClientGUID);
                     if (Debug) Console.WriteLine($"{target.Name}.SetProperty({prop}, {sourceMod.GetProperty(prop) ?? sourceMod.Name}) - {op}");
                     break;
                 case ModificationOperation.CopyFromSourceToResult:
                     player.UpdateProperty(result, prop, player.GetProperty(prop) ?? player.Name);
-                    modified.Add(result.Guid.Full);
+                    modified.Add(result.Guid.ClientGUID);
                     if (Debug) Console.WriteLine($"{result.Name}.SetProperty({prop}, {player.GetProperty(prop) ?? player.Name}) - {op}");
                     break;
                 default:
@@ -1409,17 +1409,17 @@ namespace ACE.Server.Managers
             {
                 case ModificationOperation.SetValue:
                     player.UpdateProperty(targetMod, prop, value);
-                    modified.Add(targetMod.Guid.Full);
+                    modified.Add(targetMod.Guid.ClientGUID);
                     if (Debug) Console.WriteLine($"{targetMod.Name}.SetProperty({prop}, {value}) - {op}");
                     break;
                 case ModificationOperation.CopyFromSourceToTarget:
                     player.UpdateProperty(target, prop, ModifyInstanceIDRuleSet(prop, sourceMod, targetMod));
-                    modified.Add(target.Guid.Full);
+                    modified.Add(target.Guid.ClientGUID);
                     if (Debug) Console.WriteLine($"{target.Name}.SetProperty({prop}, {ModifyInstanceIDRuleSet(prop, sourceMod, targetMod)}) - {op}");
                     break;
                 case ModificationOperation.CopyFromSourceToResult:
                     player.UpdateProperty(result, prop, ModifyInstanceIDRuleSet(prop, player, targetMod));     // ??
-                    modified.Add(result.Guid.Full);
+                    modified.Add(result.Guid.ClientGUID);
                     if (Debug) Console.WriteLine($"{result.Name}.SetProperty({prop}, {ModifyInstanceIDRuleSet(prop, player, targetMod)}) - {op}");
                     break;
                 default:
@@ -1428,13 +1428,13 @@ namespace ACE.Server.Managers
             }
         }
 
-        private static uint ModifyInstanceIDRuleSet(PropertyInstanceId property, WorldObject sourceMod, WorldObject targetMod)
+        private static ulong ModifyInstanceIDRuleSet(PropertyInstanceId property, WorldObject sourceMod, WorldObject targetMod)
         {
             switch (property)
             {
                 case PropertyInstanceId.AllowedWielder:
                 case PropertyInstanceId.AllowedActivator:
-                    return sourceMod.Guid.Full;
+                    return sourceMod.Guid.ClientGUID;
                 default:
                     break;
             }
@@ -1455,17 +1455,17 @@ namespace ACE.Server.Managers
             {
                 case ModificationOperation.SetValue:
                     player.UpdateProperty(targetMod, prop, value);
-                    modified.Add(targetMod.Guid.Full);
+                    modified.Add(targetMod.Guid.ClientGUID);
                     if (Debug) Console.WriteLine($"{targetMod.Name}.SetProperty({prop}, {value}) - {op}");
                     break;
                 case ModificationOperation.CopyFromSourceToTarget:
                     player.UpdateProperty(target, prop, sourceMod.GetProperty(prop) ?? 0);
-                    modified.Add(target.Guid.Full);
+                    modified.Add(target.Guid.ClientGUID);
                     if (Debug) Console.WriteLine($"{target.Name}.SetProperty({prop}, {sourceMod.GetProperty(prop) ?? 0}) - {op}");
                     break;
                 case ModificationOperation.CopyFromSourceToResult:
                     player.UpdateProperty(result, prop, player.GetProperty(prop) ?? 0);
-                    modified.Add(result.Guid.Full);
+                    modified.Add(result.Guid.ClientGUID);
                     if (Debug) Console.WriteLine($"{result.Name}.SetProperty({prop}, {player.GetProperty(prop) ?? 0}) - {op}");
                     break;
                 default:
@@ -1499,7 +1499,7 @@ namespace ACE.Server.Managers
             if (numTimesTinkered != target.NumTimesTinkered)
                 HandleTinkerLog(source, target);
 
-            modified.Add(target.Guid.Full);
+            modified.Add(target.Guid.ClientGUID);
 
             return result;
         }

@@ -152,11 +152,11 @@ namespace ACE.Server.WorldObjects
         public bool HasPermission(Player player)
         {
             // players can loot their own corpses
-            if (VictimId == null || player.Guid.Full == VictimId)
+            if (VictimId == null || player.Guid.ClientGUID == VictimId)
                 return true;
 
             // players can loot corpses of creatures they killed or corpses that have previously been looted by killer
-            if (KillerId != null && player.Guid.Full == KillerId || IsLooted)
+            if (KillerId != null && player.Guid.ClientGUID == KillerId || IsLooted)
                 return true;
 
             var victimGuid = new ObjectGuid(VictimId.Value);
@@ -175,13 +175,13 @@ namespace ACE.Server.WorldObjects
                     // if HasPermission returns true, the corpse is always opened, ie. there's no chance of 'the corpse is already in use' or any other failure cases,
                     // as those pre-verifications have already happened before this function is called
 
-                    permitteeOpened.Add(player.Guid.Full);
+                    permitteeOpened.Add(player.Guid.ClientGUID);
 
                     player.LootPermission.Remove(victimGuid);
                 }
                 return true;
             }
-            if (permitteeOpened != null && permitteeOpened.Contains(player.Guid.Full))
+            if (permitteeOpened != null && permitteeOpened.Contains(player.Guid.ClientGUID))
                 return true;
 
             // all players can loot monster corpses after 1/2 decay time except if corpse generates a rare

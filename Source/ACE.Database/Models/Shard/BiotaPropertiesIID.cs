@@ -11,7 +11,7 @@ public partial class BiotaPropertiesIID
     /// <summary>
     /// Id of the object this property belongs to
     /// </summary>
-    public uint ObjectId { get; set; }
+    public ulong ObjectId { get; set; }
 
     /// <summary>
     /// Type of Property the value applies to (PropertyInstanceId.????)
@@ -21,7 +21,7 @@ public partial class BiotaPropertiesIID
     /// <summary>
     /// Value of this Property
     /// </summary>
-    public uint Value { get; set; }
+    public ulong Value { get; set; }
 
     public virtual Biota Object { get; set; }
 }

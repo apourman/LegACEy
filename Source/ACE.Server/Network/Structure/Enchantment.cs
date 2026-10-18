@@ -1,3 +1,4 @@
+using ACE.Entity;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -53,7 +54,7 @@ namespace ACE.Server.Network.Structure
             Init(new Spell(spellBase.MetaSpellId));
 
             Layer = layer;
-            CasterGuid = target.Guid.Full;
+            CasterGuid = target.Guid.ClientGUID;
             StatModValue = statModVal ?? 35.0f;
 
             Target = target;
@@ -73,7 +74,7 @@ namespace ACE.Server.Network.Structure
             Layer = entry.LayerId;
             StartTime = entry.StartTime;
             Duration = entry.Duration;      // item spells can have -1, overriding the spell duration
-            CasterGuid = entry.CasterObjectId;
+            CasterGuid = new ObjectGuid(entry.CasterObjectId).ClientGUID;
             StatModValue = entry.StatModValue;
             SpellSetID = (uint)entry.SpellSetId;
 
@@ -108,7 +109,7 @@ namespace ACE.Server.Network.Structure
             SpellCategory = (ushort)entry.SpellCategory;
             StartTime = entry.StartTime;
             Duration = entry.Duration;
-            CasterGuid = entry.CasterObjectId;
+            CasterGuid = new ObjectGuid(entry.CasterObjectId).ClientGUID;
             DegradeModifier = entry.DegradeModifier;
             DegradeLimit = entry.DegradeLimit;
             LastTimeDegraded = entry.LastTimeDegraded;

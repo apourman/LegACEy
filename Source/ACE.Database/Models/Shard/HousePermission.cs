@@ -8,12 +8,12 @@ public partial class HousePermission
     /// <summary>
     /// GUID of House Biota Object
     /// </summary>
-    public uint HouseId { get; set; }
+    public ulong HouseId { get; set; }
 
     /// <summary>
     /// GUID of Player Biota Object being granted permission to this house
     /// </summary>
-    public uint PlayerGuid { get; set; }
+    public ulong PlayerGuid { get; set; }
 
     /// <summary>
     /// Permission includes access to House Storage

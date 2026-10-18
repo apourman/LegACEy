@@ -203,7 +203,7 @@ namespace ACE.Server.Network
 
                     DatabaseManager.Shard.SaveCharacter(Characters[i], new ReaderWriterLockSlim(), null);
 
-                    PlayerManager.ProcessDeletedPlayer(Characters[i].Id);
+                    PlayerManager.ProcessDeletedPlayer((uint)Characters[i].Id); // characters are players, so 32-bit
 
                     Characters.RemoveAt(i);
                 }

@@ -9,18 +9,21 @@ namespace ACE.Server.Physics.Util
     public class AdjustCell
     {
         public List<Common.EnvCell> EnvCells;
-        public static ConcurrentDictionary<uint, AdjustCell> AdjustCells = new ConcurrentDictionary<uint, AdjustCell>();
+        /// <summary>
+        /// By (instance, dungeon): the cells belong to one landblock copy, and go when it unloads
+        /// </summary>
+        private static readonly ConcurrentDictionary<(uint Instance, uint DungeonID), AdjustCell> AdjustCells = new ConcurrentDictionary<(uint Instance, uint DungeonID), AdjustCell>();
 
-        public AdjustCell(uint dungeonID)
+        public AdjustCell(uint dungeonID, uint instance)
         {
             uint blockInfoID = dungeonID << 16 | 0xFFFE;
             var blockinfo = DatManager.CellDat.ReadFromDat<LandblockInfo>(blockInfoID);
             var numCells = blockinfo.NumCells;
 
-            BuildEnv(dungeonID, numCells);
+            BuildEnv(dungeonID, numCells, instance);
         }
 
-        public void BuildEnv(uint dungeonID, uint numCells)
+        public void BuildEnv(uint dungeonID, uint numCells, uint instance)
         {
             EnvCells = new List<Common.EnvCell>();
             uint firstCellID = 0x100;
@@ -29,7 +32,7 @@ namespace ACE.Server.Physics.Util
                 uint cellID = firstCellID + i;
                 uint blockCell = dungeonID << 16 | cellID;
 
-                var objCell = Common.LScape.get_landcell(blockCell);
+                var objCell = Common.LScape.get_landcell(blockCell, instance);
                 var envCell = objCell as Common.EnvCell;
                 if (envCell != null)
                     EnvCells.Add(envCell);
@@ -44,16 +47,21 @@ namespace ACE.Server.Physics.Util
             return null;
         }
 
-        public static AdjustCell Get(uint dungeonID)
+        public static AdjustCell Get(uint dungeonID, uint instance)
         {
             AdjustCell adjustCell = null;
-            AdjustCells.TryGetValue(dungeonID, out adjustCell);
+            AdjustCells.TryGetValue((instance, dungeonID), out adjustCell);
             if (adjustCell == null)
             {
-                adjustCell = new AdjustCell(dungeonID);
-                AdjustCells.TryAdd(dungeonID, adjustCell);
+                adjustCell = new AdjustCell(dungeonID, instance);
+                AdjustCells.TryAdd((instance, dungeonID), adjustCell);
             }
             return adjustCell;
+        }
+
+        public static void Remove(uint dungeonID, uint instance)
+        {
+            AdjustCells.TryRemove((instance, dungeonID), out _);
         }
     }
 }

@@ -445,7 +445,7 @@ public sealed class AppraisalTests
         var bytes = new ServerAppraisal(0x50000C01)
         {
             Strings = { [1] = "Big Dog", [21] = "Ronin Kael", [35] = "Ilsa of Yaraq", [10] = "Lightning" },
-            Ints = { [25] = 126, [188] = 1, [113] = 1, [261] = 5, [30] = 4, [35] = 12, [125] = 3700, [2] = 1 },
+            Ints = { [25] = 126, [188] = 1, [113] = 1, [261] = 5, [30] = 4, [35] = 12, [125] = 3700, [2] = 1, [134] = 4 },
             Creature = new CreatureWrite(412, 455, new uint[] { 200, 100, 100, 100, 60, 100, 380, 510, 380, 510 }, 0x1, 0x1),
         }.Build();
         var names = new CharacterNames(new Dictionary<uint, string>(), new Dictionary<uint, string> { [5] = "Vanquisher of the Olthoi" });
@@ -463,7 +463,7 @@ public sealed class AppraisalTests
             ("Followers", "12"),
             ("Fellowship", "Lightning"),
         }, content.Sections[0].Rows.Select(row => (row.Label!, row.Text)));
-        Assert.Equal(new[] { ("Time in Dereth", "1h 1m 40s"), ("* = Unenchantable", string.Empty) },
+        Assert.Equal(new[] { ("PK Status", "Player Killer"), ("Time in Dereth", "1h 1m 40s"), ("* = Unenchantable", string.Empty) },
             content.Sections[3].Rows.Select(row => (row.Label!, row.Text)));
         Assert.Equal(new[] { ("412 / 455", AppraisalTone.Normal), ("380 / 380", AppraisalTone.Normal), ("510 / 510", AppraisalTone.Normal) },
             content.Sections[1].Rows.Cast<AppraisalMeterRow>().Select(meter => (meter.Text, meter.Tone)));

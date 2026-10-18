@@ -9,7 +9,7 @@ namespace ACE.Server.Network.GameEvent.Events
         public GameEventCloseGroundContainer(Session session, Container container)
             : base(GameEventType.CloseGroundContainer, GameMessageGroup.UIQueue, session, 8)
         {
-            Writer.Write(container.Guid.Full);
+            Writer.WriteGuid(container.Guid);
         }
     }
 }

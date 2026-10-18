@@ -56,11 +56,11 @@ namespace ACE.Server.Entity
             // get loot sharing from leader's character options
             ShareLoot = leader.GetCharacterOption(CharacterOption.ShareFellowshipLoot);
 
-            FellowshipLeaderGuid = leader.Guid.Full;
+            FellowshipLeaderGuid = leader.Guid.ClientGUID;
             FellowshipName = fellowshipName;
             EvenShare = false;
 
-            FellowshipMembers = new Dictionary<uint, WeakReference<Player>>() { { leader.Guid.Full, new WeakReference<Player>(leader) } };
+            FellowshipMembers = new Dictionary<uint, WeakReference<Player>>() { { leader.Guid.ClientGUID, new WeakReference<Player>(leader) } };
 
             Open = false;
 
@@ -81,7 +81,7 @@ namespace ACE.Server.Entity
             if (IsLocked)
             {
 
-                if (!DepartedMembers.TryGetValue(newMember.Guid.Full, out var timeDeparted))
+                if (!DepartedMembers.TryGetValue(newMember.Guid.ClientGUID, out var timeDeparted))
                 {
                     inviter.Session.Network.EnqueueSend(new GameEventWeenieErrorWithString(inviter.Session, WeenieErrorWithString.LockedFellowshipCannotRecruit_, newMember.Name));
                     //newMember.SendWeenieError(WeenieError.LockedFellowshipCannotRecruitYou);
@@ -105,7 +105,7 @@ namespace ACE.Server.Entity
                 return;
             }
 
-            if (newMember.Fellowship != null || FellowshipMembers.ContainsKey(newMember.Guid.Full))
+            if (newMember.Fellowship != null || FellowshipMembers.ContainsKey(newMember.Guid.ClientGUID))
             {
                 inviter.Session.Network.EnqueueSend(new GameMessageSystemChat($"{newMember.Name} is already a member of a Fellowship.", ChatMessageType.Broadcast));
             }
@@ -154,7 +154,7 @@ namespace ACE.Server.Entity
                 return;
             }
 
-            FellowshipMembers.TryAdd(player.Guid.Full, new WeakReference<Player>(player));
+            FellowshipMembers.TryAdd(player.Guid.ClientGUID, new WeakReference<Player>(player));
             player.Fellowship = inviter.Fellowship;
 
             CalculateXPSharing();
@@ -188,7 +188,7 @@ namespace ACE.Server.Entity
 
             var fellowshipMembers = GetFellowshipMembers();
 
-            if (!fellowshipMembers.ContainsKey(player.Guid.Full))
+            if (!fellowshipMembers.ContainsKey(player.Guid.ClientGUID))
             {
                 log.Warn($"{leader.Name} tried to dismiss {player.Name} from the fellowship, but {player.Name} was not found in the fellowship");
 
@@ -214,7 +214,7 @@ namespace ACE.Server.Entity
                 member.Session.Network.EnqueueSend(new GameMessageSystemChat($"{player.Name} dismissed from fellowship", ChatMessageType.Fellowship));
             }
 
-            FellowshipMembers.Remove(player.Guid.Full);
+            FellowshipMembers.Remove(player.Guid.ClientGUID);
             player.Fellowship = null;
 
             CalculateXPSharing();
@@ -286,7 +286,7 @@ namespace ACE.Server.Entity
         {
             if (player == null) return;
 
-            if (player.Guid.Full == FellowshipLeaderGuid)
+            if (player.Guid.ClientGUID == FellowshipLeaderGuid)
             {
                 if (disband)
                 {
@@ -310,25 +310,25 @@ namespace ACE.Server.Entity
                 }
                 else
                 {
-                    FellowshipMembers.Remove(player.Guid.Full);
+                    FellowshipMembers.Remove(player.Guid.ClientGUID);
 
                     if (IsLocked)
                     {
                         var timestamp = (int)Time.GetUnixTime();
-                        if (!DepartedMembers.TryAdd(player.Guid.Full, timestamp))
-                            DepartedMembers[player.Guid.Full] = timestamp;
+                        if (!DepartedMembers.TryAdd(player.Guid.ClientGUID, timestamp))
+                            DepartedMembers[player.Guid.ClientGUID] = timestamp;
                     }
 
                     player.Fellowship = null;
 
-                    player.Session.Network.EnqueueSend(new GameEventFellowshipQuit(player.Session, player.Guid.Full));
+                    player.Session.Network.EnqueueSend(new GameEventFellowshipQuit(player.Session, player.Guid.ClientGUID));
                     player.Session.Network.EnqueueSend(new GameMessageSystemChat("You no longer have permission to loot anyone else's kills.", ChatMessageType.Broadcast));
 
                     var fellowshipMembers = GetFellowshipMembers();
 
                     foreach (var member in fellowshipMembers.Values)
                     {
-                        member.Session.Network.EnqueueSend(new GameEventFellowshipQuit(member.Session, player.Guid.Full));
+                        member.Session.Network.EnqueueSend(new GameEventFellowshipQuit(member.Session, player.Guid.ClientGUID));
 
                         if (ShareLoot)
                         {
@@ -343,23 +343,23 @@ namespace ACE.Server.Entity
             }
             else if (!disband)
             {
-                FellowshipMembers.Remove(player.Guid.Full);
+                FellowshipMembers.Remove(player.Guid.ClientGUID);
 
                 if (IsLocked)
                 {
                     var timestamp = (int)Time.GetUnixTime();
 
-                    if (!DepartedMembers.TryAdd(player.Guid.Full, timestamp))
-                        DepartedMembers[player.Guid.Full] = timestamp;
+                    if (!DepartedMembers.TryAdd(player.Guid.ClientGUID, timestamp))
+                        DepartedMembers[player.Guid.ClientGUID] = timestamp;
                 }
 
-                player.Session.Network.EnqueueSend(new GameEventFellowshipQuit(player.Session, player.Guid.Full));
+                player.Session.Network.EnqueueSend(new GameEventFellowshipQuit(player.Session, player.Guid.ClientGUID));
 
                 var fellowshipMembers = GetFellowshipMembers();
 
                 foreach (var member in fellowshipMembers.Values)
                 {
-                    member.Session.Network.EnqueueSend(new GameEventFellowshipQuit(member.Session, player.Guid.Full));
+                    member.Session.Network.EnqueueSend(new GameEventFellowshipQuit(member.Session, player.Guid.ClientGUID));
 
                     if (ShareLoot)
                     {
@@ -378,7 +378,7 @@ namespace ACE.Server.Entity
         {
             if (newLeader != null)
             {
-                FellowshipLeaderGuid = newLeader.Guid.Full;
+                FellowshipLeaderGuid = newLeader.Guid.ClientGUID;
 
                 if (oldLeader != null)
                     oldLeader.Session.Network.EnqueueSend(new GameEventWeenieErrorWithString(oldLeader.Session, WeenieErrorWithString.YouHavePassedFellowshipLeadershipTo_, newLeader.Name));

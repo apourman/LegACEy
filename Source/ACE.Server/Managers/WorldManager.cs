@@ -183,9 +183,9 @@ namespace ACE.Server.Managers
                 WorldObject weenie;
 
                 if (addAdminProperties)
-                    weenie = Factories.WorldObjectFactory.CreateWorldObject(DatabaseManager.World.GetCachedWeenie("admin"), new ACE.Entity.ObjectGuid(ACE.Entity.ObjectGuid.Invalid.Full));
+                    weenie = Factories.WorldObjectFactory.CreateWorldObject(DatabaseManager.World.GetCachedWeenie("admin"), ACE.Entity.ObjectGuid.Invalid);
                 else
-                    weenie = Factories.WorldObjectFactory.CreateWorldObject(DatabaseManager.World.GetCachedWeenie("sentinel"), new ACE.Entity.ObjectGuid(ACE.Entity.ObjectGuid.Invalid.Full));
+                    weenie = Factories.WorldObjectFactory.CreateWorldObject(DatabaseManager.World.GetCachedWeenie("sentinel"), ACE.Entity.ObjectGuid.Invalid);
 
                 if (weenie != null)
                 {
@@ -216,6 +216,8 @@ namespace ACE.Server.Managers
             var olthoiPlayerReturnedToLifestone = session.Player.IsOlthoiPlayer && character.TotalLogins >= 1 && session.Player.LoginAtLifestone;
             if (olthoiPlayerReturnedToLifestone)
                 session.Player.Location = new Position(session.Player.Sanctuary);
+
+            session.Player.ResolveLoginRealm();
 
             session.Player.PlayerEnterWorld();
 

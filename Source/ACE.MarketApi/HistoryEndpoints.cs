@@ -145,7 +145,7 @@ namespace ACE.MarketApi
 
             var names = await References.ReadAsync(shard,
                 lines.Where(l => l.ListingId != null).Select(l => l.ListingId.Value).Concat(events.Where(e => e.ListingId != null).Select(e => e.ListingId.Value)),
-                events.Select(e => e.ItemGuid));
+                events.Select(e => (uint)e.ItemGuid));
 
             var transfers = lines.Select(l => new HistoryTransferResponse(
                 l.Sequence,
@@ -158,9 +158,9 @@ namespace ACE.MarketApi
                 l.EntryMemo ?? l.TransferMemo)).ToList();
             var historyItems = events.Select(e => new HistoryItemResponse(
                 e.Id,
-                e.ItemGuid,
+                (uint)e.ItemGuid,
                 e.Kind,
-                names.Item(e.ItemGuid),
+                names.Item((uint)e.ItemGuid),
                 e.ListingId,
                 DateTime.SpecifyKind(e.EventTime, DateTimeKind.Utc),
                 Describe(e, names))).ToList();
@@ -188,8 +188,8 @@ namespace ACE.MarketApi
                 TransferKind.NoteWithdraw => $"Withdrew {Notes(-line.Amount)}",
                 TransferKind.Purchase when listing == null => "Purchase",
                 TransferKind.Purchase when isFee => line.EntryMemo == null ? "Market fee" : $"Market fee ({line.EntryMemo})",
-                TransferKind.Purchase when listing.SellerAccountId == accountId => $"Sold {names.ItemOrUnknown(listing.ItemGuid)} to {names.Character(listing.BuyerCharacterId)}",
-                TransferKind.Purchase => $"Bought {names.ItemOrUnknown(listing.ItemGuid)} from {names.Character(listing.SellerCharacterId)}",
+                TransferKind.Purchase when listing.SellerAccountId == accountId => $"Sold {names.ItemOrUnknown((uint)listing.ItemGuid)} to {names.Character(listing.BuyerCharacterId)}",
+                TransferKind.Purchase => $"Bought {names.ItemOrUnknown((uint)listing.ItemGuid)} from {names.Character(listing.SellerCharacterId)}",
                 TransferKind.AdminAdjust => $"Admin adjustment: {line.TransferMemo}",
                 TransferKind.Reversal => $"Reversal of transfer {line.ReversesTransferId}: {line.TransferMemo}",
                 _ => line.Kind,
@@ -205,7 +205,7 @@ namespace ACE.MarketApi
         /// </summary>
         private static string Describe(ItemEvent e, References names)
         {
-            var item = names.ItemOrUnknown(e.ItemGuid);
+            var item = names.ItemOrUnknown((uint)e.ItemGuid);
             var listing = names.Listing(e.ListingId);
 
             return e.Kind switch
@@ -251,10 +251,10 @@ namespace ACE.MarketApi
         private sealed class References
         {
             private readonly Dictionary<long, Listing> listings;
-            private readonly Dictionary<uint, string> items;
+            private readonly Dictionary<ulong, string> items;
             private readonly Dictionary<uint, string> characters;
 
-            private References(Dictionary<long, Listing> listings, Dictionary<uint, string> items, Dictionary<uint, string> characters)
+            private References(Dictionary<long, Listing> listings, Dictionary<ulong, string> items, Dictionary<uint, string> characters)
             {
                 this.listings = listings;
                 this.items = items;
@@ -268,10 +268,10 @@ namespace ACE.MarketApi
                 var listings = listingIdSet.Count == 0 ? new Dictionary<long, Listing>() :
                     await shard.MarketListings.AsNoTracking().Where(l => listingIdSet.Contains(l.Id)).ToDictionaryAsync(l => l.Id);
 
-                var guids = itemGuids.Concat(listings.Values.Select(l => l.ItemGuid)).ToHashSet();
+                var guids = itemGuids.Select(g => (ulong)g).Concat(listings.Values.Select(l => l.ItemGuid)).ToHashSet();
 
                 // the name copied onto the Vault row at deposit; once the item has left the Vault, the item's own name
-                var items = guids.Count == 0 ? new Dictionary<uint, string>() :
+                var items = guids.Count == 0 ? new Dictionary<ulong, string>() :
                     await shard.MarketVaultItems.AsNoTracking().Where(v => guids.Contains(v.ItemGuid)).ToDictionaryAsync(v => v.ItemGuid, v => v.Name);
 
                 var missing = guids.Where(g => !items.ContainsKey(g)).ToHashSet();
@@ -285,10 +285,10 @@ namespace ACE.MarketApi
                         items[row.ObjectId] = row.Value;
                 }
 
-                var characterIds = listings.Values.SelectMany(l => new[] { l.SellerCharacterId, l.BuyerCharacterId ?? 0 }).Where(id => id != 0).ToHashSet();
+                var characterIds = listings.Values.SelectMany(l => new[] { (ulong)l.SellerCharacterId, l.BuyerCharacterId ?? 0 }).Where(id => id != 0).ToHashSet();
 
                 var characters = characterIds.Count == 0 ? new Dictionary<uint, string>() :
-                    await shard.Character.AsNoTracking().Where(c => characterIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name);
+                    await shard.Character.AsNoTracking().Where(c => characterIds.Contains(c.Id)).ToDictionaryAsync(c => (uint)c.Id, c => c.Name);
 
                 return new References(listings, items, characters);
             }

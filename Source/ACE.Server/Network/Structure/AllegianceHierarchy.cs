@@ -87,7 +87,7 @@ namespace ACE.Server.Network.Structure
                 //motdSetBy = allegiance.AllegianceMotdSetBy ?? "";
                 motd = "";          // fixes decal AllegianceUpdate parsing
                 motdSetBy = "";
-                chatRoomID = allegiance.Biota.Id;
+                chatRoomID = allegiance.Guid.ClientGUID;
 
                 if (allegiance.Sanctuary != null)
                     bindPoint = allegiance.Sanctuary;
@@ -177,7 +177,7 @@ namespace ACE.Server.Network.Structure
 
             foreach (var officer in officers)
             {
-                writer.Write(officer.Key.Full);
+                writer.WriteGuid(officer.Key);
                 writer.Write((uint)officer.Value);
             }
         }
@@ -216,7 +216,7 @@ namespace ACE.Server.Network.Structure
             //writer.Write(records.Count);
             foreach (var record in records)
             {
-                writer.Write(record.Item1.Full);
+                writer.WriteGuid(record.Item1);
                 writer.Write(record.Item2);
             }
         }

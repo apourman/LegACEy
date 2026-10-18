@@ -34,8 +34,8 @@ namespace ACE.Server.Tests.Market
             var pack = (Container)VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.PackWcid));
 
             // 50 single notes, one of them in a side pack; a sword and a note of another denomination stay
-            var guids = Enumerable.Range(0, 49).Select(_ => GiveNotes(player, 1).Guid.Full).ToList();
-            guids.Add(GiveNotes(player, 1, pack).Guid.Full);
+            var guids = Enumerable.Range(0, 49).Select(_ => GiveNotes(player, 1).Guid.ClientGUID).ToList();
+            guids.Add(GiveNotes(player, 1, pack).Guid.ClientGUID);
             var sword = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
             var otherNote = VaultTestWorld.Give(player, VaultTestWorld.NewItem(OtherTradeNoteWcid));
 
@@ -56,7 +56,7 @@ namespace ACE.Server.Tests.Market
             CollectionAssert.AreEqual(new[] { $"{account}|NULL|50|1|50", "NULL|NOTES|-50|NULL|NULL" }, Entries(transfer));
 
             var events = MarketTestDatabase.Rows(Db, $"SELECT item_Guid, account_Id, character_Id, kind, quantity FROM market_item_event WHERE transfer_Id = {transfer} ORDER BY item_Guid;");
-            CollectionAssert.AreEqual(guids.OrderBy(g => g).Select(g => $"{g}|{account}|{player.Guid.Full}|{ItemEventKind.Deposit}|1").ToList(), events, "one destroyed-note event per note GUID");
+            CollectionAssert.AreEqual(guids.OrderBy(g => g).Select(g => $"{g}|{account}|{player.Guid.ClientGUID}|{ItemEventKind.Deposit}|1").ToList(), events, "one destroyed-note event per note GUID");
         }
 
         [TestMethod]
@@ -135,8 +135,8 @@ namespace ACE.Server.Tests.Market
 
             var notes = Notes(player);
             CollectionAssert.AreEqual(new[] { 20 }, notes.Select(n => n.StackSize ?? 1).ToList(), "one stack of 20 in the pack");
-            Assert.AreEqual(player.Guid.Full, notes[0].ContainerId);
-            CollectionAssert.AreEqual(new[] { 20L }, DatabaseNoteStacks(player.Guid.Full), "the database has the notes in the pack");
+            Assert.AreEqual(player.Guid.ClientGUID, notes[0].ContainerId);
+            CollectionAssert.AreEqual(new[] { 20L }, DatabaseNoteStacks(player.Guid.ClientGUID), "the database has the notes in the pack");
 
             Assert.AreEqual(30, Ledger.GetBalance(account));
 
@@ -158,7 +158,7 @@ namespace ACE.Server.Tests.Market
 
             Assert.AreEqual(VaultOutcome.NotesWithdrawn, result.Outcome, result.Message);
             CollectionAssert.AreEqual(new[] { 500, 1000, 1000 }, Notes(player).Select(n => n.StackSize ?? 1).OrderBy(s => s).ToList());
-            CollectionAssert.AreEqual(new[] { 500L, 1000L, 1000L }, DatabaseNoteStacks(player.Guid.Full));
+            CollectionAssert.AreEqual(new[] { 500L, 1000L, 1000L }, DatabaseNoteStacks(player.Guid.ClientGUID));
             Assert.AreEqual(100, Ledger.GetBalance(account));
             Assert.AreEqual(0, Count($"SELECT SUM(amount) FROM market_ledger_entry WHERE transfer_Id = {SingleTransfer(account, TransferKind.NoteWithdraw)};"));
         }
@@ -177,7 +177,7 @@ namespace ACE.Server.Tests.Market
             Assert.AreEqual(VaultOutcome.InsufficientFunds, result.Outcome, result.Message);
             Assert.IsFalse(string.IsNullOrWhiteSpace(result.Message));
             Assert.AreEqual(0, NotesInPacks(player));
-            Assert.AreEqual(0, DatabaseNoteStacks(player.Guid.Full).Count, "no notes were created");
+            Assert.AreEqual(0, DatabaseNoteStacks(player.Guid.ClientGUID).Count, "no notes were created");
             Assert.AreEqual(balanceRow, BalanceRow(account), "the balance row is untouched");
             Assert.AreEqual(1, Count($"SELECT COUNT(DISTINCT transfer_Id) FROM market_ledger_entry WHERE account_Id = {account};"), "no transfer was written");
 
@@ -220,7 +220,7 @@ namespace ACE.Server.Tests.Market
             Assert.AreEqual(VaultOutcome.InsufficientFunds, result.Outcome, result.Message);
             Assert.AreEqual(5, result.Balance, "the player is told the balance the job saw");
             Assert.AreEqual(0, NotesInPacks(player));
-            Assert.AreEqual(0, DatabaseNoteStacks(player.Guid.Full).Count, "no notes were created");
+            Assert.AreEqual(0, DatabaseNoteStacks(player.Guid.ClientGUID).Count, "no notes were created");
             Assert.AreEqual(balanceRow, BalanceRow(account));
             Assert.AreEqual(0, Count($"SELECT COUNT(*) FROM market_transfer t JOIN market_ledger_entry e ON e.transfer_Id = t.id WHERE e.account_Id = {account} AND t.kind = '{TransferKind.NoteWithdraw}';"));
         }
@@ -233,7 +233,7 @@ namespace ACE.Server.Tests.Market
             const int jobsEach = 10;
 
             var account = VaultTestWorld.NewAccountId();
-            var character = VaultTestWorld.NewPlayer(account).Guid.Full;
+            var character = VaultTestWorld.NewPlayer(account).Guid.ClientGUID;
             var start = new System.Threading.Barrier(writers);
             var saved = 0L;
             var results = new System.Collections.Concurrent.ConcurrentBag<MarketJobResult>();
@@ -288,7 +288,7 @@ namespace ACE.Server.Tests.Market
                 Assert.AreEqual(VaultOutcome.SaveFailed, result.Outcome, $"{table}: {result.Message}");
                 Assert.AreEqual(30, NotesInPacks(player), $"{table}: the notes are back in the pack");
                 Assert.IsNotNull(player.GetInventoryItem(note.Guid), $"{table}: the same stack");
-                CollectionAssert.AreEqual(new[] { 30L }, DatabaseNoteStacks(player.Guid.Full), $"{table}: the note row is still in the pack");
+                CollectionAssert.AreEqual(new[] { 30L }, DatabaseNoteStacks(player.Guid.ClientGUID), $"{table}: the note row is still in the pack");
                 Assert.AreEqual(balanceRow, BalanceRow(account), $"{table}: the balance row is untouched");
                 Assert.AreEqual(1, Count($"SELECT COUNT(DISTINCT transfer_Id) FROM market_ledger_entry WHERE account_Id = {account};"), $"{table}: no transfer was written");
                 Assert.AreEqual(events, Count("SELECT COUNT(*) FROM market_item_event;"), $"{table}: no item event was written");
@@ -316,7 +316,7 @@ namespace ACE.Server.Tests.Market
 
                 Assert.AreEqual(VaultOutcome.SaveFailed, result.Outcome, $"{table}: {result.Message}");
                 Assert.AreEqual(0, NotesInPacks(player), $"{table}: no notes in the pack");
-                Assert.AreEqual(0, DatabaseNoteStacks(player.Guid.Full).Count, $"{table}: no note rows");
+                Assert.AreEqual(0, DatabaseNoteStacks(player.Guid.ClientGUID).Count, $"{table}: no note rows");
                 Assert.AreEqual(balanceRow, BalanceRow(account), $"{table}: the balance row is untouched");
                 Assert.AreEqual(1, Count($"SELECT COUNT(DISTINCT transfer_Id) FROM market_ledger_entry WHERE account_Id = {account};"), $"{table}: no transfer was written");
             }

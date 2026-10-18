@@ -238,7 +238,7 @@ namespace ACE.Server.WorldObjects
             target = CurrentLandblock?.GetObject(targetGuid);
 
             if (target != null)
-                return targetGuid == Guid.Full ? TargetCategory.Self : TargetCategory.WorldObject;
+                return targetGuid == Guid.ClientGUID ? TargetCategory.Self : TargetCategory.WorldObject;
 
             // self-wielded
             target = GetEquippedItem(targetGuid);
@@ -256,7 +256,7 @@ namespace ACE.Server.WorldObjects
                 return TargetCategory.Wielded;
 
             // known trade objects
-            var tradePartner = GetKnownTradeObj(new ObjectGuid(targetGuid));
+            var tradePartner = GetKnownTradeObj(ResolveGuid(targetGuid));
             if (tradePartner != null)
             {
                 target = tradePartner.GetEquippedItem(targetGuid);
@@ -607,7 +607,7 @@ namespace ACE.Server.WorldObjects
 
             var spellWords = spell._spellBase.GetSpellWords(DatManager.PortalDat.SpellComponentsTable);
             if (!string.IsNullOrWhiteSpace(spellWords) && !isWeaponSpell)
-                EnqueueBroadcast(new GameMessageHearSpeech(spellWords, GetNameWithSuffix(), Guid.Full, ChatMessageType.Spellcasting), LocalBroadcastRange);
+                EnqueueBroadcast(new GameMessageHearSpeech(spellWords, GetNameWithSuffix(), Guid.ClientGUID, ChatMessageType.Spellcasting), LocalBroadcastRange);
 
             OnTalk(spellWords);
         }
@@ -734,7 +734,7 @@ namespace ACE.Server.WorldObjects
             {
                 if (target.CurrentLandblock == null)
                 {
-                    FindObject(target.Guid.Full, SearchLocations.Everywhere, out _, out var rootOwner, out _);
+                    FindObject(target.Guid, SearchLocations.Everywhere, out _, out var rootOwner, out _);
 
                     if (rootOwner == null)
                         log.Error($"{Name}.IsWithinAngle({target.Name} ({target.Guid})) - couldn't find rootOwner");
@@ -760,7 +760,7 @@ namespace ACE.Server.WorldObjects
             if (target != null)
             {
                 // verify target still exists
-                var targetCategory = GetTargetCategory(target.Guid.Full, spell.Id, out target);
+                var targetCategory = GetTargetCategory(target.Guid.ClientGUID, spell.Id, out target);
 
                 if (target == null)
                 {

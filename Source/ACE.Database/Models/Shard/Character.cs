@@ -11,7 +11,7 @@ public partial class Character
     /// <summary>
     /// Id of the Biota for this Character
     /// </summary>
-    public uint Id { get; set; }
+    public ulong Id { get; set; }
 
     /// <summary>
     /// Id of the Biota for this Character

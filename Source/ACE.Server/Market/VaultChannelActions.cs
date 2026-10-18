@@ -1,3 +1,4 @@
+using ACE.Server.Network;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -298,7 +299,7 @@ namespace ACE.Server.Market
 
                 foreach (var item in page.Items)
                 {
-                    w.Write(item.ItemGuid);
+                    w.WriteGuid(item.ItemGuid);
                     ChannelWire.WriteString(w, item.Name);
                     w.Write(unchecked((uint)item.ItemType));
                     w.Write(item.StackSize);

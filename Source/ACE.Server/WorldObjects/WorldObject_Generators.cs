@@ -60,7 +60,7 @@ namespace ACE.Server.WorldObjects
             // defaulting to Max == Init for our purposes.
             if ((MaxGeneratedObjects <= 0 || MaxGeneratedObjects < InitGeneratedObjects) && InitGeneratedObjects > 0)
             {
-                log.Warn($"[GENERATOR] 0x{Guid.Full} {Name}.InitializeGenerator: {WeenieClassName} ({WeenieClassId}) MaxGeneratedObjects = {MaxGeneratedObjects} | InitGeneratedObjects = {InitGeneratedObjects}. Setting MaxGeneratedObjects = InitGeneratedObjects");
+                log.Warn($"[GENERATOR] 0x{Guid} {Name}.InitializeGenerator: {WeenieClassName} ({WeenieClassId}) MaxGeneratedObjects = {MaxGeneratedObjects} | InitGeneratedObjects = {InitGeneratedObjects}. Setting MaxGeneratedObjects = InitGeneratedObjects");
                 MaxGeneratedObjects = InitGeneratedObjects;
             }
 
@@ -563,7 +563,7 @@ namespace ACE.Server.WorldObjects
         {
             if (GeneratorId == null || Generator == null) return;
 
-            var generator = Generator.GeneratorProfiles.FirstOrDefault(g => g.Spawned.ContainsKey(Guid.Full));
+            var generator = Generator.GeneratorProfiles.FirstOrDefault(g => g.Spawned.ContainsKey(Guid.ClientGUID));
             generator?.NotifyGenerator(Guid, regenerationType);
 
             if (Generator.GeneratorId > 0) // Generator is controlled by another generator.

@@ -23,14 +23,14 @@ namespace ACE.Server.WorldObjects
         {
             if (IsBusy)
             {
-                Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, Guid.Full));
+                Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, Guid.ClientGUID));
                 SendUseDoneEvent(WeenieError.YoureTooBusy);
                 return;
             }
 
             if (IsTrading)
             {
-                Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, Guid.Full));
+                Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, Guid.ClientGUID));
                 SendUseDoneEvent(WeenieError.CantDoThatTradeInProgress);
                 return;
             }
@@ -39,14 +39,14 @@ namespace ACE.Server.WorldObjects
 
             if (vendor == null)
             {
-                Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, Guid.Full));
+                Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, Guid.ClientGUID));
                 SendUseDoneEvent(WeenieError.NoObject);
                 return;
             }
 
             // if this succeeds, it automatically calls player.FinalizeBuyTransaction()
             if (!vendor.BuyItems_ValidateTransaction(items, this))
-                Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, Guid.Full));
+                Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, Guid.ClientGUID));
 
             SendUseDoneEvent();
         }
@@ -127,7 +127,7 @@ namespace ACE.Server.WorldObjects
         {
             if (IsBusy)
             {
-                Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, Guid.Full));
+                Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, Guid.ClientGUID));
                 SendUseDoneEvent(WeenieError.YoureTooBusy);
                 return;
             }
@@ -136,7 +136,7 @@ namespace ACE.Server.WorldObjects
 
             if (vendor == null)
             {
-                Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, Guid.Full));
+                Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, Guid.ClientGUID));
                 SendUseDoneEvent(WeenieError.NoObject);
                 return;
             }
@@ -154,7 +154,7 @@ namespace ACE.Server.WorldObjects
 
             if (sellList.Count == 0)
             {
-                Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, Guid.Full));
+                Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, Guid.ClientGUID));
                 SendUseDoneEvent();
                 return;
             }
@@ -167,7 +167,7 @@ namespace ACE.Server.WorldObjects
                 log.Warn($"[VENDOR] {Name} (0x({Guid}) tried to sell something to {vendor.Name} (0x{vendor.Guid}) resulting in a payout of {payoutCoinAmount} pyreals.");
 
                 SendTransientError("Transaction failed.");
-                Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, Guid.Full));
+                Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, Guid.ClientGUID));
 
                 SendUseDoneEvent();
 
@@ -186,7 +186,7 @@ namespace ACE.Server.WorldObjects
                 else if (itemsToReceive.PlayerOutOfInventorySlots)
                     Session.Network.EnqueueSend(new GameEventCommunicationTransientString(Session, "You do not have enough free pack space to sell that!"));
 
-                Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, Guid.Full));
+                Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, Guid.ClientGUID));
                 SendUseDoneEvent();     // WeenieError.FullInventoryLocation?
                 return;
             }
@@ -201,7 +201,7 @@ namespace ACE.Server.WorldObjects
                 if (TryRemoveFromInventoryWithNetworking(item.Guid, out _, RemoveFromInventoryAction.SellItem) || TryDequipObjectWithNetworking(item.Guid, out _, DequipObjectAction.SellItem))
                     Session.Network.EnqueueSend(new GameEventItemServerSaysContainId(Session, item, vendor));
                 else
-                    log.WarnFormat("[VENDOR] Item 0x{0:X8}:{1} for player {2} not found in HandleActionSellItem.", item.Guid.Full, item.Name, Name); // This shouldn't happen
+                    log.WarnFormat("[VENDOR] Item 0x{0:X8}:{1} for player {2} not found in HandleActionSellItem.", item.Guid, item.Name, Name); // This shouldn't happen
             }
 
             // send the list of items to the vendor
@@ -213,7 +213,7 @@ namespace ACE.Server.WorldObjects
             {
                 if (!TryCreateInInventoryWithNetworking(item))  // this shouldn't happen because of pre-validations in itemsToReceive
                 {
-                    log.WarnFormat("[VENDOR] Payout 0x{0:X8}:{1} for player {2} failed to add to inventory HandleActionSellItem.", item.Guid.Full, item.Name, Name);
+                    log.WarnFormat("[VENDOR] Payout 0x{0:X8}:{1} for player {2} failed to add to inventory HandleActionSellItem.", item.Guid, item.Name, Name);
                     item.Destroy();
                 }
             }
@@ -231,7 +231,7 @@ namespace ACE.Server.WorldObjects
         /// </summary>
         private Dictionary<uint, WorldObject> VerifySellItems(List<ItemProfile> sellItems, Vendor vendor)
         {
-            var allPossessions = GetAllPossessions().ToDictionary(i => i.Guid.Full, i => i);
+            var allPossessions = GetAllPossessions().ToDictionary(i => i.Guid.ClientGUID, i => i);
 
             var acceptedItemTypes = (ItemType)(vendor.MerchandiseItemTypes ?? 0);
 
@@ -246,7 +246,7 @@ namespace ACE.Server.WorldObjects
                 }
 
                 // verify item profile (unique guids, amount)
-                if (verified.ContainsKey(wo.Guid.Full))
+                if (verified.ContainsKey(wo.Guid.ClientGUID))
                 {
                     log.Warn($"[VENDOR] {Name} tried to sell duplicate item {wo.Name} ({wo.Guid}) to {vendor.Name}");
                     continue;
@@ -293,7 +293,7 @@ namespace ACE.Server.WorldObjects
                     continue;
                 }
 
-                verified.Add(wo.Guid.Full, wo);
+                verified.Add(wo.Guid.ClientGUID, wo);
             }
 
             return verified;

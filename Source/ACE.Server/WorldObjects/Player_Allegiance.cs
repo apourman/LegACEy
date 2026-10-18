@@ -72,7 +72,7 @@ namespace ACE.Server.WorldObjects
             if (!IsPledgable(patron)) return;
 
             // perform moveto / turnto
-            CreateMoveToChain(patron, (success) => SwearAllegiance(patron.Guid.Full, success), Allegiance_MaxSwearDistance);
+            CreateMoveToChain(patron, (success) => SwearAllegiance(patron.Guid.ClientGUID, success), Allegiance_MaxSwearDistance);
         }
 
         public void SwearAllegiance(uint targetGuid, bool success, bool confirmed = false)
@@ -98,14 +98,14 @@ namespace ACE.Server.WorldObjects
 
             PatronId = targetGuid;
 
-            var monarchGuid = AllegianceManager.GetMonarch(patron).Guid.Full;
+            var monarchGuid = AllegianceManager.GetMonarch(patron).Guid.ClientGUID;
 
             UpdateProperty(PropertyInstanceId.Monarch, monarchGuid, true);
 
             ExistedBeforeAllegianceXpChanges = (patron.Level ?? 1) >= (Level ?? 1);
 
             // handle special case: monarch swearing into another allegiance
-            if (Allegiance != null && Allegiance.MonarchId == Guid.Full)
+            if (Allegiance != null && Allegiance.MonarchId == Guid.ClientGUID)
                 HandleMonarchSwear();
 
             SaveBiotaToDatabase();
@@ -178,8 +178,8 @@ namespace ACE.Server.WorldObjects
             log.InfoFormat("[ALLEGIANCE] {0} breaking allegiance to {1}", Name, target.Name);
 
             // target can be either patron or vassal
-            var isPatron = PatronId == target.Guid.Full;
-            var isVassal = target.PatronId == Guid.Full;
+            var isPatron = PatronId == target.Guid.ClientGUID;
+            var isVassal = target.PatronId == Guid.ClientGUID;
 
             // break ties
             if (isVassal)
@@ -189,14 +189,14 @@ namespace ACE.Server.WorldObjects
 
                 Allegiance.Members.TryGetValue(target.Guid, out var targetNode);
 
-                var monarchId = targetNode.HasVassals ? (uint?)target.Guid.Full : null;
+                var monarchId = targetNode.HasVassals ? (uint?)target.Guid.ClientGUID : null;
 
                 target.UpdateProperty(PropertyInstanceId.Monarch, monarchId, true);
 
                 // walk the allegiance tree from this node, update monarch ids
                 targetNode.Walk((node) =>
                 {
-                    node.Player.UpdateProperty(PropertyInstanceId.Monarch, target.Guid.Full, true);
+                    node.Player.UpdateProperty(PropertyInstanceId.Monarch, target.Guid.ClientGUID, true);
 
                     node.Player.SaveBiotaToDatabase();
 
@@ -213,7 +213,7 @@ namespace ACE.Server.WorldObjects
                 // walk the allegiance tree from this node, update monarch ids
                 AllegianceNode.Walk((node) =>
                 {
-                    node.Player.UpdateProperty(PropertyInstanceId.Monarch, Guid.Full, true);
+                    node.Player.UpdateProperty(PropertyInstanceId.Monarch, Guid.ClientGUID, true);
 
                     node.Player.SaveBiotaToDatabase();
 
@@ -372,7 +372,7 @@ namespace ACE.Server.WorldObjects
                     }
                 }
 
-                if (targetNode.Allegiance.IsLocked && !targetNode.Allegiance.HasApprovedVassal(Guid.Full)
+                if (targetNode.Allegiance.IsLocked && !targetNode.Allegiance.HasApprovedVassal(Guid.ClientGUID)
                     && (targetNode.Player.AllegianceOfficerRank ?? 0) < (int)AllegianceOfficerLevel.Castellan)
                 {
                     //Console.WriteLine(Name + "tried to join locked allegiance, not in approved vassals list");
@@ -380,7 +380,7 @@ namespace ACE.Server.WorldObjects
                     return false;
                 }
 
-                if (targetNode.Allegiance.IsBanned(Guid.Full))
+                if (targetNode.Allegiance.IsBanned(Guid.ClientGUID))
                 {
                     //Console.WriteLine(Name + "tried to join allegiance, but was banned!");
                     Session.Network.EnqueueSend(new GameMessageSystemChat($"You are banned from joining {target.Name}'s allegiance.", ChatMessageType.Broadcast));
@@ -389,7 +389,7 @@ namespace ACE.Server.WorldObjects
             }
 
             // ensure this player doesn't own a monarch-only house
-            if (House != null && House.SlumLord.HouseRequiresMonarch && House.HouseOwner == Guid.Full)
+            if (House != null && House.SlumLord.HouseRequiresMonarch && House.HouseOwner == Guid.ClientGUID)
             {
                 //Console.WriteLine(Name + "monarch tried to pledge allegiance, already owns a mansion");
                 //Session.Network.EnqueueSend(new GameMessageSystemChat($"You cannot swear allegiance while owning a mansion.", ChatMessageType.Broadcast));
@@ -411,13 +411,13 @@ namespace ACE.Server.WorldObjects
             var target = PlayerManager.FindByGuid(targetGuid);
             if (target == null)
             {
-                //Console.WriteLine(Name + " tried to break allegiance to an unknown player guid: " + targetGuid.Full.ToString("X8"));
+                //Console.WriteLine(Name + " tried to break allegiance to an unknown player guid: " + targetGuid.ToString());
                 return false;
             }
 
             // verify patron or vassal
-            var isPatron = PatronId == target.Guid.Full;
-            var isVassal = target.PatronId == Guid.Full;
+            var isPatron = PatronId == target.Guid.ClientGUID;
+            var isVassal = target.PatronId == Guid.ClientGUID;
 
             if (!isPatron && !isVassal)
             {
@@ -452,7 +452,7 @@ namespace ACE.Server.WorldObjects
                 foreach (var member in Allegiance.OnlinePlayers)
                 {
                     if (member.Guid != Guid && member.GetCharacterOption(CharacterOption.ShowAllegianceLogons))
-                        member.Session.Network.EnqueueSend(new GameEventAllegianceLoginNotification(member.Session, Guid.Full, isLoggedIn: true));
+                        member.Session.Network.EnqueueSend(new GameEventAllegianceLoginNotification(member.Session, Guid.ClientGUID, isLoggedIn: true));
                 }
             }
         }
@@ -464,7 +464,7 @@ namespace ACE.Server.WorldObjects
                 foreach (var member in Allegiance.OnlinePlayers)
                 {
                     if (member.Guid != Guid && member.GetCharacterOption(CharacterOption.ShowAllegianceLogons))
-                        member.Session.Network.EnqueueSend(new GameEventAllegianceLoginNotification(member.Session, Guid.Full, isLoggedIn: false));
+                        member.Session.Network.EnqueueSend(new GameEventAllegianceLoginNotification(member.Session, Guid.ClientGUID, isLoggedIn: false));
                 }
             }
         }
@@ -477,7 +477,7 @@ namespace ACE.Server.WorldObjects
                 prefix = "Your monarch ";
             else if (AllegianceNode.Patron != null && allegianceMember.Guid == AllegianceNode.Patron.PlayerGuid)
                 prefix = "Your patron ";
-            else if (AllegianceNode.Vassals.ContainsKey(allegianceMember.Guid.Full))
+            else if (AllegianceNode.Vassals.ContainsKey(allegianceMember.Guid.ClientGUID))
                 prefix = "Your vassal ";
 
             return prefix;
@@ -795,7 +795,7 @@ namespace ACE.Server.WorldObjects
                 return;
             }
 
-            if (player.Guid.Full == Allegiance.MonarchId)
+            if (player.Guid.ClientGUID == Allegiance.MonarchId)
             {
                 Session.Network.EnqueueSend(new GameEventWeenieError(Session, WeenieError.YouDoNotHaveAuthorityInAllegiance));
                 return;
@@ -943,7 +943,7 @@ namespace ACE.Server.WorldObjects
             }
             var profile = new AllegianceProfile(Allegiance, allegianceNode);
 
-            Session.Network.EnqueueSend(new GameEventAllegianceInfoResponse(Session, player.Guid.Full, profile));
+            Session.Network.EnqueueSend(new GameEventAllegianceInfoResponse(Session, player.Guid.ClientGUID, profile));
         }
 
         public void HandleActionDoAllegianceLockAction(AllegianceLockAction action)
@@ -1064,13 +1064,13 @@ namespace ACE.Server.WorldObjects
                 return;
             }
 
-            if (Allegiance.HasApprovedVassal(player.Guid.Full))
+            if (Allegiance.HasApprovedVassal(player.Guid.ClientGUID))
             {
                 Session.Network.EnqueueSend(new GameMessageSystemChat($"{player.Name} is already an approved vassal.", ChatMessageType.Broadcast));
                 return;
             }
 
-            Allegiance.AddApprovedVassal(player.Guid.Full);
+            Allegiance.AddApprovedVassal(player.Guid.ClientGUID);
 
             Session.Network.EnqueueSend(new GameMessageSystemChat($"{player.Name} is now an approved vassal.", ChatMessageType.Broadcast));
         }
@@ -1112,7 +1112,7 @@ namespace ACE.Server.WorldObjects
                 return;
             }
 
-            if (player.Guid.Full == Allegiance.MonarchId)
+            if (player.Guid.ClientGUID == Allegiance.MonarchId)
             {
                 Session.Network.EnqueueSend(new GameMessageSystemChat($"You cannot boot the monarch from allegiance chat.", ChatMessageType.Broadcast));
                 return;
@@ -1186,7 +1186,7 @@ namespace ACE.Server.WorldObjects
                 return;
             }
 
-            if (player.Guid.Full == Allegiance.MonarchId)
+            if (player.Guid.ClientGUID == Allegiance.MonarchId)
             {
                 Session.Network.EnqueueSend(new GameMessageSystemChat($"You cannot gag the monarch.", ChatMessageType.Broadcast));
                 return;
@@ -1335,19 +1335,19 @@ namespace ACE.Server.WorldObjects
             }
 
             // any other restrictions?
-            if (player.Guid.Full == Allegiance.MonarchId)
+            if (player.Guid.ClientGUID == Allegiance.MonarchId)
             {
                 Session.Network.EnqueueSend(new GameMessageSystemChat($"{player.Name} cannot be banned from the allegiance!", ChatMessageType.Broadcast));
                 return;
             }
 
-            if (Allegiance.IsBanned(player.Guid.Full))
+            if (Allegiance.IsBanned(player.Guid.ClientGUID))
             {
                 Session.Network.EnqueueSend(new GameMessageSystemChat($"{player.Name} is already banned from the allegiance.", ChatMessageType.Broadcast));
                 return;
             }
 
-            Allegiance.AddBan(player.Guid.Full);
+            Allegiance.AddBan(player.Guid.ClientGUID);
 
             Session.Network.EnqueueSend(new GameMessageSystemChat($"{player.Name} has been banned from the allegiance.", ChatMessageType.Broadcast));
 
@@ -1381,13 +1381,13 @@ namespace ACE.Server.WorldObjects
                 return;
             }
 
-            if (!Allegiance.IsBanned(player.Guid.Full))
+            if (!Allegiance.IsBanned(player.Guid.ClientGUID))
             {
                 Session.Network.EnqueueSend(new GameMessageSystemChat($"{player.Name} is not banned from the allegiance.", ChatMessageType.Broadcast));
                 return;
             }
 
-            Allegiance.RemoveBan(player.Guid.Full);
+            Allegiance.RemoveBan(player.Guid.ClientGUID);
 
             Session.Network.EnqueueSend(new GameMessageSystemChat($"{player.Name} is no longer banned from the allegiance.", ChatMessageType.Broadcast));
         }
@@ -1431,7 +1431,7 @@ namespace ACE.Server.WorldObjects
                 return;
             }
 
-            if (player.Guid.Full == Allegiance.MonarchId)
+            if (player.Guid.ClientGUID == Allegiance.MonarchId)
             {
                 Session.Network.EnqueueSend(new GameMessageSystemChat($"You cannot boot the monarch from the allegiance!", ChatMessageType.Broadcast));
                 return;
@@ -1452,7 +1452,7 @@ namespace ACE.Server.WorldObjects
 
             targetNode.Walk((node) =>
             {
-                node.Player.UpdateProperty(PropertyInstanceId.Monarch, player.Guid.Full, true);
+                node.Player.UpdateProperty(PropertyInstanceId.Monarch, player.Guid.ClientGUID, true);
 
                 node.Player.SaveBiotaToDatabase();
             });
@@ -1509,7 +1509,7 @@ namespace ACE.Server.WorldObjects
                 if (Allegiance == null)
                     return AllegiancePermissionLevel.None;
 
-                if (Allegiance.MonarchId == Guid.Full)
+                if (Allegiance.MonarchId == Guid.ClientGUID)
                     return AllegiancePermissionLevel.Monarch;
 
                 return (AllegiancePermissionLevel)(AllegianceOfficerRank ?? 0);

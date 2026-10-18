@@ -248,11 +248,11 @@ namespace ACE.Server.Market
             var now = DateTime.UtcNow;
             var items = InventoryItems(player).Select(item =>
             {
-                var refusal = Vault.CheckDeposit(player, item.Guid.Full, out _);
+                var refusal = Vault.CheckDeposit(player, item.Guid.ClientGUID, out _);
 
                 return new
                 {
-                    itemGuid = item.Guid.Full,
+                    itemGuid = item.Guid.ClientGUID,
                     name = item.Name,
                     stackSize = item.StackSize ?? 1,
                     itemType = (int)item.ItemType,

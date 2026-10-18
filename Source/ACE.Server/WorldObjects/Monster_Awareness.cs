@@ -5,6 +5,7 @@ using System.Numerics;
 
 using ACE.Common;
 using ACE.Common.Extensions;
+using ACE.Entity;
 using ACE.Entity.Enum;
 using ACE.Entity.Enum.Properties;
 using ACE.Server.Entity;
@@ -436,13 +437,13 @@ namespace ACE.Server.WorldObjects
         /// <summary>
         /// AttackTarget => last alerted time
         /// </summary>
-        private Dictionary<uint, DateTime> Alerted;
+        private Dictionary<ObjectGuid, DateTime> Alerted;
 
         public void AlertFriendly()
         {
             // if current attacker has already alerted this monster recently,
             // don't re-alert friendlies
-            if (Alerted != null && Alerted.TryGetValue(AttackTarget.Guid.Full, out var lastAlertTime) && DateTime.UtcNow - lastAlertTime < AlertThreshold)
+            if (Alerted != null && Alerted.TryGetValue(AttackTarget.Guid, out var lastAlertTime) && DateTime.UtcNow - lastAlertTime < AlertThreshold)
                 return;
 
             var visibleObjs = PhysicsObj.ObjMaint.GetVisibleObjects(PhysicsObj.CurCell);
@@ -497,9 +498,9 @@ namespace ACE.Server.WorldObjects
             if (alerted)
             {
                 if (Alerted == null)
-                    Alerted = new Dictionary<uint, DateTime>();
+                    Alerted = new Dictionary<ObjectGuid, DateTime>();
 
-                Alerted[AttackTarget.Guid.Full] = DateTime.UtcNow;
+                Alerted[AttackTarget.Guid] = DateTime.UtcNow;
             }
         }
 

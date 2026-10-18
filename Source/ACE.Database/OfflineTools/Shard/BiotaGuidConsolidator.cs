@@ -130,10 +130,10 @@ namespace ACE.Database.OfflineTools.Shard
             {
                 context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
 
-                partialBiotas = context.Biota.Where(r => r.Id >= startingGuid).OrderByDescending(r => r.Id).ToList();
+                partialBiotas = context.Biota.Where(r => r.Id >= startingGuid && r.Id <= ObjectGuid.DynamicMax).OrderByDescending(r => r.Id).ToList();
             }
 
-            var idConversions = new ConcurrentDictionary<uint, uint>();
+            var idConversions = new ConcurrentDictionary<ulong, uint>();
 
             // Process ConsolidatableBasicWeenieTypes first
             Parallel.ForEach(partialBiotas, ConfigManager.Config.Server.Threading.DatabaseParallelOptions, partialBiota =>
@@ -328,7 +328,7 @@ namespace ACE.Database.OfflineTools.Shard
             // Update enchantment tables for equipped items
             using (var context = new ShardDbContext())
             {
-                var enchantments = context.BiotaPropertiesEnchantmentRegistry.Where(r => r.CasterObjectId >= startingGuid).ToList();
+                var enchantments = context.BiotaPropertiesEnchantmentRegistry.Where(r => r.CasterObjectId >= startingGuid && r.CasterObjectId <= ObjectGuid.DynamicMax).ToList();
 
                 // First, remove the enchantments from the database
                 foreach (var enchantment in enchantments)
@@ -350,7 +350,7 @@ namespace ACE.Database.OfflineTools.Shard
                     }
                 }
 
-                var shortcuts = context.CharacterPropertiesShortcutBar.Where(r => r.ShortcutObjectId >= startingGuid).ToList();
+                var shortcuts = context.CharacterPropertiesShortcutBar.Where(r => r.ShortcutObjectId >= startingGuid && r.ShortcutObjectId <= ObjectGuid.DynamicMax).ToList();
 
                 foreach (var shortcut in shortcuts)
                 {

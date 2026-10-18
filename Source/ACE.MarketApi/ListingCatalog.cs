@@ -216,7 +216,7 @@ namespace ACE.MarketApi
         public static ListingView View(Row row, AppraisalItem item) => new ListingView
         {
             Id = row.Listing.Id,
-            ItemGuid = row.Listing.ItemGuid,
+            ItemGuid = (uint)row.Listing.ItemGuid,
             Wcid = row.Item.Wcid,
             Name = row.Item.Name,
             ItemType = ItemTypeName(row.Item.ItemType),

@@ -230,7 +230,7 @@ namespace ACE.Database.Tests.Market
                 Id = nextGuid++,
                 WeenieClassId = ShardDatabase.TradeNoteWcid,
                 WeenieType = WeenieType.Stackable,
-                PropertiesIID = new Dictionary<PropertyInstanceId, uint> { [PropertyInstanceId.Container] = CharacterId, [PropertyInstanceId.Owner] = CharacterId },
+                PropertiesIID = new Dictionary<PropertyInstanceId, ulong> { [PropertyInstanceId.Container] = CharacterId, [PropertyInstanceId.Owner] = CharacterId },
                 PropertiesInt = new Dictionary<PropertyInt, int> { [PropertyInt.StackSize] = stackSize },
             };
         }
@@ -258,7 +258,7 @@ namespace ACE.Database.Tests.Market
                 Id = guid,
                 WeenieClassId = 3000,
                 WeenieType = WeenieType.Generic,
-                PropertiesIID = new Dictionary<PropertyInstanceId, uint> { [PropertyInstanceId.Container] = CharacterId },
+                PropertiesIID = new Dictionary<PropertyInstanceId, ulong> { [PropertyInstanceId.Container] = CharacterId },
             };
         }
 
@@ -294,7 +294,7 @@ namespace ACE.Database.Tests.Market
 
             public HookedShardDatabase(Action<int> onTry) => this.onTry = onTry;
 
-            public override bool EvictBiota(uint id)
+            public override bool EvictBiota(ulong id)
             {
                 onTry(++tries);
                 return false;

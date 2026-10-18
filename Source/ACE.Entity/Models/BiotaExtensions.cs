@@ -72,7 +72,7 @@ namespace ACE.Entity.Models
             }
         }
 
-        public static uint? GetProperty(this Biota biota, PropertyInstanceId property, ReaderWriterLockSlim rwLock)
+        public static ulong? GetProperty(this Biota biota, PropertyInstanceId property, ReaderWriterLockSlim rwLock)
         {
             if (biota.PropertiesIID == null)
                 return null;
@@ -176,7 +176,7 @@ namespace ACE.Entity.Models
             try
             {
                 if (biota.PropertiesPosition.TryGetValue(property, out var value))
-                    return new Position(value.ObjCellId, value.PositionX, value.PositionY, value.PositionZ, value.RotationX, value.RotationY, value.RotationZ, value.RotationW, property == PositionType.RelativeDestination);
+                    return new Position(value.ObjCellId, value.PositionX, value.PositionY, value.PositionZ, value.RotationX, value.RotationY, value.RotationZ, value.RotationW, property == PositionType.RelativeDestination) { Instance = value.Instance };
 
                 return null;
             }
@@ -249,13 +249,13 @@ namespace ACE.Entity.Models
             }
         }
 
-        public static void SetProperty(this Biota biota, PropertyInstanceId property, uint value, ReaderWriterLockSlim rwLock, out bool changed)
+        public static void SetProperty(this Biota biota, PropertyInstanceId property, ulong value, ReaderWriterLockSlim rwLock, out bool changed)
         {
             rwLock.EnterWriteLock();
             try
             {
                 if (biota.PropertiesIID == null)
-                    biota.PropertiesIID = new Dictionary<PropertyInstanceId, uint>();
+                    biota.PropertiesIID = new Dictionary<PropertyInstanceId, ulong>();
 
                 changed = (!biota.PropertiesIID.TryGetValue(property, out var existing) || value != existing);
 
@@ -349,7 +349,7 @@ namespace ACE.Entity.Models
                 if (biota.PropertiesPosition == null)
                     biota.PropertiesPosition = new Dictionary<PositionType, PropertiesPosition>();
 
-                var entity = new PropertiesPosition { ObjCellId = value.Cell, PositionX = value.PositionX, PositionY = value.PositionY, PositionZ = value.PositionZ, RotationW = value.RotationW, RotationX = value.RotationX, RotationY = value.RotationY, RotationZ = value.RotationZ };
+                var entity = new PropertiesPosition { ObjCellId = value.Cell, Instance = value.Instance, PositionX = value.PositionX, PositionY = value.PositionY, PositionZ = value.PositionZ, RotationW = value.RotationW, RotationX = value.RotationX, RotationY = value.RotationY, RotationZ = value.RotationZ };
 
                 biota.PropertiesPosition[property] = entity;
             }

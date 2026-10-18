@@ -185,7 +185,7 @@ namespace ACE.Server.WorldObjects
                     else
                     {
                         if (!(OwnerId.HasValue && OwnerId.Value > 0))
-                            log.WarnFormat("Item 0x{0:X8}:{1} has enqueued an action but is not attached to a landblock.", Guid.Full, Name);
+                            log.WarnFormat("Item 0x{0:X8}:{1} has enqueued an action but is not attached to a landblock.", Guid, Name);
                     }
 
                     WorldManager.EnqueueAction(action);

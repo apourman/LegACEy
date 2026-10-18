@@ -348,7 +348,7 @@ namespace ACE.Database.Tests.Market
                 StringAssert.StartsWith(type.GetTableName(), "market_", type.ClrType.Name);
 
             // the generated entities keep their tables and gain no keys, properties or relationships to market entities
-            Assert.AreEqual(40, existing.Count, "the generated context maps 40 entities");
+            Assert.AreEqual(41, existing.Count, "the shard context maps 40 generated entities and the realm progress table");
             foreach (var type in existing)
             {
                 Assert.IsFalse(type.GetTableName().StartsWith("market"), type.ClrType.Name);

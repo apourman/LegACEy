@@ -51,14 +51,15 @@ namespace ACE.Server.Physics.Common
         /// This function is thread safe
         /// </summary>
         /// <param name="blockCellID">Any landblock + cell ID within the landblock</param>
-        public static Landblock get_landblock(uint blockCellID)
+        /// <param name="instance">The landblock copy. Each copy has its own physics landblock, cells and cell object lists.</param>
+        public static Landblock get_landblock(uint blockCellID, uint instance)
         {
             var landblockID = blockCellID | 0xFFFF;
 
             if (PhysicsEngine.Instance.Server)
             {
                 var lbid = new LandblockId(landblockID);
-                var lbmLandblock = LandblockManager.GetLandblock(lbid, false, false);
+                var lbmLandblock = LandblockManager.GetLandblock(lbid, instance, false, false);
 
                 return lbmLandblock.PhysicsLandblock;
             }
@@ -92,7 +93,7 @@ namespace ACE.Server.Physics.Common
                     return landblock;
 
                 // if not, load into cache
-                landblock = new Landblock(DBObj.GetCellLandblock(landblockID));
+                landblock = new Landblock(DBObj.GetCellLandblock(landblockID), instance);
                 if (Landblocks.TryAdd(landblockID, landblock))
                     landblock.PostInit();
                 else
@@ -102,20 +103,20 @@ namespace ACE.Server.Physics.Common
             }
         }
 
-        public static bool unload_landblock(uint landblockID)
+        public static bool unload_landblock(uint landblockID, uint instance)
         {
             if (PhysicsEngine.Instance.Server)
             {
                 // todo: Instead of ACE.Server.Entity.Landblock.Unload() calling this function, it should be calling PhysicsLandblock.Unload()
                 // todo: which would then call AdjustCell.AdjustCells.Remove()
 
-                AdjustCell.AdjustCells.TryRemove(landblockID >> 16, out _);
+                AdjustCell.Remove(landblockID >> 16, instance);
                 return true;
             }
 
             var result = Landblocks.TryRemove(landblockID, out _);
             // todo: Like mentioned above, the following function should be moved to ACE.Server.Physics.Common.Landblock.Unload()
-            AdjustCell.AdjustCells.TryRemove(landblockID >> 16, out _);
+            AdjustCell.Remove(landblockID >> 16, instance);
             return result;
         }
 
@@ -123,11 +124,11 @@ namespace ACE.Server.Physics.Common
         /// Gets the landcell from a landblock. If the cell is an indoor cell and hasn't been loaded, it will be loaded.<para />
         /// This function is thread safe
         /// </summary>
-        public static ObjCell get_landcell(uint blockCellID)
+        public static ObjCell get_landcell(uint blockCellID, uint instance)
         {
             //Console.WriteLine($"get_landcell({blockCellID:X8}");
 
-            var landblock = get_landblock(blockCellID);
+            var landblock = get_landblock(blockCellID, instance);
             if (landblock == null)
                 return null;
 
@@ -154,6 +155,7 @@ namespace ACE.Server.Physics.Common
                         return cell;
 
                     cell = DBObj.GetEnvCell(blockCellID);
+                    cell.Instance = instance;
                     landblock.LandCells.TryAdd((int)cellID, cell);
                     var envCell = (EnvCell)cell;
                     envCell.PostInit();

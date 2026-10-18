@@ -8,7 +8,7 @@ namespace ACE.Server.Network.GameMessages.Messages
         public GameMessagePickupEvent(WorldObject targetItem)
             : base(GameMessageOpcode.PickupEvent, GameMessageGroup.SmartboxQueue, 12)
         {
-            Writer.Write(targetItem.Guid.Full);
+            Writer.WriteGuid(targetItem.Guid);
             Writer.Write(targetItem.Sequences.GetCurrentSequence(SequenceType.ObjectInstance));
             Writer.Write(targetItem.Sequences.GetNextSequence(SequenceType.ObjectPosition));
         }

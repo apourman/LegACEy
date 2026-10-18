@@ -69,7 +69,7 @@ namespace ACE.Server.WorldObjects
             {
                 log.Warn($"Key.HandleActionUseOnTarget: Structure / MaxStructure is {Structure:N0} / {MaxStructure:N0} for {Name} (0x{Guid}:{WeenieClassId}), used on {target.Name} (0x{target.Guid}:{target.WeenieClassId}) and used by {player.Name} (0x{player.Guid})");
 
-                var wo = player.FindObject(Guid.Full, Player.SearchLocations.Everywhere, out _, out Container rootOwner, out bool wasEquipped);
+                var wo = player.FindObject(Guid, Player.SearchLocations.Everywhere, out _, out Container rootOwner, out bool wasEquipped);
                 DeleteObject(rootOwner);
 
                 player.SendUseDoneEvent(WeenieError.YouCannotUseThatItem);

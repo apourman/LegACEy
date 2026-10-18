@@ -146,14 +146,14 @@ namespace ACE.MarketDev
                 var account = DatabaseManager.Authentication.CreateAccount(seed.Name, password, AccessLevel.Player, IPAddress.Loopback);
                 var characters = seed.Characters.Select(name => CreateCharacter(account.AccountId, name, nextPlayerGuid++)).ToList();
 
-                Console.WriteLine($"Account {seed.Name} (id {account.AccountId}): characters {string.Join(", ", characters.Select(c => $"{c.Name} (0x{c.Guid.Full:X8})"))}");
+                Console.WriteLine($"Account {seed.Name} (id {account.AccountId}): characters {string.Join(", ", characters.Select(c => $"{c.Name} (0x{c.Guid})"))}");
 
                 var deposited = new List<(SeedItem Seed, uint Guid)>();
 
                 foreach (var seedItem in seed.Items)
                 {
                     var guid = nextItemGuid++;
-                    Deposit(seedItem, guid, account.AccountId, characters[0].Guid.Full);
+                    Deposit(seedItem, guid, account.AccountId, characters[0].Guid.ClientGUID);
                     deposited.Add((seedItem, guid));
                 }
 
@@ -174,7 +174,7 @@ namespace ACE.MarketDev
                     }
 
                     var seller = seedItem.ListAsSecondCharacter ? characters[1] : characters[0];
-                    var listed = ListingStore.List(shard, account.AccountId, guid, price, seller.Guid.Full, now, () => false);
+                    var listed = ListingStore.List(shard, account.AccountId, guid, price, seller.Guid.ClientGUID, now, () => false);
 
                     if (listed.Outcome != ListingOutcome.Ok)
                         throw new InvalidOperationException($"listing 0x{guid:X8}: {listed.Outcome}");

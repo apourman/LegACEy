@@ -120,7 +120,7 @@ namespace ACE.Server.Physics.Common
             {
                 var blockCellID = ID & 0xFFFF0000 | visibleCellID;
                 if (VisibleCells.ContainsKey(blockCellID)) continue;
-                var cell = (EnvCell)LScape.get_landcell(blockCellID);
+                var cell = (EnvCell)LScape.get_landcell(blockCellID, Instance);
                 VisibleCells.Add(visibleCellID, cell);
             }
         }
@@ -219,7 +219,7 @@ namespace ACE.Server.Physics.Common
             return null;
         }
 
-        public new EnvCell GetVisible(uint cellID)
+        public EnvCell GetVisible(uint cellID)
         {
             EnvCell envCell = null;
             VisibleCells.TryGetValue(cellID, out envCell);
@@ -305,7 +305,7 @@ namespace ACE.Server.Physics.Common
                 }
             }
             if (checkOutside)
-                LandCell.add_all_outside_cells(numParts, parts, cellArray, ID);
+                LandCell.add_all_outside_cells(numParts, parts, cellArray, ID, Instance);
         }
 
         public override void find_transit_cells(Position position, int numSphere, List<Sphere> spheres, CellArray cellArray, SpherePath path)
@@ -367,7 +367,7 @@ namespace ACE.Server.Physics.Common
                 }
             }
             if (checkOutside)
-                LandCell.add_all_outside_cells(position, numSphere, spheres, cellArray);
+                LandCell.add_all_outside_cells(position, numSphere, spheres, cellArray, Instance);
         }
 
         public void init_static_objects()
@@ -403,9 +403,9 @@ namespace ACE.Server.Physics.Common
             }
         }
 
-        public static ObjCell get_visible(uint cellID)
+        public static ObjCell get_visible(uint cellID, uint instance)
         {
-            var cell = (EnvCell)LScape.get_landcell(cellID);
+            var cell = (EnvCell)LScape.get_landcell(cellID, instance);
             return cell.VisibleCells.Values.First();
         }
 
@@ -432,7 +432,7 @@ namespace ACE.Server.Physics.Common
             if (envCell == null)
                 return false;
 
-            return ID == envCell.ID;
+            return ID == envCell.ID && Instance == envCell.Instance;
         }
 
         public override int GetHashCode()

@@ -14,7 +14,7 @@ namespace ACE.Server.Network.GameEvent.Events
         {
             //Console.WriteLine("Sending 0x21D - GameEventHouseProfile");
 
-            Writer.Write(crystal.Full);
+            Writer.WriteGuid(crystal);
             Writer.Write(profile);
         }
     }

@@ -83,7 +83,7 @@ namespace ACE.Server.WorldObjects
         public Player(Weenie weenie, ObjectGuid guid, uint accountId) : base(weenie, guid)
         {
             Character = new Character();
-            Character.Id = guid.Full;
+            Character.Id = guid.ClientGUID;
             Character.AccountId = accountId;
             Character.Name = GetProperty(PropertyString.Name);
             CharacterChangesDetected = true;
@@ -278,9 +278,9 @@ namespace ACE.Server.WorldObjects
             var currentTime = Time.GetUnixTime();
 
             // compare with previously requested appraisal target
-            if (objectGuid == RequestedAppraisalTarget)
+            if (wo.Guid.Full == RequestedAppraisalTarget)
             {
-                if (objectGuid == CurrentAppraisalTarget)
+                if (wo.Guid.Full == CurrentAppraisalTarget)
                 {
                     // continued success, rng roll no longer needed
                     Session.Network.EnqueueSend(new GameEventIdentifyObjectResponse(Session, wo, true));
@@ -297,7 +297,7 @@ namespace ACE.Server.WorldObjects
                 }
             }
 
-            RequestedAppraisalTarget = objectGuid;
+            RequestedAppraisalTarget = wo.Guid.Full;
             AppraisalRequestedTimestamp = currentTime;
 
             Examine(wo);
@@ -455,7 +455,7 @@ namespace ACE.Server.WorldObjects
             if (item != null)
                 item.QueryItemMana(Session);
 
-            ManaQueryTarget = itemGuid;
+            ManaQueryTarget = item?.Guid.Full ?? ResolveGuid(itemGuid).Full;
         }
 
 
@@ -803,7 +803,7 @@ namespace ACE.Server.WorldObjects
         {
             if (!IsGagged)
             {
-                EnqueueBroadcast(new GameMessageHearSpeech(message, GetNameWithSuffix(), Guid.Full, ChatMessageType.Speech), LocalBroadcastRange, ChatMessageType.Speech);
+                EnqueueBroadcast(new GameMessageHearSpeech(message, GetNameWithSuffix(), Guid.ClientGUID, ChatMessageType.Speech), LocalBroadcastRange, ChatMessageType.Speech);
 
                 OnTalk(message);
             }
@@ -833,7 +833,7 @@ namespace ACE.Server.WorldObjects
         {
             if (!IsGagged)
             {
-                EnqueueBroadcast(new GameMessageEmoteText(Guid.Full, GetNameWithSuffix(), message), LocalBroadcastRange);
+                EnqueueBroadcast(new GameMessageEmoteText(Guid.ClientGUID, GetNameWithSuffix(), message), LocalBroadcastRange);
 
                 OnTalk(message);
             }
@@ -846,7 +846,7 @@ namespace ACE.Server.WorldObjects
             if (!IsGagged)
             {
                 if (!IsOlthoiPlayer || (IsOlthoiPlayer && NoOlthoiTalk))
-                    EnqueueBroadcast(new GameMessageSoulEmote(Guid.Full, Name, message), LocalBroadcastRange);
+                    EnqueueBroadcast(new GameMessageSoulEmote(Guid.ClientGUID, Name, message), LocalBroadcastRange);
 
                 OnTalk(message);
             }

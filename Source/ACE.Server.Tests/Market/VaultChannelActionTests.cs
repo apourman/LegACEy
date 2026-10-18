@@ -184,7 +184,7 @@ namespace ACE.Server.Tests.Market
         {
             var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
             var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
-            var guid = item.Guid.Full;
+            var guid = item.Guid.ClientGUID;
             AtTheVault(player);
 
             using (ChannelSeconds(1))
@@ -220,8 +220,8 @@ namespace ACE.Server.Tests.Market
                 item.Name = name(number);
                 configure?.Invoke(item);
                 VaultTestWorld.Give(player, item);
-                Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, item.Guid.Full).Outcome);
-                guids[number - 1] = item.Guid.Full;
+                Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, item.Guid.ClientGUID).Outcome);
+                guids[number - 1] = item.Guid.ClientGUID;
             }
             return guids;
         }
@@ -243,30 +243,30 @@ namespace ACE.Server.Tests.Market
                 w.Write(guids.Length);
                 foreach (var guid in guids)
                     w.Write(guid);
-                w.Write(pack.Guid.Full);
+                w.Write(pack.Guid.ClientGUID);
                 w.Write(1);
             });
             var (accepted, message) = TransferReply(Request(player, VaultChannelActions.WithdrawBatch, body));
 
             Assert.IsTrue(accepted, message);
-            Assert.AreEqual(pack.Guid.Full, player.GetInventoryItem(guids[0]).ContainerId);
-            var order = pack.Inventory.Values.OrderBy(i => i.PlacementPosition).Select(i => i.Guid.Full).ToArray();
-            CollectionAssert.AreEqual(new[] { second.Guid.Full, guids[0], guids[1], first.Guid.Full }, order);
+            Assert.AreEqual(pack.Guid.ClientGUID, player.GetInventoryItem(guids[0]).ContainerId);
+            var order = pack.Inventory.Values.OrderBy(i => i.PlacementPosition).Select(i => i.Guid.ClientGUID).ToArray();
+            CollectionAssert.AreEqual(new[] { second.Guid.ClientGUID, guids[0], guids[1], first.Guid.ClientGUID }, order);
 
             // a slot past the pack's items, however far, is its end, and stays there when later items push it back
             var last = DepositedNamed(player, 2, n => $"Last item {n}");
-            var far = ChannelWire.Body(w => { w.Write(1); w.Write(last[0]); w.Write(pack.Guid.Full); w.Write(int.MaxValue); });
+            var far = ChannelWire.Body(w => { w.Write(1); w.Write(last[0]); w.Write(pack.Guid.ClientGUID); w.Write(int.MaxValue); });
             Assert.IsTrue(TransferReply(Request(player, VaultChannelActions.WithdrawBatch, far)).Accepted);
-            var front = ChannelWire.Body(w => { w.Write(1); w.Write(last[1]); w.Write(pack.Guid.Full); w.Write(0); });
+            var front = ChannelWire.Body(w => { w.Write(1); w.Write(last[1]); w.Write(pack.Guid.ClientGUID); w.Write(0); });
             Assert.IsTrue(TransferReply(Request(player, VaultChannelActions.WithdrawBatch, front)).Accepted);
-            Assert.AreEqual(last[0], pack.Inventory.Values.OrderBy(i => i.PlacementPosition).Last().Guid.Full);
+            Assert.AreEqual(last[0], pack.Inventory.Values.OrderBy(i => i.PlacementPosition).Last().Guid.ClientGUID);
 
             // a full side pack: the item goes where a withdrawal always has, the main pack
             pack.ItemCapacity = (byte)pack.Inventory.Count;
             var more = DepositedNamed(player, 1, n => $"Overflow item {n}");
-            var full = ChannelWire.Body(w => { w.Write(1); w.Write(more[0]); w.Write(pack.Guid.Full); w.Write(0); });
+            var full = ChannelWire.Body(w => { w.Write(1); w.Write(more[0]); w.Write(pack.Guid.ClientGUID); w.Write(0); });
             Assert.IsTrue(TransferReply(Request(player, VaultChannelActions.WithdrawBatch, full)).Accepted);
-            Assert.AreEqual(player.Guid.Full, player.GetInventoryItem(more[0]).ContainerId);
+            Assert.AreEqual(player.Guid.ClientGUID, player.GetInventoryItem(more[0]).ContainerId);
         }
 
         /// <summary>
@@ -378,15 +378,15 @@ namespace ACE.Server.Tests.Market
             var plain = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
             AtTheVault(player);
 
-            var refused = new BinaryReader(new MemoryStream(Request(player, VaultChannelActions.Check, BitConverter.GetBytes(attuned.Guid.Full)).Body), Encoding.UTF8);
-            Assert.AreEqual(attuned.Guid.Full, refused.ReadUInt32());
+            var refused = new BinaryReader(new MemoryStream(Request(player, VaultChannelActions.Check, BitConverter.GetBytes(attuned.Guid.ClientGUID)).Body), Encoding.UTF8);
+            Assert.AreEqual(attuned.Guid.ClientGUID, refused.ReadUInt32());
             Assert.AreEqual(0, refused.ReadByte(), "attuned items can't be deposited");
             Assert.AreEqual(VaultMessages.For(VaultOutcome.Attuned, attuned.Name), ChannelWire.ReadString(refused));
 
-            var accepted = new BinaryReader(new MemoryStream(Request(player, VaultChannelActions.Check, BitConverter.GetBytes(plain.Guid.Full)).Body), Encoding.UTF8);
+            var accepted = new BinaryReader(new MemoryStream(Request(player, VaultChannelActions.Check, BitConverter.GetBytes(plain.Guid.ClientGUID)).Body), Encoding.UTF8);
             accepted.ReadUInt32();
             Assert.AreEqual(1, accepted.ReadByte());
-            Assert.IsNotNull(player.GetInventoryItem(attuned.Guid.Full), "a check moves nothing");
+            Assert.IsNotNull(player.GetInventoryItem(attuned.Guid.ClientGUID), "a check moves nothing");
         }
 
         [TestMethod]
@@ -394,8 +394,8 @@ namespace ACE.Server.Tests.Market
         {
             var (player, first) = DepositedItem();
             var second = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
-            Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, second.Guid.Full).Outcome);
-            CollectionAssert.AreEqual(new[] { first, second.Guid.Full }, VaultStore.List(player.Character.AccountId).Select(i => i.ItemGuid).ToArray());
+            Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, second.Guid.ClientGUID).Outcome);
+            CollectionAssert.AreEqual(new[] { first, second.Guid.ClientGUID }, VaultStore.List(player.Character.AccountId).Select(i => (uint)i.ItemGuid).ToArray());
             var versionBefore = VaultStore.Get(first).RowVersion;
             AtTheVault(player);
 
@@ -403,7 +403,7 @@ namespace ACE.Server.Tests.Market
 
             Assert.AreEqual(ChannelStatus.Ok, reply.Status, Text(reply.Body));
             Assert.AreEqual(1, reply.Body[0], "moved");
-            CollectionAssert.AreEqual(new[] { second.Guid.Full, first }, VaultStore.List(player.Character.AccountId).Select(i => i.ItemGuid).ToArray());
+            CollectionAssert.AreEqual(new[] { second.Guid.ClientGUID, first }, VaultStore.List(player.Character.AccountId).Select(i => (uint)i.ItemGuid).ToArray());
             Assert.AreEqual(versionBefore, VaultStore.Get(first).RowVersion, "a move is not a concurrency change");
         }
 
@@ -520,7 +520,7 @@ namespace ACE.Server.Tests.Market
         public void ChannelBatchDeposit_MovesEveryItemAtOnce_WithNoChannelWait_AndPushesChanged()
         {
             var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
-            var guids = Enumerable.Range(0, 3).Select(_ => VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid)).Guid.Full).ToArray();
+            var guids = Enumerable.Range(0, 3).Select(_ => VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid)).Guid.ClientGUID).ToArray();
             AtTheVault(player);
 
             using (ChannelSeconds(60))
@@ -544,16 +544,16 @@ namespace ACE.Server.Tests.Market
         public void ChannelBatchDeposit_IfOneItemIsRefusedOrTheSetDoesNotFit_MovesNothingAndSaysWhy()
         {
             var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
-            var plain = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid)).Guid.Full;
+            var plain = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid)).Guid.ClientGUID;
             var attuned = VaultTestWorld.NewItem(VaultTestWorld.SwordWcid);
             attuned.Attuned = AttunedStatus.Attuned;
             VaultTestWorld.Give(player, attuned);
             AtTheVault(player);
 
-            AssertRefused(new[] { plain, attuned.Guid.Full }, "attuned");
+            AssertRefused(new[] { plain, attuned.Guid.ClientGUID }, "attuned");
 
             // the Vault has room for one more: each item fits alone, but not both
-            var other = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid)).Guid.Full;
+            var other = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid)).Guid.ClientGUID;
             MarketTestDatabase.Execute(Db, $"REPLACE INTO config_properties_long (`key`, `value`, description) VALUES ('{MarketSettings.VaultSize.Key}', 1, 'test');");
             try
             {

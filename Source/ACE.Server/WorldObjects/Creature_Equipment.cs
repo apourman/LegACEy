@@ -69,7 +69,7 @@ namespace ACE.Server.WorldObjects
         /// </summary>
         public WorldObject GetEquippedItem(uint objectGuid)
         {
-            return EquippedObjects.TryGetValue(new ObjectGuid(objectGuid), out var item) ? item : null; // todo fix this so it doesn't instantiate a new ObjectGuid
+            return EquippedObjects.TryGetValue(ResolveGuid(objectGuid), out var item) ? item : null;
         }
 
         /// <summary>
@@ -399,7 +399,7 @@ namespace ACE.Server.WorldObjects
             ClearChild(worldObject);
 
             var wo = worldObject;
-            Children.Remove(Children.Find(s => s.Guid == wo.Guid.Full));
+            Children.Remove(Children.Find(s => s.Guid == wo.Guid.ClientGUID));
 
             worldObject.OnUnWield(this);
 
@@ -503,7 +503,7 @@ namespace ACE.Server.WorldObjects
 
             GetPlacementLocation(item, item.CurrentWieldedLocation ?? 0, out var placement, out var parentLocation);
 
-            Children.Add(new HeldItem(item.Guid.Full, (int)parentLocation, (EquipMask)item.CurrentWieldedLocation));
+            Children.Add(new HeldItem(item.Guid.ClientGUID, (int)parentLocation, (EquipMask)item.CurrentWieldedLocation));
 
             item.Placement = placement;
             item.ParentLocation = parentLocation;
@@ -590,7 +590,7 @@ namespace ACE.Server.WorldObjects
         /// </summary>
         public void ResetChild(WorldObject item)
         {
-            Children.Remove(Children.Find(s => s.Guid == item.Guid.Full));
+            Children.Remove(Children.Find(s => s.Guid == item.Guid.ClientGUID));
             TrySetChild(item);
         }
 

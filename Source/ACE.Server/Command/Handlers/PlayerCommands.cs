@@ -123,7 +123,7 @@ namespace ACE.Server.Command.Handlers
             {
                 var house = session.Player.GetHouse(abandonHouse.Guid.Full);
 
-                HouseManager.HandleEviction(house, house.HouseOwner ?? 0, true);
+                HouseManager.HandleEviction(house, new ObjectGuid(house.HouseOwner ?? 0).ClientGUID, true);
             }
 
             // set player properties for house to keep
@@ -460,15 +460,15 @@ namespace ACE.Server.Command.Handlers
                 if (session.Player.HealthQueryTarget.HasValue || session.Player.ManaQueryTarget.HasValue || session.Player.CurrentAppraisalTarget.HasValue)
                 {
                     if (session.Player.HealthQueryTarget.HasValue)
-                        objectId = new ObjectGuid((uint)session.Player.HealthQueryTarget);
+                        objectId = new ObjectGuid(session.Player.HealthQueryTarget.Value);
                     else if (session.Player.ManaQueryTarget.HasValue)
-                        objectId = new ObjectGuid((uint)session.Player.ManaQueryTarget);
+                        objectId = new ObjectGuid(session.Player.ManaQueryTarget.Value);
                     else
-                        objectId = new ObjectGuid((uint)session.Player.CurrentAppraisalTarget);
+                        objectId = new ObjectGuid(session.Player.CurrentAppraisalTarget.Value);
 
                     //var wo = session.Player.CurrentLandblock?.GetObject(objectId);
 
-                    var wo = session.Player.FindObject(objectId.Full, Player.SearchLocations.Everywhere);
+                    var wo = session.Player.FindObject(objectId, Player.SearchLocations.Everywhere);
 
                     if (wo != null)
                     {

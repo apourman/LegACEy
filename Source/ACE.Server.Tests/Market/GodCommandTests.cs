@@ -1,7 +1,10 @@
+using System;
 using System.Linq;
+using System.Threading;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
+using ACE.Database;
 using ACE.Entity.Enum;
 using ACE.Server.Command.Handlers;
 
@@ -22,6 +25,13 @@ namespace ACE.Server.Tests.Market
 
             // the command saves the character first, and carries on when the save is done
             VaultTestWorld.WaitUntil(() => player.GodState?.StartsWith("1") == true, "god mode");
+
+            // god mode is set on the database thread, which sets GodState before it raises the stats: a job queued now runs once it has finished,
+            // so ungod below doesn't race it over the player's vitals
+            var godDone = new ManualResetEventSlim();
+            DatabaseManager.Shard.GetCurrentQueueWaitTime(_ => godDone.Set());
+            Assert.IsTrue(godDone.Wait(TimeSpan.FromSeconds(30)), "the database thread finished god mode");
+
             Assert.AreEqual(999, player.Level);
 
             AdminCommands.HandleUngod(player.Session);

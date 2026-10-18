@@ -17,6 +17,7 @@ using ACE.Server.Network.Sequence;
 using ACE.Server.Network.Structure;
 using ACE.Server.Physics;
 using ACE.Server.Physics.Common;
+using ACE.Server.Realms;
 
 namespace ACE.Server.WorldObjects
 {
@@ -418,12 +419,24 @@ namespace ACE.Server.WorldObjects
             // possible bug: while teleporting, client can still send AutoPos packets from old landblock
             if (Teleporting && !forceUpdate) return false;
 
+            // a position from the client has no instance: the player moves in their own landblock copy.
+            // A teleport (forceUpdate) brings its destination's instance.
+            if (!forceUpdate)
+                newPosition.Instance = Location.Instance;
+
             // pre-validate movement
             if (!ValidateMovement(newPosition))
             {
                 log.Error($"{Name}.UpdatePlayerPosition() - movement pre-validation failed from {Location} to {newPosition}");
                 return false;
             }
+
+            // into another landblock copy: the physics object moves there, even to the same spot
+            var otherCopy = (Location.Instance ?? 0) != (newPosition.Instance ?? 0);
+            var leftPvpRealm = otherCopy && InPvpRealm;
+            var previousInstance = PhysicsObj?.Instance ?? 0;
+            if (otherCopy && PhysicsObj != null)
+                PhysicsObj.Instance = newPosition.Instance ?? 0;
 
             try
             {
@@ -436,7 +449,7 @@ namespace ACE.Server.WorldObjects
                 {
                     var distSq = Location.SquaredDistanceTo(newPosition);
 
-                    if (distSq > PhysicsGlobals.EpsilonSq)
+                    if (distSq > PhysicsGlobals.EpsilonSq || otherCopy)
                     {
                         /*var p = new Physics.Common.Position(newPosition);
                         var dist = PhysicsObj.Position.Distance(p);
@@ -462,7 +475,7 @@ namespace ACE.Server.WorldObjects
                                 verifyContact = true;
                         }
 
-                        var curCell = LScape.get_landcell(newPosition.Cell);
+                        var curCell = LScape.get_landcell(newPosition.Cell, newPosition.Instance ?? 0);
                         if (curCell != null)
                         {
                             //if (PhysicsObj.CurCell == null || curCell.ID != PhysicsObj.CurCell.ID)
@@ -503,11 +516,29 @@ namespace ACE.Server.WorldObjects
                 // double update path: landblock physics update -> updateplayerphysics() -> update_object_server() -> Teleport() -> updateplayerphysics() -> return to end of original branch
                 if (Teleporting && !forceUpdate) return true;
 
-                if (!success) return false;
+                if (!success)
+                {
+                    // a failed move into another copy leaves the physics object where it was
+                    if (otherCopy && PhysicsObj != null)
+                        PhysicsObj.Instance = previousInstance;
+
+                    return false;
+                }
 
                 var landblockUpdate = Location.Cell >> 16 != newPosition.Cell >> 16;
 
+                var fromRealm = RealmManager.RealmOf(Location.Instance);
                 Location = newPosition;
+
+                // a teleport into another copy may be into another realm
+                if (otherCopy)
+                {
+                    var toRealm = RealmManager.RealmOf(Location.Instance);
+                    if (toRealm != fromRealm)
+                        RealmPolicy.BindItemsOnRealmChange(this, fromRealm, toRealm);
+
+                    SyncPkStatusWithRealm(leftPvpRealm, broadcast: true);
+                }
 
                 if (RecordCast.Enabled)
                     RecordCast.Log($"CurPos: {Location.ToLOCString()}");
@@ -557,7 +588,7 @@ namespace ACE.Server.WorldObjects
 
                 if (CurrentLandblock.IsDungeon)
                 {
-                    var destBlock = LScape.get_landblock(newPosition.Cell);
+                    var destBlock = LScape.get_landblock(newPosition.Cell, newPosition.Instance ?? 0);
                     if (destBlock != null && destBlock.IsDungeon)
                         return false;
                 }
@@ -580,7 +611,7 @@ namespace ACE.Server.WorldObjects
 
             var landblockUpdate = blockcell << 16 != CurrentLandblock.Id.Landblock;
 
-            Location = new ACE.Entity.Position(blockcell, pos, rotate);
+            Location = new ACE.Entity.Position(blockcell, pos, rotate) { Instance = Location.Instance };
 
             return landblockUpdate;
         }

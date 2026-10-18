@@ -436,7 +436,7 @@ namespace ACE.Server.WorldObjects
                 foreach(var item in loot)
                 {
                     if (!string.IsNullOrEmpty(item.Quest)) // if the item has a Quest string, make the creature a "generator" of the item so that the pickup action applies the quest. 
-                        item.GeneratorId = Guid.Full; 
+                        item.GeneratorId = Guid.Full;
                     item.Location = new Position(Location);
                     LandblockManager.AddObject(item);
                 }
@@ -490,7 +490,7 @@ namespace ACE.Server.WorldObjects
 
             // use the physics location for accuracy,
             // especially while jumping
-            corpse.Location = PhysicsObj.Position.ACEPosition();
+            corpse.Location = PhysicsObj.Position.ACEPosition(PhysicsObj.Instance);
 
             corpse.VictimId = Guid.Full;
             corpse.Name = $"{prefix} of {Name}";
@@ -510,7 +510,7 @@ namespace ACE.Server.WorldObjects
                     {
                         var petOwner = killer.TryGetPetOwner();
                         if (petOwner != null)
-                            corpse.KillerId = petOwner.Guid.Full;
+                            corpse.KillerId = petOwner.Guid.ClientGUID;
                     }
                 }
             }
@@ -625,7 +625,8 @@ namespace ACE.Server.WorldObjects
                     log.InfoFormat("[CORPSE] {0}'s corpse (0x{1}) is located at {2}", Name, corpse.Guid, corpse.PhysicsObj.Position);
             }
 
-            if (saveCorpse)
+            // a corpse in an ephemeral copy is destroyed with the copy, so it is never saved
+            if (saveCorpse && !corpse.Location.IsEphemeral)
             {
                 corpse.SaveBiotaToDatabase();
 

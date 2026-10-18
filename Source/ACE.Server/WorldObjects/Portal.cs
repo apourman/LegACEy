@@ -12,6 +12,7 @@ using ACE.Server.Entity.Actions;
 using ACE.Server.Managers;
 using ACE.Server.Network.GameEvent.Events;
 using ACE.Server.Network.GameMessages.Messages;
+using ACE.Server.Realms;
 
 namespace ACE.Server.WorldObjects
 {
@@ -274,7 +275,7 @@ namespace ACE.Server.WorldObjects
 #if DEBUG
             // player.Session.Network.EnqueueSend(new GameMessageSystemChat("Portal sending player to destination", ChatMessageType.System));
 #endif
-            var portalDest = new Position(Destination);
+            var portalDest = RealmPolicy.TeleportDestination(Destination, player.Location.Instance);
             AdjustDungeon(portalDest);
 
             WorldManager.ThreadSafeTeleport(player, portalDest, new ActionEventDelegate(() =>

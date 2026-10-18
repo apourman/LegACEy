@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "id": 2,
+  "name": "test-dungeon",
+  "kind": "ephemeral-template",
+  "rules": {},
+  "landblocks": ["0x7F04"],
+  "ttlMinutes": 30,
+  "entry": { "cell": "0x7F0401AD", "x": 12.3199, "y": -28.482, "z": 0.005, "qw": -0.338946, "qx": 0, "qy": 0, "qz": -0.940806 },
+  "exit": { "cell": "0xA9B40019", "x": 84, "y": 7.1, "z": 94, "qw": 0.996917, "qx": 0, "qy": 0, "qz": -0.0784591 }
+}

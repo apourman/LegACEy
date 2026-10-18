@@ -253,7 +253,7 @@ namespace ACE.Server.WorldObjects
         /// </summary>
         public WorldObject GetInventoryItem(uint objectGuid)
         {
-            return GetInventoryItem(new ObjectGuid(objectGuid), out _); // todo remove this so it doesnt' create a new ObjectGuid
+            return GetInventoryItem(ResolveGuid(objectGuid), out _);
         }
 
         /// <summary>
@@ -702,7 +702,7 @@ namespace ACE.Server.WorldObjects
             {
                 var lastOpenedContainer = CurrentLandblock?.GetObject(player.LastOpenedContainerId) as Container;
 
-                if (lastOpenedContainer != null && lastOpenedContainer.IsOpen && lastOpenedContainer.Viewer == player.Guid.Full)
+                if (lastOpenedContainer != null && lastOpenedContainer.IsOpen && lastOpenedContainer.Viewer == player.Guid.ClientGUID)
                     lastOpenedContainer.Close(player);
             }
 
@@ -717,7 +717,7 @@ namespace ACE.Server.WorldObjects
             {
                 if (Viewer == 0)
                     Close(null);
-                else if (Viewer == player.Guid.Full)
+                else if (Viewer == player.Guid.ClientGUID)
                     Close(player);
                 else
                     player.SendTransientError(InUseMessage);
@@ -753,7 +753,7 @@ namespace ACE.Server.WorldObjects
 
             IsOpen = true;
 
-            Viewer = player.Guid.Full;
+            Viewer = player.Guid.ClientGUID;
 
             DoOnOpenMotionChanges();
 
@@ -906,7 +906,7 @@ namespace ACE.Server.WorldObjects
                     continue;
 
                 if (!Guid.IsPlayer())
-                    wo.GeneratorId = Guid.Full; // add this to mark item as "managed" so container resets don't delete it.
+                    wo.GeneratorId = Guid.Full; // Add this to mark item as "managed" so container resets don't delete it.
 
                 if (item.Palette > 0)
                     wo.PaletteTemplate = item.Palette;

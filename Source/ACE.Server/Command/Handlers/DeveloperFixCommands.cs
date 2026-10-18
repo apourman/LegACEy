@@ -382,9 +382,9 @@ namespace ACE.Server.Command.Handlers
             var fixStr = fix ? " -- fixed" : "";
             var foundIssues = false;
 
-            HashSet<uint> oswaldSkillCredit = null;
-            HashSet<uint> ralireaSkillCredit = null;
-            Dictionary<uint, int> lumAugSkillCredits = null;
+            HashSet<ulong> oswaldSkillCredit = null;
+            HashSet<ulong> ralireaSkillCredit = null;
+            Dictionary<ulong, int> lumAugSkillCredits = null;
 
             using (var ctx = new ShardDbContext())
             {
@@ -423,15 +423,15 @@ namespace ACE.Server.Command.Handlers
                 // 4 possible skill credits from quests
 
                 // - OswaldManualCompleted
-                if (oswaldSkillCredit.Contains(player.Guid.Full))
+                if (oswaldSkillCredit.Contains(player.Guid.ClientGUID))
                     questCredits++;
 
                 // - ArantahKill1 (no 'turned in' stamp, only if given figurine?)
-                if (ralireaSkillCredit.Contains(player.Guid.Full))
+                if (ralireaSkillCredit.Contains(player.Guid.ClientGUID))
                     questCredits++;
 
                 // - LumAugSkillQuest (stamped either 1 or 2 times)
-                if (lumAugSkillCredits.TryGetValue(player.Guid.Full, out var lumSkillCredits))
+                if (lumAugSkillCredits.TryGetValue(player.Guid.ClientGUID, out var lumSkillCredits))
                     questCredits += lumSkillCredits;
 
                 var totalCredits = startCredits + levelCredits + questCredits;
@@ -894,7 +894,7 @@ namespace ACE.Server.Command.Handlers
 
             var results = new List<VerifyXpResult>();
 
-            HashSet<uint> lesserBenediction = null;
+            HashSet<ulong> lesserBenediction = null;
 
             using (var ctx = new ShardDbContext())
             {
@@ -948,7 +948,7 @@ namespace ACE.Server.Command.Handlers
                     augXP += costPer * numAugs;
                 }
 
-                if (lesserBenediction.Contains(player.Guid.Full))
+                if (lesserBenediction.Contains(player.Guid.ClientGUID))
                     augXP += 2000000000;
 
                 var calculatedSpent = attributeXP + vitalXP + skillXP + augXP + diffXP;
@@ -1292,7 +1292,7 @@ namespace ACE.Server.Command.Handlers
             }
         }
 
-        public static Dictionary<uint, int> GetResistMagic()
+        public static Dictionary<ulong, int> GetResistMagic()
         {
             using (var ctx = new ShardDbContext())
             {
@@ -1302,7 +1302,7 @@ namespace ACE.Server.Command.Handlers
             }
         }
 
-        public static Dictionary<uint, string> GetTinkerLogs()
+        public static Dictionary<ulong, string> GetTinkerLogs()
         {
             using (var ctx = new ShardDbContext())
             {
@@ -1312,7 +1312,7 @@ namespace ACE.Server.Command.Handlers
             }
         }
 
-        public static Dictionary<uint, int> GetNumTimesTinkered()
+        public static Dictionary<ulong, int> GetNumTimesTinkered()
         {
             using (var ctx = new ShardDbContext())
             {
@@ -1322,7 +1322,7 @@ namespace ACE.Server.Command.Handlers
             }
         }
 
-        public static Dictionary<uint, int> GetImbuedEffect()
+        public static Dictionary<ulong, int> GetImbuedEffect()
         {
             using (var ctx = new ShardDbContext())
             {
@@ -1385,7 +1385,7 @@ namespace ACE.Server.Command.Handlers
                 var armorLevels = ctx.BiotaPropertiesInt.Where(i => i.Type == (ushort)PropertyInt.ArmorLevel).ToDictionary(i => i.ObjectId, i => i.Value);
 
                 // filter clothing to actual clothing
-                var clothing = new Dictionary<uint, Database.Models.Shard.Biota>();
+                var clothing = new Dictionary<ulong, Database.Models.Shard.Biota>();
                 foreach (var item in _clothing)
                 {
                     if (!armorLevels.TryGetValue(item.Id, out var armorLevel) || armorLevel == 0)
@@ -1399,7 +1399,7 @@ namespace ACE.Server.Command.Handlers
                 var _spells = ctx.BiotaPropertiesSpellBook.AsEnumerable().Where(i => clothing.ContainsKey(i.ObjectId)).ToList();
 
                 // filter clothing to those with epics/legendaries
-                var highTierClothing = new Dictionary<uint, int>();
+                var highTierClothing = new Dictionary<ulong, int>();
 
                 foreach (var s in _spells)
                 {
@@ -1479,7 +1479,7 @@ namespace ACE.Server.Command.Handlers
                 // get all biota spellbooks
                 var spellbook = ctx.BiotaPropertiesSpellBook.Where(i => i.Probability == 2.0f).ToList();
 
-                var legendaryItems = new HashSet<uint>();
+                var legendaryItems = new HashSet<ulong>();
 
                 foreach (var spell in spellbook)
                 {
@@ -1510,11 +1510,11 @@ namespace ACE.Server.Command.Handlers
 
                 var wieldReq2 = query.ToList();
 
-                var verified = new HashSet<uint>();
-                var updated = new HashSet<uint>();
+                var verified = new HashSet<ulong>();
+                var updated = new HashSet<ulong>();
 
-                var hasLevelReq1 = new HashSet<uint>();
-                var hasLevelReq2 = new HashSet<uint>();
+                var hasLevelReq1 = new HashSet<ulong>();
+                var hasLevelReq2 = new HashSet<ulong>();
 
                 var updates = new List<string>();
 
@@ -1622,8 +1622,8 @@ namespace ACE.Server.Command.Handlers
                 var results = query.ToDictionary(i => i.Biota.Id, i => i);
 
                 // generate list of remove fields
-                var critDamageRemove = new Dictionary<uint, int>();
-                var critDamageResistRemove = new Dictionary<uint, int>();
+                var critDamageRemove = new Dictionary<ulong, int>();
+                var critDamageResistRemove = new Dictionary<ulong, int>();
 
                 foreach (var result in results.Keys)
                 {

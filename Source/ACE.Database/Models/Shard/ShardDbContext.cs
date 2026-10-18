@@ -856,6 +856,9 @@ public partial class ShardDbContext : DbContext
             entity.Property(e => e.AnglesY).HasColumnName("angles_Y");
             entity.Property(e => e.AnglesZ).HasColumnName("angles_Z");
             entity.Property(e => e.ObjCellId).HasColumnName("obj_Cell_Id");
+            entity.Property(e => e.Instance)
+                .HasComment("Instance of the landblock copy this position is in; NULL is the base world")
+                .HasColumnName("instance");
             entity.Property(e => e.OriginX).HasColumnName("origin_X");
             entity.Property(e => e.OriginY).HasColumnName("origin_Y");
             entity.Property(e => e.OriginZ).HasColumnName("origin_Z");

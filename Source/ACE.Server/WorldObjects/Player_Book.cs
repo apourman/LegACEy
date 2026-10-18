@@ -14,7 +14,7 @@ namespace ACE.Server.WorldObjects
 
             // TODO: Do we want to throttle this request, like appraisals?
 
-            var book = FindObject(new ObjectGuid(bookGuid), SearchLocations.MyInventory | SearchLocations.LastUsedHook, out var container, out var rootOwner, out var wasEquipped) as Book;
+            var book = FindObject(bookGuid, SearchLocations.MyInventory | SearchLocations.LastUsedHook, out var container, out var rootOwner, out var wasEquipped) as Book;
             if (book == null) return;
 
             // found book
@@ -48,7 +48,7 @@ namespace ACE.Server.WorldObjects
                 else
                     inscription = "";
 
-                var bookDataResponse = new GameEventBookDataResponse(Session, book.Guid.Full, maxChars, maxPages, pages, inscription, authorID, authorName, ignoreAuthor);
+                var bookDataResponse = new GameEventBookDataResponse(Session, book.Guid.ClientGUID, maxChars, maxPages, pages, inscription, authorID, authorName, ignoreAuthor);
                 Session.Network.EnqueueSend(bookDataResponse);
             }
         }
@@ -59,7 +59,7 @@ namespace ACE.Server.WorldObjects
 
             // TODO: Do we want to throttle this request, like appraisals?
 
-            var book = FindObject(new ObjectGuid(bookGuid), SearchLocations.MyInventory | SearchLocations.LastUsedHook, out var container, out var rootOwner, out var wasEquipped) as Book;
+            var book = FindObject(bookGuid, SearchLocations.MyInventory | SearchLocations.LastUsedHook, out var container, out var rootOwner, out var wasEquipped) as Book;
             if (book == null) return;
 
             // found book
@@ -69,7 +69,7 @@ namespace ACE.Server.WorldObjects
 
                 if (page != null)
                 {
-                    var pdr = new GameEventBookPageDataResponse(Session, book.Guid.Full, pageNum, page);
+                    var pdr = new GameEventBookPageDataResponse(Session, book.Guid.ClientGUID, pageNum, page);
 
                     Session.Network.EnqueueSend(pdr);
                 }
@@ -79,10 +79,10 @@ namespace ACE.Server.WorldObjects
         public void HandleActionBookAddPage(uint bookGuid)
         {
             // find inventory book
-            var book = FindObject(new ObjectGuid(bookGuid), SearchLocations.MyInventory | SearchLocations.LastUsedHook, out var container, out var rootOwner, out var wasEquipped) as Book;
+            var book = FindObject(bookGuid, SearchLocations.MyInventory | SearchLocations.LastUsedHook, out var container, out var rootOwner, out var wasEquipped) as Book;
             if (book == null) return;
 
-            var page = book.AddPage(Guid.Full, Name, Session.Account, book.IgnoreAuthor ?? false, "", out var index);
+            var page = book.AddPage(Guid.ClientGUID, Name, Session.Account, book.IgnoreAuthor ?? false, "", out var index);
 
             if (page != null)
                 Session.Network.EnqueueSend(new GameEventBookAddPageResponse(Session, bookGuid, index, true));
@@ -91,7 +91,7 @@ namespace ACE.Server.WorldObjects
         public void HandleActionBookModifyPage(uint bookGuid, int pageId, string pageText)
         {
             // find inventory book
-            var book = FindObject(new ObjectGuid(bookGuid), SearchLocations.MyInventory | SearchLocations.LastUsedHook, out var container, out var rootOwner, out var wasEquipped) as Book;
+            var book = FindObject(bookGuid, SearchLocations.MyInventory | SearchLocations.LastUsedHook, out var container, out var rootOwner, out var wasEquipped) as Book;
             if (book == null) return;
 
             var success = book.ModifyPage(pageId, pageText, this);
@@ -102,7 +102,7 @@ namespace ACE.Server.WorldObjects
         public void HandleActionBookDeletePage(uint bookGuid, int pageId)
         {
             // find inventory book
-            var book = FindObject(new ObjectGuid(bookGuid), SearchLocations.MyInventory | SearchLocations.LastUsedHook, out var container, out var rootOwner, out var wasEquipped) as Book;
+            var book = FindObject(bookGuid, SearchLocations.MyInventory | SearchLocations.LastUsedHook, out var container, out var rootOwner, out var wasEquipped) as Book;
             if (book == null) return;
 
             var success = book.DeletePage(pageId, this);

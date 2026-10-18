@@ -63,7 +63,7 @@ namespace ACE.Server.Market
 
             var player = context.Player;
 
-            if (!appraising.TryAdd(player.Guid.Full, 0))
+            if (!appraising.TryAdd(player.Guid.ClientGUID, 0))
             {
                 context.Fail(ChannelStatus.RateLimited, "Still appraising the last item.");
                 return;
@@ -148,7 +148,7 @@ namespace ACE.Server.Market
         /// <summary>Ends the player's appraisal, then sends its reply, so a request made on the reply is not refused as busy.</summary>
         private static void Finish(Player player, Action reply)
         {
-            appraising.TryRemove(player.Guid.Full, out _);
+            appraising.TryRemove(player.Guid.ClientGUID, out _);
             reply();
         }
     }

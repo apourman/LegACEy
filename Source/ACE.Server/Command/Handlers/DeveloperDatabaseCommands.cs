@@ -71,10 +71,10 @@ namespace ACE.Server.Command.Handlers
 
                 var sqlCommands = new List<string>();
 
-                uint characterId = 0;
+                ulong characterId = 0;
                 string playerName = null;
-                var idxToObj = new Dictionary<uint, uint>();
-                var objToIdx = new Dictionary<uint, uint>();
+                var idxToObj = new Dictionary<uint, ulong>();
+                var objToIdx = new Dictionary<ulong, uint>();
                 var buggedChar = false;
                 var buggedPlayerCount = 0;
 
@@ -94,8 +94,8 @@ namespace ACE.Server.Command.Handlers
                         characterId = result.CharacterId;
                         var player = PlayerManager.FindByGuid(characterId);
                         playerName = player != null ? player.Name : $"{characterId:X8}";
-                        idxToObj = new Dictionary<uint, uint>();
-                        objToIdx = new Dictionary<uint, uint>();
+                        idxToObj = new Dictionary<uint, ulong>();
+                        objToIdx = new Dictionary<ulong, uint>();
                     }
 
                     var dupeIdx = idxToObj.ContainsKey(result.ShortcutBarIndex);
@@ -134,7 +134,7 @@ namespace ACE.Server.Command.Handlers
             }
         }
 
-        public static List<string> OutputShortcutSQLCommand(string playerName, uint characterID, Dictionary<uint, uint> idxToObj)
+        public static List<string> OutputShortcutSQLCommand(string playerName, ulong characterID, Dictionary<uint, ulong> idxToObj)
         {
             var strings = new List<string>();
 
@@ -248,7 +248,7 @@ namespace ACE.Server.Command.Handlers
 
                 var characterSpellBars = context.CharacterPropertiesSpellBar.OrderBy(c => c.CharacterId).ThenBy(c => c.SpellBarNumber).ThenBy(c => c.SpellBarIndex).ToList();
 
-                uint characterId = 0;
+                ulong characterId = 0;
                 uint spellBarNumber = 0;
                 uint spellBarIndex = 0;
 
@@ -332,7 +332,7 @@ namespace ACE.Server.Command.Handlers
                     {
                         while (reader.Read())
                         {
-                            uint object_Id = reader.GetFieldValue<uint>(reader.GetOrdinal("object_Id"));
+                            ulong object_Id = reader.GetFieldValue<ulong>(reader.GetOrdinal("object_Id"));
                             var characterName = reader.GetString(reader.GetOrdinal("name"));
                             var itemName = reader.GetString(reader.GetOrdinal("itemName"));
                             var gearPlatingName = reader.GetString(reader.GetOrdinal("gearPlatingName"));

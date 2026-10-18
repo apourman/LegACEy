@@ -16,6 +16,7 @@ using ACE.Server.Entity.Actions;
 using ACE.Server.Network.GameEvent.Events;
 using ACE.Server.Network.GameMessages.Messages;
 using ACE.Server.Managers;
+using ACE.Server.Realms;
 
 namespace ACE.Server.WorldObjects
 {
@@ -27,8 +28,9 @@ namespace ACE.Server.WorldObjects
         /// Teleports the player to position
         /// </summary>
         /// <param name="positionType">PositionType to be teleported to</param>
+        /// <param name="inHomeRealm">a recall: the same spot in the player's home realm</param>
         /// <returns>true on success (position is set) false otherwise</returns>
-        public bool TeleToPosition(PositionType positionType)
+        public bool TeleToPosition(PositionType positionType, bool inHomeRealm = false)
         {
             var position = GetPosition(positionType);
 
@@ -37,7 +39,7 @@ namespace ACE.Server.WorldObjects
                 var teleportDest = new Position(position);
                 AdjustDungeon(teleportDest);
 
-                Teleport(teleportDest);
+                Teleport(inHomeRealm ? RealmPolicy.InHomeRealm(this, teleportDest) : teleportDest);
                 return true;
             }
 
@@ -188,7 +190,7 @@ namespace ACE.Server.WorldObjects
                     return;
                 }
 
-                Teleport(Sanctuary);
+                Teleport(RealmPolicy.InHomeRealm(this, Sanctuary));
             });
 
             lifestoneChain.EnqueueChain();
@@ -254,7 +256,7 @@ namespace ACE.Server.WorldObjects
                     return;
                 }
 
-                Teleport(MarketplaceDrop);
+                Teleport(RealmPolicy.InHomeRealm(this, MarketplaceDrop));
             });
 
             // Set the chain to run
@@ -330,7 +332,7 @@ namespace ACE.Server.WorldObjects
                 if (!VerifyRecallAllegianceHometown())
                     return;
 
-                Teleport(Allegiance.Sanctuary);
+                Teleport(RealmPolicy.InHomeRealm(this, Allegiance.Sanctuary));
             });
 
             actionChain.EnqueueChain();
@@ -540,7 +542,7 @@ namespace ACE.Server.WorldObjects
                 var rng = ThreadSafeRandom.Next(0, pkArenaLocs.Count - 1);
                 var loc = pkArenaLocs[rng];
 
-                Teleport(loc);
+                Teleport(RealmPolicy.InHomeRealm(this, loc));
             });
 
             actionChain.EnqueueChain();
@@ -624,7 +626,7 @@ namespace ACE.Server.WorldObjects
                 var rng = ThreadSafeRandom.Next(0, pklArenaLocs.Count - 1);
                 var loc = pklArenaLocs[rng];
 
-                Teleport(loc);
+                Teleport(RealmPolicy.InHomeRealm(this, loc));
             });
 
             actionChain.EnqueueChain();
@@ -884,6 +886,7 @@ namespace ACE.Server.WorldObjects
             location.RotationY = lifestone.RotationY;
             location.RotationZ = lifestone.RotationZ;
             location.RotationW = lifestone.RotationW;
+            location.Instance = lifestone.Instance;
 
             playerWasMovedFromNoLogLandblock = true;
 

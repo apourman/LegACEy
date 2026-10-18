@@ -11,7 +11,7 @@ public partial class BiotaPropertiesPosition
     /// <summary>
     /// Id of the object this property belongs to
     /// </summary>
-    public uint ObjectId { get; set; }
+    public ulong ObjectId { get; set; }
 
     /// <summary>
     /// Type of Position the value applies to (PositionType.????)
@@ -19,6 +19,11 @@ public partial class BiotaPropertiesPosition
     public ushort PositionType { get; set; }
 
     public uint ObjCellId { get; set; }
+
+    /// <summary>
+    /// Instance of the landblock copy this position is in; null is the base world
+    /// </summary>
+    public uint? Instance { get; set; }
 
     public float OriginX { get; set; }
 
