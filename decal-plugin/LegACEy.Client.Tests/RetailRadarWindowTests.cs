@@ -184,6 +184,19 @@ public sealed class RetailRadarWindowTests
     });
 
     [Fact]
+    public void Clicking_the_coordinates_hands_them_on_without_moving_the_radar() => RenderThread.Run(() =>
+    {
+        var moves = 0;
+        using var panel = Open(PortWith(), out var window, startMove: () => moves++);
+        string? clicked = null;
+        window.CoordinatesClicked += text => clicked = text;
+
+        Press(panel, Medallion(panel, "Click to paste in chat"));
+        Assert.Equal(PortWith().Player!.Position.Coordinates, clicked);
+        Assert.Equal(0, moves);
+    });
+
+    [Fact]
     public void Options_and_zoom_come_back_for_the_next_window() => RenderThread.Run(() =>
     {
         RadarOptions? saved = null;

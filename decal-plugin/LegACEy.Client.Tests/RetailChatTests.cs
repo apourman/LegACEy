@@ -167,6 +167,22 @@ public sealed class RetailChatTests
     });
 
     [Fact]
+    public void Inserted_text_goes_in_at_the_caret_apart_from_the_words_beside_it() => RenderThread.Run(() =>
+    {
+        using var panel = Open(new FakeChatPort(), out var window);
+        var box = InputBox(window);
+        Click(panel, box);
+        panel.TextInput("meet at");
+
+        window.Insert("33.6N, 56.7E");
+        Assert.Equal("meet at 33.6N, 56.7E", box.Text);
+        box.CaretIndex = 4;
+        window.Insert("me");
+        Assert.Equal("meet me at 33.6N, 56.7E", box.Text);
+        Assert.Equal(7, box.CaretIndex);
+    });
+
+    [Fact]
     public void Ctrl_V_pastes_the_clipboard_into_the_box_and_Ctrl_C_and_Ctrl_X_copy_its_selection() => RenderThread.Run(() =>
     {
         var port = new FakeChatPort();

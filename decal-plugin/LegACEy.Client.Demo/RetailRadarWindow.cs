@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -104,7 +105,16 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         {
             CornerRadius = new CornerRadius(9), Background = Plaque, BorderBrush = GoldDark, BorderThickness = new Thickness(1), Padding = new Thickness(8, 1),
             Margin = new Thickness(0, ScopeOrigin.Y + Diameter + 8, 0, 0), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top,
-            IsHitTestVisible = false, Child = _coordinates
+            Cursor = new Cursor(StandardCursorType.Hand), Child = _coordinates
+        };
+        ToolTip.SetTip(_coordinatesPlaque, "Click to paste in chat");
+        // The press is the plaque's, so it does not move the radar; the release over it is the click.
+        _coordinatesPlaque.PointerPressed += (_, e) => { CloseOptions(); e.Handled = true; };
+        _coordinatesPlaque.PointerReleased += (_, e) =>
+        {
+            e.Handled = true;
+            if (new Rect(_coordinatesPlaque.Bounds.Size).Contains(e.GetPosition(_coordinatesPlaque)) && _coordinates.Text is { Length: > 0 } text)
+                CoordinatesClicked?.Invoke(text);
         };
         var tape = new Border
         {
@@ -171,6 +181,9 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         };
         Child = new HeightScaled(LayoutHeight) { Child = grid };
     }
+
+    /// <summary>The coordinates plaque was clicked, with the coordinates it shows.</summary>
+    public event Action<string>? CoordinatesClicked;
 
     /// <summary>Whether the resize corners show: while the pointer is over the radar and the UI is unlocked.</summary>
     public bool CornersVisible => _corners.IsVisible;

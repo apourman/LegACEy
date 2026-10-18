@@ -259,6 +259,17 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     /// <summary>Gives the box the keyboard: Enter in the game does this.</summary>
     public void FocusInput() => _input.Focus();
 
+    /// <summary>Puts text into the box at the caret, apart from any word beside it, and gives the box the keyboard to finish the line.</summary>
+    public void Insert(string text)
+    {
+        var typed = _input.Text ?? string.Empty;
+        var at = Math.Min(Math.Max(_input.CaretIndex, 0), typed.Length);
+        var with = (at > 0 && typed[at - 1] != ' ' ? " " : string.Empty) + text + (at < typed.Length && typed[at] != ' ' ? " " : string.Empty);
+        _input.Text = typed.Insert(at, with);
+        _input.SelectionStart = _input.SelectionEnd = _input.CaretIndex = at + with.Length;
+        _input.Focus();
+    }
+
     /// <summary>Picks a tab, as a click does: the log shows its lines, its talk target is set and its unread count is cleared.</summary>
     public void PickTab(int index)
     {
