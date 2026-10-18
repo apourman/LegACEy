@@ -314,8 +314,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             return;
         }
         if (dragged == 0) return;
-        // Over a slot the drop is judged as it always was: a refused one sends nothing.
-        if (SlotAt(point)?.Tag is InventorySlotId target)
+        // Over a slot, or the doll, the drop is judged as it always was: a refused one sends nothing.
+        if ((carried.Count > 1 ? SlotAt(point)?.Tag as InventorySlotId : DropAt(point, dragged)?.Target) is { } target)
         {
             var drop = carried.Count > 1 ? JudgeSet(_port.Snapshot, carried, target) : Judge(_port, dragged, target);
             if (drop?.Accepted == true) drop.Value.Send(_port);
@@ -405,7 +405,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         if (_disposed || itemId == 0) return false;
         var snapshot = _port.Snapshot;
         var external = !snapshot.Contains(itemId);
-        var target = SlotAt(position)?.Tag as InventorySlotId;
+        var target = DropAt(position, itemId)?.Target;
         if (target == null && external) target = new InventorySlotId(SlotPlace.Pack, 0, OpenPack(snapshot).Id, -1, null);
         if (target == null) return false;
         var pack = _packsOnGround.Contains(itemId);
@@ -485,19 +485,40 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private void ShowIndicator(Point point, uint dragged, bool external)
     {
         _indicatorAt = (point, dragged, external);
-        var slot = SlotAt(point);
-        var drop = slot?.Tag is not InventorySlotId target ? null
-            : _carried.Count > 1 && !external ? JudgeSet(_port.Snapshot, _carried, target) : Judge(_port, dragged, target, external);
-        if (slot == null || drop == null)
+        var set = _carried.Count > 1 && !external;
+        var at = set ? SlotAt(point) is { Tag: InventorySlotId tag } slot ? (slot, tag) : default((Control Shown, InventorySlotId Target)?) : DropAt(point, dragged);
+        var drop = at is not { } place ? null : set ? JudgeSet(_port.Snapshot, _carried, place.Target) : Judge(_port, dragged, place.Target, external);
+        if (at == null || drop == null)
         {
             _dropIndicator.IsVisible = false;
             return;
         }
-        Light(slot, drop.Value.Accepted ? GoldBrush : InvalidBrush);
+        Light(at.Value.Shown, drop.Value.Accepted ? GoldBrush : InvalidBrush);
     }
 
+    /// <summary>
+    /// Where one item dropped at the point goes, and what lights up for it: the slot under the point, or, over the doll, the paperdoll
+    /// slot the item is worn in (an empty one first, else the first it fits). That slot lights when it shows; a hidden armour slot lights
+    /// the doll. Null where nothing takes a drop.
+    /// </summary>
+    private (Control Shown, InventorySlotId Target)? DropAt(Point point, uint item)
+    {
+        if (SlotAt(point) is { Tag: InventorySlotId tag } under) return (under, tag);
+        if (!Over(DollArea, point)) return null;
+        var fits = Enum.GetValues(typeof(PaperdollSlot)).Cast<PaperdollSlot>().Where(slot => _port.WieldMask(item, slot) != 0).ToList();
+        if (fits.Count == 0) return null;
+        var worn = new HashSet<PaperdollSlot>(_port.Snapshot.Wielded.SelectMany(wielded => wielded.Slots));
+        var into = fits.Where(slot => !worn.Contains(slot)).DefaultIfEmpty(fits[0]).First();
+        var shown = _paperdoll.GetVisualDescendants().OfType<DerethSlot>()
+            .FirstOrDefault(slot => slot.Tag is InventorySlotId { Place: SlotPlace.Paperdoll } id && id.Equipment == into);
+        return (shown ?? (Control)DollArea, shown?.Tag as InventorySlotId ?? new InventorySlotId(SlotPlace.Paperdoll, 0, 0, -1, into));
+    }
+
+    private bool Over(Control control, Point point) =>
+        control.IsEffectivelyVisible && control.TranslatePoint(default, this) is { } origin && new Rect(origin, control.Bounds.Size).Contains(point);
+
     /// <summary>Shows the drop indicator over the slot, in the colour.</summary>
-    private void Light(DerethSlot slot, IBrush brush)
+    private void Light(Control slot, IBrush brush)
     {
         if (slot.TranslatePoint(default, this) is not { } origin)
         {

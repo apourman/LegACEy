@@ -66,6 +66,7 @@ internal sealed class InventoryPaperdoll : Canvas
         Height = Scale(RetailHeight);
         DollArea = new Border
         {
+            Name = "DollArea",
             Width = Scale(RetailArmourRight) - Scale(RetailArmourLeft) + DerethSlotGrid.CellSize + 2 * DollClearance, Height = Height,
             CornerRadius = new CornerRadius(3), Padding = DollInset,
             BorderBrush = DerethPalette.GrooveEdgeBrush, BorderThickness = new Thickness(1),
