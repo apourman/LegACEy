@@ -13,7 +13,7 @@ namespace LegACEy.Client.DecalPlugin;
 /// fixed in the world as they fall, so moving through them shows parallax; a drop leaving the box comes back in on the other side. Snowflakes
 /// are soft camera-facing dots, raindrops streaks along their fall; both are depth-tested against retail's scene. A haze through
 /// <see cref="StormFog.DrawHaze"/> closes in the distance. A thunderstorm also darkens the screen to night and strikes lightning: a jagged
-/// bolt in the distance, flickering, while the whole screen flashes. None of it shows indoors.
+/// bolt in the distance every 5 to 10 seconds, flickering, while the whole screen flashes. None of it shows indoors.
 /// </summary>
 internal sealed unsafe class Weather : IDisposable
 {
@@ -39,6 +39,8 @@ internal sealed unsafe class Weather : IDisposable
     private readonly Drop[] _drops;
     private QuadVertex[] _vertices = Array.Empty<QuadVertex>();
     private readonly List<Vector3[]> _bolt = new();
+    // How far off the last bolt struck, which widens it so a far bolt still reads.
+    private float _boltDistance;
     private double _strikeAt = double.NegativeInfinity, _nextStrike = 2;
     private IntPtr _dot;
 
@@ -84,7 +86,8 @@ internal sealed unsafe class Weather : IDisposable
             if (flash > 0)
             {
                 DrawBolt(eye, flash);
-                Veil((uint)(0.45f * flash * 255) << 24 | FlashColor, additive: true);
+                // A far strike lights the sky less than one overhead would.
+                Veil((uint)(0.3f * flash * 255) << 24 | FlashColor, additive: true);
             }
         }
         finally { RestoreState(saved); }
@@ -175,7 +178,7 @@ internal sealed unsafe class Weather : IDisposable
     }
 
     /// <summary>
-    /// The lightning's brightness now, 0 to 1: a strike every 3 to 12 seconds flashes, dips, flashes again and fades in a third of a second.
+    /// The lightning's brightness now, 0 to 1: a strike every 5 to 10 seconds flashes, dips, flashes again and fades in a third of a second.
     /// A new strike builds its bolt somewhere around the camera.
     /// </summary>
     private float Lightning(double time, Vector3 eye)
@@ -183,7 +186,7 @@ internal sealed unsafe class Weather : IDisposable
         if (time >= _nextStrike)
         {
             _strikeAt = time;
-            _nextStrike = time + 3 + _random.NextDouble() * 9;
+            _nextStrike = time + 5 + _random.NextDouble() * 5;
             BuildBolt(eye);
         }
         var age = time - _strikeAt;
@@ -196,7 +199,10 @@ internal sealed unsafe class Weather : IDisposable
         };
     }
 
-    /// <summary>A jagged bolt from high in the sky to below the ground (where the terrain hides it), inside the far plane, with a branch or two.</summary>
+    /// <summary>
+    /// A jagged bolt in the distance, 250 to 600 m off in any direction (inside the far plane), from high in the sky to below the ground,
+    /// where the terrain hides it, with a branch or two.
+    /// </summary>
     private void BuildBolt(Vector3 eye)
     {
         _bolt.Clear();
@@ -204,10 +210,11 @@ internal sealed unsafe class Weather : IDisposable
         var forward = projection.M34 >= 0 ? 1 : -1;
         var far = MathF.Abs(projection.M43 / (forward - projection.M33));
         var angle = _random.NextDouble() * Math.PI * 2;
-        var distance = (float)(80 + _random.NextDouble() * 270);
-        if (far > 0) distance = MathF.Min(distance, far * 0.8f);
+        var distance = (float)(250 + _random.NextDouble() * 350);
+        if (far > 0) distance = MathF.Min(distance, far * 0.9f);
+        _boltDistance = distance;
         var foot = eye + new Vector3((float)Math.Cos(angle) * distance, (float)Math.Sin(angle) * distance, -60);
-        var main = Jagged(foot + new Vector3(0, 0, 420), foot, 16, 14);
+        var main = Jagged(foot + new Vector3(0, 0, 500), foot, 18, 18);
         _bolt.Add(main);
         for (var branch = _random.Next(1, 3); branch > 0; branch--)
         {
@@ -238,8 +245,9 @@ internal sealed unsafe class Weather : IDisposable
         UseDot(additive: true);
         var eyeAt = StormFog.Render(eye);
         var count = 0;
-        // A wide faint glow, then the bright core, both added to the scene.
-        foreach (var (width, alpha) in new[] { (7f, 0.25f), (1.1f, 1f) })
+        // A wide faint glow, then the bright core, both added to the scene; widths are for a bolt 150 m off, wider further away.
+        var scale = MathF.Max(1, _boltDistance / 150);
+        foreach (var (width, alpha) in new[] { (7f * scale, 0.25f), (1.1f * scale, 1f) })
         {
             var color = (uint)(alpha * brightness * 255) << 24 | BoltColor;
             foreach (var line in _bolt)
