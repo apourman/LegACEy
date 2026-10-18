@@ -44,7 +44,7 @@ namespace ACE.Server.Tests.Market
                 var listed = WaitForChat(admin, $"{AtlatlWcid}");
                 Assert.IsTrue(listed.Any(c => c.Contains("dupe exploit #12", StringComparison.Ordinal)), "/market blocked shows the reason: " + string.Join("\n", listed));
 
-                var refused = VaultTestWorld.Deposit(player, first.Guid.Full);
+                var refused = VaultTestWorld.Deposit(player, first.Guid.ClientGUID);
                 Assert.AreEqual(VaultOutcome.BlockedWcid, refused.Outcome, refused.Message);
                 Assert.IsNotNull(player.GetInventoryItem(first.Guid), "a refused item stays in the pack");
 
@@ -53,7 +53,7 @@ namespace ACE.Server.Tests.Market
                 WaitForChat(admin, $"Unblocked {AtlatlWcid}");
                 Assert.AreEqual(0, Count($"SELECT COUNT(*) FROM market_blocked_wcid WHERE wcid = {AtlatlWcid};"));
 
-                var deposited = VaultTestWorld.Deposit(player, second.Guid.Full);
+                var deposited = VaultTestWorld.Deposit(player, second.Guid.ClientGUID);
                 Assert.AreEqual(VaultOutcome.Deposited, deposited.Outcome, deposited.Message);
             }
             finally
@@ -245,7 +245,7 @@ namespace ACE.Server.Tests.Market
 
             VaultTestWorld.Save(item);
 
-            var guid = item.Guid.Full;
+            var guid = item.Guid.ClientGUID;
             MarketTestDatabase.Execute(Db,
                 "INSERT INTO market_vault_item (item_Guid, account_Id, character_Id, state, deposited_Time, wcid, name, item_Type) " +
                 $"VALUES ({guid}, {VaultTestWorld.NewAccountId()}, 1, '{VaultItemState.Held}', UTC_TIMESTAMP(6), {wcid}, 'stale', 0);");

@@ -16,6 +16,7 @@ using ACE.DatLoader;
 using ACE.Server.Command;
 using ACE.Server.Managers;
 using ACE.Server.Mods;
+using ACE.Server.Realms;
 using ACE.Server.Network.Managers;
 
 namespace ACE.Server
@@ -315,6 +316,9 @@ namespace ACE.Server
             }
             else
                 log.Info("Precaching World Database Disabled...");
+
+            log.Info("Loading realms...");
+            RealmManager.Initialize();
 
             log.Info("Initializing PlayerManager...");
             PlayerManager.Initialize();

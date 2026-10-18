@@ -155,7 +155,7 @@ namespace ACE.Server.WorldObjects
                 return;
             }
 
-            var newFriend = Character.AddFriend(friend.Guid.Full, CharacterDatabaseLock, out var friendAlreadyExists);
+            var newFriend = Character.AddFriend(friend.Guid.ClientGUID, CharacterDatabaseLock, out var friendAlreadyExists);
 
             if (friendAlreadyExists)
             {

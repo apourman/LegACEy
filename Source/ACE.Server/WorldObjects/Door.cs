@@ -129,7 +129,7 @@ namespace ACE.Server.WorldObjects
 
             EnqueueBroadcastPhysicsState();
 
-            if (opener.Full > 0)
+            if (opener != ObjectGuid.Invalid)
                 UseTimestamp = Time.GetUnixTime();
 
             IsBusy = true;
@@ -173,7 +173,7 @@ namespace ACE.Server.WorldObjects
             });
             actionChain.EnqueueChain();
 
-            if (closer.Full > 0)
+            if (closer != ObjectGuid.Invalid)
                 UseTimestamp = Time.GetUnixTime();
         }
 

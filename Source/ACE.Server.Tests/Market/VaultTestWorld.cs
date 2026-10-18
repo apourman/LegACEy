@@ -14,6 +14,7 @@ using ACE.Database.Tests.Market;
 using ACE.DatLoader;
 using ACE.Entity;
 using ACE.Entity.Enum;
+using ACE.Server.Entity;
 using ACE.Server.Entity.Actions;
 using ACE.Server.Factories;
 using ACE.Server.Managers;
@@ -74,6 +75,10 @@ namespace ACE.Server.Tests.Market
             System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance); // as Program.Main does, for the DAT strings
 
             DatManager.Initialize(ConfigManager.Config.Server.DatFilesDirectory, true);
+
+            // LandDefs reads the terrain height table once, when first touched: an earlier test may have touched it before the DATs were loaded,
+            // and building a real landblock needs it
+            ACE.Server.Physics.Common.LandDefs.LandHeightTable ??= DatManager.PortalDat.RegionDesc.LandDefs.LandHeightTable;
 
             DatabaseManager.Initialize();
             Assert.IsFalse(DatabaseManager.InitializationFailure);
@@ -155,11 +160,28 @@ namespace ACE.Server.Tests.Market
         public static IDisposable Online(Player player)
         {
             var online = (Dictionary<uint, Player>)typeof(PlayerManager).GetField("onlinePlayers", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
+            // PlayerManager has no API that registers an online player on its account (AddOfflinePlayer would add an offline copy)
+            var accounts = (Dictionary<uint, Dictionary<uint, IPlayer>>)(typeof(PlayerManager).GetField("playerAccounts", BindingFlags.NonPublic | BindingFlags.Static)
+                ?? throw new InvalidOperationException("PlayerManager.playerAccounts is gone: update VaultTestWorld.Online")).GetValue(null);
+            var accountId = player.Account.AccountId;
 
-            // the world thread is the one that looks players up for the bridge
-            OnWorldThread(() => online[player.Guid.Full] = player);
+            // the world thread is the one that looks players up for the bridge; housing lists the owner's account
+            OnWorldThread(() =>
+            {
+                online[player.Guid.ClientGUID] = player;
 
-            return new Disposer(() => OnWorldThread(() => online.Remove(player.Guid.Full)));
+                if (!accounts.TryGetValue(accountId, out var characters))
+                    accounts[accountId] = characters = new Dictionary<uint, IPlayer>();
+                characters[player.Guid.ClientGUID] = player;
+            });
+
+            return new Disposer(() => OnWorldThread(() =>
+            {
+                online.Remove(player.Guid.ClientGUID);
+
+                if (accounts.TryGetValue(accountId, out var characters) && characters.Remove(player.Guid.ClientGUID) && characters.Count == 0)
+                    accounts.Remove(accountId);
+            }));
         }
 
         private sealed class Disposer : IDisposable

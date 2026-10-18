@@ -28,7 +28,7 @@ namespace ACE.Database.Models.Shard
             return biota.BiotaPropertiesFloat.FirstOrDefault(x => x.Type == (ushort)property)?.Value;
         }
 
-        public static uint? GetProperty(this Biota biota, PropertyInstanceId property)
+        public static ulong? GetProperty(this Biota biota, PropertyInstanceId property)
         {
             return biota.BiotaPropertiesIID.FirstOrDefault(x => x.Type == (uint)property)?.Value;
         }
@@ -60,7 +60,7 @@ namespace ACE.Database.Models.Shard
             if (result == null)
                 return null;
 
-            return new Position(result.ObjCellId, result.OriginX, result.OriginY, result.OriginZ, result.AnglesX, result.AnglesY, result.AnglesZ, result.AnglesW);
+            return new Position(result.ObjCellId, result.OriginX, result.OriginY, result.OriginZ, result.AnglesX, result.AnglesY, result.AnglesZ, result.AnglesW) { Instance = result.Instance };
         }
 
 
@@ -111,7 +111,7 @@ namespace ACE.Database.Models.Shard
             }
         }
 
-        public static void SetProperty(this Biota biota, PropertyInstanceId property, uint value)
+        public static void SetProperty(this Biota biota, PropertyInstanceId property, ulong value)
         {
             var result = biota.BiotaPropertiesIID.FirstOrDefault(x => x.Type == (uint)property);
 
@@ -174,6 +174,7 @@ namespace ACE.Database.Models.Shard
             if (result != null)
             {
                 result.ObjCellId = position.Cell;
+                result.Instance = position.Instance;
                 result.OriginX = position.PositionX;
                 result.OriginY = position.PositionY;
                 result.OriginZ = position.PositionZ;
@@ -184,7 +185,7 @@ namespace ACE.Database.Models.Shard
             }
             else
             {
-                var entity = new BiotaPropertiesPosition { ObjectId = biota.Id, PositionType = (ushort)positionType, ObjCellId = position.Cell, OriginX = position.PositionX, OriginY = position.PositionY, OriginZ = position.PositionZ, AnglesW = position.RotationW, AnglesX = position.RotationX, AnglesY = position.RotationY, AnglesZ = position.RotationZ, Object = biota };
+                var entity = new BiotaPropertiesPosition { ObjectId = biota.Id, PositionType = (ushort)positionType, ObjCellId = position.Cell, Instance = position.Instance, OriginX = position.PositionX, OriginY = position.PositionY, OriginZ = position.PositionZ, AnglesW = position.RotationW, AnglesX = position.RotationX, AnglesY = position.RotationY, AnglesZ = position.RotationZ, Object = biota };
 
                 biota.BiotaPropertiesPosition.Add(entity);
             }

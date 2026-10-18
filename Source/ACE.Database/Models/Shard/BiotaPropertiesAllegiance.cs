@@ -5,9 +5,9 @@ namespace ACE.Database.Models.Shard;
 
 public partial class BiotaPropertiesAllegiance
 {
-    public uint AllegianceId { get; set; }
+    public ulong AllegianceId { get; set; }
 
-    public uint CharacterId { get; set; }
+    public ulong CharacterId { get; set; }
 
     public bool Banned { get; set; }
 

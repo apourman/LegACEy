@@ -24,7 +24,7 @@ namespace ACE.Server.Market
             {
                 minutes = PluginAuth.LinkCodeMinutes(context);
 
-                return PluginAuth.NewLinkCode(context, player.Character.AccountId, player.Character.Id, DateTime.UtcNow);
+                return PluginAuth.NewLinkCode(context, player.Character.AccountId, player.Guid.ClientGUID, DateTime.UtcNow);
             }
         }
 

@@ -39,7 +39,7 @@ namespace ACE.Server.Managers
         /// <summary>
         /// HouseManager actions to run when slumlord inventory has completed loading
         /// </summary>
-        private static Dictionary<uint, List<HouseCallback>> SlumlordCallbacks = new Dictionary<uint, List<HouseCallback>>();
+        private static Dictionary<ObjectGuid, List<HouseCallback>> SlumlordCallbacks = new Dictionary<ObjectGuid, List<HouseCallback>>();
 
         /// <summary>
         /// The rate at which HouseManager.Tick() executes
@@ -168,15 +168,15 @@ namespace ACE.Server.Managers
         /// <summary>
         /// Returns TRUE if houseInstance is contained in the RentQueue
         /// </summary>
-        private static bool RentQueueContainsHouse(uint houseInstance)
+        private static bool RentQueueContainsHouse(ulong houseGuid)
         {
-            return RentQueue.Any(i => i.House.HouseInstance == houseInstance);
+            return RentQueue.Any(i => i.House.Guid.Full == houseGuid);
         }
 
         /// <summary>
         /// Adds a player-owned house to the rent queue
         /// </summary>
-        public static void AddRentQueue(IPlayer player, uint houseGuid)
+        public static void AddRentQueue(IPlayer player, ulong houseGuid)
         {
             //Console.WriteLine($"AddRentQueue({player.Name}, {houseGuid:X8})");
 
@@ -210,9 +210,9 @@ namespace ACE.Server.Managers
         /// <summary>
         /// Called when a player abandons a house
         /// </summary>
-        public static void RemoveRentQueue(uint houseGuid)
+        public static void RemoveRentQueue(ObjectGuid houseGuid)
         {
-            RentQueue.RemoveWhere(i => i.House.Guid.Full == houseGuid);
+            RentQueue.RemoveWhere(i => i.House.Guid == houseGuid);
         }
 
         /// <summary>
@@ -514,7 +514,7 @@ namespace ACE.Server.Managers
 
             if (multihouse)
             {
-                RemoveRentQueue(house.Guid.Full);
+                RemoveRentQueue(house.Guid);
                 DecrementTotalOwnedHousingByType(house.HouseType);
 
                 player.SaveBiotaToDatabase();
@@ -661,7 +661,7 @@ namespace ACE.Server.Managers
 
                 HandleEviction(playerHouse, true);
 
-                RemoveRentQueue(house.Guid.Full);
+                RemoveRentQueue(house.Guid);
                 DecrementTotalOwnedHousingByType(house.HouseType);
             });
         }
@@ -699,13 +699,16 @@ namespace ACE.Server.Managers
         }
 
         /// <summary>
-        /// Returns the house guid for a slumlord guid
+        /// Returns the house guid for a slumlord guid, in the slumlord's landblock copy, or 0 if none
         /// </summary>
-        private static uint GetHouseGuid(uint slumlord_guid, List<uint> house_guids)
+        private static ulong GetHouseGuid(ulong slumlord_guid, List<uint> house_guids)
         {
-            var slumlord_prefix = slumlord_guid >> 12;
+            var slumlord = new ObjectGuid(slumlord_guid);
+            var slumlord_prefix = slumlord.ClientGUID >> 12;
 
-            return house_guids.FirstOrDefault(i => slumlord_prefix == (i >> 12));
+            var house_guid = house_guids.FirstOrDefault(i => slumlord_prefix == (i >> 12));
+
+            return house_guid == 0 ? 0 : new ObjectGuid(house_guid, slumlord.Instance).Full;
         }
 
         /// <summary>
@@ -713,12 +716,13 @@ namespace ACE.Server.Managers
         /// else return a copy of the House biota from the latest info in the db
         ///
         /// <param name="callback">called when the slumlord inventory is fully loaded</param>
-        public static void GetHouse(uint houseGuid, Action<House> callback)
+        public static void GetHouse(ulong houseGuid, Action<House> callback)
         {
             var landblock = (ushort)((houseGuid >> 12) & 0xFFFF);
 
             var landblockId = new LandblockId((uint)(landblock << 16 | 0xFFFF));
-            var isLoaded = LandblockManager.IsLoaded(landblockId);
+            var instance = new ObjectGuid(houseGuid).Instance;
+            var isLoaded = LandblockManager.IsLoaded(landblockId, instance);
 
             if (!isLoaded)
             {
@@ -732,8 +736,8 @@ namespace ACE.Server.Managers
             }
 
             // landblock is loaded, return a reference to the current House object
-            var loaded = LandblockManager.GetLandblock(landblockId, false);
-            var house = loaded.GetObject(new ObjectGuid(houseGuid)) as House;
+            var loaded = LandblockManager.GetLandblock(landblockId, instance, false);
+            var house = loaded.GetObject(houseGuid) as House;
 
             if (house != null && house.SlumLord != null)
             {
@@ -757,10 +761,10 @@ namespace ACE.Server.Managers
         /// </summary>
         public static void RegisterCallback(House house, Action<House> callback)
         {
-            if (!SlumlordCallbacks.TryGetValue(house.SlumLord.Guid.Full, out var callbacks))
+            if (!SlumlordCallbacks.TryGetValue(house.SlumLord.Guid, out var callbacks))
             {
                 callbacks = new List<HouseCallback>();
-                SlumlordCallbacks.Add(house.SlumLord.Guid.Full, callbacks);
+                SlumlordCallbacks.Add(house.SlumLord.Guid, callbacks);
             }
             callbacks.Add(new HouseCallback(house, callback));
         }
@@ -772,12 +776,12 @@ namespace ACE.Server.Managers
         {
             //Console.WriteLine($"HouseManager.OnInitialInventoryLoadCompleted({slumlord.Name})");
 
-            if (SlumlordCallbacks.TryGetValue(slumlord.Guid.Full, out var callbacks))
+            if (SlumlordCallbacks.TryGetValue(slumlord.Guid, out var callbacks))
             {
                 foreach (var callback in callbacks)
                     callback.Run();
 
-                SlumlordCallbacks.Remove(slumlord.Guid.Full);
+                SlumlordCallbacks.Remove(slumlord.Guid);
             }
         }
 

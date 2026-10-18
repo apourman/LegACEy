@@ -92,7 +92,7 @@ namespace ACE.Server.WorldObjects
 
                     Session.Network.EnqueueSend(new GameEventRegisterTrade(Session, Guid, tradePartner.Guid));
 
-                    tradePartner.HandleActionOpenTradeNegotiations(Guid.Full, false);
+                    tradePartner.HandleActionOpenTradeNegotiations(Guid.ClientGUID, false);
                 });
             }
             else
@@ -177,7 +177,7 @@ namespace ACE.Server.WorldObjects
                 return;
             }
 
-            ItemsInTradeWindow.Add(new ObjectGuid(itemGuid));
+            ItemsInTradeWindow.Add(ResolveGuid(itemGuid));
 
             Session.Network.EnqueueSend(new GameEventAddToTrade(Session, itemGuid, TradeSide.Self));
 

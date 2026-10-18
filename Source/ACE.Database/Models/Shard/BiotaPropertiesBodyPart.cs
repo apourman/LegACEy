@@ -16,7 +16,7 @@ public partial class BiotaPropertiesBodyPart
     /// <summary>
     /// Id of the object this property belongs to
     /// </summary>
-    public uint ObjectId { get; set; }
+    public ulong ObjectId { get; set; }
 
     /// <summary>
     /// Type of Property the value applies to (PropertySkill.????)

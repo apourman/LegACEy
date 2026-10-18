@@ -97,7 +97,7 @@ namespace ACE.Server.WorldObjects
             else
                 inscription = "";
 
-            var bookDataResponse = new GameEventBookDataResponse(player.Session, Guid.Full, maxChars, maxPages, pages, inscription, authorID, authorName, ignoreAuthor);
+            var bookDataResponse = new GameEventBookDataResponse(player.Session, Guid.ClientGUID, maxChars, maxPages, pages, inscription, authorID, authorName, ignoreAuthor);
             player.Session.Network.EnqueueSend(bookDataResponse);
         }
 
@@ -134,10 +134,10 @@ namespace ACE.Server.WorldObjects
             if (page == null || page.PageText.Equals(pageText))
                 return false;
 
-            if (page.IgnoreAuthor || (player.Guid.Full == page.AuthorId && player.Name == page.AuthorName && player.Account.AccountName == page.AuthorAccount) || player is Sentinel || player is Admin)
+            if (page.IgnoreAuthor || (player.Guid.ClientGUID == page.AuthorId && player.Name == page.AuthorName && player.Account.AccountName == page.AuthorAccount) || player is Sentinel || player is Admin)
             {
                 page.AuthorAccount = player.Account.AccountName;
-                page.AuthorId = player.Guid.Full;
+                page.AuthorId = player.Guid.ClientGUID;
                 page.AuthorName = player.Name;
                 page.PageText = pageText;
                 ChangesDetected = true;
@@ -152,7 +152,7 @@ namespace ACE.Server.WorldObjects
         {
             var page = Biota.PropertiesBookPageData.GetPage(index, BiotaDatabaseLock);
 
-            if (page == null || (!page.IgnoreAuthor && player.Guid.Full != page.AuthorId && !(player is Sentinel) && !(player is Admin)))
+            if (page == null || (!page.IgnoreAuthor && player.Guid.ClientGUID != page.AuthorId && !(player is Sentinel) && !(player is Admin)))
                 return false;
 
             Biota.PropertiesBookPageData.RemovePage(index, BiotaDatabaseLock);

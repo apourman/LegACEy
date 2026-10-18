@@ -85,7 +85,8 @@ namespace ACE.Server.WorldObjects
                         }
                     }
 
-                    var destination = new Position(i.ObjCellId, new Vector3(i.OriginX, i.OriginY, i.OriginZ), new Quaternion(i.AnglesX, i.AnglesY, i.AnglesZ, i.AnglesW));
+                    // the other end of a house portal is in the house's own landblock copy
+                    var destination = new Position(i.ObjCellId, new Vector3(i.OriginX, i.OriginY, i.OriginZ), new Quaternion(i.AnglesX, i.AnglesY, i.AnglesZ, i.AnglesW)) { Instance = Position.InstanceOrNull(Guid.Instance) };
 
                     wo.SetPosition(PositionType.Destination, destination);
 

@@ -70,6 +70,17 @@ namespace ACE.Server.WorldObjects
         /// </summary>
         public Landblock CurrentLandblock { get; internal set; }
 
+        /// <summary>
+        /// The landblock copy this object is in. 0 is the base world.
+        /// </summary>
+        public uint CurrentInstance => CurrentLandblock?.Instance ?? 0;
+
+        /// <summary>
+        /// Turns a 32-bit guid this object was given (by its client, or from a 32-bit reference it holds) into the object it names,
+        /// in this object's landblock copy. The instance always comes from the server.
+        /// </summary>
+        public ObjectGuid ResolveGuid(uint clientGuid) => new ObjectGuid(clientGuid, CurrentInstance);
+
         public bool IsBusy { get; set; }
         public bool IsShield { get => CombatUse != null && CombatUse == ACE.Entity.Enum.CombatUse.Shield; }
         // ValidLocations is bugged for some older two-handed weapons, still contains MeleeWeapon instead of TwoHanded?
@@ -191,7 +202,7 @@ namespace ACE.Server.WorldObjects
             // exclude linkspots from spawning
             if (WeenieClassId == 10762) return true;
 
-            var cell = LScape.get_landcell(Location.Cell);
+            var cell = LScape.get_landcell(Location.Cell, CurrentInstance);
             if (cell == null)
             {
                 PhysicsObj.DestroyObject();
@@ -469,7 +480,7 @@ namespace ACE.Server.WorldObjects
 
             sb.AppendLine("ACE Debug Output:");
             sb.AppendLine("ACE Class File: " + GetType().Name + ".cs");
-            sb.AppendLine("Guid: " + obj.Guid.Full + " (0x" + obj.Guid.Full.ToString("X") + ")");
+            sb.AppendLine("Guid: " + obj.Guid.ClientGUID + " (0x" + obj.Guid + ")");
 
             sb.AppendLine("----- Private Fields -----");
             foreach (var prop in obj.GetType().GetFields(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).OrderBy(field => field.Name))
@@ -489,7 +500,7 @@ namespace ACE.Server.WorldObjects
                 switch (prop.Name.ToLower())
                 {
                     case "guid":
-                        sb.AppendLine($"{prop.Name} = {obj.Guid.Full} (GuidType.{obj.Guid.Type.ToString()})");
+                        sb.AppendLine($"{prop.Name} = {obj.Guid} (GuidType.{obj.Guid.Type.ToString()})");
                         break;
                     case "descriptionflags":
                         sb.AppendLine($"{prop.Name} = {ObjectDescriptionFlags.ToString()}" + " (" + (uint)ObjectDescriptionFlags + ")");
@@ -614,7 +625,7 @@ namespace ACE.Server.WorldObjects
             if (this is Creature creature)
                 healthPercentage = (float)creature.Health.Current / creature.Health.MaxValue;
 
-            var updateHealth = new GameEventUpdateHealth(examiner, Guid.Full, healthPercentage);
+            var updateHealth = new GameEventUpdateHealth(examiner, Guid.ClientGUID, healthPercentage);
             examiner.Network.EnqueueSend(updateHealth);
         }
 
@@ -632,7 +643,7 @@ namespace ACE.Server.WorldObjects
             if (success == 0) // according to retail PCAPs, if success = 0, mana = 0.
                 manaPercentage = 0;
 
-            var updateMana = new GameEventQueryItemManaResponse(examiner, Guid.Full, manaPercentage, success);
+            var updateMana = new GameEventQueryItemManaResponse(examiner, Guid.ClientGUID, manaPercentage, success);
             examiner.Network.EnqueueSend(updateMana);
         }
 
@@ -746,12 +757,12 @@ namespace ACE.Server.WorldObjects
         {
             if (pos == null) return false;
 
-            var landblock = LScape.get_landblock(pos.Cell);
+            var landblock = LScape.get_landblock(pos.Cell, pos.Instance ?? 0);
             if (landblock == null || !landblock.HasDungeon) return false;
 
             var dungeonID = pos.Cell >> 16;
 
-            var adjustCell = AdjustCell.Get(dungeonID);
+            var adjustCell = AdjustCell.Get(dungeonID, pos.Instance ?? 0);
             var cellID = adjustCell.GetCell(pos.Pos);
 
             if (cellID != null && pos.Cell != cellID.Value)
@@ -767,7 +778,7 @@ namespace ACE.Server.WorldObjects
         {
             if (pos == null) return false;
 
-            var landblock = LScape.get_landblock(pos.Cell);
+            var landblock = LScape.get_landblock(pos.Cell, pos.Instance ?? 0);
             if (landblock == null || !landblock.HasDungeon) return false;
 
             var dungeonID = pos.Cell >> 16;
@@ -838,7 +849,7 @@ namespace ACE.Server.WorldObjects
         {
             if (IsDestroyed)
             {
-                //log.WarnFormat("Item 0x{0:X8}:{1} called destroy more than once.", Guid.Full, Name);
+                //log.WarnFormat("Item 0x{0:X8}:{1} called destroy more than once.", Guid, Name);
                 return;
             }
 
@@ -863,7 +874,7 @@ namespace ACE.Server.WorldObjects
                 if (pet.P_PetOwner?.CurrentActivePet == this)
                     pet.P_PetOwner.CurrentActivePet = null;
 
-                if (pet.P_PetDevice?.Pet == Guid.Full)
+                if (pet.P_PetDevice?.Pet == Guid.ClientGUID)
                     pet.P_PetDevice.Pet = null;
             }
 

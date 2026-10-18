@@ -28,7 +28,7 @@ namespace ACE.Server.WorldObjects
 
         private static readonly ILog log = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
-        public uint? PetDevice
+        public ulong? PetDevice
         {
             get => GetProperty(PropertyInstanceId.PetDevice);
             set { if (value.HasValue) SetProperty(PropertyInstanceId.PetDevice, value.Value); else RemoveProperty(PropertyInstanceId.PetDevice); }
@@ -87,7 +87,7 @@ namespace ACE.Server.WorldObjects
 
             Name = player.Name + "'s " + Name;
 
-            PetOwner = player.Guid.Full;
+            PetOwner = player.Guid.ClientGUID;
             P_PetOwner = player;
 
             // All pets don't leave corpses, this maybe should have been in data, but isn't so lets make sure its true.
@@ -103,8 +103,8 @@ namespace ACE.Server.WorldObjects
 
             player.CurrentActivePet = this;
 
-            petDevice.Pet = Guid.Full;
-            PetDevice = petDevice.Guid.Full;
+            petDevice.Pet = Guid.ClientGUID;
+            PetDevice = petDevice.Guid.ClientGUID;
             P_PetDevice = petDevice;
 
             if (IsPassivePet)

@@ -220,7 +220,7 @@ namespace ACE.Server.Command.Handlers
         private static bool TryAdmin(Session session, string refusal, out uint accountId, out uint characterId)
         {
             accountId = session?.AccountId ?? 0;
-            characterId = session?.Player?.Guid.Full ?? 0;
+            characterId = session?.Player?.Guid.ClientGUID ?? 0;
 
             if (session?.Player != null)
                 return true;

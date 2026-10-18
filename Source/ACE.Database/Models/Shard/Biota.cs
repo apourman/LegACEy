@@ -11,7 +11,7 @@ public partial class Biota
     /// <summary>
     /// Unique Object Id within the Shard
     /// </summary>
-    public uint Id { get; set; }
+    public ulong Id { get; set; }
 
     /// <summary>
     /// Weenie Class Id of the Weenie this Biota was created from

@@ -47,9 +47,9 @@ namespace ACE.Server.Entity
             Patron = patron;
         }
 
-        public void BuildChain(Allegiance allegiance, List<IPlayer> players, Dictionary<uint, List<IPlayer>> patronVassals)
+        public void BuildChain(Allegiance allegiance, List<IPlayer> players, Dictionary<ulong, List<IPlayer>> patronVassals)
         {
-            patronVassals.TryGetValue(PlayerGuid.Full, out var vassals);
+            patronVassals.TryGetValue(PlayerGuid.ClientGUID, out var vassals);
 
             Vassals = new Dictionary<uint, AllegianceNode>();
 
@@ -60,7 +60,7 @@ namespace ACE.Server.Entity
                     var node = new AllegianceNode(vassal.Guid, allegiance, Monarch, this);
                     node.BuildChain(allegiance, players, patronVassals);
 
-                    Vassals.Add(vassal.Guid.Full, node);
+                    Vassals.Add(vassal.Guid.ClientGUID, node);
                 }
             }
             CalculateRank();

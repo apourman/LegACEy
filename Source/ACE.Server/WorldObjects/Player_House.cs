@@ -14,6 +14,7 @@ using ACE.Server.Managers;
 using ACE.Server.Network.GameEvent.Events;
 using ACE.Server.Network.GameMessages.Messages;
 using ACE.Server.Network.Structure;
+using ACE.Server.Realms;
 
 namespace ACE.Server.WorldObjects
 {
@@ -33,9 +34,7 @@ namespace ACE.Server.WorldObjects
             log.Info($"[HOUSE] {Name}.HandleActionBuyHouse()");
 
             // verify player doesn't already own a house
-            var houseInstance = GetHouseInstance();
-
-            if (houseInstance != null)
+            if (RealmPolicy.HouseLimitReached(this))
             {
                 //Session.Network.EnqueueSend(new GameEventWeenieError(Session, WeenieError.HouseAlreadyOwned));
                 Session.Network.EnqueueSend(new GameMessageSystemChat("You already own a house!", ChatMessageType.Broadcast));
@@ -47,6 +46,13 @@ namespace ACE.Server.WorldObjects
             if (slumlord == null)
             {
                 log.Error($"[HOUSE] {Name}.HandleActionBuyHouse: Couldn't find slumlord 0x{slumlord_id:X8}!");
+                return;
+            }
+
+            if (!RealmPolicy.CanBuyHouseAt(this, slumlord.Location))
+            {
+                Session.Network.EnqueueSend(new GameMessageSystemChat("You can only buy a house in your home realm.", ChatMessageType.Broadcast));
+                log.Info($"[HOUSE] {Name}.HandleActionBuyHouse(): Failed pre-purchase requirement - not in the home realm");
                 return;
             }
 
@@ -63,7 +69,7 @@ namespace ACE.Server.WorldObjects
 
             if (slumlord.HouseRequiresMonarch)
             {
-                if (Allegiance == null || Allegiance.MonarchId != Guid.Full)
+                if (Allegiance == null || Allegiance.MonarchId != Guid.ClientGUID)
                 {
                     Session.Network.EnqueueSend(new GameEventWeenieError(Session, WeenieError.YouMustBeMonarchToPurchaseDwelling));
                     log.Info($"[HOUSE] {Name}.HandleActionBuyHouse(): Failed pre-purchase requirement - HouseRequiresMonarch");
@@ -208,12 +214,7 @@ namespace ACE.Server.WorldObjects
             var owner = PlayerManager.FindByGuid(slumlord.HouseOwner ?? 0);
             if (owner != null)
             {
-                var characterHouses = HouseManager.GetCharacterHouses(owner.Guid.Full);
-                var accountHouses = HouseManager.GetAccountHouses(owner.Account.AccountId);
-
-                var ownerHouses = PropertyManager.GetBool("house_per_char").Item ? characterHouses : accountHouses;
-
-                if (ownerHouses.Count() > 1)
+                if (RealmPolicy.HousesCountedFor(owner).Count > 1)
                 {
                     Session.Network.EnqueueSend(new GameMessageSystemChat("The owner of this house currently owns multiple houses. Maintenance cannot be paid until they only own 1 house.", ChatMessageType.Broadcast));
 
@@ -242,7 +243,7 @@ namespace ACE.Server.WorldObjects
             var sentItems = new List<WorldObject>();
             foreach (var item_id in item_ids)
             {
-                var item = GetInventoryItem(new ObjectGuid(item_id));
+                var item = GetInventoryItem(ResolveGuid(item_id));
                 if (item == null)
                 {
                     //Console.WriteLine($"Couldn't find inventory item {item_id:X8}");
@@ -529,7 +530,7 @@ namespace ACE.Server.WorldObjects
             // send text message
             Session.Network.EnqueueSend(new GameMessageSystemChat("You abandon your house!", ChatMessageType.Broadcast));
 
-            HouseManager.RemoveRentQueue(house.Guid.Full);
+            HouseManager.RemoveRentQueue(house.Guid);
             HouseManager.DecrementTotalOwnedHousingByType(house.HouseType);
 
             house.ClearRestrictions();
@@ -592,7 +593,7 @@ namespace ACE.Server.WorldObjects
                     Session.Network.EnqueueSend(new GameMessageSystemChat($"Warning!  You have not paid your maintenance costs for the last {(House.IsApartment ? "90" : "30")} day maintenance period.  Please pay these costs by this deadline or you will lose your house, and all your items within it.", ChatMessageType.System));
                 }
 
-                if (House.HouseOwner == Guid.Full && !House.SlumLord.HasRequirements(this) && PropertyManager.GetBool("house_purchase_requirements").Item)
+                if (House.HouseOwner == Guid.ClientGUID && !House.SlumLord.HasRequirements(this) && PropertyManager.GetBool("house_purchase_requirements").Item)
                 {
                     var rankStr = AllegianceNode != null ? $"{AllegianceNode.Rank}" : "";
                     Session.Network.EnqueueSend(new GameMessageSystemChat($"Warning!  Your allegiance rank {rankStr} is now below the requirements for owning a mansion.  Please raise your allegiance rank to {House.SlumLord.GetAllegianceMinLevel()} before the end of the maintenance period or you will lose your mansion, and all your items within it.", ChatMessageType.System));
@@ -633,7 +634,7 @@ namespace ACE.Server.WorldObjects
             houseRentWarnTimestamp = 0;
 
             // set house properties
-            house.HouseOwner = Guid.Full;
+            house.HouseOwner = Guid.ClientGUID;
             house.HouseOwnerName = Name;
             house.OpenToEveryone = false;
             house.SaveBiotaToDatabase();
@@ -693,7 +694,7 @@ namespace ACE.Server.WorldObjects
         {
             foreach (var purchaseItem in purchaseItems)
             {
-                var item = FindObject(purchaseItem.Guid.Full, SearchLocations.MyInventory);
+                var item = FindObject(purchaseItem.Guid, SearchLocations.MyInventory);
 
                 if (item == null)
                 {
@@ -752,7 +753,7 @@ namespace ACE.Server.WorldObjects
             var sentItems = new List<WorldObject>();
             foreach (var item_id in item_ids)
             {
-                var item = GetInventoryItem(new ObjectGuid(item_id));
+                var item = GetInventoryItem(ResolveGuid(item_id));
                 if (item == null)
                 {
                     //Console.WriteLine($"Couldn't find inventory item {item_id:X8}");
@@ -894,7 +895,7 @@ namespace ACE.Server.WorldObjects
 
             // if server is running house_per_char mode (non-default),
             // only use the HouseInstance for the current character
-            if (PropertyManager.GetBool("house_per_char").Item)
+            if (RealmPolicy.HouseLimitIsPerCharacter)
                 return this;
 
             // else return the account house owner
@@ -903,7 +904,7 @@ namespace ACE.Server.WorldObjects
             return accountHouseOwner;
         }
 
-        public uint? GetHouseInstance()
+        public ulong? GetHouseInstance()
         {
             return GetHouseOwner()?.HouseInstance;
         }
@@ -932,7 +933,7 @@ namespace ACE.Server.WorldObjects
             });
         }
 
-        public House LoadHouse(uint? houseInstance, bool forceLoad = false)
+        public House LoadHouse(ulong? houseInstance, bool forceLoad = false)
         {
             if (House != null && !forceLoad)
                 return House;
@@ -952,7 +953,7 @@ namespace ACE.Server.WorldObjects
             return GetHouse(houseInstance);
         }
 
-        public House GetHouse(uint? houseInstance)
+        public House GetHouse(ulong? houseInstance)
         {
             if (houseInstance == null)
                 return null;
@@ -961,13 +962,14 @@ namespace ACE.Server.WorldObjects
             var landblock = (ushort)((houseGuid >> 12) & 0xFFFF);
 
             var landblockId = new LandblockId((uint)(landblock << 16 | 0xFFFF));
-            var isLoaded = LandblockManager.IsLoaded(landblockId);
+            var instance = new ObjectGuid(houseGuid).Instance;
+            var isLoaded = LandblockManager.IsLoaded(landblockId, instance);
 
             if (!isLoaded)
                 return House = House.Load(houseGuid);
 
-            var loaded = LandblockManager.GetLandblock(landblockId, false);
-            return House = loaded.GetObject(new ObjectGuid(houseGuid)) as House;
+            var loaded = LandblockManager.GetLandblock(landblockId, instance, false);
+            return House = loaded.GetObject(houseGuid) as House;
         }
 
         public void HandleActionAddGuest(string guestName)
@@ -996,7 +998,7 @@ namespace ACE.Server.WorldObjects
 
             var accountPlayers = PlayerManager.GetAccountPlayers(Account.AccountId);
 
-            if (Guests.ContainsKey(guest.Guid) || accountPlayers.ContainsKey(guest.Guid.Full))
+            if (Guests.ContainsKey(guest.Guid) || accountPlayers.ContainsKey(guest.Guid.ClientGUID))
             {
                 Session.Network.EnqueueSend(new GameMessageSystemChat($"{guest.Name} is already on your guest list.", ChatMessageType.Broadcast));
                 return;
@@ -1790,12 +1792,13 @@ namespace ACE.Server.WorldObjects
             var landblock = (ushort)((houseGuid >> 12) & 0xFFFF);
 
             var landblockId = new LandblockId((uint)(landblock << 16 | 0xFFFF));
-            var isLoaded = LandblockManager.IsLoaded(landblockId);
+            var instance = new ObjectGuid(houseGuid).Instance;
+            var isLoaded = LandblockManager.IsLoaded(landblockId, instance);
 
             if (isLoaded)
             {
-                var loaded = LandblockManager.GetLandblock(landblockId, false);
-                return loaded.GetObject(new ObjectGuid(houseGuid)) as House;
+                var loaded = LandblockManager.GetLandblock(landblockId, instance, false);
+                return loaded.GetObject(houseGuid) as House;
             }
 
             // load an offline copy
@@ -1804,37 +1807,15 @@ namespace ACE.Server.WorldObjects
 
         public bool IsMultiHouseOwner(bool showMsg = true)
         {
-            var characterHouses = HouseManager.GetCharacterHouses(Guid.Full);
-            var accountHouses = HouseManager.GetAccountHouses(Account.AccountId);
+            var houses = GetMultiHouses();
 
-            //if (showMsg)
-                //Session.Network.EnqueueSend(new GameMessageSystemChat($"AccountHouses: {accountHouses.Count}, CharacterHouses: {characterHouses.Count}", ChatMessageType.Broadcast));
+            if (houses.Count > 1 && showMsg)
+                ShowMultiHouseWarning(houses, RealmPolicy.HouseLimitIsPerCharacter ? "character" : "account");
 
-            if (PropertyManager.GetBool("house_per_char").Item)
-            {
-                // 1 house per character
-                if (characterHouses.Count > 1 && showMsg)
-                    ShowMultiHouseWarning(characterHouses, "character");
-
-                return characterHouses.Count > 1;
-            }
-            else
-            {
-                // 1 house per account (retail default)
-                if (accountHouses.Count > 1 && showMsg)
-                    ShowMultiHouseWarning(accountHouses, "account");
-
-                return accountHouses.Count > 1;
-            }
+            return houses.Count > 1;
         }
 
-        public List<House> GetMultiHouses()
-        {
-            if (PropertyManager.GetBool("house_per_char").Item)
-                return HouseManager.GetCharacterHouses(Guid.Full);
-            else
-                return HouseManager.GetAccountHouses(Account.AccountId);
-        }
+        public List<House> GetMultiHouses() => RealmPolicy.HousesCountedFor(this);
 
         public void ShowMultiHouseWarning(List<House> houses, string type)
         {

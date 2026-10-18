@@ -271,7 +271,7 @@ namespace ACE.Server.WorldObjects
         {
             var container = CurrentLandblock?.GetObject(objectGuid) as Container;
 
-            if (container != null && container.Viewer == Guid.Full)
+            if (container != null && container.Viewer == Guid.ClientGUID)
                 container.Close(this);
         }
 

@@ -5,6 +5,7 @@ namespace ACE.Entity.Models
     public class PropertiesPosition
     {
         public uint ObjCellId { get; set; }
+        public uint? Instance { get; set; } // null is the base world
         public float PositionX { get; set; }
         public float PositionY { get; set; }
         public float PositionZ { get; set; }
@@ -18,6 +19,7 @@ namespace ACE.Entity.Models
             var result = new PropertiesPosition
             {
                 ObjCellId = ObjCellId,
+                Instance = Instance,
                 PositionX = PositionX,
                 PositionY = PositionY,
                 PositionZ = PositionZ,

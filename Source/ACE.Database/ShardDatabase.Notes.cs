@@ -41,7 +41,7 @@ namespace ACE.Database
                 return MarketJobResult.Refused;
             }
 
-            var guids = notes.Select(n => n.Guid).ToList();
+            var guids = notes.Select(n => (ulong)n.Guid).ToList();
             var amount = notes.Sum(n => (long)n.StackSize);
 
             // GUIDs of deleted notes can come back after a restart, so only an event written since this job started is this job's

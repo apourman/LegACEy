@@ -25,7 +25,7 @@ namespace ACE.Database
         /// <summary>
         /// Forgets any cached copy of the biota so the next load reads the database. There is no cache here.
         /// </summary>
-        public virtual bool EvictBiota(uint id)
+        public virtual bool EvictBiota(ulong id)
         {
             return false;
         }
@@ -309,7 +309,7 @@ namespace ACE.Database
             }
         }
 
-        private static ItemEvent NewItemEvent(uint itemGuid, uint accountId, uint characterId, string kind, DateTime time)
+        private static ItemEvent NewItemEvent(ulong itemGuid, uint accountId, uint characterId, string kind, DateTime time)
         {
             return new ItemEvent
             {

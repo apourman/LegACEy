@@ -16,7 +16,7 @@ public partial class BiotaPropertiesCreateList
     /// <summary>
     /// Id of the object this property belongs to
     /// </summary>
-    public uint ObjectId { get; set; }
+    public ulong ObjectId { get; set; }
 
     /// <summary>
     /// Type of Destination the value applies to (DestinationType.????)

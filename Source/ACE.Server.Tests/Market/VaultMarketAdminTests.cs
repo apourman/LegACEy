@@ -69,7 +69,7 @@ namespace ACE.Server.Tests.Market
                 // item and note deposits go on
                 var sword = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
                 VaultTestWorld.Save(sword);
-                var deposited = VaultTestWorld.Deposit(player, sword.Guid.Full);
+                var deposited = VaultTestWorld.Deposit(player, sword.Guid.ClientGUID);
                 Assert.AreEqual(VaultOutcome.Deposited, deposited.Outcome, deposited.Message);
 
                 GiveNotes(player, 3);
@@ -143,7 +143,7 @@ namespace ACE.Server.Tests.Market
             WaitForChat(admin, "balance is 35 MMD");
 
             var transfer = SingleTransfer(account, TransferKind.AdminAdjust);
-            Assert.AreEqual($"{admin.Session.AccountId}|{admin.Guid.Full}|lost in a crash", MarketTestDatabase.Rows(Db, $"SELECT actor_Account_Id, actor_Character_Id, memo FROM market_transfer WHERE id = {transfer};").Single());
+            Assert.AreEqual($"{admin.Session.AccountId}|{admin.Guid.ClientGUID}|lost in a crash", MarketTestDatabase.Rows(Db, $"SELECT actor_Account_Id, actor_Character_Id, memo FROM market_transfer WHERE id = {transfer};").Single());
             CollectionAssert.AreEqual(new[] { $"{account}|NULL|25|2|35", "NULL|ADMIN|-25|NULL|NULL" }, Entries(transfer));
             Assert.AreEqual(35, Ledger.GetBalance(account));
 
@@ -184,7 +184,7 @@ namespace ACE.Server.Tests.Market
             WaitForChat(admin, $"Reversed transfer {grant}");
 
             var reversal = SingleTransfer(account, TransferKind.Reversal);
-            Assert.AreEqual($"{admin.Session.AccountId}|{admin.Guid.Full}|granted in error|{grant}", MarketTestDatabase.Rows(Db, $"SELECT actor_Account_Id, actor_Character_Id, memo, reverses_Transfer_Id FROM market_transfer WHERE id = {reversal};").Single());
+            Assert.AreEqual($"{admin.Session.AccountId}|{admin.Guid.ClientGUID}|granted in error|{grant}", MarketTestDatabase.Rows(Db, $"SELECT actor_Account_Id, actor_Character_Id, memo, reverses_Transfer_Id FROM market_transfer WHERE id = {reversal};").Single());
             CollectionAssert.AreEqual(new[] { "NULL|ADMIN|5|NULL|NULL", $"{account}|NULL|-5|3|10" }, Entries(reversal));
             Assert.AreEqual(10, Ledger.GetBalance(account));
 
@@ -204,7 +204,7 @@ namespace ACE.Server.Tests.Market
             {
                 CorrectionResult result = null;
                 var done = new System.Threading.ManualResetEventSlim();
-                MarketAdmin.Adjust(account, 1, "lookup", admin.Session.AccountId, admin.Guid.Full, r => { result = r; done.Set(); });
+                MarketAdmin.Adjust(account, 1, "lookup", admin.Session.AccountId, admin.Guid.ClientGUID, r => { result = r; done.Set(); });
                 Assert.IsTrue(done.Wait(TimeSpan.FromSeconds(30)), "the correction reported a result");
                 return result;
             }

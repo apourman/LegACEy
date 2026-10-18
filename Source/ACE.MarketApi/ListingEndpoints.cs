@@ -48,7 +48,7 @@ namespace ACE.MarketApi
 
             return Results.Created($"{MarketApi.PathBase}/listings/{listing.Id}", new ListedResponse(
                 listing.Id,
-                listing.ItemGuid,
+                (uint)listing.ItemGuid,
                 listing.Price,
                 listing.Status.ToString(),
                 DateTime.SpecifyKind(listing.CreatedTime, DateTimeKind.Utc)));
@@ -69,7 +69,7 @@ namespace ACE.MarketApi
             if (result.Outcome != ListingOutcome.Ok)
                 return Refusal(result.Outcome);
 
-            return Results.Json(new DelistedResponse(result.Listing.Id, result.Listing.ItemGuid, result.Listing.Status.ToString()));
+            return Results.Json(new DelistedResponse(result.Listing.Id, (uint)result.Listing.ItemGuid, result.Listing.Status.ToString()));
         }
 
         private static IResult Refusal(ListingOutcome outcome) => outcome switch

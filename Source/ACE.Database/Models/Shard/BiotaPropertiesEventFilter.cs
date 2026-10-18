@@ -11,7 +11,7 @@ public partial class BiotaPropertiesEventFilter
     /// <summary>
     /// Id of the object this property belongs to
     /// </summary>
-    public uint ObjectId { get; set; }
+    public ulong ObjectId { get; set; }
 
     /// <summary>
     /// Id of Event to filter

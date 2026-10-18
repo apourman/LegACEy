@@ -1,3 +1,4 @@
+using ACE.Entity;
 using System.Collections.Generic;
 using System.IO;
 
@@ -23,7 +24,7 @@ namespace ACE.Server.Network.Structure
         public Shortcut(CharacterPropertiesShortcutBar shortcut)
         {
             Index = shortcut.ShortcutBarIndex - 1;
-            ObjectId = shortcut.ShortcutObjectId;
+            ObjectId = new ObjectGuid(shortcut.ShortcutObjectId).ClientGUID;
             Spell = new LayeredSpell();
         }
     }

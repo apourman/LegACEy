@@ -11,7 +11,7 @@ public partial class CharacterPropertiesQuestRegistry
     /// <summary>
     /// Id of the character this property belongs to
     /// </summary>
-    public uint CharacterId { get; set; }
+    public ulong CharacterId { get; set; }
 
     /// <summary>
     /// Unique Name of Quest

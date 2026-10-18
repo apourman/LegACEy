@@ -5,9 +5,9 @@ namespace ACE.Database.Models.Shard;
 
 public partial class CharacterPropertiesSquelch
 {
-    public uint CharacterId { get; set; }
+    public ulong CharacterId { get; set; }
 
-    public uint SquelchCharacterId { get; set; }
+    public ulong SquelchCharacterId { get; set; }
 
     public uint SquelchAccountId { get; set; }
 

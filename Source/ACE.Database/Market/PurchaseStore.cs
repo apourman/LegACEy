@@ -127,7 +127,7 @@ namespace ACE.Database.Market
             shard.MarketItemEvents.Add(new ItemEvent { ItemGuid = item.ItemGuid, AccountId = listing.SellerAccountId, CharacterId = listing.SellerCharacterId, Kind = ItemEventKind.Sold, ListingId = listing.Id, Transfer = transfer, EventTime = now });
             shard.MarketItemEvents.Add(new ItemEvent { ItemGuid = item.ItemGuid, AccountId = purchase.BuyerAccountId, CharacterId = purchase.BuyerCharacterId, Kind = ItemEventKind.Bought, ListingId = listing.Id, Transfer = transfer, EventTime = now });
 
-            var receipt = new PurchaseReceipt("ok", listing.Id, item.ItemGuid, listing.Price, purchase.Fee, buyerEntry.BalanceAfter.Value);
+            var receipt = new PurchaseReceipt("ok", listing.Id, (uint)item.ItemGuid, listing.Price, purchase.Fee, buyerEntry.BalanceAfter.Value);
 
             shard.MarketRequests.Add(new Request { AccountId = purchase.BuyerAccountId, IdempotencyKey = purchase.IdempotencyKey, Kind = RequestKind, Result = receipt.ToJson(), CreatedTime = now });
 

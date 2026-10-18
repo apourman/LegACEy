@@ -133,9 +133,9 @@ namespace ACE.Server.WorldObjects
         /// <summary>
         /// Build a mapping of patron guids => vassal guids
         /// </summary>
-        public Dictionary<uint, List<IPlayer>> BuildPatronVassals(List<IPlayer> members)
+        public Dictionary<ulong, List<IPlayer>> BuildPatronVassals(List<IPlayer> members)
         {
-            var patronVassals = new Dictionary<uint, List<IPlayer>>();
+            var patronVassals = new Dictionary<ulong, List<IPlayer>>();
 
             foreach (var member in members)
             {
@@ -179,14 +179,14 @@ namespace ACE.Server.WorldObjects
         public override bool Equals(object obj)
         {
             if (obj is Allegiance allegiance)
-                return Monarch.PlayerGuid.Full == allegiance.Monarch.PlayerGuid.Full;
+                return Monarch.PlayerGuid == allegiance.Monarch.PlayerGuid;
 
             return false;
         }
 
         public override int GetHashCode()
         {
-            return Monarch.PlayerGuid.Full.GetHashCode();
+            return Monarch.PlayerGuid.GetHashCode();
         }
 
         public string AllegianceName
@@ -292,12 +292,13 @@ namespace ACE.Server.WorldObjects
             var landblock = (ushort)((houseGuid >> 12) & 0xFFFF);
 
             var landblockId = new LandblockId((uint)(landblock << 16 | 0xFFFF));
-            var isLoaded = LandblockManager.IsLoaded(landblockId);
+            var instance = new ObjectGuid(houseGuid).Instance;
+            var isLoaded = LandblockManager.IsLoaded(landblockId, instance);
 
             if (isLoaded)
             {
-                var loaded = LandblockManager.GetLandblock(landblockId, false);
-                return loaded.GetObject(new ObjectGuid(houseGuid)) as House;
+                var loaded = LandblockManager.GetLandblock(landblockId, instance, false);
+                return loaded.GetObject(houseGuid) as House;
             }
 
             // load an offline copy

@@ -57,7 +57,7 @@ namespace ACE.Server.Managers
                 var offlinePlayer = new OfflinePlayer(result);
 
                 lock (offlinePlayers)
-                    offlinePlayers[offlinePlayer.Guid.Full] = offlinePlayer;
+                    offlinePlayers[offlinePlayer.Guid.ClientGUID] = offlinePlayer;
 
                 lock (playerNames)
                     playerNames[offlinePlayer.Name] = offlinePlayer;
@@ -71,7 +71,7 @@ namespace ACE.Server.Managers
                             playerAccountsDict = new Dictionary<uint, IPlayer>();
                             playerAccounts[offlinePlayer.Account.AccountId] = playerAccountsDict;
                         }
-                        playerAccountsDict[offlinePlayer.Guid.Full] = offlinePlayer;
+                        playerAccountsDict[offlinePlayer.Guid.ClientGUID] = offlinePlayer;
                     }
                     else
                         log.Error($"PlayerManager.Initialize: couldn't find account for player {offlinePlayer.Name} ({offlinePlayer.Guid})");
@@ -187,7 +187,7 @@ namespace ACE.Server.Managers
             try
             {
                 var offlinePlayer = new OfflinePlayer(player.Biota);
-                offlinePlayers[offlinePlayer.Guid.Full] = offlinePlayer;
+                offlinePlayers[offlinePlayer.Guid.ClientGUID] = offlinePlayer;
 
                 playerNames[offlinePlayer.Name] = offlinePlayer;
 
@@ -196,7 +196,7 @@ namespace ACE.Server.Managers
                     playerAccountsDict = new Dictionary<uint, IPlayer>();
                     playerAccounts[offlinePlayer.Account.AccountId] = playerAccountsDict;
                 }
-                playerAccountsDict[offlinePlayer.Guid.Full] = offlinePlayer;
+                playerAccountsDict[offlinePlayer.Guid.ClientGUID] = offlinePlayer;
             }
             finally
             {
@@ -209,7 +209,15 @@ namespace ACE.Server.Managers
         /// </summary>
         public static OfflinePlayer GetOfflinePlayer(ObjectGuid guid)
         {
-            return GetOfflinePlayer(guid.Full);
+            return GetOfflinePlayer(guid.ClientGUID);
+        }
+
+        /// <summary>
+        /// A stored 64-bit id (an IID value or a character id). This will return null if the player wasn't found.
+        /// </summary>
+        public static OfflinePlayer GetOfflinePlayer(ulong id)
+        {
+            return GetOfflinePlayer(new ObjectGuid(id));
         }
 
         /// <summary>
@@ -330,7 +338,15 @@ namespace ACE.Server.Managers
         /// </summary>
         public static Player GetOnlinePlayer(ObjectGuid guid)
         {
-            return GetOnlinePlayer(guid.Full);
+            return GetOnlinePlayer(guid.ClientGUID);
+        }
+
+        /// <summary>
+        /// A stored 64-bit id (an IID value or a character id). This will return null if the player wasn't found.
+        /// </summary>
+        public static Player GetOnlinePlayer(ulong id)
+        {
+            return GetOnlinePlayer(new ObjectGuid(id));
         }
 
         /// <summary>
@@ -404,7 +420,7 @@ namespace ACE.Server.Managers
             playersLock.EnterWriteLock();
             try
             {
-                if (!offlinePlayers.Remove(player.Guid.Full, out var offlinePlayer))
+                if (!offlinePlayers.Remove(player.Guid.ClientGUID, out var offlinePlayer))
                     return false; // This should never happen
 
                 if (offlinePlayer.ChangesDetected)
@@ -413,12 +429,12 @@ namespace ACE.Server.Managers
                 player.Allegiance = offlinePlayer.Allegiance;
                 player.AllegianceNode = offlinePlayer.AllegianceNode;
 
-                if (!onlinePlayers.TryAdd(player.Guid.Full, player))
+                if (!onlinePlayers.TryAdd(player.Guid.ClientGUID, player))
                     return false;
 
                 playerNames[offlinePlayer.Name] = player;
 
-                playerAccounts[offlinePlayer.Account.AccountId][offlinePlayer.Guid.Full] = player;
+                playerAccounts[offlinePlayer.Account.AccountId][offlinePlayer.Guid.ClientGUID] = player;
             }
             finally
             {
@@ -441,7 +457,7 @@ namespace ACE.Server.Managers
             playersLock.EnterWriteLock();
             try
             {
-                if (!onlinePlayers.Remove(player.Guid.Full, out _))
+                if (!onlinePlayers.Remove(player.Guid.ClientGUID, out _))
                     return false; // This should never happen
 
                 var offlinePlayer = new OfflinePlayer(player.Biota);
@@ -449,12 +465,12 @@ namespace ACE.Server.Managers
                 offlinePlayer.Allegiance = player.Allegiance;
                 offlinePlayer.AllegianceNode = player.AllegianceNode;
 
-                if (!offlinePlayers.TryAdd(offlinePlayer.Guid.Full, offlinePlayer))
+                if (!offlinePlayers.TryAdd(offlinePlayer.Guid.ClientGUID, offlinePlayer))
                     return false;
 
                 playerNames[offlinePlayer.Name] = offlinePlayer;
 
-                playerAccounts[offlinePlayer.Account.AccountId][offlinePlayer.Guid.Full] = offlinePlayer;
+                playerAccounts[offlinePlayer.Account.AccountId][offlinePlayer.Guid.ClientGUID] = offlinePlayer;
             }
             finally
             {
@@ -491,7 +507,7 @@ namespace ACE.Server.Managers
 
                 playerNames.Remove(offlinePlayer.Name);
 
-                playerAccounts[offlinePlayer.Account.AccountId].Remove(offlinePlayer.Guid.Full);
+                playerAccounts[offlinePlayer.Account.AccountId].Remove(offlinePlayer.Guid.ClientGUID);
             }
             finally
             {
@@ -543,7 +559,23 @@ namespace ACE.Server.Managers
         /// </summary>
         public static IPlayer FindByGuid(ObjectGuid guid, out bool isOnline)
         {
-            return FindByGuid(guid.Full, out isOnline);
+            return FindByGuid(guid.ClientGUID, out isOnline);
+        }
+
+        /// <summary>
+        /// A stored 64-bit id (an IID value or a character id). This will return null if the guid was not found.
+        /// </summary>
+        public static IPlayer FindByGuid(ulong id)
+        {
+            return FindByGuid(new ObjectGuid(id), out _);
+        }
+
+        /// <summary>
+        /// A stored 64-bit id (an IID value or a character id). This will return null if the guid was not found.
+        /// </summary>
+        public static IPlayer FindByGuid(ulong id, out bool isOnline)
+        {
+            return FindByGuid(new ObjectGuid(id), out isOnline);
         }
 
         /// <summary>
@@ -594,8 +626,8 @@ namespace ACE.Server.Managers
             try
             {
                 // this kind of sucks, possibly investigate?
-                var onlinePlayersResult = onlinePlayers.Values.Where(p => p.MonarchId == monarch.Full);
-                var offlinePlayersResult = offlinePlayers.Values.Where(p => p.MonarchId == monarch.Full);
+                var onlinePlayersResult = onlinePlayers.Values.Where(p => p.MonarchId == monarch.ClientGUID);
+                var offlinePlayersResult = offlinePlayers.Values.Where(p => p.MonarchId == monarch.ClientGUID);
 
                 results.AddRange(onlinePlayersResult);
                 results.AddRange(offlinePlayersResult);
@@ -621,7 +653,7 @@ namespace ACE.Server.Managers
             {
                 foreach (var player in onlinePlayers.Values)
                 {
-                    if (player.Character.HasAsFriend(guid.Full, player.CharacterDatabaseLock))
+                    if (player.Character.HasAsFriend(guid.ClientGUID, player.CharacterDatabaseLock))
                         results.Add(player);
                 }
             }

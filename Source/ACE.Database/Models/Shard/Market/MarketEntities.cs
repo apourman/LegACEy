@@ -7,7 +7,7 @@ public class Listing
 {
     public long Id { get; set; }
 
-    public uint ItemGuid { get; set; }
+    public ulong ItemGuid { get; set; }
 
     public uint SellerAccountId { get; set; }
 
@@ -134,7 +134,7 @@ public class ItemEvent
 {
     public long Id { get; set; }
 
-    public uint ItemGuid { get; set; }
+    public ulong ItemGuid { get; set; }
 
     public uint AccountId { get; set; }
 

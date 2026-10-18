@@ -164,7 +164,7 @@ namespace ACE.Server.WorldObjects
 
             wo.CalculateObjDesc();
 
-            //itemsForSale.Add(itemProfile, wo.Guid.Full);
+            //itemsForSale.Add(itemProfile, wo.Guid.ClientGUID);
 
             wo.VendorShopCreateListStackSize = stackSize ?? -1;
 

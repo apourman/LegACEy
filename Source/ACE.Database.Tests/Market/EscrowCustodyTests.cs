@@ -432,7 +432,7 @@ namespace ACE.Database.Tests.Market
 
         private static void PutInPack(EntityBiota item, uint containerId)
         {
-            item.PropertiesIID ??= new Dictionary<PropertyInstanceId, uint>();
+            item.PropertiesIID ??= new Dictionary<PropertyInstanceId, ulong>();
             item.PropertiesIID[PropertyInstanceId.Container] = containerId;
         }
 

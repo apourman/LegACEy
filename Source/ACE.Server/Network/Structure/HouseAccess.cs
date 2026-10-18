@@ -78,7 +78,7 @@ namespace ACE.Server.Network.Structure
 
             foreach (var accountPlayer in accountPlayers)
             {
-                if (owner.Guid.Full != accountPlayer.Key)
+                if (owner.Guid.ClientGUID != accountPlayer.Key)
                     Roommates.Add(accountPlayer.Value.Guid);
             }
         }
@@ -90,7 +90,7 @@ namespace ACE.Server.Network.Structure
         {
             writer.Write(har.Version);
             writer.Write((uint)har.Bitmask);
-            writer.Write(har.MonarchID.Full);
+            writer.WriteGuid(har.MonarchID);
             writer.Write(har.GuestList);
             writer.Write(har.Roommates);
         }
@@ -106,7 +106,7 @@ namespace ACE.Server.Network.Structure
 
             foreach (var kvp in sorted)
             {
-                writer.Write(kvp.Key.Full);
+                writer.WriteGuid(kvp.Key);
                 writer.Write(kvp.Value);
             }
         }
@@ -118,7 +118,7 @@ namespace ACE.Server.Network.Structure
             writer.Write(roommates.Count);
 
             foreach (var roommate in roommates)
-                writer.Write(roommate.Full);
+                writer.WriteGuid(roommate);
         }
     }
 }

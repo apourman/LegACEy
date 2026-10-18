@@ -109,6 +109,7 @@ namespace ACE.Database.Adapter
 
                     existingValue.PositionType = (ushort)kvp.Key;
                     existingValue.ObjCellId = kvp.Value.ObjCellId;
+                    existingValue.Instance = kvp.Value.Instance;
                     existingValue.OriginX = kvp.Value.PositionX;
                     existingValue.OriginY = kvp.Value.PositionY;
                     existingValue.OriginZ = kvp.Value.PositionZ;
@@ -646,7 +647,7 @@ namespace ACE.Database.Adapter
             }
             foreach (var value in targetBiota.BiotaPropertiesAllegiance)
             {
-                if (sourceBiota.PropertiesAllegiance == null || !sourceBiota.PropertiesAllegiance.ContainsKey(value.CharacterId))
+                if (sourceBiota.PropertiesAllegiance == null || !sourceBiota.PropertiesAllegiance.ContainsKey((uint)value.CharacterId))
                     context.BiotaPropertiesAllegiance.Remove(value);
             }
 
@@ -706,7 +707,7 @@ namespace ACE.Database.Adapter
             }
             foreach (var value in targetBiota.HousePermission)
             {
-                if (sourceBiota.HousePermissions == null || !sourceBiota.HousePermissions.ContainsKey(value.PlayerGuid))
+                if (sourceBiota.HousePermissions == null || !sourceBiota.HousePermissions.ContainsKey((uint)value.PlayerGuid))
                     context.HousePermission.Remove(value);
             }
         }

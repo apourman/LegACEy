@@ -22,7 +22,7 @@ namespace ACE.Server.WorldObjects
 
             if (worldObject.ProjectileTarget == null || worldObject.ProjectileTarget != target)
             {
-                //Console.WriteLine("Unintended projectile target! (should be " + ProjectileTarget.Guid.Full.ToString("X8") + " - " + ProjectileTarget.Name + ")");
+                //Console.WriteLine("Unintended projectile target! (should be " + ProjectileTarget.Guid.ToString() + " - " + ProjectileTarget.Name + ")");
                 OnCollideEnvironment(worldObject);
                 return;
             }

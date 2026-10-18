@@ -10,12 +10,12 @@ namespace ACE.Server.Network.GameEvent.Events
         public GameEventViewContents(Session session, Container container)
             : base(GameEventType.ViewContents, GameMessageGroup.UIQueue, session)
         {
-            Writer.Write(container.Guid.Full);
+            Writer.WriteGuid(container.Guid);
 
             Writer.Write((uint)container.Inventory.Count);
             foreach (var inv in container.Inventory.Values.OrderBy(x => x.PlacementPosition))
             {
-                Writer.Write(inv.Guid.Full);
+                Writer.WriteGuid(inv.Guid);
 
                 if (inv.WeenieType == WeenieType.Container)
                     Writer.Write((uint)ContainerType.Container);

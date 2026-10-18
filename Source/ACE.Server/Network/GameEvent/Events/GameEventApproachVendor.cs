@@ -11,7 +11,7 @@ namespace ACE.Server.Network.GameEvent.Events
         public GameEventApproachVendor(Session session, Vendor vendor, uint altCurrencySpent)
             : base(GameEventType.ApproachVendor, GameMessageGroup.UIQueue, session, 8192) // 5,376 is the average seen in retail pcaps, 15,272 is the max seen in retail pcaps
         {        
-            Writer.Write(vendor.Guid.Full);
+            Writer.WriteGuid(vendor.Guid);
 
             // the types of items vendor will purchase
             Writer.Write((uint)vendor.MerchandiseItemTypes);

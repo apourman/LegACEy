@@ -36,7 +36,7 @@ namespace ACE.Server.Tests.Market
         public void Channel_Deposit_FreezesWithStartMessage_ThenItemIsInVault()
         {
             var (player, item) = NewItem(null);
-            var guid = item.Guid.Full;
+            var guid = item.Guid.ClientGUID;
 
             using (ChannelSeconds(1))
             {
@@ -118,7 +118,7 @@ namespace ACE.Server.Tests.Market
         {
             var (player, item) = NewItem(i => i.Attuned = AttunedStatus.Attuned);
 
-            var result = StartDeposit(player, item.Guid.Full).Result;
+            var result = StartDeposit(player, item.Guid.ClientGUID).Result;
 
             Assert.IsNotNull(result, "the rules are checked before the channel starts");
             Assert.AreEqual(VaultOutcome.Attuned, result.Outcome, result.Message);
@@ -137,14 +137,14 @@ namespace ACE.Server.Tests.Market
 
             Player.UpdatePKTimers(attacker, player);
 
-            var result = StartDeposit(player, item.Guid.Full).Result;
+            var result = StartDeposit(player, item.Guid.ClientGUID).Result;
 
             Assert.IsNotNull(result);
             Assert.AreEqual(VaultOutcome.RecentPlayerFight, result.Outcome, result.Message);
             Assert.IsFalse(string.IsNullOrWhiteSpace(result.Message));
             Assert.IsFalse(player.IsVaultChannelling);
             Assert.IsFalse(player.IsFrozen ?? false);
-            Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full));
+            Assert.IsNotNull(player.GetInventoryItem(item.Guid.ClientGUID));
         }
 
         [TestMethod]
@@ -154,20 +154,20 @@ namespace ACE.Server.Tests.Market
             var second = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
 
             SetTrading(player, true);
-            Assert.AreEqual(VaultOutcome.Trading, StartDeposit(player, item.Guid.Full).Result?.Outcome);
+            Assert.AreEqual(VaultOutcome.Trading, StartDeposit(player, item.Guid.ClientGUID).Result?.Outcome);
             SetTrading(player, false);
 
             player.IsBusy = true;
-            Assert.AreEqual(VaultOutcome.Busy, StartDeposit(player, item.Guid.Full).Result?.Outcome);
+            Assert.AreEqual(VaultOutcome.Busy, StartDeposit(player, item.Guid.ClientGUID).Result?.Outcome);
             player.IsBusy = false;
             Assert.IsFalse(player.IsVaultChannelling);
 
             using (ChannelSeconds(30))
             {
-                var first = StartDeposit(player, item.Guid.Full);
+                var first = StartDeposit(player, item.Guid.ClientGUID);
                 Assert.IsTrue(player.IsVaultChannelling);
 
-                Assert.AreEqual(VaultOutcome.Channelling, StartDeposit(player, second.Guid.Full).Result?.Outcome);
+                Assert.AreEqual(VaultOutcome.Channelling, StartDeposit(player, second.Guid.ClientGUID).Result?.Outcome);
                 Assert.AreEqual(VaultOutcome.Channelling, StartWithdraw(player, 0x80000001).Result?.Outcome);
 
                 VaultTestWorld.OnWorldThread(() => VaultChannel.Cancel(player));
@@ -226,7 +226,7 @@ namespace ACE.Server.Tests.Market
 
             using (ChannelSeconds(2))
             {
-                var run = StartDeposit(player, item.Guid.Full);
+                var run = StartDeposit(player, item.Guid.ClientGUID);
 
                 VaultTestWorld.OnWorldThread(() => player.TakeDamage(monster, DamageType.Slash, 1, BodyPart.Chest));
 
@@ -260,8 +260,8 @@ namespace ACE.Server.Tests.Market
             VaultTestWorld.OnWorldThread(() => dropped = player.CalculateDeathItems(corpse));
 
             Assert.IsTrue(dropped.Any(d => d.Guid == item.Guid), "the item drops on the corpse");
-            Assert.IsNull(player.GetInventoryItem(item.Guid.Full));
-            Assert.IsNull(VaultStore.Get(item.Guid.Full));
+            Assert.IsNull(player.GetInventoryItem(item.Guid.ClientGUID));
+            Assert.IsNull(VaultStore.Get(item.Guid.ClientGUID));
         }
 
         [TestMethod]
@@ -270,7 +270,7 @@ namespace ACE.Server.Tests.Market
             var (player, item) = NewItem(null);
 
             SetChannelSeconds(2);
-            var run = StartDeposit(player, item.Guid.Full);
+            var run = StartDeposit(player, item.Guid.ClientGUID);
             Assert.IsTrue(player.IsVaultChannelling);
 
             VaultTestWorld.OnWorldThread(() => player.LogOut());
@@ -321,7 +321,7 @@ namespace ACE.Server.Tests.Market
 
             using (ChannelSeconds(30))
             {
-                var run = StartDeposit(player, item.Guid.Full);
+                var run = StartDeposit(player, item.Guid.ClientGUID);
                 Assert.IsTrue(player.IsVaultChannelling);
 
                 void AssertBlocked(string what, Action action)
@@ -332,30 +332,30 @@ namespace ACE.Server.Tests.Market
                 }
 
                 SetLastCombatMode(player, CombatMode.Melee);
-                AssertBlocked("melee", () => player.HandleActionTargetedMeleeAttack(other.Guid.Full, (uint)AttackHeight.Medium, 0.5f));
+                AssertBlocked("melee", () => player.HandleActionTargetedMeleeAttack(other.Guid.ClientGUID, (uint)AttackHeight.Medium, 0.5f));
                 Assert.IsNull(player.AttackHeight, "no melee attack was queued");
 
                 SetLastCombatMode(player, CombatMode.Missile);
-                AssertBlocked("missile", () => player.HandleActionTargetedMissileAttack(other.Guid.Full, (uint)AttackHeight.Medium, 0.5f));
+                AssertBlocked("missile", () => player.HandleActionTargetedMissileAttack(other.Guid.ClientGUID, (uint)AttackHeight.Medium, 0.5f));
 
                 SetLastCombatMode(player, CombatMode.Magic);
-                AssertBlocked("targeted casting", () => player.HandleActionCastTargetedSpell(other.Guid.Full, WeaknessOtherI));
+                AssertBlocked("targeted casting", () => player.HandleActionCastTargetedSpell(other.Guid.ClientGUID, WeaknessOtherI));
                 AssertBlocked("untargeted casting", () => player.HandleActionMagicCastUnTargetedSpell(WeaknessOtherI));
                 SetLastCombatMode(player, CombatMode.NonCombat);
 
-                AssertBlocked("using an item", () => player.HandleActionUseItem(item.Guid.Full));
-                AssertBlocked("using an item on a target", () => player.HandleActionUseWithTarget(item.Guid.Full, other.Guid.Full));
+                AssertBlocked("using an item", () => player.HandleActionUseItem(item.Guid.ClientGUID));
+                AssertBlocked("using an item on a target", () => player.HandleActionUseWithTarget(item.Guid.ClientGUID, other.Guid.ClientGUID));
 
-                AssertBlocked("opening a trade", () => player.HandleActionOpenTradeNegotiations(other.Guid.Full, true));
+                AssertBlocked("opening a trade", () => player.HandleActionOpenTradeNegotiations(other.Guid.ClientGUID, true));
                 Assert.IsFalse(player.IsTrading);
-                AssertBlocked("adding to a trade", () => player.HandleActionAddToTrade(item.Guid.Full, 0));
+                AssertBlocked("adding to a trade", () => player.HandleActionAddToTrade(item.Guid.ClientGUID, 0));
                 Assert.AreEqual(0, player.ItemsInTradeWindow.Count);
 
-                AssertBlocked("giving", () => player.HandleActionGiveObjectRequest(other.Guid.Full, item.Guid.Full, 1));
-                AssertBlocked("dropping", () => player.HandleActionDropItem(item.Guid.Full));
-                AssertBlocked("splitting a stack onto the ground", () => player.HandleActionStackableSplitTo3D(coins.Guid.Full, 1));
+                AssertBlocked("giving", () => player.HandleActionGiveObjectRequest(other.Guid.ClientGUID, item.Guid.ClientGUID, 1));
+                AssertBlocked("dropping", () => player.HandleActionDropItem(item.Guid.ClientGUID));
+                AssertBlocked("splitting a stack onto the ground", () => player.HandleActionStackableSplitTo3D(coins.Guid.ClientGUID, 1));
                 Assert.AreEqual(10, coins.StackSize, "no coins were dropped");
-                Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full), "the item wasn't given or dropped");
+                Assert.IsNotNull(player.GetInventoryItem(item.Guid.ClientGUID), "the item wasn't given or dropped");
 
                 AssertBlocked("the lifestone recall", () => player.HandleActionTeleToLifestone());
                 AssertBlocked("the marketplace recall", () => player.HandleActionTeleToMarketPlace());
@@ -394,7 +394,7 @@ namespace ACE.Server.Tests.Market
 
             VaultTestWorld.OnWorldThread(() => VaultChannel.Cancel(player));
             Assert.AreEqual(VaultOutcome.Interrupted, run.Wait().Outcome);
-            Assert.IsNotNull(player.GetInventoryItem(item.Guid.Full));
+            Assert.IsNotNull(player.GetInventoryItem(item.Guid.ClientGUID));
             ClearChannelSeconds();
         }
 
@@ -406,7 +406,7 @@ namespace ACE.Server.Tests.Market
 
             using (ChannelSeconds(1))
             {
-                var run = StartDeposit(player, item.Guid.Full);
+                var run = StartDeposit(player, item.Guid.ClientGUID);
                 Assert.AreEqual(VaultOutcome.Deposited, run.Wait().Outcome);
             }
 
@@ -420,7 +420,7 @@ namespace ACE.Server.Tests.Market
 
             using (ChannelSeconds(30))
             {
-                var run = StartDeposit(player, item.Guid.Full);
+                var run = StartDeposit(player, item.Guid.ClientGUID);
                 Assert.IsTrue(player.GetProperty(PropertyBool.IsFrozen) ?? false, "the freeze is a saved property");
 
                 // the server stops mid-channel after a save: the next login loads the saved biota
@@ -510,7 +510,7 @@ namespace ACE.Server.Tests.Market
             player.PlayerKillerStatus = PlayerKillerStatus.PK;
 
             SetChannelSeconds(seconds);
-            var run = StartDeposit(player, item.Guid.Full);
+            var run = StartDeposit(player, item.Guid.ClientGUID);
 
             Assert.IsTrue(player.IsVaultChannelling);
             return (player, item, run);
@@ -518,7 +518,7 @@ namespace ACE.Server.Tests.Market
 
         private static void AssertCancelledAndNothingMoved(Player player, WorldObject item, ChannelRun run)
         {
-            var guid = item.Guid.Full;
+            var guid = item.Guid.ClientGUID;
 
             VaultTestWorld.OnWorldThread(() => { }); // a cancel reports on the world thread's next turn
             Assert.IsNotNull(run.Result, "the channel was cancelled at once");

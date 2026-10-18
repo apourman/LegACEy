@@ -32,14 +32,14 @@ namespace ACE.Database
             return false;
         }
 
-        public static bool CanPurgeCharacter(uint characterId)
+        public static bool CanPurgeCharacter(ulong characterId)
         {
             using (var context = new ShardDbContext())
                 return CanPurgeCharacter(context, characterId);
         }*/
 
 
-        private static List<Biota> GetInventoryBiotas(ShardDbContext context, uint parentId, bool includedNestedItems)
+        private static List<Biota> GetInventoryBiotas(ShardDbContext context, ulong parentId, bool includedNestedItems)
         {
             var inventory = new List<Biota>();
 
@@ -63,7 +63,7 @@ namespace ACE.Database
             return inventory;
         }
 
-        private static List<uint> GetWieldedGuids(ShardDbContext context, uint parentId)
+        private static List<ulong> GetWieldedGuids(ShardDbContext context, ulong parentId)
         {
             return context.BiotaPropertiesIID
                 .Where(r => r.Type == (ushort)PropertyInstanceId.Wielder && r.Value == parentId)
@@ -73,7 +73,7 @@ namespace ACE.Database
         }
 
 
-        public static void PurgeCharacter(ShardDbContext context, uint characterId, out int charactersPurged, out int playerBiotasPurged, out int possessionsPurged, string reason = null)
+        public static void PurgeCharacter(ShardDbContext context, ulong characterId, out int charactersPurged, out int playerBiotasPurged, out int possessionsPurged, string reason = null)
         {
             charactersPurged = 0;
             playerBiotasPurged = 0;
@@ -143,7 +143,7 @@ namespace ACE.Database
             }
         }
 
-        public static void PurgeCharacter(uint characterId, out int charactersPurged, out int playerBiotasPurged, out int possessionsPurged, string reason = null)
+        public static void PurgeCharacter(ulong characterId, out int charactersPurged, out int playerBiotasPurged, out int possessionsPurged, string reason = null)
         {
             using (var context = new ShardDbContext())
                 PurgeCharacter(context, characterId, out charactersPurged, out playerBiotasPurged, out possessionsPurged, reason);
@@ -183,7 +183,7 @@ namespace ACE.Database
         }
 
 
-        public static void PurgePlayer(ShardDbContext context, uint playerId, out int charactersPurged, out int playerBiotasPurged, out int possessionsPurged, string reason = null)
+        public static void PurgePlayer(ShardDbContext context, ulong playerId, out int charactersPurged, out int playerBiotasPurged, out int possessionsPurged, string reason = null)
         {
             charactersPurged = 0;
             playerBiotasPurged = 0;
@@ -258,7 +258,7 @@ namespace ACE.Database
             }
         }
 
-        public static void PurgePlayer(uint playerId, out int charactersPurged, out int playerBiotasPurged, out int possessionsPurged, string reason = null)
+        public static void PurgePlayer(ulong playerId, out int charactersPurged, out int playerBiotasPurged, out int possessionsPurged, string reason = null)
         {
             using (var context = new ShardDbContext())
                 PurgePlayer(context, playerId, out charactersPurged, out playerBiotasPurged, out possessionsPurged, reason);
@@ -270,7 +270,7 @@ namespace ACE.Database
         //    WeenieType.Allegiance,
         //};
 
-        public static bool PurgeBiota(ShardDbContext context, uint id, string reason = null)
+        public static bool PurgeBiota(ShardDbContext context, ulong id, string reason = null)
         {
             var biota = context.Biota
                 .Include(r => r.BiotaPropertiesString)
@@ -321,7 +321,7 @@ namespace ACE.Database
             return false;
         }
 
-        public static bool PurgeBiota(uint id, string reason = null)
+        public static bool PurgeBiota(ulong id, string reason = null)
         {
             using (var context = new ShardDbContext())
                 return PurgeBiota(context, id, reason);
@@ -331,7 +331,7 @@ namespace ACE.Database
         /// The GUIDs of items held in the Vault. Empty if the market tables aren't installed, since nothing can be in escrow then.
         /// Any other failure is thrown, so the purge stops rather than deleting items it can't check.
         /// </summary>
-        private static HashSet<uint> GetVaultItemGuids(ShardDbContext context)
+        private static HashSet<ulong> GetVaultItemGuids(ShardDbContext context)
         {
             try
             {
@@ -341,7 +341,7 @@ namespace ACE.Database
             {
                 log.Warn($"[DATABASE][PURGE] market_vault_item not found, so no items are in escrow: {ex.Message}");
 
-                return new HashSet<uint>();
+                return new HashSet<ulong>();
             }
         }
 
@@ -349,12 +349,12 @@ namespace ACE.Database
         {
             int totalNumberOfBiotasPurged = 0;
 
-            HashSet<uint> playerBiotaIds = null;
-            HashSet<uint> characterIds = null;
+            HashSet<ulong> playerBiotaIds = null;
+            HashSet<ulong> characterIds = null;
 
-            Dictionary<uint, WeenieType> biotas = null;
-            Dictionary<uint, BiotaPropertiesIID> containerPointers = null;
-            Dictionary<uint, BiotaPropertiesIID> wielderPointers = null;
+            Dictionary<ulong, WeenieType> biotas = null;
+            Dictionary<ulong, BiotaPropertiesIID> containerPointers = null;
+            Dictionary<ulong, BiotaPropertiesIID> wielderPointers = null;
 
             // Purge characters that do not have an associated biota
             {
@@ -528,7 +528,7 @@ namespace ACE.Database
 
                 var vaultItemGuids = GetVaultItemGuids(context);
 
-                var results = new List<uint>();
+                var results = new List<ulong>();
 
                 foreach (var kvp in biotas)
                 {
@@ -569,10 +569,10 @@ namespace ACE.Database
 
                 var allegiances = query.ToDictionary(i => i.Id, i => i.MonarchId);
 
-                var uniqueMonarchs = new HashSet<uint>();
+                var uniqueMonarchs = new HashSet<ulong>();
 
-                var missingMonarchAllegiances = new List<uint>();
-                var duplicateAllegiances = new List<uint>();
+                var missingMonarchAllegiances = new List<ulong>();
+                var duplicateAllegiances = new List<ulong>();
 
                 foreach (var allegiance in allegiances)
                 {

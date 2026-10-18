@@ -125,7 +125,7 @@ namespace ACE.Server.Market
             var accountId = player.Character.AccountId;
             var vaultSize = (int)MarketSettings.Get(MarketSettings.VaultSize);
             var name = item.Name;
-            var vaultItem = NewVaultItem(item, accountId, player.Guid.Full);
+            var vaultItem = NewVaultItem(item, accountId, player.Guid.ClientGUID);
 
             // where the item is now, which the in-memory removal clears
             var containerId = item.ContainerId;
@@ -151,7 +151,7 @@ namespace ACE.Server.Market
             item.OwnerId = ownerId;
             item.PlacementPosition = placement;
 
-            inFlight.Add(player.Guid.Full);
+            inFlight.Add(player.Guid.ClientGUID);
 
             if (player.CurrentAppraisalTarget == itemGuid)
                 player.CurrentAppraisalTarget = null;
@@ -236,7 +236,7 @@ namespace ACE.Server.Market
             {
                 var item = items[index];
                 var (containerId, ownerId, placement) = (item.ContainerId, item.OwnerId, item.PlacementPosition);
-                var vaultItem = NewVaultItem(item, accountId, player.Guid.Full);
+                var vaultItem = NewVaultItem(item, accountId, player.Guid.ClientGUID);
                 SaveIfNew(item);
                 var escrowed = EscrowCopy(item);
 
@@ -255,13 +255,13 @@ namespace ACE.Server.Market
                 item.OwnerId = ownerId;
                 item.PlacementPosition = placement;
 
-                if (player.CurrentAppraisalTarget == item.Guid.Full)
+                if (player.CurrentAppraisalTarget == item.Guid.ClientGUID)
                     player.CurrentAppraisalTarget = null;
 
                 deposits.Add((escrowed, new ReaderWriterLockSlim(), vaultItem));
             }
 
-            inFlight.Add(player.Guid.Full);
+            inFlight.Add(player.Guid.ClientGUID);
 
             DatabaseManager.Shard.DepositManyToVault(deposits, (int)MarketSettings.Get(MarketSettings.VaultSize), result =>
             {
@@ -296,7 +296,7 @@ namespace ACE.Server.Market
 
         private static void OnDepositedMany(Player player, List<WorldObject> items, MarketJobResult result, IReadOnlyList<uint> itemGuids, Action<VaultResult> completed)
         {
-            inFlight.Remove(player.Guid.Full);
+            inFlight.Remove(player.Guid.ClientGUID);
 
             if (result == MarketJobResult.Saved)
             {
@@ -392,15 +392,15 @@ namespace ACE.Server.Market
             var accountId = player.Character.AccountId;
             var name = item.Name;
 
-            item.OwnerId = player.Guid.Full;
-            item.ContainerId = player.Guid.Full;
+            item.OwnerId = player.Guid.ClientGUID;
+            item.ContainerId = player.Guid.ClientGUID;
             item.PlacementPosition = 0;
 
-            inFlight.Add(player.Guid.Full);
+            inFlight.Add(player.Guid.ClientGUID);
 
             var ticket = ticketId == null ? null : new TicketCompletion(ticketId.Value, VaultMessages.WithdrawnByTicket(name, player.Name));
 
-            DatabaseManager.Shard.WithdrawFromVault(item.Biota, item.BiotaDatabaseLock, accountId, player.Guid.Full, row.RowVersion, result =>
+            DatabaseManager.Shard.WithdrawFromVault(item.Biota, item.BiotaDatabaseLock, accountId, player.Guid.ClientGUID, row.RowVersion, result =>
             {
                 // this runs on the save thread
                 WorldManager.EnqueueAction(new ActionEventDelegate(() => OnWithdrawn(player, item, name, result, completed, place)));
@@ -424,7 +424,7 @@ namespace ACE.Server.Market
             }
 
             // the player's other transfers wait until this batch's save is done, and that includes the reads below
-            inFlight.Add(player.Guid.Full);
+            inFlight.Add(player.Guid.ClientGUID);
 
             var accountId = player.Character.AccountId;
 
@@ -441,7 +441,7 @@ namespace ACE.Server.Market
                     log.Error($"[VAULT] Batch withdrawal of {itemGuids.Count} items for {player.Name} could not read the Vault: {ex}");
                     WorldManager.EnqueueAction(new ActionEventDelegate(() =>
                     {
-                        inFlight.Remove(player.Guid.Full);
+                        inFlight.Remove(player.Guid.ClientGUID);
                         FinishBatch(player, VaultOutcome.SaveFailed, null, itemGuids, completed);
                     }));
                 }
@@ -456,7 +456,7 @@ namespace ACE.Server.Market
             if (itemGuids.Count == 0 || itemGuids.Count > VaultChannelActions.PageSize || itemGuids.Distinct().Count() != itemGuids.Count)
                 return VaultOutcome.BadSelection;
 
-            if (inFlight.Contains(player.Guid.Full))
+            if (inFlight.Contains(player.Guid.ClientGUID))
                 return VaultOutcome.Busy;
 
             return VaultChannel.CheckStart(player);
@@ -484,7 +484,7 @@ namespace ACE.Server.Market
 
             if (refusal != null)
             {
-                inFlight.Remove(player.Guid.Full);
+                inFlight.Remove(player.Guid.ClientGUID);
                 FinishBatch(player, refusal.Value, refusedName, itemGuids, completed);
                 return;
             }
@@ -492,15 +492,15 @@ namespace ACE.Server.Market
             // the same in-memory move a single withdrawal makes: the item is the player's, and the save sets it in the pack
             foreach (var (_, item) in entries)
             {
-                item.OwnerId = player.Guid.Full;
-                item.ContainerId = player.Guid.Full;
+                item.OwnerId = player.Guid.ClientGUID;
+                item.ContainerId = player.Guid.ClientGUID;
                 item.PlacementPosition = 0;
             }
 
             var withdrawals = entries.Select(entry => (entry.Item.Biota, entry.Item.BiotaDatabaseLock, entry.Row.RowVersion)).ToList();
             var items = entries.Select(entry => entry.Item).ToList();
 
-            DatabaseManager.Shard.WithdrawManyFromVault(withdrawals, player.Character.AccountId, player.Guid.Full, result =>
+            DatabaseManager.Shard.WithdrawManyFromVault(withdrawals, player.Character.AccountId, player.Guid.ClientGUID, result =>
             {
                 // this runs on the save thread
                 WorldManager.EnqueueAction(new ActionEventDelegate(() => OnWithdrawnMany(player, items, result, itemGuids, completed, place)));
@@ -509,7 +509,7 @@ namespace ACE.Server.Market
 
         private static void OnWithdrawnMany(Player player, List<WorldObject> items, MarketJobResult result, IReadOnlyList<uint> itemGuids, Action<VaultResult> completed, PackPlace? place)
         {
-            inFlight.Remove(player.Guid.Full);
+            inFlight.Remove(player.Guid.ClientGUID);
 
             if (result != MarketJobResult.Saved)
             {
@@ -531,7 +531,7 @@ namespace ACE.Server.Market
                 if (!AddWithdrawnToPack(player, item, place is { } at ? at with { Position = at.Position + index } : null))
                 {
                     atLogin++;
-                    log.Warn($"[VAULT] Withdrawn {item.Name} (0x{item.Guid.Full:X8}) for {player.Name} could not be added to the pack; the database has it in the pack for the next login");
+                    log.Warn($"[VAULT] Withdrawn {item.Name} (0x{item.Guid}) for {player.Name} could not be added to the pack; the database has it in the pack for the next login");
                 }
             }
 
@@ -560,7 +560,7 @@ namespace ACE.Server.Market
             || player.TryCreateInInventoryWithNetworking(item);
 
         private static Container PackAt(Player player, uint guid) =>
-            guid == player.Guid.Full ? player : player.Inventory.TryGetValue(new ObjectGuid(guid), out var item) ? item as Container : null;
+            guid == player.Guid.ClientGUID ? player : player.Inventory.TryGetValue(player.ResolveGuid(guid), out var item) ? item as Container : null;
 
         /// <summary>
         /// Every deposit refusal rule, in order, without changing anything. Null if the item can go in the Vault.
@@ -587,10 +587,10 @@ namespace ACE.Server.Market
             if (!Available)
                 return VaultOutcome.NotAvailable;
 
-            if (inFlight.Contains(player.Guid.Full))
+            if (inFlight.Contains(player.Guid.ClientGUID))
                 return VaultOutcome.Busy;
 
-            var guid = new ObjectGuid(itemGuid);
+            var guid = player.ResolveGuid(itemGuid);
 
             if (player.EquippedObjects.TryGetValue(guid, out item))
                 return VaultOutcome.Worn;
@@ -710,7 +710,7 @@ namespace ACE.Server.Market
             if (!Available)
                 return VaultOutcome.NotAvailable;
 
-            if (inFlight.Contains(player.Guid.Full))
+            if (inFlight.Contains(player.Guid.ClientGUID))
                 return VaultOutcome.Busy;
 
             row = VaultStore.Get(itemGuid);
@@ -765,7 +765,7 @@ namespace ACE.Server.Market
 
         private static void OnDeposited(Player player, WorldObject item, string name, MarketJobResult result, Action<VaultResult> completed)
         {
-            inFlight.Remove(player.Guid.Full);
+            inFlight.Remove(player.Guid.ClientGUID);
 
             if (result == MarketJobResult.Saved)
             {
@@ -776,20 +776,20 @@ namespace ACE.Server.Market
                 item.OwnerId = null;
                 item.PlacementPosition = null;
 
-                Finish(player, VaultOutcome.Deposited, name, item.Guid.Full, completed);
+                Finish(player, VaultOutcome.Deposited, name, item.Guid.ClientGUID, completed);
                 return;
             }
 
             if (result == MarketJobResult.Unknown)
             {
                 // the database has the item either in the pack or in the Vault; putting it back here could make a second copy, so the next login shows which
-                log.Error($"[VAULT] Deposit of {name} (0x{item.Guid.Full:X8}) for {player.Name} may or may not have been saved; the object is dropped and the database decides at the next login");
+                log.Error($"[VAULT] Deposit of {name} (0x{item.Guid}) for {player.Name} may or may not have been saved; the object is dropped and the database decides at the next login");
                 player.SendRemovedForVault(item);
-                Finish(player, VaultOutcome.Unconfirmed, name, item.Guid.Full, completed);
+                Finish(player, VaultOutcome.Unconfirmed, name, item.Guid.ClientGUID, completed);
                 return;
             }
 
-            log.Warn($"[VAULT] Deposit of {name} (0x{item.Guid.Full:X8}) for {player.Name} failed ({result}); nothing was saved");
+            log.Warn($"[VAULT] Deposit of {name} (0x{item.Guid}) for {player.Name} failed ({result}); nothing was saved");
 
             // the job refuses without saving when the Vault filled up meanwhile (another character of the account, or the setting was lowered)
             var outcome = VaultOutcome.SaveFailed;
@@ -808,7 +808,7 @@ namespace ACE.Server.Market
             if (!player.IsLoggingOut)
                 ReturnToPack(player, item, name);
 
-            Finish(player, outcome, name, item.Guid.Full, completed);
+            Finish(player, outcome, name, item.Guid.ClientGUID, completed);
         }
 
         /// <summary>
@@ -817,27 +817,27 @@ namespace ACE.Server.Market
         /// </summary>
         private static void ReturnToPack(Player player, WorldObject item, string name)
         {
-            if (player.TryReturnFromVault(item, item.ContainerId ?? 0, item.PlacementPosition ?? 0))
+            if (player.TryReturnFromVault(item, (uint)(item.ContainerId ?? 0), item.PlacementPosition ?? 0))
                 return;
 
             player.SendRemovedForVault(item);
 
             if (!player.TryCreateInInventoryWithNetworking(item))
-                log.Warn($"[VAULT] Deposit of {name} (0x{item.Guid.Full:X8}) for {player.Name} failed and the pack has no room for it; the database has it in the pack for the next login");
+                log.Warn($"[VAULT] Deposit of {name} (0x{item.Guid}) for {player.Name} failed and the pack has no room for it; the database has it in the pack for the next login");
         }
 
         private static void OnWithdrawn(Player player, WorldObject item, string name, MarketJobResult result, Action<VaultResult> completed, PackPlace? place)
         {
-            inFlight.Remove(player.Guid.Full);
+            inFlight.Remove(player.Guid.ClientGUID);
 
             if (result != MarketJobResult.Saved)
             {
                 // The object was never added anywhere: forget it. After a failure the Vault row is still there.
                 // After Unknown the item is either still in the Vault or already in this character's pack in the database, and the next login shows which.
                 if (result == MarketJobResult.Unknown)
-                    log.Error($"[VAULT] Withdrawal of {name} (0x{item.Guid.Full:X8}) for {player.Name} may or may not have been saved; the database decides at the next login");
+                    log.Error($"[VAULT] Withdrawal of {name} (0x{item.Guid}) for {player.Name} may or may not have been saved; the database decides at the next login");
 
-                Finish(player, FailedOutcome(result), name, item.Guid.Full, completed);
+                Finish(player, FailedOutcome(result), name, item.Guid.ClientGUID, completed);
                 return;
             }
 
@@ -845,9 +845,9 @@ namespace ACE.Server.Market
             var inPack = AddWithdrawnToPack(player, item, place);
 
             if (!inPack)
-                log.Warn($"[VAULT] Withdrawn {name} (0x{item.Guid.Full:X8}) for {player.Name} could not be added to the pack; the database has it in the pack for the next login");
+                log.Warn($"[VAULT] Withdrawn {name} (0x{item.Guid}) for {player.Name} could not be added to the pack; the database has it in the pack for the next login");
 
-            Finish(player, inPack ? VaultOutcome.Withdrawn : VaultOutcome.WithdrawnAtLogin, name, item.Guid.Full, completed);
+            Finish(player, inPack ? VaultOutcome.Withdrawn : VaultOutcome.WithdrawnAtLogin, name, item.Guid.ClientGUID, completed);
         }
 
         /// <summary>
@@ -886,7 +886,7 @@ namespace ACE.Server.Market
         {
             return new VaultItem
             {
-                ItemGuid = item.Guid.Full,
+                ItemGuid = item.Guid.ClientGUID,
                 AccountId = accountId,
                 CharacterId = characterId,
                 State = VaultItemState.Held,

@@ -51,6 +51,31 @@ namespace ACE.Server.Entity
         public LandblockId Id { get; }
 
         /// <summary>
+        /// The landblock copy this is. 0 is the base world.
+        /// A 32-bit guid from the client, or from a 32-bit reference, names a static in this copy.
+        /// </summary>
+        public uint Instance { get; internal set; }
+
+        /// <summary>
+        /// An ephemeral copy loads no persisted objects, never saves, and destroys everything but players when it unloads
+        /// </summary>
+        public bool IsEphemeral => Position.IsEphemeralInstance(Instance);
+
+        private int queuedForUnload;
+
+        private static int loggedStaticLookupWithoutInstance;
+
+        /// <summary>
+        /// True for the first caller only, so a landblock is in the destruction queue at most once. A Landblock is never reloaded after it unloads.
+        /// </summary>
+        public bool TryQueueForUnload() => Interlocked.Exchange(ref queuedForUnload, 1) == 0;
+
+        /// <summary>
+        /// The instance a new position in this copy carries
+        /// </summary>
+        public uint? PositionInstance => Position.InstanceOrNull(Instance);
+
+        /// <summary>
         /// Flag indicates if this landblock is permanently loaded (for example, towns on high-traffic servers)
         /// </summary>
         public bool Permaload = false;
@@ -165,11 +190,12 @@ namespace ACE.Server.Entity
         }
 
 
-        public Landblock(LandblockId id)
+        public Landblock(LandblockId id, uint instance)
         {
             //log.DebugFormat("Landblock({0:X8})", (id.Raw | 0xFFFF));
 
             Id = id;
+            Instance = instance;
 
             CellLandblock = DatManager.CellDat.ReadFromDat<CellLandblock>(Id.Raw | 0xFFFF);
             LandblockInfo = DatManager.CellDat.ReadFromDat<LandblockInfo>((uint)Id.Landblock << 16 | 0xFFFE);
@@ -177,7 +203,7 @@ namespace ACE.Server.Entity
             lastActiveTime = DateTime.UtcNow;
 
             var cellLandblock = DBObj.GetCellLandblock(Id.Raw | 0xFFFF);
-            PhysicsLandblock = new Physics.Common.Landblock(cellLandblock);
+            PhysicsLandblock = new Physics.Common.Landblock(cellLandblock, instance);
         }
 
         public void Init(bool reload = false)
@@ -204,8 +230,8 @@ namespace ACE.Server.Entity
         private void CreateWorldObjects()
         {
             var objects = DatabaseManager.World.GetCachedInstancesByLandblock(Id.Landblock);
-            var shardObjects = DatabaseManager.Shard.BaseDatabase.GetStaticObjectsByLandblock(Id.Landblock);
-            var factoryObjects = WorldObjectFactory.CreateNewWorldObjects(objects, shardObjects);
+            var shardObjects = IsEphemeral ? new List<ACE.Database.Models.Shard.Biota>() : DatabaseManager.Shard.BaseDatabase.GetStaticObjectsByLandblock(Id.Landblock, Instance);
+            var factoryObjects = WorldObjectFactory.CreateNewWorldObjects(objects, shardObjects, Instance);
 
             actionQueue.EnqueueAction(new ActionEventDelegate(() =>
             {
@@ -252,7 +278,10 @@ namespace ACE.Server.Entity
         /// </summary>
         private void SpawnDynamicShardObjects()
         {
-            var dynamics = DatabaseManager.Shard.BaseDatabase.GetDynamicObjectsByLandblock(Id.Landblock);
+            if (IsEphemeral)
+                return;
+
+            var dynamics = DatabaseManager.Shard.BaseDatabase.GetDynamicObjectsByLandblock(Id.Landblock, Instance);
             var factoryShardObjects = WorldObjectFactory.CreateWorldObjects(dynamics);
 
             actionQueue.EnqueueAction(new ActionEventDelegate(() =>
@@ -289,9 +318,9 @@ namespace ACE.Server.Entity
 
                     pos.Frame.Origin.Z = PhysicsLandblock.GetZ(pos.Frame.Origin);
 
-                    wo.Location = new Position(pos.ObjCellID, pos.Frame.Origin, pos.Frame.Orientation);
+                    wo.Location = new Position(pos.ObjCellID, pos.Frame.Origin, pos.Frame.Orientation) { Instance = PositionInstance };
 
-                    var sortCell = LScape.get_landcell(pos.ObjCellID) as SortCell;
+                    var sortCell = LScape.get_landcell(pos.ObjCellID, Instance) as SortCell;
                     if (sortCell != null && sortCell.has_building())
                     {
                         wo.Destroy();
@@ -861,10 +890,15 @@ namespace ACE.Server.Entity
 
             wo.CurrentLandblock = this;
 
+            // an object is in the copy that holds it
+            wo.Location.Instance = PositionInstance;
+
             if (wo.PhysicsObj == null)
                 wo.InitPhysicsObj();
             else
                 wo.PhysicsObj.set_object_guid(wo.Guid);  // re-add to ServerObjectManager
+
+            wo.PhysicsObj.Instance = Instance;
 
             if (wo.PhysicsObj.CurCell == null)
             {
@@ -962,7 +996,7 @@ namespace ACE.Server.Entity
             else if (!pendingAdditions.Remove(objectId, out wo))
             {
                 if (showError)
-                    log.Warn($"RemoveWorldObjectInternal: Couldn't find {objectId.Full:X8}");
+                    log.Warn($"RemoveWorldObjectInternal: Couldn't find {objectId}");
                 return;
             }
 
@@ -1032,9 +1066,20 @@ namespace ACE.Server.Entity
             return worldObjects.Values.ToList();
         }
 
-        public WorldObject GetObject(uint objectId)
+        /// <summary>
+        /// Looks up a 32-bit client guid in this landblock copy
+        /// </summary>
+        public WorldObject GetObject(uint clientGuid)
         {
-            return GetObject(new ObjectGuid(objectId));
+            return GetObject(new ObjectGuid(clientGuid, Instance));
+        }
+
+        /// <summary>
+        /// Looks up a stored 64-bit id (an IID value or a biota id), which already names its landblock copy
+        /// </summary>
+        public WorldObject GetObject(ulong id)
+        {
+            return GetObject(new ObjectGuid(id));
         }
 
         /// <summary>
@@ -1042,6 +1087,10 @@ namespace ACE.Server.Entity
         /// </summary>
         public WorldObject GetObject(ObjectGuid guid, bool searchAdjacents = true)
         {
+            // a static in a copy always carries the copy's instance; one without it means a lookup dropped it, which is a bug to fix
+            if (Instance != 0 && guid.IsStatic() && guid.Instance == 0 && Interlocked.Exchange(ref loggedStaticLookupWithoutInstance, 1) == 0)
+                log.Error($"[INSTANCE] static {guid} was looked up in copy 0x{Instance:X8} without an instance. Logged once.{System.Environment.NewLine}{System.Environment.StackTrace}");
+
             if (pendingRemovals.Contains(guid))
                 return null;
 
@@ -1065,9 +1114,9 @@ namespace ACE.Server.Entity
             return null;
         }
 
-        public WorldObject GetWieldedObject(uint objectGuid, bool searchAdjacents = true)
+        public WorldObject GetWieldedObject(uint clientGuid, bool searchAdjacents = true)
         {
-            return GetWieldedObject(new ObjectGuid(objectGuid), searchAdjacents); // todo fix
+            return GetWieldedObject(new ObjectGuid(clientGuid, Instance), searchAdjacents);
         }
 
         /// <summary>
@@ -1140,7 +1189,7 @@ namespace ACE.Server.Entity
             // remove all objects
             foreach (var wo in worldObjects.ToList())
             {
-                if (!wo.Value.BiotaOriginatedFromOrHasBeenSavedToDatabase())
+                if (!wo.Value.BiotaOriginatedFromOrHasBeenSavedToDatabase() || (IsEphemeral && !(wo.Value is Player)))
                     wo.Value.Destroy(false, true);
                 else
                     RemoveWorldObjectInternal(wo.Key);
@@ -1151,7 +1200,7 @@ namespace ACE.Server.Entity
             actionQueue.Clear();
 
             // remove physics landblock
-            LScape.unload_landblock(landblockID);
+            LScape.unload_landblock(landblockID, Instance);
 
             PhysicsLandblock.release_shadow_objs();
         }
@@ -1176,8 +1225,11 @@ namespace ACE.Server.Entity
             actionQueue.Clear();
         }
 
-        private void SaveDB()
+        internal void SaveDB()
         {
+            if (IsEphemeral)
+                return;
+
             var biotas = new Collection<(Biota biota, ReaderWriterLockSlim rwLock)>();
 
             foreach (var wo in worldObjects.Values)

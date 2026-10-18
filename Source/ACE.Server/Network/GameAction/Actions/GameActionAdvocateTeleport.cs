@@ -23,8 +23,11 @@ namespace ACE.Server.Network.GameAction.Actions
             //Console.WriteLine($"Handle minimap teleport");
             //Console.WriteLine($"Client sent position: {position}");
 
+            // a client position has no instance: the minimap names a place in the sender's landblock copy
+            position.Instance = session.Player.Location.Instance;
+
             // Check if water block
-            var landblock = LScape.get_landblock(position.LandblockId.Raw);
+            var landblock = LScape.get_landblock(position.LandblockId.Raw, position.Instance ?? 0);
             if (landblock.WaterType == LandDefs.WaterType.EntirelyWater)
             {
                 ChatPacket.SendServerMessage(session, $"Landblock 0x{position.LandblockId.Landblock:X4} is entirely filled with water, and is impassable", ChatMessageType.Broadcast);

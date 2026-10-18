@@ -650,6 +650,8 @@ namespace ACE.Entity.Enum.Properties
         VisualClothingPriority                   = 9013,
         SquelchGlobal                            = 9014,
         InventoryOrder                           = 9015,
+        // The realm a character's recalls go to (0..0x7FFF). 0 is the base world.
+        HomeRealm                                = 9016,
     }
 
     public static class PropertyIntExtensions

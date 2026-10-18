@@ -312,15 +312,19 @@ namespace ACE.Database.Tests.Market
                 "SELECT CONCAT(TRIGGER_NAME, '|', EVENT_OBJECT_TABLE, '|', EVENT_MANIPULATION, '|', ACTION_TIMING) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE();");
             CollectionAssert.AreEquivalent(ExpectedTriggers, triggers, "triggers: " + string.Join(", ", triggers));
 
-            // spec style: int unsigned for GUIDs and account ids, bigint for MMD and market ids, datetime(6) for times
+            // spec style: biota.id's type for item GUIDs, int unsigned for account and character ids, bigint for MMD and market ids, datetime(6) for times
             var columns = MarketTestDatabase.Rows(database,
                 "SELECT CONCAT(TABLE_NAME, '.', COLUMN_NAME, '|', COLUMN_TYPE) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'market%';");
+            var biotaIdType = MarketTestDatabase.Rows(database, "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'biota' AND COLUMN_NAME = 'id';")[0];
             foreach (var column in columns)
             {
                 var name = column.Split('|')[0];
                 var type = column.Split('|')[1];
 
-                if (name.EndsWith("_Guid") || name.EndsWith("Account_Id") || name.EndsWith(".account_Id") || name.EndsWith("Character_Id") || name.EndsWith(".character_Id"))
+                // item guids follow biota.id, which the instancing update widens to 64 bits
+                if (name.EndsWith("_Guid"))
+                    Assert.AreEqual(biotaIdType, type, name);
+                else if (name.EndsWith("Account_Id") || name.EndsWith(".account_Id") || name.EndsWith("Character_Id") || name.EndsWith(".character_Id"))
                     Assert.AreEqual("int unsigned", type, name);
                 if (name.EndsWith("_Time"))
                     Assert.AreEqual("datetime(6)", type, name);

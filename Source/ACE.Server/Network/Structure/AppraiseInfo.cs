@@ -1,3 +1,4 @@
+using ACE.Entity;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -355,7 +356,8 @@ namespace ACE.Server.Network.Structure
             PropertiesFloat = wo.GetAllPropertyFloatWhere(AssessmentProperties.PropertiesDouble);
             PropertiesString = wo.GetAllPropertyStringWhere(AssessmentProperties.PropertiesString);
             PropertiesDID = wo.GetAllPropertyDataIdWhere(AssessmentProperties.PropertiesDataId);
-            PropertiesIID = wo.GetAllPropertyInstanceIdWhere(AssessmentProperties.PropertiesInstanceId);
+            // the client sees client guids
+            PropertiesIID = wo.GetAllPropertyInstanceIdWhere(AssessmentProperties.PropertiesInstanceId).ToDictionary(p => p.Key, p => new ObjectGuid(p.Value).ClientGUID);
 
             if (wo is Player player)
             {

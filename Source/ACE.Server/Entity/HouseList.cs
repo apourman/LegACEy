@@ -49,7 +49,7 @@ namespace ACE.Server.Entity
             Console.WriteLine($"Total houses: {AllHouses.Count}");
         }
 
-        public static HashSet<uint> GetHousesOwned()
+        public static HashSet<ulong> GetHousesOwned()
         {
             // select * from biota where weenie_Type=53;
 
@@ -58,7 +58,7 @@ namespace ACE.Server.Entity
             Console.WriteLine($"Owned houses: {housesOwned.Count}");
 
             // build owned hashset
-            var owned = new HashSet<uint>();
+            var owned = new HashSet<ulong>();
 
             foreach (var house in housesOwned)
             {
@@ -72,7 +72,7 @@ namespace ACE.Server.Entity
             return owned;
         }
 
-        public static void BuildAvailable(HashSet<uint> housesOwned)
+        public static void BuildAvailable(HashSet<ulong> housesOwned)
         {
             Available = new Dictionary<HouseType, List<HouseListResults>>();
             Available.Add(HouseType.Apartment, new List<HouseListResults>());
@@ -97,31 +97,37 @@ namespace ACE.Server.Entity
             return Available[houseType].Select(i => i.LandblockInstance.ObjCellId | 0x0001).ToList();
         }
 
+        /// <summary>
+        /// True if the cached available list covers this slumlord.
+        /// ponytail: the list is the base world's; a realm copy's purchase or eviction leaves it alone
+        /// </summary>
+        private static bool TracksAvailability(SlumLord slumLord) => Available != null && slumLord.Guid.Instance == 0;
+
         public static void RemoveFromAvailable(SlumLord slumLord, House houseToRemove)
         {
-            if (Available == null) return; // no results cached, move on.
+            if (!TracksAvailability(slumLord)) return;
 
             var houseType = slumLord.House?.HouseType ?? houseToRemove.HouseType;
 
-            var house = Available[houseType].FirstOrDefault(i => i.LandblockInstance.Guid == slumLord.Guid.Full);
+            var house = Available[houseType].FirstOrDefault(i => i.LandblockInstance.Guid == slumLord.Guid.ClientGUID);
             if (house != null)
                 Available[houseType].Remove(house);
         }
 
         public static void AddToAvailable(SlumLord slumLord, House houseToAdd)
         {
-            if (Available == null) return; // no results cached, move on.
+            if (!TracksAvailability(slumLord)) return;
 
             var houseType = slumLord.House?.HouseType ?? houseToAdd.HouseType;
 
-            var house = Available[houseType].FirstOrDefault(i => i.LandblockInstance.Guid == slumLord.Guid.Full);
+            var house = Available[houseType].FirstOrDefault(i => i.LandblockInstance.Guid == slumLord.Guid.ClientGUID);
             if (house != null)
                 Available[houseType].Remove(house);
 
             var weenie = DatabaseManager.World.GetWeenie(slumLord.WeenieClassId);
-            //var landblockInstance = slumLord.House.LinkedInstances.FirstOrDefault(i => i.Guid == slumLord.Guid.Full);
-            var landblockInstance = slumLord.House?.LinkedInstances.FirstOrDefault(i => i.Guid == slumLord.Guid.Full) ?? houseToAdd.LinkedInstances.FirstOrDefault(i => i.Guid == slumLord.Guid.Full);
-            //var landblockInstance = houseToAdd.LinkedInstances.FirstOrDefault(i => i.Guid == slumLord.Guid.Full);
+            //var landblockInstance = slumLord.House.LinkedInstances.FirstOrDefault(i => i.Guid == slumLord.Guid.ClientGUID);
+            var landblockInstance = slumLord.House?.LinkedInstances.FirstOrDefault(i => i.Guid == slumLord.Guid.ClientGUID) ?? houseToAdd.LinkedInstances.FirstOrDefault(i => i.Guid == slumLord.Guid.ClientGUID);
+            //var landblockInstance = houseToAdd.LinkedInstances.FirstOrDefault(i => i.Guid == slumLord.Guid.ClientGUID);
 
             if (weenie == null || landblockInstance == null) return;
 

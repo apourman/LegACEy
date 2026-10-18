@@ -28,6 +28,7 @@ using ACE.Server.Network;
 using ACE.Server.Network.GameEvent.Events;
 using ACE.Server.Network.GameMessages.Messages;
 using ACE.Server.Network.Structure;
+using ACE.Server.Realms;
 using ACE.Server.WorldObjects;
 using ACE.Server.WorldObjects.Entity;
 
@@ -110,7 +111,7 @@ namespace ACE.Server.Command.Handlers
                 return;
             }
 
-            var wo = session.Player.FindObject(objectId.Full, Player.SearchLocations.Everywhere, out _, out Container rootOwner, out bool wasEquipped);
+            var wo = session.Player.FindObject(objectId, Player.SearchLocations.Everywhere, out _, out Container rootOwner, out bool wasEquipped);
 
             if (wo == null)
             {
@@ -446,7 +447,7 @@ namespace ACE.Server.Command.Handlers
         {
             // @myiid - Displays your Instance ID(IID).
 
-            session.Network.EnqueueSend(new GameMessageSystemChat($"GUID: {session.Player.Guid.Full}  - Low: {session.Player.Guid.Low} - High: {session.Player.Guid.High} - (0x{session.Player.Guid.Full:X})", ChatMessageType.Broadcast));
+            session.Network.EnqueueSend(new GameMessageSystemChat($"GUID: {session.Player.Guid.ClientGUID}  - Low: {session.Player.Guid.Low} - High: {session.Player.Guid.High} - (0x{session.Player.Guid})", ChatMessageType.Broadcast));
         }
 
         // myserver
@@ -556,11 +557,11 @@ namespace ACE.Server.Command.Handlers
             if (session.Player.HealthQueryTarget.HasValue || session.Player.ManaQueryTarget.HasValue || session.Player.CurrentAppraisalTarget.HasValue)
             {
                 if (session.Player.HealthQueryTarget.HasValue)
-                    objectId = new ObjectGuid((uint)session.Player.HealthQueryTarget);
+                    objectId = new ObjectGuid(session.Player.HealthQueryTarget.Value);
                 else if (session.Player.ManaQueryTarget.HasValue)
-                    objectId = new ObjectGuid((uint)session.Player.ManaQueryTarget);
+                    objectId = new ObjectGuid(session.Player.ManaQueryTarget.Value);
                 else
-                    objectId = new ObjectGuid((uint)session.Player.CurrentAppraisalTarget);
+                    objectId = new ObjectGuid(session.Player.CurrentAppraisalTarget.Value);
 
                 var wo = session.Player.CurrentLandblock?.GetObject(objectId);
 
@@ -760,7 +761,7 @@ namespace ACE.Server.Command.Handlers
             {
                 if (session.Player.HealthQueryTarget.HasValue) // Only Creatures will trigger this.. Excludes vendors automatically as a result (Can change design to mimic @delete command)
                 {
-                    var objectId = new ObjectGuid((uint)session.Player.HealthQueryTarget);
+                    var objectId = new ObjectGuid(session.Player.HealthQueryTarget.Value);
 
                     var wo = session.Player.CurrentLandblock?.GetObject(objectId) as Creature;
 
@@ -902,7 +903,7 @@ namespace ACE.Server.Command.Handlers
                     return;
                 }
                 var weenie = DatabaseManager.World.GetCachedWeenie(teleportPOI.WeenieClassId);
-                var portalDest = new Position(weenie.GetPosition(PositionType.Destination));
+                var portalDest = RealmPolicy.TeleportDestination(weenie.GetPosition(PositionType.Destination), session.Player.Location.Instance);
                 WorldObject.AdjustDungeon(portalDest);
                 session.Player.Teleport(portalDest);
             }
@@ -920,35 +921,11 @@ namespace ACE.Server.Command.Handlers
         {
             try
             {
-                uint cell;
+                var destination = ParseLOC(parameters);
+                if (destination == null)
+                    return;
 
-                if (parameters[0].StartsWith("0x"))
-                {
-                    string strippedcell = parameters[0].Substring(2);
-                    cell = (uint)int.Parse(strippedcell, System.Globalization.NumberStyles.HexNumber);
-                }
-                else
-                    cell = (uint)int.Parse(parameters[0], System.Globalization.NumberStyles.HexNumber);
-
-                var positionData = new float[7];
-                for (uint i = 0u; i < 7u; i++)
-                {
-                    if (i > 2 && parameters.Length < 8)
-                    {
-                        positionData[3] = 1;
-                        positionData[4] = 0;
-                        positionData[5] = 0;
-                        positionData[6] = 0;
-                        break;
-                    }
-
-                    if (!float.TryParse(parameters[i + 1].Trim(new Char[] { ' ', '[', ']' }), out var position))
-                        return;
-
-                    positionData[i] = position;
-                }
-
-                session.Player.Teleport(new Position(cell, positionData[0], positionData[1], positionData[2], positionData[4], positionData[5], positionData[6], positionData[3]));
+                session.Player.Teleport(RealmPolicy.TeleportDestination(destination, session.Player.Location.Instance));
             }
             catch (Exception)
             {
@@ -959,6 +936,269 @@ namespace ACE.Server.Command.Handlers
                 ChatPacket.SendServerMessage(session, "Example: @teleloc 0x7F0401AD 12.319900 -28.482000 0.005000 -0.338946 0.000000 0.000000 -0.940806", ChatMessageType.Broadcast);
                 ChatPacket.SendServerMessage(session, "Example: @teleloc 7F0401AD 12.319900 -28.482000 0.005000", ChatMessageType.Broadcast);
             }
+        }
+
+        /// <summary>
+        /// Parses a location as @loc prints it: cell [x y z] (qw qx qy qz). Returns null if a number doesn't parse, and throws if parameters are missing.
+        /// </summary>
+        private static Position ParseLOC(string[] parameters)
+        {
+            uint cell;
+
+            if (parameters[0].StartsWith("0x"))
+            {
+                string strippedcell = parameters[0].Substring(2);
+                cell = (uint)int.Parse(strippedcell, System.Globalization.NumberStyles.HexNumber);
+            }
+            else
+                cell = (uint)int.Parse(parameters[0], System.Globalization.NumberStyles.HexNumber);
+
+            var positionData = new float[7];
+            for (uint i = 0u; i < 7u; i++)
+            {
+                if (i > 2 && parameters.Length < 8)
+                {
+                    positionData[3] = 1;
+                    positionData[4] = 0;
+                    positionData[5] = 0;
+                    positionData[6] = 0;
+                    break;
+                }
+
+                if (!float.TryParse(parameters[i + 1].Trim(new Char[] { ' ', '[', ']' }), out var position))
+                    return null;
+
+                positionData[i] = position;
+            }
+
+            return new Position(cell, positionData[0], positionData[1], positionData[2], positionData[4], positionData[5], positionData[6], positionData[3]);
+        }
+
+        /// <summary>Tells the player why they may not enter a realm, and returns false, unless RealmPolicy allows it</summary>
+        private static bool MayEnterRealm(Session session, ushort realmId, bool ephemeral)
+        {
+            if (RealmPolicy.CanEnter(session.Player, realmId, ephemeral))
+                return true;
+
+            ChatPacket.SendServerMessage(session, $"You may not enter realm {realmId}. Only admins may enter other realms.", ChatMessageType.Broadcast);
+            return false;
+        }
+
+        // teleinstance instance [cell x y z (qw qx qy qz)]
+        [CommandHandler("teleinstance", AccessLevel.Developer, CommandHandlerFlag.RequiresWorld, 1,
+            "Teleport yourself into a landblock copy, loading the copy if it isn't loaded.",
+            "instance [cell [x y z] (qw qx qy qz)]\n" +
+            "The instance is [ephemeral:1 | realm:15][short instance:16], in hex with 0x or in decimal. 0 is the base world.\n" +
+            "Without a location, you go to the same place in the other copy. The location follows the @loc order.\n" +
+            "Example: @teleinstance 0x00010000\n" +
+            "Example: @teleinstance 0x80010001 0x7F0401AD [12.319900 -28.482000 0.005000] -0.338946 0.000000 0.000000 -0.940806")]
+        public static void HandleTeleportInstance(Session session, params string[] parameters)
+        {
+            var instanceParam = parameters[0];
+            var isHex = instanceParam.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
+
+            if (!uint.TryParse(isHex ? instanceParam.Substring(2) : instanceParam, isHex ? System.Globalization.NumberStyles.HexNumber : System.Globalization.NumberStyles.None, null, out var instance))
+            {
+                ChatPacket.SendServerMessage(session, $"{instanceParam} isn't an instance id. Usage: @teleinstance instance [cell [x y z] (qw qx qy qz)]", ChatMessageType.Broadcast);
+                return;
+            }
+
+            Position destination;
+            try
+            {
+                destination = parameters.Length > 1 ? ParseLOC(parameters[1..]) : new Position(session.Player.Location);
+            }
+            catch (Exception)
+            {
+                destination = null;
+            }
+
+            if (destination == null)
+            {
+                ChatPacket.SendServerMessage(session, "Invalid location for @teleinstance. It follows the @loc order: cell [x y z] (qw qx qy qz)", ChatMessageType.Broadcast);
+                return;
+            }
+
+            Position.ParseInstanceID(instance, out var isEphemeral, out var realmId, out var shortInstance);
+            if (!MayEnterRealm(session, realmId, isEphemeral))
+                return;
+
+            // an ephemeral copy exists only while it is live; a destroyed one's id may already belong to another copy
+            if (isEphemeral && !EphemeralInstances.IsLive(instance))
+            {
+                ChatPacket.SendServerMessage(session, $"0x{instance:X8} is not a live ephemeral copy. Create one with @instance create <template>.", ChatMessageType.Broadcast);
+                return;
+            }
+
+            if (!isEphemeral && RealmManager.Get(realmId)?.Kind == RealmKind.EphemeralTemplate)
+            {
+                ChatPacket.SendServerMessage(session, $"Realm {realmId} is a dungeon template. Its copies are ephemeral: @instance create {realmId}.", ChatMessageType.Broadcast);
+                return;
+            }
+
+            destination.Instance = Position.InstanceOrNull(instance);
+
+            ChatPacket.SendServerMessage(session, $"Teleporting to instance 0x{instance:X8} (realm {realmId}, short instance {shortInstance}{(isEphemeral ? ", ephemeral" : "")}) at {destination.ToLOCString()}", ChatMessageType.Broadcast);
+
+            session.Player.Teleport(destination);
+        }
+
+        // realm list | realm enter <id or name>
+        [CommandHandler("realm", AccessLevel.Admin, CommandHandlerFlag.RequiresWorld, 1,
+            "Lists the realms in Content/realms, or enters one.",
+            "list\n" +
+            "enter <id or name>: go to the same spot in the realm's primary copy. Admins only.\n" +
+            "Example: @realm enter 1\n" +
+            "Example: @realm enter pvp-test")]
+        public static void HandleRealm(Session session, params string[] parameters)
+        {
+            if (parameters[0].Equals("list", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var realm in RealmManager.All)
+                    ChatPacket.SendServerMessage(session, $"{realm.Id}: {realm.Name} ({realm.Kind}), pvp {RealmManager.GetRule(realm.Id, RealmRules.Pvp)}", ChatMessageType.Broadcast);
+                return;
+            }
+
+            if (!parameters[0].Equals("enter", StringComparison.OrdinalIgnoreCase) || parameters.Length < 2)
+            {
+                ChatPacket.SendServerMessage(session, "Usage: @realm list | @realm enter <id or name>", ChatMessageType.Broadcast);
+                return;
+            }
+
+            var target = string.Join(' ', parameters[1..]);
+            var realmToEnter = RealmManager.Find(target);
+            if (realmToEnter == null)
+            {
+                ChatPacket.SendServerMessage(session, $"No realm {target}. See @realm list.", ChatMessageType.Broadcast);
+                return;
+            }
+
+            if (realmToEnter.Kind != RealmKind.World)
+            {
+                ChatPacket.SendServerMessage(session, $"Realm {realmToEnter.Id} ({realmToEnter.Name}) is a dungeon template. Use @instance create {realmToEnter.Id}.", ChatMessageType.Broadcast);
+                return;
+            }
+
+            if (!MayEnterRealm(session, realmToEnter.Id, false))
+                return;
+
+            ChatPacket.SendServerMessage(session, $"Entering realm {realmToEnter.Id} ({realmToEnter.Name}).", ChatMessageType.Broadcast);
+
+            session.Player.Teleport(RealmPolicy.InRealm(session.Player.Location, realmToEnter.Id));
+        }
+
+        // instance create <template id or name> | instance list
+        [CommandHandler("instance", AccessLevel.Admin, CommandHandlerFlag.RequiresWorld, 1,
+            "Creates a private, temporary copy of a dungeon template and enters it, or lists the live copies.",
+            "create <template id or name>: make a copy and go in. Admins only (RealmPolicy.CanCreateInstance).\n" +
+            "list: the live copies, their players, and their time left.\n" +
+            "A copy is destroyed after 2 minutes empty, or when its ttlMinutes run out. Anyone still inside goes to the template's exit.\n" +
+            "Example: @instance create test-dungeon")]
+        public static void HandleInstance(Session session, params string[] parameters)
+        {
+            if (parameters[0].Equals("list", StringComparison.OrdinalIgnoreCase))
+            {
+                var copies = EphemeralInstances.All();
+                if (copies.Count == 0)
+                    ChatPacket.SendServerMessage(session, "No live ephemeral copies.", ChatMessageType.Broadcast);
+
+                var now = DateTime.UtcNow;
+                foreach (var live in copies)
+                {
+                    var left = live.CreatedAt + live.Ttl - now;
+                    ChatPacket.SendServerMessage(session, $"0x{live.Instance:X8} {live.TemplateName}: {live.Players} player(s), {(live.Destroying ? "ending" : $"{Math.Max(0, left.TotalMinutes):N0} min left")}", ChatMessageType.Broadcast);
+                }
+                return;
+            }
+
+            if (!parameters[0].Equals("create", StringComparison.OrdinalIgnoreCase) || parameters.Length < 2)
+            {
+                ChatPacket.SendServerMessage(session, "Usage: @instance create <template id or name> | @instance list", ChatMessageType.Broadcast);
+                return;
+            }
+
+            var target = string.Join(' ', parameters[1..]);
+            var template = RealmManager.Find(target);
+            if (template == null)
+            {
+                ChatPacket.SendServerMessage(session, $"No realm {target}. See @realm list.", ChatMessageType.Broadcast);
+                return;
+            }
+
+            if (template.Kind != RealmKind.EphemeralTemplate)
+            {
+                ChatPacket.SendServerMessage(session, $"Realm {template.Id} ({template.Name}) is a world, not a dungeon template.", ChatMessageType.Broadcast);
+                return;
+            }
+
+            if (!RealmPolicy.CanCreateInstance(session.Player, template))
+            {
+                ChatPacket.SendServerMessage(session, "Only admins may create instances.", ChatMessageType.Broadcast);
+                return;
+            }
+
+            var copy = EphemeralInstances.Create(template, DateTime.UtcNow);
+            if (copy == null)
+            {
+                ChatPacket.SendServerMessage(session, $"No free short instance ids left for {template.Name}. Try again once copies end.", ChatMessageType.Broadcast);
+                return;
+            }
+
+            ChatPacket.SendServerMessage(session, $"Created 0x{copy.Instance:X8} from {template.Name}. Entering; it ends after {copy.Ttl.TotalMinutes:N0} min, or 2 min empty.", ChatMessageType.Broadcast);
+            session.Player.Teleport(new Position(template.Entry) { Instance = copy.Instance });
+        }
+
+        // sethomerealm <character name> <realm id or name>
+        [CommandHandler("sethomerealm", AccessLevel.Admin, CommandHandlerFlag.None, 2,
+            "Sets a character's home realm, online or offline. Recalls go to the home realm's copy of the place they name.",
+            "<character name> <realm id or name>\n" +
+            "Realm 0 is the base world. The realm must be loaded from Content/realms (see @realm list).\n" +
+            "A realm that doesn't set canBeHomeworld is set anyway, with a warning.\n" +
+            "Example: @sethomerealm Jacob 1")]
+        public static void HandleSetHomeRealm(Session session, params string[] parameters)
+        {
+            var name = string.Join(' ', parameters[..^1]);
+            var realm = RealmManager.Find(parameters[^1]);
+
+            if (realm == null)
+            {
+                CommandHandlerHelper.WriteOutputInfo(session, $"No realm {parameters[^1]}. See @realm list.");
+                return;
+            }
+
+            if (realm.Kind != RealmKind.World)
+            {
+                CommandHandlerHelper.WriteOutputInfo(session, $"Realm {realm.Id} ({realm.Name}) is an ephemeral template, not a world, so it can't be a home realm.");
+                return;
+            }
+
+            if (realm.Id != 0 && !RealmManager.GetRule(realm.Id, RealmRules.CanBeHomeworld))
+                CommandHandlerHelper.WriteOutputInfo(session, $"Warning: realm {realm.Id} ({realm.Name}) doesn't set canBeHomeworld, so it isn't meant as a home world. Setting it anyway.");
+
+            var online = PlayerManager.GetOnlinePlayer(name);
+            var houseInstance = online != null ? online.HouseInstance : PlayerManager.GetOfflinePlayer(name)?.HouseInstance;
+            var houseRealm = houseInstance != null ? RealmManager.RealmOf(new ObjectGuid(houseInstance.Value).Instance) : realm.Id;
+            if (houseRealm != realm.Id)
+                CommandHandlerHelper.WriteOutputInfo(session, $"Warning: {name} owns a house in realm {houseRealm}. It stays theirs there; /house recall still goes to it.");
+
+            if (online != null)
+            {
+                online.SetProperty(PropertyInt.HomeRealm, realm.Id);
+                CommandHandlerHelper.WriteOutputInfo(session, $"{online.Name}'s home realm is now {realm.Id} ({realm.Name}).");
+                return;
+            }
+
+            var offline = PlayerManager.GetOfflinePlayer(name);
+            if (offline == null)
+            {
+                CommandHandlerHelper.WriteOutputInfo(session, $"No character named {name}.");
+                return;
+            }
+
+            offline.SetProperty(PropertyInt.HomeRealm, realm.Id);
+            offline.SaveBiotaToDatabase();
+
+            CommandHandlerHelper.WriteOutputInfo(session, $"{offline.Name}'s home realm is now {realm.Id} ({realm.Name}). The character is offline, so it's saved now.");
         }
 
         // time
@@ -992,11 +1232,11 @@ namespace ACE.Server.Command.Handlers
             if (session.Player.HealthQueryTarget.HasValue || session.Player.ManaQueryTarget.HasValue || session.Player.CurrentAppraisalTarget.HasValue)
             {
                 if (session.Player.HealthQueryTarget.HasValue)
-                    objectId = new ObjectGuid((uint)session.Player.HealthQueryTarget);
+                    objectId = new ObjectGuid(session.Player.HealthQueryTarget.Value);
                 else if (session.Player.ManaQueryTarget.HasValue)
-                    objectId = new ObjectGuid((uint)session.Player.ManaQueryTarget);
+                    objectId = new ObjectGuid(session.Player.ManaQueryTarget.Value);
                 else
-                    objectId = new ObjectGuid((uint)session.Player.CurrentAppraisalTarget);
+                    objectId = new ObjectGuid(session.Player.CurrentAppraisalTarget.Value);
 
                 var wo = session.Player.CurrentLandblock?.GetObject(objectId);
 
@@ -1168,7 +1408,7 @@ namespace ACE.Server.Command.Handlers
                         return;
                     }
 
-                    //var houses = HouseManager.GetCharacterHouses(player.Guid.Full);
+                    //var houses = HouseManager.GetCharacterHouses(player.Guid.ClientGUID);
                     var houses = HouseManager.GetAccountHouses(player.Account.AccountId);
 
                     if (houses.Count == 0)
@@ -1642,11 +1882,11 @@ namespace ACE.Server.Command.Handlers
         {
             ObjectGuid objectId;
             if (session.Player.HealthQueryTarget.HasValue)
-                objectId = new ObjectGuid((uint)session.Player.HealthQueryTarget);
+                objectId = new ObjectGuid(session.Player.HealthQueryTarget.Value);
             else if (session.Player.ManaQueryTarget.HasValue)
-                objectId = new ObjectGuid((uint)session.Player.ManaQueryTarget);
+                objectId = new ObjectGuid(session.Player.ManaQueryTarget.Value);
             else
-                objectId = new ObjectGuid((uint)session.Player.CurrentAppraisalTarget);
+                objectId = new ObjectGuid(session.Player.CurrentAppraisalTarget.Value);
 
             target = session.Player.CurrentLandblock?.GetObject(objectId);
 
@@ -1667,7 +1907,7 @@ namespace ACE.Server.Command.Handlers
                 }
 
                 house = player.House;
-                //house = HouseManager.GetCharacterHouses(player.Guid.Full).FirstOrDefault();
+                //house = HouseManager.GetCharacterHouses(player.Guid.ClientGUID).FirstOrDefault();
             }
             else if (target is House house1)
                 house = house1.RootHouse;
@@ -1871,7 +2111,7 @@ namespace ACE.Server.Command.Handlers
                 return;
             }
 
-            DoCopyChar(session, existingCharName, existingPlayer.Guid.Full, false, newCharName);
+            DoCopyChar(session, existingCharName, existingPlayer.Guid.ClientGUID, false, newCharName);
         }
 
         private static void DoCopyChar(Session session, string existingCharName, uint existingCharId, bool isDeletedChar, string newCharacterName = null, uint newAccountId = 0)
@@ -1898,7 +2138,7 @@ namespace ACE.Server.Command.Handlers
 
                             var newCharacter = new Database.Models.Shard.Character
                             {
-                                Id = newPlayerGuid.Full,
+                                Id = newPlayerGuid.ClientGUID,
                                 AccountId = newAccountId > 0 ? newAccountId : session.Player.Account.AccountId,
                                 Name = newCharName,
                                 CharacterOptions1 = existingCharacter.CharacterOptions1,
@@ -1912,36 +2152,36 @@ namespace ACE.Server.Command.Handlers
                             };
 
                             foreach (var entry in existingCharacter.CharacterPropertiesContractRegistry)
-                                newCharacter.CharacterPropertiesContractRegistry.Add(new Database.Models.Shard.CharacterPropertiesContractRegistry { CharacterId = newPlayerGuid.Full, ContractId = entry.ContractId, DeleteContract = entry.DeleteContract, SetAsDisplayContract = entry.SetAsDisplayContract });
+                                newCharacter.CharacterPropertiesContractRegistry.Add(new Database.Models.Shard.CharacterPropertiesContractRegistry { CharacterId = newPlayerGuid.ClientGUID, ContractId = entry.ContractId, DeleteContract = entry.DeleteContract, SetAsDisplayContract = entry.SetAsDisplayContract });
 
                             foreach (var entry in existingCharacter.CharacterPropertiesFillCompBook)
-                                newCharacter.CharacterPropertiesFillCompBook.Add(new Database.Models.Shard.CharacterPropertiesFillCompBook { CharacterId = newPlayerGuid.Full, QuantityToRebuy = entry.QuantityToRebuy, SpellComponentId = entry.SpellComponentId });
+                                newCharacter.CharacterPropertiesFillCompBook.Add(new Database.Models.Shard.CharacterPropertiesFillCompBook { CharacterId = newPlayerGuid.ClientGUID, QuantityToRebuy = entry.QuantityToRebuy, SpellComponentId = entry.SpellComponentId });
 
                             foreach (var entry in existingCharacter.CharacterPropertiesFriendList)
-                                newCharacter.CharacterPropertiesFriendList.Add(new Database.Models.Shard.CharacterPropertiesFriendList { CharacterId = newPlayerGuid.Full, FriendId = entry.FriendId });
+                                newCharacter.CharacterPropertiesFriendList.Add(new Database.Models.Shard.CharacterPropertiesFriendList { CharacterId = newPlayerGuid.ClientGUID, FriendId = entry.FriendId });
 
                             foreach (var entry in existingCharacter.CharacterPropertiesQuestRegistry)
-                                newCharacter.CharacterPropertiesQuestRegistry.Add(new Database.Models.Shard.CharacterPropertiesQuestRegistry { CharacterId = newPlayerGuid.Full, LastTimeCompleted = entry.LastTimeCompleted, NumTimesCompleted = entry.NumTimesCompleted, QuestName = entry.QuestName });
+                                newCharacter.CharacterPropertiesQuestRegistry.Add(new Database.Models.Shard.CharacterPropertiesQuestRegistry { CharacterId = newPlayerGuid.ClientGUID, LastTimeCompleted = entry.LastTimeCompleted, NumTimesCompleted = entry.NumTimesCompleted, QuestName = entry.QuestName });
 
                             foreach (var entry in existingCharacter.CharacterPropertiesShortcutBar)
-                                newCharacter.CharacterPropertiesShortcutBar.Add(new Database.Models.Shard.CharacterPropertiesShortcutBar { CharacterId = newPlayerGuid.Full, ShortcutBarIndex = entry.ShortcutBarIndex, ShortcutObjectId = entry.ShortcutObjectId });
+                                newCharacter.CharacterPropertiesShortcutBar.Add(new Database.Models.Shard.CharacterPropertiesShortcutBar { CharacterId = newPlayerGuid.ClientGUID, ShortcutBarIndex = entry.ShortcutBarIndex, ShortcutObjectId = entry.ShortcutObjectId });
 
                             foreach (var entry in existingCharacter.CharacterPropertiesSpellBar)
-                                newCharacter.CharacterPropertiesSpellBar.Add(new Database.Models.Shard.CharacterPropertiesSpellBar { CharacterId = newPlayerGuid.Full, SpellBarIndex = entry.SpellBarIndex, SpellBarNumber = entry.SpellBarNumber, SpellId = entry.SpellId });
+                                newCharacter.CharacterPropertiesSpellBar.Add(new Database.Models.Shard.CharacterPropertiesSpellBar { CharacterId = newPlayerGuid.ClientGUID, SpellBarIndex = entry.SpellBarIndex, SpellBarNumber = entry.SpellBarNumber, SpellId = entry.SpellId });
 
                             foreach (var entry in existingCharacter.CharacterPropertiesSquelch)
-                                newCharacter.CharacterPropertiesSquelch.Add(new Database.Models.Shard.CharacterPropertiesSquelch { CharacterId = newPlayerGuid.Full, SquelchAccountId = entry.SquelchAccountId, SquelchCharacterId = entry.SquelchCharacterId, Type = entry.Type });
+                                newCharacter.CharacterPropertiesSquelch.Add(new Database.Models.Shard.CharacterPropertiesSquelch { CharacterId = newPlayerGuid.ClientGUID, SquelchAccountId = entry.SquelchAccountId, SquelchCharacterId = entry.SquelchCharacterId, Type = entry.Type });
 
                             foreach (var entry in existingCharacter.CharacterPropertiesTitleBook)
-                                newCharacter.CharacterPropertiesTitleBook.Add(new Database.Models.Shard.CharacterPropertiesTitleBook { CharacterId = newPlayerGuid.Full, TitleId = entry.TitleId });
+                                newCharacter.CharacterPropertiesTitleBook.Add(new Database.Models.Shard.CharacterPropertiesTitleBook { CharacterId = newPlayerGuid.ClientGUID, TitleId = entry.TitleId });
 
-                            var idSwaps = new ConcurrentDictionary<uint, uint>();
+                            var idSwaps = new ConcurrentDictionary<ulong, ulong>();
 
                             var newPlayerBiota = Database.Adapter.BiotaConverter.ConvertToEntityBiota(existingPlayerBiota);
 
-                            idSwaps[newPlayerBiota.Id] = newPlayerGuid.Full;
+                            idSwaps[newPlayerBiota.Id] = newPlayerGuid.ClientGUID;
 
-                            newPlayerBiota.Id = newPlayerGuid.Full;
+                            newPlayerBiota.Id = newPlayerGuid.ClientGUID;
                             if (newPlayerBiota.PropertiesAllegiance != null)
                                 newPlayerBiota.PropertiesAllegiance.Clear();
                             if (newPlayerBiota.HousePermissions != null)
@@ -1952,8 +2192,8 @@ namespace ACE.Server.Command.Handlers
                             {
                                 var newItemBiota = Database.Adapter.BiotaConverter.ConvertToEntityBiota(item);
                                 var newGuid = GuidManager.NewDynamicGuid();
-                                idSwaps[newItemBiota.Id] = newGuid.Full;
-                                newItemBiota.Id = newGuid.Full;
+                                idSwaps[newItemBiota.Id] = newGuid.ClientGUID;
+                                newItemBiota.Id = newGuid.ClientGUID;
                                 newTempWieldedItems.Add(newItemBiota);
                             }
 
@@ -1965,8 +2205,8 @@ namespace ACE.Server.Command.Handlers
 
                                 var newItemBiota = Database.Adapter.BiotaConverter.ConvertToEntityBiota(item);
                                 var newGuid = GuidManager.NewDynamicGuid();
-                                idSwaps[newItemBiota.Id] = newGuid.Full;
-                                newItemBiota.Id = newGuid.Full;
+                                idSwaps[newItemBiota.Id] = newGuid.ClientGUID;
+                                newItemBiota.Id = newGuid.ClientGUID;
                                 newTempInventoryItems.Add(newItemBiota);
                             }
 
@@ -2574,7 +2814,7 @@ namespace ACE.Server.Command.Handlers
             bool notOK = false;
             if (session.Player.CurrentAppraisalTarget.HasValue)
             {
-                var objectId = new ObjectGuid((uint)session.Player.CurrentAppraisalTarget);
+                var objectId = new ObjectGuid(session.Player.CurrentAppraisalTarget.Value);
                 var wo = session.Player.CurrentLandblock?.GetObject(objectId);
                 if (wo is ACE.Server.WorldObjects.Lock @lock)
                 {
@@ -2585,13 +2825,13 @@ namespace ACE.Server.Command.Handlers
 
                     if (!string.IsNullOrWhiteSpace(lockCode))
                     {
-                        res = @lock.Unlock(session.Player.Guid.Full, null, lockCode);
+                        res = @lock.Unlock(session.Player.Guid.ClientGUID, null, lockCode);
                         ChatPacket.SendServerMessage(session, $"Crack {wo.WeenieType} via {lockCode} result: {res}.{opening}", ChatMessageType.Broadcast);
                     }
                     else if (resistLockpick.HasValue && resistLockpick > 0)
                     {
                         var difficulty = 0;
-                        res = @lock.Unlock(session.Player.Guid.Full, (uint)(resistLockpick * 2), ref difficulty);
+                        res = @lock.Unlock(session.Player.Guid.ClientGUID, (uint)(resistLockpick * 2), ref difficulty);
                         ChatPacket.SendServerMessage(session, $"Crack {wo.WeenieType} with skill {resistLockpick}*2 result: {res}.{opening}", ChatMessageType.Broadcast);
                     }
                     else
@@ -2687,11 +2927,11 @@ namespace ACE.Server.Command.Handlers
             var objectId = ObjectGuid.Invalid;
 
             if (session.Player.HealthQueryTarget.HasValue)
-                objectId = new ObjectGuid((uint)session.Player.HealthQueryTarget);
+                objectId = new ObjectGuid(session.Player.HealthQueryTarget.Value);
             else if (session.Player.ManaQueryTarget.HasValue)
-                objectId = new ObjectGuid((uint)session.Player.ManaQueryTarget);
+                objectId = new ObjectGuid(session.Player.ManaQueryTarget.Value);
             else if (session.Player.CurrentAppraisalTarget.HasValue)
-                objectId = new ObjectGuid((uint)session.Player.CurrentAppraisalTarget);
+                objectId = new ObjectGuid(session.Player.CurrentAppraisalTarget.Value);
 
             if (objectId == ObjectGuid.Invalid)
             {
@@ -2794,11 +3034,11 @@ namespace ACE.Server.Command.Handlers
             var objectId = ObjectGuid.Invalid;
 
             if (session.Player.HealthQueryTarget.HasValue)
-                objectId = new ObjectGuid((uint)session.Player.HealthQueryTarget);
+                objectId = new ObjectGuid(session.Player.HealthQueryTarget.Value);
             else if (session.Player.ManaQueryTarget.HasValue)
-                objectId = new ObjectGuid((uint)session.Player.ManaQueryTarget);
+                objectId = new ObjectGuid(session.Player.ManaQueryTarget.Value);
             else if (session.Player.CurrentAppraisalTarget.HasValue)
-                objectId = new ObjectGuid((uint)session.Player.CurrentAppraisalTarget);
+                objectId = new ObjectGuid(session.Player.CurrentAppraisalTarget.Value);
 
             if (objectId == ObjectGuid.Invalid)
             {
@@ -2825,7 +3065,7 @@ namespace ACE.Server.Command.Handlers
 
                 foreach (var item in player.EquippedObjects)
                 {
-                    if (player.TryDequipObjectWithNetworking(item.Key.Full, out var worldObject, Player.DequipObjectAction.DropItem))
+                    if (player.TryDequipObjectWithNetworking(item.Key, out var worldObject, Player.DequipObjectAction.DropItem))
                         items.Add(worldObject);
                 }
 
@@ -3359,11 +3599,11 @@ namespace ACE.Server.Command.Handlers
             var objectId = ObjectGuid.Invalid;
 
             if (session.Player.HealthQueryTarget.HasValue)
-                objectId = new ObjectGuid((uint)session.Player.HealthQueryTarget);
+                objectId = new ObjectGuid(session.Player.HealthQueryTarget.Value);
             else if (session.Player.ManaQueryTarget.HasValue)
-                objectId = new ObjectGuid((uint)session.Player.ManaQueryTarget);
+                objectId = new ObjectGuid(session.Player.ManaQueryTarget.Value);
             else if (session.Player.CurrentAppraisalTarget.HasValue)
-                objectId = new ObjectGuid((uint)session.Player.CurrentAppraisalTarget);
+                objectId = new ObjectGuid(session.Player.CurrentAppraisalTarget.Value);
 
             if (objectId == ObjectGuid.Invalid)
                 objectId = session.Player.Guid;
@@ -3597,11 +3837,11 @@ namespace ACE.Server.Command.Handlers
             var objectId = new ObjectGuid();
 
             if (session.Player.HealthQueryTarget.HasValue)
-                objectId = new ObjectGuid((uint)session.Player.HealthQueryTarget);
+                objectId = new ObjectGuid(session.Player.HealthQueryTarget.Value);
             else if (session.Player.ManaQueryTarget.HasValue)
-                objectId = new ObjectGuid((uint)session.Player.ManaQueryTarget);
+                objectId = new ObjectGuid(session.Player.ManaQueryTarget.Value);
             else if (session.Player.CurrentAppraisalTarget.HasValue)
-                objectId = new ObjectGuid((uint)session.Player.CurrentAppraisalTarget);
+                objectId = new ObjectGuid(session.Player.CurrentAppraisalTarget.Value);
 
             var wo = session.Player.CurrentLandblock?.GetObject(objectId);
 
@@ -4542,11 +4782,11 @@ namespace ACE.Server.Command.Handlers
                         Console.WriteLine($"{player.Name} has references to deleted patron {player.PatronId.Value:X8}, checking for vassals");
                         player.PatronId = null;
 
-                        var vassals = players.Where(i => i.PatronId != null && i.PatronId == player.Guid.Full).ToList();
+                        var vassals = players.Where(i => i.PatronId != null && i.PatronId == player.Guid.ClientGUID).ToList();
                         if (vassals.Count > 0)
                         {
                             Console.WriteLine($"Vassals found, {player.Name} is the monarch");
-                            player.MonarchId = player.Guid.Full;
+                            player.MonarchId = player.Guid.ClientGUID;
                         }
                         else
                         {
@@ -4560,11 +4800,11 @@ namespace ACE.Server.Command.Handlers
                     while (patron.PatronId != null)
                         patron = PlayerManager.FindByGuid(patron.PatronId.Value);
 
-                    if (player.MonarchId != patron.Guid.Full)
+                    if (player.MonarchId != patron.Guid.ClientGUID)
                     {
                         Console.WriteLine($"{player.Name} has references to {monarch.Name} as monarch, but should be {patron.Name} -- fixing missing player");
 
-                        player.MonarchId = patron.Guid.Full;
+                        player.MonarchId = patron.Guid.ClientGUID;
                         player.SaveBiotaToDatabase();
                     }
                 }
@@ -4767,7 +5007,7 @@ namespace ACE.Server.Command.Handlers
             }
             session.Network.EnqueueSend(new GameMessageSystemChat($"Moving {obj.Name} ({obj.Guid}) to current location", ChatMessageType.Broadcast));
 
-            obj.Location = obj.PhysicsObj.Position.ACEPosition();
+            obj.Location = obj.PhysicsObj.Position.ACEPosition(obj.PhysicsObj.Instance);
 
             if (prevLoc.Landblock != obj.Location.Landblock)
             {

@@ -8,7 +8,7 @@ public partial class CharacterPropertiesContractRegistry
     /// <summary>
     /// Id of the character this property belongs to
     /// </summary>
-    public uint CharacterId { get; set; }
+    public ulong CharacterId { get; set; }
 
     public uint ContractId { get; set; }
 

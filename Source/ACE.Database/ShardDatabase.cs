@@ -66,16 +66,19 @@ namespace ACE.Database
                 if (result == null)
                     return uint.MaxValue;
 
-                return result.Id;
+                return (uint)result.Id; // bounded by max
             }
         }
 
         /// <summary>
         /// This will return available id's, in the form of sequence gaps starting from min.<para />
-        /// If a gap is just 1 value wide, then both start and end will be the same number.
+        /// If a gap is just 1 value wide, then both start and end will be the same number.<para />
+        /// Ids above ObjectGuid.DynamicMax (statics in landblock copies) are never gaps.
         /// </summary>
         public List<(uint start, uint end)> GetSequenceGaps(uint min, uint limitAvailableIDsReturned)
         {
+            var max = ACE.Entity.ObjectGuid.DynamicMax;
+
             // References:
             // https://stackoverflow.com/questions/4340793/how-to-find-gaps-in-sequential-numbering-in-mysql/29736658#29736658
             // https://stackoverflow.com/questions/50402015/how-to-execute-sqlquery-with-entity-framework-core-2-1
@@ -90,9 +93,9 @@ namespace ACE.Database
                       "  @available_ids:=0,"                                                            + Environment.NewLine +
                       "  IF(@rownum=id, 0, @rownum:=id) AS gap_ends_at_not_inclusive"                   + Environment.NewLine +
                       " FROM"                                                                           + Environment.NewLine +
-                      "  (SELECT @rownum:=(SELECT MIN(id)-1 FROM biota WHERE id > " + min + ")) AS a"   + Environment.NewLine +
+                      "  (SELECT @rownum:=(SELECT MIN(id)-1 FROM biota WHERE id > " + min + " AND id <= " + max + ")) AS a" + Environment.NewLine +
                       "  JOIN biota"                                                                    + Environment.NewLine +
-                      "  WHERE id > " + min                                                             + Environment.NewLine +
+                      "  WHERE id > " + min + " AND id <= " + max + Environment.NewLine +
                       "  ORDER BY id"                                                                   + Environment.NewLine +
                       " ) AS z" + Environment.NewLine;
             if (limitAvailableIDsReturned != uint.MaxValue)
@@ -114,11 +117,12 @@ namespace ACE.Database
 
                 while (reader.Read())
                 {
-                    var gap_starts_at               = reader.GetFieldValue<long>(0);
-                    var gap_ends_at_not_inclusive   = reader.GetFieldValue<decimal>(1);
+                    // the column types follow biota.id, so read them by value
+                    var gap_starts_at               = Convert.ToUInt32(reader.GetValue(0));
+                    var gap_ends_at_not_inclusive   = Convert.ToUInt32(reader.GetValue(1));
                     //var running_total_available_ids = reader.GetFieldValue<double>(2);
 
-                    gaps.Add(((uint)gap_starts_at, (uint)gap_ends_at_not_inclusive - 1));
+                    gaps.Add((gap_starts_at, gap_ends_at_not_inclusive - 1));
                 }
 
                 return gaps;
@@ -222,7 +226,7 @@ namespace ACE.Database
             biota.PopulatedCollectionFlags = (uint)populatedCollectionFlags;
         }
 
-        public virtual Biota GetBiota(ShardDbContext context, uint id, bool doNotAddToCache = false)
+        public virtual Biota GetBiota(ShardDbContext context, ulong id, bool doNotAddToCache = false)
         {
             return GetBiotaFromDatabase(context, id);
         }
@@ -230,7 +234,7 @@ namespace ACE.Database
         /// <summary>
         /// Loads the biota and its populated collections through this context, never from a cache
         /// </summary>
-        protected Biota GetBiotaFromDatabase(ShardDbContext context, uint id)
+        protected Biota GetBiotaFromDatabase(ShardDbContext context, ulong id)
         {
             var biota = context.Biota
                 .FirstOrDefault(r => r.Id == id);
@@ -269,7 +273,7 @@ namespace ACE.Database
             return biota;
         }
 
-        public virtual Biota GetBiota(uint id, bool doNotAddToCache = false)
+        public virtual Biota GetBiota(ulong id, bool doNotAddToCache = false)
         {
             using (var context = new ShardDbContext())
                 return GetBiota(context, id, doNotAddToCache);
@@ -389,7 +393,7 @@ namespace ACE.Database
             return result;
         }
 
-        public virtual bool RemoveBiota(uint id)
+        public virtual bool RemoveBiota(ulong id)
         {
             using (var context = new ShardDbContext())
             {
@@ -430,7 +434,7 @@ namespace ACE.Database
             }
         }
 
-        public bool RemoveBiotasInParallel(IEnumerable<uint> ids)
+        public bool RemoveBiotasInParallel(IEnumerable<ulong> ids)
         {
             var result = true;
 
@@ -444,7 +448,7 @@ namespace ACE.Database
         }
 
 
-        public PossessedBiotas GetPossessedBiotasInParallel(uint id)
+        public PossessedBiotas GetPossessedBiotasInParallel(ulong id)
         {
             var inventory = GetInventoryInParallel(id, true);
 
@@ -453,7 +457,7 @@ namespace ACE.Database
             return new PossessedBiotas(inventory, wieldedItems);
         }
 
-        public List<Biota> GetInventoryInParallel(uint parentId, bool includedNestedItems)
+        public List<Biota> GetInventoryInParallel(ulong parentId, bool includedNestedItems)
         {
             var inventory = new ConcurrentBag<Biota>();
 
@@ -487,7 +491,7 @@ namespace ACE.Database
             return inventory.ToList();
         }
 
-        public List<Biota> GetWieldedItemsInParallel(uint parentId)
+        public List<Biota> GetWieldedItemsInParallel(ulong parentId)
         {
             var wieldedItems = new ConcurrentBag<Biota>();
 
@@ -511,13 +515,16 @@ namespace ACE.Database
             return wieldedItems.ToList();
         }
 
-        public List<Biota> GetStaticObjectsByLandblock(ushort landblockId)
+        /// <summary>
+        /// The persisted statics of one landblock copy: a static saved in instance N has the id (N &lt;&lt; 32) | static guid
+        /// </summary>
+        public List<Biota> GetStaticObjectsByLandblock(ushort landblockId, uint instance)
         {
             var staticObjects = new List<Biota>();
 
-            var staticLandblockId = (uint)(0x70000 | landblockId);
+            var staticLandblockId = (ulong)(0x70000 | landblockId);
 
-            var min = staticLandblockId << 12;
+            var min = (ulong)instance << 32 | staticLandblockId << 12;
             var max = min | 0xFFF;
 
             using (var context = new ShardDbContext())
@@ -536,7 +543,10 @@ namespace ACE.Database
             return staticObjects;
         }
 
-        public List<Biota> GetDynamicObjectsByLandblock(ushort landblockId)
+        /// <summary>
+        /// The persisted dynamics on the ground in one landblock copy, by their saved position's instance (null is the base world)
+        /// </summary>
+        public List<Biota> GetDynamicObjectsByLandblock(ushort landblockId, uint instance)
         {
             var dynamics = new List<Biota>();
 
@@ -547,8 +557,10 @@ namespace ACE.Database
             {
                 context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
 
-                var results = context.BiotaPropertiesPosition
-                    .Where(p => p.PositionType == 1 && p.ObjCellId >= min && p.ObjCellId <= max && p.ObjectId >= 0x80000000)
+                var positions = context.BiotaPropertiesPosition
+                    .Where(p => p.PositionType == 1 && p.ObjCellId >= min && p.ObjCellId <= max && p.ObjectId >= ACE.Entity.ObjectGuid.DynamicMin && p.ObjectId <= ACE.Entity.ObjectGuid.DynamicMax);
+
+                var results = (instance == 0 ? positions.Where(p => p.Instance == null || p.Instance == 0) : positions.Where(p => p.Instance == instance))
                     .ToList();
 
                 foreach (var result in results)
@@ -810,7 +822,7 @@ namespace ACE.Database
                             where biota.WeenieType == (int)WeenieType.Allegiance && iid.Type == (int)PropertyInstanceId.Monarch && iid.Value == monarchID
                             select biota.Id;
 
-                return query.FirstOrDefault();
+                return (uint)query.FirstOrDefault(); // allegiances are dynamic, so 32-bit
             }
         }
 

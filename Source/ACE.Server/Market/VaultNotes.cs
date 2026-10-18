@@ -51,7 +51,7 @@ namespace ACE.Server.Market
                 return;
             }
 
-            if (inFlight.Contains(player.Guid.Full))
+            if (inFlight.Contains(player.Guid.ClientGUID))
             {
                 FinishNotes(player, VaultOutcome.Busy, 0, 0, completed);
                 return;
@@ -82,15 +82,15 @@ namespace ACE.Server.Market
                 return;
             }
 
-            if (player.CurrentAppraisalTarget != null && notes.Any(n => n.Guid.Full == player.CurrentAppraisalTarget))
+            if (player.CurrentAppraisalTarget != null && notes.Any(n => n.Guid.ClientGUID == player.CurrentAppraisalTarget))
                 player.CurrentAppraisalTarget = null;
 
             var amount = notes.Sum(n => (long)(n.StackSize ?? 1));
-            var stacks = notes.Select(n => new NoteStack(n.Guid.Full, n.StackSize ?? 1)).ToList();
+            var stacks = notes.Select(n => new NoteStack(n.Guid.ClientGUID, n.StackSize ?? 1)).ToList();
 
-            inFlight.Add(player.Guid.Full);
+            inFlight.Add(player.Guid.ClientGUID);
 
-            DatabaseManager.Shard.DepositNotes(player.Character.AccountId, player.Guid.Full, stacks, (result, balance) =>
+            DatabaseManager.Shard.DepositNotes(player.Character.AccountId, player.Guid.ClientGUID, stacks, (result, balance) =>
             {
                 // this runs on the save thread
                 WorldManager.EnqueueAction(new ActionEventDelegate(() => OnNotesDeposited(player, notes, amount, result, balance, completed)));
@@ -116,7 +116,7 @@ namespace ACE.Server.Market
                 return;
             }
 
-            if (inFlight.Contains(player.Guid.Full))
+            if (inFlight.Contains(player.Guid.ClientGUID))
             {
                 FinishNotes(player, VaultOutcome.Busy, amount, 0, completed);
                 return;
@@ -186,16 +186,16 @@ namespace ACE.Server.Market
 
             foreach (var note in notes)
             {
-                note.OwnerId = player.Guid.Full;
-                note.ContainerId = player.Guid.Full;
+                note.OwnerId = player.Guid.ClientGUID;
+                note.ContainerId = player.Guid.ClientGUID;
                 note.PlacementPosition = 0;
             }
 
-            inFlight.Add(player.Guid.Full);
+            inFlight.Add(player.Guid.ClientGUID);
 
             var ticket = ticketId == null ? null : new TicketCompletion(ticketId.Value, VaultMessages.WithdrawnByTicket(VaultMessages.TradeNotes(amount), player.Name));
 
-            DatabaseManager.Shard.WithdrawNotes(accountId, player.Guid.Full, notes.Select(n => (n.Biota, n.BiotaDatabaseLock)).ToList(), amount, (result, balanceAfter) =>
+            DatabaseManager.Shard.WithdrawNotes(accountId, player.Guid.ClientGUID, notes.Select(n => (n.Biota, n.BiotaDatabaseLock)).ToList(), amount, (result, balanceAfter) =>
             {
                 // this runs on the save thread
                 WorldManager.EnqueueAction(new ActionEventDelegate(() => OnNotesWithdrawn(player, notes, amount, result, balanceAfter, completed)));
@@ -204,7 +204,7 @@ namespace ACE.Server.Market
 
         private static void OnNotesDeposited(Player player, List<WorldObject> notes, long amount, MarketJobResult result, long balance, Action<VaultResult> completed)
         {
-            inFlight.Remove(player.Guid.Full);
+            inFlight.Remove(player.Guid.ClientGUID);
 
             if (result == MarketJobResult.Saved)
             {
@@ -245,7 +245,7 @@ namespace ACE.Server.Market
 
         private static void OnNotesWithdrawn(Player player, List<WorldObject> notes, long amount, MarketJobResult result, long balance, Action<VaultResult> completed)
         {
-            inFlight.Remove(player.Guid.Full);
+            inFlight.Remove(player.Guid.ClientGUID);
 
             if (result != MarketJobResult.Saved)
             {
@@ -277,7 +277,7 @@ namespace ACE.Server.Market
                     if (!player.TryCreateInInventoryWithNetworking(note))
                     {
                         allInPack = false;
-                        log.Warn($"[VAULT] Withdrawn note stack 0x{note.Guid.Full:X8} for {player.Name} could not be added to the pack; the database has it in the pack for the next login");
+                        log.Warn($"[VAULT] Withdrawn note stack 0x{note.Guid} for {player.Name} could not be added to the pack; the database has it in the pack for the next login");
                     }
                 }
             }

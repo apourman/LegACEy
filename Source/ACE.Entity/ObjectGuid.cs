@@ -37,23 +37,41 @@ namespace ACE.Entity
         public static bool IsStatic(uint guid) { return (guid >= StaticObjectMin && guid <= StaticObjectMax); }
         public static bool IsDynamic(uint guid) { return (guid >= DynamicMin && guid <= DynamicMax); }
 
-        public uint Full { get; }
-        public uint Low => Full & 0xFFFFFF;
-        public uint High => (Full >> 24);
+        // A stored 64-bit id. Only statics carry an instance in the upper 32 bits.
+        public static bool IsPlayer(ulong id) { return id <= uint.MaxValue && IsPlayer((uint)id); }
+        public static bool IsStatic(ulong id) { return IsStatic((uint)id); }
+        public static bool IsDynamic(ulong id) { return id <= uint.MaxValue && IsDynamic((uint)id); }
+
+        // The server identity, the only one the server keeps. For a static in a landblock copy the upper 32 bits hold the instance; otherwise it is the 32-bit guid.
+        public ulong Full { get; }
+
+        // The 32-bit guid the client sees. Wire writes and 32-bit storage use this.
+        public uint ClientGUID => (uint)Full;
+        public uint Low => ClientGUID & 0xFFFFFF;
+        public uint High => ClientGUID >> 24;
         public GuidType Type { get; }
 
-        public ObjectGuid(uint full)
-        {
-            Full = full;
+        // Landblock copy a static object belongs to. 0 is the base world. Always 0 for players and dynamics.
+        public uint Instance => (uint)(Full >> 32);
 
-            if (IsPlayer(full))
+        public ObjectGuid(ulong full)
+        {
+            var guid = (uint)full;
+
+            if (IsPlayer(guid))
                 Type = GuidType.Player;
-            else if (IsStatic(full))
+            else if (IsStatic(guid))
                 Type = GuidType.Static;
-            else if (IsDynamic(full))
+            else if (IsDynamic(guid))
                 Type = GuidType.Dynamic;
             else
                 Type = GuidType.Undef;
+
+            Full = Type == GuidType.Static ? full : guid;
+        }
+
+        public ObjectGuid(uint guid, uint instance) : this(((ulong)instance << 32) | guid)
+        {
         }
 
         public bool IsPlayer()
@@ -91,9 +109,10 @@ namespace ACE.Entity
             return Full.GetHashCode();
         }
 
+        // X8 of the client guid in the base world; X16 of the full guid for a static in a landblock copy, so two copies' statics print differently.
         public override string ToString()
         {
-            return Full.ToString("X8");
+            return Instance == 0 ? ClientGUID.ToString("X8") : Full.ToString("X16");
         }
     }
 }

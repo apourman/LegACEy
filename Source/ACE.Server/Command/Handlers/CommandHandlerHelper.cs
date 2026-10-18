@@ -72,7 +72,7 @@ namespace ACE.Server.Command.Handlers
                 return null;
             }
 
-            var target = session.Player.FindObject(targetID.Value, Player.SearchLocations.Everywhere, out _, out _, out _);
+            var target = session.Player.FindObject(new ObjectGuid(targetID.Value), Player.SearchLocations.Everywhere, out _, out _, out _);
             if (target == null)
             {
                 WriteOutputInfo(session, $"GetLastAppraisedObject() - couldn't find {targetID:X8}");

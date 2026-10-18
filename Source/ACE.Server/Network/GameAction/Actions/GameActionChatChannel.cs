@@ -203,7 +203,7 @@ namespace ACE.Server.Network.GameAction.Actions
 
                         foreach (var covassalGuid in session.Player.AllegianceNode.Patron.Vassals.Keys)
                         {
-                            if (covassalGuid == session.Player.Guid.Full)
+                            if (covassalGuid == session.Player.Guid.ClientGUID)
                             {
                                 session.Network.EnqueueSend(new GameEventChannelBroadcast(session, groupChatType, "", message));
                             }

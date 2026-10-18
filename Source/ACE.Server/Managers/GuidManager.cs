@@ -361,7 +361,7 @@ namespace ACE.Server.Managers
         /// <param name="guid"></param>
         public static void RecycleDynamicGuid(ObjectGuid guid)
         {
-            dynamicAlloc.Recycle(guid.Full);
+            dynamicAlloc.Recycle(guid.ClientGUID);
         }
 
 

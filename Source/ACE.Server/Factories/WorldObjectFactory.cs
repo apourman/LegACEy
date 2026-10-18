@@ -271,8 +271,9 @@ namespace ACE.Server.Factories
 
         /// <summary>
         /// This will create a list of WorldObjects, all with new GUIDs and for every position provided.
+        /// The statics are built for the landblock copy instanceId (0 is the base world).
         /// </summary>
-        public static List<WorldObject> CreateNewWorldObjects(List<LandblockInstance> sourceObjects, List<Biota> biotas, uint? restrict_wcid = null)
+        public static List<WorldObject> CreateNewWorldObjects(List<LandblockInstance> sourceObjects, List<Biota> biotas, uint instanceId, uint? restrict_wcid = null)
         {
             var results = new List<WorldObject>();
 
@@ -290,16 +291,17 @@ namespace ACE.Server.Factories
                 if (restrict_wcid != null && restrict_wcid.Value != instance.WeenieClassId)
                     continue;
 
-                var guid = new ObjectGuid(instance.Guid);
+                var guid = new ObjectGuid(instance.Guid, instanceId);
 
                 WorldObject worldObject;
 
-                var biota = biotas.FirstOrDefault(b => b.Id == instance.Guid);
+                // the copy's own persisted static, if it has one
+                var biota = biotas.FirstOrDefault(b => b.Id == guid.Full);
                 if (biota == null)
                 {
                     worldObject = CreateWorldObject(weenie, guid);
 
-                    worldObject.Location = new Position(instance.ObjCellId, instance.OriginX, instance.OriginY, instance.OriginZ, instance.AnglesX, instance.AnglesY, instance.AnglesZ, instance.AnglesW);
+                    worldObject.Location = new Position(instance.ObjCellId, instance.OriginX, instance.OriginY, instance.OriginZ, instance.AnglesX, instance.AnglesY, instance.AnglesZ, instance.AnglesW) { Instance = Position.InstanceOrNull(instanceId) };
                 }
                 else
                 {
@@ -308,7 +310,7 @@ namespace ACE.Server.Factories
                     if (worldObject.Location == null)
                     {
                         log.Warn($"CreateNewWorldObjects: {worldObject.Name} (0x{worldObject.Guid}) Location was null. CreationTimestamp = {worldObject.CreationTimestamp} ({Common.Time.GetDateTimeFromTimestamp(worldObject.CreationTimestamp ?? 0).ToLocalTime().ToCommonString()}) | Location restored from world db instance.");
-                        worldObject.Location = new Position(instance.ObjCellId, instance.OriginX, instance.OriginY, instance.OriginZ, instance.AnglesX, instance.AnglesY, instance.AnglesZ, instance.AnglesW);
+                        worldObject.Location = new Position(instance.ObjCellId, instance.OriginX, instance.OriginY, instance.OriginZ, instance.AnglesX, instance.AnglesY, instance.AnglesZ, instance.AnglesW) { Instance = Position.InstanceOrNull(instanceId) };
                     }
                 }
 

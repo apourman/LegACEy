@@ -123,8 +123,11 @@ namespace ACE.Server.WorldObjects
                         item.Location.PositionZ += 0.05f * (item.ObjScale ?? 1.0f);
                         item.Placement = ACE.Entity.Enum.Placement.Resting; // This is needed to make items lay flat on the ground.
                         CurrentLandblock.AddWorldObject(item);
-                        item.SaveBiotaToDatabase();
-                        pukedItems += $"{item.Name} (0x{item.Guid.Full.ToString("X8")}), ";
+
+                        // items in an ephemeral copy are destroyed with the copy, so they are never saved
+                        if (!item.Location.IsEphemeral)
+                            item.SaveBiotaToDatabase();
+                        pukedItems += $"{item.Name} (0x{item.Guid}), ";
                     }
                 }
 

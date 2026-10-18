@@ -180,7 +180,7 @@ namespace ACE.Server.Command.Handlers
             var fellowshipMembers = aceParams[0].AsPlayer.Fellowship.GetFellowshipMembers();
 
             session.Player.CreateSentinelBuffPlayers(fellowshipMembers.Values,
-                fellowshipMembers.Count == 1 && aceParams[0].AsPlayer.Fellowship.FellowshipLeaderGuid == session.Player.Guid.Full);
+                fellowshipMembers.Count == 1 && aceParams[0].AsPlayer.Fellowship.FellowshipLeaderGuid == session.Player.Guid.ClientGUID);
         }
 
         // buff [name]

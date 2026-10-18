@@ -7,7 +7,8 @@
 -- (or run as a SUPER user), remove this file's line from the shard applied_updates.txt, and apply it again. It is idempotent.
 
 -- An escrowed item. The item keeps its biota row, with no container, wielder or location; this row is the only record of its owner.
--- The foreign key refuses to delete or renumber the biota row while the item is in a Vault.
+-- The foreign key refuses to delete or renumber the biota row while the item is in a Vault. It is added after the tables, once the item
+-- guids match biota.id (64-bit when the instancing update has already run).
 CREATE TABLE IF NOT EXISTS `market_vault_item` (
   `item_Guid` int unsigned NOT NULL COMMENT 'biota.id of the escrowed item',
   `account_Id` int unsigned NOT NULL,
@@ -40,7 +41,6 @@ CREATE TABLE IF NOT EXISTS `market_vault_item` (
   `imbued_Effect` int DEFAULT NULL,
   PRIMARY KEY (`item_Guid`),
   KEY `market_vault_item_account_state_idx` (`account_Id`,`state`),
-  CONSTRAINT `market_vault_item_biota` FOREIGN KEY (`item_Guid`) REFERENCES `biota` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT `market_vault_item_state_chk` CHECK (`state` IN ('held','listed','withdrawing'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Market: items held in escrow';
 
@@ -198,6 +198,36 @@ CREATE TABLE IF NOT EXISTS `market_blocked_wcid` (
   `added_Time` datetime(6) NOT NULL,
   PRIMARY KEY (`wcid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Market: item types the Vault refuses';
+
+-- Item guids follow biota.id: on a shard the instancing update (2026-10-16-00-Instancing-64bit-Ids.sql) widened before these tables existed,
+-- they are widened here too. Then the escrow foreign key, if it is missing.
+SET @market_sql = IF((SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'biota' AND COLUMN_NAME = 'id') = 'bigint'
+    AND (SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'market_vault_item' AND COLUMN_NAME = 'item_Guid') = 'int',
+  'ALTER TABLE `market_vault_item` MODIFY `item_Guid` bigint unsigned NOT NULL COMMENT ''biota.id of the escrowed item''',
+  'SELECT 1');
+PREPARE market_statement FROM @market_sql;
+EXECUTE market_statement;
+DEALLOCATE PREPARE market_statement;
+SET @market_sql = IF((SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'biota' AND COLUMN_NAME = 'id') = 'bigint'
+    AND (SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'market_listing' AND COLUMN_NAME = 'item_Guid') = 'int',
+  'ALTER TABLE `market_listing` MODIFY `item_Guid` bigint unsigned NOT NULL',
+  'SELECT 1');
+PREPARE market_statement FROM @market_sql;
+EXECUTE market_statement;
+DEALLOCATE PREPARE market_statement;
+SET @market_sql = IF((SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'biota' AND COLUMN_NAME = 'id') = 'bigint'
+    AND (SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'market_item_event' AND COLUMN_NAME = 'item_Guid') = 'int',
+  'ALTER TABLE `market_item_event` MODIFY `item_Guid` bigint unsigned NOT NULL',
+  'SELECT 1');
+PREPARE market_statement FROM @market_sql;
+EXECUTE market_statement;
+DEALLOCATE PREPARE market_statement;
+SET @market_sql = IF((SELECT COUNT(*) FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'market_vault_item' AND CONSTRAINT_NAME = 'market_vault_item_biota') = 0,
+  'ALTER TABLE `market_vault_item` ADD CONSTRAINT `market_vault_item_biota` FOREIGN KEY (`item_Guid`) REFERENCES `biota` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT',
+  'SELECT 1');
+PREPARE market_statement FROM @market_sql;
+EXECUTE market_statement;
+DEALLOCATE PREPARE market_statement;
 
 -- The ledger is append-only, even for hand-written SQL
 CREATE TRIGGER IF NOT EXISTS `market_transfer_no_update` BEFORE UPDATE ON `market_transfer`

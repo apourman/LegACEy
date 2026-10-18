@@ -11,7 +11,7 @@ public class VaultItem
     /// <summary>
     /// biota.id of the escrowed item. MySQL refuses to delete or renumber that biota row while this row exists.
     /// </summary>
-    public uint ItemGuid { get; set; }
+    public ulong ItemGuid { get; set; }
 
     public uint AccountId { get; set; }
 

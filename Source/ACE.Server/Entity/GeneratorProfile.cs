@@ -212,7 +212,7 @@ namespace ACE.Server.Entity
                         {
                             var woi = new WorldObjectInfo(obj);
 
-                            Spawned.Add(obj.Guid.Full, woi);
+                            Spawned.Add(obj.Guid.ClientGUID, woi);
                         }
                     }
                 }
@@ -342,6 +342,9 @@ namespace ACE.Server.Entity
                 else
                     obj.Location = new ACE.Entity.Position(Generator.Location.Cell, Generator.Location.PositionX + Biota.OriginX ?? 0, Generator.Location.PositionY + Biota.OriginY ?? 0, Generator.Location.PositionZ + Biota.OriginZ ?? 0, Biota.AnglesX ?? 0, Biota.AnglesY ?? 0, Biota.AnglesZ ?? 0, Biota.AnglesW ?? 0);
             }
+
+            // a spawn appears in its generator's landblock copy
+            obj.Location.Instance = Generator.Location.Instance;
 
             if (!VerifyLandblock(obj) || !VerifyWalkableSlope(obj))
                 return false;
@@ -527,7 +530,7 @@ namespace ACE.Server.Entity
         {
             //log.DebugFormat("{0}.NotifyGenerator({1:X8}, {2})", _generator.Name, target, eventType);
 
-            Spawned.TryGetValue(target.Full, out var woi);
+            Spawned.TryGetValue(target.ClientGUID, out var woi);
 
             if (woi == null) return;
 
@@ -558,7 +561,7 @@ namespace ACE.Server.Entity
             if (adjWhenCreate != adjEventType)
                 return;
 
-            Spawned.Remove(woi.Guid.Full);
+            Spawned.Remove(woi.Guid.ClientGUID);
 
             NextAvailable = DateTime.UtcNow.AddSeconds(Delay);
         }

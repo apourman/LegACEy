@@ -36,9 +36,9 @@ namespace ACE.Server.Tests.Market
             using (var shard = new ShardDbContext())
             {
                 var listing = shard.MarketListings.Find(listed.Listing.Id);
-                var item = shard.MarketVaultItems.Find(guid);
+                var item = shard.MarketVaultItems.Find((ulong)guid);
 
-                bought = PurchaseStore.Complete(shard, listing, item, new Purchase(buyerAccount, buyingCharacter.Character.Id, "seam2-" + guid, 0), DateTime.UtcNow, _ => false);
+                bought = PurchaseStore.Complete(shard, listing, item, new Purchase(buyerAccount, buyingCharacter.Guid.ClientGUID, "seam2-" + guid, 0), DateTime.UtcNow, _ => false);
             }
 
             Assert.AreEqual(PurchaseOutcome.Ok, bought.Outcome);

@@ -1233,6 +1233,9 @@ namespace ACE.Server.Command.Handlers.Processors
         [CommandHandler("createinst", AccessLevel.Developer, CommandHandlerFlag.RequiresWorld, 1, "Spawns a new wcid or classname as a landblock instance", "<wcid or classname>\n\nTo create a parent/child relationship: /createinst -p <parent guid> -c <wcid or classname>\nTo automatically get the parent guid from the last appraised object: /createinst -p -c <wcid or classname>\n\nTo manually specify a start guid: /createinst <wcid or classname> <start guid>\nStart guids can be in the range 0x000-0xFFF, or they can be prefixed with 0x7<landblock id>")]
         public static void HandleCreateInst(Session session, params string[] parameters)
         {
+            if (!InBaseWorld(session))
+                return;
+
             var loc = new Position(session.Player.Location);
 
             var param = parameters[0];
@@ -1282,7 +1285,7 @@ namespace ACE.Server.Command.Handlers.Processors
                         return;
                     }
 
-                    parentGuid = parent.Guid.Full;
+                    parentGuid = parent.Guid.ClientGUID;
                 }
             }
 
@@ -1405,7 +1408,7 @@ namespace ACE.Server.Command.Handlers.Processors
                 var link = new LandblockInstanceLink();
 
                 link.ParentGuid = parentGuid.Value;
-                link.ChildGuid = wo.Guid.Full;
+                link.ChildGuid = wo.Guid.ClientGUID;
                 link.LastModified = DateTime.Now;
 
                 parentInstance.LandblockInstanceLink.Add(link);
@@ -1476,7 +1479,7 @@ namespace ACE.Server.Command.Handlers.Processors
         {
             var instance = new LandblockInstance();
 
-            instance.Guid = wo.Guid.Full;
+            instance.Guid = wo.Guid.ClientGUID;
 
             instance.Landblock = (int)wo.Location.Landblock;
 
@@ -1537,7 +1540,22 @@ namespace ACE.Server.Command.Handlers.Processors
         [CommandHandler("removeinst", AccessLevel.Developer, CommandHandlerFlag.RequiresWorld, "Removes the last appraised object from the current landblock instances")]
         public static void HandleRemoveInst(Session session, params string[] parameters)
         {
+            if (!InBaseWorld(session))
+                return;
+
             RemoveInstance(session);
+        }
+
+        /// <summary>
+        /// Landblock instances are world content, which every landblock copy shares: author them in the base world only
+        /// </summary>
+        private static bool InBaseWorld(Session session)
+        {
+            if (session.Player.CurrentInstance == 0)
+                return true;
+
+            session.Network.EnqueueSend(new GameMessageSystemChat($"You are in landblock copy 0x{session.Player.CurrentInstance:X8}. Landblock instances are edited in the base world (instance 0).", ChatMessageType.Broadcast));
+            return false;
         }
 
         public static void RemoveInstance(Session session, bool confirmed = false)
@@ -1549,7 +1567,7 @@ namespace ACE.Server.Command.Handlers.Processors
             var landblock = (ushort)wo.Location.Landblock;
 
             // if generator child, try getting the "real" guid
-            var guid = wo.Guid.Full;
+            var guid = wo.Guid.ClientGUID;
             if (wo.Generator != null)
             {
                 var staticGuid = wo.Generator.GetStaticGuid(guid);
@@ -1754,9 +1772,9 @@ namespace ACE.Server.Command.Handlers.Processors
 
             newPos.Frame.Origin.Z = session.Player.CurrentLandblock.PhysicsLandblock.GetZ(newPos.Frame.Origin);
 
-            wo.Location = new Position(newPos.ObjCellID, newPos.Frame.Origin, newPos.Frame.Orientation);
+            wo.Location = new Position(newPos.ObjCellID, newPos.Frame.Origin, newPos.Frame.Orientation) { Instance = session.Player.CurrentLandblock.PositionInstance };
 
-            var sortCell = Physics.Common.LScape.get_landcell(newPos.ObjCellID) as Physics.Common.SortCell;
+            var sortCell = Physics.Common.LScape.get_landcell(newPos.ObjCellID, session.Player.CurrentInstance) as Physics.Common.SortCell;
             if (sortCell != null && sortCell.has_building())
             {
                 session.Network.EnqueueSend(new GameMessageSystemChat($"Failed to create encounter near building cell", ChatMessageType.Broadcast));
@@ -2839,13 +2857,13 @@ namespace ACE.Server.Command.Handlers.Processors
             var nudge = dir * amount;
 
             // get landblock for static guid
-            var landblock_id = (ushort)(obj.Guid.Full >> 12);
+            var landblock_id = (ushort)(obj.Guid.ClientGUID >> 12);
 
             // get instances for landblock
             var instances = DatabaseManager.World.GetCachedInstancesByLandblock(landblock_id);
 
             // find instance
-            var instance = instances.FirstOrDefault(i => i.Guid == obj.Guid.Full);
+            var instance = instances.FirstOrDefault(i => i.Guid == obj.Guid.ClientGUID);
 
             if (instance == null)
             {
@@ -2909,7 +2927,7 @@ namespace ACE.Server.Command.Handlers.Processors
 
                 var transit = obj.PhysicsObj.transition(obj.PhysicsObj.Position, newPos, true);
 
-                var errorMsg = $"{obj.Name} ({obj.Guid}) failed to move from {obj.PhysicsObj.Position.ACEPosition()} to {newPos.ACEPosition()}";
+                var errorMsg = $"{obj.Name} ({obj.Guid}) failed to move from {obj.PhysicsObj.Position.ACEPosition(obj.PhysicsObj.Instance)} to {newPos.ACEPosition(obj.PhysicsObj.Instance)}";
 
                 if (transit == null)
                 {
@@ -2929,7 +2947,7 @@ namespace ACE.Server.Command.Handlers.Processors
 
             // update ace location
             var prevLoc = new Position(obj.Location);
-            obj.Location = obj.PhysicsObj.Position.ACEPosition();
+            obj.Location = obj.PhysicsObj.Position.ACEPosition(obj.PhysicsObj.Instance);
 
             if (prevLoc.Landblock != obj.Location.Landblock)
                 LandblockManager.RelocateObjectForPhysics(obj, true);
@@ -3057,13 +3075,13 @@ namespace ACE.Server.Command.Handlers.Processors
             newRotation = Quaternion.Normalize(newRotation);
 
             // get landblock for static guid
-            var landblock_id = (ushort)(obj.Guid.Full >> 12);
+            var landblock_id = (ushort)(obj.Guid.ClientGUID >> 12);
 
             // get instances for landblock
             var instances = DatabaseManager.World.GetCachedInstancesByLandblock(landblock_id);
 
             // find instance
-            var instance = instances.FirstOrDefault(i => i.Guid == obj.Guid.Full);
+            var instance = instances.FirstOrDefault(i => i.Guid == obj.Guid.ClientGUID);
 
             if (instance == null)
             {
@@ -3162,13 +3180,13 @@ namespace ACE.Server.Command.Handlers.Processors
             var newRotation = Quaternion.Normalize(obj.PhysicsObj.Position.Frame.Orientation * q);
 
             // get landblock for static guid
-            var landblock_id = (ushort)(obj.Guid.Full >> 12);
+            var landblock_id = (ushort)(obj.Guid.ClientGUID >> 12);
 
             // get instances for landblock
             var instances = DatabaseManager.World.GetCachedInstancesByLandblock(landblock_id);
 
             // find instance
-            var instance = instances.FirstOrDefault(i => i.Guid == obj.Guid.Full);
+            var instance = instances.FirstOrDefault(i => i.Guid == obj.Guid.ClientGUID);
 
             if (instance == null)
             {

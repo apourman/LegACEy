@@ -11,7 +11,7 @@ public partial class BiotaPropertiesInt64
     /// <summary>
     /// Id of the object this property belongs to
     /// </summary>
-    public uint ObjectId { get; set; }
+    public ulong ObjectId { get; set; }
 
     /// <summary>
     /// Type of Property the value applies to (PropertyInt64.????)

@@ -30,6 +30,7 @@ using ACE.Server.Network.GameMessages.Messages;
 using ACE.Server.Physics.Entity;
 using ACE.Server.Physics.Extensions;
 using ACE.Server.Physics.Managers;
+using ACE.Server.Realms;
 using ACE.Server.WorldObjects;
 using ACE.Server.WorldObjects.Entity;
 
@@ -255,7 +256,7 @@ namespace ACE.Server.Command.Handlers
                 if (parameters.Length > 1)
                     float.TryParse(parameters[1], out volume);
 
-                uint guid = session.Player.Guid.Full;
+                uint guid = session.Player.Guid.ClientGUID;
 
                 if (parameters.Length > 2)
                     uint.TryParse(parameters[2].TrimStart("0x"), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out guid);
@@ -400,7 +401,7 @@ namespace ACE.Server.Command.Handlers
 
             loot.EnterWorld();
 
-            session.Player.HandleActionPutItemInContainer(loot.Guid.Full, session.Player.Guid.Full);
+            session.Player.HandleActionPutItemInContainer(loot.Guid.ClientGUID, session.Player.Guid.ClientGUID);
         }
 
         /// <summary>
@@ -493,7 +494,7 @@ namespace ACE.Server.Command.Handlers
                     for (int y = 0; y <= 0xFE; y++)
                     {
                         var blockid = new LandblockId((byte)x, (byte)y);
-                        LandblockManager.GetLandblock(blockid, false, false);
+                        LandblockManager.GetLandblock(blockid, 0, false, false);
                     }
                 }
 
@@ -527,7 +528,7 @@ namespace ACE.Server.Command.Handlers
         [CommandHandler("whoami", AccessLevel.Developer, CommandHandlerFlag.RequiresWorld, "Shows you your GUIDs.")]
         public static void HandleWhoAmI(Session session, params string[] parameters)
         {
-            ChatPacket.SendServerMessage(session, $"GUID: {session.Player.Guid.Full} (0x{session.Player.Guid}) | ID(low): {session.Player.Guid.Low} High:{session.Player.Guid.High}", ChatMessageType.Broadcast);
+            ChatPacket.SendServerMessage(session, $"GUID: {session.Player.Guid.ClientGUID} (0x{session.Player.Guid}) | ID(low): {session.Player.Guid.Low} High:{session.Player.Guid.High}", ChatMessageType.Broadcast);
         }
 
         /// <summary>
@@ -673,7 +674,7 @@ namespace ACE.Server.Command.Handlers
                 positionData[i] = position;
             }
 
-            session.Player.Teleport(new Position(cell, positionData[0], positionData[1], positionData[2], positionData[3], positionData[4], positionData[5], positionData[6]));
+            session.Player.Teleport(RealmPolicy.TeleportDestination(new Position(cell, positionData[0], positionData[1], positionData[2], positionData[3], positionData[4], positionData[5], positionData[6]), session.Player.Location.Instance));
         }
 
         /// <summary>
@@ -1265,11 +1266,11 @@ namespace ACE.Server.Command.Handlers
             var objectId = new ObjectGuid();
 
             if (session.Player.HealthQueryTarget.HasValue)
-                objectId = new ObjectGuid((uint)session.Player.HealthQueryTarget);
+                objectId = new ObjectGuid(session.Player.HealthQueryTarget.Value);
             else if (session.Player.ManaQueryTarget.HasValue)
-                objectId = new ObjectGuid((uint)session.Player.ManaQueryTarget);
+                objectId = new ObjectGuid(session.Player.ManaQueryTarget.Value);
             else if (session.Player.CurrentAppraisalTarget.HasValue)
-                objectId = new ObjectGuid((uint)session.Player.CurrentAppraisalTarget);
+                objectId = new ObjectGuid(session.Player.CurrentAppraisalTarget.Value);
 
             var wo = session.Player.CurrentLandblock?.GetObject(objectId);
 
@@ -1593,7 +1594,7 @@ namespace ACE.Server.Command.Handlers
 
             newPos.SetPosition(newPos.Pos + offset);
 
-            session.Player.Teleport(newPos);
+            session.Player.Teleport(RealmPolicy.TeleportDestination(newPos, session.Player.Location.Instance));
 
             var globLastSpawnPos = lastSpawnPos.ToGlobal();
             var globNewPos = newPos.ToGlobal();
@@ -1770,7 +1771,15 @@ namespace ACE.Server.Command.Handlers
             session.Network.EnqueueSend(new GameMessageSystemChat($"CurrentLandblock: {session.Player.CurrentLandblock.Id.Landblock:X4}", ChatMessageType.Broadcast));
             session.Network.EnqueueSend(new GameMessageSystemChat($"Location: {session.Player.Location.ToLOCString()}", ChatMessageType.Broadcast));
             session.Network.EnqueueSend(new GameMessageSystemChat($"Physics : {session.Player.PhysicsObj.Position}", ChatMessageType.Broadcast));
+
+            var instance = session.Player.CurrentInstance;
+            Position.ParseInstanceID(instance, out var isEphemeral, out var realmId, out var shortInstance);
+            var homeRealmId = RealmPolicy.HomeRealmOf(session.Player);
+            session.Network.EnqueueSend(new GameMessageSystemChat($"Instance: 0x{instance:X8} = realm {RealmLabel(realmId)}, copy {shortInstance}{(isEphemeral ? ", ephemeral" : "")}", ChatMessageType.Broadcast));
+            session.Network.EnqueueSend(new GameMessageSystemChat($"Home realm: {RealmLabel(homeRealmId)}", ChatMessageType.Broadcast));
         }
+
+        private static string RealmLabel(ushort realmId) => realmId == 0 ? "0 (base world)" : $"{realmId} ({RealmManager.Get(realmId)?.Name ?? "not loaded"})";
 
         /// <summary>
         /// Gets a property for the last appraised object
@@ -2121,7 +2130,7 @@ namespace ACE.Server.Command.Handlers
                     return;
                 }
 
-                var pos = new Position(dest.ObjCellId, dest.OriginX, dest.OriginY, dest.OriginZ, dest.AnglesX, dest.AnglesY, dest.AnglesZ, dest.AnglesW);
+                var pos = RealmPolicy.TeleportDestination(new Position(dest.ObjCellId, dest.OriginX, dest.OriginY, dest.OriginZ, dest.AnglesX, dest.AnglesY, dest.AnglesZ, dest.AnglesW), session.Player.Location.Instance);
                 WorldObject.AdjustDungeon(pos);
 
                 session.Player.Teleport(pos);
@@ -2155,7 +2164,7 @@ namespace ACE.Server.Command.Handlers
                     return;
                 }
 
-                var pos = new Position(dest.ObjCellId, dest.OriginX, dest.OriginY, dest.OriginZ, dest.AnglesX, dest.AnglesY, dest.AnglesZ, dest.AnglesW);
+                var pos = RealmPolicy.TeleportDestination(new Position(dest.ObjCellId, dest.OriginX, dest.OriginY, dest.OriginZ, dest.AnglesX, dest.AnglesY, dest.AnglesZ, dest.AnglesW), session.Player.Location.Instance);
                 WorldObject.AdjustDungeon(pos);
 
                 session.Player.Teleport(pos);
@@ -2459,7 +2468,7 @@ namespace ACE.Server.Command.Handlers
                 msg += $"------- IsInDeathProcess: {player.IsInDeathProcess}\n";
                 var foundOnLandblock = false;
                 if (player.CurrentLandblock != null)
-                    foundOnLandblock = LandblockManager.GetLandblock(player.CurrentLandblock.Id, false).GetObject(player.Guid) != null;
+                    foundOnLandblock = LandblockManager.GetLandblock(player.CurrentLandblock.Id, player.CurrentLandblock.Instance, false).GetObject(player.Guid) != null;
                 msg += $"------- FoundOnLandblock: {foundOnLandblock}\n";
                 var playerForcedLogOffRequested = player.ForcedLogOffRequested;
                 msg += $"------- ForcedLogOffRequested: {playerForcedLogOffRequested}\n";
@@ -2522,7 +2531,7 @@ namespace ACE.Server.Command.Handlers
             if (target != null && target is Player player)
             {
                 if (player.Session != null)
-                    session.Network.EnqueueSend(new GameMessageSystemChat($"Session IP: {player.Session.EndPointC2S.Address} | C2S Port: {player.Session.EndPointC2S.Port} | S2C Port: {player.Session.EndPointS2C?.Port} | ClientId: {player.Session.Network.ClientId} is connected to Character: {player.Name} (0x{player.Guid.Full.ToString("X8")}), Account: {player.Account.AccountName} ({player.Account.AccountId})", ChatMessageType.Broadcast));
+                    session.Network.EnqueueSend(new GameMessageSystemChat($"Session IP: {player.Session.EndPointC2S.Address} | C2S Port: {player.Session.EndPointC2S.Port} | S2C Port: {player.Session.EndPointS2C?.Port} | ClientId: {player.Session.Network.ClientId} is connected to Character: {player.Name} (0x{player.Guid}), Account: {player.Account.AccountName} ({player.Account.AccountId})", ChatMessageType.Broadcast));
                 else
                     session.Network.EnqueueSend(new GameMessageSystemChat($"Session is null for {player.Name} which shouldn't occur.", ChatMessageType.Broadcast));
             }
@@ -2725,11 +2734,11 @@ namespace ACE.Server.Command.Handlers
             if (session.Player.HealthQueryTarget.HasValue || session.Player.ManaQueryTarget.HasValue || session.Player.CurrentAppraisalTarget.HasValue)
             {
                 if (session.Player.HealthQueryTarget.HasValue)
-                    objectId = new ObjectGuid((uint)session.Player.HealthQueryTarget);
+                    objectId = new ObjectGuid(session.Player.HealthQueryTarget.Value);
                 else if (session.Player.ManaQueryTarget.HasValue)
-                    objectId = new ObjectGuid((uint)session.Player.ManaQueryTarget);
+                    objectId = new ObjectGuid(session.Player.ManaQueryTarget.Value);
                 else
-                    objectId = new ObjectGuid((uint)session.Player.CurrentAppraisalTarget);
+                    objectId = new ObjectGuid(session.Player.CurrentAppraisalTarget.Value);
 
                 var wo = session.Player.CurrentLandblock?.GetObject(objectId);
 
@@ -2842,6 +2851,24 @@ namespace ACE.Server.Command.Handlers
                 session.Network.EnqueueSend(new GameMessageSystemChat("Couldn't find slumlord", ChatMessageType.Broadcast));
                 return;
             }
+
+            // SetHouseOwner only moves the player's house link and releases nothing: a house already owned, theirs or another's, would stay owned with no owner linked to it
+            if (RealmPolicy.HouseLimitReached(session.Player))
+            {
+                session.Network.EnqueueSend(new GameMessageSystemChat("You already own a house. Abandon it first (/house abandon).", ChatMessageType.Broadcast));
+                return;
+            }
+            if (slumlord.HouseOwner != null)
+            {
+                session.Network.EnqueueSend(new GameMessageSystemChat("That house is already owned.", ChatMessageType.Broadcast));
+                return;
+            }
+            if (!RealmPolicy.CanBuyHouseAt(session.Player, slumlord.Location))
+            {
+                session.Network.EnqueueSend(new GameMessageSystemChat("You can only buy a house in your home realm.", ChatMessageType.Broadcast));
+                return;
+            }
+
             session.Player.SetHouseOwner(slumlord);
             session.Player.GiveDeed(slumlord);
         }
@@ -2893,7 +2920,7 @@ namespace ACE.Server.Command.Handlers
                 wo = session.Player.CurrentLandblock?.GetObject(guid);
 
                 if (wo == null)
-                    wo = ServerObjectManager.GetObjectA(guid)?.WeenieObj?.WorldObject;
+                    wo = ServerObjectManager.GetObjectA(session.Player.ResolveGuid(guid).Full)?.WeenieObj?.WorldObject;
 
                 if (wo == null)
                 {
@@ -3048,7 +3075,7 @@ namespace ACE.Server.Command.Handlers
             var wo = CommandHandlerHelper.GetLastAppraisedObject(session);
 
             if (wo != null)
-                session.Network.EnqueueSend(new GameMessageSystemChat($"GUID: {wo.Guid}\nWeenieClassId: {wo.WeenieClassId}\nWeenieClassName: {wo.WeenieClassName}", ChatMessageType.Broadcast));
+                session.Network.EnqueueSend(new GameMessageSystemChat($"GUID: {wo.Guid}\nWeenieClassId: {wo.WeenieClassId}\nWeenieClassName: {wo.WeenieClassName}\nLocation: {wo.Location?.ToLOCString()} instance 0x{wo.CurrentInstance:X8}\nPhysics: {wo.PhysicsObj?.Position}", ChatMessageType.Broadcast));
         }
 
         public static WorldObject LastTestAim;
@@ -3699,11 +3726,11 @@ namespace ACE.Server.Command.Handlers
             if (session.Player.HealthQueryTarget.HasValue || session.Player.ManaQueryTarget.HasValue || session.Player.CurrentAppraisalTarget.HasValue)
             {
                 if (session.Player.HealthQueryTarget.HasValue)
-                    objectId = new ObjectGuid((uint)session.Player.HealthQueryTarget);
+                    objectId = new ObjectGuid(session.Player.HealthQueryTarget.Value);
                 else if (session.Player.ManaQueryTarget.HasValue)
-                    objectId = new ObjectGuid((uint)session.Player.ManaQueryTarget);
+                    objectId = new ObjectGuid(session.Player.ManaQueryTarget.Value);
                 else
-                    objectId = new ObjectGuid((uint)session.Player.CurrentAppraisalTarget);
+                    objectId = new ObjectGuid(session.Player.CurrentAppraisalTarget.Value);
 
                 var wo = session.Player.CurrentLandblock?.GetObject(objectId);
 
@@ -3912,7 +3939,7 @@ namespace ACE.Server.Command.Handlers
 
             //session.Player.TryCastSpell(spell, target, tryResist: false);
 
-            session.Player.HandleActionUseWithTarget(guid, target.Guid.Full);
+            session.Player.HandleActionUseWithTarget(guid, target.Guid.ClientGUID);
         }
 
         [CommandHandler("portalstorm", AccessLevel.Developer, CommandHandlerFlag.RequiresWorld, 1, "Tests starting a portal storm on yourself", "storm_level [0=Brewing, 1=Imminent, 2=Stormed, 3=Subsided]")]

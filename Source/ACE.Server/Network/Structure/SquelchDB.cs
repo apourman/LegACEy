@@ -1,3 +1,4 @@
+using ACE.Entity;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -63,7 +64,7 @@ namespace ACE.Server.Network.Structure
                     // chracter squelch
                     var squelchInfo = new SquelchInfo((SquelchMask)squelch.Type, squelchPlayer.Name, false);
 
-                    Characters.Add(squelch.SquelchCharacterId, squelchInfo);
+                    Characters.Add(new ObjectGuid(squelch.SquelchCharacterId).ClientGUID, squelchInfo);
                 }
                 else
                 {
@@ -83,7 +84,7 @@ namespace ACE.Server.Network.Structure
                         squelchPlayer = mostRecentLoggedInCharacterForSquelchedAccount?.Value;
                     }
 
-                    Accounts.Add(squelchPlayer.Account.AccountName, squelchPlayer.Guid.Full);
+                    Accounts.Add(squelchPlayer.Account.AccountName, squelchPlayer.Guid.ClientGUID);
                 }
             }
 
@@ -139,7 +140,7 @@ namespace ACE.Server.Network.Structure
                     return true;
 
                 // check character squelches
-                Characters.TryGetValue(player.Guid.Full, out var squelchInfo);
+                Characters.TryGetValue(player.Guid.ClientGUID, out var squelchInfo);
 
                 if (squelchInfo != null && squelchInfo.Filters[0].HasFlag(squelchMask))
                     return true;

@@ -1,5 +1,7 @@
 using System.Threading;
 
+using ACE.Entity;
+
 using ACE.Server.ClientChannel;
 
 namespace ACE.Server.WorldObjects
@@ -24,7 +26,7 @@ namespace ACE.Server.WorldObjects
             if (previous != null && previous.StationGuid != session.StationGuid)
                 PushStationClose(previous);
 
-            ServerChannel.Push(this, StationChannelActions.Open, StationChannelActions.Body(session.Name, session.StationGuid));
+            ServerChannel.Push(this, StationChannelActions.Open, StationChannelActions.Body(session.Name, session.StationGuid.ClientGUID));
         }
 
         /// <summary>
@@ -70,7 +72,7 @@ namespace ACE.Server.WorldObjects
 
         private void PushStationClose(StationSession session)
         {
-            ServerChannel.Push(this, StationChannelActions.Close, StationChannelActions.Body(session.Name, session.StationGuid));
+            ServerChannel.Push(this, StationChannelActions.Close, StationChannelActions.Body(session.Name, session.StationGuid.ClientGUID));
         }
 
         private sealed class StationSession
@@ -79,7 +81,7 @@ namespace ACE.Server.WorldObjects
             {
                 Station = station;
                 Name = station.LegaceyStation;
-                StationGuid = station.Guid.Full;
+                StationGuid = station.Guid;
             }
 
             /// <summary>
@@ -89,7 +91,7 @@ namespace ACE.Server.WorldObjects
 
             public string Name { get; }
 
-            public uint StationGuid { get; }
+            public ObjectGuid StationGuid { get; }
         }
     }
 }

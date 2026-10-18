@@ -49,22 +49,22 @@ namespace ACE.MarketApi
             if (items.Count == 0)
                 return items;
 
-            var ids = items.Keys.ToList();
+            var ids = items.Keys.Select(g => (ulong)g).ToList();
 
             foreach (var row in shard.BiotaPropertiesInt.AsNoTracking().Where(r => ids.Contains(r.ObjectId)))
-                items[row.ObjectId].ints[row.Type] = row.Value;
+                items[(uint)row.ObjectId].ints[row.Type] = row.Value;
 
             foreach (var row in shard.BiotaPropertiesFloat.AsNoTracking().Where(r => ids.Contains(r.ObjectId)))
-                items[row.ObjectId].floats[row.Type] = row.Value;
+                items[(uint)row.ObjectId].floats[row.Type] = row.Value;
 
             foreach (var row in shard.BiotaPropertiesString.AsNoTracking().Where(r => ids.Contains(r.ObjectId)))
-                items[row.ObjectId].strings[row.Type] = row.Value;
+                items[(uint)row.ObjectId].strings[row.Type] = row.Value;
 
             foreach (var row in shard.BiotaPropertiesBool.AsNoTracking().Where(r => ids.Contains(r.ObjectId)))
-                items[row.ObjectId].bools[row.Type] = row.Value;
+                items[(uint)row.ObjectId].bools[row.Type] = row.Value;
 
             foreach (var row in shard.BiotaPropertiesSpellBook.AsNoTracking().Where(r => ids.Contains(r.ObjectId)).OrderBy(r => r.Spell))
-                items[row.ObjectId].spells.Add(row.Spell);
+                items[(uint)row.ObjectId].spells.Add(row.Spell);
 
             return items;
         }

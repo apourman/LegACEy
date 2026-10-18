@@ -24,7 +24,7 @@ namespace ACE.Server.Tests.Market
             var account = VaultTestWorld.NewAccountId();
             var player = VaultTestWorld.NewPlayer(account);
             var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
-            var guid = item.Guid.Full;
+            var guid = item.Guid.ClientGUID;
 
             long containerRowsBetween = -1;
             long vaultRowsBetween = -1;
@@ -66,7 +66,7 @@ namespace ACE.Server.Tests.Market
             var account = VaultTestWorld.NewAccountId();
             var player = VaultTestWorld.NewPlayer(account);
             var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
-            var guid = item.Guid.Full;
+            var guid = item.Guid.ClientGUID;
 
             // the player is gone by the time the job fails, so the object is discarded and only the database keeps the item
             player.IsLoggingOut = true;
@@ -104,7 +104,7 @@ namespace ACE.Server.Tests.Market
             item.Biota.PropertiesEnchantmentRegistry.Add(new ACE.Entity.Models.PropertiesEnchantmentRegistry { SpellId = 1234, LayerId = 1, CasterObjectId = 0x50000099, Duration = 1800, PowerLevel = 6, StatModType = ACE.Entity.Enum.EnchantmentTypeFlags.Float | ACE.Entity.Enum.EnchantmentTypeFlags.SingleStat, StatModKey = 1, StatModValue = 1.5f });
             item.ChangesDetected = true;
             VaultTestWorld.Give(player, item);
-            var guid = item.Guid.Full;
+            var guid = item.Guid.ClientGUID;
 
             VaultResult result;
             using (FailInsertsInto("market_item_event"))
@@ -121,7 +121,7 @@ namespace ACE.Server.Tests.Market
             var account = VaultTestWorld.NewAccountId();
             var player = VaultTestWorld.NewPlayer(account);
             var item = VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.SwordWcid));
-            var guid = item.Guid.Full;
+            var guid = item.Guid.ClientGUID;
             Assert.AreEqual(VaultOutcome.Deposited, VaultTestWorld.Deposit(player, guid).Outcome);
 
             MarketTestDatabase.Execute(VaultTestWorld.AuthDb, $"INSERT INTO account (accountId, accountName, passwordHash, passwordSalt, accessLevel) VALUES ({account}, 'vaultban{account}', 'x', 'use bcrypt', 0);");

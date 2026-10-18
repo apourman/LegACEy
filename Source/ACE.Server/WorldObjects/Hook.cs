@@ -78,13 +78,13 @@ namespace ACE.Server.WorldObjects
                     return Item.CheckUseRequirements(activator);
                 }
 
-                if (houseOwner != null && (player.Guid.Full == houseOwner || player.House?.HouseOwner == houseOwner))
+                if (houseOwner != null && (player.Guid.ClientGUID == houseOwner || player.House?.HouseOwner == houseOwner))
                     return new ActivationResult(new GameEventWeenieErrorWithString(player.Session, WeenieErrorWithString.ItemUnusableOnHook_CanOpen, Name));
                 else
                     return new ActivationResult(new GameEventWeenieErrorWithString(player.Session, WeenieErrorWithString.ItemUnusableOnHook_CannotOpen, Name));
             }
 
-            if (player.House == null || houseOwner == null || (player.Guid.Full != houseOwner && player.House?.HouseOwner != houseOwner))
+            if (player.House == null || houseOwner == null || (player.Guid.ClientGUID != houseOwner && player.House?.HouseOwner != houseOwner))
             {
                 if (Item == null)
                     return new ActivationResult(new GameEventWeenieError(player.Session, WeenieError.HookItemNotUsable_CannotOpen));

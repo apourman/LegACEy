@@ -247,7 +247,7 @@ namespace ACE.MarketDev
                 .Select(c => new { c.Id, c.AccountId })
                 .SingleOrDefault() ?? throw new InvalidOperationException($"No live character named '{characterName}' exists in the configured shard.");
 
-            return ReadOwner(character.AccountId, character.Id, null);
+            return ReadOwner(character.AccountId, (uint)character.Id, null);
         }
 
         /// <summary>
@@ -264,7 +264,7 @@ namespace ACE.MarketDev
                 .Select(v => new { v.ItemGuid, v.Name })
                 .FirstOrDefault();
 
-            return new Owner(accountId, characterId, characterName, item?.ItemGuid ?? itemGuid, item?.Name, Ledger.GetBalance(shard, accountId));
+            return new Owner(accountId, characterId, characterName, (uint?)item?.ItemGuid ?? itemGuid, item?.Name, Ledger.GetBalance(shard, accountId));
         }
 
         private static Ticket Create(Owner owner, string kind, string label)

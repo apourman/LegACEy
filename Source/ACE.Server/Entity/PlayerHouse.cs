@@ -18,7 +18,7 @@ namespace ACE.Server.Entity
             else
                 Console.WriteLine($"PlayerHouse({player.Name}, {house.Name} ({house.Guid})) - couldn't find account id");
 
-            PlayerGuid = player.Guid.Full;
+            PlayerGuid = player.Guid.ClientGUID;
             PlayerName = player.Name;
 
             House = house;

@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "id": 1,
+  "name": "pvp-test",
+  "kind": "world",
+  "rules": {
+    "pvp": true
+  }
+}

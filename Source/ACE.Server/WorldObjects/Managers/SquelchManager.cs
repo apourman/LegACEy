@@ -125,7 +125,7 @@ namespace ACE.Server.WorldObjects.Managers
 
         public void SquelchCharacter(IPlayer player, ChatMessageType messageType)
         {
-            Squelches.Characters.TryGetValue(player.Guid.Full, out SquelchInfo existing);
+            Squelches.Characters.TryGetValue(player.Guid.ClientGUID, out SquelchInfo existing);
 
             var newMask = messageType.ToMask();
 
@@ -144,7 +144,7 @@ namespace ACE.Server.WorldObjects.Managers
                 }
             }
 
-            Player.Character.AddOrUpdateSquelch(player.Guid.Full, 0, (uint)newMask, Player.CharacterDatabaseLock);
+            Player.Character.AddOrUpdateSquelch(player.Guid.ClientGUID, 0, (uint)newMask, Player.CharacterDatabaseLock);
             Player.CharacterChangesDetected = true;
 
             Player.Session.Network.EnqueueSend(new GameMessageSystemChat($"{player.Name} has been squelched{channelMsg}.", ChatMessageType.Broadcast));
@@ -152,7 +152,7 @@ namespace ACE.Server.WorldObjects.Managers
 
         public void UnsquelchCharacter(IPlayer player, ChatMessageType messageType)
         {
-            Squelches.Characters.TryGetValue(player.Guid.Full, out SquelchInfo existing);
+            Squelches.Characters.TryGetValue(player.Guid.ClientGUID, out SquelchInfo existing);
 
             if (existing == null)
             {
@@ -162,7 +162,7 @@ namespace ACE.Server.WorldObjects.Managers
 
             if (messageType == ChatMessageType.AllChannels)
             {
-                Player.Character.TryRemoveSquelch(player.Guid.Full, 0, out _, Player.CharacterDatabaseLock);
+                Player.Character.TryRemoveSquelch(player.Guid.ClientGUID, 0, out _, Player.CharacterDatabaseLock);
                 Player.CharacterChangesDetected = true;
 
                 Player.Session.Network.EnqueueSend(new GameMessageSystemChat($"{player.Name} has been unsquelched.", ChatMessageType.Broadcast));
@@ -181,9 +181,9 @@ namespace ACE.Server.WorldObjects.Managers
                 var newMask = existingMask.Remove(removeMask);
 
                 if (newMask != SquelchMask.None)
-                    Player.Character.AddOrUpdateSquelch(player.Guid.Full, 0, (uint)newMask, Player.CharacterDatabaseLock);
+                    Player.Character.AddOrUpdateSquelch(player.Guid.ClientGUID, 0, (uint)newMask, Player.CharacterDatabaseLock);
                 else
-                    Player.Character.TryRemoveSquelch(player.Guid.Full, 0, out _, Player.CharacterDatabaseLock);
+                    Player.Character.TryRemoveSquelch(player.Guid.ClientGUID, 0, out _, Player.CharacterDatabaseLock);
 
                 Player.Session.Network.EnqueueSend(new GameMessageSystemChat($"{player.Name} has been unsquelched on the {messageType} channel.", ChatMessageType.Broadcast));
             }
@@ -225,7 +225,7 @@ namespace ACE.Server.WorldObjects.Managers
                 }
 
                 // always all channels?
-                Player.Character.AddOrUpdateSquelch(player.Guid.Full, player.Account.AccountId, (uint)SquelchMask.AllChannels, Player.CharacterDatabaseLock);
+                Player.Character.AddOrUpdateSquelch(player.Guid.ClientGUID, player.Account.AccountId, (uint)SquelchMask.AllChannels, Player.CharacterDatabaseLock);
                 Player.CharacterChangesDetected = true;
 
                 Player.Session.Network.EnqueueSend(new GameMessageSystemChat($"{player.Name}'s account has been squelched.", ChatMessageType.Broadcast));

@@ -45,7 +45,7 @@ namespace ACE.MarketApi
             var characters = await shard.Character.AsNoTracking()
                 .Where(c => c.AccountId == accountId && !c.IsDeleted)
                 .OrderBy(c => c.Name)
-                .Select(c => new CharacterResponse(c.Id, c.Name))
+                .Select(c => new CharacterResponse((uint)c.Id, c.Name))
                 .ToListAsync();
 
             return Results.Json(new MeResponse(
@@ -79,10 +79,11 @@ namespace ACE.MarketApi
                 .ToListAsync();
 
             var itemGuids = items.Select(v => v.ItemGuid).ToHashSet();
+            var itemGuids32 = itemGuids.Select(g => (uint)g).ToHashSet();
             var listings = itemGuids.Count == 0 ? new Dictionary<uint, Database.Models.Shard.Market.Listing>() :
                 await shard.MarketListings.AsNoTracking()
                     .Where(l => itemGuids.Contains(l.ItemGuid) && l.SellerAccountId == accountId && l.Status == Database.Models.Shard.Market.ListingStatus.Active)
-                    .ToDictionaryAsync(l => l.ItemGuid);
+                    .ToDictionaryAsync(l => (uint)l.ItemGuid);
             var ticketIds = new Dictionary<uint, long>();
 
             if (items.Any(v => v.State == VaultItemState.Withdrawing))
@@ -97,7 +98,7 @@ namespace ACE.MarketApi
                 {
                     var itemGuid = TicketPayload.FromJson(ticket.Payload)?.ItemGuid;
 
-                    if (itemGuid.HasValue && itemGuids.Contains(itemGuid.Value) && !ticketIds.ContainsKey(itemGuid.Value))
+                    if (itemGuid.HasValue && itemGuids32.Contains(itemGuid.Value) && !ticketIds.ContainsKey(itemGuid.Value))
                         ticketIds.Add(itemGuid.Value, ticket.Id);
                 }
             }
@@ -105,7 +106,7 @@ namespace ACE.MarketApi
             var listingLifetime = ListingStore.Lifetime(shard);
 
             return Results.Json(new VaultResponse(items.Select(v => new VaultItemResponse(
-                v.ItemGuid,
+                (uint)v.ItemGuid,
                 v.Wcid,
                 v.Name,
                 v.ItemType,
@@ -113,10 +114,10 @@ namespace ACE.MarketApi
                 v.State.ToString(),
                 v.CharacterId,
                 ApiContractViews.Icon(ItemIcons.For(v, gameData)),
-                listings.TryGetValue(v.ItemGuid, out var listing) ? listing.Id : null,
+                listings.TryGetValue((uint)v.ItemGuid, out var listing) ? listing.Id : null,
                 listing?.Price,
                 listing == null ? null : MarketHttp.Utc(listing.CreatedTime + listingLifetime),
-                ticketIds.TryGetValue(v.ItemGuid, out var ticketId) ? ticketId : null,
+                ticketIds.TryGetValue((uint)v.ItemGuid, out var ticketId) ? ticketId : null,
                 DateTime.SpecifyKind(v.DepositedTime, DateTimeKind.Utc))).ToList()));
         }
 

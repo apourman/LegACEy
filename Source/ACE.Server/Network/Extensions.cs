@@ -116,8 +116,14 @@ namespace ACE.Server.Network
             writer.BaseStream.Position = originalPosition;
         }
 
-        public static ObjectGuid ReadGuid(this BinaryReader reader) { return new ObjectGuid(reader.ReadUInt32()); }
+        /// <summary>
+        /// The client only ever sees the 32-bit client guid, never the instance
+        /// </summary>
+        public static void WriteGuid(this BinaryWriter writer, ObjectGuid guid) { writer.Write(guid.ClientGUID); }
 
-        public static void WriteGuid(this BinaryWriter writer, ObjectGuid guid) { writer.Write(guid.Full); }
+        /// <summary>
+        /// A stored 64-bit id (an IID value, biota id or character id), written as the client guid
+        /// </summary>
+        public static void WriteGuid(this BinaryWriter writer, ulong id) { writer.WriteGuid(new ObjectGuid(id)); }
     }
 }

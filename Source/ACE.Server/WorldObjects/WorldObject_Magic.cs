@@ -1141,7 +1141,7 @@ namespace ACE.Server.WorldObjects
                     ActionChain lifestoneRecall = new ActionChain();
                     lifestoneRecall.AddAction(targetPlayer, () => targetPlayer.DoPreTeleportHide());
                     lifestoneRecall.AddDelaySeconds(2.0f);  // 2 second delay
-                    lifestoneRecall.AddAction(targetPlayer, () => targetPlayer.TeleToPosition(recall));
+                    lifestoneRecall.AddAction(targetPlayer, () => targetPlayer.TeleToPosition(recall, inHomeRealm: true));
                     lifestoneRecall.EnqueueChain();
                 }
                 else
@@ -1694,7 +1694,7 @@ namespace ACE.Server.WorldObjects
         /// </summary>
         public Vector3 CalculateProjectileVelocity(Spell spell, WorldObject target, ProjectileSpellType spellType, Vector3 origin)
         {
-            var casterLoc = PhysicsObj.Position.ACEPosition();
+            var casterLoc = PhysicsObj.Position.ACEPosition(PhysicsObj.Instance);
 
             var speed = GetProjectileSpeed(spell);
 
@@ -1707,7 +1707,7 @@ namespace ACE.Server.WorldObjects
                 return Vector3.Transform(Vector3.UnitY, casterLoc.Rotation) * speed;
             }
 
-            var targetLoc = target.PhysicsObj.Position.ACEPosition();
+            var targetLoc = target.PhysicsObj.Position.ACEPosition(target.PhysicsObj.Instance);
 
             var strikeSpell = spellType == ProjectileSpellType.Strike;
 
@@ -1764,8 +1764,8 @@ namespace ACE.Server.WorldObjects
 
             var spellProjectiles = new List<SpellProjectile>();
 
-            var casterLoc = PhysicsObj.Position.ACEPosition();
-            var targetLoc = target?.PhysicsObj.Position.ACEPosition();
+            var casterLoc = PhysicsObj.Position.ACEPosition(PhysicsObj.Instance);
+            var targetLoc = target?.PhysicsObj.Position.ACEPosition(target.PhysicsObj.Instance);
 
             for (var i = 0; i < origins.Count; i++)
             {

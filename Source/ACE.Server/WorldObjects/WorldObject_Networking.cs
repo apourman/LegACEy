@@ -127,10 +127,10 @@ namespace ACE.Server.WorldObjects
                 writer.Write(MaxStackSize ?? (ushort)0);
 
             if ((weenieFlags & WeenieHeaderFlag.Container) != 0)
-                writer.Write(ContainerId ?? 0);
+                writer.WriteGuid(ContainerId ?? 0);
 
             if ((weenieFlags & WeenieHeaderFlag.Wielder) != 0)
-                writer.Write(WielderId ?? 0);
+                writer.WriteGuid(WielderId ?? 0);
 
             if ((weenieFlags & WeenieHeaderFlag.ValidLocations) != 0)
                 writer.Write((uint?)ValidLocations ?? 0u);
@@ -167,7 +167,7 @@ namespace ACE.Server.WorldObjects
                 if (house != null && house.HouseType == HouseType.Mansion)
                     houseOwner = house.LinkedHouses[0].HouseOwner;
 
-                writer.Write(houseOwner ?? 0);
+                writer.WriteGuid(houseOwner ?? 0);
             }
 
             if ((weenieFlags & WeenieHeaderFlag.HouseRestrictions) != 0)
@@ -194,7 +194,7 @@ namespace ACE.Server.WorldObjects
                 writer.Write((uint?)HookItemType ?? 0);
 
             if ((weenieFlags & WeenieHeaderFlag.Monarch) != 0)
-                writer.Write(MonarchId ?? 0);
+                writer.WriteGuid(MonarchId ?? 0);
 
             if ((weenieFlags & WeenieHeaderFlag.HookType) != 0)
                 writer.Write(HookType ?? 0);
@@ -215,7 +215,7 @@ namespace ACE.Server.WorldObjects
                 writer.Write((double?)CooldownDuration ?? 0u);
 
             if ((weenieFlags2 & WeenieHeaderFlag2.PetOwner) != 0)
-                writer.Write(PetOwner ?? 0);
+                writer.WriteGuid(PetOwner ?? 0);
 
             writer.Align();
         }
@@ -357,7 +357,7 @@ namespace ACE.Server.WorldObjects
 
             if ((physicsDescriptionFlag & PhysicsDescriptionFlag.Parent) != 0)
             {
-                writer.Write(WielderId ?? 0);
+                writer.WriteGuid(WielderId ?? 0);
                 writer.Write((uint)(ParentLocation ?? 0));
             }
 

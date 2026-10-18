@@ -40,7 +40,7 @@ namespace ACE.Database.Adapter
             }
             if (biota.BiotaPropertiesIID != null && (instantiateEmptyCollections || biota.BiotaPropertiesIID.Count > 0))
             {
-                result.PropertiesIID = new Dictionary<PropertyInstanceId, uint>(biota.BiotaPropertiesIID.Count);
+                result.PropertiesIID = new Dictionary<PropertyInstanceId, ulong>(biota.BiotaPropertiesIID.Count);
                 foreach (var value in biota.BiotaPropertiesIID)
                     result.PropertiesIID[(PropertyInstanceId)value.Type] = value.Value;
             }
@@ -73,6 +73,7 @@ namespace ACE.Database.Adapter
                     var newEntity = new PropertiesPosition
                     {
                         ObjCellId = record.ObjCellId,
+                        Instance = record.Instance,
                         PositionX = record.OriginX,
                         PositionY = record.OriginY,
                         PositionZ = record.OriginZ,
@@ -429,7 +430,7 @@ namespace ACE.Database.Adapter
                         ApprovedVassal = record.ApprovedVassal,
                     };
 
-                    result.PropertiesAllegiance[record.CharacterId] = newEntity;
+                    result.PropertiesAllegiance[(uint)record.CharacterId] = newEntity; // characters are players, so 32-bit
                 }
             }
 
@@ -468,7 +469,7 @@ namespace ACE.Database.Adapter
                 result.HousePermissions = new Dictionary<uint, bool>(biota.HousePermission.Count);
 
                 foreach (var record in biota.HousePermission)
-                    result.HousePermissions[record.PlayerGuid] = record.Storage;
+                    result.HousePermissions[(uint)record.PlayerGuid] = record.Storage; // players, so 32-bit
             }
 
 
@@ -525,7 +526,7 @@ namespace ACE.Database.Adapter
             {
                 foreach (var kvp in biota.PropertiesPosition)
                 {
-                    var entity = new BiotaPropertiesPosition { ObjectId = biota.Id, PositionType = (ushort)kvp.Key, ObjCellId = kvp.Value.ObjCellId, OriginX = kvp.Value.PositionX, OriginY = kvp.Value.PositionY, OriginZ = kvp.Value.PositionZ, AnglesW = kvp.Value.RotationW, AnglesX = kvp.Value.RotationX, AnglesY = kvp.Value.RotationY, AnglesZ = kvp.Value.RotationZ };
+                    var entity = new BiotaPropertiesPosition { ObjectId = biota.Id, PositionType = (ushort)kvp.Key, ObjCellId = kvp.Value.ObjCellId, Instance = kvp.Value.Instance, OriginX = kvp.Value.PositionX, OriginY = kvp.Value.PositionY, OriginZ = kvp.Value.PositionZ, AnglesW = kvp.Value.RotationW, AnglesX = kvp.Value.RotationX, AnglesY = kvp.Value.RotationY, AnglesZ = kvp.Value.RotationZ };
 
                     // Entity Framework is unable to store NaN floats in the database and results in an error of:
                     // ERROR 1054: Unknown column 'NaN' in 'field list'

@@ -11,7 +11,7 @@ public partial class BiotaPropertiesBook
     /// <summary>
     /// Id of the object this property belongs to
     /// </summary>
-    public uint ObjectId { get; set; }
+    public ulong ObjectId { get; set; }
 
     /// <summary>
     /// Maximum number of pages per book

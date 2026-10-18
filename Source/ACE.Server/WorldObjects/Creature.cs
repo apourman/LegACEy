@@ -352,7 +352,7 @@ namespace ACE.Server.WorldObjects
         /// </summary>
         public bool OnTargetSelected(Player player)
         {
-            return selectedTargets.TryAdd(player.Guid.Full, new WorldObjectInfo(player));
+            return selectedTargets.TryAdd(player.Guid.ClientGUID, new WorldObjectInfo(player));
         }
 
         /// <summary>
@@ -360,7 +360,7 @@ namespace ACE.Server.WorldObjects
         /// </summary>
         public bool OnTargetDeselected(Player player)
         {
-            return selectedTargets.Remove(player.Guid.Full);
+            return selectedTargets.Remove(player.Guid.ClientGUID);
         }
 
         /// <summary>

@@ -136,7 +136,7 @@ namespace ACE.Server.WorldObjects
                     if (unlocker.WeenieType == WeenieType.Lockpick)
                     {
                         var effectiveLockpickSkill = GetEffectiveLockpickSkill(player, unlocker);
-                        result = @lock.Unlock(player.Guid.Full, effectiveLockpickSkill, ref difficulty);
+                        result = @lock.Unlock(player.Guid.ClientGUID, effectiveLockpickSkill, ref difficulty);
                     }
                     else if (unlocker is Key woKey)
                     {
@@ -148,7 +148,7 @@ namespace ACE.Server.WorldObjects
                                 return;
                             }
                         }
-                        result = @lock.Unlock(player.Guid.Full, woKey);
+                        result = @lock.Unlock(player.Guid.ClientGUID, woKey);
                     }
 
                     switch (result)

@@ -12,6 +12,7 @@ using ACE.Common.Performance;
 using ACE.Entity;
 using ACE.Entity.Enum;
 using ACE.Server.Entity;
+using ACE.Server.Realms;
 using ACE.Server.WorldObjects;
 
 using log4net;
@@ -31,10 +32,9 @@ namespace ACE.Server.Managers
         private static readonly ReaderWriterLockSlim landblockLock = new ReaderWriterLockSlim(LockRecursionPolicy.SupportsRecursion);
 
         /// <summary>
-        /// A table of all the landblocks in the world map
-        /// Landblocks which aren't currently loaded will be null here
+        /// The loaded landblock copies, by (instance, landblock). The base world is instance 0.
         /// </summary>
-        private static readonly Landblock[,] landblocks = new Landblock[255, 255];
+        private static readonly Dictionary<(uint Instance, ushort Landblock), Landblock> landblocks = new Dictionary<(uint Instance, ushort Landblock), Landblock>();
 
         /// <summary>
         /// A lookup table of all the currently loaded landblocks
@@ -132,7 +132,7 @@ namespace ACE.Server.Managers
         private static void PreloadLandblock(uint landblock, PreloadedLandblocks preloadLandblock)
         {
             var landblockID = new LandblockId(landblock);
-            GetLandblock(landblockID, preloadLandblock.IncludeAdjacents, preloadLandblock.Permaload);
+            GetLandblock(landblockID, 0, preloadLandblock.IncludeAdjacents, preloadLandblock.Permaload);
             log.DebugFormat("Landblock {0:X4}, ({1}) preloaded. IncludeAdjacents = {2}, Permaload = {3}", landblockID.Landblock, preloadLandblock.Description, preloadLandblock.IncludeAdjacents, preloadLandblock.Permaload);
         }
 
@@ -278,6 +278,9 @@ namespace ACE.Server.Managers
             ServerPerformanceMonitor.RestartEvent(ServerPerformanceMonitor.MonitorType.LandblockManager_TickSingleThreadedWork);
             TickSingleThreadedWork();
             ServerPerformanceMonitor.RegisterEventEnd(ServerPerformanceMonitor.MonitorType.LandblockManager_TickSingleThreadedWork);
+
+            // end ephemeral copies whose time is up or that are empty; queues their landblocks, so this runs before UnloadLandblocks
+            EphemeralInstances.Sweep(DateTime.UtcNow);
 
             // clean up inactive landblocks
             UnloadLandblocks();
@@ -431,7 +434,7 @@ namespace ACE.Server.Managers
         /// <param name="loadAdjacents">If TRUE, ensures all of the adjacent landblocks for this WorldObject are loaded</param>
         public static bool AddObject(WorldObject worldObject, bool loadAdjacents = false)
         {
-            var block = GetLandblock(worldObject.Location.LandblockId, loadAdjacents);
+            var block = GetLandblock(worldObject.Location.LandblockId, worldObject.Location.Instance ?? 0, loadAdjacents);
 
             return block.AddWorldObject(worldObject);
         }
@@ -442,7 +445,7 @@ namespace ACE.Server.Managers
         public static void RelocateObjectForPhysics(WorldObject worldObject, bool adjacencyMove)
         {
             var oldBlock = worldObject.CurrentLandblock;
-            var newBlock = GetLandblock(worldObject.Location.LandblockId, true);
+            var newBlock = GetLandblock(worldObject.Location.LandblockId, worldObject.Location.Instance ?? 0, true);
 
             if (newBlock.IsDormant && worldObject is SpellProjectile)
             {
@@ -458,12 +461,12 @@ namespace ACE.Server.Managers
             newBlock.AddWorldObjectForPhysics(worldObject);
         }
 
-        public static bool IsLoaded(LandblockId landblockId)
+        public static bool IsLoaded(LandblockId landblockId, uint instance)
         {
             landblockLock.EnterReadLock();
             try
             {
-                return landblocks[landblockId.LandblockX, landblockId.LandblockY] != null;
+                return landblocks.ContainsKey((instance, landblockId.Landblock));
             }
             finally
             {
@@ -472,9 +475,10 @@ namespace ACE.Server.Managers
         }
 
         /// <summary>
-        /// Returns a reference to a landblock, loading the landblock if not already active
+        /// Returns a reference to a landblock copy, loading the copy if not already active
         /// </summary>
-        public static Landblock GetLandblock(LandblockId landblockId, bool loadAdjacents, bool permaload = false)
+        /// <param name="instance">The landblock copy. 0 is the base world.</param>
+        public static Landblock GetLandblock(LandblockId landblockId, uint instance, bool loadAdjacents, bool permaload = false)
         {
             Landblock landblock;
 
@@ -483,7 +487,7 @@ namespace ACE.Server.Managers
             {
                 bool setAdjacents = false;
 
-                landblock = landblocks[landblockId.LandblockX, landblockId.LandblockY];
+                landblocks.TryGetValue((instance, landblockId.Landblock), out landblock);
 
                 if (landblock == null)
                 {
@@ -491,7 +495,7 @@ namespace ACE.Server.Managers
                     try
                     {
                         // load up this landblock
-                        landblock = landblocks[landblockId.LandblockX, landblockId.LandblockY] = new Landblock(landblockId);
+                        landblock = landblocks[(instance, landblockId.Landblock)] = new Landblock(landblockId, instance);
 
                         if (!loadedLandblocks.Add(landblock))
                         {
@@ -519,7 +523,7 @@ namespace ACE.Server.Managers
                 {
                     var adjacents = GetAdjacentIDs(landblock);
                     foreach (var adjacent in adjacents)
-                        GetLandblock(adjacent, false, permaload);
+                        GetLandblock(adjacent, instance, false, permaload);
 
                     setAdjacents = true;
                 }
@@ -563,8 +567,7 @@ namespace ACE.Server.Managers
 
             foreach (var adjacentID in adjacentIDs)
             {
-                var adjacent = landblocks[adjacentID.LandblockX, adjacentID.LandblockY];
-                if (adjacent != null)
+                if (landblocks.TryGetValue((landblock.Instance, adjacentID.Landblock), out var adjacent))
                     adjacents.Add(adjacent);
             }
 
@@ -675,11 +678,12 @@ namespace ACE.Server.Managers
         }
 
         /// <summary>
-        /// Queues a landblock for thread-safe unloading
+        /// Queues a landblock for thread-safe unloading. A landblock queued again before it unloads is ignored.
         /// </summary>
         public static void AddToDestructionQueue(Landblock landblock)
         {
-            destructionQueue.Add(landblock);
+            if (landblock.TryQueueForUnload())
+                destructionQueue.Add(landblock);
         }
 
         private static readonly System.Diagnostics.Stopwatch swTrySplitEach = new System.Diagnostics.Stopwatch();
@@ -703,7 +707,7 @@ namespace ACE.Server.Managers
                         // remove from list of managed landblocks
                         if (loadedLandblocks.Remove(landblock))
                         {
-                            landblocks[landblock.Id.LandblockX, landblock.Id.LandblockY] = null;
+                            landblocks.Remove((landblock.Instance, landblock.Id.Landblock));
 
                             // remove from landblock group
                             for (int i = landblockGroups.Count - 1; i >= 0 ; i--)

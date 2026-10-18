@@ -238,22 +238,26 @@ namespace ACE.Server.WorldObjects
             // a DO and then a CO is the only thing that fixes this issue (/objsend can help with this)
             // this part probably deviates from retail a bit, but is the equivalent automated fix
 
+            // Another landblock copy reuses the same client guids for its statics: the client must forget everything it knows
+            // before the new copy's objects arrive, or a late delete for the old copy's object would remove the new copy's one.
+            var otherCopy = (Location.Instance ?? 0) != (newPosition.Instance ?? 0);
+
             var fixLevel = PropertyManager.GetLong("teleport_visibility_fix").Item;
 
             // disabled by default
-            if (fixLevel < 1) return;
+            if (fixLevel < 1 && !otherCopy) return;
 
-            if (Location.Cell == newPosition.Cell)
+            if (Location.Cell == newPosition.Cell && !otherCopy)
                 return;
 
             var knownObjs = GetKnownObjects();
 
-            if (fixLevel == 1)
+            if (!otherCopy && fixLevel == 1)
             {
                 // filter to players only
                 knownObjs = knownObjs.Where(i => i is Player).ToList();
             }
-            else if (fixLevel == 2)
+            else if (!otherCopy && fixLevel == 2)
             {
                 // filter to creatures only
                 knownObjs = knownObjs.Where(i => i is Creature).ToList();
