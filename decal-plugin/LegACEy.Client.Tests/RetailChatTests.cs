@@ -161,6 +161,7 @@ public sealed class RetailChatTests
         panel.KeyDown(Key.Up);
         panel.KeyDown(Key.Enter);
         Assert.Equal("/vt go", port.Sent.Last());
+        Click(panel, box);
         panel.KeyDown(Key.Up);
         Assert.Equal("/vt go", box.Text);
     });
@@ -407,6 +408,19 @@ public sealed class RetailChatTests
 
         Assert.False(panel.WantsKeyboard);
         Assert.Empty(port.Sent);
+    });
+
+    [Fact]
+    public void Sending_a_line_leaves_the_box_so_the_next_line_starts_with_Enter() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        using var panel = Open(port, out var window);
+        TypeAndEnter(panel, window, "hello");
+        panel.Tick();
+
+        Assert.Equal("hello", port.Sent.Last());
+        Assert.False(panel.WantsKeyboard);
+        Assert.Equal(string.Empty, InputBox(window).Text);
     });
 
     [Fact]

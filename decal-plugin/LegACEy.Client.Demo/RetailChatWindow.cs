@@ -840,7 +840,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     }
 
     /// <summary>
-    /// Sends the box's text as the target says it, then clears the box. Blank text, or a selection tell with nothing selected, sends nothing;
+    /// Sends the box's text as the target says it, then clears the box and leaves it, as retail's chat entry does: Enter or a click starts
+    /// the next line. Blank text, or a selection tell with nothing selected, sends nothing;
     /// so does a send retail's chat could not take, and then the text stays in the box.
     /// </summary>
     private void SendTyped()
@@ -855,6 +856,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _history.AddSent(typed.Trim());
         _recall = null;
         _input.Text = string.Empty;
+        LeaveInput();
     }
 
     private void ToggleMenu()
