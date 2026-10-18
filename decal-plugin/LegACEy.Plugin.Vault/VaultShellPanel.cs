@@ -91,9 +91,10 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     // The header line: "Items: n / capacity" and the balance, or "N selected" with the selection's buttons instead.
     private readonly StackPanel _itemsLine = new() { Orientation = Orientation.Horizontal, Spacing = 4 };
     private readonly TextBlock _selectedLabel = Label(string.Empty, SelectedBrush, 12);
-    private readonly TextBlock _withdrawText = Label(string.Empty, GoldBrush, 12);
+    // The button labels sit 3 DIPs in from the frame's padding, so their text clears its gold line as the other Dereth buttons' does.
+    private readonly TextBlock _withdrawText = Padded(Label(string.Empty, GoldBrush, 12));
     private readonly DerethButton _withdrawSelection = new() { Height = 24 };
-    private readonly DerethButton _clearSelection = new() { Height = 24, Content = Label("Clear", MutedBrush, 12) };
+    private readonly DerethButton _clearSelection = new() { Height = 24, Content = Padded(Label("Clear", MutedBrush, 12)) };
     // The selection's line takes the header line: the label on the left, its buttons on the right.
     private readonly Grid _selectionLine = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto"), IsVisible = false };
     private readonly StackPanel _selectionButtons = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
@@ -294,6 +295,12 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
     }
 
     /// <summary>"1 – 100 of 317" for the page on screen, or "0 of 0" when nothing matches.</summary>
+    private static TextBlock Padded(TextBlock label)
+    {
+        label.Margin = new Thickness(3, 0);
+        return label;
+    }
+
     private static string PagerText(int offset, int shown, int total) =>
         total == 0 ? "0 of 0" : $"{offset + 1:N0} – {offset + shown:N0} of {total:N0}";
 

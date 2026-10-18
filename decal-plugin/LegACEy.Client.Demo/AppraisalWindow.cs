@@ -60,15 +60,21 @@ public sealed class AppraisalWindow
 
     /// <summary>
     /// The window for an appraisal, at the height its content needs. <paramref name="inscribe"/> saves an inscription on an item and returns
-    /// whether it was sent.
+    /// whether it was sent. <paramref name="measure"/> measures a control as the window draws it, at the UI size: there each line rounds to whole
+    /// pixels, so the unscaled measure used without it can come out short and scroll the last line.
     /// </summary>
-    public static AppraisalWindow Create(AppraisalContent content, IGameArtSource? art, Func<uint, string, bool> inscribe)
+    public static AppraisalWindow Create(AppraisalContent content, IGameArtSource? art, Func<uint, string, bool> inscribe,
+        Func<Control, Size, Size>? measure = null)
     {
         var layout = Layout(content, inscribe);
         var scroll = Scroll(layout.Body);
         var foot = new ContentControl { Content = layout.Foot };
         var window = new DerethWindow(content.Name, Icon(content.Visual, art), Frame(scroll, foot));
-        var view = new AppraisalWindow(window, scroll, foot, layout.Height, layout.Field, content.ObjectId);
+        // The whole window measured as drawn, chrome and all, with the body unscrolled; the 0.001 drops float noise from whole pixels.
+        var height = measure == null
+            ? layout.Height
+            : Math.Min(MaxHeight, (int)Math.Ceiling(measure(window, new Size(Width, double.PositiveInfinity)).Height - 0.001));
+        var view = new AppraisalWindow(window, scroll, foot, height, layout.Field, content.ObjectId);
         window.CloseRequested += (_, _) => view.Close?.Invoke();
         return view;
     }

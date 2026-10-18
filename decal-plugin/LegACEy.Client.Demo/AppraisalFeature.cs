@@ -30,6 +30,7 @@ public sealed class AppraisalFeature
     private readonly Func<IReadOnlyDictionary<uint, SpellInfo>> _spells;
     private readonly Func<CharacterNames> _names;
     private readonly IAppraisalGame _game;
+    private readonly Func<Avalonia.Controls.Control, Avalonia.Size, Avalonia.Size>? _measure;
     private readonly Dictionary<uint, AppraisalResponse> _responses = new();
     private uint _requested;
     private long _requestedAt;
@@ -44,8 +45,10 @@ public sealed class AppraisalFeature
     /// <param name="game">The character, the inventory and the inscription action. Null means none: nothing is editable and nothing is sent.</param>
     /// <param name="spells">The spell table's names and descriptions by id, read when a window is built. Null names no spells: each is shown by its id.</param>
     /// <param name="names">The creature type and title names, read when a window is built. Null names none.</param>
+    /// <param name="measure">Measures a control as the window draws it, at the UI size; the window opens at the height that shows its content. Null measures it unscaled.</param>
     public AppraisalFeature(ILegACEyPluginHost host, Action<string> log, Func<long>? clock = null, IAppraisalGame? game = null,
-        Func<IReadOnlyDictionary<uint, SpellInfo>>? spells = null, Func<CharacterNames>? names = null)
+        Func<IReadOnlyDictionary<uint, SpellInfo>>? spells = null, Func<CharacterNames>? names = null,
+        Func<Avalonia.Controls.Control, Avalonia.Size, Avalonia.Size>? measure = null)
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _log = log ?? throw new ArgumentNullException(nameof(log));
@@ -53,6 +56,7 @@ public sealed class AppraisalFeature
         _spells = spells ?? (() => new Dictionary<uint, SpellInfo>());
         _names = names ?? (() => CharacterNames.None);
         _game = game ?? NoAppraisalGame.Instance;
+        _measure = measure;
     }
 
     /// <summary>What the window shows: the content of the last appraisal the window opened for, or null when it has opened for none.</summary>
@@ -235,7 +239,7 @@ public sealed class AppraisalFeature
         // One window serves the session: it takes the next appraisal in place, at the size the player left it.
         if (_view == null)
         {
-            _view = AppraisalWindow.Create(content, art, Inscribe);
+            _view = AppraisalWindow.Create(content, art, Inscribe, _measure);
             _hidden = false;
         }
         else

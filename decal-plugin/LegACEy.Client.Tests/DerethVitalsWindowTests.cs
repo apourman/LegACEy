@@ -311,6 +311,25 @@ public sealed class DerethVitalsWindowTests
         Assert.Equal(new Size(600, 34), again.Size);
     });
 
+    [Theory]
+    [InlineData(VitalsLayout.Stacked, 252, 84)]
+    [InlineData(VitalsLayout.SideBySide, 440, 26)]
+    public void At_a_fractional_UI_size_the_plate_fills_the_window_to_its_edges(VitalsLayout layout, int width, int height) => RenderThread.Run(() =>
+    {
+        // Layout rounding snaps the plate to the window's pixels before the height scale applies; scaled as laid out, it ran up to 2 px past
+        // the right and bottom edges at 85%, cutting its gold rule there.
+        foreach (var scale in new[] { 0.85, 0.9, 0.95 })
+        {
+            using var panel = AvaloniaPanel.Create(() => new DerethVitalsWindow(Game(), () => false, () => { }, layout),
+                (int)Math.Round(width * scale), (int)Math.Round(height * scale), scale);
+            panel.Tick();
+            var plate = panel.Content.GetVisualDescendants().OfType<DerethGildedPlate>().Single();
+            var corner = Avalonia.VisualExtensions.TranslatePoint(plate, new Avalonia.Point(plate.Bounds.Width, plate.Bounds.Height), panel.Content)!.Value;
+            Assert.Equal(panel.Content.Bounds.Width, corner.X, 3);
+            Assert.Equal(panel.Content.Bounds.Height, corner.Y, 3);
+        }
+    });
+
     [Fact]
     public void The_vitals_window_renders_to_pngs_when_asked() => RenderThread.Run(() =>
     {

@@ -103,7 +103,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         _coordinatesPlaque = new Border
         {
             CornerRadius = new CornerRadius(9), Background = Plaque, BorderBrush = GoldDark, BorderThickness = new Thickness(1), Padding = new Thickness(8, 1),
-            Margin = new Thickness(0, ScopeOrigin.Y + Diameter + 10, 0, 0), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, ScopeOrigin.Y + Diameter + 8, 0, 0), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top,
             IsHitTestVisible = false, Child = _coordinates
         };
         var tape = new Border

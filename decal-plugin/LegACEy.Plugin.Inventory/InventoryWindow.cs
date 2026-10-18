@@ -61,7 +61,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private readonly Dictionary<ItemVisual, WriteableBitmap?> _images = new();
     private readonly DerethWindow _frame;
     private readonly InventoryPaperdoll _paperdoll = new();
-    private readonly DerethSlotGrid _grid = new();
+    // Its columns start under the contents line's name, as the pack row's do in the horizontal layout.
+    private readonly DerethSlotGrid _grid = new() { ColumnAlignment = HorizontalAlignment.Left };
     private readonly TextBlock _contentsName = Label(string.Empty, TextBrush, 13);
     private readonly TextBlock _contentsCount = Label(string.Empty, MutedBrush, 13);
     // The pack list: a column in the vertical layout, a strip of tabs in the horizontal one.
@@ -926,6 +927,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var toggles = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 3, VerticalAlignment = VerticalAlignment.Center };
         toggles.Children.Add(LayoutToggle(InventoryLayout.Vertical, StackedGlyph));
         toggles.Children.Add(LayoutToggle(InventoryLayout.Horizontal, SideBySideGlyph));
+        // Set apart from the layout pair by the spacing and its 5 DIP margin: 8, the header's gap before the close box.
         toggles.Children.Add(EquipmentToggle());
         return toggles;
     }
@@ -939,7 +941,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             Stroke = _collapsed ? MutedBrush : DerethPalette.TealBrush,
             Fill = _collapsed ? null : DerethPalette.Brush(DerethPalette.Teal.WithAlpha(0x40)),
         };
-        var button = new DerethButton { Width = 24, Height = 24, Name = "EquipmentToggle", Content = icon, Margin = new Thickness(4, 0, 0, 0) };
+        var button = new DerethButton { Width = 24, Height = 24, Name = "EquipmentToggle", Content = icon, Margin = new Thickness(5, 0, 0, 0) };
         ToolTip.SetTip(button, _collapsed ? "Show equipment" : "Hide equipment");
         button.Click += (_, _) => SettingsChanged?.Invoke(new InventorySettings(_layout, _showSlots, !_collapsed));
         return button;

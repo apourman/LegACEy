@@ -20,8 +20,11 @@ internal sealed class InventoryPaperdoll : Canvas
     private const int RetailCell = 32;
     private const int RetailWidth = 224;
     private const int RetailHeight = 214;
-    private const int RetailDollLeft = 51;
-    private const int RetailDollWidth = 100;
+    // The armour columns' left edges. Retail's doll area (51 to 151) leaves its outer columns hanging over its sides, so the doll area here is
+    // drawn round the columns instead, the same 2 DIPs clear of them on each side.
+    private const int RetailArmourLeft = 48;
+    private const int RetailArmourRight = 120;
+    private const double DollClearance = 2;
     private const int RetailToggleLeft = 48;
     private const int RetailToggleTop = 190;
 
@@ -62,11 +65,12 @@ internal sealed class InventoryPaperdoll : Canvas
         Height = Scale(RetailHeight);
         DollArea = new Border
         {
-            Width = Scale(RetailDollWidth), Height = Height, CornerRadius = new CornerRadius(3), Padding = DollInset,
+            Width = Scale(RetailArmourRight) - Scale(RetailArmourLeft) + DerethSlotGrid.CellSize + 2 * DollClearance, Height = Height,
+            CornerRadius = new CornerRadius(3), Padding = DollInset,
             BorderBrush = DerethPalette.GrooveEdgeBrush, BorderThickness = new Thickness(1),
             Background = new RadialGradientBrush { GradientStops = { new GradientStop(Color.Parse("#16222C"), 0), new GradientStop(Color.Parse("#05090D"), 1) } },
         };
-        SetLeft(DollArea, Scale(RetailDollLeft));
+        SetLeft(DollArea, Scale(RetailArmourLeft) + 1 - DollClearance);
         Children.Add(DollArea);
 
         // A plain row, not a framed button: the toggle reads as text under the doll, as the retail checkbox does. It acts on release.

@@ -320,7 +320,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _gameStatePoller = new GameStatePoller(_gameState, Bridge.ReadGameState,
             error => Log($"Character stats temporarily unavailable; keeping UI active and retrying: {error.Message}"));
         _appraisal = new AppraisalFeature(this, Log, spells: () => _portal?.ReadSpells(Log) ?? new Dictionary<uint, SpellInfo>(), game: this,
-            names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None);
+            names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None, measure: (control, available) => AvaloniaPanel.MeasureAt(control, available, WindowScale));
         _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal);
         _row2Choice = new ShortcutRowChoice(_settingsStore);
         _vitalsLayouts = new VitalsLayoutChoice(_settingsStore);
@@ -1684,7 +1684,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             var scale = WindowScale;
             tab.Measure(Avalonia.Size.Infinity);
-            int width = (int)Math.Ceiling(tab.DesiredSize.Width * scale), height = (int)Math.Ceiling(tab.DesiredSize.Height * scale);
+            int width = WholePixels(tab.DesiredSize.Width * scale), height = WholePixels(tab.DesiredSize.Height * scale);
             if (surface.Panel.Frame.Width != width || surface.Panel.Frame.Height != height) surface.Panel.Resize(width, height);
             var plaque = Avalonia.VisualExtensions.TranslatePoint(toolbar.Plaque, new Avalonia.Point(toolbar.Plaque.Bounds.Width / 2, 0), toolbar) ?? default;
             var screen = GameDevice.ViewportSize(_device);
@@ -1771,7 +1771,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var panel = ObservePanel(AvaloniaPanel.Create(() => toolbar, 1, 1, scale), ToolbarFailed);
         panel.ApplyTheme(new DerethClientTheme());
         toolbar.Measure(Avalonia.Size.Infinity);
-        panel.Resize((int)Math.Ceiling(toolbar.DesiredSize.Width * scale), (int)Math.Ceiling(toolbar.DesiredSize.Height * scale));
+        panel.Resize(WholePixels(toolbar.DesiredSize.Width * scale), WholePixels(toolbar.DesiredSize.Height * scale));
         _toolbar = toolbar;
         _toolbarSurface = new ScreenSurface(_device, panel);
         _splitTab = new StackSplitTab(_toolbarPort);
@@ -1850,15 +1850,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         var bar = new ShortcutBar(row, firstIndex, _toolbarPort!, ShortcutItemOf, _portal, () => NativeUi.IsUiLocked,
             () => _windows?.BeginMove(windowId, _pointer), () => _pointer, tagClick, new ItemDragHost(this), _shortcutDrag);
-        bar.Measure(Avalonia.Size.Infinity);
-        var size = new Size((int)Math.Ceiling(bar.DesiredSize.Width), ShortcutBar.BarHeight);
+        // Measured at the window's scale, where its slots round to whole pixels, so the window holds all nine.
+        var measured = AvaloniaPanel.MeasureAt(bar, Avalonia.Size.Infinity, WindowScale);
+        var size = new Size(DipsFor(WholePixels(measured.Width * WindowScale), WindowScale), DipsFor(WholePixels(measured.Height * WindowScale), WindowScale));
         // No title bar: the bar drags from its content (DragsFromContent), so titleBarHeight is not used for a drag. It is set to the bar's
         // height only because a window's title bar must be at least 1 and at most its height.
         var definition = new WindowDefinition(windowId, $"Shortcut row {row}", size.Width, size.Height,
-            titleBarHeight: ShortcutBar.BarHeight, theme: new DerethClientTheme(), dragsFromContent: true);
+            titleBarHeight: size.Height, theme: new DerethClientTheme(), dragsFromContent: true);
         var beside = ShortcutBar.DefaultLocation(_toolbarSurface!.Bounds, size, WindowScale);
         // Row 2 goes above row 1 where row 1 is now, which the player may have moved.
-        var location = row == 1 ? beside : ShortcutBar.AboveRow(_windows?.Get(ShortcutRowWindowId)?.Location ?? beside, WindowScale);
+        var location = row == 1 ? beside : ShortcutBar.AboveRow(_windows?.Get(ShortcutRowWindowId)?.Location ?? beside, size.Height, WindowScale);
         OpenWindowCore(definition, bar, location, ToolbarFailed);
         return bar;
     }
@@ -2805,6 +2806,23 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         foreach (var window in _windows.ZOrder)
             if (window != _windows.Resizing)
                 FitSurface(SurfaceById(window.Id)!, window);
+    }
+
+    /// <summary>
+    /// A measured length rounded up to whole units, ignoring float noise: a scaled layout measures to whole pixels, which come back as 540.0000001,
+    /// and a plain ceiling would add a pixel of empty edge.
+    /// </summary>
+    private static int WholePixels(double length) => (int)Math.Ceiling(length - 0.001);
+
+    /// <summary>
+    /// The whole DIPs a window definition gives for a window <paramref name="pixels"/> long, as the window manager rounds them at the scale; a
+    /// length in DIPs rounded up from a measure can open a pixel larger than the content, which then stretches into it.
+    /// </summary>
+    private static int DipsFor(int pixels, double scale)
+    {
+        var dips = (int)Math.Ceiling((pixels - 0.5) / scale);
+        while (Math.Round(dips * scale) < pixels) dips++;
+        return dips;
     }
 
     /// <summary>Puts a window's surface where the window manager has it, at the window's size. A new size re-lays out the panel.</summary>

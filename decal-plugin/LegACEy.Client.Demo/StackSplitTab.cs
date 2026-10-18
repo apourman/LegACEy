@@ -79,11 +79,12 @@ public sealed class StackSplitTab : Decorator
     /// </summary>
     private void Build(uint stackId)
     {
+        // 18 DIPs tall: the buttons beside it are 20, with their gold line 1 DIP inside the frame, so the edges line up.
         var box = new TextBox
         {
             Foreground = DerethPalette.CreamBrush, CaretBrush = DerethPalette.GoldBrush, FontFamily = DerethPalette.Body, FontSize = 12,
             Background = TrackBrush, BorderBrush = AmountEdge, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(2),
-            Padding = new Thickness(4, 0), MinHeight = 0, Height = 20, Width = 58, TextAlignment = TextAlignment.Right,
+            Padding = new Thickness(6, 0), MinHeight = 0, Height = 18, Width = 58, TextAlignment = TextAlignment.Right,
             HorizontalContentAlignment = HorizontalAlignment.Right, VerticalContentAlignment = VerticalAlignment.Center
         };
         var slider = new Slider

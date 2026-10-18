@@ -165,8 +165,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _input = new TextBox
         {
             Watermark = "Say something…",
-            // The row's height, as the chip and Send are, so their edges line up.
-            Height = 21,
+            // The chip's height, centred in the row: Send's gold line sits 1 DIP inside its 21 DIP frame, so all three edges line up.
+            Height = 19,
             MinHeight = 0,
             Padding = new Thickness(4, 0),
             FontFamily = DerethPalette.Body,

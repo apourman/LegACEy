@@ -444,6 +444,16 @@ public sealed class DerethSlotGrid : UserControl
     /// <summary>The distance between the left edges of neighbouring columns: the pitch. Width that holds no whole column is split between the sides.</summary>
     public double ColumnPitch => _cells.ItemWidth;
 
+    /// <summary>
+    /// Where the columns sit in the width: centred by default, so the width no whole column fits is split between the sides. Left puts it all on
+    /// the right, so the first column lines up with a label above the grid.
+    /// </summary>
+    public HorizontalAlignment ColumnAlignment
+    {
+        get => _cells.HorizontalAlignment;
+        set => _cells.HorizontalAlignment = value;
+    }
+
     /// <summary>The cells in reading order. Each one is a <see cref="DerethSlot"/> or any control sized to the pitch.</summary>
     public Controls Cells => _cells.Children;
 }
