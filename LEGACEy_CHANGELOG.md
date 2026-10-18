@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/apourman/LegACEy/compare/v0.8.2...v0.9.0) (2026-10-18)
+
+
+### Features
+
+* realms and dungeon instances ([#56](https://github.com/apourman/LegACEy/issues/56)) ([e110cec](https://github.com/apourman/LegACEy/commit/e110cecbe0ca7464f23eed69b756351e298ff024))
+
 ## [0.8.2](https://github.com/apourman/LegACEy/compare/v0.8.1...v0.8.2) (2026-10-16)
 
 
