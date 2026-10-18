@@ -985,7 +985,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 var area = new Rectangle(surface.Location.X + (int)(origin.Value.X * scale), surface.Location.Y + (int)(origin.Value.Y * scale),
                     (int)(bounds.Width * scale), (int)(bounds.Height * scale));
                 if (!_modelRenderers.TryGetValue(view, out var renderer))
+                {
                     _modelRenderers[view] = renderer = new ModelRenderer(_device);
+                    Log($"3D view first drawn: {model.TriangleCount} triangles, height {model.Top - model.Bottom:0.00} m, at {area} on a {D3D9.Viewport(_device)} viewport.");
+                }
                 renderer.Draw(model, area, view.Orientation, view.Zoom, view.Focus);
             }
             catch (Exception exception)
@@ -1693,7 +1696,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private const string ToolbarPlaceId = "dereth-toolbar";
 
-    /// <summary>Once per login, puts the toolbar at this character's saved place, kept on screen. Until then it stands where retail's did.</summary>
+    /// <summary>Once per toolbar taken over, puts it at this character's saved place, kept on screen. Until then it stands where retail's did.</summary>
     private void LoadToolbarPlace()
     {
         if (_toolbarPlaceLoaded || !_inGame || _positionStore == null || _toolbarPlace == null || _toolbarSurface == null) return;
@@ -1927,6 +1930,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             }
             _toolbarTakeover = null;
             _toolbarPlace = null;
+            // The next toolbar (Custom again, after Native) starts from the saved place, not from where retail's stands.
+            _toolbarPlaceLoaded = false;
             _toolbarReleaseLogged = false;
         }
         _toolbarSurface?.Dispose();
