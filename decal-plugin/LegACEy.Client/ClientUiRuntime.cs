@@ -132,7 +132,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string RetailRadarSwitchFile = "retail-radar-native";
 
     // How big LegACEy windows show against their design size, in percent: the player's UI size from the LegACEy menu, kept for every
-    // character. The indicator bar keeps retail's size, and drag icons retail's 32 pixels. An Avalonia that cannot scale panels shows them
+    // character. Drag icons keep retail's 32 pixels. An Avalonia that cannot scale panels shows them
     // at design size rather than failing every window.
     private const string UiSizeKey = "client-ui-size";
     private const int DefaultUiSize = 85;
@@ -142,9 +142,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _uiSizeChanged;
     private double WindowScale => AvaloniaPanel.CanScale ? _uiSize / 100.0 : 1;
 
-    private const string MenuSlot = "LegACEy";
+    private const string MenuTitle = "LegACEy";
     private const string MenuWindowId = "plugin-menu";
-    private const uint MenuIcon = 0x06004D20;
     private const string TestFailureFile = "fail-post-ui-draw";
     // The stub's folder, which the bridge sets before the client starts: the log, settings and Plugins\ live there.
     internal static string PluginDirectory { get; set; } = ClientDirectory;
@@ -156,12 +155,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private IntPtr _device;
     private static readonly System.Drawing.Color ResizeOutline = System.Drawing.Color.FromArgb(0xC9, 0xA4, 0x5C);
     private PortalDat? _portal;
-    private IndicatorBar? _bar;
     private readonly Dictionary<ModelView, ModelRenderer> _modelRenderers = new();
     private readonly HashSet<ModelView> _failedModelViews = new();
     private readonly HashSet<ModelView> _drawnModelViews = new();
-    private ScreenSurface? _barSurface;
-    private RetailSurfaceRenderer? _barRenderer;
     private WindowManager? _windows;
     private IWindowPositionStore? _positionStore;
     // Each plugin's one settings value, per character, in its own file: a row keyed by the plugin's name whose X is the value.
@@ -184,8 +180,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private ScreenSurface? _hovered;
     private readonly InputRouterService _inputRouter = new();
     private Point _pointer;
-    private Size? _dragOffset;
-    private RetailTakeoverLifecycle? _barTakeover;
     // The Dereth toolbar over retail's toolbar: its port, window, surface and takeover, held only while the switch is on.
     // Keeps only the selected object's answers, so combat traffic does not grow it.
     private readonly SelectionMeters _selectionMeters = new(() => (uint)Bridge.Fact(BridgeFact.CurrentSelection));
@@ -386,7 +380,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _postUiDrawHook = null;
             _worldEffects?.Dispose();
             _worldEffects = null;
-            RestoreNativeBar();
             TearDown();
             _serverChannel?.Dispose();
             _serverChannel = null;
@@ -480,7 +473,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
         Guard(() =>
         {
-            if (_barSurface == null)
+            if (_portal == null)
                 CreateUi();
             if (_windows == null)
                 CreateWindowManager();
@@ -545,13 +538,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         catch (Exception exception) { Log($"Could not close plugin windows at logoff: {exception}"); }
         // Windows released their requests above; anything still outstanding fails as disconnected.
         Guard(() => _serverChannel?.Reset());
-        // Keep replacing the retail indicators bar through logout. RenderFrame hides any native
-        // re-show until the element disappears; only unload or failure gives it back.
         foreach (var window in _windows?.ZOrder.ToArray() ?? Array.Empty<ManagedWindow>())
             _windows!.Close(window.Id);
         _windows = null;
         _hovered = null;
-        _dragOffset = null;
         _handOff = null;
         _handOffMissed = 0;
         _ownDragItem = 0;
@@ -566,29 +556,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _portal = new PortalDat(IOPath.Combine(IOPath.GetDirectoryName(acclient)!, "client_portal.dat"));
         GameArtImageExtension.CurrentSource = _portal;
 
-        var slots = new[]
-        {
-            new IndicatorSlot("Move", 0x060074C9, BeginBarDrag, actOnPress: true),
-            new IndicatorSlot("Link status", 0x06007498, () => NativeUi.ToggleRootElement(NativeUi.LinkStatus)),
-            new IndicatorSlot("Positive effects", 0x0600749C, () => NativeUi.ToggleRootElement(NativeUi.PositiveEffects)),
-            new IndicatorSlot("Negative effects", 0x0600749F, () => NativeUi.ToggleRootElement(NativeUi.NegativeEffects)),
-            new IndicatorSlot("Vitae", 0x060074A1, () => NativeUi.ToggleRootElement(NativeUi.Vitae)),
-            new IndicatorSlot("Character info", 0x060074A2, () => NativeUi.ToggleRootElement(NativeUi.CharacterInfo)),
-            new IndicatorSlot("Mini-game", 0x060074A6, () => NativeUi.ToggleRootElement(NativeUi.MiniGame)),
-            new IndicatorSlot(MenuSlot, MenuIcon, ToggleMenuWindow, "L"),
-            new IndicatorSlot("Log out", 0x060074B1, NativeUi.RequestLogOut)
-        };
-        var size = IndicatorBar.MeasureFor(slots.Length);
-        var barPanel = ObservePanel(AvaloniaPanel.Create(() => _bar = new IndicatorBar(slots, _portal.ReadImage), size.Width, size.Height));
-        _barSurface = new ScreenSurface(_device, barPanel);
-        _barRenderer = new RetailSurfaceRenderer(_barSurface.Prepare, _barSurface.DrawNow);
-        _barTakeover = new RetailTakeoverLifecycle(new NativeBarPort(NativeUi.Indicators), new SurfaceTakeoverPort(_barSurface));
-
-        _barSurface.Panel.ApplyTheme(CurrentTheme());
         EnsurePostUiDrawHook();
         try { _worldEffects ??= WorldEffects.Create(_device, NativeUi.ReadMemory, Log); }
         catch (Exception exception) { Log($"The selection outline and storm fog are off: {exception.Message}"); }
-        Log("Indicator bar replacement ready.");
+        Log("LegACEy UI ready.");
         WarmUpDerethTheme();
     }
 
@@ -647,7 +618,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             return;
         if (_postUiDrawHook?.HasRun != true)
         {
-            Log("LegACEy windows unavailable: the installed retail EndScene hook has not run. Keeping the indicator bar interactive.");
+            Log("LegACEy windows unavailable: the installed retail EndScene hook has not run.");
             return;
         }
         if (_windows.Get(MenuWindowId) != null)
@@ -656,7 +627,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             SetMenuRing(false);
             return;
         }
-        var chrome = new ThemeWindowChrome(_portal!, MenuSlot, new PluginMenuPanel(_plugins!, _portal,
+        var chrome = new ThemeWindowChrome(_portal!, MenuTitle, new PluginMenuPanel(_plugins!, _portal,
             AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, StepUiSize) : null));
         chrome.CloseRequested += (_, _) =>
         {
@@ -698,42 +669,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (menuOpen) Guard(ToggleMenuWindow);
     }
 
-    /// <summary>The handle was pressed: the bar follows the pointer until the button goes up.</summary>
-    private void BeginBarDrag()
-    {
-        if (_barTakeover?.CanDrag != true)
-            return;
-        var location = _barSurface!.Location;
-        _dragOffset = new Size(_pointer.X - location.X, _pointer.Y - location.Y);
-    }
-
-    private void DragBar(Point pointer)
-    {
-        if (_barTakeover?.CanDrag != true)
-        {
-            _dragOffset = null;
-            return;
-        }
-        var screen = GameDevice.ViewportSize(_device);
-        var size = _barSurface!.Bounds.Size;
-        _barSurface.Location = new Point(
-            Math.Max(0, Math.Min(screen.Width - size.Width, pointer.X - _dragOffset!.Value.Width)),
-            Math.Max(0, Math.Min(screen.Height - size.Height, pointer.Y - _dragOffset.Value.Height)));
-    }
-
     /// <summary>
-    /// Move the hidden retail bar to where ours was dropped, so the client keeps the position
-    /// (and saves it) as if the player had dragged the retail bar.
-    /// </summary>
-    private void EndBarDrag()
-    {
-        _dragOffset = null;
-        if (_barTakeover?.MoveTo(_barSurface!.Location) == true)
-            Log($"Moved the retail indicators bar to {_barSurface.Location}.");
-    }
-
-    /// <summary>
-    /// Replace the native bar on its first visible frame, including world entry and logout.
+    /// Runs the UI for one frame. It starts once retail's indicators show, at world entry.
     /// </summary>
     public void Frame()
     {
@@ -748,8 +685,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private void FrameCore()
     {
-        if (_barTakeover != null && _failed)
-            RestoreNativeBar();
         // Once the whole UI has failed, a give-back of retail's toolbar that failed is retried each frame until it lands; logged once per streak.
         if (_failed && _toolbarTakeover != null)
         {
@@ -799,15 +734,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             }
             _textMode?.Hold(_inGame && SurfaceById(_inputRouter.FocusedSurfaceId)?.Panel.WantsKeyboard == true);
             _serverChannel?.Tick();
-            if (_barSurface == null)
+            if (_portal == null)
             {
                 var element = NativeUi.GetElement(NativeUi.Indicators);
                 if (element == IntPtr.Zero || !NativeUi.IsVisible(element))
                     return;
                 CreateUi();
             }
-            TakeOverNativeBar();
-            _barRenderer!.RenderFrame(_inGame, _postUiDrawHook?.IsInstalled == true);
             TickRetailToolbar();
             TickRetailChat();
             TickRetailVitals();
@@ -858,7 +791,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         try
         {
             var surfaces = new List<ScreenSurface>();
-            if (_barSurface != null) surfaces.Add(_barSurface);
             surfaces.AddRange(_featureSurfaces.Values);
             using var process = Process.GetCurrentProcess();
             var maxTick = surfaces.Count == 0 ? 0 : surfaces.Max(surface => surface.LastTickMilliseconds);
@@ -899,7 +831,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (_failed) return;
         ThrowIfTestFailureRequested();
-        Guard(() => _barRenderer?.DrawAfterRetailUi());
         Guard(() => _toolbarSurface?.DrawNow());
         var windows = !_failed && _windowsEnabled && _windows != null;
         if (windows)
@@ -1372,17 +1303,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
     }
 
-    /// <summary>
-    /// Hide the retail indicators bar whenever the client shows it, and put ours where it was.
-    /// Checking every frame also catches the client showing it again, for example after a resize.
-    /// </summary>
-    private void TakeOverNativeBar()
-    {
-        _barTakeover ??= new RetailTakeoverLifecycle(new NativeBarPort(NativeUi.Indicators), new SurfaceTakeoverPort(_barSurface!));
-        if (_barTakeover?.Tick(_dragOffset != null, GameDevice.ViewportSize(_device)) == true)
-            _dragOffset = null;
-    }
-
     IDisposable IClientUiHost.OpenWindow(WindowDefinition definition, Control content, Point requestedLocation)
     {
         if (!CanOpenWindows)
@@ -1599,26 +1519,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _windows?.Close(id);
     }
 
-    private void RestoreNativeBar()
-    {
-        try
-        {
-            _barTakeover?.Dispose();
-        }
-        catch (Exception exception)
-        {
-            Log($"Could not restore the retail indicators bar: {exception}");
-            return;
-        }
-        _barTakeover = null;
-    }
-
-    /// <summary>Shows the LegACEy menu's open state on its indicator slot and on the toolbar's menu button.</summary>
-    private void SetMenuRing(bool open)
-    {
-        _bar?.SetOpen(MenuSlot, open);
-        _toolbar?.SetMenuOpen(open);
-    }
+    /// <summary>Shows the LegACEy menu's open state on the toolbar's menu button.</summary>
+    private void SetMenuRing(bool open) => _toolbar?.SetMenuOpen(open);
 
     /// <summary>
     /// Holds retail's toolbar and draws the Dereth toolbar at its place, unless the switch file is beside the DLL. Off, retail's toolbar is
@@ -1778,7 +1680,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var splitPanel = ObservePanel(AvaloniaPanel.Create(() => _splitTab, 1, 1, scale), ToolbarFailed);
         splitPanel.ApplyTheme(new DerethClientTheme());
         _splitTabSurface = new ScreenSurface(_device, splitPanel);
-        _toolbarPlace = new ToolbarPlacePort(new NativeBarPort(NativeUi.ToolbarWindow), () => _toolbarSurface?.Bounds.Size ?? Size.Empty, SaveToolbarPlace);
+        _toolbarPlace = new ToolbarPlacePort(new NativeRootPort(NativeUi.ToolbarWindow), () => _toolbarSurface?.Bounds.Size ?? Size.Empty, SaveToolbarPlace);
         _toolbarTakeover = new RetailTakeoverLifecycle(_toolbarPlace, new SurfaceTakeoverPort(_toolbarSurface));
         Log($"Dereth toolbar replacement ready; retail's toolbar window {(NativeUi.GetElement(NativeUi.ToolbarWindow) != IntPtr.Zero ? "found" : "absent")}, " +
             $"its toolbar {(NativeUi.GetElement(NativeUi.Toolbar) != IntPtr.Zero ? "found" : "absent")}.");
@@ -2485,7 +2387,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>Translate Decal's raw messages into router decisions and Avalonia.Headless input. True eats the message.</summary>
     public bool WindowMessage(int hwnd, int message, int wParam, int lParam)
     {
-        if (_failed || !_inGame || _barSurface == null)
+        if (_failed || !_inGame || _portal == null)
             return false;
         // Enter in the game, with retail's chat held and no field of ours taking keys, opens the Dereth chat window's box and eats the key.
         // The keypad's Enter (an extended key) stays retail's, as the spike recommends.
@@ -2546,8 +2448,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                         _windows.Move(point);
                         SyncWindowLocations();
                     }
-                    else if (_dragOffset != null)
-                        DragBar(point);
                     else if (_toolbarDragOffset != null)
                         DragToolbar(point);
                     else
@@ -2595,8 +2495,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                         try { _chatWindows?.Released(); }
                         catch (Exception exception) { ChatFailed(exception); }
                     }
-                    if (_dragOffset != null)
-                        EndBarDrag();
                     if (_toolbarDragOffset != null)
                         EndToolbarDrag();
                     eat = route.Eat;
@@ -2758,8 +2656,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private InputSurface[] GetInputSurfaces()
     {
         var surfaces = new System.Collections.Generic.List<InputSurface>(4);
-        if (_barSurface is { Visible: true })
-            surfaces.Add(new InputSurface("bar", _barSurface.Location.X, _barSurface.Location.Y, _barSurface.Bounds.Width, _barSurface.Bounds.Height, 0, _barSurface.Panel.WantsKeyboard));
         if (_toolbarSurface is { Visible: true })
             surfaces.Add(new InputSurface(ToolbarSurfaceId, _toolbarSurface.Location.X, _toolbarSurface.Location.Y, _toolbarSurface.Bounds.Width, _toolbarSurface.Bounds.Height, 0, _toolbarSurface.Panel.WantsKeyboard));
         // Above every window, as it draws.
@@ -2780,7 +2676,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private ScreenSurface? SurfaceById(string? id)
     {
-        if (id == "bar") return _barSurface;
         if (id == ToolbarSurfaceId) return _toolbarSurface;
         if (id == SplitTabSurfaceId) return _splitTabSurface;
         if (id != null && _featureSurfaces.TryGetValue(id, out var surface)) return surface;
@@ -2793,7 +2688,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         SurfaceById(route.ClearFocusSurfaceId)?.Panel.ClearFocus();
         _hovered?.Panel.PointerLeave();
         _hovered = null;
-        _dragOffset = null;
         _toolbarDragOffset = null;
         _windows?.Release();
     }
@@ -2856,14 +2750,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
     }
 
-    /// <summary>Stop drawing, give the player the retail bar back, and log why.</summary>
+    /// <summary>Stop drawing, give the player retail's UI back, and log why.</summary>
     public void Disable(Exception exception)
     {
         // Every panel drains the shared Avalonia dispatcher, so a plugin's failure can surface on another panel.
         if (_plugins?.TryFailOwner(exception) == true) return;
         _failed = true;
-        Log($"Indicator bar replacement disabled: {exception}");
-        RestoreNativeBar();
+        Log($"LegACEy UI disabled: {exception}");
         TearDown();
     }
 
@@ -2907,19 +2800,21 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         public void Dispose() => _owner.ReleaseFeatureWindow(_id);
     }
 
-    private sealed class NativeBarPort : IRetailTakeoverPort
+    /// <summary>A retail root window by its id, for a takeover: hidden, shown and moved through retail's own element.</summary>
+    private sealed class NativeRootPort : IRetailTakeoverPort
     {
         private readonly uint _rootId;
-        public NativeBarPort(uint rootId) => _rootId = rootId;
+        public NativeRootPort(uint rootId) => _rootId = rootId;
         private IntPtr Element => NativeUi.GetElement(_rootId);
         public bool Exists => Element != IntPtr.Zero;
         public IntPtr ElementIdentity => Element;
         public bool IsVisible { get { var element = Element; return element != IntPtr.Zero && NativeUi.IsVisible(element); } }
-        public Rectangle GetBounds() { var element = Element; if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared."); return NativeUi.GetBounds(element); }
+        public Rectangle GetBounds() => NativeUi.GetBounds(Required);
         public void SetVisible(bool visible) { var element = Element; if (element != IntPtr.Zero) NativeUi.SetVisible(element, visible); }
-        public void SetSaveLocation(bool save) { var element = Element; if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared."); NativeUi.SetSaveLocation(element, save); }
-        public void MoveTo(Point location) { var element = Element; if (element == IntPtr.Zero) throw new InvalidOperationException("Retail indicators element disappeared."); NativeUi.MoveTo(element, location); }
+        public void SetSaveLocation(bool save) => NativeUi.SetSaveLocation(Required, save);
+        public void MoveTo(Point location) => NativeUi.MoveTo(Required, location);
         public bool IsUiLocked => NativeUi.IsUiLocked;
+        private IntPtr Required => Element is var element && element != IntPtr.Zero ? element : throw new InvalidOperationException($"Retail element 0x{_rootId:X8} disappeared.");
     }
 
     /// <summary>
@@ -2929,10 +2824,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private sealed class ToolbarPlacePort : IRetailTakeoverPort
     {
-        private readonly NativeBarPort _native;
+        private readonly NativeRootPort _native;
         private readonly Func<Size> _size;
         private readonly Action<Point> _moved;
-        public ToolbarPlacePort(NativeBarPort native, Func<Size> size, Action<Point> moved) { _native = native; _size = size; _moved = moved; }
+        public ToolbarPlacePort(NativeRootPort native, Func<Size> size, Action<Point> moved) { _native = native; _size = size; _moved = moved; }
         /// <summary>The toolbar's own place; null until it is moved or loaded, when it stands where retail's window is.</summary>
         public Point? Location { get; set; }
         public bool Exists => _native.Exists;
@@ -3004,11 +2899,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _clientUi = null;
         try { _serverChannel?.Reset(); }
         catch (Exception exception) { Log($"Could not fail outstanding server channel requests: {exception}"); }
-        RestoreNativeBar();
         _hovered = null;
-        _barSurface?.Dispose();
-        _barSurface = null;
-        _barRenderer = null;
         _postUiDrawHook?.Dispose();
         _postUiDrawHook = null;
         _windows = null;
@@ -3020,7 +2911,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         foreach (var cursor in _datCursors.Values)
             if (cursor != IntPtr.Zero) DestroyCursor(cursor);
         _datCursors.Clear();
-        _bar = null;
         _drawnModelViews.Clear();
         ReleaseModelRenderers(_drawnModelViews);
         GameArtImageExtension.CurrentSource = null;
