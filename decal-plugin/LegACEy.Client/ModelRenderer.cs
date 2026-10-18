@@ -22,7 +22,7 @@ internal sealed unsafe class ModelRenderer : IDisposable
 
     public ModelRenderer(IntPtr device) => _device = device;
 
-    public void Draw(CharacterModel model, Rectangle area, float yaw, float pitch, float zoom, float focus)
+    public void Draw(CharacterModel model, Rectangle area, Quaternion orientation, float zoom, float focus)
     {
         area.Intersect(Viewport(_device));
         if (area.Width <= 0 || area.Height <= 0) return;
@@ -45,9 +45,9 @@ internal sealed unsafe class ModelRenderer : IDisposable
             var middle = model.Bottom + (model.Top - model.Bottom) * focus;
             var distance = fit / zoom;
             // System.Numerics builds the same right-handed matrices as D3DX's RotationZ, LookAtRH and PerspectiveFovRH.
-            // Turned, then tilted, around the height the view centres on, so the model stays where the player is looking.
-            SetTransform(_device, TransformWorld, Matrix4x4.CreateTranslation(0, 0, -middle) * Matrix4x4.CreateRotationZ(yaw)
-                * Matrix4x4.CreateRotationX(pitch) * Matrix4x4.CreateTranslation(0, 0, middle));
+            // Turned around its centre at the height the view centres on, so the model spins in place where the player is looking.
+            SetTransform(_device, TransformWorld, Matrix4x4.CreateTranslation(-model.CentreX, -model.CentreY, -middle)
+                * Matrix4x4.CreateFromQuaternion(orientation) * Matrix4x4.CreateTranslation(0, 0, middle));
             SetTransform(_device, TransformView, Matrix4x4.CreateLookAt(new Vector3(0, -distance, middle), new Vector3(0, 0, middle), Vector3.UnitZ));
             SetTransform(_device, TransformProjection, Matrix4x4.CreatePerspectiveFieldOfView(FieldOfView, area.Width / (float)area.Height, 0.1f, distance + 5));
 

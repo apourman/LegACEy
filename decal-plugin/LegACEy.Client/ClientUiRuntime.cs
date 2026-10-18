@@ -959,7 +959,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     (int)(bounds.Width * scale), (int)(bounds.Height * scale));
                 if (!_modelRenderers.TryGetValue(view, out var renderer))
                     _modelRenderers[view] = renderer = new ModelRenderer(_device);
-                renderer.Draw(model, area, view.Yaw, view.Pitch, view.Zoom, view.Focus);
+                renderer.Draw(model, area, view.Orientation, view.Zoom, view.Focus);
             }
             catch (Exception exception)
             {

@@ -75,20 +75,35 @@ public sealed class CharacterModel
         Meshes = meshes;
         var min = float.MaxValue;
         var max = float.MinValue;
-        var radius = 0f;
+        float minX = float.MaxValue, maxX = float.MinValue, minY = float.MaxValue, maxY = float.MinValue;
         foreach (var mesh in meshes)
             foreach (var vertex in mesh.Vertices)
             {
                 min = Math.Min(min, vertex.Z);
                 max = Math.Max(max, vertex.Z);
-                radius = Math.Max(radius, vertex.X * vertex.X + vertex.Y * vertex.Y);
+                minX = Math.Min(minX, vertex.X);
+                maxX = Math.Max(maxX, vertex.X);
+                minY = Math.Min(minY, vertex.Y);
+                maxY = Math.Max(maxY, vertex.Y);
             }
         Bottom = meshes.Count == 0 ? 0 : min;
         Top = meshes.Count == 0 ? 0 : max;
+        if (meshes.Count == 0 || minX > maxX) return;
+        // An item's origin need not be its middle (a helmet's sits at head height off to one side), so the view turns it around its box's centre.
+        CentreX = (minX + maxX) / 2;
+        CentreY = (minY + maxY) / 2;
+        var radius = 0f;
+        foreach (var mesh in meshes)
+            foreach (var vertex in mesh.Vertices)
+                radius = Math.Max(radius, (vertex.X - CentreX) * (vertex.X - CentreX) + (vertex.Y - CentreY) * (vertex.Y - CentreY));
         Radius = (float)Math.Sqrt(radius);
     }
 
-    /// <summary>The farthest any part reaches from the vertical axis the view turns the model around: half its widest at any turn.</summary>
+    /// <summary>The middle of the model's footprint: the upright axis the view turns it around.</summary>
+    public float CentreX { get; }
+    public float CentreY { get; }
+
+    /// <summary>The farthest any part reaches from the upright axis through the centre: half its widest at any turn.</summary>
     public float Radius { get; }
 
     public IReadOnlyList<ModelMesh> Meshes { get; }

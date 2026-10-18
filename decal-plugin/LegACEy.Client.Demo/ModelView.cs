@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
@@ -8,9 +9,9 @@ namespace LegACEy.Client.Demo;
 
 /// <summary>
 /// A 3D view any LegACEy window can contain: the host draws <see cref="Model"/> on the game device over this control's
-/// bounds, after the window's own frame. Dragging turns the model: sideways around its upright axis, up and down tilting it toward or
-/// away from the viewer, so an item that lies on its side can be stood up. Dragging with Shift held moves the view up and down the
-/// model instead, and the wheel zooms toward the height under the pointer. <see cref="Border.Child"/>
+/// bounds, after the window's own frame. Dragging turns the model around its centre the way the pointer moves, however it is turned
+/// already: sideways around the view's upright axis, up and down toward or away from the viewer, so an item that lies on its side can be
+/// stood up. Dragging with Shift held moves the view up and down the model instead, and the wheel zooms toward the height under the pointer. <see cref="Border.Child"/>
 /// shows through where nothing is drawn, for a status line while the model loads.
 /// </summary>
 public sealed class ModelView : Border
@@ -42,10 +43,10 @@ public sealed class ModelView : Border
                 // The model follows the pointer: dragging down shows more of what is above.
                 Focus = Clamp01(Focus + (float)((point.Y - from.Y) / ViewHeight()) * Framing / Zoom);
             else
-            {
-                Yaw += (float)(point.X - from.X) * 0.01f;
-                Pitch += (float)(point.Y - from.Y) * 0.01f;
-            }
+                // About the view's axes, after the turn the model has, so a drag always turns it the way the pointer goes.
+                Orientation = Quaternion.Normalize(Quaternion.Concatenate(Orientation, Quaternion.Concatenate(
+                    Quaternion.CreateFromAxisAngle(Vector3.UnitZ, (float)(point.X - from.X) * 0.01f),
+                    Quaternion.CreateFromAxisAngle(Vector3.UnitX, (float)(point.Y - from.Y) * 0.01f))));
             _dragFrom = point;
         };
         PointerReleased += (_, e) => { _dragFrom = null; e.Pointer.Capture(null); };
@@ -67,11 +68,13 @@ public sealed class ModelView : Border
     /// <summary>The model to draw, or null for none. Replaced as a whole, from the UI thread.</summary>
     public CharacterModel? Model { get; set; }
 
-    /// <summary>Turn around Z, in radians. Starts facing the viewer (models face +Y; the camera looks along +Y).</summary>
-    public float Yaw { get; set; } = (float)Math.PI;
+    /// <summary>
+    /// How the model is turned, applied to it before the view: Z is up, the camera looks along +Y and X runs across the view. Starts
+    /// upright and facing the viewer (models face +Y).
+    /// </summary>
+    public Quaternion Orientation { get; set; } = Facing;
 
-    /// <summary>Tilt around the horizontal axis across the view, in radians: dragging down tips the model's top toward the viewer. Starts upright.</summary>
-    public float Pitch { get; set; }
+    private static readonly Quaternion Facing = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, (float)Math.PI);
 
     public float Zoom { get; set; } = 1f;
 
@@ -81,8 +84,7 @@ public sealed class ModelView : Border
     /// <summary>Back to the first view: facing the viewer, unzoomed, centred on the model's middle.</summary>
     public void ResetView()
     {
-        Yaw = (float)Math.PI;
-        Pitch = 0f;
+        Orientation = Facing;
         Zoom = 1f;
         Focus = 0.5f;
     }
