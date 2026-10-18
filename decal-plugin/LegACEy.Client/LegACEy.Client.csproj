@@ -6,6 +6,9 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Every restore includes the game's runtime, whoever runs it (an IDE's background restore, the stub's build), so the win-x86
+         publish never finds an assets file without it (NETSDK1047). -->
+    <RuntimeIdentifiers>win-x86</RuntimeIdentifiers>
   </PropertyGroup>
 
   <!-- The release publishes the client self-contained for win-x86, trimmed, into runtime\ beside the stub (see the README).
