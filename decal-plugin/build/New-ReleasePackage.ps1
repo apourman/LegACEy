@@ -23,7 +23,7 @@ if ([BitConverter]::ToUInt16($coreclr, [BitConverter]::ToInt32($coreclr, 0x3C) +
 Copy-Item $runtime $package -Recurse
 # LegACEy plugins: Plugins\<Name>\<Name>.dll beside the stub. Each folder ships only its own DLL.
 $pluginRoot = Join-Path $BuildOutput 'Plugins'
-foreach ($name in @('Paperdoll', 'Vault', 'Inventory')) {
+foreach ($name in @('Vault', 'Inventory')) {
     if (!(Test-Path (Join-Path $pluginRoot "$name\$name.dll"))) { throw "Missing plugin assembly: Plugins\$name\$name.dll" }
 }
 $pluginDestination = Join-Path $package 'Plugins'
