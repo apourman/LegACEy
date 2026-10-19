@@ -67,7 +67,7 @@ internal sealed unsafe class Weather : IDisposable
         if (Current is not { } now || (PlayerCell & 0xFFFF) >= 0x100 || _camera.Eye is not { } eye) return;
         var fall = now.Kind switch { WeatherKind.Blizzard => Blizzard, WeatherKind.Thunderstorm => Thunderstorm, _ => Snow };
         var centre = new Vector2((now.X + 0.5f) * StormFog.Block, (now.Y + 0.5f) * StormFog.Block);
-        var depth = Depth(eye, centre);
+        var depth = Depth(_camera.Player ?? eye, centre);
         // Drops fall only inside the area, so from outside its edge shows; past a box's reach of it there is nothing to draw.
         if (depth < -Box.X) return;
         var strength = Math.Clamp(depth / FadeIn, 0, 1);

@@ -53,6 +53,12 @@ internal sealed unsafe class StormFog : IDisposable
         _device = device;
     }
 
+    /// <summary>
+    /// The player's global game position (z-up), from their part last measured; null before. How deep in the fog or weather is taken from
+    /// here, not the camera, which swings in and out of the edge as a third-person view turns (seen as the fog pulsing, 19 Oct).
+    /// </summary>
+    public Vector3? Player { get; private set; }
+
     /// <summary>The safe landblock the storm rings, as landblock x and y; null means no storm is drawn.</summary>
     public (int X, int Y)? Zone { get; set; }
 
@@ -75,7 +81,11 @@ internal sealed unsafe class StormFog : IDisposable
         // The camera is the same for every part of the world; the offset is taken from another part only while the player's is not drawn.
         View = GetTransform(_device, TransformView);
         Projection = GetTransform(_device, TransformProjection);
-        if (player) _sincePlayer = 0;
+        if (player)
+        {
+            _sincePlayer = 0;
+            Player = Global(cell, origin);
+        }
         if (player || (!FromPlayer && _sincePlayer > 30)) Offset = offset;
         Measured = true;
         Calibrated = true;
@@ -141,7 +151,7 @@ internal sealed unsafe class StormFog : IDisposable
                 DrawPrimitiveUP(_device, TriangleStrip, 8, walls, sizeof(FogVertex));
             }
 
-            var strength = eye is { } inside ? Math.Clamp(StormDepth(inside, zone) / FadeIn, 0, 1) : 0;
+            var strength = (Player ?? eye) is { } inside ? Math.Clamp(StormDepth(inside, zone) / FadeIn, 0, 1) : 0;
             if (strength > 0) DrawHaze(Grey, Thickness, strength);
         }
         finally { RestoreState(saved); }
