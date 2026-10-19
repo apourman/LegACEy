@@ -164,8 +164,8 @@ release PRs, versions, tags, and changelogs. Its shared configuration is in
    [VERSION](VERSION) and changelog, then release-please creates a draft release
    tagged `decal-plugin-v<version>`.
 3. The [plugin publishing workflow](../.github/workflows/release-decal-plugin.yml)
-   builds and tests that exact release commit, attaches the DLL and runtime ZIP,
-   then publishes the draft.
+   builds and tests that exact release commit, attaches the DLL, runtime ZIP and
+   setup.exe, then publishes the draft.
 
 Work on other branches creates no official release. Only changes under
 `decal-plugin/` contribute to the plugin release PR. The root/server package
@@ -203,7 +203,9 @@ download, checks its pinned SHA-256 hash, builds the x86 stub, and publishes the
 trimmed client into `runtime/`. The package step fails if `runtime/` lacks
 `coreclr.dll`, `clrjit.dll`, `System.Private.CoreLib.dll`, `netstandard.dll`, a
 LegACEy client library, or the Skia or HarfBuzz native library, or if its
-`coreclr.dll` is not x86. No game installation or DAT files are needed for the build. Automated
+`coreclr.dll` is not x86. The runner's Inno Setup 6 then builds `setup.exe` from
+[`LegACEy-decal-plugin.iss`](build/LegACEy-decal-plugin.iss), installing everything in the ZIP.
+No game installation or DAT files are needed for the build. Automated
 plugin tests, asset publishing checks, and the Windows native hook check must
 pass before publishing.
 
@@ -213,9 +215,20 @@ Each release contains:
   `runtime` folder.
 - `LegACEy-decal-plugin-v<version>-windows-x86.zip`, the build layout above
   (`runtime` holds the .NET 10 runtime) plus license notices.
-- `SHA256SUMS.txt`, covering the DLL and ZIP.
+- `LegACEy-decal-plugin-v<version>-setup.exe`, the installer.
+- `SHA256SUMS.txt`, covering the DLL, ZIP and installer.
 
-For a fresh installation, extract the ZIP and register its
+To install, close the game and run `setup.exe`. It installs the ZIP's files and an
+`install.json` marker to `%LOCALAPPDATA%\LegACEy\DecalPlugin` for the player who
+runs it, and registers the plugin in Decal, asking for administrator approval
+for that step only. A plugin already registered by hand is moved onto the
+installed copy and enabled. Setup stops if the game is running or Decal is not
+installed. `runtime\` and `Plugins\` belong to the release and are replaced on
+every install and update, so keep no files of your own there. Uninstall it from
+Windows' Apps list: that removes the installed files and the Decal registration,
+and keeps your settings, switch files and logs.
+
+The ZIP stays for manual installs: extract it and register its
 `LegACEy.Client.DecalPlugin.dll` in Decal. To update, extract the ZIP over the
 old folder; updating the client needs the ZIP, not just the main DLL. Files that
 older releases left at the root (every DLL except `LegACEy.Client.DecalPlugin.dll`
