@@ -199,27 +199,52 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
 
     public WindowPlacement? Load(string server, string character, string windowId)
     {
-        lock (_sync) return Rows().TryGetValue(Key(server, character, windowId), out var placement) ? placement : (WindowPlacement?)null;
+        lock (_sync) return Rows() is { } rows && rows.TryGetValue(Key(server, character, windowId), out var placement) ? placement : (WindowPlacement?)null;
     }
 
     public void Save(string server, string character, string windowId, WindowPlacement placement)
     {
         lock (_sync)
         {
-            var rows = Rows();
+            // A file that cannot be read is not rewritten: its other rows would be lost with it.
+            if (Rows() is not { } rows) return;
             rows[Key(server, character, windowId)] = placement;
-            try
-            {
-                var directory = Path.GetDirectoryName(_path);
-                if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-                File.WriteAllLines(_path, rows.Select(pair => Format(pair.Key, pair.Value)));
-            }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
+            WriteRows(rows);
         }
     }
 
-    private Dictionary<string, WindowPlacement> Rows()
+    /// <summary>
+    /// Forgets every window place this server and character saved, except the keys in <paramref name="keep"/>: the per-character options
+    /// this store also holds. Other characters' rows stay. Returns false, and changes nothing, when the file cannot be read or written.
+    /// </summary>
+    public bool ForgetPlaces(string server, string character, IEnumerable<string> keep)
+    {
+        lock (_sync)
+        {
+            if (Rows() is not { } rows) return false;
+            var owned = Encode(server) + "|" + Encode(character) + "|";
+            var kept = new HashSet<string>(keep.Select(id => Key(server, character, id)), StringComparer.Ordinal);
+            foreach (var key in rows.Keys.Where(key => key.StartsWith(owned, StringComparison.Ordinal) && !kept.Contains(key)).ToList())
+                rows.Remove(key);
+            return WriteRows(rows);
+        }
+    }
+
+    private bool WriteRows(Dictionary<string, WindowPlacement> rows)
+    {
+        try
+        {
+            var directory = Path.GetDirectoryName(_path);
+            if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+            File.WriteAllLines(_path, rows.Select(pair => Format(pair.Key, pair.Value)));
+            return true;
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
+    /// <summary>The file's rows, or null when the file exists but cannot be read. A missing file has no rows.</summary>
+    private Dictionary<string, WindowPlacement>? Rows()
     {
         var rows = new Dictionary<string, WindowPlacement>(StringComparer.Ordinal);
         if (!File.Exists(_path)) return rows;
@@ -236,8 +261,8 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
                 rows[fields[0] + "|" + fields[1] + "|" + fields[2]] = (new Point(x, y), size);
             }
         }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
         return rows;
     }
 
