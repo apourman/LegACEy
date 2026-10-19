@@ -43,6 +43,10 @@ public sealed class PluginRegistry
     public IReadOnlyList<PluginMenuEntry> VisibleMenuEntries =>
         _entries.Where(IsVisible).SelectMany(entry => entry.MenuEntries).ToArray();
 
+    /// <summary>The visible plugins with their menu entries, in load order, including those with no entries.</summary>
+    public IReadOnlyList<(string Name, IReadOnlyList<PluginMenuEntry> MenuEntries)> VisiblePlugins =>
+        _entries.Where(IsVisible).Select(entry => (entry.Name, (IReadOnlyList<PluginMenuEntry>)entry.MenuEntries.ToArray())).ToArray();
+
     /// <summary>
     /// Starts a plugin. A plugin whose name is already loaded is skipped; one whose Start throws is turned off.
     /// </summary>

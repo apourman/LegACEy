@@ -28,7 +28,7 @@ public static class RadarZoom
 {
     public const int Min = 25, Max = 150, Default = 70;
     // The zoom options step through these.
-    public static readonly int[] Presets = { 25, 40, 70, 110, 150 };
+    public static readonly IReadOnlyList<int> Presets = new[] { 25, 40, 70, 110, 150 };
     // Each wheel notch changes the range by this factor.
     private const double Notch = 1.15;
 

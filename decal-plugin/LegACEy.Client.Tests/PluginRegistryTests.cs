@@ -50,7 +50,7 @@ public sealed class PluginRegistryTests
     });
 
     [Fact]
-    public void The_plugins_tab_lists_each_visible_plugin_s_entries_runs_the_picked_one_and_follows_new_entries() => RenderThread.Run(() =>
+    public void The_plugins_tab_lists_each_visible_plugin_and_its_entries_runs_the_picked_one_and_follows_new_entries() => RenderThread.Run(() =>
     {
         var host = new FakeHost();
         var registry = new PluginRegistry(host, host.Log.Add);
@@ -59,11 +59,15 @@ public sealed class PluginRegistryTests
         registry.Add(new FakePlugin("Paperdoll") { OnStart = client => client.AddMenuEntry("Look", 0, () => ran.Add("Look")) });
         registry.Add(new FakePlugin("Local") { OnStart = client => { local = client; client.AddMenuEntry("Open", 0, () => ran.Add("Open")); } });
         registry.Add(new FakePlugin("Hidden", "vault.list") { OnStart = client => client.AddMenuEntry("Hidden entry", 0, () => ran.Add("Hidden entry")) });
+        registry.Add(new FakePlugin("Quiet") { OnStart = _ => { } });
         var settings = new ClientSettings(null, null, Array.Empty<UiWindowChoice>());
         using var panel = LegACEy.Client.PanelHost.AvaloniaPanel.Create(
             () => new SettingsPanel(settings, SettingsTab.Plugins, null, registry), SettingsPanel.WindowWidth, SettingsPanel.WindowHeight);
         panel.Tick();
-        Assert.Contains(panel.Content.GetVisualDescendants().OfType<TextBlock>(), block => block.Text == "Paperdoll");
+        var names = panel.Content.GetVisualDescendants().OfType<TextBlock>().Select(block => block.Text).ToArray();
+        Assert.Contains("Paperdoll", names);
+        Assert.Contains("Quiet", names);
+        Assert.DoesNotContain("Hidden", names);
         Button Entry(string title) => panel.Content.GetVisualDescendants().OfType<Button>().Single(button => button.Content as string == title);
         var listed = panel.Content.GetVisualDescendants().OfType<Button>().Select(button => button.Content as string).ToArray();
         Assert.Equal(new[] { "Look", "Open" }, listed);
