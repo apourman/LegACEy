@@ -42,4 +42,16 @@
     <RemoveDir Directories="$(OutDir)Plugins" />
     <Copy SourceFiles="@(LegACEyPluginAssembly);@(LegACEyPluginAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" DestinationFolder="$(OutDir)Plugins\%(Filename)" />
   </Target>
+
+  <!-- The updater is built with the stub and copied beside it, where the release package picks it up. -->
+  <ItemGroup>
+    <ProjectReference Include="..\LegACEy.Updater\LegACEy.Updater.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <Target Name="CopyLegACEyUpdater" AfterTargets="Build">
+    <MSBuild Projects="..\LegACEy.Updater\LegACEy.Updater.csproj" Targets="GetTargetPath">
+      <Output TaskParameter="TargetOutputs" ItemName="LegACEyUpdater" />
+    </MSBuild>
+    <Copy SourceFiles="@(LegACEyUpdater)" DestinationFolder="$(OutDir)" />
+  </Target>
 </Project>

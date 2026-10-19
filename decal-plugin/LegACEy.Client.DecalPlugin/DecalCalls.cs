@@ -40,6 +40,7 @@ internal static unsafe class DecalCalls
         calls->Coverage = (delegate* unmanaged[Stdcall]<int, int*, int>)Pointer(new ReadCall(Coverage));
         calls->PluralName = (delegate* unmanaged[Stdcall]<int, byte*, int, int*, int>)Pointer(new TextCall(PluralName));
         calls->DescriptionFlags = (delegate* unmanaged[Stdcall]<int, int*, int>)Pointer(new ReadCall(DescriptionFlags));
+        calls->Chat = (delegate* unmanaged[Stdcall]<byte*, int, int, int>)Pointer(new ChatCall(Chat));
         return calls;
     }
 
@@ -246,6 +247,9 @@ internal static unsafe class DecalCalls
     private static int AutoWield(int id, int mask, int placement, int unknown) =>
         Act(() => CoreManager.Current.Actions.AutoWield(id, mask, placement, unknown));
 
+    private static int Chat(byte* text, int length, int colour) =>
+        Act(() => CoreManager.Current.Actions.AddChatText(Encoding.UTF8.GetString(text, length), colour));
+
     // ponytail: a closure per call, some every frame; plain try/catch per call if the allocations ever show up.
     private static int Act(Action action)
     {
@@ -262,6 +266,7 @@ internal static unsafe class DecalCalls
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int TextCall(int text, byte* buffer, int capacity, int* length);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int InventoryCall(BridgeItem* rows, int capacity, int* count);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int ItemCall(int id, BridgeItem* row, int* found);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int ChatCall(byte* text, int length, int colour);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int Call1(int a);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int Call2(int a, int b);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int Call4(int a, int b, int c, int d);

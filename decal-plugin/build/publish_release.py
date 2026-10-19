@@ -44,7 +44,7 @@ def publish(directory, source, api):
         raise ValueError('Invalid plugin release tag or version')
     if json.loads((directory / 'source.json').read_text(encoding='utf-8-sig')) != source:
         raise ValueError('Package provenance does not match the release')
-    names = ['LegACEy.Client.DecalPlugin.dll', f'LegACEy-{tag}-windows-x86.zip']
+    names = ['LegACEy.Client.DecalPlugin.dll', f'LegACEy-{tag}-windows-x86.zip', f'LegACEy-{tag}-setup.exe']
     files = [directory / name for name in names]
     checksum = directory / 'SHA256SUMS.txt'
     expected = ''.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n' for p in files)

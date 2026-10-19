@@ -10,6 +10,10 @@ using Decal.Adapter;
 using Decal.Adapter.Wrappers;
 using IOPath = System.IO.Path;
 
+// Decal keys a plugin's registration by its assembly GUID. setup.exe registers under this one (the key a manual
+// registration of 0.6.1 got); pinned so a manual registration lands on the same key.
+[assembly: Guid("00156974-B6EE-4990-A850-4E3B55871654")]
+
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>

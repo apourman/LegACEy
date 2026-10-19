@@ -21,6 +21,7 @@ and database remain in the repository's upstream-compatible `Source/` and
 | `LegACEy.Client.Demo` | Framework windows and controls, and the plugin API (`ILegACEyPlugin`, `ILegACEyClient`) |
 | `LegACEy.Plugin.Vault` | The account Vault plugin, built into `Plugins/Vault/` |
 | `LegACEy.Plugin.Inventory` | The inventory window, built into `Plugins/Inventory/` |
+| `LegACEy.Updater` | The net48 `LegACEy.Updater.exe` beside the stub, which applies a staged release after the game exits |
 | `LegACEy.Client.Tests` | Automated tests without an installed Decal runtime |
 | `LegACEy.Client.HookSmoke` | Windows native hook regression check |
 
@@ -56,6 +57,32 @@ a standalone executable. Each LegACEy plugin is copied beside it as
 `LegACEy.Client.GameArt.dll`, `Plugins/` and `runtime/` beside the main DLL. If
 Decal is registered against a previous checkout path, update that registration
 after moving the directory.
+
+The stub build also copies `LegACEy.Updater.exe` beside the main DLL. Run as
+`LegACEy.Updater.exe <install> <install>\update\<version>\files` from a copy
+outside the install root (such as `<install>\update\<version>\`), it waits
+until no `acclient.exe` is left, then applies that stage if
+`<install>\update\<version>\ready` exists: every folder the release ships
+(`runtime\`, `Plugins\`) replaces the installed one, every root file overwrites
+the installed one, and other files in the install stay. It logs to
+`<install>\updater.log`. When done it deletes `ready`, `files\`, the download
+and its working `rollback\` folder; the version folder, which holds the running
+updater, stays for the client to remove. A failure puts the install back and
+keeps the stage for the next try. Exit codes: 0
+applied, 1 failed and rolled back, 2 bad arguments or no ready stage, 3 another
+updater is already running.
+
+An install made by setup.exe updates itself; a build from a checkout never does,
+because only setup.exe puts `install.json` beside the main DLL. At login and
+every 6 hours the client asks GitHub for the newest published
+`decal-plugin-vX.Y.Z` release (at most once an hour for all clients on the
+install, timed by the `update-check` file). A newer one is downloaded into
+`update\<version>\`, checked against its `SHA256SUMS.txt` and unpacked; chat
+says it installs when the game closes, and the updater applies it then, so the
+next launch runs it. The checksum guards against a corrupt download, not a
+compromised release: the sums file comes from the same release. The updater
+logs to `updater.log`. Creating an empty file
+named `no-auto-update` beside the main DLL turns auto-update off.
 
 Creating an empty file named `fail-post-ui-draw` beside the main DLL makes the
 next post-UI draw fail in game. The file is deleted, the failure is logged to
@@ -137,8 +164,8 @@ release PRs, versions, tags, and changelogs. Its shared configuration is in
    [VERSION](VERSION) and changelog, then release-please creates a draft release
    tagged `decal-plugin-v<version>`.
 3. The [plugin publishing workflow](../.github/workflows/release-decal-plugin.yml)
-   builds and tests that exact release commit, attaches the DLL and runtime ZIP,
-   then publishes the draft.
+   builds and tests that exact release commit, attaches the DLL, runtime ZIP and
+   setup.exe, then publishes the draft.
 
 Work on other branches creates no official release. Only changes under
 `decal-plugin/` contribute to the plugin release PR. The root/server package
@@ -176,7 +203,9 @@ download, checks its pinned SHA-256 hash, builds the x86 stub, and publishes the
 trimmed client into `runtime/`. The package step fails if `runtime/` lacks
 `coreclr.dll`, `clrjit.dll`, `System.Private.CoreLib.dll`, `netstandard.dll`, a
 LegACEy client library, or the Skia or HarfBuzz native library, or if its
-`coreclr.dll` is not x86. No game installation or DAT files are needed for the build. Automated
+`coreclr.dll` is not x86. The runner's Inno Setup 6 then builds `setup.exe` from
+[`LegACEy-decal-plugin.iss`](build/LegACEy-decal-plugin.iss), installing everything in the ZIP.
+No game installation or DAT files are needed for the build. Automated
 plugin tests, asset publishing checks, and the Windows native hook check must
 pass before publishing.
 
@@ -186,9 +215,20 @@ Each release contains:
   `runtime` folder.
 - `LegACEy-decal-plugin-v<version>-windows-x86.zip`, the build layout above
   (`runtime` holds the .NET 10 runtime) plus license notices.
-- `SHA256SUMS.txt`, covering the DLL and ZIP.
+- `LegACEy-decal-plugin-v<version>-setup.exe`, the installer.
+- `SHA256SUMS.txt`, covering the DLL, ZIP and installer.
 
-For a fresh installation, extract the ZIP and register its
+To install, close the game and run `setup.exe`. It installs the ZIP's files and an
+`install.json` marker to `%LOCALAPPDATA%\LegACEy\DecalPlugin` for the player who
+runs it, and registers the plugin in Decal, asking for administrator approval
+for that step only. A plugin already registered by hand is moved onto the
+installed copy and enabled. Setup stops if the game is running or Decal is not
+installed. `runtime\` and `Plugins\` belong to the release and are replaced on
+every install and update, so keep no files of your own there. Uninstall it from
+Windows' Apps list: that removes the installed files and the Decal registration,
+and keeps your settings, switch files and logs.
+
+The ZIP stays for manual installs: extract it and register its
 `LegACEy.Client.DecalPlugin.dll` in Decal. To update, extract the ZIP over the
 old folder; updating the client needs the ZIP, not just the main DLL. Files that
 older releases left at the root (every DLL except `LegACEy.Client.DecalPlugin.dll`
