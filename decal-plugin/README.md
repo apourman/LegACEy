@@ -72,6 +72,16 @@ keeps the stage for the next try. Exit codes: 0
 applied, 1 failed and rolled back, 2 bad arguments or no ready stage, 3 another
 updater is already running.
 
+An install made by setup.exe updates itself; a build from a checkout never does,
+because only setup.exe puts `install.json` beside the main DLL. At login and
+every 6 hours the client asks GitHub for the newest published
+`decal-plugin-vX.Y.Z` release (at most once an hour for all clients on the
+install, timed by the `update-check` file). A newer one is downloaded into
+`update\<version>\`, checked against its `SHA256SUMS.txt` and unpacked; chat
+says it installs when the game closes, and the updater applies it then, so the
+next launch runs it. The updater logs to `updater.log`. Creating an empty file
+named `no-auto-update` beside the main DLL turns auto-update off.
+
 Creating an empty file named `fail-post-ui-draw` beside the main DLL makes the
 next post-UI draw fail in game. The file is deleted, the failure is logged to
 `legacey-avalonia.log`, and the retail EndScene hook is removed, which exercises
