@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.8.1...decal-plugin-v0.9.0) (2026-10-19)
+
+
+### Features
+
+* **decal-plugin:** add the Settings window and shader water ([#72](https://github.com/apourman/LegACEy/issues/72)) ([c8b36d1](https://github.com/apourman/LegACEy/commit/c8b36d1e63e46ee22b37b161e1a79731ee08c8cc))
+
 ## [0.8.1](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.8.0...decal-plugin-v0.8.1) (2026-10-19)
 
 
