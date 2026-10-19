@@ -22,7 +22,7 @@ public sealed class RetailChatFade
     private DateTime? _quietSince;
 
     /// <summary>How long the window is left alone before it is idle, in seconds; null keeps it awake. A change applies at once.</summary>
-    public double? IdleAfterSeconds { get; set; } = DefaultIdleAfterSeconds;
+    public int? IdleAfterSeconds { get; set; } = DefaultIdleAfterSeconds;
 
     /// <summary>Applies the idle rule at <paramref name="now"/>; call it before reading the opacities.</summary>
     public void Update(bool awake, DateTime now)

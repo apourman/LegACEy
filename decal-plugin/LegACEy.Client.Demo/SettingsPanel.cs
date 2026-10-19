@@ -338,11 +338,11 @@ public sealed class SettingsPanel : UserControl
         return OptionRow("Text size", stepper);
     }
 
-    /// <summary>How long the chat waits before it fades when left alone: Never, or 10, 15, 30 or 60 seconds. Never is 0 seconds.</summary>
+    /// <summary>How long the chat waits before it fades when left alone. Never is 0 seconds.</summary>
     private Control ChatFadeRow()
     {
         var fade = new DerethSegmented(RetailChatWindows.FadeChoices.Select(seconds => seconds == RetailChatWindows.NeverFades ? "Never" : $"{seconds} s").ToArray());
-        void Show() => fade.Selected = _settings.ChatFade is { } choice ? Array.IndexOf(RetailChatWindows.FadeChoices, choice.Value) : -1;
+        void Show() => fade.Selected = _settings.ChatFade is { } choice ? RetailChatWindows.FadeChoices.ToList().IndexOf(choice.Value) : -1;
         fade.Chosen += index => _settings.ChatFade?.Set(RetailChatWindows.FadeChoices[index]);
         _redraws.Add(Show);
         Show();

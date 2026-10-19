@@ -44,7 +44,7 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     // How long a chat window is left alone before it fades, in seconds, kept per character in the position store. NeverFades keeps it awake.
     private const string FadeKey = "dereth-chat-fade";
     public const int NeverFades = 0;
-    public static readonly int[] FadeChoices = { NeverFades, 10, RetailChatFade.DefaultIdleAfterSeconds, 30, 60 };
+    public static readonly IReadOnlyList<int> FadeChoices = new[] { NeverFades, 10, RetailChatFade.DefaultIdleAfterSeconds, 30, 60 };
     private int _fadeSeconds = RetailChatFade.DefaultIdleAfterSeconds;
     // Where a torn-off window opens from the pointer: the tab it came from is under the pointer, so the window follows it.
     private static readonly Size Grab = new(24, 9);
@@ -311,28 +311,28 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
         positions.Save(server, character, TextSizeKey, (new Point(ClampTextSize(percent), 0), null));
 
     /// <summary>The idle delay every chat window uses, or null when it never fades.</summary>
-    private double? FadeDelay => _fadeSeconds == NeverFades ? null : _fadeSeconds;
+    private int? FadeDelay => _fadeSeconds == NeverFades ? null : _fadeSeconds;
 
     /// <summary>Sets how long every chat window is left alone before it fades, in seconds (<see cref="NeverFades"/> keeps them awake), and keeps it for the character.</summary>
     public void SetFadeSeconds(int seconds)
     {
         if (_disposed) return;
-        var fade = ClampFadeSeconds(seconds);
+        var fade = FadeOrDefault(seconds);
         if (fade == _fadeSeconds) return;
         _fadeSeconds = fade;
         SaveFadeSeconds(_positions, _server, _character, fade);
         foreach (var (_, window) in _chats) window.IdleAfterSeconds = FadeDelay;
     }
 
-    /// <summary>A fade delay that is one of <see cref="FadeChoices"/>; anything else is the default.</summary>
-    public static int ClampFadeSeconds(int seconds) => FadeChoices.Contains(seconds) ? seconds : RetailChatFade.DefaultIdleAfterSeconds;
+    /// <summary>A fade delay that is one of <see cref="FadeChoices"/>; any other value snaps to the default.</summary>
+    public static int FadeOrDefault(int seconds) => FadeChoices.Contains(seconds) ? seconds : RetailChatFade.DefaultIdleAfterSeconds;
 
     /// <summary>The character's fade delay in seconds, the default before one is saved.</summary>
     public static int LoadFadeSeconds(IWindowPositionStore positions, string server, string character) =>
-        positions.Load(server, character, FadeKey) is { Location.X: var saved } ? ClampFadeSeconds(saved) : RetailChatFade.DefaultIdleAfterSeconds;
+        positions.Load(server, character, FadeKey) is { Location.X: var saved } ? FadeOrDefault(saved) : RetailChatFade.DefaultIdleAfterSeconds;
 
     public static void SaveFadeSeconds(IWindowPositionStore positions, string server, string character, int seconds) =>
-        positions.Save(server, character, FadeKey, (new Point(ClampFadeSeconds(seconds), 0), null));
+        positions.Save(server, character, FadeKey, (new Point(seconds, 0), null));
 
     private RetailChatWindow? Get(string id) => _chats.FirstOrDefault(chat => chat.Id == id).Window;
 

@@ -500,7 +500,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     }
 
     /// <summary>How long the window is left alone before it fades, in seconds; null keeps it awake. A change applies on the next frame.</summary>
-    public double? IdleAfterSeconds
+    public int? IdleAfterSeconds
     {
         get => _fade.IdleAfterSeconds;
         set

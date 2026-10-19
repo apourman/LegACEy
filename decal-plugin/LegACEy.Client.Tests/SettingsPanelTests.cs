@@ -82,7 +82,10 @@ public sealed class SettingsPanelTests
         {
             PressCentre(panel, panel.Content.GetVisualDescendants().OfType<DerethToggle>().Single());
             PressCentre(panel, panel.Content.GetVisualDescendants().OfType<Button>().Single(button => button.Content as string == "+"));
+            var fadeRow = TextOf(panel, "Fade when idle").GetVisualAncestors().OfType<DockPanel>().First();
+            Assert.Contains("This character", fadeRow.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text));
             PressCentre(panel, TextOf(panel, "Never"));
+            PressCentre(panel, TextOf(panel, "30 s"));
             PressCentre(panel, TextOf(panel, "Side by side"));
         }
 
@@ -102,7 +105,7 @@ public sealed class SettingsPanelTests
 
         Assert.Equal(new object[]
         {
-            false, 130, 0, VitalsLayout.SideBySide,
+            false, 130, 0, 30, VitalsLayout.SideBySide,
             new RadarOptions(Ground: false), new RadarOptions(NorthUp: true), new RadarOptions(Rings: true), new RadarOptions(Zoom: 150),
         }, changes);
     });
@@ -113,6 +116,7 @@ public sealed class SettingsPanelTests
         var settings = new ClientSettings(null, null, Windows("Chat", "Radar"))
         {
             ChatTextSize = new OptionChoice<int>(120, _ => { }),
+            ChatFade = new OptionChoice<int>(15, _ => { }),
             Radar = new OptionChoice<RadarOptions>(new RadarOptions(), _ => { }),
         };
         using var panel = Tab(settings);
@@ -121,9 +125,11 @@ public sealed class SettingsPanelTests
 
         // The window's own menu moves both values; the open panel draws them as they now are.
         settings.ChatTextSize = new OptionChoice<int>(140, _ => { });
+        settings.ChatFade = new OptionChoice<int>(60, _ => { });
         settings.Radar = new OptionChoice<RadarOptions>(new RadarOptions(Ground: false), _ => { });
 
         TextOf(panel, "140%");
+        Assert.Equal(4, TextOf(panel, "60 s").GetVisualAncestors().OfType<DerethSegmented>().First().Selected);
         Assert.False(ground.On);
     });
 

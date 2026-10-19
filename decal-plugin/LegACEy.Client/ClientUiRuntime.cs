@@ -2597,7 +2597,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void SetChatFadeSeconds(int seconds)
     {
-        var fade = RetailChatWindows.ClampFadeSeconds(seconds);
+        var fade = RetailChatWindows.FadeOrDefault(seconds);
         if (_chatWindows != null) _chatWindows.SetFadeSeconds(fade);
         else RetailChatWindows.SaveFadeSeconds(_positionStore!, SessionServer(), SessionCharacter(), fade);
         if (_settings != null) _settings.ChatFade = new OptionChoice<int>(fade, SetChatFadeSeconds);
