@@ -24,14 +24,14 @@ internal sealed unsafe class StormFog : IDisposable
     private const float Bank = 40, BankThickness = 20;
     private const uint Grey = 0xC8CDCF;
     // Inside: fog thick enough that 1/e of the scene shows through every Thickness metres, reached FadeIn metres past the edge.
-    // Slices run from the first to the last distance, spaced wider with distance as the fog changes less there.
-    private const float Thickness = 45, FadeIn = 30, FirstSlice = 3, LastSlice = 400;
-    private const int Slices = 24;
+    private const float Thickness = 45, FadeIn = 30, LastSlice = 400;
     private static readonly (int X, int Y)[] Corners = { (-1, -1), (1, -1), (1, 1), (-1, 1) };
 
     private readonly IntPtr _device;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private IntPtr _noise;
+    // The fog the haze asked for this frame (the thickest), laid over retail's world next frame (TakeFog).
+    private (uint Color, float Density)? _nextFog;
     // Frames since the player's own part was measured.
     private int _sincePlayer = int.MaxValue / 2;
 
@@ -169,9 +169,18 @@ internal sealed unsafe class StormFog : IDisposable
         SetRenderState(_device, RenderState.DestBlend, BlendInvSrcAlpha);
     }
 
+    /// <summary>The fog to lay over retail's world this frame, as Direct3D's exponential fog: its colour and density per metre. Clears it.</summary>
+    public (uint Color, float Density)? TakeFog()
+    {
+        var fog = _nextFog;
+        _nextFog = null;
+        return fog;
+    }
+
     /// <summary>
-    /// The fog inside: camera-facing grey slices from near to far, each covering the screen and hidden where retail's scene is nearer.
-    /// A slice's alpha is the fog over the gap since the last one, so a pixel behind every slice to distance d is fogged 1 - e^(-d / thickness).
+    /// The fog inside, fogging a pixel at distance d by 1 - e^(-d × strength / thickness). Retail's world is fogged as it is drawn, next frame
+    /// (<see cref="TakeFog"/>), smoothly per vertex; here only one camera-facing slice is drawn, far off and hidden where retail's scene is
+    /// nearer, to fog the sky. (Many slices drew a contour line wherever the ground crossed one, 19 Oct.)
     /// Expects <see cref="UseWorldCamera"/>'s states; leaves the world and view transforms at identity.
     /// </summary>
     public void DrawHaze(uint color, float thickness, float strength)
@@ -188,22 +197,18 @@ internal sealed unsafe class StormFog : IDisposable
         var forward = Projection.M34 >= 0 ? 1 : -1;
         // The last slice stays inside the far plane (from the projection: far = M43 / (forward - M33)), or the sky behind would show.
         var lastSlice = MathF.Min(LastSlice, MathF.Abs(Projection.M43 / (forward - Projection.M33)) * 0.98f);
+        var density = strength / thickness;
+        if (_nextFog is not { } fog || fog.Density < density) _nextFog = (color, density);
         var quad = stackalloc SliceVertex[4];
-        var last = 0f;
-        for (var i = 0; i < Slices; i++)
-        {
-            var distance = FirstSlice * MathF.Pow(lastSlice / FirstSlice, i / (Slices - 1f));
-            var alpha = 1 - MathF.Exp(-(distance - last) / thickness * strength);
-            last = distance;
-            // Wider than the view, so the slice covers the screen whatever the aspect.
-            float x = distance / Projection.M11 * 1.2f, y = distance / Projection.M22 * 1.2f, z = distance * forward;
-            var argb = (uint)(alpha * 255) << 24 | color;
-            quad[0] = new(-x, y, z, argb);
-            quad[1] = new(x, y, z, argb);
-            quad[2] = new(-x, -y, z, argb);
-            quad[3] = new(x, -y, z, argb);
-            DrawPrimitiveUP(_device, TriangleStrip, 2, quad, sizeof(SliceVertex));
-        }
+        var alpha = 1 - MathF.Exp(-lastSlice * density);
+        // Wider than the view, so the slice covers the screen whatever the aspect.
+        float x = lastSlice / Projection.M11 * 1.2f, y = lastSlice / Projection.M22 * 1.2f, z = lastSlice * forward;
+        var argb = (uint)(alpha * 255) << 24 | color;
+        quad[0] = new(-x, y, z, argb);
+        quad[1] = new(x, y, z, argb);
+        quad[2] = new(-x, -y, z, argb);
+        quad[3] = new(x, -y, z, argb);
+        DrawPrimitiveUP(_device, TriangleStrip, 2, quad, sizeof(SliceVertex));
     }
 
     /// <summary>Metres inside the storm ring to its nearer edge (the safe landblock's, or the ring's outer one); negative outside it.</summary>

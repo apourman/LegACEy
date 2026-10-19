@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
@@ -95,6 +96,11 @@ internal sealed unsafe class WorldEffects : IDisposable
     // _masked: the mask is cleared this frame; _outlined: the selection is in it.
     private bool _masked, _outlined, _failed;
     private System.Numerics.Vector3 _lastOddMeasure;
+    // The haze's fog over retail's world this frame (StormFog.TakeFog), and whether retail's own fog states have been logged once.
+    private (uint Color, float Density)? _worldFog;
+    private bool _fogLogged;
+    private static readonly RenderState[] FogStates =
+        { RenderState.FogEnable, RenderState.FogColor, RenderState.FogTableMode, RenderState.FogVertexMode, RenderState.FogDensity, RenderState.RangeFogEnable };
 
     private WorldEffects(IntPtr device, PortalDat portal, Action<string> log)
     {
@@ -148,6 +154,12 @@ internal sealed unsafe class WorldEffects : IDisposable
             try { if (DrawsSelected()) DrawIntoMask(() => original(device, type, baseVertex, minIndex, vertices, startIndex, primitives), SelectionChannels); }
             catch (Exception exception) { Fail(exception); }
             return 0;
+        }
+        // Retail may set its own fog between draws; the haze's goes back on before each one.
+        if (_inWorld && _worldFog is { } fog && device == _device && !_failed)
+        {
+            try { ApplyFog(fog); }
+            catch (Exception exception) { Fail(exception); }
         }
         var result = original(device, type, baseVertex, minIndex, vertices, startIndex, primitives);
         var part = *DrawingPart;
@@ -238,9 +250,34 @@ internal sealed unsafe class WorldEffects : IDisposable
 
     private void OnSmartBoxDraw(IntPtr smartBox)
     {
+        _worldFog = _failed ? null : _fog.TakeFog();
+        int[]? retailFog = null;
+        try
+        {
+            if (_worldFog is { } fog)
+            {
+                retailFog = Array.ConvertAll(FogStates, state => GetRenderState(_device, state));
+                if (!_fogLogged)
+                {
+                    _fogLogged = true;
+                    _log($"Haze fog: retail's fog states before the world are {string.Join(", ", FogStates.Select((state, i) => $"{state} 0x{retailFog[i]:X}"))}.");
+                }
+                ApplyFog(fog);
+            }
+        }
+        catch (Exception exception) { Fail(exception); }
+        _water.FogDensity = _worldFog?.Density ?? 0;
         _inWorld = true;
         try { _smartBoxHook.OriginalFunction(smartBox); }
-        finally { _inWorld = false; }
+        finally
+        {
+            _inWorld = false;
+            if (retailFog != null)
+            {
+                try { for (var i = 0; i < FogStates.Length; i++) SetRenderState(_device, FogStates[i], retailFog[i]); }
+                catch (Exception exception) { Fail(exception); }
+            }
+        }
         if (!_failed)
         {
             try
@@ -264,6 +301,21 @@ internal sealed unsafe class WorldEffects : IDisposable
         }
         catch (Exception exception) { Fail(exception); }
         finally { _masked = _outlined = false; }
+    }
+
+    /// <summary>
+    /// Direct3D's exponential fog by each vertex's distance from the camera, so the haze thickens smoothly over retail's world, with no
+    /// steps where the ground crosses a slice. ponytail: vertex fog only fogs what retail draws with fixed-function transforms; the log line
+    /// of retail's own fog states says how it draws.
+    /// </summary>
+    private void ApplyFog((uint Color, float Density) fog)
+    {
+        SetRenderState(_device, RenderState.FogEnable, 1);
+        SetRenderState(_device, RenderState.FogColor, unchecked((int)(0xFF000000 | fog.Color)));
+        SetRenderState(_device, RenderState.FogTableMode, 0);
+        SetRenderState(_device, RenderState.FogVertexMode, 1); // D3DFOG_EXP
+        SetRenderState(_device, RenderState.FogDensity, BitConverter.SingleToInt32Bits(fog.Density));
+        SetRenderState(_device, RenderState.RangeFogEnable, 1);
     }
 
     /// <summary>

@@ -74,6 +74,9 @@ internal sealed unsafe class Water : IDisposable
     /// <summary>How strong the effect is (<see cref="WaterChoice.Strength"/>): 0 leaves retail's water, 1 is the look as designed, 2 twice it.</summary>
     public float Strength { get; set; } = 1;
 
+    /// <summary>The haze's fog density per metre over retail's world this frame: the water fades by as much as the fog hides.</summary>
+    public float FogDensity { get; set; }
+
     /// <summary>Draws the water after retail's world, with the camera the storm fog measured.</summary>
     public void Draw()
     {
@@ -99,7 +102,7 @@ internal sealed unsafe class Water : IDisposable
                 var triangles = cut ? Subdivide(points[i], points[i + 1], points[i + 2], _cut) : 1;
                 if (_vertices.Length < count + triangles * 3) Array.Resize(ref _vertices, Math.Max(count + triangles * 3, _vertices.Length * 2));
                 for (var k = 0; k < triangles * 3; k++)
-                    _vertices[count++] = Vertex(cut ? _cut[k] : points[i + k], eye, originX, originY, scroll, Strength);
+                    _vertices[count++] = Vertex(cut ? _cut[k] : points[i + k], eye, originX, originY, scroll, Strength, FogDensity);
             }
         }
         if (_logged != _centre && _loading.Count == 0)
@@ -229,7 +232,7 @@ internal sealed unsafe class Water : IDisposable
             DrawPrimitiveUP(_device, TriangleList, count / 3, vertices, sizeof(WaterVertex));
     }
 
-    private static WaterVertex Vertex(WaterPoint point, Vector3 eye, float originX, float originY, Vector4 scroll, float strength)
+    private static WaterVertex Vertex(WaterPoint point, Vector3 eye, float originX, float originY, Vector4 scroll, float strength, float fogDensity)
     {
         var p = point.Position;
         // Fresnel (Schlick's): water reflects more of the sky the lower the angle it is seen at.
@@ -238,7 +241,7 @@ internal sealed unsafe class Water : IDisposable
         var colour = Vector3.Lerp(Shallow, Deep, point.Open) * (0.5f + 0.35f * fresnel);
         var distance = Vector2.Distance(new Vector2(p.X, p.Y), new Vector2(eye.X, eye.Y));
         // Below full strength the effect fades towards retail's water; above it the tint moves further from mid grey (no change).
-        var alpha = point.Wet * Math.Clamp((Reach - distance) / FadeOut, 0, 1) * Math.Min(strength, 1);
+        var alpha = point.Wet * Math.Clamp((Reach - distance) / FadeOut, 0, 1) * Math.Min(strength, 1) * MathF.Exp(-distance * fogDensity);
         if (strength > 1) colour = new Vector3(0.5f) + (colour - new Vector3(0.5f)) * strength;
         uint Byte(float value) => (uint)Math.Clamp(value * 255, 0, 255);
         var argb = Byte(alpha) << 24 | Byte(colour.X) << 16 | Byte(colour.Y) << 8 | Byte(colour.Z);
