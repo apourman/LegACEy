@@ -33,8 +33,12 @@ public static class DerethPalette
     public static readonly Color Teal = Color.Parse("#3FCF5F");
     /// <summary>Green text, such as the "N selected" line.</summary>
     public static readonly Color TealText = Color.Parse("#4CF08C");
-    /// <summary>Retail's window blue: the Retail choice lit, and a card for a window left on retail.</summary>
+    /// <summary>Retail's blue, lit on a settings card's Retail choice. Only that choice is blue.</summary>
     public static readonly Color RetailBlue = Color.Parse("#6F86C8");
+    /// <summary>The lit Retail label on a settings card.</summary>
+    public static readonly Color RetailLabel = Color.Parse("#D8E1FF");
+    /// <summary>A settings card's frame.</summary>
+    public static readonly Color Line = Color.Parse("#3A3122");
     public static readonly FontFamily Title = new("Palatino Linotype, Palatino, Georgia, serif");
     public static readonly FontFamily Body = new("Segoe UI, Tahoma, avares://LegACEy.Client.Themes/Assets#Liberation Sans");
 

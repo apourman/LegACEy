@@ -16,6 +16,7 @@ public sealed class DerethSegmented : Border
 {
     private static readonly IBrush LitBrush = DerethPalette.Brush(DerethPalette.Gold.WithAlpha(0x29));
     private static readonly IBrush LitBlueBrush = DerethPalette.Brush(DerethPalette.RetailBlue.WithAlpha(0x33));
+    private static readonly IBrush LitBlueLabelBrush = DerethPalette.Brush(DerethPalette.RetailLabel);
 
     private readonly List<Border> _cells = new();
     private readonly List<TextBlock> _labels = new();
@@ -75,7 +76,7 @@ public sealed class DerethSegmented : Border
         {
             var lit = i == _selected;
             _cells[i].Background = !lit ? Brushes.Transparent : i == _blueOption ? LitBlueBrush : LitBrush;
-            _labels[i].Foreground = lit ? DerethPalette.CreamBrush : DerethPalette.MutedBrush;
+            _labels[i].Foreground = !lit ? DerethPalette.MutedBrush : i == _blueOption ? LitBlueLabelBrush : DerethPalette.CreamBrush;
         }
     }
 }

@@ -250,14 +250,15 @@ public sealed class SettingsPanel : UserControl
     }
 
     /// <summary>A label with the tag that says whether it applies to all characters, or to this one.</summary>
-    private static Control ScopedLabel(string text, bool thisCharacter = false) => new StackPanel
+    private static Control ScopedLabel(string text, bool thisCharacter = false) => ScopedLabel(
+        new TextBlock { Text = text, FontFamily = DerethPalette.Body, FontSize = 12.5, Foreground = DerethPalette.TextBrush, VerticalAlignment = VerticalAlignment.Center },
+        thisCharacter);
+
+    /// <summary>The label as the caller styled it, with the tag that says whether it applies to all characters, or to this one.</summary>
+    private static Control ScopedLabel(TextBlock label, bool thisCharacter = false) => new StackPanel
     {
         Orientation = Orientation.Horizontal, Spacing = 8,
-        Children =
-        {
-            new TextBlock { Text = text, FontFamily = DerethPalette.Body, FontSize = 12.5, Foreground = DerethPalette.TextBrush, VerticalAlignment = VerticalAlignment.Center },
-            new DerethScopeTag(thisCharacter ? "This character" : "All characters", thisCharacter)
-        }
+        Children = { label, new DerethScopeTag(thisCharacter ? "This character" : "All characters", thisCharacter) }
     };
 
     /// <summary>The installed version, and Check for updates, greyed out with the reason on an install that never updates.</summary>
@@ -291,24 +292,27 @@ public sealed class SettingsPanel : UserControl
         var head = new DockPanel();
         DockPanel.SetDock(switchOfWindow, Dock.Right);
         head.Children.Add(switchOfWindow);
-        var label = ScopedLabel(window.Title);
-        var title = label.GetVisualDescendants().OfType<TextBlock>().First();
-        head.Children.Add(label);
+        var title = new TextBlock
+        {
+            Text = window.Title, FontFamily = DerethPalette.Title, FontSize = 15, Foreground = DerethPalette.CreamBrush, VerticalAlignment = VerticalAlignment.Center
+        };
+        head.Children.Add(ScopedLabel(title));
 
         var options = new StackPanel { Spacing = 6 };
         foreach (var row in OptionRows(window.Title)) options.Children.Add(row);
         var frame = new Rectangle
         {
-            Stroke = DerethPalette.GrooveEdgeBrush, StrokeThickness = 1, RadiusX = 3, RadiusY = 3, Stretch = Stretch.Fill, IsHitTestVisible = false
+            Fill = DerethPalette.Brush(Color.FromArgb(0x2E, 0, 0, 0)), Stroke = DerethPalette.Brush(DerethPalette.Line), StrokeThickness = 1,
+            RadiusX = 3, RadiusY = 3, Stretch = Stretch.Fill, IsHitTestVisible = false
         };
-        var card = new Grid { Children = { frame, new StackPanel { Spacing = 6, Margin = new Thickness(9, 7), Children = { head, options } } } };
+        var card = new Grid { Children = { frame, new StackPanel { Spacing = 6, Margin = new Thickness(10, 8), Children = { head, options } } } };
 
         void Show()
         {
             var onDereth = window.IsCustom();
             switchOfWindow.Selected = onDereth ? 0 : 1;
             options.IsVisible = onDereth;
-            title.Foreground = onDereth ? DerethPalette.TextBrush : DerethPalette.MutedBrush;
+            title.Foreground = onDereth ? DerethPalette.CreamBrush : DerethPalette.MutedBrush;
             frame.StrokeDashArray = onDereth ? null : new AvaloniaList<double> { 3, 2 };
         }
         switchOfWindow.Chosen += index =>
@@ -381,7 +385,7 @@ public sealed class SettingsPanel : UserControl
         {
             if (_settings.ChatTextSize is not { } choice) return;
             var next = choice.Value + steps * RetailChatWindows.TextSizeStep;
-            choice.Set(Math.Max(RetailChatWindows.SmallestTextSize, Math.Min(RetailChatWindows.LargestTextSize, next)));
+            choice.Set(RetailChatWindows.ClampTextSize(next));
         }
         smaller.Click += (_, _) => Step(-1);
         larger.Click += (_, _) => Step(1);
@@ -394,7 +398,13 @@ public sealed class SettingsPanel : UserControl
     /// <summary>How long the chat waits before it fades when left alone. Never is 0 seconds.</summary>
     private Control ChatFadeRow()
     {
-        var fade = new DerethSegmented(RetailChatWindows.FadeChoices.Select(seconds => seconds == RetailChatWindows.NeverFades ? "Never" : $"{seconds} s").ToArray());
+        // Labelled as the mockup does: only the longest choice carries its unit.
+        var fade = new DerethSegmented(RetailChatWindows.FadeChoices.Select(seconds => seconds switch
+        {
+            RetailChatWindows.NeverFades => "Never",
+            60 => "60 s",
+            _ => seconds.ToString(CultureInfo.InvariantCulture),
+        }).ToArray());
         void Show() => fade.Selected = _settings.ChatFade is { } choice ? RetailChatWindows.FadeChoices.ToList().IndexOf(choice.Value) : -1;
         fade.Chosen += index => _settings.ChatFade?.Set(RetailChatWindows.FadeChoices[index]);
         _redraws.Add(Show);

@@ -74,7 +74,7 @@ public sealed class SettingsPanelTests
         var settings = new ClientSettings(null, null, new[] { new UiWindowChoice("Vitals", () => custom, value => custom = value) });
         using var panel = Tab(settings);
         var title = TextOf(panel, "Vitals");
-        Assert.Same(DerethPalette.TextBrush, title.Foreground);
+        Assert.Same(DerethPalette.CreamBrush, title.Foreground);
 
         PressCentre(panel, TextOf(panel, "Retail"));
         panel.Tick();
@@ -82,7 +82,7 @@ public sealed class SettingsPanelTests
 
         PressCentre(panel, TextOf(panel, "Dereth"));
         panel.Tick();
-        Assert.Same(DerethPalette.TextBrush, title.Foreground);
+        Assert.Same(DerethPalette.CreamBrush, title.Foreground);
     });
 
     [Fact]
@@ -103,7 +103,7 @@ public sealed class SettingsPanelTests
             var fadeRow = TextOf(panel, "Fade when idle").GetVisualAncestors().OfType<DockPanel>().First();
             Assert.Contains("This character", fadeRow.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text));
             PressCentre(panel, TextOf(panel, "Never"));
-            PressCentre(panel, TextOf(panel, "30 s"));
+            PressCentre(panel, TextOf(panel, "30"));
             PressCentre(panel, TextOf(panel, "Side by side"));
         }
 

@@ -227,8 +227,8 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
 
     /// <summary>
     /// Forgets every window place this server and character saved, except the keys in <paramref name="keep"/>: the per-character options
-    /// this store also holds. Other characters' rows stay. Returns false when the file cannot be read or written; the forget then holds for
-    /// this session only, and the places read as absent until a write works. Changes nothing when the file cannot be read.
+    /// this store also holds. Other characters' rows stay. Returns false when the file cannot be read or written. If the file cannot be read,
+    /// nothing changes. If it can be read but not written, the forget holds for this session only, until a write works.
     /// </summary>
     public bool ForgetPlaces(string server, string character, IEnumerable<string> keep)
     {
