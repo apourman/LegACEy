@@ -21,6 +21,7 @@ and database remain in the repository's upstream-compatible `Source/` and
 | `LegACEy.Client.Demo` | Framework windows and controls, and the plugin API (`ILegACEyPlugin`, `ILegACEyClient`) |
 | `LegACEy.Plugin.Vault` | The account Vault plugin, built into `Plugins/Vault/` |
 | `LegACEy.Plugin.Inventory` | The inventory window, built into `Plugins/Inventory/` |
+| `LegACEy.Updater` | The net48 `LegACEy.Updater.exe` beside the stub, which applies a staged release after the game exits |
 | `LegACEy.Client.Tests` | Automated tests without an installed Decal runtime |
 | `LegACEy.Client.HookSmoke` | Windows native hook regression check |
 
@@ -56,6 +57,20 @@ a standalone executable. Each LegACEy plugin is copied beside it as
 `LegACEy.Client.GameArt.dll`, `Plugins/` and `runtime/` beside the main DLL. If
 Decal is registered against a previous checkout path, update that registration
 after moving the directory.
+
+The stub build also copies `LegACEy.Updater.exe` beside the main DLL. Run as
+`LegACEy.Updater.exe <install> <install>\update\<version>\files` from a copy
+outside the install root (such as `<install>\update\<version>\`), it waits
+until no `acclient.exe` is left, then applies that stage if
+`<install>\update\<version>\ready` exists: every folder the release ships
+(`runtime\`, `Plugins\`) replaces the installed one, every root file overwrites
+the installed one, and other files in the install stay. It logs to
+`<install>\updater.log`. When done it deletes `ready`, `files\` and its
+working `rollback\` folder; the version folder, which holds the running
+updater, stays for the client to remove. A failure puts the install back and
+keeps the stage for the next try. Exit codes: 0
+applied, 1 failed and rolled back, 2 bad arguments or no ready stage, 3 another
+updater is already running.
 
 Creating an empty file named `fail-post-ui-draw` beside the main DLL makes the
 next post-UI draw fail in game. The file is deleted, the failure is logged to

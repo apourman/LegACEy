@@ -31,4 +31,9 @@
     <ProjectReference Include="..\LegACEy.Client.Themes\LegACEy.Client.Themes.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The updater is net48, so its apply step is compiled in here to be tested. -->
+    <Compile Include="..\LegACEy.Updater\StageApply.cs" LinkBase="Updater" />
+  </ItemGroup>
+
 </Project>
