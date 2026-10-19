@@ -190,6 +190,9 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
 {
     private readonly string _path;
     private readonly object _sync = new();
+    // The session's changes that a write could not put in the file: a place, or null for a place forgotten. They win over the file until a
+    // write works, and a write that works clears them, since the file then holds them. Rows the file took are never kept here.
+    private readonly Dictionary<string, WindowPlacement?> _session = new(StringComparer.Ordinal);
 
     public FileWindowPositionStore(string path)
     {
@@ -199,23 +202,33 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
 
     public WindowPlacement? Load(string server, string character, string windowId)
     {
-        lock (_sync) return Rows() is { } rows && rows.TryGetValue(Key(server, character, windowId), out var placement) ? placement : (WindowPlacement?)null;
+        lock (_sync)
+        {
+            var key = Key(server, character, windowId);
+            if (_session.TryGetValue(key, out var held)) return held;
+            return Rows() is { } rows && rows.TryGetValue(key, out var placement) ? placement : (WindowPlacement?)null;
+        }
     }
 
     public void Save(string server, string character, string windowId, WindowPlacement placement)
     {
         lock (_sync)
         {
-            // A file that cannot be read is not rewritten: its other rows would be lost with it.
-            if (Rows() is not { } rows) return;
-            rows[Key(server, character, windowId)] = placement;
-            WriteRows(rows);
+            var key = Key(server, character, windowId);
+            // A file that cannot be read is not rewritten: its other rows would be lost with it. The place still holds for this session.
+            if (Rows() is { } rows)
+            {
+                rows[key] = placement;
+                if (WriteRows(rows)) return;
+            }
+            _session[key] = placement;
         }
     }
 
     /// <summary>
     /// Forgets every window place this server and character saved, except the keys in <paramref name="keep"/>: the per-character options
-    /// this store also holds. Other characters' rows stay. Returns false, and changes nothing, when the file cannot be read or written.
+    /// this store also holds. Other characters' rows stay. Returns false when the file cannot be read or written; the forget then holds for
+    /// this session only, and the places read as absent until a write works. Changes nothing when the file cannot be read.
     /// </summary>
     public bool ForgetPlaces(string server, string character, IEnumerable<string> keep)
     {
@@ -224,12 +237,15 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
             if (Rows() is not { } rows) return false;
             var owned = Encode(server) + "|" + Encode(character) + "|";
             var kept = new HashSet<string>(keep.Select(id => Key(server, character, id)), StringComparer.Ordinal);
-            foreach (var key in rows.Keys.Where(key => key.StartsWith(owned, StringComparison.Ordinal) && !kept.Contains(key)).ToList())
-                rows.Remove(key);
-            return WriteRows(rows);
+            var forgotten = rows.Keys.Where(key => key.StartsWith(owned, StringComparison.Ordinal) && !kept.Contains(key)).ToList();
+            foreach (var key in forgotten) rows.Remove(key);
+            if (WriteRows(rows)) return true;
+            foreach (var key in forgotten) _session[key] = null;
+            return false;
         }
     }
 
+    /// <summary>Writes the rows, and on success clears the session's changes: the file now holds them.</summary>
     private bool WriteRows(Dictionary<string, WindowPlacement> rows)
     {
         try
@@ -237,32 +253,40 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
             var directory = Path.GetDirectoryName(_path);
             if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
             File.WriteAllLines(_path, rows.Select(pair => Format(pair.Key, pair.Value)));
+            _session.Clear();
             return true;
         }
         catch (IOException) { return false; }
         catch (UnauthorizedAccessException) { return false; }
     }
 
-    /// <summary>The file's rows, or null when the file exists but cannot be read. A missing file has no rows.</summary>
+    /// <summary>The file's rows with the session's changes applied, or null when the file exists but cannot be read. A missing file has no rows.</summary>
     private Dictionary<string, WindowPlacement>? Rows()
     {
         var rows = new Dictionary<string, WindowPlacement>(StringComparer.Ordinal);
-        if (!File.Exists(_path)) return rows;
         try
         {
-            foreach (var line in File.ReadAllLines(_path))
+            if (File.Exists(_path))
             {
-                var fields = line.Split('|');
-                if (fields.Length is not (5 or 7) || !int.TryParse(fields[3], out var x) || !int.TryParse(fields[4], out var y))
-                    continue;
-                Size? size = null;
-                if (fields.Length == 7 && int.TryParse(fields[5], out var width) && int.TryParse(fields[6], out var height))
-                    size = new Size(width, height);
-                rows[fields[0] + "|" + fields[1] + "|" + fields[2]] = (new Point(x, y), size);
+                foreach (var line in File.ReadAllLines(_path))
+                {
+                    var fields = line.Split('|');
+                    if (fields.Length is not (5 or 7) || !int.TryParse(fields[3], out var x) || !int.TryParse(fields[4], out var y))
+                        continue;
+                    Size? size = null;
+                    if (fields.Length == 7 && int.TryParse(fields[5], out var width) && int.TryParse(fields[6], out var height))
+                        size = new Size(width, height);
+                    rows[fields[0] + "|" + fields[1] + "|" + fields[2]] = (new Point(x, y), size);
+                }
             }
         }
         catch (IOException) { return null; }
         catch (UnauthorizedAccessException) { return null; }
+        foreach (var pair in _session)
+        {
+            if (pair.Value is { } placement) rows[pair.Key] = placement;
+            else rows.Remove(pair.Key);
+        }
         return rows;
     }
 

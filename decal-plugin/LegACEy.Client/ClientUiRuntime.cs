@@ -130,6 +130,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string RetailVitalsSwitchFile = "retail-vitals-native";
     // Beside the DLL: while this file exists, retail's radar stays retail's. Without it the Dereth radar replaces it.
     private const string RetailRadarSwitchFile = "retail-radar-native";
+    // A window switch whose file could not be written or deleted this session: its state (true for LegACEy's) until the file can be changed.
+    // Runtime only, so the next session reads the file again.
+    private readonly Dictionary<string, bool> _switchHeld = new(StringComparer.Ordinal);
 
     // The /water setting, one for every character: percent and on (1) or off (0).
     private const string WaterKey = "client-water";
@@ -861,23 +864,30 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         Choice("Radar", RetailRadarSwitchFile, () => _lastRadarSwitchCheck = default)
     };
 
-    private static UiWindowChoice Choice(string title, string file, Action recheck)
+    private UiWindowChoice Choice(string title, string file, Action recheck)
     {
         var path = IOPath.Combine(PluginDirectory, file);
-        return new UiWindowChoice(title, () => !File.Exists(path), custom =>
+        return new UiWindowChoice(title, () => SwitchCustom(file), custom =>
         {
             try
             {
                 if (custom) File.Delete(path);
                 else File.WriteAllText(path, string.Empty);
+                _switchHeld.Remove(file);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
+                // The card keeps the chosen state for this session, so it doesn't snap back to the file's.
                 Log($"Could not switch the {title} window: {exception.Message}");
+                _switchHeld[file] = custom;
             }
             recheck();
         });
     }
+
+    /// <summary>Whether a switch's window is on LegACEy's: the file's absence, unless a write this session could not change it.</summary>
+    private bool SwitchCustom(string file) =>
+        _switchHeld.TryGetValue(file, out var held) ? held : !File.Exists(IOPath.Combine(PluginDirectory, file));
 
     /// <summary>
     /// The UI size set from the Settings window, kept within the bounds and snapped to the step: saved now, and applied on the next frame,
@@ -2577,15 +2587,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Whether a feature's switch is on: on while its file is missing beside the DLL. The file is looked for once a second.
+    /// Whether a feature's switch is on: on while its file is missing beside the DLL, or while a write this session could not change it
+    /// holds (see <see cref="SwitchCustom"/>). The file is looked for once a second.
     /// </summary>
-    private static bool SwitchOn(string file, ref DateTime lastCheck, ref bool on)
+    private bool SwitchOn(string file, ref DateTime lastCheck, ref bool on)
     {
         var now = DateTime.UtcNow;
         if (now - lastCheck >= TimeSpan.FromSeconds(1))
         {
             lastCheck = now;
-            on = !File.Exists(IOPath.Combine(PluginDirectory, file));
+            on = SwitchCustom(file);
         }
         return on;
     }

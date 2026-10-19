@@ -15,13 +15,17 @@ namespace LegACEy.Client.Themes;
 public sealed class DerethSegmented : Border
 {
     private static readonly IBrush LitBrush = DerethPalette.Brush(DerethPalette.Gold.WithAlpha(0x29));
+    private static readonly IBrush LitBlueBrush = DerethPalette.Brush(DerethPalette.RetailBlue.WithAlpha(0x33));
 
     private readonly List<Border> _cells = new();
     private readonly List<TextBlock> _labels = new();
+    private readonly int _blueOption;
     private int _selected;
 
-    public DerethSegmented(IReadOnlyList<string> options)
+    /// <param name="blueOption">The option lit blue rather than gold when chosen, such as a switch's Retail choice; -1 for none.</param>
+    public DerethSegmented(IReadOnlyList<string> options, int blueOption = -1)
     {
+        _blueOption = blueOption;
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions(string.Join(",", options.Select(_ => "*"))) };
         for (var i = 0; i < options.Count; i++)
         {
@@ -70,7 +74,7 @@ public sealed class DerethSegmented : Border
         for (var i = 0; i < _cells.Count; i++)
         {
             var lit = i == _selected;
-            _cells[i].Background = lit ? LitBrush : Brushes.Transparent;
+            _cells[i].Background = !lit ? Brushes.Transparent : i == _blueOption ? LitBlueBrush : LitBrush;
             _labels[i].Foreground = lit ? DerethPalette.CreamBrush : DerethPalette.MutedBrush;
         }
     }

@@ -456,6 +456,54 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void A_place_that_cannot_be_written_still_loads_this_session()
+    {
+        var path = TempPath();
+        try
+        {
+            // A directory where the file should be: no write can succeed, and nothing is read.
+            Directory.CreateDirectory(path);
+            var store = new FileWindowPositionStore(path);
+            store.Save("server-a", "character-a", "vault", (new Point(10, 20), new Size(300, 400)));
+
+            Assert.Equal((new Point(10, 20), new Size(300, 400)), store.Load("server-a", "character-a", "vault"));
+        }
+        finally
+        {
+            if (Directory.Exists(path)) Directory.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void A_failed_forget_hides_the_forgotten_places_this_session_and_keeps_the_options()
+    {
+        var path = TempPath();
+        try
+        {
+            var store = new FileWindowPositionStore(path);
+            store.Save("server-a", "character-a", "vault", (new Point(10, 20), null));
+            store.Save("server-a", "character-a", "dereth-chat-fade", (new Point(30, 0), null));
+            store.Save("server-a", "character-b", "vault", (new Point(30, 40), null));
+
+            File.SetAttributes(path, FileAttributes.ReadOnly);
+            var readOnly = new FileWindowPositionStore(path);
+            Assert.False(readOnly.ForgetPlaces("server-a", "character-a", new[] { "dereth-chat-fade" }));
+
+            Assert.Null(readOnly.Load("server-a", "character-a", "vault"));
+            Assert.Equal(new Point(30, 0), readOnly.Load("server-a", "character-a", "dereth-chat-fade")!.Value.Location);
+            Assert.Equal(new Point(30, 40), readOnly.Load("server-a", "character-b", "vault")!.Value.Location);
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.SetAttributes(path, FileAttributes.Normal);
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Fact]
     public void A_file_that_cannot_be_read_is_not_rewritten_by_a_forget_or_a_save()
     {
         var path = TempPath();

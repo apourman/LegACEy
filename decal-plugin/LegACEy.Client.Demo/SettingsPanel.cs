@@ -3,9 +3,12 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Avalonia;
+using Avalonia.Collections;
 using Avalonia.Controls;
+using Avalonia.Controls.Shapes;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.Demo;
@@ -124,8 +127,6 @@ public sealed class SettingsPanel : UserControl
     private readonly Control[] _panes;
     private readonly StackPanel _pluginList = new() { Spacing = 6 };
     private readonly List<Action> _redraws = new();
-    // A window on retail is dimmed, so its card reads as not LegACEy's.
-    private const double RetailOpacity = 0.55;
 
     public SettingsPanel(ClientSettings settings, SettingsTab tab = SettingsTab.General, Action<SettingsTab>? tabChosen = null, PluginRegistry? plugins = null)
     {
@@ -274,7 +275,8 @@ public sealed class SettingsPanel : UserControl
 
     /// <summary>
     /// A card per window, in the order the runtime lists them. Each has its Dereth / Retail switch, for all characters. On Dereth the card shows
-    /// the window's options, for this character; on retail it is dimmed and shows only the switch.
+    /// the window's options, for this character. On retail its frame is dashed, its title muted and its Retail choice lit blue, and it shows
+    /// only the switch.
     /// </summary>
     private Control WindowsPane()
     {
@@ -285,22 +287,29 @@ public sealed class SettingsPanel : UserControl
 
     private Control WindowCard(UiWindowChoice window)
     {
-        var switchOfWindow = new DerethSegmented(new[] { "Dereth", "Retail" });
+        var switchOfWindow = new DerethSegmented(new[] { "Dereth", "Retail" }, blueOption: 1);
         var head = new DockPanel();
         DockPanel.SetDock(switchOfWindow, Dock.Right);
         head.Children.Add(switchOfWindow);
-        head.Children.Add(ScopedLabel(window.Title));
+        var label = ScopedLabel(window.Title);
+        var title = label.GetVisualDescendants().OfType<TextBlock>().First();
+        head.Children.Add(label);
 
         var options = new StackPanel { Spacing = 6 };
         foreach (var row in OptionRows(window.Title)) options.Children.Add(row);
-        var card = new StackPanel { Spacing = 6, Children = { head, options } };
+        var frame = new Rectangle
+        {
+            Stroke = DerethPalette.GrooveEdgeBrush, StrokeThickness = 1, RadiusX = 3, RadiusY = 3, Stretch = Stretch.Fill, IsHitTestVisible = false
+        };
+        var card = new Grid { Children = { frame, new StackPanel { Spacing = 6, Margin = new Thickness(9, 7), Children = { head, options } } } };
 
         void Show()
         {
             var onDereth = window.IsCustom();
             switchOfWindow.Selected = onDereth ? 0 : 1;
             options.IsVisible = onDereth;
-            card.Opacity = onDereth ? 1 : RetailOpacity;
+            title.Foreground = onDereth ? DerethPalette.TextBrush : DerethPalette.MutedBrush;
+            frame.StrokeDashArray = onDereth ? null : new AvaloniaList<double> { 3, 2 };
         }
         switchOfWindow.Chosen += index =>
         {
