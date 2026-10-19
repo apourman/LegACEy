@@ -39,8 +39,7 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     // The text size of every chat window, in percent, kept per character in the position store.
     private const string TextSizeKey = "dereth-chat-text-size";
     public const int DefaultTextSize = 120;
-    private const int SmallestTextSize = 80;
-    private const int LargestTextSize = 200;
+    public const int SmallestTextSize = 80, LargestTextSize = 200, TextSizeStep = 10;
     private int _textSize = DefaultTextSize;
     // Where a torn-off window opens from the pointer: the tab it came from is under the pointer, so the window follows it.
     private static readonly Size Grab = new(24, 9);
@@ -119,8 +118,7 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     /// </summary>
     public void Open(Point beside)
     {
-        if (_positions.Load(_server, _character, TextSizeKey) is { Location.X: var saved and > 0 })
-            _textSize = Math.Max(SmallestTextSize, Math.Min(LargestTextSize, saved));
+        _textSize = LoadTextSize(_positions, _server, _character);
         ShowWindow(MainId, _store.Load(_server, _character, MainId) ?? RetailChatTab.Defaults, tornOff: false, beside);
         foreach (var id in _store.Windows(_server, _character))
         {
@@ -279,14 +277,28 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     /// <summary>The text size of every chat window, in percent.</summary>
     public int TextSize => _textSize;
 
-    public void TextSizeStepped(int steps)
+    /// <summary>Told when the text size moves, from the chat's own menu or the Settings window.</summary>
+    public event Action<int>? TextSizeChanged;
+
+    public void TextSizeStepped(int steps) => SetTextSize(_textSize + steps * TextSizeStep);
+
+    /// <summary>Sets the text size of every chat window, in percent, within the bounds, and keeps it for the character.</summary>
+    public void SetTextSize(int percent)
     {
-        var size = Math.Max(SmallestTextSize, Math.Min(LargestTextSize, _textSize + steps * 10));
+        var size = Math.Max(SmallestTextSize, Math.Min(LargestTextSize, percent));
         if (size == _textSize) return;
         _textSize = size;
-        _positions.Save(_server, _character, TextSizeKey, (new Point(size, 0), null));
+        SaveTextSize(_positions, _server, _character, size);
         foreach (var (_, window) in _chats) window.TextScale = size / 100.0;
+        TextSizeChanged?.Invoke(size);
     }
+
+    /// <summary>The character's text size in percent, the default before one is saved, so a window opens at the size it was left.</summary>
+    public static int LoadTextSize(IWindowPositionStore positions, string server, string character) =>
+        positions.Load(server, character, TextSizeKey) is { Location.X: var saved and > 0 } ? Math.Max(SmallestTextSize, Math.Min(LargestTextSize, saved)) : DefaultTextSize;
+
+    public static void SaveTextSize(IWindowPositionStore positions, string server, string character, int percent) =>
+        positions.Save(server, character, TextSizeKey, (new Point(percent, 0), null));
 
     private RetailChatWindow? Get(string id) => _chats.FirstOrDefault(chat => chat.Id == id).Window;
 

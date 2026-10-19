@@ -761,7 +761,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _windows.BringToFront(SettingsWindowId);
             return;
         }
-        var settings = new ClientSettings(AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, SetUiSize) : null, UpdateCheck(), WindowChoices());
+        var settings = new ClientSettings(AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, SetUiSize) : null, UpdateCheck(), WindowChoices())
+        {
+            Vitals = new OptionChoice<VitalsLayout>(_vitalsLayouts.Load(SessionServer(), SessionCharacter()), ChooseVitalsLayout),
+            ShortcutRow2 = new OptionChoice<bool>(_row2Choice.IsOn(SessionServer(), SessionCharacter()), SetShortcutRow2),
+            ChatTextSize = new OptionChoice<int>(RetailChatWindows.LoadTextSize(_positionStore!, SessionServer(), SessionCharacter()), SetChatTextSize),
+            Radar = new OptionChoice<RadarOptions>(LoadRadarOptions(), SetRadarOptions),
+        };
         _settings = settings;
         var window = new DerethWindow("Settings", null, new SettingsPanel(settings, LoadSettingsTab(), SaveSettingsTab));
         window.CloseRequested += (_, _) =>
@@ -1918,12 +1924,18 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>Row 1's tag: turns row 2 off or on and saves the choice for the character.</summary>
-    private void ToggleShortcutRow2()
+    private void ToggleShortcutRow2() => SetShortcutRow2(_shortcutRow2 == null);
+
+    /// <summary>
+    /// Turns row 2 on or off, and keeps the choice for the character. Row 2 sits beside row 1, so it opens only while row 1 is up; the choice is
+    /// kept either way, and row 1 opens row 2 when it is on.
+    /// </summary>
+    private void SetShortcutRow2(bool on)
     {
-        // Decided from what is on screen, so a choice that cannot be saved still turns row 2 off and on.
-        if (_shortcutRow2 == null) ShowShortcutRow2();
+        if (on && _shortcutBar != null) ShowShortcutRow2();
         else HideShortcutRow2();
-        _row2Choice.Save(SessionServer(), SessionCharacter(), _shortcutRow2 != null);
+        _row2Choice.Save(SessionServer(), SessionCharacter(), on);
+        if (_settings != null) _settings.ShortcutRow2 = new OptionChoice<bool>(on, SetShortcutRow2);
     }
 
     private void ShowShortcutRow2()
@@ -2156,6 +2168,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var chats = new RetailChatWindows(port, _windows!, _positionStore!, _chatTabs, server, character, () => _pointer, (definition, content, location) => OpenWindowCore(definition, content, location, ChatFailed), ReleaseFeatureWindow,
             copy: CopyToClipboard, paste: PasteFromClipboard, carried: _carriedChatHistory);
         _carriedChatHistory = null;
+        // The chat's own text size control moves the Settings window's value too.
+        chats.TextSizeChanged += size => { if (_settings != null) _settings.ChatTextSize = new OptionChoice<int>(size, SetChatTextSize); };
         // The main window starts at the bottom left, above the toolbar, until the player moves it; its place is then kept per character.
         var screen = _windows!.Screen;
         var beside = new Point(12, Math.Max(0, screen.Height - (int)Math.Round(RetailChatWindows.DesignHeight * WindowScale) - 150));
@@ -2411,6 +2425,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         var (flags, zoom) = options.Encode();
         _settingsStore.Save(SessionServer(), SessionCharacter(), RadarOptionsKey, (new Point(flags, zoom), null));
+        if (_settings != null) _settings.Radar = new OptionChoice<RadarOptions>(options, SetRadarOptions);
+    }
+
+    /// <summary>The radar's options set from the Settings window: kept for the character, and an open radar redraws with them.</summary>
+    private void SetRadarOptions(RadarOptions options)
+    {
+        SaveRadarOptions(options);
+        _radar?.SetOptions(options);
     }
 
     /// <summary>Gives retail's radar back and closes the Dereth radar. A give-back that fails is logged and retried on the next call.</summary>
@@ -2528,11 +2550,23 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         return new VitalsWindowHandle(this, view, definition.Id);
     }
 
-    /// <summary>Keeps the layout the player picked for the character. The window reopens in it on the next frame, not inside the click.</summary>
+    /// <summary>
+    /// Keeps the layout the player picked for the character. The window reopens in it on the next frame, not inside the click. The Settings
+    /// window's layout is this same change.
+    /// </summary>
     private void ChooseVitalsLayout(VitalsLayout layout)
     {
         _vitalsLayouts.Save(SessionServer(), SessionCharacter(), layout);
         _vitalsLayoutPicked = true;
+        if (_settings != null) _settings.Vitals = new OptionChoice<VitalsLayout>(layout, ChooseVitalsLayout);
+    }
+
+    /// <summary>The chat's text size set from the Settings window: applied to the open chat, or kept for it to open with when the chat is closed.</summary>
+    private void SetChatTextSize(int percent)
+    {
+        if (_chatWindows != null) _chatWindows.SetTextSize(percent);
+        else RetailChatWindows.SaveTextSize(_positionStore!, SessionServer(), SessionCharacter(), percent);
+        if (_settings != null) _settings.ChatTextSize = new OptionChoice<int>(percent, SetChatTextSize);
     }
 
     private void VitalsFailed(Exception exception) => _vitals?.Fail(exception);

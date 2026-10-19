@@ -203,3 +203,53 @@ public sealed class DerethScopeTag : Border
         };
     }
 }
+
+/// <summary>
+/// An on/off switch in the Dereth look: a groove with a cream knob, lit gold and knob to the right when on. A click flips it and raises
+/// <see cref="Toggled"/> with the new value.
+/// </summary>
+public sealed class DerethToggle : Border
+{
+    private readonly Border _knob = new() { Width = 12, Height = 12, CornerRadius = new CornerRadius(6), Background = DerethPalette.CreamBrush };
+    private bool _on;
+
+    public DerethToggle()
+    {
+        Width = 30;
+        Height = 16;
+        CornerRadius = new CornerRadius(8);
+        BorderThickness = new Thickness(1);
+        Padding = new Thickness(1);
+        Cursor = new Cursor(StandardCursorType.Hand);
+        Child = _knob;
+        Light();
+        PointerPressed += (_, e) =>
+        {
+            if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
+            On = !On;
+            Toggled?.Invoke(On);
+            e.Handled = true;
+        };
+    }
+
+    /// <summary>Whether the switch is on. Setting it moves the knob; no event is raised.</summary>
+    public bool On
+    {
+        get => _on;
+        set
+        {
+            _on = value;
+            Light();
+        }
+    }
+
+    /// <summary>The player clicked the switch, which now has this value.</summary>
+    public event Action<bool>? Toggled;
+
+    private void Light()
+    {
+        Background = _on ? DerethPalette.GoldDarkBrush : DerethPalette.GrooveBrush;
+        BorderBrush = _on ? DerethPalette.GoldBrush : DerethPalette.GrooveEdgeBrush;
+        _knob.HorizontalAlignment = _on ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+    }
+}

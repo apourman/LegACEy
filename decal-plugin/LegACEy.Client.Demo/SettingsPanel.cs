@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -21,6 +23,9 @@ public sealed record UpdateChoice(string Label, bool Enabled, Action Check);
 /// <summary>A window the player can have as LegACEy's (custom) or retail's (native): whether it is custom now, and the switch.</summary>
 public sealed record UiWindowChoice(string Title, Func<bool> IsCustom, Action<bool> SetCustom);
 
+/// <summary>A per-character option the Settings window shows: its current value, and the change that sets it.</summary>
+public sealed record OptionChoice<T>(T Value, Action<T> Set);
+
 /// <summary>The tabs of the Settings window, in the order they show.</summary>
 public enum SettingsTab { General, Windows, World, Plugins }
 
@@ -31,10 +36,14 @@ public enum SettingsTab { General, Windows, World, Plugins }
 public sealed class ClientSettings
 {
     private UiSizeChoice? _uiSize;
+    private OptionChoice<VitalsLayout>? _vitals;
+    private OptionChoice<bool>? _shortcutRow2;
+    private OptionChoice<int>? _chatTextSize;
+    private OptionChoice<RadarOptions>? _radar;
 
     /// <param name="uiSize">The UI size, for all characters. Null where the UI cannot scale, which hides the row.</param>
     /// <param name="update">The version and the check. Null hides the row.</param>
-    /// <param name="windows">The windows the Windows tab switches, one row each.</param>
+    /// <param name="windows">The windows the Windows tab switches, one card each.</param>
     public ClientSettings(UiSizeChoice? uiSize, UpdateChoice? update, IReadOnlyList<UiWindowChoice> windows)
     {
         _uiSize = uiSize;
@@ -56,14 +65,32 @@ public sealed class ClientSettings
 
     public IReadOnlyList<UiWindowChoice> Windows { get; }
 
+    /// <summary>The Vitals window's layout, for this character. Null hides its row.</summary>
+    public OptionChoice<VitalsLayout>? Vitals { get => _vitals; set => Moved(ref _vitals, value); }
+
+    /// <summary>Whether the toolbar's second shortcut row is shown, for this character. Null hides its row.</summary>
+    public OptionChoice<bool>? ShortcutRow2 { get => _shortcutRow2; set => Moved(ref _shortcutRow2, value); }
+
+    /// <summary>The chat's text size in percent, for this character. Null hides its row.</summary>
+    public OptionChoice<int>? ChatTextSize { get => _chatTextSize; set => Moved(ref _chatTextSize, value); }
+
+    /// <summary>The radar's options for this character. Null hides its rows.</summary>
+    public OptionChoice<RadarOptions>? Radar { get => _radar; set => Moved(ref _radar, value); }
+
     /// <summary>A value moved, from the window or from elsewhere.</summary>
     public event EventHandler? Changed;
+
+    private void Moved<T>(ref T field, T value)
+    {
+        field = value;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
 }
 
 /// <summary>
 /// The Settings window's content: tabs for General, Windows, World and Plugins over one <see cref="ClientSettings"/>. General holds the UI size
-/// slider and the update check, and Windows the window switches; World and Plugins are empty for now. A change applies at once, and
-/// <paramref name="tabChosen"/> hears each tab the player picks, so the window opens on it next time.
+/// slider and the update check, and Windows a card per window with its switch and options; World and Plugins are empty for now. A change
+/// applies at once, and <paramref name="tabChosen"/> hears each tab the player picks, so the window opens on it next time.
 /// </summary>
 public sealed class SettingsPanel : UserControl
 {
@@ -75,6 +102,8 @@ public sealed class SettingsPanel : UserControl
     private readonly DerethSegmented _tabs;
     private readonly Control[] _panes;
     private readonly List<Action> _redraws = new();
+    // A window on retail is dimmed, so its card reads as not LegACEy's.
+    private const double RetailOpacity = 0.55;
 
     public SettingsPanel(ClientSettings settings, SettingsTab tab = SettingsTab.General, Action<SettingsTab>? tabChosen = null)
     {
@@ -149,14 +178,14 @@ public sealed class SettingsPanel : UserControl
         return new StackPanel { Spacing = 4, Children = { head, slider } };
     }
 
-    /// <summary>A label with the tag that says it applies to all characters.</summary>
-    private static Control ScopedLabel(string text) => new StackPanel
+    /// <summary>A label with the tag that says whether it applies to all characters, or to this one.</summary>
+    private static Control ScopedLabel(string text, bool thisCharacter = false) => new StackPanel
     {
         Orientation = Orientation.Horizontal, Spacing = 8,
         Children =
         {
             new TextBlock { Text = text, FontFamily = DerethPalette.Body, FontSize = 12.5, Foreground = DerethPalette.TextBrush, VerticalAlignment = VerticalAlignment.Center },
-            new DerethScopeTag("All characters", thisCharacter: false)
+            new DerethScopeTag(thisCharacter ? "This character" : "All characters", thisCharacter)
         }
     };
 
@@ -173,27 +202,152 @@ public sealed class SettingsPanel : UserControl
         return row;
     }
 
-    /// <summary>A row per window with a button that shows Custom or Native and switches it. The switches are the same for every character.</summary>
+    /// <summary>
+    /// A card per window, in the order the runtime lists them. Each has its Dereth / Retail switch, for all characters. On Dereth the card shows
+    /// the window's options, for this character; on retail it is dimmed and shows only the switch.
+    /// </summary>
     private Control WindowsPane()
     {
-        var pane = new StackPanel { Spacing = 6, Children = { ScopedLabel("Window switches") } };
-        foreach (var window in _settings.Windows)
-        {
-            var button = new DerethButton { Width = 80, HorizontalContentAlignment = HorizontalAlignment.Center };
-            void Show() => button.Content = window.IsCustom() ? "Custom" : "Native";
-            _redraws.Add(Show);
-            Show();
-            button.Click += (_, _) =>
-            {
-                window.SetCustom(!window.IsCustom());
-                Show();
-            };
-            var row = new DockPanel();
-            DockPanel.SetDock(button, Dock.Right);
-            row.Children.Add(button);
-            row.Children.Add(new TextBlock { Text = window.Title, FontFamily = DerethPalette.Body, Foreground = DerethPalette.TextBrush, VerticalAlignment = VerticalAlignment.Center });
-            pane.Children.Add(row);
-        }
+        var pane = new StackPanel { Spacing = 10 };
+        foreach (var window in _settings.Windows) pane.Children.Add(WindowCard(window));
         return pane;
+    }
+
+    private Control WindowCard(UiWindowChoice window)
+    {
+        var switchOfWindow = new DerethSegmented(new[] { "Dereth", "Retail" });
+        var head = new DockPanel();
+        DockPanel.SetDock(switchOfWindow, Dock.Right);
+        head.Children.Add(switchOfWindow);
+        head.Children.Add(ScopedLabel(window.Title));
+
+        var options = new StackPanel { Spacing = 6 };
+        foreach (var row in OptionRows(window.Title)) options.Children.Add(row);
+        var card = new StackPanel { Spacing = 6, Children = { head, options } };
+
+        void Show()
+        {
+            var onDereth = window.IsCustom();
+            switchOfWindow.Selected = onDereth ? 0 : 1;
+            options.IsVisible = onDereth;
+            card.Opacity = onDereth ? 1 : RetailOpacity;
+        }
+        switchOfWindow.Chosen += index =>
+        {
+            window.SetCustom(index == 0);
+            Show();
+        };
+        _redraws.Add(Show);
+        Show();
+        return card;
+    }
+
+    /// <summary>The options a window shows on Dereth. A window has a row only for the options the settings carry.</summary>
+    private List<Control> OptionRows(string window)
+    {
+        var rows = new List<Control>();
+        if (window == "Toolbar" && _settings.ShortcutRow2 != null) rows.Add(ShortcutRow2Row());
+        if (window == "Chat" && _settings.ChatTextSize != null) rows.Add(ChatTextSizeRow());
+        if (window == "Vitals" && _settings.Vitals != null) rows.Add(VitalsRow());
+        if (window == "Radar" && _settings.Radar != null) rows.AddRange(RadarRows());
+        return rows;
+    }
+
+    /// <summary>A row for an option on Dereth: its label with the "This character" tag, and its control on the right.</summary>
+    private static Control OptionRow(string text, Control control)
+    {
+        var row = new DockPanel();
+        DockPanel.SetDock(control, Dock.Right);
+        row.Children.Add(control);
+        row.Children.Add(ScopedLabel(text, thisCharacter: true));
+        return row;
+    }
+
+    private Control VitalsRow()
+    {
+        var layout = new DerethSegmented(new[] { "Stacked", "Side by side" });
+        void Show() => layout.Selected = _settings.Vitals is { Value: VitalsLayout.SideBySide } ? 1 : 0;
+        layout.Chosen += index =>
+        {
+            _settings.Vitals?.Set(index == 1 ? VitalsLayout.SideBySide : VitalsLayout.Stacked);
+        };
+        _redraws.Add(Show);
+        Show();
+        return OptionRow("Layout", layout);
+    }
+
+    private Control ShortcutRow2Row()
+    {
+        var toggle = new DerethToggle();
+        void Show() => toggle.On = _settings.ShortcutRow2 is { Value: true };
+        toggle.Toggled += on =>
+        {
+            _settings.ShortcutRow2?.Set(on);
+        };
+        _redraws.Add(Show);
+        Show();
+        return OptionRow("Second shortcut row", toggle);
+    }
+
+    /// <summary>The chat text size, stepped down or up in the chat's steps and within its bounds.</summary>
+    private Control ChatTextSizeRow()
+    {
+        var size = new TextBlock
+        {
+            FontFamily = DerethPalette.Body, FontSize = 12.5, Foreground = DerethPalette.CreamBrush, MinWidth = 44,
+            TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+        };
+        var smaller = new DerethButton { Content = "−", Width = 26 };
+        var larger = new DerethButton { Content = "+", Width = 26 };
+        void Show() => size.Text = $"{_settings.ChatTextSize?.Value ?? RetailChatWindows.DefaultTextSize}%";
+        void Step(int steps)
+        {
+            if (_settings.ChatTextSize is not { } choice) return;
+            var next = choice.Value + steps * RetailChatWindows.TextSizeStep;
+            choice.Set(Math.Max(RetailChatWindows.SmallestTextSize, Math.Min(RetailChatWindows.LargestTextSize, next)));
+        }
+        smaller.Click += (_, _) => Step(-1);
+        larger.Click += (_, _) => Step(1);
+        _redraws.Add(Show);
+        Show();
+        var stepper = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { smaller, size, larger } };
+        return OptionRow("Text size", stepper);
+    }
+
+    private IEnumerable<Control> RadarRows()
+    {
+        yield return RadarToggle("Ground map", options => options.Ground, (options, on) => options with { Ground = on });
+        yield return RadarToggle("North up", options => options.NorthUp, (options, on) => options with { NorthUp = on });
+        yield return RadarToggle("Range rings", options => options.Rings, (options, on) => options with { Rings = on });
+        yield return RadarRange();
+    }
+
+    /// <summary>A radar option switch: it shows the option's value and, when flipped, sets the options with the flipped one.</summary>
+    private Control RadarToggle(string text, Func<RadarOptions, bool> isOn, Func<RadarOptions, bool, RadarOptions> change)
+    {
+        var toggle = new DerethToggle();
+        void Show() => toggle.On = _settings.Radar is { } radar && isOn(radar.Value);
+        toggle.Toggled += on =>
+        {
+            if (_settings.Radar is { } radar) radar.Set(change(radar.Value, on));
+        };
+        _redraws.Add(Show);
+        Show();
+        return OptionRow(text, toggle);
+    }
+
+    /// <summary>The radar's range, in the zoom's presets: 25, 40, 70, 110 or 150 metres.</summary>
+    private Control RadarRange()
+    {
+        var ranges = RadarZoom.Presets;
+        var range = new DerethSegmented(ranges.Select(metres => metres.ToString(CultureInfo.InvariantCulture)).ToArray());
+        void Show() => range.Selected = _settings.Radar is { } radar ? Array.IndexOf(ranges, radar.Value.Zoom) : -1;
+        range.Chosen += index =>
+        {
+            if (_settings.Radar is { } radar) radar.Set(radar.Value with { Zoom = ranges[index] });
+        };
+        _redraws.Add(Show);
+        Show();
+        return OptionRow("Range (m)", range);
     }
 }
