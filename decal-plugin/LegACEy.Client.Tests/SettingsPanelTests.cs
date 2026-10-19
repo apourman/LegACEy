@@ -231,7 +231,7 @@ public sealed class SettingsPanelTests
     });
 
     [Fact]
-    public void Reset_window_positions_is_tagged_for_this_character_and_calls_the_reset_only_once_confirmed() => RenderThread.Run(() =>
+    public void Reset_window_positions_asks_first_and_calls_the_reset_once_confirmed() => RenderThread.Run(() =>
     {
         var resets = 0;
         var settings = new ClientSettings(null, null, Array.Empty<UiWindowChoice>()) { ResetPositions = () => resets++ };
@@ -251,7 +251,9 @@ public sealed class SettingsPanelTests
         Assert.False(question.IsEffectivelyVisible);
         Assert.Equal(0, resets);
 
+        // The row shown again needs a second layout pass before its Reset has its place in the headless panel.
         PressCentre(panel, ButtonNamed(panel, "Reset window positions"));
+        panel.Tick();
         panel.Tick();
         PressCentre(panel, ButtonNamed(panel, "Reset"));
         Assert.Equal(1, resets);

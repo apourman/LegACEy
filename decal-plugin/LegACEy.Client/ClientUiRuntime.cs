@@ -153,7 +153,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // The Settings window's last tab, kept for the install like the UI size.
     private const string SettingsTabKey = "settings-tab";
     // The per-character options kept in the position store. Reset window positions keeps these; every other row there is a window's place.
-    private static readonly string[] PositionOptionKeys = { RetailChatWindows.TextSizeKey };
+    private static readonly string[] PositionOptionKeys = { RetailChatWindows.TextSizeKey, RetailChatWindows.FadeKey };
     private const string TestFailureFile = "fail-post-ui-draw";
     // The stub's folder, which the bridge sets before the client starts: the log, settings and Plugins\ live there.
     internal static string PluginDirectory { get; set; } = ClientDirectory;
@@ -169,7 +169,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private readonly HashSet<ModelView> _failedModelViews = new();
     private readonly HashSet<ModelView> _drawnModelViews = new();
     private WindowManager? _windows;
-    private IWindowPositionStore? _positionStore;
+    private FileWindowPositionStore? _positionStore;
     // The settings the open Settings window shows, so a UI size change made there reaches it.
     private ClientSettings? _settings;
     // Each plugin's one settings value, per character, in its own file: a row keyed by the plugin's name whose X is the value.
@@ -918,7 +918,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// Closes every window and opens the session's again, as a relog does. With <paramref name="resetPositions"/> the saved window places are
-    /// forgotten once the windows have closed, since closing saves where they stood.
+    /// forgotten once the windows have closed, since closing saves where they stood, and the Settings window reopens on General rather than
+    /// on the tab it was on.
     /// </summary>
     private void Rebuild(bool resetPositions)
     {
@@ -927,12 +928,26 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // The chat's lines and sent text outlive the rebuild: it is the same character still playing.
         var chatHistory = _chatWindows?.History ?? _carriedChatHistory;
         Logoff();
-        if (resetPositions) _positionStore?.ForgetPlaces(SessionServer(), SessionCharacter(), PositionOptionKeys);
+        if (resetPositions) ForgetWindowPlaces();
         _carriedChatHistory = chatHistory;
         LoginComplete();
         if (menuOpen) Guard(ToggleMenuWindow);
         // The Settings window comes back on the tab it was on, which the tab store keeps; after a reset, on General.
         if (settingsOpen) Guard(() => OpenSettings(resetPositions ? SettingsTab.General : LoadSettingsTab()));
+    }
+
+    /// <summary>
+    /// Forgets this character's saved window places and keeps its options. A failure is logged, and the windows reopen where they were; the
+    /// rebuild goes on either way.
+    /// </summary>
+    private void ForgetWindowPlaces()
+    {
+        try
+        {
+            if (_positionStore?.ForgetPlaces(SessionServer(), SessionCharacter(), PositionOptionKeys) == false)
+                Log("Could not forget the saved window positions; the windows reopen where they were.");
+        }
+        catch (Exception exception) { Log($"Could not forget the saved window positions: {exception.Message}"); }
     }
 
     /// <summary>

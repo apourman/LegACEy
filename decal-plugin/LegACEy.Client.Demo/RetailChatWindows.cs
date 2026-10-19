@@ -42,7 +42,7 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     public const int SmallestTextSize = 80, LargestTextSize = 200, TextSizeStep = 10;
     private int _textSize = DefaultTextSize;
     // How long a chat window is left alone before it fades, in seconds, kept per character in the position store. NeverFades keeps it awake.
-    private const string FadeKey = "dereth-chat-fade";
+    public const string FadeKey = "dereth-chat-fade";
     public const int NeverFades = 0;
     public static readonly IReadOnlyList<int> FadeChoices = new[] { NeverFades, 10, RetailChatFade.DefaultIdleAfterSeconds, 30, 60 };
     private int _fadeSeconds = RetailChatFade.DefaultIdleAfterSeconds;
