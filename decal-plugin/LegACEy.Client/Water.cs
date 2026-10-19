@@ -30,6 +30,11 @@ internal sealed unsafe class Water : IDisposable
     private const int WaveSize = 128;
     private const float TileA = 40, TileB = 17; // metres per repeat of each wave layer
     private const float Cell = 24;
+    // With the shaders, water triangles starting within this many metres are cut into Steps² smaller ones, for the swells to move
+    // (the shader fades the swells out by SwellReach - Cell × 1.5, so the uncut triangles further off stay flat). About 1 MB of
+    // vertices on open sea. ponytail: cut per frame; keep the cut landblocks if it shows in the frame time.
+    private const float SwellReach = 140;
+    private const int Steps = 6;
     private static readonly Vector3 Deep = new(0.62f, 0.85f, 1.00f), Shallow = new(0.80f, 1.00f, 0.92f);
     // Towards the sun, in render space (x east, y up, z north): south-east, 35° up.
     // ponytail: a fixed sun; read retail's sky if glints show where the sun is not.
@@ -50,6 +55,7 @@ internal sealed unsafe class Water : IDisposable
     private int _logged = -1;
     private WaterVertex[] _vertices = Array.Empty<WaterVertex>();
     private IntPtr _waves;
+    private readonly WaterPoint[] _cut = new WaterPoint[Steps * Steps * 3];
     // The shaders (vertex, tint pass, light pass); _shaded is null until they are first tried, false when they failed.
     private IntPtr _vertexShader, _tintShader, _lightShader;
     private bool? _shaded;
@@ -73,6 +79,7 @@ internal sealed unsafe class Water : IDisposable
     {
         if (Strength <= 0 || PlayerCell == 0 || (PlayerCell & 0xFFFF) >= 0x100 || _camera.Eye is not { } eye) return;
         Follow((int)(PlayerCell >> 24), (int)((PlayerCell >> 16) & 0xFF));
+        _shaded ??= MakeShaders();
 
         // Texture coordinates from the player's landblock corner, so they stay small; the scroll wraps, as the texture repeats.
         float originX = (_centre >> 8) * StormFog.Block, originY = (_centre & 0xFF) * StormFog.Block;
@@ -82,13 +89,17 @@ internal sealed unsafe class Water : IDisposable
         foreach (var points in _blocks.Values)
         {
             if (points == null) continue;
-            if (_vertices.Length < count + points.Length) Array.Resize(ref _vertices, Math.Max(count + points.Length, _vertices.Length * 2));
             for (var i = 0; i < points.Length; i += 3)
             {
                 // A triangle is kept or dropped whole, by its first corner: cells are small next to the reach.
                 var corner = points[i].Position;
-                if (Vector2.Distance(new Vector2(corner.X, corner.Y), new Vector2(eye.X, eye.Y)) > Reach + Cell) continue;
-                for (var k = 0; k < 3; k++) _vertices[count++] = Vertex(points[i + k], eye, originX, originY, scroll, Strength);
+                var distance = Vector2.Distance(new Vector2(corner.X, corner.Y), new Vector2(eye.X, eye.Y));
+                if (distance > Reach + Cell) continue;
+                var cut = _shaded == true && distance < SwellReach;
+                var triangles = cut ? Subdivide(points[i], points[i + 1], points[i + 2], _cut) : 1;
+                if (_vertices.Length < count + triangles * 3) Array.Resize(ref _vertices, Math.Max(count + triangles * 3, _vertices.Length * 2));
+                for (var k = 0; k < triangles * 3; k++)
+                    _vertices[count++] = Vertex(cut ? _cut[k] : points[i + k], eye, originX, originY, scroll, Strength);
             }
         }
         if (_logged != _centre && _loading.Count == 0)
@@ -97,7 +108,6 @@ internal sealed unsafe class Water : IDisposable
             _log($"Water: landblock {_centre:X4}, {_blocks.Values.Count(points => points != null)} of {_blocks.Count} landblocks near have water, {count / 3} triangles drawn.");
         }
         if (count == 0) return;
-        _shaded ??= MakeShaders();
         if (_waves == IntPtr.Zero) _waves = MakeWaves(_shaded == true);
 
         var saved = SaveState(_device);
@@ -121,6 +131,7 @@ internal sealed unsafe class Water : IDisposable
             new Vector4(StormFog.Render(eye), 0), new Vector4(Sun, Math.Max(Strength, 1)), new Vector4(Deep, 1), new Vector4(Shallow, 1),
             new Vector4(time % 3600, 0, 0, 0)
         });
+        SetVertexConstants(_device, 4, new[] { new Vector4(StormFog.Render(eye), 0), new Vector4(time % 3600, Strength, SwellReach - Cell * 1.5f, 0) });
         SetTexture(_device, 0, _waves);
         SetSamplerState(_device, 0, SamplerState.MinFilter, FilterLinear);
         SetSamplerState(_device, 0, SamplerState.MagFilter, FilterLinear);
@@ -234,6 +245,29 @@ internal sealed unsafe class Water : IDisposable
         float x = p.X - originX, y = p.Y - originY;
         return new WaterVertex(StormFog.Render(new Vector3(p.X, p.Y, p.Z + Lift)), argb,
             x / TileA + scroll.X, y / TileA + scroll.Y, x / TileB + scroll.Z, y / TileB + scroll.W, point.Wet, point.Open);
+    }
+
+    /// <summary>Cuts a triangle into Steps² smaller ones, three corners each, into <paramref name="into"/>; returns how many.</summary>
+    internal static int Subdivide(WaterPoint a, WaterPoint b, WaterPoint c, WaterPoint[] into)
+    {
+        WaterPoint At(int row, int column)
+        {
+            float u = (float)column / Steps, v = (float)row / Steps, w = 1 - u - v;
+            return new(a.Position * w + b.Position * u + c.Position * v, a.Wet * w + b.Wet * u + c.Wet * v, a.Open * w + b.Open * u + c.Open * v);
+        }
+        var n = 0;
+        for (var row = 0; row < Steps; row++)
+            for (var column = 0; column < Steps - row; column++)
+            {
+                into[n++] = At(row, column);
+                into[n++] = At(row, column + 1);
+                into[n++] = At(row + 1, column);
+                if (column == Steps - row - 1) continue;
+                into[n++] = At(row, column + 1);
+                into[n++] = At(row + 1, column + 1);
+                into[n++] = At(row + 1, column);
+            }
+        return n / 3;
     }
 
     private static float Wrap(double value) => (float)(value - Math.Floor(value));

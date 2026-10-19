@@ -52,6 +52,17 @@ public sealed class WaterTests
     }
 
     [Fact]
+    public void A_triangle_cut_for_the_swells_covers_the_same_ground_and_keeps_the_shore()
+    {
+        WaterPoint a = new(new(0, 0, 5), 1, 1), b = new(new(24, 0, 5), 0, 0), c = new(new(0, 24, 5), 1, 0.5f);
+        var cut = new WaterPoint[200];
+        var count = Water.Subdivide(a, b, c, cut);
+        float Area(WaterPoint p, WaterPoint q, WaterPoint r) => System.Numerics.Vector3.Cross(q.Position - p.Position, r.Position - p.Position).Length() / 2;
+        Assert.Equal(Area(a, b, c), Enumerable.Range(0, count).Sum(t => Area(cut[t * 3], cut[t * 3 + 1], cut[t * 3 + 2])), 2);
+        Assert.Contains(cut.Take(count * 3), point => point == b);
+    }
+
+    [Fact]
     public void The_waves_centre_on_mid_grey_so_calm_water_is_left_as_retail_drew_it()
     {
         var pixels = Water.WavePixels();
