@@ -470,15 +470,27 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             WaterChat("Water: /water on, /water off or /water 0 to 200 (percent; 100 is the usual look).");
             return true;
         }
-        if (water != _water)
-        {
-            _water = water;
-            _settingsStore.Save("", "", WaterKey, (new Point(water.Percent, water.On ? 1 : 0), null));
-            if (_worldEffects != null) _worldEffects.WaterStrength = water.Strength;
-        }
+        SetWater(water);
         WaterChat(water.ToString());
         return true;
     }
+
+    /// <summary>
+    /// The water setting from /water or the Settings window's World tab: applied at once, saved for every character, and shown in an open
+    /// Settings window. Nothing happens when it is unchanged.
+    /// </summary>
+    private void SetWater(WaterChoice water)
+    {
+        if (water == _water) return;
+        _water = water;
+        _settingsStore.Save("", "", WaterKey, (new Point(water.Percent, water.On ? 1 : 0), null));
+        if (_worldEffects != null) _worldEffects.WaterStrength = water.Strength;
+        if (_settings != null) _settings.Water = WaterOptionFor(water);
+    }
+
+    /// <summary>The World tab's water: the setting, and the change it asks for, with the strength kept within the bounds.</summary>
+    private WaterOption WaterOptionFor(WaterChoice water) => new(water.On, water.Percent,
+        (on, percent) => SetWater(new WaterChoice(on, Math.Clamp(percent, 0, WaterChoice.Most))));
 
     // A chat line that fails only goes to the log: it is no reason to switch the UI off.
     private static void WaterChat(string line)
@@ -630,6 +642,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up client UI at logoff: {exception}"); }
         _clientUi = null;
+        _settings = null;
         // Before the plugins close their windows: giving the panel back tells the plugin its window is no longer held.
         try { EndRetailPanels(); }
         catch (Exception exception) { Log($"Could not give the retail panels back at logoff: {exception}"); }
@@ -761,9 +774,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _windows.BringToFront(SettingsWindowId);
             return;
         }
-        var settings = new ClientSettings(AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, SetUiSize) : null, UpdateCheck(), WindowChoices());
+        var settings = new ClientSettings(AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, SetUiSize) : null, UpdateCheck(), WindowChoices(), WaterOptionFor(_water));
         _settings = settings;
-        var window = new DerethWindow("Settings", null, new SettingsPanel(settings, LoadSettingsTab(), SaveSettingsTab));
+        var window = new DerethWindow("Settings", null, new SettingsPanel(settings, LoadSettingsTab(), SaveSettingsTab, _plugins));
         window.CloseRequested += (_, _) =>
         {
             _clientUi?.CloseWindow(SettingsWindowId);

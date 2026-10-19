@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -21,6 +22,13 @@ public sealed record UpdateChoice(string Label, bool Enabled, Action Check);
 /// <summary>A window the player can have as LegACEy's (custom) or retail's (native): whether it is custom now, and the switch.</summary>
 public sealed record UiWindowChoice(string Title, Func<bool> IsCustom, Action<bool> SetCustom);
 
+/// <summary>The water the World tab shows: on or off, and the strength in percent, and the change that sets both. The runtime keeps the strength within the bounds.</summary>
+public sealed record WaterOption(bool On, int Percent, Action<bool, int> Set)
+{
+    /// <summary>The smallest and largest strength, and the step the slider moves in, in percent.</summary>
+    public const int Smallest = 0, Largest = 200, Step = 5;
+}
+
 /// <summary>The tabs of the Settings window, in the order they show.</summary>
 public enum SettingsTab { General, Windows, World, Plugins }
 
@@ -31,15 +39,18 @@ public enum SettingsTab { General, Windows, World, Plugins }
 public sealed class ClientSettings
 {
     private UiSizeChoice? _uiSize;
+    private WaterOption? _water;
 
     /// <param name="uiSize">The UI size, for all characters. Null where the UI cannot scale, which hides the row.</param>
     /// <param name="update">The version and the check. Null hides the row.</param>
     /// <param name="windows">The windows the Windows tab switches, one row each.</param>
-    public ClientSettings(UiSizeChoice? uiSize, UpdateChoice? update, IReadOnlyList<UiWindowChoice> windows)
+    /// <param name="water">The water, for all characters. Null hides the World tab's rows.</param>
+    public ClientSettings(UiSizeChoice? uiSize, UpdateChoice? update, IReadOnlyList<UiWindowChoice> windows, WaterOption? water = null)
     {
         _uiSize = uiSize;
         Update = update;
         Windows = windows ?? throw new ArgumentNullException(nameof(windows));
+        _water = water;
     }
 
     public UiSizeChoice? UiSize
@@ -48,6 +59,16 @@ public sealed class ClientSettings
         set
         {
             _uiSize = value;
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public WaterOption? Water
+    {
+        get => _water;
+        set
+        {
+            _water = value;
             Changed?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -62,8 +83,8 @@ public sealed class ClientSettings
 
 /// <summary>
 /// The Settings window's content: tabs for General, Windows, World and Plugins over one <see cref="ClientSettings"/>. General holds the UI size
-/// slider and the update check, and Windows the window switches; World and Plugins are empty for now. A change applies at once, and
-/// <paramref name="tabChosen"/> hears each tab the player picks, so the window opens on it next time.
+/// slider and the update check, Windows the window switches, World the water, and Plugins each plugin's menu entries, which run when picked.
+/// A change applies at once, and <paramref name="tabChosen"/> hears each tab the player picks, so the window opens on it next time.
 /// </summary>
 public sealed class SettingsPanel : UserControl
 {
@@ -72,17 +93,20 @@ public sealed class SettingsPanel : UserControl
 
     private readonly ClientSettings _settings;
     private readonly Action<SettingsTab>? _tabChosen;
+    private readonly PluginRegistry? _plugins;
     private readonly DerethSegmented _tabs;
     private readonly Control[] _panes;
+    private readonly StackPanel _pluginList = new() { Spacing = 6 };
     private readonly List<Action> _redraws = new();
 
-    public SettingsPanel(ClientSettings settings, SettingsTab tab = SettingsTab.General, Action<SettingsTab>? tabChosen = null)
+    public SettingsPanel(ClientSettings settings, SettingsTab tab = SettingsTab.General, Action<SettingsTab>? tabChosen = null, PluginRegistry? plugins = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _tabChosen = tabChosen;
+        _plugins = plugins;
         _tabs = new DerethSegmented(Enum.GetNames(typeof(SettingsTab)));
         _tabs.Chosen += index => ChooseTab((SettingsTab)index);
-        _panes = new Control[] { GeneralPane(), WindowsPane(), new StackPanel(), new StackPanel() };
+        _panes = new Control[] { GeneralPane(), WindowsPane(), WorldPane(), PluginsPane() };
 
         var stack = new Grid { Margin = new Thickness(12, 10) };
         foreach (var pane in _panes) stack.Children.Add(pane);
@@ -94,13 +118,20 @@ public sealed class SettingsPanel : UserControl
         ShowTab(tab);
 
         _settings.Changed += OnChanged;
-        DetachedFromVisualTree += (_, _) => _settings.Changed -= OnChanged;
+        if (_plugins != null) _plugins.MenuChanged += OnMenuChanged;
+        DetachedFromVisualTree += (_, _) =>
+        {
+            _settings.Changed -= OnChanged;
+            if (_plugins != null) _plugins.MenuChanged -= OnMenuChanged;
+        };
     }
 
     private void OnChanged(object? sender, EventArgs e)
     {
         foreach (var redraw in _redraws) redraw();
     }
+
+    private void OnMenuChanged(object? sender, EventArgs e) => RebuildPlugins();
 
     private void ChooseTab(SettingsTab tab)
     {
@@ -126,26 +157,33 @@ public sealed class SettingsPanel : UserControl
     /// "UI size": a slider from 60 to 150 in steps of 5, for all characters. The readout follows the thumb as it is dragged, and the size is set
     /// when the pointer lets go.
     /// </summary>
-    private Control UiSizeRow()
+    private Control UiSizeRow() => SliderRow("UI size", UiSizeChoice.Smallest, UiSizeChoice.Largest, UiSizeChoice.Step,
+        () => _settings.UiSize?.Percent, percent => _settings.UiSize?.Set(percent));
+
+    /// <summary>
+    /// A labelled slider for all characters, with the percent beside it. The readout follows the thumb as it is dragged, and <paramref name="commit"/>
+    /// gets the value when the pointer lets go. <paramref name="current"/> is the value to show, or null when the setting is gone.
+    /// </summary>
+    private Control SliderRow(string label, int smallest, int largest, int step, Func<int?> current, Action<int> commit)
     {
-        var slider = new DerethSlider(UiSizeChoice.Smallest, UiSizeChoice.Largest, UiSizeChoice.Step);
+        var slider = new DerethSlider(smallest, largest, step);
         var readout = new TextBlock { FontFamily = DerethPalette.Body, FontSize = 12.5, Foreground = DerethPalette.CreamBrush, VerticalAlignment = VerticalAlignment.Center };
         void ShowReadout(int percent) => readout.Text = $"{percent}%";
         void Show()
         {
-            if (_settings.UiSize is not { } size) return;
-            slider.Value = size.Percent;
-            ShowReadout(size.Percent);
+            if (current() is not { } percent) return;
+            slider.Value = percent;
+            ShowReadout(percent);
         }
         slider.ValueChanged += ShowReadout;
-        slider.Committed += percent => _settings.UiSize?.Set(percent);
+        slider.Committed += commit;
         _redraws.Add(Show);
         Show();
 
         var head = new DockPanel();
         DockPanel.SetDock(readout, Dock.Right);
         head.Children.Add(readout);
-        head.Children.Add(ScopedLabel("UI size"));
+        head.Children.Add(ScopedLabel(label));
         return new StackPanel { Spacing = 4, Children = { head, slider } };
     }
 
@@ -195,5 +233,71 @@ public sealed class SettingsPanel : UserControl
             pane.Children.Add(row);
         }
         return pane;
+    }
+
+    /// <summary>
+    /// The water, for all characters: a switch for on or off, and the strength from calm to 200%, with a readout that follows the thumb. The
+    /// switch is the same setting as /water on and off; moving the strength turns the water on, as /water with a percent does.
+    /// </summary>
+    private Control WorldPane()
+    {
+        var pane = new StackPanel { Spacing = 12 };
+        if (_settings.Water == null) return pane;
+        pane.Children.Add(WaterSwitchRow());
+        pane.Children.Add(WaterStrengthRow());
+        return pane;
+    }
+
+    private Control WaterSwitchRow()
+    {
+        var toggle = new DerethToggle();
+        void Show()
+        {
+            if (_settings.Water is { } water) toggle.On = water.On;
+        }
+        toggle.Changed += on =>
+        {
+            if (_settings.Water is { } water) water.Set(on, water.Percent);
+        };
+        _redraws.Add(Show);
+        Show();
+
+        var row = new DockPanel();
+        DockPanel.SetDock(toggle, Dock.Right);
+        row.Children.Add(toggle);
+        row.Children.Add(ScopedLabel("Water"));
+        return row;
+    }
+
+    private Control WaterStrengthRow() => SliderRow("Wave strength", WaterOption.Smallest, WaterOption.Largest, WaterOption.Step,
+        () => _settings.Water?.Percent, percent => _settings.Water?.Set(true, percent));
+
+    /// <summary>The plugins' menu entries, each plugin's under its name, as the launcher lists them. A picked entry runs.</summary>
+    private Control PluginsPane()
+    {
+        RebuildPlugins();
+        return _pluginList;
+    }
+
+    private void RebuildPlugins()
+    {
+        _pluginList.Children.Clear();
+        if (_plugins is not { } registry) return;
+        var entries = registry.VisibleMenuEntries;
+        if (entries.Count == 0)
+        {
+            _pluginList.Children.Add(new TextBlock { Text = "No plugin menu entries.", FontFamily = DerethPalette.Body, Foreground = DerethPalette.MutedBrush });
+            return;
+        }
+        foreach (var plugin in entries.GroupBy(entry => entry.Owner))
+        {
+            _pluginList.Children.Add(new TextBlock { Text = plugin.Key.Name, FontFamily = DerethPalette.Title, FontSize = 13, Foreground = DerethPalette.GoldBrush, Margin = new Thickness(0, 4, 0, 0) });
+            foreach (var item in plugin)
+            {
+                var button = new DerethButton { Content = item.Title, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left };
+                button.Click += (_, _) => registry.RunMenuEntry(item);
+                _pluginList.Children.Add(button);
+            }
+        }
     }
 }
