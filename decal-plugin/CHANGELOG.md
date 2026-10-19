@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.8.0...decal-plugin-v0.8.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **decal-plugin:** burden meter fills to the most a character can carry ([#70](https://github.com/apourman/LegACEy/issues/70)) ([eecfbda](https://github.com/apourman/LegACEy/commit/eecfbdaad554e7762d65bfa16f56893703b681b6))
+
 ## [0.8.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.7.0...decal-plugin-v0.8.0) (2026-10-19)
 
 
