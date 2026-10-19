@@ -133,7 +133,8 @@ public sealed class SettingsPanel : UserControl
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _tabChosen = tabChosen;
         _plugins = plugins;
-        _tabs = new DerethSegmented(Enum.GetNames(typeof(SettingsTab)));
+        // Inset like the cards below it, clear of the window frame.
+        _tabs = new DerethSegmented(Enum.GetNames(typeof(SettingsTab))) { Margin = new Thickness(12, 8, 12, 2) };
         _tabs.Chosen += index => ChooseTab((SettingsTab)index);
         _panes = new Control[] { GeneralPane(), WindowsPane(), WorldPane(), PluginsPane() };
 

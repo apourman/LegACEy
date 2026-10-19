@@ -103,6 +103,7 @@ public enum DerethCorner { None, TopLeft, TopRight, BottomLeft, BottomRight }
 /// <summary>A frame of corner and edge pieces, mirrored to all four sides, with its child inside the edges.</summary>
 public sealed class DerethFrame : Decorator
 {
+    private const float ButtonFillRadius = 2f;
     private static readonly IBrush GripFill = DerethPalette.Brush(Color.FromArgb(0x80, DerethPalette.Cream.R, DerethPalette.Cream.G, DerethPalette.Cream.B));
     private static readonly IPen GripPen = new Pen(DerethPalette.CreamBrush, 1.2);
 
@@ -148,7 +149,12 @@ public sealed class DerethFrame : Decorator
         var corner = _art.Corner;
         var edge = _art.Edge;
         if (width < 2 * corner || height < 2 * corner) return;
-        context.FillRectangle(_art.Fill, new Rect(Bounds.Size));
+        // The button's art has a rounded, see-through shadow ring outside its gold, so its fill stays inside the ring, or red shows
+        // through at the corners.
+        if (_kind == DerethFrameArt.Button)
+            context.FillRectangle(_art.Fill, new Rect(Bounds.Size).Deflate(1), ButtonFillRadius);
+        else
+            context.FillRectangle(_art.Fill, new Rect(Bounds.Size));
         DerethSheet.Draw(context, _art.TopSource, new Rect(corner, 0, width - 2 * corner, edge));
         DerethSheet.Draw(context, _art.TopSource, new Rect(corner, height - edge, width - 2 * corner, edge), flipY: true);
         DerethSheet.Draw(context, _art.LeftSource, new Rect(0, corner, edge, height - 2 * corner));
@@ -334,12 +340,17 @@ public sealed class DerethButton : Button
         Background = Brushes.Transparent;
         // Plain text content takes the button's ink; without it, it falls back to the default theme's dark text.
         Foreground = DerethPalette.CreamBrush;
+        // Centred unless the caller says otherwise; the template passes the alignment on, or text sits in the top-left corner.
+        HorizontalContentAlignment = HorizontalAlignment.Center;
+        VerticalContentAlignment = VerticalAlignment.Center;
         Template = new FuncControlTemplate<Button>((_, scope) =>
         {
             var presenter = new ContentPresenter
             {
                 Name = "PART_ContentPresenter",
-                [!ContentPresenter.ContentProperty] = new TemplateBinding(ContentControl.ContentProperty)
+                [!ContentPresenter.ContentProperty] = new TemplateBinding(ContentControl.ContentProperty),
+                [!ContentPresenter.HorizontalContentAlignmentProperty] = new TemplateBinding(HorizontalContentAlignmentProperty),
+                [!ContentPresenter.VerticalContentAlignmentProperty] = new TemplateBinding(VerticalContentAlignmentProperty)
             };
             scope.Register(presenter.Name, presenter);
             _frame = new DerethFrame(DerethFrameArt.Button) { Child = presenter };

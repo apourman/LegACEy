@@ -27,6 +27,23 @@ public sealed class PluginRegistryTests
     }
 
     [Fact]
+    public void An_empty_launcher_says_so_and_renders_to_a_file_when_asked() => RenderThread.Run(() =>
+    {
+        var host = new FakeHost();
+        var registry = new PluginRegistry(host, host.Log.Add);
+        const int width = PluginMenuPanel.WindowWidth, height = PluginMenuPanel.WindowHeight;
+        using var panel = LegACEy.Client.PanelHost.AvaloniaPanel.Create(
+            () => new DerethWindow("LegACEy 1.0.0", null, new PluginMenuPanel(registry, null, () => { })), width, height);
+        panel.Tick();
+        Assert.Contains(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(panel.Content).OfType<TextBlock>(), text => text.Text == "No plugin has a window to open.");
+        // Set LEGACEY_SETTINGS_RENDER to a folder for a look at it by eye.
+        if (Environment.GetEnvironmentVariable("LEGACEY_SETTINGS_RENDER") is not { } folder) return;
+        using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(width, height));
+        bitmap.Render(panel.Content);
+        bitmap.Save(System.IO.Path.Combine(folder, "launcher.png"));
+    });
+
+    [Fact]
     public void The_launcher_lists_visible_entries_runs_one_and_its_settings_button_opens_settings() => RenderThread.Run(() =>
     {
         var host = new FakeHost();

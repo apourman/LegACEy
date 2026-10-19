@@ -166,6 +166,28 @@ public sealed class SettingsPanelTests
         Assert.Equal(1, checks);
     });
 
+    [Fact]
+    public void The_settings_window_renders_to_a_file_when_asked() => RenderThread.Run(() =>
+    {
+        // A look at the window in its Dereth frame, for checking borders and alignment by eye. Set LEGACEY_SETTINGS_RENDER to a folder.
+        var folder = Environment.GetEnvironmentVariable("LEGACEY_SETTINGS_RENDER");
+        if (folder == null) return;
+        var settings = new ClientSettings(new UiSizeChoice(100, _ => { }), null, Windows("Toolbar", "Chat", "Vitals"))
+        {
+            ChatTextSize = new OptionChoice<int>(130, _ => { }),
+            ChatFade = new OptionChoice<int>(15, _ => { }),
+        };
+        foreach (var tab in new[] { SettingsTab.General, SettingsTab.Windows })
+        {
+            const int width = SettingsPanel.WindowWidth, height = SettingsPanel.WindowHeight;
+            using var panel = AvaloniaPanel.Create(() => new DerethWindow("Settings", null, new SettingsPanel(settings, tab)), width, height);
+            panel.Tick();
+            using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new PixelSize(width, height));
+            bitmap.Render(panel.Content);
+            bitmap.Save(System.IO.Path.Combine(folder, $"settings-{tab}.png"));
+        }
+    });
+
     private static UiWindowChoice[] Windows(params string[] titles) => titles.Select(title => new UiWindowChoice(title, () => true, _ => { })).ToArray();
 
     private static AvaloniaPanel Tab(ClientSettings settings)
