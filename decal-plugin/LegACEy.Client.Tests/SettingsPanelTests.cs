@@ -118,9 +118,24 @@ public sealed class SettingsPanelTests
         using var panel = AvaloniaPanel.Create(() => new SettingsPanel(settings), SettingsPanel.WindowWidth, SettingsPanel.WindowHeight);
         panel.Tick();
 
+        Assert.Equal("This character", TextOf(panel, "This character").Text);
         PressCentre(panel, panel.Content.GetVisualDescendants().OfType<DerethToggle>().Single());
 
         Assert.Equal(new[] { true }, calls);
+    });
+
+    [Fact]
+    public void A_disabled_lock_switch_makes_no_change() => RenderThread.Run(() =>
+    {
+        var calls = new List<bool>();
+        var settings = new ClientSettings(null, null, Array.Empty<UiWindowChoice>(), null, new LockUiChoice(false, false, calls.Add));
+        using var panel = AvaloniaPanel.Create(() => new SettingsPanel(settings), SettingsPanel.WindowWidth, SettingsPanel.WindowHeight);
+        panel.Tick();
+
+        PressCentre(panel, panel.Content.GetVisualDescendants().OfType<DerethToggle>().Single());
+
+        Assert.Empty(calls);
+        Assert.False(panel.Content.GetVisualDescendants().OfType<DerethToggle>().Single().On);
     });
 
     [Fact]
@@ -144,7 +159,6 @@ public sealed class SettingsPanelTests
         panel.PointerDown(centre.X, centre.Y);
         panel.PointerUp(centre.X, centre.Y);
     }
-
 
     private static TextBlock TextOf(AvaloniaPanel panel, string text) =>
         panel.Content.GetVisualDescendants().OfType<TextBlock>().Single(block => block.Text == text);

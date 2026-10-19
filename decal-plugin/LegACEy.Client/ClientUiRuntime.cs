@@ -498,9 +498,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private LockUiChoice LockUiOption()
     {
-        var available = HudNatives().Lock;
+        var available = LockAvailable;
         return new LockUiChoice(available && NativeUi.IsUiLocked, available, SetUiLock);
     }
+
+    /// <summary>Retail's Lock UI is set only once the window can read it and the Lock list has checked its calls.</summary>
+    private bool LockAvailable => NativeUi.Ready && HudNatives().Lock;
 
     /// <summary>
     /// Sets retail's Lock UI from the Settings window, as the radar's lock button does, and shows the state retail now reads, so a refused
@@ -508,17 +511,22 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void SetUiLock(bool locked)
     {
-        if (!HudNatives().Lock) return;
+        if (!LockAvailable) return;
         NativeUi.SetUiLocked(locked);
+        ShowLockUi();
+    }
+
+    /// <summary>Shows retail's Lock UI as it reads now on the open switch, which redraws the panel.</summary>
+    private void ShowLockUi()
+    {
         if (_settings != null && _settings.LockUi is { } option) _settings.LockUi = option with { Locked = NativeUi.IsUiLocked };
     }
 
     /// <summary>While Settings is open, retail's Lock UI can change from its own options or the radar's button, so the switch follows it.</summary>
     private void TickSettingsLock()
     {
-        if (_settings == null || _settings.LockUi is not { Enabled: true } option) return;
-        var locked = NativeUi.IsUiLocked;
-        if (locked != option.Locked) _settings.LockUi = option with { Locked = locked };
+        if (_settings?.LockUi is not { Enabled: true } option) return;
+        if (NativeUi.IsUiLocked != option.Locked) ShowLockUi();
     }
 
     // A chat line that fails only goes to the log: it is no reason to switch the UI off.

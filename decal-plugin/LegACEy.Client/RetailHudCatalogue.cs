@@ -139,7 +139,7 @@ internal static class RetailHudCatalogue
             "8A 44 24 04 80 E2 01 3A D0 74 29 84 C0 8B 81 90 00 00 00", "ThisCall (PlayerModule*, bool) at 0x005D4340"),
         Entry("UIElementManager::BroadcastGlobalMessage body", BroadcastGlobalMessage + 1, "8B 5C 24 08 33 D2 8B C3 F7 B1 8C 01 00 00",
             "ThisCall (UIElementManager*, uint message, int) at 0x0045B4C0"),
-        // Its call targets pin GetPlayerSystem, SetLockUi and BroadcastGlobalMessage; the port makes the same calls on the same receivers.
+        // Its call targets pin GetPlayerSystem, SetLockUi and BroadcastGlobalMessage; NativeUi.SetUiLocked makes the same calls on the same receivers.
         Entry("gmRadarUI's lock button: SetLockUI on CPlayerSystem +0x34, then BroadcastGlobalMessage(0xD, 0) on UIElementManager (0x0083E03C)",
             0x004D8286, "E8 45 5F 08 00 6A 01 8D 48 34 E8 AB C0 0F 00 8B 0D 3C E0 83 00 6A 00 6A 0D E8 1C 32 F8 FF", "instruction reference")
     };

@@ -176,7 +176,8 @@ internal static class NativeUi
 
     /// <summary>
     /// Sets retail's Lock UI as retail's radar lock button does: PlayerModule::SetLockUI on its CPlayerSystem's PlayerModule, then the lock-changed
-    /// message every window updates on, through UIElementManager. The Lock list checks the button's calls, receivers and the manager global.
+    /// message every window updates on, through UIElementManager. Callers check the Lock list (RetailHudCatalogue.Lock) first; this makes the calls
+    /// without checking it.
     /// </summary>
     public static unsafe void SetUiLocked(bool locked)
     {

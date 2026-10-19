@@ -253,32 +253,34 @@ public sealed class SettingsPanel : UserControl
     }
 
     /// <summary>
-    /// Lock UI, for this character: retail's own lock, shown as retail reads it and set as retail's radar sets it. It is greyed out where the
-    /// running client's lock did not check.
+    /// A labelled switch with its scope tag. <paramref name="current"/> gives the state to show and whether the switch can be set, or null when
+    /// the setting is gone; <paramref name="commit"/> gets each state the player clicks. The switch is greyed out where it can't be set.
     /// </summary>
-    private Control LockRow()
+    private Control SwitchRow(string label, bool thisCharacter, Func<(bool On, bool Enabled)?> current, Action<bool> commit)
     {
         var toggle = new DerethToggle();
         var row = new DockPanel();
         void Show()
         {
-            if (_settings.LockUi is not { } lockUi) return;
-            toggle.On = lockUi.Locked;
-            toggle.IsEnabled = lockUi.Enabled;
-            row.Opacity = lockUi.Enabled ? 1 : 0.5;
+            if (current() is not { } state) return;
+            toggle.On = state.On;
+            toggle.IsEnabled = state.Enabled;
+            row.Opacity = state.Enabled ? 1 : 0.5;
         }
-        toggle.Changed += on =>
-        {
-            if (_settings.LockUi is { Enabled: true } lockUi) lockUi.Set(on);
-        };
+        toggle.Changed += commit;
         _redraws.Add(Show);
         Show();
 
         DockPanel.SetDock(toggle, Dock.Right);
         row.Children.Add(toggle);
-        row.Children.Add(ScopedLabel("Lock UI", thisCharacter: true));
+        row.Children.Add(ScopedLabel(label, thisCharacter));
         return row;
     }
+
+    /// <summary>Lock UI, for this character: retail's own lock, shown as retail reads it and set as retail's radar sets it.</summary>
+    private Control LockRow() => SwitchRow("Lock UI", thisCharacter: true,
+        () => _settings.LockUi is { } lockUi ? (lockUi.Locked, lockUi.Enabled) : null,
+        on => _settings.LockUi?.Set(on));
 
     /// <summary>
     /// The water, for all characters: a switch for on or off, and the strength from calm to 200%, with a readout that follows the thumb. The
@@ -293,26 +295,9 @@ public sealed class SettingsPanel : UserControl
         return pane;
     }
 
-    private Control WaterSwitchRow()
-    {
-        var toggle = new DerethToggle();
-        void Show()
-        {
-            if (_settings.Water is { } water) toggle.On = water.On;
-        }
-        toggle.Changed += on =>
-        {
-            if (_settings.Water is { } water) water.Set(on, water.Percent);
-        };
-        _redraws.Add(Show);
-        Show();
-
-        var row = new DockPanel();
-        DockPanel.SetDock(toggle, Dock.Right);
-        row.Children.Add(toggle);
-        row.Children.Add(ScopedLabel("Water"));
-        return row;
-    }
+    private Control WaterSwitchRow() => SwitchRow("Water", thisCharacter: false,
+        () => _settings.Water is { } water ? (water.On, true) : null,
+        on => { if (_settings.Water is { } water) water.Set(on, water.Percent); });
 
     private Control WaterStrengthRow() => SliderRow("Wave strength", WaterOption.Smallest, WaterOption.Largest, WaterOption.Step,
         () => _settings.Water?.Percent, percent => _settings.Water?.Set(true, percent));
