@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.7.0...decal-plugin-v0.8.0) (2026-10-19)
+
+
+### Features
+
+* **decal-plugin:** check for updates from the LegACEy menu ([#68](https://github.com/apourman/LegACEy/issues/68)) ([2808075](https://github.com/apourman/LegACEy/commit/2808075e89f532f396f5a0e8598095ac22394162))
+
 ## [0.7.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.6.1...decal-plugin-v0.7.0) (2026-10-19)
 
 
