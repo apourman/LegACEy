@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.6.1...decal-plugin-v0.7.0) (2026-10-19)
+
+
+### Features
+
+* **decal-plugin:** installer and auto-updater ([#66](https://github.com/apourman/LegACEy/issues/66)) ([66b3d65](https://github.com/apourman/LegACEy/commit/66b3d6541846fc1d623867f9cc476c2fc287ce78))
+
 ## [0.6.1](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.6.0...decal-plugin-v0.6.1) (2026-10-18)
 
 
