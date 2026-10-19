@@ -107,9 +107,16 @@ public sealed class GroundDat : IGroundSource, IDisposable
 
     public GroundLandblock? ReadLandblock(int x, int y)
     {
+        if (ReadVertices(x, y) is not { } ground) return null;
+        var info = _cell.ReadFile(((uint)x << 24) | ((uint)y << 16) | 0xFFFE);
+        return info == null ? ground : new GroundLandblock(x, y, ground.Terrain, ground.Height, ReadFootprints(info));
+    }
+
+    /// <summary>The landblock's vertices only, without its buildings and walls; safe from any thread.</summary>
+    public GroundLandblock? ReadVertices(int x, int y)
+    {
         if (x is < 0 or > 254 || y is < 0 or > 254) return null;
-        var id = ((uint)x << 24) | ((uint)y << 16);
-        var cell = _cell.ReadFile(id | 0xFFFF);
+        var cell = _cell.ReadFile(((uint)x << 24) | ((uint)y << 16) | 0xFFFF);
         if (cell == null) return null;
 
         var reader = new BinaryReader(new MemoryStream(cell));
@@ -119,9 +126,7 @@ public sealed class GroundDat : IGroundSource, IDisposable
         for (var i = 0; i < terrain.Length; i++) terrain[i] = reader.ReadUInt16();
         var height = new float[81];
         for (var i = 0; i < height.Length; i++) height[i] = _heights[reader.ReadByte()];
-
-        var info = _cell.ReadFile(id | 0xFFFE);
-        return new GroundLandblock(x, y, terrain, height, info == null ? Array.Empty<GroundFootprint>() : ReadFootprints(info));
+        return new GroundLandblock(x, y, terrain, height, Array.Empty<GroundFootprint>());
     }
 
     public GameImage? TerrainTexture(uint terrainType)

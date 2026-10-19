@@ -626,7 +626,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         GameArtImageExtension.CurrentSource = _portal;
 
         EnsurePostUiDrawHook();
-        try { _worldEffects ??= WorldEffects.Create(_device, NativeUi.ReadMemory, Log); }
+        try { _worldEffects ??= WorldEffects.Create(_device, _portal, NativeUi.ReadMemory, Log); }
         catch (Exception exception) { Log($"The selection outline and storm fog are off: {exception.Message}"); }
         Log("LegACEy UI ready.");
         WarmUpDerethTheme();

@@ -50,7 +50,7 @@ internal static unsafe class D3D9
     private const int ApplySlot = 5;
 
     // Values from mingw-w64 d3d9types.h.
-    public const uint FvfXyz = 0x002, FvfXyzRhw = 0x004, FvfNormal = 0x010, FvfDiffuse = 0x040, FvfTex1 = 0x100;
+    public const uint FvfXyz = 0x002, FvfXyzRhw = 0x004, FvfNormal = 0x010, FvfDiffuse = 0x040, FvfTex1 = 0x100, FvfTex2 = 0x200;
     public const int LineStrip = 3, TriangleList = 4, TriangleStrip = 5;
     public const int TransformView = 2, TransformProjection = 3, TransformWorld = 256;
     private const int StateBlockAll = 1, FormatA8R8G8B8 = 21, PoolDefault = 0, PoolManaged = 1, UsageRenderTarget = 1, ClearTarget = 1, ClearZBuffer = 2;
@@ -68,10 +68,10 @@ internal static unsafe class D3D9
     public enum SamplerState { AddressU = 1, AddressV = 2, MagFilter = 5, MinFilter = 6, MipFilter = 7 }
 
     // D3DTOP, D3DTA, D3DTEXF, D3DTADDRESS, D3DCMP, D3DCULL, D3DFILL, D3DSHADE, D3DBLEND and D3DBLENDOP values.
-    public const int OpDisable = 1, OpSelectArg1 = 2, OpModulate = 4, ArgDiffuse = 0, ArgCurrent = 1, ArgTexture = 2, ArgFactor = 3, ArgComplement = 0x10;
+    public const int OpDisable = 1, OpSelectArg1 = 2, OpModulate = 4, OpModulate2x = 5, OpAddSigned = 8, OpBlendDiffuseAlpha = 12, ArgDiffuse = 0, ArgCurrent = 1, ArgTexture = 2, ArgFactor = 3, ArgComplement = 0x10;
     public const int FilterNone = 0, FilterPoint = 1, FilterLinear = 2, AddressWrap = 1, AddressClamp = 3;
     public const int CmpLessEqual = 4, CmpGreaterEqual = 7, CullNone = 1, FillSolid = 3, ShadeGouraud = 2;
-    public const int BlendOne = 2, BlendSrcAlpha = 5, BlendInvSrcAlpha = 6, BlendOpAdd = 1;
+    public const int BlendOne = 2, BlendSrcColor = 3, BlendSrcAlpha = 5, BlendInvSrcAlpha = 6, BlendDestColor = 9, BlendOpAdd = 1;
 
     /// <summary>D3DSURFACE_DESC.</summary>
     [StructLayout(LayoutKind.Sequential)]
@@ -139,21 +139,21 @@ internal static unsafe class D3D9
         finally { Release(block); }
     }
 
-    /// <summary>An A8R8G8B8 texture in the managed pool, which Direct3D restores itself after a device reset.</summary>
-    public static IntPtr CreateTexture(IntPtr device, int width, int height)
+    /// <summary>An A8R8G8B8 texture in the managed pool, which Direct3D restores itself after a device reset; <paramref name="levels"/> mip levels.</summary>
+    public static IntPtr CreateTexture(IntPtr device, int width, int height, int levels = 1)
     {
         IntPtr texture;
         Check(((delegate* unmanaged[Stdcall]<IntPtr, int, int, int, int, int, int, IntPtr*, IntPtr, int>)Vt(device)[CreateTextureSlot])(
-            device, width, height, 1, 0, FormatA8R8G8B8, PoolManaged, &texture, IntPtr.Zero), "CreateTexture");
+            device, width, height, levels, 0, FormatA8R8G8B8, PoolManaged, &texture, IntPtr.Zero), "CreateTexture");
         return texture;
     }
 
-    /// <summary>Copies a rectangle of 32-bit pixels, at the same place in both, into the texture's top level.</summary>
-    public static void Upload(IntPtr texture, Rectangle area, byte[] pixels, int stride)
+    /// <summary>Copies a rectangle of 32-bit pixels, at the same place in both, into one of the texture's levels (the top by default).</summary>
+    public static void Upload(IntPtr texture, Rectangle area, byte[] pixels, int stride, int level = 0)
     {
         var rect = stackalloc int[] { area.Left, area.Top, area.Right, area.Bottom };
         LockedRect locked;
-        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, LockedRect*, int*, int, int>)Vt(texture)[LockRectSlot])(texture, 0, &locked, rect, 0), "LockRect");
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, LockedRect*, int*, int, int>)Vt(texture)[LockRectSlot])(texture, level, &locked, rect, 0), "LockRect");
         var unlock = (delegate* unmanaged[Stdcall]<IntPtr, int, int>)Vt(texture)[UnlockRectSlot];
         try
         {
@@ -163,10 +163,10 @@ internal static unsafe class D3D9
         }
         catch
         {
-            unlock(texture, 0); // the copy's exception is the one worth reporting
+            unlock(texture, level); // the copy's exception is the one worth reporting
             throw;
         }
-        Check(unlock(texture, 0), "UnlockRect");
+        Check(unlock(texture, level), "UnlockRect");
     }
 
     /// <summary>An A8R8G8B8 render-target texture in the default pool: it must be released before the device resets.</summary>

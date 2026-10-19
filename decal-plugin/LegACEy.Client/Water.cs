@@ -1,0 +1,300 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
+using System.Linq;
+using System.Numerics;
+using System.Threading.Tasks;
+using LegACEy.Client.GameArt;
+using static LegACEy.Client.DecalPlugin.D3D9;
+
+namespace LegACEy.Client.DecalPlugin;
+
+/// <summary>
+/// Livelier water over retail's still water texture. The water cells of the landblocks around the player (from client_cell_1.dat, where a
+/// vertex's terrain type is 16 to 20) are drawn again just above retail's ground, blended to multiply what retail drew by twice their colour:
+/// mid grey leaves it as it was, so retail's lighting (day, night, shade, fog) still holds and nothing glows in the dark. Two layers of one
+/// small wave texture scroll across each other for ripples and glints; open water is tinted deeper blue, the shallows greener, and water seen at a
+/// low angle brighter, as it reflects more of the sky. It fades into retail's water at the shore and towards <see cref="Reach"/>, and the ripples
+/// also fade with distance through the texture's mip levels. None of it shows indoors.
+/// </summary>
+internal sealed unsafe class Water : IDisposable
+{
+    private const int Radius = 2;            // landblocks loaded each way from the player's
+    private const float Lift = 0.12f;        // metres above retail's ground, so it is not lost to depth fighting
+    private const float Reach = 300, FadeOut = 80;
+    private const int WaveSize = 128;
+    private const float TileA = 17, TileB = 7.5f; // metres per repeat of each wave layer
+    private const float Cell = 24;
+    private static readonly Vector3 Deep = new(0.80f, 0.92f, 1.00f), Shallow = new(0.92f, 1.00f, 0.95f);
+
+    private readonly IntPtr _device;
+    private readonly StormFog _camera;
+    private readonly PortalDat _portal;
+    private readonly Action<string> _log;
+    private readonly Stopwatch _clock = Stopwatch.StartNew();
+    // Landblock (x << 8 | y) to its water triangles; null for a landblock with none.
+    private readonly Dictionary<int, WaterPoint[]?> _blocks = new();
+    private readonly HashSet<int> _loading = new();
+    private readonly ConcurrentQueue<(int Key, WaterPoint[]? Points)> _arrived = new();
+    private Task<GroundDat?>? _ground;
+    private int _centre = -1;
+    private WaterVertex[] _vertices = Array.Empty<WaterVertex>();
+    private IntPtr _waves;
+
+    public Water(IntPtr device, StormFog camera, PortalDat portal, Action<string> log)
+    {
+        _device = device;
+        _camera = camera;
+        _portal = portal;
+        _log = log;
+    }
+
+    /// <summary>The player's cell id; an indoor cell (low word 0x100 and up, including dungeons) has no water drawn.</summary>
+    public uint PlayerCell { get; set; }
+
+    /// <summary>Draws the water after retail's world, with the camera the storm fog measured.</summary>
+    public void Draw()
+    {
+        if (PlayerCell == 0 || (PlayerCell & 0xFFFF) >= 0x100 || _camera.Eye is not { } eye) return;
+        Follow((int)(PlayerCell >> 24), (int)((PlayerCell >> 16) & 0xFF));
+
+        // Texture coordinates from the player's landblock corner, so they stay small; the scroll wraps, as the texture repeats.
+        float originX = (_centre >> 8) * StormFog.Block, originY = (_centre & 0xFF) * StormFog.Block;
+        var time = _clock.Elapsed.TotalSeconds;
+        var scroll = new Vector4(Wrap(time * 0.010), Wrap(time * 0.006), Wrap(time * -0.017), Wrap(time * 0.013));
+        var count = 0;
+        foreach (var points in _blocks.Values)
+        {
+            if (points == null) continue;
+            if (_vertices.Length < count + points.Length) Array.Resize(ref _vertices, Math.Max(count + points.Length, _vertices.Length * 2));
+            for (var i = 0; i < points.Length; i += 3)
+            {
+                // A triangle is kept or dropped whole, by its first corner: cells are small next to the reach.
+                var corner = points[i].Position;
+                if (Vector2.Distance(new Vector2(corner.X, corner.Y), new Vector2(eye.X, eye.Y)) > Reach + Cell) continue;
+                for (var k = 0; k < 3; k++) _vertices[count++] = Vertex(points[i + k], eye, originX, originY, scroll);
+            }
+        }
+        if (count == 0) return;
+        if (_waves == IntPtr.Zero) _waves = MakeWaves();
+
+        var saved = SaveState(_device);
+        try
+        {
+            UseFixedFunction(_device, FvfXyz | FvfDiffuse | FvfTex2);
+            _camera.UseWorldCamera();
+            // Result = 2 × water × retail's colour: mid grey leaves retail's water as it was.
+            SetRenderState(_device, RenderState.SrcBlend, BlendDestColor);
+            SetRenderState(_device, RenderState.DestBlend, BlendSrcColor);
+            SetRenderState(_device, RenderState.TextureFactor, unchecked((int)0xFF808080));
+            for (var stage = 0; stage < 2; stage++)
+            {
+                SetTexture(_device, stage, _waves);
+                SetStageState(_device, stage, StageState.TexCoordIndex, stage);
+                SetStageState(_device, stage, StageState.TextureTransformFlags, 0);
+                SetSamplerState(_device, stage, SamplerState.MinFilter, FilterLinear);
+                SetSamplerState(_device, stage, SamplerState.MagFilter, FilterLinear);
+                SetSamplerState(_device, stage, SamplerState.MipFilter, FilterLinear);
+                SetSamplerState(_device, stage, SamplerState.AddressU, AddressWrap);
+                SetSamplerState(_device, stage, SamplerState.AddressV, AddressWrap);
+            }
+            SetTexture(_device, 2, IntPtr.Zero);
+            SetTexture(_device, 3, IntPtr.Zero);
+            // The two wave layers, each centred on mid grey, added.
+            SetStageState(_device, 0, StageState.ColorOp, OpSelectArg1);
+            SetStageState(_device, 0, StageState.ColorArg1, ArgTexture);
+            SetStageState(_device, 1, StageState.ColorOp, OpAddSigned);
+            SetStageState(_device, 1, StageState.ColorArg1, ArgTexture);
+            SetStageState(_device, 1, StageState.ColorArg2, ArgCurrent);
+            // Tinted and brightened by the vertex colour (mid grey keeps the waves as they are).
+            SetStageState(_device, 2, StageState.ColorOp, OpModulate2x);
+            SetStageState(_device, 2, StageState.ColorArg1, ArgCurrent);
+            SetStageState(_device, 2, StageState.ColorArg2, ArgDiffuse);
+            // Faded to mid grey (no change) by the vertex alpha: at the shore and far off.
+            SetStageState(_device, 3, StageState.ColorOp, OpBlendDiffuseAlpha);
+            SetStageState(_device, 3, StageState.ColorArg1, ArgCurrent);
+            SetStageState(_device, 3, StageState.ColorArg2, ArgFactor);
+            for (var stage = 0; stage < 4; stage++)
+            {
+                SetStageState(_device, stage, StageState.AlphaOp, OpSelectArg1);
+                SetStageState(_device, stage, StageState.AlphaArg1, ArgDiffuse);
+            }
+            SetStageState(_device, 4, StageState.ColorOp, OpDisable);
+            SetStageState(_device, 4, StageState.AlphaOp, OpDisable);
+            fixed (WaterVertex* vertices = _vertices)
+                DrawPrimitiveUP(_device, TriangleList, count / 3, vertices, sizeof(WaterVertex));
+        }
+        finally { RestoreState(saved); }
+    }
+
+    private static WaterVertex Vertex(WaterPoint point, Vector3 eye, float originX, float originY, Vector4 scroll)
+    {
+        var p = point.Position;
+        // Fresnel (Schlick's): water reflects more of the sky the lower the angle it is seen at.
+        var facing = Math.Clamp(Vector3.Normalize(eye - p).Z, 0, 1);
+        var fresnel = 0.02f + 0.98f * MathF.Pow(1 - facing, 5);
+        var colour = Vector3.Lerp(Shallow, Deep, point.Open) * (0.5f + 0.22f * fresnel);
+        var distance = Vector2.Distance(new Vector2(p.X, p.Y), new Vector2(eye.X, eye.Y));
+        var alpha = point.Wet * Math.Clamp((Reach - distance) / FadeOut, 0, 1);
+        uint Byte(float value) => (uint)Math.Clamp(value * 255, 0, 255);
+        var argb = Byte(alpha) << 24 | Byte(colour.X) << 16 | Byte(colour.Y) << 8 | Byte(colour.Z);
+        float x = p.X - originX, y = p.Y - originY;
+        return new WaterVertex(StormFog.Render(new Vector3(p.X, p.Y, p.Z + Lift)), argb,
+            x / TileA + scroll.X, y / TileA + scroll.Y, x / TileB + scroll.Z, y / TileB + scroll.W);
+    }
+
+    private static float Wrap(double value) => (float)(value - Math.Floor(value));
+
+    /// <summary>Takes in the landblocks read since the last frame and, when the player has moved to another landblock, asks for the ones now near.</summary>
+    private void Follow(int x, int y)
+    {
+        while (_arrived.TryDequeue(out var arrived))
+        {
+            _loading.Remove(arrived.Key);
+            _blocks[arrived.Key] = arrived.Points;
+        }
+        var centre = x << 8 | y;
+        if (centre == _centre) return;
+        _centre = centre;
+        foreach (var far in _blocks.Keys.Where(key => Math.Max(Math.Abs((key >> 8) - x), Math.Abs((key & 0xFF) - y)) > Radius + 1).ToArray())
+            _blocks.Remove(far);
+        _ground ??= Task.Run(() =>
+        {
+            try { return new GroundDat(_portal); }
+            catch (Exception exception)
+            {
+                _log($"Water is left as retail draws it: the ground's DATs did not open: {exception.Message}");
+                return null;
+            }
+        });
+        for (var dx = -Radius; dx <= Radius; dx++)
+            for (var dy = -Radius; dy <= Radius; dy++)
+            {
+                int bx = x + dx, by = y + dy, key = bx << 8 | by;
+                if (bx is < 0 or > 254 || by is < 0 or > 254 || _blocks.ContainsKey(key) || !_loading.Add(key)) continue;
+                _ground.ContinueWith(ground =>
+                {
+                    WaterPoint[]? points = null;
+                    try
+                    {
+                        if (ground.Result?.ReadVertices(bx, by) is { } vertices && Triangles(vertices) is { Length: > 0 } found) points = found;
+                    }
+                    catch (Exception exception) { _log($"Landblock {bx:X2}{by:X2}'s water is left as retail draws it: {exception.Message}"); }
+                    _arrived.Enqueue((key, points));
+                }, TaskScheduler.Default);
+            }
+    }
+
+    /// <summary>
+    /// The landblock's water: the triangles, three corners each in global game metres (z up), of every cell with a water corner, split along
+    /// retail's diagonal. A corner is wet when it is water; its openness is how much of the 3 × 3 vertices around it (within the landblock) are.
+    /// </summary>
+    internal static WaterPoint[] Triangles(GroundLandblock ground)
+    {
+        var wet = ground.Terrain.Select(terrain => ((terrain >> 2) & 0x1F) is >= 16 and <= 20).ToArray();
+        float Open(int x, int y)
+        {
+            int all = 0, water = 0;
+            for (var i = Math.Max(0, x - 1); i <= Math.Min(8, x + 1); i++)
+                for (var j = Math.Max(0, y - 1); j <= Math.Min(8, y + 1); j++)
+                {
+                    all++;
+                    if (wet[i * 9 + j]) water++;
+                }
+            return (float)water / all;
+        }
+        WaterPoint Corner(int x, int y) => new(new Vector3(ground.X * StormFog.Block + x * Cell, ground.Y * StormFog.Block + y * Cell, ground.Height[x * 9 + y]),
+            wet[x * 9 + y] ? 1 : 0, Open(x, y));
+
+        var points = new List<WaterPoint>();
+        for (var x = 0; x < 8; x++)
+            for (var y = 0; y < 8; y++)
+            {
+                if (!wet[x * 9 + y] && !wet[(x + 1) * 9 + y] && !wet[x * 9 + y + 1] && !wet[(x + 1) * 9 + y + 1]) continue;
+                WaterPoint sw = Corner(x, y), se = Corner(x + 1, y), nw = Corner(x, y + 1), ne = Corner(x + 1, y + 1);
+                points.AddRange(SplitsNorthWest(ground.X, ground.Y, x, y) ? new[] { nw, se, sw, nw, ne, se } : new[] { ne, se, sw, ne, sw, nw });
+            }
+        return points.ToArray();
+    }
+
+    /// <summary>Retail's diagonal for a ground cell, as ACE's LandblockMesh.GetSplitDir: true cuts from the north-west to the south-east corner.</summary>
+    internal static bool SplitsNorthWest(int landblockX, int landblockY, int cellX, int cellY)
+    {
+        uint x = (uint)(landblockX * 8 + cellX), y = (uint)(landblockY * 8 + cellY);
+        var dw = unchecked(x * y * 0x0CCAC033u - x * 0x421BE3BDu + y * 0x6C1AC587u - 0x519B8F25u);
+        return (dw & 0x80000000) == 0;
+    }
+
+    /// <summary>
+    /// The wave texture: grey, centred on mid grey, lit from one side by the slope of a few crossing waves that repeat across it, with sparks on
+    /// the brightest crests for glints. Its mip levels average the waves away to mid grey, so far water goes calm without shimmering. About 85 KB.
+    /// </summary>
+    private IntPtr MakeWaves()
+    {
+        var levels = 1;
+        while (WaveSize >> levels > 0) levels++;
+        var pixels = WavePixels();
+        var texture = CreateTexture(_device, WaveSize, WaveSize, levels);
+        for (int level = 0, size = WaveSize; level < levels; level++, size /= 2)
+        {
+            if (level > 0) pixels = Halve(pixels, size * 2);
+            var bytes = new byte[size * size * 4];
+            for (var i = 0; i < pixels.Length; i++)
+            {
+                var grey = (byte)Math.Clamp(pixels[i] * 255, 0, 255);
+                bytes[i * 4] = bytes[i * 4 + 1] = bytes[i * 4 + 2] = grey;
+                bytes[i * 4 + 3] = 0xFF;
+            }
+            Upload(texture, new Rectangle(0, 0, size, size), bytes, size * 4, level);
+        }
+        return texture;
+    }
+
+    internal static float[] WavePixels()
+    {
+        // Whole numbers of waves across the texture, so it repeats without a seam.
+        (int X, int Y, float Amplitude, float Phase)[] waves = { (1, 2, 1f, 0.3f), (3, -1, 0.8f, 1.9f), (-2, 3, 0.7f, 4.1f), (4, 1, 0.5f, 2.6f), (5, -3, 0.35f, 5.2f), (-1, 6, 0.3f, 0.8f) };
+        var light = Vector2.Normalize(new Vector2(0.6f, 0.8f));
+        var slope = new float[WaveSize * WaveSize];
+        for (var y = 0; y < WaveSize; y++)
+            for (var x = 0; x < WaveSize; x++)
+            {
+                float u = (float)x / WaveSize, v = (float)y / WaveSize, s = 0;
+                foreach (var (wx, wy, amplitude, phase) in waves)
+                    s += amplitude * MathF.Cos(MathF.Tau * (wx * u + wy * v) + phase) * (wx * light.X + wy * light.Y);
+                slope[y * WaveSize + x] = s;
+            }
+        var most = slope.Max(MathF.Abs);
+        return slope.Select(s => s / most).Select(s => 0.5f + 0.09f * s + (s > 0.7f ? (s - 0.7f) * 0.6f : 0)).ToArray();
+    }
+
+    private static float[] Halve(float[] pixels, int size)
+    {
+        var half = size / 2;
+        var result = new float[half * half];
+        for (var y = 0; y < half; y++)
+            for (var x = 0; x < half; x++)
+                result[y * half + x] = (pixels[2 * y * size + 2 * x] + pixels[2 * y * size + 2 * x + 1] + pixels[(2 * y + 1) * size + 2 * x] + pixels[(2 * y + 1) * size + 2 * x + 1]) / 4;
+        return result;
+    }
+
+    public void Dispose()
+    {
+        Release(_waves);
+        _waves = IntPtr.Zero;
+        _ground?.ContinueWith(ground => ground.Result?.Dispose(), TaskScheduler.Default);
+        _ground = null;
+    }
+
+    private readonly struct WaterVertex(Vector3 position, uint color, float u0, float v0, float u1, float v1)
+    {
+        public readonly float X = position.X, Y = position.Y, Z = position.Z;
+        public readonly uint Color = color;
+        public readonly float U0 = u0, V0 = v0, U1 = u1, V1 = v1;
+    }
+}
+
+/// <summary>A corner of a water triangle: global game metres (z up), 1 where the corner is water (0 on the shore), and how open the water around it is.</summary>
+internal readonly record struct WaterPoint(Vector3 Position, float Wet, float Open);

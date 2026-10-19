@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using LegACEy.Client.Demo;
+using LegACEy.Client.GameArt;
 using Reloaded.Hooks;
 using Reloaded.Hooks.Definitions;
 using Reloaded.Hooks.Definitions.X86;
@@ -10,7 +11,7 @@ using static LegACEy.Client.DecalPlugin.D3D9;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
-/// Effects drawn into retail's 3D world: the selection outline and the storm fog preview (<see cref="StormFog"/>).
+/// Effects drawn into retail's 3D world: the selection outline, livelier water (<see cref="Water"/>) and the storm fog preview (<see cref="StormFog"/>).
 /// The outline is a gold glow around the selected object, seen through walls. While retail draws a part, <c>CPhysicsPart::Draw</c> keeps the part in a
 /// global; each of the device's indexed draws made for a part of the selected object is drawn again, flat white with no depth test, into
 /// a mask. After retail's world (<c>SmartBox::Draw</c>), the mask is spread into a glow texture by drawing it several times offset, and the
@@ -86,6 +87,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     private readonly IHook<ResetFn> _resetHook;
     private readonly StormFog _fog;
     private readonly Weather _weather;
+    private readonly Water _water;
     private readonly CombatText _combat;
     private GCHandle _root;
     private IntPtr _mask, _glow;
@@ -93,12 +95,13 @@ internal sealed unsafe class WorldEffects : IDisposable
     // _masked: the mask is cleared this frame; _outlined: the selection is in it.
     private bool _masked, _outlined, _failed;
 
-    private WorldEffects(IntPtr device, Action<string> log)
+    private WorldEffects(IntPtr device, PortalDat portal, Action<string> log)
     {
         _device = device;
         _log = log;
         _fog = new StormFog(device);
         _weather = new Weather(device, _fog);
+        _water = new Water(device, _fog, portal, log);
         _combat = new CombatText(device, log);
         _root = GCHandle.Alloc(this);
         _smartBoxHook = ReloadedHooks.Instance.CreateHook<SmartBoxDrawFn>(OnSmartBoxDraw, SmartBoxDrawAddress);
@@ -110,14 +113,14 @@ internal sealed unsafe class WorldEffects : IDisposable
     }
 
     /// <summary>The effects, or null when the running client does not match their native entries.</summary>
-    public static WorldEffects? Create(IntPtr device, Func<uint, int, byte[]> readMemory, Action<string> log)
+    public static WorldEffects? Create(IntPtr device, PortalDat portal, Func<uint, int, byte[]> readMemory, Action<string> log)
     {
         if (!NativeUiCatalogue.Validate(readMemory, log, Entries))
         {
-            log("The selection outline, storm fog and weather are off: the running client does not match their native entries.");
+            log("The selection outline, water, storm fog and weather are off: the running client does not match their native entries.");
             return null;
         }
-        return new WorldEffects(device, log);
+        return new WorldEffects(device, portal, log);
     }
 
     /// <summary>The safe landblock the storm fog rings, as landblock x and y, or null for no storm.</summary>
@@ -231,9 +234,13 @@ internal sealed unsafe class WorldEffects : IDisposable
         {
             try
             {
-                _fog.Draw();
                 var player = *PlayerObject;
-                _weather.PlayerCell = player != 0 ? *(uint*)(player + 0x4C) : 0;
+                var cell = player != 0 ? *(uint*)(player + 0x4C) : 0;
+                // The water first, so the fog and weather fall over it.
+                _water.PlayerCell = cell;
+                _water.Draw();
+                _fog.Draw();
+                _weather.PlayerCell = cell;
                 _weather.Draw();
                 _combat.Draw(_fog);
                 if (!_outlined && Selected != 0) DrawCulledSelection();
@@ -408,6 +415,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         ReleaseTextures();
         _fog.Dispose();
         _weather.Dispose();
+        _water.Dispose();
         _combat.Dispose();
         if (_root.IsAllocated) _root.Free();
     }
