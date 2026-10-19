@@ -65,6 +65,12 @@ public sealed class PluginMenuPanel : UserControl
             button.Click += (_, _) => _registry.RunMenuEntry(item);
             _rows.Children.Add(button);
         }
+        if (_rows.Children.Count == 0)
+            _rows.Children.Add(new TextBlock
+            {
+                Text = "No plugin has a window to open.", FontFamily = DerethPalette.Body, FontSize = 12.5, Foreground = DerethPalette.MutedBrush,
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(8, 6)
+            });
     }
 
     private void DisposeIcons()

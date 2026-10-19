@@ -332,6 +332,8 @@ public sealed class DerethButton : Button
     {
         // A transparent face is still hit-tested, so the frame takes the pointer.
         Background = Brushes.Transparent;
+        // Plain text content takes the button's ink; without it, it falls back to the default theme's dark text.
+        Foreground = DerethPalette.CreamBrush;
         Template = new FuncControlTemplate<Button>((_, scope) =>
         {
             var presenter = new ContentPresenter
