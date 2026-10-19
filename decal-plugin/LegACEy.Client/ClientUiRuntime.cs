@@ -135,13 +135,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string WaterKey = "client-water";
     private const int SystemChat = 5;
     private WaterChoice _water = WaterChoice.Default;
-    // How big LegACEy windows show against their design size, in percent: the player's UI size from the LegACEy menu, kept for every
+    // How big LegACEy windows show against their design size, in percent: the player's UI size from the Settings window, kept for every
     // character. Drag icons keep retail's 32 pixels. An Avalonia that cannot scale panels shows them
     // at design size rather than failing every window.
     private const string UiSizeKey = "client-ui-size";
     private const int DefaultUiSize = 85;
-    private const int SmallestUiSize = 60;
-    private const int LargestUiSize = 150;
     private int _uiSize = DefaultUiSize;
     private bool _uiSizeChanged;
     private double WindowScale => AvaloniaPanel.CanScale ? _uiSize / 100.0 : 1;
@@ -149,6 +147,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // The release build stamps the client with the plugin version, so the menu shows which release is installed.
     private static readonly string MenuTitle = $"LegACEy {typeof(ClientUiRuntime).Assembly.GetName().Version?.ToString(3)}";
     private const string MenuWindowId = "plugin-menu";
+    private const string SettingsWindowId = "dereth-settings";
+    // The Settings window's last tab, kept for the install like the UI size.
+    private const string SettingsTabKey = "settings-tab";
     private const string TestFailureFile = "fail-post-ui-draw";
     // The stub's folder, which the bridge sets before the client starts: the log, settings and Plugins\ live there.
     internal static string PluginDirectory { get; set; } = ClientDirectory;
@@ -165,6 +166,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private readonly HashSet<ModelView> _drawnModelViews = new();
     private WindowManager? _windows;
     private IWindowPositionStore? _positionStore;
+    // The settings the open Settings window shows, so a UI size change made there reaches it.
+    private ClientSettings? _settings;
     // Each plugin's one settings value, per character, in its own file: a row keyed by the plugin's name whose X is the value.
     private readonly FileWindowPositionStore _settingsStore = new(IOPath.Combine(PluginDirectory, "plugin-settings.txt"));
     // The chat tabs each window of each character has: a row per server, character and window, missing means the six defaults.
@@ -329,7 +332,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _row2Choice = new ShortcutRowChoice(_settingsStore);
         _vitalsLayouts = new VitalsLayoutChoice(_settingsStore);
         if (_settingsStore.Load("", "", UiSizeKey) is { Location.X: var size and > 0 })
-            _uiSize = Math.Max(SmallestUiSize, Math.Min(LargestUiSize, size));
+            _uiSize = Math.Clamp(size, UiSizeChoice.Smallest, UiSizeChoice.Largest);
         if (_settingsStore.Load("", "", WaterKey) is { Location: var water })
             _water = new WaterChoice(water.Y != 0, Math.Clamp(water.X, 0, WaterChoice.Most));
     }
@@ -719,7 +722,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private IClientTheme CurrentTheme() => _portal != null ? new AcClientTheme(_portal) : new SimpleClientTheme();
 
-    /// <summary>Opens or closes the LegACEy menu window.</summary>
+    /// <summary>Opens or closes the LegACEy launcher window: the plugins' menu entries and a Settings… button.</summary>
     private void ToggleMenuWindow()
     {
         if (!_windowsEnabled || _windows == null || _clientUi == null)
@@ -735,18 +738,47 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             SetMenuRing(false);
             return;
         }
-        var chrome = new ThemeWindowChrome(_portal!, MenuTitle, new PluginMenuPanel(_plugins!, _portal,
-            AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, StepUiSize) : null, WindowChoices(), UpdateCheck()));
-        chrome.CloseRequested += (_, _) =>
+        var window = new DerethWindow(MenuTitle, null, new PluginMenuPanel(_plugins!, _portal, OpenSettings));
+        window.CloseRequested += (_, _) =>
         {
             _clientUi?.CloseWindow(MenuWindowId);
             SetMenuRing(false);
         };
-        _clientUi.OpenWindow(new WindowDefinition(MenuWindowId, MenuWindowId, PluginMenuPanel.WindowWidth, PluginMenuPanel.WindowHeight), chrome, new Point(260, 120));
+        _clientUi.OpenWindow(new WindowDefinition(MenuWindowId, MenuWindowId, PluginMenuPanel.WindowWidth, PluginMenuPanel.WindowHeight,
+            DerethWindow.TitleBarHeight, new DerethClientTheme()), window, new Point(260, 120));
         SetMenuRing(true);
     }
 
-    /// <summary>The LegACEy menu's update row: the installed version and Check for updates, greyed out with the reason on an install that never updates.</summary>
+    /// <summary>
+    /// Opens the Settings window on the tab the player last used. It does nothing while the window is open, and while the windows cannot open
+    /// yet.
+    /// </summary>
+    private void OpenSettings()
+    {
+        if (_clientUi == null || !CanOpenWindows) return;
+        if (_windows?.Get(SettingsWindowId) != null)
+        {
+            _windows.BringToFront(SettingsWindowId);
+            return;
+        }
+        var settings = new ClientSettings(AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, SetUiSize) : null, UpdateCheck(), WindowChoices());
+        _settings = settings;
+        var window = new DerethWindow("Settings", null, new SettingsPanel(settings, LoadSettingsTab(), SaveSettingsTab));
+        window.CloseRequested += (_, _) =>
+        {
+            _clientUi?.CloseWindow(SettingsWindowId);
+            _settings = null;
+        };
+        _clientUi.OpenWindow(new WindowDefinition(SettingsWindowId, "Settings", SettingsPanel.WindowWidth, SettingsPanel.WindowHeight,
+            DerethWindow.TitleBarHeight, new DerethClientTheme()), window, new Point(260, 120));
+    }
+
+    private SettingsTab LoadSettingsTab() =>
+        _settingsStore.Load("", "", SettingsTabKey) is { Location.X: var tab } && Enum.IsDefined(typeof(SettingsTab), tab) ? (SettingsTab)tab : SettingsTab.General;
+
+    private void SaveSettingsTab(SettingsTab tab) => _settingsStore.Save("", "", SettingsTabKey, (new Point((int)tab, 0), null));
+
+    /// <summary>The Settings window's update row: the installed version and Check for updates, greyed out with the reason on an install that never updates.</summary>
     private UpdateChoice UpdateCheck()
     {
         var off = _updates.Off;
@@ -754,7 +786,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// The windows the LegACEy menu switches between LegACEy's and retail's, each by its switch file beside the DLL, so the choice holds for
+    /// The windows the Settings window switches between LegACEy's and retail's, each by its switch file beside the DLL, so the choice holds for
     /// every character on this install. Custom is the default; a change is read on the next frame.
     /// </summary>
     private IReadOnlyList<UiWindowChoice> WindowChoices() => new[]
@@ -785,15 +817,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// The UI size stepped from the LegACEy menu: saved now, and applied on the next frame, outside the menu's own click, since applying it
-    /// closes the menu's window.
+    /// The UI size set from the Settings window, kept within the bounds and snapped to the step: saved now, and applied on the next frame,
+    /// outside the window's own click, since applying it closes the window.
     /// </summary>
-    private void StepUiSize(int steps)
+    private void SetUiSize(int percent)
     {
-        var size = Math.Max(SmallestUiSize, Math.Min(LargestUiSize, _uiSize + steps * 5));
+        var size = Math.Clamp((int)Math.Round((double)percent / UiSizeChoice.Step) * UiSizeChoice.Step, UiSizeChoice.Smallest, UiSizeChoice.Largest);
         if (size == _uiSize) return;
         _uiSize = size;
         _settingsStore.Save("", "", UiSizeKey, (new Point(size, 0), null));
+        if (_settings != null) _settings.UiSize = new UiSizeChoice(size, SetUiSize);
         _uiSizeChanged = true;
     }
 
@@ -806,6 +839,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _uiSizeChanged = false;
         if (!_inGame) return;
         var menuOpen = _windows?.Get(MenuWindowId) != null;
+        var settingsOpen = _windows?.Get(SettingsWindowId) != null;
         Log($"UI size {_uiSize}%: rebuilding the LegACEy UI.");
         // The chat's lines and sent text outlive the rebuild: it is the same character still playing.
         var chatHistory = _chatWindows?.History ?? _carriedChatHistory;
@@ -813,6 +847,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _carriedChatHistory = chatHistory;
         LoginComplete();
         if (menuOpen) Guard(ToggleMenuWindow);
+        // The Settings window comes back on the tab it was on, which the tab store keeps.
+        if (settingsOpen) Guard(OpenSettings);
     }
 
     /// <summary>
