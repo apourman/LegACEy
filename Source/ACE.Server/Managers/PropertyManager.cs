@@ -616,7 +616,7 @@ namespace ACE.Server.Managers
                 ("world_closed", new Property<bool>(false, "enable this to startup world as a closed to players world"))
                 );
 
-        public static readonly ReadOnlyDictionary<string, Property<long>> DefaultLongProperties =
+        public static readonly ReadOnlyDictionary<string, Property<long>> DefaultLongProperties = WithMarketSettings(
             DictOf(
                 ("char_delete_time", new Property<long>(3600, "the amount of time in seconds a deleted character can be restored")),
                 ("chat_requires_account_time_seconds", new Property<long>(0, "the amount of time in seconds an account is required to have existed for for global chat privileges")),
@@ -634,7 +634,20 @@ namespace ACE.Server.Managers
                 ("rares_max_seconds_between", new Property<long>(5256000, "for rares_real_time: the maximum number of seconds a player can go before a second chance at a rare is allowed on rare eligible creature kills that did not generate a rare")),
                 ("summoning_killtask_multicredit_cap", new Property<long>(2, "if allow_summoning_killtask_multicredit is enabled, the maximum # of killtask credits a player can receive from 1 kill")),
                 ("teleport_visibility_fix", new Property<long>(0, "Fixes some possible issues with invisible players and mobs. 0 = default / disabled, 1 = players only, 2 = creatures, 3 = all world objects"))
-                );
+                ));
+
+        /// <summary>
+        /// Adds the market's settings, so /modifylong, /fetchlong and showprops know them. They're defined in MarketSettings because the Market API reads them too
+        /// </summary>
+        private static ReadOnlyDictionary<string, Property<long>> WithMarketSettings(ReadOnlyDictionary<string, Property<long>> properties)
+        {
+            var all = properties.ToDictionary(p => p.Key, p => p.Value);
+
+            foreach (var setting in MarketSettings.All)
+                all.Add(setting.Key, new Property<long>(setting.Default, setting.Description));
+
+            return new ReadOnlyDictionary<string, Property<long>>(all);
+        }
 
         public static readonly ReadOnlyDictionary<string, Property<double>> DefaultDoubleProperties =
             DictOf(

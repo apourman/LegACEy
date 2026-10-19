@@ -14,6 +14,7 @@ using log4net;
 using ACE.Common;
 using ACE.Common.Extensions;
 using ACE.Database;
+using ACE.Database.Market;
 using ACE.Database.Models.Auth;
 using ACE.Entity;
 using ACE.Entity.Enum;
@@ -4698,6 +4699,10 @@ namespace ACE.Server.Command.Handlers
                 var longVal = long.Parse(paramters[1]);
                 if (PropertyManager.ModifyLong(paramters[0], longVal))
                 {
+                    // the market reads its settings from the shard, not the property cache, so save now rather than at the next 5-minute sync
+                    if (MarketSettings.All.Any(s => s.Key == paramters[0]))
+                        PropertyManager.ResyncVariables();
+
                     CommandHandlerHelper.WriteOutputInfo(session, "Long property successfully updated!");
                     PlayerManager.BroadcastToAuditChannel(session?.Player, $"Successfully changed server long property {paramters[0]} to {longVal}");
                 }
