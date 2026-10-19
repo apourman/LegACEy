@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Applies a staged release after the game exits. net48 because every supported Windows has it; WinExe so no console opens. -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <!-- Build under this project's own bin folder even when the stub is built with the output option. The stub copies the exe
+         into its output root. -->
+    <OutDir>$(MSBuildProjectDirectory)/bin/$(Configuration)/$(TargetFramework)/</OutDir>
+  </PropertyGroup>
+</Project>
