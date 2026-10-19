@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Drawing;
 using Avalonia.Controls;
+using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
@@ -46,6 +47,33 @@ public sealed class PluginRegistryTests
         Press(panel, buttons.Single(button => button.Content as string == "Settings…"));
         Assert.Equal(new[] { "Local" }, ran);
         Assert.Equal(1, opened);
+    });
+
+    [Fact]
+    public void The_plugins_tab_lists_each_visible_plugin_s_entries_runs_the_picked_one_and_follows_new_entries() => RenderThread.Run(() =>
+    {
+        var host = new FakeHost();
+        var registry = new PluginRegistry(host, host.Log.Add);
+        var ran = new List<string>();
+        ILegACEyClient? local = null;
+        registry.Add(new FakePlugin("Paperdoll") { OnStart = client => client.AddMenuEntry("Look", 0, () => ran.Add("Look")) });
+        registry.Add(new FakePlugin("Local") { OnStart = client => { local = client; client.AddMenuEntry("Open", 0, () => ran.Add("Open")); } });
+        registry.Add(new FakePlugin("Hidden", "vault.list"));
+        var settings = new ClientSettings(null, null, Array.Empty<UiWindowChoice>());
+        using var panel = LegACEy.Client.PanelHost.AvaloniaPanel.Create(
+            () => new SettingsPanel(settings, SettingsTab.Plugins, null, registry), SettingsPanel.WindowWidth, SettingsPanel.WindowHeight);
+        panel.Tick();
+        Assert.Contains(panel.Content.GetVisualDescendants().OfType<TextBlock>(), block => block.Text == "Paperdoll");
+        Button Entry(string title) => panel.Content.GetVisualDescendants().OfType<Button>().Single(button => button.Content as string == title);
+        Assert.Equal(new[] { "Look", "Open" }, panel.Content.GetVisualDescendants().OfType<Button>().Select(button => button.Content as string));
+
+        Press(panel, Entry("Open"));
+        Assert.Equal(new[] { "Open" }, ran);
+
+        local!.AddMenuEntry("Later", 0, () => ran.Add("Later"));
+        panel.Tick();
+        Press(panel, Entry("Later"));
+        Assert.Equal(new[] { "Open", "Later" }, ran);
     });
 
     private static void Press(LegACEy.Client.PanelHost.AvaloniaPanel panel, Button button)

@@ -180,6 +180,53 @@ public sealed class DerethSlider : Control
 }
 
 /// <summary>
+/// An on or off switch in the Dereth look: a groove with a cream knob, the knob on the right and the groove lit gold when on. A click flips it
+/// and raises <see cref="Changed"/> with the new state; setting <see cref="On"/> moves the knob without raising it.
+/// </summary>
+public sealed class DerethToggle : Control
+{
+    private static readonly IBrush LitBrush = DerethPalette.Brush(DerethPalette.Gold.WithAlpha(0x59));
+
+    private bool _on;
+
+    public DerethToggle()
+    {
+        Width = 36;
+        Height = 18;
+    }
+
+    public bool On
+    {
+        get => _on;
+        set
+        {
+            _on = value;
+            InvalidateVisual();
+        }
+    }
+
+    /// <summary>The player clicked the switch, which now reads this state.</summary>
+    public event Action<bool>? Changed;
+
+    public override void Render(DrawingContext context)
+    {
+        base.Render(context);
+        var groove = new Rect(0.5, 0.5, Bounds.Width - 1, Bounds.Height - 1);
+        context.DrawRectangle(_on ? LitBrush : DerethPalette.GrooveBrush, new Pen(DerethPalette.GrooveEdgeBrush), groove, 9, 9);
+        var knobX = _on ? Bounds.Width - Bounds.Height / 2 : Bounds.Height / 2;
+        context.DrawEllipse(DerethPalette.CreamBrush, new Pen(DerethPalette.GoldBrush, 1), new Point(knobX, Bounds.Height / 2), Bounds.Height / 2 - 3, Bounds.Height / 2 - 3);
+    }
+
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        base.OnPointerPressed(e);
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
+        On = !On;
+        Changed?.Invoke(On);
+    }
+}
+
+/// <summary>
 /// A small tag that says whether a setting applies to every character on the install or only to the one playing. The tag for this character
 /// is edged in green.
 /// </summary>
