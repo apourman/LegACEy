@@ -149,6 +149,39 @@ public sealed class SettingsPanelTests
         return panel;
     }
 
+    [Fact]
+    public void The_world_tab_s_switch_and_strength_call_the_water_change() => RenderThread.Run(() =>
+    {
+        var calls = new List<(bool On, int Percent)>();
+        var settings = new ClientSettings(null, null, Array.Empty<UiWindowChoice>(), new WaterOption(true, 100, (on, percent) => calls.Add((on, percent))));
+        using var panel = AvaloniaPanel.Create(() => new SettingsPanel(settings, SettingsTab.World), SettingsPanel.WindowWidth, SettingsPanel.WindowHeight);
+        panel.Tick();
+
+        PressCentre(panel, panel.Content.GetVisualDescendants().OfType<DerethToggle>().Single());
+        Assert.Equal(new[] { (false, 100) }, calls);
+
+        // Three quarters along the track is 150 in steps of 5; the change comes on release.
+        var slider = panel.Content.GetVisualDescendants().OfType<DerethSlider>().Single();
+        var point = Avalonia.VisualExtensions.TranslatePoint(slider, new Point(slider.Bounds.Width * 0.75, slider.Bounds.Height / 2), panel.Content)!.Value;
+        panel.PointerDown(point.X, point.Y);
+        panel.PointerUp(point.X, point.Y);
+        Assert.Equal(new[] { (false, 100), (true, 150) }, calls);
+    });
+
+    [Fact]
+    public void A_water_change_moves_an_open_World_tab() => RenderThread.Run(() =>
+    {
+        var settings = new ClientSettings(null, null, Array.Empty<UiWindowChoice>(), new WaterOption(true, 100, (_, _) => { }));
+        using var panel = AvaloniaPanel.Create(() => new SettingsPanel(settings, SettingsTab.World), SettingsPanel.WindowWidth, SettingsPanel.WindowHeight);
+        panel.Tick();
+
+        settings.Water = new WaterOption(false, 150, (_, _) => { });
+
+        Assert.False(panel.Content.GetVisualDescendants().OfType<DerethToggle>().Single().On);
+        Assert.Equal(150, panel.Content.GetVisualDescendants().OfType<DerethSlider>().Single().Value);
+        Assert.Equal("150%", TextOf(panel, "150%").Text);
+    });
+
     private static Point CentreOf(AvaloniaPanel panel, Control control) =>
         Avalonia.VisualExtensions.TranslatePoint(control, new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), panel.Content)!.Value;
 
