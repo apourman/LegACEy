@@ -867,27 +867,27 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private UiWindowChoice Choice(string title, string file, Action recheck)
     {
         var path = IOPath.Combine(PluginDirectory, file);
-        return new UiWindowChoice(title, () => SwitchCustom(file), custom =>
+        return new UiWindowChoice(title, () => SwitchCustom(path), custom =>
         {
             try
             {
                 if (custom) File.Delete(path);
                 else File.WriteAllText(path, string.Empty);
-                _switchHeld.Remove(file);
+                _switchHeld.Remove(path);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
                 // The card keeps the chosen state for this session, so it doesn't snap back to the file's.
                 Log($"Could not switch the {title} window: {exception.Message}");
-                _switchHeld[file] = custom;
+                _switchHeld[path] = custom;
             }
             recheck();
         });
     }
 
     /// <summary>Whether a switch's window is on LegACEy's: the file's absence, unless a write this session could not change it.</summary>
-    private bool SwitchCustom(string file) =>
-        _switchHeld.TryGetValue(file, out var held) ? held : !File.Exists(IOPath.Combine(PluginDirectory, file));
+    private bool SwitchCustom(string path) =>
+        _switchHeld.TryGetValue(path, out var held) ? held : !File.Exists(path);
 
     /// <summary>
     /// The UI size set from the Settings window, kept within the bounds and snapped to the step: saved now, and applied on the next frame,
@@ -948,15 +948,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Forgets this character's saved window places and keeps its options. A failure is logged, and the windows reopen where they were; the
-    /// rebuild goes on either way.
+    /// Forgets this character's saved window places and keeps its options. A failed save is logged; the places are still forgotten for this
+    /// session, so the windows reopen at their first-open places. The rebuild goes on either way.
     /// </summary>
     private void ForgetWindowPlaces()
     {
         try
         {
             if (_positionStore?.ForgetPlaces(SessionServer(), SessionCharacter(), PositionOptionKeys) == false)
-                Log("Could not forget the saved window positions; the windows reopen where they were.");
+                Log("Could not save the reset window positions; they are forgotten for this session only.");
         }
         catch (Exception exception) { Log($"Could not forget the saved window positions: {exception.Message}"); }
     }
@@ -2596,7 +2596,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (now - lastCheck >= TimeSpan.FromSeconds(1))
         {
             lastCheck = now;
-            on = SwitchCustom(file);
+            on = SwitchCustom(IOPath.Combine(PluginDirectory, file));
         }
         return on;
     }
