@@ -131,6 +131,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // Beside the DLL: while this file exists, retail's radar stays retail's. Without it the Dereth radar replaces it.
     private const string RetailRadarSwitchFile = "retail-radar-native";
 
+    // The /water setting, one for every character: percent and on (1) or off (0).
+    private const string WaterKey = "client-water";
+    private const int SystemChat = 5;
+    private WaterChoice _water = WaterChoice.Default;
     // How big LegACEy windows show against their design size, in percent: the player's UI size from the LegACEy menu, kept for every
     // character. Drag icons keep retail's 32 pixels. An Avalonia that cannot scale panels shows them
     // at design size rather than failing every window.
@@ -326,6 +330,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _vitalsLayouts = new VitalsLayoutChoice(_settingsStore);
         if (_settingsStore.Load("", "", UiSizeKey) is { Location.X: var size and > 0 })
             _uiSize = Math.Max(SmallestUiSize, Math.Min(LargestUiSize, size));
+        if (_settingsStore.Load("", "", WaterKey) is { Location: var water })
+            _water = new WaterChoice(water.Y != 0, Math.Clamp(water.X, 0, WaterChoice.Most));
     }
 
     public void Startup()
@@ -439,16 +445,45 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     public void ItemSelected() => _inventory.MarkStale();
     public void ContainerOpened() => _inventory.MarkStale();
 
-    /// <summary>/legacey (or @legacey) opens or closes the LegACEy menu, so it can be reached without the Dereth toolbar.</summary>
+    /// <summary>
+    /// /legacey (or @legacey) opens or closes the LegACEy menu, so it can be reached without the Dereth toolbar. /water on, off or a percent
+    /// (0 to 200) sets the water effect, and /water alone says how it is set; the line is eaten either way, so the server never sees it.
+    /// </summary>
     public bool CommandLine(string text)
     {
         if (_failed || !_inGame) return false;
         var command = text.Trim();
-        if (!command.Equals("/legacey", StringComparison.OrdinalIgnoreCase) && !command.Equals("@legacey", StringComparison.OrdinalIgnoreCase))
+        if (command.Equals("/legacey", StringComparison.OrdinalIgnoreCase) || command.Equals("@legacey", StringComparison.OrdinalIgnoreCase))
+        {
+            Guard(ToggleMenuWindow);
+            return true;
+        }
+        var space = command.IndexOf(' ');
+        var name = space < 0 ? command : command[..space];
+        if (!name.Equals("/water", StringComparison.OrdinalIgnoreCase) && !name.Equals("@water", StringComparison.OrdinalIgnoreCase))
             return false;
-        Guard(ToggleMenuWindow);
+        if (_water.Apply(space < 0 ? "" : command[space..]) is not { } water)
+        {
+            WaterChat("Water: /water on, /water off or /water 0 to 200 (percent; 100 is the usual look).");
+            return true;
+        }
+        if (water != _water)
+        {
+            _water = water;
+            _settingsStore.Save("", "", WaterKey, (new Point(water.Percent, water.On ? 1 : 0), null));
+            if (_worldEffects != null) _worldEffects.WaterStrength = water.Strength;
+        }
+        WaterChat(water.ToString());
         return true;
     }
+
+    // A chat line that fails only goes to the log: it is no reason to switch the UI off.
+    private static void WaterChat(string line)
+    {
+        try { Bridge.Chat(line, SystemChat); }
+        catch (Exception exception) { Log($"Could not write '{line}' to chat: {exception.Message}"); }
+    }
+
     public void InventoryChanged(uint id, uint container)
     {
         _inventory.ObjectChanged(id, container);
@@ -626,7 +661,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         GameArtImageExtension.CurrentSource = _portal;
 
         EnsurePostUiDrawHook();
-        try { _worldEffects ??= WorldEffects.Create(_device, _portal, NativeUi.ReadMemory, Log); }
+        try
+        {
+            _worldEffects ??= WorldEffects.Create(_device, _portal, NativeUi.ReadMemory, Log);
+            if (_worldEffects != null) _worldEffects.WaterStrength = _water.Strength;
+        }
         catch (Exception exception) { Log($"The selection outline and storm fog are off: {exception.Message}"); }
         Log("LegACEy UI ready.");
         WarmUpDerethTheme();

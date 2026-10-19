@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Globalization;
 using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
@@ -56,10 +57,13 @@ internal sealed unsafe class Water : IDisposable
     /// <summary>The player's cell id; an indoor cell (low word 0x100 and up, including dungeons) has no water drawn.</summary>
     public uint PlayerCell { get; set; }
 
+    /// <summary>How strong the effect is (<see cref="WaterChoice.Strength"/>): 0 leaves retail's water, 1 is the look as designed, 2 twice it.</summary>
+    public float Strength { get; set; } = 1;
+
     /// <summary>Draws the water after retail's world, with the camera the storm fog measured.</summary>
     public void Draw()
     {
-        if (PlayerCell == 0 || (PlayerCell & 0xFFFF) >= 0x100 || _camera.Eye is not { } eye) return;
+        if (Strength <= 0 || PlayerCell == 0 || (PlayerCell & 0xFFFF) >= 0x100 || _camera.Eye is not { } eye) return;
         Follow((int)(PlayerCell >> 24), (int)((PlayerCell >> 16) & 0xFF));
 
         // Texture coordinates from the player's landblock corner, so they stay small; the scroll wraps, as the texture repeats.
@@ -76,7 +80,7 @@ internal sealed unsafe class Water : IDisposable
                 // A triangle is kept or dropped whole, by its first corner: cells are small next to the reach.
                 var corner = points[i].Position;
                 if (Vector2.Distance(new Vector2(corner.X, corner.Y), new Vector2(eye.X, eye.Y)) > Reach + Cell) continue;
-                for (var k = 0; k < 3; k++) _vertices[count++] = Vertex(points[i + k], eye, originX, originY, scroll);
+                for (var k = 0; k < 3; k++) _vertices[count++] = Vertex(points[i + k], eye, originX, originY, scroll, Strength);
             }
         }
         if (_logged != _centre && _loading.Count == 0)
@@ -136,7 +140,7 @@ internal sealed unsafe class Water : IDisposable
         finally { RestoreState(saved); }
     }
 
-    private static WaterVertex Vertex(WaterPoint point, Vector3 eye, float originX, float originY, Vector4 scroll)
+    private static WaterVertex Vertex(WaterPoint point, Vector3 eye, float originX, float originY, Vector4 scroll, float strength)
     {
         var p = point.Position;
         // Fresnel (Schlick's): water reflects more of the sky the lower the angle it is seen at.
@@ -144,7 +148,9 @@ internal sealed unsafe class Water : IDisposable
         var fresnel = 0.02f + 0.98f * MathF.Pow(1 - facing, 5);
         var colour = Vector3.Lerp(Shallow, Deep, point.Open) * (0.5f + 0.35f * fresnel);
         var distance = Vector2.Distance(new Vector2(p.X, p.Y), new Vector2(eye.X, eye.Y));
-        var alpha = point.Wet * Math.Clamp((Reach - distance) / FadeOut, 0, 1);
+        // Below full strength the effect fades towards retail's water; above it the tint moves further from mid grey (no change).
+        var alpha = point.Wet * Math.Clamp((Reach - distance) / FadeOut, 0, 1) * Math.Min(strength, 1);
+        if (strength > 1) colour = new Vector3(0.5f) + (colour - new Vector3(0.5f)) * strength;
         uint Byte(float value) => (uint)Math.Clamp(value * 255, 0, 255);
         var argb = Byte(alpha) << 24 | Byte(colour.X) << 16 | Byte(colour.Y) << 8 | Byte(colour.Z);
         float x = p.X - originX, y = p.Y - originY;
@@ -301,6 +307,30 @@ internal sealed unsafe class Water : IDisposable
         public readonly uint Color = color;
         public readonly float U0 = u0, V0 = v0, U1 = u1, V1 = v1;
     }
+}
+
+/// <summary>
+/// The player's /water setting, kept across sessions: on or off, and the strength in percent (0 is retail's water, 100 the look as designed,
+/// 200 the most). Turning it on again keeps the strength it had.
+/// </summary>
+internal readonly record struct WaterChoice(bool On, int Percent)
+{
+    public const int Most = 200;
+    public static readonly WaterChoice Default = new(true, 100);
+
+    public float Strength => On ? Percent / 100f : 0;
+
+    /// <summary>The setting after <c>/water argument</c>: on, off or a percent (a trailing % allowed); null for anything else. No argument keeps it.</summary>
+    public WaterChoice? Apply(string argument) => argument.Trim().TrimEnd('%').ToLowerInvariant() switch
+    {
+        "" => this,
+        "on" => this with { On = true },
+        "off" => this with { On = false },
+        var number when int.TryParse(number, NumberStyles.None, CultureInfo.InvariantCulture, out var percent) && percent <= Most => new WaterChoice(true, percent),
+        _ => null
+    };
+
+    public override string ToString() => On ? $"Water: on at {Percent}%." : $"Water: off ({Percent}% when on).";
 }
 
 /// <summary>A corner of a water triangle: global game metres (z up), 1 where the corner is water (0 on the shore), and how open the water around it is.</summary>

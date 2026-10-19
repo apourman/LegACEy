@@ -132,6 +132,9 @@ internal sealed unsafe class WorldEffects : IDisposable
     /// <summary>The weather and the landblock in the middle of it, or null for clear skies.</summary>
     public (WeatherKind Kind, int X, int Y)? Weather { get => _weather.Current; set => _weather.Current = value; }
 
+    /// <summary>How strong the water is: 0 leaves retail's water, 1 is the look as designed.</summary>
+    public float WaterStrength { get => _water.Strength; set => _water.Strength = value; }
+
     /// <summary>The object to outline, zero for none. Set each frame.</summary>
     public uint Selected { get; set; }
 

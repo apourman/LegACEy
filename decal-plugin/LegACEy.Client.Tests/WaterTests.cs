@@ -50,6 +50,21 @@ public sealed class WaterTests
     }
 
     [Fact]
+    public void Water_command_turns_it_off_and_on_again_at_the_strength_it_had()
+    {
+        var half = WaterChoice.Default.Apply(" 50%");
+        Assert.Equal(new WaterChoice(true, 50), half);
+        var off = half!.Value.Apply("OFF");
+        Assert.Equal(0, off!.Value.Strength);
+        Assert.Equal(0.5f, off.Value.Apply("on")!.Value.Strength);
+        Assert.Equal(off, off.Value.Apply(""));
+        Assert.Equal(2f, off.Value.Apply("200")!.Value.Strength);
+        Assert.Null(WaterChoice.Default.Apply("201"));
+        Assert.Null(WaterChoice.Default.Apply("-5"));
+        Assert.Null(WaterChoice.Default.Apply("loud"));
+    }
+
+    [Fact]
     public void Real_dats_have_open_sea_off_the_coast_and_dry_land_at_arwic_when_a_dat_folder_is_provided()
     {
         var directory = Environment.GetEnvironmentVariable("LEGACEY_DAT_DIR");
