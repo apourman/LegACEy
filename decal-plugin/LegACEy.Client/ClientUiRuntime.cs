@@ -816,6 +816,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             Vitals = new OptionChoice<VitalsLayout>(_vitalsLayouts.Load(SessionServer(), SessionCharacter()), ChooseVitalsLayout),
             ShortcutRow2 = new OptionChoice<bool>(_row2Choice.IsOn(SessionServer(), SessionCharacter()), SetShortcutRow2),
             ChatTextSize = new OptionChoice<int>(RetailChatWindows.LoadTextSize(_positionStore!, SessionServer(), SessionCharacter()), SetChatTextSize),
+            ChatFade = new OptionChoice<int>(RetailChatWindows.LoadFadeSeconds(_positionStore!, SessionServer(), SessionCharacter()), SetChatFadeSeconds),
             Radar = new OptionChoice<RadarOptions>(LoadRadarOptions(), SetRadarOptions),
         };
         _settings = settings;
@@ -2626,6 +2627,18 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var size = RetailChatWindows.ClampTextSize(percent);
         RetailChatWindows.SaveTextSize(_positionStore!, SessionServer(), SessionCharacter(), size);
         if (_settings != null) _settings.ChatTextSize = new OptionChoice<int>(size, SetChatTextSize);
+    }
+
+    /// <summary>
+    /// The chat's fade delay set from the Settings window: applied to the open chat, or kept for the chat to open with when it is closed; either
+    /// way the value is published back to the Settings window.
+    /// </summary>
+    private void SetChatFadeSeconds(int seconds)
+    {
+        var fade = RetailChatWindows.FadeOrDefault(seconds);
+        if (_chatWindows != null) _chatWindows.SetFadeSeconds(fade);
+        else RetailChatWindows.SaveFadeSeconds(_positionStore!, SessionServer(), SessionCharacter(), fade);
+        if (_settings != null) _settings.ChatFade = new OptionChoice<int>(fade, SetChatFadeSeconds);
     }
 
     private void VitalsFailed(Exception exception) => _vitals?.Fail(exception);
