@@ -25,11 +25,17 @@ internal sealed unsafe class StormFog : IDisposable
     private const uint Grey = 0xC8CDCF;
     // Inside: fog thick enough that 1/e of the scene shows through every Thickness metres, reached FadeIn metres past the edge.
     private const float Thickness = 45, FadeIn = 30, LastSlice = 400;
+    // How far the volume takes the sky to be: past it, the ring is all fog anyway.
+    private const float SkyDistance = 1500;
     private static readonly (int X, int Y)[] Corners = { (-1, -1), (1, -1), (1, 1), (-1, 1) };
 
     private readonly IntPtr _device;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private IntPtr _noise;
+    // The volume's shaders (StormFog.hlsl); _shaded is null until first tried, false when they did not compile.
+    private IntPtr _vertexShader, _pixelShader;
+    private bool? _shaded;
+    private readonly Action<string> _log;
     // The fog the haze asked for this frame (the thickest), laid over retail's world next frame (TakeFog).
     private (uint Color, float Density)? _nextFog;
     // Frames since the player's own part was measured.
@@ -48,9 +54,10 @@ internal sealed unsafe class StormFog : IDisposable
     /// <summary>The camera's global game position (z-up), or null before the first measure.</summary>
     public Vector3? Eye => Measured && Matrix4x4.Invert(View, out var camera) ? Render(camera.Translation - Offset) : null;
 
-    public StormFog(IntPtr device)
+    public StormFog(IntPtr device, Action<string> log)
     {
         _device = device;
+        _log = log;
     }
 
     /// <summary>
@@ -93,14 +100,22 @@ internal sealed unsafe class StormFog : IDisposable
         return offset;
     }
 
-    /// <summary>Draws the storm after retail's world, then waits for the next frame's measure.</summary>
-    public void Draw()
+    /// <summary>
+    /// Draws the storm after retail's world, then waits for the next frame's measure. With the scene's depth, as a volume of fog (one pass,
+    /// no edges where it meets the ground); without it, in walls and slices.
+    /// </summary>
+    public void Draw(SceneDepth depth)
     {
         // A frame with nothing measured (no part drawn yet) keeps the last measure, so the fog does not blink out for a frame.
         if (!Measured) return;
         Calibrated = FromPlayer = false;
         _sincePlayer++;
         if (Zone is not { } zone) return;
+        if (depth.Texture != IntPtr.Zero && (_shaded ??= MakeShaders()) == true && Eye is { } camera)
+        {
+            depth.Reading(() => DrawVolume(depth.Texture, new Vector2(depth.Width, depth.Height), zone, camera));
+            return;
+        }
         if (_noise == IntPtr.Zero) _noise = MakeNoise();
         var saved = SaveState(_device);
         try
@@ -155,6 +170,78 @@ internal sealed unsafe class StormFog : IDisposable
             if (strength > 0) DrawHaze(Grey, Thickness, strength);
         }
         finally { RestoreState(saved); }
+    }
+
+    /// <summary>The fog as a volume: each pixel fogged by the metres of ring between it and the camera, from the scene's depth (StormFog.hlsl).</summary>
+    private void DrawVolume(IntPtr depth, Vector2 size, (int X, int Y) zone, Vector3 eye)
+    {
+        Matrix4x4.Invert(Matrix4x4.CreateTranslation(Offset) * View * Projection, out var inverse);
+        var screen = Viewport(_device);
+        var centre = Centre(zone);
+        var saved = SaveState(_device);
+        try
+        {
+            UseShaders(_device, _vertexShader, _pixelShader, FvfXyz);
+            SetPixelConstants(_device, 0, System.Runtime.InteropServices.MemoryMarshal.Cast<Matrix4x4, Vector4>(new ReadOnlySpan<Matrix4x4>(ref inverse)));
+            SetPixelConstants(_device, 4, new[]
+            {
+                new Vector4(Render(eye), 0), new Vector4(centre.X, centre.Y, Inner, Outer), new Vector4(Bottom, Top, 1 / Thickness, SkyDistance),
+                new Vector4(((Grey >> 16) & 0xFF) / 255f, ((Grey >> 8) & 0xFF) / 255f, (Grey & 0xFF) / 255f, 1), new Vector4(screen.X, screen.Y, screen.Width, screen.Height), new Vector4(size, 0, 0)
+            });
+            SetTexture(_device, 0, depth);
+            SetSamplerState(_device, 0, SamplerState.MinFilter, FilterPoint);
+            SetSamplerState(_device, 0, SamplerState.MagFilter, FilterPoint);
+            SetSamplerState(_device, 0, SamplerState.MipFilter, FilterNone);
+            SetSamplerState(_device, 0, SamplerState.AddressU, AddressClamp);
+            SetSamplerState(_device, 0, SamplerState.AddressV, AddressClamp);
+            SetRenderState(_device, RenderState.ZEnable, 0);
+            SetRenderState(_device, RenderState.ZWriteEnable, 0);
+            SetRenderState(_device, RenderState.StencilEnable, 0);
+            SetRenderState(_device, RenderState.AlphaTestEnable, 0);
+            SetRenderState(_device, RenderState.ScissorTestEnable, 0);
+            SetRenderState(_device, RenderState.CullMode, CullNone);
+            SetRenderState(_device, RenderState.ColorWriteEnable, 0xF);
+            SetRenderState(_device, RenderState.AlphaBlendEnable, 1);
+            SetRenderState(_device, RenderState.SeparateAlphaBlendEnable, 0);
+            SetRenderState(_device, RenderState.BlendOp, BlendOpAdd);
+            SetRenderState(_device, RenderState.SrcBlend, BlendSrcAlpha);
+            SetRenderState(_device, RenderState.DestBlend, BlendInvSrcAlpha);
+            // The whole screen, in clip space.
+            var quad = stackalloc float[] { -1, 1, 0, 1, 1, 0, -1, -1, 0, 1, -1, 0 };
+            DrawPrimitiveUP(_device, TriangleStrip, 2, quad, 12);
+        }
+        finally
+        {
+            SetTexture(_device, 0, IntPtr.Zero);
+            RestoreState(saved);
+        }
+    }
+
+    /// <summary>Compiles StormFog.hlsl; false, with the reason logged, when it does not, and the walls and slices are drawn instead.</summary>
+    private bool MakeShaders()
+    {
+        try
+        {
+            using var stream = typeof(StormFog).Assembly.GetManifestResourceStream("StormFog.hlsl")!;
+            var source = new System.IO.StreamReader(stream).ReadToEnd();
+            _vertexShader = CompileShader(_device, source, "Vs", "vs_3_0");
+            _pixelShader = CompileShader(_device, source, "Fog", "ps_3_0");
+            _log("Storm fog: drawn as a volume.");
+            return true;
+        }
+        catch (Exception exception)
+        {
+            ReleaseShaders();
+            _log($"Storm fog: drawn in walls and slices, as its shaders did not compile: {exception.Message}");
+            return false;
+        }
+    }
+
+    private void ReleaseShaders()
+    {
+        Release(_vertexShader);
+        Release(_pixelShader);
+        _vertexShader = _pixelShader = IntPtr.Zero;
     }
 
     /// <summary>Retail's camera and game-space world, depth-tested against its scene but not writing depth, blended by alpha.</summary>
@@ -281,6 +368,7 @@ internal sealed unsafe class StormFog : IDisposable
     {
         Release(_noise);
         _noise = IntPtr.Zero;
+        ReleaseShaders();
     }
 
     private readonly struct FogVertex(Vector3 position, uint color, float u, float v)
