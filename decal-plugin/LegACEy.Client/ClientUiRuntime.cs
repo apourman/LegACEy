@@ -142,7 +142,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _uiSizeChanged;
     private double WindowScale => AvaloniaPanel.CanScale ? _uiSize / 100.0 : 1;
 
-    private const string MenuTitle = "LegACEy";
+    // The release build stamps the client with the plugin version, so the menu shows which release is installed.
+    private static readonly string MenuTitle = $"LegACEy {typeof(ClientUiRuntime).Assembly.GetName().Version?.ToString(3)}";
     private const string MenuWindowId = "plugin-menu";
     private const string TestFailureFile = "fail-post-ui-draw";
     // The stub's folder, which the bridge sets before the client starts: the log, settings and Plugins\ live there.
