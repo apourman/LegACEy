@@ -28,7 +28,7 @@ internal sealed unsafe class Water : IDisposable
     private const float Lift = 0.12f;        // metres above retail's ground, so it is not lost to depth fighting
     private const float Reach = 300, FadeOut = 80;
     private const int WaveSize = 128;
-    private const float TileA = 17, TileB = 7.5f; // metres per repeat of each wave layer
+    private const float TileA = 40, TileB = 17; // metres per repeat of each wave layer
     private const float Cell = 24;
     private static readonly Vector3 Deep = new(0.62f, 0.85f, 1.00f), Shallow = new(0.80f, 1.00f, 0.92f);
     // Towards the sun, in render space (x east, y up, z north): south-east, 35° up.

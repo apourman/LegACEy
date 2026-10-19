@@ -32,7 +32,7 @@ float4 Sun : register(c1);      // xyz: towards the sun; w: how far past the des
 float4 Deep : register(c2);
 float4 Shallow : register(c3);
 float4 Time : register(c4);     // x: seconds
-static const float Bump = 0.55;
+static const float Bump = 0.9;
 
 float3 Normal(float4 waves, out float height)
 {
