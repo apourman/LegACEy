@@ -499,6 +499,17 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _tabEnd.Child = WithTextSize(add);
     }
 
+    /// <summary>How long the window is left alone before it fades, in seconds; null keeps it awake. A change applies on the next frame.</summary>
+    public double? IdleAfterSeconds
+    {
+        get => _fade.IdleAfterSeconds;
+        set
+        {
+            _fade.IdleAfterSeconds = value;
+            _linesSettled = false;
+        }
+    }
+
     /// <summary>The text size the window's content is drawn at, 1 for its design size.</summary>
     public double TextScale
     {

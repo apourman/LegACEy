@@ -75,12 +75,14 @@ public sealed class SettingsPanelTests
         {
             ShortcutRow2 = new OptionChoice<bool>(true, value => changes.Add(value)),
             ChatTextSize = new OptionChoice<int>(120, value => changes.Add(value)),
+            ChatFade = new OptionChoice<int>(15, value => changes.Add(value)),
             Vitals = new OptionChoice<VitalsLayout>(VitalsLayout.Stacked, value => changes.Add(value)),
         };
         using (var panel = Tab(settings))
         {
             PressCentre(panel, panel.Content.GetVisualDescendants().OfType<DerethToggle>().Single());
             PressCentre(panel, panel.Content.GetVisualDescendants().OfType<Button>().Single(button => button.Content as string == "+"));
+            PressCentre(panel, TextOf(panel, "Never"));
             PressCentre(panel, TextOf(panel, "Side by side"));
         }
 
@@ -100,7 +102,7 @@ public sealed class SettingsPanelTests
 
         Assert.Equal(new object[]
         {
-            false, 130, VitalsLayout.SideBySide,
+            false, 130, 0, VitalsLayout.SideBySide,
             new RadarOptions(Ground: false), new RadarOptions(NorthUp: true), new RadarOptions(Rings: true), new RadarOptions(Zoom: 150),
         }, changes);
     });
