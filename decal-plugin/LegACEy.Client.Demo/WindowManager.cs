@@ -161,6 +161,12 @@ public interface IWindowPositionStore
 {
     WindowPlacement? Load(string server, string character, string windowId);
     void Save(string server, string character, string windowId, WindowPlacement placement);
+
+    /// <summary>
+    /// Forgets every window place this server and character saved, except the keys in <paramref name="keep"/>: the per-character options
+    /// this store also holds. Other characters' rows stay.
+    /// </summary>
+    void ForgetPlaces(string server, string character, IEnumerable<string> keep);
 }
 
 /// <summary>In-memory position store for tests.</summary>
@@ -173,6 +179,14 @@ public sealed class MemoryWindowPositionStore : IWindowPositionStore
 
     public void Save(string server, string character, string windowId, WindowPlacement placement) =>
         _positions[Key(server, character, windowId)] = placement;
+
+    public void ForgetPlaces(string server, string character, IEnumerable<string> keep)
+    {
+        var owned = server + "\u001f" + character + "\u001f";
+        var kept = new HashSet<string>(keep.Select(id => Key(server, character, id)), StringComparer.Ordinal);
+        foreach (var key in _positions.Keys.Where(key => key.StartsWith(owned, StringComparison.Ordinal) && !kept.Contains(key)).ToList())
+            _positions.Remove(key);
+    }
 
     public WindowPlacement? Get(string server, string character, string windowId) => Load(server, character, windowId);
 
@@ -208,15 +222,33 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
         {
             var rows = Rows();
             rows[Key(server, character, windowId)] = placement;
-            try
-            {
-                var directory = Path.GetDirectoryName(_path);
-                if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-                File.WriteAllLines(_path, rows.Select(pair => Format(pair.Key, pair.Value)));
-            }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
+            WriteRows(rows);
         }
+    }
+
+    public void ForgetPlaces(string server, string character, IEnumerable<string> keep)
+    {
+        lock (_sync)
+        {
+            var owned = Encode(server) + "|" + Encode(character) + "|";
+            var kept = new HashSet<string>(keep.Select(id => Key(server, character, id)), StringComparer.Ordinal);
+            var rows = Rows();
+            foreach (var key in rows.Keys.Where(key => key.StartsWith(owned, StringComparison.Ordinal) && !kept.Contains(key)).ToList())
+                rows.Remove(key);
+            WriteRows(rows);
+        }
+    }
+
+    private void WriteRows(Dictionary<string, WindowPlacement> rows)
+    {
+        try
+        {
+            var directory = Path.GetDirectoryName(_path);
+            if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+            File.WriteAllLines(_path, rows.Select(pair => Format(pair.Key, pair.Value)));
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 
     private Dictionary<string, WindowPlacement> Rows()

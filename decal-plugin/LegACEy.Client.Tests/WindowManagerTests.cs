@@ -427,6 +427,32 @@ public sealed class WindowManagerTests
         }
     }
 
+    [Fact]
+    public void Forgetting_places_drops_one_characters_window_rows_and_keeps_its_options_and_every_other_row()
+    {
+        var path = TempPath();
+        try
+        {
+            var store = new FileWindowPositionStore(path);
+            store.Save("server-a", "character-a", "vault", (new Point(10, 20), new Size(300, 400)));
+            store.Save("server-a", "character-a", "dereth-chat-text-size", (new Point(140, 0), null));
+            store.Save("server-a", "character-b", "vault", (new Point(30, 40), null));
+            store.Save("server-b", "character-a", "vault", (new Point(50, 60), null));
+
+            new FileWindowPositionStore(path).ForgetPlaces("server-a", "character-a", new HashSet<string> { "dereth-chat-text-size" });
+
+            var reloaded = new FileWindowPositionStore(path);
+            Assert.Null(reloaded.Load("server-a", "character-a", "vault"));
+            Assert.Equal(140, reloaded.Load("server-a", "character-a", "dereth-chat-text-size")!.Value.Location.X);
+            Assert.Equal(new Point(30, 40), reloaded.Load("server-a", "character-b", "vault")!.Value.Location);
+            Assert.Equal(new Point(50, 60), reloaded.Load("server-b", "character-a", "vault")!.Value.Location);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
     private static WindowDefinition Resizable(string id) => new(id, "Vault", 344, 606, resizing: VaultSizing);
 
     private static string TempPath() => Path.Combine(Path.GetTempPath(), "legacey-window-tests-" + Guid.NewGuid().ToString("N") + ".txt");

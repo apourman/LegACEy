@@ -37,7 +37,7 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     public const int DesignHeight = 200;
     private const string TornIdPrefix = "dereth-chat-";
     // The text size of every chat window, in percent, kept per character in the position store.
-    private const string TextSizeKey = "dereth-chat-text-size";
+    public const string TextSizeKey = "dereth-chat-text-size";
     public const int DefaultTextSize = 120;
     public const int SmallestTextSize = 80, LargestTextSize = 200, TextSizeStep = 10;
     private int _textSize = DefaultTextSize;

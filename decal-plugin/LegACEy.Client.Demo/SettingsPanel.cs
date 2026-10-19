@@ -89,6 +89,9 @@ public sealed class ClientSettings
     /// <summary>The radar's options for this character. Null hides its rows.</summary>
     public OptionChoice<RadarOptions>? Radar { get => _radar; set => Moved(ref _radar, value); }
 
+    /// <summary>Puts this character's LegACEy windows back where they first opened, once the player confirms. Null hides its row.</summary>
+    public Action? ResetPositions { get; init; }
+
     /// <summary>A value moved, from the window or from elsewhere.</summary>
     public event EventHandler? Changed;
 
@@ -171,8 +174,40 @@ public sealed class SettingsPanel : UserControl
         var pane = new StackPanel { Spacing = 12 };
         if (_settings.UiSize != null) pane.Children.Add(UiSizeRow());
         if (_settings.LockUi != null) pane.Children.Add(LockRow());
+        if (_settings.ResetPositions != null) pane.Children.Add(ResetPositionsRow(_settings.ResetPositions));
         if (_settings.Update != null) pane.Children.Add(UpdateRow(_settings.Update));
         return pane;
+    }
+
+    /// <summary>
+    /// "Window positions", for this character: a button that shows an inline confirm row, Reset and Cancel, instead of a dialog. Cancel hides
+    /// it and changes nothing; Reset hides it and calls <paramref name="reset"/> once.
+    /// </summary>
+    private static Control ResetPositionsRow(Action reset)
+    {
+        var question = new TextBlock { Text = "Put every window back where it first opened?", FontFamily = DerethPalette.Body, FontSize = 12.5, Foreground = DerethPalette.TextBrush, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+        var cancel = new DerethButton { Content = "Cancel" };
+        var confirmReset = new DerethButton { Content = "Reset" };
+        var confirm = new DockPanel { IsVisible = false, Margin = new Thickness(0, 6, 0, 0) };
+        DockPanel.SetDock(cancel, Dock.Right);
+        DockPanel.SetDock(confirmReset, Dock.Right);
+        confirm.Children.Add(cancel);
+        confirm.Children.Add(confirmReset);
+        confirm.Children.Add(question);
+        cancel.Click += (_, _) => confirm.IsVisible = false;
+        confirmReset.Click += (_, _) =>
+        {
+            confirm.IsVisible = false;
+            reset();
+        };
+
+        var open = new DerethButton { Content = "Reset window positions" };
+        open.Click += (_, _) => confirm.IsVisible = true;
+        var row = new DockPanel();
+        DockPanel.SetDock(open, Dock.Right);
+        row.Children.Add(open);
+        row.Children.Add(ScopedLabel("Window positions", thisCharacter: true));
+        return new StackPanel { Children = { row, confirm } };
     }
 
     /// <summary>

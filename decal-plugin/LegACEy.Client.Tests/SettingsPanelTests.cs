@@ -222,6 +222,37 @@ public sealed class SettingsPanelTests
         Assert.True(panel.Content.GetVisualDescendants().OfType<DerethToggle>().Single().On);
     });
 
+    [Fact]
+    public void Reset_window_positions_is_tagged_for_this_character_and_calls_the_reset_only_once_confirmed() => RenderThread.Run(() =>
+    {
+        var resets = 0;
+        var settings = new ClientSettings(null, null, Array.Empty<UiWindowChoice>()) { ResetPositions = () => resets++ };
+        using var panel = AvaloniaPanel.Create(() => new SettingsPanel(settings), SettingsPanel.WindowWidth, SettingsPanel.WindowHeight);
+        panel.Tick();
+        var question = TextOf(panel, "Put every window back where it first opened?");
+        Assert.True(TextOf(panel, "This character").IsEffectivelyVisible);
+        Assert.False(question.IsEffectivelyVisible);
+
+        PressCentre(panel, ButtonNamed(panel, "Reset window positions"));
+        panel.Tick();
+        Assert.True(question.IsEffectivelyVisible);
+        Assert.Equal(0, resets);
+
+        PressCentre(panel, ButtonNamed(panel, "Cancel"));
+        panel.Tick();
+        Assert.False(question.IsEffectivelyVisible);
+        Assert.Equal(0, resets);
+
+        PressCentre(panel, ButtonNamed(panel, "Reset window positions"));
+        panel.Tick();
+        PressCentre(panel, ButtonNamed(panel, "Reset"));
+        Assert.Equal(1, resets);
+        Assert.False(question.IsEffectivelyVisible);
+    });
+
+    private static Button ButtonNamed(AvaloniaPanel panel, string text) =>
+        panel.Content.GetVisualDescendants().OfType<Button>().Single(button => button.Content as string == text);
+
     private static Point CentreOf(AvaloniaPanel panel, Control control) =>
         Avalonia.VisualExtensions.TranslatePoint(control, new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), panel.Content)!.Value;
 

@@ -142,6 +142,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const int DefaultUiSize = 85;
     private int _uiSize = DefaultUiSize;
     private bool _uiSizeChanged;
+    // Set by Reset window positions in the Settings window, applied on the next frame, outside that window's click.
+    private bool _positionsResetRequested;
     private double WindowScale => AvaloniaPanel.CanScale ? _uiSize / 100.0 : 1;
 
     // The release build stamps the client with the plugin version, so the menu shows which release is installed.
@@ -150,6 +152,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string SettingsWindowId = "dereth-settings";
     // The Settings window's last tab, kept for the install like the UI size.
     private const string SettingsTabKey = "settings-tab";
+    // The per-character options kept in the position store. Reset window positions keeps these; every other row there is a window's place.
+    private static readonly string[] PositionOptionKeys = { RetailChatWindows.TextSizeKey };
     private const string TestFailureFile = "fail-post-ui-draw";
     // The stub's folder, which the bridge sets before the client starts: the log, settings and Plugins\ live there.
     internal static string PluginDirectory { get; set; } = ClientDirectory;
@@ -788,7 +792,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             SetMenuRing(false);
             return;
         }
-        var window = new DerethWindow(MenuTitle, null, new PluginMenuPanel(_plugins!, _portal, OpenSettings));
+        var window = new DerethWindow(MenuTitle, null, new PluginMenuPanel(_plugins!, _portal, () => OpenSettings(LoadSettingsTab())));
         window.CloseRequested += (_, _) =>
         {
             _clientUi?.CloseWindow(MenuWindowId);
@@ -803,7 +807,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// Opens the Settings window on the tab the player last used. It does nothing while the window is open, and while the windows cannot open
     /// yet.
     /// </summary>
-    private void OpenSettings()
+    private void OpenSettings(SettingsTab tab)
     {
         if (_clientUi == null || !CanOpenWindows) return;
         if (_windows?.Get(SettingsWindowId) != null)
@@ -817,9 +821,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             ShortcutRow2 = new OptionChoice<bool>(_row2Choice.IsOn(SessionServer(), SessionCharacter()), SetShortcutRow2),
             ChatTextSize = new OptionChoice<int>(RetailChatWindows.LoadTextSize(_positionStore!, SessionServer(), SessionCharacter()), SetChatTextSize),
             Radar = new OptionChoice<RadarOptions>(LoadRadarOptions(), SetRadarOptions),
+            ResetPositions = () => _positionsResetRequested = true,
         };
         _settings = settings;
-        var window = new DerethWindow("Settings", null, new SettingsPanel(settings, LoadSettingsTab(), SaveSettingsTab, _plugins));
+        var window = new DerethWindow("Settings", null, new SettingsPanel(settings, tab, SaveSettingsTab, _plugins));
         window.CloseRequested += (_, _) =>
         {
             _clientUi?.CloseWindow(SettingsWindowId);
@@ -894,17 +899,39 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         _uiSizeChanged = false;
         if (!_inGame) return;
+        Log($"UI size {_uiSize}%: rebuilding the LegACEy UI.");
+        Rebuild(resetPositions: false);
+    }
+
+    /// <summary>
+    /// Puts this character's windows back at their first-open places, from Reset window positions in the Settings window: the windows rebuild
+    /// as a UI size change does, with their saved places forgotten, and the Settings window comes back on General.
+    /// </summary>
+    private void ResetPositions()
+    {
+        _positionsResetRequested = false;
+        if (!_inGame) return;
+        Log("Window positions reset: rebuilding the LegACEy UI.");
+        Rebuild(resetPositions: true);
+    }
+
+    /// <summary>
+    /// Closes every window and opens the session's again, as a relog does. With <paramref name="resetPositions"/> the saved window places are
+    /// forgotten once the windows have closed, since closing saves where they stood.
+    /// </summary>
+    private void Rebuild(bool resetPositions)
+    {
         var menuOpen = _windows?.Get(MenuWindowId) != null;
         var settingsOpen = _windows?.Get(SettingsWindowId) != null;
-        Log($"UI size {_uiSize}%: rebuilding the LegACEy UI.");
         // The chat's lines and sent text outlive the rebuild: it is the same character still playing.
         var chatHistory = _chatWindows?.History ?? _carriedChatHistory;
         Logoff();
+        if (resetPositions) _positionStore?.ForgetPlaces(SessionServer(), SessionCharacter(), PositionOptionKeys);
         _carriedChatHistory = chatHistory;
         LoginComplete();
         if (menuOpen) Guard(ToggleMenuWindow);
-        // The Settings window comes back on the tab it was on, which the tab store keeps.
-        if (settingsOpen) Guard(OpenSettings);
+        // The Settings window comes back on the tab it was on, which the tab store keeps; after a reset, on General.
+        if (settingsOpen) Guard(() => OpenSettings(resetPositions ? SettingsTab.General : LoadSettingsTab()));
     }
 
     /// <summary>
@@ -973,6 +1000,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             return;
 
         if (_uiSizeChanged) ApplyUiSize();
+        if (_positionsResetRequested) Guard(ResetPositions);
 
         Guard(() =>
         {

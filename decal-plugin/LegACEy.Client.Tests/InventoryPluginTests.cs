@@ -400,6 +400,10 @@ public sealed class InventoryPluginTests
         public void Save(string server, string character, string windowId, (Point Location, Size? Size) placement)
         {
         }
+
+        public void ForgetPlaces(string server, string character, IEnumerable<string> keep)
+        {
+        }
     }
 
     /// <summary>Records the action of every request the channel sends; nothing answers them.</summary>
