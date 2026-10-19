@@ -40,9 +40,8 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="LegACEy.Client.Tests" />
-    <!-- The water's and storm fog's shaders, compiled in game by Windows' d3dcompiler_47. -->
+    <!-- The water's shaders, compiled in game by Windows' d3dcompiler_47. -->
     <EmbeddedResource Include="Water.hlsl" LogicalName="Water.hlsl" />
-    <EmbeddedResource Include="StormFog.hlsl" LogicalName="StormFog.hlsl" />
     <PackageReference Include="Reloaded.Hooks" Version="4.3.3" />
     <ProjectReference Include="..\LegACEy.Client.PanelHost\LegACEy.Client.PanelHost.csproj" />
     <ProjectReference Include="..\LegACEy.Client.InputRouter\LegACEy.Client.InputRouter.csproj" />

@@ -60,7 +60,7 @@ internal static unsafe class D3D9
     public const uint FvfXyz = 0x002, FvfXyzRhw = 0x004, FvfNormal = 0x010, FvfDiffuse = 0x040, FvfTex1 = 0x100, FvfTex2 = 0x200, FvfTex3 = 0x300;
     public const int LineStrip = 3, TriangleList = 4, TriangleStrip = 5;
     public const int TransformView = 2, TransformProjection = 3, TransformWorld = 256;
-    private const int StateBlockAll = 1, FormatA8R8G8B8 = 21, PoolDefault = 0, PoolManaged = 1, UsageRenderTarget = 1, UsageDepthStencil = 2, ClearTarget = 1, ClearZBuffer = 2, ClearStencil = 4;
+    private const int StateBlockAll = 1, FormatA8R8G8B8 = 21, PoolDefault = 0, PoolManaged = 1, UsageRenderTarget = 1, ClearTarget = 1, ClearZBuffer = 2;
 
     public enum RenderState
     {
@@ -185,15 +185,6 @@ internal static unsafe class D3D9
         return texture;
     }
 
-    /// <summary>A depth-stencil texture in the default pool, of a driver FOURCC format (INTZ) that shaders can sample: released before a reset.</summary>
-    public static IntPtr CreateDepthTexture(IntPtr device, int width, int height, int format)
-    {
-        IntPtr texture;
-        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, int, int, int, int, int, IntPtr*, IntPtr, int>)Vt(device)[CreateTextureSlot])(
-            device, width, height, 1, UsageDepthStencil, format, PoolDefault, &texture, IntPtr.Zero), "CreateTexture");
-        return texture;
-    }
-
     /// <summary>The texture's top level, with a reference the caller releases.</summary>
     public static IntPtr SurfaceOf(IntPtr texture)
     {
@@ -252,10 +243,6 @@ internal static unsafe class D3D9
         var viewport = new Viewport9 { X = area.X, Y = area.Y, Width = area.Width, Height = area.Height, MinZ = 0, MaxZ = 1 };
         Check(((delegate* unmanaged[Stdcall]<IntPtr, Viewport9*, int>)Vt(device)[SetViewportSlot])(device, &viewport), "SetViewport");
     }
-
-    /// <summary>Clears the whole depth buffer to far and the stencil to zero.</summary>
-    public static void ClearDepthAndStencil(IntPtr device) =>
-        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, int*, int, uint, float, int, int>)Vt(device)[ClearSlot])(device, 0, null, ClearZBuffer | ClearStencil, 0, 1, 0), "Clear");
 
     /// <summary>Clears the depth buffer inside one screen rectangle.</summary>
     public static void ClearDepth(IntPtr device, Rectangle area, float z)

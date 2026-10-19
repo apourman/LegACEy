@@ -87,7 +87,6 @@ internal sealed unsafe class WorldEffects : IDisposable
     private readonly IHook<DrawIndexedFn> _drawHook;
     private readonly IHook<ResetFn> _resetHook;
     private readonly StormFog _fog;
-    private readonly SceneDepth _depth;
     private readonly Weather _weather;
     private readonly Water _water;
     private readonly CombatText _combat;
@@ -107,8 +106,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     {
         _device = device;
         _log = log;
-        _fog = new StormFog(device, log);
-        _depth = new SceneDepth(device, log);
+        _fog = new StormFog(device);
         _weather = new Weather(device, _fog);
         _water = new Water(device, _fog, portal, log);
         _combat = new CombatText(device, log);
@@ -269,7 +267,6 @@ internal sealed unsafe class WorldEffects : IDisposable
         }
         catch (Exception exception) { Fail(exception); }
         _water.FogDensity = _worldFog?.Density ?? 0;
-        if (!_failed) _depth.BeginWorld();
         _inWorld = true;
         try { _smartBoxHook.OriginalFunction(smartBox); }
         finally
@@ -290,7 +287,7 @@ internal sealed unsafe class WorldEffects : IDisposable
                 // The water first, so the fog and weather fall over it.
                 _water.PlayerCell = cell;
                 _water.Draw();
-                _fog.Draw(_depth);
+                _fog.Draw();
                 _weather.PlayerCell = cell;
                 _weather.Draw();
                 _combat.Draw(_fog);
@@ -461,11 +458,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     // Default-pool textures must be gone before the device resets, or the reset fails.
     private int OnReset(IntPtr device, IntPtr parameters)
     {
-        if (device == _device)
-        {
-            ReleaseTextures();
-            _depth.Release();
-        }
+        if (device == _device) ReleaseTextures();
         return _resetHook.OriginalFunction(device, parameters);
     }
 
@@ -483,7 +476,6 @@ internal sealed unsafe class WorldEffects : IDisposable
         _drawHook.Disable();
         _resetHook.Disable();
         ReleaseTextures();
-        _depth.Dispose();
         _fog.Dispose();
         _weather.Dispose();
         _water.Dispose();
