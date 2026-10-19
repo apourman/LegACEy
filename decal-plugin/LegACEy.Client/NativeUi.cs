@@ -174,6 +174,21 @@ internal static class NativeUi
         }
     }
 
+    /// <summary>
+    /// Sets retail's Lock UI as retail's radar lock button does: PlayerModule::SetLockUI on its CPlayerSystem's PlayerModule, then the lock-changed
+    /// message every window updates on, through UIElementManager. Callers check the Lock list (RetailHudCatalogue.Lock) first; this makes the calls
+    /// without checking it.
+    /// </summary>
+    public static unsafe void SetUiLocked(bool locked)
+    {
+        EnsureReady();
+        var playerSystem = ((delegate* unmanaged[Cdecl]<byte*>)RetailHudCatalogue.GetPlayerSystem)();
+        var manager = Marshal.ReadIntPtr(ManagerInstance);
+        if (playerSystem == null || manager == IntPtr.Zero) return;
+        ((delegate* unmanaged[Thiscall]<byte*, byte, void>)RetailHudCatalogue.SetLockUi)(playerSystem + RetailToolbarCatalogue.PlayerModuleOffset, locked ? (byte)1 : (byte)0);
+        ((delegate* unmanaged[Thiscall]<byte*, uint, int, void>)RetailHudCatalogue.BroadcastGlobalMessage)((byte*)manager, RetailHudCatalogue.UiLockChangedMessage, 0);
+    }
+
     private static void EnsureReady()
     {
         if (!_ready) throw new InvalidOperationException("The retail native UI catalogue has not passed validation.");

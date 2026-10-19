@@ -93,13 +93,7 @@ internal sealed unsafe class NativeRadarPort : IRadarPort
         set
         {
             if (!_natives.Lock || value == UiLocked) return;
-            // As retail's radar lock button: PlayerModule::SetLockUI on its CPlayerSystem's PlayerModule, then the lock-changed message every
-            // window updates on, through UIElementManager. The Lock list checks the button's calls, receivers and the manager global.
-            var playerSystem = ((delegate* unmanaged[Cdecl]<byte*>)RetailHudCatalogue.GetPlayerSystem)();
-            var manager = Global(NativeUi.Manager);
-            if (playerSystem == null || manager == null) return;
-            ((delegate* unmanaged[Thiscall]<byte*, byte, void>)RetailHudCatalogue.SetLockUi)(playerSystem + RetailToolbarCatalogue.PlayerModuleOffset, value ? (byte)1 : (byte)0);
-            ((delegate* unmanaged[Thiscall]<byte*, uint, int, void>)RetailHudCatalogue.BroadcastGlobalMessage)(manager, RetailHudCatalogue.UiLockChangedMessage, 0);
+            NativeUi.SetUiLocked(value);
         }
     }
 

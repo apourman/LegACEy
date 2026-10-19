@@ -33,6 +33,9 @@ public sealed record WaterOption(bool On, int Percent, Action<bool, int> Set)
     public const int Smallest = 0, Largest = 200, Step = 5;
 }
 
+/// <summary>Retail's Lock UI for this character: whether it is on now, whether it can be set, and the change that sets it. Greyed out when it can't.</summary>
+public sealed record LockUiChoice(bool Locked, bool Enabled, Action<bool> Set);
+
 /// <summary>The tabs of the Settings window, in the order they show.</summary>
 public enum SettingsTab { General, Windows, World, Plugins }
 
@@ -44,6 +47,7 @@ public sealed class ClientSettings
 {
     private UiSizeChoice? _uiSize;
     private WaterOption? _water;
+    private LockUiChoice? _lockUi;
     private OptionChoice<VitalsLayout>? _vitals;
     private OptionChoice<bool>? _shortcutRow2;
     private OptionChoice<int>? _chatTextSize;
@@ -53,17 +57,21 @@ public sealed class ClientSettings
     /// <param name="update">The version and the check. Null hides the row.</param>
     /// <param name="windows">The windows the Windows tab switches, one card each.</param>
     /// <param name="water">The water, for all characters. Null hides the World tab's rows.</param>
-    public ClientSettings(UiSizeChoice? uiSize, UpdateChoice? update, IReadOnlyList<UiWindowChoice> windows, WaterOption? water = null)
+    /// <param name="lockUi">Retail's Lock UI, for this character. Null hides its row.</param>
+    public ClientSettings(UiSizeChoice? uiSize, UpdateChoice? update, IReadOnlyList<UiWindowChoice> windows, WaterOption? water = null, LockUiChoice? lockUi = null)
     {
         _uiSize = uiSize;
         Update = update;
         Windows = windows ?? throw new ArgumentNullException(nameof(windows));
         _water = water;
+        _lockUi = lockUi;
     }
 
     public UiSizeChoice? UiSize { get => _uiSize; set => Moved(ref _uiSize, value); }
 
     public WaterOption? Water { get => _water; set => Moved(ref _water, value); }
+
+    public LockUiChoice? LockUi { get => _lockUi; set => Moved(ref _lockUi, value); }
 
     public UpdateChoice? Update { get; }
 
@@ -162,6 +170,7 @@ public sealed class SettingsPanel : UserControl
     {
         var pane = new StackPanel { Spacing = 12 };
         if (_settings.UiSize != null) pane.Children.Add(UiSizeRow());
+        if (_settings.LockUi != null) pane.Children.Add(LockRow());
         if (_settings.Update != null) pane.Children.Add(UpdateRow(_settings.Update));
         return pane;
     }
@@ -367,6 +376,36 @@ public sealed class SettingsPanel : UserControl
     }
 
     /// <summary>
+    /// A labelled switch with its scope tag. <paramref name="current"/> gives the state to show and whether the switch can be set, or null when
+    /// the setting is gone; <paramref name="commit"/> gets each state the player clicks. The switch is greyed out where it can't be set.
+    /// </summary>
+    private Control SwitchRow(string label, bool thisCharacter, Func<(bool On, bool Enabled)?> current, Action<bool> commit)
+    {
+        var toggle = new DerethToggle();
+        var row = new DockPanel();
+        void Show()
+        {
+            if (current() is not { } state) return;
+            toggle.On = state.On;
+            toggle.IsEnabled = state.Enabled;
+            row.Opacity = state.Enabled ? 1 : 0.5;
+        }
+        toggle.Changed += commit;
+        _redraws.Add(Show);
+        Show();
+
+        DockPanel.SetDock(toggle, Dock.Right);
+        row.Children.Add(toggle);
+        row.Children.Add(ScopedLabel(label, thisCharacter));
+        return row;
+    }
+
+    /// <summary>Lock UI, for this character: retail's own lock, shown as retail reads it and set as retail's radar sets it.</summary>
+    private Control LockRow() => SwitchRow("Lock UI", thisCharacter: true,
+        () => _settings.LockUi is { } lockUi ? (lockUi.Locked, lockUi.Enabled) : null,
+        on => _settings.LockUi?.Set(on));
+
+    /// <summary>
     /// The water, for all characters: a switch for on or off, and the strength from calm to 200%, with a readout that follows the thumb. The
     /// switch is the same setting as /water on and off; moving the strength turns the water on, as /water with a percent does.
     /// </summary>
@@ -379,26 +418,9 @@ public sealed class SettingsPanel : UserControl
         return pane;
     }
 
-    private Control WaterSwitchRow()
-    {
-        var toggle = new DerethToggle();
-        void Show()
-        {
-            if (_settings.Water is { } water) toggle.On = water.On;
-        }
-        toggle.Changed += on =>
-        {
-            if (_settings.Water is { } water) water.Set(on, water.Percent);
-        };
-        _redraws.Add(Show);
-        Show();
-
-        var row = new DockPanel();
-        DockPanel.SetDock(toggle, Dock.Right);
-        row.Children.Add(toggle);
-        row.Children.Add(ScopedLabel("Water"));
-        return row;
-    }
+    private Control WaterSwitchRow() => SwitchRow("Water", thisCharacter: false,
+        () => _settings.Water is { } water ? (water.On, true) : null,
+        on => { if (_settings.Water is { } water) water.Set(on, water.Percent); });
 
     private Control WaterStrengthRow() => SliderRow("Wave strength", WaterOption.Smallest, WaterOption.Largest, WaterOption.Step,
         () => _settings.Water?.Percent, percent => _settings.Water?.Set(true, percent));

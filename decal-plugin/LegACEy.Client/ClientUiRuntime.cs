@@ -492,6 +492,43 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private WaterOption WaterOptionFor(WaterChoice water) => new(water.On, water.Percent,
         (on, percent) => SetWater(new WaterChoice(on, Math.Clamp(percent, 0, WaterChoice.Most))));
 
+    /// <summary>
+    /// Retail's Lock UI for the Settings window's switch. It is greyed out when the lock's natives did not check, and it is read as retail
+    /// reads it.
+    /// </summary>
+    private LockUiChoice LockUiOption()
+    {
+        var available = LockAvailable;
+        return new LockUiChoice(available && NativeUi.IsUiLocked, available, SetUiLock);
+    }
+
+    /// <summary>Retail's Lock UI is set only once the window can read it and the Lock list has checked its calls.</summary>
+    private bool LockAvailable => NativeUi.Ready && HudNatives().Lock;
+
+    /// <summary>
+    /// Sets retail's Lock UI from the Settings window, as the radar's lock button does, and shows the state retail now reads, so a refused
+    /// change does not leave the switch wrong.
+    /// </summary>
+    private void SetUiLock(bool locked)
+    {
+        if (!LockAvailable) return;
+        NativeUi.SetUiLocked(locked);
+        ShowLockUi();
+    }
+
+    /// <summary>Shows retail's Lock UI as it reads now on the open switch, which redraws the panel.</summary>
+    private void ShowLockUi()
+    {
+        if (_settings != null && _settings.LockUi is { } option) _settings.LockUi = option with { Locked = NativeUi.IsUiLocked };
+    }
+
+    /// <summary>While Settings is open, retail's Lock UI can change from its own options or the radar's button, so the switch follows it.</summary>
+    private void TickSettingsLock()
+    {
+        if (_settings?.LockUi is not { Enabled: true } option) return;
+        if (NativeUi.IsUiLocked != option.Locked) ShowLockUi();
+    }
+
     // A chat line that fails only goes to the log: it is no reason to switch the UI off.
     private static void WaterChat(string line)
     {
@@ -774,7 +811,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _windows.BringToFront(SettingsWindowId);
             return;
         }
-        var settings = new ClientSettings(AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, SetUiSize) : null, UpdateCheck(), WindowChoices(), WaterOptionFor(_water))
+        var settings = new ClientSettings(AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, SetUiSize) : null, UpdateCheck(), WindowChoices(), WaterOptionFor(_water), LockUiOption())
         {
             Vitals = new OptionChoice<VitalsLayout>(_vitalsLayouts.Load(SessionServer(), SessionCharacter()), ChooseVitalsLayout),
             ShortcutRow2 = new OptionChoice<bool>(_row2Choice.IsOn(SessionServer(), SessionCharacter()), SetShortcutRow2),
@@ -981,6 +1018,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             }
 
             TickRetailPanels();
+            TickSettingsLock();
             UpdateRetailDrag();
             if (_itemDragActive)
                 _retailDrag?.UpdateDropIndicator();
