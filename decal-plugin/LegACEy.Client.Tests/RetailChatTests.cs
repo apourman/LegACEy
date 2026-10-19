@@ -789,7 +789,7 @@ public sealed class RetailChatTests
         panel.Tick();
         window.Refresh();
         // Left alone, it shows whole until it goes idle.
-        clock.Advance(RetailChatFade.IdleAfterSeconds);
+        clock.Advance(RetailChatFade.DefaultIdleAfterSeconds);
         for (var n = 1; n <= 30; n++) port.Say(Line(RetailChatKind.System, $"line {n:D2} of the log", at: clock.Now));
         panel.Tick();
         window.Refresh();
@@ -819,7 +819,7 @@ public sealed class RetailChatTests
         using var panel = Open(port, out var window, clock: () => clock.Now);
         panel.Tick();
         window.Refresh();
-        clock.Advance(RetailChatFade.IdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
+        clock.Advance(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
         window.Refresh();
         Assert.Equal(0.0, Seen(TabView(window, "All")));
 
@@ -828,7 +828,7 @@ public sealed class RetailChatTests
         Assert.Equal(1.0, Seen(TabView(window, "All")));
         panel.PointerLeave();
         window.Refresh();
-        clock.Advance(RetailChatFade.IdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
+        clock.Advance(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
         window.Refresh();
         Assert.Equal(0.0, Seen(TabView(window, "All")));
 
@@ -845,7 +845,7 @@ public sealed class RetailChatTests
         Assert.Equal(1.0, Seen(TabView(window, "All")));
         Click(panel, ChipText(panel, "Local"));
         window.Refresh();
-        clock.Advance(RetailChatFade.IdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
+        clock.Advance(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
         window.Refresh();
         Assert.Equal(0.0, Seen(TabView(window, "All")));
     });
@@ -858,7 +858,7 @@ public sealed class RetailChatTests
         using var panel = Open(port, out var window, clock: () => clock.Now);
         panel.Tick();
         window.Refresh();
-        clock.Advance(RetailChatFade.IdleAfterSeconds);
+        clock.Advance(RetailChatFade.DefaultIdleAfterSeconds);
         port.Say(Line(RetailChatKind.System, "first line of the log", at: clock.Now));
         clock.Advance(9);
         port.Say(Line(RetailChatKind.System, "second line of the log", at: clock.Now));
@@ -883,9 +883,71 @@ public sealed class RetailChatTests
         Assert.Equal(1.0, Seen(TabView(window, "All")));
 
         window.Refresh();
-        clock.Advance(RetailChatFade.IdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
+        clock.Advance(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
         window.Refresh();
         Assert.Equal(0.0, Seen(TabView(window, "All")));
+    });
+
+    [Fact]
+    public void A_window_fades_once_it_has_been_left_alone_for_its_chosen_delay_of_10_seconds() => RenderThread.Run(() =>
+    {
+        const int seconds = 10;
+        var clock = new TestClock();
+        var port = new FakeChatPort();
+        using var panel = Open(port, out var window, clock: () => clock.Now);
+        window.IdleAfterSeconds = seconds;
+        panel.Tick();
+        window.Refresh();
+        clock.Advance(seconds - 1);
+        window.Refresh();
+        Assert.Equal(1.0, Seen(TabView(window, "All")));
+
+        clock.Advance(1 + RetailChatFade.ChromeFadeSeconds);
+        window.Refresh();
+        Assert.Equal(0.0, Seen(TabView(window, "All")));
+    });
+
+    [Fact]
+    public void Changing_the_delay_while_idle_applies_the_rule_at_once_so_lines_faded_under_the_old_delay_fade_again_from_the_new_moment() => RenderThread.Run(() =>
+    {
+        var clock = new TestClock();
+        var port = new FakeChatPort();
+        using var panel = Open(port, out var window, clock: () => clock.Now);
+        window.IdleAfterSeconds = 10;
+        port.Say(Line(RetailChatKind.System, "an old line of the log", at: clock.Now));
+        panel.Tick();
+        window.Refresh();
+        clock.Advance(10.5);
+        window.Refresh();
+        Assert.Equal(0.0, Seen(LineOf(panel, "an old line")));
+
+        // Still idle, the delay goes to 15: the window's idle moment is now 15 seconds in, 0.1 s before this frame, so the line and the
+        // chrome fade from it again (0.75 and 0.6), not stay gone as they were under 10.
+        window.IdleAfterSeconds = 15;
+        clock.Advance(4.6);
+        window.Refresh();
+        Assert.Equal(0.75, Seen(LineOf(panel, "an old line")), 2);
+        Assert.Equal(0.6, Seen(TabView(window, "All")), 2);
+    });
+
+    [Fact]
+    public void Never_keeps_a_window_fully_shown_however_long_it_is_left_alone_and_a_change_to_it_shows_an_idle_window_at_once() => RenderThread.Run(() =>
+    {
+        var clock = new TestClock();
+        var port = new FakeChatPort();
+        using var panel = Open(port, out var window, clock: () => clock.Now);
+        panel.Tick();
+        window.Refresh();
+        clock.Advance(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds);
+        window.Refresh();
+        Assert.Equal(0.0, Seen(TabView(window, "All")));
+
+        window.IdleAfterSeconds = null;
+        window.Refresh();
+        Assert.Equal(1.0, Seen(TabView(window, "All")));
+        clock.Advance(3600);
+        window.Refresh();
+        Assert.Equal(1.0, Seen(TabView(window, "All")));
     });
 
     // ---- helpers ----

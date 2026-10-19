@@ -11,23 +11,25 @@ namespace LegACEy.Client.Demo;
 /// </summary>
 public sealed class RetailChatFade
 {
-    /// <summary>How long the window is left alone before it is idle.</summary>
-    // ponytail: one fixed delay for every player; make it a setting (fade on or off, the delay) when the chat gets its options.
-    public const double IdleAfterSeconds = 15;
+    /// <summary>How long a window is left alone before it is idle, in seconds, when the player has chosen no delay.</summary>
+    public const int DefaultIdleAfterSeconds = 15;
     /// <summary>How long the frame, tabs, input and scrollbar take to fade out once the window is idle.</summary>
     public const double ChromeFadeSeconds = 0.25;
     private const double LineStaySeconds = 10;
     private const double LineFadeSeconds = 0.4;
 
-    // When the window goes idle, once it is left alone; null while it is awake.
-    private DateTime? _idleFrom;
+    // When the window was first left alone, since its last awake moment; null while it is awake.
+    private DateTime? _quietSince;
+
+    /// <summary>How long the window is left alone before it is idle, in seconds; null keeps it awake. A change applies at once.</summary>
+    public int? IdleAfterSeconds { get; set; } = DefaultIdleAfterSeconds;
 
     /// <summary>Applies the idle rule at <paramref name="now"/>; call it before reading the opacities.</summary>
     public void Update(bool awake, DateTime now)
     {
-        if (awake) _idleFrom = null;
-        else _idleFrom ??= now.AddSeconds(IdleAfterSeconds);
-        Idle = _idleFrom <= now;
+        if (awake) _quietSince = null;
+        else _quietSince ??= now;
+        Idle = IdleFrom <= now;
     }
 
     /// <summary>Whether the window is idle, as of the last <see cref="Update"/>.</summary>
@@ -35,7 +37,7 @@ public sealed class RetailChatFade
 
     /// <summary>The opacity of the frame, tabs, input and scrollbar at <paramref name="now"/>.</summary>
     public double ChromeOpacity(DateTime now) =>
-        _idleFrom is { } since ? Clamp01(1 - (now - since).TotalSeconds / ChromeFadeSeconds) : 1;
+        IdleFrom is { } since ? Clamp01(1 - (now - since).TotalSeconds / ChromeFadeSeconds) : 1;
 
     /// <summary>
     /// The opacity of a line that arrived at <paramref name="arrived"/>, at <paramref name="now"/>: full while awake. When idle, the line
@@ -43,11 +45,14 @@ public sealed class RetailChatFade
     /// </summary>
     public double LineOpacity(DateTime arrived, DateTime now)
     {
-        if (_idleFrom is not { } since) return 1;
+        if (IdleFrom is not { } since) return 1;
         var fadeFrom = arrived.AddSeconds(LineStaySeconds);
         if (since > fadeFrom) fadeFrom = since;
         return Clamp01(1 - (now - fadeFrom).TotalSeconds / LineFadeSeconds);
     }
+
+    /// <summary>When the window goes idle; null while it is awake or never fades.</summary>
+    private DateTime? IdleFrom => _quietSince is { } quiet && IdleAfterSeconds is { } seconds ? quiet.AddSeconds(seconds) : null;
 
     private static double Clamp01(double value) => Math.Min(1, Math.Max(0, value));
 }

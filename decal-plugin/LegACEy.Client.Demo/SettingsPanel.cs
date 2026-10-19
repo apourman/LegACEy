@@ -51,6 +51,7 @@ public sealed class ClientSettings
     private OptionChoice<VitalsLayout>? _vitals;
     private OptionChoice<bool>? _shortcutRow2;
     private OptionChoice<int>? _chatTextSize;
+    private OptionChoice<int>? _chatFade;
     private OptionChoice<RadarOptions>? _radar;
 
     /// <param name="uiSize">The UI size, for all characters. Null where the UI cannot scale, which hides the row.</param>
@@ -85,6 +86,9 @@ public sealed class ClientSettings
 
     /// <summary>The chat's text size in percent, for this character. Null hides its row.</summary>
     public OptionChoice<int>? ChatTextSize { get => _chatTextSize; set => Moved(ref _chatTextSize, value); }
+
+    /// <summary>The chat's idle fade delay in seconds, for this character; <see cref="RetailChatWindows.NeverFades"/> (0) never fades. Null hides its row.</summary>
+    public OptionChoice<int>? ChatFade { get => _chatFade; set => Moved(ref _chatFade, value); }
 
     /// <summary>The radar's options for this character. Null hides its rows.</summary>
     public OptionChoice<RadarOptions>? Radar { get => _radar; set => Moved(ref _radar, value); }
@@ -314,6 +318,7 @@ public sealed class SettingsPanel : UserControl
         var rows = new List<Control>();
         if (window == "Toolbar" && _settings.ShortcutRow2 != null) rows.Add(ShortcutRow2Row());
         if (window == "Chat" && _settings.ChatTextSize != null) rows.Add(ChatTextSizeRow());
+        if (window == "Chat" && _settings.ChatFade != null) rows.Add(ChatFadeRow());
         if (window == "Vitals" && _settings.Vitals != null) rows.Add(VitalsRow());
         if (window == "Radar" && _settings.Radar != null) rows.AddRange(RadarRows());
         return rows;
@@ -375,6 +380,17 @@ public sealed class SettingsPanel : UserControl
         Show();
         var stepper = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { smaller, size, larger } };
         return OptionRow("Text size", stepper);
+    }
+
+    /// <summary>How long the chat waits before it fades when left alone. Never is 0 seconds.</summary>
+    private Control ChatFadeRow()
+    {
+        var fade = new DerethSegmented(RetailChatWindows.FadeChoices.Select(seconds => seconds == RetailChatWindows.NeverFades ? "Never" : $"{seconds} s").ToArray());
+        void Show() => fade.Selected = _settings.ChatFade is { } choice ? RetailChatWindows.FadeChoices.ToList().IndexOf(choice.Value) : -1;
+        fade.Chosen += index => _settings.ChatFade?.Set(RetailChatWindows.FadeChoices[index]);
+        _redraws.Add(Show);
+        Show();
+        return OptionRow("Fade when idle", fade);
     }
 
     private IEnumerable<Control> RadarRows()
