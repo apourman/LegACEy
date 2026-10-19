@@ -307,6 +307,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private readonly Dictionary<string, Action<Exception>> _windowFailures = new(StringComparer.Ordinal);
     private PluginRegistry? _plugins;
     private bool _inGame;
+    // Kept apart from the UI, which may have failed: the plugin's own updates still check, and tell the player in chat.
+    private readonly PluginUpdates _updates = new(PluginDirectory);
+    private bool _loggedIn;
+    private bool _noticeFailLogged;
     private bool _failed;
 
     public ClientUiRuntime()
@@ -380,6 +384,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         try
         {
+            _updates.Dispose();
             _postUiDrawHook?.Dispose();
             _postUiDrawHook = null;
             _worldEffects?.Dispose();
@@ -483,6 +488,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>Enable character-specific windows once Decal has finished loading character identity.</summary>
     public void LoginComplete()
     {
+        _loggedIn = true;
+        _updates.Check();
         if (_failed || !NativeUi.Ready)
             return;
 
@@ -565,6 +572,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         Guard(() => ApplyReset(_inputRouter.Route(new NativeInputMessage(InputRouterService.WmLogoff, IntPtr.Zero, IntPtr.Zero), GetInputSurfaces())));
         Guard(() => _hovered?.Panel.PointerLeave());
         _inGame = false;
+        _loggedIn = false;
         _carriedChatHistory = null;
         // The next character reads its own toolbar place; until then the toolbar stands where retail's window is.
         _toolbarPlaceLoaded = false;
@@ -766,6 +774,20 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     public void Frame()
     {
         var timer = Stopwatch.StartNew();
+        if (_loggedIn)
+        {
+            // A failed line is tried again next frame, logged once per streak.
+            try
+            {
+                _updates.PostNotices();
+                _noticeFailLogged = false;
+            }
+            catch (Exception exception)
+            {
+                if (!_noticeFailLogged) Log($"Could not write the update notice to chat; retrying: {exception.Message}");
+                _noticeFailLogged = true;
+            }
+        }
         try { FrameCore(); }
         finally
         {
