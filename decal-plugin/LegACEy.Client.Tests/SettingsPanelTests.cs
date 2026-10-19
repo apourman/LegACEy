@@ -190,6 +190,46 @@ public sealed class SettingsPanelTests
         Assert.Equal("150%", TextOf(panel, "150%").Text);
     });
 
+    [Fact]
+    public void The_lock_switch_calls_the_lock_change_with_the_new_state() => RenderThread.Run(() =>
+    {
+        var calls = new List<bool>();
+        var settings = new ClientSettings(null, null, Array.Empty<UiWindowChoice>(), null, new LockUiChoice(false, true, calls.Add));
+        using var panel = AvaloniaPanel.Create(() => new SettingsPanel(settings), SettingsPanel.WindowWidth, SettingsPanel.WindowHeight);
+        panel.Tick();
+
+        Assert.Equal("This character", TextOf(panel, "This character").Text);
+        PressCentre(panel, panel.Content.GetVisualDescendants().OfType<DerethToggle>().Single());
+
+        Assert.Equal(new[] { true }, calls);
+    });
+
+    [Fact]
+    public void A_disabled_lock_switch_makes_no_change() => RenderThread.Run(() =>
+    {
+        var calls = new List<bool>();
+        var settings = new ClientSettings(null, null, Array.Empty<UiWindowChoice>(), null, new LockUiChoice(false, false, calls.Add));
+        using var panel = AvaloniaPanel.Create(() => new SettingsPanel(settings), SettingsPanel.WindowWidth, SettingsPanel.WindowHeight);
+        panel.Tick();
+
+        PressCentre(panel, panel.Content.GetVisualDescendants().OfType<DerethToggle>().Single());
+
+        Assert.Empty(calls);
+        Assert.False(panel.Content.GetVisualDescendants().OfType<DerethToggle>().Single().On);
+    });
+
+    [Fact]
+    public void A_lock_change_from_outside_moves_the_open_lock_switch() => RenderThread.Run(() =>
+    {
+        var settings = new ClientSettings(null, null, Array.Empty<UiWindowChoice>(), null, new LockUiChoice(false, true, _ => { }));
+        using var panel = AvaloniaPanel.Create(() => new SettingsPanel(settings), SettingsPanel.WindowWidth, SettingsPanel.WindowHeight);
+        panel.Tick();
+
+        settings.LockUi = new LockUiChoice(true, true, _ => { });
+
+        Assert.True(panel.Content.GetVisualDescendants().OfType<DerethToggle>().Single().On);
+    });
+
     private static Point CentreOf(AvaloniaPanel panel, Control control) =>
         Avalonia.VisualExtensions.TranslatePoint(control, new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), panel.Content)!.Value;
 
@@ -199,7 +239,6 @@ public sealed class SettingsPanelTests
         panel.PointerDown(centre.X, centre.Y);
         panel.PointerUp(centre.X, centre.Y);
     }
-
 
     private static TextBlock TextOf(AvaloniaPanel panel, string text) =>
         panel.Content.GetVisualDescendants().OfType<TextBlock>().Single(block => block.Text == text);
