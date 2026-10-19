@@ -5,7 +5,7 @@ param(
 )
 
 # BuildOutput is the stub's build output with the published client in its runtime\ folder.
-# The zip holds the stub (and GameArt, which it uses), Plugins\, runtime\ and the license notices.
+# The zip holds the stub (and GameArt, which it uses), the updater, Plugins\, runtime\ and the license notices.
 $ErrorActionPreference = 'Stop'
 if ($Tag -notmatch '^decal-plugin-v\d+\.\d+\.\d+$') { throw 'Invalid release tag' }
 New-Item -ItemType Directory -Force -Path $Destination | Out-Null
@@ -13,6 +13,8 @@ $package = Join-Path $Destination 'package'
 if (Test-Path $package) { throw 'Use a fresh packaging directory' }
 New-Item -ItemType Directory -Path $package | Out-Null
 Copy-Item (Join-Path $BuildOutput 'LegACEy.Client.DecalPlugin.dll'), (Join-Path $BuildOutput 'LegACEy.Client.GameArt.dll') $package
+# Fails the package when the stub build left no updater beside it.
+Copy-Item (Join-Path $BuildOutput 'LegACEy.Updater.exe') $package
 $runtime = Join-Path $BuildOutput 'runtime'
 foreach ($name in @('coreclr.dll', 'clrjit.dll', 'System.Private.CoreLib.dll', 'netstandard.dll', 'LegACEy.Client.dll', 'LegACEy.Client.PanelHost.dll', 'LegACEy.Client.InputRouter.dll', 'LegACEy.Client.GameArt.dll', 'LegACEy.Client.Themes.dll', 'LegACEy.Client.Demo.dll', 'libSkiaSharp.dll', 'libHarfBuzzSharp.dll')) {
     if (!(Test-Path (Join-Path $runtime $name))) { throw "Incomplete runtime: runtime\$name is missing. Publish the client into runtime\ first." }

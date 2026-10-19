@@ -23,6 +23,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LegACEy.Plugin.Inventory", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LegACEy.Client", "LegACEy.Client\LegACEy.Client.csproj", "{0C54D5FF-E1E4-4450-9CCB-C12D4E5AC889}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LegACEy.Updater", "LegACEy.Updater\LegACEy.Updater.csproj", "{5745A3B1-1761-47BB-A4DA-FA1B845C7F60}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -153,6 +155,18 @@ Global
 		{0C54D5FF-E1E4-4450-9CCB-C12D4E5AC889}.Release|x64.Build.0 = Release|Any CPU
 		{0C54D5FF-E1E4-4450-9CCB-C12D4E5AC889}.Release|x86.ActiveCfg = Release|Any CPU
 		{0C54D5FF-E1E4-4450-9CCB-C12D4E5AC889}.Release|x86.Build.0 = Release|Any CPU
+		{5745A3B1-1761-47BB-A4DA-FA1B845C7F60}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5745A3B1-1761-47BB-A4DA-FA1B845C7F60}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5745A3B1-1761-47BB-A4DA-FA1B845C7F60}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5745A3B1-1761-47BB-A4DA-FA1B845C7F60}.Debug|x64.Build.0 = Debug|Any CPU
+		{5745A3B1-1761-47BB-A4DA-FA1B845C7F60}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{5745A3B1-1761-47BB-A4DA-FA1B845C7F60}.Debug|x86.Build.0 = Debug|Any CPU
+		{5745A3B1-1761-47BB-A4DA-FA1B845C7F60}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5745A3B1-1761-47BB-A4DA-FA1B845C7F60}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5745A3B1-1761-47BB-A4DA-FA1B845C7F60}.Release|x64.ActiveCfg = Release|Any CPU
+		{5745A3B1-1761-47BB-A4DA-FA1B845C7F60}.Release|x64.Build.0 = Release|Any CPU
+		{5745A3B1-1761-47BB-A4DA-FA1B845C7F60}.Release|x86.ActiveCfg = Release|Any CPU
+		{5745A3B1-1761-47BB-A4DA-FA1B845C7F60}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
