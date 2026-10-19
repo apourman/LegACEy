@@ -38,8 +38,14 @@ internal static unsafe class D3D9
     public const int DrawIndexedPrimitiveSlot = 82;
     private const int DrawPrimitiveUPSlot = 83;
     private const int SetFVFSlot = 89;
+    private const int CreateVertexShaderSlot = 91;
     private const int SetVertexShaderSlot = 92;
+    private const int SetVertexShaderConstantFSlot = 94;
+    private const int CreatePixelShaderSlot = 106;
     private const int SetPixelShaderSlot = 107;
+    private const int SetPixelShaderConstantFSlot = 109;
+    // ID3DBlob (after IUnknown)
+    private const int GetBufferPointerSlot = 3, GetBufferSizeSlot = 4;
     // IDirect3DSurface9 (after IDirect3DResource9 3-10 and GetContainer 11)
     private const int GetDescSlot = 12;
     // IDirect3DTexture9 (after IDirect3DResource9 3-10 and IDirect3DBaseTexture9 11-16)
@@ -50,7 +56,7 @@ internal static unsafe class D3D9
     private const int ApplySlot = 5;
 
     // Values from mingw-w64 d3d9types.h.
-    public const uint FvfXyz = 0x002, FvfXyzRhw = 0x004, FvfNormal = 0x010, FvfDiffuse = 0x040, FvfTex1 = 0x100, FvfTex2 = 0x200;
+    public const uint FvfXyz = 0x002, FvfXyzRhw = 0x004, FvfNormal = 0x010, FvfDiffuse = 0x040, FvfTex1 = 0x100, FvfTex2 = 0x200, FvfTex3 = 0x300;
     public const int LineStrip = 3, TriangleList = 4, TriangleStrip = 5;
     public const int TransformView = 2, TransformProjection = 3, TransformWorld = 256;
     private const int StateBlockAll = 1, FormatA8R8G8B8 = 21, PoolDefault = 0, PoolManaged = 1, UsageRenderTarget = 1, ClearTarget = 1, ClearZBuffer = 2;
@@ -284,6 +290,62 @@ internal static unsafe class D3D9
         Check(((delegate* unmanaged[Stdcall]<IntPtr, IntPtr, int>)vt[SetPixelShaderSlot])(device, IntPtr.Zero), "SetPixelShader");
         Check(((delegate* unmanaged[Stdcall]<IntPtr, uint, int>)vt[SetFVFSlot])(device, vertexFormat), "SetFVF");
     }
+
+    /// <summary>Draws with these shaders, fed the given flexible vertex format.</summary>
+    public static void UseShaders(IntPtr device, IntPtr vertexShader, IntPtr pixelShader, uint vertexFormat)
+    {
+        var vt = Vt(device);
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, IntPtr, int>)vt[SetVertexShaderSlot])(device, vertexShader), "SetVertexShader");
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, IntPtr, int>)vt[SetPixelShaderSlot])(device, pixelShader), "SetPixelShader");
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, uint, int>)vt[SetFVFSlot])(device, vertexFormat), "SetFVF");
+    }
+
+    public static void SetVertexConstants(IntPtr device, int register, ReadOnlySpan<Vector4> values)
+    {
+        fixed (Vector4* data = values)
+            Check(((delegate* unmanaged[Stdcall]<IntPtr, int, Vector4*, int, int>)Vt(device)[SetVertexShaderConstantFSlot])(device, register, data, values.Length), "SetVertexShaderConstantF");
+    }
+
+    public static void SetPixelConstants(IntPtr device, int register, ReadOnlySpan<Vector4> values)
+    {
+        fixed (Vector4* data = values)
+            Check(((delegate* unmanaged[Stdcall]<IntPtr, int, Vector4*, int, int>)Vt(device)[SetPixelShaderConstantFSlot])(device, register, data, values.Length), "SetPixelShaderConstantF");
+    }
+
+    /// <summary>
+    /// Compiles one entry point of HLSL source with Windows' own d3dcompiler_47 and creates the shader: a vertex shader for a vs_ target, a
+    /// pixel shader otherwise. Throws with the compiler's message when it fails.
+    /// </summary>
+    public static IntPtr CompileShader(IntPtr device, string source, string entry, string target)
+    {
+        var bytes = System.Text.Encoding.ASCII.GetBytes(source);
+        var result = D3DCompile(bytes, bytes.Length, entry, IntPtr.Zero, IntPtr.Zero, entry, target, 0, 0, out var code, out var errors);
+        try
+        {
+            if (result < 0)
+            {
+                var message = errors == IntPtr.Zero ? "" : Marshal.PtrToStringAnsi(BlobPointer(errors), (int)BlobSize(errors));
+                throw new COMException($"Compiling {entry} ({target}) failed: 0x{result:X8} {message}", result);
+            }
+            IntPtr shader;
+            var slot = target.StartsWith("vs_", StringComparison.Ordinal) ? CreateVertexShaderSlot : CreatePixelShaderSlot;
+            Check(((delegate* unmanaged[Stdcall]<IntPtr, IntPtr, IntPtr*, int>)Vt(device)[slot])(device, BlobPointer(code), &shader), "CreateShader");
+            return shader;
+        }
+        finally
+        {
+            Release(code);
+            Release(errors);
+        }
+    }
+
+    private static IntPtr BlobPointer(IntPtr blob) => ((delegate* unmanaged[Stdcall]<IntPtr, IntPtr>)Vt(blob)[GetBufferPointerSlot])(blob);
+
+    private static nint BlobSize(IntPtr blob) => ((delegate* unmanaged[Stdcall]<IntPtr, nint>)Vt(blob)[GetBufferSizeSlot])(blob);
+
+    [DllImport("d3dcompiler_47.dll", CharSet = CharSet.Ansi, BestFitMapping = false)]
+    private static extern int D3DCompile(byte[] source, nint size, string name, IntPtr defines, IntPtr include, string entry, string target,
+        uint flags1, uint flags2, out IntPtr code, out IntPtr errors);
 
     public static void DrawPrimitiveUP(IntPtr device, int type, int count, void* vertices, int stride) =>
         Check(((delegate* unmanaged[Stdcall]<IntPtr, int, int, void*, int, int>)Vt(device)[DrawPrimitiveUPSlot])(device, type, count, vertices, stride), "DrawPrimitiveUP");

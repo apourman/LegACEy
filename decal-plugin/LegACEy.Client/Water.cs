@@ -13,7 +13,9 @@ using static LegACEy.Client.DecalPlugin.D3D9;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
-/// Livelier water over retail's still water texture. The water cells of the landblocks around the player (from client_cell_1.dat, where a
+/// Livelier water over retail's still water texture. With shader model 3 (<c>Water.hlsl</c>, compiled in game) each pixel gets its own wave
+/// normal, fresnel, sun glint and foam at the shore; when the shaders do not compile, the fixed-function look below is drawn instead.
+/// Fixed-function: The water cells of the landblocks around the player (from client_cell_1.dat, where a
 /// vertex's terrain type is 16 to 20) are drawn again just above retail's ground, blended to multiply what retail drew by twice their colour:
 /// mid grey leaves it as it was, so retail's lighting (day, night, shade, fog) still holds and nothing glows in the dark. Two layers of one
 /// small wave texture scroll across each other for ripples and glints; open water is tinted deeper blue, the shallows greener, and water seen at a
@@ -29,6 +31,9 @@ internal sealed unsafe class Water : IDisposable
     private const float TileA = 17, TileB = 7.5f; // metres per repeat of each wave layer
     private const float Cell = 24;
     private static readonly Vector3 Deep = new(0.62f, 0.85f, 1.00f), Shallow = new(0.80f, 1.00f, 0.92f);
+    // Towards the sun, in render space (x east, y up, z north): south-east, 35° up.
+    // ponytail: a fixed sun; read retail's sky if glints show where the sun is not.
+    private static readonly Vector3 Sun = Vector3.Normalize(new Vector3(0.55f, 0.7f, -0.45f));
 
     private readonly IntPtr _device;
     private readonly StormFog _camera;
@@ -45,6 +50,9 @@ internal sealed unsafe class Water : IDisposable
     private int _logged = -1;
     private WaterVertex[] _vertices = Array.Empty<WaterVertex>();
     private IntPtr _waves;
+    // The shaders (vertex, tint pass, light pass); _shaded is null until they are first tried, false when they failed.
+    private IntPtr _vertexShader, _tintShader, _lightShader;
+    private bool? _shaded;
 
     public Water(IntPtr device, StormFog camera, PortalDat portal, Action<string> log)
     {
@@ -89,55 +97,125 @@ internal sealed unsafe class Water : IDisposable
             _log($"Water: landblock {_centre:X4}, {_blocks.Values.Count(points => points != null)} of {_blocks.Count} landblocks near have water, {count / 3} triangles drawn.");
         }
         if (count == 0) return;
-        if (_waves == IntPtr.Zero) _waves = MakeWaves();
+        _shaded ??= MakeShaders();
+        if (_waves == IntPtr.Zero) _waves = MakeWaves(_shaded == true);
 
         var saved = SaveState(_device);
         try
         {
-            UseFixedFunction(_device, FvfXyz | FvfDiffuse | FvfTex2);
             _camera.UseWorldCamera();
-            // Result = 2 × water × retail's colour: mid grey leaves retail's water as it was.
-            SetRenderState(_device, RenderState.SrcBlend, BlendDestColor);
-            SetRenderState(_device, RenderState.DestBlend, BlendSrcColor);
-            SetRenderState(_device, RenderState.TextureFactor, unchecked((int)0xFF808080));
-            for (var stage = 0; stage < 2; stage++)
-            {
-                SetTexture(_device, stage, _waves);
-                SetStageState(_device, stage, StageState.TexCoordIndex, stage);
-                SetStageState(_device, stage, StageState.TextureTransformFlags, 0);
-                SetSamplerState(_device, stage, SamplerState.MinFilter, FilterLinear);
-                SetSamplerState(_device, stage, SamplerState.MagFilter, FilterLinear);
-                SetSamplerState(_device, stage, SamplerState.MipFilter, FilterLinear);
-                SetSamplerState(_device, stage, SamplerState.AddressU, AddressWrap);
-                SetSamplerState(_device, stage, SamplerState.AddressV, AddressWrap);
-            }
-            SetTexture(_device, 2, IntPtr.Zero);
-            SetTexture(_device, 3, IntPtr.Zero);
-            // The two wave layers, each centred on mid grey, added.
-            SetStageState(_device, 0, StageState.ColorOp, OpSelectArg1);
-            SetStageState(_device, 0, StageState.ColorArg1, ArgTexture);
-            SetStageState(_device, 1, StageState.ColorOp, OpAddSigned);
-            SetStageState(_device, 1, StageState.ColorArg1, ArgTexture);
-            SetStageState(_device, 1, StageState.ColorArg2, ArgCurrent);
-            // Tinted and brightened by the vertex colour (mid grey keeps the waves as they are).
-            SetStageState(_device, 2, StageState.ColorOp, OpModulate2x);
-            SetStageState(_device, 2, StageState.ColorArg1, ArgCurrent);
-            SetStageState(_device, 2, StageState.ColorArg2, ArgDiffuse);
-            // Faded to mid grey (no change) by the vertex alpha: at the shore and far off.
-            SetStageState(_device, 3, StageState.ColorOp, OpBlendDiffuseAlpha);
-            SetStageState(_device, 3, StageState.ColorArg1, ArgCurrent);
-            SetStageState(_device, 3, StageState.ColorArg2, ArgFactor);
-            for (var stage = 0; stage < 4; stage++)
-            {
-                SetStageState(_device, stage, StageState.AlphaOp, OpSelectArg1);
-                SetStageState(_device, stage, StageState.AlphaArg1, ArgDiffuse);
-            }
-            SetStageState(_device, 4, StageState.ColorOp, OpDisable);
-            SetStageState(_device, 4, StageState.AlphaOp, OpDisable);
-            fixed (WaterVertex* vertices = _vertices)
-                DrawPrimitiveUP(_device, TriangleList, count / 3, vertices, sizeof(WaterVertex));
+            if (_shaded == true) DrawShaded(count, eye, (float)time);
+            else DrawFixed(count);
         }
         finally { RestoreState(saved); }
+    }
+
+    /// <summary>The two shader passes over the water triangles; see Water.hlsl.</summary>
+    private void DrawShaded(int count, Vector3 eye, float time)
+    {
+        var worldViewProj = Matrix4x4.CreateTranslation(_camera.Offset) * _camera.View * _camera.Projection;
+        // Its rows, as the shader's row_major matrix.
+        SetVertexConstants(_device, 0, System.Runtime.InteropServices.MemoryMarshal.Cast<Matrix4x4, Vector4>(new ReadOnlySpan<Matrix4x4>(ref worldViewProj)));
+        SetPixelConstants(_device, 0, new[]
+        {
+            new Vector4(StormFog.Render(eye), 0), new Vector4(Sun, Math.Max(Strength, 1)), new Vector4(Deep, 1), new Vector4(Shallow, 1),
+            new Vector4(time % 3600, 0, 0, 0)
+        });
+        SetTexture(_device, 0, _waves);
+        SetSamplerState(_device, 0, SamplerState.MinFilter, FilterLinear);
+        SetSamplerState(_device, 0, SamplerState.MagFilter, FilterLinear);
+        SetSamplerState(_device, 0, SamplerState.MipFilter, FilterLinear);
+        SetSamplerState(_device, 0, SamplerState.AddressU, AddressWrap);
+        SetSamplerState(_device, 0, SamplerState.AddressV, AddressWrap);
+        fixed (WaterVertex* vertices = _vertices)
+        {
+            // Tint: 2 × output × retail's colour.
+            UseShaders(_device, _vertexShader, _tintShader, Format);
+            SetRenderState(_device, RenderState.SrcBlend, BlendDestColor);
+            SetRenderState(_device, RenderState.DestBlend, BlendSrcColor);
+            DrawPrimitiveUP(_device, TriangleList, count / 3, vertices, sizeof(WaterVertex));
+            // Light: retail's colour × (1 + output).
+            UseShaders(_device, _vertexShader, _lightShader, Format);
+            SetRenderState(_device, RenderState.DestBlend, BlendOne);
+            DrawPrimitiveUP(_device, TriangleList, count / 3, vertices, sizeof(WaterVertex));
+        }
+    }
+
+    private const uint Format = FvfXyz | FvfDiffuse | FvfTex3;
+
+    /// <summary>Compiles Water.hlsl; false, with the reason logged, when this machine cannot (no d3dcompiler_47, or no shader model 3).</summary>
+    private bool MakeShaders()
+    {
+        try
+        {
+            using var stream = typeof(Water).Assembly.GetManifestResourceStream("Water.hlsl")!;
+            var source = new System.IO.StreamReader(stream).ReadToEnd();
+            _vertexShader = CompileShader(_device, source, "Vs", "vs_3_0");
+            _tintShader = CompileShader(_device, source, "Tint", "ps_3_0");
+            _lightShader = CompileShader(_device, source, "Light", "ps_3_0");
+            _log("Water: drawn with shaders.");
+            return true;
+        }
+        catch (Exception exception)
+        {
+            ReleaseShaders();
+            _log($"Water: drawn without shaders, as they did not compile: {exception.Message}");
+            return false;
+        }
+    }
+
+    private void ReleaseShaders()
+    {
+        Release(_vertexShader);
+        Release(_tintShader);
+        Release(_lightShader);
+        _vertexShader = _tintShader = _lightShader = IntPtr.Zero;
+    }
+
+    /// <summary>The fixed-function look, for machines without the shaders.</summary>
+    private void DrawFixed(int count)
+    {
+        UseFixedFunction(_device, Format);
+        // Result = 2 × water × retail's colour: mid grey leaves retail's water as it was.
+        SetRenderState(_device, RenderState.SrcBlend, BlendDestColor);
+        SetRenderState(_device, RenderState.DestBlend, BlendSrcColor);
+        SetRenderState(_device, RenderState.TextureFactor, unchecked((int)0xFF808080));
+        for (var stage = 0; stage < 2; stage++)
+        {
+            SetTexture(_device, stage, _waves);
+            SetStageState(_device, stage, StageState.TexCoordIndex, stage);
+            SetStageState(_device, stage, StageState.TextureTransformFlags, 0);
+            SetSamplerState(_device, stage, SamplerState.MinFilter, FilterLinear);
+            SetSamplerState(_device, stage, SamplerState.MagFilter, FilterLinear);
+            SetSamplerState(_device, stage, SamplerState.MipFilter, FilterLinear);
+            SetSamplerState(_device, stage, SamplerState.AddressU, AddressWrap);
+            SetSamplerState(_device, stage, SamplerState.AddressV, AddressWrap);
+        }
+        SetTexture(_device, 2, IntPtr.Zero);
+        SetTexture(_device, 3, IntPtr.Zero);
+        // The two wave layers, each centred on mid grey, added.
+        SetStageState(_device, 0, StageState.ColorOp, OpSelectArg1);
+        SetStageState(_device, 0, StageState.ColorArg1, ArgTexture);
+        SetStageState(_device, 1, StageState.ColorOp, OpAddSigned);
+        SetStageState(_device, 1, StageState.ColorArg1, ArgTexture);
+        SetStageState(_device, 1, StageState.ColorArg2, ArgCurrent);
+        // Tinted and brightened by the vertex colour (mid grey keeps the waves as they are).
+        SetStageState(_device, 2, StageState.ColorOp, OpModulate2x);
+        SetStageState(_device, 2, StageState.ColorArg1, ArgCurrent);
+        SetStageState(_device, 2, StageState.ColorArg2, ArgDiffuse);
+        // Faded to mid grey (no change) by the vertex alpha: at the shore and far off.
+        SetStageState(_device, 3, StageState.ColorOp, OpBlendDiffuseAlpha);
+        SetStageState(_device, 3, StageState.ColorArg1, ArgCurrent);
+        SetStageState(_device, 3, StageState.ColorArg2, ArgFactor);
+        for (var stage = 0; stage < 4; stage++)
+        {
+            SetStageState(_device, stage, StageState.AlphaOp, OpSelectArg1);
+            SetStageState(_device, stage, StageState.AlphaArg1, ArgDiffuse);
+        }
+        SetStageState(_device, 4, StageState.ColorOp, OpDisable);
+        SetStageState(_device, 4, StageState.AlphaOp, OpDisable);
+        fixed (WaterVertex* vertices = _vertices)
+            DrawPrimitiveUP(_device, TriangleList, count / 3, vertices, sizeof(WaterVertex));
     }
 
     private static WaterVertex Vertex(WaterPoint point, Vector3 eye, float originX, float originY, Vector4 scroll, float strength)
@@ -155,7 +233,7 @@ internal sealed unsafe class Water : IDisposable
         var argb = Byte(alpha) << 24 | Byte(colour.X) << 16 | Byte(colour.Y) << 8 | Byte(colour.Z);
         float x = p.X - originX, y = p.Y - originY;
         return new WaterVertex(StormFog.Render(new Vector3(p.X, p.Y, p.Z + Lift)), argb,
-            x / TileA + scroll.X, y / TileA + scroll.Y, x / TileB + scroll.Z, y / TileB + scroll.W);
+            x / TileA + scroll.X, y / TileA + scroll.Y, x / TileB + scroll.Z, y / TileB + scroll.W, point.Wet, point.Open);
     }
 
     private static float Wrap(double value) => (float)(value - Math.Floor(value));
@@ -241,23 +319,33 @@ internal sealed unsafe class Water : IDisposable
     }
 
     /// <summary>
-    /// The wave texture: grey, centred on mid grey, lit from one side by the slope of a few crossing waves that repeat across it, with sparks on
-    /// the brightest crests for glints. Its mip levels average the waves away to mid grey, so far water goes calm without shimmering. About 85 KB.
+    /// The wave texture, about 85 KB with its mip levels, which average the waves away so far water goes calm without shimmering. For the
+    /// shaders it holds the waves' slope east and north (red, green) and height (blue), each centred on mid grey; without them, a grey shading
+    /// (<see cref="WavePixels"/>).
     /// </summary>
-    private IntPtr MakeWaves()
+    private IntPtr MakeWaves(bool shaded)
     {
         var levels = 1;
         while (WaveSize >> levels > 0) levels++;
-        var pixels = WavePixels();
+        float[][] channels;
+        if (shaded)
+        {
+            var (east, north, height) = WaveField();
+            channels = new[] { east, north, height };
+        }
+        else
+        {
+            var grey = WavePixels();
+            channels = new[] { grey, grey, grey };
+        }
         var texture = CreateTexture(_device, WaveSize, WaveSize, levels);
         for (int level = 0, size = WaveSize; level < levels; level++, size /= 2)
         {
-            if (level > 0) pixels = Halve(pixels, size * 2);
+            if (level > 0) channels = channels.Select(channel => Halve(channel, size * 2)).ToArray();
             var bytes = new byte[size * size * 4];
-            for (var i = 0; i < pixels.Length; i++)
+            for (var i = 0; i < size * size; i++)
             {
-                var grey = (byte)Math.Clamp(pixels[i] * 255, 0, 255);
-                bytes[i * 4] = bytes[i * 4 + 1] = bytes[i * 4 + 2] = grey;
+                for (var c = 0; c < 3; c++) bytes[i * 4 + 2 - c] = (byte)Math.Clamp(channels[c][i] * 255, 0, 255); // BGRA in memory
                 bytes[i * 4 + 3] = 0xFF;
             }
             Upload(texture, new Rectangle(0, 0, size, size), bytes, size * 4, level);
@@ -265,22 +353,43 @@ internal sealed unsafe class Water : IDisposable
         return texture;
     }
 
+    /// <summary>The grey shading: lit from one side by the waves' slope, with sparks on the brightest crests for glints.</summary>
     internal static float[] WavePixels()
+    {
+        var (east, north, _) = WaveField();
+        var light = Vector2.Normalize(new Vector2(0.6f, 0.8f));
+        var slope = east.Zip(north, (x, y) => (x - 0.5f) * light.X + (y - 0.5f) * light.Y).ToArray();
+        var most = slope.Max(MathF.Abs);
+        return slope.Select(s => s / most).Select(s => 0.5f + 0.15f * s + (s > 0.65f ? (s - 0.65f) * 0.9f : 0)).ToArray();
+    }
+
+    /// <summary>A few crossing waves that repeat across the texture: their slope east, north and their height, each 0 to 1 around 0.5.</summary>
+    internal static (float[] East, float[] North, float[] Height) WaveField()
     {
         // Whole numbers of waves across the texture, so it repeats without a seam.
         (int X, int Y, float Amplitude, float Phase)[] waves = { (1, 2, 1f, 0.3f), (3, -1, 0.8f, 1.9f), (-2, 3, 0.7f, 4.1f), (4, 1, 0.5f, 2.6f), (5, -3, 0.35f, 5.2f), (-1, 6, 0.3f, 0.8f) };
-        var light = Vector2.Normalize(new Vector2(0.6f, 0.8f));
-        var slope = new float[WaveSize * WaveSize];
+        float[] east = new float[WaveSize * WaveSize], north = new float[east.Length], height = new float[east.Length];
         for (var y = 0; y < WaveSize; y++)
             for (var x = 0; x < WaveSize; x++)
             {
-                float u = (float)x / WaveSize, v = (float)y / WaveSize, s = 0;
+                float u = (float)x / WaveSize, v = (float)y / WaveSize;
+                var i = y * WaveSize + x;
                 foreach (var (wx, wy, amplitude, phase) in waves)
-                    s += amplitude * MathF.Cos(MathF.Tau * (wx * u + wy * v) + phase) * (wx * light.X + wy * light.Y);
-                slope[y * WaveSize + x] = s;
+                {
+                    var angle = MathF.Tau * (wx * u + wy * v) + phase;
+                    east[i] += amplitude * MathF.Cos(angle) * wx;
+                    north[i] += amplitude * MathF.Cos(angle) * wy;
+                    height[i] += amplitude * MathF.Sin(angle);
+                }
             }
-        var most = slope.Max(MathF.Abs);
-        return slope.Select(s => s / most).Select(s => 0.5f + 0.15f * s + (s > 0.65f ? (s - 0.65f) * 0.9f : 0)).ToArray();
+        float[] Centre(float[] values)
+        {
+            var most = values.Max(MathF.Abs);
+            return values.Select(value => 0.5f + 0.5f * value / most).ToArray();
+        }
+        var steepest = Math.Max(east.Max(MathF.Abs), north.Max(MathF.Abs));
+        // One scale for both slopes, so their directions hold.
+        return (east.Select(value => 0.5f + 0.5f * value / steepest).ToArray(), north.Select(value => 0.5f + 0.5f * value / steepest).ToArray(), Centre(height));
     }
 
     private static float[] Halve(float[] pixels, int size)
@@ -297,15 +406,16 @@ internal sealed unsafe class Water : IDisposable
     {
         Release(_waves);
         _waves = IntPtr.Zero;
+        ReleaseShaders();
         _ground?.ContinueWith(ground => ground.Result?.Dispose(), TaskScheduler.Default);
         _ground = null;
     }
 
-    private readonly struct WaterVertex(Vector3 position, uint color, float u0, float v0, float u1, float v1)
+    private readonly struct WaterVertex(Vector3 position, uint color, float u0, float v0, float u1, float v1, float wet, float open)
     {
         public readonly float X = position.X, Y = position.Y, Z = position.Z;
         public readonly uint Color = color;
-        public readonly float U0 = u0, V0 = v0, U1 = u1, V1 = v1;
+        public readonly float U0 = u0, V0 = v0, U1 = u1, V1 = v1, Wet = wet, Open = open;
     }
 }
 

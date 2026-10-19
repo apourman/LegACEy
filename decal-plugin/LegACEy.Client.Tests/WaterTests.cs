@@ -42,6 +42,16 @@ public sealed class WaterTests
     }
 
     [Fact]
+    public void The_shaders_ship_in_the_client_and_their_waves_average_to_flat_water()
+    {
+        using var stream = typeof(Water).Assembly.GetManifestResourceStream("Water.hlsl");
+        var source = new System.IO.StreamReader(stream!).ReadToEnd();
+        Assert.All(new[] { " Vs(", " Tint(", " Light(" }, entry => Assert.Contains(entry, source));
+        var (east, north, height) = Water.WaveField();
+        Assert.All(new[] { east, north, height }, channel => Assert.InRange(channel.Average(), 0.49f, 0.51f));
+    }
+
+    [Fact]
     public void The_waves_centre_on_mid_grey_so_calm_water_is_left_as_retail_drew_it()
     {
         var pixels = Water.WavePixels();
