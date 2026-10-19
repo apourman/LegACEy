@@ -171,6 +171,7 @@ public sealed class DerethSlider : Control
 
     private void MoveTo(double x)
     {
+        if (Bounds.Width <= Thumb) return;
         var fraction = Math.Max(0, Math.Min(1, (x - Thumb / 2) / (Bounds.Width - Thumb)));
         var value = _minimum + (int)Math.Round(fraction * (_maximum - _minimum) / _step) * _step;
         if (value == _value) return;

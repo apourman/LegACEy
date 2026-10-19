@@ -831,8 +831,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _clientUi?.CloseWindow(SettingsWindowId);
             _settings = null;
         };
+        // First opened beside the launcher (260 + its 220 width), not over it.
         _clientUi.OpenWindow(new WindowDefinition(SettingsWindowId, "Settings", SettingsPanel.WindowWidth, SettingsPanel.WindowHeight,
-            DerethWindow.TitleBarHeight, new DerethClientTheme()), window, new Point(260, 120));
+            DerethWindow.TitleBarHeight, new DerethClientTheme()), window, new Point(500, 120));
     }
 
     private SettingsTab LoadSettingsTab() =>
@@ -1015,8 +1016,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_failed || !NativeUi.Ready)
             return;
 
-        if (_uiSizeChanged) ApplyUiSize();
+        if (_uiSizeChanged) Guard(ApplyUiSize);
         if (_positionsResetRequested) Guard(ResetPositions);
+        // A failed rebuild has torn the UI down; the block below would build it again this frame.
+        if (_failed) return;
 
         Guard(() =>
         {

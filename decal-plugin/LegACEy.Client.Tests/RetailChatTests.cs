@@ -888,10 +888,12 @@ public sealed class RetailChatTests
         Assert.Equal(0.0, Seen(TabView(window, "All")));
     });
 
-    [Fact]
-    public void A_window_fades_once_it_has_been_left_alone_for_its_chosen_delay_of_10_seconds() => RenderThread.Run(() =>
+    [Theory]
+    [InlineData(10)]
+    [InlineData(30)]
+    [InlineData(60)]
+    public void A_window_fades_once_it_has_been_left_alone_for_its_chosen_delay(int seconds) => RenderThread.Run(() =>
     {
-        const int seconds = 10;
         var clock = new TestClock();
         var port = new FakeChatPort();
         using var panel = Open(port, out var window, clock: () => clock.Now);

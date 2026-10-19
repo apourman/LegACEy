@@ -418,7 +418,7 @@ public sealed class SettingsPanel : UserControl
         var ranges = RadarZoom.Presets;
         var range = new DerethSegmented(ranges.Select(metres => metres.ToString(CultureInfo.InvariantCulture)).ToArray());
         void Show() => range.Selected = _settings.Radar is { } radar
-            ? Enumerable.Range(0, ranges.Length).OrderBy(i => Math.Abs(ranges[i] - radar.Value.Zoom)).First()
+            ? Enumerable.Range(0, ranges.Count).OrderBy(i => Math.Abs(ranges[i] - radar.Value.Zoom)).First()
             : -1;
         range.Chosen += index => _settings.Radar?.Set(_settings.Radar.Value with { Zoom = ranges[index] });
         _redraws.Add(Show);
@@ -476,7 +476,7 @@ public sealed class SettingsPanel : UserControl
     private Control WaterStrengthRow() => SliderRow("Wave strength", WaterOption.Smallest, WaterOption.Largest, WaterOption.Step,
         () => _settings.Water?.Percent, percent => _settings.Water?.Set(true, percent));
 
-    /// <summary>The plugins' menu entries, each plugin's under its name, as the launcher lists them. A picked entry runs.</summary>
+    /// <summary>The visible plugins by name, each with its menu entries as the launcher lists them. A picked entry runs.</summary>
     private Control PluginsPane()
     {
         RebuildPlugins();
@@ -487,16 +487,16 @@ public sealed class SettingsPanel : UserControl
     {
         _pluginList.Children.Clear();
         if (_plugins is not { } registry) return;
-        var entries = registry.VisibleMenuEntries;
-        if (entries.Count == 0)
+        var plugins = registry.VisiblePlugins;
+        if (plugins.Count == 0)
         {
-            _pluginList.Children.Add(new TextBlock { Text = "No plugin menu entries.", FontFamily = DerethPalette.Body, Foreground = DerethPalette.MutedBrush });
+            _pluginList.Children.Add(new TextBlock { Text = "No plugins loaded.", FontFamily = DerethPalette.Body, Foreground = DerethPalette.MutedBrush });
             return;
         }
-        foreach (var plugin in entries.GroupBy(entry => entry.Owner))
+        foreach (var plugin in plugins)
         {
-            _pluginList.Children.Add(new TextBlock { Text = plugin.Key.Name, FontFamily = DerethPalette.Title, FontSize = 13, Foreground = DerethPalette.GoldBrush, Margin = new Thickness(0, 4, 0, 0) });
-            foreach (var item in plugin)
+            _pluginList.Children.Add(new TextBlock { Text = plugin.Name, FontFamily = DerethPalette.Title, FontSize = 13, Foreground = DerethPalette.GoldBrush, Margin = new Thickness(0, 4, 0, 0) });
+            foreach (var item in plugin.MenuEntries)
             {
                 var button = new DerethButton { Content = item.Title, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left };
                 button.Click += (_, _) => registry.RunMenuEntry(item);
