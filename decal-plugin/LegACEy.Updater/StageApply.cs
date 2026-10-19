@@ -25,7 +25,8 @@ public static class StageApply
         var undo = new Stack<Action>();
         try
         {
-            // Left over by a run that was killed mid-apply: the stage is applied again over whatever it left.
+            // Left over by a run that was killed mid-apply. The originals it moved aside are lost; the stage is applied
+            // again over whatever that run left.
             DeleteDirectory(rollback);
             Directory.CreateDirectory(rollback);
             foreach (var source in Directory.GetDirectories(stage))
@@ -76,13 +77,15 @@ public static class StageApply
         Log(install, $"Applied {stage}");
         try
         {
-            // ready goes first, so a stage that is only partly deleted is never applied again.
+            // ready goes first, so a stage that is only partly deleted is never applied again. The version folder stays:
+            // the running updater is in it. The client removes version folders without ready.
             File.Delete(Path.Combine(version, "ready"));
-            Directory.Delete(Path.Combine(install, "update"), true);
+            DeleteDirectory(stage);
+            DeleteDirectory(rollback);
         }
         catch (Exception error)
         {
-            Log(install, $"Could not delete update folder yet: {error.Message}");
+            Log(install, $"Could not delete the applied stage: {error.Message}");
         }
         return ApplyResult.Applied;
     }

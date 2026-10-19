@@ -12,41 +12,39 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
+        if (args.Length != 2) return 2;
         string install, stage;
         try
         {
             install = Path.GetFullPath(args[0]).TrimEnd('\\', '/');
             stage = Path.GetFullPath(args[1]).TrimEnd('\\', '/');
-            if (args.Length != 2) return 2;
         }
         catch (Exception) { return 2; }
 
         using var mutex = new Mutex(false, @"Local\LegACEy.Updater");
         try
         {
-            if (!mutex.WaitOne(0)) return 3;
+            if (!mutex.WaitOne(0))
+            {
+                StageApply.Log(install, "Another updater is already running");
+                return 3;
+            }
         }
         catch (AbandonedMutexException) { }
 
-        StageApply.Log(install, $"Waiting for every game client to exit, then applying {stage}");
-        while (Process.GetProcessesByName("acclient").Length > 0) Thread.Sleep(2000);
-
-        var result = StageApply.Apply(install, stage);
-        var update = Path.Combine(install, "update");
-        if (result == ApplyResult.Applied && Directory.Exists(update))
+        try
         {
-            // This exe sits in update\ and can't delete itself: a hidden shell removes the folder once it has exited.
-            try
-            {
-                Process.Start(new ProcessStartInfo("cmd.exe", $"/c ping -n 3 127.0.0.1 >nul & rd /s /q \"{update}\"")
-                {
-                    CreateNoWindow = true,
-                    UseShellExecute = false,
-                });
-            }
-            catch (Exception error) { StageApply.Log(install, $"Could not remove {update}: {error.Message}"); }
+            StageApply.Log(install, $"Waiting for every game client to exit, then applying {stage}");
+            while (GameRunning()) Thread.Sleep(2000);
+            return (int)StageApply.Apply(install, stage);
         }
-        mutex.ReleaseMutex();
-        return (int)result;
+        finally { mutex.ReleaseMutex(); }
+    }
+
+    private static bool GameRunning()
+    {
+        var clients = Process.GetProcessesByName("acclient");
+        foreach (var client in clients) client.Dispose();
+        return clients.Length > 0;
     }
 }

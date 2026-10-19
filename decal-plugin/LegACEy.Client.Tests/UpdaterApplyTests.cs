@@ -47,7 +47,11 @@ public sealed class UpdaterApplyTests : IDisposable
             ["retail-chat-native"] = "",
             ["install.json"] = "{ \"channel\": \"release\" }",
         }, Snapshot());
-        Assert.False(Directory.Exists(Path.Combine(install, "update")));
+        // The version folder stays for the client to remove (the running updater is in it), but holds no stage.
+        var version = Path.Combine(install, "update", "0.7.0");
+        Assert.False(File.Exists(Path.Combine(version, "ready")));
+        Assert.False(Directory.Exists(Stage));
+        Assert.False(Directory.Exists(Path.Combine(version, "rollback")));
         Assert.True(File.Exists(Path.Combine(install, "updater.log")));
     }
 
