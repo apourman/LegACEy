@@ -20,7 +20,9 @@ internal sealed unsafe class StormFog : IDisposable
     private const float Inner = Block / 2, Outer = Block * 1.5f;
     // From outside, the fog bank is many faint walls across each edge of the ring, so where terrain cuts them there is no hard seam to jump
     // about as retail reshapes the terrain with distance: Bank metres deep, 1/e of what is behind showing through every BankThickness metres.
-    private const int Layers = 24, NoiseSize = 128;
+    // Each wall adds about 3%, and they thicken from the bank's outer face inwards, so where the ground cuts them the steps are faint and
+    // there is no strong first line. ponytail: 128 walls is a lot of overdraw looking into the bank; fewer if the frame rate suffers there.
+    private const int Layers = 64, NoiseSize = 128;
     private const float Bank = 40, BankThickness = 20;
     private const uint Grey = 0xC8CDCF;
     // Inside: fog thick enough that 1/e of the scene shows through every Thickness metres, reached FadeIn metres past the edge.
@@ -129,12 +131,13 @@ internal sealed unsafe class StormFog : IDisposable
             var centre = Centre(zone);
             var walls = stackalloc FogVertex[10];
             var step = Bank / Layers;
-            var alpha = 1 - MathF.Exp(-step / BankThickness);
             for (var wall = 0; wall < Layers * 2; wall++)
             {
                 // Half of the walls run in from the safe landblock's edge, half in from the ring's outer edge.
                 var layer = wall % Layers;
                 var halfWidth = wall < Layers ? Inner + layer * step : Outer - layer * step;
+                // Thin at the bank's face (layer 0), twice the average at its inner side.
+                var alpha = 1 - MathF.Exp(-step / BankThickness * 2 * (layer + 0.5f) / Layers);
                 // A wall fades out within 10 m of the camera, so passing through it does not flash it across the screen.
                 var fade = eye is { } p ? Math.Clamp(MathF.Abs(FromCentre(p, zone) - halfWidth) / 10, 0, 1) : 1;
                 var color = (uint)(alpha * fade * 255) << 24 | Grey;
@@ -145,8 +148,10 @@ internal sealed unsafe class StormFog : IDisposable
                     var (sx, sy) = Corners[corner % 4];
                     float x = centre.X + sx * halfWidth, y = centre.Y + sy * halfWidth;
                     var u = corner * halfWidth * 2 / 96 + drift;
-                    walls[corner * 2] = new(Render(new Vector3(x, y, Bottom)), color, u, time * 0.02f);
-                    walls[corner * 2 + 1] = new(Render(new Vector3(x, y, Top)), color, u, (Top - Bottom) / 128 + time * 0.02f);
+                    // And its own height in the noise, so where the ground cuts the walls each line is broken up differently.
+                    var v = time * 0.02f + wall * 0.29f;
+                    walls[corner * 2] = new(Render(new Vector3(x, y, Bottom)), color, u, v);
+                    walls[corner * 2 + 1] = new(Render(new Vector3(x, y, Top)), color, u, (Top - Bottom) / 128 + v);
                 }
                 DrawPrimitiveUP(_device, TriangleStrip, 8, walls, sizeof(FogVertex));
             }
