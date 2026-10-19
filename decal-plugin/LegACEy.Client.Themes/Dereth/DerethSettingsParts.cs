@@ -34,7 +34,7 @@ public sealed class DerethSegmented : Border
             var cell = new Border { Background = Brushes.Transparent, Padding = new Thickness(8, 4), Child = label };
             cell.PointerPressed += (_, e) =>
             {
-                if (!e.GetCurrentPoint(cell).Properties.IsLeftButtonPressed) return;
+                if (!e.GetCurrentPoint(cell).Properties.IsLeftButtonPressed || index == Selected) return;
                 Selected = index;
                 Chosen?.Invoke(index);
             };
@@ -78,8 +78,9 @@ public sealed class DerethSegmented : Border
 
 /// <summary>
 /// A horizontal slider in the Dereth look: a groove filled in gold up to a cream thumb. It takes values from <paramref name="minimum"/> to
-/// <paramref name="maximum"/> in steps of <paramref name="step"/>. The thumb follows a drag; <see cref="Committed"/> is raised with the value
-/// when the pointer lets go, if the value moved.
+/// <paramref name="maximum"/> in steps of <paramref name="step"/>. The thumb follows a drag, and <see cref="ValueChanged"/> is raised as it
+/// moves. <see cref="Committed"/> is raised with the value when the pointer lets go, if the value moved; a drag that loses the pointer's
+/// capture is cancelled, and the thumb goes back where it was pressed.
 /// </summary>
 public sealed class DerethSlider : Control
 {
@@ -99,6 +100,7 @@ public sealed class DerethSlider : Control
         _step = step;
         _value = minimum;
         Height = 16;
+        PointerCaptureLost += (_, _) => CancelDrag();
     }
 
     /// <summary>The value the thumb shows, kept within the range. Setting it moves the thumb without raising <see cref="Committed"/>.</summary>
@@ -111,6 +113,9 @@ public sealed class DerethSlider : Control
             InvalidateVisual();
         }
     }
+
+    /// <summary>The thumb moved, by a drag or a press, to this value.</summary>
+    public event Action<int>? ValueChanged;
 
     /// <summary>The player let go after moving the thumb, with the value it stopped on.</summary>
     public event Action<int>? Committed;
@@ -151,14 +156,26 @@ public sealed class DerethSlider : Control
         base.OnPointerReleased(e);
         if (!_dragging) return;
         _dragging = false;
+        // Releasing the capture raises PointerCaptureLost, which finds the drag already over.
         e.Pointer.Capture(null);
         if (_value != _pressedValue) Committed?.Invoke(_value);
+    }
+
+    private void CancelDrag()
+    {
+        if (!_dragging) return;
+        _dragging = false;
+        Value = _pressedValue;
+        ValueChanged?.Invoke(_value);
     }
 
     private void MoveTo(double x)
     {
         var fraction = Math.Max(0, Math.Min(1, (x - Thumb / 2) / (Bounds.Width - Thumb)));
-        Value = _minimum + (int)Math.Round(fraction * (_maximum - _minimum) / _step) * _step;
+        var value = _minimum + (int)Math.Round(fraction * (_maximum - _minimum) / _step) * _step;
+        if (value == _value) return;
+        Value = value;
+        ValueChanged?.Invoke(_value);
     }
 }
 

@@ -140,8 +140,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // at design size rather than failing every window.
     private const string UiSizeKey = "client-ui-size";
     private const int DefaultUiSize = 85;
-    private const int SmallestUiSize = 60;
-    private const int LargestUiSize = 150;
     private int _uiSize = DefaultUiSize;
     private bool _uiSizeChanged;
     private double WindowScale => AvaloniaPanel.CanScale ? _uiSize / 100.0 : 1;
@@ -334,7 +332,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _row2Choice = new ShortcutRowChoice(_settingsStore);
         _vitalsLayouts = new VitalsLayoutChoice(_settingsStore);
         if (_settingsStore.Load("", "", UiSizeKey) is { Location.X: var size and > 0 })
-            _uiSize = Math.Max(SmallestUiSize, Math.Min(LargestUiSize, size));
+            _uiSize = Math.Clamp(size, UiSizeChoice.Smallest, UiSizeChoice.Largest);
         if (_settingsStore.Load("", "", WaterKey) is { Location: var water })
             _water = new WaterChoice(water.Y != 0, Math.Clamp(water.X, 0, WaterChoice.Most));
     }
@@ -757,11 +755,20 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void OpenSettings()
     {
-        if (_clientUi == null || !CanOpenWindows || _windows?.Get(SettingsWindowId) != null) return;
-        var settings = new ClientSettings(AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, StepUiSize) : null, UpdateCheck(), WindowChoices());
+        if (_clientUi == null || !CanOpenWindows) return;
+        if (_windows?.Get(SettingsWindowId) != null)
+        {
+            _windows.BringToFront(SettingsWindowId);
+            return;
+        }
+        var settings = new ClientSettings(AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, SetUiSize) : null, UpdateCheck(), WindowChoices());
         _settings = settings;
         var window = new DerethWindow("Settings", null, new SettingsPanel(settings, LoadSettingsTab(), SaveSettingsTab));
-        window.CloseRequested += (_, _) => _clientUi?.CloseWindow(SettingsWindowId);
+        window.CloseRequested += (_, _) =>
+        {
+            _clientUi?.CloseWindow(SettingsWindowId);
+            _settings = null;
+        };
         _clientUi.OpenWindow(new WindowDefinition(SettingsWindowId, "Settings", SettingsPanel.WindowWidth, SettingsPanel.WindowHeight,
             DerethWindow.TitleBarHeight, new DerethClientTheme()), window, new Point(260, 120));
     }
@@ -810,16 +817,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// The UI size stepped from the Settings window: saved now, and applied on the next frame, outside the window's own click, since applying it
-    /// closes the window.
+    /// The UI size set from the Settings window, kept within the bounds and snapped to the step: saved now, and applied on the next frame,
+    /// outside the window's own click, since applying it closes the window.
     /// </summary>
-    private void StepUiSize(int steps)
+    private void SetUiSize(int percent)
     {
-        var size = Math.Max(SmallestUiSize, Math.Min(LargestUiSize, _uiSize + steps * 5));
+        var size = Math.Clamp((int)Math.Round((double)percent / UiSizeChoice.Step) * UiSizeChoice.Step, UiSizeChoice.Smallest, UiSizeChoice.Largest);
         if (size == _uiSize) return;
         _uiSize = size;
         _settingsStore.Save("", "", UiSizeKey, (new Point(size, 0), null));
-        if (_settings != null) _settings.UiSize = new UiSizeChoice(size, StepUiSize);
+        if (_settings != null) _settings.UiSize = new UiSizeChoice(size, SetUiSize);
         _uiSizeChanged = true;
     }
 

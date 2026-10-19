@@ -16,25 +16,33 @@ public sealed class SettingsPanelTests
     [Fact]
     public void The_settings_window_switches_tabs_steps_the_UI_size_with_its_slider_and_reports_the_tab() => RenderThread.Run(() =>
     {
-        var steps = new List<int>();
-        var settings = new ClientSettings(new UiSizeChoice(85, steps.Add), null, Array.Empty<UiWindowChoice>());
+        var sizes = new List<int>();
+        var settings = new ClientSettings(new UiSizeChoice(85, sizes.Add), null, Array.Empty<UiWindowChoice>());
         var tabs = new List<SettingsTab>();
         using var panel = AvaloniaPanel.Create(() => new SettingsPanel(settings, SettingsTab.General, tabs.Add), SettingsPanel.WindowWidth, SettingsPanel.WindowHeight);
         panel.Tick();
         var slider = panel.Content.GetVisualDescendants().OfType<DerethSlider>().Single();
+        var readout = TextOf(panel, "85%");
 
-        // The track runs from 60 to 150, so its middle is 105: four steps of 5 above 85.
-        PressCentre(panel, slider);
-        Assert.Equal(new[] { 4 }, steps);
+        // The track runs from 60 to 150, so its middle is 105. Held there, the readout follows the thumb; the size is set only on release.
+        var middle = CentreOf(panel, slider);
+        panel.PointerDown(middle.X, middle.Y);
+        panel.Tick();
+        Assert.Equal("105%", readout.Text);
+        Assert.Empty(sizes);
+        panel.PointerUp(middle.X, middle.Y);
+        Assert.Equal(new[] { 105 }, sizes);
 
-        PressCentre(panel, TabLabel(panel, "World"));
+        PressCentre(panel, TextOf(panel, "World"));
         panel.Tick();
         Assert.Equal(new[] { SettingsTab.World }, tabs);
         Assert.False(slider.IsEffectivelyVisible);
 
-        PressCentre(panel, TabLabel(panel, "General"));
+        PressCentre(panel, TextOf(panel, "General"));
+        PressCentre(panel, TextOf(panel, "General"));
         panel.Tick();
         Assert.True(slider.IsEffectivelyVisible);
+        Assert.Equal(new[] { SettingsTab.World, SettingsTab.General }, tabs);
     });
 
     [Fact]
@@ -58,23 +66,28 @@ public sealed class SettingsPanelTests
     public void The_update_button_checks_unless_updates_are_off() => RenderThread.Run(() =>
     {
         var checks = 0;
-        foreach (var enabled in new[] { true, false })
+        foreach (var (enabled, label) in new[] { (true, "Version 0.8.1"), (false, "Version 0.8.1 (updates are off: a store install)") })
         {
-            var settings = new ClientSettings(null, new UpdateChoice("Version 0.8.1", enabled, () => checks++), Array.Empty<UiWindowChoice>());
+            var settings = new ClientSettings(null, new UpdateChoice(label, enabled, () => checks++), Array.Empty<UiWindowChoice>());
             using var panel = AvaloniaPanel.Create(() => new SettingsPanel(settings), SettingsPanel.WindowWidth, SettingsPanel.WindowHeight);
             panel.Tick();
+            Assert.Contains(panel.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == label);
             PressCentre(panel, panel.Content.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Check for updates"));
         }
         Assert.Equal(1, checks);
     });
 
+    private static Point CentreOf(AvaloniaPanel panel, Control control) =>
+        Avalonia.VisualExtensions.TranslatePoint(control, new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), panel.Content)!.Value;
+
     private static void PressCentre(AvaloniaPanel panel, Control control)
     {
-        var centre = Avalonia.VisualExtensions.TranslatePoint(control, new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), panel.Content)!.Value;
+        var centre = CentreOf(panel, control);
         panel.PointerDown(centre.X, centre.Y);
         panel.PointerUp(centre.X, centre.Y);
     }
 
-    private static TextBlock TabLabel(AvaloniaPanel panel, string tab) =>
-        panel.Content.GetVisualDescendants().OfType<TextBlock>().Single(text => text.Text == tab);
+
+    private static TextBlock TextOf(AvaloniaPanel panel, string text) =>
+        panel.Content.GetVisualDescendants().OfType<TextBlock>().Single(block => block.Text == text);
 }

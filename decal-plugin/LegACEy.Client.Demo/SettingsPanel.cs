@@ -8,8 +8,12 @@ using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.Demo;
 
-/// <summary>The UI size the settings show, in percent, and the step it asks for (1 larger, -1 smaller).</summary>
-public sealed record UiSizeChoice(int Percent, Action<int> Step);
+/// <summary>The UI size the settings show, in percent, and the change that sets it. The runtime keeps a size within the bounds and in steps.</summary>
+public sealed record UiSizeChoice(int Percent, Action<int> Set)
+{
+    /// <summary>The smallest and largest UI size, and the step sizes move in, in percent.</summary>
+    public const int Smallest = 60, Largest = 150, Step = 5;
+}
 
 /// <summary>The update row: the installed version (with why updates are off, if they are), and the check, when they are on.</summary>
 public sealed record UpdateChoice(string Label, bool Enabled, Action Check);
@@ -66,8 +70,6 @@ public sealed class SettingsPanel : UserControl
     public const int WindowWidth = 440;
     public const int WindowHeight = 300;
 
-    private const int MinimumUiSize = 60, MaximumUiSize = 150, UiSizeStep = 5;
-
     private readonly ClientSettings _settings;
     private readonly Action<SettingsTab>? _tabChosen;
     private readonly DerethSegmented _tabs;
@@ -121,32 +123,42 @@ public sealed class SettingsPanel : UserControl
     }
 
     /// <summary>
-    /// "UI size": a slider from 60 to 150 in steps of 5, for all characters. Released on a new value, it asks for the steps from the size it shows.
+    /// "UI size": a slider from 60 to 150 in steps of 5, for all characters. The readout follows the thumb as it is dragged, and the size is set
+    /// when the pointer lets go.
     /// </summary>
     private Control UiSizeRow()
     {
-        var slider = new DerethSlider(MinimumUiSize, MaximumUiSize, UiSizeStep);
+        var slider = new DerethSlider(UiSizeChoice.Smallest, UiSizeChoice.Largest, UiSizeChoice.Step);
         var readout = new TextBlock { FontFamily = DerethPalette.Body, FontSize = 12.5, Foreground = DerethPalette.CreamBrush, VerticalAlignment = VerticalAlignment.Center };
+        void ShowReadout(int percent) => readout.Text = $"{percent}%";
         void Show()
         {
             if (_settings.UiSize is not { } size) return;
             slider.Value = size.Percent;
-            readout.Text = $"{size.Percent}%";
+            ShowReadout(size.Percent);
         }
-        slider.Committed += percent =>
-        {
-            if (_settings.UiSize is { } size) size.Step((percent - size.Percent) / UiSizeStep);
-        };
+        slider.ValueChanged += ShowReadout;
+        slider.Committed += percent => _settings.UiSize?.Set(percent);
         _redraws.Add(Show);
         Show();
 
-        var label = new TextBlock { Text = "UI size", FontFamily = DerethPalette.Body, FontSize = 12.5, Foreground = DerethPalette.TextBrush, VerticalAlignment = VerticalAlignment.Center };
         var head = new DockPanel();
         DockPanel.SetDock(readout, Dock.Right);
         head.Children.Add(readout);
-        head.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { label, new DerethScopeTag("All characters", thisCharacter: false) } });
+        head.Children.Add(ScopedLabel("UI size"));
         return new StackPanel { Spacing = 4, Children = { head, slider } };
     }
+
+    /// <summary>A label with the tag that says it applies to all characters.</summary>
+    private static Control ScopedLabel(string text) => new StackPanel
+    {
+        Orientation = Orientation.Horizontal, Spacing = 8,
+        Children =
+        {
+            new TextBlock { Text = text, FontFamily = DerethPalette.Body, FontSize = 12.5, Foreground = DerethPalette.TextBrush, VerticalAlignment = VerticalAlignment.Center },
+            new DerethScopeTag("All characters", thisCharacter: false)
+        }
+    };
 
     /// <summary>The installed version, and Check for updates, greyed out with the reason on an install that never updates.</summary>
     private static Control UpdateRow(UpdateChoice choice)
@@ -161,10 +173,10 @@ public sealed class SettingsPanel : UserControl
         return row;
     }
 
-    /// <summary>A row per window with a button that shows Custom or Native and switches it.</summary>
+    /// <summary>A row per window with a button that shows Custom or Native and switches it. The switches are the same for every character.</summary>
     private Control WindowsPane()
     {
-        var pane = new StackPanel { Spacing = 6 };
+        var pane = new StackPanel { Spacing = 6, Children = { ScopedLabel("Window switches") } };
         foreach (var window in _settings.Windows)
         {
             var button = new DerethButton { Width = 80, HorizontalContentAlignment = HorizontalAlignment.Center };
