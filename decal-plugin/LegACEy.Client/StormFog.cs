@@ -111,12 +111,12 @@ internal sealed unsafe class StormFog : IDisposable
         Calibrated = FromPlayer = false;
         _sincePlayer++;
         if (Zone is not { } zone) return;
+        if (_noise == IntPtr.Zero) _noise = MakeNoise();
         if (depth.Texture != IntPtr.Zero && (_shaded ??= MakeShaders()) == true && Eye is { } camera)
         {
             depth.Reading(() => DrawVolume(depth.Texture, new Vector2(depth.Width, depth.Height), zone, camera));
             return;
         }
-        if (_noise == IntPtr.Zero) _noise = MakeNoise();
         var saved = SaveState(_device);
         try
         {
@@ -178,6 +178,8 @@ internal sealed unsafe class StormFog : IDisposable
         Matrix4x4.Invert(Matrix4x4.CreateTranslation(Offset) * View * Projection, out var inverse);
         var screen = Viewport(_device);
         var centre = Centre(zone);
+        var time = (float)_clock.Elapsed.TotalSeconds;
+        static float Wrap(float value) => value - MathF.Floor(value);
         var saved = SaveState(_device);
         try
         {
@@ -186,8 +188,15 @@ internal sealed unsafe class StormFog : IDisposable
             SetPixelConstants(_device, 4, new[]
             {
                 new Vector4(Render(eye), 0), new Vector4(centre.X, centre.Y, Inner, Outer), new Vector4(Bottom, Top, 1 / Thickness, SkyDistance),
-                new Vector4(((Grey >> 16) & 0xFF) / 255f, ((Grey >> 8) & 0xFF) / 255f, (Grey & 0xFF) / 255f, 1), new Vector4(screen.X, screen.Y, screen.Width, screen.Height), new Vector4(size, 0, 0)
+                new Vector4(((Grey >> 16) & 0xFF) / 255f, ((Grey >> 8) & 0xFF) / 255f, (Grey & 0xFF) / 255f, 1), new Vector4(screen.X, screen.Y, screen.Width, screen.Height), new Vector4(size, 0, 0),
+                new Vector4(Bank, 150, Wrap(time * 0.004f), Wrap(time * 0.003f))
             });
+            SetTexture(_device, 1, _noise);
+            SetSamplerState(_device, 1, SamplerState.MinFilter, FilterLinear);
+            SetSamplerState(_device, 1, SamplerState.MagFilter, FilterLinear);
+            SetSamplerState(_device, 1, SamplerState.MipFilter, FilterNone);
+            SetSamplerState(_device, 1, SamplerState.AddressU, AddressWrap);
+            SetSamplerState(_device, 1, SamplerState.AddressV, AddressWrap);
             SetTexture(_device, 0, depth);
             SetSamplerState(_device, 0, SamplerState.MinFilter, FilterPoint);
             SetSamplerState(_device, 0, SamplerState.MagFilter, FilterPoint);
@@ -213,6 +222,7 @@ internal sealed unsafe class StormFog : IDisposable
         finally
         {
             SetTexture(_device, 0, IntPtr.Zero);
+            SetTexture(_device, 1, IntPtr.Zero);
             RestoreState(saved);
         }
     }
