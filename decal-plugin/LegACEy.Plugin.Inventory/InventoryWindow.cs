@@ -835,10 +835,10 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         return track;
     }
 
-    /// <summary>A groove filled in gold to the burden. Over the limit the fill turns red.</summary>
+    /// <summary>A groove filled in gold to the burden, full at the most a character can carry (three times the limit). Over the limit the fill turns red.</summary>
     private static Control BurdenMeter(InventorySnapshot snapshot, bool over, bool vertical)
     {
-        var share = snapshot.BurdenLimit <= 0 ? 0 : Math.Min(1.0, (double)snapshot.Burden / snapshot.BurdenLimit);
+        var share = snapshot.BurdenLimit <= 0 ? 0 : Math.Min(1.0, (double)snapshot.Burden / (3 * snapshot.BurdenLimit));
         var track = new Border
         {
             Background = DerethPalette.GrooveBrush, BorderBrush = DerethPalette.GrooveEdgeBrush, BorderThickness = new Thickness(1),
