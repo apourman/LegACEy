@@ -48,7 +48,8 @@ class PublishingTests(unittest.TestCase):
         self.source = {'sha': 'source-sha', 'tag': 'decal-plugin-v0.1.0', 'version': '0.1.0'}
         self.api = FakeGitHub(self.source['sha'])
         (self.directory / 'source.json').write_text(json.dumps(self.source), encoding='utf-8-sig')
-        names = ['LegACEy.Client.DecalPlugin.dll', 'LegACEy-decal-plugin-v0.1.0-windows-x86.zip']
+        names = ['LegACEy.Client.DecalPlugin.dll', 'LegACEy-decal-plugin-v0.1.0-windows-x86.zip',
+                 'LegACEy-decal-plugin-v0.1.0-setup.exe']
         for name in names:
             (self.directory / name).write_bytes(b'test build')
         (self.directory / 'SHA256SUMS.txt').write_text(''.join(
@@ -57,9 +58,11 @@ class PublishingTests(unittest.TestCase):
     def test_uploads_assets_then_publishes_without_changing_release_notes(self):
         publish_release.publish(self.directory, self.source, self.api)
         self.assertFalse(self.api.draft)
-        uploads = [c for c in self.api.calls if c[0] == 'POST']
-        self.assertEqual(len(uploads), 3)
-        self.assertTrue(all(c[1].startswith('https://uploads.github.com/') for c in uploads))
+        uploads = [c[1] for c in self.api.calls if c[0] == 'POST']
+        self.assertTrue(all(url.startswith('https://uploads.github.com/') for url in uploads))
+        self.assertEqual([url.split('name=')[1] for url in uploads],
+                         ['LegACEy.Client.DecalPlugin.dll', 'LegACEy-decal-plugin-v0.1.0-windows-x86.zip',
+                          'LegACEy-decal-plugin-v0.1.0-setup.exe', 'SHA256SUMS.txt'])
         self.assertEqual(self.api.calls[-1], ('PATCH', 'releases/7', {'draft': False, 'make_latest': 'false'}))
 
     def test_failed_upload_remains_draft_and_retry_succeeds(self):
