@@ -79,7 +79,9 @@ every 6 hours the client asks GitHub for the newest published
 install, timed by the `update-check` file). A newer one is downloaded into
 `update\<version>\`, checked against its `SHA256SUMS.txt` and unpacked; chat
 says it installs when the game closes, and the updater applies it then, so the
-next launch runs it. The updater logs to `updater.log`. Creating an empty file
+next launch runs it. The checksum guards against a corrupt download, not a
+compromised release: the sums file comes from the same release. The updater
+logs to `updater.log`. Creating an empty file
 named `no-auto-update` beside the main DLL turns auto-update off.
 
 Creating an empty file named `fail-post-ui-draw` beside the main DLL makes the

@@ -310,6 +310,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // Kept apart from the UI, which may have failed: the plugin's own updates still check, and tell the player in chat.
     private readonly PluginUpdates _updates = new(PluginDirectory);
     private bool _loggedIn;
+    private bool _noticeFailLogged;
     private bool _failed;
 
     public ClientUiRuntime()
@@ -775,8 +776,17 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var timer = Stopwatch.StartNew();
         if (_loggedIn)
         {
-            try { _updates.PostNotices(); }
-            catch (Exception exception) { Log($"Could not write the update notice to chat: {exception.Message}"); }
+            // A failed line is tried again next frame, logged once per streak.
+            try
+            {
+                _updates.PostNotices();
+                _noticeFailLogged = false;
+            }
+            catch (Exception exception)
+            {
+                if (!_noticeFailLogged) Log($"Could not write the update notice to chat; retrying: {exception.Message}");
+                _noticeFailLogged = true;
+            }
         }
         try { FrameCore(); }
         finally

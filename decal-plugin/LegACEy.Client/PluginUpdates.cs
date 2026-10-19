@@ -2,12 +2,14 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
 using System.Reflection;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -35,8 +37,11 @@ internal sealed class PluginUpdates : IDisposable
     private static readonly TimeSpan Every = TimeSpan.FromHours(6);
     // Every client of the install shares one check time, so several clients ask GitHub once (60 unauthenticated requests per hour per IP).
     private static readonly TimeSpan SharedGap = TimeSpan.FromHours(1);
+    // A whole check, download included, gives up after this, so a stalled connection never keeps the next check from starting.
+    private static readonly TimeSpan Deadline = TimeSpan.FromMinutes(15);
     private static readonly Regex PluginTag = new(@"^decal-plugin-v(\d+\.\d+\.\d+)$", RegexOptions.Compiled);
-    private static readonly HttpClient Http = CreateHttp();
+    // GitHub's API refuses requests without a User-Agent.
+    private static readonly HttpClient Http = new() { DefaultRequestHeaders = { { "User-Agent", "LegACEy-decal-plugin" } } };
 
     private readonly string _install;
     private readonly ConcurrentQueue<string> _notices = new();
@@ -96,21 +101,32 @@ internal sealed class PluginUpdates : IDisposable
         _timer ??= new Timer(_ => Check(), null, Every, Every);
         Task.Run(async () =>
         {
-            try { await Run(); }
+            try
+            {
+                using var deadline = new CancellationTokenSource(Deadline);
+                await Run(deadline.Token);
+            }
             catch (Exception exception) { ClientUiRuntime.Log($"Plugin update check failed: {exception.Message}"); }
             finally { Volatile.Write(ref _checking, 0); }
         });
     }
 
-    /// <summary>Writes the chat line for each newly staged version. Game thread only, while a character is in the world.</summary>
+    /// <summary>
+    /// Writes the chat line for each newly staged version; a line that fails stays queued for the next frame. Game thread only, while a
+    /// character is in the world.
+    /// </summary>
     public void PostNotices()
     {
-        while (_notices.TryDequeue(out var notice)) Bridge.Chat(notice, SystemChat);
+        while (_notices.TryPeek(out var notice))
+        {
+            Bridge.Chat(notice, SystemChat);
+            _notices.TryDequeue(out _);
+        }
     }
 
     public void Dispose() => _timer?.Dispose();
 
-    private async Task Run()
+    private async Task Run(CancellationToken cancel)
     {
         if (!File.Exists(Path.Combine(_install, "install.json")) || File.Exists(Path.Combine(_install, "no-auto-update"))) return;
         var current = AssemblyName.GetAssemblyName(Path.Combine(_install, "LegACEy.Client.DecalPlugin.dll")).Version ?? new Version();
@@ -118,13 +134,25 @@ internal sealed class PluginUpdates : IDisposable
         var updaterRunning = Mutex.TryOpenExisting(UpdaterMutex, out var held);
         held?.Dispose();
 
-        var stamp = Path.Combine(_install, "update-check");
-        if (!File.Exists(stamp) || DateTime.UtcNow - File.GetLastWriteTimeUtc(stamp) >= SharedGap)
-        {
-            File.WriteAllText(stamp, DateTime.UtcNow.ToString("O"));
-            if (!updaterRunning) RemoveStale(update, current);
-            if (Newest(await Http.GetStringAsync(ReleasesUrl), current) is { } release) await Download(release, update);
-        }
+        // The stamp holds the last check's time. Held open unshared, it makes this the one client that checks, cleans up and downloads;
+        // while another client holds it, this one skips straight to the stages already there.
+        FileStream? slot = null;
+        try { slot = new FileStream(Path.Combine(_install, "update-check"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
+        catch (IOException) { }
+        if (slot != null)
+            await using (slot)
+            {
+                var last = DateTime.TryParse(new StreamReader(slot, leaveOpen: true).ReadToEnd(), CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind, out var time) ? time : DateTime.MinValue;
+                if (DateTime.UtcNow - last >= SharedGap)
+                {
+                    slot.SetLength(0);
+                    slot.Write(Encoding.UTF8.GetBytes(DateTime.UtcNow.ToString("O")));
+                    slot.Flush();
+                    if (!updaterRunning) RemoveStale(update, current);
+                    if (Newest(await Http.GetStringAsync(ReleasesUrl, cancel), current) is { } release) await Download(release, update, cancel);
+                }
+            }
 
         // A stage this client or another made, or one an updater left after a failed apply: announced once, applied at the game's exit.
         if (Staged(update).Where(version => version > Plain(current)).Max() is not { } staged) return;
@@ -132,24 +160,24 @@ internal sealed class PluginUpdates : IDisposable
         if (!updaterRunning) StartUpdater(Path.Combine(update, staged.ToString()));
     }
 
-    private static async Task Download(PluginRelease release, string update)
+    private static async Task Download(PluginRelease release, string update, CancellationToken cancel)
     {
         var folder = Path.Combine(update, release.Version.ToString());
         if (File.Exists(Path.Combine(folder, "ready"))) return;
         Directory.CreateDirectory(folder);
-        await Save(release.ZipUrl, Path.Combine(folder, ZipName(release.Version)));
-        await Save(release.SumsUrl, Path.Combine(folder, SumsName));
+        await Save(release.ZipUrl, Path.Combine(folder, ZipName(release.Version)), cancel);
+        await Save(release.SumsUrl, Path.Combine(folder, SumsName), cancel);
         ClientUiRuntime.Log(Stage(folder, release.Version)
             ? $"Plugin update {release.Version} staged."
             : $"Plugin update {release.Version} not staged: the zip does not match {SumsName}.");
     }
 
-    private static async Task Save(string url, string path)
+    private static async Task Save(string url, string path, CancellationToken cancel)
     {
-        using var response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+        using var response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancel);
         response.EnsureSuccessStatusCode();
         await using var file = File.Create(path);
-        await response.Content.CopyToAsync(file);
+        await response.Content.CopyToAsync(file, cancel);
     }
 
     /// <summary>The versions in <c>update\</c> whose stage is ready.</summary>
@@ -192,12 +220,4 @@ internal sealed class PluginUpdates : IDisposable
 
     // The stub's assembly version is X.Y.Z.0; a tag's is X.Y.Z, which Version orders below X.Y.Z.0.
     private static Version Plain(Version version) => new(version.Major, version.Minor, Math.Max(version.Build, 0));
-
-    private static HttpClient CreateHttp()
-    {
-        var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
-        // GitHub's API refuses requests without a User-Agent.
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("LegACEy-decal-plugin");
-        return http;
-    }
 }
