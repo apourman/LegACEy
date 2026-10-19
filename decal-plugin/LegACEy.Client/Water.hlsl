@@ -58,12 +58,14 @@ float4 Shallow : register(c3);
 float4 Time : register(c4);     // x: seconds
 static const float Bump = 0.9;
 
-float3 Normal(float4 waves, float3 swell, out float height)
+float3 Normal(float4 waves, float3 swell, float3 view, out float height)
 {
     float3 a = tex2D(Waves, waves.xy).rgb - 0.5, b = tex2D(Waves, waves.zw).rgb - 0.5;
     height = a.b + 0.7 * b.b;
     float2 slope = (a.rg + 0.7 * b.rg) * 2 * Bump;
-    return normalize(swell + float3(-slope.x, 0, -slope.y));
+    float3 normal = normalize(swell + float3(-slope.x, 0, -slope.y));
+    // A pixel seen cannot face away from the camera: the far side of a crest, tipped back towards it (or it shades as a bright line).
+    return normalize(normal + view * max(0, 0.15 - dot(normal, view)));
 }
 
 float Glint(float3 normal, float3 view)
@@ -74,22 +76,25 @@ float Glint(float3 normal, float3 view)
 float4 Tint(Pixel pixel) : COLOR
 {
     float height;
-    float3 normal = Normal(pixel.Waves, pixel.Swell, height);
     float3 view = normalize(Eye.xyz - pixel.World);
+    float3 normal = Normal(pixel.Waves, pixel.Swell, view, height);
     // Schlick's fresnel: water reflects more of the sky the lower the angle it is seen at.
     float fresnel = 0.02 + 0.98 * pow(1 - saturate(dot(normal, view)), 5);
     // The ripples' own light and shade around retail's flat lighting: a flat surface is left as it was.
     float shade = 1 + 1.6 * (dot(normal, Sun.xyz) - Sun.y);
-    float3 colour = lerp(Shallow.rgb, Deep.rgb, pixel.Shore.y) * (0.5 + 0.35 * fresnel) * shade + 0.25 * Glint(normal, view);
-    colour = 0.5 + (colour - 0.5) * Sun.w;
+    // Seen from above, the water's own tint; at a low angle, a pale sky's reflection, which brightens without tinting.
+    float3 water = lerp(Shallow.rgb, Deep.rgb, pixel.Shore.y) * 0.5 * shade;
+    float3 colour = lerp(water, float3(0.62, 0.64, 0.66), fresnel) + 0.25 * Glint(normal, view);
+    // At most 1.6 × retail's colour.
+    colour = min(0.5 + (colour - 0.5) * Sun.w, 0.8);
     return float4(lerp(0.5, colour, pixel.Colour.a), 1);
 }
 
 float4 Light(Pixel pixel) : COLOR
 {
     float height;
-    float3 normal = Normal(pixel.Waves, pixel.Swell, height);
     float3 view = normalize(Eye.xyz - pixel.World);
+    float3 normal = Normal(pixel.Waves, pixel.Swell, view, height);
     // Foam where the water meets the shore, on the wave crests, drifting in and out.
     float edge = pixel.Shore.x - 0.12 * sin(Time.x * 0.9 + 0.05 * (pixel.World.x + pixel.World.z));
     float band = saturate(1 - abs(edge - 0.55) / 0.3);
