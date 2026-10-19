@@ -68,6 +68,24 @@ public sealed class SettingsPanelTests
     });
 
     [Fact]
+    public void A_window_on_retail_mutes_its_title_until_it_is_back_on_Dereth() => RenderThread.Run(() =>
+    {
+        var custom = true;
+        var settings = new ClientSettings(null, null, new[] { new UiWindowChoice("Vitals", () => custom, value => custom = value) });
+        using var panel = Tab(settings);
+        var title = TextOf(panel, "Vitals");
+        Assert.Same(DerethPalette.CreamBrush, title.Foreground);
+
+        PressCentre(panel, TextOf(panel, "Retail"));
+        panel.Tick();
+        Assert.Same(DerethPalette.MutedBrush, title.Foreground);
+
+        PressCentre(panel, TextOf(panel, "Dereth"));
+        panel.Tick();
+        Assert.Same(DerethPalette.CreamBrush, title.Foreground);
+    });
+
+    [Fact]
     public void Each_option_on_Dereth_calls_its_change_with_its_value() => RenderThread.Run(() =>
     {
         var changes = new List<object>();
@@ -85,7 +103,7 @@ public sealed class SettingsPanelTests
             var fadeRow = TextOf(panel, "Fade when idle").GetVisualAncestors().OfType<DockPanel>().First();
             Assert.Contains("This character", fadeRow.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text));
             PressCentre(panel, TextOf(panel, "Never"));
-            PressCentre(panel, TextOf(panel, "30 s"));
+            PressCentre(panel, TextOf(panel, "30"));
             PressCentre(panel, TextOf(panel, "Side by side"));
         }
 

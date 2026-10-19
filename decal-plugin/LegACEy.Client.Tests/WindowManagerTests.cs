@@ -456,6 +456,61 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void A_place_that_cannot_be_written_still_loads_this_session()
+    {
+        var path = TempPath();
+        try
+        {
+            // A directory where the file should be: no write can succeed, and nothing is read.
+            Directory.CreateDirectory(path);
+            var store = new FileWindowPositionStore(path);
+            store.Save("server-a", "character-a", "vault", (new Point(10, 20), new Size(300, 400)));
+
+            Assert.Equal((new Point(10, 20), new Size(300, 400)), store.Load("server-a", "character-a", "vault"));
+        }
+        finally
+        {
+            if (Directory.Exists(path)) Directory.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void A_failed_forget_hides_the_forgotten_places_this_session_and_keeps_the_options()
+    {
+        var path = TempPath();
+        try
+        {
+            // A directory where the file should be: nothing can be written, so the rows live in the session.
+            Directory.CreateDirectory(path);
+            var store = new FileWindowPositionStore(path);
+            store.Save("server-a", "character-a", "vault", (new Point(10, 20), null));
+            store.Save("server-a", "character-a", "dereth-chat-fade", (new Point(30, 0), null));
+            store.Save("server-a", "character-b", "vault", (new Point(30, 40), null));
+
+            Assert.False(store.ForgetPlaces("server-a", "character-a", new[] { "dereth-chat-fade" }));
+            Assert.Null(store.Load("server-a", "character-a", "vault"));
+            Assert.Equal(new Point(30, 0), store.Load("server-a", "character-a", "dereth-chat-fade")!.Value.Location);
+            Assert.Equal(new Point(30, 40), store.Load("server-a", "character-b", "vault")!.Value.Location);
+
+            // Writable again: the next save persists the session's rows and the forget, and clears the overlay.
+            Directory.Delete(path);
+            store.Save("server-a", "character-c", "vault", (new Point(1, 1), null));
+            var reloaded = new FileWindowPositionStore(path);
+            Assert.Null(reloaded.Load("server-a", "character-a", "vault"));
+            Assert.Equal(new Point(30, 0), reloaded.Load("server-a", "character-a", "dereth-chat-fade")!.Value.Location);
+            Assert.Equal(new Point(30, 40), reloaded.Load("server-a", "character-b", "vault")!.Value.Location);
+            // Another client's change to the file now shows through the store, since nothing is held back.
+            new FileWindowPositionStore(path).Save("server-a", "character-b", "vault", (new Point(99, 99), null));
+            Assert.Equal(new Point(99, 99), store.Load("server-a", "character-b", "vault")!.Value.Location);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+            else if (Directory.Exists(path)) Directory.Delete(path);
+        }
+    }
+
+    [Fact]
     public void A_file_that_cannot_be_read_is_not_rewritten_by_a_forget_or_a_save()
     {
         var path = TempPath();

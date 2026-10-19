@@ -130,6 +130,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string RetailVitalsSwitchFile = "retail-vitals-native";
     // Beside the DLL: while this file exists, retail's radar stays retail's. Without it the Dereth radar replaces it.
     private const string RetailRadarSwitchFile = "retail-radar-native";
+    // A window switch whose file could not be written or deleted this session: its state (true for LegACEy's) until the file can be changed.
+    // Runtime only, so the next session reads the file again.
+    private readonly Dictionary<string, bool> _switchHeld = new(StringComparer.Ordinal);
 
     // The /water setting, one for every character: percent and on (1) or off (0).
     private const string WaterKey = "client-water";
@@ -169,7 +172,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private readonly HashSet<ModelView> _failedModelViews = new();
     private readonly HashSet<ModelView> _drawnModelViews = new();
     private WindowManager? _windows;
-    private FileWindowPositionStore? _positionStore;
+    // Kept for the session, not rebuilt with the windows: its session overlay holds what a failed write could not save.
+    private readonly FileWindowPositionStore _positionStore = new(IOPath.Combine(PluginDirectory, "window-positions.txt"));
     // The settings the open Settings window shows, so a UI size change made there reaches it.
     private ClientSettings? _settings;
     // Each plugin's one settings value, per character, in its own file: a row keyed by the plugin's name whose X is the value.
@@ -749,7 +753,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private void CreateWindowManager()
     {
         if (_device == IntPtr.Zero) return;
-        _positionStore = new FileWindowPositionStore(IOPath.Combine(PluginDirectory, "window-positions.txt"));
         if (!AvaloniaPanel.CanScale) Log("This Avalonia cannot scale panels; LegACEy windows show at their design size.");
         _windows = new WindowManager(GameDevice.ViewportSize(_device), _positionStore, SessionServer(), SessionCharacter(), WindowScale, () => NativeUi.IsUiLocked);
         _windowsEnabled = EnsurePostUiDrawHook();
@@ -819,8 +822,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             Vitals = new OptionChoice<VitalsLayout>(_vitalsLayouts.Load(SessionServer(), SessionCharacter()), ChooseVitalsLayout),
             ShortcutRow2 = new OptionChoice<bool>(_row2Choice.IsOn(SessionServer(), SessionCharacter()), SetShortcutRow2),
-            ChatTextSize = new OptionChoice<int>(RetailChatWindows.LoadTextSize(_positionStore!, SessionServer(), SessionCharacter()), SetChatTextSize),
-            ChatFade = new OptionChoice<int>(RetailChatWindows.LoadFadeSeconds(_positionStore!, SessionServer(), SessionCharacter()), SetChatFadeSeconds),
+            ChatTextSize = new OptionChoice<int>(RetailChatWindows.LoadTextSize(_positionStore, SessionServer(), SessionCharacter()), SetChatTextSize),
+            ChatFade = new OptionChoice<int>(RetailChatWindows.LoadFadeSeconds(_positionStore, SessionServer(), SessionCharacter()), SetChatFadeSeconds),
             Radar = new OptionChoice<RadarOptions>(LoadRadarOptions(), SetRadarOptions),
             ResetPositions = () => _positionsResetRequested = true,
         };
@@ -861,23 +864,30 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         Choice("Radar", RetailRadarSwitchFile, () => _lastRadarSwitchCheck = default)
     };
 
-    private static UiWindowChoice Choice(string title, string file, Action recheck)
+    private UiWindowChoice Choice(string title, string file, Action recheck)
     {
         var path = IOPath.Combine(PluginDirectory, file);
-        return new UiWindowChoice(title, () => !File.Exists(path), custom =>
+        return new UiWindowChoice(title, () => SwitchCustom(path), custom =>
         {
             try
             {
                 if (custom) File.Delete(path);
                 else File.WriteAllText(path, string.Empty);
+                _switchHeld.Remove(path);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
+                // The card keeps the chosen state for this session, so it doesn't snap back to the file's.
                 Log($"Could not switch the {title} window: {exception.Message}");
+                _switchHeld[path] = custom;
             }
             recheck();
         });
     }
+
+    /// <summary>Whether a switch's window is on LegACEy's: the file's absence, unless a write this session could not change it.</summary>
+    private bool SwitchCustom(string path) =>
+        _switchHeld.TryGetValue(path, out var held) ? held : !File.Exists(path);
 
     /// <summary>
     /// The UI size set from the Settings window, kept within the bounds and snapped to the step: saved now, and applied on the next frame,
@@ -938,15 +948,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Forgets this character's saved window places and keeps its options. A failure is logged, and the windows reopen where they were; the
-    /// rebuild goes on either way.
+    /// Forgets this character's saved window places and keeps its options. A failure is logged: if the position file can't be read, nothing
+    /// changes; if it can't be written, the places are forgotten for this session only. The rebuild goes on either way.
     /// </summary>
     private void ForgetWindowPlaces()
     {
         try
         {
-            if (_positionStore?.ForgetPlaces(SessionServer(), SessionCharacter(), PositionOptionKeys) == false)
-                Log("Could not forget the saved window positions; the windows reopen where they were.");
+            if (_positionStore.ForgetPlaces(SessionServer(), SessionCharacter(), PositionOptionKeys) == false)
+                Log("Could not reset the window positions: the position file can't be read or written. If only writing failed, they're forgotten for this session.");
         }
         catch (Exception exception) { Log($"Could not forget the saved window positions: {exception.Message}"); }
     }
@@ -1908,7 +1918,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>Once per toolbar taken over, puts it at this character's saved place, kept on screen. Until then it stands where retail's did.</summary>
     private void LoadToolbarPlace()
     {
-        if (_toolbarPlaceLoaded || !_inGame || _positionStore == null || _toolbarPlace == null || _toolbarSurface == null) return;
+        if (_toolbarPlaceLoaded || !_inGame || _toolbarPlace == null || _toolbarSurface == null) return;
         _toolbarPlaceLoaded = true;
         if (_positionStore.Load(SessionServer(), SessionCharacter(), ToolbarPlaceId) is not { } saved) return;
         var screen = GameDevice.ViewportSize(_device);
@@ -1919,7 +1929,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private void SaveToolbarPlace(Point location)
     {
-        if (_inGame && _positionStore != null) _positionStore.Save(SessionServer(), SessionCharacter(), ToolbarPlaceId, (location, null));
+        if (_inGame) _positionStore.Save(SessionServer(), SessionCharacter(), ToolbarPlaceId, (location, null));
     }
 
     /// <summary>Whether a screen point is on the toolbar's top edge, where a press moves it as a window's top edge does.</summary>
@@ -2263,7 +2273,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var port = _chatPort!;
         var server = SessionServer();
         var character = SessionCharacter();
-        var chats = new RetailChatWindows(port, _windows!, _positionStore!, _chatTabs, server, character, () => _pointer, (definition, content, location) => OpenWindowCore(definition, content, location, ChatFailed), ReleaseFeatureWindow,
+        var chats = new RetailChatWindows(port, _windows!, _positionStore, _chatTabs, server, character, () => _pointer, (definition, content, location) => OpenWindowCore(definition, content, location, ChatFailed), ReleaseFeatureWindow,
             copy: CopyToClipboard, paste: PasteFromClipboard, carried: _carriedChatHistory);
         _carriedChatHistory = null;
         // The chat's own text size control moves the Settings window's value too.
@@ -2577,15 +2587,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Whether a feature's switch is on: on while its file is missing beside the DLL. The file is looked for once a second.
+    /// Whether a feature's switch is on: on while its file is missing beside the DLL, or while a write this session could not change it
+    /// holds (see <see cref="SwitchCustom"/>). The file is looked for once a second.
     /// </summary>
-    private static bool SwitchOn(string file, ref DateTime lastCheck, ref bool on)
+    private bool SwitchOn(string file, ref DateTime lastCheck, ref bool on)
     {
         var now = DateTime.UtcNow;
         if (now - lastCheck >= TimeSpan.FromSeconds(1))
         {
             lastCheck = now;
-            on = !File.Exists(IOPath.Combine(PluginDirectory, file));
+            on = SwitchCustom(IOPath.Combine(PluginDirectory, file));
         }
         return on;
     }
@@ -2671,7 +2682,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             return;
         }
         var size = RetailChatWindows.ClampTextSize(percent);
-        RetailChatWindows.SaveTextSize(_positionStore!, SessionServer(), SessionCharacter(), size);
+        RetailChatWindows.SaveTextSize(_positionStore, SessionServer(), SessionCharacter(), size);
         if (_settings != null) _settings.ChatTextSize = new OptionChoice<int>(size, SetChatTextSize);
     }
 
@@ -2683,7 +2694,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         var fade = RetailChatWindows.FadeOrDefault(seconds);
         if (_chatWindows != null) _chatWindows.SetFadeSeconds(fade);
-        else RetailChatWindows.SaveFadeSeconds(_positionStore!, SessionServer(), SessionCharacter(), fade);
+        else RetailChatWindows.SaveFadeSeconds(_positionStore, SessionServer(), SessionCharacter(), fade);
         if (_settings != null) _settings.ChatFade = new OptionChoice<int>(fade, SetChatFadeSeconds);
     }
 

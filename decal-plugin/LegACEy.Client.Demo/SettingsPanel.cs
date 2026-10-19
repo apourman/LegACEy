@@ -3,9 +3,12 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Avalonia;
+using Avalonia.Collections;
 using Avalonia.Controls;
+using Avalonia.Controls.Shapes;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.Demo;
@@ -124,8 +127,6 @@ public sealed class SettingsPanel : UserControl
     private readonly Control[] _panes;
     private readonly StackPanel _pluginList = new() { Spacing = 6 };
     private readonly List<Action> _redraws = new();
-    // A window on retail is dimmed, so its card reads as not LegACEy's.
-    private const double RetailOpacity = 0.55;
 
     public SettingsPanel(ClientSettings settings, SettingsTab tab = SettingsTab.General, Action<SettingsTab>? tabChosen = null, PluginRegistry? plugins = null)
     {
@@ -249,14 +250,15 @@ public sealed class SettingsPanel : UserControl
     }
 
     /// <summary>A label with the tag that says whether it applies to all characters, or to this one.</summary>
-    private static Control ScopedLabel(string text, bool thisCharacter = false) => new StackPanel
+    private static Control ScopedLabel(string text, bool thisCharacter = false) => ScopedLabel(
+        new TextBlock { Text = text, FontFamily = DerethPalette.Body, FontSize = 12.5, Foreground = DerethPalette.TextBrush, VerticalAlignment = VerticalAlignment.Center },
+        thisCharacter);
+
+    /// <summary>The label as the caller styled it, with the tag that says whether it applies to all characters, or to this one.</summary>
+    private static Control ScopedLabel(TextBlock label, bool thisCharacter = false) => new StackPanel
     {
         Orientation = Orientation.Horizontal, Spacing = 8,
-        Children =
-        {
-            new TextBlock { Text = text, FontFamily = DerethPalette.Body, FontSize = 12.5, Foreground = DerethPalette.TextBrush, VerticalAlignment = VerticalAlignment.Center },
-            new DerethScopeTag(thisCharacter ? "This character" : "All characters", thisCharacter)
-        }
+        Children = { label, new DerethScopeTag(thisCharacter ? "This character" : "All characters", thisCharacter) }
     };
 
     /// <summary>The installed version, and Check for updates, greyed out with the reason on an install that never updates.</summary>
@@ -274,7 +276,8 @@ public sealed class SettingsPanel : UserControl
 
     /// <summary>
     /// A card per window, in the order the runtime lists them. Each has its Dereth / Retail switch, for all characters. On Dereth the card shows
-    /// the window's options, for this character; on retail it is dimmed and shows only the switch.
+    /// the window's options, for this character. On retail its frame is dashed, its title muted and its Retail choice lit blue, and it shows
+    /// only the switch.
     /// </summary>
     private Control WindowsPane()
     {
@@ -285,22 +288,32 @@ public sealed class SettingsPanel : UserControl
 
     private Control WindowCard(UiWindowChoice window)
     {
-        var switchOfWindow = new DerethSegmented(new[] { "Dereth", "Retail" });
+        var switchOfWindow = new DerethSegmented(new[] { "Dereth", "Retail" }, blueOption: 1);
         var head = new DockPanel();
         DockPanel.SetDock(switchOfWindow, Dock.Right);
         head.Children.Add(switchOfWindow);
-        head.Children.Add(ScopedLabel(window.Title));
+        var title = new TextBlock
+        {
+            Text = window.Title, FontFamily = DerethPalette.Title, FontSize = 15, Foreground = DerethPalette.CreamBrush, VerticalAlignment = VerticalAlignment.Center
+        };
+        head.Children.Add(ScopedLabel(title));
 
         var options = new StackPanel { Spacing = 6 };
         foreach (var row in OptionRows(window.Title)) options.Children.Add(row);
-        var card = new StackPanel { Spacing = 6, Children = { head, options } };
+        var frame = new Rectangle
+        {
+            Fill = DerethPalette.Brush(Color.FromArgb(0x2E, 0, 0, 0)), Stroke = DerethPalette.Brush(DerethPalette.Line), StrokeThickness = 1,
+            RadiusX = 3, RadiusY = 3, Stretch = Stretch.Fill, IsHitTestVisible = false
+        };
+        var card = new Grid { Children = { frame, new StackPanel { Spacing = 6, Margin = new Thickness(10, 8), Children = { head, options } } } };
 
         void Show()
         {
             var onDereth = window.IsCustom();
             switchOfWindow.Selected = onDereth ? 0 : 1;
             options.IsVisible = onDereth;
-            card.Opacity = onDereth ? 1 : RetailOpacity;
+            title.Foreground = onDereth ? DerethPalette.CreamBrush : DerethPalette.MutedBrush;
+            frame.StrokeDashArray = onDereth ? null : new AvaloniaList<double> { 3, 2 };
         }
         switchOfWindow.Chosen += index =>
         {
@@ -372,7 +385,7 @@ public sealed class SettingsPanel : UserControl
         {
             if (_settings.ChatTextSize is not { } choice) return;
             var next = choice.Value + steps * RetailChatWindows.TextSizeStep;
-            choice.Set(Math.Max(RetailChatWindows.SmallestTextSize, Math.Min(RetailChatWindows.LargestTextSize, next)));
+            choice.Set(RetailChatWindows.ClampTextSize(next));
         }
         smaller.Click += (_, _) => Step(-1);
         larger.Click += (_, _) => Step(1);
@@ -385,7 +398,13 @@ public sealed class SettingsPanel : UserControl
     /// <summary>How long the chat waits before it fades when left alone. Never is 0 seconds.</summary>
     private Control ChatFadeRow()
     {
-        var fade = new DerethSegmented(RetailChatWindows.FadeChoices.Select(seconds => seconds == RetailChatWindows.NeverFades ? "Never" : $"{seconds} s").ToArray());
+        // Labelled as the mockup does: only the longest choice carries its unit.
+        var fade = new DerethSegmented(RetailChatWindows.FadeChoices.Select(seconds => seconds switch
+        {
+            RetailChatWindows.NeverFades => "Never",
+            60 => "60 s",
+            _ => seconds.ToString(CultureInfo.InvariantCulture),
+        }).ToArray());
         void Show() => fade.Selected = _settings.ChatFade is { } choice ? RetailChatWindows.FadeChoices.ToList().IndexOf(choice.Value) : -1;
         fade.Chosen += index => _settings.ChatFade?.Set(RetailChatWindows.FadeChoices[index]);
         _redraws.Add(Show);
