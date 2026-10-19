@@ -176,6 +176,21 @@ public sealed class RetailChatWindowsTests
     }));
 
     [Fact]
+    public void The_text_size_event_fires_once_per_change_and_not_past_the_top_bound() => RenderThread.Run(() => WithStore(path =>
+    {
+        var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };
+        using var desk = ChatDesk.Open(port, path, Character, new MemoryWindowPositionStore());
+        var sizes = new List<int>();
+        desk.Chat.TextSizeChanged += sizes.Add;
+
+        desk.Chat.TextSizeStepped(1);
+        desk.Chat.SetTextSize(RetailChatWindows.LargestTextSize);
+        desk.Chat.TextSizeStepped(1);
+
+        Assert.Equal(new[] { 130, RetailChatWindows.LargestTextSize }, sizes);
+    }));
+
+    [Fact]
     public void Unread_counts_work_in_a_torn_off_window_and_the_main_window() => RenderThread.Run(() => WithStore(path =>
     {
         var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };

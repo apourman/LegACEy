@@ -223,6 +223,13 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         Rebuild();
     }
 
+    /// <summary>Takes options set from the Settings window and redraws with them. Nothing is saved here; the caller keeps them.</summary>
+    public void SetOptions(RadarOptions options)
+    {
+        Options = options;
+        Rebuild();
+    }
+
     private void Hover(Point point)
     {
         var id = _frame == null ? null : RadarScope.Hit(_frame, point)?.Id;

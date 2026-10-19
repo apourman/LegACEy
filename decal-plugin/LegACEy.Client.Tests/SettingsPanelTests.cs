@@ -46,20 +46,83 @@ public sealed class SettingsPanelTests
     });
 
     [Fact]
-    public void The_windows_tab_shows_each_window_s_choice_and_switches_it() => RenderThread.Run(() =>
+    public void A_window_switches_between_Dereth_and_retail_and_on_retail_hides_its_options() => RenderThread.Run(() =>
     {
-        var chatCustom = true;
-        var settings = new ClientSettings(null, null, new[] { new UiWindowChoice("Chat", () => chatCustom, custom => chatCustom = custom) });
-        using var panel = AvaloniaPanel.Create(() => new SettingsPanel(settings, SettingsTab.Windows), SettingsPanel.WindowWidth, SettingsPanel.WindowHeight);
-        panel.Tick();
-        Button Switch() => panel.Content.GetVisualDescendants().OfType<Button>().Single();
-        Assert.Equal("Custom", Switch().Content);
+        var custom = true;
+        var settings = new ClientSettings(null, null, new[] { new UiWindowChoice("Vitals", () => custom, value => custom = value) })
+        {
+            Vitals = new OptionChoice<VitalsLayout>(VitalsLayout.Stacked, _ => { })
+        };
+        using var panel = Tab(settings);
+        Assert.True(TextOf(panel, "Layout").IsEffectivelyVisible);
 
-        PressCentre(panel, Switch());
+        PressCentre(panel, TextOf(panel, "Retail"));
         panel.Tick();
+        Assert.False(custom);
+        Assert.False(TextOf(panel, "Layout").IsEffectivelyVisible);
 
-        Assert.False(chatCustom);
-        Assert.Equal("Native", Switch().Content);
+        PressCentre(panel, TextOf(panel, "Dereth"));
+        panel.Tick();
+        Assert.True(custom);
+        Assert.True(TextOf(panel, "Layout").IsEffectivelyVisible);
+    });
+
+    [Fact]
+    public void Each_option_on_Dereth_calls_its_change_with_its_value() => RenderThread.Run(() =>
+    {
+        var changes = new List<object>();
+        var settings = new ClientSettings(null, null, Windows("Toolbar", "Chat", "Vitals"))
+        {
+            ShortcutRow2 = new OptionChoice<bool>(true, value => changes.Add(value)),
+            ChatTextSize = new OptionChoice<int>(120, value => changes.Add(value)),
+            Vitals = new OptionChoice<VitalsLayout>(VitalsLayout.Stacked, value => changes.Add(value)),
+        };
+        using (var panel = Tab(settings))
+        {
+            PressCentre(panel, panel.Content.GetVisualDescendants().OfType<DerethToggle>().Single());
+            PressCentre(panel, panel.Content.GetVisualDescendants().OfType<Button>().Single(button => button.Content as string == "+"));
+            PressCentre(panel, TextOf(panel, "Side by side"));
+        }
+
+        // The radar's options come from its own panel, so the three cards above stay within the window's height.
+        var radar = new ClientSettings(null, null, Windows("Radar"))
+        {
+            Radar = new OptionChoice<RadarOptions>(new RadarOptions(), value => changes.Add(value)),
+        };
+        using (var panel = Tab(radar))
+        {
+            var toggles = panel.Content.GetVisualDescendants().OfType<DerethToggle>().ToList();
+            PressCentre(panel, toggles[0]);
+            PressCentre(panel, toggles[1]);
+            PressCentre(panel, toggles[2]);
+            PressCentre(panel, TextOf(panel, "150"));
+        }
+
+        Assert.Equal(new object[]
+        {
+            false, 130, VitalsLayout.SideBySide,
+            new RadarOptions(Ground: false), new RadarOptions(NorthUp: true), new RadarOptions(Rings: true), new RadarOptions(Zoom: 150),
+        }, changes);
+    });
+
+    [Fact]
+    public void A_change_made_in_a_window_redraws_the_open_panel() => RenderThread.Run(() =>
+    {
+        var settings = new ClientSettings(null, null, Windows("Chat", "Radar"))
+        {
+            ChatTextSize = new OptionChoice<int>(120, _ => { }),
+            Radar = new OptionChoice<RadarOptions>(new RadarOptions(), _ => { }),
+        };
+        using var panel = Tab(settings);
+        var ground = panel.Content.GetVisualDescendants().OfType<DerethToggle>().First();
+        Assert.True(ground.On);
+
+        // The window's own menu moves both values; the open panel draws them as they now are.
+        settings.ChatTextSize = new OptionChoice<int>(140, _ => { });
+        settings.Radar = new OptionChoice<RadarOptions>(new RadarOptions(Ground: false), _ => { });
+
+        TextOf(panel, "140%");
+        Assert.False(ground.On);
     });
 
     [Fact]
@@ -76,6 +139,15 @@ public sealed class SettingsPanelTests
         }
         Assert.Equal(1, checks);
     });
+
+    private static UiWindowChoice[] Windows(params string[] titles) => titles.Select(title => new UiWindowChoice(title, () => true, _ => { })).ToArray();
+
+    private static AvaloniaPanel Tab(ClientSettings settings)
+    {
+        var panel = AvaloniaPanel.Create(() => new SettingsPanel(settings, SettingsTab.Windows), SettingsPanel.WindowWidth, SettingsPanel.WindowHeight);
+        panel.Tick();
+        return panel;
+    }
 
     [Fact]
     public void The_world_tab_s_switch_and_strength_call_the_water_change() => RenderThread.Run(() =>
