@@ -27,7 +27,7 @@ internal sealed unsafe class Water : IDisposable
     private const int WaveSize = 128;
     private const float TileA = 17, TileB = 7.5f; // metres per repeat of each wave layer
     private const float Cell = 24;
-    private static readonly Vector3 Deep = new(0.80f, 0.92f, 1.00f), Shallow = new(0.92f, 1.00f, 0.95f);
+    private static readonly Vector3 Deep = new(0.62f, 0.85f, 1.00f), Shallow = new(0.80f, 1.00f, 0.92f);
 
     private readonly IntPtr _device;
     private readonly StormFog _camera;
@@ -40,6 +40,8 @@ internal sealed unsafe class Water : IDisposable
     private readonly ConcurrentQueue<(int Key, WaterPoint[]? Points)> _arrived = new();
     private Task<GroundDat?>? _ground;
     private int _centre = -1;
+    // The landblock the last 'Water:' log line was for, so each move into a landblock is logged once its water is in.
+    private int _logged = -1;
     private WaterVertex[] _vertices = Array.Empty<WaterVertex>();
     private IntPtr _waves;
 
@@ -76,6 +78,11 @@ internal sealed unsafe class Water : IDisposable
                 if (Vector2.Distance(new Vector2(corner.X, corner.Y), new Vector2(eye.X, eye.Y)) > Reach + Cell) continue;
                 for (var k = 0; k < 3; k++) _vertices[count++] = Vertex(points[i + k], eye, originX, originY, scroll);
             }
+        }
+        if (_logged != _centre && _loading.Count == 0)
+        {
+            _logged = _centre;
+            _log($"Water: landblock {_centre:X4}, {_blocks.Values.Count(points => points != null)} of {_blocks.Count} landblocks near have water, {count / 3} triangles drawn.");
         }
         if (count == 0) return;
         if (_waves == IntPtr.Zero) _waves = MakeWaves();
@@ -135,7 +142,7 @@ internal sealed unsafe class Water : IDisposable
         // Fresnel (Schlick's): water reflects more of the sky the lower the angle it is seen at.
         var facing = Math.Clamp(Vector3.Normalize(eye - p).Z, 0, 1);
         var fresnel = 0.02f + 0.98f * MathF.Pow(1 - facing, 5);
-        var colour = Vector3.Lerp(Shallow, Deep, point.Open) * (0.5f + 0.22f * fresnel);
+        var colour = Vector3.Lerp(Shallow, Deep, point.Open) * (0.5f + 0.35f * fresnel);
         var distance = Vector2.Distance(new Vector2(p.X, p.Y), new Vector2(eye.X, eye.Y));
         var alpha = point.Wet * Math.Clamp((Reach - distance) / FadeOut, 0, 1);
         uint Byte(float value) => (uint)Math.Clamp(value * 255, 0, 255);
@@ -267,7 +274,7 @@ internal sealed unsafe class Water : IDisposable
                 slope[y * WaveSize + x] = s;
             }
         var most = slope.Max(MathF.Abs);
-        return slope.Select(s => s / most).Select(s => 0.5f + 0.09f * s + (s > 0.7f ? (s - 0.7f) * 0.6f : 0)).ToArray();
+        return slope.Select(s => s / most).Select(s => 0.5f + 0.15f * s + (s > 0.65f ? (s - 0.65f) * 0.9f : 0)).ToArray();
     }
 
     private static float[] Halve(float[] pixels, int size)

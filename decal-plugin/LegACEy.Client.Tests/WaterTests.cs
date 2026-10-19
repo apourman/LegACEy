@@ -46,7 +46,7 @@ public sealed class WaterTests
     {
         var pixels = Water.WavePixels();
         Assert.InRange(pixels.Average(), 0.48f, 0.53f);
-        Assert.All(pixels, p => Assert.InRange(p, 0.3f, 0.8f));
+        Assert.All(pixels, p => Assert.InRange(p, 0.3f, 1f));
     }
 
     [Fact]
