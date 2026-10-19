@@ -37,11 +37,15 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     public const int DesignHeight = 200;
     private const string TornIdPrefix = "dereth-chat-";
     // The text size of every chat window, in percent, kept per character in the position store.
-    private const string TextSizeKey = "dereth-chat-text-size";
+    public const string TextSizeKey = "dereth-chat-text-size";
     public const int DefaultTextSize = 120;
-    private const int SmallestTextSize = 80;
-    private const int LargestTextSize = 200;
+    public const int SmallestTextSize = 80, LargestTextSize = 200, TextSizeStep = 10;
     private int _textSize = DefaultTextSize;
+    // How long a chat window is left alone before it fades, in seconds, kept per character in the position store. NeverFades keeps it awake.
+    public const string FadeKey = "dereth-chat-fade";
+    public const int NeverFades = 0;
+    public static readonly IReadOnlyList<int> FadeChoices = new[] { NeverFades, 10, RetailChatFade.DefaultIdleAfterSeconds, 30, 60 };
+    private int _fadeSeconds = RetailChatFade.DefaultIdleAfterSeconds;
     // Where a torn-off window opens from the pointer: the tab it came from is under the pointer, so the window follows it.
     private static readonly Size Grab = new(24, 9);
     private readonly IRetailChatPort _port;
@@ -119,8 +123,8 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     /// </summary>
     public void Open(Point beside)
     {
-        if (_positions.Load(_server, _character, TextSizeKey) is { Location.X: var saved and > 0 })
-            _textSize = Math.Max(SmallestTextSize, Math.Min(LargestTextSize, saved));
+        _textSize = LoadTextSize(_positions, _server, _character);
+        _fadeSeconds = LoadFadeSeconds(_positions, _server, _character);
         ShowWindow(MainId, _store.Load(_server, _character, MainId) ?? RetailChatTab.Defaults, tornOff: false, beside);
         foreach (var id in _store.Windows(_server, _character))
         {
@@ -250,7 +254,7 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
 
     private RetailChatWindow ShowWindow(string id, IReadOnlyList<RetailChatTab> tabs, bool tornOff, Point location)
     {
-        var window = new RetailChatWindow(_port, _history, this, tabs, tornOff, clock: _clock, copy: _copy, paste: _paste) { TextScale = _textSize / 100.0 };
+        var window = new RetailChatWindow(_port, _history, this, tabs, tornOff, clock: _clock, copy: _copy, paste: _paste) { TextScale = _textSize / 100.0, IdleAfterSeconds = FadeDelay };
         _chats.Add((id, window));
         try
         {
@@ -279,14 +283,56 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     /// <summary>The text size of every chat window, in percent.</summary>
     public int TextSize => _textSize;
 
-    public void TextSizeStepped(int steps)
+    /// <summary>Told when the text size moves, from the chat's own menu or the Settings window.</summary>
+    public event Action<int>? TextSizeChanged;
+
+    public void TextSizeStepped(int steps) => SetTextSize(_textSize + steps * TextSizeStep);
+
+    /// <summary>Sets the text size of every chat window, in percent, within the bounds, and keeps it for the character.</summary>
+    public void SetTextSize(int percent)
     {
-        var size = Math.Max(SmallestTextSize, Math.Min(LargestTextSize, _textSize + steps * 10));
+        if (_disposed) return;
+        var size = ClampTextSize(percent);
         if (size == _textSize) return;
         _textSize = size;
-        _positions.Save(_server, _character, TextSizeKey, (new Point(size, 0), null));
+        SaveTextSize(_positions, _server, _character, size);
         foreach (var (_, window) in _chats) window.TextScale = size / 100.0;
+        TextSizeChanged?.Invoke(size);
     }
+
+    /// <summary>A text size kept within the chat's bounds, in percent.</summary>
+    public static int ClampTextSize(int percent) => Math.Max(SmallestTextSize, Math.Min(LargestTextSize, percent));
+
+    /// <summary>The character's text size in percent, the default before one is saved, so a window opens at the size it was left.</summary>
+    public static int LoadTextSize(IWindowPositionStore positions, string server, string character) =>
+        positions.Load(server, character, TextSizeKey) is { Location.X: var saved and > 0 } ? ClampTextSize(saved) : DefaultTextSize;
+
+    public static void SaveTextSize(IWindowPositionStore positions, string server, string character, int percent) =>
+        positions.Save(server, character, TextSizeKey, (new Point(ClampTextSize(percent), 0), null));
+
+    /// <summary>The idle delay every chat window uses, or null when it never fades.</summary>
+    private int? FadeDelay => _fadeSeconds == NeverFades ? null : _fadeSeconds;
+
+    /// <summary>Sets how long every chat window is left alone before it fades, in seconds (<see cref="NeverFades"/> keeps them awake), and keeps it for the character.</summary>
+    public void SetFadeSeconds(int seconds)
+    {
+        if (_disposed) return;
+        var fade = FadeOrDefault(seconds);
+        if (fade == _fadeSeconds) return;
+        _fadeSeconds = fade;
+        SaveFadeSeconds(_positions, _server, _character, fade);
+        foreach (var (_, window) in _chats) window.IdleAfterSeconds = FadeDelay;
+    }
+
+    /// <summary>A fade delay that is one of <see cref="FadeChoices"/>; any other value snaps to the default.</summary>
+    public static int FadeOrDefault(int seconds) => FadeChoices.Contains(seconds) ? seconds : RetailChatFade.DefaultIdleAfterSeconds;
+
+    /// <summary>The character's fade delay in seconds, the default before one is saved.</summary>
+    public static int LoadFadeSeconds(IWindowPositionStore positions, string server, string character) =>
+        positions.Load(server, character, FadeKey) is { Location.X: var saved } ? FadeOrDefault(saved) : RetailChatFade.DefaultIdleAfterSeconds;
+
+    public static void SaveFadeSeconds(IWindowPositionStore positions, string server, string character, int seconds) =>
+        positions.Save(server, character, FadeKey, (new Point(seconds, 0), null));
 
     private RetailChatWindow? Get(string id) => _chats.FirstOrDefault(chat => chat.Id == id).Window;
 

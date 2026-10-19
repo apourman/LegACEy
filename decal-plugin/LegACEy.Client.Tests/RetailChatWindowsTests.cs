@@ -176,6 +176,49 @@ public sealed class RetailChatWindowsTests
     }));
 
     [Fact]
+    public void The_text_size_event_fires_once_per_change_and_not_past_the_top_bound() => RenderThread.Run(() => WithStore(path =>
+    {
+        var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };
+        using var desk = ChatDesk.Open(port, path, Character, new MemoryWindowPositionStore());
+        var sizes = new List<int>();
+        desk.Chat.TextSizeChanged += sizes.Add;
+
+        desk.Chat.TextSizeStepped(1);
+        desk.Chat.SetTextSize(RetailChatWindows.LargestTextSize);
+        desk.Chat.TextSizeStepped(1);
+
+        Assert.Equal(new[] { 130, RetailChatWindows.LargestTextSize }, sizes);
+    }));
+
+    [Fact]
+    public void The_fade_delay_reaches_every_open_window_and_is_kept_per_character() => RenderThread.Run(() => WithStore(path =>
+    {
+        var clock = new DeskClock(Stamp);
+        var positions = new MemoryWindowPositionStore();
+        var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };
+        var first = ChatDesk.Open(port, path, Character, positions, clock: () => clock.Now);
+        var main = first.Main;
+        first.Drag(first.At(main, TabView(main, "Fellowship")), first.Place(main, new System.Drawing.Point(600, 110)));
+        first.Chat.SetFadeSeconds(RetailChatWindows.NeverFades);
+        clock.Advance(TimeSpan.FromHours(1));
+        first.Tick();
+        Assert.All(first.Chat.Windows, window => Assert.Equal(1.0, Seen(Frame(window))));
+        first.Dispose();
+
+        // Never is kept for Alice, so her windows stay shown when they reopen; Bob has no choice saved, so he fades after 15 seconds.
+        using var second = ChatDesk.Open(port, path, Character, positions, clock: () => clock.Now);
+        second.Tick();
+        clock.Advance(TimeSpan.FromHours(1));
+        second.Tick();
+        Assert.Equal(1.0, Seen(Frame(second.Main)));
+        using var other = ChatDesk.Open(port, path, "Bob", positions, clock: () => clock.Now);
+        other.Tick();
+        clock.Advance(TimeSpan.FromSeconds(RetailChatFade.DefaultIdleAfterSeconds + 1));
+        other.Tick();
+        Assert.Equal(0.0, Seen(Frame(other.Main)));
+    }));
+
+    [Fact]
     public void Unread_counts_work_in_a_torn_off_window_and_the_main_window() => RenderThread.Run(() => WithStore(path =>
     {
         var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };
@@ -213,7 +256,7 @@ public sealed class RetailChatWindowsTests
         // Nothing is over the windows: left alone, both go idle and fade their tab strip over a quarter of a second.
         clock.Advance(TimeSpan.FromSeconds(1));
         desk.Tick();
-        clock.Advance(TimeSpan.FromSeconds(RetailChatFade.IdleAfterSeconds + 1));
+        clock.Advance(TimeSpan.FromSeconds(RetailChatFade.DefaultIdleAfterSeconds + 1));
         desk.Tick();
 
         foreach (var window in new[] { main, torn })
@@ -248,7 +291,7 @@ public sealed class RetailChatWindowsTests
         // Let go and left alone, it fades as any window does.
         clock.Advance(TimeSpan.FromSeconds(1));
         desk.Tick();
-        clock.Advance(TimeSpan.FromSeconds(RetailChatFade.IdleAfterSeconds + 1));
+        clock.Advance(TimeSpan.FromSeconds(RetailChatFade.DefaultIdleAfterSeconds + 1));
         desk.Tick();
         Assert.Equal(0.0, Seen(Frame(torn)));
     }));

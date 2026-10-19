@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using LegACEy.Client.Demo;
+using LegACEy.Client.GameArt;
 using Reloaded.Hooks;
 using Reloaded.Hooks.Definitions;
 using Reloaded.Hooks.Definitions.X86;
@@ -10,7 +12,7 @@ using static LegACEy.Client.DecalPlugin.D3D9;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
-/// Effects drawn into retail's 3D world: the selection outline and the storm fog preview (<see cref="StormFog"/>).
+/// Effects drawn into retail's 3D world: the selection outline, livelier water (<see cref="Water"/>) and the storm fog preview (<see cref="StormFog"/>).
 /// The outline is a gold glow around the selected object, seen through walls. While retail draws a part, <c>CPhysicsPart::Draw</c> keeps the part in a
 /// global; each of the device's indexed draws made for a part of the selected object is drawn again, flat white with no depth test, into
 /// a mask. After retail's world (<c>SmartBox::Draw</c>), the mask is spread into a glow texture by drawing it several times offset, and the
@@ -86,19 +88,27 @@ internal sealed unsafe class WorldEffects : IDisposable
     private readonly IHook<ResetFn> _resetHook;
     private readonly StormFog _fog;
     private readonly Weather _weather;
+    private readonly Water _water;
     private readonly CombatText _combat;
     private GCHandle _root;
     private IntPtr _mask, _glow;
     private int _width, _height;
     // _masked: the mask is cleared this frame; _outlined: the selection is in it.
     private bool _masked, _outlined, _failed;
+    private System.Numerics.Vector3 _lastOddMeasure;
+    // The haze's fog over retail's world this frame (StormFog.TakeFog), and whether retail's own fog states have been logged once.
+    private (uint Color, float Density)? _worldFog;
+    private bool _fogLogged;
+    private static readonly RenderState[] FogStates =
+        { RenderState.FogEnable, RenderState.FogColor, RenderState.FogTableMode, RenderState.FogVertexMode, RenderState.FogDensity, RenderState.RangeFogEnable };
 
-    private WorldEffects(IntPtr device, Action<string> log)
+    private WorldEffects(IntPtr device, PortalDat portal, Action<string> log)
     {
         _device = device;
         _log = log;
         _fog = new StormFog(device);
         _weather = new Weather(device, _fog);
+        _water = new Water(device, _fog, portal, log);
         _combat = new CombatText(device, log);
         _root = GCHandle.Alloc(this);
         _smartBoxHook = ReloadedHooks.Instance.CreateHook<SmartBoxDrawFn>(OnSmartBoxDraw, SmartBoxDrawAddress);
@@ -110,14 +120,14 @@ internal sealed unsafe class WorldEffects : IDisposable
     }
 
     /// <summary>The effects, or null when the running client does not match their native entries.</summary>
-    public static WorldEffects? Create(IntPtr device, Func<uint, int, byte[]> readMemory, Action<string> log)
+    public static WorldEffects? Create(IntPtr device, PortalDat portal, Func<uint, int, byte[]> readMemory, Action<string> log)
     {
         if (!NativeUiCatalogue.Validate(readMemory, log, Entries))
         {
-            log("The selection outline, storm fog and weather are off: the running client does not match their native entries.");
+            log("The selection outline, water, storm fog and weather are off: the running client does not match their native entries.");
             return null;
         }
-        return new WorldEffects(device, log);
+        return new WorldEffects(device, portal, log);
     }
 
     /// <summary>The safe landblock the storm fog rings, as landblock x and y, or null for no storm.</summary>
@@ -128,6 +138,9 @@ internal sealed unsafe class WorldEffects : IDisposable
 
     /// <summary>The weather and the landblock in the middle of it, or null for clear skies.</summary>
     public (WeatherKind Kind, int X, int Y)? Weather { get => _weather.Current; set => _weather.Current = value; }
+
+    /// <summary>How strong the water is: 0 leaves retail's water, 1 is the look as designed.</summary>
+    public float WaterStrength { get => _water.Strength; set => _water.Strength = value; }
 
     /// <summary>The object to outline, zero for none. Set each frame.</summary>
     public uint Selected { get; set; }
@@ -142,6 +155,12 @@ internal sealed unsafe class WorldEffects : IDisposable
             catch (Exception exception) { Fail(exception); }
             return 0;
         }
+        // Retail may set its own fog between draws; the haze's goes back on before each one.
+        if (_inWorld && _worldFog is { } fog && device == _device && !_failed)
+        {
+            try { ApplyFog(fog); }
+            catch (Exception exception) { Fail(exception); }
+        }
         var result = original(device, type, baseVertex, minIndex, vertices, startIndex, primitives);
         var part = *DrawingPart;
         if (result < 0 || part == 0 || !_inWorld || _failed || device != _device) return result;
@@ -153,8 +172,15 @@ internal sealed unsafe class WorldEffects : IDisposable
             var player = physicsObject == *PlayerObject;
             if (physicsObject != 0 && *(int*)(physicsObject + 0x90) != 0)
             {
-                if (!_fog.Calibrated || (player && !_fog.FromPlayer)) _fog.Calibrate(part, player);
                 var id = *(uint*)(physicsObject + 0x8);
+                if (!_fog.Calibrated || (player && !_fog.FromPlayer))
+                {
+                    var measure = _fog.Calibrate(part, player);
+                    // ponytail: diagnostic for the 19 Oct water flicker; drop once a play-test shows which parts measure wrong.
+                    if (measure != _fog.Offset && measure != _lastOddMeasure)
+                        _log($"World offset: {(player ? "the player" : $"object {id:X8}")} measured {measure}, kept {_fog.Offset}.");
+                    _lastOddMeasure = measure == _fog.Offset ? _lastOddMeasure : measure;
+                }
                 if (_combat.Tracks(id)) _combat.Saw(id, GetTransform(_device, TransformWorld).Translation - _fog.Offset);
                 if (Selected != 0) channels = id == Selected ? SelectionChannels : player ? PlayerChannels : 0;
             }
@@ -224,16 +250,45 @@ internal sealed unsafe class WorldEffects : IDisposable
 
     private void OnSmartBoxDraw(IntPtr smartBox)
     {
+        _worldFog = _failed ? null : _fog.TakeFog();
+        int[]? retailFog = null;
+        try
+        {
+            if (_worldFog is { } fog)
+            {
+                retailFog = Array.ConvertAll(FogStates, state => GetRenderState(_device, state));
+                if (!_fogLogged)
+                {
+                    _fogLogged = true;
+                    _log($"Haze fog: retail's fog states before the world are {string.Join(", ", FogStates.Select((state, i) => $"{state} 0x{retailFog[i]:X}"))}.");
+                }
+                ApplyFog(fog);
+            }
+        }
+        catch (Exception exception) { Fail(exception); }
+        _water.FogDensity = _worldFog?.Density ?? 0;
         _inWorld = true;
         try { _smartBoxHook.OriginalFunction(smartBox); }
-        finally { _inWorld = false; }
+        finally
+        {
+            _inWorld = false;
+            if (retailFog != null)
+            {
+                try { for (var i = 0; i < FogStates.Length; i++) SetRenderState(_device, FogStates[i], retailFog[i]); }
+                catch (Exception exception) { Fail(exception); }
+            }
+        }
         if (!_failed)
         {
             try
             {
-                _fog.Draw();
                 var player = *PlayerObject;
-                _weather.PlayerCell = player != 0 ? *(uint*)(player + 0x4C) : 0;
+                var cell = player != 0 ? *(uint*)(player + 0x4C) : 0;
+                // The water first, so the fog and weather fall over it.
+                _water.PlayerCell = cell;
+                _water.Draw();
+                _fog.Draw();
+                _weather.PlayerCell = cell;
                 _weather.Draw();
                 _combat.Draw(_fog);
                 if (!_outlined && Selected != 0) DrawCulledSelection();
@@ -246,6 +301,23 @@ internal sealed unsafe class WorldEffects : IDisposable
         }
         catch (Exception exception) { Fail(exception); }
         finally { _masked = _outlined = false; }
+    }
+
+    /// <summary>
+    /// Direct3D's exponential fog by each vertex's distance from the camera, so the haze thickens smoothly over retail's world, with no
+    /// steps where the ground crosses a slice. ponytail: vertex fog only fogs what retail draws with fixed-function transforms; the log line
+    /// of retail's own fog states says how it draws.
+    /// </summary>
+    private void ApplyFog((uint Color, float Density) fog)
+    {
+        // An additive draw (glows, like a lantern's) fogs to black, fading with distance; fogged to grey, its whole quad lit up (19 Oct).
+        var additive = GetRenderState(_device, RenderState.AlphaBlendEnable) != 0 && GetRenderState(_device, RenderState.DestBlend) == BlendOne;
+        SetRenderState(_device, RenderState.FogEnable, 1);
+        SetRenderState(_device, RenderState.FogColor, unchecked((int)(0xFF000000 | (additive ? 0 : fog.Color))));
+        SetRenderState(_device, RenderState.FogTableMode, 0);
+        SetRenderState(_device, RenderState.FogVertexMode, 1); // D3DFOG_EXP
+        SetRenderState(_device, RenderState.FogDensity, BitConverter.SingleToInt32Bits(fog.Density));
+        SetRenderState(_device, RenderState.RangeFogEnable, 1);
     }
 
     /// <summary>
@@ -408,6 +480,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         ReleaseTextures();
         _fog.Dispose();
         _weather.Dispose();
+        _water.Dispose();
         _combat.Dispose();
         if (_root.IsAllocated) _root.Free();
     }

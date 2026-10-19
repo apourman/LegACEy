@@ -25,6 +25,11 @@ public static class DerethWarmUp
         content.Children.Add(new DerethButton { Content = Text("Withdraw 2", 12, FontWeight.Normal) });
         content.Children.Add(new DerethPagerButton(DerethSpriteArt.PagerNext) { Width = 34, Height = 32 });
         content.Children.Add(Text("1 – 100 of 317 ×2", 12, FontWeight.Normal));
+        // The Settings window's parts, so its first open doesn't pay for them either.
+        content.Children.Add(new DerethSegmented(new[] { "Dereth", "Retail" }));
+        content.Children.Add(new DerethSlider(60, 150, 5));
+        content.Children.Add(new DerethScopeTag("This character", thisCharacter: true));
+        content.Children.Add(new DerethToggle());
         return new DerethWindow("Vault", null, content);
     }
 

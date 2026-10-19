@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Drawing;
 using Avalonia.Controls;
+using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
@@ -26,63 +27,84 @@ public sealed class PluginRegistryTests
     }
 
     [Fact]
-    public void The_menu_s_UI_size_buttons_step_it_down_and_up() => RenderThread.Run(() =>
+    public void An_empty_launcher_says_so_and_renders_to_a_file_when_asked() => RenderThread.Run(() =>
     {
         var host = new FakeHost();
-        var steps = new System.Collections.Generic.List<int>();
+        var registry = new PluginRegistry(host, host.Log.Add);
+        const int width = PluginMenuPanel.WindowWidth, height = PluginMenuPanel.WindowHeight;
         using var panel = LegACEy.Client.PanelHost.AvaloniaPanel.Create(
-            () => new PluginMenuPanel(new PluginRegistry(host, host.Log.Add), null, new UiSizeChoice(85, steps.Add)), 220, 240);
+            () => new DerethWindow("LegACEy 1.0.0", null, new PluginMenuPanel(registry, null, () => { })), width, height);
         panel.Tick();
-        foreach (var label in new[] { "-", "+" })
-        {
-            var button = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(panel.Content).OfType<Button>().Single(b => b.Content as string == label);
-            var centre = Avalonia.VisualExtensions.TranslatePoint(button, new Avalonia.Point(button.Bounds.Width / 2, button.Bounds.Height / 2), panel.Content)!.Value;
-            panel.PointerDown(centre.X, centre.Y);
-            panel.PointerUp(centre.X, centre.Y);
-        }
-        Assert.Equal(new[] { -1, 1 }, steps);
+        Assert.Contains(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(panel.Content).OfType<TextBlock>(), text => text.Text == "No plugin has a window to open.");
+        // Set LEGACEY_SETTINGS_RENDER to a folder for a look at it by eye.
+        if (Environment.GetEnvironmentVariable("LEGACEY_SETTINGS_RENDER") is not { } folder) return;
+        using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(width, height));
+        bitmap.Render(panel.Content);
+        bitmap.Save(System.IO.Path.Combine(folder, "launcher.png"));
     });
 
     [Fact]
-    public void The_menu_shows_each_window_s_choice_and_switches_it() => RenderThread.Run(() =>
+    public void The_launcher_lists_visible_entries_runs_one_and_its_settings_button_opens_settings() => RenderThread.Run(() =>
     {
         var host = new FakeHost();
-        var chatCustom = true;
-        var windows = new[] { new UiWindowChoice("Chat", () => chatCustom, custom => chatCustom = custom) };
+        var registry = new PluginRegistry(host, host.Log.Add);
+        var ran = new List<string>();
+        var opened = 0;
+        registry.Add(new FakePlugin("Paperdoll") { OnStart = client => client.AddMenuEntry("Paperdoll", 0, () => ran.Add("Paperdoll")) });
+        registry.Add(new FakePlugin("Local") { OnStart = client => client.AddMenuEntry("Local", 0, () => ran.Add("Local")) });
+        registry.Add(new FakePlugin("Hidden", "vault.list"));
         using var panel = LegACEy.Client.PanelHost.AvaloniaPanel.Create(
-            () => new PluginMenuPanel(new PluginRegistry(host, host.Log.Add), null, null, windows), PluginMenuPanel.WindowWidth, PluginMenuPanel.WindowHeight);
+            () => new PluginMenuPanel(registry, null, () => opened++), PluginMenuPanel.WindowWidth, PluginMenuPanel.WindowHeight);
         panel.Tick();
-        Button Switch() => Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(panel.Content).OfType<Button>().Single();
-        Assert.Equal("Custom", Switch().Content);
+        var buttons = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(panel.Content).OfType<Button>().ToList();
+        var labels = buttons.Select(button => button.Content as string ?? ((StackPanel)button.Content!).Children.OfType<TextBlock>().Single().Text).ToArray();
+        Assert.Equal(new[] { "Local", "Paperdoll", "Settings…" }, labels.OrderBy(label => label, StringComparer.Ordinal));
 
-        var button = Switch();
+        Press(panel, buttons.Single(button => button.Content is StackPanel row && row.Children.OfType<TextBlock>().Single().Text == "Local"));
+        Press(panel, buttons.Single(button => button.Content as string == "Settings…"));
+        Assert.Equal(new[] { "Local" }, ran);
+        Assert.Equal(1, opened);
+    });
+
+    [Fact]
+    public void The_plugins_tab_lists_each_visible_plugin_and_its_entries_runs_the_picked_one_and_follows_new_entries() => RenderThread.Run(() =>
+    {
+        var host = new FakeHost();
+        var registry = new PluginRegistry(host, host.Log.Add);
+        var ran = new List<string>();
+        ILegACEyClient? local = null;
+        registry.Add(new FakePlugin("Paperdoll") { OnStart = client => client.AddMenuEntry("Look", 0, () => ran.Add("Look")) });
+        registry.Add(new FakePlugin("Local") { OnStart = client => { local = client; client.AddMenuEntry("Open", 0, () => ran.Add("Open")); } });
+        registry.Add(new FakePlugin("Hidden", "vault.list") { OnStart = client => client.AddMenuEntry("Hidden entry", 0, () => ran.Add("Hidden entry")) });
+        registry.Add(new FakePlugin("Quiet") { OnStart = _ => { } });
+        var settings = new ClientSettings(null, null, Array.Empty<UiWindowChoice>());
+        using var panel = LegACEy.Client.PanelHost.AvaloniaPanel.Create(
+            () => new SettingsPanel(settings, SettingsTab.Plugins, null, registry), SettingsPanel.WindowWidth, SettingsPanel.WindowHeight);
+        panel.Tick();
+        var names = panel.Content.GetVisualDescendants().OfType<TextBlock>().Select(block => block.Text).ToArray();
+        Assert.Contains("Paperdoll", names);
+        Assert.Contains("Quiet", names);
+        Assert.DoesNotContain("Hidden", names);
+        Button Entry(string title) => panel.Content.GetVisualDescendants().OfType<Button>().Single(button => button.Content as string == title);
+        var listed = panel.Content.GetVisualDescendants().OfType<Button>().Select(button => button.Content as string).ToArray();
+        Assert.Equal(new[] { "Look", "Open" }, listed);
+        Assert.DoesNotContain("Hidden entry", listed);
+
+        Press(panel, Entry("Open"));
+        Assert.Equal(new[] { "Open" }, ran);
+
+        local!.AddMenuEntry("Later", 0, () => ran.Add("Later"));
+        panel.Tick();
+        Press(panel, Entry("Later"));
+        Assert.Equal(new[] { "Open", "Later" }, ran);
+    });
+
+    private static void Press(LegACEy.Client.PanelHost.AvaloniaPanel panel, Button button)
+    {
         var centre = Avalonia.VisualExtensions.TranslatePoint(button, new Avalonia.Point(button.Bounds.Width / 2, button.Bounds.Height / 2), panel.Content)!.Value;
         panel.PointerDown(centre.X, centre.Y);
         panel.PointerUp(centre.X, centre.Y);
-        panel.Tick();
-
-        Assert.False(chatCustom);
-        Assert.Equal("Native", Switch().Content);
-    });
-
-    [Fact]
-    public void The_menu_s_update_button_checks_unless_updates_are_off() => RenderThread.Run(() =>
-    {
-        var host = new FakeHost();
-        var checks = 0;
-        foreach (var enabled in new[] { true, false })
-        {
-            using var panel = LegACEy.Client.PanelHost.AvaloniaPanel.Create(
-                () => new PluginMenuPanel(new PluginRegistry(host, host.Log.Add), null, update: new UpdateChoice("Version 0.7.0", enabled, () => checks++)),
-                PluginMenuPanel.WindowWidth, PluginMenuPanel.WindowHeight);
-            panel.Tick();
-            var button = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(panel.Content).OfType<Button>().Single(b => b.Content as string == "Check");
-            var centre = Avalonia.VisualExtensions.TranslatePoint(button, new Avalonia.Point(button.Bounds.Width / 2, button.Bounds.Height / 2), panel.Content)!.Value;
-            panel.PointerDown(centre.X, centre.Y);
-            panel.PointerUp(centre.X, centre.Y);
-        }
-        Assert.Equal(1, checks);
-    });
+    }
 
     [Fact]
     public void SupportsAction_follows_the_servers_last_list()

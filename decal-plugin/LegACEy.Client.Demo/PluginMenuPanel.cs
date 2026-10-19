@@ -10,18 +10,9 @@ using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.Demo;
 
-/// <summary>The UI size the menu shows, in percent, and the step it asks for (1 larger, -1 smaller).</summary>
-public sealed record UiSizeChoice(int Percent, Action<int> Step);
-
-/// <summary>The menu's update row: the installed version (with why updates are off, if they are), and the check, when they are on.</summary>
-public sealed record UpdateChoice(string Label, bool Enabled, Action Check);
-
-/// <summary>A window the player can have as LegACEy's (custom) or retail's (native): whether it is custom now, and the switch.</summary>
-public sealed record UiWindowChoice(string Title, Func<bool> IsCustom, Action<bool> SetCustom);
-
 /// <summary>
-/// The LegACEy menu: the windows the player can switch between custom and native, one row per menu entry of a visible plugin, and the
-/// UI size and update check at the bottom. Picking a plugin row runs that entry.
+/// The LegACEy launcher: one row per menu entry of a visible plugin, and a Settings… button at its foot. Picking a plugin row runs that entry;
+/// Settings… runs <paramref name="openSettings"/>.
 /// </summary>
 public sealed class PluginMenuPanel : UserControl
 {
@@ -33,30 +24,15 @@ public sealed class PluginMenuPanel : UserControl
     private readonly StackPanel _rows = new();
     private readonly List<WriteableBitmap> _icons = new();
 
-    public PluginMenuPanel(PluginRegistry registry, IGameArtSource? art, UiSizeChoice? uiSize = null, IReadOnlyList<UiWindowChoice>? windows = null,
-        UpdateChoice? update = null)
+    public PluginMenuPanel(PluginRegistry registry, IGameArtSource? art, Action openSettings)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _art = art;
+        var settings = new DerethButton { Content = "Settings…", HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(8, 4) };
+        settings.Click += (_, _) => openSettings();
         var layout = new DockPanel();
-        if (update != null)
-        {
-            var footer = UpdateRow(update);
-            DockPanel.SetDock(footer, Dock.Bottom);
-            layout.Children.Add(footer);
-        }
-        if (uiSize != null)
-        {
-            var footer = UiSizeRow(uiSize);
-            DockPanel.SetDock(footer, Dock.Bottom);
-            layout.Children.Add(footer);
-        }
-        if (windows is { Count: > 0 })
-        {
-            var section = WindowsSection(windows);
-            DockPanel.SetDock(section, Dock.Top);
-            layout.Children.Add(section);
-        }
+        DockPanel.SetDock(settings, Dock.Bottom);
+        layout.Children.Add(settings);
         layout.Children.Add(new ScrollViewer { Content = _rows, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled });
         Content = layout;
         Rebuild();
@@ -83,68 +59,18 @@ public sealed class PluginMenuPanel : UserControl
                 _icons.Add(icon);
                 row.Children.Add(new Image { Source = icon, Width = 20, Height = 20, Stretch = Stretch.Uniform });
             }
-            row.Children.Add(new TextBlock { Text = item.Title, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(new TextBlock { Text = item.Title, Foreground = DerethPalette.TextBrush, VerticalAlignment = VerticalAlignment.Center });
 
-            var button = new Button { Content = row, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left, Margin = new Thickness(4, 2) };
+            var button = new DerethButton { Content = row, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left, Margin = new Thickness(4, 2) };
             button.Click += (_, _) => _registry.RunMenuEntry(item);
             _rows.Children.Add(button);
         }
-    }
-
-    /// <summary>"Windows": a row per window with a button that shows Custom or Native and switches it.</summary>
-    private static Control WindowsSection(IReadOnlyList<UiWindowChoice> windows)
-    {
-        var section = new StackPanel { Margin = new Thickness(8, 4, 8, 6) };
-        section.Children.Add(new TextBlock { Text = "Windows", Foreground = Brushes.White, FontWeight = FontWeight.Bold, Margin = new Thickness(0, 0, 0, 2) });
-        foreach (var window in windows)
-        {
-            var button = new Button { Width = 70, HorizontalContentAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 1) };
-            void Show() => button.Content = window.IsCustom() ? "Custom" : "Native";
-            Show();
-            button.Click += (_, _) =>
+        if (_rows.Children.Count == 0)
+            _rows.Children.Add(new TextBlock
             {
-                window.SetCustom(!window.IsCustom());
-                Show();
-            };
-            var row = new DockPanel();
-            DockPanel.SetDock(button, Dock.Right);
-            row.Children.Add(button);
-            row.Children.Add(new TextBlock { Text = window.Title, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center });
-            section.Children.Add(row);
-        }
-        return section;
-    }
-
-    private static Control UiSizeRow(UiSizeChoice choice)
-    {
-        Button Step(string text, int steps)
-        {
-            var button = new Button { Content = text, Width = 26, HorizontalContentAlignment = HorizontalAlignment.Center, Margin = new Thickness(2, 0) };
-            button.Click += (_, _) => choice.Step(steps);
-            return button;
-        }
-        var row = new DockPanel { Margin = new Thickness(8, 4) };
-        var label = new TextBlock { Text = "UI size", Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center };
-        var controls = new StackPanel { Orientation = Orientation.Horizontal };
-        controls.Children.Add(Step("-", -1));
-        controls.Children.Add(new TextBlock { Text = $"{choice.Percent}%", Foreground = Brushes.White, Width = 40, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
-        controls.Children.Add(Step("+", 1));
-        DockPanel.SetDock(controls, Dock.Right);
-        row.Children.Add(controls);
-        row.Children.Add(label);
-        return row;
-    }
-
-    private static Control UpdateRow(UpdateChoice choice)
-    {
-        var button = new Button { Content = "Check", IsEnabled = choice.Enabled, HorizontalContentAlignment = HorizontalAlignment.Center, Margin = new Thickness(2, 0) };
-        button.Click += (_, _) => choice.Check();
-        ToolTip.SetTip(button, "Check for updates. An update installs when the game closes.");
-        var row = new DockPanel { Margin = new Thickness(8, 4) };
-        DockPanel.SetDock(button, Dock.Right);
-        row.Children.Add(button);
-        row.Children.Add(new TextBlock { Text = choice.Label, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center });
-        return row;
+                Text = "No plugin has a window to open.", FontFamily = DerethPalette.Body, FontSize = 12.5, Foreground = DerethPalette.MutedBrush,
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(8, 6)
+            });
     }
 
     private void DisposeIcons()

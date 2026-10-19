@@ -130,21 +130,33 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string RetailVitalsSwitchFile = "retail-vitals-native";
     // Beside the DLL: while this file exists, retail's radar stays retail's. Without it the Dereth radar replaces it.
     private const string RetailRadarSwitchFile = "retail-radar-native";
+    // A window switch whose file could not be written or deleted this session: its state (true for LegACEy's) until the file can be changed.
+    // Runtime only, so the next session reads the file again.
+    private readonly Dictionary<string, bool> _switchHeld = new(StringComparer.Ordinal);
 
-    // How big LegACEy windows show against their design size, in percent: the player's UI size from the LegACEy menu, kept for every
+    // The /water setting, one for every character: percent and on (1) or off (0).
+    private const string WaterKey = "client-water";
+    private const int SystemChat = 5;
+    private WaterChoice _water = WaterChoice.Default;
+    // How big LegACEy windows show against their design size, in percent: the player's UI size from the Settings window, kept for every
     // character. Drag icons keep retail's 32 pixels. An Avalonia that cannot scale panels shows them
     // at design size rather than failing every window.
     private const string UiSizeKey = "client-ui-size";
     private const int DefaultUiSize = 85;
-    private const int SmallestUiSize = 60;
-    private const int LargestUiSize = 150;
     private int _uiSize = DefaultUiSize;
     private bool _uiSizeChanged;
+    // Set by Reset window positions in the Settings window, applied on the next frame, outside that window's click.
+    private bool _positionsResetRequested;
     private double WindowScale => AvaloniaPanel.CanScale ? _uiSize / 100.0 : 1;
 
     // The release build stamps the client with the plugin version, so the menu shows which release is installed.
     private static readonly string MenuTitle = $"LegACEy {typeof(ClientUiRuntime).Assembly.GetName().Version?.ToString(3)}";
     private const string MenuWindowId = "plugin-menu";
+    private const string SettingsWindowId = "dereth-settings";
+    // The Settings window's last tab, kept for the install like the UI size.
+    private const string SettingsTabKey = "settings-tab";
+    // The per-character options kept in the position store. Reset window positions keeps these; every other row there is a window's place.
+    private static readonly string[] PositionOptionKeys = { RetailChatWindows.TextSizeKey, RetailChatWindows.FadeKey };
     private const string TestFailureFile = "fail-post-ui-draw";
     // The stub's folder, which the bridge sets before the client starts: the log, settings and Plugins\ live there.
     internal static string PluginDirectory { get; set; } = ClientDirectory;
@@ -160,7 +172,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private readonly HashSet<ModelView> _failedModelViews = new();
     private readonly HashSet<ModelView> _drawnModelViews = new();
     private WindowManager? _windows;
-    private IWindowPositionStore? _positionStore;
+    // Kept for the session, not rebuilt with the windows: its session overlay holds what a failed write could not save.
+    private readonly FileWindowPositionStore _positionStore = new(IOPath.Combine(PluginDirectory, "window-positions.txt"));
+    // The settings the open Settings window shows, so a UI size change made there reaches it.
+    private ClientSettings? _settings;
     // Each plugin's one settings value, per character, in its own file: a row keyed by the plugin's name whose X is the value.
     private readonly FileWindowPositionStore _settingsStore = new(IOPath.Combine(PluginDirectory, "plugin-settings.txt"));
     // The chat tabs each window of each character has: a row per server, character and window, missing means the six defaults.
@@ -325,7 +340,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _row2Choice = new ShortcutRowChoice(_settingsStore);
         _vitalsLayouts = new VitalsLayoutChoice(_settingsStore);
         if (_settingsStore.Load("", "", UiSizeKey) is { Location.X: var size and > 0 })
-            _uiSize = Math.Max(SmallestUiSize, Math.Min(LargestUiSize, size));
+            _uiSize = Math.Clamp(size, UiSizeChoice.Smallest, UiSizeChoice.Largest);
+        if (_settingsStore.Load("", "", WaterKey) is { Location: var water })
+            _water = new WaterChoice(water.Y != 0, Math.Clamp(water.X, 0, WaterChoice.Most));
     }
 
     public void Startup()
@@ -439,16 +456,94 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     public void ItemSelected() => _inventory.MarkStale();
     public void ContainerOpened() => _inventory.MarkStale();
 
-    /// <summary>/legacey (or @legacey) opens or closes the LegACEy menu, so it can be reached without the Dereth toolbar.</summary>
+    /// <summary>
+    /// /legacey (or @legacey) opens or closes the LegACEy menu, so it can be reached without the Dereth toolbar. /water on, off or a percent
+    /// (0 to 200) sets the water effect, and /water alone says how it is set; the line is eaten either way, so the server never sees it.
+    /// </summary>
     public bool CommandLine(string text)
     {
         if (_failed || !_inGame) return false;
         var command = text.Trim();
-        if (!command.Equals("/legacey", StringComparison.OrdinalIgnoreCase) && !command.Equals("@legacey", StringComparison.OrdinalIgnoreCase))
+        if (command.Equals("/legacey", StringComparison.OrdinalIgnoreCase) || command.Equals("@legacey", StringComparison.OrdinalIgnoreCase))
+        {
+            Guard(ToggleMenuWindow);
+            return true;
+        }
+        var space = command.IndexOf(' ');
+        var name = space < 0 ? command : command[..space];
+        if (!name.Equals("/water", StringComparison.OrdinalIgnoreCase) && !name.Equals("@water", StringComparison.OrdinalIgnoreCase))
             return false;
-        Guard(ToggleMenuWindow);
+        if (_water.Apply(space < 0 ? "" : command[space..]) is not { } water)
+        {
+            WaterChat("Water: /water on, /water off or /water 0 to 200 (percent; 100 is the usual look).");
+            return true;
+        }
+        SetWater(water);
+        WaterChat(water.ToString());
         return true;
     }
+
+    /// <summary>
+    /// The water setting from /water or the Settings window's World tab: applied at once, saved for every character, and shown in an open
+    /// Settings window. Nothing happens when it is unchanged.
+    /// </summary>
+    private void SetWater(WaterChoice water)
+    {
+        if (water == _water) return;
+        _water = water;
+        _settingsStore.Save("", "", WaterKey, (new Point(water.Percent, water.On ? 1 : 0), null));
+        if (_worldEffects != null) _worldEffects.WaterStrength = water.Strength;
+        if (_settings != null) _settings.Water = WaterOptionFor(water);
+    }
+
+    /// <summary>The World tab's water: the setting, and the change it asks for, with the strength kept within the bounds.</summary>
+    private WaterOption WaterOptionFor(WaterChoice water) => new(water.On, water.Percent,
+        (on, percent) => SetWater(new WaterChoice(on, Math.Clamp(percent, 0, WaterChoice.Most))));
+
+    /// <summary>
+    /// Retail's Lock UI for the Settings window's switch. It is greyed out when the lock's natives did not check, and it is read as retail
+    /// reads it.
+    /// </summary>
+    private LockUiChoice LockUiOption()
+    {
+        var available = LockAvailable;
+        return new LockUiChoice(available && NativeUi.IsUiLocked, available, SetUiLock);
+    }
+
+    /// <summary>Retail's Lock UI is set only once the window can read it and the Lock list has checked its calls.</summary>
+    private bool LockAvailable => NativeUi.Ready && HudNatives().Lock;
+
+    /// <summary>
+    /// Sets retail's Lock UI from the Settings window, as the radar's lock button does, and shows the state retail now reads, so a refused
+    /// change does not leave the switch wrong.
+    /// </summary>
+    private void SetUiLock(bool locked)
+    {
+        if (!LockAvailable) return;
+        NativeUi.SetUiLocked(locked);
+        ShowLockUi();
+    }
+
+    /// <summary>Shows retail's Lock UI as it reads now on the open switch, which redraws the panel.</summary>
+    private void ShowLockUi()
+    {
+        if (_settings != null && _settings.LockUi is { } option) _settings.LockUi = option with { Locked = NativeUi.IsUiLocked };
+    }
+
+    /// <summary>While Settings is open, retail's Lock UI can change from its own options or the radar's button, so the switch follows it.</summary>
+    private void TickSettingsLock()
+    {
+        if (_settings?.LockUi is not { Enabled: true } option) return;
+        if (NativeUi.IsUiLocked != option.Locked) ShowLockUi();
+    }
+
+    // A chat line that fails only goes to the log: it is no reason to switch the UI off.
+    private static void WaterChat(string line)
+    {
+        try { Bridge.Chat(line, SystemChat); }
+        catch (Exception exception) { Log($"Could not write '{line}' to chat: {exception.Message}"); }
+    }
+
     public void InventoryChanged(uint id, uint container)
     {
         _inventory.ObjectChanged(id, container);
@@ -592,6 +687,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up client UI at logoff: {exception}"); }
         _clientUi = null;
+        _settings = null;
         // Before the plugins close their windows: giving the panel back tells the plugin its window is no longer held.
         try { EndRetailPanels(); }
         catch (Exception exception) { Log($"Could not give the retail panels back at logoff: {exception}"); }
@@ -626,7 +722,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         GameArtImageExtension.CurrentSource = _portal;
 
         EnsurePostUiDrawHook();
-        try { _worldEffects ??= WorldEffects.Create(_device, NativeUi.ReadMemory, Log); }
+        try
+        {
+            _worldEffects ??= WorldEffects.Create(_device, _portal, NativeUi.ReadMemory, Log);
+            if (_worldEffects != null) _worldEffects.WaterStrength = _water.Strength;
+        }
         catch (Exception exception) { Log($"The selection outline and storm fog are off: {exception.Message}"); }
         Log("LegACEy UI ready.");
         WarmUpDerethTheme();
@@ -653,7 +753,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private void CreateWindowManager()
     {
         if (_device == IntPtr.Zero) return;
-        _positionStore = new FileWindowPositionStore(IOPath.Combine(PluginDirectory, "window-positions.txt"));
         if (!AvaloniaPanel.CanScale) Log("This Avalonia cannot scale panels; LegACEy windows show at their design size.");
         _windows = new WindowManager(GameDevice.ViewportSize(_device), _positionStore, SessionServer(), SessionCharacter(), WindowScale, () => NativeUi.IsUiLocked);
         _windowsEnabled = EnsurePostUiDrawHook();
@@ -680,7 +779,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private IClientTheme CurrentTheme() => _portal != null ? new AcClientTheme(_portal) : new SimpleClientTheme();
 
-    /// <summary>Opens or closes the LegACEy menu window.</summary>
+    /// <summary>Opens or closes the LegACEy launcher window: the plugins' menu entries and a Settings… button.</summary>
     private void ToggleMenuWindow()
     {
         if (!_windowsEnabled || _windows == null || _clientUi == null)
@@ -696,18 +795,56 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             SetMenuRing(false);
             return;
         }
-        var chrome = new ThemeWindowChrome(_portal!, MenuTitle, new PluginMenuPanel(_plugins!, _portal,
-            AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, StepUiSize) : null, WindowChoices(), UpdateCheck()));
-        chrome.CloseRequested += (_, _) =>
+        var window = new DerethWindow(MenuTitle, null, new PluginMenuPanel(_plugins!, _portal, () => OpenSettings(LoadSettingsTab())));
+        window.CloseRequested += (_, _) =>
         {
             _clientUi?.CloseWindow(MenuWindowId);
             SetMenuRing(false);
         };
-        _clientUi.OpenWindow(new WindowDefinition(MenuWindowId, MenuWindowId, PluginMenuPanel.WindowWidth, PluginMenuPanel.WindowHeight), chrome, new Point(260, 120));
+        _clientUi.OpenWindow(new WindowDefinition(MenuWindowId, MenuWindowId, PluginMenuPanel.WindowWidth, PluginMenuPanel.WindowHeight,
+            DerethWindow.TitleBarHeight, new DerethClientTheme()), window, new Point(260, 120));
         SetMenuRing(true);
     }
 
-    /// <summary>The LegACEy menu's update row: the installed version and Check for updates, greyed out with the reason on an install that never updates.</summary>
+    /// <summary>
+    /// Opens the Settings window on the tab the player last used. It does nothing while the window is open, and while the windows cannot open
+    /// yet.
+    /// </summary>
+    private void OpenSettings(SettingsTab tab)
+    {
+        if (_clientUi == null || !CanOpenWindows) return;
+        if (_windows?.Get(SettingsWindowId) != null)
+        {
+            _windows.BringToFront(SettingsWindowId);
+            return;
+        }
+        var settings = new ClientSettings(AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, SetUiSize) : null, UpdateCheck(), WindowChoices(), WaterOptionFor(_water), LockUiOption())
+        {
+            Vitals = new OptionChoice<VitalsLayout>(_vitalsLayouts.Load(SessionServer(), SessionCharacter()), ChooseVitalsLayout),
+            ShortcutRow2 = new OptionChoice<bool>(_row2Choice.IsOn(SessionServer(), SessionCharacter()), SetShortcutRow2),
+            ChatTextSize = new OptionChoice<int>(RetailChatWindows.LoadTextSize(_positionStore, SessionServer(), SessionCharacter()), SetChatTextSize),
+            ChatFade = new OptionChoice<int>(RetailChatWindows.LoadFadeSeconds(_positionStore, SessionServer(), SessionCharacter()), SetChatFadeSeconds),
+            Radar = new OptionChoice<RadarOptions>(LoadRadarOptions(), SetRadarOptions),
+            ResetPositions = () => _positionsResetRequested = true,
+        };
+        _settings = settings;
+        var window = new DerethWindow("Settings", null, new SettingsPanel(settings, tab, SaveSettingsTab, _plugins));
+        window.CloseRequested += (_, _) =>
+        {
+            _clientUi?.CloseWindow(SettingsWindowId);
+            _settings = null;
+        };
+        // First opened beside the launcher (260 + its 220 width), not over it.
+        _clientUi.OpenWindow(new WindowDefinition(SettingsWindowId, "Settings", SettingsPanel.WindowWidth, SettingsPanel.WindowHeight,
+            DerethWindow.TitleBarHeight, new DerethClientTheme()), window, new Point(500, 120));
+    }
+
+    private SettingsTab LoadSettingsTab() =>
+        _settingsStore.Load("", "", SettingsTabKey) is { Location.X: var tab } && Enum.IsDefined(typeof(SettingsTab), tab) ? (SettingsTab)tab : SettingsTab.General;
+
+    private void SaveSettingsTab(SettingsTab tab) => _settingsStore.Save("", "", SettingsTabKey, (new Point((int)tab, 0), null));
+
+    /// <summary>The Settings window's update row: the installed version and Check for updates, greyed out with the reason on an install that never updates.</summary>
     private UpdateChoice UpdateCheck()
     {
         var off = _updates.Off;
@@ -715,7 +852,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// The windows the LegACEy menu switches between LegACEy's and retail's, each by its switch file beside the DLL, so the choice holds for
+    /// The windows the Settings window switches between LegACEy's and retail's, each by its switch file beside the DLL, so the choice holds for
     /// every character on this install. Custom is the default; a change is read on the next frame.
     /// </summary>
     private IReadOnlyList<UiWindowChoice> WindowChoices() => new[]
@@ -727,34 +864,42 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         Choice("Radar", RetailRadarSwitchFile, () => _lastRadarSwitchCheck = default)
     };
 
-    private static UiWindowChoice Choice(string title, string file, Action recheck)
+    private UiWindowChoice Choice(string title, string file, Action recheck)
     {
         var path = IOPath.Combine(PluginDirectory, file);
-        return new UiWindowChoice(title, () => !File.Exists(path), custom =>
+        return new UiWindowChoice(title, () => SwitchCustom(path), custom =>
         {
             try
             {
                 if (custom) File.Delete(path);
                 else File.WriteAllText(path, string.Empty);
+                _switchHeld.Remove(path);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
+                // The card keeps the chosen state for this session, so it doesn't snap back to the file's.
                 Log($"Could not switch the {title} window: {exception.Message}");
+                _switchHeld[path] = custom;
             }
             recheck();
         });
     }
 
+    /// <summary>Whether a switch's window is on LegACEy's: the file's absence, unless a write this session could not change it.</summary>
+    private bool SwitchCustom(string path) =>
+        _switchHeld.TryGetValue(path, out var held) ? held : !File.Exists(path);
+
     /// <summary>
-    /// The UI size stepped from the LegACEy menu: saved now, and applied on the next frame, outside the menu's own click, since applying it
-    /// closes the menu's window.
+    /// The UI size set from the Settings window, kept within the bounds and snapped to the step: saved now, and applied on the next frame,
+    /// outside the window's own click, since applying it closes the window.
     /// </summary>
-    private void StepUiSize(int steps)
+    private void SetUiSize(int percent)
     {
-        var size = Math.Max(SmallestUiSize, Math.Min(LargestUiSize, _uiSize + steps * 5));
+        var size = Math.Clamp((int)Math.Round((double)percent / UiSizeChoice.Step) * UiSizeChoice.Step, UiSizeChoice.Smallest, UiSizeChoice.Largest);
         if (size == _uiSize) return;
         _uiSize = size;
         _settingsStore.Save("", "", UiSizeKey, (new Point(size, 0), null));
+        if (_settings != null) _settings.UiSize = new UiSizeChoice(size, SetUiSize);
         _uiSizeChanged = true;
     }
 
@@ -766,14 +911,54 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         _uiSizeChanged = false;
         if (!_inGame) return;
-        var menuOpen = _windows?.Get(MenuWindowId) != null;
         Log($"UI size {_uiSize}%: rebuilding the LegACEy UI.");
+        Rebuild(resetPositions: false);
+    }
+
+    /// <summary>
+    /// Puts this character's windows back at their first-open places, from Reset window positions in the Settings window: the windows rebuild
+    /// as a UI size change does, with their saved places forgotten, and the Settings window comes back on General.
+    /// </summary>
+    private void ResetPositions()
+    {
+        _positionsResetRequested = false;
+        if (!_inGame) return;
+        Log("Window positions reset: rebuilding the LegACEy UI.");
+        Rebuild(resetPositions: true);
+    }
+
+    /// <summary>
+    /// Closes every window and opens the session's again, as a relog does. With <paramref name="resetPositions"/> the saved window places are
+    /// forgotten once the windows have closed, since closing saves where they stood, and the Settings window reopens on General rather than
+    /// on the tab it was on.
+    /// </summary>
+    private void Rebuild(bool resetPositions)
+    {
+        var menuOpen = _windows?.Get(MenuWindowId) != null;
+        var settingsOpen = _windows?.Get(SettingsWindowId) != null;
         // The chat's lines and sent text outlive the rebuild: it is the same character still playing.
         var chatHistory = _chatWindows?.History ?? _carriedChatHistory;
         Logoff();
+        if (resetPositions) ForgetWindowPlaces();
         _carriedChatHistory = chatHistory;
         LoginComplete();
         if (menuOpen) Guard(ToggleMenuWindow);
+        // The Settings window comes back on the tab it was on, which the tab store keeps; after a reset, on General.
+        if (settingsOpen) Guard(() => OpenSettings(resetPositions ? SettingsTab.General : LoadSettingsTab()));
+    }
+
+    /// <summary>
+    /// Forgets this character's saved window places and keeps its options. A failure is logged: if the position file can't be read, nothing
+    /// changes; if it can't be written, the places are forgotten for this session only. The rebuild goes on either way.
+    /// </summary>
+    private void ForgetWindowPlaces()
+    {
+        try
+        {
+            if (_positionStore.ForgetPlaces(SessionServer(), SessionCharacter(), PositionOptionKeys) == false)
+                Log("Could not reset the window positions: the position file can't be read or written. If only writing failed, they're forgotten for this session.");
+        }
+        catch (Exception exception) { Log($"Could not forget the saved window positions: {exception.Message}"); }
     }
 
     /// <summary>
@@ -841,7 +1026,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_failed || !NativeUi.Ready)
             return;
 
-        if (_uiSizeChanged) ApplyUiSize();
+        if (_uiSizeChanged) Guard(ApplyUiSize);
+        if (_positionsResetRequested) Guard(ResetPositions);
+        // A failed rebuild has torn the UI down; the block below would build it again this frame.
+        if (_failed) return;
 
         Guard(() =>
         {
@@ -887,6 +1075,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             }
 
             TickRetailPanels();
+            TickSettingsLock();
             UpdateRetailDrag();
             if (_itemDragActive)
                 _retailDrag?.UpdateDropIndicator();
@@ -1729,7 +1918,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>Once per toolbar taken over, puts it at this character's saved place, kept on screen. Until then it stands where retail's did.</summary>
     private void LoadToolbarPlace()
     {
-        if (_toolbarPlaceLoaded || !_inGame || _positionStore == null || _toolbarPlace == null || _toolbarSurface == null) return;
+        if (_toolbarPlaceLoaded || !_inGame || _toolbarPlace == null || _toolbarSurface == null) return;
         _toolbarPlaceLoaded = true;
         if (_positionStore.Load(SessionServer(), SessionCharacter(), ToolbarPlaceId) is not { } saved) return;
         var screen = GameDevice.ViewportSize(_device);
@@ -1740,7 +1929,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private void SaveToolbarPlace(Point location)
     {
-        if (_inGame && _positionStore != null) _positionStore.Save(SessionServer(), SessionCharacter(), ToolbarPlaceId, (location, null));
+        if (_inGame) _positionStore.Save(SessionServer(), SessionCharacter(), ToolbarPlaceId, (location, null));
     }
 
     /// <summary>Whether a screen point is on the toolbar's top edge, where a press moves it as a window's top edge does.</summary>
@@ -1843,12 +2032,18 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>Row 1's tag: turns row 2 off or on and saves the choice for the character.</summary>
-    private void ToggleShortcutRow2()
+    private void ToggleShortcutRow2() => SetShortcutRow2(_shortcutRow2 == null);
+
+    /// <summary>
+    /// Turns row 2 on or off, and keeps the choice for the character. Row 2 sits beside row 1, so it opens only while row 1 is up; the choice is
+    /// kept either way, and row 1 opens row 2 when it is on.
+    /// </summary>
+    private void SetShortcutRow2(bool on)
     {
-        // Decided from what is on screen, so a choice that cannot be saved still turns row 2 off and on.
-        if (_shortcutRow2 == null) ShowShortcutRow2();
+        if (on && _shortcutBar != null) ShowShortcutRow2();
         else HideShortcutRow2();
-        _row2Choice.Save(SessionServer(), SessionCharacter(), _shortcutRow2 != null);
+        _row2Choice.Save(SessionServer(), SessionCharacter(), on);
+        if (_settings != null) _settings.ShortcutRow2 = new OptionChoice<bool>(on, SetShortcutRow2);
     }
 
     private void ShowShortcutRow2()
@@ -2078,9 +2273,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var port = _chatPort!;
         var server = SessionServer();
         var character = SessionCharacter();
-        var chats = new RetailChatWindows(port, _windows!, _positionStore!, _chatTabs, server, character, () => _pointer, (definition, content, location) => OpenWindowCore(definition, content, location, ChatFailed), ReleaseFeatureWindow,
+        var chats = new RetailChatWindows(port, _windows!, _positionStore, _chatTabs, server, character, () => _pointer, (definition, content, location) => OpenWindowCore(definition, content, location, ChatFailed), ReleaseFeatureWindow,
             copy: CopyToClipboard, paste: PasteFromClipboard, carried: _carriedChatHistory);
         _carriedChatHistory = null;
+        // The chat's own text size control moves the Settings window's value too.
+        chats.TextSizeChanged += size => { if (_settings != null) _settings.ChatTextSize = new OptionChoice<int>(size, SetChatTextSize); };
         // The main window starts at the bottom left, above the toolbar, until the player moves it; its place is then kept per character.
         var screen = _windows!.Screen;
         var beside = new Point(12, Math.Max(0, screen.Height - (int)Math.Round(RetailChatWindows.DesignHeight * WindowScale) - 150));
@@ -2336,6 +2533,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         var (flags, zoom) = options.Encode();
         _settingsStore.Save(SessionServer(), SessionCharacter(), RadarOptionsKey, (new Point(flags, zoom), null));
+        if (_settings != null) _settings.Radar = new OptionChoice<RadarOptions>(options, SetRadarOptions);
+    }
+
+    /// <summary>The radar's options set from the Settings window: kept for the character, and an open radar redraws with them.</summary>
+    private void SetRadarOptions(RadarOptions options)
+    {
+        SaveRadarOptions(options);
+        _radar?.SetOptions(options);
     }
 
     /// <summary>Gives retail's radar back and closes the Dereth radar. A give-back that fails is logged and retried on the next call.</summary>
@@ -2382,15 +2587,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Whether a feature's switch is on: on while its file is missing beside the DLL. The file is looked for once a second.
+    /// Whether a feature's switch is on: on while its file is missing beside the DLL, or while a write this session could not change it
+    /// holds (see <see cref="SwitchCustom"/>). The file is looked for once a second.
     /// </summary>
-    private static bool SwitchOn(string file, ref DateTime lastCheck, ref bool on)
+    private bool SwitchOn(string file, ref DateTime lastCheck, ref bool on)
     {
         var now = DateTime.UtcNow;
         if (now - lastCheck >= TimeSpan.FromSeconds(1))
         {
             lastCheck = now;
-            on = !File.Exists(IOPath.Combine(PluginDirectory, file));
+            on = SwitchCustom(IOPath.Combine(PluginDirectory, file));
         }
         return on;
     }
@@ -2453,11 +2659,43 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         return new VitalsWindowHandle(this, view, definition.Id);
     }
 
-    /// <summary>Keeps the layout the player picked for the character. The window reopens in it on the next frame, not inside the click.</summary>
+    /// <summary>
+    /// Keeps the layout the player picked for the character. The window reopens in it on the next frame, not inside the click. The Settings
+    /// window's layout is this same change.
+    /// </summary>
     private void ChooseVitalsLayout(VitalsLayout layout)
     {
         _vitalsLayouts.Save(SessionServer(), SessionCharacter(), layout);
         _vitalsLayoutPicked = true;
+        if (_settings != null) _settings.Vitals = new OptionChoice<VitalsLayout>(layout, ChooseVitalsLayout);
+    }
+
+    /// <summary>
+    /// The chat's text size set from the Settings window: applied to the open chat, which then publishes the value itself; or kept for the
+    /// chat to open with when the chat is closed, and published here.
+    /// </summary>
+    private void SetChatTextSize(int percent)
+    {
+        if (_chatWindows != null)
+        {
+            _chatWindows.SetTextSize(percent);
+            return;
+        }
+        var size = RetailChatWindows.ClampTextSize(percent);
+        RetailChatWindows.SaveTextSize(_positionStore, SessionServer(), SessionCharacter(), size);
+        if (_settings != null) _settings.ChatTextSize = new OptionChoice<int>(size, SetChatTextSize);
+    }
+
+    /// <summary>
+    /// The chat's fade delay set from the Settings window: applied to the open chat, or kept for the chat to open with when it is closed; either
+    /// way the value is published back to the Settings window.
+    /// </summary>
+    private void SetChatFadeSeconds(int seconds)
+    {
+        var fade = RetailChatWindows.FadeOrDefault(seconds);
+        if (_chatWindows != null) _chatWindows.SetFadeSeconds(fade);
+        else RetailChatWindows.SaveFadeSeconds(_positionStore, SessionServer(), SessionCharacter(), fade);
+        if (_settings != null) _settings.ChatFade = new OptionChoice<int>(fade, SetChatFadeSeconds);
     }
 
     private void VitalsFailed(Exception exception) => _vitals?.Fail(exception);

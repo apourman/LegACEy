@@ -20,18 +20,22 @@ internal sealed unsafe class StormFog : IDisposable
     private const float Inner = Block / 2, Outer = Block * 1.5f;
     // From outside, the fog bank is many faint walls across each edge of the ring, so where terrain cuts them there is no hard seam to jump
     // about as retail reshapes the terrain with distance: Bank metres deep, 1/e of what is behind showing through every BankThickness metres.
-    private const int Layers = 24, NoiseSize = 128;
+    // Each wall adds about 3%, and they thicken from the bank's outer face inwards, so where the ground cuts them the steps are faint and
+    // there is no strong first line. ponytail: 128 walls is a lot of overdraw looking into the bank; fewer if the frame rate suffers there.
+    private const int Layers = 64, NoiseSize = 128;
     private const float Bank = 40, BankThickness = 20;
     private const uint Grey = 0xC8CDCF;
     // Inside: fog thick enough that 1/e of the scene shows through every Thickness metres, reached FadeIn metres past the edge.
-    // Slices run from the first to the last distance, spaced wider with distance as the fog changes less there.
-    private const float Thickness = 45, FadeIn = 30, FirstSlice = 3, LastSlice = 400;
-    private const int Slices = 24;
+    private const float Thickness = 45, FadeIn = 30, LastSlice = 400;
     private static readonly (int X, int Y)[] Corners = { (-1, -1), (1, -1), (1, 1), (-1, 1) };
 
     private readonly IntPtr _device;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private IntPtr _noise;
+    // The fog the haze asked for this frame (the thickest), laid over retail's world next frame (TakeFog).
+    private (uint Color, float Density)? _nextFog;
+    // Frames since the player's own part was measured.
+    private int _sincePlayer = int.MaxValue / 2;
 
     /// <summary>A part has been measured, so <see cref="Offset"/>, <see cref="View"/> and <see cref="Projection"/> hold the last frame's camera.</summary>
     public bool Measured { get; private set; }
@@ -51,6 +55,12 @@ internal sealed unsafe class StormFog : IDisposable
         _device = device;
     }
 
+    /// <summary>
+    /// The player's global game position (z-up), from their part last measured; null before. How deep in the fog or weather is taken from
+    /// here, not the camera, which swings in and out of the edge as a third-person view turns (seen as the fog pulsing, 19 Oct).
+    /// </summary>
+    public Vector3? Player { get; private set; }
+
     /// <summary>The safe landblock the storm rings, as landblock x and y; null means no storm is drawn.</summary>
     public (int X, int Y)? Zone { get; set; }
 
@@ -59,8 +69,12 @@ internal sealed unsafe class StormFog : IDisposable
 
     public bool FromPlayer { get; private set; }
 
-    /// <summary>Measures the game-to-render offset from a part being drawn: its game position against the device's world transform.</summary>
-    public void Calibrate(int part, bool player)
+    /// <summary>
+    /// Measures the game-to-render offset from a part being drawn: its game position against the device's world transform. Returns the
+    /// part's measure, which another object's part can get a whole landblock wrong (seen as the water jumping for a frame, 19 Oct), so
+    /// the offset is only taken from the player's part while the player has been drawn in the last second.
+    /// </summary>
+    public Vector3 Calibrate(int part, bool player)
     {
         var cell = *(uint*)(part + 0x7C);
         var origin = new Vector3(*(float*)(part + 0xB4), *(float*)(part + 0xB8), *(float*)(part + 0xBC));
@@ -69,10 +83,16 @@ internal sealed unsafe class StormFog : IDisposable
         // The camera is the same for every part of the world; the offset is taken from another part only while the player's is not drawn.
         View = GetTransform(_device, TransformView);
         Projection = GetTransform(_device, TransformProjection);
-        if (player || !FromPlayer) Offset = offset;
+        if (player)
+        {
+            _sincePlayer = 0;
+            Player = Global(cell, origin);
+        }
+        if (player || (!FromPlayer && _sincePlayer > 30)) Offset = offset;
         Measured = true;
         Calibrated = true;
         FromPlayer |= player;
+        return offset;
     }
 
     /// <summary>Draws the storm after retail's world, then waits for the next frame's measure.</summary>
@@ -81,6 +101,7 @@ internal sealed unsafe class StormFog : IDisposable
         // A frame with nothing measured (no part drawn yet) keeps the last measure, so the fog does not blink out for a frame.
         if (!Measured) return;
         Calibrated = FromPlayer = false;
+        _sincePlayer++;
         if (Zone is not { } zone) return;
         if (_noise == IntPtr.Zero) _noise = MakeNoise();
         var saved = SaveState(_device);
@@ -110,12 +131,13 @@ internal sealed unsafe class StormFog : IDisposable
             var centre = Centre(zone);
             var walls = stackalloc FogVertex[10];
             var step = Bank / Layers;
-            var alpha = 1 - MathF.Exp(-step / BankThickness);
             for (var wall = 0; wall < Layers * 2; wall++)
             {
                 // Half of the walls run in from the safe landblock's edge, half in from the ring's outer edge.
                 var layer = wall % Layers;
                 var halfWidth = wall < Layers ? Inner + layer * step : Outer - layer * step;
+                // Thin at the bank's face (layer 0), twice the average at its inner side.
+                var alpha = 1 - MathF.Exp(-step / BankThickness * 2 * (layer + 0.5f) / Layers);
                 // A wall fades out within 10 m of the camera, so passing through it does not flash it across the screen.
                 var fade = eye is { } p ? Math.Clamp(MathF.Abs(FromCentre(p, zone) - halfWidth) / 10, 0, 1) : 1;
                 var color = (uint)(alpha * fade * 255) << 24 | Grey;
@@ -126,13 +148,15 @@ internal sealed unsafe class StormFog : IDisposable
                     var (sx, sy) = Corners[corner % 4];
                     float x = centre.X + sx * halfWidth, y = centre.Y + sy * halfWidth;
                     var u = corner * halfWidth * 2 / 96 + drift;
-                    walls[corner * 2] = new(Render(new Vector3(x, y, Bottom)), color, u, time * 0.02f);
-                    walls[corner * 2 + 1] = new(Render(new Vector3(x, y, Top)), color, u, (Top - Bottom) / 128 + time * 0.02f);
+                    // And its own height in the noise, so where the ground cuts the walls each line is broken up differently.
+                    var v = time * 0.02f + wall * 0.29f;
+                    walls[corner * 2] = new(Render(new Vector3(x, y, Bottom)), color, u, v);
+                    walls[corner * 2 + 1] = new(Render(new Vector3(x, y, Top)), color, u, (Top - Bottom) / 128 + v);
                 }
                 DrawPrimitiveUP(_device, TriangleStrip, 8, walls, sizeof(FogVertex));
             }
 
-            var strength = eye is { } inside ? Math.Clamp(StormDepth(inside, zone) / FadeIn, 0, 1) : 0;
+            var strength = (Player ?? eye) is { } inside ? Math.Clamp(StormDepth(inside, zone) / FadeIn, 0, 1) : 0;
             if (strength > 0) DrawHaze(Grey, Thickness, strength);
         }
         finally { RestoreState(saved); }
@@ -160,9 +184,18 @@ internal sealed unsafe class StormFog : IDisposable
         SetRenderState(_device, RenderState.DestBlend, BlendInvSrcAlpha);
     }
 
+    /// <summary>The fog to lay over retail's world this frame, as Direct3D's exponential fog: its colour and density per metre. Clears it.</summary>
+    public (uint Color, float Density)? TakeFog()
+    {
+        var fog = _nextFog;
+        _nextFog = null;
+        return fog;
+    }
+
     /// <summary>
-    /// The fog inside: camera-facing grey slices from near to far, each covering the screen and hidden where retail's scene is nearer.
-    /// A slice's alpha is the fog over the gap since the last one, so a pixel behind every slice to distance d is fogged 1 - e^(-d / thickness).
+    /// The fog inside, fogging a pixel at distance d by 1 - e^(-d × strength / thickness). Retail's world is fogged as it is drawn, next frame
+    /// (<see cref="TakeFog"/>), smoothly per vertex; here only one camera-facing slice is drawn, far off and hidden where retail's scene is
+    /// nearer, to fog the sky. (Many slices drew a contour line wherever the ground crossed one, 19 Oct.)
     /// Expects <see cref="UseWorldCamera"/>'s states; leaves the world and view transforms at identity.
     /// </summary>
     public void DrawHaze(uint color, float thickness, float strength)
@@ -179,22 +212,18 @@ internal sealed unsafe class StormFog : IDisposable
         var forward = Projection.M34 >= 0 ? 1 : -1;
         // The last slice stays inside the far plane (from the projection: far = M43 / (forward - M33)), or the sky behind would show.
         var lastSlice = MathF.Min(LastSlice, MathF.Abs(Projection.M43 / (forward - Projection.M33)) * 0.98f);
+        var density = strength / thickness;
+        if (_nextFog is not { } fog || fog.Density < density) _nextFog = (color, density);
         var quad = stackalloc SliceVertex[4];
-        var last = 0f;
-        for (var i = 0; i < Slices; i++)
-        {
-            var distance = FirstSlice * MathF.Pow(lastSlice / FirstSlice, i / (Slices - 1f));
-            var alpha = 1 - MathF.Exp(-(distance - last) / thickness * strength);
-            last = distance;
-            // Wider than the view, so the slice covers the screen whatever the aspect.
-            float x = distance / Projection.M11 * 1.2f, y = distance / Projection.M22 * 1.2f, z = distance * forward;
-            var argb = (uint)(alpha * 255) << 24 | color;
-            quad[0] = new(-x, y, z, argb);
-            quad[1] = new(x, y, z, argb);
-            quad[2] = new(-x, -y, z, argb);
-            quad[3] = new(x, -y, z, argb);
-            DrawPrimitiveUP(_device, TriangleStrip, 2, quad, sizeof(SliceVertex));
-        }
+        var alpha = 1 - MathF.Exp(-lastSlice * density);
+        // Wider than the view, so the slice covers the screen whatever the aspect.
+        float x = lastSlice / Projection.M11 * 1.2f, y = lastSlice / Projection.M22 * 1.2f, z = lastSlice * forward;
+        var argb = (uint)(alpha * 255) << 24 | color;
+        quad[0] = new(-x, y, z, argb);
+        quad[1] = new(x, y, z, argb);
+        quad[2] = new(-x, -y, z, argb);
+        quad[3] = new(x, -y, z, argb);
+        DrawPrimitiveUP(_device, TriangleStrip, 2, quad, sizeof(SliceVertex));
     }
 
     /// <summary>Metres inside the storm ring to its nearer edge (the safe landblock's, or the ring's outer one); negative outside it.</summary>
