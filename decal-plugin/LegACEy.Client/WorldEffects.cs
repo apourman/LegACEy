@@ -94,6 +94,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     private int _width, _height;
     // _masked: the mask is cleared this frame; _outlined: the selection is in it.
     private bool _masked, _outlined, _failed;
+    private System.Numerics.Vector3 _lastOddMeasure;
 
     private WorldEffects(IntPtr device, PortalDat portal, Action<string> log)
     {
@@ -159,8 +160,15 @@ internal sealed unsafe class WorldEffects : IDisposable
             var player = physicsObject == *PlayerObject;
             if (physicsObject != 0 && *(int*)(physicsObject + 0x90) != 0)
             {
-                if (!_fog.Calibrated || (player && !_fog.FromPlayer)) _fog.Calibrate(part, player);
                 var id = *(uint*)(physicsObject + 0x8);
+                if (!_fog.Calibrated || (player && !_fog.FromPlayer))
+                {
+                    var measure = _fog.Calibrate(part, player);
+                    // ponytail: diagnostic for the 19 Oct water flicker; drop once a play-test shows which parts measure wrong.
+                    if (measure != _fog.Offset && measure != _lastOddMeasure)
+                        _log($"World offset: {(player ? "the player" : $"object {id:X8}")} measured {measure}, kept {_fog.Offset}.");
+                    _lastOddMeasure = measure == _fog.Offset ? _lastOddMeasure : measure;
+                }
                 if (_combat.Tracks(id)) _combat.Saw(id, GetTransform(_device, TransformWorld).Translation - _fog.Offset);
                 if (Selected != 0) channels = id == Selected ? SelectionChannels : player ? PlayerChannels : 0;
             }

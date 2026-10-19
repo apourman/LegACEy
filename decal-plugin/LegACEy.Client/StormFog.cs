@@ -32,6 +32,8 @@ internal sealed unsafe class StormFog : IDisposable
     private readonly IntPtr _device;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private IntPtr _noise;
+    // Frames since the player's own part was measured.
+    private int _sincePlayer = int.MaxValue / 2;
 
     /// <summary>A part has been measured, so <see cref="Offset"/>, <see cref="View"/> and <see cref="Projection"/> hold the last frame's camera.</summary>
     public bool Measured { get; private set; }
@@ -59,8 +61,12 @@ internal sealed unsafe class StormFog : IDisposable
 
     public bool FromPlayer { get; private set; }
 
-    /// <summary>Measures the game-to-render offset from a part being drawn: its game position against the device's world transform.</summary>
-    public void Calibrate(int part, bool player)
+    /// <summary>
+    /// Measures the game-to-render offset from a part being drawn: its game position against the device's world transform. Returns the
+    /// part's measure, which another object's part can get a whole landblock wrong (seen as the water jumping for a frame, 19 Oct), so
+    /// the offset is only taken from the player's part while the player has been drawn in the last second.
+    /// </summary>
+    public Vector3 Calibrate(int part, bool player)
     {
         var cell = *(uint*)(part + 0x7C);
         var origin = new Vector3(*(float*)(part + 0xB4), *(float*)(part + 0xB8), *(float*)(part + 0xBC));
@@ -69,10 +75,12 @@ internal sealed unsafe class StormFog : IDisposable
         // The camera is the same for every part of the world; the offset is taken from another part only while the player's is not drawn.
         View = GetTransform(_device, TransformView);
         Projection = GetTransform(_device, TransformProjection);
-        if (player || !FromPlayer) Offset = offset;
+        if (player) _sincePlayer = 0;
+        if (player || (!FromPlayer && _sincePlayer > 30)) Offset = offset;
         Measured = true;
         Calibrated = true;
         FromPlayer |= player;
+        return offset;
     }
 
     /// <summary>Draws the storm after retail's world, then waits for the next frame's measure.</summary>
@@ -81,6 +89,7 @@ internal sealed unsafe class StormFog : IDisposable
         // A frame with nothing measured (no part drawn yet) keeps the last measure, so the fog does not blink out for a frame.
         if (!Measured) return;
         Calibrated = FromPlayer = false;
+        _sincePlayer++;
         if (Zone is not { } zone) return;
         if (_noise == IntPtr.Zero) _noise = MakeNoise();
         var saved = SaveState(_device);
