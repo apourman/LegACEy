@@ -492,6 +492,35 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private WaterOption WaterOptionFor(WaterChoice water) => new(water.On, water.Percent,
         (on, percent) => SetWater(new WaterChoice(on, Math.Clamp(percent, 0, WaterChoice.Most))));
 
+    /// <summary>
+    /// Retail's Lock UI for the Settings window's switch. It is greyed out when the lock's natives did not check, and it is read as retail
+    /// reads it.
+    /// </summary>
+    private LockUiChoice LockUiOption()
+    {
+        var available = HudNatives().Lock;
+        return new LockUiChoice(available && NativeUi.IsUiLocked, available, SetUiLock);
+    }
+
+    /// <summary>
+    /// Sets retail's Lock UI from the Settings window, as the radar's lock button does, and shows the state retail now reads, so a refused
+    /// change does not leave the switch wrong.
+    /// </summary>
+    private void SetUiLock(bool locked)
+    {
+        if (!HudNatives().Lock) return;
+        NativeUi.SetUiLocked(locked);
+        if (_settings != null && _settings.LockUi is { } option) _settings.LockUi = option with { Locked = NativeUi.IsUiLocked };
+    }
+
+    /// <summary>While Settings is open, retail's Lock UI can change from its own options or the radar's button, so the switch follows it.</summary>
+    private void TickSettingsLock()
+    {
+        if (_settings == null || _settings.LockUi is not { Enabled: true } option) return;
+        var locked = NativeUi.IsUiLocked;
+        if (locked != option.Locked) _settings.LockUi = option with { Locked = locked };
+    }
+
     // A chat line that fails only goes to the log: it is no reason to switch the UI off.
     private static void WaterChat(string line)
     {
@@ -774,7 +803,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _windows.BringToFront(SettingsWindowId);
             return;
         }
-        var settings = new ClientSettings(AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, SetUiSize) : null, UpdateCheck(), WindowChoices(), WaterOptionFor(_water));
+        var settings = new ClientSettings(AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, SetUiSize) : null, UpdateCheck(), WindowChoices(), WaterOptionFor(_water), LockUiOption());
         _settings = settings;
         var window = new DerethWindow("Settings", null, new SettingsPanel(settings, LoadSettingsTab(), SaveSettingsTab, _plugins));
         window.CloseRequested += (_, _) =>
@@ -975,6 +1004,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             }
 
             TickRetailPanels();
+            TickSettingsLock();
             UpdateRetailDrag();
             if (_itemDragActive)
                 _retailDrag?.UpdateDropIndicator();

@@ -29,6 +29,9 @@ public sealed record WaterOption(bool On, int Percent, Action<bool, int> Set)
     public const int Smallest = 0, Largest = 200, Step = 5;
 }
 
+/// <summary>Retail's Lock UI for this character: whether it is on now, whether it can be set, and the change that sets it. Greyed out when it can't.</summary>
+public sealed record LockUiChoice(bool Locked, bool Enabled, Action<bool> Set);
+
 /// <summary>The tabs of the Settings window, in the order they show.</summary>
 public enum SettingsTab { General, Windows, World, Plugins }
 
@@ -40,17 +43,20 @@ public sealed class ClientSettings
 {
     private UiSizeChoice? _uiSize;
     private WaterOption? _water;
+    private LockUiChoice? _lockUi;
 
     /// <param name="uiSize">The UI size, for all characters. Null where the UI cannot scale, which hides the row.</param>
     /// <param name="update">The version and the check. Null hides the row.</param>
     /// <param name="windows">The windows the Windows tab switches, one row each.</param>
     /// <param name="water">The water, for all characters. Null hides the World tab's rows.</param>
-    public ClientSettings(UiSizeChoice? uiSize, UpdateChoice? update, IReadOnlyList<UiWindowChoice> windows, WaterOption? water = null)
+    /// <param name="lockUi">Retail's Lock UI, for this character. Null hides its row.</param>
+    public ClientSettings(UiSizeChoice? uiSize, UpdateChoice? update, IReadOnlyList<UiWindowChoice> windows, WaterOption? water = null, LockUiChoice? lockUi = null)
     {
         _uiSize = uiSize;
         Update = update;
         Windows = windows ?? throw new ArgumentNullException(nameof(windows));
         _water = water;
+        _lockUi = lockUi;
     }
 
     public UiSizeChoice? UiSize
@@ -69,6 +75,16 @@ public sealed class ClientSettings
         set
         {
             _water = value;
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public LockUiChoice? LockUi
+    {
+        get => _lockUi;
+        set
+        {
+            _lockUi = value;
             Changed?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -149,6 +165,7 @@ public sealed class SettingsPanel : UserControl
     {
         var pane = new StackPanel { Spacing = 12 };
         if (_settings.UiSize != null) pane.Children.Add(UiSizeRow());
+        if (_settings.LockUi != null) pane.Children.Add(LockRow());
         if (_settings.Update != null) pane.Children.Add(UpdateRow(_settings.Update));
         return pane;
     }
@@ -187,14 +204,14 @@ public sealed class SettingsPanel : UserControl
         return new StackPanel { Spacing = 4, Children = { head, slider } };
     }
 
-    /// <summary>A label with the tag that says it applies to all characters.</summary>
-    private static Control ScopedLabel(string text) => new StackPanel
+    /// <summary>A label with the tag that says whether it applies to all characters, or to this character.</summary>
+    private static Control ScopedLabel(string text, bool thisCharacter = false) => new StackPanel
     {
         Orientation = Orientation.Horizontal, Spacing = 8,
         Children =
         {
             new TextBlock { Text = text, FontFamily = DerethPalette.Body, FontSize = 12.5, Foreground = DerethPalette.TextBrush, VerticalAlignment = VerticalAlignment.Center },
-            new DerethScopeTag("All characters", thisCharacter: false)
+            new DerethScopeTag(thisCharacter ? "This character" : "All characters", thisCharacter)
         }
     };
 
@@ -233,6 +250,34 @@ public sealed class SettingsPanel : UserControl
             pane.Children.Add(row);
         }
         return pane;
+    }
+
+    /// <summary>
+    /// Lock UI, for this character: retail's own lock, shown as retail reads it and set as retail's radar sets it. It is greyed out where the
+    /// running client's lock did not check.
+    /// </summary>
+    private Control LockRow()
+    {
+        var toggle = new DerethToggle();
+        var row = new DockPanel();
+        void Show()
+        {
+            if (_settings.LockUi is not { } lockUi) return;
+            toggle.On = lockUi.Locked;
+            toggle.IsEnabled = lockUi.Enabled;
+            row.Opacity = lockUi.Enabled ? 1 : 0.5;
+        }
+        toggle.Changed += on =>
+        {
+            if (_settings.LockUi is { Enabled: true } lockUi) lockUi.Set(on);
+        };
+        _redraws.Add(Show);
+        Show();
+
+        DockPanel.SetDock(toggle, Dock.Right);
+        row.Children.Add(toggle);
+        row.Children.Add(ScopedLabel("Lock UI", thisCharacter: true));
+        return row;
     }
 
     /// <summary>
