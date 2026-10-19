@@ -196,8 +196,10 @@ To install, close the game and run `setup.exe`. It installs the ZIP's files and 
 runs it, and registers the plugin in Decal, asking for administrator approval
 for that step only. A plugin already registered by hand is moved onto the
 installed copy and enabled. Setup stops if the game is running or Decal is not
-installed. Uninstall it from Windows' Apps list: that removes the installed files
-and the Decal registration, and keeps your settings, switch files and logs.
+installed. `runtime\` and `Plugins\` belong to the release and are replaced on
+every install and update, so keep no files of your own there. Uninstall it from
+Windows' Apps list: that removes the installed files and the Decal registration,
+and keeps your settings, switch files and logs.
 
 The ZIP stays for manual installs: extract it and register its
 `LegACEy.Client.DecalPlugin.dll` in Decal. To update, extract the ZIP over the

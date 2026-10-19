@@ -32,6 +32,8 @@ WizardStyle=modern
 ; Setup replaces these folders wholesale, as an update does, so files a release no longer ships don't linger.
 Type: filesandordirs; Name: "{app}\runtime"
 Type: filesandordirs; Name: "{app}\Plugins"
+; A release the updater staged must never apply over this one.
+Type: filesandordirs; Name: "{app}\update"
 
 [Files]
 Source: "{#PackageDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -53,14 +55,19 @@ const
   FilterKey = 'SOFTWARE\Decal\NetworkFilters\{00156974-B6EE-4990-A850-4E3B55871654}';
   StubObject = 'LegACEy.Client.DecalPlugin.Plugin';
 
+{ Fails open: a broken WMI never blocks setup or uninstall. }
 function GameRunning: Boolean;
 var
   Locator, Service, Processes: Variant;
 begin
-  Locator := CreateOleObject('WbemScripting.SWbemLocator');
-  Service := Locator.ConnectServer('.', 'root\CIMV2');
-  Processes := Service.ExecQuery('SELECT ProcessId FROM Win32_Process WHERE Name = ''acclient.exe''');
-  Result := Processes.Count > 0;
+  try
+    Locator := CreateOleObject('WbemScripting.SWbemLocator');
+    Service := Locator.ConnectServer('.', 'root\CIMV2');
+    Processes := Service.ExecQuery('SELECT ProcessId FROM Win32_Process WHERE Name = ''acclient.exe''');
+    Result := Processes.Count > 0;
+  except
+    Result := False;
+  end;
 end;
 
 { Runs reg.exe commands in one elevated cmd, so the player sees one UAC prompt. Callers check the registry afterwards
@@ -125,18 +132,17 @@ begin
     Result := 'Setup could not register the plugin in Decal. Registering needs administrator approval; run setup again and allow it.';
 end;
 
+{ Removes the Decal entry before any file goes; without administrator approval nothing is uninstalled. }
 function InitializeUninstall: Boolean;
 begin
   Result := not GameRunning;
-  if not Result then
+  if not Result then begin
     SuppressibleMsgBox('Asheron''s Call is running. Close every game client, then uninstall again.', mbError, MB_OK, IDOK);
-end;
-
-procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
-begin
-  if (CurUninstallStep = usUninstall) and RegKeyExists(HKLM32, FilterKey) then begin
-    RunElevated('reg delete "HKLM\' + FilterKey + '" /f /reg:32');
-    if RegKeyExists(HKLM32, FilterKey) then
-      SuppressibleMsgBox('The plugin''s Decal entry needs administrator approval to remove. Remove LegACEy Decal Plugin in Decal''s options.', mbError, MB_OK, IDOK);
+    exit;
   end;
+  if RegKeyExists(HKLM32, FilterKey) then
+    RunElevated('reg delete "HKLM\' + FilterKey + '" /f /reg:32');
+  Result := not RegKeyExists(HKLM32, FilterKey);
+  if not Result then
+    SuppressibleMsgBox('Uninstalling needs administrator approval to remove the plugin from Decal. Uninstall again and allow it.', mbError, MB_OK, IDOK);
 end;

@@ -76,14 +76,16 @@ jobs:
           PLUGIN_TAG: ${{ inputs.release_tag }}
         run: ./decal-plugin/build/New-ReleasePackage.ps1 -BuildOutput "$env:RUNNER_TEMP/plugin-output" -Destination "$env:RUNNER_TEMP/plugin-package" -Tag $env:PLUGIN_TAG
 
-      # The runner image's Inno Setup 6 (iscc on PATH) builds setup.exe from the package's files.
+      # The runner image's Inno Setup 6 builds setup.exe from the package's files.
       - name: Build the installer
         env:
           PLUGIN_TAG: ${{ inputs.release_tag }}
           PLUGIN_VERSION: ${{ inputs.release_version }}
         run: |
           $destination = "$env:RUNNER_TEMP\plugin-package"
-          iscc "/DPackageDir=$destination\package" "/DAppVersion=$env:PLUGIN_VERSION" "/O$destination" decal-plugin\build\LegACEy-decal-plugin.iss
+          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source ?? "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) { throw 'Inno Setup 6 is missing: no iscc on PATH or in Program Files (x86)' }
+          & $iscc "/DPackageDir=$destination\package" "/DAppVersion=$env:PLUGIN_VERSION" "/O$destination" decal-plugin\build\LegACEy-decal-plugin.iss
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $setup = "LegACEy-$env:PLUGIN_TAG-setup.exe"
           $line = "{0}  {1}`n" -f (Get-FileHash (Join-Path $destination $setup) -Algorithm SHA256).Hash.ToLowerInvariant(), $setup
