@@ -13,28 +13,38 @@ namespace LegACEy.Client.Demo;
 /// <summary>The UI size the menu shows, in percent, and the step it asks for (1 larger, -1 smaller).</summary>
 public sealed record UiSizeChoice(int Percent, Action<int> Step);
 
+/// <summary>The menu's update row: the installed version (with why updates are off, if they are), and the check, when they are on.</summary>
+public sealed record UpdateChoice(string Label, bool Enabled, Action Check);
+
 /// <summary>A window the player can have as LegACEy's (custom) or retail's (native): whether it is custom now, and the switch.</summary>
 public sealed record UiWindowChoice(string Title, Func<bool> IsCustom, Action<bool> SetCustom);
 
 /// <summary>
 /// The LegACEy menu: the windows the player can switch between custom and native, one row per menu entry of a visible plugin, and the
-/// UI size at the bottom. Picking a plugin row runs that entry.
+/// UI size and update check at the bottom. Picking a plugin row runs that entry.
 /// </summary>
 public sealed class PluginMenuPanel : UserControl
 {
     public const int WindowWidth = 220;
-    public const int WindowHeight = 250;
+    public const int WindowHeight = 280;
 
     private readonly PluginRegistry _registry;
     private readonly IGameArtSource? _art;
     private readonly StackPanel _rows = new();
     private readonly List<WriteableBitmap> _icons = new();
 
-    public PluginMenuPanel(PluginRegistry registry, IGameArtSource? art, UiSizeChoice? uiSize = null, IReadOnlyList<UiWindowChoice>? windows = null)
+    public PluginMenuPanel(PluginRegistry registry, IGameArtSource? art, UiSizeChoice? uiSize = null, IReadOnlyList<UiWindowChoice>? windows = null,
+        UpdateChoice? update = null)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _art = art;
         var layout = new DockPanel();
+        if (update != null)
+        {
+            var footer = UpdateRow(update);
+            DockPanel.SetDock(footer, Dock.Bottom);
+            layout.Children.Add(footer);
+        }
         if (uiSize != null)
         {
             var footer = UiSizeRow(uiSize);
@@ -122,6 +132,18 @@ public sealed class PluginMenuPanel : UserControl
         DockPanel.SetDock(controls, Dock.Right);
         row.Children.Add(controls);
         row.Children.Add(label);
+        return row;
+    }
+
+    private static Control UpdateRow(UpdateChoice choice)
+    {
+        var button = new Button { Content = "Check", IsEnabled = choice.Enabled, HorizontalContentAlignment = HorizontalAlignment.Center, Margin = new Thickness(2, 0) };
+        button.Click += (_, _) => choice.Check();
+        ToolTip.SetTip(button, "Check for updates. An update installs when the game closes.");
+        var row = new DockPanel { Margin = new Thickness(8, 4) };
+        DockPanel.SetDock(button, Dock.Right);
+        row.Children.Add(button);
+        row.Children.Add(new TextBlock { Text = choice.Label, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center });
         return row;
     }
 

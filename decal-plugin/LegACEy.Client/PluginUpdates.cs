@@ -34,11 +34,16 @@ internal sealed class PluginUpdates : IDisposable
     private const string UpdaterMutex = @"Local\LegACEy.Updater";
     // System, as Decal's chat colour: the chat window shows the line with the game's own notices.
     private const int SystemChat = 5;
+    // The Win32 errors (in an IOException's HResult) for a file another process holds open: here, the update-check stamp.
+    private const int SharingViolation = 32, LockViolation = 33;
     private static readonly TimeSpan Every = TimeSpan.FromHours(6);
     // Every client of the install shares one check time, so several clients ask GitHub once (60 unauthenticated requests per hour per IP).
     private static readonly TimeSpan SharedGap = TimeSpan.FromHours(1);
     // A whole check, download included, gives up after this, so a stalled connection never keeps the next check from starting.
     private static readonly TimeSpan Deadline = TimeSpan.FromMinutes(15);
+    // The menu's Check for updates button, per client process. It skips the shared gap, so a player pressing it every minute uses
+    // GitHub's whole hourly allowance for their IP.
+    private static readonly TimeSpan PressGap = TimeSpan.FromMinutes(1);
     private static readonly Regex PluginTag = new(@"^decal-plugin-v(\d+\.\d+\.\d+)$", RegexOptions.Compiled);
     // GitHub's API refuses requests without a User-Agent.
     private static readonly HttpClient Http = new() { DefaultRequestHeaders = { { "User-Agent", "LegACEy-decal-plugin" } } };
@@ -48,6 +53,9 @@ internal sealed class PluginUpdates : IDisposable
     private readonly HashSet<Version> _announced = new();
     private Timer? _timer;
     private int _checking;
+    private DateTime _lastPress;
+    // Set once a press is told to wait, so pressing again while a check runs adds no more chat lines. Game thread only.
+    private bool _toldToWait;
 
     public PluginUpdates(string install) => _install = install;
 
@@ -94,21 +102,61 @@ internal sealed class PluginUpdates : IDisposable
         return true;
     }
 
+    /// <summary>The installed plugin's version, X.Y.Z.</summary>
+    public Version Installed => Plain(typeof(PluginUpdates).Assembly.GetName().Version ?? new Version());
+
+    /// <summary>Why this install never updates itself (a checkout build, or <c>no-auto-update</c>), or null when it does.</summary>
+    public string? Off =>
+        !File.Exists(Path.Combine(_install, "install.json")) ? "checkout build"
+        : File.Exists(Path.Combine(_install, "no-auto-update")) ? "updates off"
+        : null;
+
     /// <summary>Starts a check off the game thread unless one is running, and from the first call on, one every 6 hours.</summary>
     public void Check()
     {
-        if (Interlocked.Exchange(ref _checking, 1) == 1) return;
         _timer ??= new Timer(_ => Check(), null, Every, Every);
+        Start(force: false);
+    }
+
+    /// <summary>
+    /// The menu's Check for updates: checks now, past the shared gap, at most once a minute, and says the outcome in chat. The update
+    /// still installs only when the game closes.
+    /// </summary>
+    public void CheckNow()
+    {
+        if (Off != null) return;
+        string? wait = DateTime.UtcNow - _lastPress < PressGap ? "LegACEy checked for updates less than a minute ago: try again shortly."
+            : !Start(force: true) ? "LegACEy is already checking for updates."
+            : null;
+        if (wait != null)
+        {
+            if (!_toldToWait) _notices.Enqueue(wait);
+            _toldToWait = true;
+            return;
+        }
+        _lastPress = DateTime.UtcNow;
+        _toldToWait = false;
+    }
+
+    /// <summary>Runs one check off the game thread; false when one is already running.</summary>
+    private bool Start(bool force)
+    {
+        if (Interlocked.Exchange(ref _checking, 1) == 1) return false;
         Task.Run(async () =>
         {
             try
             {
                 using var deadline = new CancellationTokenSource(Deadline);
-                await Run(deadline.Token);
+                await Run(force, deadline.Token);
             }
-            catch (Exception exception) { ClientUiRuntime.Log($"Plugin update check failed: {exception.Message}"); }
+            catch (Exception exception)
+            {
+                ClientUiRuntime.Log($"Plugin update check failed: {exception.Message}");
+                if (force) _notices.Enqueue("Couldn't check for updates: try again later.");
+            }
             finally { Volatile.Write(ref _checking, 0); }
         });
+        return true;
     }
 
     /// <summary>
@@ -126,9 +174,10 @@ internal sealed class PluginUpdates : IDisposable
 
     public void Dispose() => _timer?.Dispose();
 
-    private async Task Run(CancellationToken cancel)
+    /// <summary>One check. Forced, from the menu, it skips the shared gap and always says the outcome in chat.</summary>
+    private async Task Run(bool force, CancellationToken cancel)
     {
-        if (!File.Exists(Path.Combine(_install, "install.json")) || File.Exists(Path.Combine(_install, "no-auto-update"))) return;
+        if (Off != null) return;
         var current = AssemblyName.GetAssemblyName(Path.Combine(_install, "LegACEy.Client.DecalPlugin.dll")).Version ?? new Version();
         var update = Path.Combine(_install, "update");
         var updaterRunning = Mutex.TryOpenExisting(UpdaterMutex, out var held);
@@ -137,39 +186,54 @@ internal sealed class PluginUpdates : IDisposable
         // The stamp holds the last check's time. Held open unshared, it makes this the one client that checks, cleans up and downloads;
         // while another client holds it, this one skips straight to the stages already there.
         FileStream? slot = null;
+        var unverified = false;
         try { slot = new FileStream(Path.Combine(_install, "update-check"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
-        catch (IOException) { }
+        catch (IOException exception) when ((exception.HResult & 0xFFFF) is SharingViolation or LockViolation) { }
+        if (slot == null && force)
+        {
+            _notices.Enqueue("Another LegACEy client on this PC is checking for updates right now.");
+            return;
+        }
         if (slot != null)
             await using (slot)
             {
                 var last = DateTime.TryParse(new StreamReader(slot, leaveOpen: true).ReadToEnd(), CultureInfo.InvariantCulture,
                     DateTimeStyles.RoundtripKind, out var time) ? time : DateTime.MinValue;
-                if (DateTime.UtcNow - last >= SharedGap)
+                if (force || DateTime.UtcNow - last >= SharedGap)
                 {
                     slot.SetLength(0);
                     slot.Write(Encoding.UTF8.GetBytes(DateTime.UtcNow.ToString("O")));
                     slot.Flush();
                     if (!updaterRunning) RemoveStale(update, current);
-                    if (Newest(await Http.GetStringAsync(ReleasesUrl, cancel), current) is { } release) await Download(release, update, cancel);
+                    unverified = Newest(await Http.GetStringAsync(ReleasesUrl, cancel), current) is { } release
+                        && !await Download(release, update, cancel);
                 }
             }
 
         // A stage this client or another made, or one an updater left after a failed apply: announced once, applied at the game's exit.
-        if (Staged(update).Where(version => version > Plain(current)).Max() is not { } staged) return;
-        if (_announced.Add(staged)) _notices.Enqueue($"LegACEy {staged} is downloaded and installs when the game closes.");
+        if (Staged(update).Where(version => version > Plain(current)).Max() is not { } staged)
+        {
+            if (force) _notices.Enqueue(unverified ? "Couldn't check for updates: try again later." : $"LegACEy {Plain(current)} is up to date.");
+            return;
+        }
+        // Announced only once an updater is waiting, so the line is never a promise nothing will keep.
         if (!updaterRunning) StartUpdater(Path.Combine(update, staged.ToString()));
+        if (_announced.Add(staged) || force) _notices.Enqueue($"LegACEy {staged} is downloaded and installs when the game closes.");
     }
 
-    private static async Task Download(PluginRelease release, string update, CancellationToken cancel)
+    /// <summary>Downloads and stages the release; false when its zip does not match its checksum.</summary>
+    private static async Task<bool> Download(PluginRelease release, string update, CancellationToken cancel)
     {
         var folder = Path.Combine(update, release.Version.ToString());
-        if (File.Exists(Path.Combine(folder, "ready"))) return;
+        if (File.Exists(Path.Combine(folder, "ready"))) return true;
         Directory.CreateDirectory(folder);
         await Save(release.ZipUrl, Path.Combine(folder, ZipName(release.Version)), cancel);
         await Save(release.SumsUrl, Path.Combine(folder, SumsName), cancel);
-        ClientUiRuntime.Log(Stage(folder, release.Version)
+        var staged = Stage(folder, release.Version);
+        ClientUiRuntime.Log(staged
             ? $"Plugin update {release.Version} staged."
             : $"Plugin update {release.Version} not staged: the zip does not match {SumsName}.");
+        return staged;
     }
 
     private static async Task Save(string url, string path, CancellationToken cancel)

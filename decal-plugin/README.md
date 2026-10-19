@@ -61,8 +61,9 @@ after moving the directory.
 The stub build also copies `LegACEy.Updater.exe` beside the main DLL. Run as
 `LegACEy.Updater.exe <install> <install>\update\<version>\files` from a copy
 outside the install root (such as `<install>\update\<version>\`), it waits
-until no `acclient.exe` is left, then applies that stage if
-`<install>\update\<version>\ready` exists: every folder the release ships
+until no `acclient.exe` is left, then applies that stage, or the newest ready
+stage under `<install>\update\` if one staged later is newer. A stage is ready
+once `<install>\update\<version>\ready` exists: every folder the release ships
 (`runtime\`, `Plugins\`) replaces the installed one, every root file overwrites
 the installed one, and other files in the install stay. It logs to
 `<install>\updater.log`. When done it deletes `ready`, `files\`, the download
@@ -79,7 +80,10 @@ every 6 hours the client asks GitHub for the newest published
 install, timed by the `update-check` file). A newer one is downloaded into
 `update\<version>\`, checked against its `SHA256SUMS.txt` and unpacked; chat
 says it installs when the game closes, and the updater applies it then, so the
-next launch runs it. The checksum guards against a corrupt download, not a
+next launch runs it. The LegACEy menu shows the installed version and a
+Check button, which checks now past the hourly gap (at most once a minute) and
+says the outcome in chat; it is greyed out on a checkout build or with
+`no-auto-update`. The checksum guards against a corrupt download, not a
 compromised release: the sums file comes from the same release. The updater
 logs to `updater.log`. Creating an empty file
 named `no-auto-update` beside the main DLL turns auto-update off.

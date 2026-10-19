@@ -13,6 +13,20 @@ public sealed class PluginUpdatesTests : IDisposable
         if (Directory.Exists(folder)) Directory.Delete(folder, true);
     }
 
+    [Fact]
+    public void OnlyASetupInstallWithoutNoAutoUpdateChecks()
+    {
+        Directory.CreateDirectory(folder);
+        using var updates = new PluginUpdates(folder);
+        Assert.Equal("checkout build", updates.Off);
+
+        File.WriteAllText(Path.Combine(folder, "install.json"), "{}");
+        Assert.Null(updates.Off);
+
+        File.WriteAllText(Path.Combine(folder, "no-auto-update"), "");
+        Assert.Equal("updates off", updates.Off);
+    }
+
     private static string Release(string tag, bool draft = false, bool prerelease = false) => $$"""
         { "tag_name": "{{tag}}", "draft": {{(draft ? "true" : "false")}}, "prerelease": {{(prerelease ? "true" : "false")}},
           "assets": [

@@ -66,6 +66,25 @@ public sealed class PluginRegistryTests
     });
 
     [Fact]
+    public void The_menu_s_update_button_checks_unless_updates_are_off() => RenderThread.Run(() =>
+    {
+        var host = new FakeHost();
+        var checks = 0;
+        foreach (var enabled in new[] { true, false })
+        {
+            using var panel = LegACEy.Client.PanelHost.AvaloniaPanel.Create(
+                () => new PluginMenuPanel(new PluginRegistry(host, host.Log.Add), null, update: new UpdateChoice("Version 0.7.0", enabled, () => checks++)),
+                PluginMenuPanel.WindowWidth, PluginMenuPanel.WindowHeight);
+            panel.Tick();
+            var button = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(panel.Content).OfType<Button>().Single(b => b.Content as string == "Check");
+            var centre = Avalonia.VisualExtensions.TranslatePoint(button, new Avalonia.Point(button.Bounds.Width / 2, button.Bounds.Height / 2), panel.Content)!.Value;
+            panel.PointerDown(centre.X, centre.Y);
+            panel.PointerUp(centre.X, centre.Y);
+        }
+        Assert.Equal(1, checks);
+    });
+
+    [Fact]
     public void SupportsAction_follows_the_servers_last_list()
     {
         var host = new FakeHost();

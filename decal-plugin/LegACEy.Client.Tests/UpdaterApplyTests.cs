@@ -87,6 +87,22 @@ public sealed class UpdaterApplyTests : IDisposable
         Assert.True(File.Exists(Path.Combine(Stage, "runtime", "coreclr.dll")));
     }
 
+    [Fact]
+    public void PicksTheNewestReadyStage()
+    {
+        Ready();
+        Write(Path.Combine(install, "update", "0.7.2"), "ready", "");
+        Write(Path.Combine(install, "update", "0.7.2", "files"), "LICENSE", "");
+        Directory.CreateDirectory(Path.Combine(install, "update", "0.8.0", "files")); // Still downloading: no ready.
+        Write(Path.Combine(install, "update", "0.9.0"), "ready", ""); // Ready, but its files are gone.
+        Write(Path.Combine(install, "update", "latest"), "ready", "");
+        Write(Path.Combine(install, "update", "0.6.9"), "ready", "");
+
+        Assert.Equal(Path.Combine(install, "update", "0.7.2", "files"), StageApply.Newest(install, Stage));
+        Directory.Delete(Path.Combine(install, "update", "0.7.2"), true);
+        Assert.Equal(Stage, StageApply.Newest(install, Stage));
+    }
+
     private void Ready() => Write(Path.Combine(install, "update", "0.7.0"), "ready", "");
 
     // Every install file outside update\ and the log, by forward-slash relative path.
