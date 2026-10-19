@@ -46,6 +46,8 @@ Source: "install.json"; DestDir: "{app}"; Flags: ignoreversion
 Type: filesandordirs; Name: "{app}\runtime"
 Type: filesandordirs; Name: "{app}\Plugins"
 Type: filesandordirs; Name: "{app}\update"
+; The update check's time: left behind, it would delay the first check after a reinstall.
+Type: files; Name: "{app}\update-check"
 
 [Code]
 const

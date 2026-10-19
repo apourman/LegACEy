@@ -77,11 +77,16 @@ public static class StageApply
         Log(install, $"Applied {stage}");
         try
         {
-            // ready goes first, so a stage that is only partly deleted is never applied again. The version folder stays:
-            // the running updater is in it. The client removes version folders without ready.
+            // ready goes first, so a stage that is only partly deleted is never applied again. The version folder stays,
+            // with the running updater in it, for the client to remove; the download and the stage go now.
             File.Delete(Path.Combine(version, "ready"));
             DeleteDirectory(stage);
             DeleteDirectory(rollback);
+            foreach (var file in Directory.GetFiles(version))
+            {
+                try { File.Delete(file); }
+                catch (Exception) { } // The running updater's own exe.
+            }
         }
         catch (Exception error)
         {

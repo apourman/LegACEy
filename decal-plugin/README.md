@@ -65,8 +65,8 @@ until no `acclient.exe` is left, then applies that stage if
 `<install>\update\<version>\ready` exists: every folder the release ships
 (`runtime\`, `Plugins\`) replaces the installed one, every root file overwrites
 the installed one, and other files in the install stay. It logs to
-`<install>\updater.log`. When done it deletes `ready`, `files\` and its
-working `rollback\` folder; the version folder, which holds the running
+`<install>\updater.log`. When done it deletes `ready`, `files\`, the download
+and its working `rollback\` folder; the version folder, which holds the running
 updater, stays for the client to remove. A failure puts the install back and
 keeps the stage for the next try. Exit codes: 0
 applied, 1 failed and rolled back, 2 bad arguments or no ready stage, 3 another

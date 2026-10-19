@@ -32,6 +32,9 @@ public sealed class UpdaterApplyTests : IDisposable
     public void AppliesTheStageAndKeepsPlayerFiles()
     {
         Ready();
+        var version = Path.Combine(install, "update", "0.7.0");
+        Write(version, "LegACEy-decal-plugin-v0.7.0-windows-x86.zip", "download");
+        Write(version, "SHA256SUMS.txt", "sums");
 
         Assert.Equal(ApplyResult.Applied, StageApply.Apply(install, Stage));
 
@@ -47,9 +50,10 @@ public sealed class UpdaterApplyTests : IDisposable
             ["retail-chat-native"] = "",
             ["install.json"] = "{ \"channel\": \"release\" }",
         }, Snapshot());
-        // The version folder stays for the client to remove (the running updater is in it), but holds no stage.
-        var version = Path.Combine(install, "update", "0.7.0");
+        // The version folder stays for the client to remove (the running updater is in it), but holds no stage or download.
         Assert.False(File.Exists(Path.Combine(version, "ready")));
+        Assert.False(File.Exists(Path.Combine(version, "LegACEy-decal-plugin-v0.7.0-windows-x86.zip")));
+        Assert.False(File.Exists(Path.Combine(version, "SHA256SUMS.txt")));
         Assert.False(Directory.Exists(Stage));
         Assert.False(Directory.Exists(Path.Combine(version, "rollback")));
         Assert.True(File.Exists(Path.Combine(install, "updater.log")));
