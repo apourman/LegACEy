@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/apourman/LegACEy/compare/v0.10.0...v0.10.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **market:** market settings are server properties ([#64](https://github.com/apourman/LegACEy/issues/64)) ([9e0b2dc](https://github.com/apourman/LegACEy/commit/9e0b2dcf1c71fdb1e9b6b7c152da9c88201d5bf1))
+
 ## [0.10.0](https://github.com/apourman/LegACEy/compare/v0.9.0...v0.10.0) (2026-10-18)
 
 
