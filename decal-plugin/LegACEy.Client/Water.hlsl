@@ -82,11 +82,11 @@ float4 Tint(Pixel pixel) : COLOR
     float fresnel = 0.02 + 0.98 * pow(1 - saturate(dot(normal, view)), 5);
     // The ripples' own light and shade around retail's flat lighting: a flat surface is left as it was.
     float shade = 1 + 1.6 * (dot(normal, Sun.xyz) - Sun.y);
-    // Seen from above, the water's own tint; at a low angle, a pale sky's reflection, which brightens without tinting.
+    // Seen from above, the water's own tint; at a low angle, only a touch lighter and greyer (the user did not want crests lit from behind).
     float3 water = lerp(Shallow.rgb, Deep.rgb, pixel.Shore.y) * 0.5 * shade;
-    float3 colour = lerp(water, float3(0.62, 0.64, 0.66), fresnel) + 0.25 * Glint(normal, view);
-    // At most 1.6 × retail's colour.
-    colour = min(0.5 + (colour - 0.5) * Sun.w, 0.8);
+    float3 colour = lerp(water, float3(0.54, 0.54, 0.54), fresnel) + 0.25 * Glint(normal, view);
+    // At most 1.3 × retail's colour.
+    colour = min(0.5 + (colour - 0.5) * Sun.w, 0.65);
     return float4(lerp(0.5, colour, pixel.Colour.a), 1);
 }
 
