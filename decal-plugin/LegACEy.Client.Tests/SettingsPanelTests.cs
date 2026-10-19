@@ -121,7 +121,7 @@ public sealed class SettingsPanelTests
         settings.ChatTextSize = new OptionChoice<int>(140, _ => { });
         settings.Radar = new OptionChoice<RadarOptions>(new RadarOptions(Ground: false), _ => { });
 
-        Assert.Equal("140%", TextOf(panel, "140%").Text);
+        TextOf(panel, "140%");
         Assert.False(ground.On);
     });
 

@@ -285,7 +285,8 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     /// <summary>Sets the text size of every chat window, in percent, within the bounds, and keeps it for the character.</summary>
     public void SetTextSize(int percent)
     {
-        var size = Math.Max(SmallestTextSize, Math.Min(LargestTextSize, percent));
+        if (_disposed) return;
+        var size = ClampTextSize(percent);
         if (size == _textSize) return;
         _textSize = size;
         SaveTextSize(_positions, _server, _character, size);
@@ -293,12 +294,15 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
         TextSizeChanged?.Invoke(size);
     }
 
+    /// <summary>A text size kept within the chat's bounds, in percent.</summary>
+    public static int ClampTextSize(int percent) => Math.Max(SmallestTextSize, Math.Min(LargestTextSize, percent));
+
     /// <summary>The character's text size in percent, the default before one is saved, so a window opens at the size it was left.</summary>
     public static int LoadTextSize(IWindowPositionStore positions, string server, string character) =>
-        positions.Load(server, character, TextSizeKey) is { Location.X: var saved and > 0 } ? Math.Max(SmallestTextSize, Math.Min(LargestTextSize, saved)) : DefaultTextSize;
+        positions.Load(server, character, TextSizeKey) is { Location.X: var saved and > 0 } ? ClampTextSize(saved) : DefaultTextSize;
 
     public static void SaveTextSize(IWindowPositionStore positions, string server, string character, int percent) =>
-        positions.Save(server, character, TextSizeKey, (new Point(percent, 0), null));
+        positions.Save(server, character, TextSizeKey, (new Point(ClampTextSize(percent), 0), null));
 
     private RetailChatWindow? Get(string id) => _chats.FirstOrDefault(chat => chat.Id == id).Window;
 

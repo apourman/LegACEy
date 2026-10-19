@@ -51,15 +51,7 @@ public sealed class ClientSettings
         Windows = windows ?? throw new ArgumentNullException(nameof(windows));
     }
 
-    public UiSizeChoice? UiSize
-    {
-        get => _uiSize;
-        set
-        {
-            _uiSize = value;
-            Changed?.Invoke(this, EventArgs.Empty);
-        }
-    }
+    public UiSizeChoice? UiSize { get => _uiSize; set => Moved(ref _uiSize, value); }
 
     public UpdateChoice? Update { get; }
 
@@ -95,7 +87,7 @@ public sealed class ClientSettings
 public sealed class SettingsPanel : UserControl
 {
     public const int WindowWidth = 440;
-    public const int WindowHeight = 300;
+    public const int WindowHeight = 396;
 
     private readonly ClientSettings _settings;
     private readonly Action<SettingsTab>? _tabChosen;
@@ -267,10 +259,7 @@ public sealed class SettingsPanel : UserControl
     {
         var layout = new DerethSegmented(new[] { "Stacked", "Side by side" });
         void Show() => layout.Selected = _settings.Vitals is { Value: VitalsLayout.SideBySide } ? 1 : 0;
-        layout.Chosen += index =>
-        {
-            _settings.Vitals?.Set(index == 1 ? VitalsLayout.SideBySide : VitalsLayout.Stacked);
-        };
+        layout.Chosen += index => _settings.Vitals?.Set(index == 1 ? VitalsLayout.SideBySide : VitalsLayout.Stacked);
         _redraws.Add(Show);
         Show();
         return OptionRow("Layout", layout);
@@ -280,10 +269,7 @@ public sealed class SettingsPanel : UserControl
     {
         var toggle = new DerethToggle();
         void Show() => toggle.On = _settings.ShortcutRow2 is { Value: true };
-        toggle.Toggled += on =>
-        {
-            _settings.ShortcutRow2?.Set(on);
-        };
+        toggle.Toggled += on => _settings.ShortcutRow2?.Set(on);
         _redraws.Add(Show);
         Show();
         return OptionRow("Second shortcut row", toggle);
@@ -299,7 +285,10 @@ public sealed class SettingsPanel : UserControl
         };
         var smaller = new DerethButton { Content = "−", Width = 26 };
         var larger = new DerethButton { Content = "+", Width = 26 };
-        void Show() => size.Text = $"{_settings.ChatTextSize?.Value ?? RetailChatWindows.DefaultTextSize}%";
+        void Show()
+        {
+            if (_settings.ChatTextSize is { } choice) size.Text = $"{choice.Value}%";
+        }
         void Step(int steps)
         {
             if (_settings.ChatTextSize is not { } choice) return;
@@ -327,25 +316,21 @@ public sealed class SettingsPanel : UserControl
     {
         var toggle = new DerethToggle();
         void Show() => toggle.On = _settings.Radar is { } radar && isOn(radar.Value);
-        toggle.Toggled += on =>
-        {
-            if (_settings.Radar is { } radar) radar.Set(change(radar.Value, on));
-        };
+        toggle.Toggled += on => _settings.Radar?.Set(change(_settings.Radar.Value, on));
         _redraws.Add(Show);
         Show();
         return OptionRow(text, toggle);
     }
 
-    /// <summary>The radar's range, in the zoom's presets: 25, 40, 70, 110 or 150 metres.</summary>
+    /// <summary>The radar's range, one of the zoom's presets. A range the wheel set between them lights the nearest preset.</summary>
     private Control RadarRange()
     {
         var ranges = RadarZoom.Presets;
         var range = new DerethSegmented(ranges.Select(metres => metres.ToString(CultureInfo.InvariantCulture)).ToArray());
-        void Show() => range.Selected = _settings.Radar is { } radar ? Array.IndexOf(ranges, radar.Value.Zoom) : -1;
-        range.Chosen += index =>
-        {
-            if (_settings.Radar is { } radar) radar.Set(radar.Value with { Zoom = ranges[index] });
-        };
+        void Show() => range.Selected = _settings.Radar is { } radar
+            ? Enumerable.Range(0, ranges.Length).OrderBy(i => Math.Abs(ranges[i] - radar.Value.Zoom)).First()
+            : -1;
+        range.Chosen += index => _settings.Radar?.Set(_settings.Radar.Value with { Zoom = ranges[index] });
         _redraws.Add(Show);
         Show();
         return OptionRow("Range (m)", range);

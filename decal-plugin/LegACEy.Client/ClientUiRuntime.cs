@@ -2561,12 +2561,20 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_settings != null) _settings.Vitals = new OptionChoice<VitalsLayout>(layout, ChooseVitalsLayout);
     }
 
-    /// <summary>The chat's text size set from the Settings window: applied to the open chat, or kept for it to open with when the chat is closed.</summary>
+    /// <summary>
+    /// The chat's text size set from the Settings window: applied to the open chat, which then publishes the value itself; or kept for the
+    /// chat to open with when the chat is closed, and published here.
+    /// </summary>
     private void SetChatTextSize(int percent)
     {
-        if (_chatWindows != null) _chatWindows.SetTextSize(percent);
-        else RetailChatWindows.SaveTextSize(_positionStore!, SessionServer(), SessionCharacter(), percent);
-        if (_settings != null) _settings.ChatTextSize = new OptionChoice<int>(percent, SetChatTextSize);
+        if (_chatWindows != null)
+        {
+            _chatWindows.SetTextSize(percent);
+            return;
+        }
+        var size = RetailChatWindows.ClampTextSize(percent);
+        RetailChatWindows.SaveTextSize(_positionStore!, SessionServer(), SessionCharacter(), size);
+        if (_settings != null) _settings.ChatTextSize = new OptionChoice<int>(size, SetChatTextSize);
     }
 
     private void VitalsFailed(Exception exception) => _vitals?.Fail(exception);
