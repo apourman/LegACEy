@@ -5,8 +5,9 @@ using System.Threading;
 
 namespace LegACEy.Updater;
 
-// LegACEy.Updater.exe <install> <stage>: run from a copy outside the install root (the client starts it from
-// <install>\update\<version>\), so replacing the install never replaces the running exe.
+// LegACEy.Updater.exe <install> <stage>: once every game client exits, applies <stage>, or the newest ready stage beside it.
+// Run from a copy outside the install root (the client starts it from <install>\update\<version>\), so replacing the install
+// never replaces the running exe.
 // Exit codes: 0 applied, 1 failed and rolled back, 2 bad arguments or no ready stage, 3 another updater is running.
 internal static class Program
 {
@@ -34,9 +35,9 @@ internal static class Program
 
         try
         {
-            StageApply.Log(install, $"Waiting for every game client to exit, then applying {stage}");
+            StageApply.Log(install, $"Waiting for every game client to exit, then applying {stage} or a newer stage");
             while (GameRunning()) Thread.Sleep(2000);
-            return (int)StageApply.Apply(install, stage);
+            return (int)StageApply.Apply(install, StageApply.Newest(install, stage));
         }
         finally { mutex.ReleaseMutex(); }
     }

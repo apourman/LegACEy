@@ -697,7 +697,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             return;
         }
         var chrome = new ThemeWindowChrome(_portal!, MenuTitle, new PluginMenuPanel(_plugins!, _portal,
-            AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, StepUiSize) : null, WindowChoices()));
+            AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, StepUiSize) : null, WindowChoices(), UpdateCheck()));
         chrome.CloseRequested += (_, _) =>
         {
             _clientUi?.CloseWindow(MenuWindowId);
@@ -705,6 +705,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         };
         _clientUi.OpenWindow(new WindowDefinition(MenuWindowId, MenuWindowId, PluginMenuPanel.WindowWidth, PluginMenuPanel.WindowHeight), chrome, new Point(260, 120));
         SetMenuRing(true);
+    }
+
+    /// <summary>The LegACEy menu's update row: the installed version and Check for updates, greyed out with the reason on an install that never updates.</summary>
+    private UpdateChoice UpdateCheck()
+    {
+        var off = _updates.Off;
+        return new UpdateChoice(off == null ? $"Version {_updates.Installed}" : $"Version {_updates.Installed} ({off})", off == null, _updates.CheckNow);
     }
 
     /// <summary>

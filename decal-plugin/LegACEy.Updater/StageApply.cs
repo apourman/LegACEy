@@ -95,6 +95,26 @@ public static class StageApply
         return ApplyResult.Applied;
     }
 
+    /// <summary>
+    /// The stage to apply: the highest-version ready stage under <c>&lt;install&gt;\update\</c>, never one older than <paramref name="stage"/>,
+    /// so a release staged while this updater waited is applied at the same game exit.
+    /// </summary>
+    public static string Newest(string install, string stage)
+    {
+        if (!Version.TryParse(Path.GetFileName(Path.GetDirectoryName(stage)), out var newest)) return stage;
+        var update = Path.Combine(install, "update");
+        if (!Directory.Exists(update)) return stage;
+        foreach (var folder in Directory.GetDirectories(update))
+        {
+            if (File.Exists(Path.Combine(folder, "ready")) && Version.TryParse(Path.GetFileName(folder), out var version) && version > newest)
+            {
+                newest = version;
+                stage = Path.Combine(folder, "files");
+            }
+        }
+        return stage;
+    }
+
     public static void Log(string install, string message)
     {
         try { File.AppendAllText(Path.Combine(install, "updater.log"), $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}{Environment.NewLine}"); }
