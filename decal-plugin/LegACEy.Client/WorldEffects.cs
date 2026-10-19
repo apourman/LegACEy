@@ -310,8 +310,10 @@ internal sealed unsafe class WorldEffects : IDisposable
     /// </summary>
     private void ApplyFog((uint Color, float Density) fog)
     {
+        // An additive draw (glows, like a lantern's) fogs to black, fading with distance; fogged to grey, its whole quad lit up (19 Oct).
+        var additive = GetRenderState(_device, RenderState.AlphaBlendEnable) != 0 && GetRenderState(_device, RenderState.DestBlend) == BlendOne;
         SetRenderState(_device, RenderState.FogEnable, 1);
-        SetRenderState(_device, RenderState.FogColor, unchecked((int)(0xFF000000 | fog.Color)));
+        SetRenderState(_device, RenderState.FogColor, unchecked((int)(0xFF000000 | (additive ? 0 : fog.Color))));
         SetRenderState(_device, RenderState.FogTableMode, 0);
         SetRenderState(_device, RenderState.FogVertexMode, 1); // D3DFOG_EXP
         SetRenderState(_device, RenderState.FogDensity, BitConverter.SingleToInt32Bits(fog.Density));
