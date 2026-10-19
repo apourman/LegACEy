@@ -157,31 +157,35 @@ public sealed class SettingsPanel : UserControl
     /// "UI size": a slider from 60 to 150 in steps of 5, for all characters. The readout follows the thumb as it is dragged, and the size is set
     /// when the pointer lets go.
     /// </summary>
-    private Control UiSizeRow()
+    private Control UiSizeRow() => SliderRow("UI size", UiSizeChoice.Smallest, UiSizeChoice.Largest, UiSizeChoice.Step,
+        () => _settings.UiSize?.Percent, percent => _settings.UiSize?.Set(percent));
+
+    /// <summary>
+    /// A labelled slider for all characters, with the percent beside it. The readout follows the thumb as it is dragged, and <paramref name="commit"/>
+    /// gets the value when the pointer lets go. <paramref name="current"/> is the value to show, or null when the setting is gone.
+    /// </summary>
+    private Control SliderRow(string label, int smallest, int largest, int step, Func<int?> current, Action<int> commit)
     {
-        var slider = new DerethSlider(UiSizeChoice.Smallest, UiSizeChoice.Largest, UiSizeChoice.Step);
-        var readout = ReadoutText();
+        var slider = new DerethSlider(smallest, largest, step);
+        var readout = new TextBlock { FontFamily = DerethPalette.Body, FontSize = 12.5, Foreground = DerethPalette.CreamBrush, VerticalAlignment = VerticalAlignment.Center };
         void ShowReadout(int percent) => readout.Text = $"{percent}%";
         void Show()
         {
-            if (_settings.UiSize is not { } size) return;
-            slider.Value = size.Percent;
-            ShowReadout(size.Percent);
+            if (current() is not { } percent) return;
+            slider.Value = percent;
+            ShowReadout(percent);
         }
         slider.ValueChanged += ShowReadout;
-        slider.Committed += percent => _settings.UiSize?.Set(percent);
+        slider.Committed += commit;
         _redraws.Add(Show);
         Show();
 
         var head = new DockPanel();
         DockPanel.SetDock(readout, Dock.Right);
         head.Children.Add(readout);
-        head.Children.Add(ScopedLabel("UI size"));
+        head.Children.Add(ScopedLabel(label));
         return new StackPanel { Spacing = 4, Children = { head, slider } };
     }
-
-    /// <summary>The percent readout beside a slider; its row fills it in.</summary>
-    private static TextBlock ReadoutText() => new() { FontFamily = DerethPalette.Body, FontSize = 12.5, Foreground = DerethPalette.CreamBrush, VerticalAlignment = VerticalAlignment.Center };
 
     /// <summary>A label with the tag that says it applies to all characters.</summary>
     private static Control ScopedLabel(string text) => new StackPanel
@@ -265,31 +269,8 @@ public sealed class SettingsPanel : UserControl
         return row;
     }
 
-    private Control WaterStrengthRow()
-    {
-        var slider = new DerethSlider(WaterOption.Smallest, WaterOption.Largest, WaterOption.Step);
-        var readout = ReadoutText();
-        void ShowReadout(int percent) => readout.Text = $"{percent}%";
-        void Show()
-        {
-            if (_settings.Water is not { } water) return;
-            slider.Value = water.Percent;
-            ShowReadout(water.Percent);
-        }
-        slider.ValueChanged += ShowReadout;
-        slider.Committed += percent =>
-        {
-            if (_settings.Water is { } water) water.Set(true, percent);
-        };
-        _redraws.Add(Show);
-        Show();
-
-        var head = new DockPanel();
-        DockPanel.SetDock(readout, Dock.Right);
-        head.Children.Add(readout);
-        head.Children.Add(ScopedLabel("Wave strength"));
-        return new StackPanel { Spacing = 4, Children = { head, slider } };
-    }
+    private Control WaterStrengthRow() => SliderRow("Wave strength", WaterOption.Smallest, WaterOption.Largest, WaterOption.Step,
+        () => _settings.Water?.Percent, percent => _settings.Water?.Set(true, percent));
 
     /// <summary>The plugins' menu entries, each plugin's under its name, as the launcher lists them. A picked entry runs.</summary>
     private Control PluginsPane()
@@ -305,7 +286,7 @@ public sealed class SettingsPanel : UserControl
         var entries = registry.VisibleMenuEntries;
         if (entries.Count == 0)
         {
-            _pluginList.Children.Add(new TextBlock { Text = "No plugins are loaded.", FontFamily = DerethPalette.Body, Foreground = DerethPalette.MutedBrush });
+            _pluginList.Children.Add(new TextBlock { Text = "No plugin menu entries.", FontFamily = DerethPalette.Body, Foreground = DerethPalette.MutedBrush });
             return;
         }
         foreach (var plugin in entries.GroupBy(entry => entry.Owner))

@@ -97,7 +97,7 @@ public sealed class SettingsPanelTests
     });
 
     [Fact]
-    public void A_water_change_from_the_chat_command_moves_an_open_World_tab() => RenderThread.Run(() =>
+    public void A_water_change_moves_an_open_World_tab() => RenderThread.Run(() =>
     {
         var settings = new ClientSettings(null, null, Array.Empty<UiWindowChoice>(), new WaterOption(true, 100, (_, _) => { }));
         using var panel = AvaloniaPanel.Create(() => new SettingsPanel(settings, SettingsTab.World), SettingsPanel.WindowWidth, SettingsPanel.WindowHeight);

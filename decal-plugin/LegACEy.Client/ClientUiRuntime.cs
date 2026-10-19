@@ -642,6 +642,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         try { _clientUi?.EndSession(); }
         catch (Exception exception) { Log($"Could not clean up client UI at logoff: {exception}"); }
         _clientUi = null;
+        _settings = null;
         // Before the plugins close their windows: giving the panel back tells the plugin its window is no longer held.
         try { EndRetailPanels(); }
         catch (Exception exception) { Log($"Could not give the retail panels back at logoff: {exception}"); }
