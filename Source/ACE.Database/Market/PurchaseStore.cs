@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 using Microsoft.EntityFrameworkCore;
 
@@ -55,11 +56,53 @@ namespace ACE.Database.Market
     public sealed record PurchaseResult(PurchaseOutcome Outcome, PurchaseReceipt Receipt = null);
 
     /// <summary>
+    /// How the game delivered a purchase: what the buyer was told, and whether the item went into the pack. Kept beside the receipt in the request row,
+    /// so a repeated key gets the first answer and the item is never moved twice.
+    /// </summary>
+    public sealed record PurchaseDelivery(string Message, bool InPack);
+
+    /// <summary>
     /// The purchase's one save. Market tables only: the item stays where it is, and its Vault row changes owner.
     /// </summary>
     public static class PurchaseStore
     {
         public const string RequestKind = "purchase";
+
+        /// <summary>
+        /// The longest idempotency key a request may carry (the key columns hold 64 characters)
+        /// </summary>
+        public const int MaxIdempotencyKeyLength = 64;
+
+        public static bool IsIdempotencyKey(string key) => !string.IsNullOrEmpty(key) && key.Length <= MaxIdempotencyKeyLength;
+
+        /// <summary>The request result's field the game's delivery is kept in. A receipt read back ignores it, so the portal's replay is unchanged.</summary>
+        private const string DeliveryField = "delivery";
+
+        private static readonly JsonSerializerOptions json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+
+        /// <summary>
+        /// Records how a purchase was delivered, beside its receipt in the account's request row for the key. Nothing happens if there is no such purchase.
+        /// </summary>
+        public static void RecordDelivery(ShardDbContext shard, uint accountId, string idempotencyKey, PurchaseDelivery delivery)
+        {
+            var request = shard.MarketRequests.FirstOrDefault(r => r.AccountId == accountId && r.IdempotencyKey == idempotencyKey && r.Kind == RequestKind);
+            if (request?.Result == null)
+                return;
+
+            var result = JsonNode.Parse(request.Result).AsObject();
+            result[DeliveryField] = JsonSerializer.SerializeToNode(delivery, json);
+            request.Result = result.ToJsonString();
+            shard.SaveChanges();
+        }
+
+        /// <summary>
+        /// How the purchase with this key was delivered, or null if it wasn't recorded (not a game purchase, or its delivery hasn't settled)
+        /// </summary>
+        public static PurchaseDelivery StoredDelivery(ShardDbContext shard, uint accountId, string idempotencyKey)
+        {
+            var result = StoredRequest(shard, accountId, idempotencyKey)?.Result;
+            return result == null ? null : JsonNode.Parse(result)?[DeliveryField]?.Deserialize<PurchaseDelivery>(json);
+        }
 
         /// <summary>
         /// The account's earlier request with this key, of any kind (a key is the account's, whatever it was used for), or null

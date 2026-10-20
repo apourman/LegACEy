@@ -5,20 +5,19 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 using Microsoft.EntityFrameworkCore;
 
-using ACE.Database.Market;
 using ACE.Database.Models.Shard;
 using ACE.Database.Models.Shard.Market;
 using ACE.Entity.Enum;
 
-namespace ACE.MarketApi
+namespace ACE.Database.Market
 {
     /// <summary>
     /// The public catalog: the listings a visitor can see (active, within their lifetime, from sellers who aren't banned),
-    /// filtered, sorted with a keyset cursor, and shaped for display
+    /// filtered, sorted and paged with a keyset cursor. The Market API and the game server both serve it; each shapes the rows for its own display.
     /// </summary>
     public static class ListingCatalog
     {
@@ -103,12 +102,24 @@ namespace ACE.MarketApi
         {
             public string Encode() => Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(this)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
-            public static Cursor Decode(string text)
+            /// <summary>
+            /// False when the text isn't a cursor
+            /// </summary>
+            public static bool TryDecode(string text, out Cursor cursor)
             {
                 var base64 = text.Replace('-', '+').Replace('_', '/');
                 base64 += new string('=', (4 - base64.Length % 4) % 4);
 
-                return JsonSerializer.Deserialize<Cursor>(Convert.FromBase64String(base64)) ?? throw new FormatException("empty cursor");
+                try
+                {
+                    cursor = JsonSerializer.Deserialize<Cursor>(Convert.FromBase64String(base64));
+                }
+                catch (Exception e) when (e is FormatException || e is JsonException || e is ArgumentException)
+                {
+                    cursor = null;
+                }
+
+                return cursor != null;
             }
         }
 
@@ -208,72 +219,110 @@ namespace ACE.MarketApi
             return (TKey)key;
         }
 
-        // ---- display
+        // ---- what the front doors (the Market API and the game's market actions) call
+
+        public const int MaxSuggestions = 10;
 
         /// <summary>
-        /// A listing ready to display: a browse row with its one-line summary, and the listing page's basic facts (name, type, material, listed time, price, seller, wield)
+        /// The listings a visitor can see, after expiring overdue listings and returning banned sellers' listings
         /// </summary>
-        public static ListingView View(Row row, AppraisalItem item) => new ListingView
+        public static IQueryable<Row> VisibleNow(ShardDbContext shard, MarketDatabase database, DateTime now)
         {
-            Id = row.Listing.Id,
-            ItemGuid = (uint)row.Listing.ItemGuid,
-            Wcid = row.Item.Wcid,
-            Name = row.Item.Name,
-            ItemType = ItemTypeName(row.Item.ItemType),
-            Material = AppraisalRules.MaterialName(item, row.Item.MaterialType),
-            Workmanship = row.Item.Workmanship,
-            Level = row.Item.WieldRequirements == (int)WieldRequirement.Level ? row.Item.WieldDifficulty : null,
-            ArcaneLore = row.Item.ArcaneLore,
-            Summary = AppraisalRules.Summary(item),
-            Quantity = row.Item.StackSize,
-            Price = row.Listing.Price,
-            Seller = row.Seller,
-            ListedTime = DateTime.SpecifyKind(row.Listing.CreatedTime, DateTimeKind.Utc),
-            Wield = WieldText(row.Item),
-            Icon = ItemIcons.For(row.Item, item.GameData),
-        };
+            var banned = MarketUpkeep.ExpireAndHandleBans(database, now);
+
+            return Visible(shard, now, banned);
+        }
+
+        /// <param name="Text">part of the name</param>
+        /// <param name="Seller">the seller character's name</param>
+        /// <param name="MinLevel">the least wield level, for an item that needs a level</param>
+        /// <param name="MinWorkmanship">the least workmanship</param>
+        /// <param name="MinArcane">the least arcane lore</param>
+        public sealed record Filters(string Text, int? ItemType, long? MinPrice, long? MaxPrice, string Seller,
+            int? MinLevel = null, int? MinWorkmanship = null, int? MinArcane = null);
 
         /// <summary>
-        /// The listing page: the browse row's facts plus the appraisal lines and the spells
+        /// The rows that pass every filter that's set
         /// </summary>
-        public static ListingView Detail(Row row, AppraisalItem item, AppraisalRules rules)
+        public static IQueryable<Row> Filter(IQueryable<Row> rows, Filters filters)
         {
-            var view = View(row, item);
+            if (filters.Text is string text)
+                rows = NameContains(rows, text);
+            if (filters.ItemType is int type)
+                rows = rows.Where(r => r.Item.ItemType == type);
+            if (filters.MinPrice is long min)
+                rows = rows.Where(r => r.Listing.Price >= min);
+            if (filters.MaxPrice is long max)
+                rows = rows.Where(r => r.Listing.Price <= max);
+            if (filters.Seller is string seller)
+                rows = rows.Where(r => r.Seller == seller);
+            if (filters.MinLevel is int level)
+            {
+                // the same reading as the Level sort: an item with no level requirement has no level to meet
+                var wieldLevel = (int)WieldRequirement.Level;
+                rows = rows.Where(r => r.Item.WieldRequirements == wieldLevel && r.Item.WieldDifficulty >= level);
+            }
+            if (filters.MinWorkmanship is int workmanship)
+                rows = rows.Where(r => r.Item.Workmanship >= workmanship);
+            if (filters.MinArcane is int arcane)
+                rows = rows.Where(r => r.Item.ArcaneLore >= arcane);
 
-            view.Lines = rules.Format(item);
-            view.Spells = AppraisalRules.Spells(item);
-
-            return view;
+            return rows;
         }
 
         /// <summary>
-        /// Serialized in camelCase. Lines and spells are on the listing page only.
+        /// One page of up to limit rows in the sort's order after the cursor, and the next page's cursor (null on the last page).
+        /// False when the cursor is from another sort or direction, or its key doesn't fit the sort.
         /// </summary>
-        public sealed class ListingView
+        public static bool TryPage(IQueryable<Row> rows, string sort, bool descending, Cursor after, int limit, out List<Row> page, out string nextCursor)
         {
-            public long Id { get; set; }
-            public uint ItemGuid { get; set; }
-            public uint Wcid { get; set; }
-            public string Name { get; set; }
-            public string ItemType { get; set; }
-            public string Material { get; set; }
-            public int? Workmanship { get; set; }
-            public int? Level { get; set; }
-            public int? ArcaneLore { get; set; }
-            public string Summary { get; set; }
-            public int Quantity { get; set; }
-            public long Price { get; set; }
-            public string Seller { get; set; }
-            public DateTime ListedTime { get; set; }
-            public string Wield { get; set; }
-            public ItemIcons.IconView Icon { get; set; }
+            Func<Row, string> cursorKey;
+            page = null;
+            nextCursor = null;
 
-            [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-            public IReadOnlyList<string> Lines { get; set; }
+            if (after != null && (after.Sort != sort || after.Descending != descending))
+                return false;
 
-            [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-            public IReadOnlyList<GameData.Spell> Spells { get; set; }
+            try
+            {
+                page = Sort(rows, sort, descending, after, out cursorKey).Take(limit + 1).ToList();
+            }
+            catch (Exception e) when (e is FormatException || e is OverflowException || e is ArgumentOutOfRangeException)
+            {
+                // a cursor key that doesn't fit the sort's type
+                return false;
+            }
+
+            if (page.Count > limit)
+            {
+                page.RemoveAt(limit);
+                var last = page[^1];
+                nextCursor = new Cursor(sort, descending, cursorKey(last), last.Listing.Id).Encode();
+            }
+
+            return true;
         }
+
+        /// <summary>
+        /// Up to MaxSuggestions distinct names of the rows that start with the text, in order
+        /// </summary>
+        public static List<string> Suggest(IQueryable<Row> rows, string text) => NameStartsWith(rows, text)
+            .Select(r => r.Item.Name)
+            .Distinct()
+            .OrderBy(n => n)
+            .Take(MaxSuggestions)
+            .ToList();
+
+        /// <summary>
+        /// The item types among the rows with their counts, by name
+        /// </summary>
+        public static List<(string Name, int Count)> ItemTypeCounts(IQueryable<Row> rows) => rows
+            .GroupBy(r => r.Item.ItemType)
+            .Select(g => new { ItemType = g.Key, Count = g.Count() })
+            .ToList()
+            .Select(t => (Name: ItemTypeName(t.ItemType), t.Count))
+            .OrderBy(t => t.Name, StringComparer.Ordinal)
+            .ToList();
 
         /// <summary>
         /// The raw ItemType name, as the reference site shows it ("MeleeWeapon")
@@ -281,27 +330,34 @@ namespace ACE.MarketApi
         public static string ItemTypeName(int itemType) => ((ItemType)unchecked((uint)itemType)).ToString();
 
         /// <summary>
-        /// "Level 150" or "Missile Weapons 390"; null when the item has no level or skill requirement
+        /// The item type as a label: "MeleeWeapon" → "Melee Weapon"
         /// </summary>
-        public static string WieldText(VaultItem item)
+        public static string ItemTypeLabel(int itemType) => Regex.Replace(ItemTypeName(itemType), "(?<=[a-z])(?=[A-Z])", " ");
+
+        /// <summary>
+        /// The wield level of a stored item, when it has a level requirement. For rows already read; the catalog's queries use the same rule inline.
+        /// </summary>
+        public static int? LevelOf(VaultItem item) => item.WieldRequirements == (int)WieldRequirement.Level ? item.WieldDifficulty : null;
+
+        /// <summary>
+        /// The plate the client draws under an icon, by item type: the retail item-type plate (weapon, armor, clothing, jewelry, gem, or the plain one).
+        /// </summary>
+        public static uint Plate(int itemType)
         {
-            if (item.WieldDifficulty is not int difficulty)
-                return null;
+            var type = (ItemType)unchecked((uint)itemType);
 
-            switch ((WieldRequirement)(item.WieldRequirements ?? 0))
-            {
-                case WieldRequirement.Level:
-                    return $"Level {difficulty}";
+            if ((type & ItemType.WeaponOrCaster) != 0)
+                return 0x060011D2;
+            if ((type & ItemType.Armor) != 0)
+                return 0x060011CF;
+            if ((type & ItemType.Clothing) != 0)
+                return 0x060011F3;
+            if ((type & ItemType.Jewelry) != 0)
+                return 0x060011D5;
+            if ((type & ItemType.Gem) != 0)
+                return 0x060011D3;
 
-                case WieldRequirement.Skill:
-                case WieldRequirement.RawSkill:
-                    if (item.WieldSkillType is not int skill)
-                        return null;
-                    return AppraisalRules.SkillText(skill, difficulty);
-
-                default:
-                    return null;
-            }
+            return 0x060011D4;
         }
     }
 }

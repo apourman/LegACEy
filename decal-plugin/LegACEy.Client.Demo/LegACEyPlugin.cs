@@ -49,6 +49,15 @@ public interface ILegACEyClient
     /// </summary>
     IRetailPanel TakeOverRetailInventory(Action<bool> retailOpenChanged);
     /// <summary>
+    /// Sends a tell to a player through retail's chat. The client builds the command, "/t recipient, text"; it returns false, and sends nothing,
+    /// when the recipient or the text is blank or has a line break, or when retail's chat isn't available.
+    /// </summary>
+    bool Tell(string recipient, string text);
+    /// <summary>Shows a toast over the game, with or without a window open: a title and a line. It hides itself after a while, or on a click.</summary>
+    void ShowToast(string title, string line);
+    /// <summary>Writes a line to the chat, in the green retail gives plugin lines. Only this client sees it.</summary>
+    void WriteChat(string text);
+    /// <summary>
     /// The plugin's own saved value for this character: one integer that only the plugin reads and writes, so the client does not
     /// interpret it. Null when none is saved.
     /// </summary>
@@ -92,10 +101,11 @@ public interface ILegACEyClient
     /// Registers the plugin's window for a station, built with its own chrome as <see cref="ToggleWindowWithChrome"/> is.
     /// The window opens when the server pushes station.open for it and closes on station.close. Closing it sends station.leave.
     /// </summary>
-    /// <param name="theme">The theme the window is drawn in. Null uses the client's theme; a window with its own theme is not given the retail theme over it.</param>
+    /// <param name="defaultLocation">Where the window first opens, in screen pixels. Null centres it on the screen.</param>
+    /// <param name="theme">The theme the window is drawn in. Null uses the client's theme.</param>
     /// <param name="resizing">How the player can resize the window from its edges and corners. Null means it does not resize.</param>
-    /// <param name="titleBarHeight">The top strip of the window that drags it, in pixels. A window with a taller header passes the header's height.</param>
-    void RegisterStationWindow(string station, string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow, IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28);
+    /// <param name="titleBarHeight">The top strip of the window that drags it, in pixels.</param>
+    void RegisterStationWindow(string station, string id, string title, int width, int height, Point? defaultLocation, Func<Action, Control> createWindow, IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28);
 }
 
 /// <summary>The client's side of plugin hosting. ClientUiRuntime implements it; tests fake it.</summary>
@@ -107,6 +117,12 @@ public interface ILegACEyPluginHost
     IItemDragHost ItemDrag { get; }
     IInventoryPort Inventory { get; }
     bool IsWindowOpen(string id);
+    /// <summary>Sends a tell through retail's chat. See <see cref="ILegACEyClient.Tell"/>.</summary>
+    bool Tell(string recipient, string text);
+    /// <summary>Shows a toast over the game. See <see cref="ILegACEyClient.ShowToast"/>.</summary>
+    void ShowToast(string title, string line);
+    /// <summary>Writes a green chat line. See <see cref="ILegACEyClient.WriteChat"/>.</summary>
+    void WriteChat(string text);
     /// <summary>Takes over retail's inventory panel for a plugin's window. Returns a handle that does nothing while the switch is off.</summary>
     IRetailPanel TakeOverRetailInventory(Action<bool> retailOpenChanged);
     /// <summary>

@@ -56,6 +56,10 @@ namespace ACE.Server.Market
         private static bool polling;
         private static DateTime nextPoll;
         private static DateTime nextCleanup;
+
+        /// <summary>The ledger audit the Market API also runs: the first pass after startup, then hourly, so a server with no API still audits</summary>
+        private static readonly TimeSpan AuditInterval = TimeSpan.FromHours(1);
+        private static DateTime nextAudit;
         private static DateTime nextAbandonedCheck;
 
         /// <summary>
@@ -104,6 +108,15 @@ namespace ACE.Server.Market
 
             polling = true;
             nextPoll = now + PollInterval;
+
+            // the website's sales reach their online sellers on the same poll
+            SaleNotices.Poll();
+
+            if (now >= nextAudit)
+            {
+                nextAudit = now + AuditInterval;
+                MarketAdmin.Audit("the hourly audit", _ => { });
+            }
 
             if (now >= nextCleanup)
             {
@@ -154,6 +167,7 @@ namespace ACE.Server.Market
             VaultOutcome.PetOut => "pet_out",
             VaultOutcome.ContainerNotEmpty => "container_not_empty",
             VaultOutcome.BlockedWcid => "blocked_wcid",
+            VaultOutcome.Bonded => "bonded",
             VaultOutcome.VaultFull => "vault_full",
             VaultOutcome.NotInVault => "not_in_vault",
             VaultOutcome.Listed => "listed",

@@ -235,6 +235,7 @@ internal static unsafe class DecalCalls
     private static uint Texture(int value) =>
         value == 0 ? 0 : (value & 0xFF000000) == 0 ? unchecked((uint)value) | 0x06000000 : unchecked((uint)value);
 
+
     private static int UseItem(int id, int state) => Act(() => CoreManager.Current.Actions.UseItem(id, state));
     private static int SelectItem(int id) => Act(() => CoreManager.Current.Actions.SelectItem(id));
     // Every ID we ask for is the player's own (right-click, E, the window following the selection), so it skips Decal's ID queue,

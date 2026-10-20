@@ -25,23 +25,23 @@ namespace ACE.Server.Market
         private static readonly ILog log = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         /// <summary>
-        /// Runs the ledger audit, the same one the Market API runs at startup and hourly. A failure is logged as an error, every problem on its own line,
-        /// and pauses purchases and MMD withdrawals until Resume.
+        /// Runs the ledger audit, the same one the Market API runs at startup and hourly (and the game bridge runs hourly). A failure is logged as an
+        /// error, every problem on its own line, and pauses purchases and MMD withdrawals until Resume.
         /// </summary>
-        /// <param name="by">who asked, for the pause's reason</param>
-        public static void Audit(string by, Action<LedgerAuditReport> completed)
+        /// <param name="source">what ran it ("/market audit by Name", "the hourly audit"), for the log and the pause's reason</param>
+        public static void Audit(string source, Action<LedgerAuditReport> completed)
         {
             RunOffWorldThread(() =>
             {
                 using var context = new ShardDbContext();
 
-                var report = LedgerAudit.RunAndPause(context, $"/market audit by {by}", DateTime.UtcNow);
+                var report = LedgerAudit.RunAndPause(context, source, DateTime.UtcNow);
 
                 if (report.Passed)
-                    log.Info($"[MARKET] {report.Summary} (/market audit by {by})");
+                    log.Info($"[MARKET] {report.Summary} ({source})");
                 else
                 {
-                    log.Error($"[MARKET] {report.Summary}, found by /market audit by {by}. Purchases and MMD withdrawals are paused until /market resume.");
+                    log.Error($"[MARKET] {report.Summary}, found by {source}. Purchases and MMD withdrawals are paused until /market resume.");
 
                     foreach (var failure in report.Failures)
                         log.Error($"[MARKET] Ledger audit {failure.Check}: {failure.Detail}");

@@ -54,6 +54,7 @@ namespace ACE.Database.Market
             "market_plugin_token",
             "market_blocked_wcid",
             "market_web_session",
+            "market_purchase_attempt",
         };
 
         /// <summary>

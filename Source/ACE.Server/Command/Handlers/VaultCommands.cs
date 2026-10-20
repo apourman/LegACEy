@@ -16,12 +16,16 @@ namespace ACE.Server.Command.Handlers
     {
         private const string ChestUsage = "Move items in and out of your Vault at the Vault chest in Yaraq.";
 
-        private const string MarketUsage = "/vault deposit mmd  (all your trade notes)\n/vault withdraw mmd <amount>\n/vault balance\n/vault link  (a code for the UtilityBelt plugin)\n/vault tokens\n/vault tokens revoke <id>";
+        private const string MarketUsage = "/vault deposit mmd  (all your trade notes)\n/vault withdraw mmd <amount>\n/vault balance";
+
+        private const string WebUsage = "/vault link  (a code for the UtilityBelt plugin)\n/vault tokens\n/vault tokens revoke <id>";
 
         /// <summary>
-        /// The trade note and plugin lines only while the marketplace is open
+        /// The trade note lines only while the marketplace is open, and the plugin lines only while its website is too
         /// </summary>
-        private static string Usage => Vault.MarketEnabled ? ChestUsage + "\n" + MarketUsage : ChestUsage;
+        private static string Usage => !Vault.MarketEnabled ? ChestUsage
+            : !Vault.MarketWebEnabled ? ChestUsage + "\n" + MarketUsage
+            : ChestUsage + "\n" + MarketUsage + "\n" + WebUsage;
 
         [CommandHandler("vault", AccessLevel.Player, CommandHandlerFlag.RequiresWorld, 0,
             "Vault trade notes, balance, plugin link and tokens. Items move at the Vault chest in Yaraq",
@@ -68,7 +72,8 @@ namespace ACE.Server.Command.Handlers
                     Tell(session, VaultMessages.Balance(Vault.Balance(player)));
                     break;
 
-                case "link":
+                // plugin sign-in is for the Market website: without one, these are unknown words and get the usage
+                case "link" when Vault.MarketWebEnabled:
                     if (!Vault.Available)
                     {
                         Tell(session, VaultMessages.For(VaultOutcome.NotAvailable, null));
@@ -84,7 +89,7 @@ namespace ACE.Server.Command.Handlers
                     Tell(session, VaultMessages.LinkCode(VaultPlugin.NewLinkCode(player, out var minutes), minutes));
                     break;
 
-                case "tokens":
+                case "tokens" when Vault.MarketWebEnabled:
                     if (!Vault.Available)
                     {
                         Tell(session, VaultMessages.For(VaultOutcome.NotAvailable, null));

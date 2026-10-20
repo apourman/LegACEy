@@ -343,7 +343,7 @@ namespace ACE.Database.Tests.Market
             var market = entityTypes.Where(t => t.ClrType.Namespace == typeof(VaultItem).Namespace).ToList();
             var existing = entityTypes.Except(market).ToList();
 
-            Assert.AreEqual(12, market.Count, string.Join(", ", market.Select(t => t.ClrType.Name)));
+            Assert.AreEqual(13, market.Count, string.Join(", ", market.Select(t => t.ClrType.Name)));
             foreach (var type in market)
                 StringAssert.StartsWith(type.GetTableName(), "market_", type.ClrType.Name);
 

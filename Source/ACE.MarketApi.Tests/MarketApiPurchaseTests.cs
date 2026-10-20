@@ -264,6 +264,28 @@ namespace ACE.MarketApi.Tests
         }
 
         [TestMethod]
+        public async Task Purchase_AfterARepriceAtTheOldPrice_AnswersPriceChangedWithTheNewPrice()
+        {
+            var seller = NewPlayer("seller", balance: 1);
+            var buyer = NewPlayer("buyer", balance: 500);
+
+            await using var host = await MarketApiHost.StartAsync();
+            var listed = NewListing(host, seller, 120);
+            var session = await host.SignInForSessionAsync(buyer.Name, "pass");
+
+            // the seller reprices in the game, through the listing rule the game and the portal share
+            using (var shard = MarketApiTestData.Shard())
+                Assert.AreEqual(ListingOutcome.Ok, ListingStore.Reprice(shard, seller.AccountId, listed.ListingId, 150, () => false).Outcome);
+            var before = Snapshot(listed, buyer, seller);
+
+            var response = await PurchaseAsync(host, session, listed, expectedPrice: 120);
+
+            await AssertRefusedAsync(response, HttpStatusCode.Conflict, "price_changed");
+            Assert.AreEqual("{\"error\":\"price_changed\",\"price\":150}", await response.Content.ReadAsStringAsync(), "price_changed carries the new price");
+            Assert.AreEqual(before, Snapshot(listed, buyer, seller));
+        }
+
+        [TestMethod]
         public async Task Purchase_ListingGone_AnswersGone_ForSoldDelistedExpiredReturnedAndUnknown()
         {
             var seller = NewPlayer("seller");

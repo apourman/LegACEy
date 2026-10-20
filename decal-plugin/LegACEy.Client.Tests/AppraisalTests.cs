@@ -1554,6 +1554,9 @@ public sealed class AppraisalTests
         public IItemDragHost ItemDrag => throw new NotSupportedException();
         public IInventoryPort Inventory => throw new NotSupportedException();
         public bool IsWindowOpen(string id) => _open.Contains(id);
+        public bool Tell(string recipient, string text) => false;
+        public void ShowToast(string title, string line) { }
+        public void WriteChat(string text) { }
         public IRetailPanel TakeOverRetailInventory(Action<bool> retailOpenChanged) => throw new NotSupportedException();
 
         public bool OpenWindow(WindowDefinition definition, Point location, Func<Action, Control> createContent, Action<Exception> failed, bool ownChrome)

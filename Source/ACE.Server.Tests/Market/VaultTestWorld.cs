@@ -86,6 +86,7 @@ namespace ACE.Server.Tests.Market
 
             PropertyManager.Initialize();
             PropertyManager.ModifyBool(Vault.MarketEnabledKey, true); // off by default on a server; these tests cover the open market
+            PropertyManager.ModifyBool(Vault.MarketWebEnabledKey, true); // and plugin sign-in, which waits for the website
             GuidManager.Initialize();
 
             PlayerManager.Initialize();
@@ -164,6 +165,7 @@ namespace ACE.Server.Tests.Market
             var accounts = (Dictionary<uint, Dictionary<uint, IPlayer>>)(typeof(PlayerManager).GetField("playerAccounts", BindingFlags.NonPublic | BindingFlags.Static)
                 ?? throw new InvalidOperationException("PlayerManager.playerAccounts is gone: update VaultTestWorld.Online")).GetValue(null);
             var accountId = player.Account.AccountId;
+            player.LoginTimestamp = ACE.Common.Time.GetUnixTime(); // entering the world stamps it; a seller hears of sales made since
 
             // the world thread is the one that looks players up for the bridge; housing lists the owner's account
             OnWorldThread(() =>

@@ -699,6 +699,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _vitals?.Release();
         try { ReleaseRetailRadar(); }
         catch (Exception exception) { Log($"Could not give the retail radar back at logoff: {exception}"); }
+        _toast?.Hide();
+        ReleaseFeatureWindow(ToastWindowId);
         try { _plugins?.EndSession(); }
         catch (Exception exception) { Log($"Could not close plugin windows at logoff: {exception}"); }
         // Windows released their requests above; anything still outstanding fails as disconnected.
@@ -1124,7 +1126,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             // An earlier failure in this loop may have closed the window.
             if (!_featureSurfaces.ContainsKey(pair.Key)) continue;
-            try { pair.Value.Prepare(); }
+            try
+            {
+                // the panels run no Avalonia timers: a window that keeps time (a toast's) is ticked here
+                if (pair.Key == ToastWindowId) _toast?.Tick();
+                else (pair.Value.Panel.Content as IFrameTick)?.Tick();
+                // a toast whose time was up has just hidden its window
+                if (_featureSurfaces.ContainsKey(pair.Key)) pair.Value.Prepare();
+            }
             catch (Exception exception) { _windowFailures[pair.Key](exception); }
         }
     }
@@ -1648,6 +1657,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             surface.Visible = true;
             surface.Panel.ApplyTheme(definition.Theme ?? _clientUi?.Theme ?? CurrentTheme());
             _featureSurfaces.Add(definition.Id, surface);
+            // a window whose shortcuts work from the start (the Market's Esc) takes the keyboard as it opens
+            if (surface.Panel.Content is IWindowShortcuts { TakesFocusOnOpen: true }) _inputRouter.FocusSurface(definition.Id);
             _windowFailures[definition.Id] = failed;
         }
         catch
@@ -1748,6 +1759,44 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     bool ILegACEyPluginHost.IsWindowOpen(string id) => _featureSurfaces.ContainsKey(id);
+
+    bool ILegACEyPluginHost.Tell(string recipient, string text) =>
+        RetailTell.Command(recipient, text) is { } command && _chatPort != null && _chatPort.Send(command);
+
+    // The toast plugins show over the game (a sale): one small window at the bottom right, hidden when the toast hides itself.
+    private const string ToastWindowId = "legacey-toast";
+    private const int ToastHeight = 84;
+    private DerethToast? _toast;
+
+    void ILegACEyPluginHost.ShowToast(string title, string line)
+    {
+        if (!_inGame || !CanOpenWindows) return;
+        if (!_featureSurfaces.ContainsKey(ToastWindowId))
+        {
+            var definition = new WindowDefinition(ToastWindowId, string.Empty, (int)DerethToast.CardWidth, ToastHeight, dragsFromContent: true);
+            var scale = _windows!.Scale;
+            // ponytail: a fixed place above retail's bottom-right corner; a saved or chosen place if players want to move it
+            var at = new Point(_windows.Screen.Width - (int)Math.Round((DerethToast.CardWidth + 20) * scale),
+                _windows.Screen.Height - (int)Math.Round((ToastHeight + 140) * scale));
+            // a hidden toast window comes back with its toast; a new one builds it
+            if (!((ILegACEyPluginHost)this).OpenWindow(definition, at, close =>
+                {
+                    _toast = new DerethToast { VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top };
+                    _toast.Hidden += close;
+                    return _toast;
+                }, Disable, ownChrome: true))
+                return;
+        }
+        _toast!.Show(title, line);
+    }
+
+    void ILegACEyPluginHost.WriteChat(string text)
+    {
+        if (text.Length == 0) return;
+        // 0 is retail's broadcast type, which it draws green
+        try { Bridge.Chat(text, 0); }
+        catch (COMException exception) { Log($"Could not write a chat line: {exception.Message}"); }
+    }
     void ILegACEyPluginHost.HideWindow(string id) => HideFeatureWindow(id);
     void ILegACEyPluginHost.CloseWindow(string id) => ReleaseFeatureWindow(id);
 
@@ -3021,6 +3070,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         return panel;
     }
 
+    /// <summary>The virtual keys a window takes as shortcuts while it has the focus, from its content; null for a window with none.</summary>
+    private static Func<int, bool>? ShortcutsOf(AvaloniaPanel panel)
+    {
+        if (panel.Content is not IWindowShortcuts shortcuts) return null;
+        return virtualKey => shortcuts.WantsShortcut(Win32KeyMap.ToAvaloniaKey(virtualKey));
+    }
+
     private InputSurface[] GetInputSurfaces()
     {
         var surfaces = new System.Collections.Generic.List<InputSurface>(4);
@@ -3036,7 +3092,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             {
                 var surface = SurfaceById(window.Id);
                 if (surface is not { Visible: true }) continue;
-                surfaces.Add(new InputSurface(window.Id, window.Location.X, window.Location.Y, window.Width, window.Height, z--, surface.Panel.WantsKeyboard));
+                surfaces.Add(new InputSurface(window.Id, window.Location.X, window.Location.Y, window.Width, window.Height, z--, surface.Panel.WantsKeyboard,
+                    ShortcutsOf(surface.Panel)));
             }
         }
         return surfaces.ToArray();

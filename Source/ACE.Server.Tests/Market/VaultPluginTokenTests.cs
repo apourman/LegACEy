@@ -10,6 +10,8 @@ using ACE.Common.Cryptography;
 using ACE.Database.Market;
 using ACE.Database.Tests.Market;
 using ACE.Server.Command.Handlers;
+using ACE.Server.Managers;
+using ACE.Server.Market;
 using ACE.Server.WorldObjects;
 
 namespace ACE.Server.Tests.Market
@@ -53,6 +55,32 @@ namespace ACE.Server.Tests.Market
             var second = Link(player, out var secondChats);
             Assert.AreNotEqual(code, second);
             Assert.IsTrue(secondChats.Any(c => c.Contains("2 minutes")), string.Join("\n", secondChats));
+        }
+
+        [TestMethod]
+        public void VaultLink_WithoutTheWebsite_MakesNoCode_AndTheUsageLeavesItOut()
+        {
+            var account = VaultTestWorld.NewAccountId();
+            var player = VaultTestWorld.NewPlayer(account);
+            VaultTestWorld.TakeSent(player);
+
+            PropertyManager.ModifyBool(Vault.MarketWebEnabledKey, false);
+            try
+            {
+                VaultTestWorld.OnWorldThread(() => VaultCommands.HandleVault(player.Session, "link"));
+                var chats = VaultTestWorld.Chats(VaultTestWorld.TakeSent(player));
+
+                Assert.IsFalse(LinkCodeText.IsMatch(string.Join("\n", chats)), string.Join("\n", chats));
+                Assert.IsTrue(chats.Any(c => c.Contains("/vault balance")), "the usage: " + string.Join("\n", chats));
+                Assert.IsFalse(chats.Any(c => c.Contains("/vault link")), "the usage leaves plugin sign-in out: " + string.Join("\n", chats));
+
+                using var shard = MarketTestDatabase.CreateContext(VaultTestWorld.Db);
+                Assert.IsFalse(shard.MarketLinkCodes.AsNoTracking().Any(c => c.AccountId == account));
+            }
+            finally
+            {
+                PropertyManager.ModifyBool(Vault.MarketWebEnabledKey, true);
+            }
         }
 
         [TestMethod]

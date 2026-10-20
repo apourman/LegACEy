@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-using ACE.Database.Market;
-
-namespace ACE.MarketApi
+namespace ACE.Database.Market
 {
     /// <summary>
     /// Listing upkeep that runs when a request is about to read or change listings, so nothing depends on a timer:

@@ -313,6 +313,12 @@ public sealed class WindowManager
     public const int ResizeBand = 6;
 
     /// <summary>
+    /// The requested location of a window that should open centred on the screen, when it has no saved place. It is not a place
+    /// on the screen: the window is centred once its size is known.
+    /// </summary>
+    public static readonly Point CentredLocation = new(int.MinValue, int.MinValue);
+
+    /// <summary>
     /// The corner square's size in screen pixels, which do not scale with the window's UI scale: a press this near both edges of a corner is
     /// that corner. It matches the frame's corner piece, so the grip is as easy to find as the art shows it.
     /// </summary>
@@ -366,9 +372,12 @@ public sealed class WindowManager
         definition = Scaled(definition);
         var saved = _positions.Load(_server, _character, definition.Id);
         var shared = definition.SharesLocationWith is { } other ? _positions.Load(_server, _character, other)?.Location : null;
-        var preferredLocation = shared ?? saved?.Location ?? requestedLocation;
         var preferredSize = definition.Resizing != null && saved?.Size is { } savedSize ? Scaled(savedSize) : DefaultSize(definition);
         var size = FitSize(definition, preferredSize, _screen);
+        var requested = requestedLocation == CentredLocation
+            ? new Point((_screen.Width - size.Width) / 2, (_screen.Height - size.Height) / 2)
+            : requestedLocation;
+        var preferredLocation = shared ?? saved?.Location ?? requested;
         var window = new ManagedWindow(definition, Clamp(preferredLocation, size), size, preferredLocation, preferredSize);
         _windows.Insert(0, window);
         return window;

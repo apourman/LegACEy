@@ -322,3 +322,15 @@ public class WebSession
 
     public DateTime? RevokedTime { get; set; }
 }
+
+/// <summary>
+/// A purchase attempt the rate limit let through, from either front door
+/// </summary>
+public class PurchaseAttempt
+{
+    public long Id { get; set; }
+
+    public uint AccountId { get; set; }
+
+    public DateTime CreatedTime { get; set; }
+}

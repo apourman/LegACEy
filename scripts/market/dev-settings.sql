@@ -2,3 +2,4 @@
 -- can use trade notes, the game bridge and plugin sign-in. Piped into development shard databases by scripts/market/bootstrap.sh
 -- and scripts/market/fresh-databases.sh. INSERT IGNORE keeps a value a developer has since changed. Never an update script, never run on a server.
 INSERT IGNORE INTO `config_properties_boolean` (`key`, `value`, `description`) VALUES ('market_enabled', 1, 'opened for local development by scripts/market/dev-settings.sql');
+INSERT IGNORE INTO `config_properties_boolean` (`key`, `value`, `description`) VALUES ('market_web_enabled', 1, 'opened for local development by scripts/market/dev-settings.sql');

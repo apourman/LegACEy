@@ -30,13 +30,16 @@ namespace ACE.Server.WorldObjects
         }
 
         /// <summary>
-        /// Ends the player's station session, if they have one
+        /// Ends the player's station session, if they have one. With a station name, only a session at that station ends.
         /// </summary>
-        public void EndStation()
+        public void EndStation(string onlyStation = null)
         {
-            var session = Interlocked.Exchange(ref stationSession, null);
+            var session = Volatile.Read(ref stationSession);
 
-            if (session != null)
+            if (session == null || (onlyStation != null && session.Name != onlyStation))
+                return;
+
+            if (Interlocked.CompareExchange(ref stationSession, null, session) == session)
                 PushStationClose(session);
         }
 

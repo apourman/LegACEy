@@ -33,6 +33,8 @@ public partial class ShardDbContext
 
     public virtual DbSet<WebSession> MarketWebSessions { get; set; }
 
+    public virtual DbSet<PurchaseAttempt> MarketPurchaseAttempts { get; set; }
+
     public virtual DbSet<BlockedWcid> MarketBlockedWcids { get; set; }
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder)
@@ -241,6 +243,17 @@ public partial class ShardDbContext
             entity.Property(e => e.ExpiresTime).HasColumnType("datetime(6)").HasColumnName("expires_Time");
             entity.Property(e => e.RevokedTime).HasColumnType("datetime(6)").HasColumnName("revoked_Time");
             entity.Property(e => e.PasswordFingerprint).IsRequired().HasMaxLength(64).HasColumnName("password_Fingerprint");
+        });
+
+        modelBuilder.Entity<PurchaseAttempt>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("PRIMARY");
+
+            entity.ToTable("market_purchase_attempt");
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.AccountId).HasColumnName("account_Id");
+            entity.Property(e => e.CreatedTime).HasColumnType("datetime(6)").HasColumnName("created_Time");
         });
 
         modelBuilder.Entity<WebSession>(entity =>

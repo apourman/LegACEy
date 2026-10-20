@@ -783,6 +783,10 @@ namespace ACE.Server.WorldObjects
 
                     transferSource.DamageHistory.Add(this, DamageType.Health, srcVitalChange);
 
+                    // a drain from someone else closes the market window; a caster draining themself doesn't
+                    if (srcVitalChange > 0 && transferSource != caster && transferSource is Player drained)
+                        drained.EndStation(ACE.Server.Market.MarketChannelActions.Station);
+
                     //var sourcePlayer = source as Player;
                     //if (sourcePlayer != null && sourcePlayer.Fellowship != null)
                         //sourcePlayer.Fellowship.OnVitalUpdate(sourcePlayer);
@@ -916,6 +920,7 @@ namespace ACE.Server.WorldObjects
                 {
                     var tryDamage = (int)Math.Round(caster.GetCreatureVital(PropertyAttribute2nd.Health).Current * spell.DrainPercentage);
                     damage = (uint)-caster.UpdateVitalDelta(caster.Health, -tryDamage);
+                    // a self-inflicted drain is not an attack on the caster, so it doesn't end their market session
                     caster.DamageHistory.Add(this, DamageType.Health, damage);
                     damageType = DamageType.Health;
 

@@ -5,6 +5,7 @@ using System.Net;
 using System.Text.Json;
 using System.Threading.Tasks;
 
+using ACE.Database.Market;
 using ACE.Database.Models.Shard.Market;
 using ACE.Entity.Enum;
 using ACE.MarketApi.Tests.Support;

@@ -22,7 +22,7 @@ public sealed class PluginRegistry
     private readonly Action<string> _log;
     private readonly List<PluginEntry> _entries = new();
     private readonly Dictionary<string, PluginEntry> _windowOwners = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, (PluginEntry Owner, WindowDefinition Window, Point Location, Func<Action, Control> CreateWindow)> _stations = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (PluginEntry Owner, WindowDefinition Window, Point? Location, Func<Action, Control> CreateWindow)> _stations = new(StringComparer.Ordinal);
     private HashSet<string> _serverActions = new(StringComparer.Ordinal);
 
     public PluginRegistry(ILegACEyPluginHost host, Action<string> log)
@@ -189,7 +189,7 @@ public sealed class PluginRegistry
             _windowOwners[windowId] = entry;
     }
 
-    private void RegisterStation(PluginEntry entry, string station, string id, string title, int width, int height, Point location, Func<Action, Control> createWindow, IClientTheme? theme, WindowResizing? resizing, int titleBarHeight)
+    private void RegisterStation(PluginEntry entry, string station, string id, string title, int width, int height, Point? location, Func<Action, Control> createWindow, IClientTheme? theme, WindowResizing? resizing, int titleBarHeight)
     {
         if (_stations.ContainsKey(station)) throw new InvalidOperationException($"The station '{station}' already has a window.");
         _stations[station] = (entry, new WindowDefinition(entry.Name + "/" + id, title, width, height, titleBarHeight, theme: theme, resizing: resizing), location, createWindow);
@@ -214,7 +214,7 @@ public sealed class PluginRegistry
         Guarded(owner, () =>
         {
             // Closing the window ends the station session on the server.
-            if (_host.OpenWindow(registered.Window, registered.Location, close => registered.CreateWindow(() => { close(); LeaveStation(); }),
+            if (_host.OpenWindow(registered.Window, registered.Location ?? WindowManager.CentredLocation, close => registered.CreateWindow(() => { close(); LeaveStation(); }),
                     reason => Fail(owner, reason), ownChrome: true))
                 _windowOwners[registered.Window.Id] = owner;
         });
@@ -263,6 +263,9 @@ public sealed class PluginRegistry
         public IItemDragHost ItemDrag => _registry._host.ItemDrag;
         public IInventoryPort Inventory { get; }
         public bool SupportsAction(string action) => _registry.SupportsAction(action);
+        public bool Tell(string recipient, string text) => _registry._host.Tell(recipient, text);
+        public void ShowToast(string title, string line) => _registry._host.ShowToast(title, line);
+        public void WriteChat(string text) => _registry._host.WriteChat(text ?? string.Empty);
 
         public void WhenServerActionsChange(Action changed)
         {
@@ -314,7 +317,7 @@ public sealed class PluginRegistry
         public int? LoadSettings() => _registry._host.LoadPluginSettings(_entry.Name);
         public void SaveSettings(int value) => _registry._host.SavePluginSettings(_entry.Name, value);
 
-        public void RegisterStationWindow(string station, string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow, IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28)
+        public void RegisterStationWindow(string station, string id, string title, int width, int height, Point? defaultLocation, Func<Action, Control> createWindow, IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28)
         {
             if (createWindow == null) throw new ArgumentNullException(nameof(createWindow));
             _registry.RegisterStation(_entry, station, id, title, width, height, defaultLocation, createWindow, theme, resizing, titleBarHeight);

@@ -1,4 +1,4 @@
-namespace ACE.MarketApi
+namespace ACE.Database.Market
 {
     /// <summary>
     /// The sale a fee is quoted for
@@ -18,6 +18,15 @@ namespace ACE.MarketApi
     public interface IFeePolicy
     {
         SellerFee Quote(Sale sale);
+    }
+
+    /// <summary>
+    /// The fee policy the market charges, whichever front door makes the sale: the Market API registers it, and the game server's buy action uses it.
+    /// Change it here to change both.
+    /// </summary>
+    public static class MarketFees
+    {
+        public static IFeePolicy Policy { get; } = new ZeroFeePolicy();
     }
 
     /// <summary>

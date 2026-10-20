@@ -5,6 +5,7 @@ using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
+using LegACEy.Plugin.Market;
 using LegACEy.Plugin.Vault;
 using Xunit;
 
@@ -12,6 +13,63 @@ namespace LegACEy.Client.Tests;
 
 public sealed class PluginRegistryTests
 {
+    [Fact]
+    public void A_sale_with_the_market_closed_shows_a_toast_and_a_chat_line_and_counts_until_the_session_ends() => RenderThread.Run(() =>
+    {
+        var channel = new FakeChannel();
+        var host = new FakeHost { ServerChannel = channel };
+        var registry = new PluginRegistry(host, host.Log.Add);
+        var market = new MarketPlugin();
+        registry.Add(market);
+        registry.SetServerActions(new[] { StationProtocol.Leave }.Concat(market.RequiredActions));
+
+        channel.Push(MarketProtocol.Sold, MarketProtocol.WriteSold(new SaleNotice(41, "Imbued Ruby", "Saro", 85, 12_450)));
+
+        Assert.False(host.IsWindowOpen("Market/market"), "the Market stays closed");
+        Assert.Equal(new[] { "Sold Imbued Ruby / Saro paid 85 MMD. Your balance is 12,450 MMD." }, host.Toasts);
+        Assert.Equal(new[] { "[Market] Your Imbued Ruby sold to Saro for 85 MMD." }, host.ChatLines);
+        Assert.Equal(1, market.Sales!.Unseen);
+
+        // logoff: the next character or account starts with no unseen sales
+        registry.EndSession();
+        Assert.Equal(0, market.Sales.Unseen);
+    });
+
+    [Fact]
+    public void The_market_station_opens_only_when_the_server_lists_market_account() => RenderThread.Run(() =>
+    {
+        var channel = new FakeChannel();
+        var host = new FakeHost { ServerChannel = channel };
+        var registry = new PluginRegistry(host, host.Log.Add);
+        registry.Add(new MarketPlugin());
+
+        registry.SetServerActions(new[] { ChannelHello.Action, StationProtocol.Leave });
+        channel.Push(StationProtocol.Open, StationBody("market"));
+        Assert.False(host.IsWindowOpen("Market/market"));
+
+        registry.SetServerActions(new[] { ChannelHello.Action, StationProtocol.Leave }.Concat(new MarketPlugin().RequiredActions));
+        channel.Push(StationProtocol.Open, StationBody("market"));
+        Assert.True(host.IsWindowOpen("Market/market"));
+    });
+
+    [Fact]
+    public void A_market_station_opens_its_window_centred_at_980_by_640_and_stops_at_520_by_600() => RenderThread.Run(() =>
+    {
+        var channel = new FakeChannel();
+        var host = new FakeHost { ServerChannel = channel };
+        var registry = new PluginRegistry(host, host.Log.Add);
+        registry.Add(new MarketPlugin());
+        registry.SetServerActions(new[] { StationProtocol.Leave }.Concat(new MarketPlugin().RequiredActions));
+
+        channel.Push(StationProtocol.Open, StationBody("market"));
+
+        var definition = host.Definitions["Market/market"];
+        Assert.Equal(980, definition.Width);
+        Assert.Equal(640, definition.Height);
+        Assert.Equal(new Size(520, 600), definition.Resizing!.Minimum);
+        Assert.Equal(WindowManager.CentredLocation, host.Locations["Market/market"]);
+    });
+
     [Fact]
     public void A_plugin_needing_an_action_the_reply_lacks_stays_hidden()
     {
@@ -426,6 +484,7 @@ public sealed class PluginRegistryTests
         public Dictionary<string, bool> OwnChrome { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, IClientTheme?> Themes { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, WindowDefinition> Definitions { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, Point> Locations { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, int> Settings { get; } = new(StringComparer.Ordinal);
 
         public int? LoadPluginSettings(string plugin) => Settings.TryGetValue(plugin, out var saved) ? saved : null;
@@ -437,10 +496,21 @@ public sealed class PluginRegistryTests
 
         public IServerChannel ServerChannel { get; init; } = UnavailableServerChannel.Instance;
         public string PortalPath => string.Empty;
-        public IGameArtSource Art => throw new NotSupportedException();
+        /// <summary>The window draws icons from the art; the test's art has none, so each icon is the fallback.</summary>
+        public IGameArtSource Art { get; } = new NoArtSource();
+
+        private sealed class NoArtSource : IGameArtSource
+        {
+            public GameImage? ReadImage(uint id) => null;
+        }
         public IItemDragHost ItemDrag => new FakeItemDragHost();
         public IInventoryPort Inventory { get; } = new FakeInventoryPort();
         public bool IsWindowOpen(string id) => Errors.ContainsKey(id);
+        public bool Tell(string recipient, string text) => false;
+        public List<string> Toasts { get; } = new();
+        public List<string> ChatLines { get; } = new();
+        public void ShowToast(string title, string line) => Toasts.Add($"{title} / {line}");
+        public void WriteChat(string text) => ChatLines.Add(text);
         public IRetailPanel TakeOverRetailInventory(Action<bool> retailOpenChanged) => new FakeRetailPanel(retailOpenChanged);
 
         public int Built { get; private set; }
@@ -457,6 +527,7 @@ public sealed class PluginRegistryTests
             OwnChrome[definition.Id] = ownChrome;
             Themes[definition.Id] = definition.Theme;
             Definitions[definition.Id] = definition;
+            Locations[definition.Id] = location;
             return true;
         }
 
