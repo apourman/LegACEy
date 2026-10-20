@@ -76,7 +76,7 @@ updater is already running.
 
 An install made by setup.exe can update itself; a build from a checkout never
 does, because only setup.exe puts `install.json` beside the main DLL. Nothing
-installs until the player asks. At login and every 6 hours the client asks
+installs until the player asks. At login and every 30 minutes the client asks
 GitHub for the newest published `decal-plugin-vX.Y.Z` release (at most once in
 5 minutes for all clients on the install, timed by the `update-check` file, which
 also passes the release it found to the other clients). A newer one is offered

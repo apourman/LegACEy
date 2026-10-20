@@ -33,7 +33,7 @@ internal enum UpdateNoticeKind { Checking, Ready, Downloaded, UpToDate, Wait, Fa
 internal sealed record UpdateNotice(UpdateNoticeKind Kind, string? Chat, Version? Version = null, bool SeveralClients = false);
 
 /// <summary>
-/// Offers an installed plugin its updates. At login and every 6 hours, off the game thread, it looks for a newer plugin release on GitHub and
+/// Offers an installed plugin its updates. At login and every 30 minutes, off the game thread, it looks for a newer plugin release on GitHub and
 /// says so; nothing installs until the player chooses to. <see cref="Install"/> then stages it in <c>update\&lt;version&gt;\</c> beside the stub
 /// and starts the updater copied into that stage, which applies it once every game client has exited. Only an install made by setup.exe updates (its <c>install.json</c> sits beside the stub); a
 /// <c>no-auto-update</c> file beside the stub turns it off. Every failure is logged and ignored.
@@ -48,7 +48,7 @@ internal sealed class PluginUpdates : IDisposable
     private const int SharingViolation = 32, LockViolation = 33;
     // Linux's EWOULDBLOCK, the bare HResult .NET gives the same held file there, where the tests run.
     private const int WouldBlock = 11;
-    private static readonly TimeSpan Every = TimeSpan.FromHours(6);
+    private static readonly TimeSpan Every = TimeSpan.FromMinutes(30);
     // Every client of the install shares one check time, so several clients logging in together ask GitHub once (60 unauthenticated requests
     // per hour per IP). Short, so a login a few minutes after the last check still asks: the toast is the only news of a release.
     private static readonly TimeSpan SharedGap = TimeSpan.FromMinutes(5);
@@ -139,7 +139,7 @@ internal sealed class PluginUpdates : IDisposable
         : null;
 
     /// <summary>
-    /// Starts a check off the game thread unless one is running, and from the first call on, one every 6 hours. The task ends with the
+    /// Starts a check off the game thread unless one is running, and from the first call on, one every 30 minutes. The task ends with the
     /// check and never fails.
     /// </summary>
     public Task Check()
