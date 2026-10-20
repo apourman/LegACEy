@@ -22,6 +22,7 @@ namespace ACE.Database.Tests.Market
         {
             "market_vault_item", "market_listing", "market_balance", "market_transfer", "market_ledger_entry", "market_item_event",
             "market_ticket", "market_request", "market_link_code", "market_plugin_token", "market_blocked_wcid", "market_web_session",
+            "market_purchase_attempt",
         };
 
         // table|index|unique(0/1)|columns in order
@@ -61,6 +62,8 @@ namespace ACE.Database.Tests.Market
             "market_web_session|PRIMARY|1|id",
             "market_web_session|market_web_session_hash_uidx|1|token_Hash",
             "market_web_session|market_web_session_account_idx|0|account_Id",
+            "market_purchase_attempt|PRIMARY|1|id",
+            "market_purchase_attempt|market_purchase_attempt_account_idx|0|account_Id,created_Time",
         };
 
         // constraint|table|referenced table|delete rule|update rule
@@ -125,7 +128,7 @@ namespace ACE.Database.Tests.Market
         {
             // an existing server: base plus every earlier update, with live data, before the market script arrives
             MarketTestDatabase.CreateFromBase(ExistingDb);
-            MarketTestDatabase.ApplyAllUpdates(ExistingDb, f => f.Name != MarketTestDatabase.MarketUpdateScript && f.Name != MarketTestDatabase.TicketProgressUpdateScript && f.Name != MarketTestDatabase.WebSessionsUpdateScript);
+            MarketTestDatabase.ApplyAllUpdates(ExistingDb, f => f.Name != MarketTestDatabase.MarketUpdateScript && f.Name != MarketTestDatabase.TicketProgressUpdateScript && f.Name != MarketTestDatabase.WebSessionsUpdateScript && f.Name != MarketTestDatabase.PurchaseAttemptsUpdateScript);
 
             MarketTestDatabase.Execute(ExistingDb, "INSERT INTO biota (id, weenie_Class_Id, weenie_Type) VALUES (2147483649, 20630, 51);");
             MarketTestDatabase.Execute(ExistingDb, "INSERT INTO config_properties_long (`key`, `value`) VALUES ('existing_setting', 7);");
@@ -135,6 +138,7 @@ namespace ACE.Database.Tests.Market
             MarketTestDatabase.ApplyUpdate(ExistingDb, MarketTestDatabase.MarketUpdateScriptPath);
             MarketTestDatabase.ApplyUpdate(ExistingDb, MarketTestDatabase.TicketProgressUpdateScriptPath);
             MarketTestDatabase.ApplyUpdate(ExistingDb, MarketTestDatabase.WebSessionsUpdateScriptPath);
+            MarketTestDatabase.ApplyUpdate(ExistingDb, MarketTestDatabase.PurchaseAttemptsUpdateScriptPath);
 
             AssertFullMarketSchema(ExistingDb);
             Assert.AreEqual(1, MarketTestDatabase.Scalar(ExistingDb, "SELECT COUNT(*) FROM biota WHERE id = 2147483649;"));

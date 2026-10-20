@@ -778,6 +778,9 @@ namespace ACE.Server.WorldObjects
 
                 amount = (uint)-target.UpdateVitalDelta(target.Health, (int)-Math.Round(damage));
                 target.DamageHistory.Add(ProjectileSource, Spell.DamageType, amount);
+                // a landed hit from someone else closes the market window. A hit that did no damage, or the player's own, doesn't
+                if (amount > 0 && targetPlayer != null && target != ProjectileSource)
+                    targetPlayer.EndStation(ACE.Server.Market.MarketChannelActions.Station);
                 ClientChannel.CombatTextChannelActions.Damaged(target, amount, Spell.DamageType, critical, periodic: false);
 
                 //if (targetPlayer != null && targetPlayer.Fellowship != null)

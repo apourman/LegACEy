@@ -105,6 +105,9 @@ namespace ACE.Server.Market
             polling = true;
             nextPoll = now + PollInterval;
 
+            // the website's sales reach their online sellers on the same poll
+            SaleNotices.Poll();
+
             if (now >= nextCleanup)
             {
                 nextCleanup = now + CleanupInterval;
@@ -154,6 +157,7 @@ namespace ACE.Server.Market
             VaultOutcome.PetOut => "pet_out",
             VaultOutcome.ContainerNotEmpty => "container_not_empty",
             VaultOutcome.BlockedWcid => "blocked_wcid",
+            VaultOutcome.Bonded => "bonded",
             VaultOutcome.VaultFull => "vault_full",
             VaultOutcome.NotInVault => "not_in_vault",
             VaultOutcome.Listed => "listed",

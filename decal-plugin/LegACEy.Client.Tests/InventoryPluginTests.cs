@@ -473,6 +473,9 @@ public sealed class InventoryPluginTests
             return Retail;
         }
         public bool SupportsAction(string action) => ServerActions.Contains(action);
+        public bool Tell(string recipient, string text) => false;
+        public void ShowToast(string title, string line) { }
+        public void WriteChat(string text) { }
         public int? LoadSettings() => Settings;
         public void SaveSettings(int value) => _store.Save("Server", Character, SettingsKey, (new Point(value, 0), null));
         public void AddMenuEntry(string title, uint iconId, Action action) => MenuEntries.Add((title, iconId, action));
@@ -504,7 +507,7 @@ public sealed class InventoryPluginTests
             _panels[id] = panel;
         }
 
-        public void RegisterStationWindow(string station, string id, string title, int width, int height, Point defaultLocation, Func<Action, Control> createWindow,
+        public void RegisterStationWindow(string station, string id, string title, int width, int height, Point? defaultLocation, Func<Action, Control> createWindow,
             IClientTheme? theme = null, WindowResizing? resizing = null, int titleBarHeight = 28) => throw new NotSupportedException();
 
         public void Dispose()

@@ -17,6 +17,7 @@ internal static class Win32KeyMap
             0x09 => Key.Tab,
             0x0d => Key.Enter,
             0x1b => Key.Escape,
+            0xbf => Key.Oem2,
             0x20 => Key.Space,
             0x23 => Key.End,
             0x24 => Key.Home,

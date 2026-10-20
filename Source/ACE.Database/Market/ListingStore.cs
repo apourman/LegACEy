@@ -34,6 +34,9 @@ namespace ACE.Database.Market
         // the listing is no longer active (sold, delisted, expired, returned, or changed by someone else meanwhile)
         NotActive,
 
+        // the listing is still active, but another change saved first (its price, say): the change can be made again
+        Changed,
+
         // the account was banned when the save was about to happen
         Banned,
     }
@@ -56,7 +59,7 @@ namespace ACE.Database.Market
         {
             now = Truncate(now);
 
-            if (price < 1)
+            if (!IsValidPrice(price))
                 return new ListingResult(ListingOutcome.InvalidPrice);
 
             var item = shard.MarketVaultItems.FirstOrDefault(v => v.ItemGuid == itemGuid && v.AccountId == accountId);
@@ -70,9 +73,7 @@ namespace ACE.Database.Market
             if (characterId.HasValue && !shard.Character.Any(c => c.Id == characterId.Value && c.AccountId == accountId && !c.IsDeleted))
                 return new ListingResult(ListingOutcome.InvalidCharacter);
 
-            var cap = MarketSettings.Get(shard, MarketSettings.ActiveListings);
-
-            if (shard.MarketListings.Count(l => l.SellerAccountId == accountId && l.Status == ListingStatus.Active) >= cap)
+            if (IsAtListingLimit(shard, accountId))
                 return new ListingResult(ListingOutcome.ListingLimit);
 
             if (isBanned())
@@ -101,6 +102,17 @@ namespace ACE.Database.Market
         }
 
         /// <summary>
+        /// Whether a listing's price is a whole MMD of at least 1
+        /// </summary>
+        public static bool IsValidPrice(long price) => price >= 1;
+
+        /// <summary>
+        /// Whether the account already has the most active listings its setting allows. Expire overdue listings first, as the upkeep does.
+        /// </summary>
+        public static bool IsAtListingLimit(ShardDbContext shard, uint accountId) =>
+            shard.MarketListings.Count(l => l.SellerAccountId == accountId && l.Status == ListingStatus.Active) >= MarketSettings.Get(shard, MarketSettings.ActiveListings);
+
+        /// <summary>
         /// Takes an active listing of the account's down and puts its item back to held
         /// </summary>
         /// <param name="isBanned">checked just before the save</param>
@@ -108,13 +120,9 @@ namespace ACE.Database.Market
         {
             now = Truncate(now);
 
-            var listing = shard.MarketListings.FirstOrDefault(l => l.Id == listingId && l.SellerAccountId == accountId);
-
-            if (listing == null)
-                return new ListingResult(ListingOutcome.NotFound);
-
-            if (listing.Status != ListingStatus.Active)
-                return new ListingResult(ListingOutcome.NotActive);
+            var refused = ActiveOwnedListing(shard, accountId, listingId, out var listing);
+            if (refused != null)
+                return refused;
 
             var item = shard.MarketVaultItems.FirstOrDefault(v => v.ItemGuid == listing.ItemGuid);
 
@@ -123,10 +131,50 @@ namespace ACE.Database.Market
 
             Close(shard, listing, item, ListingStatus.Delisted, ItemEventKind.Delist, now);
 
+            // a lost race is re-read, as the reprice's is: still active is Changed, gone is NotActive
             if (!TrySave(shard))
-                return new ListingResult(ListingOutcome.NotActive);
+                return ActiveOwnedListing(shard, accountId, listingId, out _) ?? new ListingResult(ListingOutcome.Changed);
 
             return new ListingResult(ListingOutcome.Ok, listing);
+        }
+
+        /// <summary>
+        /// Changes an active listing's price of the account's, in one save. The listing keeps its id, its item and its lifetime.
+        /// </summary>
+        /// <param name="isBanned">checked just before the save</param>
+        public static ListingResult Reprice(ShardDbContext shard, uint accountId, long listingId, long price, Func<bool> isBanned)
+        {
+            var refused = ActiveOwnedListing(shard, accountId, listingId, out var listing);
+            if (refused != null)
+                return refused;
+
+            if (!IsValidPrice(price))
+                return new ListingResult(ListingOutcome.InvalidPrice);
+
+            if (isBanned())
+                return new ListingResult(ListingOutcome.Banned);
+
+            listing.Price = price;
+            listing.RowVersion++;
+
+            // a lost race: the listing is re-read, so a sale or delisting is NotActive and a price change is Changed
+            if (!TrySave(shard))
+                return ActiveOwnedListing(shard, accountId, listingId, out _) ?? new ListingResult(ListingOutcome.Changed);
+
+            return new ListingResult(ListingOutcome.Ok, listing);
+        }
+
+        /// <summary>
+        /// The account's listing, if it is active: null with the listing out, else the refusal (not the account's, or no longer active)
+        /// </summary>
+        private static ListingResult ActiveOwnedListing(ShardDbContext shard, uint accountId, long listingId, out Listing listing)
+        {
+            listing = shard.MarketListings.FirstOrDefault(l => l.Id == listingId && l.SellerAccountId == accountId);
+
+            if (listing == null)
+                return new ListingResult(ListingOutcome.NotFound);
+
+            return listing.Status != ListingStatus.Active ? new ListingResult(ListingOutcome.NotActive) : null;
         }
 
         /// <summary>

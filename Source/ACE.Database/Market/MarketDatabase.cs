@@ -8,14 +8,13 @@ using Microsoft.EntityFrameworkCore;
 using MySqlConnector;
 
 using ACE.Common;
-using ACE.Database;
 using ACE.Database.Models.Auth;
 using ACE.Database.Models.Shard;
 
-namespace ACE.MarketApi
+namespace ACE.Database.Market
 {
     /// <summary>
-    /// Plain auth and shard contexts for the API, built from ACE's MySQL configuration.
+    /// Plain auth and shard contexts for the market (the Market API, and the game server's market actions), built from ACE's MySQL configuration.
     /// Never the game's caching or serialized shard classes: those belong to the game process.
     /// </summary>
     public sealed class MarketDatabase

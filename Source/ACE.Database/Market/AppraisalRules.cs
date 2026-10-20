@@ -7,7 +7,7 @@ using System.Text.RegularExpressions;
 using ACE.Entity.Enum;
 using ACE.Entity.Enum.Properties;
 
-namespace ACE.MarketApi
+namespace ACE.Database.Market
 {
     /// <summary>
     /// One appraisal line: its label (null for an unlabelled flag) and its value from the stored item (null for no line)
@@ -131,10 +131,10 @@ namespace ACE.MarketApi
         /// <summary>
         /// The item's spells by name from the spell table, cantrips first. A spell the table doesn't have is shown by its id.
         /// </summary>
-        public static IReadOnlyList<GameData.Spell> Spells(AppraisalItem item)
+        public static IReadOnlyList<AppraisalSpell> Spells(AppraisalItem item)
         {
             return item.Spells
-                .Select(id => item.GameData.FindSpell(id) ?? new GameData.Spell($"Unknown spell {Number(id)}", false))
+                .Select(id => item.Names.FindSpell(id) ?? new AppraisalSpell($"Unknown spell {Number(id)}", false))
                 .OrderBy(spell => spell.Cantrip ? 0 : 1)
                 .ToList();
         }
@@ -147,7 +147,7 @@ namespace ACE.MarketApi
             if (materialType is not int value || value == 0)
                 return null;
 
-            return item.GameData.MaterialName(value) ?? (Enum.IsDefined((MaterialType)value) ? EnumName((MaterialType)value) : Number(value));
+            return item.Names.MaterialName(value) ?? (Enum.IsDefined((MaterialType)value) ? EnumName((MaterialType)value) : Number(value));
         }
 
         // ---- value formats

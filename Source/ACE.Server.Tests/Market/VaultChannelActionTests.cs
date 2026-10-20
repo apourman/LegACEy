@@ -314,11 +314,11 @@ namespace ACE.Server.Tests.Market
             ListReply(player, ListRequestBody(search, offset, count));
 
         /// <summary>
-        /// The reply to a vault.list request body, read as <see cref="ListPage"/> reads it
+        /// The reply to a vault.list request body, read as <see cref="ListPage"/> reads it. The Market's market.vault answers the same.
         /// </summary>
-        private static (int VaultCount, int Total, uint[] Guids) ListReply(Player player, byte[] body)
+        private static (int VaultCount, int Total, uint[] Guids) ListReply(Player player, byte[] body, string action = VaultChannelActions.List)
         {
-            var reply = Request(player, VaultChannelActions.List, body);
+            var reply = Request(player, action, body);
 
             Assert.AreEqual(ChannelStatus.Ok, reply.Status, Text(reply.Body));
             var reader = new BinaryReader(new MemoryStream(reply.Body), Encoding.UTF8);

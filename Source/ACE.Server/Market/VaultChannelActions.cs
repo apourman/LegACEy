@@ -248,7 +248,10 @@ namespace ACE.Server.Market
             }
         }
 
-        private static void HandleList(ChannelContext context)
+        /// <summary>
+        /// One page of the Vault (body: the search, the offset, the count). The Market's Sell screen reads the same page at the market station.
+        /// </summary>
+        internal static void HandleList(ChannelContext context)
         {
             if (!Vault.Available)
             {
@@ -307,7 +310,7 @@ namespace ACE.Server.Market
                     ChannelWire.WriteString(w, item.State);
                     ChannelWire.WriteString(w, PlayerManager.FindByGuid(item.CharacterId)?.Name ?? string.Empty);
                     w.Write(new DateTimeOffset(DateTime.SpecifyKind(item.DepositedTime, DateTimeKind.Utc)).ToUnixTimeSeconds());
-                    w.Write(Plate(item.ItemType));
+                    w.Write(ListingCatalog.Plate(item.ItemType));
                     w.Write(item.IconUnderlay ?? 0);
                     w.Write(item.Icon ?? 0);
                     w.Write(item.IconOverlay ?? 0);
@@ -362,25 +365,5 @@ namespace ACE.Server.Market
             }));
         }
 
-        /// <summary>
-        /// The plate the client draws under an icon, by item type (as ACE.MarketApi's ItemIcons)
-        /// </summary>
-        private static uint Plate(int itemType)
-        {
-            var type = (ItemType)unchecked((uint)itemType);
-
-            if ((type & ItemType.WeaponOrCaster) != 0)
-                return 0x060011D2;
-            if ((type & ItemType.Armor) != 0)
-                return 0x060011CF;
-            if ((type & ItemType.Clothing) != 0)
-                return 0x060011F3;
-            if ((type & ItemType.Jewelry) != 0)
-                return 0x060011D5;
-            if ((type & ItemType.Gem) != 0)
-                return 0x060011D3;
-
-            return 0x060011D4;
-        }
     }
 }

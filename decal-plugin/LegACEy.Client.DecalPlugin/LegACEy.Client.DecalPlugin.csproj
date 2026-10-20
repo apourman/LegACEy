@@ -31,11 +31,12 @@
        where the client loads them from. -->
   <ItemGroup>
     <ProjectReference Include="..\LegACEy.Plugin.Vault\LegACEy.Plugin.Vault.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\LegACEy.Plugin.Market\LegACEy.Plugin.Market.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\LegACEy.Plugin.Inventory\LegACEy.Plugin.Inventory.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <Target Name="CopyLegACEyPlugins" AfterTargets="Build">
-    <MSBuild Projects="..\LegACEy.Plugin.Vault\LegACEy.Plugin.Vault.csproj;..\LegACEy.Plugin.Inventory\LegACEy.Plugin.Inventory.csproj" Targets="GetTargetPath">
+    <MSBuild Projects="..\LegACEy.Plugin.Vault\LegACEy.Plugin.Vault.csproj;..\LegACEy.Plugin.Market\LegACEy.Plugin.Market.csproj;..\LegACEy.Plugin.Inventory\LegACEy.Plugin.Inventory.csproj" Targets="GetTargetPath">
       <Output TaskParameter="TargetOutputs" ItemName="LegACEyPluginAssembly" />
     </MSBuild>
     <!-- Cleared first, so a plugin that was removed from the build stops loading. -->

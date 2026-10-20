@@ -110,7 +110,7 @@ namespace ACE.MarketApi
         /// </summary>
         private static IResult Replay(HttpContext context, MarketDatabase database, string kind, string idempotencyKey, GameData gameData)
         {
-            if (!MarketHttp.IsIdempotencyKey(idempotencyKey))
+            if (!PurchaseStore.IsIdempotencyKey(idempotencyKey))
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_request");
 
             using var shard = database.CreateShard();

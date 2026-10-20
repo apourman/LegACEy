@@ -543,6 +543,16 @@ public sealed class WindowManagerTests
     private static string Row(string server, string character, string window, int x, int y) =>
         string.Join("|", new[] { server, character, window }.Select(value => Convert.ToBase64String(Encoding.UTF8.GetBytes(value)))) + "|" + x + "|" + y;
 
+    [Fact]
+    public void A_window_asking_to_open_centred_is_centred_on_the_screen_when_it_has_no_saved_place()
+    {
+        var windows = NewManager(1920, 1080);
+
+        var window = windows.Open(new WindowDefinition("market", "Market", 980, 640), WindowManager.CentredLocation);
+
+        Assert.Equal(new Rectangle(470, 220, 980, 640), window.Bounds);
+    }
+
     private static WindowManager NewManager(int width = 800, int height = 600) =>
         new(new Size(width, height), new MemoryWindowPositionStore(), "server", "character");
 }

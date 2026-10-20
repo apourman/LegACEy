@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 
 using Microsoft.Extensions.DependencyInjection;
 
+using ACE.Database.Market;
 using ACE.Database.Models.Shard.Market;
 using ACE.Entity.Enum;
 using ACE.Entity.Enum.Properties;

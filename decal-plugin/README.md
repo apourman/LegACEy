@@ -20,6 +20,7 @@ and database remain in the repository's upstream-compatible `Source/` and
 | `LegACEy.Client.Themes` | Shared UI themes and controls |
 | `LegACEy.Client.Demo` | Framework windows and controls, and the plugin API (`ILegACEyPlugin`, `ILegACEyClient`) |
 | `LegACEy.Plugin.Vault` | The account Vault plugin, built into `Plugins/Vault/` |
+| `LegACEy.Plugin.Market` | The in-game Market window, opened from the market station, built into `Plugins/Market/` |
 | `LegACEy.Plugin.Inventory` | The inventory window, built into `Plugins/Inventory/` |
 | `LegACEy.Updater` | The net48 `LegACEy.Updater.exe` beside the stub, which applies a staged release after the game exits |
 | `LegACEy.Client.Tests` | Automated tests without an installed Decal runtime |

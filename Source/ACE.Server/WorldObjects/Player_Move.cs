@@ -290,6 +290,8 @@ namespace ACE.Server.WorldObjects
                 return;
             }
 
+            EndStation(ACE.Server.Market.MarketChannelActions.Station);
+
             // scale by bludgeon protection
             var resistance = GetResistanceMod(DamageType.Bludgeon, null, null);
             var damage = (uint)Math.Round(amount * resistance);

@@ -11,9 +11,19 @@ namespace ACE.Server.Market
     /// </summary>
     public static class VaultMessages
     {
+        /// <summary>
+        /// An item's name in a message, or "That item" when the name isn't known
+        /// </summary>
+        public static string ItemName(string itemName) => string.IsNullOrEmpty(itemName) ? "That item" : itemName;
+
+        /// <summary>
+        /// Where an item is now, after a market action: "X is in your pack." or "X is in your Vault."
+        /// </summary>
+        public static string InPlace(string itemName, bool inPack) => $"{ItemName(itemName)} is in your {(inPack ? "pack" : "Vault")}.";
+
         public static string For(VaultOutcome outcome, string itemName)
         {
-            var item = string.IsNullOrEmpty(itemName) ? "That item" : itemName;
+            var item = ItemName(itemName);
 
             return outcome switch
             {
@@ -31,6 +41,7 @@ namespace ACE.Server.Market
                 VaultOutcome.PetOut => $"Unsummon your pet before you put {item} in the Vault.",
                 VaultOutcome.ContainerNotEmpty => $"Empty {item} before you put it in the Vault.",
                 VaultOutcome.BlockedWcid => $"{item} cannot go in the Vault.",
+                VaultOutcome.Bonded => $"{item} is bonded to you and cannot be sold.",
                 VaultOutcome.VaultFull => "Your Vault is full. List or withdraw something first.",
                 VaultOutcome.NotInVault => "That item is not in your Vault.",
                 VaultOutcome.Listed => $"{item} is listed for sale. Delist it before you withdraw it.",

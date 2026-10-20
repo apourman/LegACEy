@@ -419,6 +419,8 @@ namespace ACE.Server.WorldObjects
                 return;
             }
 
+            EndStation(ACE.Server.Market.MarketChannelActions.Station);
+
             var amount = (uint)Math.Round(_amount);
             var percent = (float)amount / Health.MaxValue;
 
@@ -489,6 +491,9 @@ namespace ACE.Server.WorldObjects
                 log.Error($"{Name}.TakeDamage({source?.Name} ({source?.Guid}), {damageType}, {_amount}) - negative damage, this shouldn't happen");
                 return 0;
             }
+
+            // a landed attack closes the market window, whatever it does to health
+            EndStation(ACE.Server.Market.MarketChannelActions.Station);
 
             var amount = (uint)Math.Round(_amount);
             var percent = (float)amount / Health.MaxValue;

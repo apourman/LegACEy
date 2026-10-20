@@ -60,7 +60,6 @@ namespace ACE.MarketApi
             builder.Services.AddSingleton<GameData>(_ => null);
             builder.Services.AddSingleton<IconStore>(_ => null);
             builder.Services.AddSingleton<SignInLimiter>(_ => null);
-            builder.Services.AddSingleton<PurchaseLimiter>(_ => null);
             builder.Services.AddSingleton<IMarketPause>(_ => null);
             builder.Services.AddSingleton<IFeePolicy>(_ => null);
             builder.Services.AddSingleton(AppraisalRules.Default);

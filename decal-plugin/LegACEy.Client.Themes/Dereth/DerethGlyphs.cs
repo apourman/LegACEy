@@ -13,7 +13,9 @@ public enum DerethGlyph
     Use, Examine, Backpack,
     // The vitals' glyphs, drawn in their vital's colour: retail's heart, sword and mana serpent.
     Heart, Sword, ManaSerpent,
-    Lock, Unlock
+    Lock, Unlock,
+    // the Market's search icon: a lens and its handle
+    Search
 }
 
 /// <summary>One drawn part of a glyph: an SVG path on a 24-unit grid, filled or stroked, at an opacity.</summary>
@@ -175,6 +177,11 @@ public static class DerethGlyphs
             new("M7 10.5H17A2 2 0 0 1 19 12.5V18.5A2 2 0 0 1 17 20.5H7A2 2 0 0 1 5 18.5V12.5A2 2 0 0 1 7 10.5Z", true, 0, 0.3, null),
             new("M7 10.5H17A2 2 0 0 1 19 12.5V18.5A2 2 0 0 1 17 20.5H7A2 2 0 0 1 5 18.5V12.5A2 2 0 0 1 7 10.5Z", false, 2.4, 1, null),
             new("M8 10.5V7.5a4 4 0 0 1 7.6-1.7", false, 2.4, 1, null),
+        },
+        [DerethGlyph.Search] = new GlyphPart[]
+        {
+            new("M10.5 4.5a6 6 0 1 1 0 12 6 6 0 0 1 0-12z", false, 2, 1, null),
+            new("M15 15l5 5", false, 2.6, 1, null),
         },
         [DerethGlyph.LegACEy] = new GlyphPart[]
         {

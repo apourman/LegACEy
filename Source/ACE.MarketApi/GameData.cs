@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 
+using ACE.Database.Market;
 using ACE.DatLoader;
 using ACE.DatLoader.FileTypes;
 using ACE.Entity.Enum;
@@ -15,25 +16,19 @@ namespace ACE.MarketApi
     /// What the market needs from the game's own data files: spell names (and which spells are cantrips) and material names for the appraisal,
     /// and icon textures and clothing tables for icons. Read from client_portal.dat, the same file the game server uses.
     /// </summary>
-    public sealed class GameData
+    public sealed class GameData : IAppraisalNames
     {
         public const string PortalDatFile = "client_portal.dat";
 
-        /// <summary>
-        /// The DAT's material enum-to-name table, as RecipeManager.GetMaterialName reads it
-        /// </summary>
-        private const uint MaterialNamesId = 0x27000000;
 
         /// <summary>
         /// Icons, and each layer of one, are 32×32
         /// </summary>
         public const int IconSize = 32;
 
-        public sealed record Spell(string Name, bool Cantrip);
-
         private static readonly ConcurrentDictionary<string, GameData> loaded = new ConcurrentDictionary<string, GameData>();
 
-        private readonly IReadOnlyDictionary<uint, Spell> spells;
+        private readonly IReadOnlyDictionary<uint, AppraisalSpell> spells;
 
         private readonly IReadOnlyDictionary<uint, string> materials;
 
@@ -47,7 +42,7 @@ namespace ACE.MarketApi
         /// </summary>
         private readonly Lazy<HashSet<(uint Icon, int PaletteTemplate)>> clothingIcons;
 
-        private GameData(IReadOnlyDictionary<uint, Spell> spells, IReadOnlyDictionary<uint, string> materials, PortalDatDatabase portal)
+        private GameData(IReadOnlyDictionary<uint, AppraisalSpell> spells, IReadOnlyDictionary<uint, string> materials, PortalDatDatabase portal)
         {
             this.spells = spells;
             this.materials = materials;
@@ -74,26 +69,17 @@ namespace ACE.MarketApi
 
             var portal = new PortalDatDatabase(path);
 
-            var spells = portal.SpellTable.Spells.ToDictionary(s => s.Key, s => new Spell(s.Value.Name, IsCantrip(s.Value.Name, (SpellFlags)s.Value.Bitfield)));
+            var spells = portal.SpellTable.Spells.ToDictionary(s => s.Key, s => AppraisalSpell.From(s.Value.Name, (SpellFlags)s.Value.Bitfield));
 
-            var materials = portal.ReadFromDat<DualDidMapper>(MaterialNamesId).ClientEnumToName.ToDictionary(m => m.Key, m => m.Value.Replace("_", " "));
+            var materials = DatNames.Materials(portal.ReadFromDat<DualDidMapper>(DatNames.MaterialTable).ClientEnumToName);
 
             return new GameData(spells, materials, portal);
         }
 
-        private static readonly string[] cantripTiers = { "Minor ", "Moderate ", "Major ", "Epic ", "Legendary " };
-
-        /// <summary>
-        /// A cantrip is an item spell the client leaves out of item descriptions (every Minor to Legendary one but a few, and the Feeble
-        /// ones), or one named by a cantrip tier (the few: the wards and Hermetic Links)
-        /// </summary>
-        private static bool IsCantrip(string name, SpellFlags flags) =>
-            flags.HasFlag(SpellFlags.ExcludedFromItemDescriptions) || cantripTiers.Any(tier => name.StartsWith(tier, System.StringComparison.Ordinal));
-
         /// <summary>
         /// The spell, or null when the spell table doesn't have it
         /// </summary>
-        public Spell FindSpell(int spellId) => spells.TryGetValue(unchecked((uint)spellId), out var spell) ? spell : null;
+        public AppraisalSpell FindSpell(int spellId) => spells.TryGetValue(unchecked((uint)spellId), out var spell) ? spell : null;
 
         /// <summary>
         /// "Smoky Quartz", or null when the DAT doesn't name the material

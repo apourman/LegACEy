@@ -164,6 +164,7 @@ namespace ACE.Server.Tests.Market
             var accounts = (Dictionary<uint, Dictionary<uint, IPlayer>>)(typeof(PlayerManager).GetField("playerAccounts", BindingFlags.NonPublic | BindingFlags.Static)
                 ?? throw new InvalidOperationException("PlayerManager.playerAccounts is gone: update VaultTestWorld.Online")).GetValue(null);
             var accountId = player.Account.AccountId;
+            player.LoginTimestamp = ACE.Common.Time.GetUnixTime(); // entering the world stamps it; a seller hears of sales made since
 
             // the world thread is the one that looks players up for the bridge; housing lists the owner's account
             OnWorldThread(() =>

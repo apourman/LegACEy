@@ -1,13 +1,13 @@
 using System;
-using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Text.Json;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Primitives;
+
+using ACE.Database.Market;
 
 namespace ACE.MarketApi
 {
@@ -20,8 +20,6 @@ namespace ACE.MarketApi
         public const int DefaultPageSize = 50;
 
         public const int MaxPageSize = 100;
-
-        public const int MaxSuggestions = 10;
 
         /// <summary>
         /// Browse's query parameters: their names are the keys Browse reads, and the document lists them with these types. Browse parses each value itself.
@@ -79,57 +77,27 @@ namespace ACE.MarketApi
             ListingCatalog.Cursor after = null;
             if (MarketHttp.QueryValue(query[MarketHttp.QueryName(nameof(BrowseQuery.Cursor))]) is string cursorText)
             {
-                try
-                {
-                    after = ListingCatalog.Cursor.Decode(cursorText);
-                }
-                catch (Exception e) when (e is FormatException || e is JsonException || e is ArgumentException)
-                {
-                    return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_cursor");
-                }
-
-                if (after.Sort != sort.Value || after.Descending != descending)
+                if (!ListingCatalog.Cursor.TryDecode(cursorText, out after) || after.Sort != sort.Value || after.Descending != descending)
                     return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_cursor");
             }
 
             using var shard = database.CreateShard();
 
-            var rows = VisibleNow(shard, database, time);
+            var filters = new ListingCatalog.Filters(
+                MarketHttp.QueryValue(query[MarketHttp.QueryName(nameof(BrowseQuery.Q))]),
+                itemType,
+                minPrice,
+                maxPrice,
+                MarketHttp.QueryValue(query[MarketHttp.QueryName(nameof(BrowseQuery.Seller))]));
 
-            if (MarketHttp.QueryValue(query[MarketHttp.QueryName(nameof(BrowseQuery.Q))]) is string text)
-                rows = ListingCatalog.NameContains(rows, text);
-            if (itemType is int type)
-                rows = rows.Where(r => r.Item.ItemType == type);
-            if (minPrice is long min)
-                rows = rows.Where(r => r.Listing.Price >= min);
-            if (maxPrice is long max)
-                rows = rows.Where(r => r.Listing.Price <= max);
-            if (MarketHttp.QueryValue(query[MarketHttp.QueryName(nameof(BrowseQuery.Seller))]) is string seller)
-                rows = rows.Where(r => r.Seller == seller);
+            var rows = ListingCatalog.Filter(ListingCatalog.VisibleNow(shard, database, time.GetUtcNow().UtcDateTime), filters);
 
-            List<ListingCatalog.Row> page;
-            Func<ListingCatalog.Row, string> cursorKey;
-            try
-            {
-                page = ListingCatalog.Sort(rows, sort.Value, descending, after, out cursorKey).Take(limit + 1).ToList();
-            }
-            catch (Exception e) when (e is FormatException || e is OverflowException || e is ArgumentOutOfRangeException)
-            {
-                // a cursor key that doesn't fit the sort's type
+            if (!ListingCatalog.TryPage(rows, sort.Value, descending, after, limit, out var page, out var nextCursor))
                 return MarketHttp.Error(StatusCodes.Status400BadRequest, "bad_cursor");
-            }
-
-            string nextCursor = null;
-            if (page.Count > limit)
-            {
-                page.RemoveAt(limit);
-                var last = page[^1];
-                nextCursor = new ListingCatalog.Cursor(sort.Value, descending, cursorKey(last), last.Listing.Id).Encode();
-            }
 
             var items = AppraisalItem.Load(shard, gameData, page.Select(r => (uint)r.Listing.ItemGuid).ToList());
 
-            return Results.Json(new BrowseResponse(page.Select(r => ApiContractViews.Listing(ListingCatalog.View(r, items[(uint)r.Listing.ItemGuid]))).ToList(), nextCursor));
+            return Results.Json(new BrowseResponse(page.Select(r => ApiContractViews.Listing(ListingViews.View(r, items[(uint)r.Listing.ItemGuid], gameData))).ToList(), nextCursor));
         }
 
         /// <summary>
@@ -144,14 +112,7 @@ namespace ACE.MarketApi
 
             using var shard = database.CreateShard();
 
-            var suggestions = ListingCatalog.NameStartsWith(VisibleNow(shard, database, time), text)
-                .Select(r => r.Item.Name)
-                .Distinct()
-                .OrderBy(n => n)
-                .Take(MaxSuggestions)
-                .ToList();
-
-            return Results.Json(new SuggestionsResponse(suggestions));
+            return Results.Json(new SuggestionsResponse(ListingCatalog.Suggest(ListingCatalog.VisibleNow(shard, database, time.GetUtcNow().UtcDateTime), text)));
         }
 
         /// <summary>
@@ -161,14 +122,14 @@ namespace ACE.MarketApi
         {
             using var shard = database.CreateShard();
 
-            var row = VisibleNow(shard, database, time).FirstOrDefault(r => r.Listing.Id == id);
+            var row = ListingCatalog.VisibleNow(shard, database, time.GetUtcNow().UtcDateTime).FirstOrDefault(r => r.Listing.Id == id);
 
             if (row == null)
                 return MarketHttp.Error(StatusCodes.Status404NotFound, "not_found");
 
             var item = AppraisalItem.Load(shard, gameData, new[] { (uint)row.Listing.ItemGuid })[(uint)row.Listing.ItemGuid];
 
-            return Results.Json(ApiContractViews.Detail(ListingCatalog.Detail(row, item, rules)));
+            return Results.Json(ApiContractViews.Detail(ListingViews.Detail(row, item, rules, gameData)));
         }
 
         /// <summary>
@@ -178,28 +139,11 @@ namespace ACE.MarketApi
         {
             using var shard = database.CreateShard();
 
-            var types = VisibleNow(shard, database, time)
-                .GroupBy(r => r.Item.ItemType)
-                .Select(g => new { ItemType = g.Key, Count = g.Count() })
-                .ToList()
-                .Select(t => new { value = ListingCatalog.ItemTypeName(t.ItemType), label = ListingCatalog.ItemTypeName(t.ItemType), count = t.Count })
-                .OrderBy(t => t.label, StringComparer.Ordinal)
-                .ToList();
+            var types = ListingCatalog.ItemTypeCounts(ListingCatalog.VisibleNow(shard, database, time.GetUtcNow().UtcDateTime));
 
             return Results.Json(new FacetsResponse(
-                types.Select(t => new FacetItemResponse(t.value, t.label, t.count)).ToList(),
+                types.Select(t => new FacetItemResponse(t.Name, t.Name, t.Count)).ToList(),
                 ListingCatalog.Sorts.Select(s => new SortResponse(s.Value, s.Label, s.DescendingByDefault ? "desc" : "asc")).ToList()));
-        }
-
-        /// <summary>
-        /// The listings a visitor can see, after expiring overdue listings and returning banned sellers' listings
-        /// </summary>
-        private static IQueryable<ListingCatalog.Row> VisibleNow(Database.Models.Shard.ShardDbContext shard, MarketDatabase database, TimeProvider time)
-        {
-            var now = time.GetUtcNow().UtcDateTime;
-            var banned = MarketUpkeep.ExpireAndHandleBans(database, now);
-
-            return ListingCatalog.Visible(shard, now, banned);
         }
 
         /// <summary>

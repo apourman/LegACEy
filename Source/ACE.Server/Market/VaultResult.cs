@@ -19,6 +19,7 @@ namespace ACE.Server.Market
         PetOut,
         ContainerNotEmpty,
         BlockedWcid,
+        Bonded,
         VaultFull,
         NotInVault,
         Listed,

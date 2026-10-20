@@ -6,10 +6,10 @@ using Microsoft.EntityFrameworkCore;
 using ACE.Database.Models.Shard;
 using ACE.Entity.Enum.Properties;
 
-namespace ACE.MarketApi
+namespace ACE.Database.Market
 {
     /// <summary>
-    /// An escrowed item's stored properties (its biota rows), read for formatting. Read only: the API never writes item tables.
+    /// An item's stored properties (its biota rows), read for formatting. Read only: the market never writes item tables.
     /// </summary>
     public sealed class AppraisalItem
     {
@@ -19,11 +19,12 @@ namespace ACE.MarketApi
         private readonly Dictionary<ushort, bool> bools = new Dictionary<ushort, bool>();
         private readonly List<int> spells = new List<int>();
 
-        public GameData GameData { get; }
+        /// <summary>The game's spell and material names, for the lines and the spells</summary>
+        public IAppraisalNames Names { get; }
 
-        private AppraisalItem(GameData gameData)
+        private AppraisalItem(IAppraisalNames names)
         {
-            GameData = gameData;
+            Names = names;
         }
 
         public int? Int(PropertyInt key) => ints.TryGetValue((ushort)key, out var value) ? value : null;
@@ -42,9 +43,9 @@ namespace ACE.MarketApi
         /// <summary>
         /// The stored properties of each item, one query per property table. Items with no rows get an empty entry.
         /// </summary>
-        public static Dictionary<uint, AppraisalItem> Load(ShardDbContext shard, GameData gameData, IReadOnlyCollection<uint> itemGuids)
+        public static Dictionary<uint, AppraisalItem> Load(ShardDbContext shard, IAppraisalNames names, IReadOnlyCollection<uint> itemGuids)
         {
-            var items = itemGuids.Distinct().ToDictionary(g => g, _ => new AppraisalItem(gameData));
+            var items = itemGuids.Distinct().ToDictionary(g => g, _ => new AppraisalItem(names));
 
             if (items.Count == 0)
                 return items;

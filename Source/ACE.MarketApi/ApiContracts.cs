@@ -11,6 +11,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.OpenApi;
 
+using ACE.Database.Market;
+
 namespace ACE.MarketApi
 {
     // Named wire contracts. These are used by OpenAPI metadata; JSON property names use ASP.NET's web defaults.
@@ -70,13 +72,13 @@ namespace ACE.MarketApi
         public static IconResponse Icon(ItemIcons.IconView icon) => new(
             icon.Layers.Select(layer => new IconLayerResponse(layer.Kind, layer.Id, layer.Url, layer.PaletteTemplate)).ToList());
 
-        public static SpellResponse Spell(GameData.Spell spell) => new(spell.Name, spell.Cantrip);
+        public static SpellResponse Spell(AppraisalSpell spell) => new(spell.Name, spell.Cantrip);
 
-        public static ListingResponse Listing(ListingCatalog.ListingView view) => new(
+        public static ListingResponse Listing(ListingViews.ListingView view) => new(
             view.Id, view.ItemGuid, view.Wcid, view.Name, view.ItemType, view.Material, view.Workmanship, view.Level,
             view.ArcaneLore, view.Summary, view.Quantity, view.Price, view.Seller, view.ListedTime, view.Wield, Icon(view.Icon));
 
-        public static ListingDetailResponse Detail(ListingCatalog.ListingView view) => new(
+        public static ListingDetailResponse Detail(ListingViews.ListingView view) => new(
             view.Id, view.ItemGuid, view.Wcid, view.Name, view.ItemType, view.Material, view.Workmanship, view.Level,
             view.ArcaneLore, view.Summary, view.Quantity, view.Price, view.Seller, view.ListedTime, view.Wield, Icon(view.Icon),
             view.Lines, view.Spells.Select(Spell).ToList());

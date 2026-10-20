@@ -27,6 +27,7 @@ public sealed class InputRouterService
     private string? _capturedSurfaceId;
     private string? _focusedSurfaceId;
     private InputModifiers _modifiers;
+    private bool _shortcutCharPending;
 
     public string? CapturedSurfaceId => _capturedSurfaceId;
     public string? FocusedSurfaceId => _focusedSurfaceId;
@@ -56,6 +57,8 @@ public sealed class InputRouterService
             return RouteKey(message, surfaces, InputAction.KeyUp, keyDown: false);
         if (code == WmChar || code == WmSysChar)
         {
+            // the character of a key the focused surface took as a shortcut (the "/" of a search) is that key's, not the text's
+            if (_shortcutCharPending) return new InputRoute(eat: true);
             var target = FindFocusedKeyboardSurface(surfaces);
             if (target == null) return new InputRoute();
             // Editing keys and shortcuts are handled by key-down; their character messages
@@ -123,16 +126,23 @@ public sealed class InputRouterService
     {
         var vk = unchecked((int)message.WParam.ToInt64());
         UpdateModifiers(vk, keyDown);
-        var target = FindFocusedKeyboardSurface(surfaces);
+        // a key's character comes between its key down and key up: only the key down can have one to swallow
+        _shortcutCharPending = false;
+        var target = FindFocusedKeyboardSurface(surfaces, vk);
         if (target == null) return new InputRoute();
+        // a shortcut the surface takes while it doesn't want the keyboard: its character goes with the key, not to the text the surface may now focus
+        if (keyDown && !target.WantsKeyboard) _shortcutCharPending = true;
         return new InputRoute(action, target.Id, true, keyCode: vk, modifiers: _modifiers);
     }
 
-    private InputSurface? FindFocusedKeyboardSurface(IReadOnlyList<InputSurface> surfaces)
+    /// <summary>The focused surface, if it takes the key: a virtual key, or any character when none is given.</summary>
+    private InputSurface? FindFocusedKeyboardSurface(IReadOnlyList<InputSurface> surfaces, int? virtualKey = null)
     {
         if (_focusedSurfaceId == null) return null;
         var surface = Find(_focusedSurfaceId, surfaces);
-        return surface?.WantsKeyboard == true ? surface : null;
+        if (surface == null) return null;
+        var takes = virtualKey is int key ? surface.AcceptsKey(key) : surface.WantsKeyboard;
+        return takes ? surface : null;
     }
 
     private InputRoute Reset()
@@ -142,6 +152,7 @@ public sealed class InputRouterService
         _capturedSurfaceId = null;
         _focusedSurfaceId = null;
         _modifiers = InputModifiers.None;
+        _shortcutCharPending = false;
         return new InputRoute(InputAction.Reset, releaseCaptureSurfaceId: captured, clearFocusSurfaceId: focused);
     }
 
