@@ -100,6 +100,41 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void A_moved_window_snaps_to_nearby_window_and_screen_edges()
+    {
+        var manager = NewManager();
+        manager.Open(new WindowDefinition("one", "One", 120, 80), new Point(100, 100));
+        manager.Open(new WindowDefinition("two", "Two", 120, 80), new Point(400, 300));
+        var one = manager.Get("one")!;
+        Assert.True(manager.Press(new Point(110, 110)));
+
+        // Five pixels short of two's left edge and five below its top: it snaps against two, tops lined up.
+        manager.Move(new Point(285, 315));
+        Assert.Equal(new Point(280, 300), one.Location);
+        manager.Move(new Point(14, 525));
+        Assert.Equal(new Point(0, 520), one.Location);
+        manager.Move(new Point(210, 210));
+        Assert.Equal(new Point(200, 200), one.Location);
+    }
+
+    [Fact]
+    public void Windows_and_a_toolbar_drawn_outside_the_manager_snap_to_each_other()
+    {
+        var toolbar = new Rectangle(300, 500, 200, 40);
+        var manager = new WindowManager(new Size(800, 600), new MemoryWindowPositionStore(), "server", "character", snapTargets: () => new[] { toolbar });
+        var window = manager.Open(new WindowDefinition("one", "One", 120, 80), new Point(100, 100));
+        Assert.True(manager.Press(new Point(110, 110)));
+
+        // Six pixels above the toolbar and four right of its left edge: it sits on the toolbar, lefts lined up.
+        manager.Move(new Point(314, 424));
+        Assert.Equal(new Point(300, 420), window.Location);
+        manager.Release();
+
+        // The toolbar, which the manager does not move, snaps to the window: dropped five right of its edge, it sits against it.
+        Assert.Equal(new Point(420, 430), manager.Snap(new Point(425, 430), toolbar.Size));
+    }
+
+    [Fact]
     public void A_window_without_a_title_bar_moves_only_when_its_content_begins_the_move()
     {
         var manager = NewManager(300, 200);

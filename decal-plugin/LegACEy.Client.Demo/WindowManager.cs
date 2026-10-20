@@ -324,6 +324,9 @@ public sealed class WindowManager
     /// </summary>
     public const int CornerBand = 16;
 
+    /// <summary>How near, in screen pixels, a moved window's edge must come to the screen's edge or another window's to snap to it.</summary>
+    public const int SnapDistance = 8;
+
     private readonly List<ManagedWindow> _windows = new();
     private readonly IWindowPositionStore _positions;
     private readonly string _server;
@@ -335,15 +338,19 @@ public sealed class WindowManager
     private Point _pressPoint;
     private Rectangle _pressBounds;
     private readonly Func<bool>? _uiLocked;
+    private readonly Func<IEnumerable<Rectangle>>? _snapTargets;
 
     /// <param name="scale">
     /// How big windows show, against the sizes their definitions give: 0.85 shows a 400 pixel wide window 340 pixels wide. Sizes,
     /// title bars and minimums are scaled on open; saved sizes stay at design size, so a scale change keeps a window's proportions.
     /// </param>
     /// <param name="uiLocked">Whether retail's UI is locked: then no window moves or resizes, and none shows resize edges. Null: never locked.</param>
-    public WindowManager(Size screen, IWindowPositionStore positions, string server, string character, double scale = 1, Func<bool>? uiLocked = null)
+    /// <param name="snapTargets">Screen rectangles drawn outside this manager, such as the toolbar, that moved windows snap to as well.</param>
+    public WindowManager(Size screen, IWindowPositionStore positions, string server, string character, double scale = 1, Func<bool>? uiLocked = null,
+        Func<IEnumerable<Rectangle>>? snapTargets = null)
     {
         _uiLocked = uiLocked;
+        _snapTargets = snapTargets;
         if (scale <= 0) throw new ArgumentOutOfRangeException(nameof(scale));
         Scale = scale;
         if (screen.Width <= 0 || screen.Height <= 0) throw new ArgumentOutOfRangeException(nameof(screen));
@@ -464,7 +471,7 @@ public sealed class WindowManager
             Resize(_dragging, point);
             return;
         }
-        _dragging.Location = Clamp(new Point(point.X - _dragOffset.X, point.Y - _dragOffset.Y), _dragging.Size);
+        _dragging.Location = Clamp(Snap(_dragging, new Point(point.X - _dragOffset.X, point.Y - _dragOffset.Y)), _dragging.Size);
         _dragging.PreferredLocation = _dragging.Location;
     }
 
@@ -552,6 +559,30 @@ public sealed class WindowManager
         }
         return (start, WindowResizing.Clamp(length + delta, minimum, Math.Min(screen - start, maximum)));
     }
+
+    /// <summary>
+    /// A moved window's place snapped, on each axis, to the nearest edge within <see cref="SnapDistance"/>: flush with the screen's edge,
+    /// against a nearby window's or snap target's edge, or lined up with it.
+    /// </summary>
+    private Point Snap(ManagedWindow window, Point location) => Snap(location, window.Size,
+        _windows.Where(other => other != window).Select(other => other.Bounds).Concat(_snapTargets?.Invoke() ?? Enumerable.Empty<Rectangle>()));
+
+    /// <summary>The place of something moved outside this manager, such as the toolbar, snapped to the screen's edges and the windows.</summary>
+    public Point Snap(Point location, Size size) => Snap(location, size, _windows.Select(window => window.Bounds));
+
+    private Point Snap(Point location, Size size, IEnumerable<Rectangle> targets)
+    {
+        var near = Rectangle.Inflate(new Rectangle(location, size), SnapDistance, SnapDistance);
+        var others = targets.Where(other => other.IntersectsWith(near)).ToList();
+        return new Point(
+            Nearest(location.X, others.SelectMany(other => new[] { other.Left, other.Right, other.Left - size.Width, other.Right - size.Width })
+                .Append(0).Append(_screen.Width - size.Width)),
+            Nearest(location.Y, others.SelectMany(other => new[] { other.Top, other.Bottom, other.Top - size.Height, other.Bottom - size.Height })
+                .Append(0).Append(_screen.Height - size.Height)));
+    }
+
+    private static int Nearest(int value, IEnumerable<int> edges) =>
+        edges.Where(edge => Math.Abs(edge - value) <= SnapDistance).OrderBy(edge => Math.Abs(edge - value)).DefaultIfEmpty(value).First();
 
     private void EndDrag()
     {

@@ -814,7 +814,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (_device == IntPtr.Zero) return;
         if (!AvaloniaPanel.CanScale) Log("This Avalonia cannot scale panels; LegACEy windows show at their design size.");
-        _windows = new WindowManager(GameDevice.ViewportSize(_device), _positionStore, SessionServer(), SessionCharacter(), WindowScale, () => NativeUi.IsUiLocked);
+        _windows = new WindowManager(GameDevice.ViewportSize(_device), _positionStore, SessionServer(), SessionCharacter(), WindowScale, () => NativeUi.IsUiLocked,
+            ToolbarSnapTargets);
         _windowsEnabled = EnsurePostUiDrawHook();
     }
 
@@ -2234,7 +2235,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _toolbarDragOffset = new Size(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y);
     }
 
-    /// <summary>Moves the toolbar with the pointer, kept on screen. Stops when the takeover no longer lets it move.</summary>
+    /// <summary>Moves the toolbar with the pointer, snapped to the windows and kept on screen. Stops when the takeover no longer lets it move.</summary>
     private void DragToolbar(Point pointer)
     {
         if (_toolbarTakeover?.CanDrag != true || _toolbarSurface is not { } surface)
@@ -2245,9 +2246,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var screen = GameDevice.ViewportSize(_device);
         var size = surface.Bounds.Size;
         var offset = _toolbarDragOffset!.Value;
+        var wanted = new Point(pointer.X - offset.Width, pointer.Y - offset.Height);
+        if (_windows != null) wanted = _windows.Snap(wanted, size);
         surface.Location = new Point(
-            Math.Max(0, Math.Min(screen.Width - size.Width, pointer.X - offset.Width)),
-            Math.Max(0, Math.Min(screen.Height - size.Height, pointer.Y - offset.Height)));
+            Math.Max(0, Math.Min(screen.Width - size.Width, wanted.X)),
+            Math.Max(0, Math.Min(screen.Height - size.Height, wanted.Y)));
     }
 
     /// <summary>
@@ -3317,6 +3320,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (panel.Content is not IWindowShortcuts shortcuts) return null;
         return virtualKey => shortcuts.WantsShortcut(Win32KeyMap.ToAvaloniaKey(virtualKey));
+    }
+
+    /// <summary>The toolbar and its split tab, while shown: windows snap to them though the window manager does not place them.</summary>
+    private IEnumerable<Rectangle> ToolbarSnapTargets()
+    {
+        if (_toolbarSurface is { Visible: true } bar) yield return bar.Bounds;
+        if (_splitTabSurface is { Visible: true } split) yield return split.Bounds;
     }
 
     private InputSurface[] GetInputSurfaces()
