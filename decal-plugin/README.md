@@ -78,8 +78,10 @@ An install made by setup.exe can update itself; a build from a checkout never
 does, because only setup.exe puts `install.json` beside the main DLL. Nothing
 installs until the player asks. At login and every 6 hours the client asks
 GitHub for the newest published `decal-plugin-vX.Y.Z` release (at most once an
-hour for all clients on the install, timed by the `update-check` file). A newer
-one is offered once per version by a toast at the bottom centre and a chat line.
+hour for all clients on the install, timed by the `update-check` file, which
+also passes the release it found to the other clients). A newer one is offered
+once per version by a toast at the bottom centre and a chat line, and again on
+every press of Check for updates.
 The toast's Log out and update (Update when all are closed when several clients
 run) asks first and works only in peace stance; it then downloads the release
 into `update\<version>\`, checks it against its `SHA256SUMS.txt`, unpacks it,

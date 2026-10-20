@@ -1868,15 +1868,17 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// The toast for an updater notice, with its lifetime. What's new opens the release's page with <paramref name="open"/>; Try again calls
     /// <paramref name="checkNow"/>, or <paramref name="install"/> again after a failed download. Ready's update button <paramref name="show"/>s a
     /// confirm in its place, whose Log out works only while <paramref name="peace"/> holds: it shows Downloading and calls <paramref name="install"/>,
-    /// and the Downloaded that follows calls <paramref name="logOut"/>, or asks again if the character has left peace by then. Cancel shows Ready again.
+    /// and the Downloaded that follows calls <paramref name="logOut"/> (false when it couldn't), or, out of peace by then, offers its own Log out.
+    /// Cancel shows Ready again. × only hides a toast: a download asked for still logs out.
     /// </summary>
     internal static ToastNotice UpdateToast(UpdateNotice notice, Action<string> open, Action checkNow, Action<ToastNotice> show, Func<bool> peace,
-        Action<Version> install, Action logOut) => notice.Kind switch
+        Action<Version> install, Func<bool> logOut) => notice.Kind switch
     {
         UpdateNoticeKind.Checking => new ToastNotice(ToastIcon.Search, "Checking for updates…", Busy: true),
         UpdateNoticeKind.Ready => ReadyToast(notice, open, show, peace, install),
-        UpdateNoticeKind.Downloaded when peace() => LoggingOut(notice.Version!, logOut),
-        UpdateNoticeKind.Downloaded => Confirm(notice, open, show, peace, install),
+        UpdateNoticeKind.Downloaded when peace() => LoggingOut(notice, logOut),
+        UpdateNoticeKind.Downloaded => new ToastNotice(ToastIcon.New, $"LegACEy {notice.Version} is downloaded", Installs(notice),
+            new[] { new ToastAction("Log out", () => show(LoggingOut(notice, logOut)), Unavailable: () => peace() ? null : "Not while in combat") }),
         UpdateNoticeKind.UpToDate => new ToastNotice(ToastIcon.Done, $"LegACEy {notice.Version} is up to date", Lifetime: TimeSpan.FromSeconds(4)),
         UpdateNoticeKind.Wait => new ToastNotice(ToastIcon.Wait, "Checked moments ago", "Try again in a minute. Another client on this PC may be checking too.",
             Lifetime: TimeSpan.FromSeconds(5)),
@@ -1914,12 +1916,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             });
     }
 
-    // Mapping Downloaded logs out: the player asked for it, and the updater is now waiting for the game to close.
-    private static ToastNotice LoggingOut(Version version, Action logOut)
-    {
-        logOut();
-        return new ToastNotice(ToastIcon.New, $"Logging out to install LegACEy {version}", Busy: true);
-    }
+    // Logs out for a downloaded update: the player asked for it, and the updater is now waiting for the game to close.
+    private static ToastNotice LoggingOut(UpdateNotice notice, Func<bool> logOut) => logOut()
+        ? new ToastNotice(ToastIcon.New, $"Logging out to install LegACEy {notice.Version}", Busy: true)
+        : new ToastNotice(ToastIcon.Failed, "Couldn't log out", $"Log out yourself. {Installs(notice)}", Lifetime: TimeSpan.FromSeconds(8));
+
+    private static string Installs(UpdateNotice notice) =>
+        notice.SeveralClients ? "It installs once every game window is closed." : "It installs when you close the game.";
 
     /// <summary>An updater notice: its chat line, as before the toast, and its toast while the windows can show one.</summary>
     private void PostUpdateNotice(UpdateNotice notice)
@@ -1987,17 +1990,21 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         catch (Exception) { return false; }
     }
 
-    /// <summary>The confirm's Log out: logs the character out, and the logoff then closes the game so the waiting updater can install.</summary>
-    private void LogOutToUpdate()
+    /// <summary>
+    /// The confirm's Log out: logs the character out, and the logoff then closes the game so the waiting updater can install. False when
+    /// retail's log out could not be asked for.
+    /// </summary>
+    private bool LogOutToUpdate()
     {
-        if (_quitPending) return;
+        if (_quitPending) return true;
         try { NativeUi.RequestLogOut(confirm: false); }
         catch (Exception exception)
         {
             Log($"Could not log out to update: {exception}");
-            return;
+            return false;
         }
         _quitPending = true;
+        return true;
     }
 
     /// <summary>Opens a web page in the player's browser.</summary>

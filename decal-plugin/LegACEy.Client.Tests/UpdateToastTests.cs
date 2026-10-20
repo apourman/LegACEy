@@ -18,7 +18,7 @@ public sealed class UpdateToastTests
         var checks = 0;
         var toast = new DerethNoticeToast();
         var installs = new List<Version>();
-        ToastNotice Toast(UpdateNotice notice) => ClientUiRuntime.UpdateToast(notice, opened.Add, () => checks++, toast.Show, () => true, installs.Add, () => { });
+        ToastNotice Toast(UpdateNotice notice) => ClientUiRuntime.UpdateToast(notice, opened.Add, () => checks++, toast.Show, () => true, installs.Add, () => true);
         using var panel = AvaloniaPanel.Create(() => toast, (int)DerethNoticeToast.CardWidth, 200);
 
         Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.Checking, null)));
@@ -102,9 +102,14 @@ public sealed class UpdateToastTests
         var peace = true;
         var installs = 0;
         var logOuts = 0;
+        var loggedOut = true;
         var toast = new DerethNoticeToast(() => now);
         using var panel = AvaloniaPanel.Create(() => toast, (int)DerethNoticeToast.CardWidth, 200);
-        ToastNotice Toast(UpdateNotice notice) => ClientUiRuntime.UpdateToast(notice, _ => { }, () => { }, toast.Show, () => peace, _ => installs++, () => logOuts++);
+        ToastNotice Toast(UpdateNotice notice) => ClientUiRuntime.UpdateToast(notice, _ => { }, () => { }, toast.Show, () => peace, _ => installs++, () =>
+        {
+            logOuts++;
+            return loggedOut;
+        });
         Button Labelled(string label) => Buttons(panel).Single(button => Label(button) == label);
         void Wait(double seconds)
         {
@@ -149,11 +154,26 @@ public sealed class UpdateToastTests
         Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.Downloaded, "chat", Next)));
         Assert.Equal(1, logOuts);
 
-        // Out of peace when the download lands, it asks again rather than logging out.
+        // Out of peace when the download lands, it waits with its own Log out, lit once back in peace; × would only hide it.
         peace = false;
-        Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.Downloaded, "chat", Next)));
+        Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.Downloaded, "chat", Next, SeveralClients: true)));
         Assert.Equal(1, logOuts);
-        Assert.Equal(confirm, Texts(panel).Take(4));
+        Assert.Equal(new[] { "LegACEy 0.11.0 is downloaded", "It installs once every game window is closed.", "Log out" }, Texts(panel).Take(3));
+        Assert.False(Labelled("Log out").IsEnabled);
+        Wait(3600);
+        Assert.True(toast.IsVisible);
+        peace = true;
+        Wait(1);
+        Press(panel, Labelled("Log out"));
+        Assert.Equal(2, logOuts);
+        Assert.Equal("Logging out to install LegACEy 0.11.0", Texts(panel)[0]);
+
+        // A log out that couldn't be asked for says so, rather than waiting forever.
+        loggedOut = false;
+        Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.Downloaded, "chat", Next)));
+        Assert.Equal(new[] { "Couldn't log out", "Log out yourself. It installs when you close the game." }, Texts(panel));
+        Wait(9);
+        Assert.False(toast.IsVisible);
 
         // Several clients: the same question, named for waiting on the other windows.
         peace = true;
@@ -165,7 +185,7 @@ public sealed class UpdateToastTests
     });
 
     // An update toast whose buttons do nothing.
-    private static ToastNotice Idle(UpdateNotice notice) => ClientUiRuntime.UpdateToast(notice, _ => { }, () => { }, _ => { }, () => true, _ => { }, () => { });
+    private static ToastNotice Idle(UpdateNotice notice) => ClientUiRuntime.UpdateToast(notice, _ => { }, () => { }, _ => { }, () => true, _ => { }, () => true);
 
     private static void Show(AvaloniaPanel panel, DerethNoticeToast toast, ToastNotice notice)
     {
