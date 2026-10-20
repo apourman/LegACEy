@@ -32,6 +32,9 @@ public sealed class UpdateToastTests
 
         Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.Ready, "chat", Next, SeveralClients: true)));
         Assert.Equal(new[] { "Update when all are closed", "What's new" }, Buttons(panel).Select(Label));
+        // A long label wraps the next button rather than pushing it off the card.
+        Assert.All(Buttons(panel), button =>
+            Assert.True(Avalonia.VisualExtensions.TranslatePoint(button, new Point(button.Bounds.Width, 0), toast)!.Value.X <= toast.Bounds.Width));
 
         Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.UpToDate, "chat", new Version(0, 10, 1))));
         Assert.Equal(new[] { "LegACEy 0.10.1 is up to date" }, Texts(panel));

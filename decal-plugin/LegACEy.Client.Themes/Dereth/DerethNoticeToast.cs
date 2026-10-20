@@ -183,7 +183,8 @@ public sealed class DerethNoticeToast : Border
         _why = null;
         if (notice.Actions is { Count: > 0 } actions)
         {
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+            // a long label wraps the next button onto its own line rather than past the card
+            var row = new WrapPanel { ItemSpacing = 10, LineSpacing = 8 };
             foreach (var action in actions)
             {
                 var button = new DerethButton
