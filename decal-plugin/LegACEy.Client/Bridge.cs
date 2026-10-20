@@ -15,6 +15,8 @@ internal interface IClientEvents
     void ServerMessage(int type, ReadOnlySpan<byte> raw);
     void LoginComplete();
     void Logoff();
+    /// <summary>A logoff the server has let through (Decal's Authorized type), after the Logoff it also raises.</summary>
+    void LogoffAuthorized();
     void ItemSelected();
     void ContainerOpened();
     void InventoryChanged(uint id, uint container);
@@ -73,7 +75,8 @@ public static unsafe class Bridge
             {
                 Frame = &OnFrame, WindowMessage = &OnWindowMessage, ServerMessage = &OnServerMessage, LoginComplete = &OnLoginComplete,
                 Logoff = &OnLogoff, ItemSelected = &OnItemSelected, ContainerOpened = &OnContainerOpened,
-                InventoryChanged = &OnInventoryChanged, Shutdown = &OnShutdown, CommandLine = &OnCommandLine
+                InventoryChanged = &OnInventoryChanged, Shutdown = &OnShutdown, CommandLine = &OnCommandLine,
+                LogoffAuthorized = &OnLogoffAuthorized
             };
             return 0;
         }
@@ -108,6 +111,9 @@ public static unsafe class Bridge
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
     private static void OnLogoff() => Raise(static client => client.Logoff());
+
+    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
+    private static void OnLogoffAuthorized() => Raise(static client => client.LogoffAuthorized());
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
     private static void OnItemSelected() => Raise(static client => client.ItemSelected());

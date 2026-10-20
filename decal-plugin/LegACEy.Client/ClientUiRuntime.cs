@@ -585,6 +585,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     public void LoginComplete()
     {
         _loggedIn = true;
+        // A Log out and update whose logout never came through is forgotten, so this session's own logout doesn't close the game.
+        _quitPending = false;
         _updates.Check();
         if (_failed || !NativeUi.Ready)
             return;
@@ -704,21 +706,21 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
     }
 
-    public void Logoff()
+    /// <summary>
+    /// The server has let the character go. After Log out and update, this closes the game, as its window's × does, never by ending the
+    /// process from under it, and the updater waiting for it installs once it has gone. Still to be seen in game: that Decal raises this
+    /// Authorized logoff after our log out, and that retail closes cleanly on the WM_CLOSE.
+    /// </summary>
+    public void LogoffAuthorized()
     {
-        EndSession();
         if (!_quitPending) return;
         _quitPending = false;
-        // Log out and update asked for this logoff. The game closes as its window's × closes it, never by ending the process from under it, and
-        // the updater waiting for it installs once it has gone. Still to be seen in game: that retail closes cleanly on this, since Decal's
-        // logoff types (Requested, Authorized) suggest this can come before the server has let the character go.
         const int WmClose = 0x0010;
         if (_gameWindow == IntPtr.Zero || !PostMessage(_gameWindow, WmClose, IntPtr.Zero, IntPtr.Zero))
             Log($"Could not close the game to update: window {_gameWindow}");
     }
 
-    /// <summary>Everything a logoff ends; a rebuild ends it too, then logs straight back in.</summary>
-    private void EndSession()
+    public void Logoff()
     {
         Guard(() => ApplyReset(_inputRouter.Route(new NativeInputMessage(InputRouterService.WmLogoff, IntPtr.Zero, IntPtr.Zero), GetInputSurfaces())));
         Guard(() => _hovered?.Panel.PointerLeave());
@@ -996,7 +998,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var settingsOpen = _windows?.Get(SettingsWindowId) != null;
         // The chat's lines and sent text outlive the rebuild: it is the same character still playing.
         var chatHistory = _chatWindows?.History ?? _carriedChatHistory;
-        EndSession();
+        Logoff();
         if (resetPositions) ForgetWindowPlaces();
         _carriedChatHistory = chatHistory;
         LoginComplete();
@@ -1859,7 +1861,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const int UpdateToastLift = 110;
     private DerethNoticeToast? _updateToast;
     private ScreenSurface? _updateToastSurface;
-    // Log out and update logged the character out; the logoff closes the game.
+    // Log out and update asked to log out; the server's authorized logoff then closes the game.
     private bool _quitPending;
 
     /// <summary>
