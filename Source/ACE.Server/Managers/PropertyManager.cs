@@ -571,6 +571,7 @@ namespace ACE.Server.Managers
                 ("lifestone_broadcast_death", new Property<bool>(true, "if true, player deaths are additionally broadcast to other players standing near the destination lifestone")),
                 ("loot_quality_mod", new Property<bool>(true, "if FALSE then the loot quality modifier of a Death Treasure profile does not affect loot generation")),
                 ("market_enabled", new Property<bool>(false, "if TRUE, opens the marketplace: trade notes in the Vault (MMD), the game bridge's web requests and plugin sign-in. The Vault's items work either way")),
+                ("market_web_enabled", new Property<bool>(false, "if TRUE, with market_enabled, offers /vault link and /vault tokens, which sign plugins in to the Market website. Leave off while no website is deployed")),
                 ("npc_hairstyle_fullrange", new Property<bool>(false, "if TRUE, allows generated creatures to use full range of hairstyles. Retail only allowed first nine (0-8) out of 51")),
                 ("offline_xp_passup_limit", new Property<bool>(true, "if FALSE, allows unlimited xp to passup to offline characters in allegiances")),
                 ("olthoi_play_disabled", new Property<bool>(false, "if false, allows players to create and play as olthoi characters")),

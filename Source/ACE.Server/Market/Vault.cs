@@ -43,6 +43,14 @@ namespace ACE.Server.Market
         public const string MarketEnabledKey = "market_enabled";
 
         /// <summary>
+        /// The market_web_enabled server setting, off by default: /vault link and /vault tokens sign plugins in to the Market website, so they are
+        /// offered only once a website is deployed. Needs <see cref="MarketEnabled"/> too.
+        /// </summary>
+        public static bool MarketWebEnabled => PropertyManager.GetBool(MarketWebEnabledKey).Item;
+
+        public const string MarketWebEnabledKey = "market_web_enabled";
+
+        /// <summary>
         /// Players with a deposit or withdrawal in flight. One at a time each, so that two queued withdrawals can't both pass the pack-space and unique checks
         /// before either has reached the pack. Only the world thread touches it.
         /// </summary>

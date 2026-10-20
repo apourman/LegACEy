@@ -38,7 +38,7 @@ namespace ACE.Server.Command.Handlers
             {
                 case "audit":
                     Tell(session, "Auditing the market ledger...");
-                    MarketAdmin.Audit(by, report => TellAudit(session, report));
+                    MarketAdmin.Audit($"/market audit by {by}", report => TellAudit(session, report));
                     break;
 
                 case "resume":

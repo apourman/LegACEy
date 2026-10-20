@@ -86,6 +86,7 @@ namespace ACE.Server.Tests.Market
 
             PropertyManager.Initialize();
             PropertyManager.ModifyBool(Vault.MarketEnabledKey, true); // off by default on a server; these tests cover the open market
+            PropertyManager.ModifyBool(Vault.MarketWebEnabledKey, true); // and plugin sign-in, which waits for the website
             GuidManager.Initialize();
 
             PlayerManager.Initialize();
