@@ -616,14 +616,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _plugins?.SetServerActions(actions);
             if (actions.Contains(StormProtocol.Zone))
                 _serverChannel?.Request(StormProtocol.Zone, Array.Empty<byte>(), zone => { if (zone.Ok) ShowStorm(zone.Body); });
-            else
+            // Only a server that answered without them has no storm or weather; a failed hello keeps what was remembered.
+            else if (reply.Ok)
             {
                 if (_worldEffects != null) _worldEffects.StormZone = null;
                 Forget(LastStormFile);
             }
             if (actions.Contains(WeatherProtocol.Zone))
                 _serverChannel?.Request(WeatherProtocol.Zone, Array.Empty<byte>(), weather => { if (weather.Ok) ShowWeather(weather.Body); });
-            else
+            else if (reply.Ok)
             {
                 if (_worldEffects != null) _worldEffects.Weather = null;
                 Forget(LastWeatherFile);

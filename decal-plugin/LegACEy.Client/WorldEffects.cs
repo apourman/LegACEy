@@ -52,7 +52,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         new NativeUiEntry("CPhysicsObj::leave_cell clears the object's cell", 0x00511A77, NativeUiCatalogue.Bytes("C7 86 90 00 00 00 00 00 00 00 5E C2 04 00"),
             Source, "the layout read here: CPhysicsObj +0x90 is its CObjCell, zero once out of the world (picked up, gone)"),
         new NativeUiEntry("gmRadarUI::DrawObjects reads an object's cell id", 0x004DA0E4, NativeUiCatalogue.Bytes("8B 88 90 00 00 00 85 C9 0F 84 03 02 00 00 8B 48 4C 85 C9"),
-            Source, "the layout read here: CPhysicsObj +0x4C is its cell id; the weather is off in indoor cells"),
+            Source, "the layout read here: CPhysicsObj +0x4C is its cell id: the player's, for the storm and weather (outdoors, a building's room, a dungeon)"),
         new NativeUiEntry("CPhysicsObj::GetObjectA", GetObjectAddress, NativeUiCatalogue.Bytes("8B 0D 64 4D 84 00 85 C9 74 0B 8B 44 24 04 50"),
             Source, "Cdecl (object id): CObjectMaint lookup, null when the object is not in the world"),
         new NativeUiEntry("CPartArray::Draw", PartArrayDrawAddress, NativeUiCatalogue.Bytes("56 57 8B F9 8B 47 58 33 F6 85 C0 76 1C 8D 49 00 8B 47 5C 8B 0C B0 85 C9 74 07 6A 00"),
@@ -148,6 +148,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         _drawPrimitiveHook.Activate();
         _smartBoxHook.Activate();
         _landscapeHook?.Activate();
+        _weather.DrawsIndoors = _landscapeHook != null;
     }
 
     /// <summary>The effects, or null when the running client does not match their native entries.</summary>
@@ -234,24 +235,20 @@ internal sealed unsafe class WorldEffects : IDisposable
     /// <summary>The landscape seen from inside a building: the storm and weather go on straight after it, before the openings and rooms.</summary>
     private void OnLandscapeDraw(IntPtr landscape)
     {
-        if (!_viewIndoors || !_inWorld || _failed)
+        if (!_viewIndoors || !_inWorld || _failed || _outsideDrawn)
         {
             _landscapeHook!.OriginalFunction(landscape);
             return;
         }
         int[]? retailFog = null;
-        try { if (_worldFog != null) retailFog = Array.ConvertAll(FogStates, state => GetRenderState(_device, state)); }
+        try { if (_worldFog != null) retailFog = SaveFog(); }
         catch (Exception exception) { Fail(exception); }
         _inLandscape = true;
         try { _landscapeHook!.OriginalFunction(landscape); }
         finally
         {
             _inLandscape = false;
-            if (retailFog != null)
-            {
-                try { for (var i = 0; i < FogStates.Length; i++) SetRenderState(_device, FogStates[i], retailFog[i]); }
-                catch (Exception exception) { Fail(exception); }
-            }
+            RestoreFog(retailFog);
         }
         if (_failed) return;
         try { DrawOutside(PlayerCell(), shown: true); }
@@ -259,12 +256,20 @@ internal sealed unsafe class WorldEffects : IDisposable
         _outsideDrawn = true;
     }
 
+    private int[] SaveFog() => Array.ConvertAll(FogStates, state => GetRenderState(_device, state));
+
+    private void RestoreFog(int[]? fog)
+    {
+        if (fog == null) return;
+        try { for (var i = 0; i < FogStates.Length; i++) SetRenderState(_device, FogStates[i], fog[i]); }
+        catch (Exception exception) { Fail(exception); }
+    }
+
     /// <summary>The storm and weather; the storm's frame ends here even when nothing is shown.</summary>
     private void DrawOutside(uint cell, bool shown)
     {
         _fog.Draw(inWorld: shown && cell != 0);
         _weather.PlayerCell = cell;
-        _weather.DrawsIndoors = _landscapeHook != null;
         if (shown) _weather.Draw();
     }
 
@@ -361,7 +366,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         {
             if (_worldFog is { } fog && !_viewIndoors)
             {
-                retailFog = Array.ConvertAll(FogStates, state => GetRenderState(_device, state));
+                retailFog = SaveFog();
                 if (!_fogLogged)
                 {
                     _fogLogged = true;
@@ -377,11 +382,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         finally
         {
             _inWorld = false;
-            if (retailFog != null)
-            {
-                try { for (var i = 0; i < FogStates.Length; i++) SetRenderState(_device, FogStates[i], retailFog[i]); }
-                catch (Exception exception) { Fail(exception); }
-            }
+            RestoreFog(retailFog);
         }
         if (!_failed)
         {

@@ -93,7 +93,7 @@ internal sealed unsafe class Weather : IDisposable
     {
         if (Current is not { } now) { Shown(null); return; }
         if (PlayerCell == 0) { Shown("hidden: the player is in no cell (portal space)"); return; }
-        if (!SeesOutside(PlayerCell) || !DrawsIndoors && (PlayerCell & 0xFFFF) >= 0x100) { Shown($"hidden: no view outside from cell 0x{PlayerCell:X8}"); return; }
+        if (!SeesOutside(PlayerCell) || (!DrawsIndoors && (PlayerCell & 0xFFFF) >= 0x100)) { Shown($"hidden: no view outside from cell 0x{PlayerCell:X8}"); return; }
         if (_camera.Eye is not { } eye) { Shown("hidden: the camera is not measured yet"); return; }
         var fall = now.Kind switch { WeatherKind.Blizzard => Blizzard, WeatherKind.Thunderstorm => Thunderstorm, _ => Snow };
         var centre = new Vector2((now.X + 0.5f) * StormFog.Block, (now.Y + 0.5f) * StormFog.Block);
@@ -143,8 +143,9 @@ internal sealed unsafe class Weather : IDisposable
 
     /// <summary>
     /// The box, in global game space, around the building the player is in: the one whose doors lead to their room, or else the one they
-    /// stand in. Drops do not fall in it. ponytail: one box
-    /// round the whole model, so an L-shaped building's box takes in a little outside in its corner.
+    /// stand in. Drops do not fall in it.
+    /// ponytail: one box round the whole model, so an L-shaped building's box takes in a little outside in its corner. The DATs are read on
+    /// the game thread, once per landblock entered (and opened on the first room): a short hitch; read ahead on a task if it shows.
     /// </summary>
     private (Vector3 Min, Vector3 Max)? Building(uint cell, Vector3 player)
     {
@@ -153,13 +154,13 @@ internal sealed unsafe class Weather : IDisposable
         if (!_buildings.TryGetValue(landblock, out var buildings))
             _buildings[landblock] = buildings = Read(() => ground.ReadBuildings((int)(cell >> 24), (int)(landblock & 0xFF)), (IReadOnlyList<GroundBuilding>)Array.Empty<GroundBuilding>());
         var corner = new Vector3((cell >> 24) * StormFog.Block, (landblock & 0xFF) * StormFog.Block, 0);
-        (Vector3 Min, Vector3 Max) Box(GroundBuilding building) =>
-            (corner + new Vector3(building.Min.X, building.Min.Y, building.Min.Z) - new Vector3(Margin),
-             corner + new Vector3(building.Max.X, building.Max.Y, building.Max.Z) + new Vector3(Margin));
+        (Vector3 Min, Vector3 Max) Around(GroundBuilding found) =>
+            (corner + new Vector3(found.Min.X, found.Min.Y, found.Min.Z) - new Vector3(Margin),
+             corner + new Vector3(found.Max.X, found.Max.Y, found.Max.Z) + new Vector3(Margin));
         foreach (var building in buildings)
-            if (building.Cells.Contains((ushort)cell)) return Box(building);
+            if (building.Cells.Contains((ushort)cell)) return Around(building);
         foreach (var building in buildings)
-            if (Inside(player, Box(building))) return Box(building);
+            if (Around(building) is var box && Inside(player, box)) return box;
         return null;
     }
 
@@ -184,7 +185,7 @@ internal sealed unsafe class Weather : IDisposable
         try { return read(); }
         catch (Exception exception)
         {
-            _log($"Weather: could not read a building from the cell DAT: {exception.Message}");
+            _log($"Weather: could not read the cell DAT: {exception.Message}");
             return fallback;
         }
     }
