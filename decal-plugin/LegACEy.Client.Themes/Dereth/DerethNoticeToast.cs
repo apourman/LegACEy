@@ -188,7 +188,8 @@ public sealed class DerethNoticeToast : Border
             {
                 var button = new DerethButton
                 {
-                    Content = action.Label, Height = 28, Padding = new Thickness(16, 0), FontFamily = DerethPalette.Title, FontSize = 13,
+                    // DerethButton's frame ignores Padding, so the label carries the room
+                    Content = new TextBlock { Text = action.Label, Margin = new Thickness(16, 0) }, Height = 28, FontFamily = DerethPalette.Title, FontSize = 13,
                     Foreground = action.Quiet ? DerethPalette.MutedBrush : DerethPalette.CreamBrush
                 };
                 button.Click += (_, _) =>

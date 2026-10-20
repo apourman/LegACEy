@@ -26,7 +26,7 @@ public sealed class UpdateToastTests
 
         Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.Ready, "chat", Next)));
         Assert.Equal(new[] { "LegACEy 0.11.0 is ready", "Downloaded. It installs when you close the game.", "Log out and update", "What's new" }, Texts(panel));
-        Press(panel, Buttons(panel).Single(button => button.Content as string == "What's new"));
+        Press(panel, Buttons(panel).Single(button => Label(button) == "What's new"));
         Assert.Equal(new[] { "https://github.com/apourman/LegACEy/releases/tag/decal-plugin-v0.11.0" }, opened);
 
         Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.Ready, "chat", Next, SeveralClients: true)));
@@ -40,7 +40,7 @@ public sealed class UpdateToastTests
 
         Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.Failed, "chat")));
         Assert.Equal("Couldn't check for updates", Texts(panel)[0]);
-        Press(panel, Buttons(panel).Single(button => button.Content as string == "Try again"));
+        Press(panel, Buttons(panel).Single(button => Label(button) == "Try again"));
         Assert.Equal(1, checks);
     });
 
@@ -94,7 +94,7 @@ public sealed class UpdateToastTests
         using var panel = AvaloniaPanel.Create(() => toast, (int)DerethNoticeToast.CardWidth, 200);
         ToastNotice Ready(bool severalClients) =>
             ClientUiRuntime.UpdateToast(new UpdateNotice(UpdateNoticeKind.Ready, "chat", Next, severalClients), _ => { }, () => { }, toast.Show, () => peace, () => logOuts++);
-        Button Labelled(string label) => Buttons(panel).Single(button => button.Content as string == label);
+        Button Labelled(string label) => Buttons(panel).Single(button => Label(button) == label);
         void Wait(double seconds)
         {
             now += TimeSpan.FromSeconds(seconds);
@@ -109,7 +109,7 @@ public sealed class UpdateToastTests
 
         // Several clients: logging this one out installs nothing.
         Show(panel, toast, Ready(severalClients: true));
-        Assert.Equal(new[] { "What's new" }, Buttons(panel).Select(button => button.Content));
+        Assert.Equal(new[] { "What's new" }, Buttons(panel).Select(Label));
 
         // One client: Log out and update asks first, and the question waits for an answer.
         Show(panel, toast, Ready(severalClients: false));
@@ -157,7 +157,9 @@ public sealed class UpdateToastTests
         panel.Content.GetVisualDescendants().OfType<TextBlock>().Where(text => text.IsEffectivelyVisible).Select(text => text.Text ?? "").ToList();
 
     // The buttons with a label; the × is a picture.
-    private static List<Button> Buttons(AvaloniaPanel panel) => panel.Content.GetVisualDescendants().OfType<Button>().Where(button => button.Content is string).ToList();
+    private static List<Button> Buttons(AvaloniaPanel panel) => panel.Content.GetVisualDescendants().OfType<Button>().Where(button => Label(button) != null).ToList();
+
+    private static string? Label(Button button) => (button.Content as TextBlock)?.Text;
 
     private static void Press(AvaloniaPanel panel, Control control)
     {
