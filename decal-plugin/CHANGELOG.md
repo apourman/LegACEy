@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.3](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.11.2...decal-plugin-v0.11.3) (2026-10-20)
+
+
+### Bug Fixes
+
+* **decal-plugin:** the login check asks GitHub unless another client asked in the last 5 minutes ([#89](https://github.com/apourman/LegACEy/issues/89)) ([1ba7d85](https://github.com/apourman/LegACEy/commit/1ba7d8556be4c02b852d9f87881bb26504be7f40))
+
 ## [0.11.2](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.11.1...decal-plugin-v0.11.2) (2026-10-20)
 
 
