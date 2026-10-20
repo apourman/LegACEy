@@ -36,6 +36,7 @@ internal static unsafe class D3D9
     private const int SetTextureSlot = 65;
     private const int SetTextureStageStateSlot = 67;
     private const int SetSamplerStateSlot = 69;
+    public const int DrawPrimitiveSlot = 81;
     public const int DrawIndexedPrimitiveSlot = 82;
     private const int DrawPrimitiveUPSlot = 83;
     private const int SetFVFSlot = 89;

@@ -67,6 +67,9 @@ internal sealed unsafe class WorldEffects : IDisposable
     private delegate int DrawIndexedFn(IntPtr device, int type, int baseVertex, uint minIndex, uint vertices, uint startIndex, uint primitives);
 
     [Function(CallingConventions.Stdcall)]
+    private delegate int DrawFn(IntPtr device, int type, uint startVertex, uint primitives);
+
+    [Function(CallingConventions.Stdcall)]
     private delegate int ResetFn(IntPtr device, IntPtr parameters);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -85,6 +88,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     private readonly Action<string> _log;
     private readonly IHook<SmartBoxDrawFn> _smartBoxHook;
     private readonly IHook<DrawIndexedFn> _drawHook;
+    private readonly IHook<DrawFn> _drawPrimitiveHook;
     private readonly IHook<ResetFn> _resetHook;
     private readonly StormFog _fog;
     private readonly Weather _weather;
@@ -113,9 +117,11 @@ internal sealed unsafe class WorldEffects : IDisposable
         _root = GCHandle.Alloc(this);
         _smartBoxHook = ReloadedHooks.Instance.CreateHook<SmartBoxDrawFn>(OnSmartBoxDraw, SmartBoxDrawAddress);
         _drawHook = ReloadedHooks.Instance.CreateHook<DrawIndexedFn>(OnDrawIndexed, Method(device, DrawIndexedPrimitiveSlot).ToInt64());
+        _drawPrimitiveHook = ReloadedHooks.Instance.CreateHook<DrawFn>(OnDraw, Method(device, DrawPrimitiveSlot).ToInt64());
         _resetHook = ReloadedHooks.Instance.CreateHook<ResetFn>(OnReset, Method(device, ResetSlot).ToInt64());
         _resetHook.Activate();
         _drawHook.Activate();
+        _drawPrimitiveHook.Activate();
         _smartBoxHook.Activate();
     }
 
@@ -162,6 +168,12 @@ internal sealed unsafe class WorldEffects : IDisposable
             catch (Exception exception) { Fail(exception); }
         }
         var result = original(device, type, baseVertex, minIndex, vertices, startIndex, primitives);
+        // A glow's black fog colour is not left for a draw that does not pass through these hooks.
+        if (_inWorld && _worldFog is { } grey && device == _device && !_failed)
+        {
+            try { SetRenderState(_device, RenderState.FogColor, unchecked((int)(0xFF000000 | grey.Color))); }
+            catch (Exception exception) { Fail(exception); }
+        }
         var part = *DrawingPart;
         if (result < 0 || part == 0 || !_inWorld || _failed || device != _device) return result;
         var channels = 0;
@@ -190,6 +202,20 @@ internal sealed unsafe class WorldEffects : IDisposable
         try { DrawIntoMask(() => original(device, type, baseVertex, minIndex, vertices, startIndex, primitives), channels); }
         catch (Exception exception) { Fail(exception); }
         return result;
+    }
+
+    /// <summary>
+    /// Retail draws some of its world (terrain among it) unindexed. The haze's fog goes on before those too: they would otherwise keep the
+    /// last indexed draw's fog, black after a glow, and fog whole patches of ground black (20 Oct).
+    /// </summary>
+    private int OnDraw(IntPtr device, int type, uint startVertex, uint primitives)
+    {
+        if (_inWorld && _worldFog is { } fog && device == _device && !_failed)
+        {
+            try { ApplyFog(fog); }
+            catch (Exception exception) { Fail(exception); }
+        }
+        return _drawPrimitiveHook.OriginalFunction(device, type, startVertex, primitives);
     }
 
     private bool DrawsSelected()
@@ -476,6 +502,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         // A hook that could not be disabled stays rooted, still calling back here.
         _smartBoxHook.Disable();
         _drawHook.Disable();
+        _drawPrimitiveHook.Disable();
         _resetHook.Disable();
         ReleaseTextures();
         _fog.Dispose();
