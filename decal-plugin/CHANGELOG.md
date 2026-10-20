@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.10.0...decal-plugin-v0.10.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* **decal-plugin:** black ground patches in snow haze ([#77](https://github.com/apourman/LegACEy/issues/77)) ([4d78e08](https://github.com/apourman/LegACEy/commit/4d78e08d4ad2901cc7e960268ff7fba6916a9fa9))
+
 ## [0.10.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.9.0...decal-plugin-v0.10.0) (2026-10-20)
 
 
