@@ -20,6 +20,15 @@ namespace LegACEy.Client.DecalPlugin;
 /// <summary>A published plugin release: its version and the URLs of its zip and checksums.</summary>
 internal sealed record PluginRelease(Version Version, string ZipUrl, string SumsUrl);
 
+/// <summary>What the updater has to tell the player. Wait covers a press too soon, a check already running and another client checking.</summary>
+internal enum UpdateNoticeKind { Checking, Ready, UpToDate, Wait, Failed }
+
+/// <summary>
+/// One thing the updater has to tell the player: its kind, its chat line (null for none), the version it is about, and for Ready whether
+/// more than one game client is running, when closing this one installs nothing.
+/// </summary>
+internal sealed record UpdateNotice(UpdateNoticeKind Kind, string? Chat, Version? Version = null, bool SeveralClients = false);
+
 /// <summary>
 /// Keeps an installed plugin current. At login and every 6 hours, off the game thread, it looks for a newer plugin release on GitHub,
 /// stages it in <c>update\&lt;version&gt;\</c> beside the stub, and starts the updater copied into that stage, which applies it once every
@@ -32,10 +41,10 @@ internal sealed class PluginUpdates : IDisposable
     private const string SumsName = "SHA256SUMS.txt";
     private const string UpdaterName = "LegACEy.Updater.exe";
     private const string UpdaterMutex = @"Local\LegACEy.Updater";
-    // System, as Decal's chat colour: the chat window shows the line with the game's own notices.
-    private const int SystemChat = 5;
     // The Win32 errors (in an IOException's HResult) for a file another process holds open: here, the update-check stamp.
     private const int SharingViolation = 32, LockViolation = 33;
+    // Linux's EWOULDBLOCK, the bare HResult .NET gives the same held file there, where the tests run.
+    private const int WouldBlock = 11;
     private static readonly TimeSpan Every = TimeSpan.FromHours(6);
     // Every client of the install shares one check time, so several clients ask GitHub once (60 unauthenticated requests per hour per IP).
     private static readonly TimeSpan SharedGap = TimeSpan.FromHours(1);
@@ -47,19 +56,29 @@ internal sealed class PluginUpdates : IDisposable
     private static readonly Regex PluginTag = new(@"^decal-plugin-v(\d+\.\d+\.\d+)$", RegexOptions.Compiled);
     // GitHub's API refuses requests without a User-Agent.
     private static readonly HttpClient Http = new() { DefaultRequestHeaders = { { "User-Agent", "LegACEy-decal-plugin" } } };
+    private static readonly UpdateNotice Failed = new(UpdateNoticeKind.Failed, "Couldn't check for updates: try again later.");
 
     private readonly string _install;
-    private readonly ConcurrentQueue<string> _notices = new();
+    private readonly Func<CancellationToken, Task<string>> _releases;
+    private readonly ConcurrentQueue<UpdateNotice> _notices = new();
     private readonly HashSet<Version> _announced = new();
     private Timer? _timer;
     private int _checking;
     private DateTime _lastPress;
-    // Set once a press is told to wait, so pressing again while a check runs adds no more chat lines. Game thread only.
+    // Set once a press is told to wait in chat, so pressing again while a check runs adds no more chat lines. Game thread only.
     private bool _toldToWait;
 
-    public PluginUpdates(string install) => _install = install;
+    /// <param name="releases">GitHub's release list; null for the real one.</param>
+    public PluginUpdates(string install, Func<CancellationToken, Task<string>>? releases = null)
+    {
+        _install = install;
+        _releases = releases ?? (cancel => Http.GetStringAsync(ReleasesUrl, cancel));
+    }
 
     public static string ZipName(Version version) => $"LegACEy-decal-plugin-v{version}-windows-x86.zip";
+
+    /// <summary>The GitHub page with a plugin release's notes.</summary>
+    public static string ReleasePage(Version version) => $"https://github.com/apourman/LegACEy/releases/tag/decal-plugin-v{version}";
 
     /// <summary>
     /// The highest published plugin release in GitHub's release list, or null when none is newer than <paramref name="current"/>.
@@ -111,38 +130,44 @@ internal sealed class PluginUpdates : IDisposable
         : File.Exists(Path.Combine(_install, "no-auto-update")) ? "updates off"
         : null;
 
-    /// <summary>Starts a check off the game thread unless one is running, and from the first call on, one every 6 hours.</summary>
-    public void Check()
+    /// <summary>
+    /// Starts a check off the game thread unless one is running, and from the first call on, one every 6 hours. The task ends with the
+    /// check and never fails.
+    /// </summary>
+    public Task Check()
     {
         _timer ??= new Timer(_ => Check(), null, Every, Every);
-        Start(force: false);
+        return Start(force: false) ?? Task.CompletedTask;
     }
 
     /// <summary>
-    /// The menu's Check for updates: checks now, past the shared gap, at most once a minute, and says the outcome in chat. The update
-    /// still installs only when the game closes.
+    /// The menu's Check for updates: checks now, past the shared gap, at most once a minute, and says each step: Checking, then the outcome.
+    /// A press too soon is told to wait every time, in chat only the first time. The update still installs only when the game closes.
     /// </summary>
-    public void CheckNow()
+    public Task CheckNow()
     {
-        if (Off != null) return;
-        string? wait = DateTime.UtcNow - _lastPress < PressGap ? "LegACEy checked for updates less than a minute ago: try again shortly."
-            : !Start(force: true) ? "LegACEy is already checking for updates."
+        if (Off != null) return Task.CompletedTask;
+        Task? check = null;
+        var wait = DateTime.UtcNow - _lastPress < PressGap ? "LegACEy checked for updates less than a minute ago: try again shortly."
+            : (check = Start(force: true)) == null ? "LegACEy is already checking for updates."
             : null;
         if (wait != null)
         {
-            if (!_toldToWait) _notices.Enqueue(wait);
+            _notices.Enqueue(new UpdateNotice(UpdateNoticeKind.Wait, _toldToWait ? null : wait));
             _toldToWait = true;
-            return;
+            return Task.CompletedTask;
         }
         _lastPress = DateTime.UtcNow;
         _toldToWait = false;
+        return check!;
     }
 
-    /// <summary>Runs one check off the game thread; false when one is already running.</summary>
-    private bool Start(bool force)
+    /// <summary>Runs one check off the game thread; null when one is already running. A forced check says Checking first.</summary>
+    private Task? Start(bool force)
     {
-        if (Interlocked.Exchange(ref _checking, 1) == 1) return false;
-        Task.Run(async () =>
+        if (Interlocked.Exchange(ref _checking, 1) == 1) return null;
+        if (force) _notices.Enqueue(new UpdateNotice(UpdateNoticeKind.Checking, null));
+        return Task.Run(async () =>
         {
             try
             {
@@ -152,29 +177,28 @@ internal sealed class PluginUpdates : IDisposable
             catch (Exception exception)
             {
                 ClientUiRuntime.Log($"Plugin update check failed: {exception.Message}");
-                if (force) _notices.Enqueue("Couldn't check for updates: try again later.");
+                if (force) _notices.Enqueue(Failed);
             }
             finally { Volatile.Write(ref _checking, 0); }
         });
-        return true;
     }
 
     /// <summary>
-    /// Writes the chat line for each newly staged version; a line that fails stays queued for the next frame. Game thread only, while a
-    /// character is in the world.
+    /// Hands each notice, oldest first, to <paramref name="post"/>; one it throws on stays queued for the next frame. Game thread only, while
+    /// a character is in the world.
     /// </summary>
-    public void PostNotices()
+    public void PostNotices(Action<UpdateNotice> post)
     {
         while (_notices.TryPeek(out var notice))
         {
-            Bridge.Chat(notice, SystemChat);
+            post(notice);
             _notices.TryDequeue(out _);
         }
     }
 
     public void Dispose() => _timer?.Dispose();
 
-    /// <summary>One check. Forced, from the menu, it skips the shared gap and always says the outcome in chat.</summary>
+    /// <summary>One check. Forced, from the menu, it skips the shared gap and always says the outcome.</summary>
     private async Task Run(bool force, CancellationToken cancel)
     {
         if (Off != null) return;
@@ -188,10 +212,10 @@ internal sealed class PluginUpdates : IDisposable
         FileStream? slot = null;
         var unverified = false;
         try { slot = new FileStream(Path.Combine(_install, "update-check"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
-        catch (IOException exception) when ((exception.HResult & 0xFFFF) is SharingViolation or LockViolation) { }
+        catch (IOException exception) when ((exception.HResult & 0xFFFF) is SharingViolation or LockViolation || exception.HResult == WouldBlock) { }
         if (slot == null && force)
         {
-            _notices.Enqueue("Another LegACEy client on this PC is checking for updates right now.");
+            _notices.Enqueue(new UpdateNotice(UpdateNoticeKind.Wait, "Another LegACEy client on this PC is checking for updates right now."));
             return;
         }
         if (slot != null)
@@ -205,7 +229,7 @@ internal sealed class PluginUpdates : IDisposable
                     slot.Write(Encoding.UTF8.GetBytes(DateTime.UtcNow.ToString("O")));
                     slot.Flush();
                     if (!updaterRunning) RemoveStale(update, current);
-                    unverified = Newest(await Http.GetStringAsync(ReleasesUrl, cancel), current) is { } release
+                    unverified = Newest(await _releases(cancel), current) is { } release
                         && !await Download(release, update, cancel);
                 }
             }
@@ -213,12 +237,23 @@ internal sealed class PluginUpdates : IDisposable
         // A stage this client or another made, or one an updater left after a failed apply: announced once, applied at the game's exit.
         if (Staged(update).Where(version => version > Plain(current)).Max() is not { } staged)
         {
-            if (force) _notices.Enqueue(unverified ? "Couldn't check for updates: try again later." : $"LegACEy {Plain(current)} is up to date.");
+            if (force)
+                _notices.Enqueue(unverified ? Failed : new UpdateNotice(UpdateNoticeKind.UpToDate, $"LegACEy {Plain(current)} is up to date.", Plain(current)));
             return;
         }
         // Announced only once an updater is waiting, so the line is never a promise nothing will keep.
         if (!updaterRunning) StartUpdater(Path.Combine(update, staged.ToString()));
-        if (_announced.Add(staged) || force) _notices.Enqueue($"LegACEy {staged} is downloaded and installs when the game closes.");
+        if (_announced.Add(staged) || force)
+            _notices.Enqueue(new UpdateNotice(UpdateNoticeKind.Ready, $"LegACEy {staged} is downloaded and installs when the game closes.", staged,
+                SeveralClients()));
+    }
+
+    /// <summary>Whether more than one game client is running, counted as the updater counts them: it installs once none is.</summary>
+    private static bool SeveralClients()
+    {
+        var clients = Process.GetProcessesByName("acclient");
+        foreach (var client in clients) client.Dispose();
+        return clients.Length > 1;
     }
 
     /// <summary>Downloads and stages the release; false when its zip does not match its checksum.</summary>

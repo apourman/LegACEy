@@ -97,6 +97,24 @@ public sealed class InputRouterTests
     }
 
     [Fact]
+    public void A_press_on_a_surface_that_takes_no_focus_leaves_typing_where_it_was()
+    {
+        var router = new InputRouterService();
+        var toast = new InputSurface("toast", 200, 0, 100, 100, 2, takesFocus: false);
+        var surfaces = new[] { Surface("chat", 1, wantsKeyboard: true), toast };
+        router.Route(new NativeInputMessage(InputRouterService.WmLButtonDown, 0, Pack(10, 10)), surfaces);
+        router.Route(new NativeInputMessage(InputRouterService.WmLButtonUp, 0, Pack(10, 10)), surfaces);
+
+        var press = router.Route(new NativeInputMessage(InputRouterService.WmLButtonDown, 0, Pack(210, 10)), surfaces);
+        var release = router.Route(new NativeInputMessage(InputRouterService.WmLButtonUp, 0, Pack(210, 10)), surfaces);
+        var key = router.Route(new NativeInputMessage(InputRouterService.WmKeyDown, (nint)0x57, 0), surfaces);
+
+        Assert.Equal(("toast", (string?)null), (press.SurfaceId, press.ClearFocusSurfaceId));
+        Assert.Equal("toast", release.SurfaceId);
+        Assert.Equal((InputAction.KeyDown, "chat"), (key.Action, key.SurfaceId));
+    }
+
+    [Fact]
     public void Surface_focus_is_not_keyboard_focus_until_the_host_reports_text_focus()
     {
         var router = new InputRouterService();

@@ -15,7 +15,9 @@ public enum DerethGlyph
     Heart, Sword, ManaSerpent,
     Lock, Unlock,
     // the Market's search icon: a lens and its handle
-    Search
+    Search,
+    // the toasts' icons: a tick, a cut gem, an hourglass and a warning triangle
+    Tick, Gem, Hourglass, Warning
 }
 
 /// <summary>One drawn part of a glyph: an SVG path on a 24-unit grid, filled or stroked, at an opacity.</summary>
@@ -182,6 +184,24 @@ public static class DerethGlyphs
         {
             new("M10.5 4.5a6 6 0 1 1 0 12 6 6 0 0 1 0-12z", false, 2, 1, null),
             new("M15 15l5 5", false, 2.6, 1, null),
+        },
+        [DerethGlyph.Tick] = new GlyphPart[]
+        {
+            new("M5 12.5L9.5 17L19 7.5", false, 2, 1, null),
+        },
+        [DerethGlyph.Gem] = new GlyphPart[]
+        {
+            new("M6 4H18L21 9L12 20L3 9Z", false, 1.7, 1, null),
+            new("M3 9H21M9 4L12 20L15 4", false, 1.7, 1, null),
+        },
+        [DerethGlyph.Hourglass] = new GlyphPart[]
+        {
+            new("M7 3H17M7 21H17M8 3C8 8 16 8 16 12S8 16 8 21M16 3C16 8 8 8 8 12S16 16 16 21", false, 1.7, 1, null),
+        },
+        [DerethGlyph.Warning] = new GlyphPart[]
+        {
+            new("M12 4L2.5 20H21.5Z", false, 1.8, 1, null),
+            new("M12 10V14.5M12 17.5V17.51", false, 1.8, 1, null),
         },
         [DerethGlyph.LegACEy] = new GlyphPart[]
         {

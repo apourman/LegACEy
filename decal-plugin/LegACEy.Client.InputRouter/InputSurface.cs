@@ -9,8 +9,11 @@ public sealed class InputSurface
 
     /// <param name="wantsKeyboard">The surface takes every key while it has the focus: a text entry has it.</param>
     /// <param name="acceptsShortcut">The virtual keys the surface takes while it has the focus without wanting the keyboard. Other keys go to the game.</param>
-    public InputSurface(string id, int x, int y, int width, int height, int zOrder, bool wantsKeyboard = false, Func<int, bool>? acceptsShortcut = null)
+    /// <param name="takesFocus">False for a surface a press leaves the focus alone on, such as a toast: whatever had it keeps it.</param>
+    public InputSurface(string id, int x, int y, int width, int height, int zOrder, bool wantsKeyboard = false, Func<int, bool>? acceptsShortcut = null,
+        bool takesFocus = true)
     {
+        TakesFocus = takesFocus;
         Id = id;
         X = x;
         Y = y;
@@ -28,6 +31,7 @@ public sealed class InputSurface
     public int Height { get; }
     public int ZOrder { get; }
     public bool WantsKeyboard { get; }
+    public bool TakesFocus { get; }
 
     internal bool Contains(int x, int y) => x >= X && y >= Y && x < X + Width && y < Y + Height;
 
