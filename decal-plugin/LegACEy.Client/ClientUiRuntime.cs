@@ -616,12 +616,24 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _plugins?.SetServerActions(actions);
             if (actions.Contains(StormProtocol.Zone))
                 _serverChannel?.Request(StormProtocol.Zone, Array.Empty<byte>(), zone => { if (zone.Ok) ShowStorm(zone.Body); });
-            else if (_worldEffects != null) _worldEffects.StormZone = null;
+            else
+            {
+                if (_worldEffects != null) _worldEffects.StormZone = null;
+                Forget(LastStormFile);
+            }
             if (actions.Contains(WeatherProtocol.Zone))
                 _serverChannel?.Request(WeatherProtocol.Zone, Array.Empty<byte>(), weather => { if (weather.Ok) ShowWeather(weather.Body); });
-            else if (_worldEffects != null) _worldEffects.Weather = null;
+            else
+            {
+                if (_worldEffects != null) _worldEffects.Weather = null;
+                Forget(LastWeatherFile);
+            }
         });
     }
+
+    // The server's last storm and weather replies, kept so a fresh client draws them from its first frame: the server's reply comes a
+    // couple of seconds after the world is drawn, and until then retail's own sky would show. The reply corrects them.
+    private const string LastStormFile = "last-storm.bin", LastWeatherFile = "last-weather.bin";
 
     /// <summary>The storm fog test's zone, from the server: the ring of landblocks around it fills with fog.</summary>
     private void ShowStorm(byte[] body)
@@ -629,6 +641,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         try
         {
             if (_worldEffects != null) _worldEffects.StormZone = StormProtocol.ReadZone(body);
+            Remember(LastStormFile, body);
         }
         catch (Exception exception) { Log($"Could not read the storm zone: {exception.Message}"); }
     }
@@ -639,8 +652,33 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         try
         {
             if (_worldEffects != null) _worldEffects.Weather = WeatherProtocol.Read(body);
+            Remember(LastWeatherFile, body);
         }
         catch (Exception exception) { Log($"Could not read the weather: {exception.Message}"); }
+    }
+
+    private static void Remember(string file, byte[] body)
+    {
+        try { File.WriteAllBytes(IOPath.Combine(PluginDirectory, file), body); }
+        catch (Exception exception) { Log($"Could not keep {file}: {exception.Message}"); }
+    }
+
+    private static void Forget(string file)
+    {
+        try { File.Delete(IOPath.Combine(PluginDirectory, file)); }
+        catch (Exception exception) { Log($"Could not remove {file}: {exception.Message}"); }
+    }
+
+    /// <summary>The storm and weather the server last sent, read back at start.</summary>
+    private void ShowRemembered()
+    {
+        foreach (var (file, show) in new (string, Action<byte[]>)[] { (LastStormFile, ShowStorm), (LastWeatherFile, ShowWeather) })
+        {
+            var path = IOPath.Combine(PluginDirectory, file);
+            if (!File.Exists(path)) continue;
+            try { show(File.ReadAllBytes(path)); }
+            catch (Exception exception) { Log($"Could not read {file}: {exception.Message}"); }
+        }
     }
 
     /// <summary>A hit anywhere in sight, from the server: its number rises over the target.</summary>
@@ -681,8 +719,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_worldEffects != null)
         {
             _worldEffects.Selected = 0;
-            // The storm and weather stay for the next login: the server's reply comes a couple of seconds after the world is drawn, and
-            // until then retail's own sky would show. The reply corrects them.
+            // The storm and weather stay for the next login, as at start (LastStormFile).
             _worldEffects.Combat.Clear();
         }
         Guard(() => _textMode?.Hold(false));
@@ -730,6 +767,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             _worldEffects ??= WorldEffects.Create(_device, _portal, NativeUi.ReadMemory, Log);
             if (_worldEffects != null) _worldEffects.WaterStrength = _water.Strength;
+            ShowRemembered();
         }
         catch (Exception exception) { Log($"The selection outline and storm fog are off: {exception.Message}"); }
         Log("LegACEy UI ready.");
