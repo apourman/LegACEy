@@ -98,7 +98,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     private System.Numerics.Vector3 _lastOddMeasure;
     // The haze's fog over retail's world this frame (StormFog.TakeFog), and whether retail's own fog states have been logged once.
     private (uint Color, float Density)? _worldFog;
-    private bool _fogLogged;
+    private bool _fogLogged, _depthWritingAdditiveLogged;
     private static readonly RenderState[] FogStates =
         { RenderState.FogEnable, RenderState.FogColor, RenderState.FogTableMode, RenderState.FogVertexMode, RenderState.FogDensity, RenderState.RangeFogEnable };
 
@@ -311,7 +311,15 @@ internal sealed unsafe class WorldEffects : IDisposable
     private void ApplyFog((uint Color, float Density) fog)
     {
         // An additive draw (glows, like a lantern's) fogs to black, fading with distance; fogged to grey, its whole quad lit up (19 Oct).
-        var additive = GetRenderState(_device, RenderState.AlphaBlendEnable) != 0 && GetRenderState(_device, RenderState.DestBlend) == BlendOne;
+        // Only one not writing depth: retail leaves additive blend states on some terrain draws, which fogged whole patches black (20 Oct).
+        var additiveBlend = GetRenderState(_device, RenderState.AlphaBlendEnable) != 0 && GetRenderState(_device, RenderState.DestBlend) == BlendOne;
+        var additive = additiveBlend && GetRenderState(_device, RenderState.ZWriteEnable) == 0;
+        // ponytail: diagnostic for the 20 Oct black terrain patches; drop once a play-test shows this line.
+        if (additiveBlend && !additive && !_depthWritingAdditiveLogged)
+        {
+            _depthWritingAdditiveLogged = true;
+            _log($"Haze fog: a draw blends additively but writes depth (SrcBlend 0x{GetRenderState(_device, RenderState.SrcBlend):X}); fogged grey, not black.");
+        }
         SetRenderState(_device, RenderState.FogEnable, 1);
         SetRenderState(_device, RenderState.FogColor, unchecked((int)(0xFF000000 | (additive ? 0 : fog.Color))));
         SetRenderState(_device, RenderState.FogTableMode, 0);
