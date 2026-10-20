@@ -564,12 +564,16 @@ public sealed class WindowManager
     /// A moved window's place snapped, on each axis, to the nearest edge within <see cref="SnapDistance"/>: flush with the screen's edge,
     /// against a nearby window's or snap target's edge, or lined up with it.
     /// </summary>
-    private Point Snap(ManagedWindow window, Point location)
+    private Point Snap(ManagedWindow window, Point location) => Snap(location, window.Size,
+        _windows.Where(other => other != window).Select(other => other.Bounds).Concat(_snapTargets?.Invoke() ?? Enumerable.Empty<Rectangle>()));
+
+    /// <summary>The place of something moved outside this manager, such as the toolbar, snapped to the screen's edges and the windows.</summary>
+    public Point Snap(Point location, Size size) => Snap(location, size, _windows.Select(window => window.Bounds));
+
+    private Point Snap(Point location, Size size, IEnumerable<Rectangle> targets)
     {
-        var size = window.Size;
         var near = Rectangle.Inflate(new Rectangle(location, size), SnapDistance, SnapDistance);
-        var others = _windows.Where(other => other != window).Select(other => other.Bounds)
-            .Concat(_snapTargets?.Invoke() ?? Enumerable.Empty<Rectangle>()).Where(other => other.IntersectsWith(near)).ToList();
+        var others = targets.Where(other => other.IntersectsWith(near)).ToList();
         return new Point(
             Nearest(location.X, others.SelectMany(other => new[] { other.Left, other.Right, other.Left - size.Width, other.Right - size.Width })
                 .Append(0).Append(_screen.Width - size.Width)),
