@@ -81,7 +81,10 @@ every 6 hours the client asks GitHub for the newest published
 install, timed by the `update-check` file). A newer one is downloaded into
 `update\<version>\`, checked against its `SHA256SUMS.txt` and unpacked; a toast
 at the bottom centre and a chat line say it installs when the game closes (once
-per version), and the updater applies it then, so the next launch runs it. The
+per version), and the updater applies it then, so the next launch runs it. With
+one client running the toast also offers Log out and update, which asks first,
+only in peace stance, then logs out and closes the game; start it again from
+the launcher. The
 LegACEy menu shows the installed version and a Check button, which checks now
 past the hourly gap (at most once a minute) and shows Checking, then the
 outcome, as a toast and in chat; it is greyed out on a checkout build or with

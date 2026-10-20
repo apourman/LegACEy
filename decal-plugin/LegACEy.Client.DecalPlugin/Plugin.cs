@@ -127,7 +127,11 @@ public sealed unsafe class Plugin : FilterBase
     // Bridge.Raise on the client side catches every exception, so these plain forwards can't unwind into Decal.
     private void OnRenderFrame(object? sender, EventArgs e) => _events->Frame();
     private void OnLoginComplete(object? sender, EventArgs e) => _events->LoginComplete();
-    private void OnLogoff(object? sender, LogoffEventArgs e) => _events->Logoff();
+    private void OnLogoff(object? sender, LogoffEventArgs e)
+    {
+        _events->Logoff();
+        if (e.Type == LogoffEventType.Authorized && _events->LogoffAuthorized != null) _events->LogoffAuthorized();
+    }
     private void OnItemSelected(object? sender, ItemSelectedEventArgs e) => _events->ItemSelected();
     private void OnContainerOpened(object? sender, ContainerOpenedEventArgs e) => _events->ContainerOpened();
 

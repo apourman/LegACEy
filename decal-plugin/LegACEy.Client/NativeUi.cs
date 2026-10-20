@@ -157,9 +157,10 @@ internal static class NativeUi
     /// <summary>
     /// Ask to log out the way the retail bar's X button does: gmFloatyIndicatorsUI handles a click
     /// on element 0x100000FA by calling CM_UI::SendNotice_EndCharacterSession(1), and the game-play
-    /// UI answers that notice with the retail log out confirmation dialog.
+    /// UI answers that notice with the retail log out confirmation dialog. Without <paramref name="confirm"/> it sends 0, which is taken to
+    /// log out at once, without the dialog, for a caller that has asked already; that is still to be seen in game.
     /// </summary>
-    public static void RequestLogOut() { EnsureReady(); SendNoticeEndCharacterSession(1); }
+    public static void RequestLogOut(bool confirm = true) { EnsureReady(); SendNoticeEndCharacterSession(confirm ? 1 : 0); }
 
     public static bool IsUiLocked
     {

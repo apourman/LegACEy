@@ -7,11 +7,14 @@ using Avalonia.Media;
 
 namespace LegACEy.Client.Themes;
 
-/// <summary>A toast's icon, which also tints its ring: a search, a new thing, done, wait and a failure.</summary>
-public enum ToastIcon { Search, New, Done, Wait, Failed }
+/// <summary>A toast's icon, which also tints its ring: a search, a new thing, done, wait, a failure and a question to think twice about.</summary>
+public enum ToastIcon { Search, New, Done, Wait, Failed, Caution }
 
-/// <summary>A toast's button: its label and what it does. A quiet one is drawn muted, beside the main one.</summary>
-public sealed record ToastAction(string Label, Action Run, bool Quiet = false);
+/// <summary>
+/// A toast's button: its label and what it does. A quiet one is drawn muted, beside the main one. Unavailable says why the button can't be
+/// used now, or null when it can; the toast asks it every frame and again on the click, and greys the button with the reason beside it.
+/// </summary>
+public sealed record ToastAction(string Label, Action Run, bool Quiet = false, Func<string?>? Unavailable = null);
 
 /// <summary>
 /// What a toast shows: an icon, a title, a line or two of body, buttons, and how long it stays. No lifetime waits for the player; busy
@@ -55,6 +58,9 @@ public sealed class DerethNoticeToast : Border
     private readonly Border _card = new() { BorderBrush = DerethPalette.GoldDarkBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3), Background = Stone };
     private Border? _life;
     private Border? _busy;
+    // The buttons that can be unavailable, and the line that says why.
+    private readonly List<(Button Button, ToastAction Action)> _gated = new();
+    private TextBlock? _why;
     private ToastNotice? _notice;
     private TimeSpan _left;
     private DateTime _lastTick;
@@ -92,6 +98,7 @@ public sealed class DerethNoticeToast : Border
         var elapsed = now - _lastTick;
         _lastTick = now;
         if (!IsVisible || _notice == null) return;
+        Gate();
         if (_busy != null)
             Canvas.SetLeft(_busy, ((double)(now.Ticks % BusyCycle.Ticks) / BusyCycle.Ticks * 1.3 - 0.3) * TrackWidth);
         if (_notice.Lifetime is not { } lifetime) return;
@@ -106,6 +113,20 @@ public sealed class DerethNoticeToast : Border
     }
 
     private void Hide() => IsVisible = false;
+
+    private void Gate()
+    {
+        string? why = null;
+        foreach (var (button, action) in _gated)
+        {
+            var reason = action.Unavailable!();
+            button.IsEnabled = reason == null;
+            why ??= reason;
+        }
+        if (_why == null) return;
+        _why.Text = why;
+        _why.IsVisible = why != null;
+    }
 
     private Control Build(ToastNotice notice)
     {
@@ -158,9 +179,11 @@ public sealed class DerethNoticeToast : Border
             Place(grid, track, 2);
         }
         else _busy = null;
+        _gated.Clear();
+        _why = null;
         if (notice.Actions is { Count: > 0 } actions)
         {
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 9, 0, 0) };
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
             foreach (var action in actions)
             {
                 var button = new DerethButton
@@ -168,10 +191,27 @@ public sealed class DerethNoticeToast : Border
                     Content = action.Label, Height = 24, Padding = new Thickness(10, 0), FontFamily = DerethPalette.Title, FontSize = 13,
                     Foreground = action.Quiet ? DerethPalette.MutedBrush : DerethPalette.CreamBrush
                 };
-                button.Click += (_, _) => action.Run();
+                button.Click += (_, _) =>
+                {
+                    if (action.Unavailable?.Invoke() == null) action.Run();
+                    else Gate();
+                };
+                if (action.Unavailable != null) _gated.Add((button, action));
                 row.Children.Add(button);
             }
-            Place(grid, row, 3);
+            var line = new DockPanel { Margin = new Thickness(0, 9, 0, 0) };
+            DockPanel.SetDock(row, Dock.Left);
+            line.Children.Add(row);
+            if (_gated.Count > 0)
+            {
+                _why = new TextBlock
+                {
+                    FontFamily = DerethPalette.Body, FontSize = 11.5, Foreground = DerethPalette.MutedBrush, TextWrapping = TextWrapping.Wrap,
+                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0)
+                };
+                line.Children.Add(_why);
+            }
+            Place(grid, line, 3);
         }
 
         var whole = new Panel();
@@ -198,15 +238,17 @@ public sealed class DerethNoticeToast : Border
         grid.Children.Add(control);
     }
 
-    // the mockup's gold rim, around the gold icons
+    // the mockup's gold rim, around the gold icons, and its warning amber
     private static readonly Color GoldRim = Color.Parse("#C99A45");
+    private static readonly Color Amber = Color.Parse("#E0A04A");
 
     private static (DerethGlyph Glyph, Color Ink, Color Ring) Look(ToastIcon icon) => icon switch
     {
         ToastIcon.Search => (DerethGlyph.Search, DerethPalette.Gold, GoldRim),
         ToastIcon.New => (DerethGlyph.Gem, DerethPalette.Gold, GoldRim),
         ToastIcon.Done => (DerethGlyph.Tick, DerethPalette.TealText, Color.Parse("#3C7A4A")),
-        ToastIcon.Wait => (DerethGlyph.Hourglass, Color.Parse("#E0A04A"), DerethPalette.GoldDark),
+        ToastIcon.Wait => (DerethGlyph.Hourglass, Amber, DerethPalette.GoldDark),
+        ToastIcon.Caution => (DerethGlyph.Warning, Amber, DerethPalette.GoldDark),
         _ => (DerethGlyph.Warning, DerethPalette.Invalid, Color.Parse("#7A3A2C")),
     };
 }

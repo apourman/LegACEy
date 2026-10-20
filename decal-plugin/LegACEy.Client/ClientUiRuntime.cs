@@ -585,6 +585,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     public void LoginComplete()
     {
         _loggedIn = true;
+        // A Log out and update whose logout never came through is forgotten, so this session's own logout doesn't close the game.
+        _quitPending = false;
         _updates.Check();
         if (_failed || !NativeUi.Ready)
             return;
@@ -702,6 +704,20 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             Log($"Could not read the server's action list; plugins that need the server stay hidden: {exception.Message}");
             return Array.Empty<string>();
         }
+    }
+
+    /// <summary>
+    /// The server has let the character go. After Log out and update, this closes the game, as its window's × does, never by ending the
+    /// process from under it, and the updater waiting for it installs once it has gone. Still to be seen in game: that Decal raises this
+    /// Authorized logoff after our log out, and that retail closes cleanly on the WM_CLOSE.
+    /// </summary>
+    public void LogoffAuthorized()
+    {
+        if (!_quitPending) return;
+        _quitPending = false;
+        const int WmClose = 0x0010;
+        if (_gameWindow == IntPtr.Zero || !PostMessage(_gameWindow, WmClose, IntPtr.Zero, IntPtr.Zero))
+            Log($"Could not close the game to update: window {_gameWindow}");
     }
 
     public void Logoff()
@@ -1845,23 +1861,42 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const int UpdateToastLift = 110;
     private DerethNoticeToast? _updateToast;
     private ScreenSurface? _updateToastSurface;
+    // Log out and update asked to log out; the server's authorized logoff then closes the game.
+    private bool _quitPending;
 
     /// <summary>
     /// The toast for an updater notice, with its lifetime. What's new opens the release's page with <paramref name="open"/>; Try again calls
-    /// <paramref name="checkNow"/>.
+    /// <paramref name="checkNow"/>. With one client running, Ready's Log out and update <paramref name="show"/>s a confirm in its place, whose
+    /// Log out calls <paramref name="logOut"/> only while <paramref name="peace"/> holds and whose Cancel shows Ready again.
     /// </summary>
-    internal static ToastNotice UpdateToast(UpdateNotice notice, Action<string> open, Action checkNow) => notice.Kind switch
+    internal static ToastNotice UpdateToast(UpdateNotice notice, Action<string> open, Action checkNow, Action<ToastNotice> show, Func<bool> peace,
+        Action logOut) => notice.Kind switch
     {
         UpdateNoticeKind.Checking => new ToastNotice(ToastIcon.Search, "Checking for updates…", Busy: true),
-        UpdateNoticeKind.Ready => new ToastNotice(ToastIcon.New, $"LegACEy {notice.Version} is ready",
-            notice.SeveralClients ? "Downloaded. It installs once every game window is closed." : "Downloaded. It installs when you close the game.",
-            new[] { new ToastAction("What's new", () => open(PluginUpdates.ReleasePage(notice.Version!)), Quiet: true) }, TimeSpan.FromSeconds(12)),
+        UpdateNoticeKind.Ready => ReadyToast(notice, open, show, peace, logOut),
         UpdateNoticeKind.UpToDate => new ToastNotice(ToastIcon.Done, $"LegACEy {notice.Version} is up to date", Lifetime: TimeSpan.FromSeconds(4)),
         UpdateNoticeKind.Wait => new ToastNotice(ToastIcon.Wait, "Checked moments ago", "Try again in a minute. Another client on this PC may be checking too.",
             Lifetime: TimeSpan.FromSeconds(5)),
         _ => new ToastNotice(ToastIcon.Failed, "Couldn't check for updates", "GitHub didn't answer, or the download didn't verify. Try again later.",
             new[] { new ToastAction("Try again", checkNow) }, TimeSpan.FromSeconds(8)),
     };
+
+    // Several clients get no log out: the update installs only once every one has closed.
+    private static ToastNotice ReadyToast(UpdateNotice notice, Action<string> open, Action<ToastNotice> show, Func<bool> peace, Action logOut)
+    {
+        ToastNotice Ready(string body, params ToastAction[] actions) =>
+            new(ToastIcon.New, $"LegACEy {notice.Version} is ready", body, actions, TimeSpan.FromSeconds(12));
+        var whatsNew = new ToastAction("What's new", () => open(PluginUpdates.ReleasePage(notice.Version!)), Quiet: true);
+        if (notice.SeveralClients) return Ready("Downloaded. It installs once every game window is closed.", whatsNew);
+        var confirm = new ToastNotice(ToastIcon.Caution, "Log out and update?",
+            $"Your character logs out and the game closes while LegACEy {notice.Version} installs. Then start it again from your launcher.",
+            new[]
+            {
+                new ToastAction("Log out", logOut, Unavailable: () => peace() ? null : "Not while in combat"),
+                new ToastAction("Cancel", () => show(ReadyToast(notice, open, show, peace, logOut)), Quiet: true),
+            });
+        return Ready("Downloaded. It installs when you close the game.", new ToastAction("Log out and update", () => show(confirm)), whatsNew);
+    }
 
     /// <summary>An updater notice: its chat line, as before the toast, and its toast while the windows can show one.</summary>
     private void PostUpdateNotice(UpdateNotice notice)
@@ -1880,7 +1915,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _updateToastSurface = new ScreenSurface(_device, panel);
                 _updateToast = toast;
             }
-            _updateToast!.Show(UpdateToast(notice, OpenPage, () => _updates.CheckNow()));
+            _updateToast!.Show(UpdateToast(notice, OpenPage, () => _updates.CheckNow(), shown => _updateToast?.Show(shown), InPeace, LogOutToUpdate));
         }
         catch (Exception exception) { UpdateToastFailed(exception); }
     }
@@ -1919,6 +1954,26 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _updateToastSurface?.Dispose();
         _updateToastSurface = null;
         _updateToast = null;
+    }
+
+    // Peace stance stands in for "not in combat": a character can still be attacked in it, but the confirm has already asked.
+    private static bool InPeace()
+    {
+        try { return (RetailStance)Bridge.Fact(BridgeFact.CombatMode) == RetailStance.Peace; }
+        catch (Exception) { return false; }
+    }
+
+    /// <summary>The confirm's Log out: logs the character out, and the logoff then closes the game so the waiting updater can install.</summary>
+    private void LogOutToUpdate()
+    {
+        if (_quitPending) return;
+        try { NativeUi.RequestLogOut(confirm: false); }
+        catch (Exception exception)
+        {
+            Log($"Could not log out to update: {exception}");
+            return;
+        }
+        _quitPending = true;
     }
 
     /// <summary>Opens a web page in the player's browser.</summary>

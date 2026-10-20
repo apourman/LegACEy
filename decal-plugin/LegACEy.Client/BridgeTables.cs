@@ -32,6 +32,8 @@ public unsafe struct BridgeEvents
     public delegate* unmanaged[Stdcall]<void> Shutdown;
     /// <summary>Decal's CommandLineText: (UTF-8 text, length), returning 1 to eat the line. Null from a client built before it.</summary>
     public delegate* unmanaged[Stdcall]<byte*, int, int> CommandLine;
+    /// <summary>CharacterFilter.Logoff of the Authorized type, raised after Logoff. Null from a client built before it.</summary>
+    public delegate* unmanaged[Stdcall]<void> LogoffAuthorized;
 }
 
 /// <summary>
