@@ -16,8 +16,8 @@ public sealed class UpdateToastTests
     {
         var opened = new List<string>();
         var checks = 0;
-        ToastNotice Toast(UpdateNotice notice) => ClientUiRuntime.UpdateToast(notice, opened.Add, () => checks++);
         var toast = new DerethNoticeToast();
+        ToastNotice Toast(UpdateNotice notice) => ClientUiRuntime.UpdateToast(notice, opened.Add, () => checks++, toast.Show, () => true, () => { });
         using var panel = AvaloniaPanel.Create(() => toast, (int)DerethNoticeToast.CardWidth, 200);
 
         Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.Checking, null)));
@@ -25,7 +25,7 @@ public sealed class UpdateToastTests
         Assert.Empty(Buttons(panel));
 
         Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.Ready, "chat", Next)));
-        Assert.Equal(new[] { "LegACEy 0.11.0 is ready", "Downloaded. It installs when you close the game.", "What's new" }, Texts(panel));
+        Assert.Equal(new[] { "LegACEy 0.11.0 is ready", "Downloaded. It installs when you close the game.", "Log out and update", "What's new" }, Texts(panel));
         Press(panel, Buttons(panel).Single(button => button.Content as string == "What's new"));
         Assert.Equal(new[] { "https://github.com/apourman/LegACEy/releases/tag/decal-plugin-v0.11.0" }, opened);
 
@@ -58,7 +58,7 @@ public sealed class UpdateToastTests
         }
 
         // Wait lasts 5 s; the pointer over it holds it.
-        Show(panel, toast, ClientUiRuntime.UpdateToast(new UpdateNotice(UpdateNoticeKind.Wait, null), _ => { }, () => { }));
+        Show(panel, toast, Idle(new UpdateNotice(UpdateNoticeKind.Wait, null)));
         Wait(4);
         Assert.True(toast.IsVisible);
         panel.PointerMove(20, 20);
@@ -69,20 +69,81 @@ public sealed class UpdateToastTests
         Assert.False(toast.IsVisible);
 
         // Checking waits for the outcome, which replaces it with a fresh lifetime: Ready's 12 s.
-        Show(panel, toast, ClientUiRuntime.UpdateToast(new UpdateNotice(UpdateNoticeKind.Checking, null), _ => { }, () => { }));
+        Show(panel, toast, Idle(new UpdateNotice(UpdateNoticeKind.Checking, null)));
         Wait(3600);
         Assert.True(toast.IsVisible);
-        Show(panel, toast, ClientUiRuntime.UpdateToast(new UpdateNotice(UpdateNoticeKind.Ready, "chat", Next), _ => { }, () => { }));
+        Show(panel, toast, Idle(new UpdateNotice(UpdateNoticeKind.Ready, "chat", Next)));
         Assert.DoesNotContain("Checking for updates…", Texts(panel));
         Wait(11);
         Assert.True(toast.IsVisible);
         Wait(1.1);
         Assert.False(toast.IsVisible);
 
-        Show(panel, toast, ClientUiRuntime.UpdateToast(new UpdateNotice(UpdateNoticeKind.Checking, null), _ => { }, () => { }));
+        Show(panel, toast, Idle(new UpdateNotice(UpdateNoticeKind.Checking, null)));
         Press(panel, panel.Content.GetVisualDescendants().OfType<DerethPagerButton>().Single());
         Assert.False(toast.IsVisible);
     });
+
+    [Fact]
+    public void With_one_client_Ready_logs_out_after_a_confirm_that_waits_for_peace_and_with_several_it_offers_no_log_out() => RenderThread.Run(() =>
+    {
+        var now = new DateTime(2026, 10, 20, 12, 0, 0, DateTimeKind.Utc);
+        var peace = true;
+        var logOuts = 0;
+        var toast = new DerethNoticeToast(() => now);
+        using var panel = AvaloniaPanel.Create(() => toast, (int)DerethNoticeToast.CardWidth, 200);
+        ToastNotice Ready(bool severalClients) =>
+            ClientUiRuntime.UpdateToast(new UpdateNotice(UpdateNoticeKind.Ready, "chat", Next, severalClients), _ => { }, () => { }, toast.Show, () => peace, () => logOuts++);
+        Button Labelled(string label) => Buttons(panel).Single(button => button.Content as string == label);
+        void Wait(double seconds)
+        {
+            now += TimeSpan.FromSeconds(seconds);
+            toast.Tick();
+            panel.Tick();
+        }
+        var confirm = new[]
+        {
+            "Log out and update?", "Your character logs out and the game closes while LegACEy 0.11.0 installs. Then start it again from your launcher.",
+            "Log out", "Cancel"
+        };
+
+        // Several clients: logging this one out installs nothing.
+        Show(panel, toast, Ready(severalClients: true));
+        Assert.Equal(new[] { "What's new" }, Buttons(panel).Select(button => button.Content));
+
+        // One client: Log out and update asks first, and the question waits for an answer.
+        Show(panel, toast, Ready(severalClients: false));
+        Press(panel, Labelled("Log out and update"));
+        Assert.Equal(confirm, Texts(panel));
+        Wait(3600);
+        Assert.True(toast.IsVisible);
+        Press(panel, Labelled("Cancel"));
+        Assert.Equal(new[] { "LegACEy 0.11.0 is ready", "Downloaded. It installs when you close the game.", "Log out and update", "What's new" }, Texts(panel));
+        Assert.Equal(0, logOuts);
+
+        // The stance is read again on the click: drawn in peace, pressed in combat, it doesn't log out.
+        Press(panel, Labelled("Log out and update"));
+        Assert.True(Labelled("Log out").IsEnabled);
+        peace = false;
+        Press(panel, Labelled("Log out"));
+        Assert.Equal(0, logOuts);
+        Assert.False(Labelled("Log out").IsEnabled);
+        Assert.Contains("Not while in combat", Texts(panel));
+        Wait(1);
+        Press(panel, Labelled("Log out"));
+        Assert.Equal(0, logOuts);
+
+        // Back in peace, it lights again and logs out.
+        peace = true;
+        Wait(1);
+        Assert.True(Labelled("Log out").IsEnabled);
+        Assert.DoesNotContain("Not while in combat", Texts(panel));
+        Press(panel, Labelled("Log out"));
+        Assert.Equal(1, logOuts);
+    });
+
+    // An update toast whose buttons do nothing.
+    private static ToastNotice Idle(UpdateNotice notice) => ClientUiRuntime.UpdateToast(notice, _ => { }, () => { }, _ => { }, () => true, () => { });
 
     private static void Show(AvaloniaPanel panel, DerethNoticeToast toast, ToastNotice notice)
     {
@@ -103,5 +164,8 @@ public sealed class UpdateToastTests
         var centre = Avalonia.VisualExtensions.TranslatePoint(control, new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), panel.Content)!.Value;
         panel.PointerDown(centre.X, centre.Y);
         panel.PointerUp(centre.X, centre.Y);
+        // A button that put up another notice: its buttons can be hit from the next frame on.
+        panel.Tick();
+        panel.Tick();
     }
 }
