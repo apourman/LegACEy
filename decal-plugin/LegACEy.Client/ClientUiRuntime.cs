@@ -618,6 +618,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _serverChannel?.Request(StormProtocol.Zone, Array.Empty<byte>(), zone => { if (zone.Ok) ShowStorm(zone.Body); });
             if (actions.Contains(WeatherProtocol.Zone))
                 _serverChannel?.Request(WeatherProtocol.Zone, Array.Empty<byte>(), weather => { if (weather.Ok) ShowWeather(weather.Body); });
+            else if (_worldEffects != null) _worldEffects.Weather = null;
         });
     }
 
@@ -680,7 +681,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             _worldEffects.Selected = 0;
             _worldEffects.StormZone = null;
-            _worldEffects.Weather = null;
+            // The weather stays for the next login: the server's reply comes a couple of seconds after the world is drawn, and until then
+            // retail's own sky would show. The reply corrects it.
             _worldEffects.Combat.Clear();
         }
         Guard(() => _textMode?.Hold(false));
