@@ -1882,10 +1882,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // Several clients get no log out: the update installs only once every one has closed.
     private static ToastNotice ReadyToast(UpdateNotice notice, Action<string> open, Action<ToastNotice> show, Func<bool> peace, Action logOut)
     {
+        ToastNotice Ready(string body, params ToastAction[] actions) =>
+            new(ToastIcon.New, $"LegACEy {notice.Version} is ready", body, actions, TimeSpan.FromSeconds(12));
         var whatsNew = new ToastAction("What's new", () => open(PluginUpdates.ReleasePage(notice.Version!)), Quiet: true);
-        if (notice.SeveralClients)
-            return new ToastNotice(ToastIcon.New, $"LegACEy {notice.Version} is ready", "Downloaded. It installs once every game window is closed.",
-                new[] { whatsNew }, TimeSpan.FromSeconds(12));
+        if (notice.SeveralClients) return Ready("Downloaded. It installs once every game window is closed.", whatsNew);
         var confirm = new ToastNotice(ToastIcon.Caution, "Log out and update?",
             $"Your character logs out and the game closes while LegACEy {notice.Version} installs. Then start it again from your launcher.",
             new[]
@@ -1893,8 +1893,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 new ToastAction("Log out", logOut, Unavailable: () => peace() ? null : "Not while in combat"),
                 new ToastAction("Cancel", () => show(ReadyToast(notice, open, show, peace, logOut)), Quiet: true),
             });
-        return new ToastNotice(ToastIcon.New, $"LegACEy {notice.Version} is ready", "Downloaded. It installs when you close the game.",
-            new[] { new ToastAction("Log out and update", () => show(confirm)), whatsNew }, TimeSpan.FromSeconds(12));
+        return Ready("Downloaded. It installs when you close the game.", new ToastAction("Log out and update", () => show(confirm)), whatsNew);
     }
 
     /// <summary>An updater notice: its chat line, as before the toast, and its toast while the windows can show one.</summary>
