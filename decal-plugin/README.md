@@ -77,8 +77,8 @@ updater is already running.
 An install made by setup.exe can update itself; a build from a checkout never
 does, because only setup.exe puts `install.json` beside the main DLL. Nothing
 installs until the player asks. At login and every 6 hours the client asks
-GitHub for the newest published `decal-plugin-vX.Y.Z` release (at most once an
-hour for all clients on the install, timed by the `update-check` file, which
+GitHub for the newest published `decal-plugin-vX.Y.Z` release (at most once in
+5 minutes for all clients on the install, timed by the `update-check` file, which
 also passes the release it found to the other clients). A newer one is offered
 once per version by a toast at the bottom centre and a chat line, and again on
 every press of Check for updates.
@@ -88,7 +88,7 @@ into `update\<version>\`, checks it against its `SHA256SUMS.txt`, unpacks it,
 starts the updater, and logs out and closes the game. The updater applies it
 once every client has exited; start the game again from the launcher. The
 LegACEy menu shows the installed version and a Check button, which checks now
-past the hourly gap (at most once a minute) and shows Checking, then the
+past the shared gap (at most once a minute) and shows Checking, then the
 outcome, as a toast and in chat; it is greyed out on a checkout build or with
 `no-auto-update`. The checksum guards against a corrupt download, not a
 compromised release: the sums file comes from the same release. The updater
