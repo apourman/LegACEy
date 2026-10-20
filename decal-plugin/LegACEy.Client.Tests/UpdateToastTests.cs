@@ -186,6 +186,19 @@ public sealed class UpdateToastTests
         Assert.Equal(2, installs);
     });
 
+    [Fact]
+    public void The_toast_stands_clear_of_however_many_toolbar_rows_are_under_it()
+    {
+        var spot = new System.Drawing.Rectangle(400, 600, 300, 120);
+        var row1 = new System.Drawing.Rectangle(350, 680, 400, 40);
+        var row2 = new System.Drawing.Rectangle(350, 636, 400, 40);
+        var aside = new System.Drawing.Rectangle(0, 600, 200, 40);
+
+        Assert.Equal(spot, ClientUiRuntime.ClearOf(spot, new[] { aside }, 8));
+        Assert.Equal(new System.Drawing.Rectangle(400, 680 - 8 - 120, 300, 120), ClientUiRuntime.ClearOf(spot, new[] { row1, aside }, 8));
+        Assert.Equal(new System.Drawing.Rectangle(400, 636 - 8 - 120, 300, 120), ClientUiRuntime.ClearOf(spot, new[] { row2, row1 }, 8));
+    }
+
     // An update toast whose buttons do nothing.
     private static ToastNotice Idle(UpdateNotice notice) => ClientUiRuntime.UpdateToast(notice, _ => { }, () => { }, _ => { }, () => true, _ => { }, () => true);
 
