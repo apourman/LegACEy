@@ -7,8 +7,8 @@ using Avalonia.Media;
 
 namespace LegACEy.Client.Themes;
 
-/// <summary>A toast's icon, which also tints its ring: a search, a new thing, done, wait, a question to answer and a failure.</summary>
-public enum ToastIcon { Search, New, Done, Wait, Question, Failed }
+/// <summary>A toast's icon, which also tints its ring: a search, a new thing, done, wait and a failure.</summary>
+public enum ToastIcon { Search, New, Done, Wait, Failed }
 
 /// <summary>A toast's button: its label and what it does. A quiet one is drawn muted, beside the main one.</summary>
 public sealed record ToastAction(string Label, Action Run, bool Quiet = false);
@@ -109,7 +109,7 @@ public sealed class DerethNoticeToast : Border
     {
         var grid = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("38,*,20"), RowDefinitions = new RowDefinitions("Auto,Auto,Auto"),
+            ColumnDefinitions = new ColumnDefinitions("38,*,20"), RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto"),
             ColumnSpacing = 11, Margin = new Thickness(10, 10, 9, 11)
         };
         var (glyph, ink, ring) = Look(notice.Icon);
@@ -119,7 +119,7 @@ public sealed class DerethNoticeToast : Border
             Background = IconFill, VerticalAlignment = VerticalAlignment.Top,
             Child = new DerethGlyphIcon(glyph, ink) { Width = 19, Height = 19, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
         };
-        Grid.SetRowSpan(icon, 3);
+        Grid.SetRowSpan(icon, 4);
         grid.Children.Add(icon);
 
         // a title on its own stands in the middle of the icon
@@ -169,7 +169,7 @@ public sealed class DerethNoticeToast : Border
                 button.Click += (_, _) => action.Run();
                 row.Children.Add(button);
             }
-            Place(grid, row, 2);
+            Place(grid, row, 3);
         }
 
         var whole = new Panel();
@@ -196,13 +196,15 @@ public sealed class DerethNoticeToast : Border
         grid.Children.Add(control);
     }
 
+    // the mockup's gold rim, around the gold icons
+    private static readonly Color GoldRim = Color.Parse("#C99A45");
+
     private static (DerethGlyph Glyph, Color Ink, Color Ring) Look(ToastIcon icon) => icon switch
     {
-        ToastIcon.Search => (DerethGlyph.Search, DerethPalette.Gold, Color.Parse("#C99A45")),
-        ToastIcon.New => (DerethGlyph.Gem, DerethPalette.Gold, Color.Parse("#C99A45")),
+        ToastIcon.Search => (DerethGlyph.Search, DerethPalette.Gold, GoldRim),
+        ToastIcon.New => (DerethGlyph.Gem, DerethPalette.Gold, GoldRim),
         ToastIcon.Done => (DerethGlyph.Tick, DerethPalette.TealText, Color.Parse("#3C7A4A")),
         ToastIcon.Wait => (DerethGlyph.Hourglass, Color.Parse("#E0A04A"), DerethPalette.GoldDark),
-        ToastIcon.Question => (DerethGlyph.Warning, Color.Parse("#E0A04A"), DerethPalette.GoldDark),
         _ => (DerethGlyph.Warning, Color.Parse("#D9644E"), Color.Parse("#7A3A2C")),
     };
 }
