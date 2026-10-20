@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.2](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.10.1...decal-plugin-v0.10.2) (2026-10-20)
+
+
+### Performance
+
+* **decal-plugin:** draw snow, rain and the storm bank with less work per frame ([#79](https://github.com/apourman/LegACEy/issues/79)) ([6623ece](https://github.com/apourman/LegACEy/commit/6623ecedd89860d0e0b64f02a2854c2852b27056))
+
 ## [0.10.1](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.10.0...decal-plugin-v0.10.1) (2026-10-20)
 
 
