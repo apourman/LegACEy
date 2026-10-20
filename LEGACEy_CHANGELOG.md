@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/apourman/LegACEy/compare/v0.10.1...v0.11.0) (2026-10-20)
+
+
+### Features
+
+* add the in-game Market ([#74](https://github.com/apourman/LegACEy/issues/74)) ([568638b](https://github.com/apourman/LegACEy/commit/568638b7a6a944f3e260c7ae6757da433af4158d))
+
 ## [0.10.1](https://github.com/apourman/LegACEy/compare/v0.10.0...v0.10.1) (2026-10-19)
 
 
