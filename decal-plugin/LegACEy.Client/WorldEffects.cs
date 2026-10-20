@@ -67,6 +67,9 @@ internal sealed unsafe class WorldEffects : IDisposable
     private delegate int DrawIndexedFn(IntPtr device, int type, int baseVertex, uint minIndex, uint vertices, uint startIndex, uint primitives);
 
     [Function(CallingConventions.Stdcall)]
+    private delegate int DrawFn(IntPtr device, int type, uint startVertex, uint primitives);
+
+    [Function(CallingConventions.Stdcall)]
     private delegate int ResetFn(IntPtr device, IntPtr parameters);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -85,6 +88,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     private readonly Action<string> _log;
     private readonly IHook<SmartBoxDrawFn> _smartBoxHook;
     private readonly IHook<DrawIndexedFn> _drawHook;
+    private readonly IHook<DrawFn> _drawPrimitiveHook;
     private readonly IHook<ResetFn> _resetHook;
     private readonly StormFog _fog;
     private readonly Weather _weather;
@@ -98,7 +102,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     private System.Numerics.Vector3 _lastOddMeasure;
     // The haze's fog over retail's world this frame (StormFog.TakeFog), and whether retail's own fog states have been logged once.
     private (uint Color, float Density)? _worldFog;
-    private bool _fogLogged, _depthWritingAdditiveLogged;
+    private bool _fogLogged;
     private static readonly RenderState[] FogStates =
         { RenderState.FogEnable, RenderState.FogColor, RenderState.FogTableMode, RenderState.FogVertexMode, RenderState.FogDensity, RenderState.RangeFogEnable };
 
@@ -113,9 +117,11 @@ internal sealed unsafe class WorldEffects : IDisposable
         _root = GCHandle.Alloc(this);
         _smartBoxHook = ReloadedHooks.Instance.CreateHook<SmartBoxDrawFn>(OnSmartBoxDraw, SmartBoxDrawAddress);
         _drawHook = ReloadedHooks.Instance.CreateHook<DrawIndexedFn>(OnDrawIndexed, Method(device, DrawIndexedPrimitiveSlot).ToInt64());
+        _drawPrimitiveHook = ReloadedHooks.Instance.CreateHook<DrawFn>(OnDraw, Method(device, DrawPrimitiveSlot).ToInt64());
         _resetHook = ReloadedHooks.Instance.CreateHook<ResetFn>(OnReset, Method(device, ResetSlot).ToInt64());
         _resetHook.Activate();
         _drawHook.Activate();
+        _drawPrimitiveHook.Activate();
         _smartBoxHook.Activate();
     }
 
@@ -162,6 +168,12 @@ internal sealed unsafe class WorldEffects : IDisposable
             catch (Exception exception) { Fail(exception); }
         }
         var result = original(device, type, baseVertex, minIndex, vertices, startIndex, primitives);
+        // A glow's black fog colour is not left for a draw that does not pass through these hooks.
+        if (_inWorld && _worldFog is { } grey && device == _device && !_failed)
+        {
+            try { SetRenderState(_device, RenderState.FogColor, unchecked((int)(0xFF000000 | grey.Color))); }
+            catch (Exception exception) { Fail(exception); }
+        }
         var part = *DrawingPart;
         if (result < 0 || part == 0 || !_inWorld || _failed || device != _device) return result;
         var channels = 0;
@@ -190,6 +202,20 @@ internal sealed unsafe class WorldEffects : IDisposable
         try { DrawIntoMask(() => original(device, type, baseVertex, minIndex, vertices, startIndex, primitives), channels); }
         catch (Exception exception) { Fail(exception); }
         return result;
+    }
+
+    /// <summary>
+    /// Retail draws some of its world (terrain among it) unindexed. The haze's fog goes on before those too: they would otherwise keep the
+    /// last indexed draw's fog, black after a glow, and fog whole patches of ground black (20 Oct).
+    /// </summary>
+    private int OnDraw(IntPtr device, int type, uint startVertex, uint primitives)
+    {
+        if (_inWorld && _worldFog is { } fog && device == _device && !_failed)
+        {
+            try { ApplyFog(fog); }
+            catch (Exception exception) { Fail(exception); }
+        }
+        return _drawPrimitiveHook.OriginalFunction(device, type, startVertex, primitives);
     }
 
     private bool DrawsSelected()
@@ -311,15 +337,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     private void ApplyFog((uint Color, float Density) fog)
     {
         // An additive draw (glows, like a lantern's) fogs to black, fading with distance; fogged to grey, its whole quad lit up (19 Oct).
-        // Only one not writing depth: retail leaves additive blend states on some terrain draws, which fogged whole patches black (20 Oct).
-        var additiveBlend = GetRenderState(_device, RenderState.AlphaBlendEnable) != 0 && GetRenderState(_device, RenderState.DestBlend) == BlendOne;
-        var additive = additiveBlend && GetRenderState(_device, RenderState.ZWriteEnable) == 0;
-        // ponytail: diagnostic for the 20 Oct black terrain patches; drop once a play-test shows this line.
-        if (additiveBlend && !additive && !_depthWritingAdditiveLogged)
-        {
-            _depthWritingAdditiveLogged = true;
-            _log($"Haze fog: a draw blends additively but writes depth (SrcBlend 0x{GetRenderState(_device, RenderState.SrcBlend):X}); fogged grey, not black.");
-        }
+        var additive = GetRenderState(_device, RenderState.AlphaBlendEnable) != 0 && GetRenderState(_device, RenderState.DestBlend) == BlendOne;
         SetRenderState(_device, RenderState.FogEnable, 1);
         SetRenderState(_device, RenderState.FogColor, unchecked((int)(0xFF000000 | (additive ? 0 : fog.Color))));
         SetRenderState(_device, RenderState.FogTableMode, 0);
@@ -484,6 +502,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         // A hook that could not be disabled stays rooted, still calling back here.
         _smartBoxHook.Disable();
         _drawHook.Disable();
+        _drawPrimitiveHook.Disable();
         _resetHook.Disable();
         ReleaseTextures();
         _fog.Dispose();
