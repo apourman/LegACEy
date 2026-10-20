@@ -324,6 +324,9 @@ public sealed class WindowManager
     /// </summary>
     public const int CornerBand = 16;
 
+    /// <summary>How near, in screen pixels, a moved window's edge must come to the screen's edge or another window's to snap to it.</summary>
+    public const int SnapDistance = 8;
+
     private readonly List<ManagedWindow> _windows = new();
     private readonly IWindowPositionStore _positions;
     private readonly string _server;
@@ -464,7 +467,7 @@ public sealed class WindowManager
             Resize(_dragging, point);
             return;
         }
-        _dragging.Location = Clamp(new Point(point.X - _dragOffset.X, point.Y - _dragOffset.Y), _dragging.Size);
+        _dragging.Location = Clamp(Snap(_dragging, new Point(point.X - _dragOffset.X, point.Y - _dragOffset.Y)), _dragging.Size);
         _dragging.PreferredLocation = _dragging.Location;
     }
 
@@ -552,6 +555,25 @@ public sealed class WindowManager
         }
         return (start, WindowResizing.Clamp(length + delta, minimum, Math.Min(screen - start, maximum)));
     }
+
+    /// <summary>
+    /// A moved window's place snapped, on each axis, to the nearest edge within <see cref="SnapDistance"/>: flush with the screen's edge,
+    /// against a nearby window's edge, or lined up with it.
+    /// </summary>
+    private Point Snap(ManagedWindow window, Point location)
+    {
+        var size = window.Size;
+        var near = Rectangle.Inflate(new Rectangle(location, size), SnapDistance, SnapDistance);
+        var others = _windows.Where(other => other != window && other.Bounds.IntersectsWith(near)).Select(other => other.Bounds).ToList();
+        return new Point(
+            Nearest(location.X, others.SelectMany(other => new[] { other.Left, other.Right, other.Left - size.Width, other.Right - size.Width })
+                .Append(0).Append(_screen.Width - size.Width)),
+            Nearest(location.Y, others.SelectMany(other => new[] { other.Top, other.Bottom, other.Top - size.Height, other.Bottom - size.Height })
+                .Append(0).Append(_screen.Height - size.Height)));
+    }
+
+    private static int Nearest(int value, IEnumerable<int> edges) =>
+        edges.Where(edge => Math.Abs(edge - value) <= SnapDistance).OrderBy(edge => Math.Abs(edge - value)).DefaultIfEmpty(value).First();
 
     private void EndDrag()
     {

@@ -100,6 +100,24 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void A_moved_window_snaps_to_nearby_window_and_screen_edges()
+    {
+        var manager = NewManager();
+        manager.Open(new WindowDefinition("one", "One", 120, 80), new Point(100, 100));
+        manager.Open(new WindowDefinition("two", "Two", 120, 80), new Point(400, 300));
+        var one = manager.Get("one")!;
+        Assert.True(manager.Press(new Point(110, 110)));
+
+        // Five pixels short of two's left edge and five below its top: it snaps against two, tops lined up.
+        manager.Move(new Point(285, 315));
+        Assert.Equal(new Point(280, 300), one.Location);
+        manager.Move(new Point(14, 525));
+        Assert.Equal(new Point(0, 520), one.Location);
+        manager.Move(new Point(210, 210));
+        Assert.Equal(new Point(200, 200), one.Location);
+    }
+
+    [Fact]
     public void A_window_without_a_title_bar_moves_only_when_its_content_begins_the_move()
     {
         var manager = NewManager(300, 200);
