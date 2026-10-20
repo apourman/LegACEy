@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.2](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.11.1...decal-plugin-v0.11.2) (2026-10-20)
+
+
+### Bug Fixes
+
+* **decal-plugin:** update toast test moves the pointer off before its toast fades ([#87](https://github.com/apourman/LegACEy/issues/87)) ([c4477b1](https://github.com/apourman/LegACEy/commit/c4477b1d977aa08b2f52bbc1dd858597c68823c5))
+
 ## [0.11.1](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.11.0...decal-plugin-v0.11.1) (2026-10-20)
 
 
