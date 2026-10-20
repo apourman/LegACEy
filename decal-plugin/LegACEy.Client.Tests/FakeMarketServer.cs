@@ -134,7 +134,7 @@ public sealed class FakeMarketServer : IServerChannelTransport
                 Reply(id, action, ChannelStatus.Ok, MarketProtocol.WriteAccount(Account));
                 break;
             case MarketProtocol.VaultList:
-                Reply(id, action, ChannelStatus.Ok, VaultPage());
+                Reply(id, action, ChannelStatus.Ok, VaultPage(body));
                 break;
             case MarketProtocol.Sellable:
                 Reply(id, action, ChannelStatus.Ok, Sellable(body));
@@ -378,16 +378,20 @@ public sealed class FakeMarketServer : IServerChannelTransport
         public const string Delisted = "delisted";
     }
 
-    private byte[] VaultPage()
+    /// <summary>vault.list's reply: the page from the request's offset, at most its count</summary>
+    private byte[] VaultPage(byte[] body)
     {
-        var items = Vault.ToList();
+        var reader = ChannelWire.Reader(body);
+        ChannelWire.ReadString(reader);
+        var offset = reader.ReadInt32();
+        var items = Vault.Skip(offset).Take(reader.ReadInt32()).ToList();
         return ChannelWire.Body(w =>
         {
             w.Write((byte)1);
             w.Write(Account.Balance);
             w.Write(Account.VaultCapacity);
-            w.Write(items.Count);
-            w.Write(items.Count);
+            w.Write(Vault.Count);
+            w.Write(Vault.Count);
             w.Write(items.Count);
             foreach (var item in items)
             {
@@ -525,6 +529,14 @@ public sealed class FakeMarketServer : IServerChannelTransport
                 ChannelWire.WriteString(w, row.Status);
                 w.Write(new DateTimeOffset(DateTime.SpecifyKind(row.Created, DateTimeKind.Utc)).ToUnixTimeSeconds());
                 w.Write(row.Closed is DateTime closed ? new DateTimeOffset(DateTime.SpecifyKind(closed, DateTimeKind.Utc)).ToUnixTimeSeconds() : 0L);
+                // the icon from the item's Vault row, zeros once it is gone, as the server sends it
+                var item = Vault.FirstOrDefault(v => v.Guid == row.ItemGuid);
+                w.Write(item?.Visual.Plate ?? 0u);
+                w.Write(item?.Visual.Underlay ?? 0u);
+                w.Write(item?.Visual.Icon ?? 0u);
+                w.Write(item?.Visual.Overlay ?? 0u);
+                w.Write(item?.OverlaySecondary ?? 0u);
+                w.Write(unchecked((int)(item?.Visual.UiEffects ?? 0u)));
             }
         });
     }

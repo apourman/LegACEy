@@ -6,10 +6,8 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Avalonia.Media.Imaging;
 using Avalonia.Controls.Shapes;
 using LegACEy.Client.Demo;
-using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
 
 namespace LegACEy.Plugin.Market;
@@ -23,10 +21,7 @@ namespace LegACEy.Plugin.Market;
 public sealed class SellScreen : UserControl, IDisposable
 {
     private readonly SellViewModel _model;
-    private readonly IGameArtSource _art;
-    private readonly Dictionary<(uint Plate, uint Underlay, uint Icon, uint Overlay, uint Secondary, uint Effects), WriteableBitmap?> _images = new();
-    // the items' looks by GUID, as the tabs have shown them, so a listing row can draw its item's icon
-    private readonly Dictionary<uint, SellItem> _seen = new();
+    private readonly MarketIcons _icons;
     private MarketLayoutMode _mode = MarketLayoutMode.Medium;
     private bool _disposed;
 
@@ -44,7 +39,7 @@ public sealed class SellScreen : UserControl, IDisposable
     private readonly TextBlock _pickedDetail = MarketParts.Text(string.Empty, MarketInk.MutedBrush, 12);
     private readonly TextBox _price = new()
     {
-        Watermark = "Whole stack, MMD", Height = 38, MinHeight = 0, FontSize = 20, FontFamily = DerethPalette.Title, Foreground = DerethPalette.CreamBrush,
+        Watermark = "Whole stack", Height = 38, MinHeight = 0, FontSize = 20, FontFamily = DerethPalette.Title, Foreground = DerethPalette.CreamBrush,
         CaretBrush = DerethPalette.GoldBrush, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(0),
         VerticalContentAlignment = VerticalAlignment.Center,
     };
@@ -62,10 +57,10 @@ public sealed class SellScreen : UserControl, IDisposable
 
     private readonly Grid _layout = new() { ColumnSpacing = 14, RowSpacing = 14 };
 
-    public SellScreen(SellViewModel model, IGameArtSource art)
+    public SellScreen(SellViewModel model, MarketIcons icons)
     {
         _model = model ?? throw new ArgumentNullException(nameof(model));
-        _art = art ?? throw new ArgumentNullException(nameof(art));
+        _icons = icons ?? throw new ArgumentNullException(nameof(icons));
         _itemsScroll = new ScrollViewer { Content = _itemGrid, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
         _priceField = new Border
         {
@@ -164,11 +159,11 @@ public sealed class SellScreen : UserControl, IDisposable
         _itemTabs.Selected = _model.Tab == SellTab.Pack ? 0 : 1;
         _listingTabs.Selected = (int)_model.ListingTab;
 
-        foreach (var item in _model.Items) _seen[item.Guid] = item;
         RefreshItems();
         RefreshPrice();
         RefreshListings();
         _notice.Text = _model.Message;
+        _notice.Foreground = _model.MessageGood ? MarketInk.LitTextBrush : MarketInk.BadBrush;
         _notice.IsVisible = _model.Message.Length > 0;
     }
 
@@ -272,7 +267,7 @@ public sealed class SellScreen : UserControl, IDisposable
         }
 
         // the state tag: listed in gold, ending (under a day left) in amber, sold in green, expired muted
-        var ending = active && (timeLeft.Contains("hour") || timeLeft.Contains("minute"));
+        var ending = active && _model.Left(row) < TimeSpan.FromDays(1);
         var state = row.Status switch
         {
             "active" when ending => MarketParts.Tag("Ending", MarketInk.WarnBrush, DerethPalette.Brush(MarketInk.Warn.WithAlpha(0x1A)), caps: true),
@@ -282,7 +277,7 @@ public sealed class SellScreen : UserControl, IDisposable
         };
 
         var line = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto,Auto"), ColumnSpacing = 12 };
-        var icon = _seen.TryGetValue(row.ItemGuid, out var item) ? MarketParts.IconTile(Icon(item), 32) : MarketParts.IconTile(new Panel(), 32);
+        var icon = MarketParts.IconTile(_icons.For(row.Visual, row.OverlaySecondary), 32);
         line.Children.Add(icon);
         Grid.SetColumn(name, 1);
         line.Children.Add(name);
@@ -321,25 +316,10 @@ public sealed class SellScreen : UserControl, IDisposable
         return new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { field, confirm, cancel } };
     }
 
-    private string TimeText(ListingRow row) => row.Status switch
-    {
-        "sold" => row.Closed is DateTimeOffset sold ? $"sold {sold:yyyy-MM-dd}" : "sold",
-        "expired" => "expired",
-        _ => row.Status,
-    };
+    private static string TimeText(ListingRow row) =>
+        row.Status == "sold" && row.Closed is DateTimeOffset sold ? $"sold {sold:yyyy-MM-dd}" : row.Status;
 
-    private Control Icon(SellItem item) => DerethItemCells.Icon(Bitmap(item));
-
-    private WriteableBitmap? Bitmap(SellItem item)
-    {
-        var key = (item.Visual.Plate, item.Visual.Underlay, item.Visual.Icon, item.Visual.Overlay, item.OverlaySecondary, item.Visual.UiEffects);
-        if (!_images.TryGetValue(key, out var bitmap))
-        {
-            bitmap = GameArtImageExtension.CreateBitmap(ItemIcon.Draw(_art, item.Visual.Underlay, item.Visual.Icon, item.Visual.Overlay, item.OverlaySecondary, item.Visual.UiEffects, item.Visual.Plate));
-            _images.Add(key, bitmap);
-        }
-        return bitmap;
-    }
+    private Control Icon(SellItem item) => _icons.For(item.Visual, item.OverlaySecondary);
 
     private Control BuildContent()
     {
@@ -414,7 +394,5 @@ public sealed class SellScreen : UserControl, IDisposable
         _disposed = true;
         _model.Changed -= Refresh;
         _model.Dispose();
-        foreach (var image in _images.Values) image?.Dispose();
-        _images.Clear();
     }
 }

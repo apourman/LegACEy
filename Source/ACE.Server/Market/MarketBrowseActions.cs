@@ -266,7 +266,7 @@ namespace ACE.Server.Market
             w.Write(row.Item.StackSize);
             w.Write(row.Listing.Price);
             ChannelWire.WriteString(w, row.Seller ?? string.Empty);
-            w.Write(new DateTimeOffset(DateTime.SpecifyKind(row.Listing.CreatedTime, DateTimeKind.Utc)).ToUnixTimeSeconds());
+            w.Write(MarketSellActions.UnixSeconds(row.Listing.CreatedTime));
             w.Write((byte)(row.Listing.SellerAccountId == viewerAccountId ? 1 : 0));
             w.Write(ListingCatalog.Plate(row.Item.ItemType));
             w.Write(row.Item.IconUnderlay ?? 0);

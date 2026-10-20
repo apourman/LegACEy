@@ -37,6 +37,8 @@ public sealed class MarketSellTests
         Assert.Equal(0x5001u, market.Server.LastList!.Value.Guid);
         Assert.Equal(975L, market.Server.LastList!.Value.Price);
         Assert.True(Shows(market, "Ring of Rejuvenation is listed for 975 MMD for 14 days."));
+        Assert.Equal(MarketInk.LitTextBrush, market.Window.GetVisualDescendants().OfType<TextBlock>()
+            .First(text => (text.Text ?? string.Empty).Contains("is listed for 975 MMD", StringComparison.Ordinal)).Foreground);
         Assert.Empty(market.Server.Pack);
 
         // the pack no longer holds it, and the Vault shows it with the gold dot
@@ -66,6 +68,31 @@ public sealed class MarketSellTests
         Assert.True(Shows(market, "Atlan Sword is back in your Vault."));
         Assert.Equal("held", market.Server.Vault.Single().State);
         Assert.False(Shows(market, "3,500"), "its listing is no longer on the Active tab");
+    });
+
+    [Fact]
+    public void A_listing_with_minutes_left_is_tagged_ending() => RenderThread.Run(() =>
+    {
+        using var market = new MarketFixture(980);
+        market.Server.Vault.Add(new SellVaultItem(0x6001, "Atlan Sword", 1, "listed", Plain, 0));
+        market.Server.Seed(0x6001, "Atlan Sword", 3500, created: market.Now.AddDays(-14).AddMinutes(30));
+        market.Panel.Show(MarketScreen.Sell);
+        market.Settle();
+
+        Assert.True(Shows(market, "min left"));
+        Assert.True(IsShown(market, "ENDING"));
+    });
+
+    [Fact]
+    public void The_vault_tab_shows_every_item_past_the_first_page() => RenderThread.Run(() =>
+    {
+        using var market = new MarketFixture(980);
+        for (uint i = 0; i < 150; i++) market.Server.Vault.Add(new SellVaultItem(0x7000 + i, $"Pyreal {i}", 1, "held", Plain, 0));
+        market.Panel.Show(MarketScreen.Sell);
+        market.Sell.Model.ShowTab(SellTab.Vault);
+        market.Settle();
+
+        Assert.Equal(150, market.Sell.Model.Items.Count);
     });
 
     [Fact]

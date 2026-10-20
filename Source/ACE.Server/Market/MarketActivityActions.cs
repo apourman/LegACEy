@@ -101,7 +101,7 @@ namespace ACE.Server.Market
                             w.Write(line.Sequence);
                             w.Write(line.Amount);
                             w.Write(line.BalanceAfter);
-                            w.Write(UnixSeconds(line.Time));
+                            w.Write(MarketSellActions.UnixSeconds(line.Time));
                             ChannelWire.WriteString(w, line.Text);
                         }
                         w.Write(page.NextTransfersBefore ?? Newest);
@@ -110,7 +110,7 @@ namespace ACE.Server.Market
                         foreach (var movement in page.Movements)
                         {
                             w.Write(movement.Id);
-                            w.Write(UnixSeconds(movement.Time));
+                            w.Write(MarketSellActions.UnixSeconds(movement.Time));
                             ChannelWire.WriteString(w, movement.Kind);
                             ChannelWire.WriteString(w, movement.Text);
                         }
@@ -157,7 +157,5 @@ namespace ACE.Server.Market
         private static bool ValidCursor(long cursor) => cursor == Newest || cursor >= 1;
 
         private static long? Cursor(long cursor) => cursor == Newest ? null : cursor;
-
-        private static long UnixSeconds(DateTime time) => new DateTimeOffset(time).ToUnixTimeSeconds();
     }
 }

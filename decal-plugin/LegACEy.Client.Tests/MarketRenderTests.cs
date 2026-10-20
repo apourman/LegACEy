@@ -61,6 +61,7 @@ public sealed class MarketRenderTests
                 bitmap.Save(Path.Combine(folder, $"{width}-{name}.png"));
             }
 
+            Save("list");
             market.Browse.Select(market.Server.Catalog.First().Id);
             Save("browse");
             market.Browse.SetView(BrowseView.Table);

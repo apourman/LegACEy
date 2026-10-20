@@ -33,6 +33,8 @@ public sealed class SellViewModel : IDisposable
     private IReadOnlyList<SellVaultItem> _vault = Array.Empty<SellVaultItem>();
     // an item to pick once its tab has loaded: a pack listing the server left in the Vault
     private uint? _pendingPick;
+    // counts Vault loads, so a page answered for an older load is dropped
+    private int _vaultLoad;
     private bool _disposed;
 
     private readonly MarketSales? _sales;
@@ -58,7 +60,18 @@ public sealed class SellViewModel : IDisposable
     public string PriceText { get; private set; } = string.Empty;
     public bool Busy { get; private set; }
     /// <summary>The last server message: a listing's outcome, a delisting's, or why the account can't be read.</summary>
-    public string Message { get; private set; } = string.Empty;
+    public string Message
+    {
+        get => _message;
+        private set
+        {
+            _message = value;
+            MessageGood = false;
+        }
+    }
+    private string _message = string.Empty;
+    /// <summary>The message says something went through (listed, delisted, repriced), not why it didn't.</summary>
+    public bool MessageGood { get; private set; }
 
     public SellListingTab ListingTab { get; private set; } = SellListingTab.Active;
     /// <summary>The shown listing tab's page, or null before the server has answered it.</summary>
@@ -160,6 +173,7 @@ public sealed class SellViewModel : IDisposable
 
             var result = MarketProtocol.ReadOutcome(reply.Body);
             Message = result.Message;
+            MessageGood = result.Done;
             if (result.Done) Selected = null;
             if (result.Done) PriceText = string.Empty;
 
@@ -196,7 +210,9 @@ public sealed class SellViewModel : IDisposable
                 return;
             }
 
-            Message = MarketProtocol.ReadOutcome(reply.Body).Message;
+            var outcome = MarketProtocol.ReadOutcome(reply.Body);
+            Message = outcome.Message;
+            MessageGood = outcome.Done;
             LoadVault();
             ReloadListings();
         });
@@ -263,6 +279,7 @@ public sealed class SellViewModel : IDisposable
             {
                 var result = MarketProtocol.ReadOutcome(reply.Body);
                 Message = result.Message;
+                MessageGood = result.Done;
                 if (result.Done && RepriceListingId == listingId) RepriceListingId = null;
             }
             ReloadListings();
@@ -278,11 +295,14 @@ public sealed class SellViewModel : IDisposable
     /// <summary>The text as a whole number of MMD (digits only, and in range), or null when it isn't one.</summary>
     private static long? WholePrice(string text) => text.Length > 0 && text.All(char.IsDigit) && long.TryParse(text, out var price) ? price : null;
 
-    /// <summary>How much time an active listing has left, in the server's clock: "6 days left", "9 hours left", "40 min left", or "ended".</summary>
+    /// <summary>How much time an active listing has left, in the server's clock, or null before the listings and lifetime are known.</summary>
+    public TimeSpan? Left(ListingRow row) =>
+        Listings is { } page && LifetimeDays is int days ? row.Created.AddDays(days) - page.ServerNow : null;
+
+    /// <summary>The time left as words: "6 days left", "9 hours left", "40 min left", or "ended".</summary>
     public string TimeLeft(ListingRow row)
     {
-        if (Listings is not { } page || LifetimeDays is not int days) return string.Empty;
-        var left = row.Created.AddDays(days) - page.ServerNow;
+        if (Left(row) is not TimeSpan left) return string.Empty;
         if (left <= TimeSpan.Zero) return "ended";
         if (left.TotalDays >= 1) return Count((int)left.TotalDays, "day");
         if (left.TotalHours >= 1) return Count((int)left.TotalHours, "hour");
@@ -297,19 +317,29 @@ public sealed class SellViewModel : IDisposable
         Selected = null;
     }
 
-    private void LoadVault()
+    private void LoadVault() => LoadVaultPage(++_vaultLoad, new List<SellVaultItem>());
+
+    /// <summary>Reads the Vault a page at a time until all of it is in, then shows it. A newer load drops an older one's pages.</summary>
+    private void LoadVaultPage(int load, List<SellVaultItem> items)
     {
-        _client.Send(MarketProtocol.VaultList, MarketProtocol.VaultListRequest(0, MarketProtocol.SellablePageSize), reply =>
+        _client.Send(MarketProtocol.VaultList, MarketProtocol.VaultListRequest(items.Count, MarketProtocol.SellablePageSize), reply =>
         {
+            if (load != _vaultLoad) return;
             if (!reply.Ok)
             {
                 Message = reply.Message;
-                _vault = Array.Empty<SellVaultItem>();
+                items.Clear();
             }
-            else
+            else if (MarketProtocol.ReadVaultPage(reply.Body) is { } page)
             {
-                _vault = MarketProtocol.ReadVaultPage(reply.Body) ?? Array.Empty<SellVaultItem>();
+                items.AddRange(page.Items);
+                if (page.Items.Count > 0 && items.Count < page.Total)
+                {
+                    LoadVaultPage(load, items);
+                    return;
+                }
             }
+            _vault = items;
             Rebuild();
             RefreshAnswers();
         });

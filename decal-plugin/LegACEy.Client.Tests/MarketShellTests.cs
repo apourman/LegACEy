@@ -35,12 +35,13 @@ public sealed class MarketFixture : IDisposable
         Client = new MarketClient(_channel);
         Browse = new MarketBrowse(_channel);
         Sales = new MarketSales(_channel, (title, line) => Toasts.Add($"{title} {line}"), ChatLines.Add);
-        Sell = new SellScreen(new SellViewModel(Client, Inventory, Sales), new InventorySample.NoArt());
+        var icons = new MarketIcons(new NoArt());
+        Sell = new SellScreen(new SellViewModel(Client, Inventory, Sales), icons);
         MarketShellPanel? panel = null;
         MarketShellWindow? window = null;
         Host = AvaloniaPanel.Create(() =>
         {
-            panel = new MarketShellPanel(Client, Browse, new NoArt(), (seller, text) => { Server.Chat.Add($"/t {seller}, {text}"); return true; }, Sell, Sales);
+            panel = new MarketShellPanel(Client, Browse, icons, (seller, text) => { Server.Chat.Add($"/t {seller}, {text}"); return true; }, Sell, Sales);
             window = new MarketShellWindow(panel);
             window.CloseRequested += (_, _) => CloseRequests++;
             return window;

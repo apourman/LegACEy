@@ -54,8 +54,6 @@ public static class MarketInk
         StartPoint = new RelativePoint(0, 0.5, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 0.5, RelativeUnit.Relative),
         GradientStops = { new GradientStop(DerethPalette.Gold.WithAlpha(0x29), 0), new GradientStop(DerethPalette.Gold.WithAlpha(0x08), 1) }
     };
-    /// <summary>The window's ground behind the screens.</summary>
-    public static readonly IBrush GroundBrush = Vertical(Color.Parse("#17140F"), Color.Parse("#0D0B08"));
     public static readonly IBrush HoverBrush = DerethPalette.Brush(Color.FromArgb(0x10, 0xFF, 0xFF, 0xFF));
 
     public static IBrush Vertical(Color top, Color bottom) => new LinearGradientBrush
@@ -66,7 +64,7 @@ public static class MarketInk
 }
 
 /// <summary>The Market's line icons, the mockup's SVGs on a 20-unit grid, stroked in a colour that can change.</summary>
-public enum MarketIcon { Scales, Search, Browse, Star, StarFilled, Sell, Ledger, List, Tell, Sort, Back, Close }
+public enum MarketIcon { Scales, Search, Browse, Star, StarFilled, Sell, Ledger, List, Sort }
 
 /// <summary>A <see cref="MarketIcon"/> drawn as large as the control's smaller side.</summary>
 public sealed class MarketGlyph : Control
@@ -81,10 +79,7 @@ public sealed class MarketGlyph : Control
         [MarketIcon.Sell] = ("M3 10l7-7h7v7l-7 7zM13.5 5.2a1.3 1.3 0 1 1 0 2.6a1.3 1.3 0 1 1 0-2.6z", false, 1.5),
         [MarketIcon.Ledger] = ("M5 3h10v14H5zM8 7h4M8 10h4M8 13h2", false, 1.5),
         [MarketIcon.List] = ("M4 5h12M4 10h12M4 15h12", false, 1.5),
-        [MarketIcon.Tell] = ("M3 5h14v8H9l-4 3v-3H3z", false, 1.5),
         [MarketIcon.Sort] = ("M6 4v12M3 13l3 3 3-3M14 16V4M11 7l3-3 3 3", false, 1.5),
-        [MarketIcon.Back] = ("M12 4l-6 6 6 6", false, 1.8),
-        [MarketIcon.Close] = ("M5 5l10 10M15 5L5 15", false, 2),
     };
 
     private static readonly Dictionary<MarketIcon, Geometry> Shapes = new();
@@ -336,9 +331,11 @@ public static class MarketParts
 /// <summary>The top bar's search: a rounded sunk field with the lens, the text box and the "/" key hint.</summary>
 public sealed class MarketSearch : Border
 {
+    public TextBox Box { get; }
+
     public MarketSearch(string placeholder)
     {
-        var box = new TextBox
+        var box = Box = new TextBox
         {
             Watermark = placeholder, Foreground = DerethPalette.CreamBrush, CaretBrush = DerethPalette.GoldBrush, FontFamily = DerethPalette.Body,
             FontSize = 13.5, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(0), MinHeight = 0,

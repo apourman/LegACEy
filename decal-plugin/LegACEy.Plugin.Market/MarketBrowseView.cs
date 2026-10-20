@@ -7,9 +7,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Avalonia.Media.Imaging;
 using Avalonia.VisualTree;
-using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
 
 namespace LegACEy.Plugin.Market;
@@ -22,20 +20,12 @@ namespace LegACEy.Plugin.Market;
 /// </summary>
 public sealed class MarketBrowseView : UserControl, IDisposable
 {
-    /// <summary>The results' columns in each mode: three, two, one</summary>
-    private static readonly IReadOnlyDictionary<MarketLayoutMode, int> CardColumns = new Dictionary<MarketLayoutMode, int>
-    {
-        [MarketLayoutMode.Wide] = 3, [MarketLayoutMode.Medium] = 2, [MarketLayoutMode.Narrow] = 1,
-    };
-
     private const double WideDetailWidth = 352;
     private const double MediumDetailWidth = 340;
 
     private readonly MarketBrowse _model;
-    private readonly IGameArtSource _art;
+    private readonly MarketIcons _icons;
     private readonly Func<string, string, bool>? _tell;
-    private readonly EventHandler _modelChanged;
-    private readonly Dictionary<(uint Plate, uint Underlay, uint Icon, uint Overlay, uint OverlaySecondary, uint UiEffects), WriteableBitmap?> _icons = new();
     private MarketLayoutMode _mode = MarketLayoutMode.Medium;
     private object? _facetsShown;
     private bool _syncing;
@@ -60,7 +50,10 @@ public sealed class MarketBrowseView : UserControl, IDisposable
     private readonly TextBlock _count = MarketParts.Text(string.Empty, MarketInk.MutedBrush, 12.5);
     private readonly StackPanel _resultsHost = new() { Spacing = 8 };
     private readonly ScrollViewer _resultsScroll;
-    private readonly Border _detailHost = new() { IsVisible = false, BorderBrush = MarketInk.LineBrush };
+    private readonly Border _detailHost = new()
+    {
+        IsVisible = false, BorderBrush = MarketInk.LineBrush, Background = MarketInk.Vertical(Color.Parse("#27221A"), Color.Parse("#15120D")),
+    };
     private readonly Grid _detail = new() { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
     private readonly Grid _content = new();
     private readonly Border _editor;
@@ -68,20 +61,21 @@ public sealed class MarketBrowseView : UserControl, IDisposable
     private readonly TextBox _low = MarketParts.Field("Value", 28, 100);
     private readonly TextBox _high = MarketParts.Field("To", 28, 100);
     private readonly ComboBox _choiceBox = Combo(170);
+    // the cards/table toggle; a narrow window always draws rows, so it hides there
+    private Border _viewToggle = null!;
 
-    public MarketBrowseView(MarketBrowse model, IGameArtSource art, Func<string, string, bool>? tell = null)
+    public MarketBrowseView(MarketBrowse model, MarketIcons icons, Func<string, string, bool>? tell = null)
     {
         _model = model ?? throw new ArgumentNullException(nameof(model));
-        _art = art ?? throw new ArgumentNullException(nameof(art));
+        _icons = icons ?? throw new ArgumentNullException(nameof(icons));
         _tell = tell;
-        _modelChanged = OnModelChanged;
         _editor = MarketParts.Card(new Panel(), 8, new Thickness(12, 10));
         _editor.IsVisible = false;
         _suggestionsCard = MarketParts.Card(_suggestions, 8, new Thickness(4));
         _resultsScroll = new ScrollViewer { Content = _resultsHost, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         _resultsScroll.ScrollChanged += (_, _) => LoadMoreWhenNearEnd();
         Content = BuildContent();
-        _model.Changed += _modelChanged;
+        _model.Changed += OnModelChanged;
         ApplyMode();
         Rebuild();
     }
@@ -155,7 +149,7 @@ public sealed class MarketBrowseView : UserControl, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        _model.Changed -= _modelChanged;
+        _model.Changed -= OnModelChanged;
     }
 
     private void OnModelChanged(object? sender, EventArgs e) => Rebuild();
@@ -204,14 +198,14 @@ public sealed class MarketBrowseView : UserControl, IDisposable
         _toolbar.Children.Add(_sortButton);
         Grid.SetColumn(_direction, 3);
         _toolbar.Children.Add(_direction);
-        var toggle = new Border
+        _viewToggle = new Border
         {
             BorderBrush = MarketInk.LineBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), ClipToBounds = true,
             VerticalAlignment = VerticalAlignment.Center,
             Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { _viewCards, _viewTable } },
         };
-        Grid.SetColumn(toggle, 4);
-        _toolbar.Children.Add(toggle);
+        Grid.SetColumn(_viewToggle, 4);
+        _toolbar.Children.Add(_viewToggle);
 
         var top = new StackPanel { Spacing = 10 };
         top.Children.Add(_toolbar);
@@ -268,9 +262,8 @@ public sealed class MarketBrowseView : UserControl, IDisposable
         _detailHost.Width = wide ? WideDetailWidth : medium ? MediumDetailWidth : double.NaN;
         _detailHost.HorizontalAlignment = medium ? HorizontalAlignment.Right : HorizontalAlignment.Stretch;
         _detailHost.BorderThickness = _mode == MarketLayoutMode.Narrow ? new Thickness(0) : new Thickness(1, 0, 0, 0);
-        _detailHost.Background = MarketInk.Vertical(Color.Parse("#27221A"), Color.Parse("#15120D"));
         _detailHost.BoxShadow = medium ? BoxShadows.Parse("-24 0 40 0 #A6000000") : default;
-        _sortButton.IsVisible = _mode != MarketLayoutMode.Narrow;
+        _viewToggle.IsVisible = _mode != MarketLayoutMode.Narrow;
         // medium: the detail lies over the results in the same cell; wide: beside them; narrow: in the same cell, with the results hidden
         Grid.SetColumn(_detailHost, wide ? 1 : 0);
         _content.ColumnDefinitions[1].Width = wide ? GridLength.Auto : new GridLength(0);
@@ -390,7 +383,8 @@ public sealed class MarketBrowseView : UserControl, IDisposable
             foreach (var card in _model.Results) _resultsHost.Children.Add(RowControl(card));
             return;
         }
-        var columns = CardColumns[_mode];
+        // three columns wide, two medium; narrow drew rows above
+        var columns = _mode == MarketLayoutMode.Wide ? 3 : 2;
         var grid = new Grid { ColumnSpacing = 12, RowSpacing = 12 };
         for (var c = 0; c < columns; c++) grid.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star));
         var index = 0;
@@ -449,7 +443,7 @@ public sealed class MarketBrowseView : UserControl, IDisposable
 
         // head: the icon, the name and what it is
         var title = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 14, Margin = new Thickness(20, 16, 20, 12) };
-        title.Children.Add(MarketParts.IconTile(Icon(listing), 56));
+        title.Children.Add(MarketParts.IconTile(_icons.For(listing), 56));
         var names = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
         var name = MarketParts.Text(listing.Name, DerethPalette.CreamBrush, 19, title: true);
         name.TextWrapping = TextWrapping.Wrap;
@@ -558,10 +552,10 @@ public sealed class MarketBrowseView : UserControl, IDisposable
         return colon > 0 ? (line.Substring(0, colon), line.Substring(colon + 2)) : (string.Empty, line);
     }
 
-    /// <summary>The appraisal's label and value columns: muted labels 104 px wide, values wrapping beside them.</summary>
+    /// <summary>The appraisal's label and value columns: muted labels 140 px wide (room for "Lightning Protection"), values wrapping beside them.</summary>
     private static Grid KeyValues(IReadOnlyList<(string Key, string Value)> pairs)
     {
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("104,*"), RowSpacing = 5 };
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("140,*"), ColumnSpacing = 8, RowSpacing = 5 };
         for (var i = 0; i < pairs.Count; i++)
         {
             grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
@@ -601,8 +595,8 @@ public sealed class MarketBrowseView : UserControl, IDisposable
         return tags;
     }
 
-    private Control SellerLine(ListingCard card, double size = 11.5) => MarketParts.Text(
-        card.Own ? "Your listing" : $"{card.Seller} · {Ago(card.Listed)}", card.Own ? MarketInk.LitTextBrush : MarketInk.MutedBrush, size);
+    private static Control SellerLine(ListingCard card) => MarketParts.Text(
+        card.Own ? "Your listing" : $"{card.Seller} · {Ago(card.Listed)}", card.Own ? MarketInk.LitTextBrush : MarketInk.MutedBrush, 11.5);
 
     private Control CardControl(ListingCard card)
     {
@@ -614,7 +608,7 @@ public sealed class MarketBrowseView : UserControl, IDisposable
         names.Children.Add(name);
         names.Children.Add(MarketParts.Text(Subtitle(card), MarketInk.MutedBrush, 11.5));
         var top = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 10 };
-        top.Children.Add(MarketParts.IconTile(Icon(card), 44));
+        top.Children.Add(MarketParts.IconTile(_icons.For(card), 44));
         Grid.SetColumn(names, 1);
         top.Children.Add(names);
         var star = new MarketGlyph(MarketIcon.Star, MarketInk.Muted, 14) { VerticalAlignment = VerticalAlignment.Top };
@@ -665,7 +659,7 @@ public sealed class MarketBrowseView : UserControl, IDisposable
         seller.HorizontalAlignment = HorizontalAlignment.Right;
         end.Children.Add(seller);
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 12 };
-        row.Children.Add(MarketParts.IconTile(Icon(card), 40));
+        row.Children.Add(MarketParts.IconTile(_icons.For(card), 40));
         Grid.SetColumn(names, 1);
         row.Children.Add(names);
         Grid.SetColumn(end, 2);
@@ -750,7 +744,7 @@ public sealed class MarketBrowseView : UserControl, IDisposable
         text.Children.Add(MarketParts.Text(card.Name, DerethPalette.CreamBrush, 13));
         if (card.Quantity > 1) text.Children.Add(MarketParts.Text($"× {card.Quantity:N0}", MarketInk.MutedBrush, 11.5));
         var cell = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 10 };
-        cell.Children.Add(MarketParts.IconTile(Icon(card), 30));
+        cell.Children.Add(MarketParts.IconTile(_icons.For(card), 30));
         Grid.SetColumn(text, 1);
         cell.Children.Add(text);
         return cell;
@@ -773,20 +767,6 @@ public sealed class MarketBrowseView : UserControl, IDisposable
 
     private sealed record Column(string Header, string? Sort, string Width, Func<ListingCard, string> Cell, Func<ListingCard, IBrush> Brush,
         CellKind Kind = CellKind.Text, bool Right = false);
-
-    /// <summary>A listing's icon, from the game's art; the buy dialog draws it too.</summary>
-    public Control IconFor(ListingCard card) => Icon(card);
-
-    private Control Icon(ListingCard card)
-    {
-        var key = (card.Plate, card.Underlay, card.Icon, card.Overlay, card.OverlaySecondary, card.UiEffects);
-        if (!_icons.TryGetValue(key, out var bitmap))
-        {
-            bitmap = GameArtImageExtension.CreateBitmap(ItemIcon.Draw(_art, card.Underlay, card.Icon, card.Overlay, card.OverlaySecondary, card.UiEffects, card.Plate));
-            _icons[key] = bitmap;
-        }
-        return DerethItemCells.Icon(bitmap);
-    }
 
     private void ShowEditorFields()
     {

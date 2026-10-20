@@ -6,27 +6,11 @@ using LegACEy.Client.Demo;
 namespace LegACEy.Plugin.Market;
 
 /// <summary>The account as the server describes it for the Market window. Must match ACE.Server.Market.MarketChannelActions.</summary>
-public sealed class MarketAccount
-{
-    public MarketAccount(long balance, bool frozen, bool paused, int vaultCount, int vaultCapacity, int listingCount, int listingCap, string character)
-    {
-        Balance = balance; Frozen = frozen; Paused = paused; VaultCount = vaultCount; VaultCapacity = vaultCapacity;
-        ListingCount = listingCount; ListingCap = listingCap; Character = character;
-    }
-
-    /// <summary>The MMD balance</summary>
-    public long Balance { get; }
-    /// <summary>The account is banned, so its balance and Vault are frozen</summary>
-    public bool Frozen { get; }
-    /// <summary>The ledger audit paused the market: purchases and MMD withdrawals stop</summary>
-    public bool Paused { get; }
-    public int VaultCount { get; }
-    public int VaultCapacity { get; }
-    public int ListingCount { get; }
-    public int ListingCap { get; }
-    /// <summary>The character the window acts for: whose pack receives purchases</summary>
-    public string Character { get; }
-}
+/// <param name="Balance">the MMD balance</param>
+/// <param name="Frozen">the account is banned, so its balance and Vault are frozen</param>
+/// <param name="Paused">the ledger audit paused the market: purchases and MMD withdrawals stop</param>
+/// <param name="Character">the character the window acts for: whose pack receives purchases</param>
+public sealed record MarketAccount(long Balance, bool Frozen, bool Paused, int VaultCount, int VaultCapacity, int ListingCount, int ListingCap, string Character);
 
 /// <summary>One item's answer from market.sellable: whether it can be listed, and why not when it can't.</summary>
 public readonly record struct SellAnswer(uint Guid, bool Sellable, string Reason);
@@ -40,7 +24,8 @@ public readonly record struct SellOutcome(bool Done, bool InVault, string Messag
 public sealed record SaleNotice(long ListingId, string Item, string Buyer, long Price, long BalanceAfter);
 
 /// <summary>One of the account's listings, as market.listings describes it. Times are when the server saw them.</summary>
-public sealed record ListingRow(long Id, uint ItemGuid, string Name, long Price, string Status, DateTimeOffset Created, DateTimeOffset? Closed);
+public sealed record ListingRow(long Id, uint ItemGuid, string Name, long Price, string Status, DateTimeOffset Created, DateTimeOffset? Closed,
+    ItemVisual Visual, uint OverlaySecondary);
 
 /// <summary>One tab of the account's listings: the server's clock and listing lifetime, the tab's total, and the rows shown.</summary>
 public sealed record ListingsPage(DateTimeOffset ServerNow, int LifetimeDays, int Total, IReadOnlyList<ListingRow> Rows);
@@ -49,58 +34,18 @@ public sealed record ListingsPage(DateTimeOffset ServerNow, int LifetimeDays, in
 public sealed record SellVaultItem(uint Guid, string Name, int StackSize, string State, ItemVisual Visual, uint OverlaySecondary);
 
 /// <summary>A ledger line: its sequence (the cursor), signed amount, balance after it, when, and what happened.</summary>
-public sealed class LedgerLine
-{
-    public LedgerLine(long sequence, long amount, long balanceAfter, DateTimeOffset time, string text)
-    {
-        Sequence = sequence; Amount = amount; BalanceAfter = balanceAfter; Time = time; Text = text;
-    }
-
-    public long Sequence { get; }
-    public long Amount { get; }
-    public long BalanceAfter { get; }
-    public DateTimeOffset Time { get; }
-    public string Text { get; }
-}
+public sealed record LedgerLine(long Sequence, long Amount, long BalanceAfter, DateTimeOffset Time, string Text);
 
 /// <summary>An item movement: its id (the cursor), when, its kind (<see cref="MarketProtocol.SoldMovement"/> and so on), and what happened.</summary>
-public sealed class MovementLine
-{
-    public MovementLine(long id, DateTimeOffset time, string kind, string text)
-    {
-        Id = id; Time = time; Kind = kind; Text = text;
-    }
-
-    public long Id { get; }
-    public DateTimeOffset Time { get; }
-    public string Kind { get; }
-    public string Text { get; }
-}
+public sealed record MovementLine(long Id, DateTimeOffset Time, string Kind, string Text);
 
 /// <summary>One page of the account's history: the week's sales and purchases (on the newest page only), the ledger lines and item movements, and the cursors of the older pages.</summary>
-public sealed class HistoryPage
-{
-    public HistoryPage(long balance, long earned, long spent, int itemsSold, int itemsBought, IReadOnlyList<LedgerLine> lines, long nextLines,
-        IReadOnlyList<MovementLine> movements, long nextMovements)
-    {
-        Balance = balance; Earned = earned; Spent = spent; ItemsSold = itemsSold; ItemsBought = itemsBought;
-        Lines = lines; NextLines = nextLines; Movements = movements; NextMovements = nextMovements;
-    }
-
-    public long Balance { get; }
-    /// <summary>The MMD earned from sales this week, from the ledger</summary>
-    public long Earned { get; }
-    /// <summary>The MMD spent on purchases this week, from the ledger</summary>
-    public long Spent { get; }
-    public int ItemsSold { get; }
-    public int ItemsBought { get; }
-    public IReadOnlyList<LedgerLine> Lines { get; }
-    /// <summary>The cursor of the next older ledger page, or <see cref="MarketProtocol.Newest"/> when there is none</summary>
-    public long NextLines { get; }
-    public IReadOnlyList<MovementLine> Movements { get; }
-    /// <summary>The cursor of the next older movement page, or <see cref="MarketProtocol.Newest"/> when there is none</summary>
-    public long NextMovements { get; }
-}
+/// <param name="Earned">the MMD earned from sales this week, from the ledger</param>
+/// <param name="Spent">the MMD spent on purchases this week, from the ledger</param>
+/// <param name="NextLines">the cursor of the next older ledger page, or <see cref="MarketProtocol.Newest"/> when there is none</param>
+/// <param name="NextMovements">the cursor of the next older movement page, or <see cref="MarketProtocol.Newest"/> when there is none</param>
+public sealed record HistoryPage(long Balance, long Earned, long Spent, int ItemsSold, int ItemsBought, IReadOnlyList<LedgerLine> Lines, long NextLines,
+    IReadOnlyList<MovementLine> Movements, long NextMovements);
 
 /// <summary>Bodies of the Market's channel actions.</summary>
 public static class MarketProtocol
@@ -304,12 +249,19 @@ public static class MarketProtocol
             var status = ChannelWire.ReadString(reader);
             var created = DateTimeOffset.FromUnixTimeSeconds(reader.ReadInt64());
             var closed = reader.ReadInt64();
-            rows.Add(new ListingRow(id, guid, name, price, status, created, closed == 0 ? null : DateTimeOffset.FromUnixTimeSeconds(closed)));
+            var plate = reader.ReadUInt32();
+            var underlay = reader.ReadUInt32();
+            var icon = reader.ReadUInt32();
+            var overlay = reader.ReadUInt32();
+            var overlaySecondary = reader.ReadUInt32();
+            var uiEffects = reader.ReadInt32();
+            rows.Add(new ListingRow(id, guid, name, price, status, created, closed == 0 ? null : DateTimeOffset.FromUnixTimeSeconds(closed),
+                new ItemVisual(icon, underlay, overlay, unchecked((uint)uiEffects), plate), overlaySecondary));
         }
         return new ListingsPage(now, lifetime, total, rows);
     }
 
-    /// <summary>The first page of the Vault, every item whatever the search, as the Vault's own list asks.</summary>
+    /// <summary>A page of the Vault from an offset, every item whatever the search, as the Vault's own list asks.</summary>
     public static byte[] VaultListRequest(int offset, int count) => ChannelWire.Body(w =>
     {
         ChannelWire.WriteString(w, string.Empty);
@@ -317,15 +269,15 @@ public static class MarketProtocol
         w.Write(count);
     });
 
-    /// <summary>The Vault's items on the page, or null when the Vault is not available. Reads only what the Sell screen draws.</summary>
-    public static IReadOnlyList<SellVaultItem>? ReadVaultPage(byte[] body)
+    /// <summary>The Vault's items on the page and how many it holds in all, or null when the Vault is not available. Reads only what the Sell screen draws.</summary>
+    public static (IReadOnlyList<SellVaultItem> Items, int Total)? ReadVaultPage(byte[] body)
     {
         var reader = ChannelWire.Reader(body);
         if (reader.ReadByte() == 0) return null;
         reader.ReadInt64(); // balance
         reader.ReadInt32(); // capacity
         reader.ReadInt32(); // the Vault's count
-        reader.ReadInt32(); // the total matching
+        var total = reader.ReadInt32(); // the total matching
         var count = reader.ReadInt32();
         var items = new List<SellVaultItem>(count);
         for (var index = 0; index < count; index++)
@@ -346,7 +298,7 @@ public static class MarketProtocol
             var uiEffects = reader.ReadInt32();
             items.Add(new SellVaultItem(guid, name, stack, state, new ItemVisual(icon, underlay, overlay, unchecked((uint)uiEffects), plate), overlaySecondary));
         }
-        return items;
+        return (items, total);
     }
 
     public static byte[] WriteAccount(MarketAccount account) => ChannelWire.Body(w =>

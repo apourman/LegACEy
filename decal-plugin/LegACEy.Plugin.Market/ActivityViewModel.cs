@@ -8,18 +8,8 @@ namespace LegACEy.Plugin.Market;
 /// <summary>The ledger's tabs: every event, the MMD lines only, or the item movements only.</summary>
 public enum LedgerTab { All, Mmd, Items }
 
-/// <summary>One row of the ledger: when, what happened, and the balance after it (ledger lines only).</summary>
-public sealed class ActivityRow
-{
-    public ActivityRow(DateTimeOffset time, string text, long? balanceAfter)
-    {
-        Time = time; Text = text; BalanceAfter = balanceAfter;
-    }
-
-    public DateTimeOffset Time { get; }
-    public string Text { get; }
-    public long? BalanceAfter { get; }
-}
+/// <summary>One row of the ledger: when, what happened, and for a ledger line its signed amount and the balance after it.</summary>
+public sealed record ActivityRow(DateTimeOffset Time, string Text, long? Amount, long? BalanceAfter);
 
 /// <summary>
 /// The Activity screen's state: the history pages loaded so far, the tab, the week's figures and the trade note withdrawal. The pages are the
@@ -57,6 +47,8 @@ public sealed class ActivityViewModel
     public int ItemsBought { get; private set; }
     /// <summary>The server's plain message from the last withdrawal, or from a history request that failed</summary>
     public string Notice { get; private set; } = string.Empty;
+    /// <summary>The notice says a withdrawal went through, not why it didn't</summary>
+    public bool NoticeGood { get; private set; }
     /// <summary>The account the tiles show: its balance and listings. Null until the server has answered.</summary>
     public MarketAccount? Account => _client.Account;
     public bool Requesting => _requesting;
@@ -73,10 +65,10 @@ public sealed class ActivityViewModel
         get
         {
             var floor = Floor();
-            var lines = Tab == LedgerTab.Items ? Enumerable.Empty<ActivityRow>() : _lines.Select(l => new ActivityRow(l.Time, l.Text, l.BalanceAfter));
+            var lines = Tab == LedgerTab.Items ? Enumerable.Empty<ActivityRow>() : _lines.Select(l => new ActivityRow(l.Time, l.Text, l.Amount, l.BalanceAfter));
             var movements = Tab == LedgerTab.Mmd ? Enumerable.Empty<ActivityRow>() : _movements
                 .Where(m => Tab == LedgerTab.Items || (m.Kind != MarketProtocol.SoldMovement && m.Kind != MarketProtocol.BoughtMovement))
-                .Select(m => new ActivityRow(m.Time, m.Text, null));
+                .Select(m => new ActivityRow(m.Time, m.Text, null, null));
 
             var rows = lines.Concat(movements);
             if (Tab == LedgerTab.All && floor is DateTimeOffset from) rows = rows.Where(row => row.Time >= from);
@@ -116,6 +108,7 @@ public sealed class ActivityViewModel
         if (!long.TryParse(amountText?.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var amount))
         {
             Notice = "Type how many MMD to withdraw.";
+            NoticeGood = false;
             Changed?.Invoke(this, EventArgs.Empty);
             return;
         }
@@ -127,6 +120,7 @@ public sealed class ActivityViewModel
         {
             _withdrawing = false;
             Notice = message;
+            NoticeGood = accepted;
             if (accepted) Load(keepNotice: true);
             Changed?.Invoke(this, EventArgs.Empty);
         });
@@ -173,6 +167,7 @@ public sealed class ActivityViewModel
             if (page == null)
             {
                 Notice = message;
+                NoticeGood = false;
                 Changed?.Invoke(this, EventArgs.Empty);
                 return;
             }

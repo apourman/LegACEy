@@ -6,8 +6,6 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Avalonia.VisualTree;
-using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
 using static LegACEy.Client.Themes.DerethItemCells;
 
@@ -22,11 +20,8 @@ public enum MarketScreen { Browse, Sell, Activity }
 /// </summary>
 public sealed class MarketShellPanel : UserControl, IDisposable
 {
-    private static readonly MarketScreen[] Screens = { MarketScreen.Browse, MarketScreen.Sell, MarketScreen.Activity };
-
-    private static readonly IBrush InvalidBrush = DerethPalette.InvalidBrush;
-
     private readonly MarketClient _client;
+    private readonly MarketIcons _icons;
     private readonly MarketBrowse _browse;
     private readonly MarketBrowseView _browseView;
     // the Sell screen, owned by the panel: its model is disposed with it
@@ -52,7 +47,7 @@ public sealed class MarketShellPanel : UserControl, IDisposable
     private readonly Border _portraitFrame;
     private readonly TextBlock _notice = new()
     {
-        FontSize = 12, FontFamily = DerethPalette.Body, TextWrapping = TextWrapping.Wrap, Foreground = InvalidBrush,
+        FontSize = 12, FontFamily = DerethPalette.Body, TextWrapping = TextWrapping.Wrap, Foreground = DerethPalette.InvalidBrush,
         Margin = new Thickness(4, 4, 4, 0), IsVisible = false
     };
 
@@ -68,7 +63,7 @@ public sealed class MarketShellPanel : UserControl, IDisposable
     private readonly Grid _tabRow = new() { IsVisible = false };
     private readonly List<(MarketScreen Screen, MarketButton Button, MarketGlyph? Glyph, TextBlock? Label, NavShape Shape)> _navEntries = new();
     private enum NavShape { Row, Rail, Tab }
-    private readonly Dictionary<MarketScreen, Control> _screens = new();
+    private readonly Dictionary<MarketScreen, Control> _screens;
     private readonly Grid _body = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
     private readonly BuyDialog _buyDialog;
     // the purchase toast, bottom right over the window; it doesn't block, and goes on a click or after a while
@@ -84,21 +79,23 @@ public sealed class MarketShellPanel : UserControl, IDisposable
     private bool _disposed;
 
     /// <param name="browse">the Browse screen's state; the panel owns it, as it owns the client</param>
-    /// <param name="art">the game's art, for the item icons</param>
+    /// <param name="icons">the item icons, shared with the Sell screen; the panel owns them</param>
     /// <param name="tell">sends a tell to a seller: the name and the text. False when nothing was sent.</param>
     /// <param name="sell">the Sell screen; the panel owns it</param>
     /// <param name="sales">the unseen sales, which badge the Sell entries</param>
-    public MarketShellPanel(MarketClient client, MarketBrowse browse, IGameArtSource art, Func<string, string, bool>? tell, SellScreen sell,
+    public MarketShellPanel(MarketClient client, MarketBrowse browse, MarketIcons icons, Func<string, string, bool>? tell, SellScreen sell,
         MarketSales? sales = null)
     {
         _sales = sales;
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _browse = browse ?? throw new ArgumentNullException(nameof(browse));
-        _browseView = new MarketBrowseView(browse, art ?? throw new ArgumentNullException(nameof(art)), tell);
+        _icons = icons ?? throw new ArgumentNullException(nameof(icons));
+        _browseView = new MarketBrowseView(browse, icons, tell);
         _browseView.Balance = () => client.Account?.Balance;
         _sell = sell ?? throw new ArgumentNullException(nameof(sell));
         _activity = new ActivityScreen(client);
-        _buyDialog = new BuyDialog(browse, _browseView.IconFor);
+        _screens = new() { [MarketScreen.Browse] = _browseView, [MarketScreen.Sell] = _sell, [MarketScreen.Activity] = _activity };
+        _buyDialog = new BuyDialog(browse, icons.For);
         _portraitFrame = new Border
         {
             Width = 26, Height = 26, CornerRadius = new CornerRadius(13), BorderThickness = new Thickness(1), BorderBrush = MarketInk.GoldRimBrush,
@@ -115,18 +112,16 @@ public sealed class MarketShellPanel : UserControl, IDisposable
         _browse.Changed += OnBrowseChanged;
         _browse.Bought += OnBought;
         if (_sales != null) _sales.Changed += OnSalesChanged;
-        if (SearchBox() is { } box)
+        // typing suggests names; Enter searches for the text, as the portal's search does
+        var box = _search.Box;
+        box.TextChanged += (_, _) => { if (SearchHasFocus) _browse.SuggestFor(box.Text ?? string.Empty); };
+        box.KeyDown += (_, e) =>
         {
-            // typing suggests names; Enter searches for the text, as the portal's search does
-            box.TextChanged += (_, _) => { if (SearchHasFocus) _browse.SuggestFor(box.Text ?? string.Empty); };
-            box.KeyDown += (_, e) =>
-            {
-                if (e.Key != Key.Enter) return;
-                _browse.Search(box.Text ?? string.Empty);
-                _browse.ClearSuggestions();
-                e.Handled = true;
-            };
-        }
+            if (e.Key != Key.Enter) return;
+            _browse.Search(box.Text ?? string.Empty);
+            _browse.ClearSuggestions();
+            e.Handled = true;
+        };
         ApplyMode(_mode);
         RefreshBadges();
         Show(_screen);
@@ -231,10 +226,10 @@ public sealed class MarketShellPanel : UserControl, IDisposable
     public MarketLayoutMode Mode => _mode;
 
     /// <summary>Whether the search field has the keyboard.</summary>
-    public bool SearchHasFocus => SearchBox()?.IsFocused == true;
+    public bool SearchHasFocus => _search.Box.IsFocused;
 
     /// <summary>The text in the search field.</summary>
-    public string SearchText => SearchBox()?.Text ?? string.Empty;
+    public string SearchText => _search.Box.Text ?? string.Empty;
 
     /// <summary>The top bar's balance text.</summary>
     public string BalanceText => _balance.Text ?? string.Empty;
@@ -267,13 +262,11 @@ public sealed class MarketShellPanel : UserControl, IDisposable
     public void FocusSearch()
     {
         if (_mode == MarketLayoutMode.Narrow) _narrowSearchHost.IsVisible = true;
-        SearchBox()?.Focus();
+        _search.Box.Focus();
     }
 
     /// <summary>Whether a narrow window's full-width search row is open.</summary>
     public bool NarrowSearchOpen => _narrowSearchHost.IsVisible;
-
-    private TextBox? SearchBox() => _search.GetVisualDescendants().OfType<TextBox>().FirstOrDefault();
 
     private void OnClientChanged(object? sender, EventArgs e)
     {
@@ -289,7 +282,7 @@ public sealed class MarketShellPanel : UserControl, IDisposable
         _buyDialog.Show(_browse.Buying, _client.Account);
         if (SearchHasFocus) return;
         var name = _browse.Filters.FirstOrDefault(f => f.Key == "name")?.Low ?? string.Empty;
-        if (SearchBox() is { } box && box.Text != name) box.Text = name;
+        if (_search.Box.Text != name) _search.Box.Text = name;
     }
 
     /// <summary>Fills the top bar and the notice from the account the client has.</summary>
@@ -344,16 +337,8 @@ public sealed class MarketShellPanel : UserControl, IDisposable
 
     private void PlaceSearch(bool inRow)
     {
-        if (inRow)
-        {
-            _topSearchHost.Child = null;
-            _narrowSearchHost.Child = _search;
-        }
-        else
-        {
-            _narrowSearchHost.Child = null;
-            _topSearchHost.Child = _search;
-        }
+        (inRow ? _topSearchHost : _narrowSearchHost).Child = null;
+        (inRow ? _narrowSearchHost : _topSearchHost).Child = _search;
     }
 
     private Border _who = null!;
@@ -426,12 +411,7 @@ public sealed class MarketShellPanel : UserControl, IDisposable
 
         // the screens behind the navigation
         var content = new Grid();
-        foreach (var screen in Screens)
-        {
-            Control control = screen switch { MarketScreen.Browse => _browseView, MarketScreen.Sell => _sell, _ => _activity };
-            _screens[screen] = control;
-            content.Children.Add(control);
-        }
+        foreach (var screen in _screens.Values) content.Children.Add(screen);
 
         var column = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*") };
         Grid.SetRow(_tabRow, 0);
@@ -567,5 +547,6 @@ public sealed class MarketShellPanel : UserControl, IDisposable
         _sell.Dispose();
         _activity.Dispose();
         _client.Dispose();
+        _icons.Dispose();
     }
 }

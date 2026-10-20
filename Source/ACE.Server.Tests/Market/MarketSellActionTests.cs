@@ -684,6 +684,7 @@ namespace ACE.Server.Tests.Market
                 var status = ChannelWire.ReadString(reader);
                 reader.ReadInt64(); // created
                 reader.ReadInt64(); // closed
+                reader.ReadBytes(6 * 4); // the icon: plate, underlay, icon, overlay, second overlay, UI effects
                 rows.Add(new ListingRow(id, guid, name, price, status));
             }
             return new ListingsPage(now, lifetime, total, rows);

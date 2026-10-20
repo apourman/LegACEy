@@ -443,7 +443,7 @@ namespace ACE.Server.Market
         /// <summary>
         /// One tab of the account's listings (a byte for the tab, then the most to show). The reply is the server's clock, the lifetime setting in
         /// days, the tab's total, the count shown, then each listing: id, item guid, name, price, status, created and closed times (Unix seconds,
-        /// closed zero while open). A sold or expired listing's name is the item's own, which outlives the Vault row a buyer withdraws.
+        /// closed zero while open), and its icon (plate, underlay, icon, overlay, second overlay, UI effects; zeros once the Vault row is gone). A sold or expired listing's name is the item's own, which outlives the Vault row a buyer withdraws.
         /// </summary>
         private static void HandleListings(ChannelContext context)
         {
@@ -515,6 +515,13 @@ namespace ACE.Server.Market
                             ChannelWire.WriteString(w, listing.Status);
                             w.Write(UnixSeconds(listing.CreatedTime));
                             w.Write(listing.ClosedTime is DateTime closed ? UnixSeconds(closed) : 0L);
+                            var row = rowsByGuid.GetValueOrDefault(itemGuid);
+                            w.Write(row == null ? 0u : ListingCatalog.Plate(row.ItemType));
+                            w.Write(row?.IconUnderlay ?? 0);
+                            w.Write(row?.Icon ?? 0);
+                            w.Write(row?.IconOverlay ?? 0);
+                            w.Write(row?.IconOverlaySecondary ?? 0);
+                            w.Write(row?.UiEffects ?? 0);
                         }
                     }));
                 }
@@ -587,6 +594,7 @@ namespace ACE.Server.Market
             return false;
         }
 
-        private static long UnixSeconds(DateTime time) => new DateTimeOffset(DateTime.SpecifyKind(time, DateTimeKind.Utc)).ToUnixTimeSeconds();
+        /// <summary>A database time, which is UTC, as Unix seconds for the wire.</summary>
+        internal static long UnixSeconds(DateTime time) => new DateTimeOffset(DateTime.SpecifyKind(time, DateTimeKind.Utc)).ToUnixTimeSeconds();
     }
 }

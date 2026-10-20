@@ -61,14 +61,16 @@ public sealed class MarketPlugin : ILegACEyPlugin
     {
         MarketClient? market = null;
         MarketBrowse? browse = null;
+        MarketIcons? icons = null;
         SellScreen? sell = null;
         MarketShellPanel? panel = null;
         try
         {
             market = new MarketClient(channel);
             browse = new MarketBrowse(channel);
-            sell = new SellScreen(new SellViewModel(market, inventory, sales), art);
-            panel = new MarketShellPanel(market, browse, art, tell, sell, sales);
+            icons = new MarketIcons(art);
+            sell = new SellScreen(new SellViewModel(market, inventory, sales), icons);
+            panel = new MarketShellPanel(market, browse, icons, tell, sell, sales);
             var window = new MarketShellWindow(panel);
             window.CloseRequested += (_, _) => close();
             window.DetachedFromVisualTree += (_, _) => window.Dispose();
@@ -80,6 +82,7 @@ public sealed class MarketPlugin : ILegACEyPlugin
             panel?.Dispose();
             browse?.Dispose();
             sell?.Dispose();
+            icons?.Dispose();
             market?.Dispose();
             throw;
         }

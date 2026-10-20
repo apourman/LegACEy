@@ -123,8 +123,8 @@ public sealed class ActivityScreen : UserControl, IDisposable
         var account = _model.Account;
         _balance.Value.Text = account == null ? "—" : account.Balance.ToString("N0", CultureInfo.InvariantCulture);
         _listed.Value.Text = account == null ? "—" : $"{account.ListingCount:N0} / {account.ListingCap:N0}";
-        _earned.Value.Text = "+" + _model.Earned.ToString("N0", CultureInfo.InvariantCulture);
-        _spent.Value.Text = "−" + _model.Spent.ToString("N0", CultureInfo.InvariantCulture);
+        _earned.Value.Text = (_model.Earned > 0 ? "+" : string.Empty) + _model.Earned.ToString("N0", CultureInfo.InvariantCulture);
+        _spent.Value.Text = (_model.Spent > 0 ? "−" : string.Empty) + _model.Spent.ToString("N0", CultureInfo.InvariantCulture);
         _earned.Detail.Text = Items(_model.ItemsSold, "sold");
         _spent.Detail.Text = Items(_model.ItemsBought, "bought");
 
@@ -137,6 +137,7 @@ public sealed class ActivityScreen : UserControl, IDisposable
         _empty.IsVisible = _empty.Text.Length > 0;
 
         _notice.Text = _model.Notice;
+        _notice.Foreground = _model.NoticeGood ? MarketInk.LitTextBrush : MarketInk.BadBrush;
         _notice.IsVisible = _model.Notice.Length > 0;
         _withdraw.IsEnabled = !_model.Withdrawing;
 
@@ -149,7 +150,8 @@ public sealed class ActivityScreen : UserControl, IDisposable
     /// </summary>
     private static Control LedgerRow(ActivityRow row)
     {
-        var (what, amount) = SplitAmount(row.Text);
+        // a ledger line's text ends " · +50 MMD"; the amount is drawn on its own on the right
+        var what = row.Amount == null ? row.Text : row.Text.Substring(0, Math.Max(0, row.Text.LastIndexOf(" · ", StringComparison.Ordinal)));
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         var title = MarketParts.Text(what, DerethPalette.CreamBrush, 12.5);
         title.TextWrapping = TextWrapping.Wrap;
@@ -160,22 +162,14 @@ public sealed class ActivityScreen : UserControl, IDisposable
         grid.Children.Add(MarketParts.Text(When(row.Time.ToLocalTime()), MarketInk.MutedBrush, 11.5));
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);
-        var money = MarketParts.Text(amount, amount.StartsWith("+", StringComparison.Ordinal) ? DerethPalette.RaisedBrush : MarketInk.BadBrush, 13);
+        var money = MarketParts.Text(row.Amount switch { null => string.Empty, >= 0 and var up => $"+{up:N0}", var down => $"−{-down:N0}" },
+            row.Amount >= 0 ? DerethPalette.RaisedBrush : MarketInk.BadBrush, 13);
         Grid.SetColumn(money, 2);
         grid.Children.Add(money);
         return new Border
         {
             Tag = row.Text, Child = grid, Padding = new Thickness(0, 7), BorderBrush = MarketInk.LineSoftBrush, BorderThickness = new Thickness(0, 0, 0, 1),
         };
-    }
-
-    /// <summary>"Sold Sword to Bob · +50 MMD" as "Sold Sword to Bob" and "+50"; a line with no amount keeps all its words.</summary>
-    private static (string What, string Amount) SplitAmount(string text)
-    {
-        var dot = text.LastIndexOf(" · ", StringComparison.Ordinal);
-        if (dot < 0 || !text.EndsWith(" MMD", StringComparison.Ordinal)) return (text, string.Empty);
-        var amount = text.Substring(dot + 3, text.Length - dot - 3 - 4);
-        return amount.Length > 0 && (amount[0] == '+' || amount[0] == '−') ? (text.Substring(0, dot), amount) : (text, string.Empty);
     }
 
     /// <summary>A ledger time: the clock today, "Yest." yesterday, the date before that</summary>
@@ -259,12 +253,6 @@ public sealed class ActivityScreen : UserControl, IDisposable
         ApplyNarrowTab();
     }
 
-    private void ChooseNarrowTab(NarrowActivityTab tab)
-    {
-        _narrowTab = tab;
-        ApplyNarrowTab();
-    }
-
     private void ApplyNarrowTab()
     {
         var narrow = _mode == MarketLayoutMode.Narrow;
@@ -276,7 +264,11 @@ public sealed class ActivityScreen : UserControl, IDisposable
     private Control BuildContent()
     {
         _withdraw.Click += (_, _) => _model.WithdrawNotes(_amount.Text ?? string.Empty);
-        _narrowTabs.Chosen += index => ChooseNarrowTab((NarrowActivityTab)index);
+        _narrowTabs.Chosen += index =>
+        {
+            _narrowTab = (NarrowActivityTab)index;
+            ApplyNarrowTab();
+        };
         _ledgerTabs.Chosen += index => _model.SelectTab((LedgerTab)index);
 
         // rows: the body takes what is left, so the ledger's scroll viewer has a height to scroll in
@@ -327,17 +319,7 @@ public sealed class ActivityScreen : UserControl, IDisposable
     }
 
     /// <summary>One tile: the frame the grid places, and the value and detail lines the screen fills</summary>
-    private sealed class TileParts
-    {
-        public TileParts(Border frame, TextBlock value, TextBlock detail)
-        {
-            Frame = frame; Value = value; Detail = detail;
-        }
-
-        public Border Frame { get; }
-        public TextBlock Value { get; }
-        public TextBlock Detail { get; }
-    }
+    private sealed record TileParts(Border Frame, TextBlock Value, TextBlock Detail);
 
     /// <summary>A figure tile: a small-caps name, the value in large Palatino (with the coin for the balance), and a muted line under it.</summary>
     private static TileParts NewTile(string label, string detail, bool coin = false, IBrush? ink = null)
