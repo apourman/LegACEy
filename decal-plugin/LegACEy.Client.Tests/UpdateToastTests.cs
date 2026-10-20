@@ -172,6 +172,8 @@ public sealed class UpdateToastTests
         loggedOut = false;
         Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.Downloaded, "chat", Next)));
         Assert.Equal(new[] { "Couldn't log out", "Log out yourself. It installs when you close the game." }, Texts(panel));
+        // The pointer is still where Log out was pressed; off the toast, so hovering doesn't hold it (where it lands depends on the font).
+        panel.PointerLeave();
         Wait(9);
         Assert.False(toast.IsVisible);
 
