@@ -415,15 +415,18 @@ public sealed class WindowManager
     /// <summary>
     /// Makes a window bigger or smaller by <paramref name="steps"/> of <see cref="SizeStep"/> percent (a wheel notch is one), within
     /// <see cref="SmallestSize"/> and <see cref="LargestSize"/>, on top of the manager's scale. Its top-left corner stays, within the screen,
-    /// and the size is saved for the character. False when the window is not open, is being dragged, retail's UI is locked or the size is at
-    /// its limit.
+    /// and the size is saved for the character. Something this manager does not open, such as the toolbar, which draws itself, has only its
+    /// size saved, for <see cref="ScaleOf"/>. False when the window is being dragged, retail's UI is locked or the size is at its limit.
     /// </summary>
     public bool Rescale(string id, int steps)
     {
         var window = Get(id);
-        if (window == null || _dragging == window || Locked) return false;
-        var sizePercent = Math.Max(SmallestSize, Math.Min(LargestSize, window.SizePercent + steps * SizeStep));
-        if (sizePercent == window.SizePercent) return false;
+        if (_dragging != null && _dragging == window || Locked) return false;
+        var current = window?.SizePercent ?? SavedSizePercent(id);
+        var sizePercent = Math.Max(SmallestSize, Math.Min(LargestSize, current + steps * SizeStep));
+        if (sizePercent == current) return false;
+        _positions.Save(_server, _character, SizeKey(id), (new Point(sizePercent, 0), null));
+        if (window == null) return true;
         var designSize = Scaled(window.PreferredSize, 1 / window.Scale);
         window.SizePercent = sizePercent;
         window.Scale = Scale * sizePercent / 100;
@@ -431,7 +434,6 @@ public sealed class WindowManager
         window.PreferredSize = window.Definition.Resizing != null ? Scaled(designSize, window.Scale) : DefaultSize(window.Definition);
         window.Size = FitSize(window.Definition, window.PreferredSize, _screen);
         window.Location = Clamp(window.PreferredLocation, window.Size);
-        _positions.Save(_server, _character, SizeKey(id), (new Point(sizePercent, 0), null));
         Save(window);
         return true;
     }

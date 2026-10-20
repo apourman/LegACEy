@@ -112,6 +112,17 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void Something_the_manager_does_not_open_keeps_its_own_size_for_the_character()
+    {
+        var store = new MemoryWindowPositionStore();
+        var manager = new WindowManager(new Size(800, 600), store, "server", "character", scale: 0.5);
+
+        Assert.True(manager.Rescale("toolbar", -2));
+        Assert.Equal(0.4, manager.ScaleOf("toolbar"), 3);
+        Assert.Equal(0.4, new WindowManager(new Size(800, 600), store, "server", "character", scale: 0.5).ScaleOf("toolbar"), 3);
+    }
+
+    [Fact]
     public void A_locked_ui_does_not_rescale_windows()
     {
         var manager = new WindowManager(new Size(800, 600), new MemoryWindowPositionStore(), "server", "character", uiLocked: () => true);

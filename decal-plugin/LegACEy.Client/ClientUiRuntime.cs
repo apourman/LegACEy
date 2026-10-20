@@ -2192,7 +2192,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         surface.Visible = bar.Visible && tab.IsShown;
         if (surface.Visible)
         {
-            var scale = WindowScale;
+            var scale = surface.Panel.Scale;
             tab.Measure(Avalonia.Size.Infinity);
             int width = WholePixels(tab.DesiredSize.Width * scale), height = WholePixels(tab.DesiredSize.Height * scale);
             if (surface.Panel.Frame.Width != width || surface.Panel.Frame.Height != height) surface.Panel.Resize(width, height);
@@ -2212,11 +2212,32 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (_toolbarPlaceLoaded || !_inGame || _toolbarPlace == null || _toolbarSurface == null) return;
         _toolbarPlaceLoaded = true;
+        ScaleToolbar();
         if (_positionStore.Load(SessionServer(), SessionCharacter(), ToolbarPlaceId) is not { } saved) return;
         var screen = GameDevice.ViewportSize(_device);
         var size = _toolbarSurface.Bounds.Size;
         _toolbarPlace.Location = new Point(Math.Max(0, Math.Min(screen.Width - size.Width, saved.Location.X)),
             Math.Max(0, Math.Min(screen.Height - size.Height, saved.Location.Y)));
+    }
+
+    /// <summary>
+    /// Draws the toolbar at this character's toolbar scale, the window scale times its own size, and lays it out again at its new size. Its
+    /// top-left corner stays, within the screen. The split tab over it takes the scale too.
+    /// </summary>
+    private void ScaleToolbar()
+    {
+        if (!AvaloniaPanel.CanScale || _windows == null || _toolbar is not { } toolbar || _toolbarSurface is not { } surface) return;
+        var scale = _windows.ScaleOf(ToolbarPlaceId);
+        if (surface.Panel.Scale == scale) return;
+        surface.Panel.Resize(surface.Panel.Frame.Width, surface.Panel.Frame.Height, scale);
+        toolbar.InvalidateMeasure();
+        toolbar.Measure(Avalonia.Size.Infinity);
+        surface.Panel.Resize(WholePixels(toolbar.DesiredSize.Width * scale), WholePixels(toolbar.DesiredSize.Height * scale));
+        if (_splitTabSurface is { } split) split.Panel.Resize(split.Panel.Frame.Width, split.Panel.Frame.Height, scale);
+        var screen = GameDevice.ViewportSize(_device);
+        var size = surface.Bounds.Size;
+        var kept = new Point(Math.Max(0, Math.Min(screen.Width - size.Width, surface.Location.X)), Math.Max(0, Math.Min(screen.Height - size.Height, surface.Location.Y)));
+        if (kept != surface.Location) _toolbarTakeover?.MoveTo(kept);
     }
 
     private void SaveToolbarPlace(Point location)
@@ -3163,9 +3184,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     eat = route.Eat;
                     break;
                 case InputAction.MouseWheel:
-                    // Ctrl and the wheel over a LegACEy window make that window bigger or smaller, and its content does not scroll. Over chat
-                    // they keep changing its text size.
-                    if ((route.Modifiers & InputModifiers.Control) != 0 && route.SurfaceId != null && _windows?.Get(route.SurfaceId) != null
+                    // Ctrl and the wheel over a LegACEy window or the toolbar make it bigger or smaller, and its content does not scroll. Over
+                    // chat they keep changing its text size.
+                    if ((route.Modifiers & InputModifiers.Control) != 0 && route.SurfaceId == ToolbarSurfaceId && _toolbarTakeover?.Holds == true)
+                    {
+                        if (AvaloniaPanel.CanScale && _windows?.Rescale(ToolbarPlaceId, Math.Sign(route.WheelDelta)) == true) ScaleToolbar();
+                    }
+                    else if ((route.Modifiers & InputModifiers.Control) != 0 && route.SurfaceId != null && _windows?.Get(route.SurfaceId) != null
                         && !RetailChatWindows.IsChat(route.SurfaceId))
                         RescaleWindow(route.SurfaceId, Math.Sign(route.WheelDelta));
                     else
