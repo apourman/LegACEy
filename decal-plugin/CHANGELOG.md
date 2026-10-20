@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.11.0...decal-plugin-v0.11.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* **decal-plugin:** update toast review fixes ([#85](https://github.com/apourman/LegACEy/issues/85)) ([d330a1a](https://github.com/apourman/LegACEy/commit/d330a1ab865bd80cbaacc08f34ec7b9f051deb65))
+
 ## [0.11.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.10.3...decal-plugin-v0.11.0) (2026-10-20)
 
 
