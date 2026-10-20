@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.4](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.11.3...decal-plugin-v0.11.4) (2026-10-20)
+
+
+### Bug Fixes
+
+* **decal-plugin:** update toast clears the toolbar and has no empty row ([#91](https://github.com/apourman/LegACEy/issues/91)) ([230aa6c](https://github.com/apourman/LegACEy/commit/230aa6cddf152b2048b91c868d397e8e534dbf97))
+
 ## [0.11.3](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.11.2...decal-plugin-v0.11.3) (2026-10-20)
 
 
