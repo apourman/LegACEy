@@ -29,6 +29,8 @@ public sealed record ToastNotice(ToastIcon Icon, string Title, string? Body = nu
 public sealed class DerethNoticeToast : Border
 {
     public const double CardWidth = 330;
+    // The busy bar's track: the card less its two borders, margins, icon column and gap.
+    private const double TrackWidth = CardWidth - 72;
     // The bar's block runs across in this time, over and over, while the toast is busy.
     private static readonly TimeSpan BusyCycle = TimeSpan.FromSeconds(1.4);
     // The last moment of a toast's life, when it fades out.
@@ -91,7 +93,7 @@ public sealed class DerethNoticeToast : Border
         _lastTick = now;
         if (!IsVisible || _notice == null) return;
         if (_busy != null)
-            Canvas.SetLeft(_busy, ((double)(now.Ticks % BusyCycle.Ticks) / BusyCycle.Ticks * 1.3 - 0.3) * (CardWidth - 72));
+            Canvas.SetLeft(_busy, ((double)(now.Ticks % BusyCycle.Ticks) / BusyCycle.Ticks * 1.3 - 0.3) * TrackWidth);
         if (_notice.Lifetime is not { } lifetime) return;
         if (!IsPointerOver) _left -= elapsed;
         if (_left <= TimeSpan.Zero)
@@ -147,7 +149,7 @@ public sealed class DerethNoticeToast : Border
         }
         if (notice.Busy)
         {
-            _busy = new Border { Width = (CardWidth - 72) * 0.3, Height = 4, Background = BusyFill };
+            _busy = new Border { Width = TrackWidth * 0.3, Height = 4, Background = BusyFill };
             var track = new Border
             {
                 Height = 6, Margin = new Thickness(0, 9, 0, 0), Background = DerethPalette.GrooveBrush, BorderBrush = DerethPalette.GrooveEdgeBrush,
@@ -205,6 +207,6 @@ public sealed class DerethNoticeToast : Border
         ToastIcon.New => (DerethGlyph.Gem, DerethPalette.Gold, GoldRim),
         ToastIcon.Done => (DerethGlyph.Tick, DerethPalette.TealText, Color.Parse("#3C7A4A")),
         ToastIcon.Wait => (DerethGlyph.Hourglass, Color.Parse("#E0A04A"), DerethPalette.GoldDark),
-        _ => (DerethGlyph.Warning, Color.Parse("#D9644E"), Color.Parse("#7A3A2C")),
+        _ => (DerethGlyph.Warning, DerethPalette.Invalid, Color.Parse("#7A3A2C")),
     };
 }

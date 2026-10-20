@@ -1859,7 +1859,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         UpdateNoticeKind.UpToDate => new ToastNotice(ToastIcon.Done, $"LegACEy {notice.Version} is up to date", Lifetime: TimeSpan.FromSeconds(4)),
         UpdateNoticeKind.Wait => new ToastNotice(ToastIcon.Wait, "Checked moments ago", "Try again in a minute. Another client on this PC may be checking too.",
             Lifetime: TimeSpan.FromSeconds(5)),
-        _ => new ToastNotice(ToastIcon.Failed, "Couldn't check for updates", "GitHub didn't answer. Try again later.",
+        _ => new ToastNotice(ToastIcon.Failed, "Couldn't check for updates", "GitHub didn't answer, or the download didn't verify. Try again later.",
             new[] { new ToastAction("Try again", checkNow) }, TimeSpan.FromSeconds(8)),
     };
 
@@ -1868,7 +1868,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (notice.Chat != null) Bridge.Chat(notice.Chat, SystemChat);
         if (!_inGame || !CanOpenWindows) return;
-        // The chat line is written: a toast that fails is dropped, so the notice is not posted, and the line written, again.
+        // A failed chat line throws, and the notice stays queued. A failed toast is logged and swallowed instead: the notice is used up, so
+        // its chat line is not written again.
         try
         {
             if (_updateToastSurface == null)
@@ -3018,7 +3019,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 case InputAction.PointerDown:
                     // The window that had focus loses it to this one, and so does retail's focused element (a split amount box).
                     SurfaceById(route.ClearFocusSurfaceId)?.Panel.ClearFocus();
-                    _retailDrag?.ClearKeyboardFocus();
+                    if (route.SurfaceId != UpdateToastSurfaceId) _retailDrag?.ClearKeyboardFocus();
                     _pointer = new Point(route.X + target!.Location.X, route.Y + target.Location.Y);
                     if (route.SurfaceId != null && _windows?.Get(route.SurfaceId) != null)
                     {
@@ -3222,9 +3223,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // Above every window, as it draws.
         if (_splitTabSurface is { Visible: true } split)
             surfaces.Add(new InputSurface(SplitTabSurfaceId, split.Location.X, split.Location.Y, split.Bounds.Width, split.Bounds.Height, (_windows?.ZOrder.Count ?? 0) + 1, split.Panel.WantsKeyboard));
-        // The update toast is above them all; it wants no keys, so they go on to the game.
+        // The update toast is above them all. A press on it leaves the focus where it was, so typing goes on where it was going.
         if (_updateToastSurface is { Visible: true } toast)
-            surfaces.Add(new InputSurface(UpdateToastSurfaceId, toast.Location.X, toast.Location.Y, toast.Bounds.Width, toast.Bounds.Height, (_windows?.ZOrder.Count ?? 0) + 2));
+            surfaces.Add(new InputSurface(UpdateToastSurfaceId, toast.Location.X, toast.Location.Y, toast.Bounds.Width, toast.Bounds.Height, (_windows?.ZOrder.Count ?? 0) + 2,
+                takesFocus: false));
         if (_windows != null)
         {
             var z = _windows.ZOrder.Count;

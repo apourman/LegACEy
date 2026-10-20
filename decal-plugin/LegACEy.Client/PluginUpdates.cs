@@ -43,6 +43,8 @@ internal sealed class PluginUpdates : IDisposable
     private const string UpdaterMutex = @"Local\LegACEy.Updater";
     // The Win32 errors (in an IOException's HResult) for a file another process holds open: here, the update-check stamp.
     private const int SharingViolation = 32, LockViolation = 33;
+    // Linux's EWOULDBLOCK, the bare HResult .NET gives the same held file there, where the tests run.
+    private const int WouldBlock = 11;
     private static readonly TimeSpan Every = TimeSpan.FromHours(6);
     // Every client of the install shares one check time, so several clients ask GitHub once (60 unauthenticated requests per hour per IP).
     private static readonly TimeSpan SharedGap = TimeSpan.FromHours(1);
@@ -210,7 +212,7 @@ internal sealed class PluginUpdates : IDisposable
         FileStream? slot = null;
         var unverified = false;
         try { slot = new FileStream(Path.Combine(_install, "update-check"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
-        catch (IOException exception) when ((exception.HResult & 0xFFFF) is SharingViolation or LockViolation) { }
+        catch (IOException exception) when ((exception.HResult & 0xFFFF) is SharingViolation or LockViolation || exception.HResult == WouldBlock) { }
         if (slot == null && force)
         {
             _notices.Enqueue(new UpdateNotice(UpdateNoticeKind.Wait, "Another LegACEy client on this PC is checking for updates right now."));

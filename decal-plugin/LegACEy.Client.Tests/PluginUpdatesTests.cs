@@ -108,6 +108,18 @@ public sealed class PluginUpdatesTests : IDisposable
     }
 
     [Fact]
+    public async Task A_press_while_another_client_checks_is_told_to_wait()
+    {
+        var install = Install();
+        using var updates = new PluginUpdates(install, _ => Task.FromResult("[]"));
+        // Another client holds the check stamp open while it checks.
+        using (new FileStream(Path.Combine(install, "update-check"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+            await updates.CheckNow();
+
+        Assert.Equal(new[] { UpdateNoticeKind.Checking, UpdateNoticeKind.Wait }, Kinds(updates));
+    }
+
+    [Fact]
     public async Task A_background_check_is_silent_until_an_update_is_staged_and_then_says_ready_once()
     {
         var install = Install();
