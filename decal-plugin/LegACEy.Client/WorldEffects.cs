@@ -111,7 +111,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         _device = device;
         _log = log;
         _fog = new StormFog(device);
-        _weather = new Weather(device, _fog, log);
+        _weather = new Weather(device, _fog, System.IO.Path.Combine(System.IO.Path.GetDirectoryName(portal.Path)!, "client_cell_1.dat"), log);
         _water = new Water(device, _fog, portal, log);
         _combat = new CombatText(device, log);
         _root = GCHandle.Alloc(this);

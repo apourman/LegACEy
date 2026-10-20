@@ -198,7 +198,7 @@ public sealed class PortalDat : IDisposable, IGameArtSource
     }
 
     /// <summary>Find a file in the B-tree and read its blocks, one read at a time on the shared stream.</summary>
-    internal byte[]? ReadFile(uint id)
+    public byte[]? ReadFile(uint id)
     {
         lock (_stream) return FindFile(id);
     }

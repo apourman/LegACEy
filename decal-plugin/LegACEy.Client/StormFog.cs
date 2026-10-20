@@ -63,8 +63,11 @@ internal sealed unsafe class StormFog : IDisposable
     /// <summary>
     /// The player's global game position (z-up), from their part last measured; null before. How deep in the fog or weather is taken from
     /// here, not the camera, which swings in and out of the edge as a third-person view turns (seen as the fog pulsing, 19 Oct).
+    /// Null too once the player has not been drawn for half a second: after a portal it would still be where they left.
     /// </summary>
-    public Vector3? Player { get; private set; }
+    public Vector3? Player => _sincePlayer <= 30 ? _player : null;
+
+    private Vector3? _player;
 
     /// <summary>The safe landblock the storm rings, as landblock x and y; null means no storm is drawn.</summary>
     public (int X, int Y)? Zone { get; set; }
@@ -91,7 +94,7 @@ internal sealed unsafe class StormFog : IDisposable
         if (player)
         {
             _sincePlayer = 0;
-            Player = Global(cell, origin);
+            _player = Global(cell, origin);
         }
         if (player || (!FromPlayer && _sincePlayer > 30)) Offset = offset;
         Measured = true;
