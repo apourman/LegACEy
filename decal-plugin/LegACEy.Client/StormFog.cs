@@ -78,12 +78,6 @@ internal sealed unsafe class StormFog : IDisposable
     public bool FromPlayer { get; private set; }
 
     /// <summary>
-    /// The camera is inside the building the player is in: the haze leaves retail's world unfogged, as fog would fill the room; the weather
-    /// puts its haze on the building's walls instead.
-    /// </summary>
-    public bool Sheltered { get; set; }
-
-    /// <summary>
     /// Measures the game-to-render offset from a part being drawn: its game position against the device's world transform. Returns the
     /// part's measure, which another object's part can get a whole landblock wrong (seen as the water jumping for a frame, 19 Oct), so
     /// the offset is only taken from the player's part while the player has been drawn in the last second.
@@ -233,7 +227,7 @@ internal sealed unsafe class StormFog : IDisposable
         // The last slice stays inside the far plane (from the projection: far = M43 / (forward - M33)), or the sky behind would show.
         var lastSlice = MathF.Min(LastSlice, MathF.Abs(Projection.M43 / (forward - Projection.M33)) * 0.98f);
         var density = strength / thickness;
-        if (!Sheltered && (_nextFog is not { } fog || fog.Density < density)) _nextFog = (color, density);
+        if (_nextFog is not { } fog || fog.Density < density) _nextFog = (color, density);
         var quad = stackalloc SliceVertex[4];
         var alpha = 1 - MathF.Exp(-lastSlice * density);
         // Wider than the view, so the slice covers the screen whatever the aspect.

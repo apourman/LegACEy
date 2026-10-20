@@ -14,17 +14,17 @@ namespace LegACEy.Client.DecalPlugin;
 /// fixed in the world as they fall, so moving through them shows parallax; a drop leaving the box comes back in on the other side. Snowflakes
 /// are soft camera-facing dots, raindrops streaks along their fall; both are depth-tested against retail's scene. A haze through
 /// <see cref="StormFog.DrawHaze"/> closes in the distance. A thunderstorm also darkens the screen to night and strikes lightning: a jagged
-/// bolt in the distance every 5 to 10 seconds, flickering, while the whole screen flashes. From inside a building it shows only outside it,
-/// through its windows and doors (see <see cref="Building"/>); none of it shows in a dungeon.
+/// bolt in the distance every 5 to 10 seconds, flickering, while the whole screen flashes. With the camera in a building it is drawn before
+/// retail draws the rooms (<see cref="WorldEffects"/>), so it shows only through the doors and windows, and no drop falls in the building
+/// (<see cref="Building"/>); none of it shows in a dungeon.
 /// With shader model 3 (<c>Weather.hlsl</c>) every drop sits in one vertex buffer and the shader moves it, so a frame costs one draw
 /// whatever the weather; without, the drops are moved here, half as many.
 /// </summary>
 internal sealed unsafe class Weather : IDisposable
 {
     private const float Reach = StormFog.Block * 1.5f, FadeIn = 30;
-    // Metres a building's box reaches past its model, so its own walls are inside it; and how far past its walls the haze on them is taken
-    // at, for what is seen through them.
-    private const float Margin = 0.5f, HazeBeyond = 30;
+    // Metres a building's box reaches past its model, so its own walls are inside it.
+    private const float Margin = 0.5f;
     private const int DotSize = 16;
     private static readonly Vector3 Box = new(40, 40, 24);
 
@@ -85,13 +85,15 @@ internal sealed unsafe class Weather : IDisposable
     /// <summary>The player's cell id, zero in portal space: outdoors below 0x100 in its low word, indoors (a building's room or a dungeon's) from there.</summary>
     public uint PlayerCell { get; set; }
 
-    /// <summary>Draws the weather after retail's world, with the camera the storm fog measured.</summary>
+    /// <summary>False when the weather cannot be drawn under retail's rooms (<see cref="WorldEffects"/>): then none shows from a building.</summary>
+    public bool DrawsIndoors { get; set; } = true;
+
+    /// <summary>Draws the weather over retail's world (or, from indoors, its landscape), with the camera the storm fog measured.</summary>
     public void Draw()
     {
-        _camera.Sheltered = false;
         if (Current is not { } now) { Shown(null); return; }
         if (PlayerCell == 0) { Shown("hidden: the player is in no cell (portal space)"); return; }
-        if (!SeesOutside(PlayerCell)) { Shown($"hidden: no view outside from cell 0x{PlayerCell:X8}"); return; }
+        if (!SeesOutside(PlayerCell) || !DrawsIndoors && (PlayerCell & 0xFFFF) >= 0x100) { Shown($"hidden: no view outside from cell 0x{PlayerCell:X8}"); return; }
         if (_camera.Eye is not { } eye) { Shown("hidden: the camera is not measured yet"); return; }
         var fall = now.Kind switch { WeatherKind.Blizzard => Blizzard, WeatherKind.Thunderstorm => Thunderstorm, _ => Snow };
         var centre = new Vector2((now.X + 0.5f) * StormFog.Block, (now.Y + 0.5f) * StormFog.Block);
@@ -102,10 +104,6 @@ internal sealed unsafe class Weather : IDisposable
         var building = indoors ? Building(PlayerCell, _camera.Player ?? eye) : null;
         if (indoors && building == null) { Shown($"hidden: no building found for cell 0x{PlayerCell:X8}"); return; }
         Shown($"{now.Kind} shown {(indoors ? "from a building" : "outdoors")}");
-        // With the camera in the building, the haze, the night and the flash go on its walls instead of over the screen: depth-tested
-        // against retail's scene, they cover what is seen through its windows and doors, not the room.
-        var walls = building is { } inside && Inside(eye, inside) ? building : null;
-        _camera.Sheltered = walls != null;
         var strength = Math.Clamp(depth / FadeIn, 0, 1);
         if (_dot == IntPtr.Zero) _dot = MakeDot();
         _shaded ??= MakeShaders();
@@ -116,21 +114,16 @@ internal sealed unsafe class Weather : IDisposable
         {
             UseFixedFunction(_device, FvfXyz | FvfDiffuse);
             _camera.UseWorldCamera();
-            if (strength > 0)
-            {
-                _camera.DrawHaze(fall.HazeColor, fall.Haze, strength);
-                if (walls is { } haze)
-                    Walls(haze, eye, distance => (uint)((1 - MathF.Exp(-(distance + HazeBeyond) * strength / fall.Haze)) * 255) << 24 | fall.HazeColor, additive: false);
-            }
+            if (strength > 0) _camera.DrawHaze(fall.HazeColor, fall.Haze, strength);
             // Lightning lifts the night for its flash.
-            if (fall.Night > 0 && strength > 0) Veil(walls, eye, (uint)(fall.Night * strength * (1 - 0.8f * flash) * 255) << 24 | NightColor, additive: false);
+            if (fall.Night > 0 && strength > 0) Veil((uint)(fall.Night * strength * (1 - 0.8f * flash) * 255) << 24 | NightColor, additive: false);
             if (_shaded == true) DrawShaded(fall, eye, centre, time, building);
             else DrawDrops(fall, eye, centre, time, building);
             if (flash > 0)
             {
                 DrawBolt(eye, flash);
                 // A far strike lights the sky less than one overhead would.
-                Veil(walls, eye, (uint)(0.3f * flash * 255) << 24 | FlashColor, additive: true);
+                Veil((uint)(0.3f * flash * 255) << 24 | FlashColor, additive: true);
             }
         }
         finally { RestoreState(saved); }
@@ -150,7 +143,7 @@ internal sealed unsafe class Weather : IDisposable
 
     /// <summary>
     /// The box, in global game space, around the building the player is in: the one whose doors lead to their room, or else the one they
-    /// stand in. Drops do not fall in it, and with the camera inside it the haze, night and flash go on its walls. ponytail: one box
+    /// stand in. Drops do not fall in it. ponytail: one box
     /// round the whole model, so an L-shaped building's box takes in a little outside in its corner.
     /// </summary>
     private (Vector3 Min, Vector3 Max)? Building(uint cell, Vector3 player)
@@ -430,50 +423,6 @@ internal sealed unsafe class Weather : IDisposable
     }
 
     /// <summary>The whole screen covered in one colour, over everything: darkening it, or added to it for a flash.</summary>
-    /// <summary>A colour over the screen, or, with the camera in a building, over what is seen through its walls.</summary>
-    private void Veil((Vector3 Min, Vector3 Max)? walls, Vector3 eye, uint argb, bool additive)
-    {
-        if (walls is { } box) Walls(box, eye, _ => argb, additive);
-        else Veil(argb, additive);
-    }
-
-    /// <summary>
-    /// The building's box from inside, coloured per corner by its distance from the eye, and depth-tested: the room's own surfaces are
-    /// nearer, so only what lies beyond the walls (seen through windows and doors) is covered.
-    /// </summary>
-    private void Walls((Vector3 Min, Vector3 Max) box, Vector3 eye, Func<float, uint> color, bool additive)
-    {
-        UseFixedFunction(_device, FvfXyz | FvfDiffuse);
-        _camera.UseWorldCamera();
-        SetTexture(_device, 0, IntPtr.Zero);
-        SetStageState(_device, 0, StageState.ColorOp, OpSelectArg1);
-        SetStageState(_device, 0, StageState.ColorArg1, ArgDiffuse);
-        SetStageState(_device, 0, StageState.AlphaOp, OpSelectArg1);
-        SetStageState(_device, 0, StageState.AlphaArg1, ArgDiffuse);
-        SetStageState(_device, 1, StageState.ColorOp, OpDisable);
-        SetStageState(_device, 1, StageState.AlphaOp, OpDisable);
-        if (additive) SetRenderState(_device, RenderState.DestBlend, BlendOne);
-        // Corner i takes the box's maximum on x for bit 0, y for bit 1, z for bit 2.
-        var corners = stackalloc ColorVertex[8];
-        for (var i = 0; i < 8; i++)
-        {
-            var corner = new Vector3((i & 1) != 0 ? box.Max.X : box.Min.X, (i & 2) != 0 ? box.Max.Y : box.Min.Y, (i & 4) != 0 ? box.Max.Z : box.Min.Z);
-            corners[i] = new ColorVertex(StormFog.Render(corner), color(Vector3.Distance(corner, eye)));
-        }
-        var triangles = stackalloc ColorVertex[Faces.Length];
-        for (var i = 0; i < Faces.Length; i++) triangles[i] = corners[Faces[i]];
-        DrawPrimitiveUP(_device, TriangleList, Faces.Length / 3, triangles, sizeof(ColorVertex));
-        SetRenderState(_device, RenderState.DestBlend, BlendInvSrcAlpha);
-    }
-
-    // The box's six faces, two triangles each, as corners of Walls.
-    private static readonly int[] Faces =
-    {
-        0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5, // bottom, top
-        0, 4, 5, 0, 5, 1, 2, 3, 7, 2, 7, 6, // south, north
-        0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3, // west, east
-    };
-
     private void Veil(uint argb, bool additive)
     {
         var screen = Viewport(_device);
@@ -553,12 +502,6 @@ internal sealed unsafe class Weather : IDisposable
         public readonly float X = position.X, Y = position.Y, Z = position.Z;
         public readonly uint Color = color;
         public readonly float U = u, V = v;
-    }
-
-    private readonly struct ColorVertex(Vector3 position, uint color)
-    {
-        public readonly float X = position.X, Y = position.Y, Z = position.Z;
-        public readonly uint Color = color;
     }
 
     private readonly struct ScreenVertex(float x, float y, uint color)

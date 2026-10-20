@@ -23,6 +23,7 @@ internal sealed unsafe class WorldEffects : IDisposable
 {
     private const string Source = "acclient.pdb (C:\\Turbine\\Asheron's Call, a near build; +0xAD0 near 0x50E000, +0xA0 near 0x455000) for names; our objdump read of installed acclient.exe";
     private const uint SmartBoxDrawAddress = 0x00455610, GetObjectAddress = 0x0050FF60, PartArrayDrawAddress = 0x00518E00;
+    private const uint LandscapeDrawAddress = 0x00506D90;
     // CPhysicsPart* being drawn by CPhysicsPart::Draw, zero otherwise; part +0xE0 is its CPhysicsObj, whose +0x8 is the object id.
     private static readonly int* DrawingPart = (int*)0x008EE3D8;
     // The player's CPhysicsObj, kept by CPhysicsObj::SetPlayer.
@@ -60,8 +61,27 @@ internal sealed unsafe class WorldEffects : IDisposable
             Source, "the layout read here: CPhysicsObj +0x10 is its CPartArray")
     };
 
+    /// <summary>
+    /// With the camera in a building's room, retail draws the landscape seen through its doors and windows first (PView::DrawCells), then
+    /// draws each opening, invisible, writing its depth over the landscape's, then the rooms. Drawn after the world, the storm and weather
+    /// would be hidden behind those openings; drawn right after that landscape, the rooms cover them and the openings keep them. Their own
+    /// list: if these do not match, only the weather seen from inside is lost.
+    /// </summary>
+    internal static readonly IReadOnlyList<NativeUiEntry> LandscapeEntries = new[]
+    {
+        new NativeUiEntry("LScape::draw", LandscapeDrawAddress, NativeUiCatalogue.Bytes("57 8B F9 8B 4F 20 85 C9 74 07 6A 00"),
+            Source, "ThisCall (): draws the landscape; hooked, the storm and weather follow it when the camera is indoors"),
+        new NativeUiEntry("PView::DrawCells draws the landscape before the openings and rooms", 0x005A596F, NativeUiCatalogue.Bytes("89 3D 30 73 86 00 8B 4F 78 83 C4 04"),
+            Source, "followed by the LScape::draw call; the openings to outside (D3DPolyRender::DrawPortalPolyInternal) come after it"),
+        new NativeUiEntry("SmartBox::RenderNormalMode reads the viewer's cell", 0x00453B59, NativeUiCatalogue.Bytes("8B 4E 0C 81 E1 FF FF 00 00 53 81 F9 00 01 00 00"),
+            Source, "the layout read here: SmartBox +0xC is the camera's cell id; 0x100 and up in its low word draws through PView, from inside"),
+    };
+
     [Function(CallingConventions.MicrosoftThiscall)]
     private delegate void SmartBoxDrawFn(IntPtr smartBox);
+
+    [Function(CallingConventions.MicrosoftThiscall)]
+    private delegate void LandscapeDrawFn(IntPtr landscape);
 
     [Function(CallingConventions.Stdcall)]
     private delegate int DrawIndexedFn(IntPtr device, int type, int baseVertex, uint minIndex, uint vertices, uint startIndex, uint primitives);
@@ -87,6 +107,9 @@ internal sealed unsafe class WorldEffects : IDisposable
     private readonly IntPtr _device;
     private readonly Action<string> _log;
     private readonly IHook<SmartBoxDrawFn> _smartBoxHook;
+    private readonly IHook<LandscapeDrawFn>? _landscapeHook;
+    // The camera is in an indoor cell this frame; the landscape (seen from inside) is being drawn; the storm and weather were drawn after it.
+    private bool _viewIndoors, _inLandscape, _outsideDrawn;
     private readonly IHook<DrawIndexedFn> _drawHook;
     private readonly IHook<DrawFn> _drawPrimitiveHook;
     private readonly IHook<ResetFn> _resetHook;
@@ -106,7 +129,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     private static readonly RenderState[] FogStates =
         { RenderState.FogEnable, RenderState.FogColor, RenderState.FogTableMode, RenderState.FogVertexMode, RenderState.FogDensity, RenderState.RangeFogEnable };
 
-    private WorldEffects(IntPtr device, PortalDat portal, Action<string> log)
+    private WorldEffects(IntPtr device, PortalDat portal, bool landscape, Action<string> log)
     {
         _device = device;
         _log = log;
@@ -116,6 +139,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         _combat = new CombatText(device, log);
         _root = GCHandle.Alloc(this);
         _smartBoxHook = ReloadedHooks.Instance.CreateHook<SmartBoxDrawFn>(OnSmartBoxDraw, SmartBoxDrawAddress);
+        if (landscape) _landscapeHook = ReloadedHooks.Instance.CreateHook<LandscapeDrawFn>(OnLandscapeDraw, LandscapeDrawAddress);
         _drawHook = ReloadedHooks.Instance.CreateHook<DrawIndexedFn>(OnDrawIndexed, Method(device, DrawIndexedPrimitiveSlot).ToInt64());
         _drawPrimitiveHook = ReloadedHooks.Instance.CreateHook<DrawFn>(OnDraw, Method(device, DrawPrimitiveSlot).ToInt64());
         _resetHook = ReloadedHooks.Instance.CreateHook<ResetFn>(OnReset, Method(device, ResetSlot).ToInt64());
@@ -123,6 +147,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         _drawHook.Activate();
         _drawPrimitiveHook.Activate();
         _smartBoxHook.Activate();
+        _landscapeHook?.Activate();
     }
 
     /// <summary>The effects, or null when the running client does not match their native entries.</summary>
@@ -133,7 +158,9 @@ internal sealed unsafe class WorldEffects : IDisposable
             log("The selection outline, water, storm fog and weather are off: the running client does not match their native entries.");
             return null;
         }
-        return new WorldEffects(device, portal, log);
+        var landscape = NativeUiCatalogue.Validate(readMemory, log, LandscapeEntries);
+        if (!landscape) log("The storm and weather are not drawn with the camera indoors: the running client does not match their native entries.");
+        return new WorldEffects(device, portal, landscape, log);
     }
 
     /// <summary>The safe landblock the storm fog rings, as landblock x and y, or null for no storm.</summary>
@@ -162,14 +189,14 @@ internal sealed unsafe class WorldEffects : IDisposable
             return 0;
         }
         // Retail may set its own fog between draws; the haze's goes back on before each one.
-        if (_inWorld && _worldFog is { } fog && device == _device && !_failed)
+        if (Fogging && _worldFog is { } fog && device == _device && !_failed)
         {
             try { ApplyFog(fog); }
             catch (Exception exception) { Fail(exception); }
         }
         var result = original(device, type, baseVertex, minIndex, vertices, startIndex, primitives);
         // A glow's black fog colour is not left for a draw that does not pass through these hooks.
-        if (_inWorld && _worldFog is { } grey && device == _device && !_failed)
+        if (Fogging && _worldFog is { } grey && device == _device && !_failed)
         {
             try { SetRenderState(_device, RenderState.FogColor, unchecked((int)(0xFF000000 | grey.Color))); }
             catch (Exception exception) { Fail(exception); }
@@ -204,13 +231,60 @@ internal sealed unsafe class WorldEffects : IDisposable
         return result;
     }
 
+    /// <summary>The landscape seen from inside a building: the storm and weather go on straight after it, before the openings and rooms.</summary>
+    private void OnLandscapeDraw(IntPtr landscape)
+    {
+        if (!_viewIndoors || !_inWorld || _failed)
+        {
+            _landscapeHook!.OriginalFunction(landscape);
+            return;
+        }
+        int[]? retailFog = null;
+        try { if (_worldFog != null) retailFog = Array.ConvertAll(FogStates, state => GetRenderState(_device, state)); }
+        catch (Exception exception) { Fail(exception); }
+        _inLandscape = true;
+        try { _landscapeHook!.OriginalFunction(landscape); }
+        finally
+        {
+            _inLandscape = false;
+            if (retailFog != null)
+            {
+                try { for (var i = 0; i < FogStates.Length; i++) SetRenderState(_device, FogStates[i], retailFog[i]); }
+                catch (Exception exception) { Fail(exception); }
+            }
+        }
+        if (_failed) return;
+        try { DrawOutside(PlayerCell(), shown: true); }
+        catch (Exception exception) { Fail(exception); }
+        _outsideDrawn = true;
+    }
+
+    /// <summary>The storm and weather; the storm's frame ends here even when nothing is shown.</summary>
+    private void DrawOutside(uint cell, bool shown)
+    {
+        _fog.Draw(inWorld: shown && cell != 0);
+        _weather.PlayerCell = cell;
+        _weather.DrawsIndoors = _landscapeHook != null;
+        if (shown) _weather.Draw();
+    }
+
+    /// <summary>
+    /// The player's cell id; zero while they are in no cell: in portal space, and before the world at login, where the storm and weather
+    /// would be drawn into retail's portal warp.
+    /// </summary>
+    private static uint PlayerCell()
+    {
+        var player = *PlayerObject;
+        return player != 0 && *(int*)(player + 0x90) != 0 ? *(uint*)(player + 0x4C) : 0;
+    }
+
     /// <summary>
     /// Retail draws some of its world (terrain among it) unindexed. The haze's fog goes on before those too: they would otherwise keep the
     /// last indexed draw's fog, black after a glow, and fog whole patches of ground black (20 Oct).
     /// </summary>
     private int OnDraw(IntPtr device, int type, uint startVertex, uint primitives)
     {
-        if (_inWorld && _worldFog is { } fog && device == _device && !_failed)
+        if (Fogging && _worldFog is { } fog && device == _device && !_failed)
         {
             try { ApplyFog(fog); }
             catch (Exception exception) { Fail(exception); }
@@ -274,13 +348,18 @@ internal sealed unsafe class WorldEffects : IDisposable
         }
     }
 
+    // The haze fogs retail's world as it is drawn; with the camera indoors, only the landscape seen through the openings, not the rooms.
+    private bool Fogging => _inWorld && (!_viewIndoors || _inLandscape);
+
     private void OnSmartBoxDraw(IntPtr smartBox)
     {
         _worldFog = _failed ? null : _fog.TakeFog();
+        _viewIndoors = _landscapeHook != null && (*(uint*)(smartBox + 0xC) & 0xFFFF) >= 0x100;
+        _outsideDrawn = false;
         int[]? retailFog = null;
         try
         {
-            if (_worldFog is { } fog)
+            if (_worldFog is { } fog && !_viewIndoors)
             {
                 retailFog = Array.ConvertAll(FogStates, state => GetRenderState(_device, state));
                 if (!_fogLogged)
@@ -308,16 +387,12 @@ internal sealed unsafe class WorldEffects : IDisposable
         {
             try
             {
-                var player = *PlayerObject;
-                // Zero while the player is in no cell: in portal space, and before the world at login, where the storm and weather would
-                // be drawn into retail's portal warp.
-                var cell = player != 0 && *(int*)(player + 0x90) != 0 ? *(uint*)(player + 0x4C) : 0;
+                var cell = PlayerCell();
                 // The water first, so the fog and weather fall over it.
                 _water.PlayerCell = cell;
                 _water.Draw();
-                _fog.Draw(inWorld: cell != 0);
-                _weather.PlayerCell = cell;
-                _weather.Draw();
+                // From indoors they were drawn after the landscape, or, with no opening to outside in view, not at all.
+                if (!_outsideDrawn) DrawOutside(cell, shown: !_viewIndoors);
                 _combat.Draw(_fog);
                 if (!_outlined && Selected != 0) DrawCulledSelection();
             }
@@ -503,6 +578,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     {
         // A hook that could not be disabled stays rooted, still calling back here.
         _smartBoxHook.Disable();
+        _landscapeHook?.Disable();
         _drawHook.Disable();
         _drawPrimitiveHook.Disable();
         _resetHook.Disable();
