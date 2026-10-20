@@ -309,11 +309,13 @@ internal sealed unsafe class WorldEffects : IDisposable
             try
             {
                 var player = *PlayerObject;
-                var cell = player != 0 ? *(uint*)(player + 0x4C) : 0;
+                // Zero while the player is in no cell: in portal space, and before the world at login, where the storm and weather would
+                // be drawn into retail's portal warp.
+                var cell = player != 0 && *(int*)(player + 0x90) != 0 ? *(uint*)(player + 0x4C) : 0;
                 // The water first, so the fog and weather fall over it.
                 _water.PlayerCell = cell;
                 _water.Draw();
-                _fog.Draw();
+                _fog.Draw(inWorld: cell != 0);
                 _weather.PlayerCell = cell;
                 _weather.Draw();
                 _combat.Draw(_fog);

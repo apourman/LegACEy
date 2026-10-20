@@ -81,13 +81,14 @@ internal sealed unsafe class Weather : IDisposable
     /// <summary>The weather and the middle landblock, or null for clear skies.</summary>
     public (WeatherKind Kind, int X, int Y)? Current { get; set; }
 
-    /// <summary>The player's cell id: outdoors below 0x100 in its low word, indoors (a building's room or a dungeon's) from there.</summary>
+    /// <summary>The player's cell id, zero in portal space: outdoors below 0x100 in its low word, indoors (a building's room or a dungeon's) from there.</summary>
     public uint PlayerCell { get; set; }
 
     /// <summary>Draws the weather after retail's world, with the camera the storm fog measured.</summary>
     public void Draw()
     {
         if (Current is not { } now) { Shown(null); return; }
+        if (PlayerCell == 0) { Shown("hidden: the player is in no cell (portal space)"); return; }
         if (!SeesOutside(PlayerCell)) { Shown($"hidden: no view outside from cell 0x{PlayerCell:X8}"); return; }
         if (_camera.Eye is not { } eye) { Shown("hidden: the camera is not measured yet"); return; }
         var fall = now.Kind switch { WeatherKind.Blizzard => Blizzard, WeatherKind.Thunderstorm => Thunderstorm, _ => Snow };

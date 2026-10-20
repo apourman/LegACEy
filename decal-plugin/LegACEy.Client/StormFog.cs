@@ -104,13 +104,13 @@ internal sealed unsafe class StormFog : IDisposable
     }
 
     /// <summary>Draws the storm after retail's world, then waits for the next frame's measure.</summary>
-    public void Draw()
+    public void Draw(bool inWorld)
     {
         // A frame with nothing measured (no part drawn yet) keeps the last measure, so the fog does not blink out for a frame.
         if (!Measured) return;
         Calibrated = FromPlayer = false;
         _sincePlayer++;
-        if (Zone is not { } zone) return;
+        if (Zone is not { } zone || !inWorld) return;
         if (_noise == IntPtr.Zero) _noise = MakeNoise();
         var saved = SaveState(_device);
         try
