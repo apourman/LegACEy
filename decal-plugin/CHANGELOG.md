@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.9.0...decal-plugin-v0.10.0) (2026-10-20)
+
+
+### Features
+
+* add the in-game Market ([#74](https://github.com/apourman/LegACEy/issues/74)) ([568638b](https://github.com/apourman/LegACEy/commit/568638b7a6a944f3e260c7ae6757da433af4158d))
+
 ## [0.9.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.8.1...decal-plugin-v0.9.0) (2026-10-19)
 
 
