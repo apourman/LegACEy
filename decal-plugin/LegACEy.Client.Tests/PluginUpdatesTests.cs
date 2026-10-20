@@ -197,7 +197,7 @@ public sealed class PluginUpdatesTests : IDisposable
     }
 
     [Fact]
-    public async Task Another_client_offers_the_release_one_found_within_the_hour_and_cleanup_spares_a_download_in_progress()
+    public async Task Another_client_offers_the_release_one_found_moments_ago_and_cleanup_spares_a_download_in_progress()
     {
         var install = Install();
         var next = Next();
@@ -205,7 +205,7 @@ public sealed class PluginUpdatesTests : IDisposable
         await first.Check();
         Assert.Equal(UpdateNoticeKind.Ready, Assert.Single(Notices(first)).Kind);
 
-        // The second client's background check is within the shared hour, so it doesn't ask GitHub, but it still offers the update.
+        // The second client's background check is within the shared gap, so it doesn't ask GitHub, but it still offers the update.
         using var second = new PluginUpdates(install, _ => throw new InvalidOperationException("GitHub asked again"));
         await second.Check();
         var ready = Assert.Single(Notices(second));
@@ -220,6 +220,18 @@ public sealed class PluginUpdatesTests : IDisposable
         await first.CheckNow();
         Assert.False(Directory.Exists(old));
         Assert.True(Directory.Exists(fresh));
+    }
+
+    [Fact]
+    public async Task A_login_ten_minutes_after_the_last_check_asks_github_again()
+    {
+        var install = Install();
+        var next = Next();
+        File.WriteAllText(Path.Combine(install, "update-check"), DateTime.UtcNow.AddMinutes(-10).ToString("O"));
+        using var updates = new PluginUpdates(install, _ => Task.FromResult($"[{Release($"decal-plugin-v{next}")}]"));
+        await updates.Check();
+        var ready = Assert.Single(Notices(updates));
+        Assert.Equal((UpdateNoticeKind.Ready, next), (ready.Kind, ready.Version));
     }
 
     private static Version Next()

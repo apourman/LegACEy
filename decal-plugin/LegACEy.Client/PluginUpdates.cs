@@ -49,8 +49,9 @@ internal sealed class PluginUpdates : IDisposable
     // Linux's EWOULDBLOCK, the bare HResult .NET gives the same held file there, where the tests run.
     private const int WouldBlock = 11;
     private static readonly TimeSpan Every = TimeSpan.FromHours(6);
-    // Every client of the install shares one check time, so several clients ask GitHub once (60 unauthenticated requests per hour per IP).
-    private static readonly TimeSpan SharedGap = TimeSpan.FromHours(1);
+    // Every client of the install shares one check time, so several clients logging in together ask GitHub once (60 unauthenticated requests
+    // per hour per IP). Short, so a login a few minutes after the last check still asks: the toast is the only news of a release.
+    private static readonly TimeSpan SharedGap = TimeSpan.FromMinutes(5);
     // A whole check, download included, gives up after this, so a stalled connection never keeps the next check from starting.
     private static readonly TimeSpan Deadline = TimeSpan.FromMinutes(15);
     // The menu's Check for updates button, per client process. It skips the shared gap, so a player pressing it every minute uses
