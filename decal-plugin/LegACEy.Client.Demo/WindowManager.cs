@@ -338,15 +338,19 @@ public sealed class WindowManager
     private Point _pressPoint;
     private Rectangle _pressBounds;
     private readonly Func<bool>? _uiLocked;
+    private readonly Func<IEnumerable<Rectangle>>? _snapTargets;
 
     /// <param name="scale">
     /// How big windows show, against the sizes their definitions give: 0.85 shows a 400 pixel wide window 340 pixels wide. Sizes,
     /// title bars and minimums are scaled on open; saved sizes stay at design size, so a scale change keeps a window's proportions.
     /// </param>
     /// <param name="uiLocked">Whether retail's UI is locked: then no window moves or resizes, and none shows resize edges. Null: never locked.</param>
-    public WindowManager(Size screen, IWindowPositionStore positions, string server, string character, double scale = 1, Func<bool>? uiLocked = null)
+    /// <param name="snapTargets">Screen rectangles drawn outside this manager, such as the toolbar, that moved windows snap to as well.</param>
+    public WindowManager(Size screen, IWindowPositionStore positions, string server, string character, double scale = 1, Func<bool>? uiLocked = null,
+        Func<IEnumerable<Rectangle>>? snapTargets = null)
     {
         _uiLocked = uiLocked;
+        _snapTargets = snapTargets;
         if (scale <= 0) throw new ArgumentOutOfRangeException(nameof(scale));
         Scale = scale;
         if (screen.Width <= 0 || screen.Height <= 0) throw new ArgumentOutOfRangeException(nameof(screen));
@@ -558,13 +562,14 @@ public sealed class WindowManager
 
     /// <summary>
     /// A moved window's place snapped, on each axis, to the nearest edge within <see cref="SnapDistance"/>: flush with the screen's edge,
-    /// against a nearby window's edge, or lined up with it.
+    /// against a nearby window's or snap target's edge, or lined up with it.
     /// </summary>
     private Point Snap(ManagedWindow window, Point location)
     {
         var size = window.Size;
         var near = Rectangle.Inflate(new Rectangle(location, size), SnapDistance, SnapDistance);
-        var others = _windows.Where(other => other != window && other.Bounds.IntersectsWith(near)).Select(other => other.Bounds).ToList();
+        var others = _windows.Where(other => other != window).Select(other => other.Bounds)
+            .Concat(_snapTargets?.Invoke() ?? Enumerable.Empty<Rectangle>()).Where(other => other.IntersectsWith(near)).ToList();
         return new Point(
             Nearest(location.X, others.SelectMany(other => new[] { other.Left, other.Right, other.Left - size.Width, other.Right - size.Width })
                 .Append(0).Append(_screen.Width - size.Width)),

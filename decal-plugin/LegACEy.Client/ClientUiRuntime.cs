@@ -814,7 +814,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (_device == IntPtr.Zero) return;
         if (!AvaloniaPanel.CanScale) Log("This Avalonia cannot scale panels; LegACEy windows show at their design size.");
-        _windows = new WindowManager(GameDevice.ViewportSize(_device), _positionStore, SessionServer(), SessionCharacter(), WindowScale, () => NativeUi.IsUiLocked);
+        _windows = new WindowManager(GameDevice.ViewportSize(_device), _positionStore, SessionServer(), SessionCharacter(), WindowScale, () => NativeUi.IsUiLocked,
+            ToolbarSnapTargets);
         _windowsEnabled = EnsurePostUiDrawHook();
     }
 
@@ -3317,6 +3318,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (panel.Content is not IWindowShortcuts shortcuts) return null;
         return virtualKey => shortcuts.WantsShortcut(Win32KeyMap.ToAvaloniaKey(virtualKey));
+    }
+
+    /// <summary>The toolbar and its split tab, while shown: windows snap to them though the window manager does not place them.</summary>
+    private IEnumerable<Rectangle> ToolbarSnapTargets()
+    {
+        if (_toolbarSurface is { Visible: true } bar) yield return bar.Bounds;
+        if (_splitTabSurface is { Visible: true } split) yield return split.Bounds;
     }
 
     private InputSurface[] GetInputSurfaces()

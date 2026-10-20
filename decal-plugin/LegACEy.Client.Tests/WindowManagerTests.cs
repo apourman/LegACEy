@@ -118,6 +118,19 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void A_moved_window_snaps_to_a_snap_target_drawn_outside_the_manager()
+    {
+        var toolbar = new Rectangle(300, 500, 200, 40);
+        var manager = new WindowManager(new Size(800, 600), new MemoryWindowPositionStore(), "server", "character", snapTargets: () => new[] { toolbar });
+        var window = manager.Open(new WindowDefinition("one", "One", 120, 80), new Point(100, 100));
+        Assert.True(manager.Press(new Point(110, 110)));
+
+        // Six pixels above the toolbar and four right of its left edge: it sits on the toolbar, lefts lined up.
+        manager.Move(new Point(314, 424));
+        Assert.Equal(new Point(300, 420), window.Location);
+    }
+
+    [Fact]
     public void A_window_without_a_title_bar_moves_only_when_its_content_begins_the_move()
     {
         var manager = NewManager(300, 200);
