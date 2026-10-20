@@ -267,7 +267,7 @@ public sealed class SettingsPanel : UserControl
     {
         var button = new DerethButton { Content = "Check for updates", IsEnabled = choice.Enabled };
         button.Click += (_, _) => choice.Check();
-        ToolTip.SetTip(button, "An update installs when the game closes.");
+        ToolTip.SetTip(button, "Nothing installs until you choose to update.");
         var row = new DockPanel();
         DockPanel.SetDock(button, Dock.Right);
         row.Children.Add(button);

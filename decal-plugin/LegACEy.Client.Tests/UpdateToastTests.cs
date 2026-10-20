@@ -17,7 +17,8 @@ public sealed class UpdateToastTests
         var opened = new List<string>();
         var checks = 0;
         var toast = new DerethNoticeToast();
-        ToastNotice Toast(UpdateNotice notice) => ClientUiRuntime.UpdateToast(notice, opened.Add, () => checks++, toast.Show, () => true, () => { });
+        var installs = new List<Version>();
+        ToastNotice Toast(UpdateNotice notice) => ClientUiRuntime.UpdateToast(notice, opened.Add, () => checks++, toast.Show, () => true, installs.Add, () => { });
         using var panel = AvaloniaPanel.Create(() => toast, (int)DerethNoticeToast.CardWidth, 200);
 
         Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.Checking, null)));
@@ -25,12 +26,12 @@ public sealed class UpdateToastTests
         Assert.Empty(Buttons(panel));
 
         Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.Ready, "chat", Next)));
-        Assert.Equal(new[] { "LegACEy 0.11.0 is ready", "Downloaded. It installs when you close the game.", "Log out and update", "What's new" }, Texts(panel));
+        Assert.Equal(new[] { "LegACEy 0.11.0 is available", "Nothing changes until you update.", "Log out and update", "What's new" }, Texts(panel));
         Press(panel, Buttons(panel).Single(button => Label(button) == "What's new"));
         Assert.Equal(new[] { "https://github.com/apourman/LegACEy/releases/tag/decal-plugin-v0.11.0" }, opened);
 
         Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.Ready, "chat", Next, SeveralClients: true)));
-        Assert.Contains("Downloaded. It installs once every game window is closed.", Texts(panel));
+        Assert.Equal(new[] { "Update when all are closed", "What's new" }, Buttons(panel).Select(Label));
 
         Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.UpToDate, "chat", new Version(0, 10, 1))));
         Assert.Equal(new[] { "LegACEy 0.10.1 is up to date" }, Texts(panel));
@@ -41,6 +42,13 @@ public sealed class UpdateToastTests
         Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.Failed, "chat")));
         Assert.Equal("Couldn't check for updates", Texts(panel)[0]);
         Press(panel, Buttons(panel).Single(button => Label(button) == "Try again"));
+        Assert.Equal(1, checks);
+
+        // A failed download tries the download again.
+        Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.Failed, null, Next)));
+        Assert.Equal("Couldn't download LegACEy 0.11.0", Texts(panel)[0]);
+        Press(panel, Buttons(panel).Single(button => Label(button) == "Try again"));
+        Assert.Equal(new[] { Next }, installs);
         Assert.Equal(1, checks);
     });
 
@@ -85,15 +93,15 @@ public sealed class UpdateToastTests
     });
 
     [Fact]
-    public void With_one_client_Ready_logs_out_after_a_confirm_that_waits_for_peace_and_with_several_it_offers_no_log_out() => RenderThread.Run(() =>
+    public void Updating_asks_first_waits_for_peace_downloads_and_then_logs_out() => RenderThread.Run(() =>
     {
         var now = new DateTime(2026, 10, 20, 12, 0, 0, DateTimeKind.Utc);
         var peace = true;
+        var installs = 0;
         var logOuts = 0;
         var toast = new DerethNoticeToast(() => now);
         using var panel = AvaloniaPanel.Create(() => toast, (int)DerethNoticeToast.CardWidth, 200);
-        ToastNotice Ready(bool severalClients) =>
-            ClientUiRuntime.UpdateToast(new UpdateNotice(UpdateNoticeKind.Ready, "chat", Next, severalClients), _ => { }, () => { }, toast.Show, () => peace, () => logOuts++);
+        ToastNotice Toast(UpdateNotice notice) => ClientUiRuntime.UpdateToast(notice, _ => { }, () => { }, toast.Show, () => peace, _ => installs++, () => logOuts++);
         Button Labelled(string label) => Buttons(panel).Single(button => Label(button) == label);
         void Wait(double seconds)
         {
@@ -103,47 +111,58 @@ public sealed class UpdateToastTests
         }
         var confirm = new[]
         {
-            "Log out and update?", "Your character logs out and the game closes while LegACEy 0.11.0 installs. Then start it again from your launcher.",
+            "Log out and update?",
+            "LegACEy 0.11.0 downloads, then your character logs out and the game closes while it installs. Then start it again from your launcher.",
             "Log out", "Cancel"
         };
+        var ready = new[] { "LegACEy 0.11.0 is available", "Nothing changes until you update.", "Log out and update", "What's new" };
 
-        // Several clients: logging this one out installs nothing.
-        Show(panel, toast, Ready(severalClients: true));
-        Assert.Equal(new[] { "What's new" }, Buttons(panel).Select(Label));
-
-        // One client: Log out and update asks first, and the question waits for an answer.
-        Show(panel, toast, Ready(severalClients: false));
+        // The update button asks first, and the question waits for an answer; Cancel changes nothing.
+        Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.Ready, "chat", Next)));
         Press(panel, Labelled("Log out and update"));
         Assert.Equal(confirm, Texts(panel));
         Wait(3600);
         Assert.True(toast.IsVisible);
         Press(panel, Labelled("Cancel"));
-        Assert.Equal(new[] { "LegACEy 0.11.0 is ready", "Downloaded. It installs when you close the game.", "Log out and update", "What's new" }, Texts(panel));
-        Assert.Equal(0, logOuts);
+        Assert.Equal(ready, Texts(panel));
+        Assert.Equal((0, 0), (installs, logOuts));
 
-        // The stance is read again on the click: drawn in peace, pressed in combat, it doesn't log out.
+        // The stance is read again on the click: drawn in peace, pressed in combat, it does nothing.
         Press(panel, Labelled("Log out and update"));
         Assert.True(Labelled("Log out").IsEnabled);
         peace = false;
         Press(panel, Labelled("Log out"));
-        Assert.Equal(0, logOuts);
+        Assert.Equal(0, installs);
         Assert.False(Labelled("Log out").IsEnabled);
         Assert.Contains("Not while in combat", Texts(panel));
-        Wait(1);
-        Press(panel, Labelled("Log out"));
-        Assert.Equal(0, logOuts);
 
-        // Back in peace, it lights again and logs out.
+        // In peace, Log out downloads first and logs out only once the download is in.
         peace = true;
         Wait(1);
-        Assert.True(Labelled("Log out").IsEnabled);
-        Assert.DoesNotContain("Not while in combat", Texts(panel));
         Press(panel, Labelled("Log out"));
+        Assert.Equal(1, installs);
+        Assert.Equal("Downloading LegACEy 0.11.0…", Texts(panel)[0]);
+        Assert.Equal(0, logOuts);
+        Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.Downloaded, "chat", Next)));
         Assert.Equal(1, logOuts);
+
+        // Out of peace when the download lands, it asks again rather than logging out.
+        peace = false;
+        Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.Downloaded, "chat", Next)));
+        Assert.Equal(1, logOuts);
+        Assert.Equal(confirm, Texts(panel).Take(4));
+
+        // Several clients: the same question, named for waiting on the other windows.
+        peace = true;
+        Show(panel, toast, Toast(new UpdateNotice(UpdateNoticeKind.Ready, "chat", Next, SeveralClients: true)));
+        Press(panel, Labelled("Update when all are closed"));
+        Assert.Equal("Update when all are closed?", Texts(panel)[0]);
+        Press(panel, Labelled("Log out"));
+        Assert.Equal(2, installs);
     });
 
     // An update toast whose buttons do nothing.
-    private static ToastNotice Idle(UpdateNotice notice) => ClientUiRuntime.UpdateToast(notice, _ => { }, () => { }, _ => { }, () => true, () => { });
+    private static ToastNotice Idle(UpdateNotice notice) => ClientUiRuntime.UpdateToast(notice, _ => { }, () => { }, _ => { }, () => true, _ => { }, () => { });
 
     private static void Show(AvaloniaPanel panel, DerethNoticeToast toast, ToastNotice notice)
     {

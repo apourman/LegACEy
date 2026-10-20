@@ -1866,36 +1866,59 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// The toast for an updater notice, with its lifetime. What's new opens the release's page with <paramref name="open"/>; Try again calls
-    /// <paramref name="checkNow"/>. With one client running, Ready's Log out and update <paramref name="show"/>s a confirm in its place, whose
-    /// Log out calls <paramref name="logOut"/> only while <paramref name="peace"/> holds and whose Cancel shows Ready again.
+    /// <paramref name="checkNow"/>, or <paramref name="install"/> again after a failed download. Ready's update button <paramref name="show"/>s a
+    /// confirm in its place, whose Log out works only while <paramref name="peace"/> holds: it shows Downloading and calls <paramref name="install"/>,
+    /// and the Downloaded that follows calls <paramref name="logOut"/>, or asks again if the character has left peace by then. Cancel shows Ready again.
     /// </summary>
     internal static ToastNotice UpdateToast(UpdateNotice notice, Action<string> open, Action checkNow, Action<ToastNotice> show, Func<bool> peace,
-        Action logOut) => notice.Kind switch
+        Action<Version> install, Action logOut) => notice.Kind switch
     {
         UpdateNoticeKind.Checking => new ToastNotice(ToastIcon.Search, "Checking for updates…", Busy: true),
-        UpdateNoticeKind.Ready => ReadyToast(notice, open, show, peace, logOut),
+        UpdateNoticeKind.Ready => ReadyToast(notice, open, show, peace, install),
+        UpdateNoticeKind.Downloaded when peace() => LoggingOut(notice.Version!, logOut),
+        UpdateNoticeKind.Downloaded => Confirm(notice, open, show, peace, install),
         UpdateNoticeKind.UpToDate => new ToastNotice(ToastIcon.Done, $"LegACEy {notice.Version} is up to date", Lifetime: TimeSpan.FromSeconds(4)),
         UpdateNoticeKind.Wait => new ToastNotice(ToastIcon.Wait, "Checked moments ago", "Try again in a minute. Another client on this PC may be checking too.",
             Lifetime: TimeSpan.FromSeconds(5)),
-        _ => new ToastNotice(ToastIcon.Failed, "Couldn't check for updates", "GitHub didn't answer, or the download didn't verify. Try again later.",
+        _ when notice.Version is { } version => new ToastNotice(ToastIcon.Failed, $"Couldn't download LegACEy {version}",
+            "The download failed or didn't verify. Nothing has changed.", new[] { new ToastAction("Try again", () => install(version)) }, TimeSpan.FromSeconds(8)),
+        _ => new ToastNotice(ToastIcon.Failed, "Couldn't check for updates", "GitHub didn't answer. Try again later.",
             new[] { new ToastAction("Try again", checkNow) }, TimeSpan.FromSeconds(8)),
     };
 
-    // Several clients get no log out: the update installs only once every one has closed.
-    private static ToastNotice ReadyToast(UpdateNotice notice, Action<string> open, Action<ToastNotice> show, Func<bool> peace, Action logOut)
-    {
-        ToastNotice Ready(string body, params ToastAction[] actions) =>
-            new(ToastIcon.New, $"LegACEy {notice.Version} is ready", body, actions, TimeSpan.FromSeconds(12));
-        var whatsNew = new ToastAction("What's new", () => open(PluginUpdates.ReleasePage(notice.Version!)), Quiet: true);
-        if (notice.SeveralClients) return Ready("Downloaded. It installs once every game window is closed.", whatsNew);
-        var confirm = new ToastNotice(ToastIcon.Caution, "Log out and update?",
-            $"Your character logs out and the game closes while LegACEy {notice.Version} installs. Then start it again from your launcher.",
+    // With several clients open the update installs only once every one has closed, so the button says so.
+    private static ToastNotice ReadyToast(UpdateNotice notice, Action<string> open, Action<ToastNotice> show, Func<bool> peace, Action<Version> install) =>
+        new(ToastIcon.New, $"LegACEy {notice.Version} is available", "Nothing changes until you update.",
             new[]
             {
-                new ToastAction("Log out", logOut, Unavailable: () => peace() ? null : "Not while in combat"),
-                new ToastAction("Cancel", () => show(ReadyToast(notice, open, show, peace, logOut)), Quiet: true),
+                new ToastAction(notice.SeveralClients ? "Update when all are closed" : "Log out and update", () => show(Confirm(notice, open, show, peace, install))),
+                new ToastAction("What's new", () => open(PluginUpdates.ReleasePage(notice.Version!)), Quiet: true),
+            }, TimeSpan.FromSeconds(12));
+
+    private static ToastNotice Confirm(UpdateNotice notice, Action<string> open, Action<ToastNotice> show, Func<bool> peace, Action<Version> install)
+    {
+        var version = notice.Version!;
+        var downloading = new ToastNotice(ToastIcon.New, $"Downloading LegACEy {version}…", "Your character logs out once it's ready.", Busy: true);
+        return new ToastNotice(ToastIcon.Caution, notice.SeveralClients ? "Update when all are closed?" : "Log out and update?",
+            notice.SeveralClients
+                ? $"LegACEy {version} downloads, then your character logs out and this game closes. It installs once every other game window is closed too."
+                : $"LegACEy {version} downloads, then your character logs out and the game closes while it installs. Then start it again from your launcher.",
+            new[]
+            {
+                new ToastAction("Log out", () =>
+                {
+                    show(downloading);
+                    install(version);
+                }, Unavailable: () => peace() ? null : "Not while in combat"),
+                new ToastAction("Cancel", () => show(ReadyToast(notice, open, show, peace, install)), Quiet: true),
             });
-        return Ready("Downloaded. It installs when you close the game.", new ToastAction("Log out and update", () => show(confirm)), whatsNew);
+    }
+
+    // Mapping Downloaded logs out: the player asked for it, and the updater is now waiting for the game to close.
+    private static ToastNotice LoggingOut(Version version, Action logOut)
+    {
+        logOut();
+        return new ToastNotice(ToastIcon.New, $"Logging out to install LegACEy {version}", Busy: true);
     }
 
     /// <summary>An updater notice: its chat line, as before the toast, and its toast while the windows can show one.</summary>
@@ -1915,7 +1938,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _updateToastSurface = new ScreenSurface(_device, panel);
                 _updateToast = toast;
             }
-            _updateToast!.Show(UpdateToast(notice, OpenPage, () => _updates.CheckNow(), shown => _updateToast?.Show(shown), InPeace, LogOutToUpdate));
+            _updateToast!.Show(UpdateToast(notice, OpenPage, () => _updates.CheckNow(), shown => _updateToast?.Show(shown), InPeace,
+                version => _updates.Install(version), LogOutToUpdate));
         }
         catch (Exception exception) { UpdateToastFailed(exception); }
     }

@@ -120,31 +120,61 @@ public sealed class PluginUpdatesTests : IDisposable
     }
 
     [Fact]
-    public async Task A_background_check_is_silent_until_an_update_is_staged_and_then_says_ready_once()
+    public async Task A_background_check_is_silent_until_a_newer_release_is_out_and_then_offers_it_once_without_downloading()
     {
         var install = Install();
-        using var updates = new PluginUpdates(install, _ => Task.FromResult("[]"));
+        var releases = "[]";
+        using var updates = new PluginUpdates(install, _ => Task.FromResult(releases));
         await updates.Check();
         Assert.Empty(Notices(updates));
 
-        // Another client staged the next version and its updater is already waiting for the game to close.
-        var current = typeof(PluginUpdates).Assembly.GetName().Version!;
-        var next = new Version(current.Major + 1, 0, 0);
-        Directory.CreateDirectory(Path.Combine(install, "update", next.ToString()));
-        File.WriteAllText(Path.Combine(install, "update", next.ToString(), "ready"), "");
-        using var updater = new Mutex(true, @"Local\LegACEy.Updater");
-
-        await updates.Check();
-        var ready = Assert.Single(Notices(updates));
+        var next = Next();
+        releases = $"[{Release($"decal-plugin-v{next}")}]";
+        await updates.CheckNow();
+        var ready = Notices(updates).Last();
         Assert.Equal(UpdateNoticeKind.Ready, ready.Kind);
         Assert.Equal(next, ready.Version);
         Assert.False(ready.SeveralClients);
+        Assert.False(Directory.Exists(Path.Combine(install, "update", next.ToString())));
+
+        // Offered once; the next background check stays quiet.
+        File.Delete(Path.Combine(install, "update-check"));
         await updates.Check();
         Assert.Empty(Notices(updates));
+    }
 
-        // A press says it again.
+    [Fact]
+    public async Task Installing_downloads_the_release_a_check_found_and_says_downloaded_or_failed()
+    {
+        var install = Install();
+        var next = Next();
+        using var updates = new PluginUpdates(install, _ => Task.FromResult($"[{Release($"decal-plugin-v{next}")}]"));
+
+        // Nothing found yet: nothing to install.
+        await updates.Install(next);
+        Assert.Empty(Notices(updates));
+
         await updates.CheckNow();
-        Assert.Equal(new[] { UpdateNoticeKind.Checking, UpdateNoticeKind.Ready }, Kinds(updates));
+        Notices(updates);
+        // The release's host isn't there, so the download fails and nothing is staged.
+        await updates.Install(next);
+        var failed = Assert.Single(Notices(updates));
+        Assert.Equal((UpdateNoticeKind.Failed, next), (failed.Kind, failed.Version));
+
+        // Already staged, with an updater waiting: it says downloaded at once.
+        var stage = Path.Combine(install, "update", next.ToString());
+        Directory.CreateDirectory(stage);
+        File.WriteAllText(Path.Combine(stage, "ready"), "");
+        using var updater = new Mutex(true, @"Local\LegACEy.Updater");
+        await updates.Install(next);
+        var downloaded = Assert.Single(Notices(updates));
+        Assert.Equal((UpdateNoticeKind.Downloaded, next), (downloaded.Kind, downloaded.Version));
+    }
+
+    private static Version Next()
+    {
+        var current = typeof(PluginUpdates).Assembly.GetName().Version!;
+        return new Version(current.Major + 1, 0, 0);
     }
 
     /// <summary>A setup install whose stub is this build's client assembly.</summary>

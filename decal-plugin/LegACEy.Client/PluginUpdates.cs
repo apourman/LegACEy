@@ -20,8 +20,11 @@ namespace LegACEy.Client.DecalPlugin;
 /// <summary>A published plugin release: its version and the URLs of its zip and checksums.</summary>
 internal sealed record PluginRelease(Version Version, string ZipUrl, string SumsUrl);
 
-/// <summary>What the updater has to tell the player. Wait covers a press too soon, a check already running and another client checking.</summary>
-internal enum UpdateNoticeKind { Checking, Ready, UpToDate, Wait, Failed }
+/// <summary>
+/// What the updater has to tell the player. Ready is a newer release found, not yet downloaded; Downloaded is one the player chose to install,
+/// downloaded with the updater waiting for the game to close. Wait covers a press too soon, a check already running and another client checking.
+/// </summary>
+internal enum UpdateNoticeKind { Checking, Ready, Downloaded, UpToDate, Wait, Failed }
 
 /// <summary>
 /// One thing the updater has to tell the player: its kind, its chat line (null for none), the version it is about, and for Ready whether
@@ -30,9 +33,9 @@ internal enum UpdateNoticeKind { Checking, Ready, UpToDate, Wait, Failed }
 internal sealed record UpdateNotice(UpdateNoticeKind Kind, string? Chat, Version? Version = null, bool SeveralClients = false);
 
 /// <summary>
-/// Keeps an installed plugin current. At login and every 6 hours, off the game thread, it looks for a newer plugin release on GitHub,
-/// stages it in <c>update\&lt;version&gt;\</c> beside the stub, and starts the updater copied into that stage, which applies it once every
-/// game client has exited. Only an install made by setup.exe updates (its <c>install.json</c> sits beside the stub); a
+/// Offers an installed plugin its updates. At login and every 6 hours, off the game thread, it looks for a newer plugin release on GitHub and
+/// says so; nothing installs until the player chooses to. <see cref="Install"/> then stages it in <c>update\&lt;version&gt;\</c> beside the stub
+/// and starts the updater copied into that stage, which applies it once every game client has exited. Only an install made by setup.exe updates (its <c>install.json</c> sits beside the stub); a
 /// <c>no-auto-update</c> file beside the stub turns it off. Every failure is logged and ignored.
 /// </summary>
 internal sealed class PluginUpdates : IDisposable
@@ -62,6 +65,8 @@ internal sealed class PluginUpdates : IDisposable
     private readonly Func<CancellationToken, Task<string>> _releases;
     private readonly ConcurrentQueue<UpdateNotice> _notices = new();
     private readonly HashSet<Version> _announced = new();
+    // The releases checks found, by version, for Install to download.
+    private readonly ConcurrentDictionary<Version, PluginRelease> _found = new();
     private Timer? _timer;
     private int _checking;
     private DateTime _lastPress;
@@ -124,7 +129,7 @@ internal sealed class PluginUpdates : IDisposable
     /// <summary>The installed plugin's version, X.Y.Z.</summary>
     public Version Installed => Plain(typeof(PluginUpdates).Assembly.GetName().Version ?? new Version());
 
-    /// <summary>Why this install never updates itself (a checkout build, or <c>no-auto-update</c>), or null when it does.</summary>
+    /// <summary>Why this install never offers updates (a checkout build, or <c>no-auto-update</c>), or null when it does.</summary>
     public string? Off =>
         !File.Exists(Path.Combine(_install, "install.json")) ? "checkout build"
         : File.Exists(Path.Combine(_install, "no-auto-update")) ? "updates off"
@@ -142,7 +147,7 @@ internal sealed class PluginUpdates : IDisposable
 
     /// <summary>
     /// The menu's Check for updates: checks now, past the shared gap, at most once a minute, and says each step: Checking, then the outcome.
-    /// A press too soon is told to wait every time, in chat only the first time. The update still installs only when the game closes.
+    /// A press too soon is told to wait every time, in chat only the first time. Nothing installs unless the player then chooses to.
     /// </summary>
     public Task CheckNow()
     {
@@ -162,22 +167,56 @@ internal sealed class PluginUpdates : IDisposable
         return check!;
     }
 
+    /// <summary>
+    /// The player chose to install <paramref name="version"/>, a release a check found: downloads and verifies it off the game thread, starts
+    /// the updater, and says Downloaded, or Failed with the version when it can't. A check or download already running is told to wait.
+    /// </summary>
+    public Task Install(Version version)
+    {
+        if (Off != null || !_found.TryGetValue(version, out var release)) return Task.CompletedTask;
+        var download = Begin(cancel => Fetch(release, cancel), cancelled: new UpdateNotice(UpdateNoticeKind.Failed, null, version));
+        if (download == null) _notices.Enqueue(new UpdateNotice(UpdateNoticeKind.Wait, null));
+        return download ?? Task.CompletedTask;
+    }
+
+    private async Task Fetch(PluginRelease release, CancellationToken cancel)
+    {
+        var update = Path.Combine(_install, "update");
+        if (!await Download(release, update, cancel))
+        {
+            _notices.Enqueue(new UpdateNotice(UpdateNoticeKind.Failed, null, release.Version));
+            return;
+        }
+        var updaterRunning = Mutex.TryOpenExisting(UpdaterMutex, out var held);
+        held?.Dispose();
+        if (!updaterRunning) StartUpdater(Path.Combine(update, release.Version.ToString()));
+        _notices.Enqueue(new UpdateNotice(UpdateNoticeKind.Downloaded, $"LegACEy {release.Version} is downloaded and installs when the game closes.",
+            release.Version));
+    }
+
     /// <summary>Runs one check off the game thread; null when one is already running. A forced check says Checking first.</summary>
     private Task? Start(bool force)
     {
+        var check = Begin(cancel => Run(force, cancel), force ? Failed : null);
+        if (check != null && force) _notices.Enqueue(new UpdateNotice(UpdateNoticeKind.Checking, null));
+        return check;
+    }
+
+    /// <summary>Runs a check or a download off the game thread, one at a time; null when one is already running. A failure says <paramref name="cancelled"/>.</summary>
+    private Task? Begin(Func<CancellationToken, Task> work, UpdateNotice? cancelled)
+    {
         if (Interlocked.Exchange(ref _checking, 1) == 1) return null;
-        if (force) _notices.Enqueue(new UpdateNotice(UpdateNoticeKind.Checking, null));
         return Task.Run(async () =>
         {
             try
             {
                 using var deadline = new CancellationTokenSource(Deadline);
-                await Run(force, deadline.Token);
+                await work(deadline.Token);
             }
             catch (Exception exception)
             {
-                ClientUiRuntime.Log($"Plugin update check failed: {exception.Message}");
-                if (force) _notices.Enqueue(Failed);
+                ClientUiRuntime.Log($"Plugin update failed: {exception.Message}");
+                if (cancelled != null) _notices.Enqueue(cancelled);
             }
             finally { Volatile.Write(ref _checking, 0); }
         });
@@ -198,7 +237,7 @@ internal sealed class PluginUpdates : IDisposable
 
     public void Dispose() => _timer?.Dispose();
 
-    /// <summary>One check. Forced, from the menu, it skips the shared gap and always says the outcome.</summary>
+    /// <summary>One check. Forced, from the menu, it skips the shared gap and always says the outcome. It downloads nothing.</summary>
     private async Task Run(bool force, CancellationToken cancel)
     {
         if (Off != null) return;
@@ -207,10 +246,10 @@ internal sealed class PluginUpdates : IDisposable
         var updaterRunning = Mutex.TryOpenExisting(UpdaterMutex, out var held);
         held?.Dispose();
 
-        // The stamp holds the last check's time. Held open unshared, it makes this the one client that checks, cleans up and downloads;
-        // while another client holds it, this one skips straight to the stages already there.
+        // The stamp holds the last check's time. Held open unshared, it makes this the one client that checks and cleans up; while another
+        // client holds it, a background check here says nothing.
         FileStream? slot = null;
-        var unverified = false;
+        PluginRelease? release = null;
         try { slot = new FileStream(Path.Combine(_install, "update-check"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
         catch (IOException exception) when ((exception.HResult & 0xFFFF) is SharingViolation or LockViolation || exception.HResult == WouldBlock) { }
         if (slot == null && force)
@@ -229,23 +268,19 @@ internal sealed class PluginUpdates : IDisposable
                     slot.Write(Encoding.UTF8.GetBytes(DateTime.UtcNow.ToString("O")));
                     slot.Flush();
                     if (!updaterRunning) RemoveStale(update, current);
-                    unverified = Newest(await _releases(cancel), current) is { } release
-                        && !await Download(release, update, cancel);
+                    release = Newest(await _releases(cancel), current);
                 }
             }
 
-        // A stage this client or another made, or one an updater left after a failed apply: announced once, applied at the game's exit.
-        if (Staged(update).Where(version => version > Plain(current)).Max() is not { } staged)
+        if (release == null)
         {
-            if (force)
-                _notices.Enqueue(unverified ? Failed : new UpdateNotice(UpdateNoticeKind.UpToDate, $"LegACEy {Plain(current)} is up to date.", Plain(current)));
+            if (force) _notices.Enqueue(new UpdateNotice(UpdateNoticeKind.UpToDate, $"LegACEy {Plain(current)} is up to date.", Plain(current)));
             return;
         }
-        // Announced only once an updater is waiting, so the line is never a promise nothing will keep.
-        if (!updaterRunning) StartUpdater(Path.Combine(update, staged.ToString()));
-        if (_announced.Add(staged) || force)
-            _notices.Enqueue(new UpdateNotice(UpdateNoticeKind.Ready, $"LegACEy {staged} is downloaded and installs when the game closes.", staged,
-                SeveralClients()));
+        _found[release.Version] = release;
+        if (_announced.Add(release.Version) || force)
+            _notices.Enqueue(new UpdateNotice(UpdateNoticeKind.Ready,
+                $"LegACEy {release.Version} is available: update from its notice, or with Check for updates in Settings.", release.Version, SeveralClients()));
     }
 
     /// <summary>Whether more than one game client is running, counted as the updater counts them: it installs once none is.</summary>
@@ -278,13 +313,6 @@ internal sealed class PluginUpdates : IDisposable
         await using var file = File.Create(path);
         await response.Content.CopyToAsync(file, cancel);
     }
-
-    /// <summary>The versions in <c>update\</c> whose stage is ready.</summary>
-    private static IEnumerable<Version> Staged(string update) =>
-        (Directory.Exists(update) ? Directory.GetDirectories(update) : Array.Empty<string>())
-        .Where(folder => File.Exists(Path.Combine(folder, "ready")))
-        .Select(folder => Version.TryParse(Path.GetFileName(folder), out var version) ? version : null)
-        .OfType<Version>();
 
     /// <summary>
     /// With no updater running, removes every version folder that is not a ready stage newer than the running stub: what an updater left
