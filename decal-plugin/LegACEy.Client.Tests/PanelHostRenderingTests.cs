@@ -72,6 +72,14 @@ public sealed class PanelHostRenderingTests
         panel.Resize(80, 40);
         panel.Tick();
         Assert.Equal(new Size(160, 80), content.Bounds.Size);
+
+        // A new scale draws the same content in place at it.
+        panel.Resize(120, 60, scale: 1.5);
+        panel.Tick();
+        Assert.Equal((120, 60), (panel.Frame.Width, panel.Frame.Height));
+        Assert.Equal(new Size(80, 40), content.Bounds.Size);
+        Assert.Same(content, panel.Content);
+        Assert.Equal(new Point(40, 20), panel.ToContent(60, 30));
     });
 
     [Fact]
