@@ -79,11 +79,12 @@ because only setup.exe puts `install.json` beside the main DLL. At login and
 every 6 hours the client asks GitHub for the newest published
 `decal-plugin-vX.Y.Z` release (at most once an hour for all clients on the
 install, timed by the `update-check` file). A newer one is downloaded into
-`update\<version>\`, checked against its `SHA256SUMS.txt` and unpacked; chat
-says it installs when the game closes, and the updater applies it then, so the
-next launch runs it. The LegACEy menu shows the installed version and a
-Check button, which checks now past the hourly gap (at most once a minute) and
-says the outcome in chat; it is greyed out on a checkout build or with
+`update\<version>\`, checked against its `SHA256SUMS.txt` and unpacked; a toast
+at the bottom centre and a chat line say it installs when the game closes (once
+per version), and the updater applies it then, so the next launch runs it. The
+LegACEy menu shows the installed version and a Check button, which checks now
+past the hourly gap (at most once a minute) and shows Checking, then the
+outcome, as a toast and in chat; it is greyed out on a checkout build or with
 `no-auto-update`. The checksum guards against a corrupt download, not a
 compromised release: the sums file comes from the same release. The updater
 logs to `updater.log`. Creating an empty file
