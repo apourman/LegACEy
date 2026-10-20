@@ -4,13 +4,15 @@
 
 row_major float4x4 WorldViewProj : register(c0);
 float4 Eye : register(c4);      // xyz: the camera (game space); w: seconds
-float4 Middle : register(c5);   // xyz: the drop box's middle (game space); w: metres around the camera with no drops
+float4 Middle : register(c5);   // xyz: the drop box's middle (game space)
 float4 Box : register(c6);      // xyz: the drop box's size; w: drop size, metres
 float4 Fall : register(c7);     // xy: wind, metres a second; z: fall speed; w: sway, metres
 float4 Area : register(c8);     // xy: the weather area's centre; z: its reach from there; w: seconds of fall drawn as a streak (0: flakes)
 float4 Right : register(c9);    // xyz: the view's right (render space)
 float4 Up : register(c10);      // xyz: the view's up (render space)
 float4 Colour : register(c11);  // the drops' colour and alpha
+float4 ShelterMin : register(c12); // xyz: the player's building's box (game space), where no drop falls; empty (min past max) for none
+float4 ShelterMax : register(c13);
 
 struct Pixel
 {
@@ -33,11 +35,12 @@ Pixel Vs(float3 start : POSITION, float2 drop : TEXCOORD0, float2 scale : TEXCOO
     position = from + position - floor(position / Box.xyz) * Box.xyz;
     float sway = sin(time * 1.3 * drop.x + drop.y) * Fall.w;
     position += float3(sway, sway * 0.6, 0);
-    // Outside the weather's square, or within the clear around the camera (where a drop would smear across the screen or, indoors, fall in
-    // the room; it fades out within a metre of it).
+    // Outside the weather's square, in the player's building, or almost at the lens (where a drop would smear across the screen; it fades
+    // out within a metre).
     float2 edge = abs(position.xy - Area.xy);
-    float near = saturate((distance(position, Eye.xyz) - Middle.w) / 0.7);
-    if (Area.z - max(edge.x, edge.y) < 0 || near <= 0)
+    float near = saturate((distance(position, Eye.xyz) - 0.3) / 0.7);
+    bool sheltered = all(position >= ShelterMin.xyz) && all(position <= ShelterMax.xyz);
+    if (Area.z - max(edge.x, edge.y) < 0 || sheltered || near <= 0)
     {
         // Past the far plane: clipped, so the quad draws nothing.
         pixel.Position = float4(0, 0, 2, 1);

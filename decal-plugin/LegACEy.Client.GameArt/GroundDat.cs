@@ -24,6 +24,18 @@ public sealed class GroundFootprint
     public IReadOnlyList<GroundPoint> Hull { get; }
 }
 
+/// <summary>
+/// A building: the box around its exterior model, in metres from the landblock's south-west corner (z up), and the indoor cells (the
+/// cell id's low word) its doors lead into or are seen from.
+/// </summary>
+public sealed class GroundBuilding
+{
+    public GroundBuilding(Vec3 min, Vec3 max, HashSet<ushort> cells) { Min = min; Max = max; Cells = cells; }
+    public Vec3 Min { get; }
+    public Vec3 Max { get; }
+    public HashSet<ushort> Cells { get; }
+}
+
 /// <summary>One landblock's ground: its 9 × 9 vertices and the footprints of its buildings and walls.</summary>
 public sealed class GroundLandblock
 {
@@ -112,6 +124,33 @@ public sealed class GroundDat : IGroundSource, IDisposable
         return info == null ? ground : new GroundLandblock(x, y, ground.Terrain, ground.Height, ReadFootprints(info));
     }
 
+    /// <summary>The landblock's buildings; none where it has none.</summary>
+    public IReadOnlyList<GroundBuilding> ReadBuildings(int x, int y)
+    {
+        var info = x is < 0 or > 254 || y is < 0 or > 254 ? null : _cell.ReadFile(((uint)x << 24) | ((uint)y << 16) | 0xFFFE);
+        if (info == null) return Array.Empty<GroundBuilding>();
+        var reader = new BinaryReader(new MemoryStream(info));
+        SkipToBuildings(reader);
+        var buildings = new List<GroundBuilding>();
+        foreach (var (model, frame, cells) in Buildings(reader))
+        {
+            var points = (model >> 24) is 0x01 or 0x02 ? ModelPoints(model, 0) : Array.Empty<Vec3>();
+            if (points.Length == 0) continue;
+            float minX = float.MaxValue, minY = float.MaxValue, minZ = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue, maxZ = float.MinValue;
+            foreach (var point in points)
+            {
+                var p = frame.Rotate(point) + frame.Origin;
+                minX = Math.Min(minX, p.X); minY = Math.Min(minY, p.Y); minZ = Math.Min(minZ, p.Z);
+                maxX = Math.Max(maxX, p.X); maxY = Math.Max(maxY, p.Y); maxZ = Math.Max(maxZ, p.Z);
+            }
+            buildings.Add(new GroundBuilding(new Vec3(minX, minY, minZ), new Vec3(maxX, maxY, maxZ), cells));
+        }
+        return buildings;
+    }
+
+    /// <summary>Whether an indoor cell's room has a view outside (EnvCell's SeenOutside flag): a building's does, a dungeon's does not.</summary>
+    public bool SeesOutside(uint cell) => _cell.ReadFile(cell) is { Length: >= 8 } data && (BitConverter.ToUInt32(data, 4) & 0x1) != 0;
+
     /// <summary>The landblock's vertices only, without its buildings and walls; safe from any thread.</summary>
     public GroundLandblock? ReadVertices(int x, int y)
     {
@@ -172,6 +211,25 @@ public sealed class GroundDat : IGroundSource, IDisposable
             AddScenery(footprints, model, frame);
         }
 
+        foreach (var (model, frame, _) in Buildings(reader))
+        {
+            var hull = Outline(model, frame);
+            if (hull != null) footprints.Add(new GroundFootprint(true, hull));
+        }
+        return footprints;
+    }
+
+    private static void SkipToBuildings(BinaryReader reader)
+    {
+        reader.ReadUInt32(); // the id
+        reader.ReadUInt32(); // the number of cells
+        var objects = reader.ReadUInt32();
+        reader.BaseStream.Seek(objects * (4 + 28), SeekOrigin.Current); // a model and its frame each
+    }
+
+    /// <summary>LandblockInfo's buildings, read from just after its static objects: each one's model, frame and the cells of its portals.</summary>
+    private static IEnumerable<(uint Model, Frame Frame, HashSet<ushort> Cells)> Buildings(BinaryReader reader)
+    {
         var buildings = reader.ReadUInt16();
         reader.ReadUInt16(); // pack mask: only tells whether restriction tables follow, which aren't read
         for (var i = 0; i < buildings; i++)
@@ -180,17 +238,18 @@ public sealed class GroundDat : IGroundSource, IDisposable
             var frame = DatModels.ReadFrame(reader);
             reader.ReadUInt32(); // the number of leaves
             var portals = reader.ReadUInt32();
+            var cells = new HashSet<ushort>();
             for (var p = 0; p < portals; p++)
             {
-                reader.BaseStream.Seek(6, SeekOrigin.Current); // flags, other cell, other portal
+                reader.ReadUInt16(); // flags
+                cells.Add(reader.ReadUInt16()); // the cell the door leads into
+                reader.ReadUInt16(); // its portal there
                 var stabs = reader.ReadUInt16();
-                reader.BaseStream.Seek(stabs * 2, SeekOrigin.Current);
+                for (var s = 0; s < stabs; s++) cells.Add(reader.ReadUInt16()); // cells seen through the door
                 reader.BaseStream.Position = (reader.BaseStream.Position + 3) / 4 * 4;
             }
-            var hull = Outline(model, frame);
-            if (hull != null) footprints.Add(new GroundFootprint(true, hull));
+            yield return (model, frame, cells);
         }
-        return footprints;
     }
 
     private void AddScenery(List<GroundFootprint> footprints, uint model, Frame frame)
