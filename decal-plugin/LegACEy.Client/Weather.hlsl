@@ -11,6 +11,8 @@ float4 Area : register(c8);     // xy: the weather area's centre; z: its reach f
 float4 Right : register(c9);    // xyz: the view's right (render space)
 float4 Up : register(c10);      // xyz: the view's up (render space)
 float4 Colour : register(c11);  // the drops' colour and alpha
+float4 ShelterMin : register(c12); // xyz: the player's building's box (game space), where no drop falls; empty (min past max) for none
+float4 ShelterMax : register(c13);
 
 struct Pixel
 {
@@ -33,10 +35,12 @@ Pixel Vs(float3 start : POSITION, float2 drop : TEXCOORD0, float2 scale : TEXCOO
     position = from + position - floor(position / Box.xyz) * Box.xyz;
     float sway = sin(time * 1.3 * drop.x + drop.y) * Fall.w;
     position += float3(sway, sway * 0.6, 0);
-    // Outside the weather's square, or almost at the lens (where a drop would smear across the screen; it fades out within a metre).
+    // Outside the weather's square, in the player's building, or almost at the lens (where a drop would smear across the screen; it fades
+    // out within a metre).
     float2 edge = abs(position.xy - Area.xy);
     float near = saturate((distance(position, Eye.xyz) - 0.3) / 0.7);
-    if (Area.z - max(edge.x, edge.y) < 0 || near <= 0)
+    bool sheltered = all(position >= ShelterMin.xyz) && all(position <= ShelterMax.xyz);
+    if (Area.z - max(edge.x, edge.y) < 0 || sheltered || near <= 0)
     {
         // Past the far plane: clipped, so the quad draws nothing.
         pixel.Position = float4(0, 0, 2, 1);

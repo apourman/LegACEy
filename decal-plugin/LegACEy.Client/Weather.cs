@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Numerics;
 using LegACEy.Client.Demo;
+using LegACEy.Client.GameArt;
 using static LegACEy.Client.DecalPlugin.D3D9;
 
 namespace LegACEy.Client.DecalPlugin;
@@ -13,13 +14,17 @@ namespace LegACEy.Client.DecalPlugin;
 /// fixed in the world as they fall, so moving through them shows parallax; a drop leaving the box comes back in on the other side. Snowflakes
 /// are soft camera-facing dots, raindrops streaks along their fall; both are depth-tested against retail's scene. A haze through
 /// <see cref="StormFog.DrawHaze"/> closes in the distance. A thunderstorm also darkens the screen to night and strikes lightning: a jagged
-/// bolt in the distance every 5 to 10 seconds, flickering, while the whole screen flashes. None of it shows indoors.
+/// bolt in the distance every 5 to 10 seconds, flickering, while the whole screen flashes. With the camera in a building it is drawn before
+/// retail draws the rooms (<see cref="WorldEffects"/>), so it shows only through the doors and windows, and no drop falls in the building
+/// (<see cref="Building"/>); none of it shows in a dungeon.
 /// With shader model 3 (<c>Weather.hlsl</c>) every drop sits in one vertex buffer and the shader moves it, so a frame costs one draw
 /// whatever the weather; without, the drops are moved here, half as many.
 /// </summary>
 internal sealed unsafe class Weather : IDisposable
 {
     private const float Reach = StormFog.Block * 1.5f, FadeIn = 30;
+    // Metres a building's box reaches past its model, so its own walls are inside it.
+    private const float Margin = 0.5f;
     private const int DotSize = 16;
     private static readonly Vector3 Box = new(40, 40, 24);
 
@@ -40,6 +45,14 @@ internal sealed unsafe class Weather : IDisposable
     private readonly IntPtr _device;
     private readonly StormFog _camera;
     private readonly Action<string> _log;
+    private readonly PortalDat _portal;
+    private GroundDat? _ground;
+    private bool _groundFailed;
+    private readonly Dictionary<uint, bool> _seenOutside = new();
+    // Each landblock's buildings (by the cell id's top word), read once.
+    private readonly Dictionary<uint, IReadOnlyList<GroundBuilding>> _buildings = new();
+    // Why the weather last showed or not, logged as it changes.
+    private string? _shown;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly Random _random = new(1722);
     private readonly Drop[] _drops;
@@ -53,10 +66,11 @@ internal sealed unsafe class Weather : IDisposable
     private IntPtr _vertexShader, _pixelShader, _dropBuffer;
     private bool? _shaded;
 
-    public Weather(IntPtr device, StormFog camera, Action<string> log)
+    public Weather(IntPtr device, StormFog camera, PortalDat portal, Action<string> log)
     {
         _device = device;
         _camera = camera;
+        _portal = portal;
         _log = log;
         _drops = new Drop[MostDrops];
         for (var i = 0; i < _drops.Length; i++)
@@ -68,18 +82,28 @@ internal sealed unsafe class Weather : IDisposable
     /// <summary>The weather and the middle landblock, or null for clear skies.</summary>
     public (WeatherKind Kind, int X, int Y)? Current { get; set; }
 
-    /// <summary>The player's cell id; an indoor cell (low word 0x100 and up, including dungeons) has no weather.</summary>
+    /// <summary>The player's cell id, zero in portal space: outdoors below 0x100 in its low word, indoors (a building's room or a dungeon's) from there.</summary>
     public uint PlayerCell { get; set; }
 
-    /// <summary>Draws the weather after retail's world, with the camera the storm fog measured.</summary>
+    /// <summary>False when the weather cannot be drawn under retail's rooms (<see cref="WorldEffects"/>): then none shows from a building.</summary>
+    public bool DrawsIndoors { get; set; } = true;
+
+    /// <summary>Draws the weather over retail's world (or, from indoors, its landscape), with the camera the storm fog measured.</summary>
     public void Draw()
     {
-        if (Current is not { } now || (PlayerCell & 0xFFFF) >= 0x100 || _camera.Eye is not { } eye) return;
+        if (Current is not { } now) { Shown(null); return; }
+        if (PlayerCell == 0) { Shown("hidden: the player is in no cell (portal space)"); return; }
+        if (!SeesOutside(PlayerCell) || (!DrawsIndoors && (PlayerCell & 0xFFFF) >= 0x100)) { Shown($"hidden: no view outside from cell 0x{PlayerCell:X8}"); return; }
+        if (_camera.Eye is not { } eye) { Shown("hidden: the camera is not measured yet"); return; }
         var fall = now.Kind switch { WeatherKind.Blizzard => Blizzard, WeatherKind.Thunderstorm => Thunderstorm, _ => Snow };
         var centre = new Vector2((now.X + 0.5f) * StormFog.Block, (now.Y + 0.5f) * StormFog.Block);
         var depth = Depth(_camera.Player ?? eye, centre);
         // Drops fall only inside the area, so from outside its edge shows; past a box's reach of it there is nothing to draw.
-        if (depth < -Box.X) return;
+        if (depth < -Box.X) { Shown("hidden: outside its landblocks"); return; }
+        var indoors = (PlayerCell & 0xFFFF) >= 0x100;
+        var building = indoors ? Building(PlayerCell, _camera.Player ?? eye) : null;
+        if (indoors && building == null) { Shown($"hidden: no building found for cell 0x{PlayerCell:X8}"); return; }
+        Shown($"{now.Kind} shown {(indoors ? "from a building" : "outdoors")}");
         var strength = Math.Clamp(depth / FadeIn, 0, 1);
         if (_dot == IntPtr.Zero) _dot = MakeDot();
         _shaded ??= MakeShaders();
@@ -93,8 +117,8 @@ internal sealed unsafe class Weather : IDisposable
             if (strength > 0) _camera.DrawHaze(fall.HazeColor, fall.Haze, strength);
             // Lightning lifts the night for its flash.
             if (fall.Night > 0 && strength > 0) Veil((uint)(fall.Night * strength * (1 - 0.8f * flash) * 255) << 24 | NightColor, additive: false);
-            if (_shaded == true) DrawShaded(fall, eye, centre, time);
-            else DrawDrops(fall, eye, centre, time);
+            if (_shaded == true) DrawShaded(fall, eye, centre, time, building);
+            else DrawDrops(fall, eye, centre, time, building);
             if (flash > 0)
             {
                 DrawBolt(eye, flash);
@@ -103,6 +127,74 @@ internal sealed unsafe class Weather : IDisposable
             }
         }
         finally { RestoreState(saved); }
+    }
+
+    /// <summary>
+    /// Whether the weather shows from this cell: outdoors, and in a building's room (its windows and doors look out), but not in a dungeon.
+    /// Each indoor cell's flags are read from client_cell_1.dat once.
+    /// </summary>
+    private bool SeesOutside(uint cell)
+    {
+        if ((cell & 0xFFFF) < 0x100) return true;
+        if (!_seenOutside.TryGetValue(cell, out var seen))
+            _seenOutside[cell] = seen = Ground() is { } ground && Read(() => ground.SeesOutside(cell), false);
+        return seen;
+    }
+
+    /// <summary>
+    /// The box, in global game space, around the building the player is in: the one whose doors lead to their room, or else the one they
+    /// stand in. Drops do not fall in it.
+    /// ponytail: one box round the whole model, so an L-shaped building's box takes in a little outside in its corner. The DATs are read on
+    /// the game thread, once per landblock entered (and opened on the first room): a short hitch; read ahead on a task if it shows.
+    /// </summary>
+    private (Vector3 Min, Vector3 Max)? Building(uint cell, Vector3 player)
+    {
+        if (Ground() is not { } ground) return null;
+        var landblock = cell >> 16;
+        if (!_buildings.TryGetValue(landblock, out var buildings))
+            _buildings[landblock] = buildings = Read(() => ground.ReadBuildings((int)(cell >> 24), (int)(landblock & 0xFF)), (IReadOnlyList<GroundBuilding>)Array.Empty<GroundBuilding>());
+        var corner = new Vector3((cell >> 24) * StormFog.Block, (landblock & 0xFF) * StormFog.Block, 0);
+        (Vector3 Min, Vector3 Max) Around(GroundBuilding found) =>
+            (corner + new Vector3(found.Min.X, found.Min.Y, found.Min.Z) - new Vector3(Margin),
+             corner + new Vector3(found.Max.X, found.Max.Y, found.Max.Z) + new Vector3(Margin));
+        foreach (var building in buildings)
+            if (building.Cells.Contains((ushort)cell)) return Around(building);
+        foreach (var building in buildings)
+            if (Around(building) is var box && Inside(player, box)) return box;
+        return null;
+    }
+
+    private static bool Inside(Vector3 point, (Vector3 Min, Vector3 Max) box) =>
+        point.X >= box.Min.X && point.Y >= box.Min.Y && point.Z >= box.Min.Z && point.X <= box.Max.X && point.Y <= box.Max.Y && point.Z <= box.Max.Z;
+
+    /// <summary>The ground's DATs, opened on first use; null, logged once, when they cannot be.</summary>
+    private GroundDat? Ground()
+    {
+        if (_ground != null || _groundFailed) return _ground;
+        try { return _ground = new GroundDat(_portal); }
+        catch (Exception exception)
+        {
+            _groundFailed = true;
+            _log($"Weather: hidden indoors, as the cell DAT did not open: {exception.Message}");
+            return null;
+        }
+    }
+
+    private T Read<T>(Func<T> read, T fallback)
+    {
+        try { return read(); }
+        catch (Exception exception)
+        {
+            _log($"Weather: could not read the cell DAT: {exception.Message}");
+            return fallback;
+        }
+    }
+
+    private void Shown(string? why)
+    {
+        if (why == _shown) return;
+        _shown = why;
+        if (why != null) _log($"Weather: {why}.");
     }
 
     private void UseDot(bool additive)
@@ -128,7 +220,7 @@ internal sealed unsafe class Weather : IDisposable
     }
 
     /// <summary>The drops, moved by Weather.hlsl: a handful of constants and one draw.</summary>
-    private void DrawShaded(Fall fall, Vector3 eye, Vector2 centre, double time)
+    private void DrawShaded(Fall fall, Vector3 eye, Vector2 centre, double time, (Vector3 Min, Vector3 Max)? building)
     {
         UseDot(additive: false);
         UseShaders(_device, _vertexShader, _pixelShader, DropFormat);
@@ -145,6 +237,9 @@ internal sealed unsafe class Weather : IDisposable
             new Vector4(view.M11, view.M21, view.M31, 0),
             new Vector4(view.M12, view.M22, view.M32, 0),
             new Vector4(fall.Color >> 16 & 0xFF, fall.Color >> 8 & 0xFF, fall.Color & 0xFF, fall.Alpha) / 255,
+            // No building: an empty box, its minimum past its maximum.
+            new Vector4(building?.Min ?? Vector3.One, 0),
+            new Vector4(building?.Max ?? Vector3.Zero, 0),
         });
         DrawBuffer(_device, _dropBuffer, sizeof(DropVertex), TriangleList, fall.Drops * 2);
     }
@@ -182,7 +277,7 @@ internal sealed unsafe class Weather : IDisposable
         _vertexShader = _pixelShader = _dropBuffer = IntPtr.Zero;
     }
 
-    private void DrawDrops(Fall fall, Vector3 eye, Vector2 centre, double time)
+    private void DrawDrops(Fall fall, Vector3 eye, Vector2 centre, double time, (Vector3 Min, Vector3 Max)? building)
     {
         UseDot(additive: false);
         // The view's right and up, in render space (the world transform only translates): a flake is a quad facing the camera.
@@ -202,7 +297,7 @@ internal sealed unsafe class Weather : IDisposable
             var position = Wrap(drop.Start + drift, middle);
             var sway = (float)Math.Sin(time * 1.3 * drop.Speed + drop.Phase) * fall.Sway;
             position += new Vector3(sway, sway * 0.6f, 0);
-            if (Depth(position, centre) < 0) continue;
+            if (Depth(position, centre) < 0 || building is { } inside && Inside(position, inside)) continue;
             // Drops almost at the lens would smear across the screen; they fade out within a metre.
             var near = Math.Clamp((Vector3.Distance(position, eye) - 0.3f) / 0.7f, 0, 1);
             if (near <= 0) continue;
@@ -387,6 +482,7 @@ internal sealed unsafe class Weather : IDisposable
         Release(_dot);
         _dot = IntPtr.Zero;
         ReleaseShaders();
+        _ground?.Dispose();
     }
 
     private readonly record struct Drop(Vector3 Start, float Speed, float Phase, float Scale);
