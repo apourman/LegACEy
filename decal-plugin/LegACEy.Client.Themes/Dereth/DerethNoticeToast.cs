@@ -105,14 +105,12 @@ public sealed class DerethNoticeToast : Border
         if (!IsPointerOver) _left -= elapsed;
         if (_left <= TimeSpan.Zero)
         {
-            Hide();
+            IsVisible = false;
             return;
         }
         _life!.RenderTransform = new ScaleTransform(_left.TotalSeconds / lifetime.TotalSeconds, 1);
         Opacity = _left < Fade ? _left.TotalSeconds / Fade.TotalSeconds : 1;
     }
-
-    private void Hide() => IsVisible = false;
 
     private void Gate()
     {
@@ -155,7 +153,7 @@ public sealed class DerethNoticeToast : Border
         Grid.SetColumn(title, 1);
         grid.Children.Add(title);
         var close = new DerethPagerButton(DerethSpriteArt.Close) { Width = 12, Height = 12, VerticalAlignment = VerticalAlignment.Top, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) };
-        close.Click += (_, _) => Hide();
+        close.Click += (_, _) => IsVisible = false;
         Grid.SetColumn(close, 2);
         grid.Children.Add(close);
 

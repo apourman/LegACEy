@@ -150,9 +150,9 @@ public sealed class PluginUpdatesTests : IDisposable
         var next = Next();
         using var updates = new PluginUpdates(install, _ => Task.FromResult($"[{Release($"decal-plugin-v{next}")}]"));
 
-        // Nothing found yet: nothing to install.
+        // Nothing found yet: it says it couldn't, rather than leave Downloading showing.
         await updates.Install(next);
-        Assert.Empty(Notices(updates));
+        Assert.Equal((UpdateNoticeKind.Failed, next), Assert.Single(Notices(updates)) is var none ? (none.Kind, none.Version) : default);
 
         await updates.CheckNow();
         Notices(updates);
@@ -165,10 +165,61 @@ public sealed class PluginUpdatesTests : IDisposable
         var stage = Path.Combine(install, "update", next.ToString());
         Directory.CreateDirectory(stage);
         File.WriteAllText(Path.Combine(stage, "ready"), "");
-        using var updater = new Mutex(true, @"Local\LegACEy.Updater");
+        using var updater = new Mutex(false, @"Local\LegACEy.Updater");
         await updates.Install(next);
         var downloaded = Assert.Single(Notices(updates));
         Assert.Equal((UpdateNoticeKind.Downloaded, next), (downloaded.Kind, downloaded.Version));
+    }
+
+    [Fact]
+    public async Task A_download_asked_for_during_a_check_starts_once_the_check_ends()
+    {
+        var install = Install();
+        var next = Next();
+        var releases = Task.FromResult($"[{Release($"decal-plugin-v{next}")}]");
+        using var updates = new PluginUpdates(install, _ => releases);
+        await updates.CheckNow();
+        Notices(updates);
+        Directory.CreateDirectory(Path.Combine(install, "update", next.ToString()));
+        File.WriteAllText(Path.Combine(install, "update", next.ToString(), "ready"), "");
+        using var updater = new Mutex(false, @"Local\LegACEy.Updater");
+
+        // A background check still asking GitHub when Log out is pressed.
+        var github = new TaskCompletionSource<string>();
+        releases = github.Task;
+        File.Delete(Path.Combine(install, "update-check"));
+        var check = updates.Check();
+        var download = updates.Install(next);
+        github.SetResult($"[{Release($"decal-plugin-v{next}")}]");
+        await check;
+        await download;
+        Assert.Equal(UpdateNoticeKind.Downloaded, Notices(updates).Last().Kind);
+    }
+
+    [Fact]
+    public async Task Another_client_offers_the_release_one_found_within_the_hour_and_cleanup_spares_a_download_in_progress()
+    {
+        var install = Install();
+        var next = Next();
+        using var first = new PluginUpdates(install, _ => Task.FromResult($"[{Release($"decal-plugin-v{next}")}]"));
+        await first.Check();
+        Assert.Equal(UpdateNoticeKind.Ready, Assert.Single(Notices(first)).Kind);
+
+        // The second client's background check is within the shared hour, so it doesn't ask GitHub, but it still offers the update.
+        using var second = new PluginUpdates(install, _ => throw new InvalidOperationException("GitHub asked again"));
+        await second.Check();
+        var ready = Assert.Single(Notices(second));
+        Assert.Equal((UpdateNoticeKind.Ready, next), (ready.Kind, ready.Version));
+
+        // A check's cleanup removes an old unfinished download, but not one another client is writing now.
+        var old = Path.Combine(install, "update", "0.0.1");
+        var fresh = Path.Combine(install, "update", next.ToString());
+        Directory.CreateDirectory(old);
+        Directory.SetLastWriteTimeUtc(old, DateTime.UtcNow.AddHours(-1));
+        Directory.CreateDirectory(fresh);
+        await first.CheckNow();
+        Assert.False(Directory.Exists(old));
+        Assert.True(Directory.Exists(fresh));
     }
 
     private static Version Next()
