@@ -31,9 +31,9 @@ public sealed record ToastNotice(ToastIcon Icon, string Title, string? Body = nu
 /// </summary>
 public sealed class DerethNoticeToast : Border
 {
-    public const double CardWidth = 330;
+    public const double CardWidth = 360;
     // The busy bar's track: the card less its two borders, margins, icon column and gap.
-    private const double TrackWidth = CardWidth - 72;
+    private const double TrackWidth = CardWidth - 86;
     // The bar's block runs across in this time, over and over, while the toast is busy.
     private static readonly TimeSpan BusyCycle = TimeSpan.FromSeconds(1.4);
     // The last moment of a toast's life, when it fades out.
@@ -133,7 +133,7 @@ public sealed class DerethNoticeToast : Border
         var grid = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("38,*,20"), RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto"),
-            ColumnSpacing = 11, Margin = new Thickness(10, 10, 9, 11)
+            ColumnSpacing = 14, Margin = new Thickness(16, 14, 14, 16)
         };
         var (glyph, ink, ring) = Look(notice.Icon);
         var icon = new Border
@@ -164,7 +164,7 @@ public sealed class DerethNoticeToast : Border
             var body = new TextBlock
             {
                 Text = notice.Body, FontFamily = DerethPalette.Body, FontSize = 12.5, LineHeight = 18, Foreground = DerethPalette.MutedBrush,
-                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 3, 0, 0)
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0)
             };
             Place(grid, body, 1);
         }
@@ -173,7 +173,7 @@ public sealed class DerethNoticeToast : Border
             _busy = new Border { Width = TrackWidth * 0.3, Height = 4, Background = BusyFill };
             var track = new Border
             {
-                Height = 6, Margin = new Thickness(0, 9, 0, 0), Background = DerethPalette.GrooveBrush, BorderBrush = DerethPalette.GrooveEdgeBrush,
+                Height = 6, Margin = new Thickness(0, 12, 0, 0), Background = DerethPalette.GrooveBrush, BorderBrush = DerethPalette.GrooveEdgeBrush,
                 BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3), ClipToBounds = true, Child = new Canvas { Children = { _busy } }
             };
             Place(grid, track, 2);
@@ -183,12 +183,12 @@ public sealed class DerethNoticeToast : Border
         _why = null;
         if (notice.Actions is { Count: > 0 } actions)
         {
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
             foreach (var action in actions)
             {
                 var button = new DerethButton
                 {
-                    Content = action.Label, Height = 24, Padding = new Thickness(10, 0), FontFamily = DerethPalette.Title, FontSize = 13,
+                    Content = action.Label, Height = 28, Padding = new Thickness(16, 0), FontFamily = DerethPalette.Title, FontSize = 13,
                     Foreground = action.Quiet ? DerethPalette.MutedBrush : DerethPalette.CreamBrush
                 };
                 button.Click += (_, _) =>
@@ -199,7 +199,7 @@ public sealed class DerethNoticeToast : Border
                 if (action.Unavailable != null) _gated.Add((button, action));
                 row.Children.Add(button);
             }
-            var line = new DockPanel { Margin = new Thickness(0, 9, 0, 0) };
+            var line = new DockPanel { Margin = new Thickness(0, 14, 0, 0) };
             DockPanel.SetDock(row, Dock.Left);
             line.Children.Add(row);
             if (_gated.Count > 0)
@@ -207,7 +207,7 @@ public sealed class DerethNoticeToast : Border
                 _why = new TextBlock
                 {
                     FontFamily = DerethPalette.Body, FontSize = 11.5, Foreground = DerethPalette.MutedBrush, TextWrapping = TextWrapping.Wrap,
-                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0)
+                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0)
                 };
                 line.Children.Add(_why);
             }
