@@ -24,7 +24,7 @@ public sealed class MarketBuyTests
         Assert.True(market.Panel.BuyDialog.IsVisible);
         var texts = DialogTexts(market);
         Assert.Contains("Buy Nariyid Breastplate?", texts);
-        Assert.Contains("1,200 MMD", texts);
+        Assert.Contains("1,200", texts);
         Assert.Contains("50 MMD", texts);
         Assert.Contains("Kaelin", texts);
         Assert.Contains("Arwic Wanderer's pack", texts);
@@ -64,7 +64,7 @@ public sealed class MarketBuyTests
 
         Assert.False(market.Panel.BuyDialog.IsVisible);
         Assert.Equal("Bought Nariyid Breastplate Nariyid Breastplate is in your pack. 1,200 MMD paid to Kaelin.", market.Panel.ToastText);
-        Assert.Equal("50 MMD", market.Panel.BalanceText);
+        Assert.Equal("50", market.Panel.BalanceText);
         Assert.DoesNotContain(market.Browse.Results, card => card.Id == 1);
     });
 
@@ -102,7 +102,7 @@ public sealed class MarketBuyTests
 
         Assert.Equal("Bought Nariyid Breastplate You do not have room in your pack for Nariyid Breastplate. Nariyid Breastplate is in your Vault. 1,200 MMD paid to Kaelin.",
             market.Panel.ToastText);
-        Assert.Equal("50 MMD", market.Panel.BalanceText); // the purchase stands
+        Assert.Equal("50", market.Panel.BalanceText); // the purchase stands
     });
 
     [Fact]
@@ -117,7 +117,7 @@ public sealed class MarketBuyTests
         Assert.True(market.Panel.BuyDialog.IsVisible, "the dialog stays to say why");
         Assert.Contains(message, DialogTexts(market));
         Assert.DoesNotContain(DialogButtons(market), b => b.Tag as string == "confirm-buy");
-        Assert.Equal("1,250 MMD", market.Panel.BalanceText);
+        Assert.Equal("1,250", market.Panel.BalanceText);
         Assert.Equal(string.Empty, market.Panel.ToastText);
         Assert.Contains(market.Browse.Results, card => card.Id == 1);
     });
@@ -132,7 +132,7 @@ public sealed class MarketBuyTests
 
         Assert.Contains("That listing is no longer for sale.", DialogTexts(market));
         Assert.DoesNotContain(market.Browse.Results, card => card.Id == 1);
-        Assert.Equal("1,250 MMD", market.Panel.BalanceText);
+        Assert.Equal("1,250", market.Panel.BalanceText);
     });
 
     [Fact]
@@ -143,7 +143,7 @@ public sealed class MarketBuyTests
         Click(DialogButton(market, "confirm-buy"));
         market.Settle();
         Assert.Contains("The price has changed to 1,300 MMD. Nothing was charged.", DialogTexts(market));
-        Assert.Equal("1,250 MMD", market.Panel.BalanceText);
+        Assert.Equal("1,250", market.Panel.BalanceText);
 
         market.Server.BuyRefusal = null;
         Click(DialogButton(market, "new-price"));
@@ -174,7 +174,7 @@ public sealed class MarketBuyTests
 
         Assert.Equal(2, market.Server.BuyRequests.Count);
         Assert.Single(market.Server.BuyRequests.Select(r => r.Key).Distinct());
-        Assert.Equal("50 MMD", market.Panel.BalanceText);
+        Assert.Equal("50", market.Panel.BalanceText);
     });
 
     [Fact]

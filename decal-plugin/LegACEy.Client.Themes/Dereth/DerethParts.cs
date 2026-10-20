@@ -374,10 +374,12 @@ public sealed class DerethWindow : UserControl
     public const int TitleBarHeight = 48;
 
     /// <param name="headerActions">Controls for the header, left of the close box. Null when the header has none.</param>
-    public DerethWindow(string title, Control? icon, Control content, Control? headerActions = null)
+    /// <param name="stretchActions">The header actions take the header's free width, and the title only its own.</param>
+    public DerethWindow(string title, Control? icon, Control content, Control? headerActions = null, bool stretchActions = false)
     {
         if (content == null) throw new ArgumentNullException(nameof(content));
-        var header = new Grid { ColumnDefinitions = new ColumnDefinitions(headerActions == null ? "Auto,*,Auto" : "Auto,*,Auto,Auto"), ColumnSpacing = 8, Height = 40 };
+        var columns = headerActions == null ? "Auto,*,Auto" : stretchActions ? "Auto,Auto,*,Auto" : "Auto,*,Auto,Auto";
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions(columns), ColumnSpacing = 8, Height = 40 };
         // The header's emblem is shrunk to fit; item icons elsewhere stay at their native size. It is always there, and takes no
         // space while it has no icon, so a window that changes its icon keeps the same header.
         _emblem = new DerethFrame(DerethFrameArt.Button) { Width = 32, Height = 32 };

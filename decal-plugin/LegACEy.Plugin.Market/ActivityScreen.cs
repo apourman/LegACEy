@@ -9,7 +9,6 @@ using Avalonia.Controls.Shapes;
 using Avalonia.Layout;
 using Avalonia.Media;
 using LegACEy.Client.Themes;
-using static LegACEy.Client.Themes.DerethItemCells;
 
 namespace LegACEy.Plugin.Market;
 
@@ -22,16 +21,12 @@ public enum NarrowActivityTab { Ledger, Chart }
 /// </summary>
 public sealed class ActivityScreen : UserControl, IDisposable
 {
-    private const double ChartWidth = 340;
     private const double ChartHeight = 170;
 
     /// <summary>How close to the end of the ledger the window asks for the older page</summary>
     private const double NearEnd = 40;
 
-    private static readonly IBrush GoldBrush = DerethPalette.GoldBrush;
-    private static readonly IBrush TextBrush = DerethPalette.TextBrush;
-    private static readonly IBrush MutedBrush = DerethPalette.MutedBrush;
-    private static readonly IBrush InvalidBrush = DerethPalette.InvalidBrush;
+    private static readonly IBrush ChartFill = MarketInk.Vertical(DerethPalette.Gold.WithAlpha(0x40), DerethPalette.Gold.WithAlpha(0x00));
 
     private readonly MarketClient _client;
     private readonly ActivityViewModel _model;
@@ -39,48 +34,52 @@ public sealed class ActivityScreen : UserControl, IDisposable
     private NarrowActivityTab _narrowTab = NarrowActivityTab.Ledger;
     private bool _disposed;
 
-    private readonly UniformGrid _tiles = new() { Columns = 4 };
-    private readonly TileParts _balance = NewTile("Balance", "MMD in your account");
-    private readonly TileParts _earned = NewTile("Earned this week", string.Empty);
-    private readonly TileParts _spent = NewTile("Spent this week", string.Empty);
+    private readonly Grid _tiles = new() { ColumnSpacing = 12, RowSpacing = 12 };
+    private readonly TileParts _balance = NewTile("Balance", "MMD in your account", coin: true);
+    private readonly TileParts _earned = NewTile("Earned this week", string.Empty, ink: DerethPalette.RaisedBrush);
+    private readonly TileParts _spent = NewTile("Spent this week", string.Empty, ink: MarketInk.BadBrush);
     private readonly TileParts _listed = NewTile("Listed now", "active listings");
 
-    private readonly TextBox _amount = new() { Watermark = "MMD", Width = 110, Height = 26 };
-    private readonly DerethButton _withdraw = new() { Height = 26, Content = Label("Withdraw trade notes", TextBrush, 12) };
+    private readonly TextBox _amount = MarketParts.Field("MMD", 26, 90);
+    private readonly MarketButton _withdraw = MarketParts.Button("Withdraw trade notes", MarketParts.Kind.Red, 26);
     private readonly TextBlock _notice = new()
     {
-        FontSize = 12, FontFamily = DerethPalette.Body, TextWrapping = TextWrapping.Wrap, Foreground = InvalidBrush, IsVisible = false,
+        FontSize = 12, FontFamily = DerethPalette.Body, TextWrapping = TextWrapping.Wrap, Foreground = MarketInk.BadBrush, IsVisible = false,
         VerticalAlignment = VerticalAlignment.Center
     };
 
-    private readonly Dictionary<LedgerTab, TextBlock> _tabLabels = new();
-    private readonly StackPanel _rows = new() { Spacing = 2 };
-    private readonly TextBlock _empty = Label(string.Empty, MutedBrush, 12);
+    private readonly MarketTabs _ledgerTabs = new("All", "MMD", "Items");
+    private readonly StackPanel _rows = new();
+    private readonly TextBlock _empty = MarketParts.Text(string.Empty, MarketInk.MutedBrush, 12.5);
     private readonly ScrollViewer _ledgerScroll;
     private readonly Border _ledgerPanel;
 
-    private readonly Canvas _chartCanvas = new() { Width = ChartWidth, Height = ChartHeight };
-    private readonly Polyline _chartLine = new() { Stroke = GoldBrush, StrokeThickness = 2 };
-    private readonly TextBlock _chartCaption = Label(string.Empty, TextBrush, 13);
-    private readonly TextBlock _axisStart = Label(string.Empty, MutedBrush, 11);
-    private readonly TextBlock _axisEnd = Label(string.Empty, MutedBrush, 11);
+    private readonly Canvas _chartCanvas = new() { Height = ChartHeight };
+    private readonly Polyline _chartLine = new() { Stroke = DerethPalette.GoldBrush, StrokeThickness = 2, StrokeJoin = PenLineJoin.Round };
+    private readonly Polygon _chartArea = new() { Fill = ChartFill };
+    private readonly Ellipse _chartEnd = new() { Width = 8, Height = 8, Fill = MarketInk.LitBrush, IsVisible = false };
+    private readonly TextBlock _chartCaption = MarketParts.Head(string.Empty);
+    private readonly TextBlock _axisStart = MarketParts.Text(string.Empty, MarketInk.MutedBrush, 10.5);
+    private readonly TextBlock _axisEnd = MarketParts.Text(string.Empty, MarketInk.MutedBrush, 10.5);
     private readonly Border _chartPanel;
 
-    private readonly Grid _body = new() { ColumnDefinitions = new ColumnDefinitions("*,*"), ColumnSpacing = 12 };
-    private readonly StackPanel _narrowTabs = new() { Orientation = Orientation.Horizontal, Spacing = 6, IsVisible = false };
-    private readonly Dictionary<NarrowActivityTab, TextBlock> _narrowTabLabels = new();
+    private readonly Grid _body = new() { ColumnDefinitions = new ColumnDefinitions("*,*"), ColumnSpacing = 14 };
+    private readonly MarketTabs _narrowTabs = new("Ledger", "Balance chart") { IsVisible = false, HorizontalAlignment = HorizontalAlignment.Left };
 
     public ActivityScreen(MarketClient client)
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _model = new ActivityViewModel(client);
 
-        _ledgerScroll = new ScrollViewer { Content = _rows, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        _ledgerScroll = new ScrollViewer { Content = _rows, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         _ledgerScroll.ScrollChanged += (_, _) => OnLedgerScrolled();
 
-        _ledgerPanel = Framed(Stacked(LedgerHeader(), _ledgerScroll, _empty));
+        _ledgerPanel = MarketParts.Card(Stacked(LedgerHeader(), _ledgerScroll, _empty), 10, new Thickness(16, 14));
+        _chartCanvas.Children.Add(_chartArea);
         _chartCanvas.Children.Add(_chartLine);
-        _chartPanel = Framed(new StackPanel { Spacing = 6, Children = { _chartCaption, _chartCanvas, AxisRow() } });
+        _chartCanvas.Children.Add(_chartEnd);
+        _chartCanvas.SizeChanged += (_, _) => DrawChart();
+        _chartPanel = MarketParts.Card(new StackPanel { Spacing = 10, Children = { ChartHeader(), _chartCanvas, AxisRow(), _notice } }, 10, new Thickness(16, 14));
 
         Content = BuildContent();
         _client.Changed += OnChanged;
@@ -101,7 +100,7 @@ public sealed class ActivityScreen : UserControl, IDisposable
     public void Load() => _model.Load();
 
     /// <summary>The ledger's rows as they are drawn, newest first.</summary>
-    public IReadOnlyList<string> LedgerRowTexts => _rows.Children.OfType<Grid>().Select(row => ((TextBlock)row.Children[1]).Text ?? string.Empty).ToList();
+    public IReadOnlyList<string> LedgerRowTexts => _rows.Children.OfType<Control>().Select(row => row.Tag as string ?? string.Empty).ToList();
 
     private void OnChanged(object? sender, EventArgs e) => Refresh();
 
@@ -129,7 +128,7 @@ public sealed class ActivityScreen : UserControl, IDisposable
         _earned.Detail.Text = Items(_model.ItemsSold, "sold");
         _spent.Detail.Text = Items(_model.ItemsBought, "bought");
 
-        foreach (var pair in _tabLabels) pair.Value.Foreground = pair.Key == _model.Tab ? GoldBrush : TextBrush;
+        _ledgerTabs.Selected = (int)_model.Tab;
 
         _rows.Children.Clear();
         foreach (var row in _model.Rows) _rows.Children.Add(LedgerRow(row));
@@ -144,25 +143,58 @@ public sealed class ActivityScreen : UserControl, IDisposable
         DrawChart();
     }
 
-    private static Grid LedgerRow(ActivityRow row)
+    /// <summary>
+    /// One ledger line: the time, what happened (the balance after it under that, for an MMD line), and the signed amount on the right in
+    /// green or red. The row's tag is its full text.
+    /// </summary>
+    private static Control LedgerRow(ActivityRow row)
     {
-        var text = Label(row.Text, TextBrush, 12);
-        text.TextWrapping = TextWrapping.Wrap;
-        var balance = Label(row.BalanceAfter is long after ? $"{after:N0}" : string.Empty, MutedBrush, 11);
-        balance.HorizontalAlignment = HorizontalAlignment.Right;
+        var (what, amount) = SplitAmount(row.Text);
+        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        var title = MarketParts.Text(what, DerethPalette.CreamBrush, 12.5);
+        title.TextWrapping = TextWrapping.Wrap;
+        text.Children.Add(title);
+        if (row.BalanceAfter is long after) text.Children.Add(MarketParts.Text($"balance {after:N0}", MarketInk.MutedBrush, 11));
 
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 8 };
-        grid.Children.Add(Column(Label(row.Time.ToLocalTime().ToString("MMM d HH:mm", CultureInfo.InvariantCulture), MutedBrush, 11), 0));
-        grid.Children.Add(Column(text, 1));
-        grid.Children.Add(Column(balance, 2));
-        return grid;
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("52,*,Auto"), ColumnSpacing = 10 };
+        grid.Children.Add(MarketParts.Text(When(row.Time.ToLocalTime()), MarketInk.MutedBrush, 11.5));
+        Grid.SetColumn(text, 1);
+        grid.Children.Add(text);
+        var money = MarketParts.Text(amount, amount.StartsWith("+", StringComparison.Ordinal) ? DerethPalette.RaisedBrush : MarketInk.BadBrush, 13);
+        Grid.SetColumn(money, 2);
+        grid.Children.Add(money);
+        return new Border
+        {
+            Tag = row.Text, Child = grid, Padding = new Thickness(0, 7), BorderBrush = MarketInk.LineSoftBrush, BorderThickness = new Thickness(0, 0, 0, 1),
+        };
+    }
+
+    /// <summary>"Sold Sword to Bob · +50 MMD" as "Sold Sword to Bob" and "+50"; a line with no amount keeps all its words.</summary>
+    private static (string What, string Amount) SplitAmount(string text)
+    {
+        var dot = text.LastIndexOf(" · ", StringComparison.Ordinal);
+        if (dot < 0 || !text.EndsWith(" MMD", StringComparison.Ordinal)) return (text, string.Empty);
+        var amount = text.Substring(dot + 3, text.Length - dot - 3 - 4);
+        return amount.Length > 0 && (amount[0] == '+' || amount[0] == '−') ? (text.Substring(0, dot), amount) : (text, string.Empty);
+    }
+
+    /// <summary>A ledger time: the clock today, "Yest." yesterday, the date before that</summary>
+    private static string When(DateTimeOffset time)
+    {
+        var today = DateTimeOffset.Now.Date;
+        if (time.Date == today) return time.ToString("HH:mm", CultureInfo.InvariantCulture);
+        if (time.Date == today.AddDays(-1)) return "Yest.";
+        return time.ToString("d MMM", CultureInfo.InvariantCulture);
     }
 
     /// <summary>The balance over the loaded ledger lines, placed by time, with the dates of its first and last points</summary>
     private void DrawChart()
     {
         var series = _model.BalanceSeries;
-        _chartLine.Points.Clear();
+        // a shape redraws when it is given a new list, not when its list changes
+        _chartLine.Points = new List<Point>();
+        _chartArea.Points = new List<Point>();
+        _chartEnd.IsVisible = false;
 
         if (series.Count == 0)
         {
@@ -180,18 +212,24 @@ public sealed class ActivityScreen : UserControl, IDisposable
         _axisStart.Text = from;
         _axisEnd.Text = to;
 
-        if (series.Count < 2) return;
+        var width = _chartCanvas.Bounds.Width;
+        if (series.Count < 2 || width <= 0) return;
 
         var low = series.Min(point => point.Balance);
         var balanceSpan = Math.Max(1, series.Max(point => point.Balance) - low);
         var start = series[0].Time;
         var timeSpan = Math.Max(1, (series[series.Count - 1].Time - start).TotalSeconds);
-        foreach (var point in series)
-        {
-            var x = (point.Time - start).TotalSeconds * ChartWidth / timeSpan;
-            var y = ChartHeight - (point.Balance - low) * ChartHeight / balanceSpan;
-            _chartLine.Points.Add(new Point(x, y));
-        }
+        // a little room above and below the line, as the mockup leaves
+        const double pad = 10;
+        var line = series.Select(point => new Point(
+            (point.Time - start).TotalSeconds * width / timeSpan,
+            pad + (ChartHeight - 2 * pad) * (1 - (double)(point.Balance - low) / balanceSpan))).ToList();
+        var end = line[line.Count - 1];
+        _chartLine.Points = line;
+        _chartArea.Points = line.Concat(new[] { new Point(width, ChartHeight), new Point(0, ChartHeight) }).ToList();
+        Canvas.SetLeft(_chartEnd, end.X - 4);
+        Canvas.SetTop(_chartEnd, end.Y - 4);
+        _chartEnd.IsVisible = true;
     }
 
     private void ApplyMode(MarketLayoutMode mode)
@@ -199,17 +237,25 @@ public sealed class ActivityScreen : UserControl, IDisposable
         var narrow = mode == MarketLayoutMode.Narrow;
 
         // the tiles read Balance, Listed / Earned, Spent in a narrow window, and Balance, Earned, Spent, Listed otherwise, as the mockups draw them
-        _tiles.Columns = narrow ? 2 : 4;
+        var columns = narrow ? 2 : 4;
         _tiles.Children.Clear();
-        foreach (var tile in narrow ? new[] { _balance, _listed, _earned, _spent } : new[] { _balance, _earned, _spent, _listed })
-            _tiles.Children.Add(tile.Frame);
+        _tiles.ColumnDefinitions.Clear();
+        _tiles.RowDefinitions.Clear();
+        for (var c = 0; c < columns; c++) _tiles.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star));
+        var order = narrow ? new[] { _balance, _listed, _earned, _spent } : new[] { _balance, _earned, _spent, _listed };
+        for (var i = 0; i < order.Length; i++)
+        {
+            if (i % columns == 0) _tiles.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            Grid.SetColumn(order[i].Frame, i % columns);
+            Grid.SetRow(order[i].Frame, i / columns);
+            _tiles.Children.Add(order[i].Frame);
+        }
 
         _narrowTabs.IsVisible = narrow;
+        // wide and medium: the chart on the left and the ledger on the right; narrow: one cell, and the tab shows one of them
         _body.ColumnDefinitions[1].Width = narrow ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
-
-        // narrow: the ledger and the chart share the one cell, and the tab shows one of them
-        Grid.SetColumn(_ledgerPanel, 0);
-        Grid.SetColumn(_chartPanel, narrow ? 0 : 1);
+        Grid.SetColumn(_chartPanel, 0);
+        Grid.SetColumn(_ledgerPanel, narrow ? 0 : 1);
         ApplyNarrowTab();
     }
 
@@ -224,36 +270,22 @@ public sealed class ActivityScreen : UserControl, IDisposable
         var narrow = _mode == MarketLayoutMode.Narrow;
         _ledgerPanel.IsVisible = !narrow || _narrowTab == NarrowActivityTab.Ledger;
         _chartPanel.IsVisible = !narrow || _narrowTab == NarrowActivityTab.Chart;
-        foreach (var pair in _narrowTabLabels) pair.Value.Foreground = pair.Key == _narrowTab ? GoldBrush : TextBrush;
+        _narrowTabs.Selected = (int)_narrowTab;
     }
 
     private Control BuildContent()
     {
         _withdraw.Click += (_, _) => _model.WithdrawNotes(_amount.Text ?? string.Empty);
-
-        var withdrawRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        withdrawRow.Children.Add(_amount);
-        withdrawRow.Children.Add(_withdraw);
-        withdrawRow.Children.Add(_notice);
-
-        foreach (var tab in new[] { NarrowActivityTab.Ledger, NarrowActivityTab.Chart })
-        {
-            var label = Label(tab == NarrowActivityTab.Ledger ? "Ledger" : "Balance chart", TextBrush, 12);
-            _narrowTabLabels[tab] = label;
-            var chosen = tab;
-            var button = new DerethButton { Height = 26, Content = label };
-            button.Click += (_, _) => ChooseNarrowTab(chosen);
-            _narrowTabs.Children.Add(button);
-        }
+        _narrowTabs.Chosen += index => ChooseNarrowTab((NarrowActivityTab)index);
+        _ledgerTabs.Chosen += index => _model.SelectTab((LedgerTab)index);
 
         // rows: the body takes what is left, so the ledger's scroll viewer has a height to scroll in
-        var root = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*"), RowSpacing = 10 };
+        var root = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), RowSpacing = 12, Margin = new Thickness(20, 16, 20, 16) };
         root.Children.Add(Row(_tiles, 0));
-        root.Children.Add(Row(withdrawRow, 1));
-        root.Children.Add(Row(_narrowTabs, 2));
+        root.Children.Add(Row(_narrowTabs, 1));
         _body.Children.Add(_ledgerPanel);
         _body.Children.Add(_chartPanel);
-        root.Children.Add(Row(_body, 3));
+        root.Children.Add(Row(_body, 2));
         return root;
     }
 
@@ -269,21 +301,19 @@ public sealed class ActivityScreen : UserControl, IDisposable
 
     private Control LedgerHeader()
     {
-        var tabs = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        foreach (var (tab, text) in new[] { (LedgerTab.All, "All"), (LedgerTab.Mmd, "MMD"), (LedgerTab.Items, "Items") })
-        {
-            var label = Label(text, TextBrush, 12);
-            _tabLabels[tab] = label;
-            var chosen = tab;
-            var button = new DerethButton { Height = 24, Content = label };
-            button.Click += (_, _) => _model.SelectTab(chosen);
-            tabs.Children.Add(button);
-        }
-
         var header = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
-        header.Children.Add(Column(Label("Ledger", TextBrush, 13), 0));
-        header.Children.Add(Column(new Border(), 1));
-        header.Children.Add(Column(tabs, 2));
+        header.Children.Add(Column(MarketParts.Head("Ledger"), 0));
+        header.Children.Add(Column(_ledgerTabs, 2));
+        return header;
+    }
+
+    /// <summary>The chart's head: its dates, then the trade note withdrawal on the right</summary>
+    private Control ChartHeader()
+    {
+        var withdraw = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { _amount, _withdraw } };
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 10 };
+        header.Children.Add(Column(_chartCaption, 0));
+        header.Children.Add(Column(withdraw, 1));
         return header;
     }
 
@@ -292,15 +322,9 @@ public sealed class ActivityScreen : UserControl, IDisposable
     {
         var axis = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
         axis.Children.Add(Column(_axisStart, 0));
-        axis.Children.Add(Column(new Border(), 1));
         axis.Children.Add(Column(_axisEnd, 2));
         return axis;
     }
-
-    private static Border Framed(Control content) => new()
-    {
-        Padding = new Thickness(10), BorderThickness = new Thickness(1), BorderBrush = DerethPalette.GrooveEdgeBrush, Child = content
-    };
 
     /// <summary>One tile: the frame the grid places, and the value and detail lines the screen fills</summary>
     private sealed class TileParts
@@ -315,15 +339,16 @@ public sealed class ActivityScreen : UserControl, IDisposable
         public TextBlock Detail { get; }
     }
 
-    private static TileParts NewTile(string label, string detail)
+    /// <summary>A figure tile: a small-caps name, the value in large Palatino (with the coin for the balance), and a muted line under it.</summary>
+    private static TileParts NewTile(string label, string detail, bool coin = false, IBrush? ink = null)
     {
-        var value = Label(string.Empty, GoldBrush, 18);
-        var detailText = Label(detail, MutedBrush, 11);
-        var frame = new Border
-        {
-            Padding = new Thickness(10, 8), BorderThickness = new Thickness(1), BorderBrush = DerethPalette.GrooveEdgeBrush,
-            Child = new StackPanel { Spacing = 2, Children = { Label(label, MutedBrush, 11), value, detailText } }
-        };
+        var value = MarketParts.Text(string.Empty, ink ?? DerethPalette.CreamBrush, 26, title: true);
+        value.TextTrimming = TextTrimming.None;
+        var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        if (coin) line.Children.Add(MarketParts.Coin(18));
+        line.Children.Add(value);
+        var detailText = MarketParts.Text(detail, MarketInk.MutedBrush, 12);
+        var frame = MarketParts.Card(new StackPanel { Spacing = 4, Children = { MarketParts.Caps(label), line, detailText } }, 10, new Thickness(16, 12));
         return new TileParts(frame, value, detailText);
     }
 

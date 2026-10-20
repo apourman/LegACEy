@@ -24,9 +24,6 @@ public sealed class MarketShellPanel : UserControl, IDisposable
 {
     private static readonly MarketScreen[] Screens = { MarketScreen.Browse, MarketScreen.Sell, MarketScreen.Activity };
 
-    private static readonly IBrush GoldBrush = DerethPalette.GoldBrush;
-    private static readonly IBrush TextBrush = DerethPalette.TextBrush;
-    private static readonly IBrush MutedBrush = DerethPalette.MutedBrush;
     private static readonly IBrush InvalidBrush = DerethPalette.InvalidBrush;
 
     private readonly MarketClient _client;
@@ -35,20 +32,22 @@ public sealed class MarketShellPanel : UserControl, IDisposable
     // the Sell screen, owned by the panel: its model is disposed with it
     private readonly SellScreen _sell;
     private readonly ActivityScreen _activity;
-    private readonly DerethSearchField _search = new("Search the market…");
+    private readonly MarketSearch _search = new("Search the market");
     // The search field sits in the top bar, or in its own full-width row under it in a narrow window.
-    private readonly Border _topSearchHost = new() { Height = 26, MinWidth = 120, VerticalAlignment = VerticalAlignment.Center };
-    private readonly Border _narrowSearchHost = new() { Height = 26, Margin = new Thickness(0, 4, 0, 0), IsVisible = false };
-    private readonly DerethButton _searchIcon = new()
+    private readonly Border _topSearchHost = new() { Height = 32, MaxWidth = 480, VerticalAlignment = VerticalAlignment.Center };
+    private readonly Border _narrowSearchHost = new() { Height = 34, Margin = new Thickness(10, 8, 10, 0), IsVisible = false };
+    private readonly MarketButton _searchIcon = new()
     {
-        Width = 34, Height = 26, Content = new DerethGlyphIcon(DerethGlyph.Search, DerethPalette.Gold) { Width = 16, Height = 16 }, IsVisible = false
+        Width = 34, Height = 34, CornerRadius = new CornerRadius(17), Content = new MarketGlyph(MarketIcon.Search, DerethPalette.Gold), IsVisible = false
     };
-    private readonly TextBlock _balance = Label("—", GoldBrush, 12);
-    private readonly TextBlock _vaultSpace = Label(string.Empty, MutedBrush, 12);
-    private readonly TextBlock _character = Label(string.Empty, TextBrush, 12);
+    private readonly TextBlock _balance = MarketParts.Text("—", DerethPalette.CreamBrush, 14);
+    private readonly TextBlock _vaultSpace = MarketParts.Text(string.Empty, DerethPalette.CreamBrush, 14);
+    private readonly StackPanel _vaultStat;
+    private readonly TextBlock _character = MarketParts.Text(string.Empty, DerethPalette.CreamBrush, 13);
     private readonly TextBlock _portrait = new()
     {
-        FontSize = 12, Foreground = GoldBrush, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+        FontSize = 12, FontFamily = DerethPalette.Title, Foreground = DerethPalette.Brush(Color.Parse("#2A1A0C")),
+        HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
     };
     private readonly Border _portraitFrame;
     private readonly TextBlock _notice = new()
@@ -58,13 +57,17 @@ public sealed class MarketShellPanel : UserControl, IDisposable
     };
 
     // The side bar in a wide window, the icon rail in a medium one and the tab row in a narrow one: the same screens, drawn three ways.
-    private readonly StackPanel _sideBar = new() { Width = 168, Spacing = 4 };
-    private readonly StackPanel _wideNav = new() { Spacing = 4 };
+    private readonly Border _sideBar = new()
+    {
+        BorderBrush = MarketInk.LineSoftBrush, BorderThickness = new Thickness(0, 0, 1, 0), Background = DerethPalette.Brush(Color.FromArgb(0x2E, 0, 0, 0)),
+    };
+    private readonly StackPanel _wideNav = new() { Width = 192, Spacing = 3, Margin = new Thickness(12, 16, 12, 12) };
     // the categories with their counts, from the Browse screen's facets
-    private readonly StackPanel _categoryList = new() { Spacing = 3 };
-    private readonly StackPanel _rail = new() { Width = 46, Spacing = 6, IsVisible = false };
-    private readonly StackPanel _tabRow = new() { Orientation = Orientation.Horizontal, Spacing = 6, IsVisible = false };
-    private readonly List<(MarketScreen Screen, TextBlock Label)> _navLabels = new();
+    private readonly StackPanel _categoryList = new() { Spacing = 1 };
+    private readonly StackPanel _rail = new() { Spacing = 4, Margin = new Thickness(8, 14, 8, 8), IsVisible = false };
+    private readonly Grid _tabRow = new() { IsVisible = false };
+    private readonly List<(MarketScreen Screen, MarketButton Button, MarketGlyph? Glyph, TextBlock? Label, NavShape Shape)> _navEntries = new();
+    private enum NavShape { Row, Rail, Tab }
     private readonly Dictionary<MarketScreen, Control> _screens = new();
     private readonly Grid _body = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
     private readonly BuyDialog _buyDialog;
@@ -92,14 +95,21 @@ public sealed class MarketShellPanel : UserControl, IDisposable
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _browse = browse ?? throw new ArgumentNullException(nameof(browse));
         _browseView = new MarketBrowseView(browse, art ?? throw new ArgumentNullException(nameof(art)), tell);
+        _browseView.Balance = () => client.Account?.Balance;
         _sell = sell ?? throw new ArgumentNullException(nameof(sell));
         _activity = new ActivityScreen(client);
-        _buyDialog = new BuyDialog(browse);
+        _buyDialog = new BuyDialog(browse, _browseView.IconFor);
         _portraitFrame = new Border
         {
-            Width = 26, Height = 26, CornerRadius = new CornerRadius(13), BorderThickness = new Thickness(1), BorderBrush = GoldBrush,
-            Background = DerethPalette.TealBrush, IsVisible = false, Child = _portrait
+            Width = 26, Height = 26, CornerRadius = new CornerRadius(13), BorderThickness = new Thickness(1), BorderBrush = MarketInk.GoldRimBrush,
+            Child = _portrait,
+            Background = new RadialGradientBrush
+            {
+                Center = new RelativePoint(0.4, 0.35, RelativeUnit.Relative), GradientOrigin = new RelativePoint(0.4, 0.35, RelativeUnit.Relative),
+                GradientStops = { new GradientStop(Color.Parse("#D8B08C"), 0), new GradientStop(Color.Parse("#6A4A30"), 1) }
+            },
         };
+        _vaultStat = Stat("Vault", _vaultSpace, coin: false);
         Content = BuildContent();
         _client.Changed += OnClientChanged;
         _browse.Changed += OnBrowseChanged;
@@ -178,29 +188,43 @@ public sealed class MarketShellPanel : UserControl, IDisposable
     /// <summary>The Browse screen's state, which the panel's side bar and search read</summary>
     public MarketBrowse BrowseState => _browse;
 
-    /// <summary>The side bar's category entries as drawn, "All categories" first, then each category with its count</summary>
-    public IReadOnlyList<string> CategoryTexts => _categoryList.Children.OfType<Button>().Select(b => (b.Content as TextBlock)?.Text ?? string.Empty).ToList();
+    /// <summary>The side bar's category entries as drawn, "All" first, then each category, each as "name  count"</summary>
+    public IReadOnlyList<string> CategoryTexts => _categoryList.Children.OfType<Button>()
+        .Select(b => b.Content is Grid row ? string.Join("  ", row.Children.OfType<TextBlock>().Select(t => t.Text).Where(t => !string.IsNullOrEmpty(t))) : string.Empty)
+        .ToList();
 
-    /// <summary>Draws the side bar's categories from the facets: all categories, then each with its count; the one being searched is gold</summary>
+    /// <summary>Draws the side bar's categories from the facets: all categories, then each with its count; the one being searched is lit</summary>
     private void RefreshCategories()
     {
         _categoryList.Children.Clear();
-        var all = new DerethButton { Height = 24, HorizontalContentAlignment = HorizontalAlignment.Left, Content = Label("All categories", TextBrush, 12) };
-        all.Click += (_, _) => _browse.SetCategory(null);
-        _categoryList.Children.Add(all);
-        if (_browse.Facets is not { } facets) return;
+        var facets = _browse.Facets;
+        var current = _browse.Filters.FirstOrDefault(f => f.Key == MarketBrowse.CategoryKey)?.Low;
+        var total = facets?.Categories.Sum(c => (long)c.Count);
+        _categoryList.Children.Add(CategoryRow("All", total, current == null, () => _browse.SetCategory(null)));
+        if (facets == null) return;
         foreach (var category in facets.Categories)
         {
             var name = category.Value;
-            var selected = _browse.Filters.Any(f => f.Key == MarketBrowse.CategoryKey && f.Low == name);
-            var entry = new DerethButton
-            {
-                Height = 24, HorizontalContentAlignment = HorizontalAlignment.Left,
-                Content = Label($"{category.Label}  {category.Count:N0}", selected ? GoldBrush : TextBrush, 12),
-            };
-            entry.Click += (_, _) => _browse.SetCategory(name);
-            _categoryList.Children.Add(entry);
+            _categoryList.Children.Add(CategoryRow(category.Label, category.Count, current == name, () => _browse.SetCategory(name)));
         }
+    }
+
+    /// <summary>A side bar category: the name, and its count on the right; the chosen one has a light wash.</summary>
+    private static Button CategoryRow(string name, long? count, bool on, Action pick)
+    {
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        row.Children.Add(MarketParts.Text(name, on ? DerethPalette.CreamBrush : MarketInk.TextBrush, 13));
+        var number = MarketParts.Text(count?.ToString("N0") ?? string.Empty, MarketInk.MutedBrush, 11.5);
+        Grid.SetColumn(number, 1);
+        row.Children.Add(number);
+        var button = new MarketButton
+        {
+            Content = row, Height = 26, Padding = new Thickness(10, 0), BorderThickness = new Thickness(0), CornerRadius = new CornerRadius(5),
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Background = on ? DerethPalette.Brush(Color.FromArgb(0x0D, 0xFF, 0xFF, 0xFF)) : Brushes.Transparent,
+        };
+        button.Click += (_, _) => pick();
+        return button;
     }
 
     /// <summary>The layout the views are drawn in. Set by the window from its width, never by a view.</summary>
@@ -236,8 +260,7 @@ public sealed class MarketShellPanel : UserControl, IDisposable
         if (screen == MarketScreen.Sell) _sell.Open();
         if (screen == MarketScreen.Activity) _activity.Load();
         foreach (var pair in _screens) pair.Value.IsVisible = pair.Key == screen;
-        foreach (var (navScreen, label) in _navLabels)
-            label.Foreground = navScreen == screen ? GoldBrush : TextBrush;
+        foreach (var entry in _navEntries) Light(entry, entry.Screen == screen);
     }
 
     /// <summary>Puts the cursor in the search field. A narrow window opens its full-width field first.</summary>
@@ -284,8 +307,8 @@ public sealed class MarketShellPanel : UserControl, IDisposable
             _notice.IsVisible = _client.Notice.Length > 0;
             return;
         }
-        _balance.Text = $"{account.Balance:N0} MMD";
-        _vaultSpace.Text = $"Vault {account.VaultCount:N0} / {account.VaultCapacity:N0}";
+        _balance.Text = $"{account.Balance:N0}";
+        _vaultSpace.Text = $"{account.VaultCount:N0} / {account.VaultCapacity:N0}";
         _character.Text = account.Character;
         _portrait.Text = account.Character.Length > 0 ? account.Character.Substring(0, 1) : string.Empty;
         var notice = account.Frozen ? "Your account is banned, so its market is frozen."
@@ -304,12 +327,13 @@ public sealed class MarketShellPanel : UserControl, IDisposable
         _sideBar.IsVisible = !narrow;
         _wideNav.IsVisible = wide;
         _rail.IsVisible = mode == MarketLayoutMode.Medium;
-        _sideBar.Width = wide ? 168 : 46;
         _body.ColumnDefinitions[0].Width = narrow ? new GridLength(0) : GridLength.Auto;
         _tabRow.IsVisible = narrow;
+        _vaultStat.IsVisible = wide;
         _vaultSpace.IsVisible = wide;
         _character.IsVisible = wide;
-        _portraitFrame.IsVisible = mode == MarketLayoutMode.Medium;
+        _who.IsVisible = !narrow;
+        _who.Padding = wide ? new Thickness(4, 4, 12, 4) : new Thickness(4);
         _activity.SetMode(mode);
         // narrow: an icon opens the full-width search row; the top bar's field is shown otherwise
         _topSearchHost.IsVisible = !narrow;
@@ -332,42 +356,73 @@ public sealed class MarketShellPanel : UserControl, IDisposable
         }
     }
 
+    private Border _who = null!;
+
+    /// <summary>The top bar (search, balance, Vault space, character), which the window puts in its header.</summary>
+    public Grid TopBar { get; private set; } = null!;
+
+    /// <summary>A top bar figure: a small-caps name over a value, right-aligned, as BALANCE and VAULT.</summary>
+    private static StackPanel Stat(string name, TextBlock value, bool coin)
+    {
+        var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, HorizontalAlignment = HorizontalAlignment.Right };
+        if (coin) line.Children.Add(MarketParts.Coin());
+        value.TextTrimming = TextTrimming.None;
+        line.Children.Add(value);
+        var stat = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        var head = MarketParts.Caps(name);
+        head.HorizontalAlignment = HorizontalAlignment.Right;
+        stat.Children.Add(head);
+        stat.Children.Add(line);
+        return stat;
+    }
+
     private Control BuildContent()
     {
         _searchIcon.Click += (_, _) => FocusSearch();
 
-        // top bar: the search (or its icon), then the balance on the right, then the Vault space, the character and the portrait
-        var topBar = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto"), ColumnSpacing = 8 };
-        Grid.SetColumn(_topSearchHost, 0);
-        topBar.Children.Add(_topSearchHost);
-        Grid.SetColumn(_searchIcon, 1);
-        topBar.Children.Add(_searchIcon);
-        Grid.SetColumn(_balance, 2);
-        topBar.Children.Add(_balance);
-        var place = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
-        place.Children.Add(_vaultSpace);
-        place.Children.Add(_character);
-        place.Children.Add(_portraitFrame);
-        Grid.SetColumn(place, 3);
-        topBar.Children.Add(place);
+        // top bar: the search (or its icon), then on the right the balance, the Vault space and who the window acts for
+        var right = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16, VerticalAlignment = VerticalAlignment.Center };
+        right.Children.Add(_searchIcon);
+        right.Children.Add(Stat("Balance", _balance, coin: true));
+        right.Children.Add(_vaultStat);
+        var who = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        who.Children.Add(_portraitFrame);
+        who.Children.Add(_character);
+        _who = new Border
+        {
+            BorderBrush = MarketInk.LineBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(18), Child = who,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        right.Children.Add(_who);
+        // the window draws the top bar in its header, beside the title
+        TopBar = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 18, Margin = new Thickness(18, 0, 6, 0) };
+        TopBar.Children.Add(_topSearchHost);
+        Grid.SetColumn(right, 1);
+        TopBar.Children.Add(right);
 
-        // side bar (wide): labels, the categories and saved searches, which are drawn but not yet live
-        _wideNav.Children.Add(Label("Market", MutedBrush, 11));
-        AddScreens(_wideNav, Caption, "Watchlist");
-        _wideNav.Children.Add(Label("Categories", MutedBrush, 11));
+        // side bar (wide): the screens with their counts, then the categories
+        AddScreens(_wideNav, NavShape.Row);
+        var categoriesHead = MarketParts.Caps("Categories");
+        categoriesHead.Margin = new Thickness(10, 16, 10, 6);
+        _wideNav.Children.Add(categoriesHead);
         _wideNav.Children.Add(_categoryList);
-        _wideNav.Children.Add(DisabledNav("Saved searches"));
-        _sideBar.Children.Add(_wideNav);
-
-        // icon rail (medium): the same screens as glyphs, with the categories and saved searches in one chip, drawn disabled
-        AddScreens(_rail, Glyph, "★");
-        _rail.Children.Add(DisabledNav("▾"));
-        _sideBar.Children.Add(_rail);
+        // icon rail (medium): the same screens as icons
+        AddScreens(_rail, NavShape.Rail);
+        var nav = new Panel();
+        nav.Children.Add(new ScrollViewer { Content = _wideNav, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled });
+        nav.Children.Add(_rail);
+        _sideBar.Child = nav;
         Grid.SetColumn(_sideBar, 0);
         _body.Children.Add(_sideBar);
 
         // tab row (narrow): the same screens across the top of the content
-        AddScreens(_tabRow, Caption, "Watchlist");
+        var tabs = new Grid { Margin = new Thickness(10, 6), ColumnSpacing = 2 };
+        AddScreens(tabs, NavShape.Tab);
+        _tabRow.Children.Add(new Border
+        {
+            Child = tabs, BorderBrush = MarketInk.LineSoftBrush, BorderThickness = new Thickness(0, 0, 0, 1),
+            Background = DerethPalette.Brush(Color.FromArgb(0x2E, 0, 0, 0)),
+        });
 
         // the screens behind the navigation
         var content = new Grid();
@@ -389,9 +444,7 @@ public sealed class MarketShellPanel : UserControl, IDisposable
         _body.Children.Add(column);
 
         // the body takes the rest of the window's height, so a screen can scroll inside it
-        var root = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), RowSpacing = 6 };
-        Grid.SetRow(topBar, 0);
-        root.Children.Add(topBar);
+        var root = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(-6, 0, -6, -6) };
         Grid.SetRow(_notice, 1);
         root.Children.Add(_notice);
         Grid.SetRow(_body, 2);
@@ -405,55 +458,99 @@ public sealed class MarketShellPanel : UserControl, IDisposable
         return layers;
     }
 
-    /// <summary>The screens in order, with the disabled Watchlist entry second, as the mockup draws them.</summary>
-    private void AddScreens(Panel panel, Func<MarketScreen, string> text, string watchlist)
+    private static readonly (MarketScreen? Screen, string Name, MarketIcon Icon)[] NavItems =
     {
-        foreach (var screen in Screens)
+        (MarketScreen.Browse, "Browse", MarketIcon.Browse),
+        (null, "Watchlist", MarketIcon.Star),
+        (MarketScreen.Sell, "Sell", MarketIcon.Sell),
+        (MarketScreen.Activity, "Activity", MarketIcon.Ledger),
+    };
+
+    /// <summary>The screens in order, with the disabled Watchlist second, as the mockup draws them: rows, rail icons or tabs.</summary>
+    private void AddScreens(Panel panel, NavShape shape)
+    {
+        var column = 0;
+        foreach (var (screen, name, icon) in NavItems)
         {
-            panel.Children.Add(NavButton(screen, text(screen), TextBrush));
-            if (screen == MarketScreen.Browse) panel.Children.Add(DisabledNav(watchlist));
+            var entry = NavEntry(screen, name, icon, shape);
+            if (panel is Grid grid)
+            {
+                grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+                Grid.SetColumn(entry, column++);
+            }
+            panel.Children.Add(entry);
         }
     }
 
-    private Button NavButton(MarketScreen screen, string text, IBrush brush)
+    private MarketButton NavEntry(MarketScreen? screen, string name, MarketIcon icon, NavShape shape)
     {
-        var label = Label(text, brush, 12);
-        _navLabels.Add((screen, label));
-        Control content = label;
+        var glyph = shape == NavShape.Tab ? null : new MarketGlyph(icon, MarketInk.Muted, shape == NavShape.Rail ? 19 : 17);
+        var label = shape == NavShape.Rail ? null : MarketParts.Text(name, MarketInk.TextBrush, shape == NavShape.Tab ? 13 : 14);
+        Control? end = null;
         if (screen == MarketScreen.Sell)
         {
-            // the unseen sales, a green pill after the name, as the mockup draws it
-            var count = Label(string.Empty, DerethPalette.Brush(Color.Parse("#062010")), 11);
-            count.FontWeight = FontWeight.SemiBold;
-            var badge = new Border
-            {
-                Background = DerethPalette.TealBrush, CornerRadius = new CornerRadius(9), Padding = new Thickness(6, 0), Margin = new Thickness(6, 0, 0, 0),
-                VerticalAlignment = VerticalAlignment.Center, IsVisible = false, Child = count,
-            };
+            var (badge, count) = MarketParts.Badge();
             _sellBadges.Add((badge, count));
-            var withBadge = new StackPanel { Orientation = Orientation.Horizontal };
-            withBadge.Children.Add(label);
-            withBadge.Children.Add(badge);
-            content = withBadge;
+            end = badge;
         }
-        var button = new DerethButton { Height = 26, Content = content, HorizontalContentAlignment = HorizontalAlignment.Left };
-        button.Click += (_, _) => Show(screen);
+        var content = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 10 };
+        if (glyph != null) content.Children.Add(glyph);
+        if (label != null)
+        {
+            Grid.SetColumn(label, 1);
+            content.Children.Add(label);
+        }
+        if (end != null)
+        {
+            Grid.SetColumn(end, 2);
+            content.Children.Add(end);
+        }
+        var button = new MarketButton
+        {
+            Content = content, BorderThickness = new Thickness(0), CornerRadius = new CornerRadius(shape == NavShape.Rail ? 8 : 6),
+            Height = shape switch { NavShape.Rail => 40, NavShape.Tab => 30, _ => 34 },
+            Width = shape == NavShape.Rail ? 40 : double.NaN,
+            Padding = shape switch { NavShape.Rail => new Thickness(0), NavShape.Tab => new Thickness(4, 0), _ => new Thickness(10, 0) },
+            HorizontalContentAlignment = shape == NavShape.Row ? HorizontalAlignment.Stretch : HorizontalAlignment.Center,
+        };
+        if (shape == NavShape.Rail)
+        {
+            // the rail's badge sits on the icon's corner
+            content.ColumnDefinitions = new ColumnDefinitions("*");
+            if (end != null)
+            {
+                Grid.SetColumn(end, 0);
+                end.HorizontalAlignment = HorizontalAlignment.Right;
+                end.VerticalAlignment = VerticalAlignment.Top;
+                end.Margin = new Thickness(0, -6, -6, 0);
+            }
+            ToolTip.SetTip(button, name);
+        }
+        if (shape == NavShape.Tab) content.ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto");
+        if (screen is { } target)
+        {
+            button.Click += (_, _) => Show(target);
+            _navEntries.Add((target, button, glyph, label, shape));
+        }
+        else
+        {
+            // Watchlist: drawn, not yet live
+            button.IsEnabled = false;
+            if (label != null) label.Foreground = MarketInk.MutedBrush;
+        }
         return button;
     }
 
-    /// <summary>A navigation entry with no screen yet: drawn, and disabled.</summary>
-    private static Button DisabledNav(string text) =>
-        new DerethButton { Height = 26, Content = Label(text, MutedBrush, 12), IsEnabled = false, HorizontalContentAlignment = HorizontalAlignment.Left };
-
-    private static string Caption(MarketScreen screen) => screen.ToString();
-
-    private static string Glyph(MarketScreen screen) => screen switch
+    /// <summary>Lights the chosen screen's entry: a gold wash and edge, a gold icon and cream text.</summary>
+    private static void Light((MarketScreen Screen, MarketButton Button, MarketGlyph? Glyph, TextBlock? Label, NavShape Shape) entry, bool on)
     {
-        MarketScreen.Browse => "B",
-        MarketScreen.Sell => "S",
-        MarketScreen.Activity => "A",
-        _ => "?",
-    };
+        var (_, button, glyph, label, shape) = entry;
+        button.Background = !on ? Brushes.Transparent : shape == NavShape.Row ? MarketInk.NavOnBrush : MarketInk.GoldWashBrush;
+        button.BorderBrush = DerethPalette.GoldBrush;
+        button.BorderThickness = !on ? new Thickness(0) : shape == NavShape.Tab ? new Thickness(0, 0, 0, 2) : new Thickness(2, 0, 0, 0);
+        if (glyph != null) glyph.Colour = on ? DerethPalette.Gold : MarketInk.Muted;
+        if (label != null) label.Foreground = on ? DerethPalette.CreamBrush : shape == NavShape.Tab ? MarketInk.MutedBrush : MarketInk.TextBrush;
+    }
 
     public void Dispose()
     {

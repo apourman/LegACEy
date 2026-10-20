@@ -11,7 +11,6 @@ using Avalonia.Controls.Shapes;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
-using static LegACEy.Client.Themes.DerethItemCells;
 
 namespace LegACEy.Plugin.Market;
 
@@ -23,48 +22,59 @@ namespace LegACEy.Plugin.Market;
 /// </summary>
 public sealed class SellScreen : UserControl, IDisposable
 {
-    private static readonly IBrush GoldBrush = DerethPalette.GoldBrush;
-    private static readonly IBrush TextBrush = DerethPalette.TextBrush;
-    private static readonly IBrush MutedBrush = DerethPalette.MutedBrush;
-    private static readonly IBrush InvalidBrush = DerethPalette.InvalidBrush;
-
     private readonly SellViewModel _model;
     private readonly IGameArtSource _art;
     private readonly Dictionary<(uint Plate, uint Underlay, uint Icon, uint Overlay, uint Secondary, uint Effects), WriteableBitmap?> _images = new();
+    // the items' looks by GUID, as the tabs have shown them, so a listing row can draw its item's icon
+    private readonly Dictionary<uint, SellItem> _seen = new();
     private MarketLayoutMode _mode = MarketLayoutMode.Medium;
     private bool _disposed;
 
     // the items panel: the pack and Vault tabs over the item grid
-    private readonly Border _itemsPanel = new();
-    private readonly DerethButton _packTab = Tab("Pack");
-    private readonly DerethButton _vaultTab = Tab("Vault");
-    private readonly WrapPanel _itemGrid = new() { Orientation = Orientation.Horizontal, MaxWidth = 720 };
+    private readonly Border _itemsPanel;
+    private readonly MarketTabs _itemTabs = new("Pack", "Vault");
+    private readonly WrapPanel _itemGrid = new() { Orientation = Orientation.Horizontal, ItemSpacing = 4, LineSpacing = 4 };
+    private readonly ScrollViewer _itemsScroll;
 
     // the price panel: the picked item, the price field, the lifetime line and "List for N"
-    private readonly Border _pricePanel = new();
-    private readonly DerethButton _back = new() { Content = Label("‹ Back", GoldBrush, 12), Height = 26, IsVisible = false };
-    private readonly TextBlock _pickedName = Label(string.Empty, TextBrush, 15);
-    private readonly TextBlock _pickedDetail = Label(string.Empty, MutedBrush, 11);
-    private readonly TextBox _price = new() { Watermark = "Whole stack, MMD", Height = 30, MinWidth = 120, FontSize = 14 };
-    private readonly TextBlock _lifetime = Label(string.Empty, MutedBrush, 11);
-    private readonly TextBlock _blocker = Label(string.Empty, InvalidBrush, 11);
-    private readonly DerethButton _listButton = new() { Height = 34 };
+    private readonly Border _pricePanel;
+    private readonly MarketButton _back = MarketParts.Button("‹ Back", MarketParts.Kind.Quiet, 28, DerethPalette.GoldBrush);
+    private readonly Border _pickedIcon = new() { Width = 48, Height = 48 };
+    private readonly TextBlock _pickedName = MarketParts.Text(string.Empty, DerethPalette.CreamBrush, 19, title: true);
+    private readonly TextBlock _pickedDetail = MarketParts.Text(string.Empty, MarketInk.MutedBrush, 12);
+    private readonly TextBox _price = new()
+    {
+        Watermark = "Whole stack, MMD", Height = 38, MinHeight = 0, FontSize = 20, FontFamily = DerethPalette.Title, Foreground = DerethPalette.CreamBrush,
+        CaretBrush = DerethPalette.GoldBrush, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(0),
+        VerticalContentAlignment = VerticalAlignment.Center,
+    };
+    private readonly Border _priceField;
+    private readonly TextBlock _lifetime = Wrapped(MarketInk.MutedBrush, 12);
+    private readonly TextBlock _blocker = Wrapped(MarketInk.BadBrush, 12);
+    private readonly MarketButton _listButton = MarketParts.Button("List for —", MarketParts.Kind.Go, 34);
 
     // the listings panel: Active, Sold and Expired, with time left and Delist
-    private readonly Border _listingsPanel = new();
-    private readonly DerethButton _activeTab = Tab("Active");
-    private readonly DerethButton _soldTab = Tab("Sold");
-    private readonly DerethButton _expiredTab = Tab("Expired");
-    private readonly TextBlock _activeCount = Label(string.Empty, MutedBrush, 12);
-    private readonly StackPanel _listingRows = new() { Spacing = 4 };
-    private readonly TextBlock _notice = Label(string.Empty, InvalidBrush, 12);
+    private readonly Border _listingsPanel;
+    private readonly MarketTabs _listingTabs = new("Active", "Sold", "Expired");
+    private readonly TextBlock _activeCount = MarketParts.Text(string.Empty, MarketInk.MutedBrush, 12);
+    private readonly StackPanel _listingRows = new();
+    private readonly TextBlock _notice = MarketParts.Text(string.Empty, MarketInk.BadBrush, 12.5);
 
-    private readonly Grid _layout = new();
+    private readonly Grid _layout = new() { ColumnSpacing = 14, RowSpacing = 14 };
 
     public SellScreen(SellViewModel model, IGameArtSource art)
     {
         _model = model ?? throw new ArgumentNullException(nameof(model));
         _art = art ?? throw new ArgumentNullException(nameof(art));
+        _itemsScroll = new ScrollViewer { Content = _itemGrid, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
+        _priceField = new Border
+        {
+            Height = 40, CornerRadius = new CornerRadius(8), BorderBrush = MarketInk.LineBrush, BorderThickness = new Thickness(1),
+            Background = MarketInk.SunkBrush, Padding = new Thickness(12, 0),
+        };
+        _itemsPanel = MarketParts.Card(new Panel(), 10, new Thickness(16, 14));
+        _pricePanel = MarketParts.Card(new Panel(), 10, new Thickness(16, 14));
+        _listingsPanel = MarketParts.Card(new Panel(), 10, new Thickness(16, 14));
         Content = BuildContent();
         _model.Changed += Refresh;
         ApplyLayout();
@@ -89,6 +99,14 @@ public sealed class SellScreen : UserControl, IDisposable
         Refresh();
     }
 
+    private static TextBlock Wrapped(IBrush brush, double size)
+    {
+        var text = MarketParts.Text(string.Empty, brush, size);
+        text.TextWrapping = TextWrapping.Wrap;
+        text.TextTrimming = TextTrimming.None;
+        return text;
+    }
+
     private void ApplyLayout()
     {
         switch (_mode)
@@ -96,26 +114,29 @@ public sealed class SellScreen : UserControl, IDisposable
             case MarketLayoutMode.Wide:
                 // the items and the price side by side, the listings under both; the item grid takes the spare height and scrolls
                 _layout.ColumnDefinitions = new ColumnDefinitions("400,*");
-                _layout.RowDefinitions = new RowDefinitions("*,*");
+                _layout.RowDefinitions = new RowDefinitions("Auto,*");
                 Place(_itemsPanel, 0, 0, 1);
                 Place(_pricePanel, 0, 1, 1);
                 Place(_listingsPanel, 1, 0, 2);
+                _itemsScroll.MaxHeight = 140;
                 break;
             case MarketLayoutMode.Medium:
                 // the items stack above the price panel, and the listings take the rest; the items grid scrolls, the price panel keeps its height
                 _layout.ColumnDefinitions = new ColumnDefinitions("*");
-                _layout.RowDefinitions = new RowDefinitions("2*,Auto,*");
+                _layout.RowDefinitions = new RowDefinitions("Auto,Auto,*");
                 Place(_itemsPanel, 0, 0, 1);
                 Place(_pricePanel, 1, 0, 1);
                 Place(_listingsPanel, 2, 0, 1);
+                _itemsScroll.MaxHeight = 92;
                 break;
             default:
                 // narrow: the items and the listings, or the price panel as a detail page in their place
                 _layout.ColumnDefinitions = new ColumnDefinitions("*");
-                _layout.RowDefinitions = new RowDefinitions("*,*");
+                _layout.RowDefinitions = new RowDefinitions("Auto,*");
                 Place(_itemsPanel, 0, 0, 1);
                 Place(_pricePanel, 0, 0, 1);
                 Place(_listingsPanel, 1, 0, 1);
+                _itemsScroll.MaxHeight = 140;
                 break;
         }
     }
@@ -140,13 +161,10 @@ public sealed class SellScreen : UserControl, IDisposable
         _pricePanel.IsVisible = !narrow || picked;
         _back.IsVisible = narrow;
 
-        _packTab.Foreground = _model.Tab == SellTab.Pack ? GoldBrush : TextBrush;
-        _vaultTab.Foreground = _model.Tab == SellTab.Vault ? GoldBrush : TextBrush;
-        var listingTab = _model.ListingTab;
-        _activeTab.Foreground = listingTab == SellListingTab.Active ? GoldBrush : TextBrush;
-        _soldTab.Foreground = listingTab == SellListingTab.Sold ? GoldBrush : TextBrush;
-        _expiredTab.Foreground = listingTab == SellListingTab.Expired ? GoldBrush : TextBrush;
+        _itemTabs.Selected = _model.Tab == SellTab.Pack ? 0 : 1;
+        _listingTabs.Selected = (int)_model.ListingTab;
 
+        foreach (var item in _model.Items) _seen[item.Guid] = item;
         RefreshItems();
         RefreshPrice();
         RefreshListings();
@@ -161,7 +179,7 @@ public sealed class SellScreen : UserControl, IDisposable
             _itemGrid.Children.Add(ItemCell(item));
 
         if (_model.Items.Count == 0)
-            _itemGrid.Children.Add(Label(_model.Tab == SellTab.Pack ? "Nothing in your pack to sell." : "Nothing in your Vault.", MutedBrush, 12));
+            _itemGrid.Children.Add(MarketParts.Text(_model.Tab == SellTab.Pack ? "Nothing in your pack to sell." : "Nothing in your Vault.", MarketInk.MutedBrush, 12.5));
     }
 
     /// <summary>
@@ -170,15 +188,20 @@ public sealed class SellScreen : UserControl, IDisposable
     private Control ItemCell(SellItem item)
     {
         var picked = _model.Selected?.Guid == item.Guid;
-        var icon = new Image { Width = 40, Height = 40, Source = Bitmap(item), Stretch = Stretch.Uniform };
-        var canvas = new Grid { Width = 44, Height = 44, Children = { icon } };
+        var canvas = new Grid { Children = { new Viewbox { Width = 34, Height = 34, Child = Icon(item) } } };
         // the gold dot marks a Vault item already for sale
-        canvas.Children.Add(new Ellipse { Width = 7, Height = 7, Fill = GoldBrush, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 2, 2, 0), IsVisible = item.Listed, Name = "GoldDot" });
+        canvas.Children.Add(new Ellipse
+        {
+            Width = 7, Height = 7, Fill = DerethPalette.GoldBrush, Stroke = Brushes.Black, StrokeThickness = 1, HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 2, 2, 0), IsVisible = item.Listed, Name = "GoldDot"
+        });
+        if (item.StackSize > 1) canvas.Children.Add(DerethItemCells.StackCount(item.StackSize));
         var cell = new Border
         {
-            Width = 44, Height = 44, Margin = new Thickness(2), Child = canvas, Tag = item.Guid, Cursor = new Cursor(StandardCursorType.Hand),
-            BorderThickness = new Thickness(1), BorderBrush = picked ? GoldBrush : Brushes.Transparent,
-            Opacity = item.Greyed ? 0.35 : 1,
+            Width = 42, Height = 42, Child = canvas, Tag = item.Guid, Cursor = new Cursor(StandardCursorType.Hand), CornerRadius = new CornerRadius(6),
+            BorderThickness = new Thickness(picked ? 2 : 1), BorderBrush = picked ? MarketInk.LitBrush : DerethPalette.Brush(Color.Parse("#5A4A2C")),
+            Background = DerethPalette.Brush(Color.Parse("#1A160F")), Opacity = item.Greyed ? 0.35 : 1,
+            BoxShadow = picked ? BoxShadows.Parse("0 0 10 0 #593FCF5F") : default,
         };
         if (item.Greyed && item.Reason.Length > 0) ToolTip.SetTip(cell, item.Reason);
         else if (item.Listed) ToolTip.SetTip(cell, "Listed for sale");
@@ -193,15 +216,18 @@ public sealed class SellScreen : UserControl, IDisposable
     private void RefreshPrice()
     {
         var item = _model.Selected;
-        _pickedName.Text = item?.Name ?? string.Empty;
-        _pickedDetail.Text = item == null ? string.Empty
+        _pickedName.Text = item?.Name ?? "Pick an item";
+        _pickedDetail.Text = item == null ? "From your pack or your Vault"
             : item.StackSize > 1 ? $"{(_model.Tab == SellTab.Pack ? "From your pack" : "In your Vault")} · stack of {item.StackSize:N0}"
             : _model.Tab == SellTab.Pack ? "From your pack" : "In your Vault";
+        _pickedIcon.Child = item == null ? null : MarketParts.IconTile(Icon(item), 48);
+        _pickedIcon.IsVisible = item != null;
         if (_price.Text != _model.PriceText) _price.Text = _model.PriceText;
         _lifetime.Text = _model.LifetimeLine;
+        _lifetime.IsVisible = _lifetime.Text.Length > 0;
         _blocker.Text = _model.ListBlocker ?? string.Empty;
         _blocker.IsVisible = _blocker.Text.Length > 0;
-        _listButton.Content = Label($"List for {_model.Price?.ToString("N0") ?? "—"}", TextBrush, 14);
+        ((TextBlock)_listButton.Content!).Text = $"List for {_model.Price?.ToString("N0") ?? "—"}";
         _listButton.IsEnabled = _model.ListBlocker == null;
     }
 
@@ -217,33 +243,57 @@ public sealed class SellScreen : UserControl, IDisposable
             _listingRows.Children.Add(ListingRowView(row));
 
         if (rows.Count == 0)
-            _listingRows.Children.Add(Label(_model.ListingTab == SellListingTab.Active ? "You have nothing listed." : $"Nothing {_model.ListingTab.ToString().ToLowerInvariant()} yet.", MutedBrush, 12));
+            _listingRows.Children.Add(new Border
+            {
+                Padding = new Thickness(0, 8),
+                Child = MarketParts.Text(_model.ListingTab == SellListingTab.Active ? "You have nothing listed." : $"Nothing {_model.ListingTab.ToString().ToLowerInvariant()} yet.", MarketInk.MutedBrush, 12.5),
+            });
     }
 
     private Control ListingRowView(ListingRow row)
     {
         var active = row.Status == "active";
-        var name = new StackPanel { Spacing = 0, Children = { Label(row.Name, TextBrush, 13), Label(active ? _model.TimeLeft(row) : TimeText(row), MutedBrush, 11) } };
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, HorizontalAlignment = HorizontalAlignment.Right };
+        var timeLeft = active ? _model.TimeLeft(row) : TimeText(row);
+        var name = new StackPanel
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            Children = { MarketParts.Text(row.Name, DerethPalette.CreamBrush, 13), MarketParts.Text(timeLeft, MarketInk.MutedBrush, 11.5) },
+        };
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         var changePrice = new Border { Name = "ChangePriceSlot", Tag = row.Id, VerticalAlignment = VerticalAlignment.Center };
         if (active) changePrice.Child = ChangePrice(row);
         actions.Children.Add(changePrice);
         if (active)
         {
-            var delist = new DerethButton { Content = Label("Delist", GoldBrush, 12), Height = 26, Tag = row.Id };
+            var delist = MarketParts.Button("Delist", MarketParts.Kind.Ghost, 26);
+            delist.Tag = row.Id;
             delist.Click += (_, _) => _model.Delist(row.Id);
             actions.Children.Add(delist);
         }
 
-        var line = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), ColumnSpacing = 10 };
-        Grid.SetColumn(name, 0);
+        // the state tag: listed in gold, ending (under a day left) in amber, sold in green, expired muted
+        var ending = active && (timeLeft.Contains("hour") || timeLeft.Contains("minute"));
+        var state = row.Status switch
+        {
+            "active" when ending => MarketParts.Tag("Ending", MarketInk.WarnBrush, DerethPalette.Brush(MarketInk.Warn.WithAlpha(0x1A)), caps: true),
+            "active" => MarketParts.Tag("Listed", DerethPalette.GoldBrush, DerethPalette.Brush(DerethPalette.Gold.WithAlpha(0x1A)), caps: true),
+            "sold" => MarketParts.Tag("Sold", MarketInk.LitTextBrush, DerethPalette.Brush(MarketInk.Lit.WithAlpha(0x1A)), caps: true),
+            _ => MarketParts.Tag(row.Status, MarketInk.MutedBrush, null, caps: true),
+        };
+
+        var line = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto,Auto"), ColumnSpacing = 12 };
+        var icon = _seen.TryGetValue(row.ItemGuid, out var item) ? MarketParts.IconTile(Icon(item), 32) : MarketParts.IconTile(new Panel(), 32);
+        line.Children.Add(icon);
+        Grid.SetColumn(name, 1);
         line.Children.Add(name);
-        var price = Label($"{row.Price:N0} MMD", TextBrush, 13);
-        Grid.SetColumn(price, 1);
+        var price = MarketParts.Price(row.Price.ToString("N0"));
+        Grid.SetColumn(price, 2);
         line.Children.Add(price);
-        Grid.SetColumn(actions, 2);
+        Grid.SetColumn(state, 3);
+        line.Children.Add(state);
+        Grid.SetColumn(actions, 4);
         line.Children.Add(actions);
-        return new Border { Padding = new Thickness(6, 4), Child = line, Tag = row.Id, BorderBrush = DerethPalette.GoldDarkBrush, BorderThickness = new Thickness(0, 0, 0, 1) };
+        return new Border { Padding = new Thickness(4, 6), Child = line, Tag = row.Id, BorderBrush = MarketInk.LineSoftBrush, BorderThickness = new Thickness(0, 0, 0, 1) };
     }
 
     /// <summary>
@@ -254,18 +304,21 @@ public sealed class SellScreen : UserControl, IDisposable
     {
         if (_model.RepriceListingId != row.Id)
         {
-            var open = new DerethButton { Content = Label("Change price", GoldBrush, 12), Height = 26, Tag = row.Id };
+            var open = MarketParts.Button("Change price", MarketParts.Kind.Ghost, 26);
+            open.Tag = row.Id;
             open.Click += (_, _) => _model.StartReprice(row.Id);
             return open;
         }
 
-        var field = new TextBox { Text = _model.RepriceText, Watermark = "MMD", Width = 90, Height = 26, FontSize = 12 };
+        var field = MarketParts.Field("MMD", 26, 90);
+        field.Text = _model.RepriceText;
+        field.FontSize = 12.5;
         field.TextChanged += (_, _) => _model.SetRepriceText(field.Text ?? string.Empty);
-        var confirm = new DerethButton { Content = Label("Set price", GoldBrush, 12), Height = 26 };
+        var confirm = MarketParts.Button("Set price", MarketParts.Kind.Red, 26);
         confirm.Click += (_, _) => _model.Reprice();
-        var cancel = new DerethButton { Content = Label("Cancel", TextBrush, 12), Height = 26 };
+        var cancel = MarketParts.Button("Cancel", MarketParts.Kind.Ghost, 26);
         cancel.Click += (_, _) => _model.CancelReprice();
-        return new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { field, confirm, cancel } };
+        return new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { field, confirm, cancel } };
     }
 
     private string TimeText(ListingRow row) => row.Status switch
@@ -274,6 +327,8 @@ public sealed class SellScreen : UserControl, IDisposable
         "expired" => "expired",
         _ => row.Status,
     };
+
+    private Control Icon(SellItem item) => DerethItemCells.Icon(Bitmap(item));
 
     private WriteableBitmap? Bitmap(SellItem item)
     {
@@ -288,62 +343,70 @@ public sealed class SellScreen : UserControl, IDisposable
 
     private Control BuildContent()
     {
-        _packTab.Click += (_, _) => _model.ShowTab(SellTab.Pack);
-        _vaultTab.Click += (_, _) => _model.ShowTab(SellTab.Vault);
+        _itemTabs.Chosen += index => _model.ShowTab(index == 0 ? SellTab.Pack : SellTab.Vault);
         _back.Click += (_, _) => _model.Back();
         _price.TextChanged += (_, _) => _model.SetPrice(_price.Text ?? string.Empty);
+        _price.GotFocus += (_, _) => _priceField.BorderBrush = MarketInk.LitBrush;
+        _price.LostFocus += (_, _) => _priceField.BorderBrush = MarketInk.LineBrush;
         _listButton.Click += (_, _) => _model.List();
-        _activeTab.Click += (_, _) => _model.ShowListingTab(SellListingTab.Active);
-        _soldTab.Click += (_, _) => _model.ShowListingTab(SellListingTab.Sold);
-        _expiredTab.Click += (_, _) => _model.ShowListingTab(SellListingTab.Expired);
+        _listingTabs.Chosen += index => _model.ShowListingTab((SellListingTab)index);
+        _listButton.HorizontalAlignment = HorizontalAlignment.Stretch;
 
-        // the header keeps its height; the scroller takes the rest of the panel, so the grid scrolls and the panel keeps its place
-        var itemsHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Children = { Label("Your items", GoldBrush, 14), Tabs(_packTab, _vaultTab) } };
-        var itemsScroll = new ScrollViewer { Content = _itemGrid };
-        Grid.SetRow(itemsScroll, 1);
-        _itemsPanel.Child = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), Children = { itemsHeader, itemsScroll } };
+        // items: the head and the Pack | Vault tabs, the grid, and what the marks mean
+        var itemsHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        itemsHeader.Children.Add(MarketParts.Head("Your items"));
+        Grid.SetColumn(_itemTabs, 1);
+        itemsHeader.Children.Add(_itemTabs);
+        var marks = MarketParts.Text("Gold dot: already listed. Greyed out: can't be sold here (attuned or bonded).", MarketInk.MutedBrush, 12);
+        marks.TextWrapping = TextWrapping.Wrap;
+        _itemsPanel.Child = new StackPanel { Spacing = 10, Children = { itemsHeader, _itemsScroll, marks } };
 
-        _pricePanel.Child = new StackPanel
-        {
-            Spacing = 6,
-            Children =
-            {
-                new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Children = { _back } },
-                _pickedName,
-                _pickedDetail,
-                Label("Price, whole stack", MutedBrush, 11),
-                _price,
-                _lifetime,
-                _blocker,
-                _listButton,
-            },
-        };
+        // price: the picked item's head, then the price field, the lifetime, why it can't be listed, and List for N
+        var coinRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 8 };
+        coinRow.Children.Add(MarketParts.Coin(16));
+        Grid.SetColumn(_price, 1);
+        coinRow.Children.Add(_price);
+        var unit = MarketParts.Text("MMD", MarketInk.MutedBrush, 12);
+        Grid.SetColumn(unit, 2);
+        coinRow.Children.Add(unit);
+        _priceField.Child = coinRow;
+        var head = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*"), ColumnSpacing = 14 };
+        head.Children.Add(_back);
+        Grid.SetColumn(_pickedIcon, 1);
+        head.Children.Add(_pickedIcon);
+        var names = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Children = { _pickedName, _pickedDetail } };
+        Grid.SetColumn(names, 2);
+        head.Children.Add(names);
+        var form = new StackPanel { Spacing = 8, MaxWidth = 300, HorizontalAlignment = HorizontalAlignment.Left };
+        form.Children.Add(MarketParts.Caps("Price, whole stack", MarketInk.MutedBrush, 11));
+        form.Children.Add(_priceField);
+        form.Children.Add(_lifetime);
+        form.Children.Add(_blocker);
+        form.Children.Add(_listButton);
+        _pricePanel.Child = new StackPanel { Spacing = 12, Children = { head, form } };
 
-        var listingsHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Children = { Label("Your listings", GoldBrush, 14), new StackPanel(), Tabs(_activeTab, _soldTab, _expiredTab) } };
-        var listingsScroll = new ScrollViewer { Content = _listingRows };
-        Grid.SetRow(_activeCount, 1);
-        Grid.SetRow(listingsScroll, 2);
-        _listingsPanel.Child = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Children = { listingsHeader, _activeCount, listingsScroll } };
+        // listings: the head with the count, the Active | Sold | Expired tabs, then the rows
+        var listingsHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto"), ColumnSpacing = 10 };
+        listingsHeader.Children.Add(MarketParts.Head("Your listings"));
+        Grid.SetColumn(_activeCount, 1);
+        listingsHeader.Children.Add(_activeCount);
+        Grid.SetColumn(_listingTabs, 3);
+        listingsHeader.Children.Add(_listingTabs);
+        var listingsScroll = new ScrollViewer { Content = _listingRows, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
+        Grid.SetRow(listingsScroll, 1);
+        _listingsPanel.Child = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), RowSpacing = 10, Children = { listingsHeader, listingsScroll } };
 
         // the panels sit in a grid, and their places change with the mode
         _layout.Children.Add(_itemsPanel);
         _layout.Children.Add(_pricePanel);
         _layout.Children.Add(_listingsPanel);
 
-        var root = new StackPanel { Spacing = 6 };
+        var root = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), RowSpacing = 8, Margin = new Thickness(20, 16, 20, 16) };
         root.Children.Add(_notice);
+        Grid.SetRow(_layout, 1);
         root.Children.Add(_layout);
         return root;
     }
-
-    private static StackPanel Tabs(params Control[] tabs)
-    {
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        foreach (var tab in tabs) row.Children.Add(tab);
-        return row;
-    }
-
-    private static DerethButton Tab(string text) => new() { Content = Label(text, TextBrush, 12), Height = 26 };
 
     public void Dispose()
     {

@@ -30,7 +30,7 @@ public sealed class MarketBrowseTests
         Assert.Contains("Armor · Gold", texts);
         Assert.Contains("Wk 8", texts);
         Assert.Contains("Melee Weapon · Steel", texts);
-        Assert.Contains("1,200 MMD", texts);
+        Assert.Contains("1,200", texts);
         Assert.Contains("Your listing", texts);
         Assert.Equal(5, market.Browse.Results.Count);
     });
@@ -99,7 +99,7 @@ public sealed class MarketBrowseTests
         Assert.Equal(FilterShape.Range, facets.Kinds.Single(k => k.Key == "price").Shape);
         Assert.Contains(facets.Sorts, s => s.Value == "price" && !s.Descending);
         Assert.Equal(new[] { "Armor", "Jewelry", "Melee Weapon" }, facets.Categories.Select(c => c.Label));
-        Assert.Equal(new[] { "All categories", "Armor  2", "Jewelry  1", "Melee Weapon  2" }, market.Panel.CategoryTexts);
+        Assert.Equal(new[] { "All  5", "Armor  2", "Jewelry  1", "Melee Weapon  2" }, market.Panel.CategoryTexts);
     });
 
     [Fact]
@@ -134,24 +134,24 @@ public sealed class MarketBrowseTests
 
         market.Browse.SetView(BrowseView.Table);
         market.Settle();
-        Assert.Contains("Workmanship", market.Texts());
-        Assert.Contains("Listed time ↓", market.Texts());
+        Assert.Contains("WK", market.Texts());
+        Assert.Contains("LISTED ↓", market.Texts());
         Assert.Contains("Nariyid Breastplate summary", market.Texts());
 
-        Click(ButtonWithText(market, "Price"));
+        Click(ButtonWithText(market, "PRICE"));
         market.Settle();
         Assert.Equal("price", market.Browse.Sort);
         Assert.False(market.Browse.Descending);
         Assert.Equal("Nariyid Breastplate", market.Browse.Results[0].Name);
 
-        Click(ButtonWithText(market, "Price ↑"));
+        Click(ButtonWithText(market, "PRICE ↑"));
         market.Settle();
         Assert.True(market.Browse.Descending);
         Assert.Equal("Weeping Ring", market.Browse.Results[0].Name);
 
         market.Browse.SetView(BrowseView.Cards);
         market.Settle();
-        Assert.DoesNotContain("Listed time ↓", market.Texts());
+        Assert.DoesNotContain("LISTED ↓", market.Texts());
         Assert.Contains("Your listing", market.Texts());
     });
 
@@ -169,7 +169,9 @@ public sealed class MarketBrowseTests
         var screen = market.Panel.BrowseScreen;
         Assert.True(screen.DetailVisible, "the detail is open");
         Assert.Equal(resultsStillShown, screen.ResultsVisible);
-        Assert.Contains("Workmanship: 8", market.Texts());
+        // the appraisal's label and value columns
+        Assert.Contains("Workmanship", market.Texts());
+        Assert.Contains("8", market.Texts());
         Assert.Contains("Legendary Invulnerability", market.Texts());
         Assert.True(screen.BuyButton!.IsEnabled, "another seller's listing can be bought");
     });
@@ -244,12 +246,13 @@ public sealed class MarketBrowseTests
 
         Assert.Contains("Melee Weapon  2", market.Panel.CategoryTexts);
 
-        Click(ButtonWithText(market, "Melee Weapon  2"));
+        Click(CategoryButton(market, "Melee Weapon  2"));
         market.Settle();
 
         Assert.Equal(2, market.Browse.Results.Count);
         Assert.All(market.Browse.Results, listing => Assert.Equal("MeleeWeapon", listing.ItemType));
-        Assert.Contains("Category: Melee Weapon  ×", market.Panel.BrowseScreen.ChipTexts);
+        // the category is the side bar's lit row, not a chip, as the mockup draws it
+        Assert.DoesNotContain(market.Panel.BrowseScreen.ChipTexts, chip => chip.StartsWith("Category", StringComparison.Ordinal));
     });
 
     [Fact]
@@ -368,6 +371,11 @@ public sealed class MarketBrowseTests
             yield return new ListingCard(1000 + number, (uint)(0x80000000 + number), $"Item {number:000}", "MeleeWeapon", "Melee Weapon", "Steel", 5, null,
                 null, "summary", 1, number * 10, "Kaelin", listed, false, 0, 0, 0, 0, 0, 0);
     }
+
+    /// <summary>A side bar category, by its name and count as <see cref="MarketShellPanel.CategoryTexts"/> reads them</summary>
+    private static Button CategoryButton(MarketFixture market, string text) =>
+        market.Host.Content.GetVisualDescendants().OfType<Button>().First(button => button.IsVisible && button.Content is Grid row
+            && string.Join("  ", row.Children.OfType<TextBlock>().Select(t => t.Text).Where(t => !string.IsNullOrEmpty(t))) == text);
 
     private static Button ButtonWithText(MarketFixture market, string text) => ButtonWithText(market.Host, text);
 

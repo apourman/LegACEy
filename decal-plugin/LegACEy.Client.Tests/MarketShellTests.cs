@@ -129,11 +129,11 @@ public sealed class MarketShellTests
 
         market.Resize(1200);
         Assert.Equal(MarketLayoutMode.Wide, market.Panel.Mode);
-        Assert.Contains("Vault 12 / 1,000", market.Texts());
+        Assert.Contains("12 / 1,000", market.Texts());
 
         market.Resize(520);
         Assert.Equal(MarketLayoutMode.Narrow, market.Panel.Mode);
-        Assert.DoesNotContain("Vault 12 / 1,000", market.Texts());
+        Assert.DoesNotContain("12 / 1,000", market.Texts());
     });
 
     [Fact]
@@ -141,7 +141,7 @@ public sealed class MarketShellTests
     {
         using var market = new MarketFixture(1200);
 
-        Assert.Equal("1,250 MMD", market.Panel.BalanceText);
+        Assert.Equal("1,250", market.Panel.BalanceText);
         Assert.Contains("Arwic Wanderer", market.Texts());
     });
 

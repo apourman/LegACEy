@@ -65,7 +65,7 @@ public sealed class MarketSellTests
         Assert.Equal(listing.Id, market.Server.LastDelist!.Value);
         Assert.True(Shows(market, "Atlan Sword is back in your Vault."));
         Assert.Equal("held", market.Server.Vault.Single().State);
-        Assert.False(Shows(market, "3,500 MMD"), "its listing is no longer on the Active tab");
+        Assert.False(Shows(market, "3,500"), "its listing is no longer on the Active tab");
     });
 
     [Fact]
@@ -87,8 +87,8 @@ public sealed class MarketSellTests
         // the request carried the listing and the new price; the listing kept its id and is still on the Active tab
         Assert.Equal((listing.Id, 3200L), market.Server.LastReprice);
         Assert.True(Shows(market, "Atlan Sword is now listed for 3,200 MMD."));
-        Assert.True(IsShown(market, "3,200 MMD"), "the row shows the new price");
-        Assert.False(IsShown(market, "3,500 MMD"), "the old price is gone");
+        Assert.True(IsShown(market, "3,200"), "the row shows the new price");
+        Assert.False(IsShown(market, "3,500"), "the old price is gone");
         Assert.Null(market.Sell.Model.RepriceListingId);
     });
 
@@ -110,7 +110,7 @@ public sealed class MarketSellTests
         market.Settle();
 
         Assert.True(Shows(market, "Atlan Sword can't be repriced while its sale is pending."));
-        Assert.True(IsShown(market, "3,500 MMD"), "the row keeps its price");
+        Assert.True(IsShown(market, "3,500"), "the row keeps its price");
         Assert.NotNull(market.Sell.Model.RepriceListingId);
         Assert.Equal("3200", PriceBox(market).Text);
     });
@@ -248,29 +248,29 @@ public sealed class MarketSellTests
         medium.Panel.Show(MarketScreen.Sell);
         medium.Settle();
         var itemsTop = TopOnScreen(medium, "Your items");
-        var priceTop = TopOnScreen(medium, "Price, whole stack");
+        var priceTop = TopOnScreen(medium, "PRICE, WHOLE STACK");
         var listingsTop = TopOnScreen(medium, "Your listings");
         Assert.True(itemsTop < priceTop, "the items are above the price panel");
         Assert.True(priceTop < listingsTop, "the listings are below the price panel");
-        Assert.True(priceTop + BottomOffset(medium, "Price, whole stack") <= medium.Window.Bounds.Height, "the price panel is in view, not pushed off the bottom");
+        Assert.True(priceTop + BottomOffset(medium, "PRICE, WHOLE STACK") <= medium.Window.Bounds.Height, "the price panel is in view, not pushed off the bottom");
 
         using var narrow = new MarketFixture(520);
         narrow.Panel.Show(MarketScreen.Sell);
         narrow.Settle();
         Assert.True(IsShown(narrow, "Your items"), "the narrow window opens on the items");
-        Assert.False(IsShown(narrow, "Price, whole stack"), "the price panel waits for a pick");
+        Assert.False(IsShown(narrow, "PRICE, WHOLE STACK"), "the price panel waits for a pick");
 
         PutInPack(narrow, 0x5005, "Ring of Rejuvenation");
         narrow.Settle();
         narrow.Sell.Model.Pick(0x5005);
         narrow.Settle();
-        Assert.True(IsShown(narrow, "Price, whole stack"), "a pick opens the price panel");
+        Assert.True(IsShown(narrow, "PRICE, WHOLE STACK"), "a pick opens the price panel");
         Assert.False(IsShown(narrow, "Your items"), "in place of the items");
 
         Click(narrow, "‹ Back");
         narrow.Settle();
         Assert.True(IsShown(narrow, "Your items"), "Back returns to the items");
-        Assert.False(IsShown(narrow, "Price, whole stack"));
+        Assert.False(IsShown(narrow, "PRICE, WHOLE STACK"));
     });
 
     [Fact]
@@ -282,8 +282,8 @@ public sealed class MarketSellTests
 
         var listingsTop = TopOnScreen(wide, "Your listings");
         Assert.True(TopOnScreen(wide, "Your items") < listingsTop, "the items are above the listings");
-        Assert.True(TopOnScreen(wide, "Price, whole stack") < listingsTop, "the price panel is above the listings");
-        Assert.True(LeftOnScreen(wide, "Price, whole stack") > LeftOnScreen(wide, "Your items"), "the price panel is to the right of the items");
+        Assert.True(TopOnScreen(wide, "PRICE, WHOLE STACK") < listingsTop, "the price panel is above the listings");
+        Assert.True(LeftOnScreen(wide, "PRICE, WHOLE STACK") > LeftOnScreen(wide, "Your items"), "the price panel is to the right of the items");
     });
 
     [Fact]

@@ -108,7 +108,8 @@ public sealed class ActivityTests
         var points = Chart(activity).Points;
         Assert.Equal(4, points.Count);
         Assert.Equal(0, points[0].X, 1);
-        Assert.Equal(340, points[^1].X, 1);
+        // the last point is at the chart's right edge
+        Assert.Equal(((Control)Chart(activity).Parent!).Bounds.Width, points[^1].X, 1);
 
         var day = Start.ToLocalTime().ToString("d MMM", CultureInfo.InvariantCulture);
         Assert.Contains($"Balance, {day}", market.Texts());
@@ -146,7 +147,7 @@ public sealed class ActivityTests
 
         Assert.Equal(new[] { 20L }, market.Server.Withdrawals);
         Assert.Contains("You withdraw 20 trade notes. Your balance is 1,230 MMD.", market.Texts());
-        Assert.Equal("1,230 MMD", market.Panel.BalanceText);
+        Assert.Equal("1,230", market.Panel.BalanceText);
         Assert.Null(market.Host.LastError);
     });
 
@@ -161,7 +162,7 @@ public sealed class ActivityTests
         market.Settle();
 
         Assert.Contains(refusal, market.Texts());
-        Assert.Equal("1,250 MMD", market.Panel.BalanceText);
+        Assert.Equal("1,250", market.Panel.BalanceText);
         Assert.Null(market.Host.LastError);
     });
 
@@ -190,13 +191,15 @@ public sealed class ActivityTests
         using var market = new MarketFixture(width, server => Seed(server, 4));
         var activity = Open(market);
 
-        var tiles = activity.GetVisualDescendants().OfType<UniformGrid>().Single().Children.Where(tile => tile.IsEffectivelyVisible).ToList();
+        var labels = new[] { "BALANCE", "EARNED THIS WEEK", "SPENT THIS WEEK", "LISTED NOW" };
+        var tiles = activity.GetVisualDescendants().OfType<TextBlock>().Where(text => labels.Contains(text.Text) && text.IsEffectivelyVisible)
+            .Select(text => text.FindAncestorOfType<Border>()!).ToList();
         Assert.Equal(4, tiles.Count);
         Assert.Equal(narrow ? 2 : 4, tiles.Select(tile => tile.Bounds.X).Distinct().Count());
 
-        var labels = new[] { "Balance", "Earned this week", "Spent this week", "Listed now" };
-        var order = market.Texts().Where(text => labels.Contains(text)).ToArray();
-        Assert.Equal(narrow ? new[] { "Balance", "Listed now", "Earned this week", "Spent this week" } : new[] { "Balance", "Earned this week", "Spent this week", "Listed now" }, order);
+        var order = activity.GetVisualDescendants().OfType<TextBlock>().Where(text => text.IsVisible).Select(text => text.Text ?? string.Empty)
+            .Where(text => labels.Contains(text)).ToArray();
+        Assert.Equal(narrow ? new[] { "BALANCE", "LISTED NOW", "EARNED THIS WEEK", "SPENT THIS WEEK" } : new[] { "BALANCE", "EARNED THIS WEEK", "SPENT THIS WEEK", "LISTED NOW" }, order);
 
         Assert.Equal(narrow, TabButton(activity, "Balance chart").IsEffectivelyVisible);
         Assert.True(Ledger(activity).IsEffectivelyVisible);
