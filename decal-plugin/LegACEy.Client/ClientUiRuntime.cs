@@ -1859,6 +1859,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string UpdateToastSurfaceId = "update-toast";
     // From the screen's bottom edge to the toast's, in DIPs: clear of the toolbar where it first stands.
     private const int UpdateToastLift = 110;
+    // Between the toast and a toolbar row it is lifted clear of, in DIPs.
+    private const int UpdateToastGap = 8;
     private DerethNoticeToast? _updateToast;
     private ScreenSurface? _updateToastSurface;
     // Log out and update asked to log out; the server's authorized logoff then closes the game.
@@ -1962,11 +1964,27 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 int width = WholePixels(toast.DesiredSize.Width * scale), height = WholePixels(toast.DesiredSize.Height * scale);
                 if (surface.Panel.Frame.Width != width || surface.Panel.Frame.Height != height) surface.Panel.Resize(width, height);
                 var screen = GameDevice.ViewportSize(_device);
-                surface.Location = new Point(Math.Max(0, (screen.Width - width) / 2), Math.Max(0, screen.Height - height - (int)Math.Round(UpdateToastLift * scale)));
+                var spot = new Rectangle((screen.Width - width) / 2, screen.Height - height - (int)Math.Round(UpdateToastLift * scale), width, height);
+                var bars = new[] { _toolbarSurface is { Visible: true } bar ? bar.Bounds : (Rectangle?)null, _windows?.Get(ShortcutRowWindowId)?.Bounds,
+                    _windows?.Get(ShortcutRow2WindowId)?.Bounds };
+                var clear = ClearOf(spot, bars.OfType<Rectangle>(), (int)Math.Round(UpdateToastGap * scale));
+                surface.Location = new Point(Math.Max(0, clear.X), Math.Max(0, clear.Y));
             }
             surface.Prepare();
         }
         catch (Exception exception) { UpdateToastFailed(exception); }
+    }
+
+    /// <summary>
+    /// Where the toast stands clear of the toolbar and its rows: lifted, still centred, above every one it would cover, however many rows
+    /// are open or wherever they were moved.
+    /// </summary>
+    internal static Rectangle ClearOf(Rectangle toast, IEnumerable<Rectangle> bars, int gap)
+    {
+        var covered = bars.Where(bar => bar.Left < toast.Right && toast.Left < bar.Right).OrderByDescending(bar => bar.Top).ToList();
+        foreach (var bar in covered)
+            if (bar.Top < toast.Bottom + gap && toast.Top < bar.Bottom) toast.Y = bar.Top - gap - toast.Height;
+        return toast;
     }
 
     private void UpdateToastFailed(Exception exception)
