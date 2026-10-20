@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.3](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.10.2...decal-plugin-v0.10.3) (2026-10-20)
+
+
+### Bug Fixes
+
+* **decal-plugin:** always show the custom weather ([#81](https://github.com/apourman/LegACEy/issues/81)) ([5896fa5](https://github.com/apourman/LegACEy/commit/5896fa554c0a0f995bc36649b59a74a01ad94e04))
+
 ## [0.10.2](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.10.1...decal-plugin-v0.10.2) (2026-10-20)
 
 
