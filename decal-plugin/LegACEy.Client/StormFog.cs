@@ -20,18 +20,23 @@ internal sealed unsafe class StormFog : IDisposable
     private const float Inner = Block / 2, Outer = Block * 1.5f;
     // From outside, the fog bank is many faint walls across each edge of the ring, so where terrain cuts them there is no hard seam to jump
     // about as retail reshapes the terrain with distance: Bank metres deep, 1/e of what is behind showing through every BankThickness metres.
-    // Each wall adds about 3%, and they thicken from the bank's outer face inwards, so where the ground cuts them the steps are faint and
-    // there is no strong first line. ponytail: 128 walls is a lot of overdraw looking into the bank; fewer if the frame rate suffers there.
-    private const int Layers = 64, NoiseSize = 128;
+    // Each wall adds about 8%, and they thicken from the bank's outer face inwards, so where the ground cuts them the steps are faint and
+    // there is no strong first line. Looking into the bank every wall is drawn over the screen, so the count is the frame's cost there
+    // (64 a side was 128 layers of overdraw); all of them go in one draw.
+    private const int Layers = 24, NoiseSize = 128;
     private const float Bank = 40, BankThickness = 20;
     private const uint Grey = 0xC8CDCF;
     // Inside: fog thick enough that 1/e of the scene shows through every Thickness metres, reached FadeIn metres past the edge.
     private const float Thickness = 45, FadeIn = 30, LastSlice = 400;
     private static readonly (int X, int Y)[] Corners = { (-1, -1), (1, -1), (1, 1), (-1, 1) };
+    // A side's two triangles, from its bottom and top corners (0, 1) and the next corner's (2, 3).
+    private static readonly int[] WallQuad = { 0, 1, 2, 2, 1, 3 };
 
     private readonly IntPtr _device;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private IntPtr _noise;
+    // The walls' triangles, rebuilt each frame (as they drift and fade near the camera) and drawn in one call.
+    private readonly FogVertex[] _walls = new FogVertex[Layers * 2 * 4 * 6];
     // The fog the haze asked for this frame (the thickest), laid over retail's world next frame (TakeFog).
     private (uint Color, float Density)? _nextFog;
     // Frames since the player's own part was measured.
@@ -129,7 +134,8 @@ internal sealed unsafe class StormFog : IDisposable
             var time = (float)_clock.Elapsed.TotalSeconds;
             var eye = Eye;
             var centre = Centre(zone);
-            var walls = stackalloc FogVertex[10];
+            var corners = stackalloc FogVertex[10];
+            var count = 0;
             var step = Bank / Layers;
             for (var wall = 0; wall < Layers * 2; wall++)
             {
@@ -150,11 +156,16 @@ internal sealed unsafe class StormFog : IDisposable
                     var u = corner * halfWidth * 2 / 96 + drift;
                     // And its own height in the noise, so where the ground cuts the walls each line is broken up differently.
                     var v = time * 0.02f + wall * 0.29f;
-                    walls[corner * 2] = new(Render(new Vector3(x, y, Bottom)), color, u, v);
-                    walls[corner * 2 + 1] = new(Render(new Vector3(x, y, Top)), color, u, (Top - Bottom) / 128 + v);
+                    corners[corner * 2] = new(Render(new Vector3(x, y, Bottom)), color, u, v);
+                    corners[corner * 2 + 1] = new(Render(new Vector3(x, y, Top)), color, u, (Top - Bottom) / 128 + v);
                 }
-                DrawPrimitiveUP(_device, TriangleStrip, 8, walls, sizeof(FogVertex));
+                // The wall's four sides, each a quad of two triangles.
+                for (var side = 0; side < 4; side++)
+                    foreach (var k in WallQuad)
+                        _walls[count++] = corners[side * 2 + k];
             }
+            fixed (FogVertex* walls = _walls)
+                DrawPrimitiveUP(_device, TriangleList, count / 3, walls, sizeof(FogVertex));
 
             var strength = (Player ?? eye) is { } inside ? Math.Clamp(StormDepth(inside, zone) / FadeIn, 0, 1) : 0;
             if (strength > 0) DrawHaze(Grey, Thickness, strength);

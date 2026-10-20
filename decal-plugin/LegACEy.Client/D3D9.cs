@@ -18,6 +18,7 @@ internal static unsafe class D3D9
     // IDirect3DDevice9
     public const int ResetSlot = 16;
     private const int CreateTextureSlot = 23;
+    private const int CreateVertexBufferSlot = 26;
     private const int SetRenderTargetSlot = 37;
     private const int GetRenderTargetSlot = 38;
     private const int SetDepthStencilSurfaceSlot = 39;
@@ -46,6 +47,7 @@ internal static unsafe class D3D9
     private const int CreatePixelShaderSlot = 106;
     private const int SetPixelShaderSlot = 107;
     private const int SetPixelShaderConstantFSlot = 109;
+    private const int SetStreamSourceSlot = 100;
     // ID3DBlob (after IUnknown)
     private const int GetBufferPointerSlot = 3, GetBufferSizeSlot = 4;
     // IDirect3DSurface9 (after IDirect3DResource9 3-10 and GetContainer 11)
@@ -54,6 +56,8 @@ internal static unsafe class D3D9
     private const int GetSurfaceLevelSlot = 18;
     private const int LockRectSlot = 19;
     private const int UnlockRectSlot = 20;
+    // IDirect3DVertexBuffer9 (after IDirect3DResource9 3-10)
+    private const int BufferLockSlot = 11, BufferUnlockSlot = 12;
     // IDirect3DStateBlock9 (GetDevice 3, Capture 4)
     private const int ApplySlot = 5;
 
@@ -355,6 +359,36 @@ internal static unsafe class D3D9
     [DllImport("d3dcompiler_47.dll", CharSet = CharSet.Ansi, BestFitMapping = false)]
     private static extern int D3DCompile(byte[] source, nint size, string name, IntPtr defines, IntPtr include, string entry, string target,
         uint flags1, uint flags2, out IntPtr code, out IntPtr errors);
+
+    /// <summary>A write-only vertex buffer in the managed pool (kept across a device reset), filled once from <paramref name="vertices"/>.</summary>
+    public static IntPtr CreateVertexBuffer<T>(IntPtr device, ReadOnlySpan<T> vertices, uint vertexFormat) where T : unmanaged
+    {
+        const int UsageWriteOnly = 8;
+        var bytes = vertices.Length * sizeof(T);
+        IntPtr buffer;
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, int, uint, int, IntPtr*, IntPtr, int>)Vt(device)[CreateVertexBufferSlot])(
+            device, bytes, UsageWriteOnly, vertexFormat, PoolManaged, &buffer, IntPtr.Zero), "CreateVertexBuffer");
+        try
+        {
+            void* data;
+            Check(((delegate* unmanaged[Stdcall]<IntPtr, int, int, void**, int, int>)Vt(buffer)[BufferLockSlot])(buffer, 0, 0, &data, 0), "VertexBuffer.Lock");
+            vertices.CopyTo(new Span<T>(data, vertices.Length));
+            Check(((delegate* unmanaged[Stdcall]<IntPtr, int>)Vt(buffer)[BufferUnlockSlot])(buffer), "VertexBuffer.Unlock");
+        }
+        catch
+        {
+            Release(buffer);
+            throw;
+        }
+        return buffer;
+    }
+
+    /// <summary>Draws <paramref name="count"/> primitives from the vertex buffer, as stream 0.</summary>
+    public static void DrawBuffer(IntPtr device, IntPtr buffer, int stride, int type, int count)
+    {
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, IntPtr, int, int, int>)Vt(device)[SetStreamSourceSlot])(device, 0, buffer, 0, stride), "SetStreamSource");
+        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, int, int, int>)Vt(device)[DrawPrimitiveSlot])(device, type, 0, count), "DrawPrimitive");
+    }
 
     public static void DrawPrimitiveUP(IntPtr device, int type, int count, void* vertices, int stride) =>
         Check(((delegate* unmanaged[Stdcall]<IntPtr, int, int, void*, int, int>)Vt(device)[DrawPrimitiveUPSlot])(device, type, count, vertices, stride), "DrawPrimitiveUP");

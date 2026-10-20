@@ -14,6 +14,8 @@ namespace LegACEy.Client.DecalPlugin;
 /// are soft camera-facing dots, raindrops streaks along their fall; both are depth-tested against retail's scene. A haze through
 /// <see cref="StormFog.DrawHaze"/> closes in the distance. A thunderstorm also darkens the screen to night and strikes lightning: a jagged
 /// bolt in the distance every 5 to 10 seconds, flickering, while the whole screen flashes. None of it shows indoors.
+/// With shader model 3 (<c>Weather.hlsl</c>) every drop sits in one vertex buffer and the shader moves it, so a frame costs one draw
+/// whatever the weather; without, the drops are moved here, half as many.
 /// </summary>
 internal sealed unsafe class Weather : IDisposable
 {
@@ -32,8 +34,12 @@ internal sealed unsafe class Weather : IDisposable
     private const int MostDrops = 9000;
     private const uint NightColor = 0x080C16, FlashColor = 0xC8D2FF, BoltColor = 0xE8EEFF;
 
+    // The shader's clock wraps this often, so a float still places a raindrop to the millimetre; the drops reshuffle once as it does.
+    private const double ClockWrap = 600;
+
     private readonly IntPtr _device;
     private readonly StormFog _camera;
+    private readonly Action<string> _log;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly Random _random = new(1722);
     private readonly Drop[] _drops;
@@ -43,11 +49,15 @@ internal sealed unsafe class Weather : IDisposable
     private float _boltDistance;
     private double _strikeAt = double.NegativeInfinity, _nextStrike = 2;
     private IntPtr _dot;
+    // The shaders and the drops' vertex buffer; _shaded is null until they are first tried, false when they failed.
+    private IntPtr _vertexShader, _pixelShader, _dropBuffer;
+    private bool? _shaded;
 
-    public Weather(IntPtr device, StormFog camera)
+    public Weather(IntPtr device, StormFog camera, Action<string> log)
     {
         _device = device;
         _camera = camera;
+        _log = log;
         _drops = new Drop[MostDrops];
         for (var i = 0; i < _drops.Length; i++)
             _drops[i] = new Drop(
@@ -72,6 +82,7 @@ internal sealed unsafe class Weather : IDisposable
         if (depth < -Box.X) return;
         var strength = Math.Clamp(depth / FadeIn, 0, 1);
         if (_dot == IntPtr.Zero) _dot = MakeDot();
+        _shaded ??= MakeShaders();
         var time = _clock.Elapsed.TotalSeconds;
         var flash = fall.Lightning && strength > 0 ? Lightning(time, eye) * strength : 0;
         var saved = SaveState(_device);
@@ -82,7 +93,8 @@ internal sealed unsafe class Weather : IDisposable
             if (strength > 0) _camera.DrawHaze(fall.HazeColor, fall.Haze, strength);
             // Lightning lifts the night for its flash.
             if (fall.Night > 0 && strength > 0) Veil((uint)(fall.Night * strength * (1 - 0.8f * flash) * 255) << 24 | NightColor, additive: false);
-            DrawDrops(fall, eye, centre, time);
+            if (_shaded == true) DrawShaded(fall, eye, centre, time);
+            else DrawDrops(fall, eye, centre, time);
             if (flash > 0)
             {
                 DrawBolt(eye, flash);
@@ -115,6 +127,61 @@ internal sealed unsafe class Weather : IDisposable
         SetSamplerState(_device, 0, SamplerState.AddressV, AddressClamp);
     }
 
+    /// <summary>The drops, moved by Weather.hlsl: a handful of constants and one draw.</summary>
+    private void DrawShaded(Fall fall, Vector3 eye, Vector2 centre, double time)
+    {
+        UseDot(additive: false);
+        UseShaders(_device, _vertexShader, _pixelShader, DropFormat);
+        var view = _camera.View;
+        var worldViewProj = Matrix4x4.CreateTranslation(_camera.Offset) * view * _camera.Projection;
+        SetVertexConstants(_device, 0, System.Runtime.InteropServices.MemoryMarshal.Cast<Matrix4x4, Vector4>(new ReadOnlySpan<Matrix4x4>(ref worldViewProj)));
+        SetVertexConstants(_device, 4, new[]
+        {
+            new Vector4(eye, (float)(time % ClockWrap)),
+            new Vector4(eye + new Vector3(0, 0, 4), 0),
+            new Vector4(Box, fall.Size),
+            new Vector4(fall.Wind, fall.Speed, fall.Sway),
+            new Vector4(centre, Reach, fall.Streak),
+            new Vector4(view.M11, view.M21, view.M31, 0),
+            new Vector4(view.M12, view.M22, view.M32, 0),
+            new Vector4(fall.Color >> 16 & 0xFF, fall.Color >> 8 & 0xFF, fall.Color & 0xFF, fall.Alpha) / 255,
+        });
+        DrawBuffer(_device, _dropBuffer, sizeof(DropVertex), TriangleList, fall.Drops * 2);
+    }
+
+    /// <summary>Compiles Weather.hlsl and writes every drop's quad into a vertex buffer; false, with the reason logged, when this machine cannot.</summary>
+    private bool MakeShaders()
+    {
+        try
+        {
+            using var stream = typeof(Weather).Assembly.GetManifestResourceStream("Weather.hlsl")!;
+            var source = new System.IO.StreamReader(stream).ReadToEnd();
+            _vertexShader = CompileShader(_device, source, "Vs", "vs_3_0");
+            _pixelShader = CompileShader(_device, source, "Ps", "ps_3_0");
+            var vertices = new DropVertex[MostDrops * 6];
+            ReadOnlySpan<(float X, float Y)> corners = [(0, 0), (1, 0), (0, 1), (0, 1), (1, 0), (1, 1)];
+            for (var i = 0; i < vertices.Length; i++)
+                vertices[i] = new DropVertex(_drops[i / 6], corners[i % 6].X, corners[i % 6].Y);
+            _dropBuffer = CreateVertexBuffer<DropVertex>(_device, vertices, DropFormat);
+            _log("Weather: drawn with shaders.");
+            return true;
+        }
+        catch (Exception exception)
+        {
+            ReleaseShaders();
+            _log($"Weather: drops moved without shaders, half as many, as the shaders did not compile: {exception.Message}");
+            return false;
+        }
+    }
+
+    private void ReleaseShaders()
+    {
+        Release(_vertexShader);
+        Release(_pixelShader);
+        Release(_dropBuffer);
+        _vertexShader = _pixelShader = _dropBuffer = IntPtr.Zero;
+    }
+
     private void DrawDrops(Fall fall, Vector3 eye, Vector2 centre, double time)
     {
         UseDot(additive: false);
@@ -123,11 +190,11 @@ internal sealed unsafe class Weather : IDisposable
         var right = new Vector3(view.M11, view.M21, view.M31);
         var up = new Vector3(view.M12, view.M22, view.M32);
         var eyeAt = StormFog.Render(eye);
-        if (_vertices.Length < fall.Drops * 6) _vertices = new QuadVertex[fall.Drops * 6];
+        if (_vertices.Length < fall.Drops * 3) _vertices = new QuadVertex[fall.Drops * 3];
         var count = 0;
         // The box's middle sits a little above the camera, which mostly looks out and down.
         var middle = eye + new Vector3(0, 0, 4);
-        for (var i = 0; i < fall.Drops; i++)
+        for (var i = 0; i < fall.Drops / 2; i++)
         {
             var drop = _drops[i];
             var velocity = new Vector3(fall.Wind * drop.Speed, -fall.Speed * drop.Speed);
@@ -319,9 +386,21 @@ internal sealed unsafe class Weather : IDisposable
     {
         Release(_dot);
         _dot = IntPtr.Zero;
+        ReleaseShaders();
     }
 
     private readonly record struct Drop(Vector3 Start, float Speed, float Phase, float Scale);
+
+    private const uint DropFormat = FvfXyz | FvfTex3;
+
+    /// <summary>One corner of a drop's quad, as Weather.hlsl reads it.</summary>
+    private readonly struct DropVertex(Drop drop, float cornerX, float cornerY)
+    {
+        public readonly float X = drop.Start.X, Y = drop.Start.Y, Z = drop.Start.Z;
+        public readonly float Speed = drop.Speed, Phase = drop.Phase;
+        public readonly float Scale = drop.Scale, Unused = 0;
+        public readonly float CornerX = cornerX, CornerY = cornerY;
+    }
 
     private readonly struct QuadVertex(Vector3 position, uint color, float u, float v)
     {
