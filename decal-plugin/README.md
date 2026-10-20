@@ -74,20 +74,24 @@ keeps the stage for the next try. Exit codes: 0
 applied, 1 failed and rolled back, 2 bad arguments or no ready stage, 3 another
 updater is already running.
 
-An install made by setup.exe updates itself; a build from a checkout never does,
-because only setup.exe puts `install.json` beside the main DLL. At login and
-every 6 hours the client asks GitHub for the newest published
-`decal-plugin-vX.Y.Z` release (at most once an hour for all clients on the
-install, timed by the `update-check` file). A newer one is downloaded into
-`update\<version>\`, checked against its `SHA256SUMS.txt` and unpacked; chat
-says it installs when the game closes, and the updater applies it then, so the
-next launch runs it. The LegACEy menu shows the installed version and a
-Check button, which checks now past the hourly gap (at most once a minute) and
-says the outcome in chat; it is greyed out on a checkout build or with
+An install made by setup.exe can update itself; a build from a checkout never
+does, because only setup.exe puts `install.json` beside the main DLL. Nothing
+installs until the player asks. At login and every 6 hours the client asks
+GitHub for the newest published `decal-plugin-vX.Y.Z` release (at most once an
+hour for all clients on the install, timed by the `update-check` file). A newer
+one is offered once per version by a toast at the bottom centre and a chat line.
+The toast's Log out and update (Update when all are closed when several clients
+run) asks first and works only in peace stance; it then downloads the release
+into `update\<version>\`, checks it against its `SHA256SUMS.txt`, unpacks it,
+starts the updater, and logs out and closes the game. The updater applies it
+once every client has exited; start the game again from the launcher. The
+LegACEy menu shows the installed version and a Check button, which checks now
+past the hourly gap (at most once a minute) and shows Checking, then the
+outcome, as a toast and in chat; it is greyed out on a checkout build or with
 `no-auto-update`. The checksum guards against a corrupt download, not a
 compromised release: the sums file comes from the same release. The updater
 logs to `updater.log`. Creating an empty file
-named `no-auto-update` beside the main DLL turns auto-update off.
+named `no-auto-update` beside the main DLL turns update checks off.
 
 Creating an empty file named `fail-post-ui-draw` beside the main DLL makes the
 next post-UI draw fail in game. The file is deleted, the failure is logged to

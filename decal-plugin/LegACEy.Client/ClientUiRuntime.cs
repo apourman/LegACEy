@@ -585,6 +585,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     public void LoginComplete()
     {
         _loggedIn = true;
+        // A Log out and update whose logout never came through is forgotten, so this session's own logout doesn't close the game.
+        _quitPending = false;
         _updates.Check();
         if (_failed || !NativeUi.Ready)
             return;
@@ -704,6 +706,20 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
     }
 
+    /// <summary>
+    /// The server has let the character go. After Log out and update, this closes the game, as its window's × does, never by ending the
+    /// process from under it, and the updater waiting for it installs once it has gone. Still to be seen in game: that Decal raises this
+    /// Authorized logoff after our log out, and that retail closes cleanly on the WM_CLOSE.
+    /// </summary>
+    public void LogoffAuthorized()
+    {
+        if (!_quitPending) return;
+        _quitPending = false;
+        const int WmClose = 0x0010;
+        if (_gameWindow == IntPtr.Zero || !PostMessage(_gameWindow, WmClose, IntPtr.Zero, IntPtr.Zero))
+            Log($"Could not close the game to update: window {_gameWindow}");
+    }
+
     public void Logoff()
     {
         Guard(() => ApplyReset(_inputRouter.Route(new NativeInputMessage(InputRouterService.WmLogoff, IntPtr.Zero, IntPtr.Zero), GetInputSurfaces())));
@@ -741,6 +757,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         catch (Exception exception) { Log($"Could not give the retail radar back at logoff: {exception}"); }
         _toast?.Hide();
         ReleaseFeatureWindow(ToastWindowId);
+        DropUpdateToast();
         try { _plugins?.EndSession(); }
         catch (Exception exception) { Log($"Could not close plugin windows at logoff: {exception}"); }
         // Windows released their requests above; anything still outstanding fails as disconnected.
@@ -891,7 +908,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private UpdateChoice UpdateCheck()
     {
         var off = _updates.Off;
-        return new UpdateChoice(off == null ? $"Version {_updates.Installed}" : $"Version {_updates.Installed} ({off})", off == null, _updates.CheckNow);
+        return new UpdateChoice(off == null ? $"Version {_updates.Installed}" : $"Version {_updates.Installed} ({off})", off == null, () => _updates.CheckNow());
     }
 
     /// <summary>
@@ -1015,7 +1032,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             // A failed line is tried again next frame, logged once per streak.
             try
             {
-                _updates.PostNotices();
+                _updates.PostNotices(PostUpdateNotice);
                 _noticeFailLogged = false;
             }
             catch (Exception exception)
@@ -1123,6 +1140,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (_itemDragActive)
                 _retailDrag?.UpdateDropIndicator();
             PrepareFeatureWindows();
+            PrepareUpdateToast();
             if (_dragIconSurface != null)
             {
                 _dragIconSurface.Location = new Point(_pointer.X - 16, _pointer.Y - 16);
@@ -1213,6 +1231,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         // The split tab stands over the windows: it is up only while a stack is selected, and an inventory kept over the toolbar would hide it.
         if (!_failed) Guard(() => _splitTabSurface?.DrawNow());
+        if (windows)
+        {
+            try { _updateToastSurface?.DrawNow(); }
+            catch (Exception exception) { UpdateToastFailed(exception); }
+        }
         // An item dragged out of a LegACEy window draws above everything.
         if (windows) Guard(() => _dragIconSurface?.DrawNow());
     }
@@ -1829,6 +1852,159 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 return;
         }
         _toast!.Show(title, line);
+    }
+
+    // The updater's toast at the bottom centre of the screen, over the windows. It is its own surface, as the split tab is, not a window: it
+    // is never dragged, saved or focused. One shows at a time; a logoff drops it.
+    private const string UpdateToastSurfaceId = "update-toast";
+    // From the screen's bottom edge to the toast's, in DIPs: clear of the toolbar where it first stands.
+    private const int UpdateToastLift = 110;
+    private DerethNoticeToast? _updateToast;
+    private ScreenSurface? _updateToastSurface;
+    // Log out and update asked to log out; the server's authorized logoff then closes the game.
+    private bool _quitPending;
+
+    /// <summary>
+    /// The toast for an updater notice, with its lifetime. What's new opens the release's page with <paramref name="open"/>; Try again calls
+    /// <paramref name="checkNow"/>, or <paramref name="install"/> again after a failed download. Ready's update button <paramref name="show"/>s a
+    /// confirm in its place, whose Log out works only while <paramref name="peace"/> holds: it shows Downloading and calls <paramref name="install"/>,
+    /// and the Downloaded that follows calls <paramref name="logOut"/>, or asks again if the character has left peace by then. Cancel shows Ready again.
+    /// </summary>
+    internal static ToastNotice UpdateToast(UpdateNotice notice, Action<string> open, Action checkNow, Action<ToastNotice> show, Func<bool> peace,
+        Action<Version> install, Action logOut) => notice.Kind switch
+    {
+        UpdateNoticeKind.Checking => new ToastNotice(ToastIcon.Search, "Checking for updates…", Busy: true),
+        UpdateNoticeKind.Ready => ReadyToast(notice, open, show, peace, install),
+        UpdateNoticeKind.Downloaded when peace() => LoggingOut(notice.Version!, logOut),
+        UpdateNoticeKind.Downloaded => Confirm(notice, open, show, peace, install),
+        UpdateNoticeKind.UpToDate => new ToastNotice(ToastIcon.Done, $"LegACEy {notice.Version} is up to date", Lifetime: TimeSpan.FromSeconds(4)),
+        UpdateNoticeKind.Wait => new ToastNotice(ToastIcon.Wait, "Checked moments ago", "Try again in a minute. Another client on this PC may be checking too.",
+            Lifetime: TimeSpan.FromSeconds(5)),
+        _ when notice.Version is { } version => new ToastNotice(ToastIcon.Failed, $"Couldn't download LegACEy {version}",
+            "The download failed or didn't verify. Nothing has changed.", new[] { new ToastAction("Try again", () => install(version)) }, TimeSpan.FromSeconds(8)),
+        _ => new ToastNotice(ToastIcon.Failed, "Couldn't check for updates", "GitHub didn't answer. Try again later.",
+            new[] { new ToastAction("Try again", checkNow) }, TimeSpan.FromSeconds(8)),
+    };
+
+    // With several clients open the update installs only once every one has closed, so the button says so.
+    private static ToastNotice ReadyToast(UpdateNotice notice, Action<string> open, Action<ToastNotice> show, Func<bool> peace, Action<Version> install) =>
+        new(ToastIcon.New, $"LegACEy {notice.Version} is available", "Nothing changes until you update.",
+            new[]
+            {
+                new ToastAction(notice.SeveralClients ? "Update when all are closed" : "Log out and update", () => show(Confirm(notice, open, show, peace, install))),
+                new ToastAction("What's new", () => open(PluginUpdates.ReleasePage(notice.Version!)), Quiet: true),
+            }, TimeSpan.FromSeconds(12));
+
+    private static ToastNotice Confirm(UpdateNotice notice, Action<string> open, Action<ToastNotice> show, Func<bool> peace, Action<Version> install)
+    {
+        var version = notice.Version!;
+        var downloading = new ToastNotice(ToastIcon.New, $"Downloading LegACEy {version}…", "Your character logs out once it's ready.", Busy: true);
+        return new ToastNotice(ToastIcon.Caution, notice.SeveralClients ? "Update when all are closed?" : "Log out and update?",
+            notice.SeveralClients
+                ? $"LegACEy {version} downloads, then your character logs out and this game closes. It installs once every other game window is closed too."
+                : $"LegACEy {version} downloads, then your character logs out and the game closes while it installs. Then start it again from your launcher.",
+            new[]
+            {
+                new ToastAction("Log out", () =>
+                {
+                    show(downloading);
+                    install(version);
+                }, Unavailable: () => peace() ? null : "Not while in combat"),
+                new ToastAction("Cancel", () => show(ReadyToast(notice, open, show, peace, install)), Quiet: true),
+            });
+    }
+
+    // Mapping Downloaded logs out: the player asked for it, and the updater is now waiting for the game to close.
+    private static ToastNotice LoggingOut(Version version, Action logOut)
+    {
+        logOut();
+        return new ToastNotice(ToastIcon.New, $"Logging out to install LegACEy {version}", Busy: true);
+    }
+
+    /// <summary>An updater notice: its chat line, as before the toast, and its toast while the windows can show one.</summary>
+    private void PostUpdateNotice(UpdateNotice notice)
+    {
+        if (notice.Chat != null) Bridge.Chat(notice.Chat, SystemChat);
+        if (!_inGame || !CanOpenWindows) return;
+        // A failed chat line throws, and the notice stays queued. A failed toast is logged and swallowed instead: the notice is used up, so
+        // its chat line is not written again.
+        try
+        {
+            if (_updateToastSurface == null)
+            {
+                var toast = new DerethNoticeToast();
+                var panel = ObservePanel(AvaloniaPanel.Create(() => toast, 1, 1, WindowScale), UpdateToastFailed);
+                panel.ApplyTheme(new DerethClientTheme());
+                _updateToastSurface = new ScreenSurface(_device, panel);
+                _updateToast = toast;
+            }
+            _updateToast!.Show(UpdateToast(notice, OpenPage, () => _updates.CheckNow(), shown => _updateToast?.Show(shown), InPeace,
+                version => _updates.Install(version), LogOutToUpdate));
+        }
+        catch (Exception exception) { UpdateToastFailed(exception); }
+    }
+
+    /// <summary>Runs the toast's time, and sizes and places it at the bottom centre at the UI size while it shows.</summary>
+    private void PrepareUpdateToast()
+    {
+        if (_updateToast is not { } toast || _updateToastSurface is not { } surface) return;
+        try
+        {
+            toast.Tick();
+            surface.Visible = toast.IsVisible;
+            if (surface.Visible)
+            {
+                var scale = surface.Panel.Scale;
+                toast.Measure(Avalonia.Size.Infinity);
+                int width = WholePixels(toast.DesiredSize.Width * scale), height = WholePixels(toast.DesiredSize.Height * scale);
+                if (surface.Panel.Frame.Width != width || surface.Panel.Frame.Height != height) surface.Panel.Resize(width, height);
+                var screen = GameDevice.ViewportSize(_device);
+                surface.Location = new Point(Math.Max(0, (screen.Width - width) / 2), Math.Max(0, screen.Height - height - (int)Math.Round(UpdateToastLift * scale)));
+            }
+            surface.Prepare();
+        }
+        catch (Exception exception) { UpdateToastFailed(exception); }
+    }
+
+    private void UpdateToastFailed(Exception exception)
+    {
+        Log($"The update toast failed and is dropped; its chat line stands: {exception}");
+        DropUpdateToast();
+    }
+
+    private void DropUpdateToast()
+    {
+        if (_hovered == _updateToastSurface) _hovered = null;
+        _updateToastSurface?.Dispose();
+        _updateToastSurface = null;
+        _updateToast = null;
+    }
+
+    // Peace stance stands in for "not in combat": a character can still be attacked in it, but the confirm has already asked.
+    private static bool InPeace()
+    {
+        try { return (RetailStance)Bridge.Fact(BridgeFact.CombatMode) == RetailStance.Peace; }
+        catch (Exception) { return false; }
+    }
+
+    /// <summary>The confirm's Log out: logs the character out, and the logoff then closes the game so the waiting updater can install.</summary>
+    private void LogOutToUpdate()
+    {
+        if (_quitPending) return;
+        try { NativeUi.RequestLogOut(confirm: false); }
+        catch (Exception exception)
+        {
+            Log($"Could not log out to update: {exception}");
+            return;
+        }
+        _quitPending = true;
+    }
+
+    /// <summary>Opens a web page in the player's browser.</summary>
+    private static void OpenPage(string url)
+    {
+        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })?.Dispose(); }
+        catch (Exception exception) { Log($"Could not open {url}: {exception.Message}"); }
     }
 
     void ILegACEyPluginHost.WriteChat(string text)
@@ -2922,7 +3098,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 case InputAction.PointerDown:
                     // The window that had focus loses it to this one, and so does retail's focused element (a split amount box).
                     SurfaceById(route.ClearFocusSurfaceId)?.Panel.ClearFocus();
-                    _retailDrag?.ClearKeyboardFocus();
+                    if (route.SurfaceId != UpdateToastSurfaceId) _retailDrag?.ClearKeyboardFocus();
                     _pointer = new Point(route.X + target!.Location.X, route.Y + target.Location.Y);
                     if (route.SurfaceId != null && _windows?.Get(route.SurfaceId) != null)
                     {
@@ -3126,6 +3302,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // Above every window, as it draws.
         if (_splitTabSurface is { Visible: true } split)
             surfaces.Add(new InputSurface(SplitTabSurfaceId, split.Location.X, split.Location.Y, split.Bounds.Width, split.Bounds.Height, (_windows?.ZOrder.Count ?? 0) + 1, split.Panel.WantsKeyboard));
+        // The update toast is above them all. A press on it leaves the focus where it was, so typing goes on where it was going.
+        if (_updateToastSurface is { Visible: true } toast)
+            surfaces.Add(new InputSurface(UpdateToastSurfaceId, toast.Location.X, toast.Location.Y, toast.Bounds.Width, toast.Bounds.Height, (_windows?.ZOrder.Count ?? 0) + 2,
+                takesFocus: false));
         if (_windows != null)
         {
             var z = _windows.ZOrder.Count;
@@ -3144,6 +3324,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (id == ToolbarSurfaceId) return _toolbarSurface;
         if (id == SplitTabSurfaceId) return _splitTabSurface;
+        if (id == UpdateToastSurfaceId) return _updateToastSurface;
         if (id != null && _featureSurfaces.TryGetValue(id, out var surface)) return surface;
         return null;
     }
@@ -3245,6 +3426,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _clientUi = null;
         // Plugin windows are not in the client UI framework; release them here too.
         ReleaseFeatureWindows();
+        DropUpdateToast();
     }
 
     private void ReleaseFeatureWindows()
@@ -3370,6 +3552,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _postUiDrawHook = null;
         _windows = null;
         ReleaseFeatureWindows();
+        DropUpdateToast();
         _windowFailures.Clear();
         _windowsEnabled = false;
         _portal?.Dispose();
