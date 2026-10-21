@@ -188,7 +188,7 @@ public static class RadarScope
                 if (distance > range) continue;
                 var at = Turned(east, north, turn, scale, radius);
                 // A dot on another level is an arrow, in full colour; on the player's own, retail's rule for the height stands.
-                var dotLevel = drawn?.LevelOfZ(found.Position.Z) ?? -1;
+                var dotLevel = drawn == null ? -1 : LevelOf(drawn, player.Position.Cell, found.Position);
                 var floor = dotLevel < 0 || dotLevel == level ? RadarFloor.Same : dotLevel < level ? RadarFloor.Above : RadarFloor.Below;
                 if (dotLevel >= 0 && dotLevel < 64 && dotLevel != level) occupied |= 1UL << dotLevel;
                 var alpha = floor != RadarFloor.Same || Math.Abs(found.Position.Z - player.Position.Z) < LevelMetres ? 1 : FadedAlpha;
@@ -289,6 +289,14 @@ public static class RadarScope
     private static IReadOnlyList<RadarStairMark> StairMarks(RadarPlanLevel level, RadarPlayer player, double turn, double scale, double radius) =>
         level.Stairs.Select(stair => new RadarStairMark(
             Turned(stair.At.X - player.Position.X, stair.At.Y - player.Position.Y, turn, scale, radius), stair.Up)).ToArray();
+
+    // An object's level in the drawn plan: its cell's, as the player's is, when the cell is in the place; else the level nearest its height
+    // (an object outdoors by a building, or one whose cell retail has not given).
+    private static int LevelOf(RadarPlan drawn, uint playerCell, RadarPosition at)
+    {
+        var level = at.Cell >> 16 == playerCell >> 16 ? drawn.LevelOf((ushort)at.Cell) : -1;
+        return level >= 0 ? level : drawn.LevelOfZ(at.Z);
+    }
 
     // The bearing of a point from the player, in degrees clockwise from north.
     private static double Bearing(double east, double north) => Normalise(Math.Atan2(east, north) * 180 / Math.PI);
