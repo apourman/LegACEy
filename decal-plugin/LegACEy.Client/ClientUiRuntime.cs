@@ -2256,17 +2256,20 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Sizes the toolbar's panel to its content at its scale, after a new scale or a shortcut row shown or hidden. Its top-left corner stays,
-    /// within the screen.
+    /// Sizes the toolbar's panel to its content at its scale, after a new scale or a shortcut row shown or hidden. In the lower half of the
+    /// screen its bottom edge stays, elsewhere its top edge, within the screen; so a row shown and hidden again puts it back where it was.
     /// </summary>
     private void FitToolbar()
     {
         if (_toolbar is not { } toolbar || _toolbarSurface is not { } surface) return;
+        var before = surface.Bounds;
         var scale = surface.Panel.Scale;
         toolbar.InvalidateMeasure();
         toolbar.Measure(Avalonia.Size.Infinity);
         surface.Panel.Resize(WholePixels(toolbar.DesiredSize.Width * scale), WholePixels(toolbar.DesiredSize.Height * scale));
-        var kept = OnScreen(surface.Location, surface.Bounds.Size);
+        var size = surface.Bounds.Size;
+        var lower = before.Top + before.Height / 2 > GameDevice.ViewportSize(_device).Height / 2;
+        var kept = OnScreen(new Point(before.X, lower ? before.Bottom - size.Height : before.Y), size);
         if (kept != surface.Location) _toolbarTakeover?.MoveTo(kept);
     }
 
@@ -2343,10 +2346,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var scale = WindowScale;
         var panel = ObservePanel(AvaloniaPanel.Create(() => toolbar, 1, 1, scale), ToolbarFailed);
         panel.ApplyTheme(new DerethClientTheme());
-        toolbar.Measure(Avalonia.Size.Infinity);
-        panel.Resize(WholePixels(toolbar.DesiredSize.Width * scale), WholePixels(toolbar.DesiredSize.Height * scale));
         _toolbar = toolbar;
         _toolbarSurface = new ScreenSurface(_device, panel);
+        FitToolbar();
         _splitTab = new StackSplitTab(_toolbarPort);
         var splitPanel = ObservePanel(AvaloniaPanel.Create(() => _splitTab, 1, 1, scale), ToolbarFailed);
         splitPanel.ApplyTheme(new DerethClientTheme());
@@ -2410,7 +2412,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>Shows the rows there are in the toolbar, sizes the toolbar to them, and names row 1's tag click.</summary>
     private void ShowShortcutRows()
     {
-        _toolbar?.SetShortcutRows(new[] { _shortcutBar, _shortcutRow2 }.OfType<ShortcutBar>().ToArray());
+        _toolbar?.SetShortcutRows(new[] { _shortcutBar, _shortcutRow2 }.OfType<ShortcutBar>());
         _shortcutBar?.SetTagTip(_shortcutRow2 != null ? "Hide shortcut row 2" : "Show shortcut row 2");
         FitToolbar();
     }
@@ -3606,17 +3608,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// and a plain ceiling would add a pixel of empty edge.
     /// </summary>
     private static int WholePixels(double length) => (int)Math.Ceiling(length - 0.001);
-
-    /// <summary>
-    /// The whole DIPs a window definition gives for a window <paramref name="pixels"/> long, as the window manager rounds them at the scale; a
-    /// length in DIPs rounded up from a measure can open a pixel larger than the content, which then stretches into it.
-    /// </summary>
-    private static int DipsFor(int pixels, double scale)
-    {
-        var dips = (int)Math.Ceiling((pixels - 0.5) / scale);
-        while (Math.Round(dips * scale) < pixels) dips++;
-        return dips;
-    }
 
     /// <summary>Whether Ctrl and the wheel over a surface resize it: the held toolbar, or a LegACEy window other than chat.</summary>
     private bool Rescalable(string? id) => id == ToolbarSurfaceId

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -112,7 +113,6 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     private readonly StackPanel _plaqueContent;
     // The part above the rows, then the shortcut rows in order.
     private readonly StackPanel _sections = new() { Spacing = 4 };
-    private readonly List<ShortcutBar> _rows = new();
     /// <param name="port">Retail's toolbar, as the client reaches it.</param>
     /// <param name="openMenu">Opens or closes the LegACEy menu. The caller shows the menu's state with <see cref="SetMenuOpen"/>.</param>
     /// <param name="moveToMainPack">Moves the items to the player's main pack, in order, as a drop on the backpack does. True when one moved.</param>
@@ -184,13 +184,13 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     /// Shows these shortcut rows under the buttons, in order, in place of the ones shown before. The toolbar does not own them: the caller
     /// disposes a row it takes away.
     /// </summary>
-    public void SetShortcutRows(params ShortcutBar[] rows)
+    public void SetShortcutRows(IEnumerable<ShortcutBar> rows)
     {
-        foreach (var row in _rows) _sections.Children.Remove(row);
-        _rows.Clear();
-        _rows.AddRange(rows);
+        _sections.Children.RemoveAll(Rows.ToList());
         _sections.Children.AddRange(rows);
     }
+
+    private IEnumerable<ShortcutBar> Rows => _sections.Children.OfType<ShortcutBar>();
 
     /// <summary>
     /// A drop on a shortcut row goes to that row. A drop on the backpack goes to the main pack, as retail's backpack takes it, unless it is a
@@ -198,7 +198,7 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     /// </summary>
     public bool RetailDrop(uint itemId, string itemName, Point position)
     {
-        foreach (var row in _rows)
+        foreach (var row in Rows)
             if (Within(row, position) is { } point) return row.RetailDrop(itemId, itemName, point);
         return itemId != 0 && !ShortcutInHand && OnBackpack(position) && _moveToMainPack([itemId]);
     }
@@ -206,7 +206,8 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     /// <summary>A set of items dropped on the backpack goes to the main pack together. Elsewhere on the toolbar it is not taken.</summary>
     public bool DropMany(IReadOnlyList<uint> itemIds, Point position) => OnBackpack(position) && _moveToMainPack(itemIds);
 
-    private bool ShortcutInHand => _rows.Exists(row => row.ShortcutInHand);
+    // The rows share one drag source, so any of them knows.
+    private bool ShortcutInHand => Rows.FirstOrDefault()?.ShortcutInHand == true;
 
     /// <summary>The position in the row's own coordinates when it is on the row; null otherwise.</summary>
     private Point? Within(Control row, Point position) =>
@@ -221,7 +222,7 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     /// <summary>A drag over a shortcut row lights the slot it would land on; elsewhere the toolbar draws no drop indicator.</summary>
     public void RetailDragOver(uint itemId, string itemName, Point? position)
     {
-        foreach (var row in _rows) row.RetailDragOver(itemId, itemName, position is { } point ? Within(row, point) : null);
+        foreach (var row in Rows) row.RetailDragOver(itemId, itemName, position is { } point ? Within(row, point) : null);
     }
 
     /// <summary>The button that opens a panel: a window button, or the backpack for the inventory.</summary>

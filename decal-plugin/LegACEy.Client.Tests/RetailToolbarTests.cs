@@ -193,7 +193,7 @@ public sealed class RetailToolbarTests
         ShortcutBar row1 = Row(0, new ShortcutDragSource()), row2 = Row(9, new ShortcutDragSource());
         // Laid out at its own size, as the client sizes the toolbar's panel: the rows set it.
         using var panel = AvaloniaPanel.Create(() => toolbar = new RetailToolbar(new FakeToolbarPort(), () => { }, _ => true), 1, 1);
-        toolbar!.SetShortcutRows(row1, row2);
+        toolbar!.SetShortcutRows(new[] { row1, row2 });
         toolbar.Measure(Size.Infinity);
         panel.Resize((int)Math.Ceiling(toolbar!.DesiredSize.Width), (int)Math.Ceiling(toolbar.DesiredSize.Height));
         panel.Tick();
@@ -206,33 +206,13 @@ public sealed class RetailToolbarTests
     });
 
     [Fact]
-    public void The_toolbar_renders_to_pngs_when_asked() => RenderThread.Run(() =>
-    {
-        // Looked at by a person, not asserted: LEGACEY_TOOLBAR_RENDER names the folder the PNGs are written to.
-        var folder = Environment.GetEnvironmentVariable("LEGACEY_TOOLBAR_RENDER");
-        if (folder == null) return;
-        Directory.CreateDirectory(folder);
-        foreach (var (rows, scale) in new[] { (2, 1.0), (1, 1.0), (2, 2.0) })
-        {
-            RetailToolbar? toolbar = null;
-            using var panel = AvaloniaPanel.Create(() => toolbar = new RetailToolbar(new FakeToolbarPort(), () => { }, _ => true), 1, 1, scale);
-            panel.ApplyTheme(new DerethClientTheme());
-            toolbar!.SetShortcutRows(rows == 2 ? new[] { Row(0, new ShortcutDragSource()), Row(9, new ShortcutDragSource()) } : new[] { Row(0, new ShortcutDragSource()) });
-            toolbar.Measure(Size.Infinity);
-            panel.Resize((int)Math.Ceiling(toolbar.DesiredSize.Width * scale), (int)Math.Ceiling(toolbar.DesiredSize.Height * scale));
-            panel.Tick();
-            PanelPng.Save(panel, Path.Combine(folder, $"toolbar-{rows}-rows-{scale:0}x.png"));
-        }
-    });
-
-    [Fact]
     public void A_shortcut_released_on_a_row_lands_there_and_on_the_backpack_is_not_moved_to_the_main_pack() => RenderThread.Run(() =>
     {
         var moved = new List<uint>();
         var source = new ShortcutDragSource();
         var row = Row(0, source);
         using var panel = Open(new FakeToolbarPort(), out var toolbar, ids => { moved.AddRange(ids); return true; });
-        toolbar.SetShortcutRows(row);
+        toolbar.SetShortcutRows(new[] { row });
         panel.Resize(Width, 160);
         panel.Tick();
         Point Centre(Control control) => control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), toolbar)!.Value;
