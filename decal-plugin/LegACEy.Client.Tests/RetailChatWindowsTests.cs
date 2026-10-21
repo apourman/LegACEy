@@ -279,9 +279,12 @@ public sealed class RetailChatWindowsTests
         second.Tick();
         Assert.Equal(DerethChatPalette.Say, NameInk(second.Main));
 
-        static Avalonia.Media.Color NameInk(Control window, bool last = false) => ((Avalonia.Media.SolidColorBrush)window.GetVisualDescendants()
-            .OfType<SelectableTextBlock>().Where(line => line.Tag is DateTime).Aggregate((first, next) => last ? next : first).Inlines!
-            .OfType<Avalonia.Controls.Documents.Run>().First(run => run.Text == "Kaelith").Foreground!).Color;
+        static Avalonia.Media.Color NameInk(Control window, bool last = false)
+        {
+            var lines = window.GetVisualDescendants().OfType<SelectableTextBlock>().Where(line => line.Tag is DateTime);
+            var line = last ? lines.Last() : lines.First();
+            return ((Avalonia.Media.SolidColorBrush)line.Inlines!.OfType<Avalonia.Controls.Documents.Run>().First(run => run.Text == "Kaelith").Foreground!).Color;
+        }
     }));
 
     [Fact]

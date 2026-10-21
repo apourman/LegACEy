@@ -540,12 +540,10 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         {
             if (_nameColour == value) return;
             _nameColour = value;
-            _nameBrush = value is { } colour ? DerethPalette.Brush(colour) : null;
             RebuildLog();
         }
     }
     private Color? _nameColour;
-    private IBrush? _nameBrush;
 
     /// <summary>The text size the window's content is drawn at, 1 for its design size.</summary>
     public double TextScale
@@ -664,6 +662,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private Control LineView(RetailChatLine line)
     {
         var brush = DerethPalette.Brush(line.Type is { } type ? DerethChatPalette.OfType(type) : ColourOf(line.Kind));
+        // A name keeps the line's colour, or retail's link green in a spell's words, unless the player picked one for names.
+        var nameBrush = _nameColour is { } picked ? DerethPalette.Brush(picked) : line.Type == SpellcastingType ? LinkBrush : brush;
         var italic = line.Kind == RetailChatKind.Emote;
         var view = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap, LineHeight = 15.6, Margin = new Thickness(0, 0, 0, 1), Tag = line.Time };
         var written = 0;
@@ -683,11 +683,10 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         {
             if (link.Start > afterLink) Add(DerethChatParts.TextRun(line.Text.Substring(afterLink, link.Start - afterLink), brush, italic));
             var shown = line.Text.Substring(link.Start, link.Length);
-            // A name keeps the line's colour, or retail's link green in a spell's words, unless the player picked one for names; a plugin's
-            // link is drawn in the link green.
+            // A plugin's link is drawn in retail's link green.
             var tell = link.Name ? RetailTalkTarget.Tell(shown, link.Id) : null;
             var start = written;
-            Add(DerethChatParts.TextRun(shown, link.Name ? _nameBrush ?? (line.Type == SpellcastingType ? LinkBrush : brush) : LinkBrush, italic));
+            Add(DerethChatParts.TextRun(shown, link.Name ? nameBrush : LinkBrush, italic));
             WireClick(view, start, written, () =>
             {
                 if (!_port.Click(link.Id, link.Tag) && tell != null) TellTo(tell);
