@@ -237,6 +237,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private RetailHeldWindows? _chatTakeover;
     private bool _chatFailed;
     private bool _chatReleaseLogged;
+    // Set when the port that listens while retail's chat is shown failed; logoff clears it.
+    private bool _chatListenFailed;
     private bool _chatSwitch;
     private DateTime _lastChatSwitchCheck;
     // The Dereth vitals window over retail's vitals: held while its switch is on. Its natives are checked once; the player's clock times its trails.
@@ -741,6 +743,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _inGame = false;
         _loggedIn = false;
         _carriedChatHistory = null;
+        _chatListenFailed = false;
         // The next character reads its own toolbar place; until then the toolbar stands where retail's window is.
         _toolbarPlaceLoaded = false;
         if (_toolbarPlace != null) _toolbarPlace.Location = null;
@@ -2573,9 +2576,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 // The same character is still playing, so the lines and sent text come back with the Dereth chat; logoff forgets them.
                 _carriedChatHistory = _chatWindows?.History ?? _carriedChatHistory;
                 ReleaseRetailChat();
+                if (_chatTakeover != null) return;
+            }
+            if (!canDraw || !switchOn || _chatFailed)
+            {
+                ListenToRetailChat();
                 return;
             }
-            if (!canDraw || !switchOn || _chatFailed) return;
             // Retail's chat is held from portal space at login on, like the toolbar; the window opens once the windows can, and the port
             // keeps the lines that come before it. Logoff gives it back, and character select holds it again.
             if (_chatTakeover == null && !HoldRetailChat()) return;
@@ -2603,7 +2610,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var roots = new List<IRetailTakeoverPort>();
         foreach (var id in new[] { RetailChatCatalogue.MainChatWindow }.Concat(RetailChatCatalogue.FloatingChats))
             roots.Add(new RetailHeldWindows.RootPort(id));
-        _chatPort = new NativeRetailChatPort(Log, natives, (opcode, payload) => _channelTransport?.SendAction(opcode, payload) ?? false);
+        // A port that listened while retail's chat was shown carries on, so no line falls between the two.
+        _chatPort ??= NewChatPort(natives);
         _chatTakeover = new RetailHeldWindows(roots);
         try { _chatPort.Attach(); }
         catch (InvalidOperationException) { }
@@ -2622,6 +2630,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var character = SessionCharacter();
         var chats = new RetailChatWindows(port, _windows!, _positionStore, _chatTabs, server, character, () => _pointer, (definition, content, location) => OpenWindowCore(definition, content, location, ChatFailed), ReleaseFeatureWindow,
             copy: CopyToClipboard, paste: PasteFromClipboard, carried: _carriedChatHistory);
+        // A history that listened while retail's chat was shown stops taking lines: the windows' own history takes them from here.
+        _carriedChatHistory?.Dispose();
         _carriedChatHistory = null;
         // The chat's own text size control moves the Settings window's value too.
         chats.TextSizeChanged += size => { if (_settings != null) _settings.ChatTextSize = new OptionChoice<int>(size, SetChatTextSize); };
@@ -2641,6 +2651,41 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         Log($"Dereth chat window ready with {chats.Windows.Count} window(s).");
         return true;
+    }
+
+    private NativeRetailChatPort NewChatPort(RetailChatNatives natives) =>
+        new(Log, natives, (opcode, payload) => _channelTransport?.SendAction(opcode, payload) ?? false);
+
+    /// <summary>
+    /// While retail's chat is shown in a session that had the Dereth chat, a port keeps the Dereth chat's history filling, so the lines that
+    /// come meanwhile are there when it comes back. Retail's chat is left as it is. A port that cannot listen is logged once and left off
+    /// until logoff.
+    /// </summary>
+    private void ListenToRetailChat()
+    {
+        if (!_inGame || _chatListenFailed || _carriedChatHistory is not { } carried) return;
+        try
+        {
+            if (_chatPort == null)
+            {
+                var natives = ChatNatives();
+                if (!NativeUi.Ready || !natives.ChatWindow) return;
+                // Kept before it attaches, so a failure after retail registered its handler still stops it.
+                _chatPort = NewChatPort(natives);
+                carried.Dispose();
+                _carriedChatHistory = new RetailChatHistory(_chatPort, carried);
+            }
+            // Retail's notice registrar may not be ready yet; the next frame tries again.
+            try { _chatPort.Attach(); }
+            catch (InvalidOperationException) { return; }
+            _chatPort.Poll(holdsEntry: false);
+        }
+        catch (Exception exception)
+        {
+            _chatListenFailed = true;
+            Log($"Dereth chat stopped listening while retail's chat is shown; lines until it comes back are not kept: {exception}");
+            ReleaseRetailChat();
+        }
     }
 
     private RetailChatNatives ChatNatives() => _chatNatives ??= ValidateChatNatives();
