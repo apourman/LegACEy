@@ -215,9 +215,9 @@ public sealed class DerethVitalsWindow : UserControl
         if (retailBars)
         {
             // A dark halo keeps the numbers readable over the fill's light band.
-            row.Label.Effect = new DropShadowEffect { OffsetX = 0, OffsetY = 0, BlurRadius = 2.5, Color = Colors.Black, Opacity = 1 };
+            row.Label.Effect = new DropShadowEffect { OffsetX = 0, OffsetY = 0, BlurRadius = 2.5, Color = Colors.Black };
             row.Label.IsHitTestVisible = false;
-            Control retailBar;
+            Grid retailBar;
             if (side)
             {
                 row.Bar.Height = double.NaN;
@@ -231,7 +231,8 @@ public sealed class DerethVitalsWindow : UserControl
                 row.Bar.VerticalAlignment = VerticalAlignment.Center;
                 retailBar = new Grid { Margin = new Thickness(0, 0, 4, 0), Children = { row.Bar, row.Label } };
             }
-            row.Line = new Grid { Background = Brushes.Transparent, Children = { retailBar } };
+            retailBar.Background = Brushes.Transparent;
+            row.Line = retailBar;
             return row;
         }
         var bezel = new DerethVitalGlyph(glyph, light, side ? SideBezel : StackedBezel) { VerticalAlignment = VerticalAlignment.Center };
