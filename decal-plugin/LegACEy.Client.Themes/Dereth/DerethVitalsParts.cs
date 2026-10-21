@@ -245,6 +245,61 @@ public sealed class DerethVitalGlyph : Control
 }
 
 /// <summary>
+/// The glass groove of the vitals' bars and the attack bar: a sunken glass body in an edge, between two pointed gold end caps, with a highlight
+/// along its top and quarter marks engraved under it when asked. A bar's fill goes between <see cref="Begin"/> and <see cref="End"/>, clipped to
+/// the glass. Drawn in the groove's own coordinates, with its top left at 0, 0.
+/// </summary>
+internal static class DerethGroove
+{
+    private static readonly IBrush Glass = new LinearGradientBrush
+    {
+        StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative),
+        EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
+        GradientStops = { new GradientStop(Color.Parse("#040302"), 0), new GradientStop(Color.Parse("#16130C"), 0.55), new GradientStop(Color.Parse("#080705"), 1) }
+    };
+    private static readonly IPen Edge = new Pen(DerethPalette.GrooveEdgeBrush, 0.7);
+    private static readonly IBrush Highlight = DerethPalette.Brush(Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF));
+    private static readonly IPen Tick = new Pen(DerethPalette.Brush(DerethPalette.Gold.WithAlpha(0x99)), 0.7);
+
+    /// <summary>Draws the groove's edge in <paramref name="edge"/> and its glass, and clips to the glass: draw the fill, then dispose the clip.</summary>
+    public static IDisposable Begin(DrawingContext context, double width, double height, IBrush edge)
+    {
+        var radius = height / 2;
+        context.DrawRectangle(edge, Edge, new RoundedRect(new Rect(-0.7, -0.7, width + 1.4, height + 1.4), radius + 0.7));
+        var clip = context.PushClip(new RoundedRect(new Rect(0, 0, width, height), radius));
+        context.DrawRectangle(Glass, null, new Rect(0, 0, width, height));
+        return clip;
+    }
+
+    /// <summary>Draws the highlight, the two end caps and, when <paramref name="ticks"/>, the quarter marks. Called after the clip from <see cref="Begin"/> is disposed.</summary>
+    public static void End(DrawingContext context, double width, double height, bool ticks)
+    {
+        context.DrawRectangle(Highlight, null, new RoundedRect(new Rect(3, 1, Math.Max(0, width - 6), height * 0.26), height * 0.13));
+        Cap(context, -1.6, -1, height);
+        Cap(context, width + 1.6, 1, height);
+        if (ticks)
+            foreach (var q in new[] { 0.25, 0.5, 0.75 })
+                context.DrawLine(Tick, new Point(width * q, height + 2), new Point(width * q, height + 4));
+    }
+
+    // A gold collar at the groove's end with a point outward: from x towards dir.
+    private static void Cap(DrawingContext context, double x, double dir, double height)
+    {
+        var geometry = new StreamGeometry();
+        using (var g = geometry.Open())
+        {
+            g.BeginFigure(new Point(x, -2), true);
+            g.LineTo(new Point(x + dir * 2.6, -2));
+            g.LineTo(new Point(x + dir * 5, height / 2));
+            g.LineTo(new Point(x + dir * 2.6, height + 2));
+            g.LineTo(new Point(x, height + 2));
+            g.EndFigure(true);
+        }
+        context.DrawGeometry(DerethGilt.GoldVertical, DerethGilt.Outline, geometry);
+    }
+}
+
+/// <summary>
 /// A vital's bar: glass in a sunken groove between two pointed gold end caps (drawn just outside the bar), the pale trail behind a drop, a
 /// highlight along its top, quarter marks engraved under it when asked, and a red edge that pulses while health is low. A light runs once
 /// along the fill when the value jumps (a hit, a heal, a spell), not while it regenerates, so a still bar draws no new frames.
@@ -258,21 +313,12 @@ public sealed class DerethVitalBar : Control
     private const double ShineJump = 0.02;
     private static readonly TimeSpan ShineTime = TimeSpan.FromSeconds(0.9);
     private const double ShineWidth = 30;
-    internal static readonly IBrush Groove = new LinearGradientBrush
-    {
-        StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative),
-        EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
-        GradientStops = { new GradientStop(Color.Parse("#040302"), 0), new GradientStop(Color.Parse("#16130C"), 0.55), new GradientStop(Color.Parse("#080705"), 1) }
-    };
-    internal static readonly IPen GrooveEdge = new Pen(DerethPalette.GrooveEdgeBrush, 0.7);
-    internal static readonly IBrush Highlight = DerethPalette.Brush(Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF));
     private static readonly IBrush Shine = new LinearGradientBrush
     {
         StartPoint = new RelativePoint(0, 0.5, RelativeUnit.Relative),
         EndPoint = new RelativePoint(1, 0.5, RelativeUnit.Relative),
         GradientStops = { new GradientStop(Color.FromArgb(0, 0xFF, 0xFF, 0xFF), 0), new GradientStop(Color.FromArgb(0x4D, 0xFF, 0xFF, 0xFF), 0.5), new GradientStop(Color.FromArgb(0, 0xFF, 0xFF, 0xFF), 1) }
     };
-    internal static readonly IPen TickPen = new Pen(DerethPalette.Brush(DerethPalette.Gold.WithAlpha(0x99)), 0.7);
     private static readonly Color PulseRed = Color.Parse("#E0554E");
     // The pulse's glow and edge: a pen and brush each, made once; Show sets the brushes' opacity, so drawing allocates nothing.
     private readonly SolidColorBrush _glowBrush = new(PulseRed);
@@ -354,11 +400,8 @@ public sealed class DerethVitalBar : Control
         var width = Bounds.Width;
         var height = Bounds.Height;
         var radius = height / 2;
-        var groove = new RoundedRect(new Rect(0, 0, width, height), radius);
-        context.DrawRectangle(Brushes.Black, GrooveEdge, new RoundedRect(new Rect(-0.7, -0.7, width + 1.4, height + 1.4), radius + 0.7));
-        using (context.PushClip(groove))
+        using (DerethGroove.Begin(context, width, height, Brushes.Black))
         {
-            context.DrawRectangle(Groove, null, new Rect(0, 0, width, height));
             var trailEnd = width * _trail;
             var fillEnd = width * _fraction;
             if (trailEnd > 0) context.DrawRectangle(_trailBrush, null, new Rect(0, 0, trailEnd, height));
@@ -369,35 +412,13 @@ public sealed class DerethVitalBar : Control
                     using (context.PushClip(new Rect(0, 0, fillEnd, height)))
                         context.DrawRectangle(Shine, null, new Rect(-ShineWidth + (fillEnd + ShineWidth) * _shine, 0, ShineWidth, height));
             }
-            context.DrawRectangle(Highlight, null, new RoundedRect(new Rect(3, 1, Math.Max(0, width - 6), height * 0.26), height * 0.13));
         }
-
-        DrawCap(context, -1.6, -1, height);
-        DrawCap(context, width + 1.6, 1, height);
-        if (_ticks)
-            foreach (var q in new[] { 0.25, 0.5, 0.75 })
-                context.DrawLine(TickPen, new Point(width * q, height + 2), new Point(width * q, height + 4));
+        DerethGroove.End(context, width, height, _ticks);
 
         if (!_pulsing) return;
         // The edge pulses with a glow just outside it, so the warning is the only thing on the window that moves.
         context.DrawRectangle(null, _glow, new RoundedRect(new Rect(-1, -1, width + 2, height + 2), radius + 1));
         context.DrawRectangle(null, _edge, new RoundedRect(new Rect(0.5, 0.5, width - 1, height - 1), radius));
-    }
-
-    // A gold collar at the bar's end with a point outward: from x towards dir.
-    internal static void DrawCap(DrawingContext context, double x, double dir, double height)
-    {
-        var geometry = new StreamGeometry();
-        using (var g = geometry.Open())
-        {
-            g.BeginFigure(new Point(x, -2), true);
-            g.LineTo(new Point(x + dir * 2.6, -2));
-            g.LineTo(new Point(x + dir * 5, height / 2));
-            g.LineTo(new Point(x + dir * 2.6, height + 2));
-            g.LineTo(new Point(x, height + 2));
-            g.EndFigure(true);
-        }
-        context.DrawGeometry(DerethGilt.GoldVertical, DerethGilt.Outline, geometry);
     }
 
     private static Color Mix(Color a, Color b, double t) => Color.FromRgb(

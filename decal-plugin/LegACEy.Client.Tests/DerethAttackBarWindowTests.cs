@@ -4,6 +4,7 @@ using System.IO;
 using Avalonia.Controls;
 using LegACEy.Client.Demo;
 using LegACEy.Client.PanelHost;
+using LegACEy.Client.Themes;
 using Xunit;
 
 namespace LegACEy.Client.Tests;
@@ -21,7 +22,7 @@ public sealed class DerethAttackBarWindowTests
 
     /// <summary>A panel holding the window at its design size, at 1x, with the window's content as its root.</summary>
     private static AvaloniaPanel Panel(DerethAttackBarWindow view, double scale = 1) =>
-        AvaloniaPanel.Create(() => view, (int)Math.Round(DerethAttackBarWindow.DesignWidth * scale), (int)Math.Round(DerethAttackBarWindow.DesignHeight * scale), scale);
+        AvaloniaPanel.Create(() => view, (int)Math.Round(DerethAttackBarArt.DesignWidth * scale), (int)Math.Round(DerethAttackBarArt.DesignHeight * scale), scale);
 
     /// <summary>A player's click at a point of the window, in DIPs.</summary>
     private static void Click(AvaloniaPanel panel, double x, double y)
@@ -139,19 +140,50 @@ public sealed class DerethAttackBarWindowTests
     });
 
     [Fact]
+    public void ShownChanged_is_raised_when_the_bar_hides_or_shows_but_not_for_power_to_accuracy() => RenderThread.Run(() =>
+    {
+        var port = new FakeAttackBarPort { Stance = RetailStance.Melee };
+        var view = new DerethAttackBarWindow(port, () => { });
+        var raised = 0;
+        view.ShownChanged += () => raised++;
+
+        port.Stance = RetailStance.Missile;
+        port.Publish();
+        Assert.Equal(0, raised);
+
+        port.Stance = RetailStance.Magic;
+        port.Publish();
+        Assert.Equal(1, raised);
+        Assert.False(view.Shown);
+
+        port.Stance = RetailStance.Melee;
+        port.Publish();
+        Assert.Equal(2, raised);
+        Assert.True(view.Shown);
+    });
+
+    [Fact]
     public void A_change_made_outside_the_window_shows_in_it() => RenderThread.Run(() =>
     {
-        // A retail key sets the height and the power; the game says so, and the window follows.
-        var port = new FakeAttackBarPort { Height = AttackHeight.Medium, SetPoint = 0.55 };
+        // A retail key sets the height, the power and an option, and the stance changes to missile; the game says so, and the window follows.
+        var port = new FakeAttackBarPort { Height = AttackHeight.Medium, SetPoint = 0.55, AutoTarget = true };
         var view = new DerethAttackBarWindow(port, () => { });
 
         port.Height = AttackHeight.Low;
         port.SetPoint = 0.2;
+        port.AutoTarget = false;
         port.Publish();
 
         Assert.Equal(2, view.Face.LitPlaque);
         Assert.Equal(0.2, view.Face.SetPoint, 3);
         Assert.Equal("Power 20%", view.BarTooltip);
+        Assert.False(view.Face.AutoTarget);
+
+        port.Stance = RetailStance.Missile;
+        port.Publish();
+
+        Assert.True(view.Face.Accuracy);
+        Assert.Equal("Accuracy 20%", view.BarTooltip);
     });
 
     [Fact]

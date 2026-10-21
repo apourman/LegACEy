@@ -16,12 +16,8 @@ public sealed class DerethAttackBarWindow : UserControl, IDisposable
 {
     /// <summary>The window's id, under which its place and size are kept for the character.</summary>
     public const string WindowId = "dereth-attack";
-    /// <summary>The window's design size in DIPs.</summary>
-    public const int DesignWidth = 320, DesignHeight = 58;
     // The set point stops short of the bar's end, so its pin can always be seen; the mockup clamps it so.
     private const double MinimumSetPoint = 0.05;
-    // The groove's click area: a little past each end of the bar, as the mockup's.
-    private static readonly Rect GrooveHit = new(42, 7, 176, 22);
 
     private readonly IAttackBarPort _port;
     private readonly Action _startMove;
@@ -38,11 +34,11 @@ public sealed class DerethAttackBarWindow : UserControl, IDisposable
 
         var plate = new DerethGildedPlate(6, ornate: true, ornamentX: DerethAttackBarArt.PlateOrnamentX)
         {
-            Width = DesignWidth, Height = DesignHeight, Child = _art
+            Width = DerethAttackBarArt.DesignWidth, Height = DerethAttackBarArt.DesignHeight, Child = _art
         };
-        _groove = Hit(GrooveHit, point => SetPointAt(point.X));
-        // Each control is a click target over its drawn place; the plaques are in retail's order, from the top.
-        _root = new Canvas { Width = DesignWidth, Height = DesignHeight, Background = Brushes.Transparent };
+        _groove = Hit(DerethAttackBarArt.GrooveHitRect, point => SetPointAt(point.X));
+        // Each control is a click target over its drawn place, from the art's rectangles; the plaques are in retail's order, from the top.
+        _root = new Canvas { Width = DerethAttackBarArt.DesignWidth, Height = DerethAttackBarArt.DesignHeight, Background = Brushes.Transparent };
         _root.Children.Add(plate);
         _root.Children.Add(_groove);
         for (var i = 0; i < 3; i++)
@@ -50,26 +46,31 @@ public sealed class DerethAttackBarWindow : UserControl, IDisposable
             var height = (AttackHeight)i;
             _root.Children.Add(Hit(DerethAttackBarArt.PlaqueRect(i), _ => ChooseHeight(height)));
         }
-        _root.Children.Add(ToggleHit(0, () => _port.AutoRepeatAttack = !_port.AutoRepeatAttack));
-        _root.Children.Add(ToggleHit(1, () => _port.AutoTarget = !_port.AutoTarget));
-        _root.Children.Add(ToggleHit(2, () => _port.ViewCombatTarget = !_port.ViewCombatTarget));
+        _root.Children.Add(Hit(DerethAttackBarArt.ToggleHitRect(0), _ => Flip(() => _port.AutoRepeatAttack = !_port.AutoRepeatAttack)));
+        _root.Children.Add(Hit(DerethAttackBarArt.ToggleHitRect(1), _ => Flip(() => _port.AutoTarget = !_port.AutoTarget)));
+        _root.Children.Add(Hit(DerethAttackBarArt.ToggleHitRect(2), _ => Flip(() => _port.ViewCombatTarget = !_port.ViewCombatTarget)));
         _root.PointerPressed += (_, e) =>
         {
             if (e.GetCurrentPoint(_root).Properties.IsLeftButtonPressed && !_port.UiLocked) _startMove();
         };
 
         // Drawn at the window's height over its design height, so a window scaled up draws its content larger.
-        Content = new HeightScaled(DesignHeight) { Child = _root };
+        Content = new HeightScaled(DerethAttackBarArt.DesignHeight) { Child = _root };
         _port.Changed += OnPortChanged;
         Sync();
     }
 
     /// <summary>The window's definition: no title bar, so the plate drags it, and no resizing, so per-window scaling sizes it.</summary>
-    public static WindowDefinition DefinitionOf() => new(WindowId, "Attack", DesignWidth, DesignHeight, titleBarHeight: 1, theme: new DerethClientTheme(),
-        dragsFromContent: true);
+    public static WindowDefinition DefinitionOf() => new(WindowId, "Attack", DerethAttackBarArt.DesignWidth, DerethAttackBarArt.DesignHeight,
+        titleBarHeight: 1, theme: new DerethClientTheme(), dragsFromContent: true);
 
     /// <summary>Whether the bar shows: in melee and missile, and hidden in peace and magic.</summary>
     public bool Shown => _root.IsVisible;
+
+    /// <summary>
+    /// Raised when <see cref="Shown"/> flips. The host must hide or close its surface too, since hidden content still takes input.
+    /// </summary>
+    public event Action? ShownChanged;
 
     /// <summary>The face the bar shows, as last synced from the port.</summary>
     public DerethAttackFace Face => _art.Face;
@@ -84,7 +85,7 @@ public sealed class DerethAttackBarWindow : UserControl, IDisposable
     private void SetPointAt(double x)
     {
         var fraction = (x - DerethAttackBarArt.GrooveRect.X) / DerethAttackBarArt.GrooveRect.Width;
-        _port.SetPoint = Math.Max(MinimumSetPoint, Math.Min(1, fraction));
+        _port.SetPoint = Math.Max(MinimumSetPoint, DerethAttackBarArt.Clamp01(fraction));
         Sync();
     }
 
@@ -94,26 +95,27 @@ public sealed class DerethAttackBarWindow : UserControl, IDisposable
         Sync();
     }
 
+    private void Flip(Action change)
+    {
+        change();
+        Sync();
+    }
+
     /// <summary>Shows what the port holds: whether the bar is up, the face and the groove's hover text.</summary>
     private void Sync()
     {
         var stance = _port.Stance;
         var accuracy = stance == RetailStance.Missile;
-        _root.IsVisible = stance is RetailStance.Melee or RetailStance.Missile;
+        var shown = stance is RetailStance.Melee or RetailStance.Missile;
+        if (shown != _root.IsVisible)
+        {
+            _root.IsVisible = shown;
+            ShownChanged?.Invoke();
+        }
         _art.Show(new DerethAttackFace(accuracy, _port.SetPoint, _port.Charge, (int)_port.Height,
             _port.AutoRepeatAttack, _port.AutoTarget, _port.ViewCombatTarget));
         var percent = (int)Math.Round(_port.SetPoint * 100);
         ToolTip.SetTip(_groove, $"{(accuracy ? "Accuracy" : "Power")} {percent}%");
-    }
-
-    private Border ToggleHit(int index, Action flip)
-    {
-        var centre = DerethAttackBarArt.ToggleCentre(index);
-        return Hit(new Rect(centre.X - 6, 35, index == 2 ? 64 : 70, 14), _ =>
-        {
-            flip();
-            Sync();
-        });
     }
 
     /// <summary>A transparent click target over <paramref name="rect"/>. Its press is its own: it does not start a move of the window.</summary>
