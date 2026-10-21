@@ -32,7 +32,6 @@ public sealed class AppraisalFeature
     private readonly Func<CharacterNames> _names;
     private readonly IAppraisalGame _game;
     private readonly Func<Avalonia.Controls.Control, Avalonia.Size, Avalonia.Size>? _measure;
-    private readonly Func<bool> _canInspect;
     private InspectWindow? _inspect;
     private readonly Dictionary<uint, AppraisalResponse> _responses = new();
     private uint _requested;
@@ -51,12 +50,10 @@ public sealed class AppraisalFeature
     /// <param name="spells">The spell table's names and descriptions by id, read when a window is built. Null names no spells: each is shown by its id.</param>
     /// <param name="names">The creature type and title names, read when a window is built. Null names none.</param>
     /// <param name="measure">Measures a control as the window draws it, at the UI size; the window opens at the height that shows its content. Null measures it unscaled.</param>
-    /// <param name="canInspect">Whether the server answers paperdoll.inspect, for the appraisal window's Inspect button. Null never shows it.</param>
     public AppraisalFeature(ILegACEyPluginHost host, Action<string> log, Func<long>? clock = null, IAppraisalGame? game = null,
         Func<IReadOnlyDictionary<uint, SpellInfo>>? spells = null, Func<CharacterNames>? names = null,
-        Func<Avalonia.Controls.Control, Avalonia.Size, Avalonia.Size>? measure = null, Func<bool>? canInspect = null)
+        Func<Avalonia.Controls.Control, Avalonia.Size, Avalonia.Size>? measure = null)
     {
-        _canInspect = canInspect ?? (() => false);
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _log = log ?? throw new ArgumentNullException(nameof(log));
         _clock = clock ?? new Func<long>(() => Stopwatch.GetTimestamp() * 1000 / Stopwatch.Frequency);
@@ -242,7 +239,7 @@ public sealed class AppraisalFeature
             : AppraisalContent.From(response, _spells(), _game.CharacterName, _game.IsCarried(id), _names(), _game.ValidLocationsOf(id),
                 _game.CoverageOf(id), _game.WorldObjectOf(id), _game.PluralNameOf(id), _game.DescriptionFlagsOf(id));
         var art = _host.Art;
-        var inspect = _canInspect() ? Inspect : (Action<AppraisalContent>?)null;
+        var inspect = _host.Looks.Knows(id) ? Inspect : (Action<AppraisalContent>?)null;
         // A window the client released (its surface failed or closed on its own) is neither open nor hidden: the view is stale, so the next
         // appraisal builds a new one.
         if (_view != null && !_hidden && !_host.IsWindowOpen(WindowId)) _view = null;
@@ -314,7 +311,7 @@ public sealed class AppraisalFeature
     {
         try
         {
-            var window = _inspect ??= new InspectWindow(_host.ServerChannel, _host.PortalPath);
+            var window = _inspect ??= new InspectWindow(_host.Looks, _host.PortalPath);
             window.Show(objectId, name, AppraisalWindow.Icon(visual, _host.Art));
             if (_host.IsWindowOpen(InspectWindow.WindowId)) return;
             var definition = new WindowDefinition(InspectWindow.WindowId, "Inspect", InspectWindow.Width, InspectWindow.Height,

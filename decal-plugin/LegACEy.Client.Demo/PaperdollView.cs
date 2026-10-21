@@ -9,14 +9,13 @@ using LegACEy.Client.GameArt;
 namespace LegACEy.Client.Demo;
 
 /// <summary>
-/// A 3D look in a <see cref="ModelView"/>: the player's own (paperdoll.look), or any object's in sight (paperdoll.inspect). It asks the
-/// server how the object looks, builds the model from portal.dat
-/// off the game thread, and asks again on each paperdoll.changed. It asks only while it is in a visual tree; the owner must take
+/// A 3D look in a <see cref="ModelView"/>: the player's own, or any object's. It asks its <see cref="ILookSource"/> how the object
+/// looks, builds the model from portal.dat off the game thread, and asks again whenever the look changes. It asks only while it is in a visual tree; the owner must take
 /// it out of the tree to stop it asking. The status line shows while the model loads or cannot be had.
 /// </summary>
 public sealed class PaperdollView : Border
 {
-    private readonly IServerChannel _channel;
+    private readonly ILookSource _looks;
     private readonly string _portalPath;
     private readonly TextBlock _status;
     private readonly ModelView _view;
@@ -26,9 +25,9 @@ public sealed class PaperdollView : Border
     private readonly uint _target;
 
     /// <param name="target">The object to show, zero for the player.</param>
-    public PaperdollView(IServerChannel channel, string portalPath, uint target = 0)
+    public PaperdollView(ILookSource looks, string portalPath, uint target = 0)
     {
-        _channel = channel ?? throw new ArgumentNullException(nameof(channel));
+        _looks = looks ?? throw new ArgumentNullException(nameof(looks));
         _portalPath = portalPath;
         _target = target;
         _status = new TextBlock { Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
@@ -43,7 +42,7 @@ public sealed class PaperdollView : Border
 
     private void Start()
     {
-        _changed = _channel.Subscribe(PaperdollProtocol.Changed, _ => Refresh());
+        _changed = _looks.WhenChanged(_target, Refresh);
         Refresh();
     }
 
@@ -56,32 +55,14 @@ public sealed class PaperdollView : Border
 
     private void Refresh()
     {
-        if (!_channel.IsAvailable)
-        {
-            _status.Text = "The LegACEy server channel is not available in this client.";
-            return;
-        }
         if (_view.Model == null) _status.Text = "Loading…";
         var request = ++_request;
-        var action = _target == 0 ? PaperdollProtocol.Look : PaperdollProtocol.Inspect;
-        var body = _target == 0 ? Array.Empty<byte>() : PaperdollProtocol.InspectBody(_target);
-        _channel.Request(action, body, reply =>
+        _looks.Request(_target, (appearance, why) =>
         {
             if (request != _request) return;
-            if (!reply.Ok)
+            if (appearance == null)
             {
-                _status.Text = $"The server didn't answer: {reply.Message}";
-                return;
-            }
-            CharacterAppearance appearance;
-            try
-            {
-                appearance = PaperdollProtocol.ReadLook(reply.Body);
-            }
-            catch (Exception exception)
-            {
-                // A garbled reply is shown here, not thrown: a throw would turn off the plugin that asked.
-                _status.Text = $"The server sent a look this client can't read: {exception.Message}";
+                _status.Text = why;
                 return;
             }
             // ~0.25 s of dat reads and decoding: off the game thread, with its own file handle

@@ -117,7 +117,8 @@ public sealed class AppraisalTests
     public void Inspect_opens_one_paperdoll_window_that_follows_the_inspected_object() => OnWindowThread(() =>
     {
         var host = new FakeAppraisalHost();
-        var appraisals = new AppraisalFeature(host, _ => { }, canInspect: () => true);
+        host.ServerActions.Add(PaperdollProtocol.Inspect);
+        var appraisals = new AppraisalFeature(host, _ => { });
         void Appraise(uint id, string name)
         {
             appraisals.Request(id);
@@ -139,14 +140,21 @@ public sealed class AppraisalTests
     });
 
     [Fact]
-    public void A_server_without_inspect_shows_no_Inspect_button() => OnWindowThread(() =>
+    public void Inspect_shows_for_an_object_whose_look_the_game_sent_or_the_server_knows() => OnWindowThread(() =>
     {
         var host = new FakeAppraisalHost();
         var appraisals = new AppraisalFeature(host, _ => { });
-        appraisals.Request(Potion);
-        appraisals.Receive(new ServerAppraisal(Potion) { Strings = { [1] = "Saro" } }.Build());
+        bool Shown(uint id)
+        {
+            appraisals.Request(id);
+            appraisals.Receive(new ServerAppraisal(id) { Strings = { [1] = "Saro" } }.Build());
+            return host.LastWindow!.GetLogicalDescendants().OfType<DerethButton>().Single(b => b.Name == "InspectButton").IsVisible;
+        }
 
-        Assert.False(host.LastWindow!.GetLogicalDescendants().OfType<DerethButton>().Single(b => b.Name == "InspectButton").IsVisible);
+        Assert.False(Shown(Potion));
+        // Any server: the game sent the object.
+        host.LookCache.Receive(LookCache.CreateObject, LookCacheTests.Created(Potion + 1, setup: 0x02000001));
+        Assert.True(Shown(Potion + 1));
     });
 
     [Fact]
@@ -1589,6 +1597,9 @@ public sealed class AppraisalTests
         public bool FailClose { get; set; }
 
         public IServerChannel ServerChannel => UnavailableServerChannel.Instance;
+        public HashSet<string> ServerActions { get; } = new(StringComparer.Ordinal);
+        public LookCache LookCache { get; } = new();
+        public ILookSource Looks => new GameLooks(LookCache, () => ServerChannel, ServerActions.Contains, () => 0x50000001);
         public string PortalPath => string.Empty;
         public IGameArtSource Art { get; } = new NoArt();
         public IItemDragHost ItemDrag => throw new NotSupportedException();

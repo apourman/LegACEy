@@ -340,6 +340,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // Error handlers of windows opened by plugins; a failure in one turns off its plugin, not the client.
     private readonly Dictionary<string, Action<Exception>> _windowFailures = new(StringComparer.Ordinal);
     private PluginRegistry? _plugins;
+    // Every object's look as the game sends it, so the paperdoll works on any server.
+    private readonly LookCache _lookCache = new();
+    private readonly GameLooks _looks;
     private bool _inGame;
     // Kept apart from the UI, which may have failed: the plugin's own updates still check, and tell the player in chat.
     private readonly PluginUpdates _updates = new(PluginDirectory);
@@ -349,11 +352,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     public ClientUiRuntime()
     {
+        _looks = new GameLooks(_lookCache, () => ((ILegACEyPluginHost)this).ServerChannel, action => _plugins?.SupportsAction(action) == true,
+            () => (uint)Bridge.Fact(BridgeFact.CharacterId));
         _gameStatePoller = new GameStatePoller(_gameState, Bridge.ReadGameState,
             error => Log($"Character stats temporarily unavailable; keeping UI active and retrying: {error.Message}"));
         _appraisal = new AppraisalFeature(this, Log, spells: () => _portal?.ReadSpells(Log) ?? new Dictionary<uint, SpellInfo>(), game: this,
-            names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None, measure: (control, available) => AvaloniaPanel.MeasureAt(control, available, WindowScale),
-            canInspect: () => _plugins?.SupportsAction(PaperdollProtocol.Inspect) == true);
+            names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None, measure: (control, available) => AvaloniaPanel.MeasureAt(control, available, WindowScale));
         _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal,
             () => SwitchOn(RetailAppraisalSwitchFile, ref _lastAppraisalSwitchCheck, ref _retailAppraisalSwitch));
         _row2Choice = new ShortcutRowChoice(_settingsStore);
@@ -584,6 +588,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (appraisal != null) Guard(() => _appraisal.Receive(appraisal));
         // The selection plaque's health and mana, which retail asks the server for itself when the selection changes.
         _selectionMeters.Receive(type, raw);
+        try { _lookCache.Receive(type, raw); }
+        catch (Exception exception) { Log($"Could not read an object's look: {exception}"); }
         // An item put in a pack, wielded or put in the world: Decal raised no event for some of these (a split stack, a pickup), so the
         // inventory is read again on the next frame.
         foreach (var moved in InventoryMoveEvents)
@@ -755,6 +761,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _toolbarPlaceLoaded = false;
         if (_toolbarPlace != null) _toolbarPlace.Location = null;
         _inventory.Clear();
+        _lookCache.Clear();
         Guard(() => _appraisal.Clear());
         Guard(() => _busyCursor?.Show(false));
         if (_worldEffects != null)
@@ -1818,6 +1825,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     IServerChannel ILegACEyPluginHost.ServerChannel => (IServerChannel?)_serverChannel ?? UnavailableServerChannel.Instance;
+    ILookSource ILegACEyPluginHost.Looks => _looks;
     string ILegACEyPluginHost.PortalPath => _portal?.Path ?? string.Empty;
     IGameArtSource ILegACEyPluginHost.Art => (IGameArtSource?)_portal ?? throw new InvalidOperationException("Game art is unavailable until the client UI is ready.");
     IItemDragHost ILegACEyPluginHost.ItemDrag => new ItemDragHost(this);
