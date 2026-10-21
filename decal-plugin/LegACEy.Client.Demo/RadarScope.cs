@@ -63,8 +63,19 @@ public static class RadarZoom
     private static int Within(int metres, int min) => Math.Max(min, Math.Min(Max, metres));
 }
 
-/// <summary>A dot on the radar: an object in retail's radar colour, where it sits on the scope, and its name, range and bearing.</summary>
-public sealed record RadarScopeDot(uint Id, string Name, RadarColor Colour, double Distance, double Bearing, double Alpha, Point At);
+/// <summary>Which level of the indoor plan a dot is on, against the player's: the same, the one above, or the one below.</summary>
+public enum RadarFloor
+{
+    Same,
+    Above,
+    Below
+}
+
+/// <summary>
+/// A dot on the radar: an object in retail's radar colour, where it sits on the scope, its name, range and bearing, and its floor against the
+/// player's (Same unless the indoor plan is drawn).
+/// </summary>
+public sealed record RadarScopeDot(uint Id, string Name, RadarColor Colour, double Distance, double Bearing, double Alpha, Point At, RadarFloor Floor);
 
 /// <summary>
 /// One landblock's ground on the scope: the landblock, and its rectangle in metres from the player, x east and y south (as the screen
@@ -72,14 +83,27 @@ public sealed record RadarScopeDot(uint Id, string Name, RadarColor Colour, doub
 /// </summary>
 public sealed record RadarScopeTile(ushort Landblock, Rect Metres);
 
-/// <summary>One level of the indoor plan to draw: the player's own level is solid, the others are faint.</summary>
-public sealed record RadarPlanDraw(RadarPlanLevel Level, bool Solid);
+/// <summary>
+/// One level of the indoor plan to draw. The player's own level is solid; a peeked level is solid too, in teal (<see cref="Peek"/>), and the
+/// player's stays as it was.
+/// </summary>
+public sealed record RadarPlanDraw(RadarPlanLevel Level, bool Solid, bool Peek = false);
+
+/// <summary>A stair mark on the drawn level: a door to another level, in DIPs from the scope's top-left, and whether it leads up.</summary>
+public sealed record RadarStairMark(Point At, bool Up);
+
+/// <summary>
+/// The indoor ladder beside the bezel: one pip a level, top first. <see cref="Current"/> is the player's level, <see cref="Peek"/> the level
+/// the pointer is on (or -1), and <see cref="Occupied"/> has bit n set when someone within range is on level n (not the player's own).
+/// </summary>
+public sealed record RadarLadder(int Levels, int Current, int Peek, ulong Occupied);
 
 /// <summary>What the radar shows this frame. Dots and the centre are in DIPs from the scope's top-left.</summary>
 public sealed class RadarScopeFrame
 {
     public RadarScopeFrame(IReadOnlyList<RadarScopeDot> dots, IReadOnlyList<RadarScopeTile> tiles, double turn, double pixelsPerMetre,
-        string? coordinates, double heading, IReadOnlyList<RadarPlanDraw> planLevels, Point planOrigin)
+        string? coordinates, double heading, IReadOnlyList<RadarPlanDraw> planLevels, Point planOrigin, IReadOnlyList<RadarStairMark> stairMarks,
+        RadarLadder? ladder)
     {
         Dots = dots;
         Tiles = tiles;
@@ -89,9 +113,15 @@ public sealed class RadarScopeFrame
         Heading = heading;
         PlanLevels = planLevels;
         PlanOrigin = planOrigin;
+        StairMarks = stairMarks;
+        Ladder = ladder;
     }
 
     public IReadOnlyList<RadarScopeDot> Dots { get; }
+    /// <summary>The stair marks of the drawn level (the peeked one while a pip is hovered), turned as the dots are. Empty when no plan is drawn.</summary>
+    public IReadOnlyList<RadarStairMark> StairMarks { get; }
+    /// <summary>The ladder beside the bezel, or null when no plan is drawn (outdoors, the map off, or the plan not yet built).</summary>
+    public RadarLadder? Ladder { get; }
     /// <summary>The ground around the player: outdoors, or under a building's plan. Empty when the map is off, or in a dungeon.</summary>
     public IReadOnlyList<RadarScopeTile> Tiles { get; }
     /// <summary>
@@ -125,8 +155,9 @@ public static class RadarScope
     /// <param name="options">The radar's options: the map, north-up and zoom.</param>
     /// <param name="radius">The scope's radius in DIPs.</param>
     /// <param name="plan">The plan of the place the player is in, or null outdoors and until it is built.</param>
+    /// <param name="peek">The level the pointer is on in the ladder, or -1. Drawn in teal, as the solid level, while it is not the player's own.</param>
     public static RadarScopeFrame Build(RadarPlayer? player, IReadOnlyList<RadarObject> objects, RadarOptions options, double radius,
-        RadarPlan? plan = null)
+        RadarPlan? plan = null, int peek = -1)
     {
         var indoors = player is { Position.Outdoors: false };
         var range = indoors ? RadarZoom.ClampIndoor(options.IndoorZoom) : RadarZoom.Clamp(options.Zoom);
@@ -135,8 +166,10 @@ public static class RadarScope
         // Indoors the plan is drawn when its place has the player's cell; a building keeps the ground under it, a dungeon has none.
         var level = indoors && options.Map && player != null && plan != null ? plan.LevelOf((ushort)(player.Position.Cell & 0xFFFF)) : -1;
         var drawn = level >= 0 ? plan : null;
+        var peeking = drawn != null && peek >= 0 && peek != level && peek < drawn.Levels.Count ? peek : -1;
         var tiles = player != null && options.Map && (!indoors || drawn is { Building: true }) ? GroundAround(player) : Array.Empty<RadarScopeTile>();
         var dots = new List<RadarScopeDot>();
+        var occupied = 0UL;
         if (player != null)
         {
             foreach (var found in objects)
@@ -146,13 +179,20 @@ public static class RadarScope
                 var distance = Math.Sqrt(east * east + north * north);
                 if (distance > range) continue;
                 var at = Turned(east, north, turn, scale, radius);
-                var alpha = Math.Abs(found.Position.Z - player.Position.Z) < LevelMetres ? 1 : FadedAlpha;
-                dots.Add(new RadarScopeDot(found.Id, found.Name, found.Colour, distance, Bearing(east, north), alpha, at));
+                // A dot on another level is an arrow, in full colour; on the player's own, retail's rule for the height stands.
+                var dotLevel = drawn?.LevelOfZ(found.Position.Z) ?? -1;
+                var floor = dotLevel < 0 || dotLevel == level ? RadarFloor.Same : dotLevel < level ? RadarFloor.Above : RadarFloor.Below;
+                if (dotLevel >= 0 && dotLevel != level) occupied |= 1UL << dotLevel;
+                var alpha = floor != RadarFloor.Same || Math.Abs(found.Position.Z - player.Position.Z) < LevelMetres ? 1 : FadedAlpha;
+                dots.Add(new RadarScopeDot(found.Id, found.Name, found.Colour, distance, Bearing(east, north), alpha, at, floor));
             }
         }
-        var planLevels = drawn?.DrawOrder(level) ?? Array.Empty<RadarPlanDraw>();
+        var planLevels = drawn?.DrawOrder(level, peeking) ?? Array.Empty<RadarPlanDraw>();
+        var stairs = drawn != null && player != null ? StairMarks(drawn.Levels[peeking >= 0 ? peeking : level], player, turn, scale, radius)
+            : Array.Empty<RadarStairMark>();
+        var ladder = drawn == null ? null : new RadarLadder(drawn.Levels.Count, level, peeking, occupied);
         var origin = player == null ? default : new Point(player.Position.X, player.Position.Y);
-        return new RadarScopeFrame(dots, tiles, turn, scale, player?.Position.Coordinates, player?.Heading ?? 0, planLevels, origin);
+        return new RadarScopeFrame(dots, tiles, turn, scale, player?.Position.Coordinates, player?.Heading ?? 0, planLevels, origin, stairs, ladder);
     }
 
     /// <summary>The dot under the pointer, the nearest within the hover reach, or null.</summary>
@@ -172,9 +212,20 @@ public static class RadarScope
         return best;
     }
 
-    /// <summary>What a hover says: the name, the distance in whole metres, and the compass direction of the dot from the player.</summary>
-    public static string Label(RadarScopeDot dot) =>
-        string.Format(CultureInfo.InvariantCulture, "{0} · {1:0} m {2}", dot.Name, dot.Distance, Direction(dot.Bearing));
+    /// <summary>
+    /// What a hover says: the name, the distance in whole metres, the compass direction of the dot from the player, and for a dot on another
+    /// level, above or below.
+    /// </summary>
+    public static string Label(RadarScopeDot dot)
+    {
+        var text = string.Format(CultureInfo.InvariantCulture, "{0} · {1:0} m {2}", dot.Name, dot.Distance, Direction(dot.Bearing));
+        return dot.Floor switch
+        {
+            RadarFloor.Above => text + " · above",
+            RadarFloor.Below => text + " · below",
+            _ => text
+        };
+    }
 
     /// <summary>The compass point (N, NE, …) of a bearing in degrees from north.</summary>
     public static string Direction(double bearing) => Points[(int)Math.Round(Normalise(bearing) / 45, MidpointRounding.AwayFromZero) % 8];
@@ -187,6 +238,11 @@ public static class RadarScope
         var y = -north * scale;
         return new Point(radius + x * Math.Cos(radians) - y * Math.Sin(radians), radius + x * Math.Sin(radians) + y * Math.Cos(radians));
     }
+
+    // The level's doors to another level, each turned as the dots are: the stair marks the scope draws on the level.
+    private static IReadOnlyList<RadarStairMark> StairMarks(RadarPlanLevel level, RadarPlayer player, double turn, double scale, double radius) =>
+        level.Stairs.Select(stair => new RadarStairMark(
+            Turned(stair.At.X - player.Position.X, stair.At.Y - player.Position.Y, turn, scale, radius), stair.Up)).ToArray();
 
     // The bearing of a point from the player, in degrees clockwise from north.
     private static double Bearing(double east, double north) => Normalise(Math.Atan2(east, north) * 180 / Math.PI);

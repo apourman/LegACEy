@@ -10,8 +10,8 @@ namespace LegACEy.Client.Themes;
 
 /// <summary>
 /// The round scope of the Dereth radar: the ground turned under the dots, or indoors the floor plan of the place (the player's level solid,
-/// the others faint), the range rings, the dots and the marker for the player. The window sets what it shows; the scope draws it, and a
-/// hovered dot's label beside it.
+/// the others faint, a peeked level solid in teal, stair marks on the solid level), the range rings, the dots (dots on another level as
+/// arrows) and the marker for the player. The window sets what it shows; the scope draws it, and a hovered dot's label beside it.
 /// </summary>
 public sealed class DerethRadarScope : Control
 {
@@ -46,15 +46,25 @@ public sealed class DerethRadarScope : Control
     private static readonly IBrush PlanNavyBuilding = DerethPalette.Brush(Color.FromArgb(0x8C, 0x0A, 0x12, 0x18));
     private static readonly IBrush PlanFaintGold = DerethPalette.Brush(DerethPalette.Gold.WithAlpha(0x29));
     private static readonly IBrush PlanSlate = DerethPalette.Brush(Color.Parse("#5C7684").WithAlpha(0xD9));
+    // A peeked level is solid in the palette's teal, a wash over the dark, so it reads as the player's floor does but is not.
+    private static readonly IBrush PlanPeek = DerethPalette.Brush(DerethPalette.Teal.WithAlpha(0x59));
     private static readonly IBrush PlanWall = DerethPalette.Brush(DerethPalette.GoldLight);
     private static readonly IBrush PlanHalo = DerethPalette.Brush(Color.FromArgb(0x66, 0, 0, 0));
+    // The arrows for dots on another level: a small triangle pointing up (the level above) or down, in the dot's colour.
+    private static readonly Geometry ArrowUp = Geometry.Parse("M0,-2.6 L2.4,1.6 L-2.4,1.6 Z");
+    private static readonly Geometry ArrowDown = Geometry.Parse("M0,2.6 L2.4,-1.6 L-2.4,-1.6 Z");
+    private static readonly IBrush StairInk = DerethPalette.CreamBrush;
 
     private IReadOnlyList<(IImage Image, Rect Metres)> _tiles = Array.Empty<(IImage Image, Rect Metres)>();
-    private IReadOnlyList<(Geometry Floors, Geometry Walls, bool Solid)> _planLevels = Array.Empty<(Geometry Floors, Geometry Walls, bool Solid)>();
+    private IReadOnlyList<(Geometry Floors, Geometry Walls, bool Solid, bool Peek)> _planLevels = Array.Empty<(Geometry Floors, Geometry Walls, bool Solid, bool Peek)>();
     private Point _planOrigin;
     private bool _planBuilding;
+    private IReadOnlyList<(Point At, bool Up)> _stairMarks = Array.Empty<(Point At, bool Up)>();
+    private FormattedText[]? _stairGlyphs;
     private PlanPens? _pens;
-    private IReadOnlyList<(Point At, Color Colour, double Opacity, bool Selected, bool Hovered)> _dots = Array.Empty<(Point At, Color Colour, double Opacity, bool Selected, bool Hovered)>();
+    // The arrow is +1 for a dot on the level above, -1 for one below, and 0 for a dot on the player's level.
+    private IReadOnlyList<(Point At, Color Colour, double Opacity, int Arrow, bool Selected, bool Hovered)> _dots =
+        Array.Empty<(Point At, Color Colour, double Opacity, int Arrow, bool Selected, bool Hovered)>();
     // The dots' brushes by colour and alpha, made once each: a dot's alpha takes only a few values.
     private readonly Dictionary<(Color Colour, byte Alpha), IBrush> _dotBrushes = new();
     private (string Text, Point At)? _label;
@@ -80,10 +90,10 @@ public sealed class DerethRadarScope : Control
     }
 
     /// <summary>
-    /// The indoor plan's levels in drawing order, each as its floor and wall paths in landblock metres, and whether it is the player's own
-    /// level (solid). Empty outdoors.
+    /// The indoor plan's levels in drawing order, each as its floor and wall paths in landblock metres; whether it is solid (the player's own
+    /// level, or a peeked one), and whether that solid one is a peek, drawn teal. Empty outdoors.
     /// </summary>
-    public IReadOnlyList<(Geometry Floors, Geometry Walls, bool Solid)> PlanLevels
+    public IReadOnlyList<(Geometry Floors, Geometry Walls, bool Solid, bool Peek)> PlanLevels
     {
         get => _planLevels;
         set { if (ReferenceEquals(_planLevels, value)) return; _planLevels = value; InvalidateVisual(); }
@@ -95,7 +105,14 @@ public sealed class DerethRadarScope : Control
     /// <summary>Whether the plan is a building's, drawn over its town ground: its other levels are then darker.</summary>
     public bool PlanBuilding { get => _planBuilding; set { if (_planBuilding == value) return; _planBuilding = value; InvalidateVisual(); } }
 
-    public IReadOnlyList<(Point At, Color Colour, double Opacity, bool Selected, bool Hovered)> Dots
+    /// <summary>The stair marks in DIPs from the scope's top-left, and whether each leads up. Drawn upright whatever the turn.</summary>
+    public IReadOnlyList<(Point At, bool Up)> StairMarks
+    {
+        get => _stairMarks;
+        set { if (ReferenceEquals(_stairMarks, value)) return; _stairMarks = value; InvalidateVisual(); }
+    }
+
+    public IReadOnlyList<(Point At, Color Colour, double Opacity, int Arrow, bool Selected, bool Hovered)> Dots
     {
         get => _dots;
         set { if (ReferenceEquals(_dots, value)) return; _dots = value; InvalidateVisual(); }
@@ -129,6 +146,7 @@ public sealed class DerethRadarScope : Control
                     context.DrawImage(tile.Image, new Rect(tile.Image.Size), tile.Metres);
             if (_tiles.Count > 0 && !planned) context.DrawEllipse(Darken, null, centre, radius, radius);
             if (planned) DrawPlan(context, world);
+            DrawStairs(context);
             context.DrawEllipse(Vignette, null, centre, radius, radius);
             DrawCrosshair(context, centre, radius);
             if (Rings) DrawRings(context, centre, radius);
@@ -147,12 +165,12 @@ public sealed class DerethRadarScope : Control
         if (_pens == null || _pens.Scale != PixelsPerMetre) _pens = new PlanPens(PixelsPerMetre);
         var pens = _pens;
         using (context.PushTransform(new Matrix(1, 0, 0, -1, 0, 0) * Matrix.CreateTranslation(-_planOrigin.X, _planOrigin.Y) * world))
-            foreach (var (floors, walls, solid) in _planLevels)
+            foreach (var (floors, walls, solid, peek) in _planLevels)
             {
                 if (solid)
                 {
                     context.DrawGeometry(null, pens.Halo, floors);
-                    context.DrawGeometry(PlanSlate, null, floors);
+                    context.DrawGeometry(peek ? PlanPeek : PlanSlate, null, floors);
                     context.DrawGeometry(null, pens.Wall, walls);
                 }
                 else
@@ -162,6 +180,21 @@ public sealed class DerethRadarScope : Control
                 }
             }
     }
+
+    // The stair marks: a ▲ or ▼ at each door, upright, so the glyphs are made once and only their places change with the turn.
+    private void DrawStairs(DrawingContext context)
+    {
+        if (_stairMarks.Count == 0) return;
+        _stairGlyphs ??= new[] { StairGlyph("▼"), StairGlyph("▲") };
+        foreach (var (at, up) in _stairMarks)
+        {
+            var glyph = _stairGlyphs[up ? 1 : 0];
+            context.DrawText(glyph, new Point(at.X - glyph.Width / 2, at.Y - glyph.Height / 2));
+        }
+    }
+
+    private static FormattedText StairGlyph(string text) =>
+        new(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface(DerethPalette.Title), 8, StairInk);
 
     // The plan's pens at a scale: the halo's width is 6 DIPs, the player's walls 1.1 and the other levels' 0.8, each over the scale.
     private sealed record PlanPens(double Scale)
@@ -183,12 +216,20 @@ public sealed class DerethRadarScope : Control
             context.DrawEllipse(null, RingPen, centre, radius * fraction, radius * fraction);
     }
 
-    private void DrawDot(DrawingContext context, (Point At, Color Colour, double Opacity, bool Selected, bool Hovered) dot)
+    private void DrawDot(DrawingContext context, (Point At, Color Colour, double Opacity, int Arrow, bool Selected, bool Hovered) dot)
     {
         var alpha = (byte)Math.Round(dot.Opacity * 255);
         var key = (dot.Colour, alpha);
         if (!_dotBrushes.TryGetValue(key, out var colour)) _dotBrushes[key] = colour = DerethPalette.Brush(dot.Colour.WithAlpha(alpha));
-        context.DrawEllipse(colour, OutlinePen, dot.At, 1.9, 1.9);
+        if (dot.Arrow == 0)
+        {
+            context.DrawEllipse(colour, OutlinePen, dot.At, 1.9, 1.9);
+        }
+        else
+        {
+            using (context.PushTransform(Matrix.CreateTranslation(dot.At.X, dot.At.Y)))
+                context.DrawGeometry(colour, OutlinePen, dot.Arrow > 0 ? ArrowUp : ArrowDown);
+        }
         if (dot.Selected) context.DrawEllipse(null, SelectedPen, dot.At, 4.5, 4.5);
         if (dot.Hovered) context.DrawEllipse(null, HoveredPen, dot.At, 4.5, 4.5);
     }

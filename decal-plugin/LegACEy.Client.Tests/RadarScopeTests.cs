@@ -263,6 +263,110 @@ public sealed class RadarScopeTests
         Assert.Single(frame.Dots);
     }
 
+    [Fact]
+    public void The_ladder_has_a_pip_for_each_level_and_the_players_is_the_one_it_is_on()
+    {
+        var plan = new RadarPlan(RadarPlanFixtures.Dungeon(), 0x0101);
+
+        var frame = RadarScope.Build(Player(0, RadarPlanFixtures.DungeonCell), NoObjects, Default, Radius, plan);
+
+        Assert.Equal(new RadarLadder(Levels: 3, Current: 1, Peek: -1, Occupied: 0), frame.Ladder);
+        Assert.Null(RadarScope.Build(Player(0), NoObjects, Default, Radius, plan).Ladder);
+    }
+
+    [Fact]
+    public void A_pip_is_ringed_when_someone_within_range_is_on_its_level_and_not_for_the_players_own()
+    {
+        var plan = new RadarPlan(RadarPlanFixtures.Dungeon(), 0x0101);
+        var objects = new[]
+        {
+            Object(1, east: 5, north: 0, z: 8),
+            Object(2, east: 6, north: 0, z: 4),
+            Object(3, east: 90, north: 0, z: 0),
+        };
+
+        var frame = RadarScope.Build(Player(0, RadarPlanFixtures.DungeonCell), objects, Default, Radius, plan);
+
+        // The top level has someone in range; the player's own has someone too, but its pip is gold already; the bottom one is out of range.
+        Assert.Equal(1UL << 0, frame.Ladder!.Occupied);
+    }
+
+    [Fact]
+    public void Peeking_a_pip_draws_that_level_solid_in_teal_and_the_players_level_stays_as_it_was()
+    {
+        var plan = new RadarPlan(RadarPlanFixtures.Dungeon(), 0x0101);
+
+        var frame = RadarScope.Build(Player(0, RadarPlanFixtures.DungeonCell), NoObjects, Default, Radius, plan, peek: 0);
+
+        var peeked = Assert.Single(frame.PlanLevels, level => level.Solid);
+        Assert.Same(plan.Levels[0], peeked.Level);
+        Assert.True(peeked.Peek);
+        Assert.Contains(frame.PlanLevels, draw => !draw.Solid && ReferenceEquals(draw.Level, plan.Levels[1]));
+        Assert.Equal(new RadarLadder(Levels: 3, Current: 1, Peek: 0, Occupied: 0), frame.Ladder);
+    }
+
+    [Fact]
+    public void A_dot_on_another_level_is_an_arrow_and_its_label_says_above_or_below()
+    {
+        var plan = new RadarPlan(RadarPlanFixtures.Dungeon(), 0x0101);
+        var objects = new[]
+        {
+            Object(1, east: 5, north: 0, z: 8),
+            Object(2, east: 6, north: 0, z: 0),
+            Object(3, east: 7, north: 0, z: 4),
+        };
+
+        var frame = RadarScope.Build(Player(0, RadarPlanFixtures.DungeonCell), objects, Default, Radius, plan);
+
+        // A dot is an arrow by its level, not by how far above it is: the one 8 m up is on the level above, the one 4 m up on the player's own.
+        Assert.Equal(RadarFloor.Above, Dot(frame, 1).Floor);
+        Assert.Equal(RadarFloor.Below, Dot(frame, 2).Floor);
+        Assert.Equal(RadarFloor.Same, Dot(frame, 3).Floor);
+        Assert.Equal(1.0, Dot(frame, 1).Alpha);
+        Assert.EndsWith(" · above", RadarScope.Label(Dot(frame, 1)));
+        Assert.EndsWith(" · below", RadarScope.Label(Dot(frame, 2)));
+        Assert.DoesNotContain("above", RadarScope.Label(Dot(frame, 3)));
+    }
+
+    [Fact]
+    public void Stair_marks_sit_at_the_doors_to_another_level_and_point_up_when_the_door_leads_up()
+    {
+        var plan = new RadarPlan(RadarPlanFixtures.Dungeon(), 0x0101);
+
+        var frame = RadarScope.Build(Player(0, RadarPlanFixtures.DungeonCell), NoObjects, Default, Radius, plan);
+
+        // The doorways are in the room's east wall, 2 m east of the player: the one up is 0.5 m south of the player's line, the one down 1.5 m.
+        var metres = Radius / 40;
+        Assert.Equal(new Point(Radius + 2 * metres, Radius + 0.5 * metres), Assert.Single(frame.StairMarks, mark => mark.Up).At);
+        Assert.Equal(new Point(Radius + 2 * metres, Radius + 1.5 * metres), Assert.Single(frame.StairMarks, mark => !mark.Up).At);
+    }
+
+    [Fact]
+    public void Stair_marks_turn_with_the_world_and_keep_their_direction()
+    {
+        var plan = new RadarPlan(RadarPlanFixtures.Dungeon(), 0x0101);
+
+        var ahead = RadarScope.Build(Player(0, RadarPlanFixtures.DungeonCell), NoObjects, Default, Radius, plan).StairMarks;
+        var turned = RadarScope.Build(Player(90, RadarPlanFixtures.DungeonCell), NoObjects, Default, Radius, plan).StairMarks;
+
+        Assert.Equal(ahead.Select(mark => mark.Up), turned.Select(mark => mark.Up));
+        Assert.All(Enumerable.Range(0, ahead.Count), i => Assert.Equal(Distance(ahead[i].At), Distance(turned[i].At), 6));
+        Assert.NotEqual(ahead[0].At, turned[0].At);
+    }
+
+    [Fact]
+    public void A_door_out_of_the_building_gets_no_stair_mark()
+    {
+        var plan = new RadarPlan(RadarPlanFixtures.Town(), 0x0200);
+
+        var frame = RadarScope.Build(Player(0, RadarPlanFixtures.HouseCell), NoObjects, Default, Radius, plan);
+
+        // The ground floor's door out to the town has no level, so only the stair up to the upstairs is marked.
+        Assert.Equal(new[] { true }, frame.StairMarks.Select(mark => mark.Up));
+    }
+
+    private static double Distance(Point point) => Math.Sqrt(Math.Pow(point.X - Radius, 2) + Math.Pow(point.Y - Radius, 2));
+
     private static RadarPlayer Player(float heading, uint cell = Outdoors) =>
         new(new RadarPosition(cell, 60, 84, 0), heading);
 

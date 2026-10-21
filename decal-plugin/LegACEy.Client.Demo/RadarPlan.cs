@@ -16,7 +16,19 @@ public sealed class RadarPlanLevel
     private Geometry? _floors;
     private Geometry? _walls;
 
-    public RadarPlanLevel(IndoorLevel level) => _level = level;
+    public RadarPlanLevel(IndoorLevel level, IReadOnlyList<(GroundPoint At, bool Up)> stairs)
+    {
+        _level = level;
+        Stairs = stairs;
+        // Halfway between its lowest and highest cell: the height the ladder and the dots' heights are read against.
+        Height = (level.Cells.Max(cell => cell.Height) + level.Cells.Min(cell => cell.Height)) / 2;
+    }
+
+    /// <summary>The level's height in landblock metres.</summary>
+    public float Height { get; }
+
+    /// <summary>The doors from this level to another level of the place, where a stair mark goes: the door's centre, and whether it leads up.</summary>
+    public IReadOnlyList<(GroundPoint At, bool Up)> Stairs { get; }
 
     /// <summary>The floors as one path. Built on first use, so the seam's tests never make platform geometry.</summary>
     public Geometry Floors => _floors ??= FloorPath(_level);
@@ -64,8 +76,9 @@ public sealed class RadarPlan
     private const ushort Outside = 0xFFFF;
 
     private readonly IndoorPlan _place;
-    // The draw order is made again only when the player's level changes: it is kept for the level last asked for.
+    // The draw order is made again only when the solid level or its peek changes: it is kept for the one last asked for.
     private int _orderLevel = -1;
+    private bool _orderPeek;
     private IReadOnlyList<RadarPlanDraw> _order = Array.Empty<RadarPlanDraw>();
 
     /// <param name="landblock">The plan of the player's landblock, read from the DATs.</param>
@@ -73,7 +86,7 @@ public sealed class RadarPlan
     public RadarPlan(IndoorPlan landblock, ushort cell)
     {
         _place = landblock.Place(cell);
-        Levels = _place.Levels.Select(level => new RadarPlanLevel(level)).ToArray();
+        Levels = _place.Levels.Select((level, index) => new RadarPlanLevel(level, StairsOf(level, index))).ToArray();
         Building = _place.Cells.Any(c => c.Doors.Any(door => door.Beyond == Outside));
     }
 
@@ -89,21 +102,51 @@ public sealed class RadarPlan
     public int LevelOf(ushort cell) => _place.LevelOf(cell);
 
     /// <summary>
-    /// The levels in drawing order for a player on <paramref name="playerLevel"/>: those below it, then those above, then the player's own,
-    /// solid last so it sits on the others. The same list while the player stays on the level.
+    /// The index in <see cref="Levels"/> of the level nearest a height in landblock metres, or -1 when the place has no levels. A dot's
+    /// level is read from its height this way.
     /// </summary>
-    public IReadOnlyList<RadarPlanDraw> DrawOrder(int playerLevel)
+    public int LevelOfZ(float z)
     {
-        if (playerLevel == _orderLevel) return _order;
+        var nearest = -1;
+        for (var level = 0; level < Levels.Count; level++)
+            if (nearest < 0 || Math.Abs(Levels[level].Height - z) < Math.Abs(Levels[nearest].Height - z)) nearest = level;
+        return nearest;
+    }
+
+    /// <summary>
+    /// The levels in drawing order for a player on <paramref name="playerLevel"/>: those below the solid level, then those above, then the solid
+    /// one last so it sits on the others. The solid level is the peeked one when <paramref name="peekLevel"/> is 0 or more (drawn teal), else
+    /// the player's own. The same list while the solid level and its peek stay as they are.
+    /// </summary>
+    public IReadOnlyList<RadarPlanDraw> DrawOrder(int playerLevel, int peekLevel = -1)
+    {
+        var peek = peekLevel >= 0;
+        var solid = peek ? peekLevel : playerLevel;
+        if (solid == _orderLevel && peek == _orderPeek) return _order;
         var draws = new List<RadarPlanDraw>(Levels.Count);
-        if (playerLevel >= 0)
+        if (solid >= 0)
         {
-            for (var level = playerLevel + 1; level < Levels.Count; level++) draws.Add(new RadarPlanDraw(Levels[level], false));
-            for (var level = 0; level < playerLevel; level++) draws.Add(new RadarPlanDraw(Levels[level], false));
-            draws.Add(new RadarPlanDraw(Levels[playerLevel], true));
+            for (var level = solid + 1; level < Levels.Count; level++) draws.Add(new RadarPlanDraw(Levels[level], false));
+            for (var level = 0; level < solid; level++) draws.Add(new RadarPlanDraw(Levels[level], false));
+            draws.Add(new RadarPlanDraw(Levels[solid], true, peek));
         }
-        _orderLevel = playerLevel;
+        _orderLevel = solid;
+        _orderPeek = peek;
         _order = draws;
         return draws;
+    }
+
+    // A door from a level to another level of the place, as a stair mark: up when the other level is higher (a lower index).
+    private IReadOnlyList<(GroundPoint At, bool Up)> StairsOf(IndoorLevel level, int index)
+    {
+        var stairs = new List<(GroundPoint At, bool Up)>();
+        foreach (var cell in level.Cells)
+            foreach (var (centre, beyond) in cell.Doors)
+            {
+                // A door out of the place has no level in it (-1), and a door within the level is no stair.
+                var other = _place.LevelOf(beyond);
+                if (other >= 0 && other != index) stairs.Add((new GroundPoint(centre.X, centre.Y), other < index));
+            }
+        return stairs;
     }
 }
