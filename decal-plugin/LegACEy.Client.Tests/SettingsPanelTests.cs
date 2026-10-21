@@ -68,6 +68,40 @@ public sealed class SettingsPanelTests
     });
 
     [Fact]
+    public void All_windows_switches_every_window_and_shows_neither_when_they_differ() => RenderThread.Run(() =>
+    {
+        bool inventory = true, chat = true;
+        var settings = new ClientSettings(null, null, new[]
+        {
+            new UiWindowChoice("Inventory", () => inventory, value => inventory = value),
+            new UiWindowChoice("Chat", () => chat, value => chat = value)
+        });
+        using var panel = Tab(settings);
+        TextBlock Label(DerethSegmented segmented, string text) =>
+            segmented.GetVisualDescendants().OfType<TextBlock>().Single(block => block.Text == text);
+        // All windows, then a switch per window.
+        var switches = panel.Content.GetVisualDescendants().OfType<DerethSegmented>()
+            .Where(segmented => segmented.GetVisualDescendants().OfType<TextBlock>().Any(block => block.Text == "Retail")).ToList();
+        var all = switches[0];
+
+        PressCentre(panel, Label(all, "Retail"));
+        panel.Tick();
+        Assert.False(inventory);
+        Assert.False(chat);
+        Assert.Equal(1, switches[2].Selected);
+
+        PressCentre(panel, Label(switches[1], "Dereth"));
+        panel.Tick();
+        Assert.True(inventory);
+        Assert.Equal(-1, all.Selected);
+
+        PressCentre(panel, Label(all, "Dereth"));
+        panel.Tick();
+        Assert.True(chat);
+        Assert.Equal(0, all.Selected);
+    });
+
+    [Fact]
     public void A_window_on_retail_mutes_its_title_until_it_is_back_on_Dereth() => RenderThread.Run(() =>
     {
         var custom = true;
