@@ -82,6 +82,9 @@ public unsafe struct BridgeCalls
     public delegate* unmanaged[Stdcall]<int, int*, int> DescriptionFlags;
     /// <summary>(UTF-8 text, length, colour): Actions.AddChatText, a line in the chat window; the colour is Decal's (5 is System).</summary>
     public delegate* unmanaged[Stdcall]<byte*, int, int, int> Chat;
+    /// <summary>(id, UTF-8 tag text, length, out eaten): raises CoreManager.ChatNameClicked as a click on a chat link in retail does;
+    /// eaten is 1 when a plugin ate it.</summary>
+    public delegate* unmanaged[Stdcall]<int, byte*, int, int*, int> ChatClick;
 }
 
 /// <summary>The integer facts <see cref="BridgeCalls.Fact"/> answers.</summary>

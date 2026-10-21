@@ -119,9 +119,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const uint DatCursorNWSE = 0x06006126;
     private const uint DatCursorNESW = 0x06006127;
     private const uint DatCursorMove = 0x06006119;
-    // Beside the DLL: while this file exists, retail's inventory and examination panels stay retail's. Without it the LegACEy UI takes them
-    // over; the examination takeover follows the same switch.
+    // Beside the DLL: while this file exists, retail's inventory panel stays retail's. Without it the LegACEy UI takes it over.
     private const string RetailPanelSwitchFile = "retail-inventory-native";
+    // Beside the DLL: while this file exists, retail's examination panel stays retail's. Without it the appraisal window takes it over.
+    // Creating it from the Settings card also hands an open appraisal to retail's panel.
+    private const string RetailAppraisalSwitchFile = "retail-appraisal-native";
     // Beside the DLL: while this file exists, retail's toolbar stays retail's. Without it the Dereth toolbar replaces it.
     private const string RetailToolbarSwitchFile = "retail-toolbar-native";
     // Beside the DLL: while this file exists, retail's chat windows stay retail's. Without it the Dereth chat window replaces them.
@@ -130,6 +132,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string RetailVitalsSwitchFile = "retail-vitals-native";
     // Beside the DLL: while this file exists, retail's radar stays retail's. Without it the Dereth radar replaces it.
     private const string RetailRadarSwitchFile = "retail-radar-native";
+    // Beside the DLL: while this file exists, retail's attack panel stays retail's. Without it the Dereth attack bar replaces it in melee and missile.
+    private const string RetailAttackSwitchFile = "retail-attack-native";
     // A window switch whose file could not be written or deleted this session: its state (true for LegACEy's) until the file can be changed.
     // Runtime only, so the next session reads the file again.
     private readonly Dictionary<string, bool> _switchHeld = new(StringComparer.Ordinal);
@@ -211,15 +215,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private Size? _toolbarDragOffset;
     private bool _toolbarSwitch;
     private bool _toolbarReleaseLogged;
-    // Shortcut rows 1 and 2: their own windows beside the toolbar, held while the takeover is, and their refresh on inventory changes.
-    private const string ShortcutRowWindowId = "shortcut-row-1";
-    private const string ShortcutRow2WindowId = "shortcut-row-2";
     // The Dereth toolbar's surface id. It is not a managed window, so drops reach it by its surface.
     private const string ToolbarSurfaceId = "toolbar";
     // The selected stack's split tab: its own surface over the toolbar's plaque, shown while a stack is selected.
     private const string SplitTabSurfaceId = "toolbar-split";
     private StackSplitTab? _splitTab;
     private ScreenSurface? _splitTabSurface;
+    // Shortcut rows 1 and 2, inside the toolbar under its buttons while the takeover holds, and their refresh on inventory changes.
     private ShortcutBar? _shortcutBar;
     private ShortcutBar? _shortcutRow2;
     // The slot a shortcut drag started from, shared by both rows: a drop on either row moves the shortcut.
@@ -235,6 +237,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private RetailHeldWindows? _chatTakeover;
     private bool _chatFailed;
     private bool _chatReleaseLogged;
+    // Set when the port that listens while retail's chat is shown failed; logoff clears it.
+    private bool _chatListenFailed;
     private bool _chatSwitch;
     private DateTime _lastChatSwitchCheck;
     // The Dereth vitals window over retail's vitals: held while its switch is on. Its natives are checked once; the player's clock times its trails.
@@ -271,19 +275,30 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _radarReleaseLogged;
     private bool _radarSwitch;
     private DateTime _lastRadarSwitchCheck;
+    // The Dereth attack bar over retail's attack panel: whether its natives matched, the held panel and window, and the port the window reads.
+    private bool? _attackNatives;
+    private RetailAttackTakeover? _attack;
+    private NativeAttackBarPort? _attackPort;
+    private bool _attackSwitch;
+    private DateTime _lastAttackSwitchCheck;
     private readonly GameStatePort _gameState = new(new GameStateSnapshot("unknown-character", "unknown-server", 0, 0, 0, 0, 0, 0));
     private readonly GameStatePoller _gameStatePoller;
     private ClientUiFramework? _clientUi;
     private GameChannelTransport? _channelTransport;
     private ServerChannelClient? _serverChannel;
     private RetailItemDrag? _retailDrag;
-    // Plugin takeovers of retail panels (the inventory), and the switch that turns them on, which also turns the examination takeover on or off. The switch is a marker file beside the DLL,
+    // Plugin takeovers of retail panels (the inventory), and the switch that turns them on; the examination takeover has its own. The switch is a marker file beside the DLL,
     // as the post-UI test failure is. Creating the switch file gives retail's panels back; deleting it turns the takeovers on.
     private readonly List<RetailPanelTakeover> _retailPanels = new();
     private bool? _retailPanelsValid;
     private bool? _retailToolbarValid;
     private bool _retailPanelSwitch;
     private DateTime _lastRetailPanelSwitchCheck;
+    private bool _retailAppraisalSwitch;
+    private DateTime _lastAppraisalSwitchCheck;
+    // The Appraisal card was switched: once the switch is read, a turn to retail hands the open appraisal over to retail's panel.
+    private bool _appraisalSwitched;
+    private RetailExamine? _retailExamine;
     // Retail's examination panel, taken over for the session when the native UI check passes; each showing is an appraisal in our window.
     private RetailExaminationTakeover? _examination;
     private readonly BridgeInventoryPort _inventory = new(Log);
@@ -326,6 +341,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // Error handlers of windows opened by plugins; a failure in one turns off its plugin, not the client.
     private readonly Dictionary<string, Action<Exception>> _windowFailures = new(StringComparer.Ordinal);
     private PluginRegistry? _plugins;
+    // Every object's look as the game sends it, so the paperdoll works on any server.
+    private readonly LookCache _lookCache = new();
+    private readonly GameLooks _looks;
     private bool _inGame;
     // Kept apart from the UI, which may have failed: the plugin's own updates still check, and tell the player in chat.
     private readonly PluginUpdates _updates = new(PluginDirectory);
@@ -335,12 +353,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     public ClientUiRuntime()
     {
+        _looks = new GameLooks(_lookCache, () => ((ILegACEyPluginHost)this).ServerChannel, action => _plugins?.SupportsAction(action) == true,
+            () => (uint)Bridge.Fact(BridgeFact.CharacterId));
         _gameStatePoller = new GameStatePoller(_gameState, Bridge.ReadGameState,
             error => Log($"Character stats temporarily unavailable; keeping UI active and retrying: {error.Message}"));
         _appraisal = new AppraisalFeature(this, Log, spells: () => _portal?.ReadSpells(Log) ?? new Dictionary<uint, SpellInfo>(), game: this,
-            names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None, measure: (control, available) => AvaloniaPanel.MeasureAt(control, available, WindowScale),
-            canInspect: () => _plugins?.SupportsAction(PaperdollProtocol.Inspect) == true);
-        _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal);
+            names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None, measure: (control, available) => AvaloniaPanel.MeasureAt(control, available, WindowScale));
+        _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal,
+            () => SwitchOn(RetailAppraisalSwitchFile, ref _lastAppraisalSwitchCheck, ref _retailAppraisalSwitch));
         _row2Choice = new ShortcutRowChoice(_settingsStore);
         _vitalsLayouts = new VitalsLayoutChoice(_settingsStore);
         if (_settingsStore.Load("", "", UiSizeKey) is { Location.X: var size and > 0 })
@@ -371,10 +391,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _serverChannel.Subscribe(StormProtocol.Changed, ShowStorm);
                 _serverChannel.Subscribe(WeatherProtocol.Changed, ShowWeather);
                 _serverChannel.Subscribe(CombatTextProtocol.Hit, ShowHit);
+                _serverChannel.Subscribe(PingProtocol.Placed, ShowPing);
             }
             catch (Exception exception) { Log($"LegACEy server channel disabled: {exception.Message}"); }
             try { _retailDrag = new RetailItemDrag(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"Item drag and drop disabled: {exception.Message}"); }
+            try { _retailExamine = new RetailExamine(NativeUi.ReadMemory, Log); }
+            catch (Exception exception) { Log($"Switching the appraisal window to retail won't reopen the item in retail's: {exception.Message}"); }
             try { _busyCursor = new RetailBusyCursor(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"The busy cursor while an appraisal loads is off: {exception.Message}"); }
             try { _textMode = new RetailTextMode(NativeUi.ReadMemory, Log); }
@@ -567,6 +590,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (appraisal != null) Guard(() => _appraisal.Receive(appraisal));
         // The selection plaque's health and mana, which retail asks the server for itself when the selection changes.
         _selectionMeters.Receive(type, raw);
+        try { _lookCache.Receive(type, raw); }
+        catch (Exception exception) { Log($"Could not read an object's look: {exception}"); }
         // An item put in a pack, wielded or put in the world: Decal raised no event for some of these (a split stack, a pickup), so the
         // inventory is read again on the next frame.
         foreach (var moved in InventoryMoveEvents)
@@ -701,6 +726,33 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         catch (Exception exception) { Log($"Could not read a hit: {exception.Message}"); }
     }
 
+    /// <summary>
+    /// Sends a radar ping to the server, which shows it to the fellowship and back to this radar. A server without pings leaves it to this
+    /// radar alone.
+    /// </summary>
+    private void Ping(RadarPosition at)
+    {
+        if (_plugins?.SupportsAction(PingProtocol.Place) != true || _serverChannel == null)
+        {
+            _radar?.ShowPing(SessionCharacter(), at);
+            return;
+        }
+        _serverChannel.Request(PingProtocol.Place, PingProtocol.WritePlace(at), reply =>
+        {
+            if (!reply.Ok) Log($"Ping not sent: {reply.Message}");
+        });
+    }
+
+    private void ShowPing(byte[] body)
+    {
+        try
+        {
+            var (sender, at) = PingProtocol.ReadPlaced(body);
+            _radar?.ShowPing(sender, at);
+        }
+        catch (Exception exception) { Log($"Could not read a ping: {exception.Message}"); }
+    }
+
     private static IEnumerable<string> ServerActionsFrom(ChannelReply reply)
     {
         if (!reply.Ok) return Array.Empty<string>();
@@ -733,10 +785,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _inGame = false;
         _loggedIn = false;
         _carriedChatHistory = null;
+        _chatListenFailed = false;
         // The next character reads its own toolbar place; until then the toolbar stands where retail's window is.
         _toolbarPlaceLoaded = false;
         if (_toolbarPlace != null) _toolbarPlace.Location = null;
         _inventory.Clear();
+        _lookCache.Clear();
         Guard(() => _appraisal.Clear());
         Guard(() => _busyCursor?.Show(false));
         if (_worldEffects != null)
@@ -759,6 +813,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         catch (Exception exception) { Log($"Could not give the retail chat back at logoff: {exception}"); }
         // The Dereth vitals window closes and retail's vitals come back; the next login holds them again while the switch is on.
         _vitals?.Release();
+        // The attack bar closes and retail's attack panel comes back; the next melee or missile holds it again while the switch is on.
+        _attack?.Release();
         try { ReleaseRetailRadar(); }
         catch (Exception exception) { Log($"Could not give the retail radar back at logoff: {exception}"); }
         _toast?.Hide();
@@ -888,9 +944,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var settings = new ClientSettings(AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, SetUiSize) : null, UpdateCheck(), WindowChoices(), WaterOptionFor(_water), LockUiOption())
         {
             Vitals = new OptionChoice<VitalsLayout>(_vitalsLayouts.Load(SessionServer(), SessionCharacter()), ChooseVitalsLayout),
+            VitalsRetailBars = new OptionChoice<bool>(_vitalsLayouts.RetailBars(SessionServer(), SessionCharacter()), SetVitalsRetailBars),
             ShortcutRow2 = new OptionChoice<bool>(_row2Choice.IsOn(SessionServer(), SessionCharacter()), SetShortcutRow2),
             ChatTextSize = new OptionChoice<int>(RetailChatWindows.LoadTextSize(_positionStore, SessionServer(), SessionCharacter()), SetChatTextSize),
             ChatFade = new OptionChoice<int>(RetailChatWindows.LoadFadeSeconds(_positionStore, SessionServer(), SessionCharacter()), SetChatFadeSeconds),
+            ChatActiveOpacity = new OptionChoice<int>(RetailChatWindows.LoadOpacity(_positionStore, SessionServer(), SessionCharacter(), RetailChatWindows.ActiveOpacityKey, RetailChatWindows.DefaultActiveOpacity), SetChatActiveOpacity),
+            ChatInactiveOpacity = new OptionChoice<int>(RetailChatWindows.LoadOpacity(_positionStore, SessionServer(), SessionCharacter(), RetailChatWindows.InactiveOpacityKey, RetailChatWindows.DefaultInactiveOpacity), SetChatInactiveOpacity),
+            ChatNameColour = new OptionChoice<int>(RetailChatWindows.LoadNameColour(_positionStore, SessionServer(), SessionCharacter()), SetChatNameColour),
             Radar = new OptionChoice<RadarOptions>(LoadRadarOptions(), SetRadarOptions),
             ResetPositions = () => _positionsResetRequested = true,
         };
@@ -925,10 +985,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private IReadOnlyList<UiWindowChoice> WindowChoices() => new[]
     {
         Choice("Inventory", RetailPanelSwitchFile, () => _lastRetailPanelSwitchCheck = default),
+        Choice("Appraisal", RetailAppraisalSwitchFile, () => { _lastAppraisalSwitchCheck = default; _appraisalSwitched = true; }),
         Choice("Toolbar", RetailToolbarSwitchFile, () => _lastToolbarSwitchCheck = default),
         Choice("Chat", RetailChatSwitchFile, () => _lastChatSwitchCheck = default),
         Choice("Vitals", RetailVitalsSwitchFile, () => _lastVitalsSwitchCheck = default),
-        Choice("Radar", RetailRadarSwitchFile, () => _lastRadarSwitchCheck = default)
+        Choice("Radar", RetailRadarSwitchFile, () => _lastRadarSwitchCheck = default),
+        Choice("Attack bar", RetailAttackSwitchFile, () => _lastAttackSwitchCheck = default)
     };
 
     private UiWindowChoice Choice(string title, string file, Action recheck)
@@ -1090,6 +1152,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         // The same for retail's vitals: Release logs a failed give-back once per streak itself.
         if (_failed && _vitals?.Holds == true) _vitals.Release();
+        // The same for retail's attack panel: Release logs a failed give-back once per streak itself.
+        if (_failed && _attack?.Holds == true) _attack.Release();
         if (_failed || !NativeUi.Ready)
             return;
 
@@ -1121,6 +1185,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             TickRetailChat();
             TickRetailVitals();
             TickRetailRadar();
+            TickRetailAttack();
             // Portal space at login comes before Decal's login complete: retail's inventory opened then is parked already,
             // and our window opens for it once the windows can.
             if (!_inGame) TickRetailPanels(loggingIn: true);
@@ -1343,6 +1408,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             }
             catch (Exception exception) { _windowFailures[pair.Key](exception); }
         }
+        // The toolbar is not a managed window: its shortcut rows light the slot a drag over them would land on.
+        if (_toolbar is { } toolbar && _toolbarSurface is { } bar)
+        {
+            Avalonia.Point? over = top == ToolbarSurfaceId ? bar.Panel.ToContent(_pointer.X - bar.Location.X, _pointer.Y - bar.Location.Y) : null;
+            try { toolbar.RetailDragOver(item, _retailDragName, over); }
+            catch (Exception exception) { ToolbarFailed(exception); }
+        }
     }
 
     /// <summary>
@@ -1425,12 +1497,27 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void TickRetailPanels(bool loggingIn = false)
     {
-        if (_retailPanels.Count == 0 && _examination == null) return;
+        if (_retailPanels.Count == 0 && _examination == null)
+        {
+            // Nothing to hand over to: a switch made now must not fire later.
+            _appraisalSwitched = false;
+            return;
+        }
         // Logging in, the windows can't open yet; they will if the post-UI hook is in.
-        var enabled = (loggingIn ? _postUiDrawHook?.IsInstalled == true : CanOpenWindows) && SwitchOn(RetailPanelSwitchFile, ref _lastRetailPanelSwitchCheck, ref _retailPanelSwitch);
+        var canOpen = loggingIn ? _postUiDrawHook?.IsInstalled == true : CanOpenWindows;
+        var enabled = canOpen && SwitchOn(RetailPanelSwitchFile, ref _lastRetailPanelSwitchCheck, ref _retailPanelSwitch);
         foreach (var takeover in _retailPanels.ToArray())
             takeover.Tick(enabled, canShow: !loggingIn);
-        _examination?.Tick(enabled, canShow: !loggingIn);
+        var appraisalOn = SwitchOn(RetailAppraisalSwitchFile, ref _lastAppraisalSwitchCheck, ref _retailAppraisalSwitch);
+        _examination?.Tick(canOpen && appraisalOn, canShow: !loggingIn);
+        // Turned to retail: the item in our window opens in retail's panel, now given back. The other way, the takeover already parks an
+        // open retail panel and examines the selection in our window.
+        if (_appraisalSwitched)
+        {
+            _appraisalSwitched = false;
+            if (!appraisalOn && _appraisal.HandOff() is var shown and not 0 && _retailExamine?.Examine(shown) != true)
+                Log("The appraisal window was switched to retail; retail's window could not reopen the item.");
+        }
     }
 
     /// <summary>
@@ -1526,13 +1613,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (_owner._windows is not { } windows) return false;
             var window = windows.HitTest(_owner._pointer);
             if (window == null) return false;
-            // A shortcut dragged off a bar is only a bar's to take: no other window is offered it as an item.
-            try
-            {
-                return _owner._shortcutDrag.Slot != null
-                    ? ItemDropRouting.DeliverShortcutTo(window, _owner.ContentOf, _owner._pointer, itemId)
-                    : ItemDropRouting.DeliverTo(window, _owner.ContentOf, _owner._pointer, itemId, itemName);
-            }
+            // A shortcut dragged off a row is only the toolbar's to take: no window is offered it as an item.
+            if (_owner._shortcutDrag.Slot != null) return false;
+            try { return ItemDropRouting.DeliverTo(window, _owner.ContentOf, _owner._pointer, itemId, itemName); }
             catch (Exception exception)
             {
                 if (_owner._windowFailures.TryGetValue(window.Id, out var failed)) failed(exception);
@@ -1776,6 +1859,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     IServerChannel ILegACEyPluginHost.ServerChannel => (IServerChannel?)_serverChannel ?? UnavailableServerChannel.Instance;
+    ILookSource ILegACEyPluginHost.Looks => _looks;
     string ILegACEyPluginHost.PortalPath => _portal?.Path ?? string.Empty;
     IGameArtSource ILegACEyPluginHost.Art => (IGameArtSource?)_portal ?? throw new InvalidOperationException("Game art is unavailable until the client UI is ready.");
     IItemDragHost ILegACEyPluginHost.ItemDrag => new ItemDragHost(this);
@@ -1972,9 +2056,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 if (surface.Panel.Frame.Width != width || surface.Panel.Frame.Height != height) surface.Panel.Resize(width, height);
                 var screen = GameDevice.ViewportSize(_device);
                 var spot = new Rectangle((screen.Width - width) / 2, screen.Height - height - (int)Math.Round(UpdateToastLift * scale), width, height);
-                var bars = new[] { _toolbarSurface is { Visible: true } bar ? bar.Bounds : (Rectangle?)null, _windows?.Get(ShortcutRowWindowId)?.Bounds,
-                    _windows?.Get(ShortcutRow2WindowId)?.Bounds };
-                var clear = ClearOf(spot, bars.OfType<Rectangle>(), (int)Math.Round(UpdateToastGap * scale));
+                var bars = _toolbarSurface is { Visible: true } bar ? new[] { bar.Bounds } : Array.Empty<Rectangle>();
+                var clear = ClearOf(spot, bars, (int)Math.Round(UpdateToastGap * scale));
                 surface.Location = new Point(Math.Max(0, clear.X), Math.Max(0, clear.Y));
             }
             surface.Prepare();
@@ -2229,15 +2312,29 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void ScaleToolbar()
     {
-        if (_windows == null || _toolbar is not { } toolbar || _toolbarSurface is not { } surface) return;
+        if (_windows == null || _toolbarSurface is not { } surface) return;
         var scale = PanelScaleOf(ToolbarPlaceId);
         if (surface.Panel.Scale == scale) return;
         surface.Panel.Resize(surface.Panel.Frame.Width, surface.Panel.Frame.Height, scale);
+        if (_splitTabSurface is { } split) split.Panel.Resize(split.Panel.Frame.Width, split.Panel.Frame.Height, scale);
+        FitToolbar();
+    }
+
+    /// <summary>
+    /// Sizes the toolbar's panel to its content at its scale, after a new scale or a shortcut row shown or hidden. In the lower half of the
+    /// screen its bottom edge stays, elsewhere its top edge, within the screen; so a row shown and hidden again puts it back where it was.
+    /// </summary>
+    private void FitToolbar()
+    {
+        if (_toolbar is not { } toolbar || _toolbarSurface is not { } surface) return;
+        var before = surface.Bounds;
+        var scale = surface.Panel.Scale;
         toolbar.InvalidateMeasure();
         toolbar.Measure(Avalonia.Size.Infinity);
         surface.Panel.Resize(WholePixels(toolbar.DesiredSize.Width * scale), WholePixels(toolbar.DesiredSize.Height * scale));
-        if (_splitTabSurface is { } split) split.Panel.Resize(split.Panel.Frame.Width, split.Panel.Frame.Height, scale);
-        var kept = OnScreen(surface.Location, surface.Bounds.Size);
+        var size = surface.Bounds.Size;
+        var lower = before.Top + before.Height / 2 > GameDevice.ViewportSize(_device).Height / 2;
+        var kept = OnScreen(new Point(before.X, lower ? before.Bottom - size.Height : before.Y), size);
         if (kept != surface.Location) _toolbarTakeover?.MoveTo(kept);
     }
 
@@ -2314,10 +2411,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var scale = WindowScale;
         var panel = ObservePanel(AvaloniaPanel.Create(() => toolbar, 1, 1, scale), ToolbarFailed);
         panel.ApplyTheme(new DerethClientTheme());
-        toolbar.Measure(Avalonia.Size.Infinity);
-        panel.Resize(WholePixels(toolbar.DesiredSize.Width * scale), WholePixels(toolbar.DesiredSize.Height * scale));
         _toolbar = toolbar;
         _toolbarSurface = new ScreenSurface(_device, panel);
+        FitToolbar();
         _splitTab = new StackSplitTab(_toolbarPort);
         var splitPanel = ObservePanel(AvaloniaPanel.Create(() => _splitTab, 1, 1, scale), ToolbarFailed);
         splitPanel.ApplyTheme(new DerethClientTheme());
@@ -2329,91 +2425,66 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         return true;
     }
 
-    /// <summary>
-    /// Shows shortcut row 1 as its own window beside the toolbar, once the takeover holds the toolbar and the windows can open. Its
-    /// position is saved like any LegACEy window's; where it first opens is beside the toolbar.
-    /// </summary>
+    /// <summary>Puts shortcut row 1 in the toolbar, and row 2 when it is on for the character, once the takeover holds the toolbar.</summary>
     private void EnsureShortcutBar()
     {
         if (_shortcutBar != null || !CanOpenWindows) return;
-        _shortcutBar = OpenShortcutRow(1, 0, ShortcutRowWindowId, ToggleShortcutRow2);
-        if (_row2Choice.IsOn(SessionServer(), SessionCharacter())) ShowShortcutRow2();
-        else SetRow2TagTip();
+        _shortcutBar = NewShortcutRow(1, 0, ToggleShortcutRow2);
+        if (_row2Choice.IsOn(SessionServer(), SessionCharacter())) _shortcutRow2 = NewShortcutRow(2, ShortcutBar.SlotCount, null);
+        ShowShortcutRows();
         Action refresh = () => { _shortcutBar?.Refresh(); _shortcutRow2?.Refresh(); };
         _inventory.Changed += refresh;
         _unsubscribeShortcutItems = () => _inventory.Changed -= refresh;
     }
 
-    /// <summary>Closes both shortcut rows, stops their refresh and frees their icons. Their saved positions stay where the player left them.</summary>
+    /// <summary>Takes both shortcut rows out of the toolbar, stops their refresh and frees their icons.</summary>
     private void CloseShortcutBar()
     {
         _unsubscribeShortcutItems?.Invoke();
         _unsubscribeShortcutItems = null;
-        HideShortcutRow2();
         if (_shortcutBar == null) return;
-        var bar = _shortcutBar;
-        _shortcutBar = null;
-        ReleaseFeatureWindow(ShortcutRowWindowId);
-        bar.Dispose();
+        var rows = new[] { _shortcutBar, _shortcutRow2 };
+        _shortcutBar = _shortcutRow2 = null;
+        ShowShortcutRows();
+        foreach (var row in rows) row?.Dispose();
     }
 
     /// <summary>Row 1's tag: turns row 2 off or on and saves the choice for the character.</summary>
     private void ToggleShortcutRow2() => SetShortcutRow2(_shortcutRow2 == null);
 
     /// <summary>
-    /// Turns row 2 on or off, and keeps the choice for the character. Row 2 sits beside row 1, so it opens only while row 1 is up; the choice is
-    /// kept either way, and row 1 opens row 2 when it is on.
+    /// Turns row 2 on or off, and keeps the choice for the character. Row 2 sits under row 1, so it shows only while row 1 is up; the choice is
+    /// kept either way, and row 1 brings row 2 when it is on.
     /// </summary>
     private void SetShortcutRow2(bool on)
     {
-        if (on && _shortcutBar != null) ShowShortcutRow2();
-        else HideShortcutRow2();
+        if (on && _shortcutBar != null && _shortcutRow2 == null)
+        {
+            // Row 2 starts at slot 9, the first slot after row 1's nine.
+            _shortcutRow2 = NewShortcutRow(2, ShortcutBar.SlotCount, null);
+            ShowShortcutRows();
+        }
+        else if (!on && _shortcutRow2 is { } row2)
+        {
+            _shortcutRow2 = null;
+            ShowShortcutRows();
+            row2.Dispose();
+        }
         _row2Choice.Save(SessionServer(), SessionCharacter(), on);
         if (_settings != null) _settings.ShortcutRow2 = new OptionChoice<bool>(on, SetShortcutRow2);
     }
 
-    private void ShowShortcutRow2()
+    /// <summary>Shows the rows there are in the toolbar, sizes the toolbar to them, and names row 1's tag click.</summary>
+    private void ShowShortcutRows()
     {
-        if (_shortcutRow2 != null) return;
-        // Row 2 starts at slot 9, the first slot after row 1's nine.
-        _shortcutRow2 = OpenShortcutRow(2, ShortcutBar.SlotCount, ShortcutRow2WindowId, null);
-        SetRow2TagTip();
+        _toolbar?.SetShortcutRows(new[] { _shortcutBar, _shortcutRow2 }.OfType<ShortcutBar>());
+        _shortcutBar?.SetTagTip(_shortcutRow2 != null ? "Hide shortcut row 2" : "Show shortcut row 2");
+        FitToolbar();
     }
 
-    private void HideShortcutRow2()
-    {
-        if (_shortcutRow2 == null) return;
-        var bar = _shortcutRow2;
-        _shortcutRow2 = null;
-        ReleaseFeatureWindow(ShortcutRow2WindowId);
-        bar.Dispose();
-        SetRow2TagTip();
-    }
-
-    private void SetRow2TagTip() => _shortcutBar?.SetTagTip(_shortcutRow2 != null ? "Hide shortcut row 2" : "Show shortcut row 2");
-
-    /// <summary>
-    /// Opens a shortcut row as its own window. It has no title bar: the frame and the row tag drag it. Without a saved position it sits beside
-    /// the toolbar (row 1) or 4 DIP above row 1 (row 2).
-    /// </summary>
-    private ShortcutBar OpenShortcutRow(int row, int firstIndex, string windowId, Action? tagClick)
-    {
-        var bar = new ShortcutBar(row, firstIndex, _toolbarPort!, ShortcutItemOf, _portal, () => NativeUi.IsUiLocked,
-            () => _windows?.BeginMove(windowId, _pointer), () => _pointer, tagClick, new ItemDragHost(this), _shortcutDrag);
-        // Measured at the window's scale, where its slots round to whole pixels, so the window holds all nine.
-        var scale = PanelScaleOf(windowId);
-        var measured = AvaloniaPanel.MeasureAt(bar, Avalonia.Size.Infinity, scale);
-        var size = new Size(DipsFor(WholePixels(measured.Width * scale), scale), DipsFor(WholePixels(measured.Height * scale), scale));
-        // No title bar: the bar drags from its content (DragsFromContent), so titleBarHeight is not used for a drag. It is set to the bar's
-        // height only because a window's title bar must be at least 1 and at most its height.
-        var definition = new WindowDefinition(windowId, $"Shortcut row {row}", size.Width, size.Height,
-            titleBarHeight: size.Height, theme: new DerethClientTheme(), dragsFromContent: true);
-        var beside = ShortcutBar.DefaultLocation(_toolbarSurface!.Bounds, size, scale);
-        // Row 2 goes above row 1 where row 1 is now, which the player may have moved.
-        var location = row == 1 ? beside : ShortcutBar.AboveRow(_windows?.Get(ShortcutRowWindowId)?.Location ?? beside, size.Height, scale);
-        OpenWindowCore(definition, bar, location, ToolbarFailed);
-        return bar;
-    }
+    /// <summary>A shortcut row for the toolbar. It has no frame of its own: a press on its tag or between its slots moves the toolbar.</summary>
+    private ShortcutBar NewShortcutRow(int row, int firstIndex, Action? tagClick) =>
+        new(row, firstIndex, _toolbarPort!, ShortcutItemOf, _portal, () => _pointer, tagClick, new ItemDragHost(this), _shortcutDrag);
 
     /// <summary>The icon and stack count of an object the player holds, from the inventory snapshot; null when it is not held.</summary>
     private ShortcutItem? ShortcutItemOf(uint id)
@@ -2430,12 +2501,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// A LegACEy window's item released on the toolbar, as the toolbar's content takes it: only its backpack takes one. A shortcut dragged
-    /// off a bar is not an item drop: released on the backpack it is only removed from its bar.
+    /// A LegACEy window's item or a shortcut released on the toolbar, as the toolbar's content takes it: a shortcut row binds it to a slot,
+    /// and the backpack takes an item. A shortcut released elsewhere on the toolbar is only removed from its row.
     /// </summary>
     private bool DeliverToToolbar(Func<object, Avalonia.Point, bool> deliver)
     {
-        if (_shortcutDrag.Slot != null || _toolbarSurface is not { } surface) return false;
+        if (_toolbarSurface is not { } surface) return false;
         var point = surface.Panel.ToContent(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y);
         try { return deliver(surface.Panel.Content, point); }
         catch (Exception exception)
@@ -2552,10 +2623,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             var canDraw = _postUiDrawHook?.IsInstalled == true && !(_windows != null && !_windowsEnabled);
             if (_chatTakeover != null && (!canDraw || _chatFailed || !switchOn))
             {
+                // The same character is still playing, so the lines and sent text come back with the Dereth chat; logoff forgets them.
+                _carriedChatHistory = _chatWindows?.History ?? _carriedChatHistory;
                 ReleaseRetailChat();
+                if (_chatTakeover != null) return;
+            }
+            if (!canDraw || !switchOn || _chatFailed)
+            {
+                ListenToRetailChat();
                 return;
             }
-            if (!canDraw || !switchOn || _chatFailed) return;
             // Retail's chat is held from portal space at login on, like the toolbar; the window opens once the windows can, and the port
             // keeps the lines that come before it. Logoff gives it back, and character select holds it again.
             if (_chatTakeover == null && !HoldRetailChat()) return;
@@ -2583,7 +2660,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var roots = new List<IRetailTakeoverPort>();
         foreach (var id in new[] { RetailChatCatalogue.MainChatWindow }.Concat(RetailChatCatalogue.FloatingChats))
             roots.Add(new RetailHeldWindows.RootPort(id));
-        _chatPort = new NativeRetailChatPort(Log, natives, (opcode, payload) => _channelTransport?.SendAction(opcode, payload) ?? false);
+        // A port that listened while retail's chat was shown carries on, so no line falls between the two.
+        _chatPort ??= NewChatPort(natives);
         _chatTakeover = new RetailHeldWindows(roots);
         try { _chatPort.Attach(); }
         catch (InvalidOperationException) { }
@@ -2602,6 +2680,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var character = SessionCharacter();
         var chats = new RetailChatWindows(port, _windows!, _positionStore, _chatTabs, server, character, () => _pointer, (definition, content, location) => OpenWindowCore(definition, content, location, ChatFailed), ReleaseFeatureWindow,
             copy: CopyToClipboard, paste: PasteFromClipboard, carried: _carriedChatHistory);
+        // A history that listened while retail's chat was shown stops taking lines: the windows' own history takes them from here.
+        _carriedChatHistory?.Dispose();
         _carriedChatHistory = null;
         // The chat's own text size control moves the Settings window's value too.
         chats.TextSizeChanged += size => { if (_settings != null) _settings.ChatTextSize = new OptionChoice<int>(size, SetChatTextSize); };
@@ -2621,6 +2701,41 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         Log($"Dereth chat window ready with {chats.Windows.Count} window(s).");
         return true;
+    }
+
+    private NativeRetailChatPort NewChatPort(RetailChatNatives natives) =>
+        new(Log, natives, (opcode, payload) => _channelTransport?.SendAction(opcode, payload) ?? false);
+
+    /// <summary>
+    /// While retail's chat is shown in a session that had the Dereth chat, a port keeps the Dereth chat's history filling, so the lines that
+    /// come meanwhile are there when it comes back. Retail's chat is left as it is. A port that cannot listen is logged once and left off
+    /// until logoff.
+    /// </summary>
+    private void ListenToRetailChat()
+    {
+        if (!_inGame || _chatListenFailed || _carriedChatHistory is not { } carried) return;
+        try
+        {
+            if (_chatPort == null)
+            {
+                var natives = ChatNatives();
+                if (!NativeUi.Ready || !natives.ChatWindow) return;
+                // Kept before it attaches, so a failure after retail registered its handler still stops it.
+                _chatPort = NewChatPort(natives);
+                carried.Dispose();
+                _carriedChatHistory = new RetailChatHistory(_chatPort, carried);
+            }
+            // Retail's notice registrar may not be ready yet; the next frame tries again.
+            try { _chatPort.Attach(); }
+            catch (InvalidOperationException) { return; }
+            _chatPort.Poll(holdsEntry: false);
+        }
+        catch (Exception exception)
+        {
+            _chatListenFailed = true;
+            Log($"Dereth chat stopped listening while retail's chat is shown; lines until it comes back are not kept: {exception}");
+            ReleaseRetailChat();
+        }
     }
 
     private RetailChatNatives ChatNatives() => _chatNatives ??= ValidateChatNatives();
@@ -2856,6 +2971,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var window = new RetailRadarWindow(port, RadarGround, RadarPlans, LoadRadarOptions(), SaveRadarOptions,
             () => (uint)Bridge.Fact(BridgeFact.CurrentSelection), () => _windows?.BeginMove(RadarWindowId, _pointer), _radarPlaceNames.NameOf);
         window.CoordinatesClicked += text => _chatWindows?.Main?.Insert(text);
+        window.PingRequested += Ping;
         // The radar has no title bar: it drags from its frame, so its title bar is only one pixel tall.
         var definition = new WindowDefinition(RadarWindowId, "Radar", RetailRadarWindow.DesignWidth, RetailRadarWindow.DesignHeight, titleBarHeight: 1,
             theme: new DerethClientTheme(), resizing: RetailRadarWindow.Resizing(() => port.UiLocked), dragsFromContent: true);
@@ -2943,6 +3059,111 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
+    /// Holds retail's attack panel in melee and missile and draws the Dereth attack bar over it, unless the <c>retail-attack-native</c> file is
+    /// beside the DLL; with it retail's panel is left as it is. The bar's port is polled each frame while its window is open.
+    /// </summary>
+    private void TickRetailAttack()
+    {
+        _attack ??= new RetailAttackTakeover(AttackNatives, HoldRetailAttack, RetailAttackPlace, OpenAttackBar, Log);
+        try
+        {
+            var switchOn = SwitchOn(RetailAttackSwitchFile, ref _lastAttackSwitchCheck, ref _attackSwitch);
+            // Retail's panel is given back if the post-UI draw is gone or the LegACEy windows failed, as the radar's is.
+            var canDraw = _postUiDrawHook?.IsInstalled == true && !(_windows != null && !_windowsEnabled);
+            var stance = switchOn && _inGame ? (RetailStance)Bridge.Fact(BridgeFact.CombatMode) : RetailStance.Peace;
+            _attack.Tick(switchOn, canDraw, _inGame, stance, GameDevice.ViewportSize(_device));
+            _attackPort?.Poll();
+        }
+        catch (Exception exception)
+        {
+            AttackFailed(exception);
+        }
+    }
+
+    /// <summary>
+    /// The attack bar's natives, checked once a session; null until the UI can be read. A check that cannot complete turns every feature off.
+    /// </summary>
+    private bool? AttackNatives()
+    {
+        if (!NativeUi.Ready || _device == IntPtr.Zero) return null;
+        return _attackNatives ??= ValidateAttackNatives();
+    }
+
+    private bool ValidateAttackNatives()
+    {
+        try { return RetailAttackCatalogue.Validate(NativeUi.ReadMemory, Log); }
+        catch (Exception exception)
+        {
+            Log($"Dereth attack bar is off: its native addresses could not be checked: {exception.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>Retail's attack panel, held by its placed id: hidden while the takeover holds it.</summary>
+    private static RetailHeldWindows HoldRetailAttack() => new(new[] { RetailAttackCatalogue.CombatPanel });
+
+    /// <summary>
+    /// Where the bar opens: centred over retail's attack panel. With the panel not laid out, at the bottom centre of the screen. The window keeps
+    /// the place the character left it at once it has one.
+    /// </summary>
+    private Point RetailAttackPlace()
+    {
+        const int ScreenBottomGap = 120;
+        var screen = _windows?.Screen ?? Size.Empty;
+        // Centred at the size the bar first draws at: its design size times the window scale.
+        var scale = _windows == null ? 1 : PanelScaleOf(DerethAttackBarWindow.WindowId);
+        int width = (int)Math.Round(DerethAttackBarArt.DesignWidth * scale), height = (int)Math.Round(DerethAttackBarArt.DesignHeight * scale);
+        var element = NativeUi.GetElement(RetailAttackCatalogue.CombatPanel);
+        if (element == IntPtr.Zero)
+            return new Point(Math.Max(0, (screen.Width - width) / 2), Math.Max(0, screen.Height - height - ScreenBottomGap));
+        var bounds = NativeUi.GetBounds(element);
+        return new Point(bounds.X + (bounds.Width - width) / 2, bounds.Y + (bounds.Height - height) / 2);
+    }
+
+    /// <summary>
+    /// Opens the Dereth attack bar at <paramref name="at"/> with its port. Null while the windows cannot open yet, so the next frame asks
+    /// again. The takeover opens it only in melee and missile, where the bar is always shown, and closes it outside them.
+    /// </summary>
+    private IDisposable? OpenAttackBar(Point at)
+    {
+        if (!CanOpenWindows) return null;
+        var port = new NativeAttackBarPort(HudNatives().Lock);
+        var window = new DerethAttackBarWindow(port, () => _windows?.BeginMove(DerethAttackBarWindow.WindowId, _pointer));
+        var definition = DerethAttackBarWindow.DefinitionOf(() => port.UiLocked);
+        try { OpenWindowCore(definition, window, at, AttackFailed); }
+        catch
+        {
+            window.Dispose();
+            throw;
+        }
+        _attackPort = port;
+        return new AttackWindowHandle(this, window, definition.Id);
+    }
+
+    private void AttackFailed(Exception exception) => _attack?.Fail(exception);
+
+    private sealed class AttackWindowHandle : IDisposable
+    {
+        private readonly ClientUiRuntime _owner;
+        private readonly DerethAttackBarWindow _window;
+        private readonly string _windowId;
+
+        public AttackWindowHandle(ClientUiRuntime owner, DerethAttackBarWindow window, string windowId)
+        {
+            _owner = owner;
+            _window = window;
+            _windowId = windowId;
+        }
+
+        public void Dispose()
+        {
+            _owner._attackPort = null;
+            _window.Dispose();
+            _owner.ReleaseFeatureWindow(_windowId);
+        }
+    }
+
+    /// <summary>
     /// Whether a feature's switch is on: on while its file is missing beside the DLL, or while a write this session could not change it
     /// holds (see <see cref="SwitchCustom"/>). The file is looked for once a second.
     /// </summary>
@@ -3010,7 +3231,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (!CanOpenWindows) return null;
         var layout = _vitalsLayouts.Load(SessionServer(), SessionCharacter());
         var definition = DerethVitalsWindow.DefinitionOf(layout, () => NativeUi.IsUiLocked);
-        var view = new DerethVitalsWindow(_gameState, () => NativeUi.IsUiLocked, () => _windows?.BeginMove(definition.Id, _pointer), layout, ChooseVitalsLayout);
+        var view = new DerethVitalsWindow(_gameState, () => NativeUi.IsUiLocked, () => _windows?.BeginMove(definition.Id, _pointer), layout, ChooseVitalsLayout,
+            _vitalsLayouts.RetailBars(SessionServer(), SessionCharacter()));
         OpenWindowCore(definition, view, at, VitalsFailed);
         return new VitalsWindowHandle(this, view, definition.Id);
     }
@@ -3024,6 +3246,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _vitalsLayouts.Save(SessionServer(), SessionCharacter(), layout);
         _vitalsLayoutPicked = true;
         if (_settings != null) _settings.Vitals = new OptionChoice<VitalsLayout>(layout, ChooseVitalsLayout);
+    }
+
+    /// <summary>Keeps whether the character's vitals bars are retail-style; the window reopens with them on the next frame, as for a layout.</summary>
+    private void SetVitalsRetailBars(bool on)
+    {
+        _vitalsLayouts.SaveRetailBars(SessionServer(), SessionCharacter(), on);
+        _vitalsLayoutPicked = true;
+        if (_settings != null) _settings.VitalsRetailBars = new OptionChoice<bool>(on, SetVitalsRetailBars);
     }
 
     /// <summary>
@@ -3052,6 +3282,36 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_chatWindows != null) _chatWindows.SetFadeSeconds(fade);
         else RetailChatWindows.SaveFadeSeconds(_positionStore, SessionServer(), SessionCharacter(), fade);
         if (_settings != null) _settings.ChatFade = new OptionChoice<int>(fade, SetChatFadeSeconds);
+    }
+
+    /// <summary>
+    /// The chat log backdrop's active opacity set from the Settings window: applied to the open chat, or kept for the chat to open with when it is
+    /// closed; either way the value is published back to the Settings window.
+    /// </summary>
+    private void SetChatActiveOpacity(int percent)
+    {
+        var opacity = RetailChatWindows.ClampOpacity(percent);
+        if (_chatWindows != null) _chatWindows.SetActiveOpacity(opacity);
+        else RetailChatWindows.SaveOpacity(_positionStore, SessionServer(), SessionCharacter(), RetailChatWindows.ActiveOpacityKey, opacity);
+        if (_settings != null) _settings.ChatActiveOpacity = new OptionChoice<int>(opacity, SetChatActiveOpacity);
+    }
+
+    /// <summary>The chat log backdrop's inactive opacity set from the Settings window; see <see cref="SetChatActiveOpacity"/>.</summary>
+    private void SetChatInactiveOpacity(int percent)
+    {
+        var opacity = RetailChatWindows.ClampOpacity(percent);
+        if (_chatWindows != null) _chatWindows.SetInactiveOpacity(opacity);
+        else RetailChatWindows.SaveOpacity(_positionStore, SessionServer(), SessionCharacter(), RetailChatWindows.InactiveOpacityKey, opacity);
+        if (_settings != null) _settings.ChatInactiveOpacity = new OptionChoice<int>(opacity, SetChatInactiveOpacity);
+    }
+
+    /// <summary>The chat's name colour set from the Settings window; see <see cref="SetChatActiveOpacity"/>.</summary>
+    private void SetChatNameColour(int index)
+    {
+        var choice = RetailChatWindows.NameColourOrDefault(index);
+        if (_chatWindows != null) _chatWindows.SetNameColour(choice);
+        else RetailChatWindows.SaveNameColour(_positionStore, SessionServer(), SessionCharacter(), choice);
+        if (_settings != null) _settings.ChatNameColour = new OptionChoice<int>(choice, SetChatNameColour);
     }
 
     private void VitalsFailed(Exception exception) => _vitals?.Fail(exception);
@@ -3457,40 +3717,19 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private static int WholePixels(double length) => (int)Math.Ceiling(length - 0.001);
 
-    /// <summary>
-    /// The whole DIPs a window definition gives for a window <paramref name="pixels"/> long, as the window manager rounds them at the scale; a
-    /// length in DIPs rounded up from a measure can open a pixel larger than the content, which then stretches into it.
-    /// </summary>
-    private static int DipsFor(int pixels, double scale)
-    {
-        var dips = (int)Math.Ceiling((pixels - 0.5) / scale);
-        while (Math.Round(dips * scale) < pixels) dips++;
-        return dips;
-    }
-
     /// <summary>Whether Ctrl and the wheel over a surface resize it: the held toolbar, or a LegACEy window other than chat.</summary>
     private bool Rescalable(string? id) => id == ToolbarSurfaceId
         ? _toolbarTakeover?.Holds == true
         : id != null && _windows?.Get(id) != null && !RetailChatWindows.IsChat(id);
 
     /// <summary>
-    /// Makes a window or the toolbar a step bigger or smaller, from Ctrl and the wheel over it. A shortcut row opens again at its new size,
-    /// since it is measured as it opens; the toolbar lays out again; any other window's panel draws at the new scale in place.
+    /// Makes a window or the toolbar a step bigger or smaller, from Ctrl and the wheel over it. The toolbar, with its shortcut rows, lays out
+    /// again; any other window's panel draws at the new scale in place.
     /// </summary>
     private void RescaleWindow(string id, int steps)
     {
         if (!AvaloniaPanel.CanScale || !_windows!.Rescale(id == ToolbarSurfaceId ? ToolbarPlaceId : id, steps)) return;
         if (id == ToolbarSurfaceId) ScaleToolbar();
-        else if (id == ShortcutRowWindowId)
-        {
-            CloseShortcutBar();
-            EnsureShortcutBar();
-        }
-        else if (id == ShortcutRow2WindowId)
-        {
-            HideShortcutRow2();
-            ShowShortcutRow2();
-        }
         else SyncWindowLocations();
     }
 
@@ -3665,6 +3904,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         catch (Exception exception) { Log($"Could not give the retail radar back during unload: {exception}"); }
         if (_radarTakeover != null) Log("Retail's radar is still held after two tries at unload; it stays hidden until the client restarts.");
+        try
+        {
+            _attack?.Release();
+            if (_attack?.Holds == true) _attack?.Release();
+        }
+        catch (Exception exception) { Log($"Could not give the retail attack panel back during unload: {exception}"); }
+        if (_attack?.Holds == true) Log("Retail's attack panel is still held after two tries at unload; it stays hidden until the client restarts.");
+        // Kept while still held, so a disabled UI's frames go on retrying the give-back.
+        else _attack = null;
         DisposeRadarGround();
         if (_itemDragActive)
             try { _retailDrag?.ClearDropIndicator(); } catch (Exception exception) { Log($"Could not clear the inventory drop indicator: {exception.Message}"); }

@@ -267,6 +267,18 @@ public sealed class InventoryPluginTests
     });
 
     [Fact]
+    public void On_any_server_the_doll_shows_the_look_the_game_sent() => RenderThread.Run(() =>
+    {
+        using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
+        client.LookCache.Receive(LookCache.CreateObject, LookCacheTests.Created(FakeInventoryClient.Player, setup: 0x02000001));
+        client.SaveSettings(VerticalSlotsOff);
+        new InventoryPlugin().Start(client);
+        client.Retail!.Toggle();
+
+        Assert.Single(ModelViews(client.Panel(Vertical)));
+    });
+
+    [Fact]
     public void A_window_opened_before_the_server_lists_the_look_gets_its_doll_when_the_list_arrives() => RenderThread.Run(() =>
     {
         var transport = new LookTransport();
@@ -373,7 +385,7 @@ public sealed class InventoryPluginTests
         Assert.Null(panel.LastError);
         AssertNothingOutsideFrame(panel);
         var grid = Assert.Single(panel.Content.GetVisualDescendants().OfType<DerethSlotGrid>());
-        Assert.True(grid.Bounds.Height >= DerethSlotGrid.CellSize, $"The grid is {grid.Bounds.Height} px tall, less than one row.");
+        Assert.True(grid.Bounds.Height >= ItemCellSize.At(1).Cell, $"The grid is {grid.Bounds.Height} px tall, less than one row.");
     }
 
     /// <summary>The main pack, the divider and the seven side packs are eight pack tabs, and they all sit on one row.</summary>
@@ -461,6 +473,9 @@ public sealed class InventoryPluginTests
         public AvaloniaPanel Panel(string id) => _panels[id];
 
         public IServerChannel ServerChannel { get; set; } = UnavailableServerChannel.Instance;
+        public const uint Player = 0x50000001;
+        public LookCache LookCache { get; } = new();
+        public ILookSource Looks => new GameLooks(LookCache, () => ServerChannel, SupportsAction, () => Player);
         public string PortalPath => string.Empty;
         public IGameArtSource Art { get; } = new InventorySample.NoArt();
         public IItemDragHost ItemDrag { get; } = new FakeItemDragHost();

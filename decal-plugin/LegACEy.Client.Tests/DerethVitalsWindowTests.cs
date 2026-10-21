@@ -2,7 +2,6 @@ using System;
 using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using Avalonia.Controls;
 using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
@@ -136,11 +135,13 @@ public sealed class DerethVitalsWindowTests
     });
 
     [Theory]
-    [InlineData(VitalsLayout.Stacked)]
-    [InlineData(VitalsLayout.SideBySide)]
-    public void Hovering_a_bar_names_the_vital_and_gives_its_value(VitalsLayout layout) => RenderThread.Run(() =>
+    [InlineData(VitalsLayout.Stacked, false)]
+    [InlineData(VitalsLayout.SideBySide, false)]
+    [InlineData(VitalsLayout.Stacked, true)]
+    [InlineData(VitalsLayout.SideBySide, true)]
+    public void Hovering_a_bar_names_the_vital_and_gives_its_value(VitalsLayout layout, bool retailBars) => RenderThread.Run(() =>
     {
-        var view = new DerethVitalsWindow(Game(), () => false, () => { }, layout);
+        var view = new DerethVitalsWindow(Game(), () => false, () => { }, layout, retailBars: retailBars);
 
         view.Refresh(TimeSpan.Zero);
 
@@ -148,14 +149,16 @@ public sealed class DerethVitalsWindowTests
         Assert.Equal("Mana 37 / 100", view.TooltipOf(Vital.Mana));
     });
 
-    // Both layouts show the same bars the same way: values, a trail behind a drop, and the health pulse.
+    // Both layouts, with Dereth or retail-style bars, show the same bars the same way: values, a trail behind a drop, and the health pulse.
     [Theory]
-    [InlineData(VitalsLayout.Stacked)]
-    [InlineData(VitalsLayout.SideBySide)]
-    public void The_bars_follow_the_published_values_a_drop_leaves_a_trail_that_drains_and_low_health_pulses(VitalsLayout layout) => RenderThread.Run(() =>
+    [InlineData(VitalsLayout.Stacked, false)]
+    [InlineData(VitalsLayout.SideBySide, false)]
+    [InlineData(VitalsLayout.Stacked, true)]
+    [InlineData(VitalsLayout.SideBySide, true)]
+    public void The_bars_follow_the_published_values_a_drop_leaves_a_trail_that_drains_and_low_health_pulses(VitalsLayout layout, bool retailBars) => RenderThread.Run(() =>
     {
         var game = new GameStatePort(new GameStateSnapshot("Alice", Server, 300, 412, 250, 380, 150, 298));
-        var view = new DerethVitalsWindow(game, () => false, () => { }, layout);
+        var view = new DerethVitalsWindow(game, () => false, () => { }, layout, retailBars: retailBars);
         view.Refresh(TimeSpan.Zero);
         var bars = Bars(view);
         Assert.Equal(new[] { "300/412", "250/380", "150/298" }, Labels(view));
@@ -212,6 +215,39 @@ public sealed class DerethVitalsWindowTests
         Assert.Equal(VitalsLayout.SideBySide, kept.Load(Server, "Alice"));
         Assert.Equal(VitalsLayout.Stacked, kept.Load(Server, "Bob"));
         Assert.Equal(VitalsLayout.Stacked, kept.Load("Other", "Alice"));
+    });
+
+    [Theory]
+    [InlineData(VitalsLayout.Stacked)]
+    [InlineData(VitalsLayout.SideBySide)]
+    public void Retail_style_bars_have_no_glyphs_and_their_numbers_sit_in_the_middle_of_each_bar(VitalsLayout layout) => RenderThread.Run(() =>
+    {
+        var side = layout == VitalsLayout.SideBySide;
+        var view = new DerethVitalsWindow(Game(), () => false, () => { }, layout, retailBars: true);
+        using var panel = AvaloniaPanel.Create(() => view, side ? DerethVitalsWindow.SideDesignWidth : DerethVitalsWindow.DesignWidth,
+            side ? DerethVitalsWindow.SideDesignHeight : DerethVitalsWindow.DesignHeight);
+        panel.Tick();
+
+        Assert.Empty(panel.Content.GetVisualDescendants().OfType<DerethVitalGlyph>());
+        Assert.Empty(panel.Content.GetVisualDescendants().OfType<DerethValuePlaque>());
+        var bar = Bars(view)[0];
+        var label = view.GetLogicalDescendants().OfType<TextBlock>().First(text => text.Inlines?.Text?.Contains('/') == true);
+        // The label shares the bar's cell; its laid-out box, before the shift that centres Palatino's digits, is centred on the bar.
+        Assert.Same(bar.Parent, label.Parent);
+        Assert.InRange(label.Bounds.Center.X - bar.Bounds.Center.X, -1, 1);
+        Assert.InRange(label.Bounds.Center.Y - bar.Bounds.Center.Y, -1, 1);
+    });
+
+    [Fact]
+    public void Retail_style_bars_are_kept_per_character() => RenderThread.Run(() =>
+    {
+        var kept = new VitalsLayoutChoice(new MemoryWindowPositionStore());
+        kept.SaveRetailBars(Server, "Alice", true);
+
+        Assert.True(kept.RetailBars(Server, "Alice"));
+        Assert.False(kept.RetailBars(Server, "Bob"));
+        // The layout is kept apart from it.
+        Assert.Equal(VitalsLayout.Stacked, kept.Load(Server, "Alice"));
     });
 
     [Fact]
@@ -359,6 +395,13 @@ public sealed class DerethVitalsWindowTests
             // The pointer over each default window: the grip and the layout gear show.
             Render(Path.Combine(folder, $"hover-stacked-252x84-{scale:0}x.png"), VitalsLayout.Stacked, 252, 84, scale, hover: true, (full, 0));
             Render(Path.Combine(folder, $"hover-side-440x26-{scale:0}x.png"), VitalsLayout.SideBySide, 440, 26, scale, hover: true, (full, 0));
+            // Retail-style bars in each layout, at its default size and drawn larger.
+            foreach (var (layout, width, height) in new[] { (VitalsLayout.Stacked, 252, 84), (VitalsLayout.Stacked, 504, 168), (VitalsLayout.SideBySide, 440, 26), (VitalsLayout.SideBySide, 880, 52) })
+            {
+                var name = $"retail-{(layout == VitalsLayout.Stacked ? "stacked" : "side")}-{width}x{height}-{scale:0}x.png";
+                Render(Path.Combine(folder, "full-" + name), layout, width, height, scale, hover: false, retailBars: true, (full, 0));
+                Render(Path.Combine(folder, "low-" + name), layout, width, height, scale, hover: false, retailBars: true, (full, 0), (low, 1));
+            }
         }
     });
 
@@ -367,12 +410,15 @@ public sealed class DerethVitalsWindowTests
     /// frame. With <paramref name="hover"/> the pointer is over the window first.
     /// </summary>
     private static void Render(string path, VitalsLayout layout, int width, int height, double scale, params (GameStateSnapshot State, double Seconds)[] frames) =>
-        Render(path, layout, width, height, scale, hover: false, frames);
+        Render(path, layout, width, height, scale, hover: false, retailBars: false, frames);
 
-    private static void Render(string path, VitalsLayout layout, int width, int height, double scale, bool hover, params (GameStateSnapshot State, double Seconds)[] frames)
+    private static void Render(string path, VitalsLayout layout, int width, int height, double scale, bool hover, params (GameStateSnapshot State, double Seconds)[] frames) =>
+        Render(path, layout, width, height, scale, hover, retailBars: false, frames);
+
+    private static void Render(string path, VitalsLayout layout, int width, int height, double scale, bool hover, bool retailBars, params (GameStateSnapshot State, double Seconds)[] frames)
     {
         var game = new GameStatePort(frames[0].State);
-        var view = new DerethVitalsWindow(game, () => false, () => { }, layout);
+        var view = new DerethVitalsWindow(game, () => false, () => { }, layout, retailBars: retailBars);
         using var panel = AvaloniaPanel.Create(() => view, (int)Math.Round(width * scale), (int)Math.Round(height * scale), scale);
         foreach (var (state, seconds) in frames)
         {
@@ -381,15 +427,7 @@ public sealed class DerethVitalsWindowTests
         }
         if (hover) panel.PointerMove(width * scale / 2, height * scale / 2);
         panel.Tick();
-        var frame = panel.Frame;
-        using var bitmap = new Avalonia.Media.Imaging.WriteableBitmap(new Avalonia.PixelSize(frame.Width, frame.Height), new Avalonia.Vector(96, 96),
-            Avalonia.Platform.PixelFormat.Bgra8888, Avalonia.Platform.AlphaFormat.Premul);
-        using (var locked = bitmap.Lock())
-        {
-            Assert.Equal(frame.Stride, locked.RowBytes);
-            Marshal.Copy(frame.Pixels, 0, locked.Address, frame.Pixels.Length);
-        }
-        bitmap.Save(path);
+        PanelPng.Save(panel, path);
     }
 
     private static List<DerethVitalBar> Bars(DerethVitalsWindow view) => view.GetLogicalDescendants().OfType<DerethVitalBar>().ToList();

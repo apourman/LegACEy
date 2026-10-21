@@ -56,7 +56,7 @@ public sealed class DerethSegmented : Border
         Light();
     }
 
-    /// <summary>The index of the chosen option. Setting it lights that option; no event is raised.</summary>
+    /// <summary>The index of the chosen option, or -1 for none. Setting it lights that option; no event is raised.</summary>
     public int Selected
     {
         get => _selected;

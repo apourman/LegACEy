@@ -441,19 +441,16 @@ public sealed class DerethWindow : UserControl
 }
 
 /// <summary>
-/// A scrolling grid of fixed slots: 34 px cells on a 35 px pitch, as many columns as the width holds, centred, scrolling
+/// A scrolling grid of fixed slots on the <see cref="ItemCellSize"/> pitch, as many columns as the width holds, centred, scrolling
 /// vertically. It takes cells and knows nothing about what they show. It wraps a plain ScrollViewer, because a subclass
 /// gets no template from the base theme.
 /// </summary>
 public sealed class DerethSlotGrid : UserControl
 {
-    public const double CellSize = 34;
-    public const double Pitch = 35;
-
     private readonly WrapPanel _cells = new()
     {
         // The margin keeps the top and bottom rows' drop frames off the scroll area's clipped edge.
-        ItemWidth = Pitch, ItemHeight = Pitch, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 1)
+        HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 1)
     };
 
     public DerethSlotGrid()
@@ -465,6 +462,13 @@ public sealed class DerethSlotGrid : UserControl
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto
         };
         Content = scroll;
+    }
+
+    // The pitch follows the window's scale, which can change without a rebuild.
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        _cells.ItemWidth = _cells.ItemHeight = ItemCellSize.Of(this).Pitch;
+        return base.MeasureOverride(availableSize);
     }
 
     /// <summary>The distance between the left edges of neighbouring columns: the pitch. Width that holds no whole column is split between the sides.</summary>
@@ -514,11 +518,9 @@ public sealed class DerethSlot : Grid
     private readonly Border _outline;
     private bool _carried;
 
-    /// <summary>A slot holding the content: a 34 px framed well, centred in its pitch, with a selected state.</summary>
+    /// <summary>A slot holding the content: a framed well round a native-size icon (see <see cref="ItemCellSize"/>), centred in its pitch, with a selected state.</summary>
     public DerethSlot(Control? content)
     {
-        Width = DerethSlotGrid.CellSize;
-        Height = DerethSlotGrid.CellSize;
         HorizontalAlignment = HorizontalAlignment.Center;
         Background = Brushes.Transparent;
         _wash = new Border { Margin = new Thickness(2), CornerRadius = new CornerRadius(3), Background = WashBrush, IsVisible = false, IsHitTestVisible = false };
@@ -561,5 +563,12 @@ public sealed class DerethSlot : Grid
             _outline.BorderBrush = value ? CarriedBrush : DerethPalette.TealBrush;
             _outline.BoxShadow = value ? CarriedGlow : SelectedGlow;
         }
+    }
+
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        var side = ItemCellSize.Of(this).Cell;
+        base.MeasureOverride(new Size(side, side));
+        return new Size(side, side);
     }
 }

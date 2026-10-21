@@ -17,17 +17,15 @@ public sealed record ShortcutItem(ItemVisual Visual, int StackCount);
 public sealed record ShortcutSlotView(int Index, ShortcutItem? Item);
 
 /// <summary>
-/// One shortcut row as a window of its own: a row tag and nine 30 DIP slots. A slot shows its item's icon and stack count, with its key
-/// number in the corner, or only its key number when empty. A click uses the slot. The frame and the tag drag the bar, unless retail's UI
-/// is locked; a press on a slot never does. A drag from a slot moves the shortcut to the slot it is released on, or takes it off the bars
-/// when no LegACEy window takes it. A drop of an item from outside binds it to the slot it is released on.
+/// One shortcut row inside the toolbar: a row tag and nine item slots, which keep icons at native size (see <see cref="ItemCellSize"/>). A slot
+/// shows its item's icon and stack count, with its key number in the corner, or only its key number when empty. A click uses the slot. A
+/// press on the tag or between slots is left to the toolbar, which moves; a press on a slot never does. A drag from a slot moves the
+/// shortcut to the slot it is released on, or takes it off the bars when no LegACEy window takes it. A drop of an item from outside binds
+/// it to the slot it is released on.
 /// </summary>
 public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
 {
-    /// <summary>The bar's height in DIPs, the toolbar's.</summary>
-    public const int BarHeight = 48;
     public const int SlotCount = 9;
-    private const double SlotSize = 30;
     private const double Gap = 3;
     private const double DragThreshold = 4;
     // The slot index a drag over the bar would land on, lit while it is there.
@@ -42,8 +40,6 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     private readonly Func<uint, ShortcutItem?> _itemOf;
     private readonly IGameArtSource? _art;
     private readonly int _firstIndex;
-    private readonly Func<bool> _uiLocked;
-    private readonly Action _startMove;
     private readonly Func<System.Drawing.Point> _pointer;
     private readonly Action? _tagClick;
     private readonly IItemDragHost _drag;
@@ -55,8 +51,7 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     // The drag of a shortcut from a slot: its icon while it is held.
     private IDisposable? _dragIcon;
     // The tag first, then one slot per shortcut.
-    // The toolbar's row height inside the same frame, so at any UI size both bars round to the same height.
-    private readonly StackPanel _row = new() { Orientation = Orientation.Horizontal, Spacing = Gap, Height = 32 };
+    private readonly DerethItemRow _row = new() { Spacing = Gap };
     private readonly ShortcutSlotView?[] _shown = new ShortcutSlotView?[SlotCount];
     // The icon each slot's art was drawn into; a slot's icon is disposed when the slot is rebuilt or the bar closes.
     private readonly WriteableBitmap?[] _icons = new WriteableBitmap?[SlotCount];
@@ -66,21 +61,17 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     /// <param name="port">Retail's shortcut list and its use.</param>
     /// <param name="itemOf">The icon and stack count of an object the player holds; null when it is not held.</param>
     /// <param name="art">Game art for the icons; null draws a placeholder.</param>
-    /// <param name="uiLocked">Whether retail's UI is locked: a locked bar does not move.</param>
-    /// <param name="startMove">Starts the window's move, from the pointer's place, on a press on the frame or the tag.</param>
     /// <param name="pointer">The pointer's place now, in screen pixels: a tag press and release at one place is a click.</param>
     /// <param name="tagClick">Run on a click on the row tag; null for a tag that does nothing but drag.</param>
     /// <param name="drag">The client's drag services: a shortcut dragged from a slot is handed to the LegACEy window under the pointer.</param>
     /// <param name="dragSource">The slot a shortcut drag started from, shared with the other bars.</param>
     public ShortcutBar(int row, int firstIndex, IRetailToolbarPort port, Func<uint, ShortcutItem?> itemOf, IGameArtSource? art,
-        Func<bool> uiLocked, Action startMove, Func<System.Drawing.Point> pointer, Action? tagClick, IItemDragHost drag, ShortcutDragSource dragSource)
+        Func<System.Drawing.Point> pointer, Action? tagClick, IItemDragHost drag, ShortcutDragSource dragSource)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _itemOf = itemOf ?? throw new ArgumentNullException(nameof(itemOf));
         _art = art;
         _firstIndex = firstIndex;
-        _uiLocked = uiLocked ?? throw new ArgumentNullException(nameof(uiLocked));
-        _startMove = startMove ?? throw new ArgumentNullException(nameof(startMove));
         _pointer = pointer ?? throw new ArgumentNullException(nameof(pointer));
         _tagClick = tagClick;
         _drag = drag ?? throw new ArgumentNullException(nameof(drag));
@@ -96,19 +87,8 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
             }
         });
-        for (var i = 0; i < SlotCount; i++) _row.Children.Add(new DerethSlot(null) { Width = SlotSize, Height = SlotSize });
+        for (var i = 0; i < SlotCount; i++) _row.Children.Add(new DerethSlot(null));
 
-        // A transparent square takes the pointer over the whole frame, as the medallions do; a frame alone takes none.
-        var hit = new Border
-        {
-            Background = Brushes.Transparent,
-            Child = new DerethFrame(DerethFrameArt.Window) { Child = new Border { Padding = new Thickness(4, 0), Child = _row } }
-        };
-        // A slot marks its presses handled, so only the frame and the tag, and the gaps between slots, reach this press.
-        hit.PointerPressed += (_, e) =>
-        {
-            if (e.GetCurrentPoint(hit).Properties.IsLeftButtonPressed && !_uiLocked()) _startMove();
-        };
         // A tag press that ends where the pointer started is a click; a move in between was a drag of the bar.
         RowTag.PointerPressed += (_, e) =>
         {
@@ -123,12 +103,12 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
         // A press that ends off the tag is not a click on it, so a stale press cannot toggle later.
         RowTag.PointerExited += (_, _) => _tagPressAt = null;
         RowTag.PointerCaptureLost += (_, _) => _tagPressAt = null;
-        Child = hit;
+        Child = _row;
         Refresh();
         port.Changed += Refresh;
     }
 
-    /// <summary>The bar's row tag: a press on it drags the bar, and a click on it runs the tag's click.</summary>
+    /// <summary>The bar's row tag: a press on it drags the toolbar, and a click on it runs the tag's click.</summary>
     public Control RowTag => (Control)_row.Children[0];
 
     /// <summary>The hover name of the row tag: what a click on it does.</summary>
@@ -137,21 +117,8 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     /// <summary>The slot at a position in the row, zero-based: where the player clicks it.</summary>
     public Control SlotAt(int position) => (Control)_row.Children[position + 1];
 
-    /// <summary>
-    /// The default place for a shortcut bar beside the toolbar: the bar's right edge 4 DIP left of the toolbar's left edge, and its bottom
-    /// level with the toolbar's. <paramref name="toolbar"/> and the result are screen pixels; <paramref name="bar"/> is in DIPs.
-    /// </summary>
-    public static System.Drawing.Point DefaultLocation(System.Drawing.Rectangle toolbar, System.Drawing.Size bar, double scale)
-    {
-        var gap = (int)Math.Round(4 * scale);
-        return new System.Drawing.Point(
-            toolbar.Left - gap - (int)Math.Round(bar.Width * scale),
-            toolbar.Bottom - (int)Math.Round(bar.Height * scale));
-    }
-
-    /// <summary>The place for a bar <paramref name="height"/> DIPs tall 4 DIP above another bar at <paramref name="row"/>: the same left edge, its bottom 4 DIP above the other's top.</summary>
-    public static System.Drawing.Point AboveRow(System.Drawing.Point row, int height, double scale) =>
-        new(row.X, row.Y - (int)Math.Round(4 * scale) - (int)Math.Round(height * scale));
+    /// <summary>Whether a shortcut dragged off a bar is in hand: only a bar takes it, so the toolbar's backpack must not.</summary>
+    public bool ShortcutInHand => _dragSource.Slot != null;
 
     /// <summary>Shows the port's shortcuts for this row, with the items the player holds. A slot whose item is gone shows empty.</summary>
     public void Refresh()
@@ -178,7 +145,7 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
         ShowDropAt();
     }
 
-    /// <summary>Stops following the port and frees the icons. The bar's window is released by the client first.</summary>
+    /// <summary>Stops following the port and frees the icons. The toolbar lets go of the bar first.</summary>
     public void Dispose()
     {
         _port.Changed -= Refresh;
@@ -245,7 +212,7 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     private DerethSlot Slot(ShortcutSlotView view, int position)
     {
         _icons[position] = null;
-        var slot = new DerethSlot(Contents(view, position)) { Width = SlotSize, Height = SlotSize };
+        var slot = new DerethSlot(Contents(view, position));
         slot.PointerPressed += (_, e) =>
         {
             e.Handled = true;
@@ -270,7 +237,12 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
             _pressed = null;
             if (!wasPressed) return;
             if (_dragIcon != null) EndDrag();
-            else if (view.Item != null && new Rect(slot.Bounds.Size).Contains(e.GetPosition(slot))) _port.UseShortcut(view.Index);
+            else if (view.Item != null && new Rect(slot.Bounds.Size).Contains(e.GetPosition(slot)))
+            {
+                // A click selects the item too, as retail's slot click does, so it can be examined; the number key only uses it.
+                if (ShortcutEdits.ObjectAt(_port.Shortcuts, view.Index) is var objectId and not 0) _port.Select(objectId);
+                _port.UseShortcut(view.Index);
+            }
             if (_refreshPending) Refresh();
         };
         // A capture that ends mid-drag cancels it. After a release the drag is already over, so this does nothing then.
@@ -362,6 +334,6 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
             return new TextBlock { Text = "?", FontFamily = DerethPalette.Body, FontSize = 12, Foreground = DerethPalette.MutedBrush,
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         _icons[position] = bitmap;
-        return new Image { Source = bitmap, Width = 28, Height = 28, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        return DerethItemCells.Icon(bitmap);
     }
 }

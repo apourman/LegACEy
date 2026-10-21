@@ -52,9 +52,13 @@ public sealed class ClientSettings
     private WaterOption? _water;
     private LockUiChoice? _lockUi;
     private OptionChoice<VitalsLayout>? _vitals;
+    private OptionChoice<bool>? _vitalsRetailBars;
     private OptionChoice<bool>? _shortcutRow2;
     private OptionChoice<int>? _chatTextSize;
     private OptionChoice<int>? _chatFade;
+    private OptionChoice<int>? _chatActiveOpacity;
+    private OptionChoice<int>? _chatInactiveOpacity;
+    private OptionChoice<int>? _chatNameColour;
     private OptionChoice<RadarOptions>? _radar;
 
     /// <param name="uiSize">The UI size, for all characters. Null where the UI cannot scale, which hides the row.</param>
@@ -84,6 +88,9 @@ public sealed class ClientSettings
     /// <summary>The Vitals window's layout, for this character. Null hides its row.</summary>
     public OptionChoice<VitalsLayout>? Vitals { get => _vitals; set => Moved(ref _vitals, value); }
 
+    /// <summary>Whether the Vitals window's bars are retail-style, for this character. Null hides its row.</summary>
+    public OptionChoice<bool>? VitalsRetailBars { get => _vitalsRetailBars; set => Moved(ref _vitalsRetailBars, value); }
+
     /// <summary>Whether the toolbar's second shortcut row is shown, for this character. Null hides its row.</summary>
     public OptionChoice<bool>? ShortcutRow2 { get => _shortcutRow2; set => Moved(ref _shortcutRow2, value); }
 
@@ -92,6 +99,15 @@ public sealed class ClientSettings
 
     /// <summary>The chat's idle fade delay in seconds, for this character; <see cref="RetailChatWindows.NeverFades"/> (0) never fades. Null hides its row.</summary>
     public OptionChoice<int>? ChatFade { get => _chatFade; set => Moved(ref _chatFade, value); }
+
+    /// <summary>The chat log backdrop's opacity in percent while the chat is awake, for this character. Null hides its row.</summary>
+    public OptionChoice<int>? ChatActiveOpacity { get => _chatActiveOpacity; set => Moved(ref _chatActiveOpacity, value); }
+
+    /// <summary>The chat log backdrop's opacity in percent once the chat is idle, for this character. Null hides its row.</summary>
+    public OptionChoice<int>? ChatInactiveOpacity { get => _chatInactiveOpacity; set => Moved(ref _chatInactiveOpacity, value); }
+
+    /// <summary>The colour chat draws names in, for this character, as an index into <see cref="RetailChatWindows.NameColours"/>. Null hides its row.</summary>
+    public OptionChoice<int>? ChatNameColour { get => _chatNameColour; set => Moved(ref _chatNameColour, value); }
 
     /// <summary>The radar's options for this character. Null hides its rows.</summary>
     public OptionChoice<RadarOptions>? Radar { get => _radar; set => Moved(ref _radar, value); }
@@ -224,10 +240,10 @@ public sealed class SettingsPanel : UserControl
         () => _settings.UiSize?.Percent, percent => _settings.UiSize?.Set(percent));
 
     /// <summary>
-    /// A labelled slider for all characters, with the percent beside it. The readout follows the thumb as it is dragged, and <paramref name="commit"/>
-    /// gets the value when the pointer lets go. <paramref name="current"/> is the value to show, or null when the setting is gone.
+    /// A labelled slider for all characters, or for this one, with the percent beside it. The readout follows the thumb as it is dragged, and
+    /// <paramref name="commit"/> gets the value when the pointer lets go. <paramref name="current"/> is the value to show, or null when the setting is gone.
     /// </summary>
-    private Control SliderRow(string label, int smallest, int largest, int step, Func<int?> current, Action<int> commit)
+    private Control SliderRow(string label, int smallest, int largest, int step, Func<int?> current, Action<int> commit, bool thisCharacter = false)
     {
         var slider = new DerethSlider(smallest, largest, step);
         var readout = new TextBlock { FontFamily = DerethPalette.Body, FontSize = 12.5, Foreground = DerethPalette.CreamBrush, VerticalAlignment = VerticalAlignment.Center };
@@ -246,7 +262,7 @@ public sealed class SettingsPanel : UserControl
         var head = new DockPanel();
         DockPanel.SetDock(readout, Dock.Right);
         head.Children.Add(readout);
-        head.Children.Add(ScopedLabel(label));
+        head.Children.Add(ScopedLabel(label, thisCharacter));
         return new StackPanel { Spacing = 4, Children = { head, slider } };
     }
 
@@ -283,8 +299,40 @@ public sealed class SettingsPanel : UserControl
     private Control WindowsPane()
     {
         var pane = new StackPanel { Spacing = 10 };
+        if (_settings.Windows.Count > 1) pane.Children.Add(AllWindowsRow());
         foreach (var window in _settings.Windows) pane.Children.Add(WindowCard(window));
         return pane;
+    }
+
+    /// <summary>
+    /// One Dereth / Retail switch for every window at once. It lights Dereth when all windows are on Dereth, Retail when all are on retail,
+    /// and neither when they differ.
+    /// </summary>
+    private Control AllWindowsRow()
+    {
+        var switchOfAll = new DerethSegmented(new[] { "Dereth", "Retail" }, blueOption: 1);
+        var row = new DockPanel { Margin = new Thickness(10, 0) };
+        DockPanel.SetDock(switchOfAll, Dock.Right);
+        row.Children.Add(switchOfAll);
+        row.Children.Add(new TextBlock
+        {
+            Text = "All windows", FontFamily = DerethPalette.Title, FontSize = 15, Foreground = DerethPalette.CreamBrush,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+
+        void Show()
+        {
+            var onDereth = _settings.Windows.Count(window => window.IsCustom());
+            switchOfAll.Selected = onDereth == _settings.Windows.Count ? 0 : onDereth == 0 ? 1 : -1;
+        }
+        switchOfAll.Chosen += index =>
+        {
+            foreach (var window in _settings.Windows) window.SetCustom(index == 0);
+            OnChanged(this, EventArgs.Empty);
+        };
+        _redraws.Add(Show);
+        Show();
+        return row;
     }
 
     private Control WindowCard(UiWindowChoice window)
@@ -319,7 +367,7 @@ public sealed class SettingsPanel : UserControl
         switchOfWindow.Chosen += index =>
         {
             window.SetCustom(index == 0);
-            Show();
+            OnChanged(this, EventArgs.Empty);
         };
         _redraws.Add(Show);
         Show();
@@ -330,10 +378,16 @@ public sealed class SettingsPanel : UserControl
     private List<Control> OptionRows(string window)
     {
         var rows = new List<Control>();
-        if (window == "Toolbar" && _settings.ShortcutRow2 != null) rows.Add(ShortcutRow2Row());
+        if (window == "Toolbar" && _settings.ShortcutRow2 != null) rows.Add(ToggleRow("Second shortcut row", () => _settings.ShortcutRow2));
         if (window == "Chat" && _settings.ChatTextSize != null) rows.Add(ChatTextSizeRow());
         if (window == "Chat" && _settings.ChatFade != null) rows.Add(ChatFadeRow());
+        if (window == "Chat" && _settings.ChatActiveOpacity != null) rows.Add(SliderRow("Active opacity", 0, 100, RetailChatWindows.OpacityStep,
+            () => _settings.ChatActiveOpacity?.Value, value => _settings.ChatActiveOpacity?.Set(value), thisCharacter: true));
+        if (window == "Chat" && _settings.ChatInactiveOpacity != null) rows.Add(SliderRow("Inactive opacity", 0, 100, RetailChatWindows.OpacityStep,
+            () => _settings.ChatInactiveOpacity?.Value, value => _settings.ChatInactiveOpacity?.Set(value), thisCharacter: true));
+        if (window == "Chat" && _settings.ChatNameColour != null) rows.Add(ChatNameColourRow());
         if (window == "Vitals" && _settings.Vitals != null) rows.Add(VitalsRow());
+        if (window == "Vitals" && _settings.VitalsRetailBars != null) rows.Add(ToggleRow("Retail-style bars", () => _settings.VitalsRetailBars));
         if (window == "Radar" && _settings.Radar != null) rows.AddRange(RadarRows());
         return rows;
     }
@@ -358,14 +412,15 @@ public sealed class SettingsPanel : UserControl
         return OptionRow("Layout", layout);
     }
 
-    private Control ShortcutRow2Row()
+    /// <summary>A toggle row for an on/off option, read through <paramref name="option"/> so it follows the settings' current value.</summary>
+    private Control ToggleRow(string text, Func<OptionChoice<bool>?> option)
     {
         var toggle = new DerethToggle();
-        void Show() => toggle.On = _settings.ShortcutRow2 is { Value: true };
-        toggle.Changed += on => _settings.ShortcutRow2?.Set(on);
+        void Show() => toggle.On = option() is { Value: true };
+        toggle.Changed += on => option()?.Set(on);
         _redraws.Add(Show);
         Show();
-        return OptionRow("Second shortcut row", toggle);
+        return OptionRow(text, toggle);
     }
 
     /// <summary>The chat text size, stepped down or up in the chat's steps and within its bounds.</summary>
@@ -396,13 +451,14 @@ public sealed class SettingsPanel : UserControl
         return OptionRow("Text size", stepper);
     }
 
-    /// <summary>How long the chat waits before it fades when left alone. Never is 0 seconds.</summary>
+    /// <summary>How long the chat waits before it fades when left alone. Never is 0 seconds; Instant fades as soon as it is left.</summary>
     private Control ChatFadeRow()
     {
         // Labelled as the mockup does: only the longest choice carries its unit.
         var fade = new DerethSegmented(RetailChatWindows.FadeChoices.Select(seconds => seconds switch
         {
             RetailChatWindows.NeverFades => "Never",
+            RetailChatWindows.FadesInstantly => "Instant",
             60 => "60 s",
             _ => seconds.ToString(CultureInfo.InvariantCulture),
         }).ToArray());
@@ -410,7 +466,20 @@ public sealed class SettingsPanel : UserControl
         fade.Chosen += index => _settings.ChatFade?.Set(RetailChatWindows.FadeChoices[index]);
         _redraws.Add(Show);
         Show();
-        return OptionRow("Fade when idle", fade);
+        // Six choices leave no room beside the label, so they sit on their own line under it.
+        fade.HorizontalAlignment = HorizontalAlignment.Right;
+        return new StackPanel { Spacing = 6, Children = { ScopedLabel("Fade when idle", thisCharacter: true), fade } };
+    }
+
+    /// <summary>The colour names are drawn in: retail's (the line's own, green in a spell's words), or one picked for every name.</summary>
+    private Control ChatNameColourRow()
+    {
+        var colour = new DerethSegmented(RetailChatWindows.NameColours.Select(choice => choice.Label).ToArray());
+        void Show() => colour.Selected = _settings.ChatNameColour?.Value ?? -1;
+        colour.Chosen += index => _settings.ChatNameColour?.Set(index);
+        _redraws.Add(Show);
+        Show();
+        return OptionRow("Name colour", colour);
     }
 
     private IEnumerable<Control> RadarRows()

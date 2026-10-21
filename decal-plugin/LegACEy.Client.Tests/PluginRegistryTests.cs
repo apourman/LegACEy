@@ -495,6 +495,7 @@ public sealed class PluginRegistryTests
         public void SelectForExamination(Action? examine) { }
 
         public IServerChannel ServerChannel { get; init; } = UnavailableServerChannel.Instance;
+        public ILookSource Looks => new GameLooks(new LookCache(), () => ServerChannel, _ => false, () => 0);
         public string PortalPath => string.Empty;
         /// <summary>The window draws icons from the art; the test's art has none, so each icon is the fallback.</summary>
         public IGameArtSource Art { get; } = new NoArtSource();

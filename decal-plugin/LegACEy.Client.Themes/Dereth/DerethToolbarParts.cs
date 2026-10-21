@@ -119,18 +119,3 @@ public sealed class DerethMedallion : Decorator
         GradientStops = { new GradientStop(centre, 0), new GradientStop(edge, 1) }
     };
 }
-
-/// <summary>The gold divider between groups of toolbar buttons: 1 DIP wide, 26 tall, with 3 DIPs either side.</summary>
-public sealed class DerethDivider : Control
-{
-    private static readonly IBrush Brush = DerethPalette.Brush(Color.Parse("#8A6326"));
-
-    public DerethDivider()
-    {
-        Width = 1;
-        Height = 26;
-        Margin = new Thickness(3, 0);
-    }
-
-    public override void Render(DrawingContext context) => context.DrawRectangle(Brush, null, new Rect(Bounds.Size));
-}

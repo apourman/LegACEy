@@ -68,6 +68,40 @@ public sealed class SettingsPanelTests
     });
 
     [Fact]
+    public void All_windows_switches_every_window_and_shows_neither_when_they_differ() => RenderThread.Run(() =>
+    {
+        bool inventory = true, chat = true;
+        var settings = new ClientSettings(null, null, new[]
+        {
+            new UiWindowChoice("Inventory", () => inventory, value => inventory = value),
+            new UiWindowChoice("Chat", () => chat, value => chat = value)
+        });
+        using var panel = Tab(settings);
+        TextBlock Label(DerethSegmented segmented, string text) =>
+            segmented.GetVisualDescendants().OfType<TextBlock>().Single(block => block.Text == text);
+        // All windows, then a switch per window.
+        var switches = panel.Content.GetVisualDescendants().OfType<DerethSegmented>()
+            .Where(segmented => segmented.GetVisualDescendants().OfType<TextBlock>().Any(block => block.Text == "Retail")).ToList();
+        var all = switches[0];
+
+        PressCentre(panel, Label(all, "Retail"));
+        panel.Tick();
+        Assert.False(inventory);
+        Assert.False(chat);
+        Assert.Equal(1, switches[2].Selected);
+
+        PressCentre(panel, Label(switches[1], "Dereth"));
+        panel.Tick();
+        Assert.True(inventory);
+        Assert.Equal(-1, all.Selected);
+
+        PressCentre(panel, Label(all, "Dereth"));
+        panel.Tick();
+        Assert.True(chat);
+        Assert.Equal(0, all.Selected);
+    });
+
+    [Fact]
     public void A_window_on_retail_mutes_its_title_until_it_is_back_on_Dereth() => RenderThread.Run(() =>
     {
         var custom = true;
@@ -121,10 +155,19 @@ public sealed class SettingsPanelTests
             PressCentre(panel, TextOf(panel, "150"));
         }
 
+        var vitals = new ClientSettings(null, null, Windows("Vitals"))
+        {
+            Vitals = new OptionChoice<VitalsLayout>(VitalsLayout.Stacked, _ => { }),
+            VitalsRetailBars = new OptionChoice<bool>(false, value => changes.Add(value)),
+        };
+        using (var panel = Tab(vitals))
+            PressCentre(panel, TextOf(panel, "Retail-style bars").GetVisualAncestors().OfType<DockPanel>().First().GetVisualDescendants().OfType<DerethToggle>().Single());
+
         Assert.Equal(new object[]
         {
             false, 130, 0, 30, VitalsLayout.SideBySide,
             new RadarOptions(Map: false), new RadarOptions(NorthUp: true), new RadarOptions(Rings: true), new RadarOptions(Zoom: 150),
+            true,
         }, changes);
     });
 
@@ -147,7 +190,7 @@ public sealed class SettingsPanelTests
         settings.Radar = new OptionChoice<RadarOptions>(new RadarOptions(Map: false), _ => { });
 
         TextOf(panel, "140%");
-        Assert.Equal(4, TextOf(panel, "60 s").GetVisualAncestors().OfType<DerethSegmented>().First().Selected);
+        Assert.Equal(5, TextOf(panel, "60 s").GetVisualAncestors().OfType<DerethSegmented>().First().Selected);
         Assert.False(ground.On);
     });
 
@@ -176,6 +219,8 @@ public sealed class SettingsPanelTests
         {
             ChatTextSize = new OptionChoice<int>(130, _ => { }),
             ChatFade = new OptionChoice<int>(15, _ => { }),
+            ChatActiveOpacity = new OptionChoice<int>(60, _ => { }),
+            ChatInactiveOpacity = new OptionChoice<int>(0, _ => { }),
         };
         foreach (var tab in new[] { SettingsTab.General, SettingsTab.Windows })
         {

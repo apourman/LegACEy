@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.RegularExpressions;
 using LegACEy.Client.Demo;
 
@@ -43,13 +44,15 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private const int FocusElementOffset = 0x328;
     // The PlayerModule inside CPlayerSystem: CharacterOptions1 is at +0x8C of it, CharacterOptions2 at +0x90.
     private const int PlayerModule = 0x34;
+    // GoArrow's and UtilityBelt's coordinate links: the tag names the coordinates twice, as a player's names them, but is no name.
+    private const uint CoordinatesLinkId = 110011;
     private static readonly TimeSpan TimestampCheckInterval = TimeSpan.FromSeconds(1);
     // Ports whose handler could not be unregistered: retail may still call it, so the port, its callback delegate and its memory live on.
     private static readonly List<NativeRetailChatPort> Stranded = new();
 
     // Retail's own lines close the tag with <\Tell>; each escaping a plugin's text goes through doubles the backslash, so plugin links
-    // close with two or more.
-    private static readonly Regex TellTag = new(@"<Tell:IIDString:([^:>]*):([^>]*)>(.*?)<\\+Tell>", RegexOptions.Compiled);
+    // close with two or more. UtilityBelt closes its links with </Tell>, or </Tell >, which retail draws as links too.
+    private static readonly Regex TellTag = new(@"<Tell:IIDString:([^:>]*):([^>]*)>(.*?)<(?:\\+|/)Tell\s*>", RegexOptions.Compiled);
     // Retail's text escapes: \n is a line break, \q a quote mark, and a backslash before any other character is that character (\[, \], \\).
     private static readonly Regex Escape = new(@"\\(.)", RegexOptions.Compiled | RegexOptions.Singleline);
     private static readonly Regex ChannelPrefix = new(@"^\[([^\]]+)\]", RegexOptions.Compiled);
@@ -67,6 +70,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private readonly NoticeCallback _callback;
     private readonly Func<uint, byte[], bool> _sendAction;
     private bool _membershipFailLogged;
+    private bool _clickFailLogged;
     private IntPtr _handler;
     private IntPtr _vtable;
     private bool _attached;
@@ -110,6 +114,17 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
 
     public event Action<RetailChatLine>? LineReceived;
     public event Action? TimestampsChanged;
+
+    public bool Click(uint id, string tag)
+    {
+        try { return Bridge.ChatClick(id, tag); }
+        catch (COMException exception)
+        {
+            if (!_clickFailLogged) _log($"LegACEy chat: link clicks do not reach Decal's plugins: {exception.Message}");
+            _clickFailLogged = true;
+            return false;
+        }
+    }
 
     /// <summary>
     /// Registers the incoming-line handler with retail's notice registrar. Called once the takeover holds retail's chat, and again after a
@@ -155,7 +170,8 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     /// Raises the lines the callback queued, and the timestamp option's change, on the game thread. Called once a frame; the option is read
     /// once a second.
     /// </summary>
-    public void Poll()
+    /// <param name="holdsEntry">False while retail's chat is shown, so its entry keeps the keyboard the player gave it.</param>
+    public void Poll(bool holdsEntry = true)
     {
         while (_pending.TryDequeue(out var line))
         {
@@ -173,7 +189,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
                 TimestampsChanged?.Invoke();
             }
         }
-        if (_natives.Enter) ReleaseRetailEntryFocus();
+        if (holdsEntry && _natives.Enter) ReleaseRetailEntryFocus();
     }
 
     /// <summary>
@@ -429,28 +445,41 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         };
 
         /// <summary>
-        /// A line from the notice's text: the sender's tag becomes the plain name, and the sender and the channel are read from the text. An
-        /// Allegiance-typed line that names Olthoi is an Olthoi room line.
+        /// A line from the notice's text: each tag becomes its plain text and a link, and the sender and the channel are read from the text.
+        /// An Allegiance-typed line that names Olthoi is an Olthoi room line.
         /// </summary>
         public static RetailChatLine Parse(RetailChatKind kind, string raw, DateTime time, uint? type = null)
         {
             string? sender = null;
             uint senderId = 0;
-            var text = TellTag.Replace(raw, match =>
+            var text = new StringBuilder();
+            var links = new List<RetailChatLink>();
+            var at = 0;
+            foreach (Match match in TellTag.Matches(raw))
             {
-                // A player's tag names them twice; a plugin's link (GoArrow's "Update Now") names a command, not a sender.
-                if (match.Groups[2].Value == match.Groups[3].Value && sender == null)
+                text.Append(Unescape(raw.Substring(at, match.Index - at)));
+                var shown = Unescape(match.Groups[3].Value);
+                // Retail writes the id with %d, so an id past 0x7FFFFFFF is negative.
+                var id = long.TryParse(match.Groups[1].Value, out var parsed) ? unchecked((uint)parsed) : 0;
+                // A player's tag names them twice; a plugin's link (GoArrow's "Update Now") names a command. The first name is the sender.
+                var name = match.Groups[2].Value == match.Groups[3].Value && id != CoordinatesLinkId;
+                if (name && sender == null)
                 {
-                    sender = match.Groups[3].Value;
-                    // Retail writes the id with %d, so an id past 0x7FFFFFFF is negative.
-                    if (long.TryParse(match.Groups[1].Value, out var id)) senderId = unchecked((uint)id);
+                    sender = shown;
+                    senderId = id;
                 }
-                return match.Groups[3].Value;
-            });
-            text = Escape.Replace(text, match => match.Groups[1].Value switch { "n" => "\n", "q" => "\"", var other => other });
-            var channel = ChannelPrefix.Match(text) is { Success: true } prefix ? prefix.Groups[1].Value : null;
+                links.Add(new RetailChatLink(text.Length, shown.Length, id, Unescape(match.Groups[2].Value), name));
+                text.Append(shown);
+                at = match.Index + match.Length;
+            }
+            text.Append(Unescape(raw.Substring(at)));
+            var plain = text.ToString();
+            var channel = ChannelPrefix.Match(plain) is { Success: true } prefix ? prefix.Groups[1].Value : null;
             if (channel == "Olthoi") kind = RetailChatKind.Channel;
-            return new RetailChatLine(kind, text, time, sender, channel, senderId, type);
+            return new RetailChatLine(kind, plain, time, sender, channel, senderId, type, links.Count == 0 ? null : links);
         }
+
+        private static string Unescape(string text) =>
+            Escape.Replace(text, match => match.Groups[1].Value switch { "n" => "\n", "q" => "\"", var other => other });
     }
 }

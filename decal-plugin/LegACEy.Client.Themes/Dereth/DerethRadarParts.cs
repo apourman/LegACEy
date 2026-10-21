@@ -54,14 +54,16 @@ public sealed class DerethRadarScope : Control
     private static readonly Geometry ArrowUp = Geometry.Parse("M0,-2.6 L2.4,1.6 L-2.4,1.6 Z");
     private static readonly Geometry ArrowDown = Geometry.Parse("M0,2.6 L2.4,-1.6 L-2.4,-1.6 Z");
     private const double ArrowOpacity = 0.85;
-    private static readonly IBrush StairInk = DerethPalette.CreamBrush;
+    // A ping: a diamond with a ring that swells from it once a pulse; one past the rim is an arrow on the rim pointing out. It fades over the
+    // last fifth of its life.
+    private static readonly Geometry PingDiamond = Geometry.Parse("M0,-3.6 L3.6,0 L0,3.6 L-3.6,0 Z");
+    private static readonly Geometry PingArrow = Geometry.Parse("M0,-4.5 L3.8,2.5 L-3.8,2.5 Z");
+    private const double PingPulseSeconds = 1.2, PingLifeSeconds = 15, PingRimInset = 5;
 
     private IReadOnlyList<(IImage Image, Rect Metres)> _tiles = Array.Empty<(IImage Image, Rect Metres)>();
     private IReadOnlyList<(Geometry Floors, Geometry Walls, bool Solid, bool Peek)> _planLevels = Array.Empty<(Geometry Floors, Geometry Walls, bool Solid, bool Peek)>();
     private Point _planOrigin;
     private bool _planBuilding;
-    private IReadOnlyList<(Point At, bool Up)> _stairMarks = Array.Empty<(Point At, bool Up)>();
-    private FormattedText[]? _stairGlyphs;
     private PlanPens? _pens;
     // ArrowDir is +1 for a dot on the level above, -1 for one below, and 0 for a dot on the player's level.
     private IReadOnlyList<(Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered)> _dots =
@@ -69,6 +71,7 @@ public sealed class DerethRadarScope : Control
     // The dots' brushes by colour and alpha, made once each: a dot's alpha takes only a few values.
     private readonly Dictionary<(Color Colour, byte Alpha), IBrush> _dotBrushes = new();
     private (string Text, Point At)? _label;
+    private IReadOnlyList<(Point At, Color Colour, double Age, double? Edge)> _pings = Array.Empty<(Point At, Color Colour, double Age, double? Edge)>();
     private double _turn, _arrow, _pixelsPerMetre = 1;
     private bool _rings;
 
@@ -106,17 +109,20 @@ public sealed class DerethRadarScope : Control
     /// <summary>Whether the plan is a building's, drawn over its town ground: its other levels are then darker.</summary>
     public bool PlanBuilding { get => _planBuilding; set { if (_planBuilding == value) return; _planBuilding = value; InvalidateVisual(); } }
 
-    /// <summary>The stair marks in DIPs from the scope's top-left, and whether each leads up. Drawn upright whatever the turn.</summary>
-    public IReadOnlyList<(Point At, bool Up)> StairMarks
-    {
-        get => _stairMarks;
-        set { if (ReferenceEquals(_stairMarks, value)) return; _stairMarks = value; InvalidateVisual(); }
-    }
-
     public IReadOnlyList<(Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered)> Dots
     {
         get => _dots;
         set { if (ReferenceEquals(_dots, value)) return; _dots = value; InvalidateVisual(); }
+    }
+
+    /// <summary>
+    /// The pings: each one's point in DIPs from the scope's top-left, its colour, how far through its life it is (0 to 1), and for one past the
+    /// rim the screen angle it lies at, clockwise from up.
+    /// </summary>
+    public IReadOnlyList<(Point At, Color Colour, double Age, double? Edge)> Pings
+    {
+        get => _pings;
+        set { if (ReferenceEquals(_pings, value)) return; _pings = value; InvalidateVisual(); }
     }
 
     /// <summary>The hovered dot's label and the dot's point, so the label sits beside it; null for none.</summary>
@@ -147,11 +153,11 @@ public sealed class DerethRadarScope : Control
                     context.DrawImage(tile.Image, new Rect(tile.Image.Size), tile.Metres);
             if (_tiles.Count > 0 && !planned) context.DrawEllipse(Darken, null, centre, radius, radius);
             if (planned) DrawPlan(context, world);
-            DrawStairs(context);
             context.DrawEllipse(Vignette, null, centre, radius, radius);
             DrawCrosshair(context, centre, radius);
             if (Rings) DrawRings(context, centre, radius);
             foreach (var dot in _dots) DrawDot(context, dot);
+            foreach (var ping in _pings) DrawPing(context, ping);
             using (context.PushTransform(Matrix.CreateRotation(Arrow * Math.PI / 180) * Matrix.CreateTranslation(centre)))
                 context.DrawGeometry(MarkerBrush, null, Marker);
         }
@@ -181,21 +187,6 @@ public sealed class DerethRadarScope : Control
                 }
             }
     }
-
-    // The stair marks: a ▲ or ▼ at each door, upright, so the glyphs are made once and only their places change with the turn.
-    private void DrawStairs(DrawingContext context)
-    {
-        if (_stairMarks.Count == 0) return;
-        _stairGlyphs ??= new[] { StairGlyph("▼"), StairGlyph("▲") };
-        foreach (var (at, up) in _stairMarks)
-        {
-            var glyph = _stairGlyphs[up ? 1 : 0];
-            context.DrawText(glyph, new Point(at.X - glyph.Width / 2, at.Y - glyph.Height / 2));
-        }
-    }
-
-    private static FormattedText StairGlyph(string text) =>
-        new(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface(DerethPalette.Title), 8, StairInk);
 
     // The plan's pens at a scale: the halo's width is 6 DIPs, the player's walls 1.1 and the other levels' 0.8, each over the scale.
     private sealed record PlanPens(double Scale)
@@ -234,6 +225,24 @@ public sealed class DerethRadarScope : Control
         }
         if (dot.Selected) context.DrawEllipse(null, SelectedPen, dot.At, 4.5, 4.5);
         if (dot.Hovered) context.DrawEllipse(null, HoveredPen, dot.At, 4.5, 4.5);
+    }
+
+    private static void DrawPing(DrawingContext context, (Point At, Color Colour, double Age, double? Edge) ping)
+    {
+        var fade = Math.Min(1, (1 - ping.Age) * 5);
+        var fill = new SolidColorBrush(ping.Colour, fade);
+        if (ping.Edge is { } angle)
+        {
+            var radians = angle * Math.PI / 180;
+            var at = new Point(ping.At.X - Math.Sin(radians) * PingRimInset, ping.At.Y + Math.Cos(radians) * PingRimInset);
+            using (context.PushTransform(Matrix.CreateRotation(radians) * Matrix.CreateTranslation(at.X, at.Y)))
+                context.DrawGeometry(fill, OutlinePen, PingArrow);
+            return;
+        }
+        var pulse = ping.Age * PingLifeSeconds / PingPulseSeconds % 1;
+        context.DrawEllipse(null, new Pen(new SolidColorBrush(ping.Colour, fade * (1 - pulse)), 1.2), ping.At, 3 + 9 * pulse, 3 + 9 * pulse);
+        using (context.PushTransform(Matrix.CreateTranslation(ping.At.X, ping.At.Y)))
+            context.DrawGeometry(fill, OutlinePen, PingDiamond);
     }
 
     // The label sits to the lower right of the hovered dot, and moves in where the scope's edge would cut it.

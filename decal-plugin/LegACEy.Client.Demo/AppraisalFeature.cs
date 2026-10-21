@@ -32,12 +32,13 @@ public sealed class AppraisalFeature
     private readonly Func<CharacterNames> _names;
     private readonly IAppraisalGame _game;
     private readonly Func<Avalonia.Controls.Control, Avalonia.Size, Avalonia.Size>? _measure;
-    private readonly Func<bool> _canInspect;
     private InspectWindow? _inspect;
     private readonly Dictionary<uint, AppraisalResponse> _responses = new();
     private uint _requested;
     private long _requestedAt;
     private uint _shownId;
+    // Whether the window shows a stored item (a Vault item), which is not in the world.
+    private bool _shownStored;
     // A plugin's selected stored item, examined in place of the game's selection; null when there is none.
     private Action? _storedSelection;
     private AppraisalWindow? _view;
@@ -49,12 +50,10 @@ public sealed class AppraisalFeature
     /// <param name="spells">The spell table's names and descriptions by id, read when a window is built. Null names no spells: each is shown by its id.</param>
     /// <param name="names">The creature type and title names, read when a window is built. Null names none.</param>
     /// <param name="measure">Measures a control as the window draws it, at the UI size; the window opens at the height that shows its content. Null measures it unscaled.</param>
-    /// <param name="canInspect">Whether the server answers paperdoll.inspect, for the appraisal window's Inspect button. Null never shows it.</param>
     public AppraisalFeature(ILegACEyPluginHost host, Action<string> log, Func<long>? clock = null, IAppraisalGame? game = null,
         Func<IReadOnlyDictionary<uint, SpellInfo>>? spells = null, Func<CharacterNames>? names = null,
-        Func<Avalonia.Controls.Control, Avalonia.Size, Avalonia.Size>? measure = null, Func<bool>? canInspect = null)
+        Func<Avalonia.Controls.Control, Avalonia.Size, Avalonia.Size>? measure = null)
     {
-        _canInspect = canInspect ?? (() => false);
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _log = log ?? throw new ArgumentNullException(nameof(log));
         _clock = clock ?? new Func<long>(() => Stopwatch.GetTimestamp() * 1000 / Stopwatch.Frequency);
@@ -240,7 +239,7 @@ public sealed class AppraisalFeature
             : AppraisalContent.From(response, _spells(), _game.CharacterName, _game.IsCarried(id), _names(), _game.ValidLocationsOf(id),
                 _game.CoverageOf(id), _game.WorldObjectOf(id), _game.PluralNameOf(id), _game.DescriptionFlagsOf(id));
         var art = _host.Art;
-        var inspect = _canInspect() ? Inspect : (Action<AppraisalContent>?)null;
+        var inspect = _host.Looks.Knows(id) ? Inspect : (Action<AppraisalContent>?)null;
         // A window the client released (its surface failed or closed on its own) is neither open nor hidden: the view is stale, so the next
         // appraisal builds a new one.
         if (_view != null && !_hidden && !_host.IsWindowOpen(WindowId)) _view = null;
@@ -285,8 +284,20 @@ public sealed class AppraisalFeature
             _hidden = false;
         }
         _shownId = response.ObjectId;
+        _shownStored = stored != null;
         Shown = content;
         return true;
+    }
+
+    /// <summary>
+    /// The switch turned to retail's examination window: closes the open window and returns the world object it showed, for retail to
+    /// examine. Zero, with the window left open, when it is closed or shows a stored item, which retail cannot show.
+    /// </summary>
+    public uint HandOff()
+    {
+        if (_shownId == 0 || _shownStored || _view?.Close is not { } close || !_host.IsWindowOpen(WindowId)) return 0;
+        close();
+        return _shownId;
     }
 
     /// <summary>
@@ -300,7 +311,7 @@ public sealed class AppraisalFeature
     {
         try
         {
-            var window = _inspect ??= new InspectWindow(_host.ServerChannel, _host.PortalPath);
+            var window = _inspect ??= new InspectWindow(_host.Looks, _host.PortalPath);
             window.Show(objectId, name, AppraisalWindow.Icon(visual, _host.Art));
             if (_host.IsWindowOpen(InspectWindow.WindowId)) return;
             var definition = new WindowDefinition(InspectWindow.WindowId, "Inspect", InspectWindow.Width, InspectWindow.Height,
@@ -405,11 +416,14 @@ public sealed class AppraisingInventoryPort : IInventoryPort
 {
     private readonly IInventoryPort _inner;
     private readonly AppraisalFeature _appraisals;
+    private readonly Func<bool> _windowOn;
 
-    public AppraisingInventoryPort(IInventoryPort inner, AppraisalFeature appraisals)
+    /// <param name="windowOn">Whether an assess opens the appraisal window; false leaves it to retail's examination panel. Null is always on.</param>
+    public AppraisingInventoryPort(IInventoryPort inner, AppraisalFeature appraisals, Func<bool>? windowOn = null)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _appraisals = appraisals ?? throw new ArgumentNullException(nameof(appraisals));
+        _windowOn = windowOn ?? (() => true);
     }
 
     public InventorySnapshot Snapshot => _inner.Snapshot;
@@ -427,7 +441,7 @@ public sealed class AppraisingInventoryPort : IInventoryPort
 
     public void Assess(uint itemId)
     {
-        _appraisals.Request(itemId);
+        if (_windowOn()) _appraisals.Request(itemId);
         _inner.Assess(itemId);
     }
 

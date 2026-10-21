@@ -53,7 +53,7 @@ public sealed class VaultShellTests
         Assert.Contains(vault.Host.Content.GetVisualDescendants().OfType<TextBlock>(),
             text => text.IsVisible && (text.Text ?? string.Empty).StartsWith("Drop Fine Sword", StringComparison.Ordinal));
         var grid = Assert.Single(vault.Host.Content.GetVisualDescendants().OfType<DerethSlotGrid>());
-        Assert.True(grid.Bounds.Height >= DerethSlotGrid.CellSize, $"The grid is {grid.Bounds.Height} px tall, less than one {DerethSlotGrid.CellSize} px row.");
+        Assert.True(grid.Bounds.Height >= ItemCellSize.At(1).Cell, $"The grid is {grid.Bounds.Height} px tall, less than one {ItemCellSize.At(1).Cell} px row.");
         AssertNothingOutsideFrame(vault.Host);
         Assert.Null(vault.Host.LastError);
     });
@@ -115,7 +115,7 @@ public sealed class VaultShellTests
         host.ApplyTheme(new DerethClientTheme());
         host.Tick();
         var cells = Assert.Single(host.Content.GetVisualDescendants().OfType<WrapPanel>()).Children;
-        var layers = cells[0].GetVisualDescendants().OfType<Image>().ToArray();
+        var layers = cells[0].GetVisualDescendants().OfType<DerethItemIcon>().ToArray();
         Assert.NotEmpty(layers);
         foreach (var image in layers)
         {

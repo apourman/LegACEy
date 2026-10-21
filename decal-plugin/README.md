@@ -104,25 +104,33 @@ checks first takes the file; the `[pid N]` prefix shows which one.
 The LegACEy Inventory replaces retail's inventory panel: it parks retail's panel and opens and closes its own window with it (by key,
 toolbar or item). The appraisal window likewise replaces retail's examination window: when retail's examination panel shows, it is parked
 and closed, and the appraised object opens in LegACEy's window. Its header's Inspect button opens the Inspect window: the object's 3D
-paperdoll alone, which drags to turn (it needs a server with `paperdoll.inspect`). The expand button in the inventory's doll area opens
-the same window on your own character. Creating an empty file named `retail-inventory-native` beside the main DLL
-gives retail's inventory and examination panels back; deleting it
-takes the panel over again. The file is only checked, never consumed. A drag that leaves the LegACEy window is handed to retail's own
+paperdoll alone, which drags to turn. The client reads every object's look from the game's own messages, so Inspect and the inventory's
+doll work on any server; only objects outside the world (Vault items) ask a LegACEy server (`paperdoll.inspect`). The expand button in the
+inventory's doll area opens the same window on your own character. The appraisal window lists an item's lines in the order retail's examination
+text does (tinkering, set and ratings, combat, spells, properties, use, requirements, the rest, then spellcraft, mana and each
+spell's description), under Dereth headings. Creating an empty file named `retail-inventory-native` beside the main DLL
+gives retail's inventory panel back, and `retail-appraisal-native` gives retail's examination panel back; deleting a file
+takes its panel over again. Settings → Windows switches both (Inventory and Appraisal); switching Appraisal to Retail with an item open hands that item to retail's
+window. The file is only checked, never consumed. A drag that leaves the LegACEy window is handed to retail's own
 drag when retail's inventory lists show the item, so the world, NPCs and other retail windows take it as they would from retail.
 
-The Dereth toolbar replaces retail's toolbar, drawn at retail's toolbar position, from portal space at login on. Press and drag the toolbar's frame or
-top edge (not a button) to move it anywhere on screen, unless retail's UI is locked; the place is saved per character in
-`window-positions.txt`, and retail's own toolbar stays where retail left it. The two shortcut bars start beside the toolbar and move on their own once the character is in game; row 2's tag
-shows or hides row 2. Creating an empty file named `retail-toolbar-native` beside the main DLL gives retail's toolbar back within a
+The Dereth toolbar replaces retail's toolbar, drawn at retail's toolbar position, from portal space at login on. It is laid out as retail's is:
+the stance and the backpack at the ends, the window buttons over Use, the selection plaque and Examine, and the two shortcut rows below,
+inside the same frame and as wide as the part above. Press and drag the toolbar's frame, top edge or a row tag (not a button or slot) to move
+it anywhere on screen, unless retail's UI is locked; the place is saved per character in `window-positions.txt`, and retail's own toolbar
+stays where retail left it. Row 1's tag shows or hides row 2. Creating an empty file named `retail-toolbar-native` beside the main DLL gives retail's toolbar back within a
 second; deleting it takes the toolbar over again.
 
 The Dereth chat window replaces retail's main and floating chat windows. It starts with six tabs (All, Speech, Fellowship, Allegiance,
 Channels, Tells); each tab shows its own kinds of line, talks to its own target and counts unread lines while out of view. Right-click a
 tab to rename, edit, reorder or remove it, and use + to add one. Drag a tab out of the strip into a window of its own, and drag it back to
 merge it; tabs are kept per character in `chat-tabs.txt` and window places and sizes in `window-positions.txt`. Enter opens the input and
-Escape leaves it. Left alone for 15 seconds, the window fades to bare lines; hovering or pressing Enter brings it back.
+Escape leaves it. Left alone for 15 seconds, the window fades to bare lines; hovering or pressing Enter brings it back. Settings sets the
+delay per character (Never, Instant as in retail, or 10 to 60 seconds), and the log backdrop's active and inactive opacity, as retail's
+General Chat Options do; with an inactive opacity above 0 the lines stay shown while idle. Names are drawn as in retail, in their line's
+colour except in a spell's words, where they are green; Name colour can pick Green, White or Gold for every name instead.
 Retail's chat keeps running out of sight, so Decal plugins see chat as before. Creating an empty file named `retail-chat-native` beside
-the main DLL gives retail's chat back within a second; deleting it takes the chat over again. In the chat box, Up and Down bring back what you sent, Ctrl+V pastes, and Ctrl+C and Ctrl+X copy. A drag
+the main DLL gives retail's chat back within a second; deleting it takes the chat over again, with the lines that came meanwhile in its log. In the chat box, Up and Down bring back what you sent, Ctrl+V pastes, and Ctrl+C and Ctrl+X copy. A drag
 in the log selects across lines and copies as you let go; Ctrl+C copies it again without the game seeing the key, until you click
 outside the chat. The chat's text size is set by its Aa
 button (click larger, right-click smaller) or Ctrl and the wheel, per character.
@@ -131,7 +139,8 @@ Retail's Lock UI locks every LegACEy window too: while it is on, none moves or r
 
 The Dereth vitals window replaces retail's vitals, at retail's place. Health, stamina and mana show current / max in retail's colours; a
 drop leaves a pale trail, and health pulses under a quarter. The gear shown on hover switches between the stacked window and a slim
-side-by-side strip; each layout keeps its own size, and the choice is kept per character. Drag the corner grip or the bottom edge to
+side-by-side strip; each layout keeps its own size, and the choice is kept per character. Settings → Windows → Vitals → Retail-style
+bars drops the vital glyphs and value plaques and shows each value in the middle of its bar, as retail does, in either layout. Drag the corner grip or the bottom edge to
 draw the window larger or smaller (up to twice its size), and a side edge to stretch its bars longer. Creating an empty file named `retail-vitals-native` beside the main DLL gives retail's vitals back within
 a second; deleting it takes them over again.
 
@@ -139,18 +148,31 @@ The Dereth radar replaces retail's radar, at retail's place: the land around the
 heading tape above and the coordinates below. Hover a dot to name it with its distance and direction, click it to select it, and use the
 wheel to zoom. Indoors the radar draws the floor plan of the place from the DATs instead: the player's floor solid, the others faint, and
 a building's town ground under it. A ladder beside the bezel has a pip a level, top first; hovering a pip peeks at that level in teal, and the
-player's floor is left out until the pointer leaves. Stairs to another level are ▲ or ▼ marks on the plan, and a dot on another level is drawn
+player's floor is left out until the pointer leaves. A dot on another level is drawn
 as a ▲ or ▼ arrow. The bezel's lock button locks and unlocks retail's UI; its gear opens the options (Show map, North up,
 Range rings, Zoom), kept per character, with the indoor zoom kept apart from the outdoor one. With the UI unlocked, hovering the radar
-shows gold corners: drag one, or an edge, to draw it larger or smaller, from its 1× layout to three times it; it opens at twice. Creating
+shows gold corners: drag one, or an edge, to draw it larger or smaller, from its 1× layout to three times it; it opens at twice.
+Ctrl+click a spot on the radar to ping it: a pulsing diamond shows there for 15 seconds, in a colour picked from the sender's name, and
+a ping past the radar's range is an arrow on the rim. On a LegACEy server your fellowship sees it too (fellows in the same instance on
+their radar, every fellow as a fellowship chat line with the coordinates); without a fellowship, or on another server, only you do. Creating
 an empty file named `retail-radar-native` beside the main DLL gives retail's radar back within a second; deleting it takes the radar over
 again.
 
-The LegACEy menu's UI size row scales every LegACEy window, the toolbar and the shortcut bars, from 60 to 150 percent (85 to start),
+The Dereth attack bar replaces retail's attack panel in melee and missile combat, centred over retail's place the first time. Click the
+groove to set the power (accuracy with a bow; hover it for the percentage), a plaque to pick High, Medium or Low, and a gem to switch
+Repeat Attacks, Auto Target or Keep in View; retail's keys still work and the bar follows them. The charge fills the groove as retail
+builds it. With the UI unlocked, hovering the bar shows gold corners: drag a side edge to make the bar longer or the bottom edge to
+give it more height (up to 960 by 150 DIPs); the text keeps its size, and Ctrl+wheel scales the whole bar. In peace and magic the bar closes and retail's panels are left as retail draws them. Creating an empty file named
+`retail-attack-native` beside the main DLL (or the Settings window's Attack bar row) gives retail's panel back within a second.
+
+The Settings window's Windows tab has a Dereth / Retail switch on each window's card, and an All windows switch above them that
+writes or deletes every `retail-*-native` file at once. It lights neither choice while the windows differ.
+
+The LegACEy menu's UI size row scales every LegACEy window and the toolbar with its shortcut rows, from 60 to 150 percent (85 to start),
 for every character. A change rebuilds the LegACEy UI at once, as a relog does: plugin windows that were open close and the chat history
 clears.
 
-The LegACEy menu's Windows section switches each of the inventory, toolbar, chat, vitals and radar between LegACEy's window (Custom, the
+The LegACEy menu's Windows section switches each of the inventory, appraisal, toolbar, chat, vitals, radar and attack bar between LegACEy's window (Custom, the
 default) and retail's (Native). It creates or deletes that window's switch file above, so the choice holds for every character on the
 install. `/legacey` in chat opens or closes the menu, so it can be reached with retail's toolbar too.
 

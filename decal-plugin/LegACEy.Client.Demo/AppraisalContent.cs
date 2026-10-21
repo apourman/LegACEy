@@ -101,28 +101,26 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     };
 
     /// <summary>
-    /// The sections below the summary, in the order the window shows them. A rule gives a heading and its rows; a section with no rows is
-    /// left out. The order is Combat, Armor, Spells, Requirements, Use, then Other (its rules are in AppraisalOtherLines.cs).
+    /// The sections below the summary, in the order retail's examination text runs: tinkering, set and ratings, the weapon's and armour's
+    /// lines, the spells by name, the special properties, use, requirements, the rest, then the magic (spellcraft, mana and each spell's
+    /// description) and enchantments, as OpenAC's BuildReport orders them (MIT). A rule gives a heading and its rows; a section with no
+    /// rows is left out. The grouped lines' rules are in AppraisalOtherLines.cs.
     /// </summary>
     private static readonly SectionRule[] SectionRules =
     {
+        new("Tinkering", (response, _) => AppraisalOtherLines.Rows(response, AppraisalOtherLines.Tinkering)),
+        new("Set & Ratings", (response, _) => AppraisalOtherLines.Rows(response, AppraisalOtherLines.SetAndRatings)),
         new("Combat", (response, _) => CombatRows(response)),
         new("Armor", (response, _) => ArmorRows(response)),
-        new("Spells", (response, spells) => SpellRows(response, spells)),
-        new("Requirements", (response, _) => RequirementRows(response)),
+        new("Spells", (response, spells) => SpellNameRows(response, spells)),
+        new("Properties", (response, _) => AppraisalOtherLines.Rows(response, AppraisalOtherLines.Properties)),
         new("Use", (response, _) => TextRows(response.Strings, UseString)),
-        new("Other", (response, _) => AppraisalOtherLines.Rows(response)),
+        new("Requirements", (response, _) => RequirementRows(response)),
+        new("Other", (response, _) => AppraisalOtherLines.Rows(response, AppraisalOtherLines.Other)),
+        new("Magic", (response, spells) => MagicRows(response, spells)),
+        new("Enchantments", (response, spells) => SpellRows(response, spells, enchantments: true)),
     };
 
-    /// <summary>
-    /// Builds what the window shows from one appraisal. <paramref name="spells"/> gives each spell's name and description by id (the
-    /// portal DAT's spell table, empty when there is none); a spell it does not know is named by its id. The inscription field depends on
-    /// who the character is and whether the item is carried, which the appraisal does not say, so the caller passes them; with neither, an
-    /// item is never editable. A creature (one with a creature profile) takes the creature layout instead of the item's sections and
-    /// figures; <paramref name="names"/> gives a creature's type and a character's title, and a name it does not know is left out.
-    /// <paramref name="validLocations"/> and <paramref name="coverage"/> are the item's equipable slots and clothing coverage from the world
-    /// (the appraisal does not carry them); a piece of clothing or armour names what it covers on the type line.
-    /// </summary>
     /// <summary>
     /// The window's title as retail names the object: a stack's count and plural name ("5 Mana Potions"; without a plural name, "s", or
     /// after an s "es"), with the material in front ("Iron Mace") unless the name already has it (a gem named for its material).
@@ -138,6 +136,15 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
         return count > 1 ? Invariant(count) + " " + name : name;
     }
 
+    /// <summary>
+    /// Builds what the window shows from one appraisal. <paramref name="spells"/> gives each spell's name and description by id (the
+    /// portal DAT's spell table, empty when there is none); a spell it does not know is named by its id. The inscription field depends on
+    /// who the character is and whether the item is carried, which the appraisal does not say, so the caller passes them; with neither, an
+    /// item is never editable. A creature (one with a creature profile) takes the creature layout instead of the item's sections and
+    /// figures; <paramref name="names"/> gives a creature's type and a character's title, and a name it does not know is left out.
+    /// <paramref name="validLocations"/> and <paramref name="coverage"/> are the item's equipable slots and clothing coverage from the world
+    /// (the appraisal does not carry them); a piece of clothing or armour names what it covers on the type line.
+    /// </summary>
     public static AppraisalContent From(AppraisalResponse response, IReadOnlyDictionary<uint, SpellInfo> spells,
         string characterName = "", bool carried = false, CharacterNames? names = null, uint validLocations = 0, uint coverage = 0,
         InventoryObjectRead? world = null, string plural = "", uint descriptionFlags = 0)
@@ -437,30 +444,50 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     private static IEnumerable<AppraisalRow> TextRows(IReadOnlyDictionary<uint, string> strings, uint property) =>
         strings.TryGetValue(property, out var text) && text.Length > 0 ? new[] { new AppraisalRow(null, text) } : Array.Empty<AppraisalRow>();
 
-    /// <summary>The spells in the order the server lists them, cantrips included, each with its description under it.</summary>
-    // The server's spell book order, which OpenAC's formatter also lists as it comes. Neither ACE nor OpenAC sorts appraisal spells by the
-    // table's DisplayOrder, so this does not either.
-    private static IEnumerable<AppraisalRow> SpellRows(AppraisalResponse response, IReadOnlyDictionary<uint, SpellInfo> spells) =>
-        response.SpellBook.Select(raw => SpellRow(raw & ~EnchantmentBit, spells));
+    /// <summary>
+    /// The item's own spells (cantrips included) or, with <paramref name="enchantments"/>, the enchantments on it, in the order the server
+    /// lists them, each with its description under it. Neither ACE nor OpenAC sorts appraisal spells by the table's DisplayOrder, so this
+    /// does not either.
+    /// </summary>
+    private static IEnumerable<AppraisalRow> SpellRows(AppraisalResponse response, IReadOnlyDictionary<uint, SpellInfo> spells, bool enchantments) =>
+        response.SpellBook.Where(raw => ((raw & EnchantmentBit) != 0) == enchantments).Select(raw => SpellRow(raw & ~EnchantmentBit, spells));
+
+    /// <summary>Retail's short spell line, after the weapon's lines: the item's own spells by name, as one sentence.</summary>
+    private static IEnumerable<AppraisalRow> SpellNameRows(AppraisalResponse response, IReadOnlyDictionary<uint, SpellInfo> spells)
+    {
+        var names = SpellRows(response, spells, enchantments: false).Select(row => row.Label).ToList();
+        return names.Count == 0 ? Array.Empty<AppraisalRow>() : new[] { new AppraisalRow(null, string.Join(", ", names)) };
+    }
+
+    /// <summary>Spellcraft and the mana meter, then each of the item's own spells with its description, as retail ends its text.</summary>
+    private static IEnumerable<AppraisalRow> MagicRows(AppraisalResponse response, IReadOnlyDictionary<uint, SpellInfo> spells)
+    {
+        if (Number(response, SpellcraftInt) is { } spellcraft) yield return new AppraisalRow("Spellcraft", spellcraft);
+        if (ManaMeter(response) is { } mana) yield return mana;
+        foreach (var spell in SpellRows(response, spells, enchantments: false)) yield return spell;
+    }
 
     private static AppraisalRow SpellRow(uint id, IReadOnlyDictionary<uint, SpellInfo> spells) =>
         spells.TryGetValue(id, out var spell)
             ? new AppraisalSpellRow(spell.Name, spell.Description)
             : new AppraisalSpellRow("Spell " + id.ToString(CultureInfo.InvariantCulture), string.Empty);
 
-    /// <summary>The wield lines, then activation, spellcraft and the mana meter. The wording follows OpenAC's ItemAppraisalTextFormatter (MIT).</summary>
+    /// <summary>
+    /// The level limits, the wield lines, the item's level, then activation, in retail's order. The wording follows OpenAC's
+    /// ItemAppraisalTextFormatter (MIT).
+    /// </summary>
     private static IEnumerable<AppraisalRow> RequirementRows(AppraisalResponse response)
     {
+        foreach (var row in AppraisalOtherLines.Rows(response, AppraisalOtherLines.LevelLimits)) yield return row;
         foreach (var slot in WieldSlots)
         {
             if (!response.Ints.TryGetValue(slot.Requirement, out var type) || !response.Ints.TryGetValue(slot.Stat, out var stat)
                 || !response.Ints.TryGetValue(slot.Level, out var level)) continue;
             if (WieldText(type, stat, level) is { } text) yield return new AppraisalRow("Wield", text);
         }
+        foreach (var row in AppraisalOtherLines.Rows(response, AppraisalOtherLines.ItemLevel)) yield return row;
         var activation = ActivationParts(response).ToList();
         if (activation.Count > 0) yield return new AppraisalRow("Activation", string.Join(", ", activation));
-        if (Number(response, SpellcraftInt) is { } spellcraft) yield return new AppraisalRow("Spellcraft", spellcraft);
-        if (ManaMeter(response) is { } mana) yield return mana;
     }
 
     /// <summary>The four wield requirement slots: the requirement type, the skill or attribute it names, and its level.</summary>

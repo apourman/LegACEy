@@ -219,6 +219,75 @@ public sealed class RetailChatWindowsTests
     }));
 
     [Fact]
+    public void Instant_fades_the_window_as_soon_as_it_is_left_alone() => RenderThread.Run(() => WithStore(path =>
+    {
+        var clock = new DeskClock(Stamp);
+        var positions = new MemoryWindowPositionStore();
+        var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };
+        using var first = ChatDesk.Open(port, path, Character, positions, clock: () => clock.Now);
+        Assert.Equal(1.0, Seen(Frame(first.Main)));
+        first.Chat.SetFadeSeconds(RetailChatWindows.FadesInstantly);
+        clock.Advance(TimeSpan.FromSeconds(0.3));
+        first.Tick();
+        Assert.Equal(0.0, Seen(Frame(first.Main)));
+    }));
+
+    [Fact]
+    public void The_log_backdrop_is_active_when_awake_and_inactive_when_idle_and_is_kept_per_character() => RenderThread.Run(() => WithStore(path =>
+    {
+        var clock = new DeskClock(Stamp);
+        var positions = new MemoryWindowPositionStore();
+        var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };
+        using var first = ChatDesk.Open(port, path, Character, positions, clock: () => clock.Now);
+        first.Chat.SetActiveOpacity(80);
+        first.Chat.SetInactiveOpacity(30);
+        port.Say(new RetailChatLine(RetailChatKind.Allegiance, "Kaelith tells the allegiance, \"pull the next\"", Stamp, "Kaelith"));
+        first.Tick();
+        Assert.Equal(0.8, Seen(Groove(first.Main)));
+        clock.Advance(TimeSpan.FromSeconds(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds));
+        first.Tick();
+        Assert.Equal(0.3, Seen(Groove(first.Main)));
+        // With a backdrop left, the line outlasts its stay instead of fading.
+        Assert.Equal(1.0, Seen(first.Main.GetVisualDescendants().OfType<Control>().First(part => part.Tag is DateTime)));
+        first.Dispose();
+
+        // The opacities are kept for Alice, so her window opens awake at the active opacity.
+        using var second = ChatDesk.Open(port, path, Character, positions, clock: () => clock.Now);
+        second.Tick();
+        Assert.Equal(0.8, Seen(Groove(second.Main)));
+    }));
+
+    [Fact]
+    public void Names_take_the_picked_colour_in_every_window_and_it_is_kept_per_character() => RenderThread.Run(() => WithStore(path =>
+    {
+        var positions = new MemoryWindowPositionStore();
+        var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };
+        using var first = ChatDesk.Open(port, path, Character, positions);
+        port.Say(new RetailChatLine(RetailChatKind.Allegiance, "Kaelith tells the allegiance, \"pull the next\"", Stamp, "Kaelith"));
+        first.Tick();
+        // As in retail, a name keeps its line's colour, but is green over a spell's blue words.
+        Assert.Equal(DerethChatPalette.Allegiance, NameInk(first.Main));
+        port.Say(new RetailChatLine(RetailChatKind.Local, "Kaelith says, \"Puish Zharil\"", Stamp, "Kaelith", Type: 17));
+        first.Tick();
+        Assert.Equal(DerethChatPalette.Link, NameInk(first.Main, last: true));
+        first.Chat.SetNameColour(2);
+        Assert.Equal(DerethChatPalette.Say, NameInk(first.Main));
+        first.Dispose();
+
+        using var second = ChatDesk.Open(port, path, Character, positions);
+        port.Say(new RetailChatLine(RetailChatKind.Allegiance, "Kaelith tells the allegiance, \"again\"", Stamp, "Kaelith"));
+        second.Tick();
+        Assert.Equal(DerethChatPalette.Say, NameInk(second.Main));
+
+        static Avalonia.Media.Color NameInk(Control window, bool last = false)
+        {
+            var lines = window.GetVisualDescendants().OfType<SelectableTextBlock>().Where(line => line.Tag is DateTime);
+            var line = last ? lines.Last() : lines.First();
+            return ((Avalonia.Media.SolidColorBrush)line.Inlines!.OfType<Avalonia.Controls.Documents.Run>().First(run => run.Text == "Kaelith").Foreground!).Color;
+        }
+    }));
+
+    [Fact]
     public void Unread_counts_work_in_a_torn_off_window_and_the_main_window() => RenderThread.Run(() => WithStore(path =>
     {
         var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };
@@ -390,6 +459,10 @@ public sealed class RetailChatWindowsTests
 
     // The window's own frame is the first one in its tree: the window's child is the frame beside the content.
     private static DerethFrame Frame(RetailChatWindow window) => window.GetVisualDescendants().OfType<DerethFrame>().First();
+
+    // The log's backdrop: the window's one opaque dark fill, so its opacity is the one the player sees.
+    private static Border Groove(RetailChatWindow window) =>
+        window.GetVisualDescendants().OfType<Border>().First(border => border.Background is Avalonia.Media.SolidColorBrush { Color: { R: 0x07, G: 0x07, B: 0x05 } });
 
     private static TextBox InputBox(RetailChatWindow window) =>
         window.GetVisualDescendants().OfType<TextBox>().Single(box => box.Watermark == "Say something…");

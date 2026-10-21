@@ -285,6 +285,7 @@ namespace ACE.Server
             ACE.Server.ClientChannel.WeatherChannelActions.Register();
             ACE.Server.ClientChannel.StationChannelActions.Register();
             ACE.Server.ClientChannel.PlaceChannelActions.Register();
+            ACE.Server.ClientChannel.PingChannelActions.Register();
 
             if (ConfigManager.Config.Server.ServerPerformanceMonitorAutoStart)
             {

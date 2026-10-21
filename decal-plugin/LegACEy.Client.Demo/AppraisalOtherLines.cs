@@ -7,10 +7,11 @@ using static System.FormattableString;
 namespace LegACEy.Client.Demo;
 
 /// <summary>
-/// The Other section: the lines of an appraisal that no other section covers. The rules are in the order the window shows them. First
-/// come the properties ACE.MarketApi's appraisal rule table (AppraisalRules.cs) has, in that table's order. Then come the rest of retail's
-/// lines, in the order OpenAC's BuildReport builds them (ItemAppraisalTextFormatter, MIT). A rule with a label gives a row with a label
-/// and a value. A rule without one gives a sentence across the section. A rule that gives null gives no line.
+/// The lines of an appraisal that the combat, armour, spell and requirement rules don't cover, grouped into the sections retail's text
+/// runs through them in: tinkering, then the set and ratings (both before the weapon's lines), the special properties (after the spells),
+/// the level lines (with the requirements), and the rest (after them). Within a group the rules follow the order OpenAC's BuildReport
+/// builds them (ItemAppraisalTextFormatter, MIT). A rule with a label gives a row with a label and a value. A rule without one gives a
+/// sentence across the section. A rule that gives null gives no line.
 /// </summary>
 internal static class AppraisalOtherLines
 {
@@ -44,29 +45,31 @@ internal static class AppraisalOtherLines
     private static readonly uint[] ImbueIntIds = { ImbuedEffectInt, 303, 304, 305, 306 };
 
     /// <summary>One line of the section. See the class summary for what a label and a null mean.</summary>
-    private sealed record OtherRule(string? Label, Func<AppraisalResponse, string?> Text);
+    internal sealed record OtherRule(string? Label, Func<AppraisalResponse, string?> Text);
 
-    /// <summary>The rules, in the order the section shows them (see the class summary).</summary>
-    private static readonly OtherRule[] Rules =
+    /// <summary>Retail's tinkering lines, which follow the workmanship.</summary>
+    public static readonly OtherRule[] Tinkering =
     {
-        // ---- Market's order: the properties its rule table has.
-        new("Material", Material),
-        new("Set", r => IntOf(r, EquipmentSetInt) is int setId ? SetName(setId) : null),
         new(null, Tinkered),
-        new("Imbued Effect", ImbueText),
-        new(null, r => StringOf(r, ImbuerString) is string imbuer ? Invariant($"Imbued by {imbuer}.") : null),
-        new("Gems", Gems),
-        new(null, r => BoolOf(r, DyableBool) == true ? "Dyeable" : null),
-        new(null, r => Bond(IntOf(r, BondedInt))),
-        new(null, r => IntOf(r, AttunedInt) is 1 or 2 ? "Attuned" : null),
-        new(null, r => BoolOf(r, IsSellableBool) == false ? "This item cannot be sold." : null),
-
-        // ---- Retail's remaining lines, in BuildReport order: tinkering, set and ratings, special properties, level, usage, boosts,
-        // locks, mana stone, remaining uses, creator, rare, then the description's lifespan and portal restrictions.
         new(null, r => StringOf(r, TinkererString) is string tinkerer ? Invariant($"Last tinkered by {tinkerer}.") : null),
+        new(null, r => StringOf(r, ImbuerString) is string imbuer ? Invariant($"Imbued by {imbuer}.") : null),
         new(null, r => IntOf(r, NumItemsInMaterialInt) is int salvaged && salvaged > 0 ? Invariant($"Salvaged from {salvaged} items.") : null),
+    };
+
+    /// <summary>The set and ratings, before the weapon's lines.</summary>
+    public static readonly OtherRule[] SetAndRatings =
+    {
+        new("Set", r => IntOf(r, EquipmentSetInt) is int setId ? SetName(setId) : null),
         new("Ratings", Ratings),
         new(null, r => IntOf(r, VitalityInt) is int vitality && vitality > 0 ? Invariant($"This item adds {vitality} Vitality.") : null),
+    };
+
+    /// <summary>What the item is made of and does beyond its numbers, after the spells.</summary>
+    public static readonly OtherRule[] Properties =
+    {
+        new("Material", Material),
+        new("Imbued Effect", ImbueText),
+        new("Gems", Gems),
         new(null, r => IntOf(r, UniqueInt) is int carry && carry > 0 ? Invariant($"You can only carry {carry} of these items.") : null),
         new("Cooldown When Used", r => FloatOf(r, CooldownFloat) is double seconds && seconds > 0 ? FormatCooldown(seconds) : null),
         new(null, r => IntOf(r, CleavingInt) is int cleave && cleave > 1 ? Invariant($"Cleave: {cleave} enemies in front arc.") : null),
@@ -74,9 +77,24 @@ internal static class AppraisalOtherLines
         new(null, r => ImbuedMask(r) != 0 ? "This item cannot be further imbued." : null),
         new(null, r => BoolOf(r, AutowieldLeftBool) == true ? "This item is tethered to the left side." : null),
         new(null, r => IntOf(r, CloakWeaveProcInt) == 2 ? "This cloak has a chance to reduce an incoming attack by 200 damage." : null),
+        new(null, r => BoolOf(r, DyableBool) == true ? "Dyeable" : null),
+        new(null, r => Bond(IntOf(r, BondedInt))),
+        new(null, r => IntOf(r, AttunedInt) is 1 or 2 ? "Attuned" : null),
+    };
+
+    /// <summary>The level limits, before the wield lines.</summary>
+    public static readonly OtherRule[] LevelLimits = { new(null, Level) };
+
+    /// <summary>The item's level and experience, after the wield lines.</summary>
+    public static readonly OtherRule[] ItemLevel =
+    {
         new("Item Level", r => ItemXpOf(r) is { } xp ? xp.Level.ToString(CultureInfo.InvariantCulture) + " / " + xp.Maximum.ToString(CultureInfo.InvariantCulture) : null),
         new("Item XP", r => ItemXpOf(r) is { } xp ? xp.Experience.ToString("N0", CultureInfo.InvariantCulture) + " / " + xp.Next.ToString("N0", CultureInfo.InvariantCulture) : null),
-        new(null, Level),
+    };
+
+    /// <summary>Everything else, after the requirements: uses, boosts, locks, mana stones, creator, sale, rare, lifespan and portals.</summary>
+    public static readonly OtherRule[] Other =
+    {
         new("Destination", r => StringOf(r, DestinationString)),
         new(null, Booster),
         new("Bonus to Healing Skill", r => FloatOf(r, HealkitModFloat) != null ? IntOf(r, BoostValueInt)?.ToString(CultureInfo.InvariantCulture) : null),
@@ -94,6 +112,7 @@ internal static class AppraisalOtherLines
         new(null, r => IntOf(r, NumKeysInt) is int keys ? Invariant($"Contains {keys} {(keys == 1 ? "key" : "keys")}.") : null),
         new("Number of uses remaining", Uses),
         new(null, Creator),
+        new(null, r => BoolOf(r, IsSellableBool) == false ? "This item cannot be sold." : null),
         new(null, r => IntOf(r, RareIdInt) is int rare && rare > 0 ? Invariant($"Rare #{rare}") : null),
         new(null, r => BoolOf(r, RareUsesTimerBool) == true
             ? "This rare item has a timer restriction of 3 minutes. You will not be able to use another rare item with a timer within 3 minutes of using this one."
@@ -106,10 +125,10 @@ internal static class AppraisalOtherLines
         new(null, Flag(PortalBitmaskInt, 0x20, "This portal cannot be recalled nor linked to.")),
     };
 
-    /// <summary>The Other section's rows: each rule that gives text, in rule order.</summary>
-    public static IEnumerable<AppraisalRow> Rows(AppraisalResponse response)
+    /// <summary>The rows of a group: each rule that gives text, in rule order.</summary>
+    public static IEnumerable<AppraisalRow> Rows(AppraisalResponse response, IEnumerable<OtherRule> rules)
     {
-        foreach (var rule in Rules)
+        foreach (var rule in rules)
         {
             if (rule.Text(response) is string text) yield return new AppraisalRow(rule.Label, text);
         }

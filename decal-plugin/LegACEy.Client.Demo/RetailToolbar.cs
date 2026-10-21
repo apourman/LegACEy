@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -46,6 +47,8 @@ public interface IRetailToolbarPort
     IReadOnlyList<RetailShortcut> Shortcuts { get; }
     /// <summary>Uses the shortcut in a slot, as the number key does.</summary>
     void UseShortcut(int index);
+    /// <summary>Selects an object, as a click on it in a retail item list does, so it can be examined.</summary>
+    void Select(uint objectId);
     /// <summary>Puts an object into a slot as a shortcut, as retail's add does, so the server keeps it.</summary>
     void AddShortcut(int index, uint objectId);
     /// <summary>Takes the shortcut out of a slot, as retail's remove does, so the server drops it.</summary>
@@ -63,8 +66,10 @@ public interface IRetailToolbarPort
 }
 
 /// <summary>
-/// The Dereth toolbar that replaces retail's: the stance, six window buttons and the LegACEy menu, then Use, a selection plaque, Examine
-/// and the backpack, in one row. The shortcut bars are not in it yet. It shows the port's state and asks the port for each change.
+/// The Dereth toolbar that replaces retail's, laid out as retail's is: the stance on the left and the backpack on the right; between them
+/// six window buttons and the LegACEy menu, over Use, a selection plaque and Examine; and the shortcut rows below, inside the same frame and
+/// as wide as the part above. The rows set the width, so the toolbar cannot be wider than nine slots. It shows the port's state and asks the
+/// port for each change.
 /// </summary>
 public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDropTarget
 {
@@ -100,7 +105,7 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     {
         FontFamily = DerethPalette.Title,
         FontSize = 11,
-        // The mockup's name line is 11 DIP tall, so the meter fits under it in the plaque's 31.
+        // The mockup's name line is 11 DIP tall, so the meter fits under it in the plaque's 30.
         LineHeight = 11,
         TextAlignment = TextAlignment.Center,
         TextWrapping = TextWrapping.NoWrap,
@@ -108,6 +113,8 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     };
     private readonly Border _meterSlot = new() { IsVisible = false };
     private readonly StackPanel _plaqueContent;
+    // The part above the rows, then the shortcut rows in order.
+    private readonly StackPanel _sections = new() { Spacing = 4 };
     /// <param name="port">Retail's toolbar, as the client reaches it.</param>
     /// <param name="openMenu">Opens or closes the LegACEy menu. The caller shows the menu's state with <see cref="SetMenuOpen"/>.</param>
     /// <param name="moveToMainPack">Moves the items to the player's main pack, in order, as a drop on the backpack does. True when one moved.</param>
@@ -119,53 +126,50 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         _moveToMainPack = moveToMainPack ?? throw new ArgumentNullException(nameof(moveToMainPack));
         _startMove = startMove;
 
-        _stance = new DerethMedallion(GlyphOf(port.Stance), 34, 21);
+        _stance = new DerethMedallion(GlyphOf(port.Stance), 40, 25);
         ToolTip.SetTip(_stance, "Combat stance");
         _stance.Clicked += () => _port.ToggleStance();
 
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, Height = 32 };
-        row.Children.Add(Centred(_stance));
-        row.Children.Add(Centred(new DerethDivider()));
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, HorizontalAlignment = HorizontalAlignment.Center };
         foreach (var (panel, glyph, name) in WindowButtons)
         {
             var button = Medallion(glyph, 26, 16, name);
             button.Clicked += () => TogglePanel(panel);
             _windows.Add(panel, button);
-            row.Children.Add(Centred(button));
+            buttons.Children.Add(button);
         }
         _menu = Medallion(DerethGlyph.LegACEy, 26, 16, "LegACEy menu");
         _menu.Clicked += _openMenu;
-        row.Children.Add(Centred(_menu));
-        row.Children.Add(Centred(new DerethDivider()));
+        buttons.Children.Add(_menu);
         _use = Medallion(DerethGlyph.Use, 20, 16, "Use selected");
         _use.Clicked += _port.UseSelected;
-        row.Children.Add(Centred(_use));
         _plaqueContent = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center, Children = { _name, _meterSlot } };
+        // The plaque takes the width the buttons around it leave; a long name ends in an ellipsis, named in full on hover.
         _plaque = new Border
         {
-            // Wide enough for a long NPC's name, such as "Ulgrim the Unpleasant, Bartender"; a longer one ends in an ellipsis, named in full on hover.
-            Width = 220,
-            Height = 31,
+            // Even, as the buttons beside it are, so they centre on whole DIPs. The padding's odd top leaves an odd height inside, so the name
+            // and the meter centre on whole DIPs too: a half-DIP name redrew the buttons' edges on a refresh.
+            Height = 30,
+            Margin = new Thickness(5, 0),
             CornerRadius = new CornerRadius(3),
             Background = DerethPalette.GrooveBrush,
             BorderBrush = DerethPalette.GrooveEdgeBrush,
             BorderThickness = new Thickness(1),
-            Padding = new Thickness(7, 0),
+            Padding = new Thickness(7, 1, 7, 0),
             Child = _plaqueContent
         };
-        row.Children.Add(Centred(_plaque));
         _examine = Medallion(DerethGlyph.Examine, 20, 16, "Examine selected");
         _examine.Clicked += _port.ExamineSelected;
-        row.Children.Add(Centred(_examine));
-        row.Children.Add(Centred(new DerethDivider()));
-        var backpack = Medallion(DerethGlyph.Backpack, 34, 21, "Inventory");
+        var selection = Columns(Centred(_use), new NoWidth { Child = _plaque }, Centred(_examine));
+        var middle = new StackPanel { Spacing = 4, Margin = new Thickness(6, 0), VerticalAlignment = VerticalAlignment.Center, Children = { buttons, selection } };
+        var backpack = Medallion(DerethGlyph.Backpack, 40, 25, "Inventory");
         _windows.Add(RetailPanel.Inventory, backpack);
         backpack.Clicked += () => TogglePanel(RetailPanel.Inventory);
-        row.Children.Add(Centred(backpack));
+        _sections.Children.Add(Columns(Centred(_stance), middle, Centred(backpack)));
 
         // A transparent frame takes the press wherever no button or control does (a medallion marks its presses handled), so a press there
         // starts the move.
-        var frame = new Border { Padding = new Thickness(4, 0), Background = Brushes.Transparent, Child = row };
+        var frame = new Border { Padding = new Thickness(4), Background = Brushes.Transparent, Child = _sections };
         frame.PointerPressed += (_, e) =>
         {
             if (e.GetCurrentPoint(frame).Properties.IsLeftButtonPressed) _startMove?.Invoke();
@@ -178,11 +182,38 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     /// <summary>Shows the green ring on the LegACEy menu button while the menu is open.</summary>
     public void SetMenuOpen(bool open) => _menu.IsOpen = open;
 
-    /// <summary>A drop on the backpack goes to the main pack, as retail's backpack takes it. Elsewhere on the toolbar it is not taken.</summary>
-    public bool RetailDrop(uint itemId, string itemName, Point position) => itemId != 0 && OnBackpack(position) && _moveToMainPack([itemId]);
+    /// <summary>
+    /// Shows these shortcut rows under the buttons, in order, in place of the ones shown before. The toolbar does not own them: the caller
+    /// disposes a row it takes away.
+    /// </summary>
+    public void SetShortcutRows(IEnumerable<ShortcutBar> rows)
+    {
+        _sections.Children.RemoveAll(Rows.ToList());
+        _sections.Children.AddRange(rows);
+    }
+
+    private IEnumerable<ShortcutBar> Rows => _sections.Children.OfType<ShortcutBar>();
+
+    /// <summary>
+    /// A drop on a shortcut row goes to that row. A drop on the backpack goes to the main pack, as retail's backpack takes it, unless it is a
+    /// shortcut dragged off a row. Elsewhere on the toolbar it is not taken.
+    /// </summary>
+    public bool RetailDrop(uint itemId, string itemName, Point position)
+    {
+        foreach (var row in Rows)
+            if (Within(row, position) is { } point) return row.RetailDrop(itemId, itemName, point);
+        return itemId != 0 && !ShortcutInHand && OnBackpack(position) && _moveToMainPack([itemId]);
+    }
 
     /// <summary>A set of items dropped on the backpack goes to the main pack together. Elsewhere on the toolbar it is not taken.</summary>
     public bool DropMany(IReadOnlyList<uint> itemIds, Point position) => OnBackpack(position) && _moveToMainPack(itemIds);
+
+    // The rows share one drag source, so any of them knows.
+    private bool ShortcutInHand => Rows.FirstOrDefault()?.ShortcutInHand == true;
+
+    /// <summary>The position in the row's own coordinates when it is on the row; null otherwise.</summary>
+    private Point? Within(Control row, Point position) =>
+        this.TranslatePoint(position, row) is { } point && new Rect(row.Bounds.Size).Contains(point) ? point : null;
 
     private bool OnBackpack(Point position)
     {
@@ -190,8 +221,11 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         return backpack.TranslatePoint(new Point(0, 0), this) is { } origin && new Rect(origin, backpack.Bounds.Size).Contains(position);
     }
 
-    /// <summary>The toolbar draws no drop indicator; a drop is judged on release.</summary>
-    public void RetailDragOver(uint itemId, string itemName, Point? position) { }
+    /// <summary>A drag over a shortcut row lights the slot it would land on; elsewhere the toolbar draws no drop indicator.</summary>
+    public void RetailDragOver(uint itemId, string itemName, Point? position)
+    {
+        foreach (var row in Rows) row.RetailDragOver(itemId, itemName, position is { } point ? Within(row, point) : null);
+    }
 
     /// <summary>The button that opens a panel: a window button, or the backpack for the inventory.</summary>
     public DerethMedallion ButtonFor(RetailPanel panel) => _windows[panel];
@@ -258,6 +292,21 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         var medallion = new DerethMedallion(glyph, diameter, glyphSize);
         ToolTip.SetTip(medallion, name);
         return medallion;
+    }
+
+    /// <summary>Three controls side by side; the middle one takes the width the outer two leave.</summary>
+    private static Grid Columns(Control left, Control middle, Control right)
+    {
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Children = { left, middle, right } };
+        Grid.SetColumn(middle, 1);
+        Grid.SetColumn(right, 2);
+        return grid;
+    }
+
+    /// <summary>Asks for no width of its own, so a long name in it never widens the toolbar; it takes the width it is given.</summary>
+    private sealed class NoWidth : Decorator
+    {
+        protected override Size MeasureOverride(Size availableSize) => base.MeasureOverride(availableSize).WithWidth(0);
     }
 
     private static T Centred<T>(T control) where T : Control

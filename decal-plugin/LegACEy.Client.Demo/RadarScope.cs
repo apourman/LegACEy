@@ -96,13 +96,26 @@ public sealed record RadarPlanDraw(RadarPlanLevel Level, bool Solid, bool Peek =
 /// </summary>
 public sealed record RadarLadder(int Levels, int Current, int Peek, ulong Occupied);
 
+/// <summary>A spot a player pinged on their radar: who, where, and when it arrived. It shows for <see cref="Lasts"/>.</summary>
+public sealed record RadarPing(string Sender, RadarPosition Position, DateTime Placed)
+{
+    public static readonly TimeSpan Lasts = TimeSpan.FromSeconds(15);
+}
+
+/// <summary>
+/// A ping on the scope: who placed it, where it sits in DIPs from the scope's top-left, how far through its life it is (0 to 1), and, for a
+/// ping past the rim, the screen angle it lies at in degrees clockwise from up, with <see cref="At"/> on the rim.
+/// </summary>
+public sealed record RadarScopePing(string Sender, Point At, double Age, double? Edge);
+
 /// <summary>What the radar shows this frame. Dots and the centre are in DIPs from the scope's top-left.</summary>
 public sealed class RadarScopeFrame
 {
     public RadarScopeFrame(IReadOnlyList<RadarScopeDot> dots, IReadOnlyList<RadarScopeTile> tiles, double turn, double pixelsPerMetre,
-        string? coordinates, double heading, IReadOnlyList<RadarPlanDraw> planLevels, Point planOrigin, IReadOnlyList<(Point At, bool Up)> stairMarks,
-        RadarLadder? ladder, string? plaque)
+        string? coordinates, double heading, IReadOnlyList<RadarPlanDraw> planLevels, Point planOrigin,
+        RadarLadder? ladder, string? plaque, IReadOnlyList<RadarScopePing>? pings = null)
     {
+        Pings = pings ?? Array.Empty<RadarScopePing>();
         Dots = dots;
         Tiles = tiles;
         Turn = turn;
@@ -111,17 +124,13 @@ public sealed class RadarScopeFrame
         Heading = heading;
         PlanLevels = planLevels;
         PlanOrigin = planOrigin;
-        StairMarks = stairMarks;
         Ladder = ladder;
         Plaque = plaque;
     }
 
     public IReadOnlyList<RadarScopeDot> Dots { get; }
-    /// <summary>
-    /// The stair marks of the drawn level (the peeked one while a pip is hovered): each door to another level, in DIPs from the scope's
-    /// top-left and turned as the dots are, and whether it leads up. Empty when no plan is drawn.
-    /// </summary>
-    public IReadOnlyList<(Point At, bool Up)> StairMarks { get; }
+    /// <summary>The pings still showing, on the scope or as arrows on its rim.</summary>
+    public IReadOnlyList<RadarScopePing> Pings { get; }
     /// <summary>The ladder beside the bezel, or null when no plan is drawn (outdoors, the map off, or the plan not yet built).</summary>
     public RadarLadder? Ladder { get; }
     /// <summary>The ground around the player: outdoors, or under a building's plan. Empty when the map is off, or in a dungeon.</summary>
@@ -162,8 +171,10 @@ public static class RadarScope
     /// <param name="plan">The plan of the place the player is in, or null outdoors and until it is built.</param>
     /// <param name="peek">The level the pointer is on in the ladder, or -1. Drawn in teal, as the solid level, while it is not the player's own; the player's own is then left out.</param>
     /// <param name="serverName">The server's name for a cell's place, or null; see <see cref="Plaque"/>.</param>
+    /// <param name="pings">The pings received, shown while they last; see <see cref="PingsOn"/>.</param>
+    /// <param name="now">The time the pings' ages are taken at.</param>
     public static RadarScopeFrame Build(RadarPlayer? player, IReadOnlyList<RadarObject> objects, RadarOptions options, double radius,
-        RadarPlan? plan = null, int peek = -1, Func<uint, string?>? serverName = null)
+        RadarPlan? plan = null, int peek = -1, Func<uint, string?>? serverName = null, IEnumerable<RadarPing>? pings = null, DateTime now = default)
     {
         var indoors = player is { Position.Outdoors: false };
         var range = indoors ? RadarZoom.ClampIndoor(options.IndoorZoom) : RadarZoom.Clamp(options.Zoom);
@@ -194,12 +205,62 @@ public static class RadarScope
             }
         }
         var planLevels = drawn?.DrawOrder(level, peeking) ?? Array.Empty<RadarPlanDraw>();
-        var stairs = drawn != null && player != null ? StairMarks(drawn.Levels[peeking >= 0 ? peeking : level], player, turn, scale, radius)
-            : Array.Empty<(Point At, bool Up)>();
         var ladder = drawn == null ? null : new RadarLadder(drawn.Levels.Count, level, peeking, occupied);
         var origin = player == null ? default : new Point(player.Position.X, player.Position.Y);
-        return new RadarScopeFrame(dots, tiles, turn, scale, player?.Position.Coordinates, player?.Heading ?? 0, planLevels, origin, stairs, ladder,
-            Plaque(player, drawn, level, serverName));
+        return new RadarScopeFrame(dots, tiles, turn, scale, player?.Position.Coordinates, player?.Heading ?? 0, planLevels, origin, ladder,
+            Plaque(player, drawn, level, serverName), player == null || pings == null ? null : PingsOn(player, pings, now, range, turn, scale, radius));
+    }
+
+    /// <summary>
+    /// The pings that show: not yet <see cref="RadarPing.Lasts"/> old, outdoors while the player is, and indoors only in the player's
+    /// landblock. One past the range sits on the rim, pointing its way.
+    /// </summary>
+    private static List<RadarScopePing> PingsOn(RadarPlayer player, IEnumerable<RadarPing> pings, DateTime now, double range, double turn,
+        double scale, double radius)
+    {
+        var shown = new List<RadarScopePing>();
+        foreach (var ping in pings)
+        {
+            var age = (now - ping.Placed).TotalSeconds / RadarPing.Lasts.TotalSeconds;
+            if (age < 0 || age >= 1 || ping.Position.Outdoors != player.Position.Outdoors) continue;
+            if (!player.Position.Outdoors && ping.Position.Cell >> 16 != player.Position.Cell >> 16) continue;
+            var (east, north) = player.Position.OffsetTo(ping.Position);
+            var distance = Math.Sqrt(east * east + north * north);
+            if (distance <= range)
+            {
+                shown.Add(new RadarScopePing(ping.Sender, Turned(east, north, turn, scale, radius), age, null));
+                continue;
+            }
+            var rim = range / distance;
+            shown.Add(new RadarScopePing(ping.Sender, Turned(east * rim, north * rim, turn, scale, radius), age, Normalise(Bearing(east, north) + turn)));
+        }
+        return shown;
+    }
+
+    /// <summary>
+    /// The spot under a point on the scope, at the player's height: the inverse of where a dot is drawn. Outdoors its cell is the landblock
+    /// and outdoor cell it falls in; indoors it keeps the player's cell.
+    /// </summary>
+    public static RadarPosition PositionAt(RadarPlayer player, RadarOptions options, double radius, Point point)
+    {
+        var indoors = !player.Position.Outdoors;
+        var scale = radius / (indoors ? RadarZoom.ClampIndoor(options.IndoorZoom) : RadarZoom.Clamp(options.Zoom));
+        var radians = (options.NorthUp ? 0 : -player.Heading) * Math.PI / 180;
+        var x = point.X - radius;
+        var y = point.Y - radius;
+        var east = (x * Math.Cos(radians) + y * Math.Sin(radians)) / scale;
+        var north = -(-x * Math.Sin(radians) + y * Math.Cos(radians)) / scale;
+        var at = player.Position;
+        if (indoors) return at with { X = (float)(at.X + east), Y = (float)(at.Y + north) };
+        var metresX = at.X + east;
+        var metresY = at.Y + north;
+        var landblockX = (int)(at.Cell >> 24) + (int)Math.Floor(metresX / LandblockMetres);
+        var landblockY = (int)((at.Cell >> 16) & 0xFF) + (int)Math.Floor(metresY / LandblockMetres);
+        metresX -= Math.Floor(metresX / LandblockMetres) * LandblockMetres;
+        metresY -= Math.Floor(metresY / LandblockMetres) * LandblockMetres;
+        // Outdoor cells are 24 m squares, 8 a side, numbered from 1 up each column of x.
+        var cell = 1 + (uint)(metresX / 24) * 8 + (uint)(metresY / 24);
+        return new RadarPosition(((uint)landblockX << 24) | ((uint)landblockY << 16) | cell, (float)metresX, (float)metresY, at.Z);
     }
 
     /// <summary>
@@ -272,18 +333,6 @@ public static class RadarScope
         var x = east * scale;
         var y = -north * scale;
         return new Point(radius + x * Math.Cos(radians) - y * Math.Sin(radians), radius + x * Math.Sin(radians) + y * Math.Cos(radians));
-    }
-
-    // The level's doors to another level, each turned as the dots are: the stair marks the scope draws on the level.
-    private static IReadOnlyList<(Point At, bool Up)> StairMarks(RadarPlanLevel level, RadarPlayer player, double turn, double scale, double radius)
-    {
-        var marks = new (Point At, bool Up)[level.Stairs.Count];
-        for (var i = 0; i < marks.Length; i++)
-        {
-            var (at, up) = level.Stairs[i];
-            marks[i] = (Turned(at.X - player.Position.X, at.Y - player.Position.Y, turn, scale, radius), up);
-        }
-        return marks;
     }
 
     // An object's level in the drawn plan: its cell's, as the player's is, when the cell is in the place; else the level nearest its height

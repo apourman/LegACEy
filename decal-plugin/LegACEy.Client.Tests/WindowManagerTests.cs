@@ -85,6 +85,19 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void An_item_slot_window_keeps_its_full_size_default_and_minimum_below_100_percent()
+    {
+        var manager = new WindowManager(new Size(800, 600), new MemoryWindowPositionStore(), "server", "character", scale: 0.85);
+        var window = manager.Open(new WindowDefinition("bag", "Bag", 200, 120, titleBarHeight: 20,
+            resizing: new WindowResizing(new Size(100, 60)) { ItemSlots = true }), new Point(10, 10));
+
+        // Its icons stay 32 px, so its slots take as much screen as at 100%.
+        Assert.Equal(new Size(200, 120), window.Size);
+        Assert.Equal(new Size(100, 60), window.Definition.Resizing!.Minimum);
+        Assert.Equal(17, window.Definition.TitleBarHeight);
+    }
+
+    [Fact]
     public void A_window_rescales_on_its_own_on_top_of_the_manager_scale_and_keeps_its_size_for_the_character()
     {
         var store = new MemoryWindowPositionStore();

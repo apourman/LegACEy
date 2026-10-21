@@ -28,6 +28,9 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private const double ClickSlop = 4;
     // How far a tab press must move outside the tab strip before the tab is dragged out into a window of its own.
     private const double TearOffSlop = 6;
+    private static readonly IBrush LinkBrush = DerethPalette.Brush(DerethChatPalette.Link);
+    // Retail's chat type for a spell's words, which names its caster in the link green.
+    private const uint SpellcastingType = 17;
     // The dark shadow under each line while the window is idle, so pale lines read over bright ground once the chrome has faded.
     private static readonly IEffect LineShadow = new DropShadowDirectionEffect { Color = Colors.Black, Direction = 90, ShadowDepth = 1, BlurRadius = 1, Opacity = 1 };
     private readonly IRetailChatPort _port;
@@ -63,6 +66,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private readonly Border _editor = new() { IsVisible = false, ZIndex = 6 };
     private readonly DerethFrame _frame = new(DerethFrameArt.Window);
     private readonly Border _groove;
+    private readonly Border _grooveEdge;
     private readonly List<Control> _chrome = new();
     private readonly RetailChatFade _fade;
     private readonly Func<DateTime> _clock;
@@ -140,14 +144,11 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         var tabBar = new Border { BorderBrush = DerethChatPalette.GoldDarkBrush, BorderThickness = new Thickness(0, 0, 0, 1), Margin = new Thickness(0, 0, 0, 5), Child = _tabRow };
 
         // The log: a dark groove with a scroll bar, and the jump pill over its bottom edge while the player is scrolled up.
-        // The groove fades with the chrome; the lines sit over it, inset by the groove's border and padding, and fade by their own age.
-        _groove = new Border
-        {
-            Background = DerethPalette.Brush(Color.FromArgb(0x99, 0x07, 0x07, 0x05)),
-            BorderBrush = DerethPalette.GrooveEdgeBrush,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(3)
-        };
+        // The groove's fill fades between the active and inactive opacities, and its edge fades with the chrome; the lines sit over it, inset by
+        // the edge's border and padding, and fade by their own age.
+        // Its opacity starts at the default active opacity, so the first frame, before Refresh, looks as the default does.
+        _groove = new Border { Background = DerethPalette.Brush(Color.FromArgb(0xFF, 0x07, 0x07, 0x05)), CornerRadius = new CornerRadius(3), Opacity = RetailChatWindows.DefaultActiveOpacity / 100.0 };
+        _grooveEdge = new Border { BorderBrush = DerethPalette.GrooveEdgeBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3) };
         _scroll = new ScrollViewer { Content = _lines, Margin = new Thickness(7, 4), VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         _scroll.ScrollChanged += (_, _) => { if (AtEnd()) HidePill(); };
         // The log selects as one text: a drag runs from line to line. Tunnel handlers, ahead of each line's own selection.
@@ -158,7 +159,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         _pill.IsVisible = false;
         _pill.Margin = new Thickness(0, 0, 0, 6);
         _pill.PointerPressed += (_, e) => { JumpToEnd(); e.Handled = true; };
-        var logArea = new Grid { Children = { _groove, _scroll, _pill }, Margin = new Thickness(0, 0, 0, 5) };
+        var logArea = new Grid { Children = { _groove, _grooveEdge, _scroll, _pill }, Margin = new Thickness(0, 0, 0, 5) };
 
         // The input row: the chip opens the talk-target menu; the box takes text; Send sends it.
         _chipHost.PointerPressed += (_, e) => { if (e.GetCurrentPoint(_chipHost).Properties.IsLeftButtonPressed) ToggleMenu(); };
@@ -226,7 +227,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         // The frame is a sibling of the content, not its parent, so it fades without the lines fading with it. The root is hit-testable
         // all over, so the pointer counts as over the window wherever it is in the frame.
         // The jump pill keeps its own visibility: it is the cue for lines that arrived while the log was scrolled up.
-        _chrome.AddRange(new Control[] { _frame, tabBar, _groove, inputRow });
+        _chrome.AddRange(new Control[] { _frame, tabBar, _grooveEdge, inputRow });
         Child = new Grid { Background = Brushes.Transparent, Children = { _frame, _scaled } };
         // Ctrl and the wheel change the text size, anywhere over the window.
         AddHandler(PointerWheelChangedEvent, (_, e) =>
@@ -421,6 +422,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         }
         var chrome = _fade.ChromeOpacity(now);
         foreach (var part in _chrome) SetOpacity(part, chrome);
+        // The log's backdrop goes from the active opacity to the inactive one as the chrome fades.
+        SetOpacity(_groove, (InactiveOpacity + (ActiveOpacity - InactiveOpacity) * chrome) / 100.0);
         _scrollBar ??= _scroll.GetVisualDescendants().OfType<ScrollBar>().FirstOrDefault(bar => bar.Orientation == Orientation.Vertical);
         if (_scrollBar != null) SetOpacity(_scrollBar, chrome);
         if (!_linesSettled) _linesSettled = ApplyLines(now);
@@ -437,7 +440,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         foreach (var line in _lines.Children)
         {
             if (line.Tag is not DateTime arrived) continue;
-            var opacity = _fade.LineOpacity(arrived, now);
+            // With a backdrop left when idle, the log stays readable over it, as retail's does.
+            var opacity = InactiveOpacity > 0 ? 1 : _fade.LineOpacity(arrived, now);
             SetOpacity(line, opacity);
             var effect = idle ? LineShadow : null;
             if (line.Effect != effect) line.Effect = effect;
@@ -509,6 +513,37 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             _linesSettled = false;
         }
     }
+
+    /// <summary>The log's backdrop opacity in percent while the window is awake. A change applies on the next frame.</summary>
+    public int ActiveOpacity { get; set; } = RetailChatWindows.DefaultActiveOpacity;
+
+    /// <summary>
+    /// The log's backdrop opacity in percent once the window is idle; above 0 the lines stay shown over it rather than fading. A change applies
+    /// on the next frame.
+    /// </summary>
+    public int InactiveOpacity
+    {
+        get => _inactiveOpacity;
+        set
+        {
+            _inactiveOpacity = value;
+            _linesSettled = false;
+        }
+    }
+    private int _inactiveOpacity = RetailChatWindows.DefaultInactiveOpacity;
+
+    /// <summary>The colour names are drawn in, or null for retail's: the line's own, or the link green in a spell's words. A change redraws the log.</summary>
+    public Color? NameColour
+    {
+        get => _nameColour;
+        set
+        {
+            if (_nameColour == value) return;
+            _nameColour = value;
+            RebuildLog();
+        }
+    }
+    private Color? _nameColour;
 
     /// <summary>The text size the window's content is drawn at, 1 for its design size.</summary>
     public double TextScale
@@ -620,12 +655,15 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     }
 
     /// <summary>
-    /// One line as one selectable block: the time, the text before the sender's name, the name in its colour and the rest. A click on the
-    /// name, without a drag, answers with a tell to that name; a drag selects text as usual.
+    /// One line as one selectable block: the time, then the text with its links. A click on a link, without a drag, goes to Decal's plugins
+    /// as a retail click does (GoArrow's coordinates); a click on a name that no plugin takes answers with a tell to that name. A drag
+    /// selects text as usual.
     /// </summary>
     private Control LineView(RetailChatLine line)
     {
         var brush = DerethPalette.Brush(line.Type is { } type ? DerethChatPalette.OfType(type) : ColourOf(line.Kind));
+        // A name keeps the line's colour, or retail's link green in a spell's words, unless the player picked one for names.
+        var nameBrush = _nameColour is { } picked ? DerethPalette.Brush(picked) : line.Type == SpellcastingType ? LinkBrush : brush;
         var italic = line.Kind == RetailChatKind.Emote;
         var view = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap, LineHeight = 15.6, Margin = new Thickness(0, 0, 0, 1), Tag = line.Time };
         var written = 0;
@@ -636,17 +674,26 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         }
 
         if (_timestamps) Add(DerethChatParts.TimestampRun(line.Time.ToString("HH:mm") + " "));
-        var rest = line.Text;
-        var at = line.Sender == null ? -1 : line.Text.IndexOf(line.Sender, StringComparison.Ordinal);
-        if (line.Sender != null && at >= 0)
+        var links = line.Links;
+        // A line built without tags (the tests' and demo's) still names its sender in its text.
+        if (links == null && line.Sender != null && line.Text.IndexOf(line.Sender, StringComparison.Ordinal) is var nameAt and >= 0)
+            links = new[] { new RetailChatLink(nameAt, line.Sender.Length, line.SenderId, line.Sender, Name: true) };
+        var afterLink = 0;
+        foreach (var link in links ?? Array.Empty<RetailChatLink>())
         {
-            if (at > 0) Add(DerethChatParts.TextRun(line.Text.Substring(0, at), brush, italic));
-            var nameStart = written;
-            Add(DerethChatParts.TextRun(line.Sender, brush, italic));
-            WireNameClick(view, nameStart, written, line.TellBack!);
-            rest = line.Text.Substring(at + line.Sender.Length);
+            if (link.Start > afterLink) Add(DerethChatParts.TextRun(line.Text.Substring(afterLink, link.Start - afterLink), brush, italic));
+            var shown = line.Text.Substring(link.Start, link.Length);
+            // A plugin's link is drawn in retail's link green.
+            var tell = link.Name ? RetailTalkTarget.Tell(shown, link.Id) : null;
+            var start = written;
+            Add(DerethChatParts.TextRun(shown, link.Name ? nameBrush : LinkBrush, italic));
+            WireClick(view, start, written, () =>
+            {
+                if (!_port.Click(link.Id, link.Tag) && tell != null) TellTo(tell);
+            });
+            afterLink = link.Start + link.Length;
         }
-        if (rest.Length > 0) Add(DerethChatParts.TextRun(rest, brush, italic));
+        if (afterLink < line.Text.Length) Add(DerethChatParts.TextRun(line.Text.Substring(afterLink), brush, italic));
         return view;
     }
 
@@ -760,11 +807,11 @@ public sealed class RetailChatWindow : Decorator, IDisposable
 
     private static string LineText(SelectableTextBlock line) => line.Inlines?.Text ?? line.Text ?? string.Empty;
 
-    /// <summary>A click on the characters from <paramref name="start"/> to <paramref name="end"/>, without a drag, tells the name.</summary>
-    private void WireNameClick(SelectableTextBlock view, int start, int end, RetailTalkTarget tell)
+    /// <summary>A click on the characters from <paramref name="start"/> to <paramref name="end"/>, without a drag, runs <paramref name="clicked"/>.</summary>
+    private void WireClick(SelectableTextBlock view, int start, int end, Action clicked)
     {
         Point? pressed = null;
-        // Handled events too: the text block marks its own presses handled, and the click still has to reach the name.
+        // Handled events too: the text block marks its own presses handled, and the click still has to reach the link.
         view.AddHandler(InputElement.PointerPressedEvent, (_, e) =>
             pressed = e.GetCurrentPoint(view).Properties.IsLeftButtonPressed ? e.GetPosition(view) : null,
             RoutingStrategies.Bubble, handledEventsToo: true);
@@ -776,7 +823,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             var to = e.GetPosition(view);
             if (Math.Abs(to.X - origin.X) + Math.Abs(to.Y - origin.Y) > ClickSlop) return;
             var hit = view.TextLayout?.HitTestPoint(to);
-            if (hit is { IsInside: true } result && result.TextPosition >= start && result.TextPosition < end) TellTo(tell);
+            if (hit is { IsInside: true } result && result.TextPosition >= start && result.TextPosition < end) clicked();
         }, RoutingStrategies.Bubble, handledEventsToo: true);
     }
 
