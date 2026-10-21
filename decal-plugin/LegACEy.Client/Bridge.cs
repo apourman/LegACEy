@@ -261,6 +261,14 @@ public static unsafe class Bridge
         fixed (byte* first = bytes) Check(_calls.Chat(first, bytes.Length, colour), nameof(Chat));
     }
 
+    internal static bool ChatClick(uint id, string tag)
+    {
+        var bytes = Encoding.UTF8.GetBytes(tag);
+        int eaten;
+        fixed (byte* first = bytes) Check(_calls.ChatClick((int)id, first, bytes.Length, &eaten), nameof(ChatClick));
+        return eaten != 0;
+    }
+
     internal static void UseItem(uint id, int state) => Check(_calls.UseItem((int)id, state), nameof(UseItem));
     internal static void SelectItem(uint id) => Check(_calls.SelectItem((int)id), nameof(SelectItem));
     internal static void RequestId(uint id) => Check(_calls.RequestId((int)id), nameof(RequestId));

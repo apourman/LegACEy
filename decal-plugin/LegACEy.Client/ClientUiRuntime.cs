@@ -2597,7 +2597,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var roots = new List<IRetailTakeoverPort>();
         foreach (var id in new[] { RetailChatCatalogue.MainChatWindow }.Concat(RetailChatCatalogue.FloatingChats))
             roots.Add(new RetailHeldWindows.RootPort(id));
-        _chatPort = new NativeRetailChatPort(Log, natives, (opcode, payload) => _channelTransport?.SendAction(opcode, payload) ?? false);
+        _chatPort = new NativeRetailChatPort(Log, natives, (opcode, payload) => _channelTransport?.SendAction(opcode, payload) ?? false,
+            Bridge.ChatClick);
         _chatTakeover = new RetailHeldWindows(roots);
         try { _chatPort.Attach(); }
         catch (InvalidOperationException) { }

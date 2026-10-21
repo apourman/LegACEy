@@ -280,6 +280,26 @@ public sealed class RetailChatTests
     });
 
     [Fact]
+    public void A_link_click_goes_to_Decal_s_plugins_and_a_name_a_plugin_takes_sets_no_tell() => RenderThread.Run(() =>
+    {
+        var port = new FakeChatPort();
+        using var panel = Open(port, out var window);
+        port.Say(LegACEy.Client.DecalPlugin.NativeRetailChatPort.RetailChatTypes.Parse(RetailChatKind.Local,
+            "Meet at <Tell:IIDString:110011:10.7N, 52.3E>10.7N, 52.3E</Tell>", Stamp));
+        port.Say(Line(RetailChatKind.TellIn, "Mirra tells you, \"hi\"", "Mirra"));
+        panel.Tick();
+
+        ClickName(panel, "Meet at", "10.7N");
+        Assert.Equal((110011u, "10.7N, 52.3E"), port.Clicks.Last());
+
+        port.Eats = true;
+        ClickName(panel, "Mirra tells you", "Mirra");
+        Assert.Equal((0u, "Mirra"), port.Clicks.Last());
+        TypeAndEnter(panel, window, "yo");
+        Assert.NotEqual("/t Mirra, yo", port.Sent.Last());
+    });
+
+    [Fact]
     public void An_NPC_is_told_by_its_object_id_and_a_player_by_name() => RenderThread.Run(() =>
     {
         var port = new FakeChatPort();
@@ -1198,6 +1218,18 @@ public sealed class RetailChatTests
         }
 
         public void Say(RetailChatLine line) => LineReceived?.Invoke(line);
+
+        /// <summary>Each link click, as Decal's ChatNameClicked would get it.</summary>
+        public List<(uint Id, string Tag)> Clicks { get; } = new();
+
+        /// <summary>True makes every click eaten, as a plugin that takes it does.</summary>
+        public bool Eats { get; set; }
+
+        public bool Click(uint id, string tag)
+        {
+            Clicks.Add((id, tag));
+            return Eats;
+        }
 
         public void SetTimestamps(bool on)
         {

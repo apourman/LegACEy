@@ -51,6 +51,14 @@ public sealed class RetailChatNativeTests
         Assert.Null(link.Sender);
         Assert.Equal("- +Seed Alpha", Parse(@"<Tell:IIDString:221112:1609564160>-<\\\\Tell> +Seed Alpha").Text);
 
+        // GoArrow closes its links with <\Tell>, UtilityBelt with </Tell>; both are links with the tag's id and text.
+        foreach (var close in new[] { @"<\Tell>", "</Tell>", "</Tell >" })
+        {
+            var coords = Parse($"Meet at <Tell:IIDString:110011:10.7N, 52.3E>10.7N, 52.3E{close} \\[UB\\]");
+            Assert.Equal("Meet at 10.7N, 52.3E [UB]", coords.Text);
+            Assert.Equal(new RetailChatLink(8, 12, 110011, "10.7N, 52.3E"), Assert.Single(coords.Links!));
+        }
+
         static RetailChatLine Parse(string raw) => NativeRetailChatPort.RetailChatTypes.Parse(RetailChatKind.Plugin, raw, Time);
     }
 

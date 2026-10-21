@@ -620,8 +620,9 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     }
 
     /// <summary>
-    /// One line as one selectable block: the time, the text before the sender's name, the name in its colour and the rest. A click on the
-    /// name, without a drag, answers with a tell to that name; a drag selects text as usual.
+    /// One line as one selectable block: the time, then the text with its links. A click on a link, without a drag, goes to Decal's plugins
+    /// as a retail click does (GoArrow's coordinates); a click on the sender's name that no plugin takes answers with a tell to that name. A
+    /// drag selects text as usual.
     /// </summary>
     private Control LineView(RetailChatLine line)
     {
@@ -636,17 +637,24 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         }
 
         if (_timestamps) Add(DerethChatParts.TimestampRun(line.Time.ToString("HH:mm") + " "));
-        var rest = line.Text;
-        var at = line.Sender == null ? -1 : line.Text.IndexOf(line.Sender, StringComparison.Ordinal);
-        if (line.Sender != null && at >= 0)
+        var links = line.Links;
+        // A line built without tags (the tests' and demo's) still names its sender in its text.
+        if (links == null && line.Sender != null && line.Text.IndexOf(line.Sender, StringComparison.Ordinal) is var name and >= 0)
+            links = new[] { new RetailChatLink(name, line.Sender.Length, line.SenderId, line.Sender) };
+        var at = 0;
+        foreach (var link in links ?? Array.Empty<RetailChatLink>())
         {
-            if (at > 0) Add(DerethChatParts.TextRun(line.Text.Substring(0, at), brush, italic));
-            var nameStart = written;
-            Add(DerethChatParts.TextRun(line.Sender, brush, italic));
-            WireNameClick(view, nameStart, written, line.TellBack!);
-            rest = line.Text.Substring(at + line.Sender.Length);
+            if (link.Start > at) Add(DerethChatParts.TextRun(line.Text.Substring(at, link.Start - at), brush, italic));
+            var start = written;
+            Add(DerethChatParts.TextRun(line.Text.Substring(link.Start, link.Length), brush, italic));
+            var tell = link.Tag == line.Sender && link.Id == line.SenderId ? line.TellBack : null;
+            WireClick(view, start, written, () =>
+            {
+                if (!_port.Click(link.Id, link.Tag) && tell != null) TellTo(tell);
+            });
+            at = link.Start + link.Length;
         }
-        if (rest.Length > 0) Add(DerethChatParts.TextRun(rest, brush, italic));
+        if (at < line.Text.Length) Add(DerethChatParts.TextRun(line.Text.Substring(at), brush, italic));
         return view;
     }
 
@@ -760,11 +768,11 @@ public sealed class RetailChatWindow : Decorator, IDisposable
 
     private static string LineText(SelectableTextBlock line) => line.Inlines?.Text ?? line.Text ?? string.Empty;
 
-    /// <summary>A click on the characters from <paramref name="start"/> to <paramref name="end"/>, without a drag, tells the name.</summary>
-    private void WireNameClick(SelectableTextBlock view, int start, int end, RetailTalkTarget tell)
+    /// <summary>A click on the characters from <paramref name="start"/> to <paramref name="end"/>, without a drag, runs <paramref name="clicked"/>.</summary>
+    private void WireClick(SelectableTextBlock view, int start, int end, Action clicked)
     {
         Point? pressed = null;
-        // Handled events too: the text block marks its own presses handled, and the click still has to reach the name.
+        // Handled events too: the text block marks its own presses handled, and the click still has to reach the link.
         view.AddHandler(InputElement.PointerPressedEvent, (_, e) =>
             pressed = e.GetCurrentPoint(view).Properties.IsLeftButtonPressed ? e.GetPosition(view) : null,
             RoutingStrategies.Bubble, handledEventsToo: true);
@@ -776,7 +784,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             var to = e.GetPosition(view);
             if (Math.Abs(to.X - origin.X) + Math.Abs(to.Y - origin.Y) > ClickSlop) return;
             var hit = view.TextLayout?.HitTestPoint(to);
-            if (hit is { IsInside: true } result && result.TextPosition >= start && result.TextPosition < end) TellTo(tell);
+            if (hit is { IsInside: true } result && result.TextPosition >= start && result.TextPosition < end) clicked();
         }, RoutingStrategies.Bubble, handledEventsToo: true);
     }
 

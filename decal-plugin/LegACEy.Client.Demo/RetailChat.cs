@@ -40,14 +40,21 @@ public enum ChatChannels
 /// <summary>
 /// A line as the chat window shows it. <see cref="Text"/> is the line as retail words it, with the sender's name in it; <see cref="Sender"/>
 /// is the name a click answers with a tell (the other party's, for a tell either way); <see cref="Channel"/> is a channel's name;
-/// <see cref="Type"/> is retail's chat type, which picks the line's colour, or null when the line has none.
+/// <see cref="Type"/> is retail's chat type, which picks the line's colour, or null when the line has none; <see cref="Links"/> are the
+/// line's clickable tags, the sender's among them, or null when it has none.
 /// </summary>
 public sealed record RetailChatLine(RetailChatKind Kind, string Text, DateTime Time, string? Sender = null, string? Channel = null, uint SenderId = 0,
-    uint? Type = null)
+    uint? Type = null, IReadOnlyList<RetailChatLink>? Links = null)
 {
     /// <summary>A tell back to the line's sender, by object id when the line named one, or null when the line has no sender.</summary>
     public RetailTalkTarget? TellBack => Sender == null ? null : RetailTalkTarget.Tell(Sender, SenderId);
 }
+
+/// <summary>
+/// A clickable tag in a line: <see cref="Length"/> characters of <see cref="RetailChatLine.Text"/> from <see cref="Start"/>, with the tag's
+/// id and text, which retail hands to Decal's ChatNameClicked when it is clicked (a player's id and name, GoArrow's 110011 and coordinates).
+/// </summary>
+public sealed record RetailChatLink(int Start, int Length, uint Id, string Tag);
 
 /// <summary>What the player is in, for dimming talk targets: fellowship, allegiance and its ranks, society, Olthoi, and the open channels.</summary>
 public sealed record RetailChatMembership(bool Fellowship, bool Allegiance, bool Monarch, bool Patron, bool Vassals, bool Society, bool Olthoi,
@@ -66,6 +73,8 @@ public interface IRetailChatPort
     bool TellDirect(uint objectId, string text);
     /// <summary>What the player is in now. Read when the talk-target menu opens.</summary>
     RetailChatMembership Membership { get; }
+    /// <summary>Raises Decal's ChatNameClicked for a link, as a click in retail's chat does. True when a plugin took the click.</summary>
+    bool Click(uint id, string tag);
     /// <summary>The selected object's name, or null when nothing is selected.</summary>
     string? SelectedName { get; }
     /// <summary>The selected object's id, or 0 when nothing is selected.</summary>
