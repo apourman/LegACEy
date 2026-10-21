@@ -1705,7 +1705,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_featureSurfaces.ContainsKey(definition.Id))
             throw new InvalidOperationException($"A feature window named '{definition.Id}' is already registered.");
         // Created at its on-screen size; showing it fits it to the window manager's size again (a saved size, for one).
-        var scale = AvaloniaPanel.CanScale ? _windows!.ScaleOf(definition.Id) : 1;
+        var scale = PanelScaleOf(definition.Id);
         var panel = ObservePanel(AvaloniaPanel.Create(() => content, (int)Math.Round(definition.Width * scale), (int)Math.Round(definition.Height * scale), scale), failed);
         var surface = new ScreenSurface(_device, panel);
         ShowSurface(definition, surface, requestedLocation, failed);
@@ -2214,10 +2214,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _toolbarPlaceLoaded = true;
         ScaleToolbar();
         if (_positionStore.Load(SessionServer(), SessionCharacter(), ToolbarPlaceId) is not { } saved) return;
-        var screen = GameDevice.ViewportSize(_device);
-        var size = _toolbarSurface.Bounds.Size;
-        _toolbarPlace.Location = new Point(Math.Max(0, Math.Min(screen.Width - size.Width, saved.Location.X)),
-            Math.Max(0, Math.Min(screen.Height - size.Height, saved.Location.Y)));
+        _toolbarPlace.Location = OnScreen(saved.Location, _toolbarSurface.Bounds.Size);
     }
 
     /// <summary>
@@ -2226,19 +2223,27 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void ScaleToolbar()
     {
-        if (!AvaloniaPanel.CanScale || _windows == null || _toolbar is not { } toolbar || _toolbarSurface is not { } surface) return;
-        var scale = _windows.ScaleOf(ToolbarPlaceId);
+        if (_windows == null || _toolbar is not { } toolbar || _toolbarSurface is not { } surface) return;
+        var scale = PanelScaleOf(ToolbarPlaceId);
         if (surface.Panel.Scale == scale) return;
         surface.Panel.Resize(surface.Panel.Frame.Width, surface.Panel.Frame.Height, scale);
         toolbar.InvalidateMeasure();
         toolbar.Measure(Avalonia.Size.Infinity);
         surface.Panel.Resize(WholePixels(toolbar.DesiredSize.Width * scale), WholePixels(toolbar.DesiredSize.Height * scale));
         if (_splitTabSurface is { } split) split.Panel.Resize(split.Panel.Frame.Width, split.Panel.Frame.Height, scale);
-        var screen = GameDevice.ViewportSize(_device);
-        var size = surface.Bounds.Size;
-        var kept = new Point(Math.Max(0, Math.Min(screen.Width - size.Width, surface.Location.X)), Math.Max(0, Math.Min(screen.Height - size.Height, surface.Location.Y)));
+        var kept = OnScreen(surface.Location, surface.Bounds.Size);
         if (kept != surface.Location) _toolbarTakeover?.MoveTo(kept);
     }
+
+    /// <summary>A place moved just enough that something this size there is on screen.</summary>
+    private Point OnScreen(Point location, Size size)
+    {
+        var screen = GameDevice.ViewportSize(_device);
+        return new Point(Math.Max(0, Math.Min(screen.Width - size.Width, location.X)), Math.Max(0, Math.Min(screen.Height - size.Height, location.Y)));
+    }
+
+    /// <summary>The scale a window's panel draws at: its own, or 1 where this Avalonia cannot scale panels.</summary>
+    private double PanelScaleOf(string id) => AvaloniaPanel.CanScale ? _windows!.ScaleOf(id) : 1;
 
     private void SaveToolbarPlace(Point location)
     {
@@ -2390,7 +2395,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var bar = new ShortcutBar(row, firstIndex, _toolbarPort!, ShortcutItemOf, _portal, () => NativeUi.IsUiLocked,
             () => _windows?.BeginMove(windowId, _pointer), () => _pointer, tagClick, new ItemDragHost(this), _shortcutDrag);
         // Measured at the window's scale, where its slots round to whole pixels, so the window holds all nine.
-        var scale = AvaloniaPanel.CanScale ? _windows!.ScaleOf(windowId) : 1;
+        var scale = PanelScaleOf(windowId);
         var measured = AvaloniaPanel.MeasureAt(bar, Avalonia.Size.Infinity, scale);
         var size = new Size(DipsFor(WholePixels(measured.Width * scale), scale), DipsFor(WholePixels(measured.Height * scale), scale));
         // No title bar: the bar drags from its content (DragsFromContent), so titleBarHeight is not used for a drag. It is set to the bar's
@@ -3186,13 +3191,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 case InputAction.MouseWheel:
                     // Ctrl and the wheel over a LegACEy window or the toolbar make it bigger or smaller, and its content does not scroll. Over
                     // chat they keep changing its text size.
-                    if ((route.Modifiers & InputModifiers.Control) != 0 && route.SurfaceId == ToolbarSurfaceId && _toolbarTakeover?.Holds == true)
-                    {
-                        if (AvaloniaPanel.CanScale && _windows?.Rescale(ToolbarPlaceId, Math.Sign(route.WheelDelta)) == true) ScaleToolbar();
-                    }
-                    else if ((route.Modifiers & InputModifiers.Control) != 0 && route.SurfaceId != null && _windows?.Get(route.SurfaceId) != null
-                        && !RetailChatWindows.IsChat(route.SurfaceId))
-                        RescaleWindow(route.SurfaceId, Math.Sign(route.WheelDelta));
+                    if ((route.Modifiers & InputModifiers.Control) != 0 && Rescalable(route.SurfaceId))
+                        RescaleWindow(route.SurfaceId!, Math.Sign(route.WheelDelta));
                     else
                         target!.Panel.MouseWheel(route.X, route.Y, 0, route.WheelDelta / 120.0, ToKeyModifiers(route.Modifiers));
                     eat = route.Eat;
@@ -3433,14 +3433,20 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         return dips;
     }
 
+    /// <summary>Whether Ctrl and the wheel over a surface resize it: the held toolbar, or a LegACEy window other than chat.</summary>
+    private bool Rescalable(string? id) => id == ToolbarSurfaceId
+        ? _toolbarTakeover?.Holds == true
+        : id != null && _windows?.Get(id) != null && !RetailChatWindows.IsChat(id);
+
     /// <summary>
-    /// Makes a window a step bigger or smaller, from Ctrl and the wheel over it. A shortcut row opens again at its new size, since it is
-    /// measured as it opens; any other window's panel draws at the new scale in place.
+    /// Makes a window or the toolbar a step bigger or smaller, from Ctrl and the wheel over it. A shortcut row opens again at its new size,
+    /// since it is measured as it opens; the toolbar lays out again; any other window's panel draws at the new scale in place.
     /// </summary>
     private void RescaleWindow(string id, int steps)
     {
-        if (!AvaloniaPanel.CanScale || !_windows!.Rescale(id, steps)) return;
-        if (id == ShortcutRowWindowId)
+        if (!AvaloniaPanel.CanScale || !_windows!.Rescale(id == ToolbarSurfaceId ? ToolbarPlaceId : id, steps)) return;
+        if (id == ToolbarSurfaceId) ScaleToolbar();
+        else if (id == ShortcutRowWindowId)
         {
             CloseShortcutBar();
             EnsureShortcutBar();

@@ -160,6 +160,11 @@ public sealed class ManagedWindow
     internal Point PreferredLocation { get; set; }
     public Size Size { get; internal set; }
     internal Size PreferredSize { get; set; }
+    /// <summary>
+    /// The preferred size at design size, exactly, while it is known: from the saved size or a rescale, until the window is resized. A size
+    /// worked back from the on-screen one rounds, and at a scale under 1 can be a pixel off, so steps of the wheel would make it drift.
+    /// </summary>
+    internal Size? DesignSize { get; set; }
     public Rectangle Bounds => new(Location, Size);
 }
 
@@ -392,7 +397,7 @@ public sealed class WindowManager
         if (existing != null) return existing;
         var design = definition;
         var sizePercent = SavedSizePercent(definition.Id);
-        var scale = Scale * sizePercent / 100;
+        var scale = ScaleFor(sizePercent);
         definition = Scaled(definition, scale);
         var saved = _positions.Load(_server, _character, definition.Id);
         var shared = definition.SharesLocationWith is { } other ? _positions.Load(_server, _character, other)?.Location : null;
@@ -402,7 +407,10 @@ public sealed class WindowManager
             ? new Point((_screen.Width - size.Width) / 2, (_screen.Height - size.Height) / 2)
             : requestedLocation;
         var preferredLocation = shared ?? saved?.Location ?? requested;
-        var window = new ManagedWindow(design, sizePercent, scale, definition, Clamp(preferredLocation, size), size, preferredLocation, preferredSize);
+        var window = new ManagedWindow(design, sizePercent, scale, definition, Clamp(preferredLocation, size), size, preferredLocation, preferredSize)
+        {
+            DesignSize = definition.Resizing != null ? saved?.Size : null
+        };
         _windows.Insert(0, window);
         return window;
     }
@@ -410,7 +418,9 @@ public sealed class WindowManager
     /// <summary>
     /// The scale a window draws at, open or not: the manager's scale times the window's own size, which a window saved for this character keeps.
     /// </summary>
-    public double ScaleOf(string id) => Get(id)?.Scale ?? Scale * SavedSizePercent(id) / 100;
+    public double ScaleOf(string id) => Get(id)?.Scale ?? ScaleFor(SavedSizePercent(id));
+
+    private double ScaleFor(int sizePercent) => Scale * sizePercent / 100;
 
     /// <summary>
     /// Makes a window bigger or smaller by <paramref name="steps"/> of <see cref="SizeStep"/> percent (a wheel notch is one), within
@@ -421,15 +431,15 @@ public sealed class WindowManager
     public bool Rescale(string id, int steps)
     {
         var window = Get(id);
-        if (_dragging != null && _dragging == window || Locked) return false;
+        if ((_dragging != null && _dragging == window) || Locked) return false;
         var current = window?.SizePercent ?? SavedSizePercent(id);
         var sizePercent = Math.Max(SmallestSize, Math.Min(LargestSize, current + steps * SizeStep));
         if (sizePercent == current) return false;
         _positions.Save(_server, _character, SizeKey(id), (new Point(sizePercent, 0), null));
         if (window == null) return true;
-        var designSize = Scaled(window.PreferredSize, 1 / window.Scale);
+        var designSize = window.DesignSize ??= Scaled(window.PreferredSize, 1 / window.Scale);
         window.SizePercent = sizePercent;
-        window.Scale = Scale * sizePercent / 100;
+        window.Scale = ScaleFor(sizePercent);
         window.Definition = Scaled(window.Design, window.Scale);
         window.PreferredSize = window.Definition.Resizing != null ? Scaled(designSize, window.Scale) : DefaultSize(window.Definition);
         window.Size = FitSize(window.Definition, window.PreferredSize, _screen);
@@ -598,6 +608,7 @@ public sealed class WindowManager
         window.Location = Clamp(new Point(x, y), size);
         window.PreferredLocation = window.Location;
         window.PreferredSize = window.Size;
+        window.DesignSize = null;
     }
 
     /// <summary>One axis of a resize. A moving start edge keeps the end edge fixed; a moving end edge stops at the screen.</summary>
@@ -658,7 +669,7 @@ public sealed class WindowManager
     }
 
     private WindowPlacement Placement(ManagedWindow window) =>
-        (window.PreferredLocation, window.Definition.Resizing == null ? null : Scaled(window.PreferredSize, 1 / window.Scale));
+        (window.PreferredLocation, window.Definition.Resizing == null ? null : window.DesignSize ?? Scaled(window.PreferredSize, 1 / window.Scale));
 
     /// <summary>The definition at a scale: what its window measures on screen.</summary>
     private static WindowDefinition Scaled(WindowDefinition definition, double scale) => scale == 1 ? definition : new WindowDefinition(

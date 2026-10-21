@@ -123,6 +123,22 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void Wheel_steps_down_and_back_up_do_not_drift_a_resized_windows_size()
+    {
+        var store = new MemoryWindowPositionStore();
+        var manager = new WindowManager(new Size(1600, 1200), store, "server", "character", scale: 0.85);
+        var window = manager.Open(new WindowDefinition("one", "One", 333, 211, resizing: new WindowResizing(new Size(50, 50))), new Point(0, 0));
+        var opened = window.Size;
+
+        for (var i = 0; i < 5; i++) manager.Rescale("one", -1);
+        for (var i = 0; i < 5; i++) manager.Rescale("one", 1);
+
+        Assert.Equal(opened, window.Size);
+        manager.Close("one");
+        Assert.Equal(new Size(333, 211), store.Get("server", "character", "one")!.Value.Size);
+    }
+
+    [Fact]
     public void A_locked_ui_does_not_rescale_windows()
     {
         var manager = new WindowManager(new Size(800, 600), new MemoryWindowPositionStore(), "server", "character", uiLocked: () => true);
