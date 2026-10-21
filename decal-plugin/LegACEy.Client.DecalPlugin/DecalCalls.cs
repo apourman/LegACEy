@@ -259,9 +259,8 @@ internal static unsafe class DecalCalls
 
     private static int ChatClick(int id, byte* text, int length, int* eaten) => Act(() =>
     {
-        if (ChatClickIntercept == null) throw new MissingMethodException(nameof(CoreManager), "myHooks_ChatClickIntercept");
         var arguments = new object[] { length == 0 ? string.Empty : Encoding.UTF8.GetString(text, length), id, false };
-        ChatClickIntercept.Invoke(CoreManager.Current, arguments);
+        ChatClickIntercept!.Invoke(CoreManager.Current, arguments);
         *eaten = (bool)arguments[2] ? 1 : 0;
     });
 

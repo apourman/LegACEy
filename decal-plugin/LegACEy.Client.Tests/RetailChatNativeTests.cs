@@ -37,6 +37,12 @@ public sealed class RetailChatNativeTests
         Assert.Equal("Mirra tells you, \"hi\"", line.Text);
         Assert.Equal("Mirra", line.Sender);
         Assert.Null(line.Channel);
+
+        // Every name in a line is a name link, not only the sender's.
+        var both = NativeRetailChatPort.RetailChatTypes.Parse(RetailChatKind.Local,
+            "<Tell:IIDString:4:Mirra>Mirra<\\Tell> gives <Tell:IIDString:5:Saro>Saro<\\Tell> a sword", Time);
+        Assert.Equal("Mirra", both.Sender);
+        Assert.All(both.Links!, link => Assert.True(link.Name));
     }
 
     [Fact]
@@ -56,7 +62,7 @@ public sealed class RetailChatNativeTests
         {
             var coords = Parse($"Meet at <Tell:IIDString:110011:10.7N, 52.3E>10.7N, 52.3E{close} \\[UB\\]");
             Assert.Equal("Meet at 10.7N, 52.3E [UB]", coords.Text);
-            Assert.Equal(new RetailChatLink(8, 12, 110011, "10.7N, 52.3E"), Assert.Single(coords.Links!));
+            Assert.Equal(new RetailChatLink(8, 12, 110011, "10.7N, 52.3E", Name: false), Assert.Single(coords.Links!));
             Assert.Null(coords.Sender);
         }
 

@@ -44,6 +44,8 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private const int FocusElementOffset = 0x328;
     // The PlayerModule inside CPlayerSystem: CharacterOptions1 is at +0x8C of it, CharacterOptions2 at +0x90.
     private const int PlayerModule = 0x34;
+    // GoArrow's and UtilityBelt's coordinate links: the tag names the coordinates twice, as a player's names them, but is no name.
+    private const uint CoordinatesLinkId = 110011;
     private static readonly TimeSpan TimestampCheckInterval = TimeSpan.FromSeconds(1);
     // Ports whose handler could not be unregistered: retail may still call it, so the port, its callback delegate and its memory live on.
     private static readonly List<NativeRetailChatPort> Stranded = new();
@@ -53,8 +55,6 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private static readonly Regex TellTag = new(@"<Tell:IIDString:([^:>]*):([^>]*)>(.*?)<(?:\\+|/)Tell\s*>", RegexOptions.Compiled);
     // Retail's text escapes: \n is a line break, \q a quote mark, and a backslash before any other character is that character (\[, \], \\).
     private static readonly Regex Escape = new(@"\\(.)", RegexOptions.Compiled | RegexOptions.Singleline);
-    // GoArrow's and UtilityBelt's coordinate links: the tag names the coordinates twice, as a player's names them, but is no sender.
-    private const uint CoordinatesLinkId = 110011;
     private static readonly Regex ChannelPrefix = new(@"^\[([^\]]+)\]", RegexOptions.Compiled);
 
     // Delegates to fixed retail functions, made once: their addresses never change.
@@ -69,8 +69,8 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private readonly HashSet<string> _unmatchedChannels = new(StringComparer.OrdinalIgnoreCase);
     private readonly NoticeCallback _callback;
     private readonly Func<uint, byte[], bool> _sendAction;
-    private readonly Func<uint, string, bool> _click;
     private bool _membershipFailLogged;
+    private bool _clickFailLogged;
     private IntPtr _handler;
     private IntPtr _vtable;
     private bool _attached;
@@ -104,11 +104,9 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     /// <param name="log">Writes a line to the client's log.</param>
     /// <param name="natives">Which chat features the running client matched; a feature that did not match is off.</param>
     /// <param name="sendAction">Sends a retail game action (opcode, payload) through the client's own send; false when it was not sent.</param>
-    /// <param name="click">Raises Decal's ChatNameClicked (id, tag text); true when a plugin ate it.</param>
-    public NativeRetailChatPort(Action<string> log, RetailChatNatives natives, Func<uint, byte[], bool> sendAction, Func<uint, string, bool> click)
+    public NativeRetailChatPort(Action<string> log, RetailChatNatives natives, Func<uint, byte[], bool> sendAction)
     {
         _sendAction = sendAction ?? throw new ArgumentNullException(nameof(sendAction));
-        _click = click ?? throw new ArgumentNullException(nameof(click));
         _log = log ?? throw new ArgumentNullException(nameof(log));
         _natives = natives;
         _callback = OnNotice;
@@ -119,10 +117,11 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
 
     public bool Click(uint id, string tag)
     {
-        try { return _click(id, tag); }
+        try { return Bridge.ChatClick(id, tag); }
         catch (COMException exception)
         {
-            _log($"LegACEy chat: a link click did not reach Decal: {exception.Message}");
+            if (!_clickFailLogged) _log($"LegACEy chat: link clicks do not reach Decal's plugins: {exception.Message}");
+            _clickFailLogged = true;
             return false;
         }
     }
@@ -461,13 +460,14 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
                 var shown = Unescape(match.Groups[3].Value);
                 // Retail writes the id with %d, so an id past 0x7FFFFFFF is negative.
                 var id = long.TryParse(match.Groups[1].Value, out var parsed) ? unchecked((uint)parsed) : 0;
-                // A player's tag names them twice; a plugin's link (GoArrow's "Update Now") names a command, not a sender.
-                if (match.Groups[2].Value == match.Groups[3].Value && id != CoordinatesLinkId && sender == null)
+                // A player's tag names them twice; a plugin's link (GoArrow's "Update Now") names a command. The first name is the sender.
+                var name = match.Groups[2].Value == match.Groups[3].Value && id != CoordinatesLinkId;
+                if (name && sender == null)
                 {
                     sender = shown;
                     senderId = id;
                 }
-                links.Add(new RetailChatLink(text.Length, shown.Length, id, Unescape(match.Groups[2].Value)));
+                links.Add(new RetailChatLink(text.Length, shown.Length, id, Unescape(match.Groups[2].Value), name));
                 text.Append(shown);
                 at = match.Index + match.Length;
             }

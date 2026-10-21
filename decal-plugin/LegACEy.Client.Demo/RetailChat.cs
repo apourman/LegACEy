@@ -53,8 +53,9 @@ public sealed record RetailChatLine(RetailChatKind Kind, string Text, DateTime T
 /// <summary>
 /// A clickable tag in a line: <see cref="Length"/> characters of <see cref="RetailChatLine.Text"/> from <see cref="Start"/>, with the tag's
 /// id and text, which retail hands to Decal's ChatNameClicked when it is clicked (a player's id and name, GoArrow's 110011 and coordinates).
+/// <see cref="Name"/> is true for a player's or NPC's name, which a click no plugin takes answers with a tell.
 /// </summary>
-public sealed record RetailChatLink(int Start, int Length, uint Id, string Tag);
+public sealed record RetailChatLink(int Start, int Length, uint Id, string Tag, bool Name);
 
 /// <summary>What the player is in, for dimming talk targets: fellowship, allegiance and its ranks, society, Olthoi, and the open channels.</summary>
 public sealed record RetailChatMembership(bool Fellowship, bool Allegiance, bool Monarch, bool Patron, bool Vassals, bool Society, bool Olthoi,

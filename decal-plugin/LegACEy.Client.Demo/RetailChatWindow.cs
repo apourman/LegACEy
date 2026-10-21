@@ -622,8 +622,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
 
     /// <summary>
     /// One line as one selectable block: the time, then the text with its links. A click on a link, without a drag, goes to Decal's plugins
-    /// as a retail click does (GoArrow's coordinates); a click on the sender's name that no plugin takes answers with a tell to that name. A
-    /// drag selects text as usual.
+    /// as a retail click does (GoArrow's coordinates); a click on a name that no plugin takes answers with a tell to that name. A drag
+    /// selects text as usual.
     /// </summary>
     private Control LineView(RetailChatLine line)
     {
@@ -640,22 +640,24 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         if (_timestamps) Add(DerethChatParts.TimestampRun(line.Time.ToString("HH:mm") + " "));
         var links = line.Links;
         // A line built without tags (the tests' and demo's) still names its sender in its text.
-        if (links == null && line.Sender != null && line.Text.IndexOf(line.Sender, StringComparison.Ordinal) is var name and >= 0)
-            links = new[] { new RetailChatLink(name, line.Sender.Length, line.SenderId, line.Sender) };
-        var at = 0;
+        if (links == null && line.Sender != null && line.Text.IndexOf(line.Sender, StringComparison.Ordinal) is var nameAt and >= 0)
+            links = new[] { new RetailChatLink(nameAt, line.Sender.Length, line.SenderId, line.Sender, Name: true) };
+        var afterLink = 0;
         foreach (var link in links ?? Array.Empty<RetailChatLink>())
         {
-            if (link.Start > at) Add(DerethChatParts.TextRun(line.Text.Substring(at, link.Start - at), brush, italic));
-            var tell = link.Tag == line.Sender && link.Id == line.SenderId ? line.TellBack : null;
+            if (link.Start > afterLink) Add(DerethChatParts.TextRun(line.Text.Substring(afterLink, link.Start - afterLink), brush, italic));
+            var shown = line.Text.Substring(link.Start, link.Length);
+            // A name keeps the line's colour; a plugin's link is drawn in retail's link green.
+            var tell = link.Name ? RetailTalkTarget.Tell(shown, link.Id) : null;
             var start = written;
-            Add(DerethChatParts.TextRun(line.Text.Substring(link.Start, link.Length), tell != null ? brush : LinkBrush, italic));
+            Add(DerethChatParts.TextRun(shown, link.Name ? brush : LinkBrush, italic));
             WireClick(view, start, written, () =>
             {
                 if (!_port.Click(link.Id, link.Tag) && tell != null) TellTo(tell);
             });
-            at = link.Start + link.Length;
+            afterLink = link.Start + link.Length;
         }
-        if (at < line.Text.Length) Add(DerethChatParts.TextRun(line.Text.Substring(at), brush, italic));
+        if (afterLink < line.Text.Length) Add(DerethChatParts.TextRun(line.Text.Substring(afterLink), brush, italic));
         return view;
     }
 
