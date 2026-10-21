@@ -29,6 +29,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     // How far a tab press must move outside the tab strip before the tab is dragged out into a window of its own.
     private const double TearOffSlop = 6;
     private static readonly IBrush LinkBrush = DerethPalette.Brush(DerethChatPalette.Link);
+    // Retail's chat type for a spell's words, which names its caster in the link green.
+    private const uint SpellcastingType = 17;
     // The dark shadow under each line while the window is idle, so pale lines read over bright ground once the chrome has faded.
     private static readonly IEffect LineShadow = new DropShadowDirectionEffect { Color = Colors.Black, Direction = 90, ShadowDepth = 1, BlurRadius = 1, Opacity = 1 };
     private readonly IRetailChatPort _port;
@@ -530,6 +532,19 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     }
     private int _inactiveOpacity = RetailChatWindows.DefaultInactiveOpacity;
 
+    /// <summary>The colour names are drawn in, or null for retail's: the line's own, or the link green in a spell's words. A change redraws the log.</summary>
+    public Color? NameColour
+    {
+        get => _nameColour;
+        set
+        {
+            if (_nameColour == value) return;
+            _nameColour = value;
+            RebuildLog();
+        }
+    }
+    private Color? _nameColour;
+
     /// <summary>The text size the window's content is drawn at, 1 for its design size.</summary>
     public double TextScale
     {
@@ -647,6 +662,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private Control LineView(RetailChatLine line)
     {
         var brush = DerethPalette.Brush(line.Type is { } type ? DerethChatPalette.OfType(type) : ColourOf(line.Kind));
+        // A name keeps the line's colour, or retail's link green in a spell's words, unless the player picked one for names.
+        var nameBrush = _nameColour is { } picked ? DerethPalette.Brush(picked) : line.Type == SpellcastingType ? LinkBrush : brush;
         var italic = line.Kind == RetailChatKind.Emote;
         var view = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap, LineHeight = 15.6, Margin = new Thickness(0, 0, 0, 1), Tag = line.Time };
         var written = 0;
@@ -666,10 +683,10 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         {
             if (link.Start > afterLink) Add(DerethChatParts.TextRun(line.Text.Substring(afterLink, link.Start - afterLink), brush, italic));
             var shown = line.Text.Substring(link.Start, link.Length);
-            // A name keeps the line's colour; a plugin's link is drawn in retail's link green.
+            // A plugin's link is drawn in retail's link green.
             var tell = link.Name ? RetailTalkTarget.Tell(shown, link.Id) : null;
             var start = written;
-            Add(DerethChatParts.TextRun(shown, link.Name ? brush : LinkBrush, italic));
+            Add(DerethChatParts.TextRun(shown, link.Name ? nameBrush : LinkBrush, italic));
             WireClick(view, start, written, () =>
             {
                 if (!_port.Click(link.Id, link.Tag) && tell != null) TellTo(tell);

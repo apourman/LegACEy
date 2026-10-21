@@ -54,6 +54,14 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     public const int OpacityStep = 5;
     private int _activeOpacity = DefaultActiveOpacity;
     private int _inactiveOpacity = DefaultInactiveOpacity;
+    // The colour names are drawn in, as an index into NameColours, kept per character in the position store. 0 is retail's: a name keeps its
+    // line's colour (white in a say) except in a spell's words, where it is the link green over the spell's blue.
+    public const string NameColourKey = "dereth-chat-name-colour";
+    public static readonly IReadOnlyList<(string Label, Avalonia.Media.Color? Colour)> NameColours = new (string, Avalonia.Media.Color?)[]
+    {
+        ("Retail", null), ("Green", DerethChatPalette.Link), ("White", DerethChatPalette.Say), ("Gold", DerethPalette.Gold),
+    };
+    private int _nameColour;
     // Where a torn-off window opens from the pointer: the tab it came from is under the pointer, so the window follows it.
     private static readonly Size Grab = new(24, 9);
     private readonly IRetailChatPort _port;
@@ -138,6 +146,7 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
         _fadeSeconds = LoadFadeSeconds(_positions, _server, _character);
         _activeOpacity = LoadOpacity(_positions, _server, _character, ActiveOpacityKey, DefaultActiveOpacity);
         _inactiveOpacity = LoadOpacity(_positions, _server, _character, InactiveOpacityKey, DefaultInactiveOpacity);
+        _nameColour = LoadNameColour(_positions, _server, _character);
         ShowWindow(MainId, _store.Load(_server, _character, MainId) ?? RetailChatTab.Defaults, tornOff: false, beside);
         foreach (var id in _store.Windows(_server, _character))
         {
@@ -267,7 +276,7 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
 
     private RetailChatWindow ShowWindow(string id, IReadOnlyList<RetailChatTab> tabs, bool tornOff, Point location)
     {
-        var window = new RetailChatWindow(_port, _history, this, tabs, tornOff, clock: _clock, copy: _copy, paste: _paste) { TextScale = _textSize / 100.0, IdleAfterSeconds = FadeDelay, ActiveOpacity = _activeOpacity, InactiveOpacity = _inactiveOpacity };
+        var window = new RetailChatWindow(_port, _history, this, tabs, tornOff, clock: _clock, copy: _copy, paste: _paste) { TextScale = _textSize / 100.0, IdleAfterSeconds = FadeDelay, ActiveOpacity = _activeOpacity, InactiveOpacity = _inactiveOpacity, NameColour = NameColours[_nameColour].Colour };
         _chats.Add((id, window));
         try
         {
@@ -349,6 +358,27 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
 
     public static void SaveOpacity(IWindowPositionStore positions, string server, string character, string key, int percent) =>
         positions.Save(server, character, key, (new Point(ClampOpacity(percent), 0), null));
+
+    /// <summary>Sets the colour every chat window draws names in, as an index into <see cref="NameColours"/>, and keeps it for the character.</summary>
+    public void SetNameColour(int index)
+    {
+        if (_disposed) return;
+        var choice = NameColourOrDefault(index);
+        if (choice == _nameColour) return;
+        _nameColour = choice;
+        SaveNameColour(_positions, _server, _character, choice);
+        foreach (var (_, window) in _chats) window.NameColour = NameColours[choice].Colour;
+    }
+
+    /// <summary>An index into <see cref="NameColours"/>; any other value snaps to 0, retail's colours.</summary>
+    public static int NameColourOrDefault(int index) => index >= 0 && index < NameColours.Count ? index : 0;
+
+    /// <summary>The character's name colour as an index into <see cref="NameColours"/>, 0 before one is saved.</summary>
+    public static int LoadNameColour(IWindowPositionStore positions, string server, string character) =>
+        positions.Load(server, character, NameColourKey) is { Location.X: var saved } ? NameColourOrDefault(saved) : 0;
+
+    public static void SaveNameColour(IWindowPositionStore positions, string server, string character, int index) =>
+        positions.Save(server, character, NameColourKey, (new Point(NameColourOrDefault(index), 0), null));
 
     /// <summary>The idle delay every chat window uses, or null when it never fades.</summary>
     private int? FadeDelay => _fadeSeconds switch { NeverFades => null, FadesInstantly => 0, var seconds => seconds };

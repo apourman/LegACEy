@@ -904,6 +904,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             ChatFade = new OptionChoice<int>(RetailChatWindows.LoadFadeSeconds(_positionStore, SessionServer(), SessionCharacter()), SetChatFadeSeconds),
             ChatActiveOpacity = new OptionChoice<int>(RetailChatWindows.LoadOpacity(_positionStore, SessionServer(), SessionCharacter(), RetailChatWindows.ActiveOpacityKey, RetailChatWindows.DefaultActiveOpacity), SetChatActiveOpacity),
             ChatInactiveOpacity = new OptionChoice<int>(RetailChatWindows.LoadOpacity(_positionStore, SessionServer(), SessionCharacter(), RetailChatWindows.InactiveOpacityKey, RetailChatWindows.DefaultInactiveOpacity), SetChatInactiveOpacity),
+            ChatNameColour = new OptionChoice<int>(RetailChatWindows.LoadNameColour(_positionStore, SessionServer(), SessionCharacter()), SetChatNameColour),
             Radar = new OptionChoice<RadarOptions>(LoadRadarOptions(), SetRadarOptions),
             ResetPositions = () => _positionsResetRequested = true,
         };
@@ -3206,6 +3207,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_chatWindows != null) _chatWindows.SetInactiveOpacity(opacity);
         else RetailChatWindows.SaveOpacity(_positionStore, SessionServer(), SessionCharacter(), RetailChatWindows.InactiveOpacityKey, opacity);
         if (_settings != null) _settings.ChatInactiveOpacity = new OptionChoice<int>(opacity, SetChatInactiveOpacity);
+    }
+
+    /// <summary>The chat's name colour set from the Settings window; see <see cref="SetChatActiveOpacity"/>.</summary>
+    private void SetChatNameColour(int index)
+    {
+        var choice = RetailChatWindows.NameColourOrDefault(index);
+        if (_chatWindows != null) _chatWindows.SetNameColour(choice);
+        else RetailChatWindows.SaveNameColour(_positionStore, SessionServer(), SessionCharacter(), choice);
+        if (_settings != null) _settings.ChatNameColour = new OptionChoice<int>(choice, SetChatNameColour);
     }
 
     private void VitalsFailed(Exception exception) => _vitals?.Fail(exception);

@@ -58,6 +58,7 @@ public sealed class ClientSettings
     private OptionChoice<int>? _chatFade;
     private OptionChoice<int>? _chatActiveOpacity;
     private OptionChoice<int>? _chatInactiveOpacity;
+    private OptionChoice<int>? _chatNameColour;
     private OptionChoice<RadarOptions>? _radar;
 
     /// <param name="uiSize">The UI size, for all characters. Null where the UI cannot scale, which hides the row.</param>
@@ -104,6 +105,9 @@ public sealed class ClientSettings
 
     /// <summary>The chat log backdrop's opacity in percent once the chat is idle, for this character. Null hides its row.</summary>
     public OptionChoice<int>? ChatInactiveOpacity { get => _chatInactiveOpacity; set => Moved(ref _chatInactiveOpacity, value); }
+
+    /// <summary>The colour chat draws names in, for this character, as an index into <see cref="RetailChatWindows.NameColours"/>. Null hides its row.</summary>
+    public OptionChoice<int>? ChatNameColour { get => _chatNameColour; set => Moved(ref _chatNameColour, value); }
 
     /// <summary>The radar's options for this character. Null hides its rows.</summary>
     public OptionChoice<RadarOptions>? Radar { get => _radar; set => Moved(ref _radar, value); }
@@ -381,6 +385,7 @@ public sealed class SettingsPanel : UserControl
             () => _settings.ChatActiveOpacity?.Value, value => _settings.ChatActiveOpacity?.Set(value), thisCharacter: true));
         if (window == "Chat" && _settings.ChatInactiveOpacity != null) rows.Add(SliderRow("Inactive opacity", 0, 100, RetailChatWindows.OpacityStep,
             () => _settings.ChatInactiveOpacity?.Value, value => _settings.ChatInactiveOpacity?.Set(value), thisCharacter: true));
+        if (window == "Chat" && _settings.ChatNameColour != null) rows.Add(ChatNameColourRow());
         if (window == "Vitals" && _settings.Vitals != null) rows.Add(VitalsRow());
         if (window == "Vitals" && _settings.VitalsRetailBars != null) rows.Add(ToggleRow("Retail-style bars", () => _settings.VitalsRetailBars));
         if (window == "Radar" && _settings.Radar != null) rows.AddRange(RadarRows());
@@ -464,6 +469,17 @@ public sealed class SettingsPanel : UserControl
         // Six choices leave no room beside the label, so they sit on their own line under it.
         fade.HorizontalAlignment = HorizontalAlignment.Right;
         return new StackPanel { Spacing = 6, Children = { ScopedLabel("Fade when idle", thisCharacter: true), fade } };
+    }
+
+    /// <summary>The colour names are drawn in: retail's (the line's own, green in a spell's words), or one picked for every name.</summary>
+    private Control ChatNameColourRow()
+    {
+        var colour = new DerethSegmented(RetailChatWindows.NameColours.Select(choice => choice.Label).ToArray());
+        void Show() => colour.Selected = _settings.ChatNameColour?.Value ?? -1;
+        colour.Chosen += index => _settings.ChatNameColour?.Set(index);
+        _redraws.Add(Show);
+        Show();
+        return OptionRow("Name colour", colour);
     }
 
     private IEnumerable<Control> RadarRows()
