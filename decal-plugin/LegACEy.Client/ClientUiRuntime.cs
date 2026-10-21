@@ -2568,6 +2568,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             var canDraw = _postUiDrawHook?.IsInstalled == true && !(_windows != null && !_windowsEnabled);
             if (_chatTakeover != null && (!canDraw || _chatFailed || !switchOn))
             {
+                // The same character is still playing, so the lines and sent text come back with the Dereth chat; logoff forgets them.
+                _carriedChatHistory = _chatWindows?.History ?? _carriedChatHistory;
                 ReleaseRetailChat();
                 return;
             }
