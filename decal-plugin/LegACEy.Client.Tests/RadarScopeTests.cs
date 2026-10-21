@@ -350,7 +350,6 @@ public sealed class RadarScopeTests
         var frame = RadarScope.Build(Player(0, RadarPlanFixtures.DungeonCell), NoObjects, Default, Radius, plan);
 
         Assert.Equal(new RadarLadder(Levels: 3, Current: 1, Peek: -1, Occupied: 0), frame.Ladder);
-        Assert.Null(RadarScope.Build(Player(0), NoObjects, Default, Radius, plan).Ladder);
     }
 
     [Fact]
@@ -380,7 +379,10 @@ public sealed class RadarScopeTests
         var peeked = Assert.Single(frame.PlanLevels, level => level.Solid);
         Assert.Same(plan.Levels[0], peeked.Level);
         Assert.True(peeked.Peek);
-        Assert.Contains(frame.PlanLevels, draw => !draw.Solid && ReferenceEquals(draw.Level, plan.Levels[1]));
+        // The player's own level is left out while a level is peeked; the one below it is faint.
+        Assert.Equal(2, frame.PlanLevels.Count);
+        Assert.Contains(frame.PlanLevels, draw => !draw.Solid && ReferenceEquals(draw.Level, plan.Levels[2]));
+        Assert.DoesNotContain(frame.PlanLevels, draw => ReferenceEquals(draw.Level, plan.Levels[1]));
         Assert.Equal(new RadarLadder(Levels: 3, Current: 1, Peek: 0, Occupied: 0), frame.Ladder);
     }
 

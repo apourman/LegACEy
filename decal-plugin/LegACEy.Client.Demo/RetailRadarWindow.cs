@@ -45,7 +45,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     /// </summary>
     public static readonly Rect LadderBounds = new(ScopeOrigin.X - 11 - 3 - 16, ScopeOrigin.Y + 14, 16, Diameter - 28);
     private const string LockTip = "Lock UI", UnlockTip = "Unlock UI", OptionsTip = "Radar options";
-    private static readonly IBrush Plaque = DerethPalette.Brush(Avalonia.Media.Color.FromArgb(0xD9, 0x18, 0x16, 0x0F));
+    private static readonly IBrush Plaque = DerethPalette.PlaqueBrush;
     private static readonly IBrush GoldDark = DerethPalette.Brush(Avalonia.Media.Color.Parse("#8A6326"));
     private static readonly IBrush Groove = DerethPalette.Brush(Avalonia.Media.Color.Parse("#0A0906"));
 
@@ -348,7 +348,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         _scope.Arrow = Options.NorthUp ? frame.Heading : 0;
 
         var selected = _selected();
-        var dots = new (Point At, Color Colour, double Opacity, int Arrow, bool Selected, bool Hovered)[frame.Dots.Count];
+        var dots = new (Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered)[frame.Dots.Count];
         for (var i = 0; i < dots.Length; i++)
         {
             var dot = frame.Dots[i];

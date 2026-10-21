@@ -76,9 +76,9 @@ public sealed class RadarPlan
     private const ushort Outside = 0xFFFF;
 
     private readonly IndoorPlan _place;
-    // The draw order is made again only when the solid level or its peek changes: it is kept for the one last asked for.
-    private int _orderLevel = -1;
-    private bool _orderPeek;
+    // The draw order is made again only when the player's level or the peek changes: it is kept for the one last asked for.
+    private int _orderPlayer = -1;
+    private int _orderPeek = -1;
     private IReadOnlyList<RadarPlanDraw> _order = Array.Empty<RadarPlanDraw>();
 
     /// <param name="landblock">The plan of the player's landblock, read from the DATs.</param>
@@ -132,22 +132,25 @@ public sealed class RadarPlan
     /// <summary>
     /// The levels in drawing order for a player on <paramref name="playerLevel"/>: those below the solid level, then those above, then the solid
     /// one last so it sits on the others. The solid level is the peeked one when <paramref name="peekLevel"/> is 0 or more (drawn teal), else
-    /// the player's own. The same list while the solid level and its peek stay as they are.
+    /// the player's own. While a level is peeked the player's own is left out, so the peeked one is the only solid level. The same list while
+    /// the player's level and the peek stay as they are.
     /// </summary>
     public IReadOnlyList<RadarPlanDraw> DrawOrder(int playerLevel, int peekLevel = -1)
     {
-        var peek = peekLevel >= 0;
-        var solid = peek ? peekLevel : playerLevel;
-        if (solid == _orderLevel && peek == _orderPeek) return _order;
+        if (playerLevel == _orderPlayer && peekLevel == _orderPeek) return _order;
+        var peeking = peekLevel >= 0;
+        var solid = peeking ? peekLevel : playerLevel;
         var draws = new List<RadarPlanDraw>(Levels.Count);
         if (solid >= 0)
         {
-            for (var level = solid + 1; level < Levels.Count; level++) draws.Add(new RadarPlanDraw(Levels[level], false));
-            for (var level = 0; level < solid; level++) draws.Add(new RadarPlanDraw(Levels[level], false));
-            draws.Add(new RadarPlanDraw(Levels[solid], true, peek));
+            for (var level = solid + 1; level < Levels.Count; level++)
+                if (level != playerLevel) draws.Add(new RadarPlanDraw(Levels[level], false));
+            for (var level = 0; level < solid; level++)
+                if (level != playerLevel) draws.Add(new RadarPlanDraw(Levels[level], false));
+            draws.Add(new RadarPlanDraw(Levels[solid], true, peeking));
         }
-        _orderLevel = solid;
-        _orderPeek = peek;
+        _orderPlayer = playerLevel;
+        _orderPeek = peekLevel;
         _order = draws;
         return draws;
     }

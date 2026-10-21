@@ -14,9 +14,8 @@ namespace LegACEy.Client.Themes;
 public sealed class DerethLevelLadder : Control
 {
     private const double PipSize = 6;
-    private static readonly IBrush Plaque = DerethPalette.Brush(Color.FromArgb(0xD9, 0x08, 0x10, 0x16));
     private static readonly IPen PlaqueEdge = new Pen(DerethPalette.GoldDarkBrush, 1);
-    private static readonly IBrush PipFill = DerethPalette.Brush(Color.Parse("#0B1117"));
+    private static readonly IBrush PipFill = DerethPalette.Brush(DerethPalette.Navy);
     private static readonly IPen PipEdge = new Pen(DerethPalette.GoldDarkBrush, 1);
     private static readonly IPen RingEdge = new Pen(DerethPalette.GoldBrush, 1);
     private static readonly IPen PeekEdge = new Pen(DerethPalette.TealBrush, 1);
@@ -45,31 +44,34 @@ public sealed class DerethLevelLadder : Control
     {
         // The press is the ladder's, so it does not move the radar.
         PointerPressed += (_, e) => e.Handled = true;
-        PointerMoved += (_, e) => PeekChanged?.Invoke(LevelAt(e.GetPosition(this)));
+        PointerMoved += (_, e) => PeekChanged?.Invoke(LevelAtY(e.GetPosition(this).Y, _levels, Bounds.Height));
         PointerExited += (_, _) => PeekChanged?.Invoke(-1);
     }
 
     public override void Render(DrawingContext context)
     {
         base.Render(context);
-        context.DrawRectangle(Plaque, PlaqueEdge, new RoundedRect(new Rect(Bounds.Size).Deflate(0.5), 8));
-        if (_levels == 0) return;
-        // The pips share the height evenly, as the mockup's space-evenly column does.
-        var slot = Bounds.Height / _levels;
+        context.DrawRectangle(DerethPalette.PlaqueBrush, PlaqueEdge, new RoundedRect(new Rect(Bounds.Size).Deflate(0.5), 8));
         for (var level = 0; level < _levels; level++)
         {
-            var centre = new Point(Bounds.Width / 2, (level + 0.5) * slot);
+            var centre = new Point(Bounds.Width / 2, PipY(level, _levels, Bounds.Height));
             var edge = level == _peek ? PeekEdge : level == _current || IsOccupied(level) ? RingEdge : PipEdge;
             context.DrawEllipse(level == _current ? DerethPalette.GoldBrush : PipFill, edge, centre, PipSize / 2, PipSize / 2);
         }
     }
 
-    private bool IsOccupied(int level) => level < 64 && (_occupied & (1UL << level)) != 0;
+    /// <summary>
+    /// The height of a level's pip in a ladder of the given height. The pips share the height evenly, the top floor first, as the mockup's
+    /// space-evenly column does.
+    /// </summary>
+    public static double PipY(int index, int levels, double height) => (index + 0.5) * height / levels;
 
-    // The level whose slot the point is in, the top floor first; -1 with no levels.
-    private int LevelAt(Point point)
+    /// <summary>The level whose slot a height falls in, the top floor first; -1 with no levels or no height.</summary>
+    public static int LevelAtY(double y, int levels, double height)
     {
-        if (_levels == 0 || Bounds.Height <= 0) return -1;
-        return Math.Max(0, Math.Min(_levels - 1, (int)(point.Y / (Bounds.Height / _levels))));
+        if (levels <= 0 || height <= 0) return -1;
+        return Math.Max(0, Math.Min(levels - 1, (int)(y * levels / height)));
     }
+
+    private bool IsOccupied(int level) => level < 64 && (_occupied & (1UL << level)) != 0;
 }

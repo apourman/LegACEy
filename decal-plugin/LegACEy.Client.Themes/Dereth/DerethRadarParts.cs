@@ -53,6 +53,7 @@ public sealed class DerethRadarScope : Control
     // The arrows for dots on another level: a small triangle pointing up (the level above) or down, in the dot's colour.
     private static readonly Geometry ArrowUp = Geometry.Parse("M0,-2.6 L2.4,1.6 L-2.4,1.6 Z");
     private static readonly Geometry ArrowDown = Geometry.Parse("M0,2.6 L2.4,-1.6 L-2.4,-1.6 Z");
+    private const double ArrowOpacity = 0.85;
     private static readonly IBrush StairInk = DerethPalette.CreamBrush;
 
     private IReadOnlyList<(IImage Image, Rect Metres)> _tiles = Array.Empty<(IImage Image, Rect Metres)>();
@@ -62,9 +63,9 @@ public sealed class DerethRadarScope : Control
     private IReadOnlyList<(Point At, bool Up)> _stairMarks = Array.Empty<(Point At, bool Up)>();
     private FormattedText[]? _stairGlyphs;
     private PlanPens? _pens;
-    // The arrow is +1 for a dot on the level above, -1 for one below, and 0 for a dot on the player's level.
-    private IReadOnlyList<(Point At, Color Colour, double Opacity, int Arrow, bool Selected, bool Hovered)> _dots =
-        Array.Empty<(Point At, Color Colour, double Opacity, int Arrow, bool Selected, bool Hovered)>();
+    // ArrowDir is +1 for a dot on the level above, -1 for one below, and 0 for a dot on the player's level.
+    private IReadOnlyList<(Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered)> _dots =
+        Array.Empty<(Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered)>();
     // The dots' brushes by colour and alpha, made once each: a dot's alpha takes only a few values.
     private readonly Dictionary<(Color Colour, byte Alpha), IBrush> _dotBrushes = new();
     private (string Text, Point At)? _label;
@@ -112,7 +113,7 @@ public sealed class DerethRadarScope : Control
         set { if (ReferenceEquals(_stairMarks, value)) return; _stairMarks = value; InvalidateVisual(); }
     }
 
-    public IReadOnlyList<(Point At, Color Colour, double Opacity, int Arrow, bool Selected, bool Hovered)> Dots
+    public IReadOnlyList<(Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered)> Dots
     {
         get => _dots;
         set { if (ReferenceEquals(_dots, value)) return; _dots = value; InvalidateVisual(); }
@@ -216,19 +217,20 @@ public sealed class DerethRadarScope : Control
             context.DrawEllipse(null, RingPen, centre, radius * fraction, radius * fraction);
     }
 
-    private void DrawDot(DrawingContext context, (Point At, Color Colour, double Opacity, int Arrow, bool Selected, bool Hovered) dot)
+    private void DrawDot(DrawingContext context, (Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered) dot)
     {
-        var alpha = (byte)Math.Round(dot.Opacity * 255);
+        // An arrow is drawn at its own alpha, a dot at its own.
+        var alpha = (byte)Math.Round((dot.ArrowDir == 0 ? dot.Opacity : ArrowOpacity) * 255);
         var key = (dot.Colour, alpha);
         if (!_dotBrushes.TryGetValue(key, out var colour)) _dotBrushes[key] = colour = DerethPalette.Brush(dot.Colour.WithAlpha(alpha));
-        if (dot.Arrow == 0)
+        if (dot.ArrowDir == 0)
         {
             context.DrawEllipse(colour, OutlinePen, dot.At, 1.9, 1.9);
         }
         else
         {
             using (context.PushTransform(Matrix.CreateTranslation(dot.At.X, dot.At.Y)))
-                context.DrawGeometry(colour, OutlinePen, dot.Arrow > 0 ? ArrowUp : ArrowDown);
+                context.DrawGeometry(colour, OutlinePen, dot.ArrowDir > 0 ? ArrowUp : ArrowDown);
         }
         if (dot.Selected) context.DrawEllipse(null, SelectedPen, dot.At, 4.5, 4.5);
         if (dot.Hovered) context.DrawEllipse(null, HoveredPen, dot.At, 4.5, 4.5);

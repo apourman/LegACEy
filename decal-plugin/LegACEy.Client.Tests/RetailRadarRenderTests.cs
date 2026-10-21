@@ -12,6 +12,7 @@ using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.PanelHost;
+using LegACEy.Client.Themes;
 using Xunit;
 
 namespace LegACEy.Client.Tests;
@@ -116,9 +117,8 @@ public sealed class RetailRadarRenderTests
             {
                 // The pointer over a ladder pip, as a player hovers one: the pips share the ladder's height, the top floor first.
                 var bounds = RetailRadarWindow.LadderBounds;
-                var slot = bounds.Height / window!.Frame!.Ladder!.Levels;
                 panel.PointerMove((bounds.X + bounds.Width / 2) * RetailRadarWindow.Scale * scale,
-                    (bounds.Y + (peek + 0.5) * slot) * RetailRadarWindow.Scale * scale);
+                    (bounds.Y + DerethLevelLadder.PipY(peek, window!.Frame!.Ladder!.Levels, bounds.Height)) * RetailRadarWindow.Scale * scale);
                 panel.Tick();
             }
             Save(panel, Path.Combine(folder, file));

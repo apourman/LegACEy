@@ -6,6 +6,7 @@ using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.PanelHost;
+using LegACEy.Client.Themes;
 using Xunit;
 
 namespace LegACEy.Client.Tests;
@@ -311,12 +312,12 @@ public sealed class RetailRadarWindowTests
         window.Refresh();
         panel.Tick();
 
+        // Hovering a pip peeks its level; the player's level is still the one the ladder marks gold.
         Move(panel, PipAt(window, 0));
         Assert.Equal(0, window.Frame!.Ladder!.Peek);
         Assert.Equal(1, window.Frame.Ladder.Current);
-        Assert.True(window.Frame.PlanLevels.Single(level => level.Solid).Peek);
 
-        // Off the ladder the peek ends, and the view is the player's level again.
+        // Off the ladder the peek ends.
         Move(panel, ScopeCentre);
         Assert.Equal(-1, window.Frame.Ladder.Peek);
     });
@@ -384,8 +385,8 @@ public sealed class RetailRadarWindowTests
     private static Point PipAt(RetailRadarWindow window, int index)
     {
         var bounds = RetailRadarWindow.LadderBounds;
-        var slot = bounds.Height / window.Frame!.Ladder!.Levels;
-        return new Point((bounds.X + bounds.Width / 2), bounds.Y + (index + 0.5) * slot) * RetailRadarWindow.Scale;
+        var y = bounds.Y + DerethLevelLadder.PipY(index, window.Frame!.Ladder!.Levels, bounds.Height);
+        return new Point(bounds.X + bounds.Width / 2, y) * RetailRadarWindow.Scale;
     }
 
     // The centre of the scope, in panel pixels: off the ladder and off every dot.

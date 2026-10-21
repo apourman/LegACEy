@@ -31,6 +31,8 @@ public static class DerethPalette
     public static readonly Color Groove = Color.Parse("#080705");
     public static readonly Color GrooveEdge = Color.Parse("#4A3F2A");
     public static readonly Color Navy = Color.Parse("#18160F");
+    /// <summary>The radar's plaques: the coordinates under the scope, the tape above it and the level ladder beside it.</summary>
+    public static readonly Color Plaque = Color.FromArgb(0xD9, 0x18, 0x16, 0x0F);
     /// <summary>The selection colour: a selected slot's wash, border and glow.</summary>
     public static readonly Color Teal = Color.Parse("#3FCF5F");
     /// <summary>Green text, such as the "N selected" line.</summary>
@@ -54,6 +56,7 @@ public static class DerethPalette
     public static readonly IBrush GrooveBrush = Brush(Groove);
     public static readonly IBrush GrooveEdgeBrush = Brush(GrooveEdge);
     public static readonly IBrush TealBrush = Brush(Teal);
+    public static readonly IBrush PlaqueBrush = Brush(Plaque);
     /// <summary>Gold at a quarter opacity: the wash of an accepted drop indicator.</summary>
     public static readonly IBrush GoldWashBrush = Brush(Gold.WithAlpha(0x40));
     /// <summary>Red at a quarter opacity: the wash of a refused drop indicator.</summary>

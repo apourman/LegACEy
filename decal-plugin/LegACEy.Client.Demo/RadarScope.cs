@@ -85,8 +85,8 @@ public sealed record RadarScopeDot(uint Id, string Name, RadarColor Colour, doub
 public sealed record RadarScopeTile(ushort Landblock, Rect Metres);
 
 /// <summary>
-/// One level of the indoor plan to draw. The player's own level is solid; a peeked level is solid too, in teal (<see cref="Peek"/>), and the
-/// player's stays as it was.
+/// One level of the indoor plan to draw. The player's own level is solid; a peeked level is solid too, in teal (<see cref="Peek"/>), and while
+/// one is peeked the player's own is left out.
 /// </summary>
 public sealed record RadarPlanDraw(RadarPlanLevel Level, bool Solid, bool Peek = false);
 
@@ -127,7 +127,8 @@ public sealed class RadarScopeFrame
     /// <summary>The ground around the player: outdoors, or under a building's plan. Empty when the map is off, or in a dungeon.</summary>
     public IReadOnlyList<RadarScopeTile> Tiles { get; }
     /// <summary>
-    /// The indoor plan's levels in drawing order: the others below the player's, then the others above, then the player's own, solid.
+    /// The indoor plan's levels in drawing order: the others below the player's, then the others above, then the player's own, solid. While a
+    /// level is peeked, the player's own is left out and the peeked one is solid.
     /// Empty outdoors, with the map off, or until the plan is built.
     /// </summary>
     public IReadOnlyList<RadarPlanDraw> PlanLevels { get; }
@@ -161,7 +162,7 @@ public static class RadarScope
     /// <param name="options">The radar's options: the map, north-up and zoom.</param>
     /// <param name="radius">The scope's radius in DIPs.</param>
     /// <param name="plan">The plan of the place the player is in, or null outdoors and until it is built.</param>
-    /// <param name="peek">The level the pointer is on in the ladder, or -1. Drawn in teal, as the solid level, while it is not the player's own.</param>
+    /// <param name="peek">The level the pointer is on in the ladder, or -1. Drawn in teal, as the solid level, while it is not the player's own; the player's own is then left out.</param>
     /// <param name="serverName">The server's name for a cell's place, or null; see <see cref="Plaque"/>.</param>
     public static RadarScopeFrame Build(RadarPlayer? player, IReadOnlyList<RadarObject> objects, RadarOptions options, double radius,
         RadarPlan? plan = null, int peek = -1, Func<uint, string?>? serverName = null)
@@ -189,7 +190,7 @@ public static class RadarScope
                 // A dot on another level is an arrow, in full colour; on the player's own, retail's rule for the height stands.
                 var dotLevel = drawn?.LevelOfZ(found.Position.Z) ?? -1;
                 var floor = dotLevel < 0 || dotLevel == level ? RadarFloor.Same : dotLevel < level ? RadarFloor.Above : RadarFloor.Below;
-                if (dotLevel >= 0 && dotLevel != level) occupied |= 1UL << dotLevel;
+                if (dotLevel >= 0 && dotLevel < 64 && dotLevel != level) occupied |= 1UL << dotLevel;
                 var alpha = floor != RadarFloor.Same || Math.Abs(found.Position.Z - player.Position.Z) < LevelMetres ? 1 : FadedAlpha;
                 dots.Add(new RadarScopeDot(found.Id, found.Name, found.Colour, distance, Bearing(east, north), alpha, at, floor));
             }
