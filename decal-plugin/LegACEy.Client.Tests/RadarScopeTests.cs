@@ -395,6 +395,8 @@ public sealed class RadarScopeTests
             Object(1, east: 5, north: 0, z: 8),
             Object(2, east: 6, north: 0, z: 0),
             Object(3, east: 7, north: 0, z: 4),
+            // In the top room's cell though at the player's height: its cell gives its level, as the player's does.
+            Object(4, east: 8, north: 0, z: 4, cell: 0xC6A90102),
         };
 
         var frame = RadarScope.Build(Player(0, RadarPlanFixtures.DungeonCell), objects, Default, Radius, plan);
@@ -403,6 +405,7 @@ public sealed class RadarScopeTests
         Assert.Equal(RadarFloor.Above, Dot(frame, 1).Floor);
         Assert.Equal(RadarFloor.Below, Dot(frame, 2).Floor);
         Assert.Equal(RadarFloor.Same, Dot(frame, 3).Floor);
+        Assert.Equal(RadarFloor.Above, Dot(frame, 4).Floor);
         Assert.Equal(1.0, Dot(frame, 1).Alpha);
         Assert.EndsWith(" · above", RadarScope.Label(Dot(frame, 1)));
         Assert.EndsWith(" · below", RadarScope.Label(Dot(frame, 2)));
@@ -453,8 +456,8 @@ public sealed class RadarScopeTests
 
     // East and north of the player, in the same landblock.
     private static RadarObject Object(uint id, float east, float north, RadarBehavior behaviour = RadarBehavior.ShowAlways,
-        RadarColor colour = RadarColor.Yellow, float z = 0, string name = "Object") =>
-        new(id, name, colour, behaviour, new RadarPosition(Outdoors, 60 + east, 84 + north, z));
+        RadarColor colour = RadarColor.Yellow, float z = 0, string name = "Object", uint cell = Outdoors) =>
+        new(id, name, colour, behaviour, new RadarPosition(cell, 60 + east, 84 + north, z));
 
     private static RadarScopeDot Dot(RadarScopeFrame frame, uint id) => frame.Dots.Single(dot => dot.Id == id);
 
