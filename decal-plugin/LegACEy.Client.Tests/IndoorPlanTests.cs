@@ -110,6 +110,40 @@ public sealed class IndoorPlanTests
         Assert.DoesNotContain(caller, builders);
     }
 
+    [Fact]
+    public void A_floor_whose_first_three_corners_are_in_a_line_is_still_a_floor()
+    {
+        var cell = new IndoorCellShape(0x0100, Frame.Identity, new Dictionary<ushort, Vec3[]>
+        {
+            [1] = new[] { V(0, 0, 0), V(2, 0, 0), V(4, 0, 0), V(4, 4, 0), V(0, 4, 0) },
+        }, Array.Empty<(ushort Polygon, ushort OtherCell)>());
+
+        Assert.Single(IndoorPlan.Build(0x00, 0x99, new[] { cell }).Cell(0x0100)!.Floors);
+    }
+
+    [Fact]
+    public async Task A_failed_plan_is_kept_only_while_it_is_current_and_is_built_again_after_the_player_leaves()
+    {
+        var attempts = 0;
+        var logged = new List<string>();
+        var cache = new IndoorPlanCache((x, y) =>
+        {
+            if (x == 0xC6 && Interlocked.Increment(ref attempts) == 1) throw new InvalidOperationException("the DAT is busy");
+            return IndoorPlan.Build(x, y, Array.Empty<IndoorCellShape>());
+        }, logged.Add);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => cache.PlanAsync(0xC6, 0xA9));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => cache.PlanAsync(0xC6, 0xA9)); // still current: no rebuild each frame
+        Assert.Equal(1, attempts);
+        Assert.Single(logged);
+
+        await cache.PlanAsync(0x00, 0x99); // the failed plan leaves the current slot, so it is dropped
+        var plan = await cache.PlanAsync(0xC6, 0xA9);
+
+        Assert.Equal(2, attempts);
+        Assert.Equal(0xC6, plan.X);
+    }
+
     private const ushort Outside = 0xFFFF;
 
     private static Vec3 V(float x, float y, float z) => new(x, y, z);

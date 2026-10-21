@@ -26,8 +26,8 @@ public sealed class IndoorCellShape
 
 /// <summary>
 /// One indoor cell in landblock metres (x east, y north, z up): its floors, its walls as bottom edges seen from above, its doors (the
-/// centre of a portal polygon and the cell beyond it) and its height, the lowest of its floors (a stair's floors step up, so their mean
-/// would fall between two storeys).
+/// centre of a portal polygon and the cell beyond it, whose id is 0xFFFF when the door leads outside) and its height, the lowest of its
+/// floors (a stair's floors step up, so their mean would fall between two storeys).
 /// </summary>
 public sealed class IndoorCell
 {
@@ -93,13 +93,19 @@ public sealed class IndoorPlan
     public IReadOnlyList<IndoorCell> Cells { get; }
     public IReadOnlyList<IndoorLevel> Levels { get; }
 
-    /// <summary>The cell with this id (its low word), or null if the plan has none.</summary>
+    /// <summary>The cell with this id, the low word of the cell's full id (0x0100 to 0xFFFE), or null if the plan has none.</summary>
     public IndoorCell? Cell(ushort id) => _cells.TryGetValue(id, out var cell) ? cell : null;
 
-    /// <summary>The index in <see cref="Levels"/> of the cell's level, or -1 if the plan has no such cell.</summary>
+    /// <summary>
+    /// The index in <see cref="Levels"/> of the cell's level (0 is the top), taking the cell's low word as <see cref="Cell"/> does;
+    /// -1 if the plan has no such cell.
+    /// </summary>
     public int LevelOf(ushort id) => _levelOf.TryGetValue(id, out var level) ? level : -1;
 
-    /// <summary>The cells reachable through doors from a cell, as a plan of their own with their own levels; empty if the plan has no such cell.</summary>
+    /// <summary>
+    /// The cells reachable through doors from a cell, as a plan of their own with their own levels, empty if the plan has no such cell.
+    /// It allocates and re-clusters the levels, so call it once per cell or landblock change, not per frame.
+    /// </summary>
     public IndoorPlan Place(ushort id)
     {
         var reached = new HashSet<ushort>();
@@ -180,22 +186,27 @@ public sealed class IndoorPlan
         return (Flat(a), Flat(b));
     }
 
-    /// <summary>The z of a polygon's normal (its first three points), unit length; NaN for a degenerate polygon, which is neither floor nor wall.</summary>
+    /// <summary>
+    /// The z of a polygon's normal, unit length, by Newell's method over all its corners, so a polygon whose first corners are in a
+    /// line still has one. NaN for a degenerate polygon, which is neither floor nor wall.
+    /// </summary>
     private static float NormalZ(Vec3[] points)
     {
-        var u = Minus(points[1], points[0]);
-        var v = Minus(points[2], points[0]);
-        var nx = (u.Y * v.Z) - (u.Z * v.Y);
-        var ny = (u.Z * v.X) - (u.X * v.Z);
-        var nz = (u.X * v.Y) - (u.Y * v.X);
+        float nx = 0, ny = 0, nz = 0;
+        for (var i = 0; i < points.Length; i++)
+        {
+            var a = points[i];
+            var b = points[(i + 1) % points.Length];
+            nx += (a.Y - b.Y) * (a.Z + b.Z);
+            ny += (a.Z - b.Z) * (a.X + b.X);
+            nz += (a.X - b.X) * (a.Y + b.Y);
+        }
         return nz / (float)Math.Sqrt((nx * nx) + (ny * ny) + (nz * nz));
     }
 
     private static Vec3 Centre(Vec3[] points) => new((float)points.Average(p => p.X), (float)points.Average(p => p.Y), (float)points.Average(p => p.Z));
 
     private static Vec3 ToLandblock(Frame frame, Vec3 point) => frame.Rotate(point) + frame.Origin;
-
-    private static Vec3 Minus(Vec3 a, Vec3 b) => new(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
 
     private static GroundPoint Flat(Vec3 point) => new(point.X, point.Y);
 }

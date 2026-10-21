@@ -6,6 +6,9 @@ using System.Text;
 
 namespace LegACEy.Client.GameArt;
 
+// The polygons' vertices by cell structure, by environment: what IndoorDat keeps for the environments it has read in one plan.
+using Environments = Dictionary<uint, Dictionary<uint, Dictionary<ushort, Vec3[]>>>;
+
 /// <summary>
 /// The indoor plans' DATs, read as ACE.DatLoader reads them: client_cell_1.dat for a landblock's cell count (LandblockInfo) and each
 /// cell's environment, frame and portals (EnvCell), and client_portal.dat for an environment's cell structures (Environment, CellStruct).
@@ -15,6 +18,7 @@ namespace LegACEy.Client.GameArt;
 public sealed class IndoorDat : IDisposable
 {
     private const uint FirstCell = 0x0100;
+    private const uint LastCell = 0xFFFE;
     private const uint EnvironmentBase = 0x0D000000;
     private const byte NoPositiveUvs = 0x04; // StipplingType: the positive side has no UVs
     private const byte NoNegativeUvs = 0x08; // StipplingType: the negative side has no UVs
@@ -26,9 +30,10 @@ public sealed class IndoorDat : IDisposable
 
     private readonly PortalDat _portal;
     private readonly PortalDat _cell;
-    private readonly Dictionary<uint, Dictionary<uint, Dictionary<ushort, Vec3[]>>> _environments = new(); // by environment, cell structure, polygon
+    private readonly Action<string>? _log;
 
-    public IndoorDat(string portalPath, string cellPath)
+    /// <param name="log">Told when some of a landblock's cells could not be read; the plan is built without them.</param>
+    public IndoorDat(string portalPath, string cellPath, Action<string>? log = null)
     {
         _portal = new PortalDat(portalPath);
         try
@@ -41,13 +46,15 @@ public sealed class IndoorDat : IDisposable
             _portal.Dispose();
             throw;
         }
+        _log = log;
     }
 
     /// <summary>
     /// The landblock's indoor plan, empty where it has no cells. This reads the DATs, so call it off the UI thread
-    /// (<see cref="IndoorPlanCache"/> does).
+    /// (<see cref="IndoorPlanCache"/> does). Safe to call from several threads at once: each call keeps its own environments, and
+    /// the DATs serialise their own reads.
     /// </summary>
-    public IndoorPlan ReadPlan(int x, int y) => IndoorPlan.Build(x, y, ReadShapes(x, y));
+    public IndoorPlan ReadPlan(int x, int y) => IndoorPlan.Build(x, y, ReadShapes(x, y, new Environments()));
 
     public void Dispose()
     {
@@ -55,21 +62,40 @@ public sealed class IndoorDat : IDisposable
         _cell.Dispose();
     }
 
-    /// <summary>The landblock's cells, from 0x0100 for the count LandblockInfo gives; a cell whose structure is missing is left out.</summary>
-    private IEnumerable<IndoorCellShape> ReadShapes(int x, int y)
+    /// <summary>
+    /// The landblock's cells, from 0x0100 for the count LandblockInfo gives. A cell that fails to read, or whose structure is missing,
+    /// is left out; the landblock's failures are logged once.
+    /// </summary>
+    private List<IndoorCellShape> ReadShapes(int x, int y, Environments environments)
     {
-        if (x is < 0 or > 254 || y is < 0 or > 254) yield break;
+        var shapes = new List<IndoorCellShape>();
+        if (x is < 0 or > 254 || y is < 0 or > 254) return shapes;
         var landblock = ((uint)x << 24) | ((uint)y << 16);
         var info = _cell.ReadFile(landblock | 0xFFFE);
-        if (info == null) yield break;
+        if (info == null) return shapes;
 
-        var count = BitConverter.ToUInt32(info, 4); // LandblockInfo: its id, then NumCells
+        // LandblockInfo: its id, then NumCells. Cell ids end at 0xFFFE, so the count is clamped there and no id spills into the next landblock.
+        var count = Math.Min(BitConverter.ToUInt32(info, 4), LastCell - FirstCell + 1);
+        var failures = 0;
+        string? firstFailure = null;
         for (var id = FirstCell; id < FirstCell + count; id++)
-            if (ReadCell(landblock | id) is { } shape) yield return shape;
+        {
+            try
+            {
+                if (ReadCell(environments, landblock | id) is { } shape) shapes.Add(shape);
+            }
+            catch (Exception exception)
+            {
+                failures++;
+                firstFailure ??= exception.Message;
+            }
+        }
+        if (failures > 0) _log?.Invoke($"{failures} cells of landblock {x:X2}{y:X2} could not be read: {firstFailure}");
+        return shapes;
     }
 
     /// <summary>EnvCell: its environment and cell structure, its frame and its portals. Null where the cell is missing.</summary>
-    private IndoorCellShape? ReadCell(uint id)
+    private IndoorCellShape? ReadCell(Environments environments, uint id)
     {
         var data = _cell.ReadFile(id);
         if (data == null) return null;
@@ -96,32 +122,29 @@ public sealed class IndoorDat : IDisposable
             portals.Add((polygon, otherCell));
         }
 
-        if (!ReadEnvironment(environment).TryGetValue(structure, out var polygons)) return null;
+        if (!ReadEnvironment(environments, environment).TryGetValue(structure, out var polygons)) return null;
         return new IndoorCellShape((ushort)id, frame, polygons, portals);
     }
 
-    /// <summary>An environment's cell structures by id, each as its polygons' vertices, read once. Empty where the portal has no such environment.</summary>
-    private Dictionary<uint, Dictionary<ushort, Vec3[]>> ReadEnvironment(uint id)
+    /// <summary>An environment's cell structures by id, each as its polygons' vertices, read once per plan. Empty where the portal has no such environment.</summary>
+    private Dictionary<uint, Dictionary<ushort, Vec3[]>> ReadEnvironment(Environments environments, uint id)
     {
-        lock (_environments)
-        {
-            if (_environments.TryGetValue(id, out var known)) return known;
+        if (environments.TryGetValue(id, out var known)) return known;
 
-            var structures = new Dictionary<uint, Dictionary<ushort, Vec3[]>>();
-            var data = _portal.ReadFile(id);
-            if (data != null)
+        var structures = new Dictionary<uint, Dictionary<ushort, Vec3[]>>();
+        var data = _portal.ReadFile(id);
+        if (data != null)
+        {
+            var reader = new BinaryReader(new MemoryStream(data));
+            reader.ReadUInt32(); // the id
+            for (var count = reader.ReadUInt32(); count > 0; count--)
             {
-                var reader = new BinaryReader(new MemoryStream(data));
-                reader.ReadUInt32(); // the id
-                for (var count = reader.ReadUInt32(); count > 0; count--)
-                {
-                    var key = reader.ReadUInt32();
-                    structures[key] = ReadCellStructure(reader);
-                }
+                var key = reader.ReadUInt32();
+                structures[key] = ReadCellStructure(reader);
             }
-            _environments[id] = structures;
-            return structures;
         }
+        environments[id] = structures;
+        return structures;
     }
 
     /// <summary>CellStruct: its vertices, then its polygons, read in place. Its portals and BSP trees are stepped over.</summary>
