@@ -273,8 +273,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _radarReleaseLogged;
     private bool _radarSwitch;
     private DateTime _lastRadarSwitchCheck;
-    // The Dereth attack bar over retail's attack panel: its checked natives, the held panel and window, and the port the window reads. Opt-in.
-    private RetailAttackNatives? _attackNatives;
+    // The Dereth attack bar over retail's attack panel: whether its natives matched, the held panel and window, and the port the window reads.
+    private bool? _attackNatives;
     private RetailAttackTakeover? _attack;
     private NativeAttackBarPort? _attackPort;
     private bool _attackSwitch;
@@ -2981,19 +2981,19 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>
     /// The attack bar's natives, checked once a session; null until the UI can be read. A check that cannot complete turns every feature off.
     /// </summary>
-    private RetailAttackNatives? AttackNatives()
+    private bool? AttackNatives()
     {
         if (!NativeUi.Ready || _device == IntPtr.Zero) return null;
         return _attackNatives ??= ValidateAttackNatives();
     }
 
-    private RetailAttackNatives ValidateAttackNatives()
+    private bool ValidateAttackNatives()
     {
         try { return RetailAttackCatalogue.Validate(NativeUi.ReadMemory, Log); }
         catch (Exception exception)
         {
             Log($"Dereth attack bar is off: its native addresses could not be checked: {exception.Message}");
-            return new RetailAttackNatives(false, false, false, false, false);
+            return false;
         }
     }
 

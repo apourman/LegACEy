@@ -17,14 +17,13 @@ public readonly record struct DerethAttackFace(bool Accuracy, double SetPoint, d
 /// </summary>
 public sealed class DerethAttackLayout
 {
-    private const int DesignWidth = 320, DesignHeight = 58;
     private readonly double _wide, _tall;
 
     public DerethAttackLayout(Size size)
     {
         Size = size;
-        _wide = size.Width - DesignWidth;
-        _tall = Math.Max(0, size.Height - DesignHeight);
+        _wide = size.Width - DerethAttackBarArt.DesignWidth;
+        _tall = Math.Max(0, size.Height - DerethAttackBarArt.DesignHeight);
         Groove = new Rect(46, 14 + _tall * 0.15, Math.Max(40, 168 + _wide), Math.Min(18, 10 + _tall * 0.3));
         GrooveHit = new Rect(Groove.X - 4, Groove.Y - 7, Groove.Width + 8, Groove.Height + 12);
     }

@@ -43,9 +43,10 @@ internal sealed class NativeAttackBarPort : IAttackBarPort
         new IntPtr(RetailAttackCatalogue.SendAttackHeightChanged));
     private static readonly SetRequestedAttackHeightFn SetRequestedAttackHeight = Marshal.GetDelegateForFunctionPointer<SetRequestedAttackHeightFn>(
         new IntPtr(RetailAttackCatalogue.SetRequestedAttackHeight));
-    private static readonly OptionNatives AutoRepeatOption = new(RetailAttackCatalogue.AutoRepeatAttack, RetailAttackCatalogue.SetAutoRepeatAttack);
-    private static readonly OptionNatives AutoTargetOption = new(RetailAttackCatalogue.AutoTarget, RetailAttackCatalogue.SetAutoTarget);
-    private static readonly OptionNatives KeepInViewOption = new(RetailAttackCatalogue.ViewCombatTarget, RetailAttackCatalogue.SetViewCombatTarget);
+    // Each option's retail getter and setter on PlayerModule: the setter sets the bit and sends the change.
+    private static readonly (GetOptionFn Get, SetOptionFn Set) AutoRepeatOption = Option(RetailAttackCatalogue.AutoRepeatAttack, RetailAttackCatalogue.SetAutoRepeatAttack);
+    private static readonly (GetOptionFn Get, SetOptionFn Set) AutoTargetOption = Option(RetailAttackCatalogue.AutoTarget, RetailAttackCatalogue.SetAutoTarget);
+    private static readonly (GetOptionFn Get, SetOptionFn Set) KeepInViewOption = Option(RetailAttackCatalogue.ViewCombatTarget, RetailAttackCatalogue.SetViewCombatTarget);
 
     private readonly bool _lockAvailable;
     private Values? _last;
@@ -122,11 +123,14 @@ internal sealed class NativeAttackBarPort : IAttackBarPort
     private double ReadUnit(int offset) =>
         CombatSystem() is { } system ? ClampUnit(BitConverter.Int32BitsToSingle(Marshal.ReadInt32(system, offset))) : 0;
 
-    private bool ReadOption(OptionNatives option) => PlayerModule() is { } module && option.Read(module);
+    private static (GetOptionFn, SetOptionFn) Option(uint getter, uint setter) =>
+        (Marshal.GetDelegateForFunctionPointer<GetOptionFn>(new IntPtr(getter)), Marshal.GetDelegateForFunctionPointer<SetOptionFn>(new IntPtr(setter)));
 
-    private void WriteOption(OptionNatives option, bool value)
+    private static bool ReadOption((GetOptionFn Get, SetOptionFn Set) option) => PlayerModule() is { } module && option.Get(module) != 0;
+
+    private static void WriteOption((GetOptionFn Get, SetOptionFn Set) option, bool value)
     {
-        if (PlayerModule() is { } module) option.Write(module, value);
+        if (PlayerModule() is { } module) option.Set(module, value ? (byte)1 : (byte)0);
     }
 
     /// <summary>ClientCombatSystem, or null when there is no character.</summary>
@@ -145,21 +149,4 @@ internal sealed class NativeAttackBarPort : IAttackBarPort
 
     private readonly record struct Values(RetailStance Stance, double SetPoint, AttackHeight Height, double Charge, bool AutoRepeatAttack,
         bool AutoTarget, bool ViewCombatTarget);
-
-    /// <summary>One option's retail accessors: the getter and setter on PlayerModule, which set the bit and send the change.</summary>
-    private sealed class OptionNatives
-    {
-        private readonly GetOptionFn _get;
-        private readonly SetOptionFn _set;
-
-        public OptionNatives(uint getter, uint setter)
-        {
-            _get = Marshal.GetDelegateForFunctionPointer<GetOptionFn>(new IntPtr(getter));
-            _set = Marshal.GetDelegateForFunctionPointer<SetOptionFn>(new IntPtr(setter));
-        }
-
-        public bool Read(IntPtr playerModule) => _get(playerModule) != 0;
-
-        public void Write(IntPtr playerModule, bool value) => _set(playerModule, value ? (byte)1 : (byte)0);
-    }
 }

@@ -7,18 +7,17 @@ public sealed class RetailAttackCatalogueTests
     [Fact]
     public void A_client_that_matches_every_list_turns_the_whole_attack_bar_on()
     {
-        Assert.Equal(new RetailAttackNatives(true, true, true, true, true), RetailAttackCatalogue.Validate(Client(), _ => { }));
+        Assert.True(RetailAttackCatalogue.Validate(Client(), _ => { }));
     }
 
     [Fact]
-    public void A_patched_height_setter_turns_only_the_attack_height_off_and_says_so()
+    public void A_patched_height_setter_turns_the_bar_off_and_says_it_was_the_height()
     {
         var messages = new List<string>();
 
-        var natives = RetailAttackCatalogue.Validate(Client(patched: RetailAttackCatalogue.SetRequestedAttackHeight), messages.Add);
-
-        Assert.Equal(new RetailAttackNatives(false, true, true, true, true), natives);
+        Assert.False(RetailAttackCatalogue.Validate(Client(patched: RetailAttackCatalogue.SetRequestedAttackHeight), messages.Add));
         Assert.Contains(messages, message => message.Contains("attack bar height is off"));
+        Assert.Single(messages, message => message.Contains(" is off"));
     }
 
     // A running client that matches the catalogue, with one address's first byte changed as a runtime patch would.

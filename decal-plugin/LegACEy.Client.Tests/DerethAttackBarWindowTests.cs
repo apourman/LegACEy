@@ -140,29 +140,6 @@ public sealed class DerethAttackBarWindowTests
     });
 
     [Fact]
-    public void ShownChanged_is_raised_when_the_bar_hides_or_shows_but_not_for_power_to_accuracy() => RenderThread.Run(() =>
-    {
-        var port = new FakeAttackBarPort { Stance = RetailStance.Melee };
-        var view = new DerethAttackBarWindow(port, () => { });
-        var raised = 0;
-        view.ShownChanged += () => raised++;
-
-        port.Stance = RetailStance.Missile;
-        port.Publish();
-        Assert.Equal(0, raised);
-
-        port.Stance = RetailStance.Magic;
-        port.Publish();
-        Assert.Equal(1, raised);
-        Assert.False(view.Shown);
-
-        port.Stance = RetailStance.Melee;
-        port.Publish();
-        Assert.Equal(2, raised);
-        Assert.True(view.Shown);
-    });
-
-    [Fact]
     public void A_change_made_outside_the_window_shows_in_it() => RenderThread.Run(() =>
     {
         // A retail key sets the height, the power and an option, and the stance changes to missile; the game says so, and the window follows.

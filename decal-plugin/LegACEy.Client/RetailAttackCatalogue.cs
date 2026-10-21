@@ -6,7 +6,7 @@ namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
 /// The native entries the Dereth attack bar needs from retail's combat system, player options and panel. Each feature has its own list,
-/// validated on its own, so each list logs its own reason; any failed list turns the whole bar off (see <see cref="RetailAttackNatives.Complete"/>),
+/// validated on its own, so each list logs its own reason; any failed list turns the whole bar off,
 /// so it never shows a control that cannot work. Addresses and byte lists were read from the installed end-of-retail
 /// acclient.exe; acclient.pdb is a near build, so its names were used and each address was checked in the exe. Recipes are in the attack
 /// bar spike note. The combat mode is not here: the attack bar reads it through Decal's BridgeFact.CombatMode.
@@ -115,10 +115,15 @@ internal static class RetailAttackCatalogue
             new byte[] { 0x68 }.Concat(BitConverter.GetBytes(CombatPanel)).ToArray(), Source, "instruction reference (push 0x100006B5)")
     };
 
-    /// <summary>Checks each feature's list on its own: a mismatch, or an address that cannot be read, turns that feature off and logs it.</summary>
-    internal static RetailAttackNatives Validate(Func<uint, int, byte[]> read, Action<string> log) => new(
+    /// <summary>
+    /// Whether every feature's list matches. Each is checked on its own, so a mismatch, or an address that cannot be read, logs which feature
+    /// is off; any one turns the whole bar off, so it never shows a control that cannot work.
+    /// </summary>
+    internal static bool Validate(Func<uint, int, byte[]> read, Action<string> log) => new[]
+    {
         Check("height", Height, read, log), Check("set point", SetPoint, read, log), Check("charge", Charge, read, log),
-        Check("options", Options, read, log), Check("hold", Hold, read, log));
+        Check("options", Options, read, log), Check("hold", Hold, read, log)
+    }.All(ok => ok);
 
     // NativeUiCatalogue.Validate catches failed reads itself, so nothing here throws.
     private static bool Check(string feature, IEnumerable<NativeUiEntry> entries, Func<uint, int, byte[]> read, Action<string> log) =>
@@ -128,9 +133,3 @@ internal static class RetailAttackCatalogue
         new(name, address, NativeUiCatalogue.Bytes(bytes), Source, convention);
 }
 
-/// <summary>Which attack bar features the running client supports: the height, the set point, the charge, the options and the panel hold.</summary>
-internal sealed record RetailAttackNatives(bool Height, bool SetPoint, bool Charge, bool Options, bool Hold)
-{
-    /// <summary>Every feature matched: the takeover is on only then, so the bar is never shown with a control that cannot work.</summary>
-    internal bool Complete => Height && SetPoint && Charge && Options && Hold;
-}

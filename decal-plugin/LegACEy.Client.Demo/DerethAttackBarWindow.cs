@@ -45,7 +45,7 @@ public sealed class DerethAttackBarWindow : UserControl, IDisposable
         for (var i = 0; i < 3; i++)
         {
             var height = (AttackHeight)i;
-            _root.Children.Add(_plaques[i] = Hit(_ => ChooseHeight(height)));
+            _root.Children.Add(_plaques[i] = Hit(_ => Flip(() => _port.Height = height)));
         }
         _root.Children.Add(_toggles[0] = Hit(_ => Flip(() => _port.AutoRepeatAttack = !_port.AutoRepeatAttack)));
         _root.Children.Add(_toggles[1] = Hit(_ => Flip(() => _port.AutoTarget = !_port.AutoTarget)));
@@ -81,12 +81,6 @@ public sealed class DerethAttackBarWindow : UserControl, IDisposable
     /// <summary>Whether the bar shows: in melee and missile, and hidden in peace and magic.</summary>
     public bool Shown => _root.IsVisible;
 
-    /// <summary>
-    /// Raised when <see cref="Shown"/> flips. The client host does not listen: its takeover closes the window outside melee and missile, so
-    /// the window is never left open hidden, where its content would still take input.
-    /// </summary>
-    public event Action? ShownChanged;
-
     /// <summary>The face the bar shows, as last synced from the port.</summary>
     public DerethAttackFace Face => _art.Face;
 
@@ -106,12 +100,6 @@ public sealed class DerethAttackBarWindow : UserControl, IDisposable
         Sync();
     }
 
-    private void ChooseHeight(AttackHeight height)
-    {
-        _port.Height = height;
-        Sync();
-    }
-
     private void Flip(Action change)
     {
         change();
@@ -123,12 +111,7 @@ public sealed class DerethAttackBarWindow : UserControl, IDisposable
     {
         var stance = _port.Stance;
         var accuracy = stance == RetailStance.Missile;
-        var shown = stance is RetailStance.Melee or RetailStance.Missile;
-        if (shown != _root.IsVisible)
-        {
-            _root.IsVisible = shown;
-            ShownChanged?.Invoke();
-        }
+        _root.IsVisible = stance is RetailStance.Melee or RetailStance.Missile;
         _art.Show(new DerethAttackFace(accuracy, _port.SetPoint, _port.Charge, (int)_port.Height,
             _port.AutoRepeatAttack, _port.AutoTarget, _port.ViewCombatTarget));
         var percent = (int)Math.Round(_port.SetPoint * 100);

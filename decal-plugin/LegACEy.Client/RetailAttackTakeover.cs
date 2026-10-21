@@ -12,7 +12,7 @@ namespace LegACEy.Client.DecalPlugin;
 /// </summary>
 internal sealed class RetailAttackTakeover : IDisposable
 {
-    private readonly Func<RetailAttackNatives?> _natives;
+    private readonly Func<bool?> _natives;
     private readonly Func<RetailHeldWindows> _hold;
     private readonly Func<Point> _retailAt;
     private readonly Func<Point, IDisposable?> _open;
@@ -22,11 +22,11 @@ internal sealed class RetailAttackTakeover : IDisposable
     private bool _failed;
     private bool _releaseLogged;
 
-    /// <param name="natives">The validated attack bar natives; null while they cannot be checked yet, when retail's panel stays as it is.</param>
+    /// <param name="natives">Whether the attack bar's natives all matched; null while they cannot be checked yet, when retail's panel stays as it is.</param>
     /// <param name="hold">Holds retail's attack panel, by its placed id, once the Hold list has passed.</param>
     /// <param name="retailAt">Where retail's attack panel stands, so the bar opens over it.</param>
     /// <param name="open">Opens the bar window at a place. Null while the windows cannot open yet; it throws only when opening fails.</param>
-    public RetailAttackTakeover(Func<RetailAttackNatives?> natives, Func<RetailHeldWindows> hold, Func<Point> retailAt, Func<Point, IDisposable?> open,
+    public RetailAttackTakeover(Func<bool?> natives, Func<RetailHeldWindows> hold, Func<Point> retailAt, Func<Point, IDisposable?> open,
         Action<string> log)
     {
         _natives = natives ?? throw new ArgumentNullException(nameof(natives));
@@ -64,8 +64,8 @@ internal sealed class RetailAttackTakeover : IDisposable
                 Release();
                 return;
             }
-            if (_natives() is not { } natives) return;
-            if (!natives.Complete)
+            if (_natives() is not { } matched) return;
+            if (!matched)
             {
                 // The validation logged which lists failed; the takeover stays off as a whole, so the bar never shows a dead control.
                 _failed = true;

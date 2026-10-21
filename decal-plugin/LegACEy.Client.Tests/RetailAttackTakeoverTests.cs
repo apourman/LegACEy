@@ -11,8 +11,7 @@ public sealed class RetailAttackTakeoverTests
 {
     private static readonly Size Viewport = new(1000, 800);
     private static readonly Point Place = new(340, 700);
-    private static readonly RetailAttackNatives Checked = new(true, true, true, true, true);
-
+    
     /// <summary>Retail's attack panel shown at first, the window and the switch are what this drives.</summary>
     private sealed class Harness
     {
@@ -22,7 +21,7 @@ public sealed class RetailAttackTakeoverTests
         public FakeWindow? Window { get; private set; }
         public Exception? OpenFailure { get; set; }
         public bool NotReady { get; set; }
-        public RetailAttackNatives? Natives { get; set; } = Checked;
+        public bool? Natives { get; set; } = true;
         public RetailAttackTakeover Takeover { get; }
 
         public Harness()
@@ -205,7 +204,7 @@ public sealed class RetailAttackTakeoverTests
     public void A_failed_native_check_of_any_feature_turns_the_takeover_off_and_says_why_and_retail_panel_stays()
     {
         // The options list failed, not the hold: the bar would show toggles that do nothing, so the whole takeover stays off.
-        var harness = new Harness { Natives = new RetailAttackNatives(true, true, true, false, true) };
+        var harness = new Harness { Natives = false };
 
         harness.Tick(RetailStance.Melee);
         harness.Tick(RetailStance.Melee);
