@@ -2,7 +2,6 @@ using System;
 using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using Avalonia.Controls;
 using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
@@ -381,15 +380,7 @@ public sealed class DerethVitalsWindowTests
         }
         if (hover) panel.PointerMove(width * scale / 2, height * scale / 2);
         panel.Tick();
-        var frame = panel.Frame;
-        using var bitmap = new Avalonia.Media.Imaging.WriteableBitmap(new Avalonia.PixelSize(frame.Width, frame.Height), new Avalonia.Vector(96, 96),
-            Avalonia.Platform.PixelFormat.Bgra8888, Avalonia.Platform.AlphaFormat.Premul);
-        using (var locked = bitmap.Lock())
-        {
-            Assert.Equal(frame.Stride, locked.RowBytes);
-            Marshal.Copy(frame.Pixels, 0, locked.Address, frame.Pixels.Length);
-        }
-        bitmap.Save(path);
+        PanelPng.Save(panel, path);
     }
 
     private static List<DerethVitalBar> Bars(DerethVitalsWindow view) => view.GetLogicalDescendants().OfType<DerethVitalBar>().ToList();
