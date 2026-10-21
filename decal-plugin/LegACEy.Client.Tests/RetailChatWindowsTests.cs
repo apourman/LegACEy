@@ -265,18 +265,22 @@ public sealed class RetailChatWindowsTests
         using var first = ChatDesk.Open(port, path, Character, positions);
         port.Say(new RetailChatLine(RetailChatKind.Allegiance, "Kaelith tells the allegiance, \"pull the next\"", Stamp, "Kaelith"));
         first.Tick();
+        // As in retail, a name keeps its line's colour, but is green over a spell's blue words.
         Assert.Equal(DerethChatPalette.Allegiance, NameInk(first.Main));
-        first.Chat.SetNameColour(1);
-        Assert.Equal(DerethChatPalette.Link, NameInk(first.Main));
+        port.Say(new RetailChatLine(RetailChatKind.Local, "Kaelith says, \"Puish Zharil\"", Stamp, "Kaelith", Type: 17));
+        first.Tick();
+        Assert.Equal(DerethChatPalette.Link, NameInk(first.Main, last: true));
+        first.Chat.SetNameColour(2);
+        Assert.Equal(DerethChatPalette.Say, NameInk(first.Main));
         first.Dispose();
 
         using var second = ChatDesk.Open(port, path, Character, positions);
         port.Say(new RetailChatLine(RetailChatKind.Allegiance, "Kaelith tells the allegiance, \"again\"", Stamp, "Kaelith"));
         second.Tick();
-        Assert.Equal(DerethChatPalette.Link, NameInk(second.Main));
+        Assert.Equal(DerethChatPalette.Say, NameInk(second.Main));
 
-        static Avalonia.Media.Color NameInk(Control window) => ((Avalonia.Media.SolidColorBrush)window.GetVisualDescendants()
-            .OfType<SelectableTextBlock>().First(line => line.Tag is DateTime).Inlines!
+        static Avalonia.Media.Color NameInk(Control window, bool last = false) => ((Avalonia.Media.SolidColorBrush)window.GetVisualDescendants()
+            .OfType<SelectableTextBlock>().Where(line => line.Tag is DateTime).Aggregate((first, next) => last ? next : first).Inlines!
             .OfType<Avalonia.Controls.Documents.Run>().First(run => run.Text == "Kaelith").Foreground!).Color;
     }));
 

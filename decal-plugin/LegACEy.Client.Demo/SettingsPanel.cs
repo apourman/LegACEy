@@ -471,7 +471,7 @@ public sealed class SettingsPanel : UserControl
         return new StackPanel { Spacing = 6, Children = { ScopedLabel("Fade when idle", thisCharacter: true), fade } };
     }
 
-    /// <summary>The colour names are drawn in: the line's own, as retail's says do, or one picked for every name.</summary>
+    /// <summary>The colour names are drawn in: retail's (the line's own, green in a spell's words), or one picked for every name.</summary>
     private Control ChatNameColourRow()
     {
         var colour = new DerethSegmented(RetailChatWindows.NameColours.Select(choice => choice.Label).ToArray());

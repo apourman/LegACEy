@@ -54,12 +54,12 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     public const int OpacityStep = 5;
     private int _activeOpacity = DefaultActiveOpacity;
     private int _inactiveOpacity = DefaultInactiveOpacity;
-    // The colour names are drawn in, as an index into NameColours, kept per character in the position store. 0 keeps each line's colour;
-    // Green is the link green retail draws names in over a spell's blue words.
+    // The colour names are drawn in, as an index into NameColours, kept per character in the position store. 0 is retail's: a name keeps its
+    // line's colour (white in a say) except in a spell's words, where it is the link green over the spell's blue.
     public const string NameColourKey = "dereth-chat-name-colour";
     public static readonly IReadOnlyList<(string Label, Avalonia.Media.Color? Colour)> NameColours = new (string, Avalonia.Media.Color?)[]
     {
-        ("Line", null), ("Green", DerethChatPalette.Link), ("White", DerethChatPalette.Say), ("Gold", DerethPalette.Gold),
+        ("Retail", null), ("Green", DerethChatPalette.Link), ("White", DerethChatPalette.Say), ("Gold", DerethPalette.Gold),
     };
     private int _nameColour;
     // Where a torn-off window opens from the pointer: the tab it came from is under the pointer, so the window follows it.
@@ -370,7 +370,7 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
         foreach (var (_, window) in _chats) window.NameColour = NameColours[choice].Colour;
     }
 
-    /// <summary>An index into <see cref="NameColours"/>; any other value snaps to 0, the line's colour.</summary>
+    /// <summary>An index into <see cref="NameColours"/>; any other value snaps to 0, retail's colours.</summary>
     public static int NameColourOrDefault(int index) => index >= 0 && index < NameColours.Count ? index : 0;
 
     /// <summary>The character's name colour as an index into <see cref="NameColours"/>, 0 before one is saved.</summary>
