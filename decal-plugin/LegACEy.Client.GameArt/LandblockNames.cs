@@ -11,6 +11,7 @@ namespace LegACEy.Client.GameArt;
 public static class LandblockNames
 {
     private static readonly Lazy<Dictionary<ushort, string[]>> Names = new(() => Parse(ReadEmbedded()));
+    private static readonly char[] LineBreaks = { '\r', '\n' };
 
     /// <summary>The names of a landblock (0xXXYY); empty when the list has none.</summary>
     public static IReadOnlyList<string> Get(ushort landblock) =>
@@ -23,10 +24,10 @@ public static class LandblockNames
     }
 
     // One `XXYY<tab>name[|name...]` line per landblock.
-    private static Dictionary<ushort, string[]> Parse(string text)
+    internal static Dictionary<ushort, string[]> Parse(string text)
     {
         var names = new Dictionary<ushort, string[]>();
-        foreach (var line in text.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries))
+        foreach (var line in text.Split(LineBreaks, StringSplitOptions.RemoveEmptyEntries))
         {
             var parts = line.Split('\t');
             names[Convert.ToUInt16(parts[0], 16)] = parts[1].Split('|');

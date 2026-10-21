@@ -19,6 +19,14 @@ public sealed class LandblockNamesTests
     }
 
     [Fact]
+    public void Lines_split_on_CRLF_as_well_as_LF()
+    {
+        var parsed = LandblockNames.Parse("0099\tBlack Totem Temple\r\n00C9\tChamber of Scrolls|Chamber of Air\r\n");
+        Assert.Equal(new[] { "Black Totem Temple" }, parsed[0x0099]);
+        Assert.Equal(new[] { "Chamber of Scrolls", "Chamber of Air" }, parsed[0x00C9]);
+    }
+
+    [Fact]
     public void A_shared_landblock_returns_every_name_and_an_unlisted_one_returns_none()
     {
         Assert.Equal(new[] { "Black Totem Temple" }, LandblockNames.Get(0x0099));
