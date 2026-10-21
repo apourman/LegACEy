@@ -176,6 +176,8 @@ public sealed class SettingsPanelTests
         {
             ChatTextSize = new OptionChoice<int>(130, _ => { }),
             ChatFade = new OptionChoice<int>(15, _ => { }),
+            ChatActiveOpacity = new OptionChoice<int>(60, _ => { }),
+            ChatInactiveOpacity = new OptionChoice<int>(0, _ => { }),
         };
         foreach (var tab in new[] { SettingsTab.General, SettingsTab.Windows })
         {

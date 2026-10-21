@@ -901,6 +901,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             ShortcutRow2 = new OptionChoice<bool>(_row2Choice.IsOn(SessionServer(), SessionCharacter()), SetShortcutRow2),
             ChatTextSize = new OptionChoice<int>(RetailChatWindows.LoadTextSize(_positionStore, SessionServer(), SessionCharacter()), SetChatTextSize),
             ChatFade = new OptionChoice<int>(RetailChatWindows.LoadFadeSeconds(_positionStore, SessionServer(), SessionCharacter()), SetChatFadeSeconds),
+            ChatActiveOpacity = new OptionChoice<int>(RetailChatWindows.LoadOpacity(_positionStore, SessionServer(), SessionCharacter(), RetailChatWindows.ActiveOpacityKey, RetailChatWindows.DefaultActiveOpacity), SetChatActiveOpacity),
+            ChatInactiveOpacity = new OptionChoice<int>(RetailChatWindows.LoadOpacity(_positionStore, SessionServer(), SessionCharacter(), RetailChatWindows.InactiveOpacityKey, RetailChatWindows.DefaultInactiveOpacity), SetChatInactiveOpacity),
             Radar = new OptionChoice<RadarOptions>(LoadRadarOptions(), SetRadarOptions),
             ResetPositions = () => _positionsResetRequested = true,
         };
@@ -3171,6 +3173,27 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_chatWindows != null) _chatWindows.SetFadeSeconds(fade);
         else RetailChatWindows.SaveFadeSeconds(_positionStore, SessionServer(), SessionCharacter(), fade);
         if (_settings != null) _settings.ChatFade = new OptionChoice<int>(fade, SetChatFadeSeconds);
+    }
+
+    /// <summary>
+    /// The chat log backdrop's active opacity set from the Settings window: applied to the open chat, or kept for the chat to open with when it is
+    /// closed; either way the value is published back to the Settings window.
+    /// </summary>
+    private void SetChatActiveOpacity(int percent)
+    {
+        var opacity = RetailChatWindows.ClampOpacity(percent);
+        if (_chatWindows != null) _chatWindows.SetActiveOpacity(opacity);
+        else RetailChatWindows.SaveOpacity(_positionStore, SessionServer(), SessionCharacter(), RetailChatWindows.ActiveOpacityKey, opacity);
+        if (_settings != null) _settings.ChatActiveOpacity = new OptionChoice<int>(opacity, SetChatActiveOpacity);
+    }
+
+    /// <summary>The chat log backdrop's inactive opacity set from the Settings window; see <see cref="SetChatActiveOpacity"/>.</summary>
+    private void SetChatInactiveOpacity(int percent)
+    {
+        var opacity = RetailChatWindows.ClampOpacity(percent);
+        if (_chatWindows != null) _chatWindows.SetInactiveOpacity(opacity);
+        else RetailChatWindows.SaveOpacity(_positionStore, SessionServer(), SessionCharacter(), RetailChatWindows.InactiveOpacityKey, opacity);
+        if (_settings != null) _settings.ChatInactiveOpacity = new OptionChoice<int>(opacity, SetChatInactiveOpacity);
     }
 
     private void VitalsFailed(Exception exception) => _vitals?.Fail(exception);
