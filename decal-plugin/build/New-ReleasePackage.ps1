@@ -41,6 +41,7 @@ $references = @(Get-ChildItem $package -Recurse -File | Where-Object { $_.Name -
 if ($references.Count -gt 0) { throw "Build reference must not ship: $($references[0].Name)" }
 Copy-Item (Join-Path $PSScriptRoot '../../LICENSE') (Join-Path $package 'LICENSE')
 Copy-Item (Join-Path $PSScriptRoot '../LegACEy.Client.Themes/Assets/LiberationFonts-LICENSE.txt') $package
+Copy-Item (Join-Path $PSScriptRoot 'NOTICE.txt') $package
 $dll = Join-Path $Destination 'LegACEy.Client.DecalPlugin.dll'
 Copy-Item (Join-Path $package 'LegACEy.Client.DecalPlugin.dll') $dll
 $zip = Join-Path $Destination "LegACEy-$Tag-windows-x86.zip"

@@ -1,0 +1,5407 @@
+{
+ "0001": {
+  "title": "Remote Empyrean Vault",
+  "redirect": true,
+  "text": ""
+ },
+ "0002": {
+  "title": "Viamontian Garrison",
+  "redirect": true,
+  "text": ""
+ },
+ "0003": {
+  "title": "Niffis Fighting Pits",
+  "redirect": true,
+  "text": ""
+ },
+ "0004": {
+  "title": "Northern Power Forge",
+  "redirect": true,
+  "text": ""
+ },
+ "0005": {
+  "title": "Southern Power Forge",
+  "redirect": true,
+  "text": ""
+ },
+ "0006": {
+  "title": "Western Power Forge",
+  "redirect": true,
+  "text": ""
+ },
+ "0007": {
+  "title": "Town Network",
+  "redirect": true,
+  "text": ""
+ },
+ "0008": {
+  "title": "Defiled Temple Lower Wing",
+  "redirect": true,
+  "text": ""
+ },
+ "0009": {
+  "title": "Defiled Temple Upper Wing",
+  "redirect": true,
+  "text": ""
+ },
+ "000A": {
+  "title": "Defiled Temple Asylum",
+  "redirect": true,
+  "text": ""
+ },
+ "000B": {
+  "title": "Banderling Shrine",
+  "redirect": true,
+  "text": ""
+ },
+ "000C": {
+  "title": "Weakened Vault Sewers",
+  "redirect": true,
+  "text": ""
+ },
+ "000D": {
+  "title": "Secured Vault Sewers",
+  "redirect": true,
+  "text": ""
+ },
+ "000E": {
+  "title": "Reinforced Vault Sewers",
+  "redirect": true,
+  "text": ""
+ },
+ "000F": {
+  "title": "Fortified Vault Sewers",
+  "redirect": true,
+  "text": ""
+ },
+ "0010": {
+  "title": "War Room",
+  "redirect": true,
+  "text": ""
+ },
+ "0011": {
+  "title": "Weakened Royal Vault",
+  "redirect": true,
+  "text": ""
+ },
+ "0012": {
+  "title": "Secured Royal Vault",
+  "redirect": true,
+  "text": ""
+ },
+ "0013": {
+  "title": "Reinforced Royal Vault",
+  "redirect": true,
+  "text": ""
+ },
+ "0014": {
+  "title": "Fortified Royal Vault",
+  "redirect": true,
+  "text": ""
+ },
+ "0015": {
+  "title": "Banished Assembly",
+  "redirect": true,
+  "text": ""
+ },
+ "0016": {
+  "title": "Ravaged Cathedral",
+  "redirect": true,
+  "text": ""
+ },
+ "0017": {
+  "title": "Vile Sanctuary",
+  "redirect": true,
+  "text": ""
+ },
+ "0018": {
+  "title": "Copper Legion Keep",
+  "redirect": true,
+  "text": ""
+ },
+ "0019": {
+  "title": "Gold Legion Keep",
+  "redirect": true,
+  "text": ""
+ },
+ "001A": {
+  "title": "Platinum Legion Keep",
+  "redirect": true,
+  "text": ""
+ },
+ "001B": {
+  "title": "Silver Legion Keep",
+  "redirect": true,
+  "text": ""
+ },
+ "001C": {
+  "title": "Lugian Ice Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "001D": {
+  "title": "Ruschk Icehold",
+  "redirect": true,
+  "text": ""
+ },
+ "001E": {
+  "title": "Viamontian Royal Prison",
+  "redirect": true,
+  "text": ""
+ },
+ "001F": {
+  "title": "Eater Pit",
+  "redirect": true,
+  "text": ""
+ },
+ "0020": {
+  "title": "Heart of Madness",
+  "redirect": true,
+  "text": ""
+ },
+ "0021": {
+  "title": "Hall of Karlun",
+  "redirect": true,
+  "text": ""
+ },
+ "0022": {
+  "title": "Cannibal Caverns",
+  "redirect": true,
+  "text": ""
+ },
+ "0023": {
+  "title": "Sezzherei's Lair",
+  "redirect": true,
+  "text": ""
+ },
+ "0024": {
+  "title": "Mausoleums of Hate",
+  "redirect": true,
+  "text": ""
+ },
+ "0025": {
+  "title": "Mausoleums of Hate",
+  "redirect": true,
+  "text": ""
+ },
+ "0026": {
+  "title": "Mausoleums of Hate",
+  "redirect": true,
+  "text": ""
+ },
+ "0027": {
+  "title": "Mausoleums of Hate",
+  "redirect": true,
+  "text": ""
+ },
+ "0028": {
+  "title": "Mausoleums of Hate",
+  "redirect": true,
+  "text": ""
+ },
+ "0029": {
+  "title": "Thrungus Hole",
+  "redirect": true,
+  "text": ""
+ },
+ "002A": {
+  "title": "Path of the Blind",
+  "redirect": true,
+  "text": ""
+ },
+ "002B": {
+  "title": "Egg Orchard",
+  "redirect": true,
+  "text": ""
+ },
+ "002C": {
+  "title": "Forgotten Chasm",
+  "redirect": true,
+  "text": ""
+ },
+ "002D": {
+  "title": "Dark Design",
+  "redirect": true,
+  "text": ""
+ },
+ "002E": {
+  "title": "Feeding Tubes",
+  "redirect": true,
+  "text": ""
+ },
+ "002F": {
+  "title": "Tursh Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "0030": {
+  "title": "Renegade Incursion",
+  "redirect": true,
+  "text": ""
+ },
+ "0031": {
+  "title": "Creepy Canyons",
+  "redirect": true,
+  "text": ""
+ },
+ "0032": {
+  "title": "Tunnel of Love",
+  "redirect": true,
+  "text": ""
+ },
+ "0033": {
+  "title": "0033",
+  "redirect": false,
+  "text": "* [[Coral Caves]]\n* [[Icy Hideout]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "0034": {
+  "title": "The Fazenda Caves",
+  "redirect": true,
+  "text": ""
+ },
+ "0035": {
+  "title": "Lost Coastal Archive",
+  "redirect": true,
+  "text": ""
+ },
+ "0036": {
+  "title": "Lost Desert Archive",
+  "redirect": true,
+  "text": ""
+ },
+ "0037": {
+  "title": "Frozen Cenotaph",
+  "redirect": true,
+  "text": ""
+ },
+ "0038": {
+  "title": "Font of the Eternal Harvester",
+  "redirect": true,
+  "text": ""
+ },
+ "0039": {
+  "title": "Hagra's Holdfast",
+  "redirect": true,
+  "text": ""
+ },
+ "003A": {
+  "title": "Corrupted Falatacot Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "003B": {
+  "title": "003B",
+  "redirect": false,
+  "text": "[[Gateway to the Deep: Part 2]]<br>\n[[Gateway to the Deep: Part 3]]<br>\n[[Gateway to the Deep: Part 4]]\n\n[[Category:Landblocks]]"
+ },
+ "003C": {
+  "title": "Abandoned Mines Mirror",
+  "redirect": true,
+  "text": ""
+ },
+ "003D": {
+  "title": "Devastated Falatacot Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "003E": {
+  "title": "Breached Hive",
+  "redirect": true,
+  "text": ""
+ },
+ "0040": {
+  "title": "Master Alizari's Dig",
+  "redirect": true,
+  "text": ""
+ },
+ "0041": {
+  "title": "Mistress Halmera's Dig",
+  "redirect": true,
+  "text": ""
+ },
+ "0042": {
+  "title": "Mistress Gabille's Dig",
+  "redirect": true,
+  "text": ""
+ },
+ "0043": {
+  "title": "Master Vaserio's Dig",
+  "redirect": true,
+  "text": ""
+ },
+ "0044": {
+  "title": "0044",
+  "redirect": false,
+  "text": "* [[Collegium Occultus]]\n* [[Collegium Occultus Anteroom]]\n\n[[Category:Disambiguation]]\n[[Category:Landblocks]]"
+ },
+ "0045": {
+  "title": "Temple of Stirring Shadows",
+  "redirect": true,
+  "text": ""
+ },
+ "0046": {
+  "title": "0046",
+  "redirect": false,
+  "text": "* [[Yanshi Lower Undermine]]\n* [[Yanshi Upper Undermine]]\n\n[[Category:Landblocks]]"
+ },
+ "0047": {
+  "title": "Repository",
+  "redirect": true,
+  "text": ""
+ },
+ "0048": {
+  "title": "0048",
+  "redirect": false,
+  "text": "* [[Viamontian Esper Mine]]\n* [[Viamontian Direlands Mine]]\n* [[Dardante's Keep]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "0049": {
+  "title": "Camp Entemarre",
+  "redirect": true,
+  "text": ""
+ },
+ "004A": {
+  "title": "Creepy Chambers",
+  "redirect": true,
+  "text": ""
+ },
+ "004B": {
+  "title": "Path of the Blind",
+  "redirect": true,
+  "text": ""
+ },
+ "004C": {
+  "title": "Mukkir Nest",
+  "redirect": true,
+  "text": ""
+ },
+ "004D": {
+  "title": "004D",
+  "redirect": false,
+  "text": "* [[Eastern Temple Catacombs]]\n* [[Western Temple Catacombs]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "004E": {
+  "title": "004E",
+  "redirect": false,
+  "text": "* [[Northern Temple Catacombs]]\n* [[Vault of Eternal Slumber]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "004F": {
+  "title": "Temple of the Black Spear",
+  "redirect": true,
+  "text": ""
+ },
+ "0050": {
+  "title": "0050",
+  "redirect": false,
+  "text": "* [[Realaidain Eastern Vault]]\n* [[Realaidain Northern Vault]]\n* [[Realaidain Western Vault]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "0051": {
+  "title": "Eastern Pedestal Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "0052": {
+  "title": "Silyun Chapterhouse",
+  "redirect": true,
+  "text": ""
+ },
+ "0053": {
+  "title": "Shade Iron Mine",
+  "redirect": true,
+  "text": ""
+ },
+ "0054": {
+  "title": "Deep Mukkir Nest",
+  "redirect": true,
+  "text": ""
+ },
+ "0055": {
+  "title": "Back Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "0056": {
+  "title": "Augmentation Realm Main Level",
+  "redirect": true,
+  "text": ""
+ },
+ "0057": {
+  "title": "0057",
+  "redirect": false,
+  "text": "* [[Tanada House of Earth]]\n* [[Tanada House of Metal]]\n* [[Tanada House of Stone]]\n* [[Enlightened Master's Chambers (Earth)]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "0058": {
+  "title": "Viamont Staging Portal (Low)",
+  "redirect": true,
+  "text": ""
+ },
+ "0059": {
+  "title": "Viamont Staging Portal (Mid)",
+  "redirect": true,
+  "text": ""
+ },
+ "005A": {
+  "title": "Viamont Staging Portal (High)",
+  "redirect": true,
+  "text": ""
+ },
+ "005B": {
+  "title": "Ulgrim's Bookcase",
+  "redirect": true,
+  "text": ""
+ },
+ "005C": {
+  "title": "Ulgrim's Mysterious Hatch",
+  "redirect": true,
+  "text": ""
+ },
+ "005D": {
+  "title": "Harbinger's Lair",
+  "redirect": true,
+  "text": ""
+ },
+ "005E": {
+  "title": "005E",
+  "redirect": false,
+  "text": "* [[Tunnels to the Harbinger (Issk)]]\n* [[Tunnels to the Harbinger (Vincadi)]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "005F": {
+  "title": "Tanada House of Pancakes",
+  "redirect": true,
+  "text": ""
+ },
+ "0060": {
+  "title": "0060",
+  "redirect": false,
+  "text": "* [[Harraag's Hideout]]\n* [[Harraag's Lair]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "0061": {
+  "title": "Western Pedestal Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "0062": {
+  "title": "Ley Line Cavern",
+  "redirect": true,
+  "text": ""
+ },
+ "0063": {
+  "title": "Northern Pedestal Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "0064": {
+  "title": "Egg Orchard",
+  "redirect": true,
+  "text": ""
+ },
+ "0065": {
+  "title": "Thrungal Den",
+  "redirect": true,
+  "text": ""
+ },
+ "0066": {
+  "title": "PK Arena",
+  "redirect": true,
+  "text": ""
+ },
+ "0067": {
+  "title": "PKL Arena",
+  "redirect": true,
+  "text": ""
+ },
+ "0068": {
+  "title": "Viamontian Laboratory",
+  "redirect": true,
+  "text": ""
+ },
+ "006C": {
+  "title": "Lower Catacomb",
+  "redirect": true,
+  "text": ""
+ },
+ "006D": {
+  "title": "Augmentation Realm Upper Level",
+  "redirect": true,
+  "text": ""
+ },
+ "006E": {
+  "title": "006E",
+  "redirect": false,
+  "text": "* [[Empyrean Workshop]]\n* [[Atlan's Laboratory]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "006F": {
+  "title": "Shield of Isin Dule Spire",
+  "redirect": true,
+  "text": ""
+ },
+ "0070": {
+  "title": "Harbinger's Lair",
+  "redirect": true,
+  "text": ""
+ },
+ "0071": {
+  "title": "Dericost Vault",
+  "redirect": true,
+  "text": ""
+ },
+ "0072": {
+  "title": "Falatacot Vault",
+  "redirect": true,
+  "text": ""
+ },
+ "0073": {
+  "title": "Black Ferah's Vault",
+  "redirect": true,
+  "text": ""
+ },
+ "0074": {
+  "title": "Black Spear Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "0075": {
+  "title": "Shadow-Infested Black Spear Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "0076": {
+  "title": "Mukkir Infested Black Spear Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "0077": {
+  "title": "Muggy Guruk Caverns",
+  "redirect": true,
+  "text": ""
+ },
+ "0078": {
+  "title": "Humid Guruk Caverns",
+  "redirect": true,
+  "text": ""
+ },
+ "0079": {
+  "title": "Steamy Guruk Caverns",
+  "redirect": true,
+  "text": ""
+ },
+ "007A": {
+  "title": "Deep Guruk Caverns",
+  "redirect": true,
+  "text": ""
+ },
+ "007B": {
+  "title": "007B",
+  "redirect": false,
+  "text": "* [[Tanada House of Storms]]\n* [[Tanada House of Wind]]\n* [[Tanada House of Breath]]\n* [[Enlightened Master's Chambers (Storms)]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "007C": {
+  "title": "007C",
+  "redirect": false,
+  "text": "* [[Soul Hunter's Lair]]\n* [[Soul Hunter's Chambers]]\n\n[[Category:Landblocks]]"
+ },
+ "007D": {
+  "title": "Augmentation Realm Lower Level",
+  "redirect": true,
+  "text": ""
+ },
+ "007E": {
+  "title": "Black Spear Temple Upper Levels",
+  "redirect": true,
+  "text": ""
+ },
+ "007F": {
+  "title": "007F",
+  "redirect": false,
+  "text": "* [[Dardante's Workshop]]\n* [[Summoning Chamber]]\n* [[Binding Realm]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "0080": {
+  "title": "Rossu Morta Chapterhouse",
+  "redirect": true,
+  "text": ""
+ },
+ "0081": {
+  "title": "Whispering Blade Chapterhouse",
+  "redirect": true,
+  "text": ""
+ },
+ "0082": {
+  "title": "Assassins' Hideout",
+  "redirect": true,
+  "text": ""
+ },
+ "0083": {
+  "title": "Pheraion's Sanctum",
+  "redirect": true,
+  "text": ""
+ },
+ "0084": {
+  "title": "Black Spear Summoning Chamber",
+  "redirect": true,
+  "text": ""
+ },
+ "0085": {
+  "title": "Altar Nest",
+  "redirect": true,
+  "text": ""
+ },
+ "0086": {
+  "title": "Strange Swamp Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "0087": {
+  "title": "Ikzisik Tika Ri Zikma",
+  "redirect": true,
+  "text": ""
+ },
+ "0088": {
+  "title": "Deeper Catacombs (Paradox)",
+  "redirect": true,
+  "text": ""
+ },
+ "0089": {
+  "title": "Cells of the Black Book",
+  "redirect": true,
+  "text": ""
+ },
+ "008A": {
+  "title": "Dark Monolith Caverns",
+  "redirect": true,
+  "text": ""
+ },
+ "008B": {
+  "title": "Ancient Masonry",
+  "redirect": true,
+  "text": ""
+ },
+ "008C": {
+  "title": "Essence Chambers",
+  "redirect": true,
+  "text": ""
+ },
+ "008D": {
+  "title": "Shadow Breach",
+  "redirect": true,
+  "text": ""
+ },
+ "0095": {
+  "title": "Lord Mhoire's Tomb",
+  "redirect": true,
+  "text": ""
+ },
+ "0096": {
+  "title": "Insatiable Vault",
+  "redirect": true,
+  "text": ""
+ },
+ "0097": {
+  "title": "Son of Pooky's Den",
+  "redirect": true,
+  "text": ""
+ },
+ "0098": {
+  "title": "Abyssal Totem Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "0099": {
+  "title": "Black Totem Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "009A": {
+  "title": "White Totem Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "009B": {
+  "title": "Crypt of Crimson Night",
+  "redirect": true,
+  "text": ""
+ },
+ "009C": {
+  "title": "009C",
+  "redirect": false,
+  "text": "* [[Bur]]\n* [[Kor-Gursha]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "009D": {
+  "title": "Swamp Cavern",
+  "redirect": true,
+  "text": ""
+ },
+ "009E": {
+  "title": "Tanada House of Water",
+  "redirect": true,
+  "text": ""
+ },
+ "009F": {
+  "title": "Secret Chamber of Kresovus",
+  "redirect": true,
+  "text": ""
+ },
+ "00A0": {
+  "title": "Monouga Laboratory (80+)",
+  "redirect": true,
+  "text": ""
+ },
+ "00A1": {
+  "title": "Monouga Laboratory (120+)",
+  "redirect": true,
+  "text": ""
+ },
+ "00A2": {
+  "title": "Monouga Laboratory (150+)",
+  "redirect": true,
+  "text": ""
+ },
+ "00A3": {
+  "title": "00A3",
+  "redirect": false,
+  "text": "* [[Delving into Claude's Mind (Dungeon)]]\n* [[Exploring the Past]]\n* [[Witnessing History]]\n* [[The Path to More Recent Times]]\n* [[Crossing the Threshold of Darkness]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "00A4": {
+  "title": "Hidden Laboratory",
+  "redirect": true,
+  "text": ""
+ },
+ "00A5": {
+  "title": "Lonely Fortress",
+  "redirect": true,
+  "text": ""
+ },
+ "00A6": {
+  "title": "Tanada Battle Burrows",
+  "redirect": true,
+  "text": ""
+ },
+ "00A7": {
+  "title": "Ithaenc Quiddity Seed",
+  "redirect": true,
+  "text": ""
+ },
+ "00A8": {
+  "title": "Roots of the Deru Tree",
+  "redirect": true,
+  "text": ""
+ },
+ "00A9": {
+  "title": "Trial of the Deep",
+  "redirect": true,
+  "text": ""
+ },
+ "00AA": {
+  "title": "Olthoi Sanctuary",
+  "redirect": true,
+  "text": ""
+ },
+ "00AB": {
+  "title": "Derethian Combat Arena",
+  "redirect": true,
+  "text": ""
+ },
+ "00AC": {
+  "title": "Derethian Combat Arena",
+  "redirect": true,
+  "text": ""
+ },
+ "00AE": {
+  "title": "Messenger's Sanctuary",
+  "redirect": true,
+  "text": ""
+ },
+ "00AF": {
+  "title": "00AF",
+  "redirect": false,
+  "text": "* [[Very Mad Cow's Arena]]\n* [[Thunder Chicken's Arena]]\n* [[Pumpkin King's Arena]]\n* [[Colosseum]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "00B0": {
+  "title": "Colosseum",
+  "redirect": true,
+  "text": ""
+ },
+ "00B1": {
+  "title": "Colosseum",
+  "redirect": true,
+  "text": ""
+ },
+ "00B2": {
+  "title": "Colosseum",
+  "redirect": true,
+  "text": ""
+ },
+ "00B3": {
+  "title": "Colosseum",
+  "redirect": true,
+  "text": ""
+ },
+ "00B4": {
+  "title": "Colosseum",
+  "redirect": true,
+  "text": ""
+ },
+ "00B5": {
+  "title": "Mosswart Worship Cavern",
+  "redirect": true,
+  "text": ""
+ },
+ "00B6": {
+  "title": "00B6",
+  "redirect": false,
+  "text": "* [[Azaxis' Arena]]\n* [[Killagurg's Arena]]\n* [[Stone Fists' Arena]]\n* [[Demon Swarm Matron's Arena]]\n* [[The Master's Arena]]\n* [[Gladiator Diemos' Arena]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "00B7": {
+  "title": "Celestial Hand Stronghold",
+  "redirect": true,
+  "text": ""
+ },
+ "00B8": {
+  "title": "Eldrytch Web Stronghold",
+  "redirect": true,
+  "text": ""
+ },
+ "00B9": {
+  "title": "Radiant Blood Stronghold",
+  "redirect": true,
+  "text": ""
+ },
+ "00BA": {
+  "title": "Corrupted Catacombs",
+  "redirect": true,
+  "text": ""
+ },
+ "00BB": {
+  "title": "Catacombs of Tar'Kelyn",
+  "redirect": true,
+  "text": ""
+ },
+ "00BC": {
+  "title": "Prodigal Harbinger's Antechamber",
+  "redirect": true,
+  "text": ""
+ },
+ "00C0": {
+  "title": "South Gate",
+  "redirect": true,
+  "text": ""
+ },
+ "00C1": {
+  "title": "Blighted Rank Moarsman Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "00C2": {
+  "title": "Blighted Disgusting Moarsman Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "00C3": {
+  "title": "Blighted Putrid Moarsman Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "00C4": {
+  "title": "Blighted Desolation Moarsman Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "00C5": {
+  "title": "Blighted Grimy Moarsman Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "00C6": {
+  "title": "Blighted Verdant Moarsman Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "00C7": {
+  "title": "Crystalline Portal (Level 70)",
+  "redirect": true,
+  "text": ""
+ },
+ "00C8": {
+  "title": "Egg Orchard",
+  "redirect": true,
+  "text": ""
+ },
+ "00C9": {
+  "title": "00C9",
+  "redirect": false,
+  "text": "* [[Chamber of Scrolls]]\n* [[Chamber of Air]]\n* [[Chamber of Earth]]\n* [[Chamber of Water]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "00CA": {
+  "title": "Mar'uun",
+  "redirect": true,
+  "text": ""
+ },
+ "00CB": {
+  "title": "Pyramid",
+  "redirect": true,
+  "text": ""
+ },
+ "00CC": {
+  "title": "Renegade Fortress (120+)",
+  "redirect": true,
+  "text": ""
+ },
+ "00CD": {
+  "title": "Tanada Temple of Black Water",
+  "redirect": true,
+  "text": ""
+ },
+ "00CE": {
+  "title": "Upper Catacombs",
+  "redirect": true,
+  "text": ""
+ },
+ "00CF": {
+  "title": "The Dark Spiral",
+  "redirect": true,
+  "text": ""
+ },
+ "00D0": {
+  "title": "00D0",
+  "redirect": false,
+  "text": "* [[Sawato Bandit's Hideout]]\n* [[Ringleader's Chambers]]\n\n[[Category:Landblocks]]"
+ },
+ "00D1": {
+  "title": "00D1",
+  "redirect": false,
+  "text": "* [[Ancient Caves]]\n* [[Deeper Caves]]\n* [[Deepest Caves]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "00D2": {
+  "title": "Northern Catacombs",
+  "redirect": true,
+  "text": ""
+ },
+ "00D3": {
+  "title": "Eastern Catacombs",
+  "redirect": true,
+  "text": ""
+ },
+ "00D4": {
+  "title": "Southern Catacombs",
+  "redirect": true,
+  "text": ""
+ },
+ "00D5": {
+  "title": "00D5",
+  "redirect": false,
+  "text": "* [[Exploring the Past]]\n* [[Witnessing History]]\n* [[The Path to More Recent Times]]\n* [[Crossing the Threshold of Darkness]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "00D6": {
+  "title": "Collegium Planar Abstraction",
+  "redirect": true,
+  "text": ""
+ },
+ "00D7": {
+  "title": "Jester's Prison",
+  "redirect": true,
+  "text": ""
+ },
+ "00D8": {
+  "title": "Lord Rytheran's Private Sanctum",
+  "redirect": true,
+  "text": ""
+ },
+ "00D9": {
+  "title": "Blightfinger's Warrens",
+  "redirect": true,
+  "text": ""
+ },
+ "00DA": {
+  "title": "Falatacot Visitor's Alcove",
+  "redirect": true,
+  "text": ""
+ },
+ "00DB": {
+  "title": "00DB",
+  "redirect": false,
+  "text": "* [[Exploring the Past]]\n* [[Witnessing History]]\n* [[The Path to More Recent Times]]\n* [[Crossing the Threshold of Darkness]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "00DC": {
+  "title": "Moarsmen Priory",
+  "redirect": true,
+  "text": ""
+ },
+ "00DD": {
+  "title": "00DD",
+  "redirect": false,
+  "text": "* [[Acolyte's Chamber]]\n* [[Chamber of the High Priest's First]]\n* [[Chamber of the High Priest's Second]]\n* [[Chamber of the High Priest's Third]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "00DE": {
+  "title": "Temple Door",
+  "redirect": true,
+  "text": ""
+ },
+ "00DF": {
+  "title": "Temple of Tthuun",
+  "redirect": true,
+  "text": ""
+ },
+ "00E0": {
+  "title": "Rogue Delvings",
+  "redirect": true,
+  "text": ""
+ },
+ "00E1": {
+  "title": "Path of the Blind",
+  "redirect": true,
+  "text": ""
+ },
+ "00E2": {
+  "title": "00E2",
+  "redirect": false,
+  "text": "* [[Ruschk Burial Mound]]\n* [[Inner Burial Chamber]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "00E3": {
+  "title": "Sclavus Umbral Forge",
+  "redirect": true,
+  "text": ""
+ },
+ "00E4": {
+  "title": "Temple of the Three, Ritual Chambers",
+  "redirect": true,
+  "text": ""
+ },
+ "00E5": {
+  "title": "Temple of the Three",
+  "redirect": true,
+  "text": ""
+ },
+ "00E6": {
+  "title": "00E6",
+  "redirect": false,
+  "text": "* [[Orphanage Wing]]\n* [[Prodigal Shadow Child's Lair]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "00E7": {
+  "title": "Gardens of Menilesh",
+  "redirect": true,
+  "text": ""
+ },
+ "00E8": {
+  "title": "Tactical Arena",
+  "redirect": true,
+  "text": ""
+ },
+ "00E9": {
+  "title": "00E9",
+  "redirect": false,
+  "text": "* [[Exploring the Past]]\n* [[Witnessing History]]\n* [[The Path to More Recent Times]]\n* [[Crossing the Threshold of Darkness]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "00EA": {
+  "title": "Mhoire Armory",
+  "redirect": true,
+  "text": ""
+ },
+ "00EB": {
+  "title": "Ancient Cloister",
+  "redirect": true,
+  "text": ""
+ },
+ "00EC": {
+  "title": "00EC",
+  "redirect": false,
+  "text": "* [[Northern Resonating Crystal]]\n* [[Southern Resonating Crystal]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "00ED": {
+  "title": "Artifex Collegium",
+  "redirect": true,
+  "text": ""
+ },
+ "00EE": {
+  "title": "00EE",
+  "redirect": false,
+  "text": "* [[Drudge Fort Cave]]\n* [[Under Drudge Fort]]\n* [[Bonecrunch's Treasury]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "00EF": {
+  "title": "Temple Entrance",
+  "redirect": true,
+  "text": ""
+ },
+ "00F0": {
+  "title": "00F0",
+  "redirect": false,
+  "text": "* [[Sanctum of Xik Minru]]\n* [[Temple of Xik Minru]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "00F1": {
+  "title": "Nightmare Gate",
+  "redirect": true,
+  "text": ""
+ },
+ "00F2": {
+  "title": "Qin Xikit's Hidden Crown",
+  "redirect": true,
+  "text": ""
+ },
+ "00F3": {
+  "title": "Qin Xikit's Receiving Chamber",
+  "redirect": true,
+  "text": ""
+ },
+ "00F4": {
+  "title": "Center of Kivik Lir's Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "00F5": {
+  "title": "Center of Izji Qo's Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "00F6": {
+  "title": "Center of Ixir Zi's Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "00F7": {
+  "title": "Center of Hizk Ri's Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "00F8": {
+  "title": "Center of Liazk Itzi's Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "00F9": {
+  "title": "Qin Xikit's Antechamber",
+  "redirect": true,
+  "text": ""
+ },
+ "00FA": {
+  "title": "Depth's of Kivik Lir's Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "00FB": {
+  "title": "Depth's of Izji Qo's Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "00FC": {
+  "title": "Depths of Ixir Zi's Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "00FD": {
+  "title": "Depth's of Hizk Ri's Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "00FE": {
+  "title": "Depths of Liazk Itzi's Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "0100": {
+  "title": "Murk Warrens (Baishi)",
+  "redirect": true,
+  "text": ""
+ },
+ "0101": {
+  "title": "Murk Warrens (Zaikhal)",
+  "redirect": true,
+  "text": ""
+ },
+ "0102": {
+  "title": "Murk Warrens (Stonehold)",
+  "redirect": true,
+  "text": ""
+ },
+ "0103": {
+  "title": "Black Spawn Den",
+  "redirect": true,
+  "text": ""
+ },
+ "0104": {
+  "title": "Black Spawn Den",
+  "redirect": true,
+  "text": ""
+ },
+ "0105": {
+  "title": "Black Spawn Den",
+  "redirect": true,
+  "text": ""
+ },
+ "0106": {
+  "title": "Setab's Barracks",
+  "redirect": true,
+  "text": ""
+ },
+ "0107": {
+  "title": "Nor's Folly",
+  "redirect": true,
+  "text": ""
+ },
+ "0108": {
+  "title": "Cursed Swamp",
+  "redirect": true,
+  "text": ""
+ },
+ "0109": {
+  "title": "Dungeon of Corpses",
+  "redirect": true,
+  "text": ""
+ },
+ "010A": {
+  "title": "Black Dominion",
+  "redirect": true,
+  "text": ""
+ },
+ "010B": {
+  "title": "Asuger Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "010C": {
+  "title": "Mysterious Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "0110": {
+  "title": "Nexus",
+  "redirect": true,
+  "text": ""
+ },
+ "0112": {
+  "title": "Lyceum Training Grounds",
+  "redirect": true,
+  "text": ""
+ },
+ "0113": {
+  "title": "Amiantos Bethel",
+  "redirect": true,
+  "text": ""
+ },
+ "0114": {
+  "title": "Sultry Hovel",
+  "redirect": true,
+  "text": ""
+ },
+ "0115": {
+  "title": "Wedding Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "0116": {
+  "title": "Tenkarrdun Foundry",
+  "redirect": true,
+  "text": ""
+ },
+ "0117": {
+  "title": "Serac Vault",
+  "redirect": true,
+  "text": ""
+ },
+ "0118": {
+  "title": "Drudge Hovel",
+  "redirect": true,
+  "text": ""
+ },
+ "0119": {
+  "title": "Amperehelion Vault",
+  "redirect": true,
+  "text": ""
+ },
+ "011A": {
+  "title": "Incunabula Vault",
+  "redirect": true,
+  "text": ""
+ },
+ "011B": {
+  "title": "Jahannan Vault",
+  "redirect": true,
+  "text": ""
+ },
+ "011C": {
+  "title": "Mountain Fortress",
+  "redirect": true,
+  "text": ""
+ },
+ "011D": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "011E": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "011F": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "0120": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "0121": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "0122": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "0123": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "0124": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "0125": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "0126": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "0127": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "0128": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "0129": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "012A": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "012B": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "012C": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "012D": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "012E": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "012F": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "0130": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "0131": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "0132": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "0133": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "0134": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "0135": {
+  "title": "Meeting Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "0136": {
+  "title": "Empyrean Foundry",
+  "redirect": true,
+  "text": ""
+ },
+ "0137": {
+  "title": "Artifex Vault",
+  "redirect": true,
+  "text": ""
+ },
+ "0138": {
+  "title": "Lost City of Frore",
+  "redirect": true,
+  "text": ""
+ },
+ "0139": {
+  "title": "Mage Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "013B": {
+  "title": "Folthid Cellar",
+  "redirect": true,
+  "text": ""
+ },
+ "013C": {
+  "title": "Underground Forest",
+  "redirect": true,
+  "text": ""
+ },
+ "013D": {
+  "title": "Forbidden Crypts",
+  "redirect": true,
+  "text": ""
+ },
+ "013E": {
+  "title": "013E",
+  "redirect": false,
+  "text": "* [[Burial Temple]]\n* [[Warded Portal, Into the Darkness]]\n\n[[Category:Landblocks]]"
+ },
+ "013F": {
+  "title": "Saadia's Retreat",
+  "redirect": true,
+  "text": ""
+ },
+ "0140": {
+  "title": "Virindi Fort",
+  "redirect": true,
+  "text": ""
+ },
+ "0141": {
+  "title": "Enkindled Souls",
+  "redirect": true,
+  "text": ""
+ },
+ "0142": {
+  "title": "Recovered Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "0143": {
+  "title": "Phyntos Menace",
+  "redirect": true,
+  "text": ""
+ },
+ "0144": {
+  "title": "Darkened Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "0145": {
+  "title": "Bone Lair",
+  "redirect": true,
+  "text": ""
+ },
+ "0146": {
+  "title": "Mount Lethe Magma Tubes",
+  "redirect": true,
+  "text": ""
+ },
+ "0147": {
+  "title": "Mount Naipenset Caverns",
+  "redirect": true,
+  "text": ""
+ },
+ "0148": {
+  "title": "A Small Ruin",
+  "redirect": true,
+  "text": ""
+ },
+ "0149": {
+  "title": "Thieves' Galleries",
+  "redirect": true,
+  "text": ""
+ },
+ "014A": {
+  "title": "Mysterious Cave",
+  "redirect": true,
+  "text": ""
+ },
+ "014B": {
+  "title": "Winthura's Garden",
+  "redirect": true,
+  "text": ""
+ },
+ "014C": {
+  "title": "Nevius Passage",
+  "redirect": true,
+  "text": ""
+ },
+ "014D": {
+  "title": "Damp Caverns",
+  "redirect": true,
+  "text": ""
+ },
+ "014E": {
+  "title": "Smugglers Hideaway",
+  "redirect": true,
+  "text": ""
+ },
+ "014F": {
+  "title": "Dungeon Maggreth",
+  "redirect": true,
+  "text": ""
+ },
+ "0150": {
+  "title": "Filos' Doom",
+  "redirect": true,
+  "text": ""
+ },
+ "0151": {
+  "title": "Forgotten Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "0152": {
+  "title": "Ruined Cave Outpost",
+  "redirect": true,
+  "text": ""
+ },
+ "0153": {
+  "title": "Shreth Hive",
+  "redirect": true,
+  "text": ""
+ },
+ "0154": {
+  "title": "Stone Cathedral",
+  "redirect": true,
+  "text": ""
+ },
+ "0155": {
+  "title": "Musansayn's Vaults",
+  "redirect": true,
+  "text": ""
+ },
+ "0156": {
+  "title": "Sea Temple Catacombs",
+  "redirect": true,
+  "text": ""
+ },
+ "0157": {
+  "title": "Under Cove Crypt",
+  "redirect": true,
+  "text": ""
+ },
+ "0158": {
+  "title": "Lytaway Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "0159": {
+  "title": "Abandoned Shops",
+  "redirect": true,
+  "text": ""
+ },
+ "015A": {
+  "title": "Dry Well",
+  "redirect": true,
+  "text": ""
+ },
+ "015B": {
+  "title": "Unfinished Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "015C": {
+  "title": "Nanto Rat Lair",
+  "redirect": true,
+  "text": ""
+ },
+ "015D": {
+  "title": "Mountain Cavern",
+  "redirect": true,
+  "text": ""
+ },
+ "015E": {
+  "title": "Impious Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "015F": {
+  "title": "Dericost Ruin",
+  "redirect": true,
+  "text": ""
+ },
+ "0160": {
+  "title": "0160",
+  "redirect": false,
+  "text": "[[King 1 Reeshan Part 2]]\n\n[[King 2 Kiree Part 2]]\n\n[[King 3 Broodu Part 2]]\n\n[[King 4 Keerik Part 2]]\n\n[[King 5 Rehir Part 2]]\n\n[[King 6 Browerk Part 4]]\n\n[[Category:Landblocks]]"
+ },
+ "0161": {
+  "title": "Empyrean Garrison",
+  "redirect": true,
+  "text": ""
+ },
+ "0162": {
+  "title": "Cave of Alabree",
+  "redirect": true,
+  "text": ""
+ },
+ "0163": {
+  "title": "Holtburg Redoubt",
+  "redirect": true,
+  "text": ""
+ },
+ "0164": {
+  "title": "Lost Distillery",
+  "redirect": true,
+  "text": ""
+ },
+ "0165": {
+  "title": "Old Warehouse",
+  "redirect": true,
+  "text": ""
+ },
+ "0166": {
+  "title": "Deserted Ruin",
+  "redirect": true,
+  "text": ""
+ },
+ "0167": {
+  "title": "Desert Ruin",
+  "redirect": true,
+  "text": ""
+ },
+ "0168": {
+  "title": "Water Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "0169": {
+  "title": "Mattekar Cave",
+  "redirect": true,
+  "text": ""
+ },
+ "016A": {
+  "title": "Izji Qo's Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "016B": {
+  "title": "Ixir Zi's Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "016C": {
+  "title": "Marketplace",
+  "redirect": true,
+  "text": ""
+ },
+ "016D": {
+  "title": "016D",
+  "redirect": false,
+  "text": "* [[Izji Qo's Temple Entrance]]\n* [[Izji Qo's Crypt]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "016E": {
+  "title": "Izji Qo's Trials",
+  "redirect": true,
+  "text": ""
+ },
+ "016F": {
+  "title": "Izji Qo's Trials",
+  "redirect": true,
+  "text": ""
+ },
+ "0170": {
+  "title": "Izji Qo's Trials",
+  "redirect": true,
+  "text": ""
+ },
+ "0171": {
+  "title": "Izji Qo's Defenders",
+  "redirect": true,
+  "text": ""
+ },
+ "0172": {
+  "title": "Izji Qo's Defenders",
+  "redirect": true,
+  "text": ""
+ },
+ "0173": {
+  "title": "Izji Qo's Defenders",
+  "redirect": true,
+  "text": ""
+ },
+ "0175": {
+  "title": "Muggy Font",
+  "redirect": true,
+  "text": ""
+ },
+ "0176": {
+  "title": "Humid Font",
+  "redirect": true,
+  "text": ""
+ },
+ "0177": {
+  "title": "Mossy Cave (Yanshi)",
+  "redirect": true,
+  "text": ""
+ },
+ "0178": {
+  "title": "Dark Mosswart Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "0179": {
+  "title": "Umbral Hall",
+  "redirect": true,
+  "text": ""
+ },
+ "017A": {
+  "title": "Banderling Hovel",
+  "redirect": true,
+  "text": ""
+ },
+ "017B": {
+  "title": "Watery Grotto",
+  "redirect": true,
+  "text": ""
+ },
+ "017C": {
+  "title": "King Toad Idol (Dungeon)",
+  "redirect": true,
+  "text": ""
+ },
+ "017D": {
+  "title": "Hidden Entrance",
+  "redirect": true,
+  "text": ""
+ },
+ "017E": {
+  "title": "Underway",
+  "redirect": true,
+  "text": ""
+ },
+ "017F": {
+  "title": "Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "0180": {
+  "title": "Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "0181": {
+  "title": "Dungeon Nye",
+  "redirect": true,
+  "text": ""
+ },
+ "0182": {
+  "title": "Desert Mine",
+  "redirect": true,
+  "text": ""
+ },
+ "0183": {
+  "title": "Dungeon Binar",
+  "redirect": true,
+  "text": ""
+ },
+ "0184": {
+  "title": "Dungeon Mei",
+  "redirect": true,
+  "text": ""
+ },
+ "0185": {
+  "title": "Daiklos Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "0186": {
+  "title": "Sclavus Keep",
+  "redirect": true,
+  "text": ""
+ },
+ "0187": {
+  "title": "A Ruin (Arwic)",
+  "redirect": true,
+  "text": ""
+ },
+ "0188": {
+  "title": "Mines of Despair",
+  "redirect": true,
+  "text": ""
+ },
+ "0189": {
+  "title": "Grievous Vault",
+  "redirect": true,
+  "text": ""
+ },
+ "018B": {
+  "title": "A Cave",
+  "redirect": true,
+  "text": ""
+ },
+ "018C": {
+  "title": "Crater Lair",
+  "redirect": true,
+  "text": ""
+ },
+ "018D": {
+  "title": "Olthoi Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "018E": {
+  "title": "Abayar's Laboratory",
+  "redirect": true,
+  "text": ""
+ },
+ "018F": {
+  "title": "Carved Cave",
+  "redirect": true,
+  "text": ""
+ },
+ "0190": {
+  "title": "Old Mine",
+  "redirect": true,
+  "text": ""
+ },
+ "0191": {
+  "title": "Mountain Sewer",
+  "redirect": true,
+  "text": ""
+ },
+ "0192": {
+  "title": "Mountain Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "0193": {
+  "title": "K'nath Lair",
+  "redirect": true,
+  "text": ""
+ },
+ "0194": {
+  "title": "Ruined Empyrean Vault",
+  "redirect": true,
+  "text": ""
+ },
+ "0195": {
+  "title": "0195",
+  "redirect": false,
+  "text": "* [[Xi Ru's Chapel]]\n\n* [[Xi Ru's Library]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "0196": {
+  "title": "0196",
+  "redirect": false,
+  "text": "* [[Xi Ru's Crypt]]\n* [[Xi Ru's Remembrance]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "0197": {
+  "title": "Marauder's Lair",
+  "redirect": true,
+  "text": ""
+ },
+ "0198": {
+  "title": "Steamy Font",
+  "redirect": true,
+  "text": ""
+ },
+ "0199": {
+  "title": "Abayar's Study",
+  "redirect": true,
+  "text": ""
+ },
+ "019A": {
+  "title": "Crater Caves Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "019B": {
+  "title": "Lightless Catacombs",
+  "redirect": true,
+  "text": ""
+ },
+ "019C": {
+  "title": "Swamp Temple (Wai Jhou)",
+  "redirect": true,
+  "text": ""
+ },
+ "019D": {
+  "title": "Simple Tower Portal",
+  "redirect": true,
+  "text": ""
+ },
+ "019E": {
+  "title": "Drudge Hideout",
+  "redirect": true,
+  "text": ""
+ },
+ "019F": {
+  "title": "Tumerok Post",
+  "redirect": true,
+  "text": ""
+ },
+ "01A0": {
+  "title": "Tumerok Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "01A1": {
+  "title": "Tumerok Base",
+  "redirect": true,
+  "text": ""
+ },
+ "01A2": {
+  "title": "Swamp Temple (Yanshi)",
+  "redirect": true,
+  "text": ""
+ },
+ "01A3": {
+  "title": "The Pit",
+  "redirect": true,
+  "text": ""
+ },
+ "01A4": {
+  "title": "Mite Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "01A5": {
+  "title": "Inner Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "01A6": {
+  "title": "Disaster Maze",
+  "redirect": true,
+  "text": ""
+ },
+ "01A7": {
+  "title": "Crater Pathway",
+  "redirect": true,
+  "text": ""
+ },
+ "01A8": {
+  "title": "Abandoned Arena",
+  "redirect": true,
+  "text": ""
+ },
+ "01A9": {
+  "title": "Ancient Lighthouse",
+  "redirect": true,
+  "text": ""
+ },
+ "01AA": {
+  "title": "Lair of Death",
+  "redirect": true,
+  "text": ""
+ },
+ "01AB": {
+  "title": "Forking Trail",
+  "redirect": true,
+  "text": ""
+ },
+ "01AC": {
+  "title": "Adventurer's Haven",
+  "redirect": true,
+  "text": ""
+ },
+ "01AD": {
+  "title": "Dungeon Gallery Tower",
+  "redirect": true,
+  "text": ""
+ },
+ "01AE": {
+  "title": "Colier Mine",
+  "redirect": true,
+  "text": ""
+ },
+ "01AF": {
+  "title": "Lakeside Lair",
+  "redirect": true,
+  "text": ""
+ },
+ "01B0": {
+  "title": "Seaside Lair",
+  "redirect": true,
+  "text": ""
+ },
+ "01B1": {
+  "title": "Lost Garden Ruins",
+  "redirect": true,
+  "text": ""
+ },
+ "01B2": {
+  "title": "Web Maze",
+  "redirect": true,
+  "text": ""
+ },
+ "01B3": {
+  "title": "Dungeon Fern (Dungeon)",
+  "redirect": true,
+  "text": ""
+ },
+ "01B4": {
+  "title": "Golem Burial Ground",
+  "redirect": true,
+  "text": ""
+ },
+ "01B5": {
+  "title": "Rocky Crypt",
+  "redirect": true,
+  "text": ""
+ },
+ "01B6": {
+  "title": "Dungeon Muddy",
+  "redirect": true,
+  "text": ""
+ },
+ "01B7": {
+  "title": "Braid Mansion Ruin",
+  "redirect": true,
+  "text": ""
+ },
+ "01B8": {
+  "title": "A Ruin (Rithwic)",
+  "redirect": true,
+  "text": ""
+ },
+ "01B9": {
+  "title": "A Ruin (Samsur)",
+  "redirect": true,
+  "text": ""
+ },
+ "01BA": {
+  "title": "Dungeon of Tatters",
+  "redirect": true,
+  "text": ""
+ },
+ "01BB": {
+  "title": "Thief Trail",
+  "redirect": true,
+  "text": ""
+ },
+ "01BC": {
+  "title": "Tumerok Chamber",
+  "redirect": true,
+  "text": ""
+ },
+ "01BD": {
+  "title": "Cave (Ayan Baqur)",
+  "redirect": true,
+  "text": ""
+ },
+ "01BE": {
+  "title": "Tumerok Fortress",
+  "redirect": true,
+  "text": ""
+ },
+ "01BF": {
+  "title": "Tumerok Outpost",
+  "redirect": true,
+  "text": ""
+ },
+ "01C0": {
+  "title": "Small Complex",
+  "redirect": true,
+  "text": ""
+ },
+ "01C1": {
+  "title": "Tumerok Mine",
+  "redirect": true,
+  "text": ""
+ },
+ "01C2": {
+  "title": "01C2",
+  "redirect": false,
+  "text": "* [[Underground Passage]]\n* [[Witshire Dungeon]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "01C3": {
+  "title": "Trialos",
+  "redirect": true,
+  "text": ""
+ },
+ "01C4": {
+  "title": "Thasali",
+  "redirect": true,
+  "text": ""
+ },
+ "01C5": {
+  "title": "Swamp Ruin",
+  "redirect": true,
+  "text": ""
+ },
+ "01C6": {
+  "title": "Hunter's Leap",
+  "redirect": true,
+  "text": ""
+ },
+ "01C7": {
+  "title": "Lugian Outpost",
+  "redirect": true,
+  "text": ""
+ },
+ "01C8": {
+  "title": "Lugian Post",
+  "redirect": true,
+  "text": ""
+ },
+ "01C9": {
+  "title": "Abandoned Mine",
+  "redirect": true,
+  "text": ""
+ },
+ "01CA": {
+  "title": "Hebian-to Sewers",
+  "redirect": true,
+  "text": ""
+ },
+ "01CB": {
+  "title": "Penguin Cave Hatchery",
+  "redirect": true,
+  "text": ""
+ },
+ "01CC": {
+  "title": "Halls of the Helm",
+  "redirect": true,
+  "text": ""
+ },
+ "01CD": {
+  "title": "Rithwic Crypt",
+  "redirect": true,
+  "text": ""
+ },
+ "01CE": {
+  "title": "Halls of the Lost Light",
+  "redirect": true,
+  "text": ""
+ },
+ "01CF": {
+  "title": "Eastham Sewer",
+  "redirect": true,
+  "text": ""
+ },
+ "01D0": {
+  "title": "Yanshi Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "01D1": {
+  "title": "Balmy Font",
+  "redirect": true,
+  "text": ""
+ },
+ "01D2": {
+  "title": "Mountain Keep",
+  "redirect": true,
+  "text": ""
+ },
+ "01D3": {
+  "title": "Zabool Tower",
+  "redirect": true,
+  "text": ""
+ },
+ "01D4": {
+  "title": "Bellig Tower",
+  "redirect": true,
+  "text": ""
+ },
+ "01D5": {
+  "title": "Syliph Tower",
+  "redirect": true,
+  "text": ""
+ },
+ "01D6": {
+  "title": "Alfreth Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "01D7": {
+  "title": "Sylsfear Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "01D8": {
+  "title": "A Drudge Nest (Rithwic)",
+  "redirect": true,
+  "text": ""
+ },
+ "01D9": {
+  "title": "A Red Rat Lair",
+  "redirect": true,
+  "text": ""
+ },
+ "01DA": {
+  "title": "A Ruin (Yanshi)",
+  "redirect": true,
+  "text": ""
+ },
+ "01DB": {
+  "title": "Moss Chamber",
+  "redirect": true,
+  "text": ""
+ },
+ "01DC": {
+  "title": "A Drudge Nest (Hebian-To)",
+  "redirect": true,
+  "text": ""
+ },
+ "01DD": {
+  "title": "A Rat Nest",
+  "redirect": true,
+  "text": ""
+ },
+ "01DE": {
+  "title": "A Ruin (Mayoi)",
+  "redirect": true,
+  "text": ""
+ },
+ "01DF": {
+  "title": "A Mosswart Nest",
+  "redirect": true,
+  "text": ""
+ },
+ "01E0": {
+  "title": "Banderling Ruin",
+  "redirect": true,
+  "text": ""
+ },
+ "01E1": {
+  "title": "Thieves' Den",
+  "redirect": true,
+  "text": ""
+ },
+ "01E2": {
+  "title": "Bandit Castle Prison",
+  "redirect": true,
+  "text": ""
+ },
+ "01E3": {
+  "title": "Glenden Wood Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "01E4": {
+  "title": "North Glenden Prison",
+  "redirect": true,
+  "text": ""
+ },
+ "01E5": {
+  "title": "Green Mire Grave",
+  "redirect": true,
+  "text": ""
+ },
+ "01E6": {
+  "title": "Small Icecave",
+  "redirect": true,
+  "text": ""
+ },
+ "01E7": {
+  "title": "A Small Cave",
+  "redirect": true,
+  "text": ""
+ },
+ "01E8": {
+  "title": "Dungeon Manor",
+  "redirect": true,
+  "text": ""
+ },
+ "01E9": {
+  "title": "Underground City",
+  "redirect": true,
+  "text": ""
+ },
+ "01EA": {
+  "title": "Old Talisman",
+  "redirect": true,
+  "text": ""
+ },
+ "01EB": {
+  "title": "Lola's Den",
+  "redirect": true,
+  "text": ""
+ },
+ "01EC": {
+  "title": "Defiled Temple Middle Wing",
+  "redirect": true,
+  "text": ""
+ },
+ "01ED": {
+  "title": "Dungeon of Shadows",
+  "redirect": true,
+  "text": ""
+ },
+ "01EE": {
+  "title": "Black Death Catacombs Quiddity Seed",
+  "redirect": true,
+  "text": ""
+ },
+ "01EF": {
+  "title": "Arwic Mines",
+  "redirect": true,
+  "text": ""
+ },
+ "01F0": {
+  "title": "Hizk Ri's Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "01F1": {
+  "title": "Cave (Eastham)",
+  "redirect": true,
+  "text": ""
+ },
+ "01F2": {
+  "title": "Kivik Lir's Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "01F3": {
+  "title": "Tomb of the Dead",
+  "redirect": true,
+  "text": ""
+ },
+ "01F4": {
+  "title": "Lyceum Training Grounds",
+  "redirect": true,
+  "text": ""
+ },
+ "01F5": {
+  "title": "Aerfalle Keep",
+  "redirect": true,
+  "text": ""
+ },
+ "01F6": {
+  "title": "Holtburg Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "01F7": {
+  "title": "Shoushi Grotto",
+  "redirect": true,
+  "text": ""
+ },
+ "01F8": {
+  "title": "Mite Maze",
+  "redirect": true,
+  "text": ""
+ },
+ "01F9": {
+  "title": "Accursed Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "01FA": {
+  "title": "Crypt of Ashen Tears",
+  "redirect": true,
+  "text": ""
+ },
+ "01FB": {
+  "title": "Yaraq Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "01FC": {
+  "title": "ReedShark Lair",
+  "redirect": true,
+  "text": ""
+ },
+ "01FD": {
+  "title": "Trothyr's Rest",
+  "redirect": true,
+  "text": ""
+ },
+ "01FE": {
+  "title": "Small Empyrean Vault",
+  "redirect": true,
+  "text": ""
+ },
+ "0272": {
+  "title": "Temple of Kivik Lir Entrance",
+  "redirect": true,
+  "text": ""
+ },
+ "0273": {
+  "title": "Haven of Kivik Lir",
+  "redirect": true,
+  "text": ""
+ },
+ "0274": {
+  "title": "Haven of Kivik Lir",
+  "redirect": true,
+  "text": ""
+ },
+ "0275": {
+  "title": "Haven of Kivik Lir",
+  "redirect": true,
+  "text": ""
+ },
+ "0276": {
+  "title": "Trials of Kivik Lir",
+  "redirect": true,
+  "text": ""
+ },
+ "0277": {
+  "title": "Gallery of Kivik Lir",
+  "redirect": true,
+  "text": ""
+ },
+ "0278": {
+  "title": "Burun Fortress Central Mound",
+  "redirect": true,
+  "text": ""
+ },
+ "0279": {
+  "title": "Burun Fortress SW Mound",
+  "redirect": true,
+  "text": ""
+ },
+ "027A": {
+  "title": "Burun Fortress NE Mound",
+  "redirect": true,
+  "text": ""
+ },
+ "027B": {
+  "title": "Burun Fortress NW Mound",
+  "redirect": true,
+  "text": ""
+ },
+ "027C": {
+  "title": "Ancient Empyrean Grotto",
+  "redirect": true,
+  "text": ""
+ },
+ "027D": {
+  "title": "Lair of the Eviscerators",
+  "redirect": true,
+  "text": ""
+ },
+ "027E": {
+  "title": "Martinate Holding",
+  "redirect": true,
+  "text": ""
+ },
+ "027F": {
+  "title": "East Fork Dam Hive",
+  "redirect": true,
+  "text": ""
+ },
+ "0280": {
+  "title": "Burun Fortress SE Mound",
+  "redirect": true,
+  "text": ""
+ },
+ "0281": {
+  "title": "Hidden Chamber",
+  "redirect": true,
+  "text": ""
+ },
+ "0282": {
+  "title": "An Olthoi Soldier Nest",
+  "redirect": true,
+  "text": ""
+ },
+ "0283": {
+  "title": "The Dark Lair",
+  "redirect": true,
+  "text": ""
+ },
+ "0284": {
+  "title": "Abandoned Tumerok Site",
+  "redirect": true,
+  "text": ""
+ },
+ "0285": {
+  "title": "Wasteland Hive",
+  "redirect": true,
+  "text": ""
+ },
+ "0286": {
+  "title": "Tumerok Cave",
+  "redirect": true,
+  "text": ""
+ },
+ "0287": {
+  "title": "Aun Papileona's Shrine to Raeta",
+  "redirect": true,
+  "text": ""
+ },
+ "0288": {
+  "title": "Royal Hive",
+  "redirect": true,
+  "text": ""
+ },
+ "0289": {
+  "title": "Tiny Hive",
+  "redirect": true,
+  "text": ""
+ },
+ "028A": {
+  "title": "Small Hive",
+  "redirect": true,
+  "text": ""
+ },
+ "028B": {
+  "title": "Simple Hive",
+  "redirect": true,
+  "text": ""
+ },
+ "028C": {
+  "title": "Shallow Hive",
+  "redirect": true,
+  "text": ""
+ },
+ "028D": {
+  "title": "New Hive",
+  "redirect": true,
+  "text": ""
+ },
+ "028E": {
+  "title": "Palenqual's Cavern",
+  "redirect": true,
+  "text": ""
+ },
+ "028F": {
+  "title": "Swamp Gardens",
+  "redirect": true,
+  "text": ""
+ },
+ "0290": {
+  "title": "Stable Rift",
+  "redirect": true,
+  "text": ""
+ },
+ "0291": {
+  "title": "Singularity Bore",
+  "redirect": true,
+  "text": ""
+ },
+ "0292": {
+  "title": "Tumerok Cavern",
+  "redirect": true,
+  "text": ""
+ },
+ "0293": {
+  "title": "Habitat",
+  "redirect": true,
+  "text": ""
+ },
+ "0294": {
+  "title": "Director's Private Chambers",
+  "redirect": true,
+  "text": ""
+ },
+ "0295": {
+  "title": "Inculcation Cells",
+  "redirect": true,
+  "text": ""
+ },
+ "0296": {
+  "title": "Southern Black Claw Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "0297": {
+  "title": "Northern Black Claw Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "0298": {
+  "title": "Land Bridge Staging Complex",
+  "redirect": true,
+  "text": ""
+ },
+ "0299": {
+  "title": "Larry's Garden",
+  "redirect": true,
+  "text": ""
+ },
+ "029A": {
+  "title": "The Envoy's Chamber",
+  "redirect": true,
+  "text": ""
+ },
+ "029B": {
+  "title": "Gredaline Consulate",
+  "redirect": true,
+  "text": ""
+ },
+ "029C": {
+  "title": "Linvak Tukal Entryway",
+  "redirect": true,
+  "text": ""
+ },
+ "029D": {
+  "title": "Mnemosyne Collection Site",
+  "redirect": true,
+  "text": ""
+ },
+ "029E": {
+  "title": "Aerbax Laboratory (Main)",
+  "redirect": true,
+  "text": ""
+ },
+ "029F": {
+  "title": "Aerbax Laboratory (Haven)",
+  "redirect": true,
+  "text": ""
+ },
+ "02A0": {
+  "title": "Sand Shallow",
+  "redirect": true,
+  "text": ""
+ },
+ "02A1": {
+  "title": "Panopticon",
+  "redirect": true,
+  "text": ""
+ },
+ "02A2": {
+  "title": "Lyceum Training Grounds",
+  "redirect": true,
+  "text": ""
+ },
+ "02A3": {
+  "title": "Moss Chamber (NPC Room)",
+  "redirect": true,
+  "text": ""
+ },
+ "02A4": {
+  "title": "South Tumerok Vanguard Outpost",
+  "redirect": true,
+  "text": ""
+ },
+ "02A5": {
+  "title": "North Tumerok Vanguard Outpost",
+  "redirect": true,
+  "text": ""
+ },
+ "02A6": {
+  "title": "Lyceum Training Grounds",
+  "redirect": true,
+  "text": ""
+ },
+ "02A7": {
+  "title": "Lyceum Training Grounds",
+  "redirect": true,
+  "text": ""
+ },
+ "02A8": {
+  "title": "Lyceum Training Grounds",
+  "redirect": true,
+  "text": ""
+ },
+ "02A9": {
+  "title": "Hieromancers' Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "02AA": {
+  "title": "Desert March",
+  "redirect": true,
+  "text": ""
+ },
+ "02AB": {
+  "title": "Beyond the Mines of Despair",
+  "redirect": true,
+  "text": ""
+ },
+ "02AC": {
+  "title": "02AC",
+  "redirect": false,
+  "text": "* [[Lower Empyrean Mausoleum]]\n* [[Upper Empyrean Mausoleum]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "02AD": {
+  "title": "Empyrean Cloister",
+  "redirect": true,
+  "text": ""
+ },
+ "02AE": {
+  "title": "Chakron Gate",
+  "redirect": true,
+  "text": ""
+ },
+ "02AF": {
+  "title": "02AF",
+  "redirect": false,
+  "text": "* [[Lower Chakron Flux]]\n* [[Upper Chakron Flux]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "02B0": {
+  "title": "Sepulcher of the Hopeslayer",
+  "redirect": true,
+  "text": ""
+ },
+ "02B1": {
+  "title": "02B1",
+  "redirect": false,
+  "text": "* [[Shade Stronghold]]\n* [[Upper Shade Stronghold]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "02B2": {
+  "title": "Heart of Darkness",
+  "redirect": true,
+  "text": ""
+ },
+ "02B3": {
+  "title": "Moars Laboratory",
+  "redirect": true,
+  "text": ""
+ },
+ "02B4": {
+  "title": "A Mosswart Hideout",
+  "redirect": true,
+  "text": ""
+ },
+ "02B5": {
+  "title": "Moarsmen Spawning Grounds",
+  "redirect": true,
+  "text": ""
+ },
+ "02B6": {
+  "title": "Idol Spawning Grounds",
+  "redirect": true,
+  "text": ""
+ },
+ "02B7": {
+  "title": "Catacombs of Ithaenc",
+  "redirect": true,
+  "text": ""
+ },
+ "02B8": {
+  "title": "Rumuba's Hidey-Hole",
+  "redirect": true,
+  "text": ""
+ },
+ "02B9": {
+  "title": "Moist Hovel",
+  "redirect": true,
+  "text": ""
+ },
+ "02BA": {
+  "title": "Moars (Dungeon)",
+  "redirect": true,
+  "text": ""
+ },
+ "02BB": {
+  "title": "Jungle Shadows",
+  "redirect": true,
+  "text": ""
+ },
+ "02BC": {
+  "title": "Mosswart Nest",
+  "redirect": true,
+  "text": ""
+ },
+ "02BD": {
+  "title": "Small Ruin",
+  "redirect": true,
+  "text": ""
+ },
+ "02BE": {
+  "title": "Small Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "02BF": {
+  "title": "Small Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "02C0": {
+  "title": "Small Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "02C1": {
+  "title": "Mud Cave",
+  "redirect": true,
+  "text": ""
+ },
+ "02C2": {
+  "title": "Moarsmen Muck",
+  "redirect": true,
+  "text": ""
+ },
+ "02C3": {
+  "title": "Slithis Pit",
+  "redirect": true,
+  "text": ""
+ },
+ "02C4": {
+  "title": "Moarsmen Hideout",
+  "redirect": true,
+  "text": ""
+ },
+ "02C5": {
+  "title": "Treacherous Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "02C6": {
+  "title": "Lightless Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "02C7": {
+  "title": "Tumideon Fortress",
+  "redirect": true,
+  "text": ""
+ },
+ "02C8": {
+  "title": "Banderling Conquest Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "02C9": {
+  "title": "Sotiris Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "02CA": {
+  "title": "Mosswart Maze",
+  "redirect": true,
+  "text": ""
+ },
+ "02CB": {
+  "title": "The Floating City (Bar)",
+  "redirect": true,
+  "text": ""
+ },
+ "02CC": {
+  "title": "The Floating City (Museum)",
+  "redirect": true,
+  "text": ""
+ },
+ "02CD": {
+  "title": "The Floating City (Tunnels)",
+  "redirect": true,
+  "text": ""
+ },
+ "02CE": {
+  "title": "The Floating City (Construction Area)",
+  "redirect": true,
+  "text": ""
+ },
+ "02CF": {
+  "title": "The Floating City (Skyway)",
+  "redirect": true,
+  "text": ""
+ },
+ "02D0": {
+  "title": "The Floating City (Lost Chamber)",
+  "redirect": true,
+  "text": ""
+ },
+ "02D1": {
+  "title": "The Floating City (Banderling Area)",
+  "redirect": true,
+  "text": ""
+ },
+ "02D2": {
+  "title": "Uninhabited Area",
+  "redirect": true,
+  "text": ""
+ },
+ "02D3": {
+  "title": "Xarabydun Lifestone",
+  "redirect": true,
+  "text": ""
+ },
+ "02D4": {
+  "title": "Abhorrent Vault",
+  "redirect": true,
+  "text": ""
+ },
+ "02D5": {
+  "title": "Waterfall Cave",
+  "redirect": true,
+  "text": ""
+ },
+ "02D6": {
+  "title": "Hidden City",
+  "redirect": true,
+  "text": ""
+ },
+ "02D7": {
+  "title": "Shendolain Chamber",
+  "redirect": true,
+  "text": ""
+ },
+ "02D8": {
+  "title": "Qin Xikit's Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "02D9": {
+  "title": "Liazk Itzi's Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "02DA": {
+  "title": "Fenmalain Chamber",
+  "redirect": true,
+  "text": ""
+ },
+ "02DB": {
+  "title": "Fenmalain Vestibule",
+  "redirect": true,
+  "text": ""
+ },
+ "02DC": {
+  "title": "Caulnalain Vestibule",
+  "redirect": true,
+  "text": ""
+ },
+ "02DD": {
+  "title": "Penguin Den",
+  "redirect": true,
+  "text": ""
+ },
+ "02DE": {
+  "title": "Ruschk Iceberg",
+  "redirect": true,
+  "text": ""
+ },
+ "02DF": {
+  "title": "Caulnalain Chamber",
+  "redirect": true,
+  "text": ""
+ },
+ "02E0": {
+  "title": "Shendolain Vestibule",
+  "redirect": true,
+  "text": ""
+ },
+ "02E1": {
+  "title": "Golem Sanctum",
+  "redirect": true,
+  "text": ""
+ },
+ "02E2": {
+  "title": "Arena (NPK)",
+  "redirect": true,
+  "text": ""
+ },
+ "02E3": {
+  "title": "Arena (PK)",
+  "redirect": true,
+  "text": ""
+ },
+ "02E4": {
+  "title": "Humid Hovel",
+  "redirect": true,
+  "text": ""
+ },
+ "02E5": {
+  "title": "Krau Li's Labyrinth",
+  "redirect": true,
+  "text": ""
+ },
+ "02E6": {
+  "title": "Catacombs of the Forgotten",
+  "redirect": true,
+  "text": ""
+ },
+ "02E7": {
+  "title": "Lugian Excavations",
+  "redirect": true,
+  "text": ""
+ },
+ "02E8": {
+  "title": "Lugian Quarry",
+  "redirect": true,
+  "text": ""
+ },
+ "02E9": {
+  "title": "Lugian Mines",
+  "redirect": true,
+  "text": ""
+ },
+ "02EA": {
+  "title": "Ishaq's Cellar",
+  "redirect": true,
+  "text": ""
+ },
+ "02EB": {
+  "title": "Viamontian Torture Chamber",
+  "redirect": true,
+  "text": ""
+ },
+ "02EC": {
+  "title": "Coral Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "02ED": {
+  "title": "Aerlinthe Lower Reservoir",
+  "redirect": true,
+  "text": ""
+ },
+ "02EE": {
+  "title": "Aerlinthe Reservoir",
+  "redirect": true,
+  "text": ""
+ },
+ "02EF": {
+  "title": "Acolyte Towers",
+  "redirect": true,
+  "text": ""
+ },
+ "02F0": {
+  "title": "Hills Citadel",
+  "redirect": true,
+  "text": ""
+ },
+ "02F1": {
+  "title": "Ridge Citadel",
+  "redirect": true,
+  "text": ""
+ },
+ "02F2": {
+  "title": "Wilderness Citadel",
+  "redirect": true,
+  "text": ""
+ },
+ "02F3": {
+  "title": "Halls of Metos (Tufa)",
+  "redirect": true,
+  "text": ""
+ },
+ "02F4": {
+  "title": "Halls of Metos (Ayan Baqur)",
+  "redirect": true,
+  "text": ""
+ },
+ "02F5": {
+  "title": "Halls of Metos (Wai Jhou)",
+  "redirect": true,
+  "text": ""
+ },
+ "02F6": {
+  "title": "Sclavus Cathedral (Ayan Baqur)",
+  "redirect": true,
+  "text": ""
+ },
+ "02F7": {
+  "title": "Sclavus Cathedral (West Dires)",
+  "redirect": true,
+  "text": ""
+ },
+ "02F8": {
+  "title": "Burun Cathedral",
+  "redirect": true,
+  "text": ""
+ },
+ "02FB": {
+  "title": "Olthoi Horde Nest (Colier)",
+  "redirect": true,
+  "text": ""
+ },
+ "02FC": {
+  "title": "Olthoi Horde Nest (Mountain Retreat)",
+  "redirect": true,
+  "text": ""
+ },
+ "02FD": {
+  "title": "Olthoi Horde Nest (Bandit Castle)",
+  "redirect": true,
+  "text": ""
+ },
+ "02FE": {
+  "title": "Frozen Library",
+  "redirect": true,
+  "text": ""
+ },
+ "039B": {
+  "title": "Steaming Hovel",
+  "redirect": true,
+  "text": ""
+ },
+ "039C": {
+  "title": "Hollow Lair near Lytelthorpe",
+  "redirect": true,
+  "text": ""
+ },
+ "039D": {
+  "title": "Ravenous Vault",
+  "redirect": true,
+  "text": ""
+ },
+ "039E": {
+  "title": "Seat of the New Singularity",
+  "redirect": true,
+  "text": ""
+ },
+ "039F": {
+  "title": "Singular Obsidian Repository",
+  "redirect": true,
+  "text": ""
+ },
+ "03A0": {
+  "title": "Singular Chorizite Repository",
+  "redirect": true,
+  "text": ""
+ },
+ "03A1": {
+  "title": "Singular Pyreal Repository",
+  "redirect": true,
+  "text": ""
+ },
+ "03A2": {
+  "title": "Southern Infiltrator Keep",
+  "redirect": true,
+  "text": ""
+ },
+ "03A3": {
+  "title": "Northern Infiltrator Keep",
+  "redirect": true,
+  "text": ""
+ },
+ "03A4": {
+  "title": "The Asteliary",
+  "redirect": true,
+  "text": ""
+ },
+ "03A5": {
+  "title": "Undead Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "03A6": {
+  "title": "North Fork Dam Hive",
+  "redirect": true,
+  "text": ""
+ },
+ "03A7": {
+  "title": "Mount Elyrii Hive",
+  "redirect": true,
+  "text": ""
+ },
+ "03FE": {
+  "title": "Mossy Cave (Shoushi)",
+  "redirect": true,
+  "text": ""
+ },
+ "0F38": {
+  "title": "Blightfinger's Warrens",
+  "redirect": true,
+  "text": ""
+ },
+ "1203": {
+  "title": "Ancient Lugian Fortress",
+  "redirect": true,
+  "text": ""
+ },
+ "1568": {
+  "title": "Direlands Subway",
+  "redirect": true,
+  "text": ""
+ },
+ "1936": {
+  "title": "1936",
+  "redirect": false,
+  "text": "* [[Chaos Virindi Cave]]\n* [[Archive (Dungeon)]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "1A73": {
+  "title": "Monouga Feeding Pits",
+  "redirect": true,
+  "text": ""
+ },
+ "1A8E": {
+  "title": "1A8E",
+  "redirect": false,
+  "text": "[[Inner Stronghold]]<br>[[Shadow Lugian Stronghold]]\n\n[[Category:Landblocks]]"
+ },
+ "200F": {
+  "title": "Withered Atoll Lugian Mine",
+  "redirect": true,
+  "text": ""
+ },
+ "2176": {
+  "title": "Gear Hunter Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "23B6": {
+  "title": "Back Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "24C0": {
+  "title": "Roots of Skuld, Urd and Verdandi",
+  "redirect": true,
+  "text": ""
+ },
+ "2842": {
+  "title": "2842",
+  "redirect": false,
+  "text": "* [[Apostate Citadel Mines]]\n* [[Apostate Citadel Barracks]]\n* [[Apostate Citadel Headquarters]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "2D6B": {
+  "title": "Facility",
+  "redirect": true,
+  "text": ""
+ },
+ "2E6C": {
+  "title": "Crystalline Portal (Level 130)",
+  "redirect": true,
+  "text": ""
+ },
+ "3150": {
+  "title": "Adrenkus Cave",
+  "redirect": true,
+  "text": ""
+ },
+ "33F4": {
+  "title": "Frozen Cave",
+  "redirect": true,
+  "text": ""
+ },
+ "37E4": {
+  "title": "80.8N, 57.4W - Penguin Rookery",
+  "redirect": true,
+  "text": ""
+ },
+ "3960": {
+  "title": "Apostate Excavation",
+  "redirect": true,
+  "text": ""
+ },
+ "3FB1": {
+  "title": "3FB1",
+  "redirect": false,
+  "text": "* [[Arrival Chamber]]\n* [[Reaving Facility]] \n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "40D8": {
+  "title": "Cave of the Escaped Thief",
+  "redirect": true,
+  "text": ""
+ },
+ "462D": {
+  "title": "Mhoire Castle Courtyard",
+  "redirect": true,
+  "text": ""
+ },
+ "472C": {
+  "title": "Seat of the New Singularity",
+  "redirect": true,
+  "text": ""
+ },
+ "472D": {
+  "title": "472D",
+  "redirect": false,
+  "text": "* [[Massilor's Crypt]]\n* [[Wight Barrow]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "5269": {
+  "title": "Wedding Trials Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "526A": {
+  "title": "Entrance to Portal Space",
+  "redirect": true,
+  "text": ""
+ },
+ "526B": {
+  "title": "Entrance to Portal Space",
+  "redirect": true,
+  "text": ""
+ },
+ "526C": {
+  "title": "Entrance to Portal Space",
+  "redirect": true,
+  "text": ""
+ },
+ "526F": {
+  "title": "Empyrean Fire Propylaeum",
+  "redirect": true,
+  "text": ""
+ },
+ "5270": {
+  "title": "Empyrean Fire Propylaeum",
+  "redirect": true,
+  "text": ""
+ },
+ "5271": {
+  "title": "Empyrean Ice Propylaeum",
+  "redirect": true,
+  "text": ""
+ },
+ "5272": {
+  "title": "Empyrean Ice Propylaeum",
+  "redirect": true,
+  "text": ""
+ },
+ "5274": {
+  "title": "Empyrean Lightning Propylaeum",
+  "redirect": true,
+  "text": ""
+ },
+ "5275": {
+  "title": "Farmer's Basement",
+  "redirect": true,
+  "text": ""
+ },
+ "5276": {
+  "title": "Hall of Hollows",
+  "redirect": true,
+  "text": ""
+ },
+ "5360": {
+  "title": "Sanctum Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "5361": {
+  "title": "Sanctum Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "5362": {
+  "title": "Sanctum Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "5363": {
+  "title": "Sanctum Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "5364": {
+  "title": "Sanctum Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "5365": {
+  "title": "Sanctum Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "5366": {
+  "title": "Sanctum Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "5367": {
+  "title": "Sanctum Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "5368": {
+  "title": "Sanctum Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "5369": {
+  "title": "Sanctum Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "536A": {
+  "title": "Hidden Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "536B": {
+  "title": "Convergent Median",
+  "redirect": true,
+  "text": ""
+ },
+ "536C": {
+  "title": "Malignant Tabernacle",
+  "redirect": true,
+  "text": ""
+ },
+ "536D": {
+  "title": "Nuhmudira's Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "536E": {
+  "title": "Venemous Nidus",
+  "redirect": true,
+  "text": ""
+ },
+ "5456": {
+  "title": "Grievver Caves",
+  "redirect": true,
+  "text": ""
+ },
+ "5457": {
+  "title": "Colossus Foundry",
+  "redirect": true,
+  "text": ""
+ },
+ "5458": {
+  "title": "Mammet Foundry",
+  "redirect": true,
+  "text": ""
+ },
+ "5459": {
+  "title": "Effigy Foundry",
+  "redirect": true,
+  "text": ""
+ },
+ "545A": {
+  "title": "Mannikin Foundry",
+  "redirect": true,
+  "text": ""
+ },
+ "545B": {
+  "title": "Arcanum Research Facility",
+  "redirect": true,
+  "text": ""
+ },
+ "545C": {
+  "title": "Arcanum Storehouse",
+  "redirect": true,
+  "text": ""
+ },
+ "545D": {
+  "title": "The Callous Heart",
+  "redirect": true,
+  "text": ""
+ },
+ "545E": {
+  "title": "545E",
+  "redirect": false,
+  "text": "* [[Fathomless Chasm]]\n* [[Fathomless Chasm Devex]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "545F": {
+  "title": "545F",
+  "redirect": false,
+  "text": "* [[Fathomless Chasm Clough]]\n* [[Fathomless Chasm Plummet]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "5460": {
+  "title": "5460",
+  "redirect": false,
+  "text": "* [[Fathomless Chasm Abyss]]\n* [[Fathomless Chasm Descent]]\n\n[[Category:Landblocks]]"
+ },
+ "5462": {
+  "title": "Oubliette (Labyrinth)",
+  "redirect": true,
+  "text": ""
+ },
+ "5463": {
+  "title": "Labyrinth",
+  "redirect": true,
+  "text": ""
+ },
+ "5464": {
+  "title": "Gelidite Library",
+  "redirect": true,
+  "text": ""
+ },
+ "5465": {
+  "title": "Sanctum Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "5643": {
+  "title": "Gromnie Clan Training Camp",
+  "redirect": true,
+  "text": ""
+ },
+ "5644": {
+  "title": "Mask Clan Training Camp",
+  "redirect": true,
+  "text": ""
+ },
+ "5645": {
+  "title": "Abandoned Armory",
+  "redirect": true,
+  "text": ""
+ },
+ "5646": {
+  "title": "An Archive",
+  "redirect": true,
+  "text": ""
+ },
+ "5647": {
+  "title": "Tower Base Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "5648": {
+  "title": "Misty Mine",
+  "redirect": true,
+  "text": ""
+ },
+ "5649": {
+  "title": "Dark Tree Crystal Mine",
+  "redirect": true,
+  "text": ""
+ },
+ "564A": {
+  "title": "Spirit Cell",
+  "redirect": true,
+  "text": ""
+ },
+ "564B": {
+  "title": "Crystal Mine Extreme",
+  "redirect": true,
+  "text": ""
+ },
+ "564C": {
+  "title": "Crystal Mine High",
+  "redirect": true,
+  "text": ""
+ },
+ "564D": {
+  "title": "Crystal Mine Mid",
+  "redirect": true,
+  "text": ""
+ },
+ "564E": {
+  "title": "Crystal Mine Low",
+  "redirect": true,
+  "text": ""
+ },
+ "564F": {
+  "title": "Crystal Mine New Isparians",
+  "redirect": true,
+  "text": ""
+ },
+ "5650": {
+  "title": "Victory Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "5651": {
+  "title": "Frest Greelving's Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "5652": {
+  "title": "5652",
+  "redirect": false,
+  "text": "* [[Warded Cavern Passage]]\n* [[Warded Dungeon Passage]]\n* [[Hidden Treasury]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "5653": {
+  "title": "Citadel Library",
+  "redirect": true,
+  "text": ""
+ },
+ "5654": {
+  "title": "Gaerlan's Inner Sanctum",
+  "redirect": true,
+  "text": ""
+ },
+ "5655": {
+  "title": "Virindi Research Facility",
+  "redirect": true,
+  "text": ""
+ },
+ "5656": {
+  "title": "Haven Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "565E": {
+  "title": "Oriel Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "5660": {
+  "title": "Martine's Retreat",
+  "redirect": true,
+  "text": ""
+ },
+ "5661": {
+  "title": "Atrium Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "5743": {
+  "title": "Frost Guardian Lair",
+  "redirect": true,
+  "text": ""
+ },
+ "5744": {
+  "title": "Proving Grounds Low",
+  "redirect": true,
+  "text": ""
+ },
+ "5745": {
+  "title": "Icy Demise",
+  "redirect": true,
+  "text": ""
+ },
+ "5746": {
+  "title": "Lightning Ziggurat",
+  "redirect": true,
+  "text": ""
+ },
+ "5748": {
+  "title": "Tusker Burrow",
+  "redirect": true,
+  "text": ""
+ },
+ "5749": {
+  "title": "Tusker Lodge",
+  "redirect": true,
+  "text": ""
+ },
+ "574A": {
+  "title": "Warehouse",
+  "redirect": true,
+  "text": ""
+ },
+ "574B": {
+  "title": "Warehouse (ransacked)",
+  "redirect": true,
+  "text": ""
+ },
+ "574C": {
+  "title": "Warehouse Annex Mine",
+  "redirect": true,
+  "text": ""
+ },
+ "574D": {
+  "title": "Deeper Catacombs",
+  "redirect": true,
+  "text": ""
+ },
+ "574E": {
+  "title": "Deeper Catacombs (Bandit Castle OHN)",
+  "redirect": true,
+  "text": ""
+ },
+ "574F": {
+  "title": "Deeper Catacombs (Mountain Retreat OHN)",
+  "redirect": true,
+  "text": ""
+ },
+ "5750": {
+  "title": "Deeper Catacombs (Colier OHN)",
+  "redirect": true,
+  "text": ""
+ },
+ "5751": {
+  "title": "Deeper Catacombs (Crater Lair)",
+  "redirect": true,
+  "text": ""
+ },
+ "5752": {
+  "title": "Deeper Catacombs (Olthoi Tunnels)",
+  "redirect": true,
+  "text": ""
+ },
+ "5753": {
+  "title": "Deeper Catacombs",
+  "redirect": true,
+  "text": ""
+ },
+ "5754": {
+  "title": "5754",
+  "redirect": false,
+  "text": "* [[20.7S, 7.5E - Ancient Portal]]\n* [[20.5S, 7.6E - Ancient Portal]]\n* [[20.7S, 7.6E - Ancient Portal]]\n* [[21.0S, 7.5E - Ancient Portal]]\n* [[20.7S, 7.5E - Catacombs]]\n* [[20.5S, 7.6E - Catacombs]]\n* [[20.7S, 7.6E - Catacombs]]\n\n[[Category:Disambiguation]]\n[[Category:Landblocks]]"
+ },
+ "5756": {
+  "title": "Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "575E": {
+  "title": "Summoning Cave",
+  "redirect": true,
+  "text": ""
+ },
+ "5760": {
+  "title": "Sand Caves",
+  "redirect": true,
+  "text": ""
+ },
+ "5761": {
+  "title": "Summoning Cave",
+  "redirect": true,
+  "text": ""
+ },
+ "5762": {
+  "title": "Shadow Vortex Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "5763": {
+  "title": "Shadow Vortex Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "5764": {
+  "title": "Oubliette of Mhoire Castle",
+  "redirect": true,
+  "text": ""
+ },
+ "5765": {
+  "title": "Lost Ruins",
+  "redirect": true,
+  "text": ""
+ },
+ "5766": {
+  "title": "Nanjou Shou-jen Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "5768": {
+  "title": "Sclavus Santa's House",
+  "redirect": true,
+  "text": ""
+ },
+ "5769": {
+  "title": "Fiery Refuge",
+  "redirect": true,
+  "text": ""
+ },
+ "576A": {
+  "title": "Charged Refuge",
+  "redirect": true,
+  "text": ""
+ },
+ "576C": {
+  "title": "Acidic Refuge",
+  "redirect": true,
+  "text": ""
+ },
+ "576D": {
+  "title": "Cavernous Refuge",
+  "redirect": true,
+  "text": ""
+ },
+ "576E": {
+  "title": "Shadowy Refuge",
+  "redirect": true,
+  "text": ""
+ },
+ "576F": {
+  "title": "Twisted Refuge",
+  "redirect": true,
+  "text": ""
+ },
+ "5770": {
+  "title": "Frozen Refuge",
+  "redirect": true,
+  "text": ""
+ },
+ "5771": {
+  "title": "Venerable Mausoleum",
+  "redirect": true,
+  "text": ""
+ },
+ "5772": {
+  "title": "Olthoi Brood Hive (20+)",
+  "redirect": true,
+  "text": ""
+ },
+ "5773": {
+  "title": "Olthoi Brood Hive (20+)",
+  "redirect": true,
+  "text": ""
+ },
+ "5774": {
+  "title": "Secret Putiputi Place",
+  "redirect": true,
+  "text": ""
+ },
+ "5775": {
+  "title": "Secret Putiputi Place",
+  "redirect": true,
+  "text": ""
+ },
+ "5776": {
+  "title": "Secret Putiputi Place",
+  "redirect": true,
+  "text": ""
+ },
+ "5777": {
+  "title": "Falcon Clan Training Camp",
+  "redirect": true,
+  "text": ""
+ },
+ "5778": {
+  "title": "Serpent Clan Training Camp",
+  "redirect": true,
+  "text": ""
+ },
+ "5779": {
+  "title": "Shreth Clan Training Camp",
+  "redirect": true,
+  "text": ""
+ },
+ "577A": {
+  "title": "Reedshark Clan Training Camp",
+  "redirect": true,
+  "text": ""
+ },
+ "5843": {
+  "title": "Fire Guardian Lair",
+  "redirect": true,
+  "text": ""
+ },
+ "5844": {
+  "title": "Proving Grounds Mid",
+  "redirect": true,
+  "text": ""
+ },
+ "5845": {
+  "title": "Fiery Consumption",
+  "redirect": true,
+  "text": ""
+ },
+ "5846": {
+  "title": "Acid Ziggurat",
+  "redirect": true,
+  "text": ""
+ },
+ "5848": {
+  "title": "Tusker Freehold",
+  "redirect": true,
+  "text": ""
+ },
+ "5849": {
+  "title": "Tusker Assault",
+  "redirect": true,
+  "text": ""
+ },
+ "584B": {
+  "title": "Olthoi Brood Hive (80+)",
+  "redirect": true,
+  "text": ""
+ },
+ "584C": {
+  "title": "Olthoi Brood Hive (80+)",
+  "redirect": true,
+  "text": ""
+ },
+ "584D": {
+  "title": "Frigid Grotto",
+  "redirect": true,
+  "text": ""
+ },
+ "584E": {
+  "title": "Serpent Burial Grounds",
+  "redirect": true,
+  "text": ""
+ },
+ "584F": {
+  "title": "Nanjou Prison",
+  "redirect": true,
+  "text": ""
+ },
+ "5850": {
+  "title": "Prismatic Guardian Lair",
+  "redirect": true,
+  "text": ""
+ },
+ "5851": {
+  "title": "Prismatic Ziggurat",
+  "redirect": true,
+  "text": ""
+ },
+ "5852": {
+  "title": "Proving Grounds Uber",
+  "redirect": true,
+  "text": ""
+ },
+ "5853": {
+  "title": "Prismatic Devastation",
+  "redirect": true,
+  "text": ""
+ },
+ "5854": {
+  "title": "Gaerlan's Inner Sanctum",
+  "redirect": true,
+  "text": ""
+ },
+ "5856": {
+  "title": "Foundry of Izexi",
+  "redirect": true,
+  "text": ""
+ },
+ "585E": {
+  "title": "Falatacot Depot",
+  "redirect": true,
+  "text": ""
+ },
+ "5860": {
+  "title": "Colton Reeyan's Sanctuary",
+  "redirect": true,
+  "text": ""
+ },
+ "5861": {
+  "title": "Crystal Core",
+  "redirect": true,
+  "text": ""
+ },
+ "5862": {
+  "title": "Count Phainor's Tomb",
+  "redirect": true,
+  "text": ""
+ },
+ "5863": {
+  "title": "Desert Dwelling",
+  "redirect": true,
+  "text": ""
+ },
+ "5864": {
+  "title": "Samurai Hausu",
+  "redirect": true,
+  "text": ""
+ },
+ "5865": {
+  "title": "5865",
+  "redirect": false,
+  "text": "* [[Fiery Alcove]]\n* [[Stinging Corner]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "5866": {
+  "title": "5866",
+  "redirect": false,
+  "text": "* [[Sanctuary of the Recluse]]\n* [[Lair of the Magus]]\n* [[Four Corners Rewards Room]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "5867": {
+  "title": "Virindi Edifice",
+  "redirect": true,
+  "text": ""
+ },
+ "5868": {
+  "title": "Chiming Portal",
+  "redirect": true,
+  "text": ""
+ },
+ "5869": {
+  "title": "West Fork Dam Hive",
+  "redirect": true,
+  "text": ""
+ },
+ "586A": {
+  "title": "Western Royal Hive",
+  "redirect": true,
+  "text": ""
+ },
+ "586B": {
+  "title": "586B",
+  "redirect": false,
+  "text": "* [[Queen's Quarters]]\n* [[Queen's Chamber]]\n* [[Queen's Treasury]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "586C": {
+  "title": "Masked Preface",
+  "redirect": true,
+  "text": ""
+ },
+ "586D": {
+  "title": "Hive Eviscerator Burrow",
+  "redirect": true,
+  "text": ""
+ },
+ "586E": {
+  "title": "Hive Warrior Mound",
+  "redirect": true,
+  "text": ""
+ },
+ "586F": {
+  "title": "Tusker Den",
+  "redirect": true,
+  "text": ""
+ },
+ "5870": {
+  "title": "Curator of Torment's Study",
+  "redirect": true,
+  "text": ""
+ },
+ "5871": {
+  "title": "Seed of Hatred",
+  "redirect": true,
+  "text": ""
+ },
+ "5872": {
+  "title": "Seed of Misery",
+  "redirect": true,
+  "text": ""
+ },
+ "5873": {
+  "title": "Seed of Anger",
+  "redirect": true,
+  "text": ""
+ },
+ "5874": {
+  "title": "Rynthid Crystal Access",
+  "redirect": true,
+  "text": ""
+ },
+ "5875": {
+  "title": "Rynthid Genesis",
+  "redirect": true,
+  "text": ""
+ },
+ "5876": {
+  "title": "Rynthid Foundry",
+  "redirect": true,
+  "text": ""
+ },
+ "5877": {
+  "title": "Fear Factory",
+  "redirect": true,
+  "text": ""
+ },
+ "5878": {
+  "title": "Spirited Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "5879": {
+  "title": "5879",
+  "redirect": false,
+  "text": "* [[Path of Rage]]\n* [[Path of Sorrow]]\n* [[Path of Torment]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "587A": {
+  "title": "Rynthid Training Facility",
+  "redirect": true,
+  "text": ""
+ },
+ "5943": {
+  "title": "Acid Guardian Lair",
+  "redirect": true,
+  "text": ""
+ },
+ "5944": {
+  "title": "Proving Grounds High",
+  "redirect": true,
+  "text": ""
+ },
+ "5945": {
+  "title": "Entropic Decay",
+  "redirect": true,
+  "text": ""
+ },
+ "5946": {
+  "title": "Fire Ziggurat",
+  "redirect": true,
+  "text": ""
+ },
+ "5948": {
+  "title": "Tusker Armory",
+  "redirect": true,
+  "text": ""
+ },
+ "5949": {
+  "title": "Tusker Lacuna",
+  "redirect": true,
+  "text": ""
+ },
+ "594A": {
+  "title": "Chapel of Mowen",
+  "redirect": true,
+  "text": ""
+ },
+ "594B": {
+  "title": "Aerbax's Holding",
+  "redirect": true,
+  "text": ""
+ },
+ "594C": {
+  "title": "Gerent's Compound",
+  "redirect": true,
+  "text": ""
+ },
+ "594D": {
+  "title": "Ancient Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "594E": {
+  "title": "594E",
+  "redirect": false,
+  "text": "* [[Deep Caves]]\n* [[Temple Trial]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "594F": {
+  "title": "594F",
+  "redirect": false,
+  "text": "* [[Laboratory (Frozen Fortress)]]\n* [[Testing Grounds]]\n* [[Frozen Fortress]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "5951": {
+  "title": "Presk's Bunker",
+  "redirect": true,
+  "text": ""
+ },
+ "5952": {
+  "title": "Bah'Ktar's Tower",
+  "redirect": true,
+  "text": ""
+ },
+ "5953": {
+  "title": "Rynthid Training Facility",
+  "redirect": true,
+  "text": ""
+ },
+ "5954": {
+  "title": "5954",
+  "redirect": false,
+  "text": "* [[Catacombs of Torment]]\n* [[Inner Sanctum]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "5956": {
+  "title": "Fowl Basement",
+  "redirect": true,
+  "text": ""
+ },
+ "595E": {
+  "title": "595E",
+  "redirect": false,
+  "text": "* [[Charged Niche]]\n* [[Frozen Recess]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "5960": {
+  "title": "Celestial Hand Gauntlet",
+  "redirect": true,
+  "text": ""
+ },
+ "5961": {
+  "title": "Celestial Hand Gauntlet",
+  "redirect": true,
+  "text": ""
+ },
+ "5962": {
+  "title": "Eldrytch Web Gauntlet",
+  "redirect": true,
+  "text": ""
+ },
+ "5963": {
+  "title": "Eldrytch Web Gauntlet",
+  "redirect": true,
+  "text": ""
+ },
+ "5964": {
+  "title": "Radiant Blood Gauntlet",
+  "redirect": true,
+  "text": ""
+ },
+ "5965": {
+  "title": "Radiant Blood Gauntlet",
+  "redirect": true,
+  "text": ""
+ },
+ "5966": {
+  "title": "Viridian Root",
+  "redirect": true,
+  "text": ""
+ },
+ "5967": {
+  "title": "Gauntlet Bosses",
+  "redirect": true,
+  "text": ""
+ },
+ "5968": {
+  "title": "Gauntlet Bosses",
+  "redirect": true,
+  "text": ""
+ },
+ "5969": {
+  "title": "Gauntlet Bosses",
+  "redirect": true,
+  "text": ""
+ },
+ "596A": {
+  "title": "Fowl Basement",
+  "redirect": true,
+  "text": ""
+ },
+ "596B": {
+  "title": "596B",
+  "redirect": false,
+  "text": "* [[Celestial Hand Gauntlet]]\n* [[Eldrytch Web Gauntlet]]\n* [[Radiant Blood Gauntlet]]\n* [[Temple of the Font]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "5A43": {
+  "title": "Lightning Guardian Lair",
+  "redirect": true,
+  "text": ""
+ },
+ "5A44": {
+  "title": "5A44",
+  "redirect": false,
+  "text": "* [[Proving Grounds Extreme]]\n* [[Proving Grounds Rolling Death]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "5A45": {
+  "title": "Electric Destruction",
+  "redirect": true,
+  "text": ""
+ },
+ "5A46": {
+  "title": "Frost Ziggurat",
+  "redirect": true,
+  "text": ""
+ },
+ "5A48": {
+  "title": "Tusker Barracks",
+  "redirect": true,
+  "text": ""
+ },
+ "5A49": {
+  "title": "Tusker Honeycombs",
+  "redirect": true,
+  "text": ""
+ },
+ "5A4A": {
+  "title": "Tusker Pits",
+  "redirect": true,
+  "text": ""
+ },
+ "5B43": {
+  "title": "Olthoi Arcade",
+  "redirect": true,
+  "text": ""
+ },
+ "5B44": {
+  "title": "Olthoi Arcade Central",
+  "redirect": true,
+  "text": ""
+ },
+ "5B45": {
+  "title": "Virindi Complex",
+  "redirect": true,
+  "text": ""
+ },
+ "5B46": {
+  "title": "Tusker Cave",
+  "redirect": true,
+  "text": ""
+ },
+ "5B47": {
+  "title": "Tusker Habitat",
+  "redirect": true,
+  "text": ""
+ },
+ "5B48": {
+  "title": "Tusker Holding",
+  "redirect": true,
+  "text": ""
+ },
+ "5B49": {
+  "title": "Plated Rifts",
+  "redirect": true,
+  "text": ""
+ },
+ "5B4A": {
+  "title": "Tusker Quarters",
+  "redirect": true,
+  "text": ""
+ },
+ "5C43": {
+  "title": "Tusker Cavern",
+  "redirect": true,
+  "text": ""
+ },
+ "5C44": {
+  "title": "Tusker Encampments",
+  "redirect": true,
+  "text": ""
+ },
+ "5C45": {
+  "title": "Tusker Abode",
+  "redirect": true,
+  "text": ""
+ },
+ "5C46": {
+  "title": "Tusker Gauntlet",
+  "redirect": true,
+  "text": ""
+ },
+ "5C47": {
+  "title": "Tusker Grotto",
+  "redirect": true,
+  "text": ""
+ },
+ "5C48": {
+  "title": "Rampage Bluff",
+  "redirect": true,
+  "text": ""
+ },
+ "5C49": {
+  "title": "Tusker Retreat",
+  "redirect": true,
+  "text": ""
+ },
+ "5C4A": {
+  "title": "Tusker Temple (0.7N 68.1W)",
+  "redirect": true,
+  "text": ""
+ },
+ "5C4B": {
+  "title": "Virindi Complex",
+  "redirect": true,
+  "text": ""
+ },
+ "5C4C": {
+  "title": "Hizk Ri's Temple Entrance",
+  "redirect": true,
+  "text": ""
+ },
+ "5C4D": {
+  "title": "Hizk Ri's Well of Tears",
+  "redirect": true,
+  "text": ""
+ },
+ "5C4E": {
+  "title": "Hizk Ri's Well of Tears",
+  "redirect": true,
+  "text": ""
+ },
+ "5C4F": {
+  "title": "Hizk Ri's Well of Tears",
+  "redirect": true,
+  "text": ""
+ },
+ "5D43": {
+  "title": "Tusker Temple (59.8N 28.4E)",
+  "redirect": true,
+  "text": ""
+ },
+ "5D44": {
+  "title": "Tusker Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "5D45": {
+  "title": "Tusker Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "5D46": {
+  "title": "Vengeance Caverns",
+  "redirect": true,
+  "text": ""
+ },
+ "5D47": {
+  "title": "Temple of Enlightenment",
+  "redirect": true,
+  "text": ""
+ },
+ "5D48": {
+  "title": "Temple of Forgetfulness",
+  "redirect": true,
+  "text": ""
+ },
+ "5D49": {
+  "title": "Olthoi Arcade",
+  "redirect": true,
+  "text": ""
+ },
+ "5D4A": {
+  "title": "Olthoi Chasm",
+  "redirect": true,
+  "text": ""
+ },
+ "5D4B": {
+  "title": "Shallow Olthoi Chasm",
+  "redirect": true,
+  "text": ""
+ },
+ "5D4C": {
+  "title": "Deep Olthoi Chasm",
+  "redirect": true,
+  "text": ""
+ },
+ "5D4D": {
+  "title": "Cavernous Olthoi Chasm",
+  "redirect": true,
+  "text": ""
+ },
+ "5D4E": {
+  "title": "Abyssal Olthoi Chasm",
+  "redirect": true,
+  "text": ""
+ },
+ "5E43": {
+  "title": "Arena of the Tusker Hero",
+  "redirect": true,
+  "text": ""
+ },
+ "5E44": {
+  "title": "Tusker Food Storage",
+  "redirect": true,
+  "text": ""
+ },
+ "5E45": {
+  "title": "Black Death Catacombs",
+  "redirect": true,
+  "text": ""
+ },
+ "5E46": {
+  "title": "Catacombs of Opposition",
+  "redirect": true,
+  "text": ""
+ },
+ "5E47": {
+  "title": "Asheron's Sanctum",
+  "redirect": true,
+  "text": ""
+ },
+ "5E48": {
+  "title": "Olthoi Brood Hive (60+)",
+  "redirect": true,
+  "text": ""
+ },
+ "5E49": {
+  "title": "Olthoi Brood Hive (40+)",
+  "redirect": true,
+  "text": ""
+ },
+ "5E4A": {
+  "title": "Olthoi Brood Hive (60+)",
+  "redirect": true,
+  "text": ""
+ },
+ "5E4B": {
+  "title": "Olthoi Brood Hive (40+)",
+  "redirect": true,
+  "text": ""
+ },
+ "5E4C": {
+  "title": "Bandit Hideout",
+  "redirect": true,
+  "text": ""
+ },
+ "5E4D": {
+  "title": "Bandit Hideout Prison",
+  "redirect": true,
+  "text": ""
+ },
+ "5F43": {
+  "title": "Legend of the Tusker King",
+  "redirect": true,
+  "text": ""
+ },
+ "5F44": {
+  "title": "Throne of the Tusker King",
+  "redirect": true,
+  "text": ""
+ },
+ "5F45": {
+  "title": "Fir Tree",
+  "redirect": true,
+  "text": ""
+ },
+ "5F46": {
+  "title": "Heart of Innocence (Dungeon)",
+  "redirect": true,
+  "text": ""
+ },
+ "5F47": {
+  "title": "Elemental Caverns",
+  "redirect": true,
+  "text": ""
+ },
+ "5F48": {
+  "title": "Hidden Cavern",
+  "redirect": true,
+  "text": ""
+ },
+ "5F49": {
+  "title": "Hizk Ri's Test",
+  "redirect": true,
+  "text": ""
+ },
+ "5F4A": {
+  "title": "Hizk Ri's Test",
+  "redirect": true,
+  "text": ""
+ },
+ "5F4B": {
+  "title": "Hizk Ri's Test",
+  "redirect": true,
+  "text": ""
+ },
+ "5F4C": {
+  "title": "Hizk Ri's Sewers",
+  "redirect": true,
+  "text": ""
+ },
+ "5F4D": {
+  "title": "Hizk Ri's Sewers",
+  "redirect": true,
+  "text": ""
+ },
+ "5F4E": {
+  "title": "Hizk Ri's Sewers",
+  "redirect": true,
+  "text": ""
+ },
+ "5F4F": {
+  "title": "Hizk Ri's Boss Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "5F50": {
+  "title": "Hizk Ri's Boss Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "5F51": {
+  "title": "Patriarch Zixki",
+  "redirect": true,
+  "text": ""
+ },
+ "6043": {
+  "title": "Tusker Warrior's Lair",
+  "redirect": true,
+  "text": ""
+ },
+ "6044": {
+  "title": "Behind the Waterfall",
+  "redirect": true,
+  "text": ""
+ },
+ "6045": {
+  "title": "Caul Asylum",
+  "redirect": true,
+  "text": ""
+ },
+ "6046": {
+  "title": "Caul Athenaeum",
+  "redirect": true,
+  "text": ""
+ },
+ "6047": {
+  "title": "Caul Sanatorium",
+  "redirect": true,
+  "text": ""
+ },
+ "6048": {
+  "title": "Aerbax's Antechamber",
+  "redirect": true,
+  "text": ""
+ },
+ "6049": {
+  "title": "Renegade Garrison",
+  "redirect": true,
+  "text": ""
+ },
+ "604A": {
+  "title": "Sclavus Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "604B": {
+  "title": "Forbidden Catacombs",
+  "redirect": true,
+  "text": ""
+ },
+ "6143": {
+  "title": "Ulgrim's Basement",
+  "redirect": true,
+  "text": ""
+ },
+ "6144": {
+  "title": "Lower Corridor",
+  "redirect": true,
+  "text": ""
+ },
+ "6145": {
+  "title": "Matron Hive West",
+  "redirect": true,
+  "text": ""
+ },
+ "6146": {
+  "title": "Matron Hive East",
+  "redirect": true,
+  "text": ""
+ },
+ "6147": {
+  "title": "Mountain Citadel",
+  "redirect": true,
+  "text": ""
+ },
+ "6148": {
+  "title": "Desert Citadel",
+  "redirect": true,
+  "text": ""
+ },
+ "6149": {
+  "title": "Crystal Mine",
+  "redirect": true,
+  "text": ""
+ },
+ "614A": {
+  "title": "Lair of the Ancient Queen",
+  "redirect": true,
+  "text": ""
+ },
+ "614B": {
+  "title": "Drudge Fight (Dungeon)",
+  "redirect": true,
+  "text": ""
+ },
+ "614C": {
+  "title": "Resting Place",
+  "redirect": true,
+  "text": ""
+ },
+ "6243": {
+  "title": "6243",
+  "redirect": false,
+  "text": "* [[Antechamber of Liazk Itzi]]\n* [[Lair of Liazk Itzi]]\n[[Category:Landblocks]]"
+ },
+ "6244": {
+  "title": "6244",
+  "redirect": false,
+  "text": "* [[Liazk Itzi Guardians]]\n* [[Liazk Itzi's Offering Room]]\n[[Category:Landblocks]]"
+ },
+ "6245": {
+  "title": "The Temple of Liazk Itzi",
+  "redirect": true,
+  "text": ""
+ },
+ "6246": {
+  "title": "6246",
+  "redirect": false,
+  "text": "* [[Liazk Itzi's Crypt]]\n* [[Halls of Liazk Itzi]]\n[[Category:Landblocks]]"
+ },
+ "6247": {
+  "title": "Burun Burrow",
+  "redirect": true,
+  "text": ""
+ },
+ "6248": {
+  "title": "Renegade Fortress (60+)",
+  "redirect": true,
+  "text": ""
+ },
+ "6249": {
+  "title": "Renegade Stronghold (Lytelthorpe)",
+  "redirect": true,
+  "text": ""
+ },
+ "624A": {
+  "title": "Burun Cavern",
+  "redirect": true,
+  "text": ""
+ },
+ "6343": {
+  "title": "Barracks",
+  "redirect": true,
+  "text": ""
+ },
+ "6344": {
+  "title": "Knorr Trials",
+  "redirect": true,
+  "text": ""
+ },
+ "6345": {
+  "title": "Subterannean Farm",
+  "redirect": true,
+  "text": ""
+ },
+ "6346": {
+  "title": "Matron Hive South",
+  "redirect": true,
+  "text": ""
+ },
+ "6347": {
+  "title": "Matron Hive North",
+  "redirect": true,
+  "text": ""
+ },
+ "6348": {
+  "title": "Caliginous Bethel",
+  "redirect": true,
+  "text": ""
+ },
+ "6349": {
+  "title": "Oubliette (Dungeon)",
+  "redirect": true,
+  "text": ""
+ },
+ "634A": {
+  "title": "Lair of The Homunculus (Dungeon)",
+  "redirect": true,
+  "text": ""
+ },
+ "634B": {
+  "title": "Sunken Mere",
+  "redirect": true,
+  "text": ""
+ },
+ "634C": {
+  "title": "Tainted Grotto",
+  "redirect": true,
+  "text": ""
+ },
+ "6443": {
+  "title": "Research Chamber",
+  "redirect": true,
+  "text": ""
+ },
+ "6444": {
+  "title": "Seat of Knorr",
+  "redirect": true,
+  "text": ""
+ },
+ "6445": {
+  "title": "Forge",
+  "redirect": true,
+  "text": ""
+ },
+ "6446": {
+  "title": "Tunnels to the Harbinger (Vincadi)",
+  "redirect": true,
+  "text": ""
+ },
+ "6447": {
+  "title": "Tunnels to the Harbinger (Issk)",
+  "redirect": true,
+  "text": ""
+ },
+ "6448": {
+  "title": "Mount Ingot",
+  "redirect": true,
+  "text": ""
+ },
+ "6449": {
+  "title": "6449",
+  "redirect": false,
+  "text": "* [[Dragon's Power]]\n* [[Firebird's Splendor]]\n* [[Unicorn's Grace]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "644A": {
+  "title": "Decrepit Tower",
+  "redirect": true,
+  "text": ""
+ },
+ "6543": {
+  "title": "Lesser Battle Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "6544": {
+  "title": "Greater Battle Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "6545": {
+  "title": "Blackmire Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "6546": {
+  "title": "Hall of the Arbiter",
+  "redirect": true,
+  "text": ""
+ },
+ "6547": {
+  "title": "Hall of the Temple Guardians",
+  "redirect": true,
+  "text": ""
+ },
+ "6548": {
+  "title": "The Orphanage",
+  "redirect": true,
+  "text": ""
+ },
+ "6549": {
+  "title": "Renegade Stronghold (Stonehold)",
+  "redirect": true,
+  "text": ""
+ },
+ "654A": {
+  "title": "Renegade Stronghold (Tufa)",
+  "redirect": true,
+  "text": ""
+ },
+ "654B": {
+  "title": "Renegade Stronghold (Shoushi)",
+  "redirect": true,
+  "text": ""
+ },
+ "654C": {
+  "title": "654C",
+  "redirect": false,
+  "text": "* [[Neftet Treasury]]\n* [[Mysterious Hatch (79.9N, 41.5W)]]\n* [[Mysterious Hatch (77.9N, 42.5W)]]\n* [[Mysterious Hatch (78.9N, 40.1W)]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "654D": {
+  "title": "654D",
+  "redirect": false,
+  "text": "* [[Hoshino Kei's Fortress]]\n* [[Hoshino Kei's Treasury]]\n* [[Private Quarters]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "6651": {
+  "title": "Hoshino Tower",
+  "redirect": true,
+  "text": ""
+ },
+ "665E": {
+  "title": "Falatacot Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "6678": {
+  "title": "Olthoi Warrior Nest",
+  "redirect": true,
+  "text": ""
+ },
+ "6679": {
+  "title": "Crumbling Empyrean Mansion",
+  "redirect": true,
+  "text": ""
+ },
+ "667A": {
+  "title": "Mutilator Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "6757": {
+  "title": "Tanada Toresen Temple",
+  "redirect": true,
+  "text": ""
+ },
+ "7200": {
+  "title": "Atrium Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "7202": {
+  "title": "Training Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "7203": {
+  "title": "Training Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "7204": {
+  "title": "Training Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "7300": {
+  "title": "Atrium Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "7302": {
+  "title": "Training Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "7303": {
+  "title": "Training Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "7400": {
+  "title": "Atrium Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "7500": {
+  "title": "Atrium Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "7600": {
+  "title": "Atrium Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "7700": {
+  "title": "Atrium Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "77E7": {
+  "title": "Frozen Tomb",
+  "redirect": true,
+  "text": ""
+ },
+ "7800": {
+  "title": "Atrium Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "7900": {
+  "title": "Atrium Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "79E9": {
+  "title": "Bloodstone Factory",
+  "redirect": true,
+  "text": ""
+ },
+ "7A00": {
+  "title": "Atrium Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "7B00": {
+  "title": "Atrium Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "7C00": {
+  "title": "Oriel Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "7D00": {
+  "title": "Oriel Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "7E00": {
+  "title": "Oriel Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "7E02": {
+  "title": "The Shadows",
+  "redirect": true,
+  "text": ""
+ },
+ "7E03": {
+  "title": "Dark Cavern",
+  "redirect": true,
+  "text": ""
+ },
+ "7E04": {
+  "title": "Thug Hideout",
+  "redirect": true,
+  "text": ""
+ },
+ "7F00": {
+  "title": "Oriel Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "7F02": {
+  "title": "Apostate Nexus",
+  "redirect": true,
+  "text": ""
+ },
+ "7F03": {
+  "title": "Training Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "7F04": {
+  "title": "Training Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "7F66": {
+  "title": "Small Fledgling Mukkir Nest",
+  "redirect": true,
+  "text": ""
+ },
+ "8000": {
+  "title": "Oriel Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "8002": {
+  "title": "Training Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "8003": {
+  "title": "Training Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "8004": {
+  "title": "Training Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "8100": {
+  "title": "Oriel Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "8200": {
+  "title": "Oriel Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "8300": {
+  "title": "Oriel Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "8400": {
+  "title": "Oriel Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "8500": {
+  "title": "Oriel Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "8600": {
+  "title": "Haven Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "8602": {
+  "title": "Training Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "8603": {
+  "title": "Training Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "8604": {
+  "title": "Training Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "8700": {
+  "title": "Haven Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "8702": {
+  "title": "Training Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "8703": {
+  "title": "Training Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "8704": {
+  "title": "Crystalline Portal (Level 90)",
+  "redirect": true,
+  "text": ""
+ },
+ "8800": {
+  "title": "Haven Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "8802": {
+  "title": "Roost Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "8803": {
+  "title": "Crystalline Portal (Level 110)",
+  "redirect": true,
+  "text": ""
+ },
+ "8804": {
+  "title": "Mar'uun",
+  "redirect": true,
+  "text": ""
+ },
+ "8852": {
+  "title": "Gear Knight Excavation",
+  "redirect": true,
+  "text": ""
+ },
+ "8900": {
+  "title": "Haven Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "8902": {
+  "title": "Mar'uun",
+  "redirect": true,
+  "text": ""
+ },
+ "8903": {
+  "title": "8903",
+  "redirect": false,
+  "text": "* [[Acid Elemental Plane]]\n* [[Electric Elemental Plane]]\n* [[Fire Elemental Plane]]\n* [[Frost Elemental Plane]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "8904": {
+  "title": "8904",
+  "redirect": false,
+  "text": "* [[Empyrean Facility Lower Level]]\n* [[Empyrean Facility Middle Level]]\n* [[Empyrean Facility Upper Level]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "8954": {
+  "title": "Temple of Twilight",
+  "redirect": true,
+  "text": ""
+ },
+ "8A00": {
+  "title": "Haven Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "8A02": {
+  "title": "Facility Hub",
+  "redirect": true,
+  "text": ""
+ },
+ "8A03": {
+  "title": "Society Infiltration Dungeon",
+  "redirect": true,
+  "text": ""
+ },
+ "8A04": {
+  "title": "Night Club",
+  "redirect": true,
+  "text": ""
+ },
+ "8A63": {
+  "title": "Temple of Mornings",
+  "redirect": true,
+  "text": ""
+ },
+ "8B00": {
+  "title": "Haven Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "8B02": {
+  "title": "Forgotten Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "8B03": {
+  "title": "Mysterious Portal",
+  "redirect": true,
+  "text": ""
+ },
+ "8B04": {
+  "title": "Frozen Wight Lair",
+  "redirect": true,
+  "text": ""
+ },
+ "8C00": {
+  "title": "Haven Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "8C03": {
+  "title": "Mhoire Castle",
+  "redirect": true,
+  "text": ""
+ },
+ "8C04": {
+  "title": "Training Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "8D00": {
+  "title": "Haven Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "8D02": {
+  "title": "Training Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "8D03": {
+  "title": "Training Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "8D04": {
+  "title": "Training Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "8E00": {
+  "title": "Haven Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "8E02": {
+  "title": "Training Academy",
+  "redirect": true,
+  "text": ""
+ },
+ "8F00": {
+  "title": "Haven Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "9000": {
+  "title": "Victory Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "9100": {
+  "title": "Victory Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "9200": {
+  "title": "Victory Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "9300": {
+  "title": "Victory Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "9302": {
+  "title": "Geraine's Study",
+  "redirect": true,
+  "text": ""
+ },
+ "9400": {
+  "title": "Victory Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "9500": {
+  "title": "Victory Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "9600": {
+  "title": "Victory Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "9700": {
+  "title": "Victory Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "9800": {
+  "title": "Victory Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "9900": {
+  "title": "Victory Residential Halls",
+  "redirect": true,
+  "text": ""
+ },
+ "9EE5": {
+  "title": "Northwatch Castle Black Market",
+  "redirect": true,
+  "text": ""
+ },
+ "A05B": {
+  "title": "Old Scratchy's Cave",
+  "redirect": true,
+  "text": ""
+ },
+ "A1A3": {
+  "title": "Cavern",
+  "redirect": true,
+  "text": ""
+ },
+ "ACB5": {
+  "title": "Small Fledgling Mukkir Nest",
+  "redirect": true,
+  "text": ""
+ },
+ "B070": {
+  "title": "Granite Quarry",
+  "redirect": true,
+  "text": ""
+ },
+ "B5F0": {
+  "title": "Aerfalle's Sanctum",
+  "redirect": true,
+  "text": ""
+ },
+ "C4B4": {
+  "title": "Ward Guardian Cave",
+  "redirect": true,
+  "text": ""
+ },
+ "C4B5": {
+  "title": "C4B5",
+  "redirect": false,
+  "text": "* [[Empty Paradox Olthoi Cave]]\n* [[Paradox Olthoi Refuge]]\n* [[Ward Guardian Cave]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "C4F2": {
+  "title": "Sclavus Tunnels",
+  "redirect": true,
+  "text": ""
+ },
+ "C7B7": {
+  "title": "C7B7",
+  "redirect": false,
+  "text": "* [[Paradox-Touched Olthoi Queen's Lair]]\n* [[Sealed Olthoi Passage]]\n* Cave at 44.5N 57.3E used to return to the Queen's Lair.\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
+ },
+ "CAEC": {
+  "title": "Vaeshok's Cave",
+  "redirect": true,
+  "text": ""
+ },
+ "D2D4": {
+  "title": "Targor's Cave",
+  "redirect": true,
+  "text": ""
+ },
+ "D756": {
+  "title": "Rat King's Cave",
+  "redirect": true,
+  "text": ""
+ },
+ "DC58": {
+  "title": "Small Fledgling Mukkir Nest",
+  "redirect": true,
+  "text": ""
+ },
+ "EA6C": {
+  "title": "Whispering Caverns",
+  "redirect": true,
+  "text": ""
+ },
+ "EB1D": {
+  "title": "Mosswart Holding",
+  "redirect": true,
+  "text": ""
+ },
+ "F784": {
+  "title": "Tusker Emporium",
+  "redirect": true,
+  "text": ""
+ },
+ "F81E": {
+  "title": "Blessed Cave",
+  "redirect": true,
+  "text": ""
+ },
+ "F838": {
+  "title": "Moarsman Prison",
+  "redirect": true,
+  "text": ""
+ },
+ "F83B": {
+  "title": "Bandit Magma Tubes",
+  "redirect": true,
+  "text": ""
+ },
+ "F92F": {
+  "title": "Freebooter Keep Black Market",
+  "redirect": true,
+  "text": ""
+ },
+ "F930": {
+  "title": "Freebooter Phyntos Wasp Hive",
+  "redirect": true,
+  "text": ""
+ },
+ "F93B": {
+  "title": "Bandit Magma Tubes",
+  "redirect": true,
+  "text": ""
+ }
+}
