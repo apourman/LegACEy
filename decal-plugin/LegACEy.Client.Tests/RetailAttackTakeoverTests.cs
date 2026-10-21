@@ -21,6 +21,7 @@ public sealed class RetailAttackTakeoverTests
         public List<string> Log { get; } = new();
         public FakeWindow? Window { get; private set; }
         public Exception? OpenFailure { get; set; }
+        public bool NotReady { get; set; }
         public RetailAttackNatives? Natives { get; set; } = Checked;
         public RetailAttackTakeover Takeover { get; }
 
@@ -33,6 +34,7 @@ public sealed class RetailAttackTakeoverTests
                 at =>
                 {
                     if (OpenFailure != null) throw OpenFailure;
+                    if (NotReady) return null;
                     Opened.Add(at);
                     return Window = new FakeWindow();
                 },
@@ -80,6 +82,46 @@ public sealed class RetailAttackTakeoverTests
 
         Assert.True(harness.Panel.Visible);
         Assert.False(harness.Takeover.Holds);
+        Assert.Empty(harness.Opened);
+    }
+
+    [Theory]
+    [InlineData(RetailStance.Peace)]
+    [InlineData(RetailStance.Magic)]
+    public void Peace_or_magic_closes_the_bar_and_melee_reopens_it_where_it_was_left(RetailStance stance)
+    {
+        var harness = new Harness();
+        harness.Tick(RetailStance.Melee);
+        var first = harness.Window!;
+
+        harness.Tick(stance);
+        Assert.Equal(1, first.Disposals);
+        Assert.True(harness.Panel.Visible);
+
+        // The window store keeps the bar's place across the close, so it reopens where it was left: here, at the same place.
+        harness.Tick(RetailStance.Melee);
+        Assert.Equal(new[] { Place, Place }, harness.Opened);
+        Assert.NotSame(first, harness.Window);
+        Assert.False(harness.Panel.Visible);
+    }
+
+    [Fact]
+    public void A_bar_that_is_not_ready_to_open_yet_leaves_retail_panel_and_opens_on_a_later_frame()
+    {
+        var harness = new Harness { NotReady = true };
+
+        harness.Tick(RetailStance.Melee);
+        Assert.True(harness.Panel.Visible);
+        Assert.False(harness.Takeover.Holds);
+        Assert.Empty(harness.Opened);
+        Assert.Empty(harness.Log);
+
+        harness.NotReady = false;
+        harness.Tick(RetailStance.Melee);
+
+        Assert.Equal(new[] { Place }, harness.Opened);
+        Assert.False(harness.Panel.Visible);
+        Assert.Empty(harness.Log);
     }
 
     [Fact]

@@ -5,10 +5,10 @@ using LegACEy.Client.Demo;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
-/// Holds retail's attack panel hidden while melee or missile is the stance, and opens the Dereth attack bar while the attack bar switch is on.
-/// Peace and magic leave retail's panel as retail shows it: the hold is given back then, with the panel's own state restored. Retail's panel is
-/// also given back when the switch goes off, the post-UI draw is gone, the player is out of the game, a native check fails, the window fails, and
-/// on unload. The bar window opens once and shows itself by the stance; its host surface is hidden with it by the runtime.
+/// Holds retail's attack panel hidden and opens the Dereth attack bar while melee or missile is the stance and the attack bar switch is on.
+/// Peace and magic close the bar and leave retail's panel as retail shows it: the hold is given back then, with the panel's own state restored.
+/// The bar closes on the same paths the panel is given back: the switch goes off, the post-UI draw is gone, the player is out of the game, a
+/// native check fails, the window fails, and unload. A closed bar keeps its place, as the window store saves it on close.
 /// </summary>
 internal sealed class RetailAttackTakeover : IDisposable
 {
@@ -39,7 +39,10 @@ internal sealed class RetailAttackTakeover : IDisposable
     /// <summary>Whether retail's attack panel is held: hidden by this takeover in melee or missile.</summary>
     public bool Holds => _held?.Holds == true;
 
-    /// <summary>Called every frame, in game or not. Holds retail's panel while melee or missile is shown and the bar is up, and gives it back otherwise.</summary>
+    /// <summary>
+    /// Called every frame, in game or not. While the bar is up (the switch on, the post-UI draw running, in game, in melee or missile) the bar is
+    /// open and retail's panel is held; otherwise both are given back.
+    /// </summary>
     /// <param name="switchOn">Whether the attack bar switch is on.</param>
     /// <param name="canDraw">Whether the post-UI draw is running, so the bar can be drawn.</param>
     /// <param name="inGame">Whether the character is in the world.</param>
@@ -50,7 +53,8 @@ internal sealed class RetailAttackTakeover : IDisposable
         try
         {
             if (!switchOn) _failed = false;
-            if (!switchOn || !canDraw || !inGame || _failed)
+            var up = switchOn && canDraw && inGame && !_failed && (stance == RetailStance.Melee || stance == RetailStance.Missile);
+            if (!up)
             {
                 Release();
                 return;
@@ -65,13 +69,11 @@ internal sealed class RetailAttackTakeover : IDisposable
                 return;
             }
             _window ??= _open(_retailAt());
-            if (stance is RetailStance.Melee or RetailStance.Missile)
-            {
-                _held ??= _hold();
-                // Re-asserted each frame: retail may show its panel again on a stance change.
-                _held.Tick(viewport);
-            }
-            else ReleaseHold();
+            // Retail's panel is held only while the bar is open; until the window can open, retail's panel stays as it is.
+            if (_window == null) return;
+            _held ??= _hold();
+            // Re-asserted each frame: retail may show its panel again on a stance change.
+            _held.Tick(viewport);
         }
         catch (Exception exception)
         {

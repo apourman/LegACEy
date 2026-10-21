@@ -1138,6 +1138,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (!_inGame) TickRetailPanels(loggingIn: true);
         });
 
+        // A failed bar gives retail's attack panel back on the frames that follow, as the vitals and radar do, until the give-back lands.
+        if (_failed && _attack?.Holds == true) _attack?.Release();
+
         if (_failed || !_inGame || !_windowsEnabled)
             return;
 
@@ -3004,11 +3007,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private Point RetailAttackPlace()
     {
+        const int ScreenBottomGap = 120;
         var definition = DerethAttackBarWindow.DefinitionOf();
         var screen = _windows?.Screen ?? Size.Empty;
         var element = NativeUi.GetElement(RetailAttackCatalogue.CombatPanel);
         if (element == IntPtr.Zero)
-            return new Point(Math.Max(0, (screen.Width - definition.Width) / 2), Math.Max(0, screen.Height - definition.Height - 120));
+            return new Point(Math.Max(0, (screen.Width - definition.Width) / 2), Math.Max(0, screen.Height - definition.Height - ScreenBottomGap));
         var bounds = NativeUi.GetBounds(element);
         return new Point(bounds.X + (bounds.Width - definition.Width) / 2, bounds.Y + (bounds.Height - definition.Height) / 2);
     }
@@ -3019,8 +3023,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private IDisposable? OpenAttackBar(Point at)
     {
-        if (!CanOpenWindows || _attackNatives is not { } natives) return null;
-        var port = new NativeAttackBarPort(natives, HudNatives().Lock);
+        if (!CanOpenWindows || _attackNatives == null) return null;
+        var port = new NativeAttackBarPort(HudNatives().Lock);
         var window = new DerethAttackBarWindow(port, () => _windows?.BeginMove(DerethAttackBarWindow.WindowId, _pointer));
         var definition = DerethAttackBarWindow.DefinitionOf();
         try { OpenWindowCore(definition, window, at, AttackFailed); }
@@ -3074,7 +3078,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (now - lastCheck >= TimeSpan.FromSeconds(1))
         {
             lastCheck = now;
-            // SwitchCustom is on while the file is missing, so an opt-in switch is on where it is not.
+            // SwitchCustom is on while the file is missing, so an opt-in switch is on where it is not. Only the attack bar's file is opt-in
+            // and it is not a Settings choice row, so only it passes onWhenMissing.
             on = SwitchCustom(IOPath.Combine(PluginDirectory, file)) == onWhenMissing;
         }
         return on;
@@ -3788,8 +3793,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         catch (Exception exception) { Log($"Could not give the retail radar back during unload: {exception}"); }
         if (_radarTakeover != null) Log("Retail's radar is still held after two tries at unload; it stays hidden until the client restarts.");
-        try { _attack?.Dispose(); }
+        try
+        {
+            _attack?.Release();
+            if (_attack?.Holds == true) _attack?.Release();
+        }
         catch (Exception exception) { Log($"Could not give the retail attack panel back during unload: {exception}"); }
+        if (_attack?.Holds == true) Log("Retail's attack panel is still held after two tries at unload; it stays hidden until the client restarts.");
+        // Kept while still held, so a disabled UI's frames go on retrying the give-back.
+        else _attack = null;
         DisposeRadarGround();
         if (_itemDragActive)
             try { _retailDrag?.ClearDropIndicator(); } catch (Exception exception) { Log($"Could not clear the inventory drop indicator: {exception.Message}"); }

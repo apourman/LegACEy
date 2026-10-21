@@ -7,8 +7,8 @@ namespace LegACEy.Client.DecalPlugin;
 /// <summary>
 /// The attack bar's port over the installed client. The stance is Decal's combat mode. The set point, the attack height and the charge are
 /// ClientCombatSystem's, and the three options are retail's PlayerModule accessors, so retail's keys and notices stay in step with the bar.
-/// Each feature is on only when its list in <see cref="RetailAttackCatalogue"/> passed; one that did not reads as empty and ignores writes.
-/// <see cref="Poll"/> raises <see cref="Changed"/> when a value moved, and is called once a frame on the game thread.
+/// It is built only once every list in <see cref="RetailAttackCatalogue"/> has passed. <see cref="Poll"/> raises <see cref="Changed"/> when a
+/// value moved, and is called once a frame on the game thread.
 /// </summary>
 internal sealed class NativeAttackBarPort : IAttackBarPort
 {
@@ -47,17 +47,11 @@ internal sealed class NativeAttackBarPort : IAttackBarPort
     private static readonly OptionNatives AutoTargetOption = new(RetailAttackCatalogue.AutoTarget, RetailAttackCatalogue.SetAutoTarget);
     private static readonly OptionNatives KeepInViewOption = new(RetailAttackCatalogue.ViewCombatTarget, RetailAttackCatalogue.SetViewCombatTarget);
 
-    private readonly RetailAttackNatives _natives;
     private readonly bool _lockAvailable;
     private Values? _last;
 
-    /// <param name="natives">Which features the running client matched.</param>
     /// <param name="lockAvailable">Whether retail's Lock UI natives matched; the window does not move while the UI is locked.</param>
-    public NativeAttackBarPort(RetailAttackNatives natives, bool lockAvailable)
-    {
-        _natives = natives ?? throw new ArgumentNullException(nameof(natives));
-        _lockAvailable = lockAvailable;
-    }
+    public NativeAttackBarPort(bool lockAvailable) => _lockAvailable = lockAvailable;
 
     public event EventHandler? Changed;
 
@@ -65,10 +59,10 @@ internal sealed class NativeAttackBarPort : IAttackBarPort
 
     public double SetPoint
     {
-        get => ReadUnit(SetPointOffset, _natives.SetPoint);
+        get => ReadUnit(SetPointOffset);
         set
         {
-            if (!_natives.SetPoint || CombatSystem() is not { } system) return;
+            if (CombatSystem() is not { } system) return;
             // Retail's order: the field, then the notice that tells the combat UI the set point moved.
             var power = (float)ClampUnit(value);
             Marshal.WriteInt32(system, SetPointOffset, BitConverter.SingleToInt32Bits(power));
@@ -78,10 +72,10 @@ internal sealed class NativeAttackBarPort : IAttackBarPort
 
     public AttackHeight Height
     {
-        get => _natives.Height && CombatSystem() is { } system ? HeightOf(Marshal.ReadInt32(system, HeightOffset)) : AttackHeight.High;
+        get => CombatSystem() is { } system ? HeightOf(Marshal.ReadInt32(system, HeightOffset)) : AttackHeight.High;
         set
         {
-            if (!_natives.Height || CombatSystem() is not { } system) return;
+            if (CombatSystem() is not { } system) return;
             // Retail's order: the notice first, then the setter that stores the height.
             var native = NativeHeight(value);
             SendAttackHeight(native);
@@ -89,7 +83,7 @@ internal sealed class NativeAttackBarPort : IAttackBarPort
         }
     }
 
-    public double Charge => ReadUnit(ChargeOffset, _natives.Charge);
+    public double Charge => ReadUnit(ChargeOffset);
 
     public bool AutoRepeatAttack { get => ReadOption(AutoRepeatOption); set => WriteOption(AutoRepeatOption, value); }
 
@@ -122,14 +116,14 @@ internal sealed class NativeAttackBarPort : IAttackBarPort
         _ => AttackHeight.High
     };
 
-    private double ReadUnit(int offset, bool enabled) =>
-        enabled && CombatSystem() is { } system ? ClampUnit(BitConverter.Int32BitsToSingle(Marshal.ReadInt32(system, offset))) : 0;
+    private double ReadUnit(int offset) =>
+        CombatSystem() is { } system ? ClampUnit(BitConverter.Int32BitsToSingle(Marshal.ReadInt32(system, offset))) : 0;
 
-    private bool ReadOption(OptionNatives option) => _natives.Options && PlayerModule() is { } module && option.Read(module);
+    private bool ReadOption(OptionNatives option) => PlayerModule() is { } module && option.Read(module);
 
     private void WriteOption(OptionNatives option, bool value)
     {
-        if (_natives.Options && PlayerModule() is { } module) option.Write(module, value);
+        if (PlayerModule() is { } module) option.Write(module, value);
     }
 
     /// <summary>ClientCombatSystem, or null when there is no character.</summary>
