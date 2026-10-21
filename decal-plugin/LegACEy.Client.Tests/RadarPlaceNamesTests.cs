@@ -64,7 +64,7 @@ public sealed class RadarPlaceNamesTests
     {
         var plan = new RadarPlan(RadarPlanFixtures.Dungeon((int)(cell >> 24), (int)((cell >> 16) & 0xFF)), (ushort)(cell & 0xFFFF));
         var player = new RadarPlayer(new RadarPosition(cell, 60, 84, 0), 0);
-        return RadarScope.Build(player, Array.Empty<RadarObject>(), new RadarOptions(), 59, plan, serverName).Plaque;
+        return RadarScope.Build(player, Array.Empty<RadarObject>(), new RadarOptions(), 59, plan, serverName: serverName).Plaque;
     }
 
     /// <summary>Records each request and answers it when the test says so, as the host's channel does.</summary>
