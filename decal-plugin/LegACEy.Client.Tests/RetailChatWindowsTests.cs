@@ -258,6 +258,29 @@ public sealed class RetailChatWindowsTests
     }));
 
     [Fact]
+    public void Names_take_the_picked_colour_in_every_window_and_it_is_kept_per_character() => RenderThread.Run(() => WithStore(path =>
+    {
+        var positions = new MemoryWindowPositionStore();
+        var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };
+        using var first = ChatDesk.Open(port, path, Character, positions);
+        port.Say(new RetailChatLine(RetailChatKind.Allegiance, "Kaelith tells the allegiance, \"pull the next\"", Stamp, "Kaelith"));
+        first.Tick();
+        Assert.Equal(DerethChatPalette.Allegiance, NameInk(first.Main));
+        first.Chat.SetNameColour(1);
+        Assert.Equal(DerethChatPalette.Link, NameInk(first.Main));
+        first.Dispose();
+
+        using var second = ChatDesk.Open(port, path, Character, positions);
+        port.Say(new RetailChatLine(RetailChatKind.Allegiance, "Kaelith tells the allegiance, \"again\"", Stamp, "Kaelith"));
+        second.Tick();
+        Assert.Equal(DerethChatPalette.Link, NameInk(second.Main));
+
+        static Avalonia.Media.Color NameInk(Control window) => ((Avalonia.Media.SolidColorBrush)window.GetVisualDescendants()
+            .OfType<SelectableTextBlock>().First(line => line.Tag is DateTime).Inlines!
+            .OfType<Avalonia.Controls.Documents.Run>().First(run => run.Text == "Kaelith").Foreground!).Color;
+    }));
+
+    [Fact]
     public void Unread_counts_work_in_a_torn_off_window_and_the_main_window() => RenderThread.Run(() => WithStore(path =>
     {
         var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };

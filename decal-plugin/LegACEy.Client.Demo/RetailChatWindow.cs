@@ -530,6 +530,21 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     }
     private int _inactiveOpacity = RetailChatWindows.DefaultInactiveOpacity;
 
+    /// <summary>The colour names are drawn in, or null for each line's own colour. A change redraws the log.</summary>
+    public Color? NameColour
+    {
+        get => _nameColour;
+        set
+        {
+            if (_nameColour == value) return;
+            _nameColour = value;
+            _nameBrush = value is { } colour ? DerethPalette.Brush(colour) : null;
+            RebuildLog();
+        }
+    }
+    private Color? _nameColour;
+    private IBrush? _nameBrush;
+
     /// <summary>The text size the window's content is drawn at, 1 for its design size.</summary>
     public double TextScale
     {
@@ -666,10 +681,10 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         {
             if (link.Start > afterLink) Add(DerethChatParts.TextRun(line.Text.Substring(afterLink, link.Start - afterLink), brush, italic));
             var shown = line.Text.Substring(link.Start, link.Length);
-            // A name keeps the line's colour; a plugin's link is drawn in retail's link green.
+            // A name keeps the line's colour unless the player picked one for names; a plugin's link is drawn in retail's link green.
             var tell = link.Name ? RetailTalkTarget.Tell(shown, link.Id) : null;
             var start = written;
-            Add(DerethChatParts.TextRun(shown, link.Name ? brush : LinkBrush, italic));
+            Add(DerethChatParts.TextRun(shown, link.Name ? _nameBrush ?? brush : LinkBrush, italic));
             WireClick(view, start, written, () =>
             {
                 if (!_port.Click(link.Id, link.Tag) && tell != null) TellTo(tell);
