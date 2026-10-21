@@ -155,10 +155,19 @@ public sealed class SettingsPanelTests
             PressCentre(panel, TextOf(panel, "150"));
         }
 
+        var vitals = new ClientSettings(null, null, Windows("Vitals"))
+        {
+            Vitals = new OptionChoice<VitalsLayout>(VitalsLayout.Stacked, _ => { }),
+            VitalsRetailBars = new OptionChoice<bool>(false, value => changes.Add(value)),
+        };
+        using (var panel = Tab(vitals))
+            PressCentre(panel, TextOf(panel, "Retail-style bars").GetVisualAncestors().OfType<DockPanel>().First().GetVisualDescendants().OfType<DerethToggle>().Single());
+
         Assert.Equal(new object[]
         {
             false, 130, 0, 30, VitalsLayout.SideBySide,
             new RadarOptions(Map: false), new RadarOptions(NorthUp: true), new RadarOptions(Rings: true), new RadarOptions(Zoom: 150),
+            true,
         }, changes);
     });
 

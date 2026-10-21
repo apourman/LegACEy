@@ -52,6 +52,7 @@ public sealed class ClientSettings
     private WaterOption? _water;
     private LockUiChoice? _lockUi;
     private OptionChoice<VitalsLayout>? _vitals;
+    private OptionChoice<bool>? _vitalsRetailBars;
     private OptionChoice<bool>? _shortcutRow2;
     private OptionChoice<int>? _chatTextSize;
     private OptionChoice<int>? _chatFade;
@@ -85,6 +86,9 @@ public sealed class ClientSettings
 
     /// <summary>The Vitals window's layout, for this character. Null hides its row.</summary>
     public OptionChoice<VitalsLayout>? Vitals { get => _vitals; set => Moved(ref _vitals, value); }
+
+    /// <summary>Whether the Vitals window's bars are retail-style, for this character. Null hides its row.</summary>
+    public OptionChoice<bool>? VitalsRetailBars { get => _vitalsRetailBars; set => Moved(ref _vitalsRetailBars, value); }
 
     /// <summary>Whether the toolbar's second shortcut row is shown, for this character. Null hides its row.</summary>
     public OptionChoice<bool>? ShortcutRow2 { get => _shortcutRow2; set => Moved(ref _shortcutRow2, value); }
@@ -370,7 +374,7 @@ public sealed class SettingsPanel : UserControl
     private List<Control> OptionRows(string window)
     {
         var rows = new List<Control>();
-        if (window == "Toolbar" && _settings.ShortcutRow2 != null) rows.Add(ShortcutRow2Row());
+        if (window == "Toolbar" && _settings.ShortcutRow2 != null) rows.Add(ToggleRow("Second shortcut row", () => _settings.ShortcutRow2));
         if (window == "Chat" && _settings.ChatTextSize != null) rows.Add(ChatTextSizeRow());
         if (window == "Chat" && _settings.ChatFade != null) rows.Add(ChatFadeRow());
         if (window == "Chat" && _settings.ChatActiveOpacity != null) rows.Add(SliderRow("Active opacity", 0, 100, RetailChatWindows.OpacityStep,
@@ -378,6 +382,7 @@ public sealed class SettingsPanel : UserControl
         if (window == "Chat" && _settings.ChatInactiveOpacity != null) rows.Add(SliderRow("Inactive opacity", 0, 100, RetailChatWindows.OpacityStep,
             () => _settings.ChatInactiveOpacity?.Value, value => _settings.ChatInactiveOpacity?.Set(value), thisCharacter: true));
         if (window == "Vitals" && _settings.Vitals != null) rows.Add(VitalsRow());
+        if (window == "Vitals" && _settings.VitalsRetailBars != null) rows.Add(ToggleRow("Retail-style bars", () => _settings.VitalsRetailBars));
         if (window == "Radar" && _settings.Radar != null) rows.AddRange(RadarRows());
         return rows;
     }
@@ -402,14 +407,15 @@ public sealed class SettingsPanel : UserControl
         return OptionRow("Layout", layout);
     }
 
-    private Control ShortcutRow2Row()
+    /// <summary>A toggle row for an on/off option, read through <paramref name="option"/> so it follows the settings' current value.</summary>
+    private Control ToggleRow(string text, Func<OptionChoice<bool>?> option)
     {
         var toggle = new DerethToggle();
-        void Show() => toggle.On = _settings.ShortcutRow2 is { Value: true };
-        toggle.Changed += on => _settings.ShortcutRow2?.Set(on);
+        void Show() => toggle.On = option() is { Value: true };
+        toggle.Changed += on => option()?.Set(on);
         _redraws.Add(Show);
         Show();
-        return OptionRow("Second shortcut row", toggle);
+        return OptionRow(text, toggle);
     }
 
     /// <summary>The chat text size, stepped down or up in the chat's steps and within its bounds.</summary>
