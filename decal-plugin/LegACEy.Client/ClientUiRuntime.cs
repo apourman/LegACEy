@@ -898,6 +898,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var settings = new ClientSettings(AvaloniaPanel.CanScale ? new UiSizeChoice(_uiSize, SetUiSize) : null, UpdateCheck(), WindowChoices(), WaterOptionFor(_water), LockUiOption())
         {
             Vitals = new OptionChoice<VitalsLayout>(_vitalsLayouts.Load(SessionServer(), SessionCharacter()), ChooseVitalsLayout),
+            VitalsRetailBars = new OptionChoice<bool>(_vitalsLayouts.RetailBars(SessionServer(), SessionCharacter()), SetVitalsRetailBars),
             ShortcutRow2 = new OptionChoice<bool>(_row2Choice.IsOn(SessionServer(), SessionCharacter()), SetShortcutRow2),
             ChatTextSize = new OptionChoice<int>(RetailChatWindows.LoadTextSize(_positionStore, SessionServer(), SessionCharacter()), SetChatTextSize),
             ChatFade = new OptionChoice<int>(RetailChatWindows.LoadFadeSeconds(_positionStore, SessionServer(), SessionCharacter()), SetChatFadeSeconds),
@@ -3133,7 +3134,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (!CanOpenWindows) return null;
         var layout = _vitalsLayouts.Load(SessionServer(), SessionCharacter());
         var definition = DerethVitalsWindow.DefinitionOf(layout, () => NativeUi.IsUiLocked);
-        var view = new DerethVitalsWindow(_gameState, () => NativeUi.IsUiLocked, () => _windows?.BeginMove(definition.Id, _pointer), layout, ChooseVitalsLayout);
+        var view = new DerethVitalsWindow(_gameState, () => NativeUi.IsUiLocked, () => _windows?.BeginMove(definition.Id, _pointer), layout, ChooseVitalsLayout,
+            _vitalsLayouts.RetailBars(SessionServer(), SessionCharacter()));
         OpenWindowCore(definition, view, at, VitalsFailed);
         return new VitalsWindowHandle(this, view, definition.Id);
     }
@@ -3147,6 +3149,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _vitalsLayouts.Save(SessionServer(), SessionCharacter(), layout);
         _vitalsLayoutPicked = true;
         if (_settings != null) _settings.Vitals = new OptionChoice<VitalsLayout>(layout, ChooseVitalsLayout);
+    }
+
+    /// <summary>Keeps whether the character's vitals bars are retail-style; the window reopens with them on the next frame, as for a layout.</summary>
+    private void SetVitalsRetailBars(bool on)
+    {
+        _vitalsLayouts.SaveRetailBars(SessionServer(), SessionCharacter(), on);
+        _vitalsLayoutPicked = true;
+        if (_settings != null) _settings.VitalsRetailBars = new OptionChoice<bool>(on, SetVitalsRetailBars);
     }
 
     /// <summary>

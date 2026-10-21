@@ -13,7 +13,8 @@ namespace LegACEy.Client.Demo;
 /// LegACEy's vitals window in one of two layouts, both in the gilded frame. Stacked (A): retail's three bars in retail's order and colours on
 /// an ornate gilded plate, each with its glyph in an engraved gold bezel at the left and current / max on a plaque at the right. Side by side
 /// (D): the same parts in one row on a slim gilded plate, sharing the width equally, with a gold lozenge between vitals. Either way a pale trail stays behind a drop, health pulses at its edge under a quarter, and a gear
-/// shown on hover switches the layout. Its values come from the game's state each frame.
+/// shown on hover switches the layout. With retail-style bars, either layout drops the glyphs and plaques, as retail's bars do, and shows each
+/// vital's numbers in the middle of its taller bar. Its values come from the game's state each frame.
 /// </summary>
 public sealed class DerethVitalsWindow : UserControl
 {
@@ -33,6 +34,8 @@ public sealed class DerethVitalsWindow : UserControl
 
     // The bezels' diameters, stacked and in the strip, and the stacked window's value plaque, in DIPs.
     private const double StackedBezel = 17.6, SideBezel = 14.4, PlaqueWidth = 44, PlaqueHeight = 15;
+    // A retail-style stacked bar's height in DIPs, tall enough for its numbers inside.
+    private const double RetailBarHeight = 15;
     private const double GearDiameter = 11, GearGlyphSize = 7;
 
     private readonly IGameStatePort _game;
@@ -58,7 +61,9 @@ public sealed class DerethVitalsWindow : UserControl
     /// <param name="startMove">Starts the window's move from the pointer's place, on a press on the window that should drag it.</param>
     /// <param name="layout">The layout the window draws: stacked or side by side.</param>
     /// <param name="chose">Told the layout the gear asks for, which is the other one. The owner keeps it and opens that layout's window.</param>
-    public DerethVitalsWindow(IGameStatePort game, Func<bool> uiLocked, Action startMove, VitalsLayout layout = VitalsLayout.Stacked, Action<VitalsLayout>? chose = null)
+    /// <param name="retailBars">Whether the bars are retail-style: no glyphs or plaques, and the numbers in the middle of each bar.</param>
+    public DerethVitalsWindow(IGameStatePort game, Func<bool> uiLocked, Action startMove, VitalsLayout layout = VitalsLayout.Stacked, Action<VitalsLayout>? chose = null,
+        bool retailBars = false)
     {
         _game = game ?? throw new ArgumentNullException(nameof(game));
         _uiLocked = uiLocked ?? throw new ArgumentNullException(nameof(uiLocked));
@@ -73,7 +78,7 @@ public sealed class DerethVitalsWindow : UserControl
             : new Grid { RowDefinitions = new RowDefinitions("*,*,*"), Margin = new Thickness(13.2, 10.5, 9, 10.5) };
         foreach (var vital in new[] { Vital.Health, Vital.Stamina, Vital.Mana })
         {
-            var row = Line(vital, side);
+            var row = Line(vital, side, retailBars);
             _rows[vital] = row;
             if (side) Grid.SetColumn(row.Line, 2 * (int)vital);
             else Grid.SetRow(row.Line, (int)vital);
@@ -185,7 +190,7 @@ public sealed class DerethVitalsWindow : UserControl
         _grip.IsVisible = !_uiLocked();
     }
 
-    private static Row Line(Vital vital, bool side)
+    private static Row Line(Vital vital, bool side, bool retailBars)
     {
         var (glyph, light, mid, dark) = vital switch
         {
@@ -195,17 +200,40 @@ public sealed class DerethVitalsWindow : UserControl
         };
         var row = new Row
         {
-            Bar = new DerethVitalBar(light, mid, dark, ticks: !side),
+            Bar = new DerethVitalBar(light, mid, dark, ticks: !side && !retailBars),
             CurrentText = new Run(),
-            MaxText = new Run { FontSize = side ? 7 : 7.6, Foreground = DerethPalette.Brush(Color.Parse("#B49A6A")) }
+            // On the bar's colour the max is cream too, and only smaller.
+            MaxText = new Run { FontSize = side ? 7 : 7.6, Foreground = retailBars ? DerethPalette.CreamBrush : DerethPalette.Brush(Color.Parse("#B49A6A")) }
         };
-        // Centred on its digits, not on Palatino's tall line box, so it sits in the middle of its plaque.
+        // Centred on its digits, not on Palatino's tall line box, so it sits in the middle of its plaque or its bar.
         row.Label = DerethPalette.CentreInk(new TextBlock
         {
-            FontFamily = DerethPalette.Title, FontSize = side ? 9.5 : 10.5, Foreground = DerethPalette.CreamBrush,
-            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+            FontFamily = DerethPalette.Title, FontSize = side ? (retailBars ? 8.5 : 9.5) : (retailBars ? 9.5 : 10.5), Foreground = DerethPalette.CreamBrush,
+            HorizontalAlignment = retailBars ? HorizontalAlignment.Center : HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
             Inlines = { row.CurrentText, row.MaxText }
         });
+        if (retailBars)
+        {
+            // A dark halo keeps the numbers readable over the fill's light band.
+            row.Label.Effect = new DropShadowEffect { OffsetX = 0, OffsetY = 0, BlurRadius = 2.5, Color = Colors.Black, Opacity = 1 };
+            row.Label.IsHitTestVisible = false;
+            Control retailBar;
+            if (side)
+            {
+                row.Bar.Height = double.NaN;
+                retailBar = new Grid { RowDefinitions = new RowDefinitions("6*,14*,6*"), Margin = new Thickness(6, 0), Children = { row.Bar, row.Label } };
+                Grid.SetRow(row.Bar, 1);
+                Grid.SetRow(row.Label, 1);
+            }
+            else
+            {
+                row.Bar.Height = RetailBarHeight;
+                row.Bar.VerticalAlignment = VerticalAlignment.Center;
+                retailBar = new Grid { Margin = new Thickness(0, 0, 4, 0), Children = { row.Bar, row.Label } };
+            }
+            row.Line = new Grid { Background = Brushes.Transparent, Children = { retailBar } };
+            return row;
+        }
         var bezel = new DerethVitalGlyph(glyph, light, side ? SideBezel : StackedBezel) { VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(bezel, 0);
 

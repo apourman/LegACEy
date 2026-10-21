@@ -133,7 +133,8 @@ Retail's Lock UI locks every LegACEy window too: while it is on, none moves or r
 
 The Dereth vitals window replaces retail's vitals, at retail's place. Health, stamina and mana show current / max in retail's colours; a
 drop leaves a pale trail, and health pulses under a quarter. The gear shown on hover switches between the stacked window and a slim
-side-by-side strip; each layout keeps its own size, and the choice is kept per character. Drag the corner grip or the bottom edge to
+side-by-side strip; each layout keeps its own size, and the choice is kept per character. Settings → Windows → Vitals → Retail-style
+bars drops the vital glyphs and value plaques and shows each value in the middle of its bar, as retail does, in either layout. Drag the corner grip or the bottom edge to
 draw the window larger or smaller (up to twice its size), and a side edge to stretch its bars longer. Creating an empty file named `retail-vitals-native` beside the main DLL gives retail's vitals back within
 a second; deleting it takes them over again.
 

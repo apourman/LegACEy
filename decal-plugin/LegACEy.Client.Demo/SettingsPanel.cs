@@ -52,6 +52,7 @@ public sealed class ClientSettings
     private WaterOption? _water;
     private LockUiChoice? _lockUi;
     private OptionChoice<VitalsLayout>? _vitals;
+    private OptionChoice<bool>? _vitalsRetailBars;
     private OptionChoice<bool>? _shortcutRow2;
     private OptionChoice<int>? _chatTextSize;
     private OptionChoice<int>? _chatFade;
@@ -85,6 +86,9 @@ public sealed class ClientSettings
 
     /// <summary>The Vitals window's layout, for this character. Null hides its row.</summary>
     public OptionChoice<VitalsLayout>? Vitals { get => _vitals; set => Moved(ref _vitals, value); }
+
+    /// <summary>Whether the Vitals window's bars are retail-style, for this character. Null hides its row.</summary>
+    public OptionChoice<bool>? VitalsRetailBars { get => _vitalsRetailBars; set => Moved(ref _vitalsRetailBars, value); }
 
     /// <summary>Whether the toolbar's second shortcut row is shown, for this character. Null hides its row.</summary>
     public OptionChoice<bool>? ShortcutRow2 { get => _shortcutRow2; set => Moved(ref _shortcutRow2, value); }
@@ -346,6 +350,7 @@ public sealed class SettingsPanel : UserControl
         if (window == "Chat" && _settings.ChatInactiveOpacity != null) rows.Add(SliderRow("Inactive opacity", 0, 100, RetailChatWindows.OpacityStep,
             () => _settings.ChatInactiveOpacity?.Value, value => _settings.ChatInactiveOpacity?.Set(value), thisCharacter: true));
         if (window == "Vitals" && _settings.Vitals != null) rows.Add(VitalsRow());
+        if (window == "Vitals" && _settings.VitalsRetailBars != null) rows.Add(VitalsRetailBarsRow());
         if (window == "Radar" && _settings.Radar != null) rows.AddRange(RadarRows());
         return rows;
     }
@@ -368,6 +373,16 @@ public sealed class SettingsPanel : UserControl
         _redraws.Add(Show);
         Show();
         return OptionRow("Layout", layout);
+    }
+
+    private Control VitalsRetailBarsRow()
+    {
+        var toggle = new DerethToggle();
+        void Show() => toggle.On = _settings.VitalsRetailBars is { Value: true };
+        toggle.Changed += on => _settings.VitalsRetailBars?.Set(on);
+        _redraws.Add(Show);
+        Show();
+        return OptionRow("Retail-style bars", toggle);
     }
 
     private Control ShortcutRow2Row()
