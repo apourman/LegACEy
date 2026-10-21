@@ -16,7 +16,7 @@ namespace LegACEy.Client.Tests;
 public sealed class RetailToolbarTests
 {
     private const int Width = 600;
-    private const int Height = 60;
+    private const int Height = 90;
 
     [Fact]
     public void Stance_shows_the_port_stance_and_a_click_asks_the_port_to_toggle() => RenderThread.Run(() =>
@@ -184,6 +184,68 @@ public sealed class RetailToolbarTests
         var fullBackpack = fullToolbar.ButtonFor(RetailPanel.Inventory);
         Assert.False(fullToolbar.RetailDrop(0x500, string.Empty,
             fullBackpack.TranslatePoint(new Point(fullBackpack.Bounds.Width / 2, fullBackpack.Bounds.Height / 2), fullToolbar)!.Value));
+    });
+
+    [Fact]
+    public void The_shortcut_rows_and_the_buttons_above_them_are_one_width() => RenderThread.Run(() =>
+    {
+        RetailToolbar? toolbar = null;
+        ShortcutBar row1 = Row(0, new ShortcutDragSource()), row2 = Row(9, new ShortcutDragSource());
+        // Laid out at its own size, as the client sizes the toolbar's panel: the rows set it.
+        using var panel = AvaloniaPanel.Create(() => toolbar = new RetailToolbar(new FakeToolbarPort(), () => { }, _ => true), 1, 1);
+        toolbar!.SetShortcutRows(row1, row2);
+        toolbar.Measure(Size.Infinity);
+        panel.Resize((int)Math.Ceiling(toolbar!.DesiredSize.Width), (int)Math.Ceiling(toolbar.DesiredSize.Height));
+        panel.Tick();
+
+        double Left(Control control) => control.TranslatePoint(default, toolbar)!.Value.X;
+        double Right(Control control) => Left(control) + control.Bounds.Width;
+        Assert.InRange(Left(toolbar.StanceButton) - Left(row1.RowTag), -1, 1);
+        Assert.InRange(Right(toolbar.ButtonFor(RetailPanel.Inventory)) - Right(row2.SlotAt(ShortcutBar.SlotCount - 1)), -1, 1);
+        Assert.True(row2.SlotAt(0).TranslatePoint(default, toolbar)!.Value.Y > row1.SlotAt(0).TranslatePoint(default, toolbar)!.Value.Y);
+    });
+
+    [Fact]
+    public void The_toolbar_renders_to_pngs_when_asked() => RenderThread.Run(() =>
+    {
+        // Looked at by a person, not asserted: LEGACEY_TOOLBAR_RENDER names the folder the PNGs are written to.
+        var folder = Environment.GetEnvironmentVariable("LEGACEY_TOOLBAR_RENDER");
+        if (folder == null) return;
+        Directory.CreateDirectory(folder);
+        foreach (var (rows, scale) in new[] { (2, 1.0), (1, 1.0), (2, 2.0) })
+        {
+            RetailToolbar? toolbar = null;
+            using var panel = AvaloniaPanel.Create(() => toolbar = new RetailToolbar(new FakeToolbarPort(), () => { }, _ => true), 1, 1, scale);
+            panel.ApplyTheme(new DerethClientTheme());
+            toolbar!.SetShortcutRows(rows == 2 ? new[] { Row(0, new ShortcutDragSource()), Row(9, new ShortcutDragSource()) } : new[] { Row(0, new ShortcutDragSource()) });
+            toolbar.Measure(Size.Infinity);
+            panel.Resize((int)Math.Ceiling(toolbar.DesiredSize.Width * scale), (int)Math.Ceiling(toolbar.DesiredSize.Height * scale));
+            panel.Tick();
+            PanelPng.Save(panel, Path.Combine(folder, $"toolbar-{rows}-rows-{scale:0}x.png"));
+        }
+    });
+
+    [Fact]
+    public void A_shortcut_released_on_a_row_lands_there_and_on_the_backpack_is_not_moved_to_the_main_pack() => RenderThread.Run(() =>
+    {
+        var moved = new List<uint>();
+        var source = new ShortcutDragSource();
+        var row = Row(0, source);
+        using var panel = Open(new FakeToolbarPort(), out var toolbar, ids => { moved.AddRange(ids); return true; });
+        toolbar.SetShortcutRows(row);
+        panel.Resize(Width, 160);
+        panel.Tick();
+        Point Centre(Control control) => control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), toolbar)!.Value;
+
+        // A shortcut in hand released on the backpack only comes off its row.
+        source.Slot = 2;
+        source.ObjectId = 0x100;
+        Assert.False(toolbar.RetailDrop(0x100, string.Empty, Centre(toolbar.ButtonFor(RetailPanel.Inventory))));
+        Assert.Empty(moved);
+
+        // Released on a slot, the row takes it.
+        Assert.True(toolbar.RetailDrop(0x100, string.Empty, Centre(row.SlotAt(4))));
+        Assert.Null(source.Slot);
     });
 
     [Fact]
@@ -520,6 +582,9 @@ public sealed class RetailToolbarTests
     /// <summary>The panel's frame must show what a fresh toolbar in the same state draws. A mismatch names the pixels that differ.</summary>
     private static void AssertDrawn(byte[] fresh, AvaloniaPanel panel)
     {
+        // Drawn whole, as a fresh toolbar is: a redraw clipped to what changed blends the soft edges it cuts through a shade differently.
+        foreach (var visual in panel.Content.GetSelfAndVisualDescendants()) visual.InvalidateVisual();
+        panel.Tick();
         var actual = panel.Frame.Pixels;
         if (fresh.AsSpan().SequenceEqual(actual)) return;
         var stride = panel.Frame.Stride / 4;
@@ -536,6 +601,10 @@ public sealed class RetailToolbarTests
         toolbar = created!;
         return panel;
     }
+
+    /// <summary>A shortcut row over an empty shortcut list, for the toolbar to hold.</summary>
+    private static ShortcutBar Row(int firstIndex, ShortcutDragSource source) =>
+        new(firstIndex == 0 ? 1 : 2, firstIndex, new FakeToolbarPort(), _ => null, null, () => default, null, new FakeItemDragHost(), source);
 
     private static AvaloniaPanel OpenTab(IRetailToolbarPort port, out StackSplitTab tab)
     {
