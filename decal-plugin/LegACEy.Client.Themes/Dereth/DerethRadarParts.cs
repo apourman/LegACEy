@@ -55,6 +55,11 @@ public sealed class DerethRadarScope : Control
     private static readonly Geometry ArrowDown = Geometry.Parse("M0,2.6 L2.4,-1.6 L-2.4,-1.6 Z");
     private const double ArrowOpacity = 0.85;
     private static readonly IBrush StairInk = DerethPalette.CreamBrush;
+    // A ping: a diamond with a ring that swells from it once a pulse; one past the rim is an arrow on the rim pointing out. It fades over the
+    // last fifth of its life.
+    private static readonly Geometry PingDiamond = Geometry.Parse("M0,-3.6 L3.6,0 L0,3.6 L-3.6,0 Z");
+    private static readonly Geometry PingArrow = Geometry.Parse("M0,-4.5 L3.8,2.5 L-3.8,2.5 Z");
+    private const double PingPulseSeconds = 1.2, PingLifeSeconds = 15, PingRimInset = 5;
 
     private IReadOnlyList<(IImage Image, Rect Metres)> _tiles = Array.Empty<(IImage Image, Rect Metres)>();
     private IReadOnlyList<(Geometry Floors, Geometry Walls, bool Solid, bool Peek)> _planLevels = Array.Empty<(Geometry Floors, Geometry Walls, bool Solid, bool Peek)>();
@@ -69,6 +74,7 @@ public sealed class DerethRadarScope : Control
     // The dots' brushes by colour and alpha, made once each: a dot's alpha takes only a few values.
     private readonly Dictionary<(Color Colour, byte Alpha), IBrush> _dotBrushes = new();
     private (string Text, Point At)? _label;
+    private IReadOnlyList<(Point At, Color Colour, double Age, double? Edge)> _pings = Array.Empty<(Point At, Color Colour, double Age, double? Edge)>();
     private double _turn, _arrow, _pixelsPerMetre = 1;
     private bool _rings;
 
@@ -119,6 +125,16 @@ public sealed class DerethRadarScope : Control
         set { if (ReferenceEquals(_dots, value)) return; _dots = value; InvalidateVisual(); }
     }
 
+    /// <summary>
+    /// The pings: each one's point in DIPs from the scope's top-left, its colour, how far through its life it is (0 to 1), and for one past the
+    /// rim the screen angle it lies at, clockwise from up.
+    /// </summary>
+    public IReadOnlyList<(Point At, Color Colour, double Age, double? Edge)> Pings
+    {
+        get => _pings;
+        set { if (ReferenceEquals(_pings, value)) return; _pings = value; InvalidateVisual(); }
+    }
+
     /// <summary>The hovered dot's label and the dot's point, so the label sits beside it; null for none.</summary>
     public (string Text, Point At)? Label
     {
@@ -152,6 +168,7 @@ public sealed class DerethRadarScope : Control
             DrawCrosshair(context, centre, radius);
             if (Rings) DrawRings(context, centre, radius);
             foreach (var dot in _dots) DrawDot(context, dot);
+            foreach (var ping in _pings) DrawPing(context, ping);
             using (context.PushTransform(Matrix.CreateRotation(Arrow * Math.PI / 180) * Matrix.CreateTranslation(centre)))
                 context.DrawGeometry(MarkerBrush, null, Marker);
         }
@@ -234,6 +251,24 @@ public sealed class DerethRadarScope : Control
         }
         if (dot.Selected) context.DrawEllipse(null, SelectedPen, dot.At, 4.5, 4.5);
         if (dot.Hovered) context.DrawEllipse(null, HoveredPen, dot.At, 4.5, 4.5);
+    }
+
+    private static void DrawPing(DrawingContext context, (Point At, Color Colour, double Age, double? Edge) ping)
+    {
+        var fade = Math.Min(1, (1 - ping.Age) * 5);
+        var fill = new SolidColorBrush(ping.Colour, fade);
+        if (ping.Edge is { } angle)
+        {
+            var radians = angle * Math.PI / 180;
+            var at = new Point(ping.At.X - Math.Sin(radians) * PingRimInset, ping.At.Y + Math.Cos(radians) * PingRimInset);
+            using (context.PushTransform(Matrix.CreateRotation(radians) * Matrix.CreateTranslation(at.X, at.Y)))
+                context.DrawGeometry(fill, OutlinePen, PingArrow);
+            return;
+        }
+        var pulse = ping.Age * PingLifeSeconds / PingPulseSeconds % 1;
+        context.DrawEllipse(null, new Pen(new SolidColorBrush(ping.Colour, fade * (1 - pulse)), 1.2), ping.At, 3 + 9 * pulse, 3 + 9 * pulse);
+        using (context.PushTransform(Matrix.CreateTranslation(ping.At.X, ping.At.Y)))
+            context.DrawGeometry(fill, OutlinePen, PingDiamond);
     }
 
     // The label sits to the lower right of the hovered dot, and moves in where the scope's edge would cut it.

@@ -15,7 +15,7 @@ namespace LegACEy.Client.Demo;
 /// <summary>
 /// The Dereth radar: a round minimap in a gold bezel, drawn over the land around the player, or indoors over the floor plan of the place
 /// they are in, heading-up as retail's is, with a level ladder left of the bezel. A heading tape reads the heading in degrees above it, and the
-/// coordinates sit below. Dots are in retail's radar colours; hovering names one, a click selects it, the wheel zooms, and the bezel holds
+/// coordinates sit below. Dots are in retail's radar colours; hovering names one, a click selects it, Ctrl+click pings the spot, the wheel zooms, and the bezel holds
 /// retail's UI lock and an options popover. It reads the game once a frame through <see cref="Refresh"/>; every other change is made from
 /// what was read last.
 /// </summary>
@@ -56,6 +56,9 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     private readonly Func<uint> _selected;
     private readonly Action _startMove;
     private readonly Func<uint, string?>? _serverName;
+    private readonly Func<DateTime> _clock;
+    // The pings showing, the latest from each sender; dropped once they have lasted.
+    private readonly Dictionary<string, RadarPing> _pings = new();
     // Each landblock's tile as a bitmap, converted once per tile and dropped once it leaves the nine around the player.
     private readonly Dictionary<ushort, (GameImage Source, WriteableBitmap Bitmap)> _bitmaps = new();
     // The tiles drawn last read, and the landblocks among them; both refilled each read, so the lists are kept rather than made anew. The
@@ -117,9 +120,11 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     /// <param name="selected">The selected object's id, or 0, for the green ring.</param>
     /// <param name="startMove">Starts the window's move, from a press on the frame when the UI is not locked.</param>
     /// <param name="serverName">The server's name for a cell's place, or null when the server names none; see <see cref="RadarScope.Plaque"/>.</param>
+    /// <param name="clock">The time pings age by; the system's UTC clock when null.</param>
     public RetailRadarWindow(IRadarPort port, Func<GroundTiles?> ground, Func<IndoorPlanCache?> plans, RadarOptions options, Action<RadarOptions> saved,
-        Func<uint> selected, Action startMove, Func<uint, string?>? serverName = null)
+        Func<uint> selected, Action startMove, Func<uint, string?>? serverName = null, Func<DateTime>? clock = null)
     {
+        _clock = clock ?? (() => DateTime.UtcNow);
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _ground = ground ?? throw new ArgumentNullException(nameof(ground));
         _plans = plans ?? throw new ArgumentNullException(nameof(plans));
@@ -188,6 +193,12 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         _scope.PointerPressed += (_, e) =>
         {
             CloseOptions();
+            if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && _player != null)
+            {
+                e.Handled = true;
+                PingRequested?.Invoke(RadarScope.PositionAt(_player, Options, Radius, e.GetPosition(_scope)));
+                return;
+            }
             var hit = _frame == null ? null : RadarScope.Hit(_frame, e.GetPosition(_scope));
             // A press that is not on a dot is left to the frame, which moves the radar.
             if (hit == null) return;
@@ -227,6 +238,16 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
 
     /// <summary>The plaque was clicked, with the text it shows.</summary>
     public event Action<string>? CoordinatesClicked;
+
+    /// <summary>The scope was Ctrl+clicked, with the spot under the pointer.</summary>
+    public event Action<RadarPosition>? PingRequested;
+
+    /// <summary>Shows a ping for <see cref="RadarPing.Lasts"/>, replacing the sender's last one.</summary>
+    public void ShowPing(string sender, RadarPosition at)
+    {
+        _pings[sender] = new RadarPing(sender, at, _clock());
+        Rebuild();
+    }
 
     /// <summary>Whether the resize corners show: while the pointer is over the radar and the UI is unlocked.</summary>
     public bool CornersVisible => _corners.IsVisible;
@@ -310,6 +331,16 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         Rebuild();
     }
 
+    // Each sender's pings keep one colour, picked from their name, so fellows' pings tell apart.
+    private static readonly Color[] PingColours = { Color.Parse("#FF9A2E"), Color.Parse("#FF5FD2"), Color.Parse("#7CFF6B"), Color.Parse("#5CC8FF"), Color.Parse("#FFE14D") };
+
+    private static Color PingColour(string sender)
+    {
+        var hash = 0;
+        foreach (var c in sender) hash = hash * 31 + c;
+        return PingColours[(hash & int.MaxValue) % PingColours.Length];
+    }
+
     // A dot on another level is drawn as an arrow the way its floor points: up for the level above, down for the one below.
     private static int ArrowOf(RadarFloor floor) => floor switch
     {
@@ -334,7 +365,9 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     // Draws the radar from the last read, with the options and hover as they are now. Makes no game calls, so the events can use it.
     private void Rebuild()
     {
-        var frame = RadarScope.Build(_player, _objects, Options, Radius, _plan, _peek, _serverName);
+        var now = _clock();
+        foreach (var gone in _pings.Values.Where(ping => now - ping.Placed >= RadarPing.Lasts).ToArray()) _pings.Remove(gone.Sender);
+        var frame = RadarScope.Build(_player, _objects, Options, Radius, _plan, _peek, _serverName, _pings.Values, now);
         _frame = frame;
         var tiles = GroundFor(frame);
         _tilesDrawn = tiles.Count;
@@ -360,6 +393,8 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
             dots[i] = (dot.At, RadarColors.Rgb(dot.Colour), dot.Alpha, ArrowOf(dot.Floor), dot.Id == selected, dot.Id == _hovered);
         }
         if (!dots.SequenceEqual(_scope.Dots)) _scope.Dots = dots;
+        if (frame.Pings.Count > 0 || _scope.Pings.Count > 0)
+            _scope.Pings = frame.Pings.Select(ping => (ping.At, PingColour(ping.Sender), ping.Age, ping.Edge)).ToArray();
         // The ladder shows where the plan is drawn; a peek lasts only while it does.
         _ladder.IsVisible = frame.Ladder != null;
         if (frame.Ladder is { } ladder)

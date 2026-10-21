@@ -442,6 +442,41 @@ public sealed class RadarScopeTests
 
     private static double Distance(Point point) => Math.Sqrt(Math.Pow(point.X - Radius, 2) + Math.Pow(point.Y - Radius, 2));
 
+    [Fact]
+    public void A_ctrl_click_pings_the_spot_under_the_pointer_across_landblocks()
+    {
+        // Facing east, 50 m ahead crosses into the next landblock east (60 + 50 < 192, so 150 m ahead does).
+        var player = Player(heading: 90);
+        var options = Default with { Zoom = 150 };
+        var point = new Point(Radius, Radius - Radius * 140 / 150);
+
+        var at = RadarScope.PositionAt(player, options, Radius, point);
+
+        Assert.Equal(0xC7A9u, at.Cell >> 16);
+        Assert.Equal(8f, at.X, 2);
+        Assert.Equal(84f, at.Y, 2);
+        Assert.Equal(1 + 0u * 8 + 3, at.Cell & 0xFFFF);
+        var ping = RadarScope.Build(player, NoObjects, options, Radius, pings: new[] { new RadarPing("Rawzz", at, DateTime.UnixEpoch) }, now: DateTime.UnixEpoch).Pings.Single();
+        Assert.Equal(point.X, ping.At.X, 2);
+        Assert.Equal(point.Y, ping.At.Y, 2);
+        Assert.Null(ping.Edge);
+    }
+
+    [Fact]
+    public void A_ping_past_the_range_points_from_the_rim_and_one_that_has_lasted_is_gone()
+    {
+        var placed = DateTime.UnixEpoch;
+        var pings = new[] { new RadarPing("Rawzz", new RadarPosition(Outdoors, 60, 84 + 100, 0), placed) };
+
+        var ping = RadarScope.Build(Player(0), NoObjects, Default, Radius, pings: pings, now: placed.AddSeconds(3)).Pings.Single();
+
+        Assert.Equal(0, ping.Edge!.Value, 2);
+        Assert.Equal(new Point(Radius, 0), ping.At);
+        Assert.Equal(0.2, ping.Age, 2);
+        Assert.Empty(RadarScope.Build(Player(0), NoObjects, Default, Radius, pings: pings, now: placed + RadarPing.Lasts).Pings);
+        Assert.Empty(RadarScope.Build(Player(0, cell: 0x00990110), NoObjects, Default, Radius, pings: pings, now: placed).Pings);
+    }
+
     private static RadarPlayer Player(float heading, uint cell = Outdoors) =>
         new(new RadarPosition(cell, 60, 84, 0), heading);
 
