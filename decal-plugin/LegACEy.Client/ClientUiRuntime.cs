@@ -263,6 +263,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private RetailRadarWindow? _radar;
     private Task<GroundDat?>? _radarDatLoad;
     private GroundTiles? _radarTiles;
+    private Task<IndoorDat?>? _radarIndoorLoad;
+    private IndoorPlanCache? _radarPlans;
     private bool _radarFailed;
     private bool _radarReleaseLogged;
     private bool _radarSwitch;
@@ -2771,6 +2773,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _radarTakeover = new RetailHeldWindows(RetailHudCatalogue.RadarWindows);
         // The ground's DATs open off the UI thread; the radar draws dots on dark until its first tiles are built.
         _radarDatLoad ??= LoadRadarGround(_portal);
+        _radarIndoorLoad ??= LoadRadarIndoors(_portal.Path);
         Log("Retail's radar held.");
         return true;
     }
@@ -2793,6 +2796,25 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         return _radarTiles = new GroundTiles(dat, Log);
     }
 
+    // The indoor plans' DATs open beside the portal, as the ground's do. Off the UI thread; a failure leaves the radar drawing dots on dark indoors.
+    private static Task<IndoorDat?> LoadRadarIndoors(string portalPath) => Task.Run(() =>
+    {
+        try { return new IndoorDat(portalPath, IOPath.Combine(IOPath.GetDirectoryName(portalPath)!, "client_cell_1.dat"), Log); }
+        catch (Exception exception)
+        {
+            Log($"Dereth radar has no indoor plans; it draws dots on dark indoors: {exception.Message}");
+            return null;
+        }
+    });
+
+    // The indoor plans, once their DATs have opened; null before that or without them.
+    private IndoorPlanCache? RadarPlans()
+    {
+        if (_radarPlans != null) return _radarPlans;
+        if (_radarIndoorLoad is not { IsCompletedSuccessfully: true } load || load.Result is not { } dat) return null;
+        return _radarPlans = new IndoorPlanCache(dat.ReadPlan, Log, owned: dat);
+    }
+
     /// <summary>Opens the Dereth radar over the held retail radar. False when the windows cannot open yet, so the next frame tries again.</summary>
     private bool OpenRetailRadar()
     {
@@ -2800,8 +2822,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var screen = _windows!.Screen;
         var at = _radarPlace ?? new Point(Math.Max(0, screen.Width - (int)Math.Round(RetailRadarWindow.DesignWidth * WindowScale) - 12), 12);
         var port = _radarPort;
-        var window = new RetailRadarWindow(port, RadarGround, LoadRadarOptions(), SaveRadarOptions, () => (uint)Bridge.Fact(BridgeFact.CurrentSelection),
-            () => _windows?.BeginMove(RadarWindowId, _pointer));
+        var window = new RetailRadarWindow(port, RadarGround, RadarPlans, LoadRadarOptions(), SaveRadarOptions,
+            () => (uint)Bridge.Fact(BridgeFact.CurrentSelection), () => _windows?.BeginMove(RadarWindowId, _pointer));
         window.CoordinatesClicked += text => _chatWindows?.Main?.Insert(text);
         // The radar has no title bar: it drags from its frame, so its title bar is only one pixel tall.
         var definition = new WindowDefinition(RadarWindowId, "Radar", RetailRadarWindow.DesignWidth, RetailRadarWindow.DesignHeight, titleBarHeight: 1,
@@ -2860,16 +2882,25 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         ReleaseFeatureWindow(RadarWindowId);
     }
 
-    /// <summary>Drops the ground's DATs at unload or switch-off, after the radar that reads them is gone. A load still running is disposed when it lands.</summary>
+    /// <summary>
+    /// Drops the ground's and the indoor plans' DATs at unload or switch-off, after the radar that reads them is gone. A load still running is
+    /// disposed when it lands; the plans' DAT is disposed once their reads in flight have finished.
+    /// </summary>
     private void DisposeRadarGround()
     {
-        if (_radarDatLoad is { } load)
-        {
-            if (load.IsCompletedSuccessfully) load.Result?.Dispose();
-            else _ = load.ContinueWith(task => { if (task.IsCompletedSuccessfully) task.Result?.Dispose(); }, TaskScheduler.Default);
-        }
+        if (_radarDatLoad is { } load) DisposeWhenLoaded(load);
+        if (_radarPlans != null) _radarPlans.Dispose();
+        else if (_radarIndoorLoad is { } indoors) DisposeWhenLoaded(indoors);
         _radarDatLoad = null;
         _radarTiles = null;
+        _radarIndoorLoad = null;
+        _radarPlans = null;
+    }
+
+    private static void DisposeWhenLoaded<T>(Task<T?> load) where T : class, IDisposable
+    {
+        if (load.IsCompletedSuccessfully) load.Result?.Dispose();
+        else _ = load.ContinueWith(task => { if (task.IsCompletedSuccessfully) task.Result?.Dispose(); }, TaskScheduler.Default);
     }
 
     private void RadarFailed(Exception exception)

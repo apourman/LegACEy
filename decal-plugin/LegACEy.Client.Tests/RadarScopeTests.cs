@@ -14,6 +14,7 @@ public sealed class RadarScopeTests
     private const uint Outdoors = 0xC6A90014;
     private const double Radius = 59;
     private static readonly RadarOptions Default = new();
+    private static readonly RadarObject[] NoObjects = Array.Empty<RadarObject>();
 
     [Fact]
     public void Heading_up_turns_the_world_so_the_way_the_player_faces_is_up()
@@ -112,7 +113,7 @@ public sealed class RadarScopeTests
     {
         var outdoors = RadarScope.Build(Player(0), Array.Empty<RadarObject>(), Default, Radius);
         var indoors = RadarScope.Build(Player(0, cell: 0xC6A90100), Array.Empty<RadarObject>(), Default, Radius);
-        var off = RadarScope.Build(Player(0), Array.Empty<RadarObject>(), Default with { Ground = false }, Radius);
+        var off = RadarScope.Build(Player(0), Array.Empty<RadarObject>(), Default with { Map = false }, Radius);
 
         Assert.Equal(9, outdoors.Tiles.Count);
         Assert.Empty(indoors.Tiles);
@@ -147,11 +148,119 @@ public sealed class RadarScopeTests
     [Fact]
     public void Options_round_trip_through_the_two_numbers_kept_per_character()
     {
-        var options = new RadarOptions(Ground: false, NorthUp: true, Rings: true, Zoom: 110);
+        var options = new RadarOptions(Map: false, NorthUp: true, Rings: true, Zoom: 110, IndoorZoom: 20);
 
         var (flags, zoom) = options.Encode();
 
         Assert.Equal(options, RadarOptions.Decode(flags, zoom));
+    }
+
+    [Fact]
+    public void Options_saved_before_the_indoor_zoom_existed_keep_the_default_indoor_zoom()
+    {
+        // The flags as they were saved: north up only, the map off.
+        var decoded = RadarOptions.Decode(2, 110);
+
+        Assert.Equal(new RadarOptions(Map: false, NorthUp: true, Zoom: 110), decoded);
+        Assert.Equal(40, decoded.IndoorZoom);
+    }
+
+    [Fact]
+    public void Indoors_the_radar_draws_the_plan_and_outdoors_the_ground()
+    {
+        var plan = new RadarPlan(RadarPlanFixtures.Dungeon(), 0x0101);
+
+        var indoors = RadarScope.Build(Player(0, RadarPlanFixtures.DungeonCell), NoObjects, Default, Radius, plan);
+        var outdoors = RadarScope.Build(Player(0), NoObjects, Default, Radius, plan);
+
+        Assert.Equal(3, indoors.PlanLevels.Count);
+        Assert.Empty(indoors.Tiles);
+        Assert.Empty(outdoors.PlanLevels);
+        Assert.Equal(9, outdoors.Tiles.Count);
+    }
+
+    [Fact]
+    public void The_players_level_is_the_solid_one_and_the_other_levels_are_faint()
+    {
+        var plan = new RadarPlan(RadarPlanFixtures.Dungeon(), 0x0101);
+
+        var frame = RadarScope.Build(Player(0, RadarPlanFixtures.DungeonCell), NoObjects, Default, Radius, plan);
+
+        // Levels run top first, so the middle room's level is the second.
+        Assert.Same(plan.Levels[1], Assert.Single(frame.PlanLevels, level => level.Solid).Level);
+        Assert.Equal(2, frame.PlanLevels.Count(level => !level.Solid));
+    }
+
+    [Fact]
+    public void In_a_building_only_its_cells_are_drawn_and_the_ground_stays_under_them()
+    {
+        var plan = new RadarPlan(RadarPlanFixtures.Town(), 0x0200);
+
+        var frame = RadarScope.Build(Player(0, RadarPlanFixtures.HouseCell), NoObjects, Default, Radius, plan);
+
+        // The landblock has three levels, the far building's among them; the place draws its own two, the ground floor solid.
+        Assert.Equal(2, frame.PlanLevels.Count);
+        Assert.Same(plan.Levels[1], frame.PlanLevels.Single(level => level.Solid).Level);
+        Assert.Equal(9, frame.Tiles.Count);
+    }
+
+    [Theory]
+    [InlineData(40, 10, 12)]
+    [InlineData(40, -10, 150)]
+    [InlineData(12, 1, 12)]
+    public void Indoor_wheel_stays_within_12_and_150_metres(int range, int notches, int expected) =>
+        Assert.Equal(expected, RadarZoom.Wheel(range, notches, indoors: true));
+
+    [Fact]
+    public void The_indoor_zoom_presets_stay_within_12_and_150_metres()
+    {
+        Assert.All(RadarZoom.IndoorPresets, preset => Assert.InRange(preset, RadarZoom.IndoorMin, RadarZoom.Max));
+        Assert.Equal(40, RadarZoom.Next(25, indoors: true));
+        Assert.Equal(12, RadarZoom.Next(150, indoors: true));
+    }
+
+    [Fact]
+    public void An_indoor_zoom_out_of_range_is_clamped_when_it_is_saved()
+    {
+        var (flags, zoom) = new RadarOptions(IndoorZoom: 500).Encode();
+
+        Assert.Equal(150, RadarOptions.Decode(flags, zoom).IndoorZoom);
+    }
+
+    [Fact]
+    public void Indoors_the_zoom_is_the_indoor_one_and_the_outdoor_zoom_is_untouched()
+    {
+        var options = new RadarOptions(Zoom: 70, IndoorZoom: 20);
+        var plan = new RadarPlan(RadarPlanFixtures.Dungeon(), 0x0101);
+
+        var indoors = RadarScope.Build(Player(0, RadarPlanFixtures.DungeonCell), NoObjects, options, Radius, plan);
+        var outdoors = RadarScope.Build(Player(0), NoObjects, options, Radius, plan);
+
+        Assert.Equal(Radius / 20, indoors.PixelsPerMetre, 4);
+        Assert.Equal(Radius / 70, outdoors.PixelsPerMetre, 4);
+    }
+
+    [Fact]
+    public void With_the_map_off_indoors_the_dots_are_drawn_on_dark()
+    {
+        var plan = new RadarPlan(RadarPlanFixtures.Dungeon(), 0x0101);
+
+        var objects = new[] { Object(1, east: 10, north: 0) };
+
+        var frame = RadarScope.Build(Player(0, RadarPlanFixtures.DungeonCell), objects, Default with { Map = false }, Radius, plan);
+
+        Assert.Empty(frame.PlanLevels);
+        Assert.Empty(frame.Tiles);
+        Assert.Single(frame.Dots);
+    }
+
+    [Fact]
+    public void Indoors_before_the_plan_is_built_the_radar_draws_dots_on_dark()
+    {
+        var frame = RadarScope.Build(Player(0, RadarPlanFixtures.DungeonCell), new[] { Object(1, east: 10, north: 0) }, Default, Radius, null);
+
+        Assert.Empty(frame.PlanLevels);
+        Assert.Single(frame.Dots);
     }
 
     private static RadarPlayer Player(float heading, uint cell = Outdoors) =>

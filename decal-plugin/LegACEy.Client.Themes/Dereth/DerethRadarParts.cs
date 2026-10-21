@@ -9,8 +9,9 @@ using Avalonia.Media;
 namespace LegACEy.Client.Themes;
 
 /// <summary>
-/// The round scope of the Dereth radar: the ground turned under the dots, the range rings, the dots and the marker for the player. The
-/// window sets what it shows; the scope draws it, and a hovered dot's label beside it.
+/// The round scope of the Dereth radar: the ground turned under the dots, or indoors the floor plan of the place (the player's level solid,
+/// the others faint), the range rings, the dots and the marker for the player. The window sets what it shows; the scope draws it, and a
+/// hovered dot's label beside it.
 /// </summary>
 public sealed class DerethRadarScope : Control
 {
@@ -39,8 +40,20 @@ public sealed class DerethRadarScope : Control
     private static readonly IBrush LabelFill = DerethPalette.Brush(Navy.WithAlpha(0xD9));
     private static readonly IPen LabelEdge = new Pen(DerethPalette.GoldBrush, 1);
     private static readonly Typeface LabelFace = new(DerethPalette.Title);
+    // The plan: the other levels as navy and gold at a low alpha (a building's are darker, over its ground), the player's as slate with a
+    // gold wall, over a dark halo.
+    private static readonly IBrush PlanNavy = DerethPalette.Brush(Color.FromArgb(0x6B, 0x2A, 0x36, 0x40));
+    private static readonly IBrush PlanNavyBuilding = DerethPalette.Brush(Color.FromArgb(0x8C, 0x0A, 0x12, 0x18));
+    private static readonly IBrush PlanFaintGold = DerethPalette.Brush(DerethPalette.Gold.WithAlpha(0x29));
+    private static readonly IBrush PlanSlate = DerethPalette.Brush(Color.Parse("#5C7684").WithAlpha(0xD9));
+    private static readonly IBrush PlanWall = DerethPalette.Brush(DerethPalette.GoldLight);
+    private static readonly IBrush PlanHalo = DerethPalette.Brush(Color.FromArgb(0x66, 0, 0, 0));
 
     private IReadOnlyList<(IImage Image, Rect Metres)> _tiles = Array.Empty<(IImage Image, Rect Metres)>();
+    private IReadOnlyList<(Geometry Floors, Geometry Walls, bool Solid)> _planLevels = Array.Empty<(Geometry Floors, Geometry Walls, bool Solid)>();
+    private Point _planOrigin;
+    private bool _planBuilding;
+    private PlanPens? _pens;
     private IReadOnlyList<(Point At, Color Colour, double Opacity, bool Selected, bool Hovered)> _dots = Array.Empty<(Point At, Color Colour, double Opacity, bool Selected, bool Hovered)>();
     // The dots' brushes by colour and alpha, made once each: a dot's alpha takes only a few values.
     private readonly Dictionary<(Color Colour, byte Alpha), IBrush> _dotBrushes = new();
@@ -66,6 +79,22 @@ public sealed class DerethRadarScope : Control
         set { if (ReferenceEquals(_tiles, value)) return; _tiles = value; InvalidateVisual(); }
     }
 
+    /// <summary>
+    /// The indoor plan's levels in drawing order, each as its floor and wall paths in landblock metres, and whether it is the player's own
+    /// level (solid). Empty outdoors.
+    /// </summary>
+    public IReadOnlyList<(Geometry Floors, Geometry Walls, bool Solid)> PlanLevels
+    {
+        get => _planLevels;
+        set { if (ReferenceEquals(_planLevels, value)) return; _planLevels = value; InvalidateVisual(); }
+    }
+
+    /// <summary>The player's position in landblock metres: the plan is drawn from it, at the centre.</summary>
+    public Point PlanOrigin { get => _planOrigin; set { if (_planOrigin == value) return; _planOrigin = value; InvalidateVisual(); } }
+
+    /// <summary>Whether the plan is a building's, drawn over its town ground: its other levels are then darker.</summary>
+    public bool PlanBuilding { get => _planBuilding; set { if (_planBuilding == value) return; _planBuilding = value; InvalidateVisual(); } }
+
     public IReadOnlyList<(Point At, Color Colour, double Opacity, bool Selected, bool Hovered)> Dots
     {
         get => _dots;
@@ -89,11 +118,17 @@ public sealed class DerethRadarScope : Control
         using (context.PushGeometryClip(new EllipseGeometry(new Rect(0, 0, size, size))))
         {
             context.DrawEllipse(Disc, null, centre, radius, radius);
-            // The ground: the world turned and scaled so the player is at the centre, then darkened a little to sit under the dots.
-            using (context.PushTransform(Matrix.CreateScale(PixelsPerMetre, PixelsPerMetre) * Matrix.CreateRotation(Turn * Math.PI / 180) * Matrix.CreateTranslation(centre)))
+            // The world turned and scaled so the player is at the centre.
+            var world = Matrix.CreateScale(PixelsPerMetre, PixelsPerMetre) * Matrix.CreateRotation(Turn * Math.PI / 180)
+                * Matrix.CreateTranslation(centre);
+            // The ground: indoors it is a building's, at half brightness under the plan, else darkened a little to sit under the dots.
+            var planned = _planLevels.Count > 0;
+            using (context.PushOpacity(planned ? 0.5 : 1))
+            using (context.PushTransform(world))
                 foreach (var tile in _tiles)
                     context.DrawImage(tile.Image, new Rect(tile.Image.Size), tile.Metres);
-            if (_tiles.Count > 0) context.DrawEllipse(Darken, null, centre, radius, radius);
+            if (_tiles.Count > 0 && !planned) context.DrawEllipse(Darken, null, centre, radius, radius);
+            if (planned) DrawPlan(context, world);
             context.DrawEllipse(Vignette, null, centre, radius, radius);
             DrawCrosshair(context, centre, radius);
             if (Rings) DrawRings(context, centre, radius);
@@ -102,6 +137,38 @@ public sealed class DerethRadarScope : Control
                 context.DrawGeometry(MarkerBrush, null, Marker);
         }
         if (_label is { } label) DrawLabel(context, size, label);
+    }
+
+    // The plan's paths are in landblock metres, y north; the scope's are y south, so the plan is flipped, moved so the player is at the
+    // origin, and then turned and scaled with the world. Pen widths are in the same metres, so a pen is its DIPs over the scale.
+    private void DrawPlan(DrawingContext context, Matrix world)
+    {
+        // The pens are made again only when the scale changes: their widths are in the plan's metres.
+        if (_pens == null || _pens.Scale != PixelsPerMetre) _pens = new PlanPens(PixelsPerMetre);
+        var pens = _pens;
+        using (context.PushTransform(new Matrix(1, 0, 0, -1, 0, 0) * Matrix.CreateTranslation(-_planOrigin.X, _planOrigin.Y) * world))
+            foreach (var (floors, walls, solid) in _planLevels)
+            {
+                if (solid)
+                {
+                    context.DrawGeometry(null, pens.Halo, floors);
+                    context.DrawGeometry(PlanSlate, null, floors);
+                    context.DrawGeometry(null, pens.Wall, walls);
+                }
+                else
+                {
+                    context.DrawGeometry(PlanBuilding ? PlanNavyBuilding : PlanNavy, null, floors);
+                    context.DrawGeometry(null, pens.FaintWall, walls);
+                }
+            }
+    }
+
+    // The plan's pens at a scale: the halo's width is 6 DIPs, the player's walls 1.1 and the other levels' 0.8, each over the scale.
+    private sealed record PlanPens(double Scale)
+    {
+        public Pen Halo { get; } = new(PlanHalo, 6 / Scale) { LineJoin = PenLineJoin.Round };
+        public Pen Wall { get; } = new(PlanWall, 1.1 / Scale) { LineCap = PenLineCap.Round };
+        public Pen FaintWall { get; } = new(PlanFaintGold, 0.8 / Scale) { LineCap = PenLineCap.Round };
     }
 
     private static void DrawCrosshair(DrawingContext context, Point centre, double radius)
@@ -158,7 +225,7 @@ public sealed class DerethRadarBezel : Control
     private const double LetterRadius = ScopeRadius - 6;
     private static readonly (string Text, double Bearing)[] Letters = { ("N", 0), ("E", 90), ("S", 180), ("W", 270) };
 
-    private static readonly Color GoldLight = Color.Parse("#DDC47D");
+    private static readonly Color GoldLight = DerethPalette.GoldLight;
     private double _turn;
     private FormattedText[]? _letters;
     private FormattedText[]? _minors;
@@ -199,7 +266,7 @@ public sealed class DerethRadarBezel : Control
 /// </summary>
 public sealed class DerethHeadingTape : Control
 {
-    private static readonly Color GoldLight = Color.Parse("#DDC47D");
+    private static readonly Color GoldLight = DerethPalette.GoldLight;
     private const double Span = 120;
     // Ticks this close to the centre stay clear of the heading readout.
     private const double ClearOfCentre = 11;

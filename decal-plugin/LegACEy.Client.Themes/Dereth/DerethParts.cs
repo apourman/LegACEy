@@ -18,6 +18,8 @@ namespace LegACEy.Client.Themes;
 public static class DerethPalette
 {
     public static readonly Color Gold = Color.Parse("#DBB86A");
+    /// <summary>The light gold of the radar's lettering, its tape's points and a plan's walls.</summary>
+    public static readonly Color GoldLight = Color.Parse("#DDC47D");
     public static readonly Color Cream = Color.Parse("#F6EFD9");
     /// <summary>The dark gold: a bezel's rim and a plaque's border.</summary>
     public static readonly Color GoldDark = Color.Parse("#8A6326");
