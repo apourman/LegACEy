@@ -12,6 +12,7 @@ using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.PanelHost;
+using LegACEy.Client.Themes;
 using Xunit;
 
 namespace LegACEy.Client.Tests;
@@ -64,6 +65,7 @@ public sealed class RetailRadarRenderTests
         Render(folder, "radar-indoor-house-2x.png", 2, ground, new RadarOptions(), player: Standing(plans, 0xC6A90168), plans: plans);
         Render(folder, "radar-indoor-house-25m-2x.png", 2, ground, new RadarOptions(IndoorZoom: 25), player: Standing(plans, 0xC6A90168),
             plans: plans);
+        Render(folder, "radar-indoor-0099-peek-2x.png", 2, ground, new RadarOptions(), player: Standing(plans, 0x00990100), plans: plans, peek: 4);
     }
 
     // A cell's centre, at its height, facing east: where the mockup starts a player in a cell.
@@ -76,7 +78,7 @@ public sealed class RetailRadarRenderTests
     }
 
     private static void Render(string folder, string file, int scale, GroundTiles? ground, RadarOptions options,
-        bool openOptions = false, bool hover = false, RadarPlayer? player = null, IndoorPlanCache? plans = null)
+        bool openOptions = false, bool hover = false, RadarPlayer? player = null, IndoorPlanCache? plans = null, int peek = -1)
     {
         var port = new FakeRadarPort { Player = player ?? new RadarPlayer(new RadarPosition(Cell, 96, 96, 0), 270) };
         port.Objects.AddRange(Scene(port.Player.Position));
@@ -109,6 +111,14 @@ public sealed class RetailRadarRenderTests
             {
                 // The pointer over the frame's corner, with the UI unlocked: the resize corners show.
                 panel.PointerMove(4 * scale, 4 * scale);
+                panel.Tick();
+            }
+            if (peek >= 0)
+            {
+                // The pointer over a ladder pip, as a player hovers one: the pips share the ladder's height, the top floor first.
+                var bounds = RetailRadarWindow.LadderBounds;
+                panel.PointerMove((bounds.X + bounds.Width / 2) * RetailRadarWindow.Scale * scale,
+                    (bounds.Y + DerethLevelLadder.PipY(peek, window!.Frame!.Ladder!.Levels, bounds.Height)) * RetailRadarWindow.Scale * scale);
                 panel.Tick();
             }
             Save(panel, Path.Combine(folder, file));

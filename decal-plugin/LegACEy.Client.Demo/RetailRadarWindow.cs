@@ -14,9 +14,10 @@ namespace LegACEy.Client.Demo;
 
 /// <summary>
 /// The Dereth radar: a round minimap in a gold bezel, drawn over the land around the player, or indoors over the floor plan of the place
-/// they are in, heading-up as retail's is. A heading tape reads the heading in degrees above it, and the coordinates sit below. Dots are
-/// in retail's radar colours; hovering names one, a click selects it, the wheel zooms, and the bezel holds retail's UI lock and an options
-/// popover. It reads the game once a frame through <see cref="Refresh"/>; every other change is made from what was read last.
+/// they are in, heading-up as retail's is, with a level ladder left of the bezel. A heading tape reads the heading in degrees above it, and the
+/// coordinates sit below. Dots are in retail's radar colours; hovering names one, a click selects it, the wheel zooms, and the bezel holds
+/// retail's UI lock and an options popover. It reads the game once a frame through <see cref="Refresh"/>; every other change is made from
+/// what was read last.
 /// </summary>
 public sealed class RetailRadarWindow : Decorator, IDisposable
 {
@@ -26,17 +27,25 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     /// </summary>
     public const int Scale = 2;
     private const double MinimumScale = 1, MaximumScale = 3;
+    // The room left of the bezel for the level ladder. It is always there, so the window is the same size indoors and out: the ladder is
+    // shown only where a plan is drawn, and the scope does not move when the player walks in or out.
+    private const int LadderSpace = 22;
     // The layout's size, before the scale.
-    private const int LayoutWidth = 146, LayoutHeight = 174;
+    private const int LayoutWidth = 146 + LadderSpace, LayoutHeight = 174;
     /// <summary>The window's design size in DIPs, the layout at its scale.</summary>
     public const int DesignWidth = LayoutWidth * Scale, DesignHeight = LayoutHeight * Scale;
     /// <summary>Where the scope's top-left sits in the layout, in layout units (a window DIP is this times the radar's scale).</summary>
-    public static readonly Point ScopeOrigin = new(14, 28);
+    public static readonly Point ScopeOrigin = new(14 + LadderSpace, 28);
     // The scope's diameter: 118 DIPs across, so its radius is 59.
     private const double Diameter = 118;
     private const double Radius = Diameter / 2;
+    /// <summary>
+    /// The ladder's plaque in the layout: 16 units wide, its height the scope's less 14 at each end, and ending 3 units short of the bezel's box,
+    /// which starts 11 units left of the scope.
+    /// </summary>
+    public static readonly Rect LadderBounds = new(ScopeOrigin.X - 11 - 3 - 16, ScopeOrigin.Y + 14, 16, Diameter - 28);
     private const string LockTip = "Lock UI", UnlockTip = "Unlock UI", OptionsTip = "Radar options";
-    private static readonly IBrush Plaque = DerethPalette.Brush(Avalonia.Media.Color.FromArgb(0xD9, 0x18, 0x16, 0x0F));
+    private static readonly IBrush Plaque = DerethPalette.PlaqueBrush;
     private static readonly IBrush GoldDark = DerethPalette.Brush(Avalonia.Media.Color.Parse("#8A6326"));
     private static readonly IBrush Groove = DerethPalette.Brush(Avalonia.Media.Color.Parse("#0A0906"));
 
@@ -59,6 +68,9 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     private readonly TextBlock _plaqueText;
     private readonly Border _plaque;
     private readonly DerethMedallion _lock;
+    private readonly DerethLevelLadder _ladder;
+    // The level the pointer is on in the ladder, or -1: the radar peeks at it while the ladder shows.
+    private int _peek = -1;
     // The resize corners, shown while the pointer is over the radar and the UI is unlocked.
     private readonly DerethCornerMarks _corners = new() { IsVisible = false };
     private bool _pointerOver;
@@ -120,7 +132,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         _plaque = new Border
         {
             CornerRadius = new CornerRadius(9), Background = Plaque, BorderBrush = GoldDark, BorderThickness = new Thickness(1), Padding = new Thickness(8, 1),
-            Margin = new Thickness(0, ScopeOrigin.Y + Diameter + 8, 0, 0), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(LadderSpace, ScopeOrigin.Y + Diameter + 8, 0, 0), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top,
             Cursor = new Cursor(StandardCursorType.Hand), Child = _plaqueText
         };
         ToolTip.SetTip(_plaque, "Click to paste in chat");
@@ -135,8 +147,19 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         var tape = new Border
         {
             Width = 106, Height = 18, CornerRadius = new CornerRadius(3), Background = Plaque, BorderBrush = GoldDark, BorderThickness = new Thickness(1),
-            Margin = new Thickness(20, 4, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(20 + LadderSpace, 4, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
             IsHitTestVisible = false, Child = _tape
+        };
+        _ladder = new DerethLevelLadder
+        {
+            Width = LadderBounds.Width, Height = LadderBounds.Height, Margin = new Thickness(LadderBounds.X, LadderBounds.Y, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, IsVisible = false
+        };
+        _ladder.PeekChanged += level =>
+        {
+            if (level == _peek) return;
+            _peek = level;
+            Rebuild();
         };
         _lock = new DerethMedallion(DerethGlyph.Unlock, 15, 9) { Margin = new Thickness(ScopeOrigin.X + 4, ScopeOrigin.Y + 4, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         _lock.Clicked += () => { _port.UiLocked = !_port.UiLocked; Rebuild(); };
@@ -151,7 +174,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         _zoomRow = new OptionRow("Zoom", () => Change(Zoomed((range, indoors) => RadarZoom.Next(range, indoors))));
         _popover = new DerethFrame(DerethFrameArt.Window)
         {
-            Width = 112, Margin = new Thickness(26, ScopeOrigin.Y + 34, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+            Width = 112, Margin = new Thickness(26 + LadderSpace, ScopeOrigin.Y + 34, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
             IsVisible = false,
             Child = new StackPanel { Children = { _mapRow, _northRow, _ringsRow, _zoomRow } }
         };
@@ -185,7 +208,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         var grid = new Grid
         {
             Width = LayoutWidth, Height = LayoutHeight, Background = Brushes.Transparent,
-            Children = { _scope, _bezel, tape, _plaque, _lock, _gear, _popover, _corners }
+            Children = { _scope, _bezel, tape, _plaque, _ladder, _lock, _gear, _popover, _corners }
         };
         grid.PointerEntered += (_, _) => { _pointerOver = true; ShowCorners(); };
         grid.PointerExited += (_, _) => { _pointerOver = false; ShowCorners(); };
@@ -281,6 +304,14 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         Rebuild();
     }
 
+    // A dot on another level is drawn as an arrow the way its floor points: up for the level above, down for the one below.
+    private static int ArrowOf(RadarFloor floor) => floor switch
+    {
+        RadarFloor.Above => 1,
+        RadarFloor.Below => -1,
+        _ => 0
+    };
+
     private void ToggleOptions()
     {
         _popover.IsVisible = !_popover.IsVisible;
@@ -297,7 +328,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     // Draws the radar from the last read, with the options and hover as they are now. Makes no game calls, so the events can use it.
     private void Rebuild()
     {
-        var frame = RadarScope.Build(_player, _objects, Options, Radius, _plan, _serverName);
+        var frame = RadarScope.Build(_player, _objects, Options, Radius, _plan, _peek, _serverName);
         _frame = frame;
         var tiles = GroundFor(frame);
         _tilesDrawn = tiles.Count;
@@ -305,8 +336,10 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         if (!ReferenceEquals(frame.PlanLevels, _planDrawn))
         {
             _planDrawn = frame.PlanLevels;
-            _scope.PlanLevels = frame.PlanLevels.Select(draw => (draw.Level.Floors, draw.Level.Walls, draw.Solid)).ToArray();
+            _scope.PlanLevels = frame.PlanLevels.Select(draw => (draw.Level.Floors, draw.Level.Walls, draw.Solid, draw.Peek)).ToArray();
         }
+        var stairs = frame.StairMarks.Select(mark => (mark.At, mark.Up)).ToArray();
+        if (!stairs.SequenceEqual(_scope.StairMarks)) _scope.StairMarks = stairs;
         _scope.PlanOrigin = frame.PlanOrigin;
         _scope.PlanBuilding = _plan is { Building: true };
         _scope.Turn = frame.Turn;
@@ -315,13 +348,26 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         _scope.Arrow = Options.NorthUp ? frame.Heading : 0;
 
         var selected = _selected();
-        var dots = new (Point At, Color Colour, double Opacity, bool Selected, bool Hovered)[frame.Dots.Count];
+        var dots = new (Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered)[frame.Dots.Count];
         for (var i = 0; i < dots.Length; i++)
         {
             var dot = frame.Dots[i];
-            dots[i] = (dot.At, RadarColors.Rgb(dot.Colour), dot.Alpha, dot.Id == selected, dot.Id == _hovered);
+            dots[i] = (dot.At, RadarColors.Rgb(dot.Colour), dot.Alpha, ArrowOf(dot.Floor), dot.Id == selected, dot.Id == _hovered);
         }
         if (!dots.SequenceEqual(_scope.Dots)) _scope.Dots = dots;
+        // The ladder shows where the plan is drawn; a peek lasts only while it does.
+        _ladder.IsVisible = frame.Ladder != null;
+        if (frame.Ladder is { } ladder)
+        {
+            _ladder.Levels = ladder.Levels;
+            _ladder.Current = ladder.Current;
+            _ladder.Peek = ladder.Peek;
+            _ladder.Occupied = ladder.Occupied;
+        }
+        else
+        {
+            _peek = -1;
+        }
         var hovered = _hovered is { } id ? frame.Dots.FirstOrDefault(dot => dot.Id == id) : null;
         (string Text, Point At)? label = hovered == null ? null : (RadarScope.Label(hovered), hovered.At);
         HoverLabel = label?.Text;
