@@ -128,4 +128,8 @@ internal static class RetailAttackCatalogue
 }
 
 /// <summary>Which attack bar features the running client supports: the height, the set point, the charge, the options and the panel hold.</summary>
-internal sealed record RetailAttackNatives(bool Height, bool SetPoint, bool Charge, bool Options, bool Hold);
+internal sealed record RetailAttackNatives(bool Height, bool SetPoint, bool Charge, bool Options, bool Hold)
+{
+    /// <summary>Every feature matched: the takeover is on only then, so the bar is never shown with a control that cannot work.</summary>
+    internal bool Complete => Height && SetPoint && Charge && Options && Hold;
+}
