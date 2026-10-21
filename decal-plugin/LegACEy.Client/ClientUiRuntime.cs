@@ -1101,6 +1101,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         // The same for retail's vitals: Release logs a failed give-back once per streak itself.
         if (_failed && _vitals?.Holds == true) _vitals.Release();
+        // The same for retail's attack panel: Release logs a failed give-back once per streak itself.
+        if (_failed && _attack?.Holds == true) _attack.Release();
         if (_failed || !NativeUi.Ready)
             return;
 
@@ -1137,9 +1139,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             // and our window opens for it once the windows can.
             if (!_inGame) TickRetailPanels(loggingIn: true);
         });
-
-        // A failed bar gives retail's attack panel back on the frames that follow, as the vitals and radar do, until the give-back lands.
-        if (_failed && _attack?.Holds == true) _attack?.Release();
 
         if (_failed || !_inGame || !_windowsEnabled)
             return;
@@ -3010,20 +3009,23 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         const int ScreenBottomGap = 120;
         var definition = DerethAttackBarWindow.DefinitionOf();
         var screen = _windows?.Screen ?? Size.Empty;
+        // Centred at the size the bar draws at: the window scale times its own saved size.
+        var scale = _windows == null ? 1 : PanelScaleOf(definition.Id);
+        int width = (int)Math.Round(definition.Width * scale), height = (int)Math.Round(definition.Height * scale);
         var element = NativeUi.GetElement(RetailAttackCatalogue.CombatPanel);
         if (element == IntPtr.Zero)
-            return new Point(Math.Max(0, (screen.Width - definition.Width) / 2), Math.Max(0, screen.Height - definition.Height - ScreenBottomGap));
+            return new Point(Math.Max(0, (screen.Width - width) / 2), Math.Max(0, screen.Height - height - ScreenBottomGap));
         var bounds = NativeUi.GetBounds(element);
-        return new Point(bounds.X + (bounds.Width - definition.Width) / 2, bounds.Y + (bounds.Height - definition.Height) / 2);
+        return new Point(bounds.X + (bounds.Width - width) / 2, bounds.Y + (bounds.Height - height) / 2);
     }
 
     /// <summary>
-    /// Opens the Dereth attack bar at <paramref name="at"/> with its port, and shows its host surface only while the bar is shown: hidden
-    /// content still takes input. Null while the windows cannot open yet, so the next frame asks again.
+    /// Opens the Dereth attack bar at <paramref name="at"/> with its port. Null while the windows cannot open yet, so the next frame asks
+    /// again. The takeover opens it only in melee and missile, where the bar is always shown, and closes it outside them.
     /// </summary>
     private IDisposable? OpenAttackBar(Point at)
     {
-        if (!CanOpenWindows || _attackNatives == null) return null;
+        if (!CanOpenWindows) return null;
         var port = new NativeAttackBarPort(HudNatives().Lock);
         var window = new DerethAttackBarWindow(port, () => _windows?.BeginMove(DerethAttackBarWindow.WindowId, _pointer));
         var definition = DerethAttackBarWindow.DefinitionOf();
@@ -3034,14 +3036,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             throw;
         }
         _attackPort = port;
-        window.ShownChanged += () => ShowAttackSurface(window.Shown);
-        ShowAttackSurface(window.Shown);
         return new AttackWindowHandle(this, window, definition.Id);
-    }
-
-    private void ShowAttackSurface(bool shown)
-    {
-        if (_featureSurfaces.TryGetValue(DerethAttackBarWindow.WindowId, out var surface)) surface.Visible = shown;
     }
 
     private void AttackFailed(Exception exception) => _attack?.Fail(exception);

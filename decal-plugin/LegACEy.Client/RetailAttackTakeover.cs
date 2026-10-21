@@ -6,7 +6,7 @@ namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
 /// Holds retail's attack panel hidden and opens the Dereth attack bar while melee or missile is the stance and the attack bar switch is on.
-/// Peace and magic close the bar and leave retail's panel as retail shows it: the hold is given back then, with the panel's own state restored.
+/// Peace and magic close the bar and give retail's panel back as retail has it there: hidden in peace, shown in magic for its spell bar.
 /// The bar closes on the same paths the panel is given back: the switch goes off, the post-UI draw is gone, the player is out of the game, a
 /// native check fails, the window fails, and unload. A closed bar keeps its place, as the window store saves it on close.
 /// </summary>
@@ -36,8 +36,11 @@ internal sealed class RetailAttackTakeover : IDisposable
         _log = log ?? throw new ArgumentNullException(nameof(log));
     }
 
-    /// <summary>Whether retail's attack panel is held: hidden by this takeover in melee or missile.</summary>
-    public bool Holds => _held?.Holds == true;
+    /// <summary>
+    /// Whether retail's attack panel is held: hidden by this takeover in melee or missile. A give-back that failed is still held until a later
+    /// one lands.
+    /// </summary>
+    public bool Holds => _held != null;
 
     /// <summary>
     /// Called every frame, in game or not. While the bar is up (the switch on, the post-UI draw running, in game, in melee or missile) the bar is
@@ -46,7 +49,7 @@ internal sealed class RetailAttackTakeover : IDisposable
     /// <param name="switchOn">Whether the attack bar switch is on.</param>
     /// <param name="canDraw">Whether the post-UI draw is running, so the bar can be drawn.</param>
     /// <param name="inGame">Whether the character is in the world.</param>
-    /// <param name="stance">The player's combat stance now.</param>
+    /// <param name="stance">The player's combat stance now. Only meaningful while the switch is on and in game: the runtime passes peace otherwise.</param>
     /// <param name="viewport">The screen, for the held panel's place.</param>
     public void Tick(bool switchOn, bool canDraw, bool inGame, RetailStance stance, Size viewport)
     {
@@ -56,6 +59,8 @@ internal sealed class RetailAttackTakeover : IDisposable
             var up = switchOn && canDraw && inGame && !_failed && (stance == RetailStance.Melee || stance == RetailStance.Missile);
             if (!up)
             {
+                // Retail hides its panel in peace, so it goes back hidden then; otherwise it goes back as it was when held.
+                if (switchOn && inGame && stance == RetailStance.Peace) _held?.GiveBackHidden();
                 Release();
                 return;
             }

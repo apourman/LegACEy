@@ -41,8 +41,12 @@ public sealed class RetailAttackTakeoverTests
                 Log.Add);
         }
 
-        public void Tick(RetailStance stance = RetailStance.Melee, bool switchOn = true, bool inGame = true) =>
+        /// <summary>One frame: retail changes stance first, as the player's key does, then the takeover sees it.</summary>
+        public void Tick(RetailStance stance = RetailStance.Melee, bool switchOn = true, bool inGame = true)
+        {
+            Panel.RetailTakes(stance);
             Takeover.Tick(switchOn, true, inGame, stance, Viewport);
+        }
     }
 
     [Fact]
@@ -86,19 +90,21 @@ public sealed class RetailAttackTakeoverTests
     }
 
     [Theory]
-    [InlineData(RetailStance.Peace)]
-    [InlineData(RetailStance.Magic)]
-    public void Peace_or_magic_closes_the_bar_and_melee_reopens_it_where_it_was_left(RetailStance stance)
+    [InlineData(RetailStance.Peace, false)]
+    [InlineData(RetailStance.Magic, true)]
+    public void Peace_or_magic_closes_the_bar_and_gives_retail_panel_back_as_retail_shows_it_there_and_melee_opens_the_bar_again(
+        RetailStance stance, bool retailShows)
     {
         var harness = new Harness();
         harness.Tick(RetailStance.Melee);
         var first = harness.Window!;
 
+        // Retail hides its panel in peace and shows its spell bar in magic: the panel comes back as retail would have it.
         harness.Tick(stance);
         Assert.Equal(1, first.Disposals);
-        Assert.True(harness.Panel.Visible);
+        Assert.Equal(retailShows, harness.Panel.Visible);
+        Assert.False(harness.Takeover.Holds);
 
-        // The window store keeps the bar's place across the close, so it reopens where it was left: here, at the same place.
         harness.Tick(RetailStance.Melee);
         Assert.Equal(new[] { Place, Place }, harness.Opened);
         Assert.NotSame(first, harness.Window);
@@ -176,6 +182,26 @@ public sealed class RetailAttackTakeoverTests
     }
 
     [Fact]
+    public void A_give_back_that_throws_once_is_still_held_and_the_retry_gives_retail_back()
+    {
+        var harness = new Harness();
+        harness.Tick(RetailStance.Melee);
+        harness.Panel.FailNextShow = true;
+
+        harness.Takeover.Release();
+
+        Assert.False(harness.Panel.Visible);
+        Assert.True(harness.Takeover.Holds);
+        Assert.Single(harness.Log);
+
+        harness.Takeover.Dispose();
+
+        Assert.True(harness.Panel.Visible);
+        Assert.False(harness.Takeover.Holds);
+        Assert.Single(harness.Log);
+    }
+
+    [Fact]
     public void A_failed_native_check_of_any_feature_turns_the_takeover_off_and_says_why_and_retail_panel_stays()
     {
         // The options list failed, not the hold: the bar would show toggles that do nothing, so the whole takeover stays off.
@@ -215,18 +241,39 @@ public sealed class RetailAttackTakeoverTests
         public void Dispose() => Disposals++;
     }
 
-    /// <summary>A retail attack panel root: its visibility is the state the takeover hides and restores.</summary>
+    /// <summary>
+    /// A retail attack panel root: its visibility is the state the takeover hides and restores. Retail shows it when the stance changes to melee,
+    /// missile (the attack bar) or magic (the spell bar) and hides it when the stance changes to peace.
+    /// </summary>
     private sealed class FakeRoot : IRetailTakeoverPort
     {
+        private RetailStance? _stance;
+
         public FakeRoot(bool visible) => Visible = visible;
 
         public bool Visible { get; private set; }
+        /// <summary>Makes the next call that shows retail's panel throw, as a native call that fails once does.</summary>
+        public bool FailNextShow { get; set; }
         public bool Exists => true;
         public IntPtr ElementIdentity => new(1);
         public bool IsVisible => Visible;
         public Rectangle GetBounds() => new(0, 0, 10, 10);
-        public void SetVisible(bool visible) => Visible = visible;
+        public void SetVisible(bool visible)
+        {
+            if (visible && FailNextShow)
+            {
+                FailNextShow = false;
+                throw new InvalidOperationException("the native call failed");
+            }
+            Visible = visible;
+        }
         public void RetailShows() => Visible = true;
+        /// <summary>Retail's own reaction to a stance change; the first stance seen is where retail starts, so it changes nothing.</summary>
+        public void RetailTakes(RetailStance stance)
+        {
+            if (_stance is { } before && before != stance) Visible = stance != RetailStance.Peace;
+            _stance = stance;
+        }
         public void SetSaveLocation(bool save) { }
         public void MoveTo(Point location) { }
         public bool IsUiLocked => false;

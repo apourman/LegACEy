@@ -93,10 +93,13 @@ internal sealed class NativeAttackBarPort : IAttackBarPort
 
     public bool UiLocked => _lockAvailable && NativeUi.IsUiLocked;
 
-    /// <summary>Raises <see cref="Changed"/> when the stance, a value or the lock moved since the last call.</summary>
+    /// <summary>
+    /// Raises <see cref="Changed"/> when the stance or a value the bar draws moved since the last call. The lock is not among them: the bar
+    /// draws nothing for it and reads it when pressed.
+    /// </summary>
     public void Poll()
     {
-        var now = new Values(Stance, SetPoint, Height, Charge, AutoRepeatAttack, AutoTarget, ViewCombatTarget, UiLocked);
+        var now = new Values(Stance, SetPoint, Height, Charge, AutoRepeatAttack, AutoTarget, ViewCombatTarget);
         if (now == _last) return;
         _last = now;
         Changed?.Invoke(this, EventArgs.Empty);
@@ -140,8 +143,8 @@ internal sealed class NativeAttackBarPort : IAttackBarPort
         return system == IntPtr.Zero ? null : system + RetailToolbarCatalogue.PlayerModuleOffset;
     }
 
-    private sealed record Values(RetailStance Stance, double SetPoint, AttackHeight Height, double Charge, bool AutoRepeatAttack, bool AutoTarget,
-        bool ViewCombatTarget, bool UiLocked);
+    private readonly record struct Values(RetailStance Stance, double SetPoint, AttackHeight Height, double Charge, bool AutoRepeatAttack,
+        bool AutoTarget, bool ViewCombatTarget);
 
     /// <summary>One option's retail accessors: the getter and setter on PlayerModule, which set the bit and send the change.</summary>
     private sealed class OptionNatives
