@@ -18,7 +18,7 @@ public sealed class RetailAttackCatalogueTests
         var natives = RetailAttackCatalogue.Validate(Client(patched: RetailAttackCatalogue.SetRequestedAttackHeight), messages.Add);
 
         Assert.Equal(new RetailAttackNatives(false, true, true, true, true), natives);
-        Assert.Contains(messages, message => message.Contains("attack height is off"));
+        Assert.Contains(messages, message => message.Contains("attack bar height is off"));
     }
 
     // A running client that matches the catalogue, with one address's first byte changed as a runtime patch would.
@@ -28,9 +28,10 @@ public sealed class RetailAttackCatalogueTests
         foreach (var entry in new[]
                  {
                      RetailAttackCatalogue.Height, RetailAttackCatalogue.SetPoint, RetailAttackCatalogue.Charge,
-                     RetailAttackCatalogue.Options, RetailAttackCatalogue.CombatMode
-                 }.SelectMany(list => list).Where(entry => entry.Address != null))
-            bytes[entry.Address!.Value] = entry.ExpectedBytes;
+                     RetailAttackCatalogue.Options, RetailAttackCatalogue.Hold
+                 }.SelectMany(list => list))
+            // The PlayerSystem pointer has no expected bytes: any four readable bytes pass.
+            bytes[entry.Address.Value] = entry.ExpectedBytes.Length == 0 ? new byte[4] : entry.ExpectedBytes;
         return (address, count) =>
         {
             var copy = bytes[address].Take(count).ToArray();
