@@ -10,18 +10,25 @@ namespace LegACEy.Client.Demo;
 /// LegACEy's attack bar, drawn as the mockup's gilded panel: retail's layout one for one at half its width, 320 by 58 DIPs, in the Dereth theme.
 /// It shows in melee and missile only. A click on the bar sets the set point, a plaque sets the height and a gem flips an option, each through
 /// <see cref="IAttackBarPort"/>; the charge and every value follow the port. A press on the plate away from the controls drags the window, unless
-/// retail's UI is locked. It is fixed in shape: per-window scaling sizes it, and its content scales with it.
+/// retail's UI is locked. It keeps its shape: a drag on a corner or an edge draws it larger or smaller, from <see cref="MinimumScale"/> to
+/// <see cref="MaximumScale"/> times its design size, and its content scales with it.
 /// </summary>
 public sealed class DerethAttackBarWindow : UserControl, IDisposable
 {
     /// <summary>The window's id, under which its place and size are kept for the character.</summary>
     public const string WindowId = "dereth-attack";
 
+    private const double MinimumScale = 0.75, MaximumScale = 3;
+
     private readonly IAttackBarPort _port;
     private readonly Action _startMove;
     private readonly DerethAttackBarArt _art = new();
     private readonly Border _groove;
     private readonly Canvas _root;
+    private readonly DerethCornerMarks _corners = new()
+    {
+        Width = DerethAttackBarArt.DesignWidth, Height = DerethAttackBarArt.DesignHeight, IsVisible = false
+    };
 
     /// <param name="port">The game's attack bar state and its controls.</param>
     /// <param name="startMove">Starts the window's move from the pointer's place, on a press on the plate that should drag it.</param>
@@ -47,6 +54,10 @@ public sealed class DerethAttackBarWindow : UserControl, IDisposable
         _root.Children.Add(Hit(DerethAttackBarArt.ToggleHitRect(0), _ => Flip(() => _port.AutoRepeatAttack = !_port.AutoRepeatAttack)));
         _root.Children.Add(Hit(DerethAttackBarArt.ToggleHitRect(1), _ => Flip(() => _port.AutoTarget = !_port.AutoTarget)));
         _root.Children.Add(Hit(DerethAttackBarArt.ToggleHitRect(2), _ => Flip(() => _port.ViewCombatTarget = !_port.ViewCombatTarget)));
+        _root.Children.Add(_corners);
+        // Hovering shows where the window resizes, unless retail's UI is locked.
+        _root.PointerEntered += (_, _) => _corners.IsVisible = !_port.UiLocked;
+        _root.PointerExited += (_, _) => _corners.IsVisible = false;
         _root.PointerPressed += (_, e) =>
         {
             if (e.GetCurrentPoint(_root).Properties.IsLeftButtonPressed && !_port.UiLocked) _startMove();
@@ -58,9 +69,22 @@ public sealed class DerethAttackBarWindow : UserControl, IDisposable
         Sync();
     }
 
-    /// <summary>The window's definition: no title bar, so the plate drags it, and no resizing, so per-window scaling sizes it.</summary>
-    public static WindowDefinition DefinitionOf() => new(WindowId, "Attack", DerethAttackBarArt.DesignWidth, DerethAttackBarArt.DesignHeight,
-        titleBarHeight: 1, theme: new DerethClientTheme(), dragsFromContent: true);
+    /// <summary>The window's definition: no title bar, so the plate drags it, and resized at its own shape unless retail's UI is locked.</summary>
+    public static WindowDefinition DefinitionOf(Func<bool> uiLocked) => new(WindowId, "Attack", DerethAttackBarArt.DesignWidth,
+        DerethAttackBarArt.DesignHeight, titleBarHeight: 1, theme: new DerethClientTheme(), resizing: Resizing(uiLocked), dragsFromContent: true);
+
+    /// <summary>How the bar resizes: from three quarters of its design size to three times it, keeping its shape, unless retail's UI is locked.</summary>
+    public static WindowResizing Resizing(Func<bool> uiLocked)
+    {
+        const double Shape = (double)DerethAttackBarArt.DesignWidth / DerethAttackBarArt.DesignHeight;
+        return new WindowResizing(
+            new System.Drawing.Size((int)(DerethAttackBarArt.DesignWidth * MinimumScale), (int)(DerethAttackBarArt.DesignHeight * MinimumScale)),
+            new System.Drawing.Size((int)(DerethAttackBarArt.DesignWidth * MaximumScale), (int)(DerethAttackBarArt.DesignHeight * MaximumScale)),
+            uiLocked, shape: (Shape, Shape));
+    }
+
+    /// <summary>Whether the resize corners show: while the pointer is over the bar and retail's UI is unlocked.</summary>
+    public bool CornersVisible => _corners.IsVisible;
 
     /// <summary>Whether the bar shows: in melee and missile, and hidden in peace and magic.</summary>
     public bool Shown => _root.IsVisible;

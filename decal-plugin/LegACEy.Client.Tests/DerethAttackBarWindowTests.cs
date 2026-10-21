@@ -223,6 +223,47 @@ public sealed class DerethAttackBarWindowTests
         Assert.Equal(1, moves);
     });
 
+    [Fact]
+    public void A_corner_drag_draws_the_bar_larger_at_its_shape_up_to_three_times_unless_the_UI_is_locked() => RenderThread.Run(() =>
+    {
+        var port = new FakeAttackBarPort { Stance = RetailStance.Melee };
+        var view = new DerethAttackBarWindow(port, () => { });
+        using var panel = Panel(view);
+        panel.Tick();
+        panel.PointerMove(150, 3);
+        panel.Tick();
+        Assert.True(view.CornersVisible);
+
+        var windows = new WindowManager(new Size(1600, 1000), new MemoryWindowPositionStore(), "Thistledown", "Alice");
+        var window = windows.Open(DerethAttackBarWindow.DefinitionOf(() => port.UiLocked), new Point(100, 100));
+        DragCorner(windows, window, 160);
+        // Half again as large, its height carried along to keep the bar's shape (to the pixel).
+        Assert.Equal(87, window.Height);
+        Assert.InRange(window.Width, 479, 481);
+        DragCorner(windows, window, 2000);
+        Assert.Equal(new Size(960, 174), window.Size);
+        // Down to three quarters: 240 by 43.5 at the bar's shape, so the manager settles on 243 by 44.
+        DragCorner(windows, window, -2000);
+        Assert.Equal(new Size(243, 44), window.Size);
+
+        port.UiLocked = true;
+        DragCorner(windows, window, 160);
+        Assert.Equal(new Size(243, 44), window.Size);
+        panel.PointerMove(400, 400);
+        panel.PointerMove(150, 3);
+        panel.Tick();
+        Assert.False(view.CornersVisible);
+    });
+
+    /// <summary>A player's drag of the window's bottom-right corner by <paramref name="dx"/> across.</summary>
+    private static void DragCorner(WindowManager windows, ManagedWindow window, int dx)
+    {
+        var corner = new Point(window.Bounds.Right - 2, window.Bounds.Bottom - 2);
+        windows.Press(corner);
+        windows.Move(new Point(corner.X + dx, corner.Y));
+        windows.Release();
+    }
+
     // Looked at by a person, not asserted: LEGACEY_ATTACK_RENDER names the folder the PNGs are written to.
     [Fact]
     public void The_attack_bar_renders_to_pngs_when_asked() => RenderThread.Run(() =>

@@ -3007,11 +3007,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private Point RetailAttackPlace()
     {
         const int ScreenBottomGap = 120;
-        var definition = DerethAttackBarWindow.DefinitionOf();
         var screen = _windows?.Screen ?? Size.Empty;
-        // Centred at the size the bar draws at: the window scale times its own saved size.
-        var scale = _windows == null ? 1 : PanelScaleOf(definition.Id);
-        int width = (int)Math.Round(definition.Width * scale), height = (int)Math.Round(definition.Height * scale);
+        // Centred at the size the bar first draws at: its design size times the window scale.
+        var scale = _windows == null ? 1 : PanelScaleOf(DerethAttackBarWindow.WindowId);
+        int width = (int)Math.Round(DerethAttackBarArt.DesignWidth * scale), height = (int)Math.Round(DerethAttackBarArt.DesignHeight * scale);
         var element = NativeUi.GetElement(RetailAttackCatalogue.CombatPanel);
         if (element == IntPtr.Zero)
             return new Point(Math.Max(0, (screen.Width - width) / 2), Math.Max(0, screen.Height - height - ScreenBottomGap));
@@ -3028,7 +3027,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (!CanOpenWindows) return null;
         var port = new NativeAttackBarPort(HudNatives().Lock);
         var window = new DerethAttackBarWindow(port, () => _windows?.BeginMove(DerethAttackBarWindow.WindowId, _pointer));
-        var definition = DerethAttackBarWindow.DefinitionOf();
+        var definition = DerethAttackBarWindow.DefinitionOf(() => port.UiLocked);
         try { OpenWindowCore(definition, window, at, AttackFailed); }
         catch
         {
