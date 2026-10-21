@@ -103,28 +103,32 @@ public static class ItemDropRouting
     /// <summary>The pack and slot a Vault withdraw released at the point goes to, by the inventory window there; null for none.</summary>
     public static (uint Container, int Position)? InventoryPlaceAt(WindowManager windows, Func<string, object?> contentOf, System.Drawing.Point point) =>
         windows.HitTest(point) is { } window && contentOf(window.Id) is IInventoryDropZone zone
-            ? zone.WithdrawPlaceAt(new Point((point.X - window.Location.X) / windows.Scale, (point.Y - window.Location.Y) / windows.Scale))
+            ? zone.WithdrawPlaceAt(ContentPoint(window, point))
             : null;
 
     /// <summary>
     /// Delivers an item released at the point to a window the window manager's hit test already found. True if it used the item.
-    /// <paramref name="scale"/> is the window manager's: the content measures the point at design size.
+    /// The content measures the point at design size, by the window's own scale.
     /// </summary>
-    public static bool DeliverTo(ManagedWindow window, Func<string, object?> contentOf, System.Drawing.Point point, uint itemId, string itemName, double scale = 1) =>
+    public static bool DeliverTo(ManagedWindow window, Func<string, object?> contentOf, System.Drawing.Point point, uint itemId, string itemName) =>
         contentOf(window.Id) is IRetailItemDropTarget target
-        && target.RetailDrop(itemId, itemName, new Point((point.X - window.Location.X) / scale, (point.Y - window.Location.Y) / scale));
+        && target.RetailDrop(itemId, itemName, ContentPoint(window, point));
 
     /// <summary>
     /// Delivers a shortcut dragged off a bar, released at the point. Only a shortcut bar takes it: any other window is not offered it, so a
     /// shortcut never deposits or moves an item. True if the bar used it.
     /// </summary>
-    public static bool DeliverShortcutTo(ManagedWindow window, Func<string, object?> contentOf, System.Drawing.Point point, uint objectId, double scale = 1) =>
-        contentOf(window.Id) is ShortcutBar && DeliverTo(window, contentOf, point, objectId, string.Empty, scale);
+    public static bool DeliverShortcutTo(ManagedWindow window, Func<string, object?> contentOf, System.Drawing.Point point, uint objectId) =>
+        contentOf(window.Id) is ShortcutBar && DeliverTo(window, contentOf, point, objectId, string.Empty);
 
     /// <summary>Delivers a set of items released at the point to the window, as <see cref="DeliverTo"/> delivers one. True if it used them.</summary>
-    public static bool DeliverManyTo(ManagedWindow window, Func<string, object?> contentOf, System.Drawing.Point point, IReadOnlyList<uint> itemIds, double scale = 1) =>
+    public static bool DeliverManyTo(ManagedWindow window, Func<string, object?> contentOf, System.Drawing.Point point, IReadOnlyList<uint> itemIds) =>
         contentOf(window.Id) is IItemSetDropTarget target
-        && target.DropMany(itemIds, new Point((point.X - window.Location.X) / scale, (point.Y - window.Location.Y) / scale));
+        && target.DropMany(itemIds, ContentPoint(window, point));
+
+    /// <summary>A point on the screen in the window's content's units: its place is in pixels, its content in DIPs at the window's scale.</summary>
+    public static Point ContentPoint(ManagedWindow window, System.Drawing.Point point) =>
+        new((point.X - window.Location.X) / window.Scale, (point.Y - window.Location.Y) / window.Scale);
 }
 
 /// <summary>Drag host for tests: no icon, a drop target the caller chooses, and a relay the caller answers.</summary>
