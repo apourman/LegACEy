@@ -85,6 +85,70 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void A_window_rescales_on_its_own_on_top_of_the_manager_scale_and_keeps_its_size_for_the_character()
+    {
+        var store = new MemoryWindowPositionStore();
+        var manager = new WindowManager(new Size(800, 600), store, "server", "character", scale: 0.5);
+        var resizing = new WindowResizing(new Size(100, 60));
+        WindowDefinition One() => new("one", "One", 200, 120, titleBarHeight: 20, resizing: resizing);
+        var window = manager.Open(One(), new Point(10, 10));
+        manager.Open(new WindowDefinition("two", "Two", 200, 120), new Point(300, 10));
+
+        Assert.True(manager.Rescale("one", 5));
+        Assert.Equal(150, window.SizePercent);
+        Assert.Equal(0.75, window.Scale);
+        Assert.Equal(new Size(150, 90), window.Size);
+        Assert.Equal(new Point(10, 10), window.Location);
+        Assert.Equal(0.5, manager.ScaleOf("two"));
+        // The design size is still what is saved, and the window opens again at its own scale.
+        manager.Close("one");
+        Assert.Equal(new Size(200, 120), store.Get("server", "character", "one")!.Value.Size);
+        Assert.Equal(0.75, manager.ScaleOf("one"));
+        Assert.Equal(new Size(150, 90), manager.Open(One(), new Point(10, 10)).Size);
+        // It stops at the largest size.
+        Assert.True(manager.Rescale("one", 99));
+        Assert.Equal(WindowManager.LargestSize, manager.Get("one")!.SizePercent);
+        Assert.False(manager.Rescale("one", 1));
+    }
+
+    [Fact]
+    public void Something_the_manager_does_not_open_keeps_its_own_size_for_the_character()
+    {
+        var store = new MemoryWindowPositionStore();
+        var manager = new WindowManager(new Size(800, 600), store, "server", "character", scale: 0.5);
+
+        Assert.True(manager.Rescale("toolbar", -2));
+        Assert.Equal(0.4, manager.ScaleOf("toolbar"), 3);
+        Assert.Equal(0.4, new WindowManager(new Size(800, 600), store, "server", "character", scale: 0.5).ScaleOf("toolbar"), 3);
+    }
+
+    [Fact]
+    public void Wheel_steps_down_and_back_up_do_not_drift_a_resized_windows_size()
+    {
+        var store = new MemoryWindowPositionStore();
+        var manager = new WindowManager(new Size(1600, 1200), store, "server", "character", scale: 0.85);
+        var window = manager.Open(new WindowDefinition("one", "One", 333, 211, resizing: new WindowResizing(new Size(50, 50))), new Point(0, 0));
+        var opened = window.Size;
+
+        for (var i = 0; i < 5; i++) manager.Rescale("one", -1);
+        for (var i = 0; i < 5; i++) manager.Rescale("one", 1);
+
+        Assert.Equal(opened, window.Size);
+        manager.Close("one");
+        Assert.Equal(new Size(333, 211), store.Get("server", "character", "one")!.Value.Size);
+    }
+
+    [Fact]
+    public void A_locked_ui_does_not_rescale_windows()
+    {
+        var manager = new WindowManager(new Size(800, 600), new MemoryWindowPositionStore(), "server", "character", uiLocked: () => true);
+        manager.Open(new WindowDefinition("one", "One", 200, 120), new Point(10, 10));
+
+        Assert.False(manager.Rescale("one", 1));
+        Assert.Equal(1, manager.ScaleOf("one"));
+    }
+
+    [Fact]
     public void Dragging_the_title_bar_moves_the_window_and_clamps_it_to_the_screen()
     {
         var manager = NewManager(300, 200);

@@ -58,7 +58,7 @@ public sealed class AvaloniaPanel : IDisposable
     private Point _pointerPosition = new(-1, -1);
 
     private readonly Control _content;
-    private readonly double _scale;
+    private double _scale;
 
     private AvaloniaPanel(Control content, int width, int height, double scale)
     {
@@ -201,14 +201,16 @@ public sealed class AvaloniaPanel : IDisposable
         // The content lays out at design size, the panel's size divided by the scale, and renders at the scale as a display's
         // DPI does: layout rounding snaps every edge and border to whole panel pixels, where a scale transform smears 1 px borders.
         // The headless window fixes its scaling at 1, so this sets it.
-        if (scale != 1)
-        {
-            var platform = window.PlatformImpl!;
-            RenderScaling!.SetValue(platform, scale);
-            platform.ScalingChanged?.Invoke(scale);
-        }
+        if (scale != 1) SetScaling(window, scale);
         window.Show();
         return window;
+    }
+
+    private static void SetScaling(Window window, double scale)
+    {
+        var platform = window.PlatformImpl!;
+        RenderScaling!.SetValue(platform, scale);
+        platform.ScalingChanged?.Invoke(scale);
     }
 
     /// <summary>Drain queued Avalonia work, run one render-timer tick, and capture the frame.</summary>
@@ -326,11 +328,19 @@ public sealed class AvaloniaPanel : IDisposable
     /// Resize the panel's window and framebuffer and request a full repaint. The window is resized in place: a new window
     /// would detach the content, and a content that hears its detach (a plugin's window disposes its client then) would be lost.
     /// </summary>
-    public void Resize(int width, int height)
+    /// <param name="scale">A new scale the content draws at, as <see cref="Create"/> takes it; null keeps the scale.</param>
+    public void Resize(int width, int height, double? scale = null)
     {
         VerifyUsable();
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
         if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
+        if (scale is { } wanted && wanted != _scale)
+        {
+            if (wanted <= 0) throw new ArgumentOutOfRangeException(nameof(scale));
+            if (!CanScale) throw new NotSupportedException("This Avalonia cannot scale panels; check CanScale first.");
+            _scale = wanted;
+            SetScaling(_window, wanted);
+        }
         _forceFullFrame = true;
         _window.Width = width / _scale;
         _window.Height = height / _scale;

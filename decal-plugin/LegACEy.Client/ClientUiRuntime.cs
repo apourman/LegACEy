@@ -1524,8 +1524,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             try
             {
                 return _owner._shortcutDrag.Slot != null
-                    ? ItemDropRouting.DeliverShortcutTo(window, _owner.ContentOf, _owner._pointer, itemId, windows.Scale)
-                    : ItemDropRouting.DeliverTo(window, _owner.ContentOf, _owner._pointer, itemId, itemName, windows.Scale);
+                    ? ItemDropRouting.DeliverShortcutTo(window, _owner.ContentOf, _owner._pointer, itemId)
+                    : ItemDropRouting.DeliverTo(window, _owner.ContentOf, _owner._pointer, itemId, itemName);
             }
             catch (Exception exception)
             {
@@ -1542,7 +1542,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (_owner._windows is not { } windows) return false;
             var window = windows.HitTest(_owner._pointer);
             if (window == null) return false;
-            try { return ItemDropRouting.DeliverManyTo(window, _owner.ContentOf, _owner._pointer, itemIds, windows.Scale); }
+            try { return ItemDropRouting.DeliverManyTo(window, _owner.ContentOf, _owner._pointer, itemIds); }
             catch (Exception exception)
             {
                 if (_owner._windowFailures.TryGetValue(window.Id, out var failed)) failed(exception);
@@ -1705,7 +1705,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_featureSurfaces.ContainsKey(definition.Id))
             throw new InvalidOperationException($"A feature window named '{definition.Id}' is already registered.");
         // Created at its on-screen size; showing it fits it to the window manager's size again (a saved size, for one).
-        var scale = _windows!.Scale;
+        var scale = PanelScaleOf(definition.Id);
         var panel = ObservePanel(AvaloniaPanel.Create(() => content, (int)Math.Round(definition.Width * scale), (int)Math.Round(definition.Height * scale), scale), failed);
         var surface = new ScreenSurface(_device, panel);
         ShowSurface(definition, surface, requestedLocation, failed);
@@ -1839,7 +1839,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (!_featureSurfaces.ContainsKey(ToastWindowId))
         {
             var definition = new WindowDefinition(ToastWindowId, string.Empty, (int)DerethToast.CardWidth, ToastHeight, dragsFromContent: true);
-            var scale = _windows!.Scale;
+            var scale = _windows!.ScaleOf(ToastWindowId);
             // ponytail: a fixed place above retail's bottom-right corner; a saved or chosen place if players want to move it
             var at = new Point(_windows.Screen.Width - (int)Math.Round((DerethToast.CardWidth + 20) * scale),
                 _windows.Screen.Height - (int)Math.Round((ToastHeight + 140) * scale));
@@ -2192,7 +2192,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         surface.Visible = bar.Visible && tab.IsShown;
         if (surface.Visible)
         {
-            var scale = WindowScale;
+            var scale = surface.Panel.Scale;
             tab.Measure(Avalonia.Size.Infinity);
             int width = WholePixels(tab.DesiredSize.Width * scale), height = WholePixels(tab.DesiredSize.Height * scale);
             if (surface.Panel.Frame.Width != width || surface.Panel.Frame.Height != height) surface.Panel.Resize(width, height);
@@ -2212,12 +2212,38 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (_toolbarPlaceLoaded || !_inGame || _toolbarPlace == null || _toolbarSurface == null) return;
         _toolbarPlaceLoaded = true;
+        ScaleToolbar();
         if (_positionStore.Load(SessionServer(), SessionCharacter(), ToolbarPlaceId) is not { } saved) return;
-        var screen = GameDevice.ViewportSize(_device);
-        var size = _toolbarSurface.Bounds.Size;
-        _toolbarPlace.Location = new Point(Math.Max(0, Math.Min(screen.Width - size.Width, saved.Location.X)),
-            Math.Max(0, Math.Min(screen.Height - size.Height, saved.Location.Y)));
+        _toolbarPlace.Location = OnScreen(saved.Location, _toolbarSurface.Bounds.Size);
     }
+
+    /// <summary>
+    /// Draws the toolbar at this character's toolbar scale, the window scale times its own size, and lays it out again at its new size. Its
+    /// top-left corner stays, within the screen. The split tab over it takes the scale too.
+    /// </summary>
+    private void ScaleToolbar()
+    {
+        if (_windows == null || _toolbar is not { } toolbar || _toolbarSurface is not { } surface) return;
+        var scale = PanelScaleOf(ToolbarPlaceId);
+        if (surface.Panel.Scale == scale) return;
+        surface.Panel.Resize(surface.Panel.Frame.Width, surface.Panel.Frame.Height, scale);
+        toolbar.InvalidateMeasure();
+        toolbar.Measure(Avalonia.Size.Infinity);
+        surface.Panel.Resize(WholePixels(toolbar.DesiredSize.Width * scale), WholePixels(toolbar.DesiredSize.Height * scale));
+        if (_splitTabSurface is { } split) split.Panel.Resize(split.Panel.Frame.Width, split.Panel.Frame.Height, scale);
+        var kept = OnScreen(surface.Location, surface.Bounds.Size);
+        if (kept != surface.Location) _toolbarTakeover?.MoveTo(kept);
+    }
+
+    /// <summary>A place moved just enough that something this size there is on screen.</summary>
+    private Point OnScreen(Point location, Size size)
+    {
+        var screen = GameDevice.ViewportSize(_device);
+        return new Point(Math.Max(0, Math.Min(screen.Width - size.Width, location.X)), Math.Max(0, Math.Min(screen.Height - size.Height, location.Y)));
+    }
+
+    /// <summary>The scale a window's panel draws at: its own, or 1 where this Avalonia cannot scale panels.</summary>
+    private double PanelScaleOf(string id) => AvaloniaPanel.CanScale ? _windows!.ScaleOf(id) : 1;
 
     private void SaveToolbarPlace(Point location)
     {
@@ -2369,15 +2395,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var bar = new ShortcutBar(row, firstIndex, _toolbarPort!, ShortcutItemOf, _portal, () => NativeUi.IsUiLocked,
             () => _windows?.BeginMove(windowId, _pointer), () => _pointer, tagClick, new ItemDragHost(this), _shortcutDrag);
         // Measured at the window's scale, where its slots round to whole pixels, so the window holds all nine.
-        var measured = AvaloniaPanel.MeasureAt(bar, Avalonia.Size.Infinity, WindowScale);
-        var size = new Size(DipsFor(WholePixels(measured.Width * WindowScale), WindowScale), DipsFor(WholePixels(measured.Height * WindowScale), WindowScale));
+        var scale = PanelScaleOf(windowId);
+        var measured = AvaloniaPanel.MeasureAt(bar, Avalonia.Size.Infinity, scale);
+        var size = new Size(DipsFor(WholePixels(measured.Width * scale), scale), DipsFor(WholePixels(measured.Height * scale), scale));
         // No title bar: the bar drags from its content (DragsFromContent), so titleBarHeight is not used for a drag. It is set to the bar's
         // height only because a window's title bar must be at least 1 and at most its height.
         var definition = new WindowDefinition(windowId, $"Shortcut row {row}", size.Width, size.Height,
             titleBarHeight: size.Height, theme: new DerethClientTheme(), dragsFromContent: true);
-        var beside = ShortcutBar.DefaultLocation(_toolbarSurface!.Bounds, size, WindowScale);
+        var beside = ShortcutBar.DefaultLocation(_toolbarSurface!.Bounds, size, scale);
         // Row 2 goes above row 1 where row 1 is now, which the player may have moved.
-        var location = row == 1 ? beside : ShortcutBar.AboveRow(_windows?.Get(ShortcutRowWindowId)?.Location ?? beside, size.Height, WindowScale);
+        var location = row == 1 ? beside : ShortcutBar.AboveRow(_windows?.Get(ShortcutRowWindowId)?.Location ?? beside, size.Height, scale);
         OpenWindowCore(definition, bar, location, ToolbarFailed);
         return bar;
     }
@@ -2574,7 +2601,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         chats.TextSizeChanged += size => { if (_settings != null) _settings.ChatTextSize = new OptionChoice<int>(size, SetChatTextSize); };
         // The main window starts at the bottom left, above the toolbar, until the player moves it; its place is then kept per character.
         var screen = _windows!.Screen;
-        var beside = new Point(12, Math.Max(0, screen.Height - (int)Math.Round(RetailChatWindows.DesignHeight * WindowScale) - 150));
+        var beside = new Point(12, Math.Max(0, screen.Height - (int)Math.Round(RetailChatWindows.DesignHeight * _windows!.ScaleOf(ChatWindowId)) - 150));
         _chatWindows = chats;
         try
         {
@@ -2798,7 +2825,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (!CanOpenWindows || _radarPort == null) return false;
         var screen = _windows!.Screen;
-        var at = _radarPlace ?? new Point(Math.Max(0, screen.Width - (int)Math.Round(RetailRadarWindow.DesignWidth * WindowScale) - 12), 12);
+        var at = _radarPlace ?? new Point(Math.Max(0, screen.Width - (int)Math.Round(RetailRadarWindow.DesignWidth * _windows!.ScaleOf(RadarWindowId)) - 12), 12);
         var port = _radarPort;
         var window = new RetailRadarWindow(port, RadarGround, LoadRadarOptions(), SaveRadarOptions, () => (uint)Bridge.Fact(BridgeFact.CurrentSelection),
             () => _windows?.BeginMove(RadarWindowId, _pointer));
@@ -3162,7 +3189,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     eat = route.Eat;
                     break;
                 case InputAction.MouseWheel:
-                    target!.Panel.MouseWheel(route.X, route.Y, 0, route.WheelDelta / 120.0, ToKeyModifiers(route.Modifiers));
+                    // Ctrl and the wheel over a LegACEy window or the toolbar make it bigger or smaller, and its content does not scroll. Over
+                    // chat they keep changing its text size.
+                    if ((route.Modifiers & InputModifiers.Control) != 0 && Rescalable(route.SurfaceId))
+                        RescaleWindow(route.SurfaceId!, Math.Sign(route.WheelDelta));
+                    else
+                        target!.Panel.MouseWheel(route.X, route.Y, 0, route.WheelDelta / 120.0, ToKeyModifiers(route.Modifiers));
                     eat = route.Eat;
                     break;
                 case InputAction.KeyDown:
@@ -3401,12 +3433,39 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         return dips;
     }
 
-    /// <summary>Puts a window's surface where the window manager has it, at the window's size. A new size re-lays out the panel.</summary>
+    /// <summary>Whether Ctrl and the wheel over a surface resize it: the held toolbar, or a LegACEy window other than chat.</summary>
+    private bool Rescalable(string? id) => id == ToolbarSurfaceId
+        ? _toolbarTakeover?.Holds == true
+        : id != null && _windows?.Get(id) != null && !RetailChatWindows.IsChat(id);
+
+    /// <summary>
+    /// Makes a window or the toolbar a step bigger or smaller, from Ctrl and the wheel over it. A shortcut row opens again at its new size,
+    /// since it is measured as it opens; the toolbar lays out again; any other window's panel draws at the new scale in place.
+    /// </summary>
+    private void RescaleWindow(string id, int steps)
+    {
+        if (!AvaloniaPanel.CanScale || !_windows!.Rescale(id == ToolbarSurfaceId ? ToolbarPlaceId : id, steps)) return;
+        if (id == ToolbarSurfaceId) ScaleToolbar();
+        else if (id == ShortcutRowWindowId)
+        {
+            CloseShortcutBar();
+            EnsureShortcutBar();
+        }
+        else if (id == ShortcutRow2WindowId)
+        {
+            HideShortcutRow2();
+            ShowShortcutRow2();
+        }
+        else SyncWindowLocations();
+    }
+
+    /// <summary>Puts a window's surface where the window manager has it, at the window's size and scale. A new size re-lays out the panel.</summary>
     private static void FitSurface(ScreenSurface surface, ManagedWindow window)
     {
         surface.Location = window.Location;
-        if (surface.Panel.Frame.Width != window.Width || surface.Panel.Frame.Height != window.Height)
-            surface.Panel.Resize(window.Width, window.Height);
+        var scale = AvaloniaPanel.CanScale ? window.Scale : 1;
+        if (surface.Panel.Frame.Width != window.Width || surface.Panel.Frame.Height != window.Height || surface.Panel.Scale != scale)
+            surface.Panel.Resize(window.Width, window.Height, scale);
     }
 
     private static KeyModifiers ToKeyModifiers(InputModifiers modifiers)
