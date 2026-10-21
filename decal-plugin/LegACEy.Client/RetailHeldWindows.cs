@@ -61,6 +61,12 @@ internal sealed class RetailHeldWindows : IDisposable
         if (failures != null) throw new AggregateException("Could not give retail's windows back.", failures);
     }
 
+    /// <summary>The next <see cref="Release"/> gives every held window back hidden, whatever it was when held: retail has since hidden it.</summary>
+    public void GiveBackHidden()
+    {
+        foreach (var root in _roots) root.GiveBackHidden();
+    }
+
     public void Dispose() => Release();
 
     /// <summary>One held retail window's port: its element by placed id, hidden and shown. It is never moved or saved by the takeover.</summary>
