@@ -238,6 +238,21 @@ public sealed class AppraisalTests
     });
 
     [Fact]
+    public void With_the_appraisal_switched_to_retail_right_click_still_assesses_but_never_opens_the_window() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost();
+        var port = new FakeInventoryPort();
+        var appraisals = new AppraisalFeature(host, _ => { });
+        IInventoryPort inventory = new AppraisingInventoryPort(port, appraisals, windowOn: () => false);
+
+        inventory.Assess(Potion);
+        appraisals.Receive(PotionMessage(Potion, 75));
+
+        Assert.Equal(new[] { $"assess 0x{Potion:X8}" }, port.Commands);
+        Assert.Equal(0, host.Opened);
+    });
+
+    [Fact]
     public void An_unrequested_response_only_caches_and_never_opens_the_window() => OnWindowThread(() =>
     {
         var host = new FakeAppraisalHost();
@@ -582,7 +597,7 @@ public sealed class AppraisalTests
     }
 
     [Fact]
-    public void An_item_with_a_material_set_imbue_ratings_and_a_slayer_shows_them_in_the_other_section_in_retail_words()
+    public void An_item_with_a_material_set_imbue_ratings_and_a_slayer_shows_them_where_retail_does_in_retail_words()
     {
         var content = AppraisalContent.From(AppraisalResponse.Read(new ServerAppraisal(0x80000A05)
         {
@@ -590,16 +605,19 @@ public sealed class AppraisalTests
             Ints = { [1] = 0x1, [131] = 64, [265] = 13, [370] = 5, [372] = 3, [179] = 0x20, [166] = 1 }
         }.Build()), NoSpells);
 
-        var other = Assert.Single(content.Sections, section => section.Heading == "Other");
+        Assert.Equal(new[] { "Set & Ratings", "Properties" }, content.Sections.Select(section => section.Heading));
+        Assert.Equal(new (string?, string)[]
+        {
+            ("Set", "Soldier's"),
+            ("Ratings", "Dam 5, Crit 3"),
+        }, content.Sections[0].Rows.Select(row => (row.Label, row.Text)));
         Assert.Equal(new[]
         {
             ("Material", "Steel"),
-            ("Set", "Soldier's"),
             ("Imbued Effect", "Bludgeon Rending"),
-            ("Ratings", "Dam 5, Crit 3"),
             ("Properties", "Olthoi slayer"),
             (null, "This item cannot be further imbued."),
-        }, other.Rows.Select(row => (row.Label, row.Text)));
+        }, content.Sections[1].Rows.Select(row => (row.Label, row.Text)));
     }
 
     [Fact]
@@ -742,7 +760,7 @@ public sealed class AppraisalTests
     });
 
     [Fact]
-    public void The_ivory_stick_lists_five_spells_with_their_descriptions_then_its_requirements_and_mana()
+    public void The_ivory_stick_names_its_spells_then_its_requirements_then_spellcraft_mana_and_each_description()
     {
         // The retail screenshot's item: the spells in the order the server sends them (the same as retail's list), the wield and activation
         // requirements, spellcraft, and mana at 1,492 of 1,494 with one point burned every 15 seconds.
@@ -770,37 +788,42 @@ public sealed class AppraisalTests
         var content = AppraisalContent.From(AppraisalResponse.Read(bytes), spells);
 
         var sections = content.Sections.ToDictionary(section => section.Heading, section => section.Rows);
-        Assert.Equal(new[] { "Spells", "Requirements" }, content.Sections.Select(section => section.Heading));
+        Assert.Equal(new[] { "Spells", "Requirements", "Magic" }, content.Sections.Select(section => section.Heading));
         Assert.Equal(new AppraisalRow[]
         {
-            new AppraisalSpellRow("Might of the Lugians", "Increases the caster's Strength by 40 points."),
-            new AppraisalSpellRow("Aura of Infected Caress", "Increases a weapon's damage value by 22 points."),
-            new AppraisalSpellRow("Aura of Atlan's Alacrity", "Improves a weapon's speed by 70 points."),
-            new AppraisalSpellRow("Major Coordination", "Increases the target's Coordination by 15 points. Additional spells can be layered over this."),
-            new AppraisalSpellRow("Aura of Incantation of Heart Seeker Self", "Increases a weapon's Attack Skill modifier by 20.0 percentage points."),
+            new(null, "Might of the Lugians, Aura of Infected Caress, Aura of Atlan's Alacrity, Major Coordination, Aura of Incantation of Heart Seeker Self"),
         }, sections["Spells"]);
         Assert.Equal(new AppraisalRow[]
         {
             new("Wield", "Base Heavy Weapons 420"),
             new("Activation", "Arcane Lore 188, Heavy Weapons 390"),
+        }, sections["Requirements"]);
+        Assert.Equal(new AppraisalRow[]
+        {
             new("Spellcraft", "370"),
             new AppraisalMeterRow("Mana", 1492, 1494, "1 point per 15 seconds"),
-        }, sections["Requirements"]);
+            new AppraisalSpellRow("Might of the Lugians", "Increases the caster's Strength by 40 points."),
+            new AppraisalSpellRow("Aura of Infected Caress", "Increases a weapon's damage value by 22 points."),
+            new AppraisalSpellRow("Aura of Atlan's Alacrity", "Improves a weapon's speed by 70 points."),
+            new AppraisalSpellRow("Major Coordination", "Increases the target's Coordination by 15 points. Additional spells can be layered over this."),
+            new AppraisalSpellRow("Aura of Incantation of Heart Seeker Self", "Increases a weapon's Attack Skill modifier by 20.0 percentage points."),
+        }, sections["Magic"]);
     }
 
     [Fact]
-    public void A_spell_the_table_does_not_know_is_named_by_its_id_and_an_enchantment_is_listed_by_the_id_it_carries()
+    public void A_spell_the_table_does_not_know_is_named_by_its_id_and_an_enchantment_is_listed_apart_by_the_id_it_carries()
     {
         var bytes = new ServerAppraisal(0x80000A06) { Strings = { [1] = "Ivory Stick" }, SpellBook = { 0x80000000u | 2087u, 9999u } }.Build();
         var spells = new Dictionary<uint, SpellInfo> { [2087] = new("Might of the Lugians", "Increases the caster's Strength by 40 points.") };
 
-        var rows = Assert.Single(AppraisalContent.From(AppraisalResponse.Read(bytes), spells).Sections).Rows;
+        var sections = AppraisalContent.From(AppraisalResponse.Read(bytes), spells).Sections.ToDictionary(section => section.Heading, section => section.Rows);
 
+        Assert.Equal(new AppraisalRow[] { new(null, "Spell 9999") }, sections["Spells"]);
+        Assert.Equal(new AppraisalRow[] { new AppraisalSpellRow("Spell 9999", string.Empty) }, sections["Magic"]);
         Assert.Equal(new AppraisalRow[]
         {
             new AppraisalSpellRow("Might of the Lugians", "Increases the caster's Strength by 40 points."),
-            new AppraisalSpellRow("Spell 9999", string.Empty),
-        }, rows);
+        }, sections["Enchantments"]);
     }
 
     [Fact]
@@ -820,7 +843,7 @@ public sealed class AppraisalTests
             Strings = { [1] = "Wand" }, Ints = { [107] = 10, [108] = 20 }, Floats = { [5] = rate },
         }.Build();
         var meter = Assert.IsType<AppraisalMeterRow>(Assert.Single(AppraisalContent.From(AppraisalResponse.Read(bytes), NoSpells).Sections,
-            section => section.Heading == "Requirements").Rows.Single());
+            section => section.Heading == "Magic").Rows.Single());
         return meter.Note;
     }
 

@@ -405,11 +405,14 @@ public sealed class AppraisingInventoryPort : IInventoryPort
 {
     private readonly IInventoryPort _inner;
     private readonly AppraisalFeature _appraisals;
+    private readonly Func<bool> _windowOn;
 
-    public AppraisingInventoryPort(IInventoryPort inner, AppraisalFeature appraisals)
+    /// <param name="windowOn">Whether an assess opens the appraisal window; false leaves it to retail's examination panel. Null is always on.</param>
+    public AppraisingInventoryPort(IInventoryPort inner, AppraisalFeature appraisals, Func<bool>? windowOn = null)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _appraisals = appraisals ?? throw new ArgumentNullException(nameof(appraisals));
+        _windowOn = windowOn ?? (() => true);
     }
 
     public InventorySnapshot Snapshot => _inner.Snapshot;
@@ -427,7 +430,7 @@ public sealed class AppraisingInventoryPort : IInventoryPort
 
     public void Assess(uint itemId)
     {
-        _appraisals.Request(itemId);
+        if (_windowOn()) _appraisals.Request(itemId);
         _inner.Assess(itemId);
     }
 

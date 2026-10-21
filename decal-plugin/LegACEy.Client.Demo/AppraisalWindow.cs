@@ -223,6 +223,7 @@ public sealed class AppraisalWindow
         var grid = LabelGrid();
         grid.Children.Add(Label(row.Label));
         var value = Text(row.Text, brush, 13);
+        value.TextWrapping = TextWrapping.Wrap;
         Grid.SetColumn(value, 1);
         grid.Children.Add(value);
         return grid;

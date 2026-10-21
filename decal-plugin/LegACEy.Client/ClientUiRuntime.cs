@@ -119,9 +119,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const uint DatCursorNWSE = 0x06006126;
     private const uint DatCursorNESW = 0x06006127;
     private const uint DatCursorMove = 0x06006119;
-    // Beside the DLL: while this file exists, retail's inventory and examination panels stay retail's. Without it the LegACEy UI takes them
-    // over; the examination takeover follows the same switch.
+    // Beside the DLL: while this file exists, retail's inventory panel stays retail's. Without it the LegACEy UI takes it over.
     private const string RetailPanelSwitchFile = "retail-inventory-native";
+    // Beside the DLL: while this file exists, retail's examination panel stays retail's. Without it the appraisal window takes it over.
+    private const string RetailAppraisalSwitchFile = "retail-appraisal-native";
     // Beside the DLL: while this file exists, retail's toolbar stays retail's. Without it the Dereth toolbar replaces it.
     private const string RetailToolbarSwitchFile = "retail-toolbar-native";
     // Beside the DLL: while this file exists, retail's chat windows stay retail's. Without it the Dereth chat window replaces them.
@@ -287,13 +288,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private GameChannelTransport? _channelTransport;
     private ServerChannelClient? _serverChannel;
     private RetailItemDrag? _retailDrag;
-    // Plugin takeovers of retail panels (the inventory), and the switch that turns them on, which also turns the examination takeover on or off. The switch is a marker file beside the DLL,
+    // Plugin takeovers of retail panels (the inventory), and the switch that turns them on; the examination takeover has its own. The switch is a marker file beside the DLL,
     // as the post-UI test failure is. Creating the switch file gives retail's panels back; deleting it turns the takeovers on.
     private readonly List<RetailPanelTakeover> _retailPanels = new();
     private bool? _retailPanelsValid;
     private bool? _retailToolbarValid;
     private bool _retailPanelSwitch;
     private DateTime _lastRetailPanelSwitchCheck;
+    private bool _retailAppraisalSwitch;
+    private DateTime _lastAppraisalSwitchCheck;
     // Retail's examination panel, taken over for the session when the native UI check passes; each showing is an appraisal in our window.
     private RetailExaminationTakeover? _examination;
     private readonly BridgeInventoryPort _inventory = new(Log);
@@ -350,7 +353,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _appraisal = new AppraisalFeature(this, Log, spells: () => _portal?.ReadSpells(Log) ?? new Dictionary<uint, SpellInfo>(), game: this,
             names: () => _portal?.ReadCharacterNames(Log) ?? CharacterNames.None, measure: (control, available) => AvaloniaPanel.MeasureAt(control, available, WindowScale),
             canInspect: () => _plugins?.SupportsAction(PaperdollProtocol.Inspect) == true);
-        _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal);
+        _appraisingInventory = new AppraisingInventoryPort(_inventory, _appraisal,
+            () => SwitchOn(RetailAppraisalSwitchFile, ref _lastAppraisalSwitchCheck, ref _retailAppraisalSwitch));
         _row2Choice = new ShortcutRowChoice(_settingsStore);
         _vitalsLayouts = new VitalsLayoutChoice(_settingsStore);
         if (_settingsStore.Load("", "", UiSizeKey) is { Location.X: var size and > 0 })
@@ -942,6 +946,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private IReadOnlyList<UiWindowChoice> WindowChoices() => new[]
     {
         Choice("Inventory", RetailPanelSwitchFile, () => _lastRetailPanelSwitchCheck = default),
+        Choice("Appraisal", RetailAppraisalSwitchFile, () => _lastAppraisalSwitchCheck = default),
         Choice("Toolbar", RetailToolbarSwitchFile, () => _lastToolbarSwitchCheck = default),
         Choice("Chat", RetailChatSwitchFile, () => _lastChatSwitchCheck = default),
         Choice("Vitals", RetailVitalsSwitchFile, () => _lastVitalsSwitchCheck = default),
@@ -1448,10 +1453,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (_retailPanels.Count == 0 && _examination == null) return;
         // Logging in, the windows can't open yet; they will if the post-UI hook is in.
-        var enabled = (loggingIn ? _postUiDrawHook?.IsInstalled == true : CanOpenWindows) && SwitchOn(RetailPanelSwitchFile, ref _lastRetailPanelSwitchCheck, ref _retailPanelSwitch);
+        var canOpen = loggingIn ? _postUiDrawHook?.IsInstalled == true : CanOpenWindows;
+        var enabled = canOpen && SwitchOn(RetailPanelSwitchFile, ref _lastRetailPanelSwitchCheck, ref _retailPanelSwitch);
         foreach (var takeover in _retailPanels.ToArray())
             takeover.Tick(enabled, canShow: !loggingIn);
-        _examination?.Tick(enabled, canShow: !loggingIn);
+        _examination?.Tick(canOpen && SwitchOn(RetailAppraisalSwitchFile, ref _lastAppraisalSwitchCheck, ref _retailAppraisalSwitch), canShow: !loggingIn);
     }
 
     /// <summary>

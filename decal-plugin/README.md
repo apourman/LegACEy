@@ -105,9 +105,11 @@ The LegACEy Inventory replaces retail's inventory panel: it parks retail's panel
 toolbar or item). The appraisal window likewise replaces retail's examination window: when retail's examination panel shows, it is parked
 and closed, and the appraised object opens in LegACEy's window. Its header's Inspect button opens the Inspect window: the object's 3D
 paperdoll alone, which drags to turn (it needs a server with `paperdoll.inspect`). The expand button in the inventory's doll area opens
-the same window on your own character. Creating an empty file named `retail-inventory-native` beside the main DLL
-gives retail's inventory and examination panels back; deleting it
-takes the panel over again. The file is only checked, never consumed. A drag that leaves the LegACEy window is handed to retail's own
+the same window on your own character. The appraisal window lists an item's lines in the order retail's examination
+text does (tinkering, set and ratings, combat, spells, properties, use, requirements, the rest, then spellcraft, mana and each
+spell's description), under Dereth headings. Creating an empty file named `retail-inventory-native` beside the main DLL
+gives retail's inventory panel back, and `retail-appraisal-native` gives retail's examination panel back; deleting a file
+takes its panel over again. Settings → Windows switches both (Inventory and Appraisal). The file is only checked, never consumed. A drag that leaves the LegACEy window is handed to retail's own
 drag when retail's inventory lists show the item, so the world, NPCs and other retail windows take it as they would from retail.
 
 The Dereth toolbar replaces retail's toolbar, drawn at retail's toolbar position, from portal space at login on. Press and drag the toolbar's frame or
