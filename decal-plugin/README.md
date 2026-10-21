@@ -156,6 +156,9 @@ builds it. With the UI unlocked, hovering the bar shows gold corners: drag a sid
 give it more height (up to 960 by 150 DIPs); the text keeps its size, and Ctrl+wheel scales the whole bar. In peace and magic the bar closes and retail's panels are left as retail draws them. Creating an empty file named
 `retail-attack-native` beside the main DLL (or the Settings window's Attack bar row) gives retail's panel back within a second.
 
+The Settings window's Windows tab has a Dereth / Retail switch on each window's card, and an All windows switch above them that
+writes or deletes every `retail-*-native` file at once. It lights neither choice while the windows differ.
+
 The LegACEy menu's UI size row scales every LegACEy window, the toolbar and the shortcut bars, from 60 to 150 percent (85 to start),
 for every character. A change rebuilds the LegACEy UI at once, as a relog does: plugin windows that were open close and the chat history
 clears.

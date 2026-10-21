@@ -295,8 +295,40 @@ public sealed class SettingsPanel : UserControl
     private Control WindowsPane()
     {
         var pane = new StackPanel { Spacing = 10 };
+        if (_settings.Windows.Count > 1) pane.Children.Add(AllWindowsRow());
         foreach (var window in _settings.Windows) pane.Children.Add(WindowCard(window));
         return pane;
+    }
+
+    /// <summary>
+    /// One Dereth / Retail switch for every window at once. It lights Dereth when all windows are on Dereth, Retail when all are on retail,
+    /// and neither when they differ.
+    /// </summary>
+    private Control AllWindowsRow()
+    {
+        var switchOfAll = new DerethSegmented(new[] { "Dereth", "Retail" }, blueOption: 1);
+        var row = new DockPanel { Margin = new Thickness(10, 0) };
+        DockPanel.SetDock(switchOfAll, Dock.Right);
+        row.Children.Add(switchOfAll);
+        row.Children.Add(new TextBlock
+        {
+            Text = "All windows", FontFamily = DerethPalette.Title, FontSize = 15, Foreground = DerethPalette.CreamBrush,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+
+        void Show()
+        {
+            var onDereth = _settings.Windows.Count(window => window.IsCustom());
+            switchOfAll.Selected = onDereth == _settings.Windows.Count ? 0 : onDereth == 0 ? 1 : -1;
+        }
+        switchOfAll.Chosen += index =>
+        {
+            foreach (var window in _settings.Windows) window.SetCustom(index == 0);
+            OnChanged(this, EventArgs.Empty);
+        };
+        _redraws.Add(Show);
+        Show();
+        return row;
     }
 
     private Control WindowCard(UiWindowChoice window)
@@ -331,7 +363,7 @@ public sealed class SettingsPanel : UserControl
         switchOfWindow.Chosen += index =>
         {
             window.SetCustom(index == 0);
-            Show();
+            OnChanged(this, EventArgs.Empty);
         };
         _redraws.Add(Show);
         Show();
