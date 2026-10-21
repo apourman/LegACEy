@@ -26,6 +26,8 @@ public static class DerethChatPalette
     /// <summary>Retail's colour for a type it gives none of its own, such as a broadcast.</summary>
     public static readonly Color Plugin = Color.Parse("#80FF7F");
     public static readonly Color Combat = Color.Parse("#FF3F3F");
+    /// <summary>A plugin's link in a line (GoArrow's coordinates), as retail draws it; a sender's name keeps the line's colour.</summary>
+    public static readonly Color Link = Color.Parse("#00B200");
 
     /// <summary>The colour retail draws a line of this chat type (eChatTypes) in.</summary>
     public static Color OfType(uint type) => type switch

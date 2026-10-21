@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using Decal.Adapter;
@@ -16,6 +17,10 @@ internal static unsafe class DecalCalls
 {
     private const int EFail = unchecked((int)0x80004005);
     private static readonly Guid Direct3DDevice9 = new("D0223B96-BF7A-43FD-92BD-A43B0D82B9EB");
+    // Decal raises ChatNameClicked only from its hook on retail's chat. This is the handler that hook calls, (text, id, ref eat), so a
+    // click in LegACEy's chat reaches every plugin's ChatNameClicked as a retail click does. Private: read from Decal.Adapter 2.9.8.3.
+    private static readonly MethodInfo? ChatClickIntercept =
+        typeof(CoreManager).GetMethod("myHooks_ChatClickIntercept", BindingFlags.Instance | BindingFlags.NonPublic);
 
     // The client calls through these delegates' pointers for the life of the process, so they are never collected.
     private static readonly List<Delegate> Alive = new();
@@ -41,6 +46,7 @@ internal static unsafe class DecalCalls
         calls->PluralName = (delegate* unmanaged[Stdcall]<int, byte*, int, int*, int>)Pointer(new TextCall(PluralName));
         calls->DescriptionFlags = (delegate* unmanaged[Stdcall]<int, int*, int>)Pointer(new ReadCall(DescriptionFlags));
         calls->Chat = (delegate* unmanaged[Stdcall]<byte*, int, int, int>)Pointer(new ChatCall(Chat));
+        calls->ChatClick = (delegate* unmanaged[Stdcall]<int, byte*, int, int*, int>)Pointer(new ChatClickCall(ChatClick));
         return calls;
     }
 
@@ -251,6 +257,13 @@ internal static unsafe class DecalCalls
     private static int Chat(byte* text, int length, int colour) =>
         Act(() => CoreManager.Current.Actions.AddChatText(Encoding.UTF8.GetString(text, length), colour));
 
+    private static int ChatClick(int id, byte* text, int length, int* eaten) => Act(() =>
+    {
+        var arguments = new object[] { length == 0 ? string.Empty : Encoding.UTF8.GetString(text, length), id, false };
+        ChatClickIntercept!.Invoke(CoreManager.Current, arguments);
+        *eaten = (bool)arguments[2] ? 1 : 0;
+    });
+
     // ponytail: a closure per call, some every frame; plain try/catch per call if the allocations ever show up.
     private static int Act(Action action)
     {
@@ -268,6 +281,7 @@ internal static unsafe class DecalCalls
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int InventoryCall(BridgeItem* rows, int capacity, int* count);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int ItemCall(int id, BridgeItem* row, int* found);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int ChatCall(byte* text, int length, int colour);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int ChatClickCall(int id, byte* text, int length, int* eaten);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int Call1(int a);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int Call2(int a, int b);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int Call4(int a, int b, int c, int d);
