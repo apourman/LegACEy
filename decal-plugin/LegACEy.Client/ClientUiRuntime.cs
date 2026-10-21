@@ -265,7 +265,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private GroundTiles? _radarTiles;
     private Task<IndoorDat?>? _radarIndoorLoad;
     private IndoorPlanCache? _radarPlans;
-    // The server's place names for the plaque, kept for the login; asked only when hello lists place.name.
+    // The server's name for the place the player is in, asked on each landblock visit; asked only when hello lists place.name.
     private readonly RadarPlaceNames _radarPlaceNames = new();
     private bool _radarFailed;
     private bool _radarReleaseLogged;

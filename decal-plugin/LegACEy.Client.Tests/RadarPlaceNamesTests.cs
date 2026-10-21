@@ -24,23 +24,24 @@ public sealed class RadarPlaceNamesTests
     }
 
     [Fact]
-    public void Listed_the_server_is_asked_once_per_landblock_and_its_name_replaces_the_list_even_for_a_shared_landblock()
+    public void Listed_the_server_is_asked_once_per_visit_to_a_landblock_and_its_name_replaces_the_list()
     {
         var channel = new AnsweringChannel();
         var names = new RadarPlaceNames();
         names.Reset(channel, new[] { ChannelHello.Action, PlaceProtocol.Name });
 
         Assert.Equal("Level 2 of 3", Plaque(SharedCell, names.NameOf));
-        Assert.Null(names.NameOf(SharedCell + 1));
         Assert.Single(channel.Requests);
         Assert.Equal(PlaceProtocol.Name, channel.Requests[0].Action);
 
         channel.Answer(0, "Chamber 8");
-
         Assert.Equal("Chamber 8 · Level 2 of 3", Plaque(SharedCell, names.NameOf));
         Assert.Single(channel.Requests);
-        Assert.Equal("Black Totem… · Level 2 of 3", Plaque(0x00990101, names.NameOf));
-        Assert.Equal(2, channel.Requests.Count);
+
+        // Leaving the landblock drops its name, and coming back asks again: a copy shares its landblock ids with the base world.
+        Plaque(0x00990101, names.NameOf);
+        Assert.Equal("Level 2 of 3", Plaque(SharedCell, names.NameOf));
+        Assert.Equal(3, channel.Requests.Count);
     }
 
     [Fact]

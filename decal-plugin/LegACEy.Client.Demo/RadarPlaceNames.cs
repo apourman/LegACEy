@@ -6,22 +6,28 @@ using System.Linq;
 namespace LegACEy.Client.Demo;
 
 /// <summary>
-/// The server's names for places, for the radar's plaque. A landblock is asked once when the radar first needs it, and the answer is kept
-/// until the next hello: the window asks on the UI thread every redraw, so this never waits on the server. Asked only when hello listed
-/// <see cref="PlaceProtocol.Name"/>; otherwise every name is the list's. A failed answer keeps no name for the login.
+/// The server's name for the place the player is in, for the radar's plaque. Asked when the landblock changes, and only when hello listed
+/// <see cref="PlaceProtocol.Name"/>; otherwise every name is the list's. A landblock is one visit: the answer is kept while the player stays
+/// in it and dropped when they leave, so a dungeon copy never keeps the base world's name (the two share landblock ids). A failed answer
+/// keeps no name for that visit only, and the next landblock change asks again. The window asks on the UI thread every redraw, so this
+/// never waits on the server.
 /// </summary>
 public sealed class RadarPlaceNames
 {
-    private readonly Dictionary<ushort, string?> _names = new();
     private IServerChannel? _channel;
     // Bumped by each hello, so an answer to an earlier login lands nowhere.
     private int _login;
+    private ushort? _landblock;
+    // Bumped by each change of landblock, so an answer to an earlier visit lands nowhere.
+    private int _visit;
+    private string? _name;
 
-    /// <summary>Starts a login: forgets the answers, and asks the channel only when the server listed the action.</summary>
+    /// <summary>Starts a login: forgets the answer, and asks the channel only when the server listed the action.</summary>
     public void Reset(IServerChannel? channel, IEnumerable<string> actions)
     {
         _login++;
-        _names.Clear();
+        _landblock = null;
+        _name = null;
         _channel = channel != null && actions.Contains(PlaceProtocol.Name) ? channel : null;
     }
 
@@ -29,17 +35,20 @@ public sealed class RadarPlaceNames
     public string? NameOf(uint cell)
     {
         var landblock = (ushort)(cell >> 16);
-        if (_names.TryGetValue(landblock, out var known)) return known;
+        if (landblock == _landblock) return _name;
+
+        _landblock = landblock;
+        _visit++;
+        _name = null;
         if (_channel is not { } channel) return null;
 
-        // Marked as asked before the request goes, so a reply sent at once is kept and the next redraw does not ask again.
-        _names[landblock] = null;
         var login = _login;
+        var visit = _visit;
         channel.Request(PlaceProtocol.Name, PlaceProtocol.Request(cell), reply =>
         {
-            if (login == _login) _names[landblock] = reply.Ok ? Read(reply.Body) : null;
+            if (login == _login && visit == _visit) _name = reply.Ok ? Read(reply.Body) : null;
         });
-        return null;
+        return _name;
     }
 
     private static string? Read(byte[] body)
