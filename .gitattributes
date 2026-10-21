@@ -20,3 +20,6 @@
 *.PDF    diff=astextplain
 *.rtf    diff=astextplain
 *.RTF    diff=astextplain
+
+# Parsed line by line on any checkout; kept LF so the shared list reads the same everywhere
+Content/landblock-names.tsv text eol=lf
