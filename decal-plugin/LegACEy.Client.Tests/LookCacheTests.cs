@@ -87,12 +87,30 @@ public sealed class LookCacheTests
     }
 
     [Fact]
-    public void A_truncated_message_is_left_out()
+    public void A_truncated_message_changes_nothing()
     {
         var cache = new LookCache();
-        var whole = Created(Player, setup: 0x02000001);
-        cache.Receive(LookCache.CreateObject, whole.AsSpan(0, whole.Length - 30));
+        cache.Receive(LookCache.CreateObject, Created(Player, setup: 0x02000001));
+        cache.Receive(LookCache.CreateObject, Created(Sword, setup: 0x02000A00, parent: (Player, 1)));
+        var update = Created(Sword, setup: 0x02000B00, parent: (Player, 2), scale: 2f);
+        cache.Receive(LookCache.UpdateObject, update.AsSpan(0, update.Length - 22));
+
+        var held = Assert.Single(cache.Look(Player)!.Held);
+        Assert.Equal((1u, 0x02000A00u), (held.Location, held.Look.SetupId));
+    }
+
+    [Fact]
+    public void An_object_without_a_setup_has_no_look_and_a_deleted_holder_holds_nothing()
+    {
+        var cache = new LookCache();
+        cache.Receive(LookCache.CreateObject, Created(Player, setup: 0));
         Assert.Null(cache.Look(Player));
+
+        cache.Receive(LookCache.CreateObject, Created(Player, setup: 0x02000001));
+        cache.Receive(LookCache.CreateObject, Created(Sword, setup: 0x02000A00, parent: (Player, 1)));
+        cache.Receive(LookCache.DeleteObject, Message(LookCache.DeleteObject, w => { w.Write(Player); w.Write(0); }));
+        cache.Receive(LookCache.CreateObject, Created(Player, setup: 0x02000001));
+        Assert.Empty(cache.Look(Player)!.Held);
     }
 
     /// <summary>A CreateObject as ACE writes it, with only the parts the cache reads (no weenie description after them).</summary>

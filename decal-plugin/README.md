@@ -104,12 +104,14 @@ checks first takes the file; the `[pid N]` prefix shows which one.
 The LegACEy Inventory replaces retail's inventory panel: it parks retail's panel and opens and closes its own window with it (by key,
 toolbar or item). The appraisal window likewise replaces retail's examination window: when retail's examination panel shows, it is parked
 and closed, and the appraised object opens in LegACEy's window. Its header's Inspect button opens the Inspect window: the object's 3D
-paperdoll alone, which drags to turn (it needs a server with `paperdoll.inspect`). The expand button in the inventory's doll area opens
-the same window on your own character. The appraisal window lists an item's lines in the order retail's examination
+paperdoll alone, which drags to turn. The client reads every object's look from the game's own messages, so Inspect and the inventory's
+doll work on any server; only objects outside the world (Vault items) ask a LegACEy server (`paperdoll.inspect`). The expand button in the
+inventory's doll area opens the same window on your own character. The appraisal window lists an item's lines in the order retail's examination
 text does (tinkering, set and ratings, combat, spells, properties, use, requirements, the rest, then spellcraft, mana and each
 spell's description), under Dereth headings. Creating an empty file named `retail-inventory-native` beside the main DLL
 gives retail's inventory panel back, and `retail-appraisal-native` gives retail's examination panel back; deleting a file
-takes its panel over again. Settings → Windows switches both (Inventory and Appraisal). The file is only checked, never consumed. A drag that leaves the LegACEy window is handed to retail's own
+takes its panel over again. Settings → Windows switches both (Inventory and Appraisal); switching Appraisal to Retail with an item open hands that item to retail's
+window. The file is only checked, never consumed. A drag that leaves the LegACEy window is handed to retail's own
 drag when retail's inventory lists show the item, so the world, NPCs and other retail windows take it as they would from retail.
 
 The Dereth toolbar replaces retail's toolbar, drawn at retail's toolbar position, from portal space at login on. It is laid out as retail's is:
@@ -167,7 +169,7 @@ The LegACEy menu's UI size row scales every LegACEy window and the toolbar with 
 for every character. A change rebuilds the LegACEy UI at once, as a relog does: plugin windows that were open close and the chat history
 clears.
 
-The LegACEy menu's Windows section switches each of the inventory, toolbar, chat, vitals and radar between LegACEy's window (Custom, the
+The LegACEy menu's Windows section switches each of the inventory, appraisal, toolbar, chat, vitals, radar and attack bar between LegACEy's window (Custom, the
 default) and retail's (Native). It creates or deletes that window's switch file above, so the choice holds for every character on the
 install. `/legacey` in chat opens or closes the menu, so it can be reached with retail's toolbar too.
 

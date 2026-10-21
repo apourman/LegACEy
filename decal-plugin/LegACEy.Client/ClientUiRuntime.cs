@@ -122,6 +122,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // Beside the DLL: while this file exists, retail's inventory panel stays retail's. Without it the LegACEy UI takes it over.
     private const string RetailPanelSwitchFile = "retail-inventory-native";
     // Beside the DLL: while this file exists, retail's examination panel stays retail's. Without it the appraisal window takes it over.
+    // Creating it from the Settings card also hands an open appraisal to retail's panel.
     private const string RetailAppraisalSwitchFile = "retail-appraisal-native";
     // Beside the DLL: while this file exists, retail's toolbar stays retail's. Without it the Dereth toolbar replaces it.
     private const string RetailToolbarSwitchFile = "retail-toolbar-native";
@@ -1468,7 +1469,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void TickRetailPanels(bool loggingIn = false)
     {
-        if (_retailPanels.Count == 0 && _examination == null) return;
+        if (_retailPanels.Count == 0 && _examination == null)
+        {
+            // Nothing to hand over to: a switch made now must not fire later.
+            _appraisalSwitched = false;
+            return;
+        }
         // Logging in, the windows can't open yet; they will if the post-UI hook is in.
         var canOpen = loggingIn ? _postUiDrawHook?.IsInstalled == true : CanOpenWindows;
         var enabled = canOpen && SwitchOn(RetailPanelSwitchFile, ref _lastRetailPanelSwitchCheck, ref _retailPanelSwitch);

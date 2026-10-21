@@ -36,7 +36,7 @@ public sealed class LookCache
     /// </summary>
     public CharacterAppearance? Look(uint objectId)
     {
-        if (!_looks.TryGetValue(objectId, out var entry)) return null;
+        if (!_looks.TryGetValue(objectId, out var entry) || entry.SetupId == 0) return null;
         var held = new List<HeldItem>();
         foreach (var pair in _held)
             if (pair.Value.Holder == objectId && pair.Value.Location != 0 && _looks.TryGetValue(pair.Key, out var look) && look.SetupId != 0)
@@ -83,24 +83,23 @@ public sealed class LookCache
                 if ((flags & STable) != 0) reader.Skip(4);
                 if ((flags & PeTable) != 0) reader.Skip(4);
                 var setup = (flags & CSetup) != 0 ? reader.UInt32() : 0;
-                var oldHolder = HolderOf(id);
-                _held.Remove(id);
-                if ((flags & Parent) != 0)
-                {
-                    var holder = reader.UInt32();
-                    _held[id] = (holder, reader.UInt32());
-                }
+                (uint Holder, uint Location)? parent = (flags & Parent) != 0 ? (reader.UInt32(), reader.UInt32()) : null;
+                List<(uint Item, uint Location)>? children = null;
                 if ((flags & Children) != 0)
                 {
-                    foreach (var pair in new List<KeyValuePair<uint, (uint Holder, uint Location)>>(_held))
-                        if (pair.Value.Holder == id) _held.Remove(pair.Key);
-                    for (int i = 0, count = (int)reader.UInt32(); i < count; i++)
-                    {
-                        var item = reader.UInt32();
-                        _held[item] = (id, reader.UInt32());
-                    }
+                    children = new List<(uint, uint)>();
+                    for (int i = 0, count = (int)reader.UInt32(); i < count; i++) children.Add((reader.UInt32(), reader.UInt32()));
                 }
                 var scale = (flags & ObjScale) != 0 ? reader.Single() : 1f;
+                // Read whole before anything changes, so a cut-off message changes nothing.
+                var oldHolder = HolderOf(id);
+                _held.Remove(id);
+                if (parent is { } held) _held[id] = held;
+                if (children != null)
+                {
+                    DropHeldBy(id);
+                    foreach (var (item, location) in children) _held[item] = (id, location);
+                }
                 _looks[id] = new Entry(setup, scale, objDesc);
                 Raise(id, oldHolder);
                 break;
@@ -122,11 +121,21 @@ public sealed class LookCache
             {
                 var holder = HolderOf(id);
                 _held.Remove(id);
-                if (messageType == DeleteObject) _looks.Remove(id);
+                if (messageType == DeleteObject)
+                {
+                    _looks.Remove(id);
+                    DropHeldBy(id);
+                }
                 if (holder != 0) Changed?.Invoke(holder);
                 break;
             }
         }
+    }
+
+    private void DropHeldBy(uint holder)
+    {
+        foreach (var pair in new List<KeyValuePair<uint, (uint Holder, uint Location)>>(_held))
+            if (pair.Value.Holder == holder) _held.Remove(pair.Key);
     }
 
     private uint HolderOf(uint item) => _held.TryGetValue(item, out var held) ? held.Holder : 0;

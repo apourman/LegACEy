@@ -122,15 +122,6 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     };
 
     /// <summary>
-    /// Builds what the window shows from one appraisal. <paramref name="spells"/> gives each spell's name and description by id (the
-    /// portal DAT's spell table, empty when there is none); a spell it does not know is named by its id. The inscription field depends on
-    /// who the character is and whether the item is carried, which the appraisal does not say, so the caller passes them; with neither, an
-    /// item is never editable. A creature (one with a creature profile) takes the creature layout instead of the item's sections and
-    /// figures; <paramref name="names"/> gives a creature's type and a character's title, and a name it does not know is left out.
-    /// <paramref name="validLocations"/> and <paramref name="coverage"/> are the item's equipable slots and clothing coverage from the world
-    /// (the appraisal does not carry them); a piece of clothing or armour names what it covers on the type line.
-    /// </summary>
-    /// <summary>
     /// The window's title as retail names the object: a stack's count and plural name ("5 Mana Potions"; without a plural name, "s", or
     /// after an s "es"), with the material in front ("Iron Mace") unless the name already has it (a gem named for its material).
     /// </summary>
@@ -145,6 +136,15 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
         return count > 1 ? Invariant(count) + " " + name : name;
     }
 
+    /// <summary>
+    /// Builds what the window shows from one appraisal. <paramref name="spells"/> gives each spell's name and description by id (the
+    /// portal DAT's spell table, empty when there is none); a spell it does not know is named by its id. The inscription field depends on
+    /// who the character is and whether the item is carried, which the appraisal does not say, so the caller passes them; with neither, an
+    /// item is never editable. A creature (one with a creature profile) takes the creature layout instead of the item's sections and
+    /// figures; <paramref name="names"/> gives a creature's type and a character's title, and a name it does not know is left out.
+    /// <paramref name="validLocations"/> and <paramref name="coverage"/> are the item's equipable slots and clothing coverage from the world
+    /// (the appraisal does not carry them); a piece of clothing or armour names what it covers on the type line.
+    /// </summary>
     public static AppraisalContent From(AppraisalResponse response, IReadOnlyDictionary<uint, SpellInfo> spells,
         string characterName = "", bool carried = false, CharacterNames? names = null, uint validLocations = 0, uint coverage = 0,
         InventoryObjectRead? world = null, string plural = "", uint descriptionFlags = 0)
@@ -450,7 +450,7 @@ public sealed record AppraisalContent(uint ObjectId, string Name, ItemVisual? Vi
     /// does not either.
     /// </summary>
     private static IEnumerable<AppraisalRow> SpellRows(AppraisalResponse response, IReadOnlyDictionary<uint, SpellInfo> spells, bool enchantments) =>
-        response.SpellBook.Where(raw => (raw & EnchantmentBit) != 0 == enchantments).Select(raw => SpellRow(raw & ~EnchantmentBit, spells));
+        response.SpellBook.Where(raw => ((raw & EnchantmentBit) != 0) == enchantments).Select(raw => SpellRow(raw & ~EnchantmentBit, spells));
 
     /// <summary>Retail's short spell line, after the weapon's lines: the item's own spells by name, as one sentence.</summary>
     private static IEnumerable<AppraisalRow> SpellNameRows(AppraisalResponse response, IReadOnlyDictionary<uint, SpellInfo> spells)
