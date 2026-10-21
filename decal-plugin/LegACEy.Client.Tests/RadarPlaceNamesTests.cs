@@ -19,7 +19,7 @@ public sealed class RadarPlaceNamesTests
         var names = new RadarPlaceNames();
         names.Reset(channel, new[] { ChannelHello.Action, "vault.list" });
 
-        Assert.Equal("Black Totem… · Level 2 of 3", Plaque(0x00990101, names.NameOf));
+        Assert.Equal("Black Totem Temple · Level 2 of 3", Plaque(0x00990101, names.NameOf));
         Assert.Empty(channel.Requests);
     }
 

@@ -149,15 +149,6 @@ public sealed class RadarScopeTests
     }
 
     [Fact]
-    public void A_name_too_long_for_the_plaque_is_cut_with_an_ellipsis_and_the_level_still_shows()
-    {
-        // Black Totem Temple does not fit beside "Level 2 of 3" in the plaque's 27 characters, so it is cut to "Black Totem…".
-        var plan = new RadarPlan(RadarPlanFixtures.Dungeon(0x00, 0x99), 0x0101);
-
-        Assert.Equal("Black Totem… · Level 2 of 3", RadarScope.Build(Player(0, 0x00990101), NoObjects, Default, Radius, plan).Plaque);
-    }
-
-    [Fact]
     public void A_shared_or_unlisted_landblock_shows_the_level_only()
     {
         // 0x00C9 holds four Chambers, so none is named; Arwic's 0xC6A9 is not on the list.
@@ -177,7 +168,7 @@ public sealed class RadarScopeTests
             serverName: _ => string.Empty);
 
         Assert.Equal("Chamber 8 · Level 2 of 3", named.Plaque);
-        Assert.Equal("Black Totem… · Level 2 of 3", empty.Plaque);
+        Assert.Equal("Black Totem Temple · Level 2 of 3", empty.Plaque);
     }
 
     [Fact]
@@ -205,7 +196,7 @@ public sealed class RadarScopeTests
 
         // The start of 0x0099 is in its lowest room, the sixth level of six.
         var temple = new RadarPlan(dat.ReadPlan(0x00, 0x99), 0x0100);
-        Assert.Equal("Black Totem… · Level 6 of 6", RadarScope.Build(Player(0, 0x00990100), NoObjects, Default, Radius, temple).Plaque);
+        Assert.Equal("Black Totem Temple · Level 6 of 6", RadarScope.Build(Player(0, 0x00990100), NoObjects, Default, Radius, temple).Plaque);
     }
 
     [Theory]

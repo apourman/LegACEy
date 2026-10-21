@@ -151,8 +151,6 @@ public static class RadarScope
     private const double LevelMetres = 5, FadedAlpha = 0.65;
     // Retail's hover reach, in pixels.
     private const double HoverReach = 6;
-    // The plaque fits about this many characters at the radar's size: a name too long for it beside the level is cut, with an ellipsis.
-    private const int PlaqueCharacters = 27;
     private const double LandblockMetres = 192;
     private static readonly string[] Points = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
 
@@ -205,8 +203,8 @@ public static class RadarScope
 
     /// <summary>
     /// The plaque's text: the coordinates when no plan is drawn. In a building, the coordinates and the floor
-    /// ("33.6N, 56.7E · Ground"). In a dungeon, the place's name and the level from the top ("Arwic Mines · Level 2 of 6"), the name cut
-    /// with an ellipsis when it is too long, or the level alone without a name. Null without a player.
+    /// ("33.6N, 56.7E · Ground"). In a dungeon, the place's name and the level from the top ("Arwic Mines · Level 2 of 6"), or the level
+    /// alone without a name. The window cuts a name too long for the plaque. Null without a player.
     /// </summary>
     /// <param name="drawn">The plan Build draws, or null when none is drawn.</param>
     /// <param name="level">The index in <paramref name="drawn"/> of the player's level, or -1.</param>
@@ -219,16 +217,7 @@ public static class RadarScope
         if (drawn.Building) return $"{coordinates} · {drawn.FloorName(level)}";
         var where = $"Level {level + 1} of {drawn.Levels.Count}";
         var name = PlaceName(player.Position.Cell, serverName);
-        var fitted = name == null ? null : Fitted(name, where);
-        return fitted == null ? where : $"{fitted} · {where}";
-    }
-
-    // The name cut to the room beside the level, with an ellipsis; null when the room is too small for a name and its ellipsis.
-    private static string? Fitted(string name, string level)
-    {
-        var room = PlaqueCharacters - level.Length - " · ".Length;
-        if (room < 2) return null;
-        return name.Length <= room ? name : name.Substring(0, room - 1) + "…";
+        return name == null ? where : $"{name} · {where}";
     }
 
     // The place's name: the server's when it gives one, else the shared list's when the landblock has exactly one name. Several names

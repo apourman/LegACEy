@@ -65,8 +65,10 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     private readonly DerethRadarScope _scope = new() { Width = Diameter, Height = Diameter, Margin = new Thickness(ScopeOrigin.X, ScopeOrigin.Y, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
     private readonly DerethRadarBezel _bezel;
     private readonly DerethHeadingTape _tape = new();
-    private readonly TextBlock _plaqueText;
+    // The plaque's place name, cut with an ellipsis when it does not fit, and the rest of its line, which is always whole.
+    private readonly TextBlock _placeText, _plaqueText;
     private readonly Border _plaque;
+    private string? _plaqueLine;
     private readonly DerethMedallion _lock;
     private readonly DerethLevelLadder _ladder;
     // The level the pointer is on in the ladder, or -1: the radar peeks at it while the ladder shows.
@@ -128,12 +130,14 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         _serverName = serverName;
 
         _bezel = new DerethRadarBezel { Width = Diameter + 22, Height = Diameter + 22, Margin = new Thickness(ScopeOrigin.X - 11, ScopeOrigin.Y - 11, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, IsHitTestVisible = false };
+        _placeText = DerethPalette.CentreInk(new TextBlock { FontFamily = DerethPalette.Title, FontSize = 10, Foreground = DerethPalette.CreamBrush, TextTrimming = TextTrimming.CharacterEllipsis });
         _plaqueText = DerethPalette.CentreInk(new TextBlock { FontFamily = DerethPalette.Title, FontSize = 10, Foreground = DerethPalette.CreamBrush });
+        DockPanel.SetDock(_plaqueText, Dock.Right);
         _plaque = new Border
         {
             CornerRadius = new CornerRadius(9), Background = Plaque, BorderBrush = GoldDark, BorderThickness = new Thickness(1), Padding = new Thickness(8, 1),
             Margin = new Thickness(LadderSpace, ScopeOrigin.Y + Diameter + 8, 0, 0), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top,
-            Cursor = new Cursor(StandardCursorType.Hand), Child = _plaqueText
+            Cursor = new Cursor(StandardCursorType.Hand), Child = new DockPanel { Children = { _plaqueText, _placeText } }
         };
         ToolTip.SetTip(_plaque, "Click to paste in chat");
         // The press is the plaque's, so it does not move the radar; the release over it is the click.
@@ -141,7 +145,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         _plaque.PointerReleased += (_, e) =>
         {
             e.Handled = true;
-            if (new Rect(_plaque.Bounds.Size).Contains(e.GetPosition(_plaque)) && _plaqueText.Text is { Length: > 0 } text)
+            if (new Rect(_plaque.Bounds.Size).Contains(e.GetPosition(_plaque)) && _plaqueLine is { Length: > 0 } text)
                 CoordinatesClicked?.Invoke(text);
         };
         var tape = new Border
@@ -376,7 +380,12 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
 
         _bezel.Turn = frame.Turn;
         _tape.Heading = frame.Heading;
-        _plaqueText.Text = frame.Plaque ?? string.Empty;
+        _plaqueLine = frame.Plaque;
+        // The place comes before the last " · " and gives way when the plaque is too narrow; the level or floor after it stays whole.
+        var line = frame.Plaque ?? string.Empty;
+        var cut = line.LastIndexOf(" · ", StringComparison.Ordinal);
+        _placeText.Text = cut < 0 ? string.Empty : line.Substring(0, cut);
+        _plaqueText.Text = cut < 0 ? line : line.Substring(cut);
         _plaque.IsVisible = frame.Plaque != null;
         // Without retail's lock natives the port's UiLocked does nothing, so the button is not shown.
         _lock.IsVisible = _port.UiLockAvailable;

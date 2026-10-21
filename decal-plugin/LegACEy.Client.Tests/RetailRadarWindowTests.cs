@@ -283,6 +283,39 @@ public sealed class RetailRadarWindowTests
     });
 
     [Fact]
+    public void A_name_too_long_for_the_plaque_gives_way_to_the_level_and_the_paste_keeps_it_whole() => RenderThread.Run(() =>
+    {
+        const string name = "The Long Forgotten Halls of the Black Totem Temple";
+        var port = PortWith();
+        port.Player = new RadarPlayer(new RadarPosition(RadarPlanFixtures.DungeonCell, 60, 84, 0), 0);
+        var plans = new IndoorPlanCache((x, y) => RadarPlanFixtures.Dungeon());
+        using var panel = Open(port, out var window, plans: plans, serverName: _ => name);
+        WaitForPlan(plans);
+        window.Refresh();
+        panel.Tick();
+        string? clicked = null;
+        window.CoordinatesClicked += text => clicked = text;
+
+        var plaque = Medallion(panel, "Click to paste in chat");
+        var level = panel.Content.GetVisualDescendants().OfType<TextBlock>().Single(block => block.Text == " · Level 2 of 3");
+        var place = panel.Content.GetVisualDescendants().OfType<TextBlock>().Single(block => block.Text == name);
+        Assert.True(plaque.TranslatePoint(new Point(plaque.Bounds.Width, 0), panel.Content)!.Value.X <= RetailRadarWindow.DesignWidth);
+        Assert.True(level.Bounds.Width >= level.DesiredSize.Width - 0.5);
+        Assert.True(place.Bounds.Width < Measured(place));
+
+        Press(panel, plaque);
+        Assert.Equal(name + " · Level 2 of 3", clicked);
+    });
+
+    // A text block's width with room to spare, before any trimming.
+    private static double Measured(TextBlock block)
+    {
+        var free = new TextBlock { Text = block.Text, FontFamily = block.FontFamily, FontSize = block.FontSize };
+        free.Measure(Size.Infinity);
+        return free.DesiredSize.Width;
+    }
+
+    [Fact]
     public void Options_and_zoom_come_back_for_the_next_window() => RenderThread.Run(() =>
     {
         RadarOptions? saved = null;
@@ -361,11 +394,11 @@ public sealed class RetailRadarWindowTests
 
     // A radar window over the port, ground and plans, shown at its size, with its frame drawn once.
     private static AvaloniaPanel Open(FakeRadarPort port, out RetailRadarWindow window, GroundTiles? ground = null, RadarOptions? options = null,
-        Action<RadarOptions>? saved = null, Action? startMove = null, IndoorPlanCache? plans = null)
+        Action<RadarOptions>? saved = null, Action? startMove = null, IndoorPlanCache? plans = null, Func<uint, string?>? serverName = null)
     {
         RetailRadarWindow? created = null;
         var panel = AvaloniaPanel.Create(() => created = new RetailRadarWindow(port, () => ground, () => plans, options ?? new RadarOptions(), saved ?? (_ => { }),
-            () => 0, startMove ?? (() => { })), RetailRadarWindow.DesignWidth, RetailRadarWindow.DesignHeight);
+            () => 0, startMove ?? (() => { }), serverName), RetailRadarWindow.DesignWidth, RetailRadarWindow.DesignHeight);
         window = created!;
         window.Refresh();
         panel.Tick();
