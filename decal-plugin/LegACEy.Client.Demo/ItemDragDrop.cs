@@ -114,13 +114,6 @@ public static class ItemDropRouting
         contentOf(window.Id) is IRetailItemDropTarget target
         && target.RetailDrop(itemId, itemName, ContentPoint(window, point));
 
-    /// <summary>
-    /// Delivers a shortcut dragged off a bar, released at the point. Only a shortcut bar takes it: any other window is not offered it, so a
-    /// shortcut never deposits or moves an item. True if the bar used it.
-    /// </summary>
-    public static bool DeliverShortcutTo(ManagedWindow window, Func<string, object?> contentOf, System.Drawing.Point point, uint objectId) =>
-        contentOf(window.Id) is ShortcutBar && DeliverTo(window, contentOf, point, objectId, string.Empty);
-
     /// <summary>Delivers a set of items released at the point to the window, as <see cref="DeliverTo"/> delivers one. True if it used them.</summary>
     public static bool DeliverManyTo(ManagedWindow window, Func<string, object?> contentOf, System.Drawing.Point point, IReadOnlyList<uint> itemIds) =>
         contentOf(window.Id) is IItemSetDropTarget target

@@ -213,15 +213,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private Size? _toolbarDragOffset;
     private bool _toolbarSwitch;
     private bool _toolbarReleaseLogged;
-    // Shortcut rows 1 and 2: their own windows beside the toolbar, held while the takeover is, and their refresh on inventory changes.
-    private const string ShortcutRowWindowId = "shortcut-row-1";
-    private const string ShortcutRow2WindowId = "shortcut-row-2";
     // The Dereth toolbar's surface id. It is not a managed window, so drops reach it by its surface.
     private const string ToolbarSurfaceId = "toolbar";
     // The selected stack's split tab: its own surface over the toolbar's plaque, shown while a stack is selected.
     private const string SplitTabSurfaceId = "toolbar-split";
     private StackSplitTab? _splitTab;
     private ScreenSurface? _splitTabSurface;
+    // Shortcut rows 1 and 2, inside the toolbar under its buttons while the takeover holds, and their refresh on inventory changes.
     private ShortcutBar? _shortcutBar;
     private ShortcutBar? _shortcutRow2;
     // The slot a shortcut drag started from, shared by both rows: a drop on either row moves the shortcut.
@@ -1364,6 +1362,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             }
             catch (Exception exception) { _windowFailures[pair.Key](exception); }
         }
+        // The toolbar is not a managed window: its shortcut rows light the slot a drag over them would land on.
+        if (_toolbar is { } toolbar && _toolbarSurface is { } bar)
+        {
+            Avalonia.Point? over = top == ToolbarSurfaceId ? bar.Panel.ToContent(_pointer.X - bar.Location.X, _pointer.Y - bar.Location.Y) : null;
+            try { toolbar.RetailDragOver(item, _retailDragName, over); }
+            catch (Exception exception) { ToolbarFailed(exception); }
+        }
     }
 
     /// <summary>
@@ -1547,13 +1552,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (_owner._windows is not { } windows) return false;
             var window = windows.HitTest(_owner._pointer);
             if (window == null) return false;
-            // A shortcut dragged off a bar is only a bar's to take: no other window is offered it as an item.
-            try
-            {
-                return _owner._shortcutDrag.Slot != null
-                    ? ItemDropRouting.DeliverShortcutTo(window, _owner.ContentOf, _owner._pointer, itemId)
-                    : ItemDropRouting.DeliverTo(window, _owner.ContentOf, _owner._pointer, itemId, itemName);
-            }
+            // A shortcut dragged off a row is only the toolbar's to take: no window is offered it as an item.
+            if (_owner._shortcutDrag.Slot != null) return false;
+            try { return ItemDropRouting.DeliverTo(window, _owner.ContentOf, _owner._pointer, itemId, itemName); }
             catch (Exception exception)
             {
                 if (_owner._windowFailures.TryGetValue(window.Id, out var failed)) failed(exception);
@@ -1993,9 +1994,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 if (surface.Panel.Frame.Width != width || surface.Panel.Frame.Height != height) surface.Panel.Resize(width, height);
                 var screen = GameDevice.ViewportSize(_device);
                 var spot = new Rectangle((screen.Width - width) / 2, screen.Height - height - (int)Math.Round(UpdateToastLift * scale), width, height);
-                var bars = new[] { _toolbarSurface is { Visible: true } bar ? bar.Bounds : (Rectangle?)null, _windows?.Get(ShortcutRowWindowId)?.Bounds,
-                    _windows?.Get(ShortcutRow2WindowId)?.Bounds };
-                var clear = ClearOf(spot, bars.OfType<Rectangle>(), (int)Math.Round(UpdateToastGap * scale));
+                var bars = _toolbarSurface is { Visible: true } bar ? new[] { bar.Bounds } : Array.Empty<Rectangle>();
+                var clear = ClearOf(spot, bars, (int)Math.Round(UpdateToastGap * scale));
                 surface.Location = new Point(Math.Max(0, clear.X), Math.Max(0, clear.Y));
             }
             surface.Prepare();
@@ -2250,15 +2250,29 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void ScaleToolbar()
     {
-        if (_windows == null || _toolbar is not { } toolbar || _toolbarSurface is not { } surface) return;
+        if (_windows == null || _toolbarSurface is not { } surface) return;
         var scale = PanelScaleOf(ToolbarPlaceId);
         if (surface.Panel.Scale == scale) return;
         surface.Panel.Resize(surface.Panel.Frame.Width, surface.Panel.Frame.Height, scale);
+        if (_splitTabSurface is { } split) split.Panel.Resize(split.Panel.Frame.Width, split.Panel.Frame.Height, scale);
+        FitToolbar();
+    }
+
+    /// <summary>
+    /// Sizes the toolbar's panel to its content at its scale, after a new scale or a shortcut row shown or hidden. In the lower half of the
+    /// screen its bottom edge stays, elsewhere its top edge, within the screen; so a row shown and hidden again puts it back where it was.
+    /// </summary>
+    private void FitToolbar()
+    {
+        if (_toolbar is not { } toolbar || _toolbarSurface is not { } surface) return;
+        var before = surface.Bounds;
+        var scale = surface.Panel.Scale;
         toolbar.InvalidateMeasure();
         toolbar.Measure(Avalonia.Size.Infinity);
         surface.Panel.Resize(WholePixels(toolbar.DesiredSize.Width * scale), WholePixels(toolbar.DesiredSize.Height * scale));
-        if (_splitTabSurface is { } split) split.Panel.Resize(split.Panel.Frame.Width, split.Panel.Frame.Height, scale);
-        var kept = OnScreen(surface.Location, surface.Bounds.Size);
+        var size = surface.Bounds.Size;
+        var lower = before.Top + before.Height / 2 > GameDevice.ViewportSize(_device).Height / 2;
+        var kept = OnScreen(new Point(before.X, lower ? before.Bottom - size.Height : before.Y), size);
         if (kept != surface.Location) _toolbarTakeover?.MoveTo(kept);
     }
 
@@ -2335,10 +2349,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var scale = WindowScale;
         var panel = ObservePanel(AvaloniaPanel.Create(() => toolbar, 1, 1, scale), ToolbarFailed);
         panel.ApplyTheme(new DerethClientTheme());
-        toolbar.Measure(Avalonia.Size.Infinity);
-        panel.Resize(WholePixels(toolbar.DesiredSize.Width * scale), WholePixels(toolbar.DesiredSize.Height * scale));
         _toolbar = toolbar;
         _toolbarSurface = new ScreenSurface(_device, panel);
+        FitToolbar();
         _splitTab = new StackSplitTab(_toolbarPort);
         var splitPanel = ObservePanel(AvaloniaPanel.Create(() => _splitTab, 1, 1, scale), ToolbarFailed);
         splitPanel.ApplyTheme(new DerethClientTheme());
@@ -2350,91 +2363,66 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         return true;
     }
 
-    /// <summary>
-    /// Shows shortcut row 1 as its own window beside the toolbar, once the takeover holds the toolbar and the windows can open. Its
-    /// position is saved like any LegACEy window's; where it first opens is beside the toolbar.
-    /// </summary>
+    /// <summary>Puts shortcut row 1 in the toolbar, and row 2 when it is on for the character, once the takeover holds the toolbar.</summary>
     private void EnsureShortcutBar()
     {
         if (_shortcutBar != null || !CanOpenWindows) return;
-        _shortcutBar = OpenShortcutRow(1, 0, ShortcutRowWindowId, ToggleShortcutRow2);
-        if (_row2Choice.IsOn(SessionServer(), SessionCharacter())) ShowShortcutRow2();
-        else SetRow2TagTip();
+        _shortcutBar = NewShortcutRow(1, 0, ToggleShortcutRow2);
+        if (_row2Choice.IsOn(SessionServer(), SessionCharacter())) _shortcutRow2 = NewShortcutRow(2, ShortcutBar.SlotCount, null);
+        ShowShortcutRows();
         Action refresh = () => { _shortcutBar?.Refresh(); _shortcutRow2?.Refresh(); };
         _inventory.Changed += refresh;
         _unsubscribeShortcutItems = () => _inventory.Changed -= refresh;
     }
 
-    /// <summary>Closes both shortcut rows, stops their refresh and frees their icons. Their saved positions stay where the player left them.</summary>
+    /// <summary>Takes both shortcut rows out of the toolbar, stops their refresh and frees their icons.</summary>
     private void CloseShortcutBar()
     {
         _unsubscribeShortcutItems?.Invoke();
         _unsubscribeShortcutItems = null;
-        HideShortcutRow2();
         if (_shortcutBar == null) return;
-        var bar = _shortcutBar;
-        _shortcutBar = null;
-        ReleaseFeatureWindow(ShortcutRowWindowId);
-        bar.Dispose();
+        var rows = new[] { _shortcutBar, _shortcutRow2 };
+        _shortcutBar = _shortcutRow2 = null;
+        ShowShortcutRows();
+        foreach (var row in rows) row?.Dispose();
     }
 
     /// <summary>Row 1's tag: turns row 2 off or on and saves the choice for the character.</summary>
     private void ToggleShortcutRow2() => SetShortcutRow2(_shortcutRow2 == null);
 
     /// <summary>
-    /// Turns row 2 on or off, and keeps the choice for the character. Row 2 sits beside row 1, so it opens only while row 1 is up; the choice is
-    /// kept either way, and row 1 opens row 2 when it is on.
+    /// Turns row 2 on or off, and keeps the choice for the character. Row 2 sits under row 1, so it shows only while row 1 is up; the choice is
+    /// kept either way, and row 1 brings row 2 when it is on.
     /// </summary>
     private void SetShortcutRow2(bool on)
     {
-        if (on && _shortcutBar != null) ShowShortcutRow2();
-        else HideShortcutRow2();
+        if (on && _shortcutBar != null && _shortcutRow2 == null)
+        {
+            // Row 2 starts at slot 9, the first slot after row 1's nine.
+            _shortcutRow2 = NewShortcutRow(2, ShortcutBar.SlotCount, null);
+            ShowShortcutRows();
+        }
+        else if (!on && _shortcutRow2 is { } row2)
+        {
+            _shortcutRow2 = null;
+            ShowShortcutRows();
+            row2.Dispose();
+        }
         _row2Choice.Save(SessionServer(), SessionCharacter(), on);
         if (_settings != null) _settings.ShortcutRow2 = new OptionChoice<bool>(on, SetShortcutRow2);
     }
 
-    private void ShowShortcutRow2()
+    /// <summary>Shows the rows there are in the toolbar, sizes the toolbar to them, and names row 1's tag click.</summary>
+    private void ShowShortcutRows()
     {
-        if (_shortcutRow2 != null) return;
-        // Row 2 starts at slot 9, the first slot after row 1's nine.
-        _shortcutRow2 = OpenShortcutRow(2, ShortcutBar.SlotCount, ShortcutRow2WindowId, null);
-        SetRow2TagTip();
+        _toolbar?.SetShortcutRows(new[] { _shortcutBar, _shortcutRow2 }.OfType<ShortcutBar>());
+        _shortcutBar?.SetTagTip(_shortcutRow2 != null ? "Hide shortcut row 2" : "Show shortcut row 2");
+        FitToolbar();
     }
 
-    private void HideShortcutRow2()
-    {
-        if (_shortcutRow2 == null) return;
-        var bar = _shortcutRow2;
-        _shortcutRow2 = null;
-        ReleaseFeatureWindow(ShortcutRow2WindowId);
-        bar.Dispose();
-        SetRow2TagTip();
-    }
-
-    private void SetRow2TagTip() => _shortcutBar?.SetTagTip(_shortcutRow2 != null ? "Hide shortcut row 2" : "Show shortcut row 2");
-
-    /// <summary>
-    /// Opens a shortcut row as its own window. It has no title bar: the frame and the row tag drag it. Without a saved position it sits beside
-    /// the toolbar (row 1) or 4 DIP above row 1 (row 2).
-    /// </summary>
-    private ShortcutBar OpenShortcutRow(int row, int firstIndex, string windowId, Action? tagClick)
-    {
-        var bar = new ShortcutBar(row, firstIndex, _toolbarPort!, ShortcutItemOf, _portal, () => NativeUi.IsUiLocked,
-            () => _windows?.BeginMove(windowId, _pointer), () => _pointer, tagClick, new ItemDragHost(this), _shortcutDrag);
-        // Measured at the window's scale, where its slots round to whole pixels, so the window holds all nine.
-        var scale = PanelScaleOf(windowId);
-        var measured = AvaloniaPanel.MeasureAt(bar, Avalonia.Size.Infinity, scale);
-        var size = new Size(DipsFor(WholePixels(measured.Width * scale), scale), DipsFor(WholePixels(measured.Height * scale), scale));
-        // No title bar: the bar drags from its content (DragsFromContent), so titleBarHeight is not used for a drag. It is set to the bar's
-        // height only because a window's title bar must be at least 1 and at most its height.
-        var definition = new WindowDefinition(windowId, $"Shortcut row {row}", size.Width, size.Height,
-            titleBarHeight: size.Height, theme: new DerethClientTheme(), dragsFromContent: true);
-        var beside = ShortcutBar.DefaultLocation(_toolbarSurface!.Bounds, size, scale);
-        // Row 2 goes above row 1 where row 1 is now, which the player may have moved.
-        var location = row == 1 ? beside : ShortcutBar.AboveRow(_windows?.Get(ShortcutRowWindowId)?.Location ?? beside, size.Height, scale);
-        OpenWindowCore(definition, bar, location, ToolbarFailed);
-        return bar;
-    }
+    /// <summary>A shortcut row for the toolbar. It has no frame of its own: a press on its tag or between its slots moves the toolbar.</summary>
+    private ShortcutBar NewShortcutRow(int row, int firstIndex, Action? tagClick) =>
+        new(row, firstIndex, _toolbarPort!, ShortcutItemOf, _portal, () => _pointer, tagClick, new ItemDragHost(this), _shortcutDrag);
 
     /// <summary>The icon and stack count of an object the player holds, from the inventory snapshot; null when it is not held.</summary>
     private ShortcutItem? ShortcutItemOf(uint id)
@@ -2451,12 +2439,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// A LegACEy window's item released on the toolbar, as the toolbar's content takes it: only its backpack takes one. A shortcut dragged
-    /// off a bar is not an item drop: released on the backpack it is only removed from its bar.
+    /// A LegACEy window's item or a shortcut released on the toolbar, as the toolbar's content takes it: a shortcut row binds it to a slot,
+    /// and the backpack takes an item. A shortcut released elsewhere on the toolbar is only removed from its row.
     /// </summary>
     private bool DeliverToToolbar(Func<object, Avalonia.Point, bool> deliver)
     {
-        if (_shortcutDrag.Slot != null || _toolbarSurface is not { } surface) return false;
+        if (_toolbarSurface is not { } surface) return false;
         var point = surface.Panel.ToContent(_pointer.X - surface.Location.X, _pointer.Y - surface.Location.Y);
         try { return deliver(surface.Panel.Content, point); }
         catch (Exception exception)
@@ -3666,40 +3654,19 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private static int WholePixels(double length) => (int)Math.Ceiling(length - 0.001);
 
-    /// <summary>
-    /// The whole DIPs a window definition gives for a window <paramref name="pixels"/> long, as the window manager rounds them at the scale; a
-    /// length in DIPs rounded up from a measure can open a pixel larger than the content, which then stretches into it.
-    /// </summary>
-    private static int DipsFor(int pixels, double scale)
-    {
-        var dips = (int)Math.Ceiling((pixels - 0.5) / scale);
-        while (Math.Round(dips * scale) < pixels) dips++;
-        return dips;
-    }
-
     /// <summary>Whether Ctrl and the wheel over a surface resize it: the held toolbar, or a LegACEy window other than chat.</summary>
     private bool Rescalable(string? id) => id == ToolbarSurfaceId
         ? _toolbarTakeover?.Holds == true
         : id != null && _windows?.Get(id) != null && !RetailChatWindows.IsChat(id);
 
     /// <summary>
-    /// Makes a window or the toolbar a step bigger or smaller, from Ctrl and the wheel over it. A shortcut row opens again at its new size,
-    /// since it is measured as it opens; the toolbar lays out again; any other window's panel draws at the new scale in place.
+    /// Makes a window or the toolbar a step bigger or smaller, from Ctrl and the wheel over it. The toolbar, with its shortcut rows, lays out
+    /// again; any other window's panel draws at the new scale in place.
     /// </summary>
     private void RescaleWindow(string id, int steps)
     {
         if (!AvaloniaPanel.CanScale || !_windows!.Rescale(id == ToolbarSurfaceId ? ToolbarPlaceId : id, steps)) return;
         if (id == ToolbarSurfaceId) ScaleToolbar();
-        else if (id == ShortcutRowWindowId)
-        {
-            CloseShortcutBar();
-            EnsureShortcutBar();
-        }
-        else if (id == ShortcutRow2WindowId)
-        {
-            HideShortcutRow2();
-            ShowShortcutRow2();
-        }
         else SyncWindowLocations();
     }
 

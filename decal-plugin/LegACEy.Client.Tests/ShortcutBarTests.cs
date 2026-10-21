@@ -54,25 +54,6 @@ public sealed class ShortcutBarTests
     });
 
     [Fact]
-    public void The_frame_and_the_tag_drag_the_bar_unless_retail_s_ui_is_locked_and_a_slot_never_does() => RenderThread.Run(() =>
-    {
-        var locked = true;
-        var moves = 0;
-        var port = new FakeShortcutPort(Array.Empty<RetailShortcut>());
-        using var panel = Open(port, new Dictionary<uint, ShortcutItem>(), out var bar, () => locked, () => moves++);
-        panel.Tick();
-
-        Press(panel, bar, bar.RowTag);
-        Assert.Equal(0, moves);
-
-        locked = false;
-        Press(panel, bar, bar.SlotAt(0));
-        Assert.Equal(0, moves);
-        Press(panel, bar, bar.RowTag);
-        Assert.Equal(1, moves);
-    });
-
-    [Fact]
     public void Row_2_shows_and_uses_slots_9_to_17() => RenderThread.Run(() =>
     {
         var held = new Dictionary<uint, ShortcutItem> { [0x200] = Swords };
@@ -88,47 +69,23 @@ public sealed class ShortcutBarTests
     });
 
     [Fact]
-    public void A_drag_on_the_row_tag_moves_the_bar_and_does_not_click_it() => RenderThread.Run(() =>
+    public void A_drag_on_the_row_tag_does_not_click_it() => RenderThread.Run(() =>
     {
-        var moves = 0;
         var clicks = 0;
         var pointer = new Point(0, 0);
         var port = new FakeShortcutPort(Array.Empty<RetailShortcut>());
-        using var panel = Open(port, new Dictionary<uint, ShortcutItem>(), out var bar, startMove: () => moves++,
+        using var panel = Open(port, new Dictionary<uint, ShortcutItem>(), out var bar,
             tagClick: () => clicks++, pointer: () => pointer);
         panel.Tick();
 
         var centre = bar.RowTag.TranslatePoint(new Avalonia.Point(bar.RowTag.Bounds.Width / 2, bar.RowTag.Bounds.Height / 2), bar)!.Value;
         panel.PointerDown(centre.X, centre.Y);
-        // The pointer moves 20 px before the button comes up: the window moves with it, and it is a drag.
+        // The pointer moves 20 px before the button comes up: the toolbar moves with it, and it is a drag.
         pointer = new Point(20, 0);
         panel.PointerUp(centre.X, centre.Y);
 
-        Assert.Equal(1, moves);
         Assert.Equal(0, clicks);
     });
-
-    [Fact]
-    public void A_bar_sized_by_its_measure_at_85_percent_keeps_its_last_slot_inside_the_frame() => RenderThread.Run(() =>
-    {
-        // At 85% each 30 DIP slot lays out as 26 px, not 25.5: a window sized from the unscaled width cut the ninth slot into the frame.
-        var port = new FakeShortcutPort(Array.Empty<RetailShortcut>());
-        ShortcutBar Bar() => new(1, 0, port, _ => null, null, () => false, () => { }, () => new Point(0, 0), null, new FakeItemDragHost(), new ShortcutDragSource());
-        var measured = AvaloniaPanel.MeasureAt(Bar(), Avalonia.Size.Infinity, 0.85);
-        ShortcutBar? bar = null;
-        using var panel = AvaloniaPanel.Create(() => bar = Bar(), (int)Math.Ceiling(measured.Width * 0.85 - 0.001), (int)Math.Ceiling(measured.Height * 0.85 - 0.001), 0.85);
-        panel.Tick();
-
-        var last = bar!.SlotAt(ShortcutBar.SlotCount - 1);
-        var right = last.TranslatePoint(new Avalonia.Point(last.Bounds.Width, 0), panel.Content)!.Value.X;
-        // The frame's edge is 8 DIPs; the slot ends inside it with room to spare, as the tag does on the left.
-        var tag = bar.RowTag.TranslatePoint(default, panel.Content)!.Value.X;
-        Assert.InRange(panel.Content.Bounds.Width - right, tag - 1.5, tag + 1.5);
-    });
-
-    [Fact]
-    public void AboveRow_puts_the_bar_4_DIP_above_with_the_same_left_edge() =>
-        Assert.Equal(new Point(724, 856), ShortcutBar.AboveRow(new Point(724, 900), ShortcutBar.BarHeight, 0.85));
 
     [Fact]
     public void Row_2_is_on_for_a_character_with_no_saved_choice() =>
@@ -155,10 +112,6 @@ public sealed class ShortcutBarTests
         Click(panel, bar, bar.RowTag);
         Assert.True(choice.IsOn("server", "Alice"));
     });
-
-    [Fact]
-    public void The_default_location_puts_the_bar_4_DIP_left_of_the_toolbar_with_its_bottom_level_with_it() =>
-        Assert.Equal(new Point(724, 907), ShortcutBar.DefaultLocation(new Rectangle(1000, 900, 300, 48), new Size(321, 48), 0.85));
 
     [Fact]
     public void A_drop_on_an_empty_slot_binds_the_item_at_that_index() => RenderThread.Run(() =>
@@ -232,45 +185,6 @@ public sealed class ShortcutBarTests
     });
 
     [Fact]
-    public void A_shortcut_released_over_a_window_that_is_not_a_bar_is_not_offered_to_it_and_a_bar_takes_it() => RenderThread.Run(() =>
-    {
-        var windows = new WindowManager(new Size(1920, 1080), new MemoryWindowPositionStore(), "Server", "Character");
-        var vault = new RecordingDropTarget();
-        windows.Open(new WindowDefinition("vault", "Vault", 200, 200), new Point(0, 0));
-        var window = windows.HitTest(new Point(10, 10))!;
-
-        Assert.False(ItemDropRouting.DeliverShortcutTo(window, _ => vault, new Point(10, 10), 0x100));
-        Assert.Empty(vault.Dropped);
-
-        // A bar in a window of its own at the origin, opened last so it is on top: a release on slot 5 binds the shortcut there.
-        var port = new FakeShortcutPort(Array.Empty<RetailShortcut>());
-        using var panel = Open(port, new Dictionary<uint, ShortcutItem>(), out var bar);
-        panel.Tick();
-        windows.Open(new WindowDefinition("row", "Row", Width, Height), new Point(0, 0));
-        var slot = Centre(bar, bar.SlotAt(5));
-        var release = new Point((int)slot.X, (int)slot.Y);
-        var barWindow = windows.HitTest(release)!;
-
-        Assert.Equal("row", barWindow.Id);
-        Assert.True(ItemDropRouting.DeliverShortcutTo(barWindow, _ => bar, release, 0x100));
-        Assert.Equal(new[] { "add 5 0x100" }, port.Edits);
-    });
-
-    /// <summary>A window's content that takes item drops and records them: a window other than a shortcut bar.</summary>
-    private sealed class RecordingDropTarget : IRetailItemDropTarget
-    {
-        public List<uint> Dropped { get; } = new();
-
-        public void RetailDragOver(uint itemId, string itemName, Avalonia.Point? position) { }
-
-        public bool RetailDrop(uint itemId, string itemName, Avalonia.Point position)
-        {
-            Dropped.Add(itemId);
-            return true;
-        }
-    }
-
-    [Fact]
     public void A_shortcut_dragged_off_the_bars_is_removed() => RenderThread.Run(() =>
     {
         var port = new FakeShortcutPort(new[] { new RetailShortcut(1, 0x100) });
@@ -304,20 +218,6 @@ public sealed class ShortcutBarTests
     });
 
     [Fact]
-    public void A_shortcut_drags_off_its_slot_while_retail_s_ui_is_locked() => RenderThread.Run(() =>
-    {
-        var port = new FakeShortcutPort(new[] { new RetailShortcut(1, 0x100) });
-        var drag = new FakeItemDragHost();
-        using var panel = Open(port, new Dictionary<uint, ShortcutItem>(), out var bar, locked: () => true, drag: drag);
-        panel.Tick();
-
-        BeginDrag(panel, bar, bar.SlotAt(1));
-        Release(panel, drag);
-
-        Assert.Equal(new[] { "remove 1" }, port.Edits);
-    });
-
-    [Fact]
     public void An_item_dragged_over_the_bar_lights_the_slot_under_it_and_leaving_clears_it() => RenderThread.Run(() =>
     {
         using var panel = Open(new FakeShortcutPort(Array.Empty<RetailShortcut>()), new Dictionary<uint, ShortcutItem>(), out var bar);
@@ -336,14 +236,14 @@ public sealed class ShortcutBarTests
     private static readonly ShortcutItem Potions = new(new ItemVisual(0x06001074, 0, 0, 0), 12);
     private static readonly ShortcutItem Swords = new(new ItemVisual(0x060010DA, 0, 0, 0), 1);
 
-    /// <summary>A bar over a fake port, drawn in a window of its own. The items it shows are the ones <paramref name="held"/> holds.</summary>
+    /// <summary>A bar over a fake port, drawn in a panel of its own. The items it shows are the ones <paramref name="held"/> holds.</summary>
     private static AvaloniaPanel Open(FakeShortcutPort port, IReadOnlyDictionary<uint, ShortcutItem> held, out ShortcutBar bar,
-        Func<bool>? locked = null, Action? startMove = null, int firstIndex = 0, Action? tagClick = null, Func<Point>? pointer = null,
+        int firstIndex = 0, Action? tagClick = null, Func<Point>? pointer = null,
         FakeItemDragHost? drag = null, ShortcutDragSource? source = null)
     {
         ShortcutBar? created = null;
         var panel = AvaloniaPanel.Create(() => created = new ShortcutBar(firstIndex == 0 ? 1 : 2, firstIndex, port,
-            id => held.TryGetValue(id, out var item) ? item : null, null, locked ?? (() => false), startMove ?? (() => { }),
+            id => held.TryGetValue(id, out var item) ? item : null, null,
             pointer ?? (() => new Point(0, 0)), tagClick, drag ?? new FakeItemDragHost(), source ?? new ShortcutDragSource()), Width, Height);
         bar = created!;
         return panel;
