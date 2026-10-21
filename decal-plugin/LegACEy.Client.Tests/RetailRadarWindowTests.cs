@@ -250,6 +250,23 @@ public sealed class RetailRadarWindowTests
     });
 
     [Fact]
+    public void Clicking_the_plaque_indoors_hands_on_the_floor_it_shows() => RenderThread.Run(() =>
+    {
+        var port = PortWith();
+        port.Player = new RadarPlayer(new RadarPosition(RadarPlanFixtures.DungeonCell, 60, 84, 0), 0);
+        var plans = new IndoorPlanCache((x, y) => RadarPlanFixtures.Dungeon());
+        using var panel = Open(port, out var window, plans: plans);
+        WaitForPlan(plans);
+        window.Refresh();
+        panel.Tick();
+        string? clicked = null;
+        window.CoordinatesClicked += text => clicked = text;
+
+        Press(panel, Medallion(panel, "Click to paste in chat"));
+        Assert.Equal("Level 2 of 3", clicked);
+    });
+
+    [Fact]
     public void Options_and_zoom_come_back_for_the_next_window() => RenderThread.Run(() =>
     {
         RadarOptions? saved = null;
