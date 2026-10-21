@@ -41,11 +41,19 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     public const int DefaultTextSize = 120;
     public const int SmallestTextSize = 80, LargestTextSize = 200, TextSizeStep = 10;
     private int _textSize = DefaultTextSize;
-    // How long a chat window is left alone before it fades, in seconds, kept per character in the position store. NeverFades keeps it awake.
+    // How long a chat window is left alone before it fades, in seconds, kept per character in the position store. NeverFades keeps it awake;
+    // FadesInstantly fades as soon as it is left alone.
     public const string FadeKey = "dereth-chat-fade";
     public const int NeverFades = 0;
-    public static readonly IReadOnlyList<int> FadeChoices = new[] { NeverFades, 10, RetailChatFade.DefaultIdleAfterSeconds, 30, 60 };
+    public const int FadesInstantly = -1;
+    public static readonly IReadOnlyList<int> FadeChoices = new[] { NeverFades, FadesInstantly, 10, RetailChatFade.DefaultIdleAfterSeconds, 30, 60 };
     private int _fadeSeconds = RetailChatFade.DefaultIdleAfterSeconds;
+    // The log backdrop's opacity in percent while a chat window is awake and once it is idle, kept per character in the position store.
+    public const string ActiveOpacityKey = "dereth-chat-active-opacity", InactiveOpacityKey = "dereth-chat-inactive-opacity";
+    public const int DefaultActiveOpacity = 60, DefaultInactiveOpacity = 0;
+    public const int OpacityStep = 5;
+    private int _activeOpacity = DefaultActiveOpacity;
+    private int _inactiveOpacity = DefaultInactiveOpacity;
     // Where a torn-off window opens from the pointer: the tab it came from is under the pointer, so the window follows it.
     private static readonly Size Grab = new(24, 9);
     private readonly IRetailChatPort _port;
@@ -128,6 +136,8 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     {
         _textSize = LoadTextSize(_positions, _server, _character);
         _fadeSeconds = LoadFadeSeconds(_positions, _server, _character);
+        _activeOpacity = LoadOpacity(_positions, _server, _character, ActiveOpacityKey, DefaultActiveOpacity);
+        _inactiveOpacity = LoadOpacity(_positions, _server, _character, InactiveOpacityKey, DefaultInactiveOpacity);
         ShowWindow(MainId, _store.Load(_server, _character, MainId) ?? RetailChatTab.Defaults, tornOff: false, beside);
         foreach (var id in _store.Windows(_server, _character))
         {
@@ -257,7 +267,7 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
 
     private RetailChatWindow ShowWindow(string id, IReadOnlyList<RetailChatTab> tabs, bool tornOff, Point location)
     {
-        var window = new RetailChatWindow(_port, _history, this, tabs, tornOff, clock: _clock, copy: _copy, paste: _paste) { TextScale = _textSize / 100.0, IdleAfterSeconds = FadeDelay };
+        var window = new RetailChatWindow(_port, _history, this, tabs, tornOff, clock: _clock, copy: _copy, paste: _paste) { TextScale = _textSize / 100.0, IdleAfterSeconds = FadeDelay, ActiveOpacity = _activeOpacity, InactiveOpacity = _inactiveOpacity };
         _chats.Add((id, window));
         try
         {
@@ -313,10 +323,37 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     public static void SaveTextSize(IWindowPositionStore positions, string server, string character, int percent) =>
         positions.Save(server, character, TextSizeKey, (new Point(ClampTextSize(percent), 0), null));
 
-    /// <summary>The idle delay every chat window uses, or null when it never fades.</summary>
-    private int? FadeDelay => _fadeSeconds == NeverFades ? null : _fadeSeconds;
+    /// <summary>Sets the log backdrop's opacity in percent when every chat window is awake, and keeps it for the character.</summary>
+    public void SetActiveOpacity(int percent) => SetOpacity(ActiveOpacityKey, ref _activeOpacity, percent, (window, opacity) => window.ActiveOpacity = opacity);
 
-    /// <summary>Sets how long every chat window is left alone before it fades, in seconds (<see cref="NeverFades"/> keeps them awake), and keeps it for the character.</summary>
+    /// <summary>Sets the log backdrop's opacity in percent when every chat window is idle, and keeps it for the character.</summary>
+    public void SetInactiveOpacity(int percent) => SetOpacity(InactiveOpacityKey, ref _inactiveOpacity, percent, (window, opacity) => window.InactiveOpacity = opacity);
+
+    private void SetOpacity(string key, ref int current, int percent, Action<RetailChatWindow, int> apply)
+    {
+        if (_disposed) return;
+        var opacity = ClampOpacity(percent);
+        if (opacity == current) return;
+        current = opacity;
+        SaveOpacity(_positions, _server, _character, key, opacity);
+        foreach (var (_, window) in _chats) apply(window, opacity);
+    }
+
+    /// <summary>An opacity in percent kept within the bounds and rounded to the step.</summary>
+    public static int ClampOpacity(int percent) =>
+        Math.Max(0, Math.Min(100, (int)Math.Round(percent / (double)OpacityStep) * OpacityStep));
+
+    /// <summary>The character's opacity under <paramref name="key"/> in percent, the default before one is saved.</summary>
+    public static int LoadOpacity(IWindowPositionStore positions, string server, string character, string key, int fallback) =>
+        positions.Load(server, character, key) is { Location.X: var saved } ? ClampOpacity(saved) : fallback;
+
+    public static void SaveOpacity(IWindowPositionStore positions, string server, string character, string key, int percent) =>
+        positions.Save(server, character, key, (new Point(ClampOpacity(percent), 0), null));
+
+    /// <summary>The idle delay every chat window uses, or null when it never fades.</summary>
+    private int? FadeDelay => _fadeSeconds switch { NeverFades => null, FadesInstantly => 0, var seconds => seconds };
+
+    /// <summary>Sets how long every chat window is left alone before it fades, in seconds (<see cref="NeverFades"/> keeps them awake, <see cref="FadesInstantly"/> fades them at once), and keeps it for the character.</summary>
     public void SetFadeSeconds(int seconds)
     {
         if (_disposed) return;

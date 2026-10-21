@@ -147,7 +147,7 @@ public sealed class SettingsPanelTests
         settings.Radar = new OptionChoice<RadarOptions>(new RadarOptions(Map: false), _ => { });
 
         TextOf(panel, "140%");
-        Assert.Equal(4, TextOf(panel, "60 s").GetVisualAncestors().OfType<DerethSegmented>().First().Selected);
+        Assert.Equal(5, TextOf(panel, "60 s").GetVisualAncestors().OfType<DerethSegmented>().First().Selected);
         Assert.False(ground.On);
     });
 
@@ -176,6 +176,8 @@ public sealed class SettingsPanelTests
         {
             ChatTextSize = new OptionChoice<int>(130, _ => { }),
             ChatFade = new OptionChoice<int>(15, _ => { }),
+            ChatActiveOpacity = new OptionChoice<int>(60, _ => { }),
+            ChatInactiveOpacity = new OptionChoice<int>(0, _ => { }),
         };
         foreach (var tab in new[] { SettingsTab.General, SettingsTab.Windows })
         {
