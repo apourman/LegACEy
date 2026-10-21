@@ -66,7 +66,8 @@ public sealed class DerethAttackBarWindow : UserControl, IDisposable
     public bool Shown => _root.IsVisible;
 
     /// <summary>
-    /// Raised when <see cref="Shown"/> flips. The host must hide or close its surface too, since hidden content still takes input.
+    /// Raised when <see cref="Shown"/> flips. The client host does not listen: its takeover closes the window outside melee and missile, so
+    /// the window is never left open hidden, where its content would still take input.
     /// </summary>
     public event Action? ShownChanged;
 

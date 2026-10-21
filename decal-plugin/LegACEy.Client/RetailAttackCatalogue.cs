@@ -6,7 +6,8 @@ namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
 /// The native entries the Dereth attack bar needs from retail's combat system, player options and panel. Each feature has its own list,
-/// validated on its own, so a mismatch turns only that part off. Addresses and byte lists were read from the installed end-of-retail
+/// validated on its own, so each list logs its own reason; any failed list turns the whole bar off (see <see cref="RetailAttackNatives.Complete"/>),
+/// so it never shows a control that cannot work. Addresses and byte lists were read from the installed end-of-retail
 /// acclient.exe; acclient.pdb is a near build, so its names were used and each address was checked in the exe. Recipes are in the attack
 /// bar spike note. The combat mode is not here: the attack bar reads it through Decal's BridgeFact.CombatMode.
 /// </summary>
