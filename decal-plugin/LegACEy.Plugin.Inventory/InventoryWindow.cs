@@ -771,7 +771,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     /// <summary>A pack in the horizontal strip: its icon, with "n/cap" under it. An empty side-pack slot is a placeholder.</summary>
     private Control PackTab(InventorySnapshot snapshot, InventoryPack pack, int position, InventoryPack open)
     {
-        var stack = new StackPanel { Spacing = 2, Width = DerethSlotGrid.Pitch };
+        var stack = new StackPanel { Spacing = 2 };
         if (pack.Id == 0)
         {
             stack.Children.Add(Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, position, null)));

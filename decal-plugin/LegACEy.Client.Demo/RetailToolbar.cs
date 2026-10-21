@@ -123,7 +123,7 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         ToolTip.SetTip(_stance, "Combat stance");
         _stance.Clicked += () => _port.ToggleStance();
 
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, Height = 32 };
+        var row = new DerethItemRow { Spacing = 5 };
         row.Children.Add(Centred(_stance));
         row.Children.Add(Centred(new DerethDivider()));
         foreach (var (panel, glyph, name) in WindowButtons)

@@ -339,7 +339,7 @@ public sealed class VaultShellPanel : UserControl, IDisposable, IRetailItemDropT
         return (client.Notice, false);
     }
 
-    private double Gap => _grid.ColumnPitch - DerethSlotGrid.CellSize;
+    private double Gap => _grid.ColumnPitch - ItemCellSize.Of(_grid).Cell;
 
     /// <summary>The index of the vault cell under a point in this panel's coordinates, or -1.</summary>
     private int CellAt(Point position)
