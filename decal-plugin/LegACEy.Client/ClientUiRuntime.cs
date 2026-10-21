@@ -130,9 +130,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string RetailVitalsSwitchFile = "retail-vitals-native";
     // Beside the DLL: while this file exists, retail's radar stays retail's. Without it the Dereth radar replaces it.
     private const string RetailRadarSwitchFile = "retail-radar-native";
-    // Beside the DLL: while this file exists, the Dereth attack bar replaces retail's attack panel in melee and missile. Opt-in until the play-test
-    // signs it off: without the file retail's panel stays as it is.
-    private const string RetailAttackSwitchFile = "retail-attack-takeover";
+    // Beside the DLL: while this file exists, retail's attack panel stays retail's. Without it the Dereth attack bar replaces it in melee and missile.
+    private const string RetailAttackSwitchFile = "retail-attack-native";
     // A window switch whose file could not be written or deleted this session: its state (true for LegACEy's) until the file can be changed.
     // Runtime only, so the next session reads the file again.
     private readonly Dictionary<string, bool> _switchHeld = new(StringComparer.Ordinal);
@@ -939,7 +938,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         Choice("Toolbar", RetailToolbarSwitchFile, () => _lastToolbarSwitchCheck = default),
         Choice("Chat", RetailChatSwitchFile, () => _lastChatSwitchCheck = default),
         Choice("Vitals", RetailVitalsSwitchFile, () => _lastVitalsSwitchCheck = default),
-        Choice("Radar", RetailRadarSwitchFile, () => _lastRadarSwitchCheck = default)
+        Choice("Radar", RetailRadarSwitchFile, () => _lastRadarSwitchCheck = default),
+        Choice("Attack bar", RetailAttackSwitchFile, () => _lastAttackSwitchCheck = default)
     };
 
     private UiWindowChoice Choice(string title, string file, Action recheck)
@@ -2957,15 +2957,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Holds retail's attack panel in melee and missile and draws the Dereth attack bar over it, while the <c>retail-attack-takeover</c> file is
-    /// beside the DLL. Without the file retail's panel is left as it is. The bar's port is polled each frame while its window is open.
+    /// Holds retail's attack panel in melee and missile and draws the Dereth attack bar over it, unless the <c>retail-attack-native</c> file is
+    /// beside the DLL; with it retail's panel is left as it is. The bar's port is polled each frame while its window is open.
     /// </summary>
     private void TickRetailAttack()
     {
         _attack ??= new RetailAttackTakeover(AttackNatives, HoldRetailAttack, RetailAttackPlace, OpenAttackBar, Log);
         try
         {
-            var switchOn = SwitchOn(RetailAttackSwitchFile, ref _lastAttackSwitchCheck, ref _attackSwitch, onWhenMissing: false);
+            var switchOn = SwitchOn(RetailAttackSwitchFile, ref _lastAttackSwitchCheck, ref _attackSwitch);
             // Retail's panel is given back if the post-UI draw is gone or the LegACEy windows failed, as the radar's is.
             var canDraw = _postUiDrawHook?.IsInstalled == true && !(_windows != null && !_windowsEnabled);
             var stance = switchOn && _inGame ? (RetailStance)Bridge.Fact(BridgeFact.CombatMode) : RetailStance.Peace;
@@ -3064,18 +3064,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// Whether a feature's switch is on: on while its file is missing beside the DLL, or while a write this session could not change it
-    /// holds (see <see cref="SwitchCustom"/>). An opt-in switch (<paramref name="onWhenMissing"/> false) is on while the file exists. The file
-    /// is looked for once a second.
+    /// holds (see <see cref="SwitchCustom"/>). The file is looked for once a second.
     /// </summary>
-    private bool SwitchOn(string file, ref DateTime lastCheck, ref bool on, bool onWhenMissing = true)
+    private bool SwitchOn(string file, ref DateTime lastCheck, ref bool on)
     {
         var now = DateTime.UtcNow;
         if (now - lastCheck >= TimeSpan.FromSeconds(1))
         {
             lastCheck = now;
-            // SwitchCustom is on while the file is missing, so an opt-in switch is on where it is not. Only the attack bar's file is opt-in
-            // and it is not a Settings choice row, so only it passes onWhenMissing.
-            on = SwitchCustom(IOPath.Combine(PluginDirectory, file)) == onWhenMissing;
+            on = SwitchCustom(IOPath.Combine(PluginDirectory, file));
         }
         return on;
     }
