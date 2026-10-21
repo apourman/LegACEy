@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.13.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.12.0...decal-plugin-v0.13.0) (2026-10-21)
+
+
+### Features
+
+* **decal-plugin:** chat name colour ([#106](https://github.com/apourman/LegACEy/issues/106)) ([b02111a](https://github.com/apourman/LegACEy/commit/b02111a94de6cdda9992438167cb957b46a3f9d9))
+* **decal-plugin:** Dereth attack bar ([#100](https://github.com/apourman/LegACEy/issues/100)) ([39e51e7](https://github.com/apourman/LegACEy/commit/39e51e79ec40d4c50ca4556d09ae98272ab7dfd5))
+* **decal-plugin:** instant chat fade and chat opacity ([#103](https://github.com/apourman/LegACEy/issues/103)) ([0b7beac](https://github.com/apourman/LegACEy/commit/0b7beacedf188d8551e7ab9e8feb21520e038064))
+* **decal-plugin:** retail layout for the appraisal window and paperdoll on any server ([#109](https://github.com/apourman/LegACEy/issues/109)) ([06af126](https://github.com/apourman/LegACEy/commit/06af126fea4f03163cd3695bd61b3abdc0065989))
+* **decal-plugin:** retail-style vitals bars ([#105](https://github.com/apourman/LegACEy/issues/105)) ([e4bbd8b](https://github.com/apourman/LegACEy/commit/e4bbd8bb63a9c288924095a21e8af54ae9d70a53))
+* **decal-plugin:** switch all windows between Dereth and retail ([#104](https://github.com/apourman/LegACEy/issues/104)) ([89b3232](https://github.com/apourman/LegACEy/commit/89b3232e0214f576aa9a0786e07f9009b7904cd9))
+* **decal-plugin:** toolbar and shortcut rows in one window ([#108](https://github.com/apourman/LegACEy/issues/108)) ([ac9691f](https://github.com/apourman/LegACEy/commit/ac9691f0467fa479db197140519c2879303a9730))
+* radar pings ([#110](https://github.com/apourman/LegACEy/issues/110)) ([db0f503](https://github.com/apourman/LegACEy/commit/db0f503bda5ecb3994ef616a482707983b1382e2))
+
+
+### Bug Fixes
+
+* **decal-plugin:** clickable links in chat ([#102](https://github.com/apourman/LegACEy/issues/102)) ([a83f07b](https://github.com/apourman/LegACEy/commit/a83f07b318f25155752458e3a3ba39e20c3c4492))
+* **decal-plugin:** keep chat lines while retail's chat is shown ([#107](https://github.com/apourman/LegACEy/issues/107)) ([ed279ec](https://github.com/apourman/LegACEy/commit/ed279ec55b9dc9e67a70df7b63d8e51c96baecbf))
+* **decal-plugin:** line the paperdoll's aetheria and ammo slots up with its columns ([#111](https://github.com/apourman/LegACEy/issues/111)) ([9444a84](https://github.com/apourman/LegACEy/commit/9444a84b0d00f477dee62cd5bb3c0b1a650c0b15))
+* **decal-plugin:** sharp item icons at any UI size ([#101](https://github.com/apourman/LegACEy/issues/101)) ([ee20d9a](https://github.com/apourman/LegACEy/commit/ee20d9a52da4cf3c319bebb67f93e5ad58ac3186))
+
 ## [0.12.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.11.4...decal-plugin-v0.12.0) (2026-10-21)
 
 
