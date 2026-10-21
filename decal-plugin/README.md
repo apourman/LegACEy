@@ -126,7 +126,7 @@ delay per character (Never, Instant as in retail, or 10 to 60 seconds), and the 
 General Chat Options do; with an inactive opacity above 0 the lines stay shown while idle. Names are drawn as in retail, in their line's
 colour except in a spell's words, where they are green; Name colour can pick Green, White or Gold for every name instead.
 Retail's chat keeps running out of sight, so Decal plugins see chat as before. Creating an empty file named `retail-chat-native` beside
-the main DLL gives retail's chat back within a second; deleting it takes the chat over again. In the chat box, Up and Down bring back what you sent, Ctrl+V pastes, and Ctrl+C and Ctrl+X copy. A drag
+the main DLL gives retail's chat back within a second; deleting it takes the chat over again, with the lines that came meanwhile in its log. In the chat box, Up and Down bring back what you sent, Ctrl+V pastes, and Ctrl+C and Ctrl+X copy. A drag
 in the log selects across lines and copies as you let go; Ctrl+C copies it again without the game seeing the key, until you click
 outside the chat. The chat's text size is set by its Aa
 button (click larger, right-click smaller) or Ctrl and the wheel, per character.

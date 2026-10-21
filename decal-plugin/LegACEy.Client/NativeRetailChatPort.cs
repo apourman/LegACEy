@@ -170,7 +170,8 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     /// Raises the lines the callback queued, and the timestamp option's change, on the game thread. Called once a frame; the option is read
     /// once a second.
     /// </summary>
-    public void Poll()
+    /// <param name="holdsEntry">False while retail's chat is shown, so its entry keeps the keyboard the player gave it.</param>
+    public void Poll(bool holdsEntry = true)
     {
         while (_pending.TryDequeue(out var line))
         {
@@ -188,7 +189,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
                 TimestampsChanged?.Invoke();
             }
         }
-        if (_natives.Enter) ReleaseRetailEntryFocus();
+        if (holdsEntry && _natives.Enter) ReleaseRetailEntryFocus();
     }
 
     /// <summary>
