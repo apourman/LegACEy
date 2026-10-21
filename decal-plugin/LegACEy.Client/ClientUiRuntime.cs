@@ -265,6 +265,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private GroundTiles? _radarTiles;
     private Task<IndoorDat?>? _radarIndoorLoad;
     private IndoorPlanCache? _radarPlans;
+    // The server's name for the place the player is in, asked on each landblock visit; asked only when hello lists place.name.
+    private readonly RadarPlaceNames _radarPlaceNames = new();
     private bool _radarFailed;
     private bool _radarReleaseLogged;
     private bool _radarSwitch;
@@ -614,10 +616,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private void RequestServerActions()
     {
         _plugins?.SetServerActions(null);
+        _radarPlaceNames.Reset(null, Array.Empty<string>());
         _serverChannel?.Request(ChannelHello.Action, Array.Empty<byte>(), reply =>
         {
             var actions = ServerActionsFrom(reply).ToArray();
             _plugins?.SetServerActions(actions);
+            _radarPlaceNames.Reset(_serverChannel, actions);
             if (actions.Contains(StormProtocol.Zone))
                 _serverChannel?.Request(StormProtocol.Zone, Array.Empty<byte>(), zone => { if (zone.Ok) ShowStorm(zone.Body); });
             // Only a server that answered without them has no storm or weather; a failed hello keeps what was remembered.
@@ -2823,7 +2827,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var at = _radarPlace ?? new Point(Math.Max(0, screen.Width - (int)Math.Round(RetailRadarWindow.DesignWidth * WindowScale) - 12), 12);
         var port = _radarPort;
         var window = new RetailRadarWindow(port, RadarGround, RadarPlans, LoadRadarOptions(), SaveRadarOptions,
-            () => (uint)Bridge.Fact(BridgeFact.CurrentSelection), () => _windows?.BeginMove(RadarWindowId, _pointer));
+            () => (uint)Bridge.Fact(BridgeFact.CurrentSelection), () => _windows?.BeginMove(RadarWindowId, _pointer), _radarPlaceNames.NameOf);
         window.CoordinatesClicked += text => _chatWindows?.Main?.Insert(text);
         // The radar has no title bar: it drags from its frame, so its title bar is only one pixel tall.
         var definition = new WindowDefinition(RadarWindowId, "Radar", RetailRadarWindow.DesignWidth, RetailRadarWindow.DesignHeight, titleBarHeight: 1,
