@@ -160,29 +160,34 @@ public static class RadarScope
         var planLevels = drawn?.DrawOrder(level) ?? Array.Empty<RadarPlanDraw>();
         var origin = player == null ? default : new Point(player.Position.X, player.Position.Y);
         return new RadarScopeFrame(dots, tiles, turn, scale, player?.Position.Coordinates, player?.Heading ?? 0, planLevels, origin,
-            Plaque(player, plan, serverName));
+            Plaque(player, drawn, level, serverName));
     }
 
     /// <summary>
-    /// The plaque's text: the coordinates outdoors and until the plan is built. In a building, the coordinates and the floor
+    /// The plaque's text: the coordinates when no plan is drawn. In a building, the coordinates and the floor
     /// ("33.6N, 56.7E · Ground"). In a dungeon, the place's name and the level from the top ("Arwic Mines · Level 2 of 6"), the name cut
     /// with an ellipsis when it is too long, or the level alone without a name. Null without a player.
     /// </summary>
+    /// <param name="drawn">The plan Build draws, or null when none is drawn.</param>
+    /// <param name="level">The index in <paramref name="drawn"/> of the player's level, or -1.</param>
     /// <param name="serverName">The server's name for the cell's place, which wins; null or empty leaves the shared list to name it.</param>
-    public static string? Plaque(RadarPlayer? player, RadarPlan? plan, Func<uint, string?>? serverName = null)
+    public static string? Plaque(RadarPlayer? player, RadarPlan? drawn, int level, Func<uint, string?>? serverName = null)
     {
         if (player == null) return null;
         var coordinates = player.Position.Coordinates;
-        var level = plan == null ? -1 : plan.LevelOf((ushort)(player.Position.Cell & 0xFFFF));
-        if (plan == null || level < 0) return coordinates;
-        if (plan.Building) return $"{coordinates} · {plan.FloorName(level)}";
-        var where = $"Level {level + 1} of {plan.Levels.Count}";
-        return PlaceName(player.Position.Cell, serverName) is { } name ? $"{Fitted(name, where)} · {where}" : where;
+        if (drawn == null || level < 0) return coordinates;
+        if (drawn.Building) return $"{coordinates} · {drawn.FloorName(level)}";
+        var where = $"Level {level + 1} of {drawn.Levels.Count}";
+        var name = PlaceName(player.Position.Cell, serverName);
+        var fitted = name == null ? null : Fitted(name, where);
+        return fitted == null ? where : $"{fitted} · {where}";
     }
 
-    private static string Fitted(string name, string level)
+    // The name cut to the room beside the level, with an ellipsis; null when the room is too small for a name and its ellipsis.
+    private static string? Fitted(string name, string level)
     {
         var room = PlaqueCharacters - level.Length - " · ".Length;
+        if (room < 2) return null;
         return name.Length <= room ? name : name.Substring(0, room - 1) + "…";
     }
 

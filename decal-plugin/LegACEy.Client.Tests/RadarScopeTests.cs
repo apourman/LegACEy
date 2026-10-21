@@ -133,8 +133,10 @@ public sealed class RadarScopeTests
     [Fact]
     public void The_plaque_is_the_coordinates_outdoors_and_until_the_plan_is_built()
     {
-        Assert.Equal("33.6N, 56.7E", RadarScope.Build(Player(0), NoObjects, Default, Radius).Plaque);
-        Assert.Equal("33.6N, 56.7E", RadarScope.Build(Player(0, RadarPlanFixtures.DungeonCell), NoObjects, Default, Radius, null).Plaque);
+        Assert.Equal("33.6N, 56.7E", RadarScope.Build(Player(0, RadarPlanFixtures.DungeonCell), NoObjects, Default, Radius).Plaque);
+        // With the map off no plan is drawn, so the plaque keeps the coordinates even with the plan in hand.
+        var plan = new RadarPlan(RadarPlanFixtures.Dungeon(), 0x0101);
+        Assert.Equal("33.6N, 56.7E", RadarScope.Build(Player(0, RadarPlanFixtures.DungeonCell), NoObjects, Default with { Map = false }, Radius, plan).Plaque);
     }
 
     [Fact]

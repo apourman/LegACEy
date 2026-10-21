@@ -56,8 +56,8 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     private readonly DerethRadarScope _scope = new() { Width = Diameter, Height = Diameter, Margin = new Thickness(ScopeOrigin.X, ScopeOrigin.Y, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
     private readonly DerethRadarBezel _bezel;
     private readonly DerethHeadingTape _tape = new();
-    private readonly TextBlock _coordinates;
-    private readonly Border _coordinatesPlaque;
+    private readonly TextBlock _plaqueText;
+    private readonly Border _plaque;
     private readonly DerethMedallion _lock;
     // The resize corners, shown while the pointer is over the radar and the UI is unlocked.
     private readonly DerethCornerMarks _corners = new() { IsVisible = false };
@@ -116,20 +116,20 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         _serverName = serverName;
 
         _bezel = new DerethRadarBezel { Width = Diameter + 22, Height = Diameter + 22, Margin = new Thickness(ScopeOrigin.X - 11, ScopeOrigin.Y - 11, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, IsHitTestVisible = false };
-        _coordinates = DerethPalette.CentreInk(new TextBlock { FontFamily = DerethPalette.Title, FontSize = 10, Foreground = DerethPalette.CreamBrush });
-        _coordinatesPlaque = new Border
+        _plaqueText = DerethPalette.CentreInk(new TextBlock { FontFamily = DerethPalette.Title, FontSize = 10, Foreground = DerethPalette.CreamBrush });
+        _plaque = new Border
         {
             CornerRadius = new CornerRadius(9), Background = Plaque, BorderBrush = GoldDark, BorderThickness = new Thickness(1), Padding = new Thickness(8, 1),
             Margin = new Thickness(0, ScopeOrigin.Y + Diameter + 8, 0, 0), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top,
-            Cursor = new Cursor(StandardCursorType.Hand), Child = _coordinates
+            Cursor = new Cursor(StandardCursorType.Hand), Child = _plaqueText
         };
-        ToolTip.SetTip(_coordinatesPlaque, "Click to paste in chat");
+        ToolTip.SetTip(_plaque, "Click to paste in chat");
         // The press is the plaque's, so it does not move the radar; the release over it is the click.
-        _coordinatesPlaque.PointerPressed += (_, e) => { CloseOptions(); e.Handled = true; };
-        _coordinatesPlaque.PointerReleased += (_, e) =>
+        _plaque.PointerPressed += (_, e) => { CloseOptions(); e.Handled = true; };
+        _plaque.PointerReleased += (_, e) =>
         {
             e.Handled = true;
-            if (new Rect(_coordinatesPlaque.Bounds.Size).Contains(e.GetPosition(_coordinatesPlaque)) && _coordinates.Text is { Length: > 0 } text)
+            if (new Rect(_plaque.Bounds.Size).Contains(e.GetPosition(_plaque)) && _plaqueText.Text is { Length: > 0 } text)
                 CoordinatesClicked?.Invoke(text);
         };
         var tape = new Border
@@ -185,7 +185,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         var grid = new Grid
         {
             Width = LayoutWidth, Height = LayoutHeight, Background = Brushes.Transparent,
-            Children = { _scope, _bezel, tape, _coordinatesPlaque, _lock, _gear, _popover, _corners }
+            Children = { _scope, _bezel, tape, _plaque, _lock, _gear, _popover, _corners }
         };
         grid.PointerEntered += (_, _) => { _pointerOver = true; ShowCorners(); };
         grid.PointerExited += (_, _) => { _pointerOver = false; ShowCorners(); };
@@ -329,8 +329,8 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
 
         _bezel.Turn = frame.Turn;
         _tape.Heading = frame.Heading;
-        _coordinates.Text = frame.Plaque ?? string.Empty;
-        _coordinatesPlaque.IsVisible = frame.Plaque != null;
+        _plaqueText.Text = frame.Plaque ?? string.Empty;
+        _plaque.IsVisible = frame.Plaque != null;
         // Without retail's lock natives the port's UiLocked does nothing, so the button is not shown.
         _lock.IsVisible = _port.UiLockAvailable;
         // The medallion redraws on every set, so it is set only when the lock changes.
