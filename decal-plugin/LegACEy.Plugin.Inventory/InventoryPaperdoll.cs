@@ -36,14 +36,15 @@ internal sealed class InventoryPaperdoll : Canvas
         (PaperdollSlot.Head, 84, 28), (PaperdollSlot.UpperArms, 48, 64), (PaperdollSlot.Chest, 84, 64), (PaperdollSlot.LowerArms, 48, 100),
         (PaperdollSlot.Abdomen, 84, 100), (PaperdollSlot.UpperLegs, 120, 100), (PaperdollSlot.Hands, 48, 136), (PaperdollSlot.LowerLegs, 120, 136),
         (PaperdollSlot.Feet, 120, 172),
-        (PaperdollSlot.AetheriaOne, 126, 8), (PaperdollSlot.AetheriaTwo, 158, 8), (PaperdollSlot.AetheriaThree, 190, 8),
-        (PaperdollSlot.LeftWrist, 156, 80), (PaperdollSlot.LeftRing, 156, 116), (PaperdollSlot.Weapon, 156, 172), (PaperdollSlot.Ammo, 190, 172),
+        // Retail packs the aetheria at 126, 158 and 190 and the ammo at 190, off the columns below; here each sits on a column, the first aetheria inside the doll area.
+        (PaperdollSlot.AetheriaOne, 120, RetailAetheriaTop), (PaperdollSlot.AetheriaTwo, 156, RetailAetheriaTop), (PaperdollSlot.AetheriaThree, 192, RetailAetheriaTop),
+        (PaperdollSlot.LeftWrist, 156, 80), (PaperdollSlot.LeftRing, 156, 116), (PaperdollSlot.Weapon, 156, 172), (PaperdollSlot.Ammo, 192, 172),
         (PaperdollSlot.Cloak, 192, 44), (PaperdollSlot.Shirt, 192, 80), (PaperdollSlot.Pants, 192, 116),
     };
 
     // The panel keeps its full size, and whatever is put in it (the 3D character) is inset to clear the aetheria cells and the Slots toggle
-    // above it, which end at y 44. With the 1 px border, the inside runs from y 46 to the foot.
-    private static readonly Thickness DollInset = new(0, 45, 0, 0);
+    // above it. The inset follows the aetheria row's foot at every scale: at scale 1 the row ends at y 44 and, with the 1 px border, the inside runs from y 46.
+    private const int RetailAetheriaTop = 8;
 
     /// <summary>The armour slots, which sit over the doll and show only while the Slots toggle is on.</summary>
     private static readonly HashSet<PaperdollSlot> Armour = new()
@@ -66,7 +67,7 @@ internal sealed class InventoryPaperdoll : Canvas
         DollArea = new Border
         {
             Name = "DollArea",
-            CornerRadius = new CornerRadius(3), Padding = DollInset,
+            CornerRadius = new CornerRadius(3),
             BorderBrush = DerethPalette.GrooveEdgeBrush, BorderThickness = new Thickness(1),
             Background = new RadialGradientBrush { GradientStops = { new GradientStop(Color.Parse("#2A2519"), 0), new GradientStop(Color.Parse("#0A0805"), 1) } },
         };
@@ -109,6 +110,7 @@ internal sealed class InventoryPaperdoll : Canvas
         var height = Scale(RetailHeight);
         DollArea.Width = Scale(RetailArmourRight) - Scale(RetailArmourLeft) + size.Cell + 2 * DollClearance;
         DollArea.Height = height;
+        DollArea.Padding = new Thickness(0, Scale(RetailAetheriaTop) + size.Cell + 2, 0, 0);
         SetLeft(DollArea, Scale(RetailArmourLeft) + 1 - DollClearance);
         SetLeft(SlotsToggle, Scale(RetailToggleLeft));
         SetLeft(ExpandButton, GetLeft(DollArea) + DollArea.Width - ExpandButton.Width - 4);
