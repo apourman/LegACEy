@@ -144,6 +144,35 @@ public sealed class IndoorPlanTests
         Assert.Equal(0xC6, plan.X);
     }
 
+    [Fact]
+    public async Task The_owned_DAT_is_disposed_only_after_the_reads_in_flight_finish_and_no_new_plan_starts()
+    {
+        var release = new ManualResetEventSlim(false);
+        var owned = new CountingDisposable();
+        var cache = new IndoorPlanCache((x, y) =>
+        {
+            release.Wait();
+            return IndoorPlan.Build(x, y, Array.Empty<IndoorCellShape>());
+        }, owned: owned);
+        var read = cache.PlanAsync(0xC6, 0xA9);
+
+        cache.Dispose();
+        Assert.Equal(0, owned.Count);
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => cache.PlanAsync(0x00, 0x99));
+        release.Set();
+        await read;
+
+        var until = DateTime.UtcNow.AddSeconds(5);
+        while (owned.Count == 0 && DateTime.UtcNow < until) await Task.Delay(10);
+        Assert.Equal(1, owned.Count);
+    }
+
+    private sealed class CountingDisposable : IDisposable
+    {
+        public int Count;
+        public void Dispose() => Interlocked.Increment(ref Count);
+    }
+
     private const ushort Outside = 0xFFFF;
 
     private static Vec3 V(float x, float y, float z) => new(x, y, z);

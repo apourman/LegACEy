@@ -2812,7 +2812,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (_radarPlans != null) return _radarPlans;
         if (_radarIndoorLoad is not { IsCompletedSuccessfully: true } load || load.Result is not { } dat) return null;
-        return _radarPlans = new IndoorPlanCache(dat.ReadPlan, Log);
+        return _radarPlans = new IndoorPlanCache(dat.ReadPlan, Log, owned: dat);
     }
 
     /// <summary>Opens the Dereth radar over the held retail radar. False when the windows cannot open yet, so the next frame tries again.</summary>
@@ -2822,8 +2822,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var screen = _windows!.Screen;
         var at = _radarPlace ?? new Point(Math.Max(0, screen.Width - (int)Math.Round(RetailRadarWindow.DesignWidth * WindowScale) - 12), 12);
         var port = _radarPort;
-        var window = new RetailRadarWindow(port, RadarGround, RadarPlans, LoadRadarOptions(), SaveRadarOptions, () => (uint)Bridge.Fact(BridgeFact.CurrentSelection),
-            () => _windows?.BeginMove(RadarWindowId, _pointer));
+        var window = new RetailRadarWindow(port, RadarGround, RadarPlans, LoadRadarOptions(), SaveRadarOptions,
+            () => (uint)Bridge.Fact(BridgeFact.CurrentSelection), () => _windows?.BeginMove(RadarWindowId, _pointer));
         window.CoordinatesClicked += text => _chatWindows?.Main?.Insert(text);
         // The radar has no title bar: it drags from its frame, so its title bar is only one pixel tall.
         var definition = new WindowDefinition(RadarWindowId, "Radar", RetailRadarWindow.DesignWidth, RetailRadarWindow.DesignHeight, titleBarHeight: 1,
@@ -2882,11 +2882,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         ReleaseFeatureWindow(RadarWindowId);
     }
 
-    /// <summary>Drops the ground's and the indoor plans' DATs at unload or switch-off, after the radar that reads them is gone. A load still running is disposed when it lands.</summary>
+    /// <summary>
+    /// Drops the ground's and the indoor plans' DATs at unload or switch-off, after the radar that reads them is gone. A load still running is
+    /// disposed when it lands; the plans' DAT is disposed once their reads in flight have finished.
+    /// </summary>
     private void DisposeRadarGround()
     {
         if (_radarDatLoad is { } load) DisposeWhenLoaded(load);
-        if (_radarIndoorLoad is { } indoors) DisposeWhenLoaded(indoors);
+        if (_radarPlans != null) _radarPlans.Dispose();
+        else if (_radarIndoorLoad is { } indoors) DisposeWhenLoaded(indoors);
         _radarDatLoad = null;
         _radarTiles = null;
         _radarIndoorLoad = null;

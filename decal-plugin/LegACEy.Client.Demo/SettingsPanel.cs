@@ -443,7 +443,8 @@ public sealed class SettingsPanel : UserControl
         range.Chosen += index => _settings.Radar?.Set(_settings.Radar.Value with { Zoom = ranges[index] });
         _redraws.Add(Show);
         Show();
-        return OptionRow("Range (m)", range);
+        // Only the outdoor zoom: the indoor one is set from the radar's own options, beside the plan it zooms.
+        return OptionRow("Outdoor range (m)", range);
     }
 
     /// <summary>

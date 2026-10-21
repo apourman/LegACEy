@@ -172,6 +172,30 @@ public sealed class RetailRadarWindowTests
     });
 
     [Fact]
+    public void Moving_within_the_same_place_keeps_its_levels_and_only_the_solid_one_moves() => RenderThread.Run(() =>
+    {
+        var port = PortWith();
+        port.Player = new RadarPlayer(new RadarPosition(RadarPlanFixtures.DungeonCell, 60, 84, 0), 0);
+        var plans = new IndoorPlanCache((x, y) => RadarPlanFixtures.Dungeon());
+        using var panel = Open(port, out var window, plans: plans);
+        WaitForPlan(plans);
+        window.Refresh();
+        panel.Tick();
+        var before = window.Frame!.PlanLevels;
+
+        // The lowest room of the same dungeon.
+        port.Player = new RadarPlayer(new RadarPosition(0xC6A90100, 60, 84, 0), 0);
+        window.Refresh();
+        panel.Tick();
+        var after = window.Frame!.PlanLevels;
+
+        // The same three levels, though the draw order turns with the player's level.
+        Assert.Equal(before.Count, after.Count);
+        Assert.All(before, draw => Assert.Contains(after, again => ReferenceEquals(again.Level, draw.Level)));
+        Assert.NotSame(before.Single(level => level.Solid).Level, after.Single(level => level.Solid).Level);
+    });
+
+    [Fact]
     public void The_wheel_indoors_changes_the_indoor_zoom_and_leaves_the_outdoor_zoom() => RenderThread.Run(() =>
     {
         var port = PortWith();

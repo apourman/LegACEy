@@ -27,8 +27,13 @@ public sealed class RetailRadarRenderTests
     private const uint Cell = 0xC6A90001;
     private static readonly Avalonia.Media.Color Backdrop = Avalonia.Media.Color.FromRgb(0x1A, 0x1E, 0x22);
 
+    /// <summary>
+    /// The renders to compare by eye, outdoors and indoors. They are written when LEGACEY_RADAR_RENDER names a folder. Indoors needs
+    /// LEGACEY_CELL_DAT and LEGACEY_PORTAL_DAT too: the dungeon in 0x0099 on cell 0x0100 and the Arwic house on cell 0x0168 (its ground under
+    /// it), both facing east, where the mockup starts them.
+    /// </summary>
     [Fact]
-    public void The_radar_renders_at_1x_and_2x_with_the_ground_dots_and_options() => RenderThread.Run(() =>
+    public void The_radar_renders_outdoors_and_indoors_at_1x_and_2x_with_the_ground_dots_and_options() => RenderThread.Run(() =>
     {
         var folder = Environment.GetEnvironmentVariable("LEGACEY_RADAR_RENDER");
         if (folder == null) return;
@@ -41,28 +46,23 @@ public sealed class RetailRadarRenderTests
         Render(folder, "radar-dark-1x.png", 1, null, new RadarOptions(Map: false));
         Render(folder, "radar-options-2x.png", 2, ground, new RadarOptions(Rings: true), openOptions: true);
         Render(folder, "radar-hover-1x.png", 1, ground, new RadarOptions(), hover: true);
+        RenderIndoors(folder, ground);
     });
 
-    /// <summary>
-    /// The indoor radar, as the mockup starts it: the dungeon in 0x0099 on cell 0x0100, the Arwic house on cell 0x0168 (its ground
-    /// under it), both facing east. The plans read the cell and portal DATs when LEGACEY_CELL_DAT and LEGACEY_PORTAL_DAT are given.
-    /// </summary>
-    [Fact]
-    public void The_radar_renders_indoors_in_0099_and_in_the_Arwic_house_when_the_DATs_are_given() => RenderThread.Run(() =>
+    // The indoor renders, when the cell DAT and the portal DAT are given. The plans are read on the thread pool, as the client reads them.
+    private static void RenderIndoors(string folder, GroundTiles? ground)
     {
-        var folder = Environment.GetEnvironmentVariable("LEGACEY_RADAR_RENDER");
         var cellPath = Environment.GetEnvironmentVariable("LEGACEY_CELL_DAT");
         var portalPath = Environment.GetEnvironmentVariable("LEGACEY_PORTAL_DAT");
-        if (folder == null || cellPath == null || portalPath == null) return;
-        Directory.CreateDirectory(folder);
+        if (cellPath == null || portalPath == null) return;
         using var indoors = new IndoorDat(portalPath, cellPath);
         var plans = new IndoorPlanCache(indoors.ReadPlan);
-        var ground = OpenGround();
 
         Render(folder, "radar-indoor-0099-2x.png", 2, ground, new RadarOptions(), player: Standing(plans, 0x00990100), plans: plans);
         Render(folder, "radar-indoor-house-2x.png", 2, ground, new RadarOptions(), player: Standing(plans, 0xC6A90168), plans: plans);
-        Render(folder, "radar-indoor-house-25m-2x.png", 2, ground, new RadarOptions(IndoorZoom: 25), player: Standing(plans, 0xC6A90168), plans: plans);
-    });
+        Render(folder, "radar-indoor-house-25m-2x.png", 2, ground, new RadarOptions(IndoorZoom: 25), player: Standing(plans, 0xC6A90168),
+            plans: plans);
+    }
 
     // A cell's centre, at its height, facing east: where the mockup starts a player in a cell.
     private static RadarPlayer Standing(IndoorPlanCache plans, uint cell)
@@ -73,13 +73,14 @@ public sealed class RetailRadarRenderTests
         return new RadarPlayer(new RadarPosition(cell, (float)floor.Average(p => p.X), (float)floor.Average(p => p.Y), shape.Height), 90);
     }
 
-    private static void Render(string folder, string file, int scale, GroundTiles? ground, RadarOptions options, bool openOptions = false, bool hover = false,
-        RadarPlayer? player = null, IndoorPlanCache? plans = null)
+    private static void Render(string folder, string file, int scale, GroundTiles? ground, RadarOptions options,
+        bool openOptions = false, bool hover = false, RadarPlayer? player = null, IndoorPlanCache? plans = null)
     {
         var port = new FakeRadarPort { Player = player ?? new RadarPlayer(new RadarPosition(Cell, 96, 96, 0), 270) };
         port.Objects.AddRange(Scene(port.Player.Position));
         RetailRadarWindow? window = null;
-        var panel = AvaloniaPanel.Create(() => window = new RetailRadarWindow(port, () => ground, () => plans, options, _ => { }, () => 0, () => { }),
+        var panel = AvaloniaPanel.Create(
+            () => window = new RetailRadarWindow(port, () => ground, () => plans, options, _ => { }, () => 0, () => { }),
             RetailRadarWindow.DesignWidth * scale, RetailRadarWindow.DesignHeight * scale, scale);
         try
         {

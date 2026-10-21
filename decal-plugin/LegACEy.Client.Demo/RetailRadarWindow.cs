@@ -14,9 +14,9 @@ namespace LegACEy.Client.Demo;
 
 /// <summary>
 /// The Dereth radar: a round minimap in a gold bezel, drawn over the land around the player, or indoors over the floor plan of the place
-/// they are in, heading-up as retail's is. A heading tape reads the heading in degrees above it, and the coordinates sit below. Dots are in retail's radar colours; hovering names one, a click
-/// selects it, the wheel zooms, and the bezel holds retail's UI lock and an options popover. It reads the game once a frame through
-/// <see cref="Refresh"/>; every other change is made from what was read last.
+/// they are in, heading-up as retail's is. A heading tape reads the heading in degrees above it, and the coordinates sit below. Dots are
+/// in retail's radar colours; hovering names one, a click selects it, the wheel zooms, and the bezel holds retail's UI lock and an options
+/// popover. It reads the game once a frame through <see cref="Refresh"/>; every other change is made from what was read last.
 /// </summary>
 public sealed class RetailRadarWindow : Decorator, IDisposable
 {
@@ -66,10 +66,13 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     private readonly OptionRow _mapRow, _northRow, _ringsRow, _zoomRow;
     private RadarPlayer? _player;
     private IReadOnlyList<RadarObject> _objects = Array.Empty<RadarObject>();
-    // The place the player is in, made once for each cell, and the one drawn this read (null outdoors or while its plan is built).
+    // The place the player is in and the landblock's plan it came from, kept while the player stays in it; and the place drawn this read.
     private RadarPlan? _place;
+    private IndoorPlan? _placeLandblock;
     private uint _placeCell;
     private RadarPlan? _plan;
+    // The scope's copy of the plan's levels, made again only when the frame's list of them changes.
+    private IReadOnlyList<RadarPlanDraw>? _planDrawn;
     private RadarScopeFrame? _frame;
     private uint? _hovered;
     private uint? _pressed;
@@ -86,7 +89,9 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     /// <summary>The hovered dot's label, as the scope draws it; null when no dot is hovered.</summary>
     public string? HoverLabel { get; private set; }
 
-    /// <summary>How many landblocks of ground the radar drew last: nine outdoors (or under a building's plan) with the map on and built, else none.</summary>
+    /// <summary>
+    /// How many landblocks of ground the radar drew last: nine outdoors, or under a building's plan, with the map on and built; else none.
+    /// </summary>
     public int TilesDrawn => _tilesDrawn;
 
     /// <param name="port">The radar's game.</param>
@@ -214,19 +219,23 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         Rebuild();
     }
 
-    // The indoor place the player is in, made once for each cell. Null outdoors, and until the landblock's plan is built: the plan is only
-    // asked for, never waited for, so the UI thread does not stall on the DATs.
+    // The indoor place the player is in. It is kept while the player's cell stays in it, so its levels are made once for the place. Null
+    // outdoors, and while the landblock's plan is being read: the plan is only asked for, never waited for, so the UI thread does not
+    // stall on the DATs.
     private RadarPlan? PlaceOf(RadarPlayer? player)
     {
         if (player is not { Position.Outdoors: false } || _plans() is not { } plans) return null;
         var cell = player.Position.Cell;
         var landblock = plans.PlanAsync((int)(cell >> 24), (int)((cell >> 16) & 0xFF));
         if (landblock.Status != System.Threading.Tasks.TaskStatus.RanToCompletion) return null;
-        if (_place == null || _placeCell != cell)
+        var low = (ushort)(cell & 0xFFFF);
+        var kept = _place != null && ReferenceEquals(_placeLandblock, landblock.Result) && (cell == _placeCell || _place.Contains(low));
+        if (!kept)
         {
-            _place = new RadarPlan(landblock.Result, (ushort)(cell & 0xFFFF));
-            _placeCell = cell;
+            _place = new RadarPlan(landblock.Result, low);
+            _placeLandblock = landblock.Result;
         }
+        _placeCell = cell;
         return _place;
     }
 
@@ -290,8 +299,11 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         var tiles = GroundFor(frame);
         _tilesDrawn = tiles.Count;
         if (!tiles.SequenceEqual(_scope.Tiles)) _scope.Tiles = tiles.ToArray();
-        var planLevels = frame.PlanLevels.Select(draw => (draw.Level.Floors, draw.Level.Walls, draw.Solid)).ToArray();
-        if (!planLevels.SequenceEqual(_scope.PlanLevels)) _scope.PlanLevels = planLevels;
+        if (!ReferenceEquals(frame.PlanLevels, _planDrawn))
+        {
+            _planDrawn = frame.PlanLevels;
+            _scope.PlanLevels = frame.PlanLevels.Select(draw => (draw.Level.Floors, draw.Level.Walls, draw.Solid)).ToArray();
+        }
         _scope.PlanOrigin = frame.PlanOrigin;
         _scope.PlanBuilding = _plan is { Building: true };
         _scope.Turn = frame.Turn;

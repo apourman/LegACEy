@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace LegACEy.Client.GameArt;
@@ -7,19 +8,24 @@ namespace LegACEy.Client.GameArt;
 /// The indoor plans of the current landblock and the one before it. A plan is built once, on the thread pool, so the UI thread
 /// only ever awaits it. Dungeons often span portals into the next landblock, so the last one stays too.
 /// </summary>
-public sealed class IndoorPlanCache
+public sealed class IndoorPlanCache : IDisposable
 {
     private readonly Func<int, int, IndoorPlan> _build;
     private readonly Action<string>? _log;
+    private readonly IDisposable? _owned;
     private readonly object _lock = new();
+    private readonly List<Task> _reading = new();
     private (int X, int Y, Task<IndoorPlan> Plan)? _current;
     private (int X, int Y, Task<IndoorPlan> Plan)? _previous;
+    private bool _disposed;
 
     /// <param name="log">Told why a landblock's plan could not be built.</param>
-    public IndoorPlanCache(Func<int, int, IndoorPlan> build, Action<string>? log = null)
+    /// <param name="owned">The DATs the builds read, disposed by <see cref="Dispose"/> once the reads in flight have finished.</param>
+    public IndoorPlanCache(Func<int, int, IndoorPlan> build, Action<string>? log = null, IDisposable? owned = null)
     {
         _build = build;
         _log = log;
+        _owned = owned;
     }
 
     /// <summary>
@@ -31,6 +37,7 @@ public sealed class IndoorPlanCache
     {
         lock (_lock)
         {
+            if (_disposed) return Task.FromException<IndoorPlan>(new ObjectDisposedException(nameof(IndoorPlanCache)));
             if (_current is { } current && current.X == x && current.Y == y) return current.Plan;
             if (_previous is { } previous && previous.X == x && previous.Y == y && !previous.Plan.IsFaulted)
             {
@@ -40,9 +47,28 @@ public sealed class IndoorPlanCache
             }
 
             _previous = Kept(_current);
-            _current = (x, y, Task.Run(() => Build(x, y)));
-            return _current.Value.Plan;
+            var plan = Task.Run(() => Build(x, y));
+            _reading.RemoveAll(task => task.IsCompleted);
+            _reading.Add(plan);
+            _current = (x, y, plan);
+            return plan;
         }
+    }
+
+    /// <summary>
+    /// Disposes the owned DATs once the reads in flight have finished, and refuses new plans. It does not wait: the UI thread never blocks
+    /// on a read.
+    /// </summary>
+    public void Dispose()
+    {
+        Task[] reading;
+        lock (_lock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            reading = _reading.ToArray();
+        }
+        if (_owned != null) Task.WhenAll(reading).ContinueWith(_ => _owned.Dispose(), TaskScheduler.Default);
     }
 
     private IndoorPlan Build(int x, int y)

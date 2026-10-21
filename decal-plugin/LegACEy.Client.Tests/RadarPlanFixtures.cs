@@ -24,12 +24,15 @@ internal static class RadarPlanFixtures
         Room(0x0102, Near, 8, 0x0101),
     });
 
-    /// <summary>A house with a door out on its ground floor and an upstairs, and a second building with a door out, far off.</summary>
+    /// <summary>
+    /// A house with a door out on its ground floor and an upstairs, and a second building with a door out, far off and on a level of its
+    /// own, so the landblock has three levels and the house's place only two.
+    /// </summary>
     public static IndoorPlan Town() => IndoorPlan.Build(0xC6, 0xA9, new[]
     {
         Room(0x0200, Near, 0, Outside, 0x0201),
         Room(0x0201, Near, 4, 0x0200),
-        Room(0x0300, Far, 0, Outside),
+        Room(0x0300, Far, 12, Outside),
     });
 
     // A 4 m square room on the floor at height z, with a doorway in its east wall to each cell in beyond (0xFFFF is outside).
