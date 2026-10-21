@@ -54,7 +54,6 @@ public sealed class DerethRadarScope : Control
     private static readonly Geometry ArrowUp = Geometry.Parse("M0,-2.6 L2.4,1.6 L-2.4,1.6 Z");
     private static readonly Geometry ArrowDown = Geometry.Parse("M0,2.6 L2.4,-1.6 L-2.4,-1.6 Z");
     private const double ArrowOpacity = 0.85;
-    private static readonly IBrush StairInk = DerethPalette.CreamBrush;
     // A ping: a diamond with a ring that swells from it once a pulse; one past the rim is an arrow on the rim pointing out. It fades over the
     // last fifth of its life.
     private static readonly Geometry PingDiamond = Geometry.Parse("M0,-3.6 L3.6,0 L0,3.6 L-3.6,0 Z");
@@ -65,8 +64,6 @@ public sealed class DerethRadarScope : Control
     private IReadOnlyList<(Geometry Floors, Geometry Walls, bool Solid, bool Peek)> _planLevels = Array.Empty<(Geometry Floors, Geometry Walls, bool Solid, bool Peek)>();
     private Point _planOrigin;
     private bool _planBuilding;
-    private IReadOnlyList<(Point At, bool Up)> _stairMarks = Array.Empty<(Point At, bool Up)>();
-    private FormattedText[]? _stairGlyphs;
     private PlanPens? _pens;
     // ArrowDir is +1 for a dot on the level above, -1 for one below, and 0 for a dot on the player's level.
     private IReadOnlyList<(Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered)> _dots =
@@ -112,13 +109,6 @@ public sealed class DerethRadarScope : Control
     /// <summary>Whether the plan is a building's, drawn over its town ground: its other levels are then darker.</summary>
     public bool PlanBuilding { get => _planBuilding; set { if (_planBuilding == value) return; _planBuilding = value; InvalidateVisual(); } }
 
-    /// <summary>The stair marks in DIPs from the scope's top-left, and whether each leads up. Drawn upright whatever the turn.</summary>
-    public IReadOnlyList<(Point At, bool Up)> StairMarks
-    {
-        get => _stairMarks;
-        set { if (ReferenceEquals(_stairMarks, value)) return; _stairMarks = value; InvalidateVisual(); }
-    }
-
     public IReadOnlyList<(Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered)> Dots
     {
         get => _dots;
@@ -163,7 +153,6 @@ public sealed class DerethRadarScope : Control
                     context.DrawImage(tile.Image, new Rect(tile.Image.Size), tile.Metres);
             if (_tiles.Count > 0 && !planned) context.DrawEllipse(Darken, null, centre, radius, radius);
             if (planned) DrawPlan(context, world);
-            DrawStairs(context);
             context.DrawEllipse(Vignette, null, centre, radius, radius);
             DrawCrosshair(context, centre, radius);
             if (Rings) DrawRings(context, centre, radius);
@@ -198,21 +187,6 @@ public sealed class DerethRadarScope : Control
                 }
             }
     }
-
-    // The stair marks: a ▲ or ▼ at each door, upright, so the glyphs are made once and only their places change with the turn.
-    private void DrawStairs(DrawingContext context)
-    {
-        if (_stairMarks.Count == 0) return;
-        _stairGlyphs ??= new[] { StairGlyph("▼"), StairGlyph("▲") };
-        foreach (var (at, up) in _stairMarks)
-        {
-            var glyph = _stairGlyphs[up ? 1 : 0];
-            context.DrawText(glyph, new Point(at.X - glyph.Width / 2, at.Y - glyph.Height / 2));
-        }
-    }
-
-    private static FormattedText StairGlyph(string text) =>
-        new(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface(DerethPalette.Title), 8, StairInk);
 
     // The plan's pens at a scale: the halo's width is 6 DIPs, the player's walls 1.1 and the other levels' 0.8, each over the scale.
     private sealed record PlanPens(double Scale)

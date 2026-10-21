@@ -182,7 +182,7 @@ public sealed class RetailRadarWindowTests
             new[] { new GroundPoint(x, y), new GroundPoint(x + 4, y), new GroundPoint(x + 4, y + 4), new GroundPoint(x, y + 4) };
         var cell = new IndoorCell(0x0100, 0, new[] { Square(0, 0), Square(2, 2) }, Array.Empty<(GroundPoint, GroundPoint)>(),
             Array.Empty<(Vec3, ushort)>());
-        var level = new RadarPlanLevel(new IndoorLevel(new[] { cell }), Array.Empty<(GroundPoint, bool)>());
+        var level = new RadarPlanLevel(new IndoorLevel(new[] { cell }));
 
         Assert.True(level.Floors.FillContains(new Point(3, 3)));
     });

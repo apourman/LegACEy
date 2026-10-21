@@ -377,7 +377,6 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
             _planDrawn = frame.PlanLevels;
             _scope.PlanLevels = frame.PlanLevels.Select(draw => (draw.Level.Floors, draw.Level.Walls, draw.Solid, draw.Peek)).ToArray();
         }
-        if (!frame.StairMarks.SequenceEqual(_scope.StairMarks)) _scope.StairMarks = frame.StairMarks;
         _scope.PlanOrigin = frame.PlanOrigin;
         _scope.PlanBuilding = _plan is { Building: true };
         _scope.Turn = frame.Turn;

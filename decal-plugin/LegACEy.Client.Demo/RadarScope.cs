@@ -112,7 +112,7 @@ public sealed record RadarScopePing(string Sender, Point At, double Age, double?
 public sealed class RadarScopeFrame
 {
     public RadarScopeFrame(IReadOnlyList<RadarScopeDot> dots, IReadOnlyList<RadarScopeTile> tiles, double turn, double pixelsPerMetre,
-        string? coordinates, double heading, IReadOnlyList<RadarPlanDraw> planLevels, Point planOrigin, IReadOnlyList<(Point At, bool Up)> stairMarks,
+        string? coordinates, double heading, IReadOnlyList<RadarPlanDraw> planLevels, Point planOrigin,
         RadarLadder? ladder, string? plaque, IReadOnlyList<RadarScopePing>? pings = null)
     {
         Pings = pings ?? Array.Empty<RadarScopePing>();
@@ -124,7 +124,6 @@ public sealed class RadarScopeFrame
         Heading = heading;
         PlanLevels = planLevels;
         PlanOrigin = planOrigin;
-        StairMarks = stairMarks;
         Ladder = ladder;
         Plaque = plaque;
     }
@@ -132,11 +131,6 @@ public sealed class RadarScopeFrame
     public IReadOnlyList<RadarScopeDot> Dots { get; }
     /// <summary>The pings still showing, on the scope or as arrows on its rim.</summary>
     public IReadOnlyList<RadarScopePing> Pings { get; }
-    /// <summary>
-    /// The stair marks of the drawn level (the peeked one while a pip is hovered): each door to another level, in DIPs from the scope's
-    /// top-left and turned as the dots are, and whether it leads up. Empty when no plan is drawn.
-    /// </summary>
-    public IReadOnlyList<(Point At, bool Up)> StairMarks { get; }
     /// <summary>The ladder beside the bezel, or null when no plan is drawn (outdoors, the map off, or the plan not yet built).</summary>
     public RadarLadder? Ladder { get; }
     /// <summary>The ground around the player: outdoors, or under a building's plan. Empty when the map is off, or in a dungeon.</summary>
@@ -211,11 +205,9 @@ public static class RadarScope
             }
         }
         var planLevels = drawn?.DrawOrder(level, peeking) ?? Array.Empty<RadarPlanDraw>();
-        var stairs = drawn != null && player != null ? StairMarks(drawn.Levels[peeking >= 0 ? peeking : level], player, turn, scale, radius)
-            : Array.Empty<(Point At, bool Up)>();
         var ladder = drawn == null ? null : new RadarLadder(drawn.Levels.Count, level, peeking, occupied);
         var origin = player == null ? default : new Point(player.Position.X, player.Position.Y);
-        return new RadarScopeFrame(dots, tiles, turn, scale, player?.Position.Coordinates, player?.Heading ?? 0, planLevels, origin, stairs, ladder,
+        return new RadarScopeFrame(dots, tiles, turn, scale, player?.Position.Coordinates, player?.Heading ?? 0, planLevels, origin, ladder,
             Plaque(player, drawn, level, serverName), player == null || pings == null ? null : PingsOn(player, pings, now, range, turn, scale, radius));
     }
 
@@ -341,18 +333,6 @@ public static class RadarScope
         var x = east * scale;
         var y = -north * scale;
         return new Point(radius + x * Math.Cos(radians) - y * Math.Sin(radians), radius + x * Math.Sin(radians) + y * Math.Cos(radians));
-    }
-
-    // The level's doors to another level, each turned as the dots are: the stair marks the scope draws on the level.
-    private static IReadOnlyList<(Point At, bool Up)> StairMarks(RadarPlanLevel level, RadarPlayer player, double turn, double scale, double radius)
-    {
-        var marks = new (Point At, bool Up)[level.Stairs.Count];
-        for (var i = 0; i < marks.Length; i++)
-        {
-            var (at, up) = level.Stairs[i];
-            marks[i] = (Turned(at.X - player.Position.X, at.Y - player.Position.Y, turn, scale, radius), up);
-        }
-        return marks;
     }
 
     // An object's level in the drawn plan: its cell's, as the player's is, when the cell is in the place; else the level nearest its height

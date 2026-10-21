@@ -404,45 +404,6 @@ public sealed class RadarScopeTests
     }
 
     [Fact]
-    public void Stair_marks_sit_at_the_doors_to_another_level_and_point_up_when_the_door_leads_up()
-    {
-        var plan = new RadarPlan(RadarPlanFixtures.Dungeon(), 0x0101);
-
-        var frame = RadarScope.Build(Player(0, RadarPlanFixtures.DungeonCell), NoObjects, Default, Radius, plan);
-
-        // The doorways are in the room's east wall, 2 m east of the player: the one up is 0.5 m south of the player's line, the one down 1.5 m.
-        var metres = Radius / 40;
-        Assert.Equal(new Point(Radius + 2 * metres, Radius + 0.5 * metres), Assert.Single(frame.StairMarks, mark => mark.Up).At);
-        Assert.Equal(new Point(Radius + 2 * metres, Radius + 1.5 * metres), Assert.Single(frame.StairMarks, mark => !mark.Up).At);
-    }
-
-    [Fact]
-    public void Stair_marks_turn_with_the_world_and_keep_their_direction()
-    {
-        var plan = new RadarPlan(RadarPlanFixtures.Dungeon(), 0x0101);
-
-        var ahead = RadarScope.Build(Player(0, RadarPlanFixtures.DungeonCell), NoObjects, Default, Radius, plan).StairMarks;
-        var turned = RadarScope.Build(Player(90, RadarPlanFixtures.DungeonCell), NoObjects, Default, Radius, plan).StairMarks;
-
-        Assert.Equal(ahead.Select(mark => mark.Up), turned.Select(mark => mark.Up));
-        Assert.All(Enumerable.Range(0, ahead.Count), i => Assert.Equal(Distance(ahead[i].At), Distance(turned[i].At), 6));
-        Assert.NotEqual(ahead[0].At, turned[0].At);
-    }
-
-    [Fact]
-    public void A_door_out_of_the_building_gets_no_stair_mark()
-    {
-        var plan = new RadarPlan(RadarPlanFixtures.Town(), 0x0200);
-
-        var frame = RadarScope.Build(Player(0, RadarPlanFixtures.HouseCell), NoObjects, Default, Radius, plan);
-
-        // The ground floor's door out to the town has no level, so only the stair up to the upstairs is marked.
-        Assert.Equal(new[] { true }, frame.StairMarks.Select(mark => mark.Up));
-    }
-
-    private static double Distance(Point point) => Math.Sqrt(Math.Pow(point.X - Radius, 2) + Math.Pow(point.Y - Radius, 2));
-
-    [Fact]
     public void A_ctrl_click_pings_the_spot_under_the_pointer_across_landblocks()
     {
         // Facing east, 50 m ahead crosses into the next landblock east (60 + 50 < 192, so 150 m ahead does).
