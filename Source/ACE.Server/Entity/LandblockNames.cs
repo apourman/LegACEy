@@ -11,6 +11,7 @@ namespace ACE.Server.Entity
     public static class LandblockNames
     {
         private static readonly Lazy<Dictionary<ushort, string[]>> names = new Lazy<Dictionary<ushort, string[]>>(() => Parse(ReadEmbedded()));
+        private static readonly char[] lineBreaks = { '\r', '\n' };
 
         /// <summary>The names of a landblock (0xXXYY); empty when the list has none.</summary>
         public static IReadOnlyList<string> Get(ushort landblock)
@@ -25,10 +26,10 @@ namespace ACE.Server.Entity
         }
 
         // One `XXYY<tab>name[|name...]` line per landblock.
-        private static Dictionary<ushort, string[]> Parse(string text)
+        internal static Dictionary<ushort, string[]> Parse(string text)
         {
             var result = new Dictionary<ushort, string[]>();
-            foreach (var line in text.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            foreach (var line in text.Split(lineBreaks, StringSplitOptions.RemoveEmptyEntries))
             {
                 var parts = line.Split('\t');
                 result[Convert.ToUInt16(parts[0], 16)] = parts[1].Split('|');
