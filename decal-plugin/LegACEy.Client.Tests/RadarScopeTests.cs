@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Avalonia;
 using LegACEy.Client.Demo;
+using LegACEy.Client.GameArt;
 using Xunit;
 
 namespace LegACEy.Client.Tests;
@@ -127,6 +128,84 @@ public sealed class RadarScopeTests
     {
         Assert.Equal("33.6N, 56.7E", RadarScope.Build(Player(0), Array.Empty<RadarObject>(), Default, Radius).Coordinates);
         Assert.Null(RadarScope.Build(null, Array.Empty<RadarObject>(), Default, Radius).Coordinates);
+    }
+
+    [Fact]
+    public void The_plaque_is_the_coordinates_outdoors_and_until_the_plan_is_built()
+    {
+        Assert.Equal("33.6N, 56.7E", RadarScope.Build(Player(0, RadarPlanFixtures.DungeonCell), NoObjects, Default, Radius).Plaque);
+        // With the map off no plan is drawn, so the plaque keeps the coordinates even with the plan in hand.
+        var plan = new RadarPlan(RadarPlanFixtures.Dungeon(), 0x0101);
+        Assert.Equal("33.6N, 56.7E", RadarScope.Build(Player(0, RadarPlanFixtures.DungeonCell), NoObjects, Default with { Map = false }, Radius, plan).Plaque);
+    }
+
+    [Fact]
+    public void A_dungeons_plaque_names_the_place_and_counts_its_levels_from_the_top()
+    {
+        // 0x01EF is Arwic Mines on the shared list; the middle room is the second level of three.
+        var plan = new RadarPlan(RadarPlanFixtures.Dungeon(0x01, 0xEF), 0x0101);
+
+        Assert.Equal("Arwic Mines · Level 2 of 3", RadarScope.Build(Player(0, 0x01EF0101), NoObjects, Default, Radius, plan).Plaque);
+    }
+
+    [Fact]
+    public void A_name_too_long_for_the_plaque_is_cut_with_an_ellipsis_and_the_level_still_shows()
+    {
+        // Black Totem Temple does not fit beside "Level 2 of 3" in the plaque's 27 characters, so it is cut to "Black Totem…".
+        var plan = new RadarPlan(RadarPlanFixtures.Dungeon(0x00, 0x99), 0x0101);
+
+        Assert.Equal("Black Totem… · Level 2 of 3", RadarScope.Build(Player(0, 0x00990101), NoObjects, Default, Radius, plan).Plaque);
+    }
+
+    [Fact]
+    public void A_shared_or_unlisted_landblock_shows_the_level_only()
+    {
+        // 0x00C9 holds four Chambers, so none is named; Arwic's 0xC6A9 is not on the list.
+        var shared = new RadarPlan(RadarPlanFixtures.Dungeon(0x00, 0xC9), 0x0101);
+        var unlisted = new RadarPlan(RadarPlanFixtures.Dungeon(), 0x0101);
+
+        Assert.Equal("Level 2 of 3", RadarScope.Build(Player(0, 0x00C90101), NoObjects, Default, Radius, shared).Plaque);
+        Assert.Equal("Level 2 of 3", RadarScope.Build(Player(0, RadarPlanFixtures.DungeonCell), NoObjects, Default, Radius, unlisted).Plaque);
+    }
+
+    [Fact]
+    public void A_server_name_wins_over_the_list_even_for_a_shared_landblock_and_an_empty_one_leaves_the_list()
+    {
+        var shared = new RadarPlan(RadarPlanFixtures.Dungeon(0x00, 0xC9), 0x0101);
+        var named = RadarScope.Build(Player(0, 0x00C90101), NoObjects, Default, Radius, shared, serverName: cell => cell == 0x00C90101 ? "Chamber 8" : null);
+        var empty = RadarScope.Build(Player(0, 0x00990101), NoObjects, Default, Radius, new RadarPlan(RadarPlanFixtures.Dungeon(0x00, 0x99), 0x0101),
+            serverName: _ => string.Empty);
+
+        Assert.Equal("Chamber 8 · Level 2 of 3", named.Plaque);
+        Assert.Equal("Black Totem… · Level 2 of 3", empty.Plaque);
+    }
+
+    [Fact]
+    public void In_a_building_the_plaque_is_the_coordinates_and_the_floor()
+    {
+        var plan = new RadarPlan(RadarPlanFixtures.Town(), 0x0200);
+
+        // The town's house has an upstairs above its ground floor; the far building is not this place.
+        Assert.Equal("33.6N, 56.7E · Ground", RadarScope.Build(Player(0, RadarPlanFixtures.HouseCell), NoObjects, Default, Radius, plan).Plaque);
+        Assert.Equal("33.6N, 56.7E · Upstairs", RadarScope.Build(Player(0, 0xC6A90201), NoObjects, Default, Radius, plan).Plaque);
+    }
+
+    [Fact]
+    public void The_real_DAT_plaques_name_the_arwic_houses_floors_and_0x0099_by_its_level()
+    {
+        using var dat = OpenDats();
+        if (dat == null) return;
+
+        // Arwic's house 0x0168 has an upstairs, its ground floor and a cellar, top first: one cell of each level stands in for it.
+        var house = dat.ReadPlan(0xC6, 0xA9);
+        var plan = new RadarPlan(house, 0x0168);
+        var floors = house.Place(0x0168).Levels.Select(level => 0xC6A90000u | level.Cells[0].Id);
+        Assert.Equal(new[] { "33.6N, 56.7E · Upstairs", "33.6N, 56.7E · Ground", "33.6N, 56.7E · Cellar" },
+            floors.Select(cell => RadarScope.Build(Player(0, cell), NoObjects, Default, Radius, plan).Plaque));
+
+        // The start of 0x0099 is in its lowest room, the sixth level of six.
+        var temple = new RadarPlan(dat.ReadPlan(0x00, 0x99), 0x0100);
+        Assert.Equal("Black Totem… · Level 6 of 6", RadarScope.Build(Player(0, 0x00990100), NoObjects, Default, Radius, temple).Plaque);
     }
 
     [Theory]
@@ -376,4 +455,12 @@ public sealed class RadarScopeTests
         new(id, name, colour, behaviour, new RadarPosition(Outdoors, 60 + east, 84 + north, z));
 
     private static RadarScopeDot Dot(RadarScopeFrame frame, uint id) => frame.Dots.Single(dot => dot.Id == id);
+
+    // The client's own DATs, when LEGACEY_CELL_DAT and LEGACEY_PORTAL_DAT are set; null otherwise, and the test passes without them.
+    private static IndoorDat? OpenDats()
+    {
+        var cellPath = Environment.GetEnvironmentVariable("LEGACEY_CELL_DAT");
+        var portalPath = Environment.GetEnvironmentVariable("LEGACEY_PORTAL_DAT");
+        return string.IsNullOrWhiteSpace(cellPath) || string.IsNullOrWhiteSpace(portalPath) ? null : new IndoorDat(portalPath, cellPath);
+    }
 }
