@@ -16,19 +16,15 @@ public sealed class RadarPlanLevel
     private Geometry? _floors;
     private Geometry? _walls;
 
-    public RadarPlanLevel(IndoorLevel level, IReadOnlyList<(GroundPoint At, bool Up)> stairs)
+    public RadarPlanLevel(IndoorLevel level)
     {
         _level = level;
-        Stairs = stairs;
         // Halfway between its lowest and highest cell: the height the ladder and the dots' heights are read against.
         Height = (level.Cells.Max(cell => cell.Height) + level.Cells.Min(cell => cell.Height)) / 2;
     }
 
     /// <summary>The level's height in landblock metres.</summary>
     public float Height { get; }
-
-    /// <summary>The doors from this level to another level of the place, where a stair mark goes: the door's centre, and whether it leads up.</summary>
-    public IReadOnlyList<(GroundPoint At, bool Up)> Stairs { get; }
 
     /// <summary>The floors as one path. Built on first use, so the seam's tests never make platform geometry.</summary>
     public Geometry Floors => _floors ??= FloorPath(_level);
@@ -84,7 +80,7 @@ public sealed class RadarPlan
     public RadarPlan(IndoorPlan landblock, ushort cell)
     {
         _place = landblock.Place(cell);
-        Levels = _place.Levels.Select((level, index) => new RadarPlanLevel(level, StairsOf(level, index))).ToArray();
+        Levels = _place.Levels.Select(level => new RadarPlanLevel(level)).ToArray();
         // The levels run top first, so the lowest level with a door outside is the largest index among the cells with one.
         Ground = _place.Cells.Where(c => c.Doors.Any(door => door.Beyond == Outside))
             .Select(c => _place.LevelOf(c.Id)).DefaultIfEmpty(-1).Max();
@@ -143,19 +139,5 @@ public sealed class RadarPlan
             draws.Add(new RadarPlanDraw(Levels[solid], true, peeking));
         }
         return draws;
-    }
-
-    // A door from a level to another level of the place, as a stair mark: up when the other level is higher (a lower index).
-    private IReadOnlyList<(GroundPoint At, bool Up)> StairsOf(IndoorLevel level, int index)
-    {
-        var stairs = new List<(GroundPoint At, bool Up)>();
-        foreach (var cell in level.Cells)
-            foreach (var (centre, beyond) in cell.Doors)
-            {
-                // A door out of the place has no level in it (-1), and a door within the level is no stair.
-                var other = _place.LevelOf(beyond);
-                if (other >= 0 && other != index) stairs.Add((new GroundPoint(centre.X, centre.Y), other < index));
-            }
-        return stairs;
     }
 }

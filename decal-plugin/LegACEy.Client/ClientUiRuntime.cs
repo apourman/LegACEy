@@ -391,6 +391,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _serverChannel.Subscribe(StormProtocol.Changed, ShowStorm);
                 _serverChannel.Subscribe(WeatherProtocol.Changed, ShowWeather);
                 _serverChannel.Subscribe(CombatTextProtocol.Hit, ShowHit);
+                _serverChannel.Subscribe(PingProtocol.Placed, ShowPing);
             }
             catch (Exception exception) { Log($"LegACEy server channel disabled: {exception.Message}"); }
             try { _retailDrag = new RetailItemDrag(NativeUi.ReadMemory, Log); }
@@ -723,6 +724,33 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _worldEffects?.Combat.Add(hit.Target, hit.Amount, hit.DamageType, hit.Critical, hit.Periodic);
         }
         catch (Exception exception) { Log($"Could not read a hit: {exception.Message}"); }
+    }
+
+    /// <summary>
+    /// Sends a radar ping to the server, which shows it to the fellowship and back to this radar. A server without pings leaves it to this
+    /// radar alone.
+    /// </summary>
+    private void Ping(RadarPosition at)
+    {
+        if (_plugins?.SupportsAction(PingProtocol.Place) != true || _serverChannel == null)
+        {
+            _radar?.ShowPing(SessionCharacter(), at);
+            return;
+        }
+        _serverChannel.Request(PingProtocol.Place, PingProtocol.WritePlace(at), reply =>
+        {
+            if (!reply.Ok) Log($"Ping not sent: {reply.Message}");
+        });
+    }
+
+    private void ShowPing(byte[] body)
+    {
+        try
+        {
+            var (sender, at) = PingProtocol.ReadPlaced(body);
+            _radar?.ShowPing(sender, at);
+        }
+        catch (Exception exception) { Log($"Could not read a ping: {exception.Message}"); }
     }
 
     private static IEnumerable<string> ServerActionsFrom(ChannelReply reply)
@@ -2943,6 +2971,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var window = new RetailRadarWindow(port, RadarGround, RadarPlans, LoadRadarOptions(), SaveRadarOptions,
             () => (uint)Bridge.Fact(BridgeFact.CurrentSelection), () => _windows?.BeginMove(RadarWindowId, _pointer), _radarPlaceNames.NameOf);
         window.CoordinatesClicked += text => _chatWindows?.Main?.Insert(text);
+        window.PingRequested += Ping;
         // The radar has no title bar: it drags from its frame, so its title bar is only one pixel tall.
         var definition = new WindowDefinition(RadarWindowId, "Radar", RetailRadarWindow.DesignWidth, RetailRadarWindow.DesignHeight, titleBarHeight: 1,
             theme: new DerethClientTheme(), resizing: RetailRadarWindow.Resizing(() => port.UiLocked), dragsFromContent: true);
