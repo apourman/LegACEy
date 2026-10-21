@@ -320,7 +320,7 @@ public sealed class SettingsPanel : UserControl
         switchOfAll.Chosen += index =>
         {
             foreach (var window in _settings.Windows) window.SetCustom(index == 0);
-            foreach (var redraw in _redraws) redraw();
+            OnChanged(this, EventArgs.Empty);
         };
         _redraws.Add(Show);
         Show();
@@ -359,7 +359,7 @@ public sealed class SettingsPanel : UserControl
         switchOfWindow.Chosen += index =>
         {
             window.SetCustom(index == 0);
-            foreach (var redraw in _redraws) redraw();
+            OnChanged(this, EventArgs.Empty);
         };
         _redraws.Add(Show);
         Show();
