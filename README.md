@@ -38,7 +38,7 @@ updates in `Database/`, preserving the upstream ACE layout.
 - [Server scripts](scripts/ace-server/README.md): local server setup and operation.
 
 ## Credits
-* Landblock place names (`Content/landblock-names.tsv`) come from the [Asheron's Call Community Wiki](https://asheron.fandom.com/wiki/Category:Landblocks), licensed CC BY-SA. Rebuild with `python3 scripts/content/landblock-names/compile.py`; run `python3 scripts/content/landblock-names/crawl.py` first to refresh from the wiki.
+* Landblock place names (`Content/landblock-names.tsv`) come from the [Asheron's Call Community Wiki](https://asheron.fandom.com/wiki/Category:Landblocks), licensed CC BY-SA. Rebuild with `python3 scripts/content/landblock-names/crawl.py`, then `compile.py` beside it.
 
 ## Contributions
 * Contributions in the form of issues and pull requests are welcomed and encouraged.

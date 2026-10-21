@@ -1,6 +1,6 @@
 # Turns raw.json (crawl.py) into Content/landblock-names.tsv: one line per landblock, `XXYY<tab>name[|name...]`.
-# Rebuild, offline: `python3 scripts/content/landblock-names/compile.py` from the repo root (paths are relative to this file).
-# Refresh from the wiki first with `python3 crawl.py` (about 25 requests); that rewrites raw.json, which is committed so this runs without network.
+# Rebuild: `python3 scripts/content/landblock-names/compile.py` from the repo root (paths are relative to this file).
+# Run `python3 crawl.py` first (about 25 requests): it writes raw.json, which is not tracked.
 import json, os, re
 here = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(here, 'raw.json'), encoding='utf-8') as f:

@@ -261,7 +261,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         var landblock = plans.PlanAsync((int)(cell >> 24), (int)((cell >> 16) & 0xFF));
         if (landblock.Status != System.Threading.Tasks.TaskStatus.RanToCompletion) return null;
         var low = (ushort)(cell & 0xFFFF);
-        var kept = _place != null && ReferenceEquals(_placeLandblock, landblock.Result) && (cell == _placeCell || _place.Contains(low));
+        var kept = _place != null && ReferenceEquals(_placeLandblock, landblock.Result) && (cell == _placeCell || _place.LevelOf(low) >= 0);
         if (!kept)
         {
             _place = new RadarPlan(landblock.Result, low);
@@ -339,7 +339,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         var tiles = GroundFor(frame);
         _tilesDrawn = tiles.Count;
         if (!tiles.SequenceEqual(_scope.Tiles)) _scope.Tiles = tiles.ToArray();
-        if (!ReferenceEquals(frame.PlanLevels, _planDrawn))
+        if (_planDrawn == null || !frame.PlanLevels.SequenceEqual(_planDrawn))
         {
             _planDrawn = frame.PlanLevels;
             _scope.PlanLevels = frame.PlanLevels.Select(draw => (draw.Level.Floors, draw.Level.Walls, draw.Solid, draw.Peek)).ToArray();

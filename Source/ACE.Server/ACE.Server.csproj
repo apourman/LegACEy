@@ -138,6 +138,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="..\..\Content\landblock-names.tsv" LogicalName="landblock-names.tsv" />
+    <!-- the shared landblock names parser (Source/Shared, also linked by LegACEy.Client.GameArt) -->
+    <Compile Include="..\Shared\LandblockNames.cs" Link="Entity\LandblockNames.cs" />
     <EmbeddedResource Include="Entity\Mutations\ArmorLevel\armor_level_extremity.txt" />
     <EmbeddedResource Include="Entity\Mutations\ArmorLevel\armor_level_non_extremity.txt" />
     <EmbeddedResource Include="Entity\Mutations\ArmorLevel\covenant_armor.txt" />

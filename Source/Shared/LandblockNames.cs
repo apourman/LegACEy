@@ -1,11 +1,13 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.IO;
 
-namespace LegACEy.Client.GameArt;
+// Shared by the client (decal-plugin/LegACEy.Client.GameArt links it) and ACE.Server (links it); each embeds the same landblock-names.tsv.
+namespace LegACEy.GameArt;
 
 /// <summary>
-/// The shared landblock list (Content/landblock-names.tsv, embedded): each landblock's place names, for the radar's plaque.
+/// The shared landblock list (Content/landblock-names.tsv, embedded): each landblock's place names, for the radar's plaque and the server's place channel.
 /// A landblock with several places returns all of them.
 /// </summary>
 public static class LandblockNames

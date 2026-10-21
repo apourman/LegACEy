@@ -1,5 +1,6 @@
 using ACE.Server.Entity;
 using ACE.Server.Realms;
+using LegACEy.GameArt;
 
 namespace ACE.Server.ClientChannel
 {

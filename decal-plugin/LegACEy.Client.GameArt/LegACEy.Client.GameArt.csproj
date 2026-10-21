@@ -16,7 +16,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- the shared landblock names, the same file ACE.Server embeds -->
+    <!-- the shared landblock names and their parser, the same files ACE.Server embeds and links (Source/Shared) -->
+    <Compile Include="..\..\Source\Shared\LandblockNames.cs" Link="LandblockNames.cs" />
     <EmbeddedResource Include="..\..\Content\landblock-names.tsv" LogicalName="landblock-names.tsv" />
   </ItemGroup>
 

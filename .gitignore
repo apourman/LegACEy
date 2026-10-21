@@ -300,3 +300,6 @@ Database/tools/password.txt
 docker.env
 docker-compose.yml
 docker-compose.arm64
+
+# Landblock-names crawl cache: crawl.py rewrites it, compile.py reads it
+scripts/content/landblock-names/raw.json

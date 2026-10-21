@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using Avalonia;
 using LegACEy.Client.GameArt;
+using LegACEy.GameArt;
 
 namespace LegACEy.Client.Demo;
 

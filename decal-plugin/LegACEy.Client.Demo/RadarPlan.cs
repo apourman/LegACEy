@@ -36,11 +36,9 @@ public sealed class RadarPlanLevel
     /// <summary>The walls as bottom edges, seen from above, as one path.</summary>
     public Geometry Walls => _walls ??= WallPath(_level);
 
-    private static Geometry FloorPath(IndoorLevel level)
+    // Overlapping floors fill as one, as a canvas path does.
+    private static Geometry FloorPath(IndoorLevel level) => Path(context =>
     {
-        var geometry = new StreamGeometry();
-        using var context = geometry.Open();
-        // Overlapping floors fill as one, as a canvas path does.
         context.SetFillRule(FillRule.NonZero);
         foreach (var floor in level.Floors)
         {
@@ -48,19 +46,22 @@ public sealed class RadarPlanLevel
             for (var i = 1; i < floor.Count; i++) context.LineTo(At(floor[i]));
             context.EndFigure(true);
         }
-        return geometry;
-    }
+    });
 
-    private static Geometry WallPath(IndoorLevel level)
+    private static Geometry WallPath(IndoorLevel level) => Path(context =>
     {
-        var geometry = new StreamGeometry();
-        using var context = geometry.Open();
         foreach (var (a, b) in level.Walls)
         {
             context.BeginFigure(At(a), false);
             context.LineTo(At(b));
             context.EndFigure(false);
         }
+    });
+
+    private static Geometry Path(Action<StreamGeometryContext> draw)
+    {
+        var geometry = new StreamGeometry();
+        using (var context = geometry.Open()) draw(context);
         return geometry;
     }
 
@@ -77,10 +78,6 @@ public sealed class RadarPlan
     private const ushort Outside = 0xFFFF;
 
     private readonly IndoorPlan _place;
-    // The draw order is made again only when the player's level or the peek changes: it is kept for the one last asked for.
-    private int _orderPlayer = -1;
-    private int _orderPeek = -1;
-    private IReadOnlyList<RadarPlanDraw> _order = Array.Empty<RadarPlanDraw>();
 
     /// <param name="landblock">The plan of the player's landblock, read from the DATs.</param>
     /// <param name="cell">The player's cell: the low word of its full id.</param>
@@ -112,9 +109,6 @@ public sealed class RadarPlan
         return level - Ground == 1 ? "Cellar" : $"Cellar {level - Ground}";
     }
 
-    /// <summary>Whether the cell, the low word of its full id, is in this place.</summary>
-    public bool Contains(ushort cell) => _place.LevelOf(cell) >= 0;
-
     /// <summary>The index in <see cref="Levels"/> of the cell's level, or -1 if the cell is not in this place.</summary>
     public int LevelOf(ushort cell) => _place.LevelOf(cell);
 
@@ -133,12 +127,10 @@ public sealed class RadarPlan
     /// <summary>
     /// The levels in drawing order for a player on <paramref name="playerLevel"/>: those below the solid level, then those above, then the solid
     /// one last so it sits on the others. The solid level is the peeked one when <paramref name="peekLevel"/> is 0 or more (drawn teal), else
-    /// the player's own. While a level is peeked the player's own is left out, so the peeked one is the only solid level. The same list while
-    /// the player's level and the peek stay as they are.
+    /// the player's own. While a level is peeked the player's own is left out, so the peeked one is the only solid level.
     /// </summary>
     public IReadOnlyList<RadarPlanDraw> DrawOrder(int playerLevel, int peekLevel = -1)
     {
-        if (playerLevel == _orderPlayer && peekLevel == _orderPeek) return _order;
         var peeking = peekLevel >= 0;
         var solid = peeking ? peekLevel : playerLevel;
         var draws = new List<RadarPlanDraw>(Levels.Count);
@@ -150,9 +142,6 @@ public sealed class RadarPlan
                 if (level != playerLevel) draws.Add(new RadarPlanDraw(Levels[level], false));
             draws.Add(new RadarPlanDraw(Levels[solid], true, peeking));
         }
-        _orderPlayer = playerLevel;
-        _orderPeek = peekLevel;
-        _order = draws;
         return draws;
     }
 

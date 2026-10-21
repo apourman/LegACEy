@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
-using LegACEy.Client.GameArt;
+using LegACEy.GameArt;
 using Xunit;
 
 namespace LegACEy.Client.Tests;
