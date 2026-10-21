@@ -415,7 +415,7 @@ public sealed class SettingsPanel : UserControl
 
     private IEnumerable<Control> RadarRows()
     {
-        yield return RadarToggle("Ground map", options => options.Ground, (options, on) => options with { Ground = on });
+        yield return RadarToggle("Show map", options => options.Map, (options, on) => options with { Map = on });
         yield return RadarToggle("North up", options => options.NorthUp, (options, on) => options with { NorthUp = on });
         yield return RadarToggle("Range rings", options => options.Rings, (options, on) => options with { Rings = on });
         yield return RadarRange();
@@ -443,7 +443,8 @@ public sealed class SettingsPanel : UserControl
         range.Chosen += index => _settings.Radar?.Set(_settings.Radar.Value with { Zoom = ranges[index] });
         _redraws.Add(Show);
         Show();
-        return OptionRow("Range (m)", range);
+        // Only the outdoor zoom: the indoor one is set from the radar's own options, beside the plan it zooms.
+        return OptionRow("Outdoor range (m)", range);
     }
 
     /// <summary>

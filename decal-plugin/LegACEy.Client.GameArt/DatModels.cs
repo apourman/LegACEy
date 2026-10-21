@@ -306,7 +306,7 @@ internal static class DatModels
         return (uint)(((((b0 & 0x3F) << 8) | b1) << 16) | s);
     }
 
-    private static Vec3 ReadVector(BinaryReader reader) => new(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+    internal static Vec3 ReadVector(BinaryReader reader) => new(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
 
     internal static Frame ReadFrame(BinaryReader reader)
     {

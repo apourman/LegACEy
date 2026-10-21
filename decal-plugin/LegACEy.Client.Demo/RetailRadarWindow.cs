@@ -13,10 +13,11 @@ using LegACEy.Client.Themes;
 namespace LegACEy.Client.Demo;
 
 /// <summary>
-/// The Dereth radar: a round minimap in a gold bezel, drawn over the land around the player, heading-up as retail's is. A heading tape
-/// reads the heading in degrees above it, and the coordinates sit below. Dots are in retail's radar colours; hovering names one, a click
-/// selects it, the wheel zooms, and the bezel holds retail's UI lock and an options popover. It reads the game once a frame through
-/// <see cref="Refresh"/>; every other change is made from what was read last.
+/// The Dereth radar: a round minimap in a gold bezel, drawn over the land around the player, or indoors over the floor plan of the place
+/// they are in, heading-up as retail's is, with a level ladder left of the bezel. A heading tape reads the heading in degrees above it, and the
+/// coordinates sit below. Dots are in retail's radar colours; hovering names one, a click selects it, the wheel zooms, and the bezel holds
+/// retail's UI lock and an options popover. It reads the game once a frame through <see cref="Refresh"/>; every other change is made from
+/// what was read last.
 /// </summary>
 public sealed class RetailRadarWindow : Decorator, IDisposable
 {
@@ -26,25 +27,35 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     /// </summary>
     public const int Scale = 2;
     private const double MinimumScale = 1, MaximumScale = 3;
+    // The room left of the bezel for the level ladder. It is always there, so the window is the same size indoors and out: the ladder is
+    // shown only where a plan is drawn, and the scope does not move when the player walks in or out.
+    private const int LadderSpace = 22;
     // The layout's size, before the scale.
-    private const int LayoutWidth = 146, LayoutHeight = 174;
+    private const int LayoutWidth = 146 + LadderSpace, LayoutHeight = 174;
     /// <summary>The window's design size in DIPs, the layout at its scale.</summary>
     public const int DesignWidth = LayoutWidth * Scale, DesignHeight = LayoutHeight * Scale;
     /// <summary>Where the scope's top-left sits in the layout, in layout units (a window DIP is this times the radar's scale).</summary>
-    public static readonly Point ScopeOrigin = new(14, 28);
+    public static readonly Point ScopeOrigin = new(14 + LadderSpace, 28);
     // The scope's diameter: 118 DIPs across, so its radius is 59.
     private const double Diameter = 118;
     private const double Radius = Diameter / 2;
+    /// <summary>
+    /// The ladder's plaque in the layout: 16 units wide, its height the scope's less 14 at each end, and ending 3 units short of the bezel's box,
+    /// which starts 11 units left of the scope.
+    /// </summary>
+    public static readonly Rect LadderBounds = new(ScopeOrigin.X - 11 - 3 - 16, ScopeOrigin.Y + 14, 16, Diameter - 28);
     private const string LockTip = "Lock UI", UnlockTip = "Unlock UI", OptionsTip = "Radar options";
-    private static readonly IBrush Plaque = DerethPalette.Brush(Avalonia.Media.Color.FromArgb(0xD9, 0x18, 0x16, 0x0F));
+    private static readonly IBrush Plaque = DerethPalette.PlaqueBrush;
     private static readonly IBrush GoldDark = DerethPalette.Brush(Avalonia.Media.Color.Parse("#8A6326"));
     private static readonly IBrush Groove = DerethPalette.Brush(Avalonia.Media.Color.Parse("#0A0906"));
 
     private readonly IRadarPort _port;
     private readonly Func<GroundTiles?> _ground;
+    private readonly Func<IndoorPlanCache?> _plans;
     private readonly Action<RadarOptions> _saved;
     private readonly Func<uint> _selected;
     private readonly Action _startMove;
+    private readonly Func<uint, string?>? _serverName;
     // Each landblock's tile as a bitmap, converted once per tile and dropped once it leaves the nine around the player.
     private readonly Dictionary<ushort, (GameImage Source, WriteableBitmap Bitmap)> _bitmaps = new();
     // The tiles drawn last read, and the landblocks among them; both refilled each read, so the lists are kept rather than made anew. The
@@ -54,17 +65,29 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     private readonly DerethRadarScope _scope = new() { Width = Diameter, Height = Diameter, Margin = new Thickness(ScopeOrigin.X, ScopeOrigin.Y, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
     private readonly DerethRadarBezel _bezel;
     private readonly DerethHeadingTape _tape = new();
-    private readonly TextBlock _coordinates;
-    private readonly Border _coordinatesPlaque;
+    // The plaque's place name, cut with an ellipsis when it does not fit, and the rest of its line, which is always whole.
+    private readonly TextBlock _placeText, _plaqueText;
+    private readonly Border _plaque;
+    private string? _plaqueLine;
     private readonly DerethMedallion _lock;
+    private readonly DerethLevelLadder _ladder;
+    // The level the pointer is on in the ladder, or -1: the radar peeks at it while the ladder shows.
+    private int _peek = -1;
     // The resize corners, shown while the pointer is over the radar and the UI is unlocked.
     private readonly DerethCornerMarks _corners = new() { IsVisible = false };
     private bool _pointerOver;
     private readonly DerethMedallion _gear;
     private readonly Control _popover;
-    private readonly OptionRow _groundRow, _northRow, _ringsRow, _zoomRow;
+    private readonly OptionRow _mapRow, _northRow, _ringsRow, _zoomRow;
     private RadarPlayer? _player;
     private IReadOnlyList<RadarObject> _objects = Array.Empty<RadarObject>();
+    // The place the player is in and the landblock's plan it came from, kept while the player stays in it; and the place drawn this read.
+    private RadarPlan? _place;
+    private IndoorPlan? _placeLandblock;
+    private uint _placeCell;
+    private RadarPlan? _plan;
+    // The scope's copy of the plan's levels, made again only when the frame's list of them changes.
+    private IReadOnlyList<RadarPlanDraw>? _planDrawn;
     private RadarScopeFrame? _frame;
     private uint? _hovered;
     private uint? _pressed;
@@ -81,46 +104,66 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     /// <summary>The hovered dot's label, as the scope draws it; null when no dot is hovered.</summary>
     public string? HoverLabel { get; private set; }
 
-    /// <summary>How many landblocks of ground the radar drew last: nine outdoors with the ground on and built, else none.</summary>
+    /// <summary>
+    /// How many landblocks of ground the radar drew last: nine outdoors, or under a building's plan, with the map on and built; else none.
+    /// </summary>
     public int TilesDrawn => _tilesDrawn;
 
     /// <param name="port">The radar's game.</param>
     /// <param name="ground">The ground's tiles, or null until they can be built.</param>
+    /// <param name="plans">The indoor plans, or null until the DATs they are read from can be opened.</param>
     /// <param name="options">The options kept for this character.</param>
     /// <param name="saved">Told each time an option or the zoom changes, to keep it for the character.</param>
     /// <param name="selected">The selected object's id, or 0, for the green ring.</param>
     /// <param name="startMove">Starts the window's move, from a press on the frame when the UI is not locked.</param>
-    public RetailRadarWindow(IRadarPort port, Func<GroundTiles?> ground, RadarOptions options, Action<RadarOptions> saved, Func<uint> selected, Action startMove)
+    /// <param name="serverName">The server's name for a cell's place, or null when the server names none; see <see cref="RadarScope.Plaque"/>.</param>
+    public RetailRadarWindow(IRadarPort port, Func<GroundTiles?> ground, Func<IndoorPlanCache?> plans, RadarOptions options, Action<RadarOptions> saved,
+        Func<uint> selected, Action startMove, Func<uint, string?>? serverName = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _ground = ground ?? throw new ArgumentNullException(nameof(ground));
+        _plans = plans ?? throw new ArgumentNullException(nameof(plans));
         Options = options;
         _saved = saved ?? throw new ArgumentNullException(nameof(saved));
         _selected = selected ?? throw new ArgumentNullException(nameof(selected));
         _startMove = startMove ?? throw new ArgumentNullException(nameof(startMove));
+        _serverName = serverName;
 
         _bezel = new DerethRadarBezel { Width = Diameter + 22, Height = Diameter + 22, Margin = new Thickness(ScopeOrigin.X - 11, ScopeOrigin.Y - 11, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, IsHitTestVisible = false };
-        _coordinates = DerethPalette.CentreInk(new TextBlock { FontFamily = DerethPalette.Title, FontSize = 10, Foreground = DerethPalette.CreamBrush });
-        _coordinatesPlaque = new Border
+        _placeText = DerethPalette.CentreInk(new TextBlock { FontFamily = DerethPalette.Title, FontSize = 10, Foreground = DerethPalette.CreamBrush, TextTrimming = TextTrimming.CharacterEllipsis });
+        _plaqueText = DerethPalette.CentreInk(new TextBlock { FontFamily = DerethPalette.Title, FontSize = 10, Foreground = DerethPalette.CreamBrush });
+        DockPanel.SetDock(_plaqueText, Dock.Right);
+        _plaque = new Border
         {
             CornerRadius = new CornerRadius(9), Background = Plaque, BorderBrush = GoldDark, BorderThickness = new Thickness(1), Padding = new Thickness(8, 1),
-            Margin = new Thickness(0, ScopeOrigin.Y + Diameter + 8, 0, 0), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top,
-            Cursor = new Cursor(StandardCursorType.Hand), Child = _coordinates
+            Margin = new Thickness(LadderSpace, ScopeOrigin.Y + Diameter + 8, 0, 0), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top,
+            Cursor = new Cursor(StandardCursorType.Hand), Child = new DockPanel { Children = { _plaqueText, _placeText } }
         };
-        ToolTip.SetTip(_coordinatesPlaque, "Click to paste in chat");
+        ToolTip.SetTip(_plaque, "Click to paste in chat");
         // The press is the plaque's, so it does not move the radar; the release over it is the click.
-        _coordinatesPlaque.PointerPressed += (_, e) => { CloseOptions(); e.Handled = true; };
-        _coordinatesPlaque.PointerReleased += (_, e) =>
+        _plaque.PointerPressed += (_, e) => { CloseOptions(); e.Handled = true; };
+        _plaque.PointerReleased += (_, e) =>
         {
             e.Handled = true;
-            if (new Rect(_coordinatesPlaque.Bounds.Size).Contains(e.GetPosition(_coordinatesPlaque)) && _coordinates.Text is { Length: > 0 } text)
+            if (new Rect(_plaque.Bounds.Size).Contains(e.GetPosition(_plaque)) && _plaqueLine is { Length: > 0 } text)
                 CoordinatesClicked?.Invoke(text);
         };
         var tape = new Border
         {
             Width = 106, Height = 18, CornerRadius = new CornerRadius(3), Background = Plaque, BorderBrush = GoldDark, BorderThickness = new Thickness(1),
-            Margin = new Thickness(20, 4, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(20 + LadderSpace, 4, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
             IsHitTestVisible = false, Child = _tape
+        };
+        _ladder = new DerethLevelLadder
+        {
+            Width = LadderBounds.Width, Height = LadderBounds.Height, Margin = new Thickness(LadderBounds.X, LadderBounds.Y, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, IsVisible = false
+        };
+        _ladder.PeekChanged += level =>
+        {
+            if (level == _peek) return;
+            _peek = level;
+            Rebuild();
         };
         _lock = new DerethMedallion(DerethGlyph.Unlock, 15, 9) { Margin = new Thickness(ScopeOrigin.X + 4, ScopeOrigin.Y + 4, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         _lock.Clicked += () => { _port.UiLocked = !_port.UiLocked; Rebuild(); };
@@ -129,15 +172,15 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         ToolTip.SetTip(_lock, LockTip);
         ToolTip.SetTip(_gear, OptionsTip);
 
-        _groundRow = new OptionRow("Show ground", () => Change(Options with { Ground = !Options.Ground }));
+        _mapRow = new OptionRow("Show map", () => Change(Options with { Map = !Options.Map }));
         _northRow = new OptionRow("North up", () => Change(Options with { NorthUp = !Options.NorthUp }));
         _ringsRow = new OptionRow("Range rings", () => Change(Options with { Rings = !Options.Rings }));
-        _zoomRow = new OptionRow("Zoom", () => Change(Options with { Zoom = RadarZoom.Next(Options.Zoom) }));
+        _zoomRow = new OptionRow("Zoom", () => Change(Zoomed((range, indoors) => RadarZoom.Next(range, indoors))));
         _popover = new DerethFrame(DerethFrameArt.Window)
         {
-            Width = 112, Margin = new Thickness(26, ScopeOrigin.Y + 34, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+            Width = 112, Margin = new Thickness(26 + LadderSpace, ScopeOrigin.Y + 34, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
             IsVisible = false,
-            Child = new StackPanel { Children = { _groundRow, _northRow, _ringsRow, _zoomRow } }
+            Child = new StackPanel { Children = { _mapRow, _northRow, _ringsRow, _zoomRow } }
         };
 
         _scope.PointerMoved += (_, e) => Hover(e.GetPosition(_scope));
@@ -163,13 +206,13 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
             var notches = (int)Math.Round(e.Delta.Y);
             if (notches == 0) return;
             e.Handled = true;
-            Change(Options with { Zoom = RadarZoom.Wheel(Options.Zoom, notches) });
+            Change(Zoomed((range, indoors) => RadarZoom.Wheel(range, notches, indoors)));
         };
 
         var grid = new Grid
         {
             Width = LayoutWidth, Height = LayoutHeight, Background = Brushes.Transparent,
-            Children = { _scope, _bezel, tape, _coordinatesPlaque, _lock, _gear, _popover, _corners }
+            Children = { _scope, _bezel, tape, _plaque, _ladder, _lock, _gear, _popover, _corners }
         };
         grid.PointerEntered += (_, _) => { _pointerOver = true; ShowCorners(); };
         grid.PointerExited += (_, _) => { _pointerOver = false; ShowCorners(); };
@@ -182,7 +225,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         Child = new HeightScaled(LayoutHeight) { Child = grid };
     }
 
-    /// <summary>The coordinates plaque was clicked, with the coordinates it shows.</summary>
+    /// <summary>The plaque was clicked, with the text it shows.</summary>
     public event Action<string>? CoordinatesClicked;
 
     /// <summary>Whether the resize corners show: while the pointer is over the radar and the UI is unlocked.</summary>
@@ -201,9 +244,38 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     {
         _player = _port.Player;
         _objects = _player == null ? Array.Empty<RadarObject>() : _port.Objects;
+        _plan = PlaceOf(_player);
+        // Told every read, not only when the plaque names a dungeon, so stepping outdoors ends the visit to its landblock.
+        if (_player != null) _serverName?.Invoke(_player.Position.Cell);
         _convertedThisRead = false;
         Rebuild();
     }
+
+    // The indoor place the player is in. It is kept while the player's cell stays in it, so its levels are made once for the place. Null
+    // outdoors, and while the landblock's plan is being read: the plan is only asked for, never waited for, so the UI thread does not
+    // stall on the DATs.
+    private RadarPlan? PlaceOf(RadarPlayer? player)
+    {
+        if (player is not { Position.Outdoors: false } || _plans() is not { } plans) return null;
+        var cell = player.Position.Cell;
+        var landblock = plans.PlanAsync((int)(cell >> 24), (int)((cell >> 16) & 0xFF));
+        if (landblock.Status != System.Threading.Tasks.TaskStatus.RanToCompletion) return null;
+        var low = (ushort)(cell & 0xFFFF);
+        var kept = _place != null && ReferenceEquals(_placeLandblock, landblock.Result) && (cell == _placeCell || _place.LevelOf(low) >= 0);
+        if (!kept)
+        {
+            _place = new RadarPlan(landblock.Result, low);
+            _placeLandblock = landblock.Result;
+        }
+        _placeCell = cell;
+        return _place;
+    }
+
+    private bool Indoors => _player is { Position.Outdoors: false };
+
+    // The options with the zoom that is in use changed: indoors its own zoom, outdoors the outdoor one. The wheel and the zoom row use it.
+    private RadarOptions Zoomed(Func<int, bool, int> zoom) =>
+        Indoors ? Options with { IndoorZoom = zoom(Options.IndoorZoom, true) } : Options with { Zoom = zoom(Options.Zoom, false) };
 
     /// <summary>Frees the ground's bitmaps. The window draws nothing after this, and a later read converts none.</summary>
     public void Dispose()
@@ -238,6 +310,14 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         Rebuild();
     }
 
+    // A dot on another level is drawn as an arrow the way its floor points: up for the level above, down for the one below.
+    private static int ArrowOf(RadarFloor floor) => floor switch
+    {
+        RadarFloor.Above => 1,
+        RadarFloor.Below => -1,
+        _ => 0
+    };
+
     private void ToggleOptions()
     {
         _popover.IsVisible = !_popover.IsVisible;
@@ -254,24 +334,45 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     // Draws the radar from the last read, with the options and hover as they are now. Makes no game calls, so the events can use it.
     private void Rebuild()
     {
-        var frame = RadarScope.Build(_player, _objects, Options, Radius);
+        var frame = RadarScope.Build(_player, _objects, Options, Radius, _plan, _peek, _serverName);
         _frame = frame;
         var tiles = GroundFor(frame);
         _tilesDrawn = tiles.Count;
         if (!tiles.SequenceEqual(_scope.Tiles)) _scope.Tiles = tiles.ToArray();
+        if (_planDrawn == null || !frame.PlanLevels.SequenceEqual(_planDrawn))
+        {
+            _planDrawn = frame.PlanLevels;
+            _scope.PlanLevels = frame.PlanLevels.Select(draw => (draw.Level.Floors, draw.Level.Walls, draw.Solid, draw.Peek)).ToArray();
+        }
+        if (!frame.StairMarks.SequenceEqual(_scope.StairMarks)) _scope.StairMarks = frame.StairMarks;
+        _scope.PlanOrigin = frame.PlanOrigin;
+        _scope.PlanBuilding = _plan is { Building: true };
         _scope.Turn = frame.Turn;
         _scope.PixelsPerMetre = frame.PixelsPerMetre;
         _scope.Rings = Options.Rings;
         _scope.Arrow = Options.NorthUp ? frame.Heading : 0;
 
         var selected = _selected();
-        var dots = new (Point At, Color Colour, double Opacity, bool Selected, bool Hovered)[frame.Dots.Count];
+        var dots = new (Point At, Color Colour, double Opacity, int ArrowDir, bool Selected, bool Hovered)[frame.Dots.Count];
         for (var i = 0; i < dots.Length; i++)
         {
             var dot = frame.Dots[i];
-            dots[i] = (dot.At, RadarColors.Rgb(dot.Colour), dot.Alpha, dot.Id == selected, dot.Id == _hovered);
+            dots[i] = (dot.At, RadarColors.Rgb(dot.Colour), dot.Alpha, ArrowOf(dot.Floor), dot.Id == selected, dot.Id == _hovered);
         }
         if (!dots.SequenceEqual(_scope.Dots)) _scope.Dots = dots;
+        // The ladder shows where the plan is drawn; a peek lasts only while it does.
+        _ladder.IsVisible = frame.Ladder != null;
+        if (frame.Ladder is { } ladder)
+        {
+            _ladder.Levels = ladder.Levels;
+            _ladder.Current = ladder.Current;
+            _ladder.Peek = ladder.Peek;
+            _ladder.Occupied = ladder.Occupied;
+        }
+        else
+        {
+            _peek = -1;
+        }
         var hovered = _hovered is { } id ? frame.Dots.FirstOrDefault(dot => dot.Id == id) : null;
         (string Text, Point At)? label = hovered == null ? null : (RadarScope.Label(hovered), hovered.At);
         HoverLabel = label?.Text;
@@ -279,8 +380,13 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
 
         _bezel.Turn = frame.Turn;
         _tape.Heading = frame.Heading;
-        _coordinates.Text = frame.Coordinates ?? string.Empty;
-        _coordinatesPlaque.IsVisible = frame.Coordinates != null;
+        _plaqueLine = frame.Plaque;
+        // The place comes before the last " · " and gives way when the plaque is too narrow; the level or floor after it stays whole.
+        var line = frame.Plaque ?? string.Empty;
+        var cut = line.LastIndexOf(" · ", StringComparison.Ordinal);
+        _placeText.Text = cut < 0 ? string.Empty : line.Substring(0, cut);
+        _plaqueText.Text = cut < 0 ? line : line.Substring(cut);
+        _plaque.IsVisible = frame.Plaque != null;
         // Without retail's lock natives the port's UiLocked does nothing, so the button is not shown.
         _lock.IsVisible = _port.UiLockAvailable;
         // The medallion redraws on every set, so it is set only when the lock changes.
@@ -293,13 +399,13 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         }
         ShowCorners();
 
-        _groundRow.Show(Options.Ground);
+        _mapRow.Show(Options.Map);
         _northRow.Show(Options.NorthUp);
         _ringsRow.Show(Options.Rings);
-        _zoomRow.Show(null, $"{Options.Zoom} m");
+        _zoomRow.Show(null, $"{(Indoors ? Options.IndoorZoom : Options.Zoom)} m");
     }
 
-    // The tiles of the ground that are built, each with its bitmap. Outdoors only, and only while the ground is on.
+    // The tiles of the ground that are built, each with its bitmap. Outdoors, or a building's under its plan, and only while the map is on.
     private List<(IImage Image, Rect Metres)> GroundFor(RadarScopeFrame frame)
     {
         _drawnTiles.Clear();

@@ -115,6 +115,9 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     public RetailChatWindow? Main => Get(MainId);
 
     /// <summary>Every open window, the main window first.</summary>
+    /// <summary>Whether a window id is a chat window's: the main one or one torn off it.</summary>
+    public static bool IsChat(string id) => id == MainId || id.StartsWith(TornIdPrefix, StringComparison.Ordinal);
+
     public IReadOnlyList<RetailChatWindow> Windows => _chats.Select(chat => chat.Window).ToArray();
 
     /// <summary>
@@ -161,7 +164,7 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
         {
             var target = Get(placed.Id);
             if (target == dragged || !placed.Bounds.Contains(pointer)) continue;
-            if (target == null || !target.StripContains(ContentPoint(placed, pointer))) return;
+            if (target == null || !target.StripContains(ItemDropRouting.ContentPoint(placed, pointer))) return;
             target.AddTabs(dragged.Tabs);
             _retiring.Add(dragged);
             return;
@@ -349,9 +352,6 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
         }
     }
 
-    /// <summary>A point on the screen, in the window's own units: its place is in pixels, its content in DIPs.</summary>
-    private Avalonia.Point ContentPoint(ManagedWindow placed, Point pointer) =>
-        new((pointer.X - placed.Location.X) / _windows.Scale, (pointer.Y - placed.Location.Y) / _windows.Scale);
 
     private static WindowDefinition Definition(string id) => new(id, "Chat", DesignWidth, DesignHeight, titleBarHeight: 19,
         theme: new DerethClientTheme(), resizing: new WindowResizing(new Size(260, 120)), dragsFromContent: true);

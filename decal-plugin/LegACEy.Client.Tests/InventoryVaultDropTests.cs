@@ -27,7 +27,7 @@ public sealed class InventoryVaultDropTests
         var windows = new WindowManager(new Size(1920, 1080), new MemoryWindowPositionStore(), "Server", "Character");
         var contents = new Dictionary<string, object>();
         var pointer = default(Point);
-        var drag = new FakeItemDragHost { Relay = (id, name) => windows.HitTest(pointer) is { } window && ItemDropRouting.DeliverTo(window, Content, pointer, id, name, windows.Scale) };
+        var drag = new FakeItemDragHost { Relay = (id, name) => windows.HitTest(pointer) is { } window && ItemDropRouting.DeliverTo(window, Content, pointer, id, name) };
         using var vault = new VaultFixture(null, VaultShellPanel.WindowHeight, new FakeItemDragHost());
         windows.Open(new WindowDefinition("vault", "Vault", VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight), VaultOrigin);
         contents["vault"] = vault.Window;
@@ -69,7 +69,7 @@ public sealed class InventoryVaultDropTests
         var windows = new WindowManager(new Size(1920, 1080), new MemoryWindowPositionStore(), "Server", "Character");
         var contents = new Dictionary<string, object>();
         var pointer = default(Point);
-        var drag = new FakeItemDragHost { RelayMany = ids => windows.HitTest(pointer) is { } window && ItemDropRouting.DeliverManyTo(window, Content, pointer, ids, windows.Scale) };
+        var drag = new FakeItemDragHost { RelayMany = ids => windows.HitTest(pointer) is { } window && ItemDropRouting.DeliverManyTo(window, Content, pointer, ids) };
         using var vault = new VaultFixture(null, VaultShellPanel.WindowHeight, new FakeItemDragHost());
         windows.Open(new WindowDefinition("vault", "Vault", VaultShellPanel.WindowWidth, VaultShellPanel.WindowHeight), VaultOrigin);
         contents["vault"] = vault.Window;

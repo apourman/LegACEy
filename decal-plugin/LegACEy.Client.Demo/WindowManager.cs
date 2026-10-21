@@ -130,8 +130,12 @@ public sealed class WindowDefinition
 /// <summary>The live state of one LegACEy window. The preferred location and size are where the window was last left.</summary>
 public sealed class ManagedWindow
 {
-    internal ManagedWindow(WindowDefinition definition, Point location, Size size, Point preferredLocation, Size preferredSize)
+    internal ManagedWindow(WindowDefinition design, int sizePercent, double scale, WindowDefinition definition, Point location, Size size,
+        Point preferredLocation, Size preferredSize)
     {
+        Design = design;
+        SizePercent = sizePercent;
+        Scale = scale;
         Definition = definition;
         Location = location;
         Size = size;
@@ -139,7 +143,14 @@ public sealed class ManagedWindow
         PreferredSize = preferredSize;
     }
 
-    public WindowDefinition Definition { get; }
+    /// <summary>The definition at the window's scale: what the window measures on screen.</summary>
+    public WindowDefinition Definition { get; internal set; }
+    /// <summary>The definition as it was opened with, at design size.</summary>
+    internal WindowDefinition Design { get; }
+    /// <summary>The window's own size, in percent, on top of the manager's scale; see <see cref="WindowManager.Rescale"/>.</summary>
+    public int SizePercent { get; internal set; }
+    /// <summary>How big the window draws against its design size: the manager's scale times its own size.</summary>
+    public double Scale { get; internal set; }
     public string Id => Definition.Id;
     public string Title => Definition.Title;
     public int Width => Size.Width;
@@ -149,6 +160,11 @@ public sealed class ManagedWindow
     internal Point PreferredLocation { get; set; }
     public Size Size { get; internal set; }
     internal Size PreferredSize { get; set; }
+    /// <summary>
+    /// The preferred size at design size, exactly, while it is known: from the saved size or a rescale, until the window is resized. A size
+    /// worked back from the on-screen one rounds, and at a scale under 1 can be a pixel off, so steps of the wheel would make it drift.
+    /// </summary>
+    internal Size? DesignSize { get; set; }
     public Rectangle Bounds => new(Location, Size);
 }
 
@@ -324,6 +340,12 @@ public sealed class WindowManager
     /// </summary>
     public const int CornerBand = 16;
 
+    /// <summary>The smallest and largest a window's own size goes, and the step a wheel notch moves it, in percent.</summary>
+    public const int SmallestSize = 50, LargestSize = 200, SizeStep = 10;
+
+    /// <summary>How near, in screen pixels, a moved window's edge must come to the screen's edge or another window's to snap to it.</summary>
+    public const int SnapDistance = 8;
+
     private readonly List<ManagedWindow> _windows = new();
     private readonly IWindowPositionStore _positions;
     private readonly string _server;
@@ -335,15 +357,19 @@ public sealed class WindowManager
     private Point _pressPoint;
     private Rectangle _pressBounds;
     private readonly Func<bool>? _uiLocked;
+    private readonly Func<IEnumerable<Rectangle>>? _snapTargets;
 
     /// <param name="scale">
     /// How big windows show, against the sizes their definitions give: 0.85 shows a 400 pixel wide window 340 pixels wide. Sizes,
     /// title bars and minimums are scaled on open; saved sizes stay at design size, so a scale change keeps a window's proportions.
     /// </param>
     /// <param name="uiLocked">Whether retail's UI is locked: then no window moves or resizes, and none shows resize edges. Null: never locked.</param>
-    public WindowManager(Size screen, IWindowPositionStore positions, string server, string character, double scale = 1, Func<bool>? uiLocked = null)
+    /// <param name="snapTargets">Screen rectangles drawn outside this manager, such as the toolbar, that moved windows snap to as well.</param>
+    public WindowManager(Size screen, IWindowPositionStore positions, string server, string character, double scale = 1, Func<bool>? uiLocked = null,
+        Func<IEnumerable<Rectangle>>? snapTargets = null)
     {
         _uiLocked = uiLocked;
+        _snapTargets = snapTargets;
         if (scale <= 0) throw new ArgumentOutOfRangeException(nameof(scale));
         Scale = scale;
         if (screen.Width <= 0 || screen.Height <= 0) throw new ArgumentOutOfRangeException(nameof(screen));
@@ -369,19 +395,64 @@ public sealed class WindowManager
         if (definition == null) throw new ArgumentNullException(nameof(definition));
         var existing = Get(definition.Id);
         if (existing != null) return existing;
-        definition = Scaled(definition);
+        var design = definition;
+        var sizePercent = SavedSizePercent(definition.Id);
+        var scale = ScaleFor(sizePercent);
+        definition = Scaled(definition, scale);
         var saved = _positions.Load(_server, _character, definition.Id);
         var shared = definition.SharesLocationWith is { } other ? _positions.Load(_server, _character, other)?.Location : null;
-        var preferredSize = definition.Resizing != null && saved?.Size is { } savedSize ? Scaled(savedSize) : DefaultSize(definition);
+        var preferredSize = definition.Resizing != null && saved?.Size is { } savedSize ? Scaled(savedSize, scale) : DefaultSize(definition);
         var size = FitSize(definition, preferredSize, _screen);
         var requested = requestedLocation == CentredLocation
             ? new Point((_screen.Width - size.Width) / 2, (_screen.Height - size.Height) / 2)
             : requestedLocation;
         var preferredLocation = shared ?? saved?.Location ?? requested;
-        var window = new ManagedWindow(definition, Clamp(preferredLocation, size), size, preferredLocation, preferredSize);
+        var window = new ManagedWindow(design, sizePercent, scale, definition, Clamp(preferredLocation, size), size, preferredLocation, preferredSize)
+        {
+            DesignSize = definition.Resizing != null ? saved?.Size : null
+        };
         _windows.Insert(0, window);
         return window;
     }
+
+    /// <summary>
+    /// The scale a window draws at, open or not: the manager's scale times the window's own size, which a window saved for this character keeps.
+    /// </summary>
+    public double ScaleOf(string id) => Get(id)?.Scale ?? ScaleFor(SavedSizePercent(id));
+
+    private double ScaleFor(int sizePercent) => Scale * sizePercent / 100;
+
+    /// <summary>
+    /// Makes a window bigger or smaller by <paramref name="steps"/> of <see cref="SizeStep"/> percent (a wheel notch is one), within
+    /// <see cref="SmallestSize"/> and <see cref="LargestSize"/>, on top of the manager's scale. Its top-left corner stays, within the screen,
+    /// and the size is saved for the character. Something this manager does not open, such as the toolbar, which draws itself, has only its
+    /// size saved, for <see cref="ScaleOf"/>. False when the window is being dragged, retail's UI is locked or the size is at its limit.
+    /// </summary>
+    public bool Rescale(string id, int steps)
+    {
+        var window = Get(id);
+        if ((_dragging != null && _dragging == window) || Locked) return false;
+        var current = window?.SizePercent ?? SavedSizePercent(id);
+        var sizePercent = Math.Max(SmallestSize, Math.Min(LargestSize, current + steps * SizeStep));
+        if (sizePercent == current) return false;
+        _positions.Save(_server, _character, SizeKey(id), (new Point(sizePercent, 0), null));
+        if (window == null) return true;
+        var designSize = window.DesignSize ??= Scaled(window.PreferredSize, 1 / window.Scale);
+        window.SizePercent = sizePercent;
+        window.Scale = ScaleFor(sizePercent);
+        window.Definition = Scaled(window.Design, window.Scale);
+        window.PreferredSize = window.Definition.Resizing != null ? Scaled(designSize, window.Scale) : DefaultSize(window.Definition);
+        window.Size = FitSize(window.Definition, window.PreferredSize, _screen);
+        window.Location = Clamp(window.PreferredLocation, window.Size);
+        Save(window);
+        return true;
+    }
+
+    // A window's own size is saved beside its place, under its id with this added, so a reset of the places resets it too.
+    private static string SizeKey(string id) => id + "\u001fsize";
+
+    private int SavedSizePercent(string id) =>
+        _positions.Load(_server, _character, SizeKey(id))?.Location.X is int percent && percent >= SmallestSize && percent <= LargestSize ? percent : 100;
 
     public ManagedWindow? Get(string id) => _windows.FirstOrDefault(window => window.Id == id);
 
@@ -464,7 +535,7 @@ public sealed class WindowManager
             Resize(_dragging, point);
             return;
         }
-        _dragging.Location = Clamp(new Point(point.X - _dragOffset.X, point.Y - _dragOffset.Y), _dragging.Size);
+        _dragging.Location = Clamp(Snap(_dragging, new Point(point.X - _dragOffset.X, point.Y - _dragOffset.Y)), _dragging.Size);
         _dragging.PreferredLocation = _dragging.Location;
     }
 
@@ -537,6 +608,7 @@ public sealed class WindowManager
         window.Location = Clamp(new Point(x, y), size);
         window.PreferredLocation = window.Location;
         window.PreferredSize = window.Size;
+        window.DesignSize = null;
     }
 
     /// <summary>One axis of a resize. A moving start edge keeps the end edge fixed; a moving end edge stops at the screen.</summary>
@@ -552,6 +624,30 @@ public sealed class WindowManager
         }
         return (start, WindowResizing.Clamp(length + delta, minimum, Math.Min(screen - start, maximum)));
     }
+
+    /// <summary>
+    /// A moved window's place snapped, on each axis, to the nearest edge within <see cref="SnapDistance"/>: flush with the screen's edge,
+    /// against a nearby window's or snap target's edge, or lined up with it.
+    /// </summary>
+    private Point Snap(ManagedWindow window, Point location) => Snap(location, window.Size,
+        _windows.Where(other => other != window).Select(other => other.Bounds).Concat(_snapTargets?.Invoke() ?? Enumerable.Empty<Rectangle>()));
+
+    /// <summary>The place of something moved outside this manager, such as the toolbar, snapped to the screen's edges and the windows.</summary>
+    public Point Snap(Point location, Size size) => Snap(location, size, _windows.Select(window => window.Bounds));
+
+    private Point Snap(Point location, Size size, IEnumerable<Rectangle> targets)
+    {
+        var near = Rectangle.Inflate(new Rectangle(location, size), SnapDistance, SnapDistance);
+        var others = targets.Where(other => other.IntersectsWith(near)).ToList();
+        return new Point(
+            Nearest(location.X, others.SelectMany(other => new[] { other.Left, other.Right, other.Left - size.Width, other.Right - size.Width })
+                .Append(0).Append(_screen.Width - size.Width)),
+            Nearest(location.Y, others.SelectMany(other => new[] { other.Top, other.Bottom, other.Top - size.Height, other.Bottom - size.Height })
+                .Append(0).Append(_screen.Height - size.Height)));
+    }
+
+    private static int Nearest(int value, IEnumerable<int> edges) =>
+        edges.Where(edge => Math.Abs(edge - value) <= SnapDistance).OrderBy(edge => Math.Abs(edge - value)).DefaultIfEmpty(value).First();
 
     private void EndDrag()
     {
@@ -573,16 +669,16 @@ public sealed class WindowManager
     }
 
     private WindowPlacement Placement(ManagedWindow window) =>
-        (window.PreferredLocation, window.Definition.Resizing == null ? null : Scaled(window.PreferredSize, 1 / Scale));
+        (window.PreferredLocation, window.Definition.Resizing == null ? null : window.DesignSize ?? Scaled(window.PreferredSize, 1 / window.Scale));
 
-    /// <summary>The definition at this manager's scale: what its window measures on screen.</summary>
-    private WindowDefinition Scaled(WindowDefinition definition) => Scale == 1 ? definition : new WindowDefinition(
-        definition.Id, definition.Title, Scaled(definition.Width), Scaled(definition.Height), Scaled(definition.TitleBarHeight), definition.Theme,
-        definition.Resizing is { } resizing ? new WindowResizing(Scaled(resizing.Minimum), resizing.Maximum is { } top ? Scaled(top) : null, resizing.Locked, resizing.NoCorners, resizing.Shape) : null,
+    /// <summary>The definition at a scale: what its window measures on screen.</summary>
+    private static WindowDefinition Scaled(WindowDefinition definition, double scale) => scale == 1 ? definition : new WindowDefinition(
+        definition.Id, definition.Title, Scaled(definition.Width, scale), Scaled(definition.Height, scale), Scaled(definition.TitleBarHeight, scale), definition.Theme,
+        definition.Resizing is { } resizing ? new WindowResizing(Scaled(resizing.Minimum, scale), resizing.Maximum is { } top ? Scaled(top, scale) : null, resizing.Locked, resizing.NoCorners, resizing.Shape) : null,
         definition.SharesLocationWith, definition.DragsFromContent);
 
-    private Size Scaled(Size size, double? scale = null) => new(Scaled(size.Width, scale), Scaled(size.Height, scale));
-    private int Scaled(int length, double? scale = null) => Math.Max(1, (int)Math.Round(length * (scale ?? Scale)));
+    private static Size Scaled(Size size, double scale) => new(Scaled(size.Width, scale), Scaled(size.Height, scale));
+    private static int Scaled(int length, double scale) => Math.Max(1, (int)Math.Round(length * scale));
 
     private Point Clamp(Point location, Size size, Size? screen = null)
     {

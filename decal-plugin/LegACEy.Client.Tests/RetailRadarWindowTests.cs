@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
@@ -6,6 +7,7 @@ using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.PanelHost;
+using LegACEy.Client.Themes;
 using Xunit;
 
 namespace LegACEy.Client.Tests;
@@ -35,7 +37,7 @@ public sealed class RetailRadarWindowTests
         windows.Press(corner);
         windows.Move(new System.Drawing.Point(corner.X + 100, corner.Y + 100));
         windows.Release();
-        Assert.Equal(new System.Drawing.Size(292, 348), radar.Size);
+        Assert.Equal(new System.Drawing.Size(336, 348), radar.Size);
 
         port.UiLocked = false;
         window.Refresh();
@@ -48,7 +50,7 @@ public sealed class RetailRadarWindowTests
         var windows = new WindowManager(new System.Drawing.Size(1600, 1000), new MemoryWindowPositionStore(), "Thistledown", "Alice");
         var radar = windows.Open(new WindowDefinition("radar", "Radar", RetailRadarWindow.DesignWidth, RetailRadarWindow.DesignHeight, titleBarHeight: 1,
             resizing: RetailRadarWindow.Resizing(() => false), dragsFromContent: true), new System.Drawing.Point(100, 100));
-        Assert.Equal(new System.Drawing.Size(292, 348), radar.Size);
+        Assert.Equal(new System.Drawing.Size(336, 348), radar.Size);
 
         void Drag(System.Drawing.Point grab, int dx, int dy)
         {
@@ -58,11 +60,11 @@ public sealed class RetailRadarWindowTests
         }
         // The right edge alone brings the height along; the corner goes no larger than three times the layout, nor smaller than it.
         Drag(new System.Drawing.Point(radar.Bounds.Right - 2, radar.Bounds.Top + 100), 73, 0);
-        Assert.Equal(new System.Drawing.Size(365, 435), radar.Size);
+        Assert.Equal(new System.Drawing.Size(410, 424), radar.Size);
         Drag(new System.Drawing.Point(radar.Bounds.Right - 2, radar.Bounds.Bottom - 2), 500, 500);
-        Assert.Equal(new System.Drawing.Size(438, 522), radar.Size);
+        Assert.Equal(new System.Drawing.Size(504, 522), radar.Size);
         Drag(new System.Drawing.Point(radar.Bounds.Right - 2, radar.Bounds.Bottom - 2), -500, -500);
-        Assert.Equal(new System.Drawing.Size(146, 174), radar.Size);
+        Assert.Equal(new System.Drawing.Size(168, 174), radar.Size);
     }
 
     private const uint Outdoors = 0xC6A90014;
@@ -156,10 +158,77 @@ public sealed class RetailRadarWindowTests
     });
 
     [Fact]
+    public void Indoors_the_window_draws_the_plan_of_the_place_it_is_in_once_it_is_built() => RenderThread.Run(() =>
+    {
+        var port = PortWith();
+        port.Player = new RadarPlayer(new RadarPosition(RadarPlanFixtures.DungeonCell, 60, 84, 0), 0);
+        var plans = new IndoorPlanCache((x, y) => RadarPlanFixtures.Dungeon());
+        using var panel = Open(port, out var window, plans: plans);
+        WaitForPlan(plans);
+
+        window.Refresh();
+        panel.Tick();
+
+        Assert.Equal(3, window.Frame!.PlanLevels.Count);
+        Assert.Equal(0, window.TilesDrawn);
+    });
+
+    [Fact]
+    public void Overlapping_floors_of_a_level_fill_as_one_with_no_hole_where_they_cross() => RenderThread.Run(() =>
+    {
+        // The plan's paths are platform geometry: a panel starts the platform.
+        using var panel = Open(PortWith(), out _);
+        IReadOnlyList<GroundPoint> Square(float x, float y) =>
+            new[] { new GroundPoint(x, y), new GroundPoint(x + 4, y), new GroundPoint(x + 4, y + 4), new GroundPoint(x, y + 4) };
+        var cell = new IndoorCell(0x0100, 0, new[] { Square(0, 0), Square(2, 2) }, Array.Empty<(GroundPoint, GroundPoint)>(),
+            Array.Empty<(Vec3, ushort)>());
+        var level = new RadarPlanLevel(new IndoorLevel(new[] { cell }), Array.Empty<(GroundPoint, bool)>());
+
+        Assert.True(level.Floors.FillContains(new Point(3, 3)));
+    });
+
+    [Fact]
+    public void Moving_within_the_same_place_keeps_its_levels_and_only_the_solid_one_moves() => RenderThread.Run(() =>
+    {
+        var port = PortWith();
+        port.Player = new RadarPlayer(new RadarPosition(RadarPlanFixtures.DungeonCell, 60, 84, 0), 0);
+        var plans = new IndoorPlanCache((x, y) => RadarPlanFixtures.Dungeon());
+        using var panel = Open(port, out var window, plans: plans);
+        WaitForPlan(plans);
+        window.Refresh();
+        panel.Tick();
+        var before = window.Frame!.PlanLevels;
+
+        // The lowest room of the same dungeon.
+        port.Player = new RadarPlayer(new RadarPosition(0xC6A90100, 60, 84, 0), 0);
+        window.Refresh();
+        panel.Tick();
+        var after = window.Frame!.PlanLevels;
+
+        // The same three levels, though the draw order turns with the player's level.
+        Assert.Equal(before.Count, after.Count);
+        Assert.All(before, draw => Assert.Contains(after, again => ReferenceEquals(again.Level, draw.Level)));
+        Assert.NotSame(before.Single(level => level.Solid).Level, after.Single(level => level.Solid).Level);
+    });
+
+    [Fact]
+    public void The_wheel_indoors_changes_the_indoor_zoom_and_leaves_the_outdoor_zoom() => RenderThread.Run(() =>
+    {
+        var port = PortWith();
+        port.Player = new RadarPlayer(new RadarPosition(RadarPlanFixtures.DungeonCell, 60, 84, 0), 0);
+        using var panel = Open(port, out var window);
+
+        Wheel(panel, window, notches: 10);
+
+        Assert.Equal(RadarZoom.IndoorMin, window.Options.IndoorZoom);
+        Assert.Equal(RadarZoom.Default, window.Options.Zoom);
+    });
+
+    [Fact]
     public void Ground_off_draws_dots_on_dark() => RenderThread.Run(() =>
     {
         var ground = new GroundTiles(new FakeGround());
-        using var panel = Open(PortWith(), out var window, ground: ground, options: new RadarOptions(Ground: false));
+        using var panel = Open(PortWith(), out var window, ground: ground, options: new RadarOptions(Map: false));
 
         window.Refresh();
 
@@ -197,6 +266,56 @@ public sealed class RetailRadarWindowTests
     });
 
     [Fact]
+    public void Clicking_the_plaque_indoors_hands_on_the_floor_it_shows() => RenderThread.Run(() =>
+    {
+        var port = PortWith();
+        port.Player = new RadarPlayer(new RadarPosition(RadarPlanFixtures.DungeonCell, 60, 84, 0), 0);
+        var plans = new IndoorPlanCache((x, y) => RadarPlanFixtures.Dungeon());
+        using var panel = Open(port, out var window, plans: plans);
+        WaitForPlan(plans);
+        window.Refresh();
+        panel.Tick();
+        string? clicked = null;
+        window.CoordinatesClicked += text => clicked = text;
+
+        Press(panel, Medallion(panel, "Click to paste in chat"));
+        Assert.Equal("Level 2 of 3", clicked);
+    });
+
+    [Fact]
+    public void A_name_too_long_for_the_plaque_gives_way_to_the_level_and_the_paste_keeps_it_whole() => RenderThread.Run(() =>
+    {
+        const string name = "The Long Forgotten Halls of the Black Totem Temple";
+        var port = PortWith();
+        port.Player = new RadarPlayer(new RadarPosition(RadarPlanFixtures.DungeonCell, 60, 84, 0), 0);
+        var plans = new IndoorPlanCache((x, y) => RadarPlanFixtures.Dungeon());
+        using var panel = Open(port, out var window, plans: plans, serverName: _ => name);
+        WaitForPlan(plans);
+        window.Refresh();
+        panel.Tick();
+        string? clicked = null;
+        window.CoordinatesClicked += text => clicked = text;
+
+        var plaque = Medallion(panel, "Click to paste in chat");
+        var level = panel.Content.GetVisualDescendants().OfType<TextBlock>().Single(block => block.Text == " · Level 2 of 3");
+        var place = panel.Content.GetVisualDescendants().OfType<TextBlock>().Single(block => block.Text == name);
+        Assert.True(plaque.TranslatePoint(new Point(plaque.Bounds.Width, 0), panel.Content)!.Value.X <= RetailRadarWindow.DesignWidth);
+        Assert.True(level.Bounds.Width >= level.DesiredSize.Width - 0.5);
+        Assert.True(place.Bounds.Width < Measured(place));
+
+        Press(panel, plaque);
+        Assert.Equal(name + " · Level 2 of 3", clicked);
+    });
+
+    // A text block's width with room to spare, before any trimming.
+    private static double Measured(TextBlock block)
+    {
+        var free = new TextBlock { Text = block.Text, FontFamily = block.FontFamily, FontSize = block.FontSize };
+        free.Measure(Size.Infinity);
+        return free.DesiredSize.Width;
+    }
+
+    [Fact]
     public void Options_and_zoom_come_back_for_the_next_window() => RenderThread.Run(() =>
     {
         RadarOptions? saved = null;
@@ -230,13 +349,56 @@ public sealed class RetailRadarWindowTests
         Assert.Equal(captures + 1, panel.FrameCaptureCount);
     });
 
-    // A radar window over the port and ground, shown at its size, with its frame drawn once.
+    [Fact]
+    public void Hovering_a_ladder_pip_peeks_that_level_and_the_players_level_stays() => RenderThread.Run(() =>
+    {
+        var port = PortWith();
+        port.Player = new RadarPlayer(new RadarPosition(RadarPlanFixtures.DungeonCell, 60, 84, 0), 0);
+        var plans = new IndoorPlanCache((x, y) => RadarPlanFixtures.Dungeon());
+        using var panel = Open(port, out var window, plans: plans);
+        WaitForPlan(plans);
+        window.Refresh();
+        panel.Tick();
+
+        // Hovering a pip peeks its level; the player's level is still the one the ladder marks gold.
+        Move(panel, PipAt(window, 0));
+        Assert.Equal(0, window.Frame!.Ladder!.Peek);
+        Assert.Equal(1, window.Frame.Ladder.Current);
+
+        // Off the ladder the peek ends.
+        Move(panel, ScopeCentre);
+        Assert.Equal(-1, window.Frame.Ladder.Peek);
+    });
+
+    [Fact]
+    public void The_window_keeps_its_size_walking_into_a_building_and_out() => RenderThread.Run(() =>
+    {
+        var port = PortWith();
+        var plans = new IndoorPlanCache((x, y) => RadarPlanFixtures.Town());
+        using var panel = Open(port, out var window, plans: plans);
+        var outdoors = window.Bounds.Size;
+
+        port.Player = new RadarPlayer(new RadarPosition(RadarPlanFixtures.HouseCell, 60, 84, 0), 0);
+        WaitForPlan(plans);
+        window.Refresh();
+        panel.Tick();
+        Assert.NotNull(window.Frame!.Ladder);
+        Assert.Equal(outdoors, window.Bounds.Size);
+
+        port.Player = new RadarPlayer(new RadarPosition(Outdoors, 60, 84, 0), 0);
+        window.Refresh();
+        panel.Tick();
+        Assert.Null(window.Frame!.Ladder);
+        Assert.Equal(outdoors, window.Bounds.Size);
+    });
+
+    // A radar window over the port, ground and plans, shown at its size, with its frame drawn once.
     private static AvaloniaPanel Open(FakeRadarPort port, out RetailRadarWindow window, GroundTiles? ground = null, RadarOptions? options = null,
-        Action<RadarOptions>? saved = null, Action? startMove = null)
+        Action<RadarOptions>? saved = null, Action? startMove = null, IndoorPlanCache? plans = null, Func<uint, string?>? serverName = null)
     {
         RetailRadarWindow? created = null;
-        var panel = AvaloniaPanel.Create(() => created = new RetailRadarWindow(port, () => ground, options ?? new RadarOptions(), saved ?? (_ => { }),
-            () => 0, startMove ?? (() => { })), RetailRadarWindow.DesignWidth, RetailRadarWindow.DesignHeight);
+        var panel = AvaloniaPanel.Create(() => created = new RetailRadarWindow(port, () => ground, () => plans, options ?? new RadarOptions(), saved ?? (_ => { }),
+            () => 0, startMove ?? (() => { }), serverName), RetailRadarWindow.DesignWidth, RetailRadarWindow.DesignHeight);
         window = created!;
         window.Refresh();
         panel.Tick();
@@ -263,6 +425,23 @@ public sealed class RetailRadarWindowTests
     private static void Hover(AvaloniaPanel panel, RetailRadarWindow window, uint id)
     {
         var at = DotAt(window, id);
+        panel.PointerMove(at.X, at.Y);
+        panel.Tick();
+    }
+
+    // A ladder pip's centre in panel pixels: the pips share the ladder's height evenly, the top floor first.
+    private static Point PipAt(RetailRadarWindow window, int index)
+    {
+        var bounds = RetailRadarWindow.LadderBounds;
+        var y = bounds.Y + DerethLevelLadder.PipY(index, window.Frame!.Ladder!.Levels, bounds.Height);
+        return new Point(bounds.X + bounds.Width / 2, y) * RetailRadarWindow.Scale;
+    }
+
+    // The centre of the scope, in panel pixels: off the ladder and off every dot.
+    private static Point ScopeCentre => new Point(RetailRadarWindow.ScopeOrigin.X + 59, RetailRadarWindow.ScopeOrigin.Y + 59) * RetailRadarWindow.Scale;
+
+    private static void Move(AvaloniaPanel panel, Point at)
+    {
         panel.PointerMove(at.X, at.Y);
         panel.Tick();
     }
@@ -298,6 +477,17 @@ public sealed class RetailRadarWindowTests
     // A popover row: the text inside it takes the press, and the row takes it as its own.
     private static Control Row(AvaloniaPanel panel, string text) =>
         panel.Content.GetVisualDescendants().OfType<TextBlock>().First(block => block.Text == text);
+
+    private static void WaitForPlan(IndoorPlanCache plans)
+    {
+        var until = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < until)
+        {
+            if (plans.PlanAsync(0xC6, 0xA9).IsCompletedSuccessfully) return;
+            System.Threading.Thread.Sleep(10);
+        }
+        Assert.Fail("The fake plan did not build in time.");
+    }
 
     private static void WaitForGround(GroundTiles ground)
     {
