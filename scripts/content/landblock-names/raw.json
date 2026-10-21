@@ -2,8649 +2,5406 @@
  "0001": {
   "title": "Remote Empyrean Vault",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "81.6N, 71.2W",
-  "levels": "40",
   "text": ""
  },
  "0002": {
   "title": "Viamontian Garrison",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "75.3N, 73.8W",
-  "levels": "Any",
   "text": ""
  },
  "0003": {
   "title": "Niffis Fighting Pits",
   "redirect": true,
-  "summary": "Quest",
-  "coordinates": "N/A",
-  "levels": "",
   "text": ""
  },
  "0004": {
   "title": "Northern Power Forge",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "18.4N, 22.8W",
-  "levels": "40",
   "text": ""
  },
  "0005": {
   "title": "Southern Power Forge",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "82.2S 3.9W",
-  "levels": "70",
   "text": ""
  },
  "0006": {
   "title": "Western Power Forge",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "21.9S, 43.8W",
-  "levels": "100",
   "text": ""
  },
  "0007": {
   "title": "Town Network",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "0008": {
   "title": "Defiled Temple Lower Wing",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "77.8N 32.8E",
-  "levels": "40",
   "text": ""
  },
  "0009": {
   "title": "Defiled Temple Upper Wing",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "77.8N 32.8E",
-  "levels": "80",
   "text": ""
  },
  "000A": {
   "title": "Defiled Temple Asylum",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "77.8N 32.8E",
-  "levels": "100",
   "text": ""
  },
  "000B": {
   "title": "Banderling Shrine",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[73.0N, 6.6W - Banderling Village",
-  "levels": "60",
   "text": ""
  },
  "000C": {
   "title": "Weakened Vault Sewers",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "77.8N 32.8E",
-  "levels": "40",
   "text": ""
  },
  "000D": {
   "title": "Secured Vault Sewers",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "77.8N 32.8E",
-  "levels": "60",
   "text": ""
  },
  "000E": {
   "title": "Reinforced Vault Sewers",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "77.8N 32.8E",
-  "levels": "80",
   "text": ""
  },
  "000F": {
   "title": "Fortified Vault Sewers",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "77.8N 32.8E",
-  "levels": "100",
   "text": ""
  },
  "0010": {
   "title": "War Room",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.1S 92.7W",
-  "levels": "80",
   "text": ""
  },
  "0011": {
   "title": "Weakened Royal Vault",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "77.8N 32.8E",
-  "levels": "40",
   "text": ""
  },
  "0012": {
   "title": "Secured Royal Vault",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "77.8N 32.8E",
-  "levels": "60",
   "text": ""
  },
  "0013": {
   "title": "Reinforced Royal Vault",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "77.8N 32.8E",
-  "levels": "80",
   "text": ""
  },
  "0014": {
   "title": "Fortified Royal Vault",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "77.8N 32.8E",
-  "levels": "100",
   "text": ""
  },
  "0015": {
   "title": "Banished Assembly",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "87.0S 79.6W",
-  "levels": "100",
   "text": ""
  },
  "0016": {
   "title": "Ravaged Cathedral",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "86.2S 79.0W",
-  "levels": "100",
   "text": ""
  },
  "0017": {
   "title": "Vile Sanctuary",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "86.7S 78.2W",
-  "levels": "100",
   "text": ""
  },
  "0018": {
   "title": "Copper Legion Keep",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.1N, 0.6E",
-  "levels": "50",
   "text": ""
  },
  "0019": {
   "title": "Gold Legion Keep",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "13.8N, 2.0E",
-  "levels": "80",
   "text": ""
  },
  "001A": {
   "title": "Platinum Legion Keep",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "16.5N, 0.6E",
-  "levels": "100",
   "text": ""
  },
  "001B": {
   "title": "Silver Legion Keep",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "13.5N, 1.5W",
-  "levels": "65",
   "text": ""
  },
  "001C": {
   "title": "Lugian Ice Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "93.3N 50.1W",
-  "levels": "80",
   "text": ""
  },
  "001D": {
   "title": "Ruschk Icehold",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "87.3N 51.8W",
-  "levels": "80",
   "text": ""
  },
  "001E": {
   "title": "Viamontian Royal Prison",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "92.0N 41.6W",
-  "levels": "80",
   "text": ""
  },
  "001F": {
   "title": "Eater Pit",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "88.8N 72.6W",
-  "levels": "40",
   "text": ""
  },
  "0020": {
   "title": "Heart of Madness",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "84.8N 68.6W",
-  "levels": "40",
   "text": ""
  },
  "0021": {
   "title": "Hall of Karlun",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "88.9N 67.8W",
-  "levels": "40",
   "text": ""
  },
  "0022": {
   "title": "Cannibal Caverns",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "88.0N, 58.5W",
-  "levels": "50",
   "text": ""
  },
  "0023": {
   "title": "Sezzherei's Lair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Sezzherei's Lair (Portal Gem)]]",
-  "levels": "100",
   "text": ""
  },
  "0024": {
   "title": "Mausoleums of Hate",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "0025": {
   "title": "Mausoleums of Hate",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "0026": {
   "title": "Mausoleums of Hate",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "0027": {
   "title": "Mausoleums of Hate",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "0028": {
   "title": "Mausoleums of Hate",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "0029": {
   "title": "Thrungus Hole",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "94.2N 43.0W in the [[Shattered Outlands]]",
-  "levels": "126",
   "text": ""
  },
  "002A": {
   "title": "Path of the Blind",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "91.1N, 48.0W",
-  "levels": "140",
   "text": ""
  },
  "002B": {
   "title": "Egg Orchard",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "96.2N 48.1W",
-  "levels": "140",
   "text": ""
  },
  "002C": {
   "title": "Forgotten Chasm",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "94.5N 39.1W",
-  "levels": "130",
   "text": ""
  },
  "002D": {
   "title": "Dark Design",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "93.8N 44.9W",
-  "levels": "140",
   "text": ""
  },
  "002E": {
   "title": "Feeding Tubes",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "96.7N, 42.4W",
-  "levels": "130",
   "text": ""
  },
  "002F": {
   "title": "Tursh Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "92.4N 47.5W",
-  "levels": "",
   "text": ""
  },
  "0030": {
   "title": "Renegade Incursion",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "0.5N, 73.3W",
-  "levels": "50",
   "text": ""
  },
  "0031": {
   "title": "Creepy Canyons",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "4.6N 89.5W",
-  "levels": "100",
   "text": ""
  },
  "0032": {
   "title": "Tunnel of Love",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "94.4S, 96.6W",
-  "levels": "120",
   "text": ""
  },
  "0033": {
   "title": "0033",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Coral Caves]]\n* [[Icy Hideout]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "0034": {
   "title": "The Fazenda Caves",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "49.8N, 7.7E",
-  "levels": "40",
   "text": ""
  },
  "0035": {
   "title": "Lost Coastal Archive",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "37.4N, 67.0E",
-  "levels": "40",
   "text": ""
  },
  "0036": {
   "title": "Lost Desert Archive",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "3.9N, 2.4W",
-  "levels": "40",
   "text": ""
  },
  "0037": {
   "title": "Frozen Cenotaph",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "90.6N, 66.7W",
-  "levels": "40",
   "text": ""
  },
  "0038": {
   "title": "Font of the Eternal Harvester",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "42.7S, 46.6W",
-  "levels": "80",
   "text": ""
  },
  "0039": {
   "title": "Hagra's Holdfast",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "48.2N, 88.5W",
-  "levels": "35",
   "text": ""
  },
  "003A": {
   "title": "Corrupted Falatacot Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "87.3N, 41.6E",
-  "levels": "130",
   "text": ""
  },
  "003B": {
   "title": "003B",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "[[Gateway to the Deep: Part 2]]<br>\n[[Gateway to the Deep: Part 3]]<br>\n[[Gateway to the Deep: Part 4]]\n\n[[Category:Landblocks]]"
  },
  "003C": {
   "title": "Abandoned Mines Mirror",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "38.6N 65.8W (See below)",
-  "levels": "130",
   "text": ""
  },
  "003D": {
   "title": "Devastated Falatacot Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "87.3N 51.2E on [[Aerlinthe]]",
-  "levels": "130",
   "text": ""
  },
  "003E": {
   "title": "Breached Hive",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "49.8N, 73.1W",
-  "levels": "50",
   "text": ""
  },
  "0040": {
   "title": "Master Alizari's Dig",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "19.4N 43.2W",
-  "levels": "40-59",
   "text": ""
  },
  "0041": {
   "title": "Mistress Halmera's Dig",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "8.6N, 58.6W",
-  "levels": "60-79",
   "text": ""
  },
  "0042": {
   "title": "Mistress Gabille's Dig",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "8.5N 88.9W",
-  "levels": "80-99",
   "text": ""
  },
  "0043": {
   "title": "Master Vaserio's Dig",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "54.2S 78.6W",
-  "levels": "100",
   "text": ""
  },
  "0044": {
   "title": "0044",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Collegium Occultus]]\n* [[Collegium Occultus Anteroom]]\n\n[[Category:Disambiguation]]\n[[Category:Landblocks]]"
  },
  "0045": {
   "title": "Temple of Stirring Shadows",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "74.3N, 58.7E",
-  "levels": "80",
   "text": ""
  },
  "0046": {
   "title": "0046",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Yanshi Lower Undermine]]\n* [[Yanshi Upper Undermine]]\n\n[[Category:Landblocks]]"
  },
  "0047": {
   "title": "Repository",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "89.3S 93.5W",
-  "levels": "125",
   "text": ""
  },
  "0048": {
   "title": "0048",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Viamontian Esper Mine]]\n* [[Viamontian Direlands Mine]]\n* [[Dardante's Keep]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "0049": {
   "title": "Camp Entemarre",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "63.0S, 82.6W",
-  "levels": "80",
   "text": ""
  },
  "004A": {
   "title": "Creepy Chambers",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "80.1S 60.0W",
-  "levels": "Any",
   "text": ""
  },
  "004B": {
   "title": "Path of the Blind",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "91.1N, 48.0W",
-  "levels": "140",
   "text": ""
  },
  "004C": {
   "title": "Mukkir Nest",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "150",
   "text": ""
  },
  "004D": {
   "title": "004D",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Eastern Temple Catacombs]]\n* [[Western Temple Catacombs]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "004E": {
   "title": "004E",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Northern Temple Catacombs]]\n* [[Vault of Eternal Slumber]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "004F": {
   "title": "Temple of the Black Spear",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "95.3N, 52.2W",
-  "levels": "130",
   "text": ""
  },
  "0050": {
   "title": "0050",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Realaidain Eastern Vault]]\n* [[Realaidain Northern Vault]]\n* [[Realaidain Western Vault]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "0051": {
   "title": "Eastern Pedestal Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.4N 30.5E",
-  "levels": "80-119",
   "text": ""
  },
  "0052": {
   "title": "Silyun Chapterhouse",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "85.4N, 70.4W",
-  "levels": "80",
   "text": ""
  },
  "0053": {
   "title": "Shade Iron Mine",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "65.0S 87.6W",
-  "levels": "80",
   "text": ""
  },
  "0054": {
   "title": "Deep Mukkir Nest",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "81.0N, 59.3E",
-  "levels": "150",
   "text": ""
  },
  "0055": {
   "title": "Back Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "43.9N 73.9W",
-  "levels": "Any",
   "text": ""
  },
  "0056": {
   "title": "Augmentation Realm Main Level",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "95.0N, 47.1W",
-  "levels": "125",
   "text": ""
  },
  "0057": {
   "title": "0057",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Tanada House of Earth]]\n* [[Tanada House of Metal]]\n* [[Tanada House of Stone]]\n* [[Enlightened Master's Chambers (Earth)]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "0058": {
   "title": "Viamont Staging Portal (Low)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "32.3N 29.5E",
-  "levels": "80",
   "text": ""
  },
  "0059": {
   "title": "Viamont Staging Portal (Mid)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "31.4N 25.8E",
-  "levels": "100",
   "text": ""
  },
  "005A": {
   "title": "Viamont Staging Portal (High)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "27.2N 27.9E",
-  "levels": "130",
   "text": ""
  },
  "005B": {
   "title": "Ulgrim's Bookcase",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "41.9S 16.1E",
-  "levels": "Any",
   "text": ""
  },
  "005C": {
   "title": "Ulgrim's Mysterious Hatch",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "94.1S 11.2W on [[Ulgrim's Island]]",
-  "levels": "Any",
   "text": ""
  },
  "005D": {
   "title": "Harbinger's Lair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.9S 46.5E (Inside [[Tunnels to the Harbinger]])",
-  "levels": "60",
   "text": ""
  },
  "005E": {
   "title": "005E",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Tunnels to the Harbinger (Issk)]]\n* [[Tunnels to the Harbinger (Vincadi)]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "005F": {
   "title": "Tanada House of Pancakes",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "33.3S, 73.1E",
-  "levels": "Any",
   "text": ""
  },
  "0060": {
   "title": "0060",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Harraag's Hideout]]\n* [[Harraag's Lair]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "0061": {
   "title": "Western Pedestal Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.4N 30.5E",
-  "levels": "120",
   "text": ""
  },
  "0062": {
   "title": "Ley Line Cavern",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.4N 30.5E",
-  "levels": "",
   "text": ""
  },
  "0063": {
   "title": "Northern Pedestal Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.4N 30.5E",
-  "levels": "40-79",
   "text": ""
  },
  "0064": {
   "title": "Egg Orchard",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "96.2N 48.1W",
-  "levels": "140",
   "text": ""
  },
  "0065": {
   "title": "Thrungal Den",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "79.4N, 71.6W",
-  "levels": "100",
   "text": ""
  },
  "0066": {
   "title": "PK Arena",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "0067": {
   "title": "PKL Arena",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "0068": {
   "title": "Viamontian Laboratory",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "39.4N, 75.3W",
-  "levels": "30",
   "text": ""
  },
  "006C": {
   "title": "Lower Catacomb",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.4N, 30.5E",
-  "levels": "80",
   "text": ""
  },
  "006D": {
   "title": "Augmentation Realm Upper Level",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "95.0N, 47.1W",
-  "levels": "125",
   "text": ""
  },
  "006E": {
   "title": "006E",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Empyrean Workshop]]\n* [[Atlan's Laboratory]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "006F": {
   "title": "Shield of Isin Dule Spire",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "91.8S, 92.7W",
-  "levels": "55",
   "text": ""
  },
  "0070": {
   "title": "Harbinger's Lair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.9S 46.5E (Inside [[Tunnels to the Harbinger]])",
-  "levels": "60",
   "text": ""
  },
  "0071": {
   "title": "Dericost Vault",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "74.7N,24.6W",
-  "levels": "1-100",
   "text": ""
  },
  "0072": {
   "title": "Falatacot Vault",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "74.7S, 98.2E on [[Ithaenc Island]]",
-  "levels": "101-150",
   "text": ""
  },
  "0073": {
   "title": "Black Ferah's Vault",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "39.1S, 60.1W",
-  "levels": "151",
   "text": ""
  },
  "0074": {
   "title": "Black Spear Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "74.0N, 28.6W",
-  "levels": "1-100",
   "text": ""
  },
  "0075": {
   "title": "Shadow-Infested Black Spear Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "76.9S, 93.8E",
-  "levels": "101-150",
   "text": ""
  },
  "0076": {
   "title": "Mukkir Infested Black Spear Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "37.2S, 67.0W",
-  "levels": "151",
   "text": ""
  },
  "0077": {
   "title": "Muggy Guruk Caverns",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.4N 30.5E from [[Kor-Gursha]]",
-  "levels": "1-40",
   "text": ""
  },
  "0078": {
   "title": "Humid Guruk Caverns",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.4N 30.5E from [[Northern Catacombs]]",
-  "levels": "41-80",
   "text": ""
  },
  "0079": {
   "title": "Steamy Guruk Caverns",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.4N 30.5E, from [[Kor-Gursha]]",
-  "levels": "81-120",
   "text": ""
  },
  "007A": {
   "title": "Deep Guruk Caverns",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.4N, 30.5E",
-  "levels": "121",
   "text": ""
  },
  "007B": {
   "title": "007B",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Tanada House of Storms]]\n* [[Tanada House of Wind]]\n* [[Tanada House of Breath]]\n* [[Enlightened Master's Chambers (Storms)]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "007C": {
   "title": "007C",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Soul Hunter's Lair]]\n* [[Soul Hunter's Chambers]]\n\n[[Category:Landblocks]]"
  },
  "007D": {
   "title": "Augmentation Realm Lower Level",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "95.0N, 47.1W",
-  "levels": "125",
   "text": ""
  },
  "007E": {
   "title": "Black Spear Temple Upper Levels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "68.5S, 66.1W on the [[Obsidian Plains]]",
-  "levels": "100",
   "text": ""
  },
  "007F": {
   "title": "007F",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Dardante's Workshop]]\n* [[Summoning Chamber]]\n* [[Binding Realm]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "0080": {
   "title": "Rossu Morta Chapterhouse",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "69.7N, 62.3W",
-  "levels": "Any",
   "text": ""
  },
  "0081": {
   "title": "Whispering Blade Chapterhouse",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "59.9S, 87.2W",
-  "levels": "Any",
   "text": ""
  },
  "0082": {
   "title": "Assassins' Hideout",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "54.5S, 80.7W",
-  "levels": "120",
   "text": ""
  },
  "0083": {
   "title": "Pheraion's Sanctum",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "59.8S, 75.1W",
-  "levels": "120",
   "text": ""
  },
  "0084": {
   "title": "Black Spear Summoning Chamber",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "75.8N, 70.5E on [[Vissidal]]",
-  "levels": "140",
   "text": ""
  },
  "0085": {
   "title": "Altar Nest",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "75.9N 69.3E on [[Vissidal]]",
-  "levels": "140",
   "text": ""
  },
  "0086": {
   "title": "Strange Swamp Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "41.7S, 49.2W",
-  "levels": "Any",
   "text": ""
  },
  "0087": {
   "title": "Ikzisik Tika Ri Zikma",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "70.6N, 14.5W",
-  "levels": "90",
   "text": ""
  },
  "0088": {
   "title": "Deeper Catacombs (Paradox)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "59.9N 71.2E",
-  "levels": "60",
   "text": ""
  },
  "0089": {
   "title": "Cells of the Black Book",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "10.3S, 50.3E",
-  "levels": "60",
   "text": ""
  },
  "008A": {
   "title": "Dark Monolith Caverns",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "008B": {
   "title": "Ancient Masonry",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "88.1N, 47.6E",
-  "levels": "100",
   "text": ""
  },
  "008C": {
   "title": "Essence Chambers",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.6S, 46.7E (Inside [[Tunnels to the Harbinger]])",
-  "levels": "60",
   "text": ""
  },
  "008D": {
   "title": "Shadow Breach",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "33.6N, 56.8E",
-  "levels": "100+",
   "text": ""
  },
  "0095": {
   "title": "Lord Mhoire's Tomb",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "64.6S, 44.1W in [[Graveyard]]",
-  "levels": "Any",
   "text": ""
  },
  "0096": {
   "title": "Insatiable Vault",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "97.4N 48.0W",
-  "levels": "125",
   "text": ""
  },
  "0097": {
   "title": "Son of Pooky's Den",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "From [[Son of Pooky's Den Portal Gem]]",
-  "levels": "100",
   "text": ""
  },
  "0098": {
   "title": "Abyssal Totem Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "86.5N, 57.3E",
-  "levels": "150",
   "text": ""
  },
  "0099": {
   "title": "Black Totem Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "93.2S, 94.6W (Singularity Caul)",
-  "levels": "100-149",
   "text": ""
  },
  "009A": {
   "title": "White Totem Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "87.5N, 48.8W",
-  "levels": "1-99",
   "text": ""
  },
  "009B": {
   "title": "Crypt of Crimson Night",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.4N, 8.2E",
-  "levels": "70",
   "text": ""
  },
  "009C": {
   "title": "009C",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Bur]]\n* [[Kor-Gursha]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "009D": {
   "title": "Swamp Cavern",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "From [[Eastern Catacombs]], on [[Bur]], 67.4N 30.5E",
-  "levels": "Any",
   "text": ""
  },
  "009E": {
   "title": "Tanada House of Water",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "85.3S, 5.8W",
-  "levels": "80",
   "text": ""
  },
  "009F": {
   "title": "Secret Chamber of Kresovus",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "77.6S 28.0E",
-  "levels": "150",
   "text": ""
  },
  "00A0": {
   "title": "Monouga Laboratory (80+)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "9.8S 81.0W",
-  "levels": "80",
   "text": ""
  },
  "00A1": {
   "title": "Monouga Laboratory (120+)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "9.8S 81.0W",
-  "levels": "120",
   "text": ""
  },
  "00A2": {
   "title": "Monouga Laboratory (150+)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "9.8S 81.0W<br />(Inside [[Monouga Feeding Pits]])",
-  "levels": "150",
   "text": ""
  },
  "00A3": {
   "title": "00A3",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Delving into Claude's Mind (Dungeon)]]\n* [[Exploring the Past]]\n* [[Witnessing History]]\n* [[The Path to More Recent Times]]\n* [[Crossing the Threshold of Darkness]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "00A4": {
   "title": "Hidden Laboratory",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.2N, 27.1W",
-  "levels": "150",
   "text": ""
  },
  "00A5": {
   "title": "Lonely Fortress",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "56.7S, 88.5W",
-  "levels": "80",
   "text": ""
  },
  "00A6": {
   "title": "Tanada Battle Burrows",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "00A7": {
   "title": "Ithaenc Quiddity Seed",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "82.7S, 93.4E",
-  "levels": "130",
   "text": ""
  },
  "00A8": {
   "title": "Roots of the Deru Tree",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "90.3S, 87.3E",
-  "levels": "Any",
   "text": ""
  },
  "00A9": {
   "title": "Trial of the Deep",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "85.4N, 57.2E",
-  "levels": "150",
   "text": ""
  },
  "00AA": {
   "title": "Olthoi Sanctuary",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "44.2N, 62.8E",
-  "levels": "Any",
   "text": ""
  },
  "00AB": {
   "title": "Derethian Combat Arena",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "49.5S, 62.6E ([[Darktide]] only)",
-  "levels": "150",
   "text": ""
  },
  "00AC": {
   "title": "Derethian Combat Arena",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "49.5S, 62.6E ([[Darktide]] only)",
-  "levels": "150",
   "text": ""
  },
  "00AE": {
   "title": "Messenger's Sanctuary",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "From [[Upper Catacombs]] in [[Bur]] (67.4N, 30.5E)",
-  "levels": "80+",
   "text": ""
  },
  "00AF": {
   "title": "00AF",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Very Mad Cow's Arena]]\n* [[Thunder Chicken's Arena]]\n* [[Pumpkin King's Arena]]\n* [[Colosseum]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "00B0": {
   "title": "Colosseum",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "00B1": {
   "title": "Colosseum",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "00B2": {
   "title": "Colosseum",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "00B3": {
   "title": "Colosseum",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "00B4": {
   "title": "Colosseum",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "00B5": {
   "title": "Mosswart Worship Cavern",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "41.1S, 48.8W",
-  "levels": "80",
   "text": ""
  },
  "00B6": {
   "title": "00B6",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Azaxis' Arena]]\n* [[Killagurg's Arena]]\n* [[Stone Fists' Arena]]\n* [[Demon Swarm Matron's Arena]]\n* [[The Master's Arena]]\n* [[Gladiator Diemos' Arena]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "00B7": {
   "title": "Celestial Hand Stronghold",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "39.7S, 83.6E",
-  "levels": "180",
   "text": ""
  },
  "00B8": {
   "title": "Eldrytch Web Stronghold",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "26.3N 49.6E in [[Cragstone]]",
-  "levels": "180",
   "text": ""
  },
  "00B9": {
   "title": "Radiant Blood Stronghold",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.8N 0.7E in [[Zaikhal]]",
-  "levels": "180",
   "text": ""
  },
  "00BA": {
   "title": "Corrupted Catacombs",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "23.9S, 54.1E",
-  "levels": "180",
   "text": ""
  },
  "00BB": {
   "title": "Catacombs of Tar'Kelyn",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "55.7S, 97.7E",
-  "levels": "180",
   "text": ""
  },
  "00BC": {
   "title": "Prodigal Harbinger's Antechamber",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.6S, 46.7E via [[Essence Chambers]]",
-  "levels": "",
   "text": ""
  },
  "00C0": {
   "title": "South Gate",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "65.0S 63.8W",
-  "levels": "Any",
   "text": ""
  },
  "00C1": {
   "title": "Blighted Rank Moarsman Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "40.7N, 86.5W",
-  "levels": "15",
   "text": ""
  },
  "00C2": {
   "title": "Blighted Disgusting Moarsman Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "60.7S, 83.0E",
-  "levels": "35",
   "text": ""
  },
  "00C3": {
   "title": "Blighted Putrid Moarsman Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "22.5N, 30.4W",
-  "levels": "55",
   "text": ""
  },
  "00C4": {
   "title": "Blighted Desolation Moarsman Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "75.1N 49.7W",
-  "levels": "75",
   "text": ""
  },
  "00C5": {
   "title": "Blighted Grimy Moarsman Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "60.9S, 89.8W",
-  "levels": "95",
   "text": ""
  },
  "00C6": {
   "title": "Blighted Verdant Moarsman Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "92.7N 42.3W near [[Eastwatch]]",
-  "levels": "125",
   "text": ""
  },
  "00C7": {
   "title": "Crystalline Portal (Level 70)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "17.0S, 61.2W",
-  "levels": "70",
   "text": ""
  },
  "00C8": {
   "title": "Egg Orchard",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "96.2N 48.1W",
-  "levels": "140",
   "text": ""
  },
  "00C9": {
   "title": "00C9",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Chamber of Scrolls]]\n* [[Chamber of Air]]\n* [[Chamber of Earth]]\n* [[Chamber of Water]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "00CA": {
   "title": "Mar'uun",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "00CB": {
   "title": "Pyramid",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "58.4N, 11.2W<br>58.4N, 9.5W<br>60.2N 10.3W",
-  "levels": "125",
   "text": ""
  },
  "00CC": {
   "title": "Renegade Fortress (120+)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "29.5S 65.6W",
-  "levels": "120",
   "text": ""
  },
  "00CD": {
   "title": "Tanada Temple of Black Water",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "24.2S, 57.1E",
-  "levels": "Any",
   "text": ""
  },
  "00CE": {
   "title": "Upper Catacombs",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.4N, 30.5E from [[Southern Catacombs]] on [[Bur]].",
-  "levels": "80",
   "text": ""
  },
  "00CF": {
   "title": "The Dark Spiral",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "15.9N 68.7W",
-  "levels": "126",
   "text": ""
  },
  "00D0": {
   "title": "00D0",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Sawato Bandit's Hideout]]\n* [[Ringleader's Chambers]]\n\n[[Category:Landblocks]]"
  },
  "00D1": {
   "title": "00D1",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Ancient Caves]]\n* [[Deeper Caves]]\n* [[Deepest Caves]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "00D2": {
   "title": "Northern Catacombs",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.4N 30.5E",
-  "levels": "Any",
   "text": ""
  },
  "00D3": {
   "title": "Eastern Catacombs",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.4N 30.5E",
-  "levels": "Any",
   "text": ""
  },
  "00D4": {
   "title": "Southern Catacombs",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.4N 30.5E",
-  "levels": "Any",
   "text": ""
  },
  "00D5": {
   "title": "00D5",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Exploring the Past]]\n* [[Witnessing History]]\n* [[The Path to More Recent Times]]\n* [[Crossing the Threshold of Darkness]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "00D6": {
   "title": "Collegium Planar Abstraction",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "130",
   "text": ""
  },
  "00D7": {
   "title": "Jester's Prison",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "64.9S, 44.1W (Hidden portal)",
-  "levels": "160",
   "text": ""
  },
  "00D8": {
   "title": "Lord Rytheran's Private Sanctum",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "74.7N, 18.5E",
-  "levels": "Any",
   "text": ""
  },
  "00D9": {
   "title": "Blightfinger's Warrens",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "56.8S, 89.2W",
-  "levels": "70",
   "text": ""
  },
  "00DA": {
   "title": "Falatacot Visitor's Alcove",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.4N, 30.5E on [[Bur]]",
-  "levels": "180",
   "text": ""
  },
  "00DB": {
   "title": "00DB",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Exploring the Past]]\n* [[Witnessing History]]\n* [[The Path to More Recent Times]]\n* [[Crossing the Threshold of Darkness]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "00DC": {
   "title": "Moarsmen Priory",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "92.7N 42.3W Inside [[Blighted Verdant Moarsman Tunnels]] Dungeon",
-  "levels": "180",
   "text": ""
  },
  "00DD": {
   "title": "00DD",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Acolyte's Chamber]]\n* [[Chamber of the High Priest's First]]\n* [[Chamber of the High Priest's Second]]\n* [[Chamber of the High Priest's Third]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "00DE": {
   "title": "Temple Door",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "87.9S, 55.2W",
-  "levels": "180",
   "text": ""
  },
  "00DF": {
   "title": "Temple of Tthuun",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "92.8S, 52.6W",
-  "levels": "180",
   "text": ""
  },
  "00E0": {
   "title": "Rogue Delvings",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "74.8N 18.4E",
-  "levels": "180",
   "text": ""
  },
  "00E1": {
   "title": "Path of the Blind",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "91.1N, 48.0W",
-  "levels": "140",
   "text": ""
  },
  "00E2": {
   "title": "00E2",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Ruschk Burial Mound]]\n* [[Inner Burial Chamber]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "00E3": {
   "title": "Sclavus Umbral Forge",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "34.1N, 50.6W",
-  "levels": "60",
   "text": ""
  },
  "00E4": {
   "title": "Temple of the Three, Ritual Chambers",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.4N 30.5E, from [[Temple of the Three]]",
-  "levels": "",
   "text": ""
  },
  "00E5": {
   "title": "Temple of the Three",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.4N 30.5E",
-  "levels": "",
   "text": ""
  },
  "00E6": {
   "title": "00E6",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Orphanage Wing]]\n* [[Prodigal Shadow Child's Lair]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "00E7": {
   "title": "Gardens of Menilesh",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "64.7S 43.8W in [[Graveyard]]",
-  "levels": "150",
   "text": ""
  },
  "00E8": {
   "title": "Tactical Arena",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "26.3N 49.6E; 39.7S 83.6E; 12.8N 0.7E",
-  "levels": "180",
   "text": ""
  },
  "00E9": {
   "title": "00E9",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Exploring the Past]]\n* [[Witnessing History]]\n* [[The Path to More Recent Times]]\n* [[Crossing the Threshold of Darkness]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "00EA": {
   "title": "Mhoire Armory",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "64.8S, 44.3W",
-  "levels": "160",
   "text": ""
  },
  "00EB": {
   "title": "Ancient Cloister",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "82.5S, 96.1E",
-  "levels": "180",
   "text": ""
  },
  "00EC": {
   "title": "00EC",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Northern Resonating Crystal]]\n* [[Southern Resonating Crystal]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "00ED": {
   "title": "Artifex Collegium",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "91.9S, 93.7W",
-  "levels": "Any",
   "text": ""
  },
  "00EE": {
   "title": "00EE",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Drudge Fort Cave]]\n* [[Under Drudge Fort]]\n* [[Bonecrunch's Treasury]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "00EF": {
   "title": "Temple Entrance",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "84.3N 24.7E",
-  "levels": "120",
   "text": ""
  },
  "00F0": {
   "title": "00F0",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Sanctum of Xik Minru]]\n* [[Temple of Xik Minru]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "00F1": {
   "title": "Nightmare Gate",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "89.7S 93.3W",
-  "levels": "150",
   "text": ""
  },
  "00F2": {
   "title": "Qin Xikit's Hidden Crown",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "91.4S 89.5E",
-  "levels": "60",
   "text": ""
  },
  "00F3": {
   "title": "Qin Xikit's Receiving Chamber",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "42.4S 91.1W via [[Qin Xikit's Temple]]",
-  "levels": "60",
   "text": ""
  },
  "00F4": {
   "title": "Center of Kivik Lir's Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "38.1S, 47.3W",
-  "levels": "60",
   "text": ""
  },
  "00F5": {
   "title": "Center of Izji Qo's Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.8S, 58.9W",
-  "levels": "60",
   "text": ""
  },
  "00F6": {
   "title": "Center of Ixir Zi's Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "21.7S, 47.6E",
-  "levels": "60",
   "text": ""
  },
  "00F7": {
   "title": "Center of Hizk Ri's Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "51.4S, 67.9W",
-  "levels": "60",
   "text": ""
  },
  "00F8": {
   "title": "Center of Liazk Itzi's Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "40.8S, 11.7E",
-  "levels": "60",
   "text": ""
  },
  "00F9": {
   "title": "Qin Xikit's Antechamber",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "42.4S 91.1W",
-  "levels": "60",
   "text": ""
  },
  "00FA": {
   "title": "Depth's of Kivik Lir's Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "38.1S. 47.3W",
-  "levels": "60",
   "text": ""
  },
  "00FB": {
   "title": "Depth's of Izji Qo's Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.8S, 58.9W",
-  "levels": "60",
   "text": ""
  },
  "00FC": {
   "title": "Depths of Ixir Zi's Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "21.7S, 47.6E",
-  "levels": "60",
   "text": ""
  },
  "00FD": {
   "title": "Depth's of Hizk Ri's Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "51.4S 67.9W",
-  "levels": "60",
   "text": ""
  },
  "00FE": {
   "title": "Depths of Liazk Itzi's Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "40.8S, 11.7E",
-  "levels": "60",
   "text": ""
  },
  "0100": {
   "title": "Murk Warrens (Baishi)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "43.2S, 67.1E",
-  "levels": "Any",
   "text": ""
  },
  "0101": {
   "title": "Murk Warrens (Zaikhal)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "26.3N, 1.9E",
-  "levels": "Any",
   "text": ""
  },
  "0102": {
   "title": "Murk Warrens (Stonehold)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.4N, 29.3W",
-  "levels": "Any",
   "text": ""
  },
  "0103": {
   "title": "Black Spawn Den",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Ayan Baqur]] - 56.6S, 86.0W,<br> [[Fort Tethana]] - 13.6N, 79.8W,<br> [[Obsidian Plains]] - 60.0S, 57.7W",
-  "levels": "20",
   "text": ""
  },
  "0104": {
   "title": "Black Spawn Den",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Ayan Baqur]] - 56.6S, 86.0W,<br> [[Fort Tethana]] - 13.6N, 79.8W,<br> [[Obsidian Plains]] - 60.0S, 57.7W",
-  "levels": "20",
   "text": ""
  },
  "0105": {
   "title": "Black Spawn Den",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Ayan Baqur]] - 56.6S, 86.0W,<br> [[Fort Tethana]] - 13.6N, 79.8W,<br> [[Obsidian Plains]] - 60.0S, 57.7W",
-  "levels": "20",
   "text": ""
  },
  "0106": {
   "title": "Setab's Barracks",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "2.7N, 53.5E",
-  "levels": "Any",
   "text": ""
  },
  "0107": {
   "title": "Nor's Folly",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "32.5S, 11.9E",
-  "levels": "Any",
   "text": ""
  },
  "0108": {
   "title": "Cursed Swamp",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "27.3S, 69.0E",
-  "levels": "Any",
   "text": ""
  },
  "0109": {
   "title": "Dungeon of Corpses",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "56.1S, 49.6W",
-  "levels": "25",
   "text": ""
  },
  "010A": {
   "title": "Black Dominion",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "88.7S 25.9W",
-  "levels": "25",
   "text": ""
  },
  "010B": {
   "title": "Asuger Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "45.0N, 30.5E",
-  "levels": "20",
   "text": ""
  },
  "010C": {
   "title": "Mysterious Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "52.9S, 82.9E",
-  "levels": "1-20",
   "text": ""
  },
  "0110": {
   "title": "Nexus",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "40.1S, 79.2W",
-  "levels": "100",
   "text": ""
  },
  "0112": {
   "title": "Lyceum Training Grounds",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "88.0S 48.9E from [[Ishilai Lyceum]]",
-  "levels": "",
   "text": ""
  },
  "0113": {
   "title": "Amiantos Bethel",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "16.3S, 35.1E",
-  "levels": "Any",
   "text": ""
  },
  "0114": {
   "title": "Sultry Hovel",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "74.0N, 61.5W",
-  "levels": "1-20",
   "text": ""
  },
  "0115": {
   "title": "Wedding Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "0116": {
   "title": "Tenkarrdun Foundry",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "88.8N, 42.8E",
-  "levels": "40",
   "text": ""
  },
  "0117": {
   "title": "Serac Vault",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "75.9S, 29.0E",
-  "levels": "Any",
   "text": ""
  },
  "0118": {
   "title": "Drudge Hovel",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "23.7S, 0.2W",
-  "levels": "Any",
   "text": ""
  },
  "0119": {
   "title": "Amperehelion Vault",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "56.5S, 72.8W",
-  "levels": "Any",
   "text": ""
  },
  "011A": {
   "title": "Incunabula Vault",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "35.9S, 47.2W",
-  "levels": "Any",
   "text": ""
  },
  "011B": {
   "title": "Jahannan Vault",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.0N, 15.0E",
-  "levels": "Any",
   "text": ""
  },
  "011C": {
   "title": "Mountain Fortress",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "82.4S, 19.9E",
-  "levels": "100",
   "text": ""
  },
  "011D": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "011E": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "011F": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "0120": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "0121": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "0122": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "0123": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "0124": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "0125": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "0126": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "0127": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "0128": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "0129": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "012A": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "012B": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "012C": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "012D": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "012E": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "012F": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "0130": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "0131": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "0132": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "0133": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "0134": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "0135": {
   "title": "Meeting Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See Below",
-  "levels": "Any",
   "text": ""
  },
  "0136": {
   "title": "Empyrean Foundry",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "25.2S, 54.2E",
-  "levels": "100",
   "text": ""
  },
  "0137": {
   "title": "Artifex Vault",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "26.5N, 45.8W",
-  "levels": "Any",
   "text": ""
  },
  "0138": {
   "title": "Lost City of Frore",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "20",
   "text": ""
  },
  "0139": {
   "title": "Mage Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "74.7N, 18.5E",
-  "levels": "150",
   "text": ""
  },
  "013B": {
   "title": "Folthid Cellar",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "8.6S, 52.9E",
-  "levels": "10",
   "text": ""
  },
  "013C": {
   "title": "Underground Forest",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "31.5N, 20.8E",
-  "levels": "Any",
   "text": ""
  },
  "013D": {
   "title": "Forbidden Crypts",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "6.5N, 3.0E",
-  "levels": "15",
   "text": ""
  },
  "013E": {
   "title": "013E",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Burial Temple]]\n* [[Warded Portal, Into the Darkness]]\n\n[[Category:Landblocks]]"
  },
  "013F": {
   "title": "Saadia's Retreat",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "53.6S, 76.6E",
-  "levels": "Any",
   "text": ""
  },
  "0140": {
   "title": "Virindi Fort",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "61.6S, 54.1W",
-  "levels": "15",
   "text": ""
  },
  "0141": {
   "title": "Enkindled Souls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "49.4S, 26.9E",
-  "levels": "Any",
   "text": ""
  },
  "0142": {
   "title": "Recovered Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "6.4N, 1.7W",
-  "levels": "Any",
   "text": ""
  },
  "0143": {
   "title": "Phyntos Menace",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "68.1N, 20.0W",
-  "levels": "Any",
   "text": ""
  },
  "0144": {
   "title": "Darkened Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "20.7S, 0.7E",
-  "levels": "20",
   "text": ""
  },
  "0145": {
   "title": "Bone Lair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "29.4S, 7.0E",
-  "levels": "Any",
   "text": ""
  },
  "0146": {
   "title": "Mount Lethe Magma Tubes",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "33.8S, 85.3W",
-  "levels": "20",
   "text": ""
  },
  "0147": {
   "title": "Mount Naipenset Caverns",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "5.6N, 56.2W",
-  "levels": "Any",
   "text": ""
  },
  "0148": {
   "title": "A Small Ruin",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "53.6S, 70.9E",
-  "levels": "5",
   "text": ""
  },
  "0149": {
   "title": "Thieves' Galleries",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "57.7S, 74.1E",
-  "levels": "5",
   "text": ""
  },
  "014A": {
   "title": "Mysterious Cave",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "7.7N, 6.6E",
-  "levels": "15",
   "text": ""
  },
  "014B": {
   "title": "Winthura's Garden",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "43.2S, 24.7E",
-  "levels": "8",
   "text": ""
  },
  "014C": {
   "title": "Nevius Passage",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "45.6S, 21.6E",
-  "levels": "8",
   "text": ""
  },
  "014D": {
   "title": "Damp Caverns",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "31.7S, 96.1E",
-  "levels": "5",
   "text": ""
  },
  "014E": {
   "title": "Smugglers Hideaway",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "29.5S, 91.4E",
-  "levels": "Any",
   "text": ""
  },
  "014F": {
   "title": "Dungeon Maggreth",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "3.7N, 52.6E",
-  "levels": "Any",
   "text": ""
  },
  "0150": {
   "title": "Filos' Doom",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.0N 62.2E",
-  "levels": "Any",
   "text": ""
  },
  "0151": {
   "title": "Forgotten Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "0.9N 55.8E",
-  "levels": "Any",
   "text": ""
  },
  "0152": {
   "title": "Ruined Cave Outpost",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "2.3N, 48.3E",
-  "levels": "1-20",
   "text": ""
  },
  "0153": {
   "title": "Shreth Hive",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "32.5S, 71.0E",
-  "levels": "1-20",
   "text": ""
  },
  "0154": {
   "title": "Stone Cathedral",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "34.7S, 71.2E",
-  "levels": "1-20",
   "text": ""
  },
  "0155": {
   "title": "Musansayn's Vaults",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "1.0S, 18.6E",
-  "levels": "40",
   "text": ""
  },
  "0156": {
   "title": "Sea Temple Catacombs",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "20.2S, 4.4W",
-  "levels": "1-20",
   "text": ""
  },
  "0157": {
   "title": "Under Cove Crypt",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "21.4S, 4.1W",
-  "levels": "Any",
   "text": ""
  },
  "0158": {
   "title": "Lytaway Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "52.6S, 86.7E",
-  "levels": "1-20",
   "text": ""
  },
  "0159": {
   "title": "Abandoned Shops",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "32.4S, 12.7E",
-  "levels": "40",
   "text": ""
  },
  "015A": {
   "title": "Dry Well",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "5.0S, 20.9E",
-  "levels": "1-20",
   "text": ""
  },
  "015B": {
   "title": "Unfinished Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "30.1S, 9.1E",
-  "levels": "1-20",
   "text": ""
  },
  "015C": {
   "title": "Nanto Rat Lair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "54.2S, 79.5E",
-  "levels": "Any",
   "text": ""
  },
  "015D": {
   "title": "Mountain Cavern",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "63.2N, 5.5E",
-  "levels": "20",
   "text": ""
  },
  "015E": {
   "title": "Impious Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.2N 2.4E",
-  "levels": "20",
   "text": ""
  },
  "015F": {
   "title": "Dericost Ruin",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "74.2N, 74.2W",
-  "levels": "Any",
   "text": ""
  },
  "0160": {
   "title": "0160",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "[[King 1 Reeshan Part 2]]\n\n[[King 2 Kiree Part 2]]\n\n[[King 3 Broodu Part 2]]\n\n[[King 4 Keerik Part 2]]\n\n[[King 5 Rehir Part 2]]\n\n[[King 6 Browerk Part 4]]\n\n[[Category:Landblocks]]"
  },
  "0161": {
   "title": "Empyrean Garrison",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "54.2S, 81.8E",
-  "levels": "Any",
   "text": ""
  },
  "0162": {
   "title": "Cave of Alabree",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "41.8N, 32.1E",
-  "levels": "1-20",
   "text": ""
  },
  "0163": {
   "title": "Holtburg Redoubt",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "40.4N, 34.4E",
-  "levels": "1-20",
   "text": ""
  },
  "0164": {
   "title": "Lost Distillery",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "0.7S, 51.2E",
-  "levels": "40",
   "text": ""
  },
  "0165": {
   "title": "Old Warehouse",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "8.7N, 58.1E",
-  "levels": "40",
   "text": ""
  },
  "0166": {
   "title": "Deserted Ruin",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "16.0S, 47.2E",
-  "levels": "40",
   "text": ""
  },
  "0167": {
   "title": "Desert Ruin",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "31.8S, 15.8E",
-  "levels": "Any",
   "text": ""
  },
  "0168": {
   "title": "Water Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "52.1S, 80.3E",
-  "levels": "40",
   "text": ""
  },
  "0169": {
   "title": "Mattekar Cave",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "65.4N, 16.7E",
-  "levels": "Any",
   "text": ""
  },
  "016A": {
   "title": "Izji Qo's Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.8S, 58.9W",
-  "levels": "60",
   "text": ""
  },
  "016B": {
   "title": "Ixir Zi's Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "21.7S, 47.6E",
-  "levels": "60",
   "text": ""
  },
  "016C": {
   "title": "Marketplace",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "016D": {
   "title": "016D",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Izji Qo's Temple Entrance]]\n* [[Izji Qo's Crypt]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "016E": {
   "title": "Izji Qo's Trials",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.8S, 58.9W",
-  "levels": "60-79, 80-99, 100",
   "text": ""
  },
  "016F": {
   "title": "Izji Qo's Trials",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.8S, 58.9W",
-  "levels": "60-79, 80-99, 100",
   "text": ""
  },
  "0170": {
   "title": "Izji Qo's Trials",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.8S, 58.9W",
-  "levels": "60-79, 80-99, 100",
   "text": ""
  },
  "0171": {
   "title": "Izji Qo's Defenders",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.8S, 58.9W",
-  "levels": "60-79, 80-99, 100",
   "text": ""
  },
  "0172": {
   "title": "Izji Qo's Defenders",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.8S, 58.9W",
-  "levels": "60-79, 80-99, 100",
   "text": ""
  },
  "0173": {
   "title": "Izji Qo's Defenders",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.8S, 58.9W",
-  "levels": "60-79, 80-99, 100",
   "text": ""
  },
  "0175": {
   "title": "Muggy Font",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "91.3S 89.8E",
-  "levels": "60",
   "text": ""
  },
  "0176": {
   "title": "Humid Font",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "91.3S 89.8E",
-  "levels": "60",
   "text": ""
  },
  "0177": {
   "title": "Mossy Cave (Yanshi)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "14.2S, 46.0E",
-  "levels": "20",
   "text": ""
  },
  "0178": {
   "title": "Dark Mosswart Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "74.2S, 83.6E",
-  "levels": "30",
   "text": ""
  },
  "0179": {
   "title": "Umbral Hall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "75.8S, 83.1E on [[Laesvos Island]]",
-  "levels": "30",
   "text": ""
  },
  "017A": {
   "title": "Banderling Hovel",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "32.0S 72.8E",
-  "levels": "10",
   "text": ""
  },
  "017B": {
   "title": "Watery Grotto",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "23.8S 47.2E",
-  "levels": "40",
   "text": ""
  },
  "017C": {
   "title": "King Toad Idol (Dungeon)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "39.3S 51.1W",
-  "levels": "40",
   "text": ""
  },
  "017D": {
   "title": "Hidden Entrance",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "24.2S, 46.3E",
-  "levels": "40",
   "text": ""
  },
  "017E": {
   "title": "Underway",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "24.2S 46.3E",
-  "levels": "40",
   "text": ""
  },
  "017F": {
   "title": "Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "24.2S 46.3E",
-  "levels": "80",
   "text": ""
  },
  "0180": {
   "title": "Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "24.2S 46.3E",
-  "levels": "60",
   "text": ""
  },
  "0181": {
   "title": "Dungeon Nye",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "6.2N, 34.4E",
-  "levels": "Any",
   "text": ""
  },
  "0182": {
   "title": "Desert Mine",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "4.5S 26.6E",
-  "levels": "Any",
   "text": ""
  },
  "0183": {
   "title": "Dungeon Binar",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "6.2S, 20.1E",
-  "levels": "Any",
   "text": ""
  },
  "0184": {
   "title": "Dungeon Mei",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "36.9S 70.3E",
-  "levels": "Any",
   "text": ""
  },
  "0185": {
   "title": "Daiklos Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "33.7N, 29.2E",
-  "levels": "Any",
   "text": ""
  },
  "0186": {
   "title": "Sclavus Keep",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "38.9S, 48.4W",
-  "levels": "15",
   "text": ""
  },
  "0187": {
   "title": "A Ruin (Arwic)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "33.0N, 54.9E",
-  "levels": "Any",
   "text": ""
  },
  "0188": {
   "title": "Mines of Despair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "75.4S, 57.2E",
-  "levels": "14",
   "text": ""
  },
  "0189": {
   "title": "Grievous Vault",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "25.8S, 27.3E",
-  "levels": "10",
   "text": ""
  },
  "018B": {
   "title": "A Cave",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "24.2N, 43.2E",
-  "levels": "Any",
   "text": ""
  },
  "018C": {
   "title": "Crater Lair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "70.6N, 12.7E",
-  "levels": "15",
   "text": ""
  },
  "018D": {
   "title": "Olthoi Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "48.1N, 53.0E",
-  "levels": "15",
   "text": ""
  },
  "018E": {
   "title": "Abayar's Laboratory",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "92.1N, 46.3W",
-  "levels": "Any",
   "text": ""
  },
  "018F": {
   "title": "Carved Cave",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "7.4N, 0.6E",
-  "levels": "Any",
   "text": ""
  },
  "0190": {
   "title": "Old Mine",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "79.2S, 27.0E",
-  "levels": "Any",
   "text": ""
  },
  "0191": {
   "title": "Mountain Sewer",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "60.9S, 82.0E",
-  "levels": "15",
   "text": ""
  },
  "0192": {
   "title": "Mountain Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "10.1N, 56.7W",
-  "levels": "15",
   "text": ""
  },
  "0193": {
   "title": "K'nath Lair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "49.7S, 56.3W",
-  "levels": "Any",
   "text": ""
  },
  "0194": {
   "title": "Ruined Empyrean Vault",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "85.9N 59.0W",
-  "levels": "70",
   "text": ""
  },
  "0195": {
   "title": "0195",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Xi Ru's Chapel]]\n\n* [[Xi Ru's Library]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "0196": {
   "title": "0196",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Xi Ru's Crypt]]\n* [[Xi Ru's Remembrance]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "0197": {
   "title": "Marauder's Lair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "83.9N, 66.4W",
-  "levels": "Any",
   "text": ""
  },
  "0198": {
   "title": "Steamy Font",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "91.3S 89.8E",
-  "levels": "60",
   "text": ""
  },
  "0199": {
   "title": "Abayar's Study",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "92.1N 46.3W <br>Inside [[Abayar's Laboratory]]",
-  "levels": "90",
   "text": ""
  },
  "019A": {
   "title": "Crater Caves Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "66.7N, 12.5E",
-  "levels": "Any",
   "text": ""
  },
  "019B": {
   "title": "Lightless Catacombs",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[82.2S, 35.0W - Empyrean Ruins",
-  "levels": "14",
   "text": ""
  },
  "019C": {
   "title": "Swamp Temple (Wai Jhou)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "37.6S, 46.1W",
-  "levels": "15",
   "text": ""
  },
  "019D": {
   "title": "Simple Tower Portal",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "17.4N, 62.5E",
-  "levels": "Any",
   "text": ""
  },
  "019E": {
   "title": "Drudge Hideout",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "41.3N 33.3E",
-  "levels": "Any",
   "text": ""
  },
  "019F": {
   "title": "Tumerok Post",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.2N, 68.1W",
-  "levels": "Any",
   "text": ""
  },
  "01A0": {
   "title": "Tumerok Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[9.7S, 63.3W - Tumerok Fort]]",
-  "levels": "Any",
   "text": ""
  },
  "01A1": {
   "title": "Tumerok Base",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[9.0N, 65.7W - Tumerok Outpost]]",
-  "levels": "Any",
   "text": ""
  },
  "01A2": {
   "title": "Swamp Temple (Yanshi)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "23.4S 47.9E",
-  "levels": "10",
   "text": ""
  },
  "01A3": {
   "title": "The Pit",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "64.3N 23.4W",
-  "levels": "60",
   "text": ""
  },
  "01A4": {
   "title": "Mite Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "38.7N 50.0E",
-  "levels": "Any",
   "text": ""
  },
  "01A5": {
   "title": "Inner Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "43.5N, 43.4W",
-  "levels": "Any",
   "text": ""
  },
  "01A6": {
   "title": "Disaster Maze",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "61.3S, 50.9W",
-  "levels": "20",
   "text": ""
  },
  "01A7": {
   "title": "Crater Pathway",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "60.6N, 15.7E (outside crater)<br>64.8N, 13.7E (inside crater)",
-  "levels": "Any",
   "text": ""
  },
  "01A8": {
   "title": "Abandoned Arena",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "11.3S, 37.4E",
-  "levels": "Any",
   "text": ""
  },
  "01A9": {
   "title": "Ancient Lighthouse",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "4.0N, 73.6W",
-  "levels": "18",
   "text": ""
  },
  "01AA": {
   "title": "Lair of Death",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "42.0N, 58.1E",
-  "levels": "15",
   "text": ""
  },
  "01AB": {
   "title": "Forking Trail",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "65.6S, 16.7E",
-  "levels": "Any",
   "text": ""
  },
  "01AC": {
   "title": "Adventurer's Haven",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "4.4N, 35.5E",
-  "levels": "Any",
   "text": ""
  },
  "01AD": {
   "title": "Dungeon Gallery Tower",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "10.7N, 56.8E",
-  "levels": "Any",
   "text": ""
  },
  "01AE": {
   "title": "Colier Mine",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "56.8N, 38.3E in [[Colier]]",
-  "levels": "Any",
   "text": ""
  },
  "01AF": {
   "title": "Lakeside Lair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "18.9N, 48.4E",
-  "levels": "Any",
   "text": ""
  },
  "01B0": {
   "title": "Seaside Lair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "17.2N, 65.9E",
-  "levels": "Any",
   "text": ""
  },
  "01B1": {
   "title": "Lost Garden Ruins",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "65.8S, 59.3E",
-  "levels": "Any",
   "text": ""
  },
  "01B2": {
   "title": "Web Maze",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "49.4S, 65.4E",
-  "levels": "Any",
   "text": ""
  },
  "01B3": {
   "title": "Dungeon Fern (Dungeon)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "43.3N, 37.2E",
-  "levels": "Any",
   "text": ""
  },
  "01B4": {
   "title": "Golem Burial Ground",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "50.9S, 67.3E",
-  "levels": "10",
   "text": ""
  },
  "01B5": {
   "title": "Rocky Crypt",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "50.9S, 69.3E",
-  "levels": "10",
   "text": ""
  },
  "01B6": {
   "title": "Dungeon Muddy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "27.1S, 71.0E",
-  "levels": "5",
   "text": ""
  },
  "01B7": {
   "title": "Braid Mansion Ruin",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "34.2S 72.0E",
-  "levels": "Any",
   "text": ""
  },
  "01B8": {
   "title": "A Ruin (Rithwic)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "11.5N 55.0E",
-  "levels": "Any",
   "text": ""
  },
  "01B9": {
   "title": "A Ruin (Samsur)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "3.3S 20.5E",
-  "levels": "Any",
   "text": ""
  },
  "01BA": {
   "title": "Dungeon of Tatters",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "62.2S, 40.1E in [[Ancient Town]]",
-  "levels": "Any",
   "text": ""
  },
  "01BB": {
   "title": "Thief Trail",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "39.8S, 81.7E",
-  "levels": "7",
   "text": ""
  },
  "01BC": {
   "title": "Tumerok Chamber",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "81.6S, 36.6W",
-  "levels": "Any",
   "text": ""
  },
  "01BD": {
   "title": "Cave (Ayan Baqur)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "47.8S, 83.7W",
-  "levels": "Any",
   "text": ""
  },
  "01BE": {
   "title": "Tumerok Fortress",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.3N, 73.7W",
-  "levels": "20",
   "text": ""
  },
  "01BF": {
   "title": "Tumerok Outpost",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "23.7N, 36.5W",
-  "levels": "15",
   "text": ""
  },
  "01C0": {
   "title": "Small Complex",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "39.1S, 53.4W",
-  "levels": "40",
   "text": ""
  },
  "01C1": {
   "title": "Tumerok Mine",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "7.9N, 61.3W",
-  "levels": "15",
   "text": ""
  },
  "01C2": {
   "title": "01C2",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Underground Passage]]\n* [[Witshire Dungeon]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "01C3": {
   "title": "Trialos",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "58.7S 55.3E",
-  "levels": "Any",
   "text": ""
  },
  "01C4": {
   "title": "Thasali",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "29.3S, 24.6E",
-  "levels": "5",
   "text": ""
  },
  "01C5": {
   "title": "Swamp Ruin",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "25.1S, 52.1E",
-  "levels": "6",
   "text": ""
  },
  "01C6": {
   "title": "Hunter's Leap",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "35.7N, 32.6E",
-  "levels": "Any",
   "text": ""
  },
  "01C7": {
   "title": "Lugian Outpost",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "80.6S 18.1E",
-  "levels": "Any",
   "text": ""
  },
  "01C8": {
   "title": "Lugian Post",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "71.3S, 19.0E",
-  "levels": "Any",
   "text": ""
  },
  "01C9": {
   "title": "Abandoned Mine",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "34.9N, 54.5E",
-  "levels": "Any",
   "text": ""
  },
  "01CA": {
   "title": "Hebian-to Sewers",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "38.8S, 83.8E",
-  "levels": "4",
   "text": ""
  },
  "01CB": {
   "title": "Penguin Cave Hatchery",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "94.2N 51.7W",
-  "levels": "90",
   "text": ""
  },
  "01CC": {
   "title": "Halls of the Helm",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "18.7N 1.6E",
-  "levels": "10",
   "text": ""
  },
  "01CD": {
   "title": "Rithwic Crypt",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "14.0N, 59.1E",
-  "levels": "Any",
   "text": ""
  },
  "01CE": {
   "title": "Halls of the Lost Light",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "76.5S, 74.9W",
-  "levels": "Any",
   "text": ""
  },
  "01CF": {
   "title": "Eastham Sewer",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "18.7N 63.4E",
-  "levels": "50",
   "text": ""
  },
  "01D0": {
   "title": "Yanshi Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.2S, 45.5E",
-  "levels": "Any",
   "text": ""
  },
  "01D1": {
   "title": "Balmy Font",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "91.5S 89.7E",
-  "levels": "60",
   "text": ""
  },
  "01D2": {
   "title": "Mountain Keep",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "54.7N, 32.9E",
-  "levels": "Any",
   "text": ""
  },
  "01D3": {
   "title": "Zabool Tower",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "21.7N, 19.4E (base); 21.1N, 18.5E (top)",
-  "levels": "Any",
   "text": ""
  },
  "01D4": {
   "title": "Bellig Tower",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "17.8N, 16.0E",
-  "levels": "Any",
   "text": ""
  },
  "01D5": {
   "title": "Syliph Tower",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.3N, 11.5E",
-  "levels": "Any",
   "text": ""
  },
  "01D6": {
   "title": "Alfreth Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "20.4N, 13.2E",
-  "levels": "Any",
   "text": ""
  },
  "01D7": {
   "title": "Sylsfear Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "11.1N, 14.7E",
-  "levels": "10",
   "text": ""
  },
  "01D8": {
   "title": "A Drudge Nest (Rithwic)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "11.0N, 57.5E",
-  "levels": "Any",
   "text": ""
  },
  "01D9": {
   "title": "A Red Rat Lair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "21.1S, 2.1W",
-  "levels": "Any",
   "text": ""
  },
  "01DA": {
   "title": "A Ruin (Yanshi)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "13.0S 47.3E",
-  "levels": "Any",
   "text": ""
  },
  "01DB": {
   "title": "Moss Chamber",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "14.1N 0.7W",
-  "levels": "Any",
   "text": ""
  },
  "01DC": {
   "title": "A Drudge Nest (Hebian-To)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "40.7S, 83.6E",
-  "levels": "Any",
   "text": ""
  },
  "01DD": {
   "title": "A Rat Nest",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "40.2N, 32.5E",
-  "levels": "Any",
   "text": ""
  },
  "01DE": {
   "title": "A Ruin (Mayoi)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "62.6S 81.4E",
-  "levels": "Any",
   "text": ""
  },
  "01DF": {
   "title": "A Mosswart Nest",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "26.8S, 61.7E<br>36.2S, 60.3E<br>36.2S, 62.0E",
-  "levels": "Any",
   "text": ""
  },
  "01E0": {
   "title": "Banderling Ruin",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "36.1N 39.5E",
-  "levels": "Any",
   "text": ""
  },
  "01E1": {
   "title": "Thieves' Den",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "17.7N, 65.0E",
-  "levels": "Any",
   "text": ""
  },
  "01E2": {
   "title": "Bandit Castle Prison",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "66.5N, 49.9E",
-  "levels": "Any",
   "text": ""
  },
  "01E3": {
   "title": "Glenden Wood Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "29.9N, 26.4E",
-  "levels": "Any",
   "text": ""
  },
  "01E4": {
   "title": "North Glenden Prison",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "31.8N 25.5E",
-  "levels": "80",
   "text": ""
  },
  "01E5": {
   "title": "Green Mire Grave",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "27.8S, 71.6E",
-  "levels": "Any",
   "text": ""
  },
  "01E6": {
   "title": "Small Icecave",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.5N 50.3E",
-  "levels": "Any",
   "text": ""
  },
  "01E7": {
   "title": "A Small Cave",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "4.2S 17.3E",
-  "levels": "Any",
   "text": ""
  },
  "01E8": {
   "title": "Dungeon Manor",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "1.9S, 19.8E",
-  "levels": "Any",
   "text": ""
  },
  "01E9": {
   "title": "Underground City",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "01EA": {
   "title": "Old Talisman",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "2.3S, 85.6W",
-  "levels": "Any",
   "text": ""
  },
  "01EB": {
   "title": "Lola's Den",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "91.9N 69.7W",
-  "levels": "Any",
   "text": ""
  },
  "01EC": {
   "title": "Defiled Temple Middle Wing",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "77.8N 32.8E",
-  "levels": "60",
   "text": ""
  },
  "01ED": {
   "title": "Dungeon of Shadows",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "21.5N, 44.1E",
-  "levels": "Any",
   "text": ""
  },
  "01EE": {
   "title": "Black Death Catacombs Quiddity Seed",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "59.9N, 71.2E",
-  "levels": "130",
   "text": ""
  },
  "01EF": {
   "title": "Arwic Mines",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "33.8N, 56.8E",
-  "levels": "Any",
   "text": ""
  },
  "01F0": {
   "title": "Hizk Ri's Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "51.4S 67.9W (From [[King 4 Keerik Part 2]])",
-  "levels": "60",
   "text": ""
  },
  "01F1": {
   "title": "Cave (Eastham)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "18.4N, 62.1E<br>18.4N, 58.1E",
-  "levels": "Any",
   "text": ""
  },
  "01F2": {
   "title": "Kivik Lir's Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "38.1S. 47.3W",
-  "levels": "60",
   "text": ""
  },
  "01F3": {
   "title": "Tomb of the Dead",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "18.4S, 9.3E",
-  "levels": "Any",
   "text": ""
  },
  "01F4": {
   "title": "Lyceum Training Grounds",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "88.0S 48.9E from [[Ishilai Lyceum]]",
-  "levels": "",
   "text": ""
  },
  "01F5": {
   "title": "Aerfalle Keep",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "86.4N, 45.4E",
-  "levels": "45",
   "text": ""
  },
  "01F6": {
   "title": "Holtburg Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "43.6N, 33.0E",
-  "levels": "Any",
   "text": ""
  },
  "01F7": {
   "title": "Shoushi Grotto",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "34.5S, 72.8E",
-  "levels": "Any",
   "text": ""
  },
  "01F8": {
   "title": "Mite Maze",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "41.1N 57.3E",
-  "levels": "Any",
   "text": ""
  },
  "01F9": {
   "title": "Accursed Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "24.0S 57.9W",
-  "levels": "Any",
   "text": ""
  },
  "01FA": {
   "title": "Crypt of Ashen Tears",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "14.6N, 3.5E",
-  "levels": "Any",
   "text": ""
  },
  "01FB": {
   "title": "Yaraq Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "24.7S, 1.4W",
-  "levels": "Any",
   "text": ""
  },
  "01FC": {
   "title": "ReedShark Lair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.2S, 48.3E",
-  "levels": "4",
   "text": ""
  },
  "01FD": {
   "title": "Trothyr's Rest",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "10.3N 54.9E",
-  "levels": "Any",
   "text": ""
  },
  "01FE": {
   "title": "Small Empyrean Vault",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "80.4N, 74.0W",
-  "levels": "30",
   "text": ""
  },
  "0272": {
   "title": "Temple of Kivik Lir Entrance",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "38.1S. 47.3W",
-  "levels": "60",
   "text": ""
  },
  "0273": {
   "title": "Haven of Kivik Lir",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "38.1S. 47.3W",
-  "levels": "60",
   "text": ""
  },
  "0274": {
   "title": "Haven of Kivik Lir",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "38.1S. 47.3W",
-  "levels": "60",
   "text": ""
  },
  "0275": {
   "title": "Haven of Kivik Lir",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "38.1S. 47.3W",
-  "levels": "60",
   "text": ""
  },
  "0276": {
   "title": "Trials of Kivik Lir",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "38.1S. 47.3W",
-  "levels": "60",
   "text": ""
  },
  "0277": {
   "title": "Gallery of Kivik Lir",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "38.1S. 47.3W",
-  "levels": "60",
   "text": ""
  },
  "0278": {
   "title": "Burun Fortress Central Mound",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "25.5S, 46.4E",
-  "levels": "60",
   "text": ""
  },
  "0279": {
   "title": "Burun Fortress SW Mound",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "25.5S, 46.4E",
-  "levels": "60",
   "text": ""
  },
  "027A": {
   "title": "Burun Fortress NE Mound",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "25.5S, 46.4E",
-  "levels": "60",
   "text": ""
  },
  "027B": {
   "title": "Burun Fortress NW Mound",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "25.5S, 46.4E",
-  "levels": "60",
   "text": ""
  },
  "027C": {
   "title": "Ancient Empyrean Grotto",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "52.6N, 73.1W",
-  "levels": "40",
   "text": ""
  },
  "027D": {
   "title": "Lair of the Eviscerators",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "53.7N, 76.6W",
-  "levels": "50",
   "text": ""
  },
  "027E": {
   "title": "Martinate Holding",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "59.6N 77.0W on the [[Tuatara Plains]]",
-  "levels": "Any",
   "text": ""
  },
  "027F": {
   "title": "East Fork Dam Hive",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "48.5N, 76.4W",
-  "levels": "50",
   "text": ""
  },
  "0280": {
   "title": "Burun Fortress SE Mound",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "25.5S, 46.4E",
-  "levels": "60",
   "text": ""
  },
  "0281": {
   "title": "Hidden Chamber",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "0282": {
   "title": "An Olthoi Soldier Nest",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "45.2N, 76.3W",
-  "levels": "30",
   "text": ""
  },
  "0283": {
   "title": "The Dark Lair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "43.8N, 68.4W",
-  "levels": "Any",
   "text": ""
  },
  "0284": {
   "title": "Abandoned Tumerok Site",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "42.0N, 82.2W",
-  "levels": "Any",
   "text": ""
  },
  "0285": {
   "title": "Wasteland Hive",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "50.8N, 79.1W",
-  "levels": "70",
   "text": ""
  },
  "0286": {
   "title": "Tumerok Cave",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "41.7N, 82.5W",
-  "levels": "Any",
   "text": ""
  },
  "0287": {
   "title": "Aun Papileona's Shrine to Raeta",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "38.9N, 76.3W",
-  "levels": "Any",
   "text": ""
  },
  "0288": {
   "title": "Royal Hive",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "48.5N 81.7W",
-  "levels": "70",
   "text": ""
  },
  "0289": {
   "title": "Tiny Hive",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Random spawn",
-  "levels": "35",
   "text": ""
  },
  "028A": {
   "title": "Small Hive",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Random spawn",
-  "levels": "40",
   "text": ""
  },
  "028B": {
   "title": "Simple Hive",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Random spawn",
-  "levels": "50",
   "text": ""
  },
  "028C": {
   "title": "Shallow Hive",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Random spawn",
-  "levels": "60",
   "text": ""
  },
  "028D": {
   "title": "New Hive",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Random spawn",
-  "levels": "70",
   "text": ""
  },
  "028E": {
   "title": "Palenqual's Cavern",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "48.9N, 72.5W",
-  "levels": "Any",
   "text": ""
  },
  "028F": {
   "title": "Swamp Gardens",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "22.5S, 45.8E",
-  "levels": "Any",
   "text": ""
  },
  "0290": {
   "title": "Stable Rift",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "8.0N, 50.4E",
-  "levels": "20",
   "text": ""
  },
  "0291": {
   "title": "Singularity Bore",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "64.1S, 63.8W",
-  "levels": "50",
   "text": ""
  },
  "0292": {
   "title": "Tumerok Cavern",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "40.2N, 84.7W",
-  "levels": "Any",
   "text": ""
  },
  "0293": {
   "title": "Habitat",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Habitat Portal Gem]]",
-  "levels": "70",
   "text": ""
  },
  "0294": {
   "title": "Director's Private Chambers",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "86.1S 2.5W",
-  "levels": "32",
   "text": ""
  },
  "0295": {
   "title": "Inculcation Cells",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "68.8S 62.5W",
-  "levels": "40",
   "text": ""
  },
  "0296": {
   "title": "Southern Black Claw Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "20",
   "text": ""
  },
  "0297": {
   "title": "Northern Black Claw Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "20",
   "text": ""
  },
  "0298": {
   "title": "Land Bridge Staging Complex",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "86.1S 2.5W",
-  "levels": "32",
   "text": ""
  },
  "0299": {
   "title": "Larry's Garden",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "1.9E, 41.6N",
-  "levels": "Any",
   "text": ""
  },
  "029A": {
   "title": "The Envoy's Chamber",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "61.6S, 29.3E (Inside the [[Gredaline Consulate]])",
-  "levels": "25",
   "text": ""
  },
  "029B": {
   "title": "Gredaline Consulate",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "61.6S, 29.3E",
-  "levels": "25",
   "text": ""
  },
  "029C": {
   "title": "Linvak Tukal Entryway",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "76.6S 28.1E",
-  "levels": "Any",
   "text": ""
  },
  "029D": {
   "title": "Mnemosyne Collection Site",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "2.5S, 16.4E",
-  "levels": "Any",
   "text": ""
  },
  "029E": {
   "title": "Aerbax Laboratory (Main)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "10.1S 8.1E",
-  "levels": "Any",
   "text": ""
  },
  "029F": {
   "title": "Aerbax Laboratory (Haven)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "From [[Aerbax Laboratory (Main)]]",
-  "levels": "Any",
   "text": ""
  },
  "02A0": {
   "title": "Sand Shallow",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "11.5S, 0.7E",
-  "levels": "Any",
   "text": ""
  },
  "02A1": {
   "title": "Panopticon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "59.2S 84.0W",
-  "levels": "32",
   "text": ""
  },
  "02A2": {
   "title": "Lyceum Training Grounds",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "88.0S 48.9E from [[Ishilai Lyceum]]",
-  "levels": "",
   "text": ""
  },
  "02A3": {
   "title": "Moss Chamber (NPC Room)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "02A4": {
   "title": "South Tumerok Vanguard Outpost",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "45.9S, 14.2E",
-  "levels": "50",
   "text": ""
  },
  "02A5": {
   "title": "North Tumerok Vanguard Outpost",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "7.5S, 0.0W",
-  "levels": "50",
   "text": ""
  },
  "02A6": {
   "title": "Lyceum Training Grounds",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "88.0S 48.9E from [[Ishilai Lyceum]]",
-  "levels": "",
   "text": ""
  },
  "02A7": {
   "title": "Lyceum Training Grounds",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "88.0S 48.9E from [[Ishilai Lyceum]]",
-  "levels": "",
   "text": ""
  },
  "02A8": {
   "title": "Lyceum Training Grounds",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "88.0S 48.9E from [[Ishilai Lyceum]]",
-  "levels": "",
   "text": ""
  },
  "02A9": {
   "title": "Hieromancers' Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "4.4S, 82.8W",
-  "levels": "Any",
   "text": ""
  },
  "02AA": {
   "title": "Desert March",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "22.6N, 28.8W near [[Danby's Outpost]]<br>6.4N, 3.9W near [[Al-Jalima]]",
-  "levels": "Any",
   "text": ""
  },
  "02AB": {
   "title": "Beyond the Mines of Despair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "75.4S, 57.3E",
-  "levels": "14",
   "text": ""
  },
  "02AC": {
   "title": "02AC",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Lower Empyrean Mausoleum]]\n* [[Upper Empyrean Mausoleum]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "02AD": {
   "title": "Empyrean Cloister",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "23.4S, 5.8E",
-  "levels": "15",
   "text": ""
  },
  "02AE": {
   "title": "Chakron Gate",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "52.9S, 62.7W",
-  "levels": "36",
   "text": ""
  },
  "02AF": {
   "title": "02AF",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Lower Chakron Flux]]\n* [[Upper Chakron Flux]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "02B0": {
   "title": "Sepulcher of the Hopeslayer",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Unknown",
-  "levels": "36",
   "text": ""
  },
  "02B1": {
   "title": "02B1",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Shade Stronghold]]\n* [[Upper Shade Stronghold]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "02B2": {
   "title": "Heart of Darkness",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "02B3": {
   "title": "Moars Laboratory",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "68.3S, 94.4E",
-  "levels": "Any",
   "text": ""
  },
  "02B4": {
   "title": "A Mosswart Hideout",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "72.7S, 90.7E",
-  "levels": "Any",
   "text": ""
  },
  "02B5": {
   "title": "Moarsmen Spawning Grounds",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "69.5S, 96.5E",
-  "levels": "Any",
   "text": ""
  },
  "02B6": {
   "title": "Idol Spawning Grounds",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "72.3S, 87.5E",
-  "levels": "Any",
   "text": ""
  },
  "02B7": {
   "title": "Catacombs of Ithaenc",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "82.4S, 93.4E",
-  "levels": "Any",
   "text": ""
  },
  "02B8": {
   "title": "Rumuba's Hidey-Hole",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "75.9 S, 89.2 E",
-  "levels": "Any",
   "text": ""
  },
  "02B9": {
   "title": "Moist Hovel",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "73.0N, 63.0W",
-  "levels": "1-20",
   "text": ""
  },
  "02BA": {
   "title": "Moars (Dungeon)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "70.2S, 93.1E",
-  "levels": "Any",
   "text": ""
  },
  "02BB": {
   "title": "Jungle Shadows",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "69.4S, 94.5E",
-  "levels": "Any",
   "text": ""
  },
  "02BC": {
   "title": "Mosswart Nest",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "77.6S, 87.9E",
-  "levels": "Any",
   "text": ""
  },
  "02BD": {
   "title": "Small Ruin",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "70.1S, 91.1E",
-  "levels": "Any",
   "text": ""
  },
  "02BE": {
   "title": "Small Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "69.3S, 93.7E, 75.0S, 97.5E",
-  "levels": "Any",
   "text": ""
  },
  "02BF": {
   "title": "Small Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "69.3S, 93.7E, 75.0S, 97.5E",
-  "levels": "Any",
   "text": ""
  },
  "02C0": {
   "title": "Small Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "69.3S, 93.7E, 75.0S, 97.5E",
-  "levels": "Any",
   "text": ""
  },
  "02C1": {
   "title": "Mud Cave",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "73.1S, 81.3E; 79.0S, 84.1E",
-  "levels": "Any",
   "text": ""
  },
  "02C2": {
   "title": "Moarsmen Muck",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "77.0S, 90.9E",
-  "levels": "Any",
   "text": ""
  },
  "02C3": {
   "title": "Slithis Pit",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "70.2S, 94.3E",
-  "levels": "Any",
   "text": ""
  },
  "02C4": {
   "title": "Moarsmen Hideout",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "69.9S, 89.9E",
-  "levels": "Any",
   "text": ""
  },
  "02C5": {
   "title": "Treacherous Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "71.2S, 93.7E and 75.0S, 90.3E",
-  "levels": "Any",
   "text": ""
  },
  "02C6": {
   "title": "Lightless Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "41.9S, 16.2E",
-  "levels": "1-25",
   "text": ""
  },
  "02C7": {
   "title": "Tumideon Fortress",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "56.0S, 60.7W",
-  "levels": "30",
   "text": ""
  },
  "02C8": {
   "title": "Banderling Conquest Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "29.0S, 50.4E",
-  "levels": "Any",
   "text": ""
  },
  "02C9": {
   "title": "Sotiris Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "68.0S, 69.2W",
-  "levels": "30",
   "text": ""
  },
  "02CA": {
   "title": "Mosswart Maze",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "25.2S, 19.4E",
-  "levels": "Any",
   "text": ""
  },
  "02CB": {
   "title": "The Floating City (Bar)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "02CC": {
   "title": "The Floating City (Museum)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "150",
   "text": ""
  },
  "02CD": {
   "title": "The Floating City (Tunnels)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Random",
-  "levels": "150",
   "text": ""
  },
  "02CE": {
   "title": "The Floating City (Construction Area)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "150",
   "text": ""
  },
  "02CF": {
   "title": "The Floating City (Skyway)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Random",
-  "levels": "Any",
   "text": ""
  },
  "02D0": {
   "title": "The Floating City (Lost Chamber)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Random",
-  "levels": "150",
   "text": ""
  },
  "02D1": {
   "title": "The Floating City (Banderling Area)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Random",
-  "levels": "150",
   "text": ""
  },
  "02D2": {
   "title": "Uninhabited Area",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "41.9S, 16.2E",
-  "levels": "1-25",
   "text": ""
  },
  "02D3": {
   "title": "Xarabydun Lifestone",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "41.9S, 16.2E",
-  "levels": "1-25",
   "text": ""
  },
  "02D4": {
   "title": "Abhorrent Vault",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "88.5N, 50.3W",
-  "levels": "90",
   "text": ""
  },
  "02D5": {
   "title": "Waterfall Cave",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "84.0N, 75.4W",
-  "levels": "Any",
   "text": ""
  },
  "02D6": {
   "title": "Hidden City",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "94.4N, 70.0W",
-  "levels": "50",
   "text": ""
  },
  "02D7": {
   "title": "Shendolain Chamber",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "60",
   "text": ""
  },
  "02D8": {
   "title": "Qin Xikit's Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "42.4S 91.1W via [[Secrets of Qin Xikit's Temple]]",
-  "levels": "60",
   "text": ""
  },
  "02D9": {
   "title": "Liazk Itzi's Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "40.8S, 11.7E",
-  "levels": "60",
   "text": ""
  },
  "02DA": {
   "title": "Fenmalain Chamber",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "46.9S, 55.2E",
-  "levels": "20",
   "text": ""
  },
  "02DB": {
   "title": "Fenmalain Vestibule",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "46.9S, 55.2E",
-  "levels": "20",
   "text": ""
  },
  "02DC": {
   "title": "Caulnalain Vestibule",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "68.5N, 5.5E",
-  "levels": "40",
   "text": ""
  },
  "02DD": {
   "title": "Penguin Den",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "71.7N, 60.4W",
-  "levels": "Any",
   "text": ""
  },
  "02DE": {
   "title": "Ruschk Iceberg",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "96.3N 60.0W",
-  "levels": "70",
   "text": ""
  },
  "02DF": {
   "title": "Caulnalain Chamber",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "68.5N, 5.5E",
-  "levels": "40",
   "text": ""
  },
  "02E0": {
   "title": "Shendolain Vestibule",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "53.8S 59.6W on north [[Obsidian Plains]]; 61.3S 39.5W on the coast NE of the [[Graveyard]]",
-  "levels": "60",
   "text": ""
  },
  "02E1": {
   "title": "Golem Sanctum",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Random Landscape Spawn",
-  "levels": "25",
   "text": ""
  },
  "02E2": {
   "title": "Arena (NPK)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "18.5S, 3.7E",
-  "levels": "Any",
   "text": ""
  },
  "02E3": {
   "title": "Arena (PK)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "17.9S, 3.9E",
-  "levels": "Any",
   "text": ""
  },
  "02E4": {
   "title": "Humid Hovel",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "73.6N, 59.2W",
-  "levels": "1-20",
   "text": ""
  },
  "02E5": {
   "title": "Krau Li's Labyrinth",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "35.2S, 23.8E",
-  "levels": "25",
   "text": ""
  },
  "02E6": {
   "title": "Catacombs of the Forgotten",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "17.3N, 32.8E",
-  "levels": "15",
   "text": ""
  },
  "02E7": {
   "title": "Lugian Excavations",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "77.0S, 64.3E",
-  "levels": "Any",
   "text": ""
  },
  "02E8": {
   "title": "Lugian Quarry",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "64.5S, 55.6E",
-  "levels": "Any",
   "text": ""
  },
  "02E9": {
   "title": "Lugian Mines",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "73.9S, 39.0E",
-  "levels": "Any",
   "text": ""
  },
  "02EA": {
   "title": "Ishaq's Cellar",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "66.1S, 86.6W",
-  "levels": "80",
   "text": ""
  },
  "02EB": {
   "title": "Viamontian Torture Chamber",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "69.6N, 62.6W",
-  "levels": "Any",
   "text": ""
  },
  "02EC": {
   "title": "Coral Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "84.1N 46.9E (East Harbor) - 84.2N 46.0E (West Harbor)",
-  "levels": "40",
   "text": ""
  },
  "02ED": {
   "title": "Aerlinthe Lower Reservoir",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "From [[Aerlinthe Reservoir]]",
-  "levels": "45",
   "text": ""
  },
  "02EE": {
   "title": "Aerlinthe Reservoir",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "85.5N 43.4E on [[Aerlinthe]]",
-  "levels": "40",
   "text": ""
  },
  "02EF": {
   "title": "Acolyte Towers",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "88.4S, 10.6W",
-  "levels": "Any",
   "text": ""
  },
  "02F0": {
   "title": "Hills Citadel",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "56.6S, 66.9E",
-  "levels": "Any",
   "text": ""
  },
  "02F1": {
   "title": "Ridge Citadel",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "70.2S, 24.2E",
-  "levels": "Any",
   "text": ""
  },
  "02F2": {
   "title": "Wilderness Citadel",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.9S, 62.5E",
-  "levels": "Any",
   "text": ""
  },
  "02F3": {
   "title": "Halls of Metos (Tufa)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "4.4S, 0.6W",
-  "levels": "15",
   "text": ""
  },
  "02F4": {
   "title": "Halls of Metos (Ayan Baqur)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "56.0S, 89.2W",
-  "levels": "15",
   "text": ""
  },
  "02F5": {
   "title": "Halls of Metos (Wai Jhou)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "61.4S, 46.6W",
-  "levels": "15",
   "text": ""
  },
  "02F6": {
   "title": "Sclavus Cathedral (Ayan Baqur)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "33.5S, 80.1W",
-  "levels": "Any",
   "text": ""
  },
  "02F7": {
   "title": "Sclavus Cathedral (West Dires)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "17.9S, 89.6W",
-  "levels": "Any",
   "text": ""
  },
  "02F8": {
   "title": "Burun Cathedral",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "42.3S, 52.6W",
-  "levels": "Any",
   "text": ""
  },
  "02FB": {
   "title": "Olthoi Horde Nest (Colier)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "55.8N, 43.5E.",
-  "levels": "20",
   "text": ""
  },
  "02FC": {
   "title": "Olthoi Horde Nest (Mountain Retreat)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "48.9N, 12.9W",
-  "levels": "30",
   "text": ""
  },
  "02FD": {
   "title": "Olthoi Horde Nest (Bandit Castle)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "64.3N, 52.8E",
-  "levels": "30",
   "text": ""
  },
  "02FE": {
   "title": "Frozen Library",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "90.7N, 56.4W",
-  "levels": "Any",
   "text": ""
  },
  "039B": {
   "title": "Steaming Hovel",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "73.1N, 65.6W",
-  "levels": "1-20",
   "text": ""
  },
  "039C": {
   "title": "Hollow Lair near Lytelthorpe",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "2.2S, 50.7E",
-  "levels": "20",
   "text": ""
  },
  "039D": {
   "title": "Ravenous Vault",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "92.8N, 48.9W",
-  "levels": "110",
   "text": ""
  },
  "039E": {
   "title": "Seat of the New Singularity",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Summoned by [[Ecorto the Lost Director]] at 13.7N 0.1E",
-  "levels": "55",
   "text": ""
  },
  "039F": {
   "title": "Singular Obsidian Repository",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "55.9S 64.8W",
-  "levels": "45",
   "text": ""
  },
  "03A0": {
   "title": "Singular Chorizite Repository",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "77.3S, 51.6E",
-  "levels": "35",
   "text": ""
  },
  "03A1": {
   "title": "Singular Pyreal Repository",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "4.2S, 8.9E",
-  "levels": "24",
   "text": ""
  },
  "03A2": {
   "title": "Southern Infiltrator Keep",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "52.3S 24.9E",
-  "levels": "80",
   "text": ""
  },
  "03A3": {
   "title": "Northern Infiltrator Keep",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "15.4N 5.0E",
-  "levels": "80",
   "text": ""
  },
  "03A4": {
   "title": "The Asteliary",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "10.2S, 17.5E",
-  "levels": "80",
   "text": ""
  },
  "03A5": {
   "title": "Undead Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "90.9N, 43.2W",
-  "levels": "Any",
   "text": ""
  },
  "03A6": {
   "title": "North Fork Dam Hive",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "51.4N, 76.0W",
-  "levels": "70",
   "text": ""
  },
  "03A7": {
   "title": "Mount Elyrii Hive",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "48.5N, 81.7W",
-  "levels": "70",
   "text": ""
  },
  "03FE": {
   "title": "Mossy Cave (Shoushi)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "34.1S, 74.9E",
-  "levels": "Any",
   "text": ""
  },
  "0F38": {
   "title": "Blightfinger's Warrens",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "56.8S, 89.2W",
-  "levels": "70",
   "text": ""
  },
  "1203": {
   "title": "Ancient Lugian Fortress",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "1568": {
   "title": "Direlands Subway",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[18.8S, 84.4W - Undead Housing]]",
-  "levels": "Any",
   "text": ""
  },
  "1936": {
   "title": "1936",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Chaos Virindi Cave]]\n* [[Archive (Dungeon)]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "1A73": {
   "title": "Monouga Feeding Pits",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "9.8S, 81.0W",
-  "levels": "Any",
   "text": ""
  },
  "1A8E": {
   "title": "1A8E",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "[[Inner Stronghold]]<br>[[Shadow Lugian Stronghold]]\n\n[[Category:Landblocks]]"
  },
  "200F": {
   "title": "Withered Atoll Lugian Mine",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "89.7S, 76.1W",
-  "levels": "Any",
   "text": ""
  },
  "2176": {
   "title": "Gear Hunter Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "7.2S, 75.0W",
-  "levels": "Any",
   "text": ""
  },
  "23B6": {
   "title": "Back Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "43.9N 73.9W",
-  "levels": "Any",
   "text": ""
  },
  "24C0": {
   "title": "Roots of Skuld, Urd and Verdandi",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "51.9N 73.0W",
-  "levels": "150+, Quest Flag (Speak to [[Aun Kimintari]] in [[Timaru]])",
   "text": ""
  },
  "2842": {
   "title": "2842",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Apostate Citadel Mines]]\n* [[Apostate Citadel Barracks]]\n* [[Apostate Citadel Headquarters]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "2D6B": {
   "title": "Facility",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "15.7S, 65.3W",
-  "levels": "50",
   "text": ""
  },
  "2E6C": {
   "title": "Crystalline Portal (Level 130)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "17.0S, 61.2W",
-  "levels": "130",
   "text": ""
  },
  "3150": {
   "title": "Adrenkus Cave",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "37.6S 62.2W",
-  "levels": "Any",
   "text": ""
  },
  "33F4": {
   "title": "Frozen Cave",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "93.5N 60.5W",
-  "levels": "Any",
   "text": ""
  },
  "37E4": {
   "title": "80.8N, 57.4W - Penguin Rookery",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "3960": {
   "title": "Apostate Excavation",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "24.6S, 56.2W",
-  "levels": "150",
   "text": ""
  },
  "3FB1": {
   "title": "3FB1",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Arrival Chamber]]\n* [[Reaving Facility]] \n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "40D8": {
   "title": "Cave of the Escaped Thief",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "71.1N, 50.2W",
-  "levels": "Any",
   "text": ""
  },
  "462D": {
   "title": "Mhoire Castle Courtyard",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "64.6S 44.1W",
-  "levels": "Any",
   "text": ""
  },
  "472C": {
   "title": "Seat of the New Singularity",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Summoned by [[Ecorto the Lost Director]] at 13.7N 0.1E",
-  "levels": "55",
   "text": ""
  },
  "472D": {
   "title": "472D",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Massilor's Crypt]]\n* [[Wight Barrow]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "5269": {
   "title": "Wedding Trials Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "32.8N, 55.3E",
-  "levels": "Any",
   "text": ""
  },
  "526A": {
   "title": "Entrance to Portal Space",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "82.8N 21.2E",
-  "levels": "70",
   "text": ""
  },
  "526B": {
   "title": "Entrance to Portal Space",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "82.8N 21.2E",
-  "levels": "70",
   "text": ""
  },
  "526C": {
   "title": "Entrance to Portal Space",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "82.8N 21.2E",
-  "levels": "70",
   "text": ""
  },
  "526F": {
   "title": "Empyrean Fire Propylaeum",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "73.5N, 2.7W",
-  "levels": "25",
   "text": ""
  },
  "5270": {
   "title": "Empyrean Fire Propylaeum",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "73.5N, 2.7W",
-  "levels": "25",
   "text": ""
  },
  "5271": {
   "title": "Empyrean Ice Propylaeum",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "53.3N, 62.5E",
-  "levels": "25",
   "text": ""
  },
  "5272": {
   "title": "Empyrean Ice Propylaeum",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "53.3N, 62.5E",
-  "levels": "25",
   "text": ""
  },
  "5274": {
   "title": "Empyrean Lightning Propylaeum",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "87.1S, 9.6E",
-  "levels": "50",
   "text": ""
  },
  "5275": {
   "title": "Farmer's Basement",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "37.4S, 75.5E",
-  "levels": "20",
   "text": ""
  },
  "5276": {
   "title": "Hall of Hollows",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "25.0N, 37.8E",
-  "levels": "20",
   "text": ""
  },
  "5360": {
   "title": "Sanctum Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Cragstone]]: 25.5N, 48.7E<br>[[Hebian-To]]: 39.6S, 83.5E<br>[[Zaikhal]]: 13.4N, 0.6E",
-  "levels": "Any",
   "text": ""
  },
  "5361": {
   "title": "Sanctum Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Cragstone]]: 25.5N, 48.7E<br>[[Hebian-To]]: 39.6S, 83.5E<br>[[Zaikhal]]: 13.4N, 0.6E",
-  "levels": "Any",
   "text": ""
  },
  "5362": {
   "title": "Sanctum Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Cragstone]]: 25.5N, 48.7E<br>[[Hebian-To]]: 39.6S, 83.5E<br>[[Zaikhal]]: 13.4N, 0.6E",
-  "levels": "Any",
   "text": ""
  },
  "5363": {
   "title": "Sanctum Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Cragstone]]: 25.5N, 48.7E<br>[[Hebian-To]]: 39.6S, 83.5E<br>[[Zaikhal]]: 13.4N, 0.6E",
-  "levels": "Any",
   "text": ""
  },
  "5364": {
   "title": "Sanctum Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Cragstone]]: 25.5N, 48.7E<br>[[Hebian-To]]: 39.6S, 83.5E<br>[[Zaikhal]]: 13.4N, 0.6E",
-  "levels": "Any",
   "text": ""
  },
  "5365": {
   "title": "Sanctum Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Cragstone]]: 25.5N, 48.7E<br>[[Hebian-To]]: 39.6S, 83.5E<br>[[Zaikhal]]: 13.4N, 0.6E",
-  "levels": "Any",
   "text": ""
  },
  "5366": {
   "title": "Sanctum Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Cragstone]]: 25.5N, 48.7E<br>[[Hebian-To]]: 39.6S, 83.5E<br>[[Zaikhal]]: 13.4N, 0.6E",
-  "levels": "Any",
   "text": ""
  },
  "5367": {
   "title": "Sanctum Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Cragstone]]: 25.5N, 48.7E<br>[[Hebian-To]]: 39.6S, 83.5E<br>[[Zaikhal]]: 13.4N, 0.6E",
-  "levels": "Any",
   "text": ""
  },
  "5368": {
   "title": "Sanctum Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Cragstone]]: 25.5N, 48.7E<br>[[Hebian-To]]: 39.6S, 83.5E<br>[[Zaikhal]]: 13.4N, 0.6E",
-  "levels": "Any",
   "text": ""
  },
  "5369": {
   "title": "Sanctum Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Cragstone]]: 25.5N, 48.7E<br>[[Hebian-To]]: 39.6S, 83.5E<br>[[Zaikhal]]: 13.4N, 0.6E",
-  "levels": "Any",
   "text": ""
  },
  "536A": {
   "title": "Hidden Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "21.3N, 53.9E",
-  "levels": "2",
   "text": ""
  },
  "536B": {
   "title": "Convergent Median",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "87.0S, 40.3W",
-  "levels": "40",
   "text": ""
  },
  "536C": {
   "title": "Malignant Tabernacle",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "23.2S 46.0W",
-  "levels": "40",
   "text": ""
  },
  "536D": {
   "title": "Nuhmudira's Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "4.0S 35.9E",
-  "levels": "Any",
   "text": ""
  },
  "536E": {
   "title": "Venemous Nidus",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "13.1S, 91.8W",
-  "levels": "40",
   "text": ""
  },
  "5456": {
   "title": "Grievver Caves",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "75.9N 19.0W",
-  "levels": "Any",
   "text": ""
  },
  "5457": {
   "title": "Colossus Foundry",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Ayan Baqur]] near 60.0S, 87.9W<br>[[Fort Tethana]] near 1.6N, 72.1W<br>[[Kara]] near 83.3S, 47.1E<br>[[Wai Jhou]] near 62.0S, 51.3W",
-  "levels": "Any",
   "text": ""
  },
  "5458": {
   "title": "Mammet Foundry",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Arwic]] - 30.9N, 56.4E<br>[[Baishi]] - 49.4S, 62.5E<br>[[MacNiall's Freehold]] - 74.1S, 92.3E<br>[[Mayoi]] - 61.9S, 82.0E<br>[[Plateau Village]] - 44.2N, 43.4W<br>[[Sawato]] - 28.6S, 59.3E<br>[[Stonehold]] - 68.8N, 21.6W<br>[[Tufa]] - 14.9S, 5.8E",
-  "levels": "Any",
   "text": ""
  },
  "5459": {
   "title": "Effigy Foundry",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Al-Jalima]] - 7.4N, 4.8E <br>[[Cragstone]] - 25.7N, 49.2E <br>[[Eastham]] - 17.7N, 63.3E<br>[[Glenden Wood]] - 29.9N, 27.4E<br>[[Hebian-To]] - 39.4S, 83.1E<br>[[Khayyaban]] - 47.6S, 24.7E<br>[[Lin]] - 54.4S, 73.2E<br>[[Tou Tou]] - 28.1S, 95.8E<br>[[Uziz]] - 25.1S, 28.3E<br>[[Zaikhal]] - 13.8N, 0.6E",
-  "levels": "Any",
   "text": ""
  },
  "545A": {
   "title": "Mannikin Foundry",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Al-Arqas]] - 31.2S, 13.8E<br>[[Holtburg]] - 42.7N, 33.6E<br>[[Lytelthorpe]] - 0.7N, 51.4E<br>[[Nanto]] - 52.5S, 82.1E<br>[[Rithwic]] - 10.5N, 58.3E<br>[[Samsur]] - 2.9S, 19.4E<br>[[Shoushi]] - 33.4S, 72.8E<br>[[Yanshi]] - 12.8S, 46.3E - <font color=red> RETIRED </font><br>[[Yaraq]] - 21.5S, 1.7W",
-  "levels": "Any",
   "text": ""
  },
  "545B": {
   "title": "Arcanum Research Facility",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "5.9N 6.3E",
-  "levels": "20",
   "text": ""
  },
  "545C": {
   "title": "Arcanum Storehouse",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "54.8S, 74.4E",
-  "levels": "Any",
   "text": ""
  },
  "545D": {
   "title": "The Callous Heart",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "From [[Portal Gem to the Callous Heart]].",
-  "levels": "See below",
   "text": ""
  },
  "545E": {
   "title": "545E",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Fathomless Chasm]]\n* [[Fathomless Chasm Devex]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "545F": {
   "title": "545F",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Fathomless Chasm Clough]]\n* [[Fathomless Chasm Plummet]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "5460": {
   "title": "5460",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Fathomless Chasm Abyss]]\n* [[Fathomless Chasm Descent]]\n\n[[Category:Landblocks]]"
  },
  "5462": {
   "title": "Oubliette (Labyrinth)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Inside the [[Labyrinth]]",
-  "levels": "Any",
   "text": ""
  },
  "5463": {
   "title": "Labyrinth",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Inside the [[Gelidite Library]]",
-  "levels": "Any",
   "text": ""
  },
  "5464": {
   "title": "Gelidite Library",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "69.2N, 17.2W",
-  "levels": "Any",
   "text": ""
  },
  "5465": {
   "title": "Sanctum Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Cragstone]]: 25.5N, 48.7E<br>[[Hebian-To]]: 39.6S, 83.5E<br>[[Zaikhal]]: 13.4N, 0.6E",
-  "levels": "Any",
   "text": ""
  },
  "5643": {
   "title": "Gromnie Clan Training Camp",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "16.0S, 70.0E",
-  "levels": "Any",
   "text": ""
  },
  "5644": {
   "title": "Mask Clan Training Camp",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "16.0S, 75.0E",
-  "levels": "Any",
   "text": ""
  },
  "5645": {
   "title": "Abandoned Armory",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "83.6S 14.7W",
-  "levels": "Any",
   "text": ""
  },
  "5646": {
   "title": "An Archive",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "63.5S 36.8E",
-  "levels": "115",
   "text": ""
  },
  "5647": {
   "title": "Tower Base Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "34.7S, 33.6E",
-  "levels": "115",
   "text": ""
  },
  "5648": {
   "title": "Misty Mine",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "42.6N 62.4E (Summoned portal to [[Warehouse]]",
-  "levels": "40",
   "text": ""
  },
  "5649": {
   "title": "Dark Tree Crystal Mine",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "24.8N, 31.2W",
-  "levels": "100",
   "text": ""
  },
  "564A": {
   "title": "Spirit Cell",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "26.5N, 28.5W",
-  "levels": "Any",
   "text": ""
  },
  "564B": {
   "title": "Crystal Mine Extreme",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "70.5N, 8.2W",
-  "levels": "80",
   "text": ""
  },
  "564C": {
   "title": "Crystal Mine High",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "70.5N, 8.2W",
-  "levels": "60-79",
   "text": ""
  },
  "564D": {
   "title": "Crystal Mine Mid",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "70.5N, 8.2W",
-  "levels": "40-59",
   "text": ""
  },
  "564E": {
   "title": "Crystal Mine Low",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "70.5N, 8.2W",
-  "levels": "20-39",
   "text": ""
  },
  "564F": {
   "title": "Crystal Mine New Isparians",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "70.5N, 8.2W",
-  "levels": "1-19",
   "text": ""
  },
  "5650": {
   "title": "Victory Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Khayyaban]] - 48.0S, 24.5E<br>[[Lin]] - 54.3S, 73.1E<br>[[Samsur]] - 3.2S, 19.1E",
-  "levels": "Any",
   "text": ""
  },
  "5651": {
   "title": "Frest Greelving's Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "6.5N, 43.9E",
-  "levels": "Any",
   "text": ""
  },
  "5652": {
   "title": "5652",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Warded Cavern Passage]]\n* [[Warded Dungeon Passage]]\n* [[Hidden Treasury]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "5653": {
   "title": "Citadel Library",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "17.1N, 63.0E",
-  "levels": "20",
   "text": ""
  },
  "5654": {
   "title": "Gaerlan's Inner Sanctum",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "5655": {
   "title": "Virindi Research Facility",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "43.3N, 43.7W",
-  "levels": "150",
   "text": ""
  },
  "5656": {
   "title": "Haven Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Lytelthorpe]] - 0.6N, 51.6E<br>[[Tou-Tou]] - 28.2S, 95.6E<br>[[Uziz]] - 24.9S, 28.3E",
-  "levels": "Any",
   "text": ""
  },
  "565E": {
   "title": "Oriel Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Mayoi]] - 61.8S, 81.6E<br>[[Khayyaban]] - 47.4S, 25.1E<br>[[Plateau Village]] - 44.0N, 43.1W",
-  "levels": "Any",
   "text": ""
  },
  "5660": {
   "title": "Martine's Retreat",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "10.6N 58.3E",
-  "levels": "Any",
   "text": ""
  },
  "5661": {
   "title": "Atrium Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Baishi]] - 49.3S, 62.4E<br>[[Glenden Wood]] - 29.7N, 27.0E<br>[[Qalaba'r]] - 74.1S, 19.2E",
-  "levels": "Any",
   "text": ""
  },
  "5743": {
   "title": "Frost Guardian Lair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "52.8N, 62.4E",
-  "levels": "20-39",
   "text": ""
  },
  "5744": {
   "title": "Proving Grounds Low",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "17.1N, 63.0E",
-  "levels": "20-39",
   "text": ""
  },
  "5745": {
   "title": "Icy Demise",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "20-39",
   "text": ""
  },
  "5746": {
   "title": "Lightning Ziggurat",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "17.1N, 63.0E",
-  "levels": "20-39",
   "text": ""
  },
  "5748": {
   "title": "Tusker Burrow",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "2.0N, 98.0E",
-  "levels": "Any",
   "text": ""
  },
  "5749": {
   "title": "Tusker Lodge",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "0.2N, 98.1E",
-  "levels": "5",
   "text": ""
  },
  "574A": {
   "title": "Warehouse",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "(No entrance) speak to [[Lartorus]] at 42.6N, 62.4E",
-  "levels": "Any",
   "text": ""
  },
  "574B": {
   "title": "Warehouse (ransacked)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "42.6N 62.4E (Summoned portal to [[Warehouse]]",
-  "levels": "40",
   "text": ""
  },
  "574C": {
   "title": "Warehouse Annex Mine",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "42.6N 62.4E (Summoned portal to [[Warehouse]]",
-  "levels": "40",
   "text": ""
  },
  "574D": {
   "title": "Deeper Catacombs",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "574E": {
   "title": "Deeper Catacombs (Bandit Castle OHN)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "64.3N, 52.8E",
-  "levels": "30",
   "text": ""
  },
  "574F": {
   "title": "Deeper Catacombs (Mountain Retreat OHN)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "48.9N, 12.9W",
-  "levels": "Any",
   "text": ""
  },
  "5750": {
   "title": "Deeper Catacombs (Colier OHN)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "55.8N, 43.5E",
-  "levels": "20",
   "text": ""
  },
  "5751": {
   "title": "Deeper Catacombs (Crater Lair)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "70.6N, 12.7E (Portal from the [[Crater Lair]])",
-  "levels": "30",
   "text": ""
  },
  "5752": {
   "title": "Deeper Catacombs (Olthoi Tunnels)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "48.1N, 53.0E",
-  "levels": "40",
   "text": ""
  },
  "5753": {
   "title": "Deeper Catacombs",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "5754": {
   "title": "5754",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[20.7S, 7.5E - Ancient Portal]]\n* [[20.5S, 7.6E - Ancient Portal]]\n* [[20.7S, 7.6E - Ancient Portal]]\n* [[21.0S, 7.5E - Ancient Portal]]\n* [[20.7S, 7.5E - Catacombs]]\n* [[20.5S, 7.6E - Catacombs]]\n* [[20.7S, 7.6E - Catacombs]]\n\n[[Category:Disambiguation]]\n[[Category:Landblocks]]"
  },
  "5756": {
   "title": "Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "20.7S, 7.8E",
-  "levels": "Any",
   "text": ""
  },
  "575E": {
   "title": "Summoning Cave",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "29.2S 95.8E",
-  "levels": "180",
   "text": ""
  },
  "5760": {
   "title": "Sand Caves",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "20.7S, 7.8E: 20.9S, 6.2E",
-  "levels": "Any",
   "text": ""
  },
  "5761": {
   "title": "Summoning Cave",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "29.2S 95.8E",
-  "levels": "180",
   "text": ""
  },
  "5762": {
   "title": "Shadow Vortex Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "28.1S, 95.5E",
-  "levels": "180",
   "text": ""
  },
  "5763": {
   "title": "Shadow Vortex Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "28.1S, 95.5E",
-  "levels": "180",
   "text": ""
  },
  "5764": {
   "title": "Oubliette of Mhoire Castle",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "64.6S 44.1W",
-  "levels": "125",
   "text": ""
  },
  "5765": {
   "title": "Lost Ruins",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "82.6S, 94.8E",
-  "levels": "150",
   "text": ""
  },
  "5766": {
   "title": "Nanjou Shou-jen Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "78.1N, 42.2W",
-  "levels": "200",
   "text": ""
  },
  "5768": {
   "title": "Sclavus Santa's House",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "69.8S, 25.6E",
-  "levels": "Any",
   "text": ""
  },
  "5769": {
   "title": "Fiery Refuge",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "95.3S, 94.1W",
-  "levels": "150",
   "text": ""
  },
  "576A": {
   "title": "Charged Refuge",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "86.8S, 10.5E",
-  "levels": "150",
   "text": ""
  },
  "576C": {
   "title": "Acidic Refuge",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "59.0N, 65.8E",
-  "levels": "150",
   "text": ""
  },
  "576D": {
   "title": "Cavernous Refuge",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "7.3S, 13.4E",
-  "levels": "150",
   "text": ""
  },
  "576E": {
   "title": "Shadowy Refuge",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "26.8S, 96.0E",
-  "levels": "150",
   "text": ""
  },
  "576F": {
   "title": "Twisted Refuge",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "62.7S, 64.9W",
-  "levels": "150",
   "text": ""
  },
  "5770": {
   "title": "Frozen Refuge",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "93.9N, 45.4W",
-  "levels": "150",
   "text": ""
  },
  "5771": {
   "title": "Venerable Mausoleum",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "78.9N 41.7W",
-  "levels": "200",
   "text": ""
  },
  "5772": {
   "title": "Olthoi Brood Hive (20+)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "44.2N, 66.2E / 51.2N, 48.2E",
-  "levels": "20",
   "text": ""
  },
  "5773": {
   "title": "Olthoi Brood Hive (20+)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "44.2N, 66.2E / 51.2N, 48.2E",
-  "levels": "20",
   "text": ""
  },
  "5774": {
   "title": "Secret Putiputi Place",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "46.3N, 82.1W",
-  "levels": "Any",
   "text": ""
  },
  "5775": {
   "title": "Secret Putiputi Place",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "46.3N, 82.1W",
-  "levels": "Any",
   "text": ""
  },
  "5776": {
   "title": "Secret Putiputi Place",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "46.3N, 82.1W",
-  "levels": "Any",
   "text": ""
  },
  "5777": {
   "title": "Falcon Clan Training Camp",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "2.0N, 75.0E",
-  "levels": "Any",
   "text": ""
  },
  "5778": {
   "title": "Serpent Clan Training Camp",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "1.0S, 70.0E",
-  "levels": "Any",
   "text": ""
  },
  "5779": {
   "title": "Shreth Clan Training Camp",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "5.0S, 68.0E",
-  "levels": "Any",
   "text": ""
  },
  "577A": {
   "title": "Reedshark Clan Training Camp",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "13.0S, 68.0E",
-  "levels": "Any",
   "text": ""
  },
  "5843": {
   "title": "Fire Guardian Lair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "73.5N, 3.2W",
-  "levels": "40-59",
   "text": ""
  },
  "5844": {
   "title": "Proving Grounds Mid",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "17.1N, 63.0E",
-  "levels": "40-59",
   "text": ""
  },
  "5845": {
   "title": "Fiery Consumption",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "40-59",
   "text": ""
  },
  "5846": {
   "title": "Acid Ziggurat",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "17.1N, 63.0E",
-  "levels": "40-59",
   "text": ""
  },
  "5848": {
   "title": "Tusker Freehold",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "1.6S 95.5E",
-  "levels": "25",
   "text": ""
  },
  "5849": {
   "title": "Tusker Assault",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "3.9S, 84.2E",
-  "levels": "85",
   "text": ""
  },
  "584B": {
   "title": "Olthoi Brood Hive (80+)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "64.6N, 56.1E; 57.4N, 67.4E",
-  "levels": "80",
   "text": ""
  },
  "584C": {
   "title": "Olthoi Brood Hive (80+)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "64.6N, 56.1E; 57.4N, 67.4E",
-  "levels": "80",
   "text": ""
  },
  "584D": {
   "title": "Frigid Grotto",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "97.1N, 51.8W",
-  "levels": "150",
   "text": ""
  },
  "584E": {
   "title": "Serpent Burial Grounds",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.6N, 25.3W",
-  "levels": "150",
   "text": ""
  },
  "584F": {
   "title": "Nanjou Prison",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "78.0N, 41.6W",
-  "levels": "200",
   "text": ""
  },
  "5850": {
   "title": "Prismatic Guardian Lair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "10.9N, 81.2W",
-  "levels": "150",
   "text": ""
  },
  "5851": {
   "title": "Prismatic Ziggurat",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "57.1N, 47.8E, 17.1N, 63.0E",
-  "levels": "150",
   "text": ""
  },
  "5852": {
   "title": "Proving Grounds Uber",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "17.1N, 63.0E",
-  "levels": "150",
   "text": ""
  },
  "5853": {
   "title": "Prismatic Devastation",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "150",
   "text": ""
  },
  "5854": {
   "title": "Gaerlan's Inner Sanctum",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "5856": {
   "title": "Foundry of Izexi",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "19.4S 6.7E",
-  "levels": "200",
   "text": ""
  },
  "585E": {
   "title": "Falatacot Depot",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "75.4S 29.3E",
-  "levels": "150",
   "text": ""
  },
  "5860": {
   "title": "Colton Reeyan's Sanctuary",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "22.9N, 37.0W",
-  "levels": "150",
   "text": ""
  },
  "5861": {
   "title": "Crystal Core",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "66.6S, 25.9E",
-  "levels": "50",
   "text": ""
  },
  "5862": {
   "title": "Count Phainor's Tomb",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "65.0S, 44.1W",
-  "levels": "180",
   "text": ""
  },
  "5863": {
   "title": "Desert Dwelling",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "21.0S, 7.6E",
-  "levels": "180",
   "text": ""
  },
  "5864": {
   "title": "Samurai Hausu",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "79.7N, 40.8W",
-  "levels": "200+",
   "text": ""
  },
  "5865": {
   "title": "5865",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Fiery Alcove]]\n* [[Stinging Corner]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "5866": {
   "title": "5866",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Sanctuary of the Recluse]]\n* [[Lair of the Magus]]\n* [[Four Corners Rewards Room]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "5867": {
   "title": "Virindi Edifice",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "19.3S, 18.2E",
-  "levels": "180",
   "text": ""
  },
  "5868": {
   "title": "Chiming Portal",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "45.0N, 73.5W",
-  "levels": "180",
   "text": ""
  },
  "5869": {
   "title": "West Fork Dam Hive",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "49.1N, 80.0W",
-  "levels": "180",
   "text": ""
  },
  "586A": {
   "title": "Western Royal Hive",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "49.1N, 80.0W",
-  "levels": "180",
   "text": ""
  },
  "586B": {
   "title": "586B",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Queen's Quarters]]\n* [[Queen's Chamber]]\n* [[Queen's Treasury]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "586C": {
   "title": "Masked Preface",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "48.1S, 10.7E",
-  "levels": "180",
   "text": ""
  },
  "586D": {
   "title": "Hive Eviscerator Burrow",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "48.6N, 73.7W",
-  "levels": "200",
   "text": ""
  },
  "586E": {
   "title": "Hive Warrior Mound",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "49.3N, 81.2W",
-  "levels": "200",
   "text": ""
  },
  "586F": {
   "title": "Tusker Den",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "84.3N, 6.4W",
-  "levels": "200",
   "text": ""
  },
  "5870": {
   "title": "Curator of Torment's Study",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "79.0S, 39.2W",
-  "levels": "180",
   "text": ""
  },
  "5871": {
   "title": "Seed of Hatred",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "63.1S, 65.5W",
-  "levels": "180",
   "text": ""
  },
  "5872": {
   "title": "Seed of Misery",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "63.1S, 65.5W",
-  "levels": "180",
   "text": ""
  },
  "5873": {
   "title": "Seed of Anger",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "63.1S, 65.5W",
-  "levels": "180",
   "text": ""
  },
  "5874": {
   "title": "Rynthid Crystal Access",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "63.1S, 65.5W",
-  "levels": "180",
   "text": ""
  },
  "5875": {
   "title": "Rynthid Genesis",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "62.5S, 65.4W",
-  "levels": "180",
   "text": ""
  },
  "5876": {
   "title": "Rynthid Foundry",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "62.5S, 64.9W",
-  "levels": "180",
   "text": ""
  },
  "5877": {
   "title": "Fear Factory",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See [[Fear Factory Quest]]",
-  "levels": "180",
   "text": ""
  },
  "5878": {
   "title": "Spirited Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "62.1S, 65.8W",
-  "levels": "180",
   "text": ""
  },
  "5879": {
   "title": "5879",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Path of Rage]]\n* [[Path of Sorrow]]\n* [[Path of Torment]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "587A": {
   "title": "Rynthid Training Facility",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "62.3S, 66.2W",
-  "levels": "180",
   "text": ""
  },
  "5943": {
   "title": "Acid Guardian Lair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "30.5S, 74.3W",
-  "levels": "60-79",
   "text": ""
  },
  "5944": {
   "title": "Proving Grounds High",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "17.1N, 63.0E",
-  "levels": "60-79",
   "text": ""
  },
  "5945": {
   "title": "Entropic Decay",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "65-79",
   "text": ""
  },
  "5946": {
   "title": "Fire Ziggurat",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "17.1N, 63.0E",
-  "levels": "60-79",
   "text": ""
  },
  "5948": {
   "title": "Tusker Armory",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "0.0N, 89.4E",
-  "levels": "50",
   "text": ""
  },
  "5949": {
   "title": "Tusker Lacuna",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "9.9S, 90.7E",
-  "levels": "100",
   "text": ""
  },
  "594A": {
   "title": "Chapel of Mowen",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "3.1N 93.6E",
-  "levels": "50",
   "text": ""
  },
  "594B": {
   "title": "Aerbax's Holding",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "62.4S, 71.1W on the [[Obsidian Plains]]",
-  "levels": "60",
   "text": ""
  },
  "594C": {
   "title": "Gerent's Compound",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "87.2S, 17.5W",
-  "levels": "40",
   "text": ""
  },
  "594D": {
   "title": "Ancient Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "33.0S, 88.0W",
-  "levels": "80",
   "text": ""
  },
  "594E": {
   "title": "594E",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Deep Caves]]\n* [[Temple Trial]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "594F": {
   "title": "594F",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Laboratory (Frozen Fortress)]]\n* [[Testing Grounds]]\n* [[Frozen Fortress]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "5951": {
   "title": "Presk's Bunker",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "63.6S, 66.3W",
-  "levels": "180",
   "text": ""
  },
  "5952": {
   "title": "Bah'Ktar's Tower",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "62.7S, 66.6W",
-  "levels": "200",
   "text": ""
  },
  "5953": {
   "title": "Rynthid Training Facility",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "62.3S, 66.2W",
-  "levels": "180",
   "text": ""
  },
  "5954": {
   "title": "5954",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Catacombs of Torment]]\n* [[Inner Sanctum]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "5956": {
   "title": "Fowl Basement",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "53.14S, 80.73E",
-  "levels": "",
   "text": ""
  },
  "595E": {
   "title": "595E",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Charged Niche]]\n* [[Frozen Recess]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "5960": {
   "title": "Celestial Hand Gauntlet",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "39.7S, 83.6E",
-  "levels": "180",
   "text": ""
  },
  "5961": {
   "title": "Celestial Hand Gauntlet",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "39.7S, 83.6E",
-  "levels": "180",
   "text": ""
  },
  "5962": {
   "title": "Eldrytch Web Gauntlet",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "26.2N 49.7E near [[Cragstone]]",
-  "levels": "180",
   "text": ""
  },
  "5963": {
   "title": "Eldrytch Web Gauntlet",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "26.2N 49.7E near [[Cragstone]]",
-  "levels": "180",
   "text": ""
  },
  "5964": {
   "title": "Radiant Blood Gauntlet",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.8N 0.7E near [[Zaikhal]]",
-  "levels": "180",
   "text": ""
  },
  "5965": {
   "title": "Radiant Blood Gauntlet",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.8N 0.7E near [[Zaikhal]]",
-  "levels": "180",
   "text": ""
  },
  "5966": {
   "title": "Viridian Root",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "44.0S, 43.4E",
-  "levels": "200",
   "text": ""
  },
  "5967": {
   "title": "Gauntlet Bosses",
   "redirect": true,
-  "summary": "Quest",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "5968": {
   "title": "Gauntlet Bosses",
   "redirect": true,
-  "summary": "Quest",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "5969": {
   "title": "Gauntlet Bosses",
   "redirect": true,
-  "summary": "Quest",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "596A": {
   "title": "Fowl Basement",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "53.14S, 80.73E",
-  "levels": "",
   "text": ""
  },
  "596B": {
   "title": "596B",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Celestial Hand Gauntlet]]\n* [[Eldrytch Web Gauntlet]]\n* [[Radiant Blood Gauntlet]]\n* [[Temple of the Font]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "5A43": {
   "title": "Lightning Guardian Lair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "86.7S, 10.4E",
-  "levels": "80-149",
   "text": ""
  },
  "5A44": {
   "title": "5A44",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Proving Grounds Extreme]]\n* [[Proving Grounds Rolling Death]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "5A45": {
   "title": "Electric Destruction",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "5A46": {
   "title": "Frost Ziggurat",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "57.1N, 47.8E, 17.1N, 63.0E",
-  "levels": "80",
   "text": ""
  },
  "5A48": {
   "title": "Tusker Barracks",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "0.3S, 90.8E",
-  "levels": "40",
   "text": ""
  },
  "5A49": {
   "title": "Tusker Honeycombs",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "1.2S, 86.9E",
-  "levels": "80",
   "text": ""
  },
  "5A4A": {
   "title": "Tusker Pits",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "1.2N, 91.8E",
-  "levels": "45",
   "text": ""
  },
  "5B43": {
   "title": "Olthoi Arcade",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "5B44": {
   "title": "Olthoi Arcade Central",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "From [[Olthoi Arcade (North)]] and [[Olthoi Arcade (South)]].",
-  "levels": "30",
   "text": ""
  },
  "5B45": {
   "title": "Virindi Complex",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "73.8N, 25.1E",
-  "levels": "Any",
   "text": ""
  },
  "5B46": {
   "title": "Tusker Cave",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "0.4N, 97.4E",
-  "levels": "12",
   "text": ""
  },
  "5B47": {
   "title": "Tusker Habitat",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "0.5S, 95.9E",
-  "levels": "25",
   "text": ""
  },
  "5B48": {
   "title": "Tusker Holding",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "3.5S, 85.3E",
-  "levels": "60",
   "text": ""
  },
  "5B49": {
   "title": "Plated Rifts",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "1.0S 85.8E",
-  "levels": "75",
   "text": ""
  },
  "5B4A": {
   "title": "Tusker Quarters",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "2.3S, 95.6E",
-  "levels": "30",
   "text": ""
  },
  "5C43": {
   "title": "Tusker Cavern",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "1.0N, 96.9E",
-  "levels": "15",
   "text": ""
  },
  "5C44": {
   "title": "Tusker Encampments",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "4.0S, 93.5E",
-  "levels": "30",
   "text": ""
  },
  "5C45": {
   "title": "Tusker Abode",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "3.2S, 95.0E",
-  "levels": "20",
   "text": ""
  },
  "5C46": {
   "title": "Tusker Gauntlet",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "10.0S, 86.5E",
-  "levels": "100",
   "text": ""
  },
  "5C47": {
   "title": "Tusker Grotto",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "0.9S, 98.4E",
-  "levels": "12",
   "text": ""
  },
  "5C48": {
   "title": "Rampage Bluff",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "1.3S 85.0E",
-  "levels": "80",
   "text": ""
  },
  "5C49": {
   "title": "Tusker Retreat",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "0.7S, 97.9E",
-  "levels": "5",
   "text": ""
  },
  "5C4A": {
   "title": "Tusker Temple (0.7N 68.1W)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "0.7N 68.1W",
-  "levels": "40",
   "text": ""
  },
  "5C4B": {
   "title": "Virindi Complex",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "73.8N, 25.1E",
-  "levels": "Any",
   "text": ""
  },
  "5C4C": {
   "title": "Hizk Ri's Temple Entrance",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "51.5S 67.9W",
-  "levels": "60",
   "text": ""
  },
  "5C4D": {
   "title": "Hizk Ri's Well of Tears",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "51.5S, 67.9W",
-  "levels": "60-79{{!}}60-79, 80-99, 100",
   "text": ""
  },
  "5C4E": {
   "title": "Hizk Ri's Well of Tears",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "51.5S, 67.9W",
-  "levels": "60-79{{!}}60-79, 80-99, 100",
   "text": ""
  },
  "5C4F": {
   "title": "Hizk Ri's Well of Tears",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "51.5S, 67.9W",
-  "levels": "60-79{{!}}60-79, 80-99, 100",
   "text": ""
  },
  "5D43": {
   "title": "Tusker Temple (59.8N 28.4E)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "59.8N, 28.4E",
-  "levels": "20-40",
   "text": ""
  },
  "5D44": {
   "title": "Tusker Temple",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "5D45": {
   "title": "Tusker Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "0.3N, 86.4E",
-  "levels": "70",
   "text": ""
  },
  "5D46": {
   "title": "Vengeance Caverns",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "1.9N, 93.7E",
-  "levels": "45",
   "text": ""
  },
  "5D47": {
   "title": "Temple of Enlightenment",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "84.5S, 0.0E",
-  "levels": "25",
   "text": ""
  },
  "5D48": {
   "title": "Temple of Forgetfulness",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "88.8N, 0.0E",
-  "levels": "25",
   "text": ""
  },
  "5D49": {
   "title": "Olthoi Arcade",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "5D4A": {
   "title": "Olthoi Chasm",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "0.7N, 44.7E",
-  "levels": "20",
   "text": ""
  },
  "5D4B": {
   "title": "Shallow Olthoi Chasm",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "0.7N, 44.7E",
-  "levels": "40",
   "text": ""
  },
  "5D4C": {
   "title": "Deep Olthoi Chasm",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "0.7N, 44.7E",
-  "levels": "60",
   "text": ""
  },
  "5D4D": {
   "title": "Cavernous Olthoi Chasm",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "0.7N, 44.7E",
-  "levels": "80",
   "text": ""
  },
  "5D4E": {
   "title": "Abyssal Olthoi Chasm",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "0.7N, 44.7E",
-  "levels": "100",
   "text": ""
  },
  "5E43": {
   "title": "Arena of the Tusker Hero",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "8.7S, 85.7E",
-  "levels": "80",
   "text": ""
  },
  "5E44": {
   "title": "Tusker Food Storage",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Inside [[Tusker Warrior's Lair]]",
-  "levels": "80",
   "text": ""
  },
  "5E45": {
   "title": "Black Death Catacombs",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "59.9N, 71.2E",
-  "levels": "20",
   "text": ""
  },
  "5E46": {
   "title": "Catacombs of Opposition",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "5E47": {
   "title": "Asheron's Sanctum",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "21.2N, 69.1E",
-  "levels": "Any",
   "text": ""
  },
  "5E48": {
   "title": "Olthoi Brood Hive (60+)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "51.8N, 59.8E, 60.2N 61.2E",
-  "levels": "60",
   "text": ""
  },
  "5E49": {
   "title": "Olthoi Brood Hive (40+)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "71.2N, 60.3E, 66.5N, 70.6E",
-  "levels": "40",
   "text": ""
  },
  "5E4A": {
   "title": "Olthoi Brood Hive (60+)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "51.8N, 59.8E, 60.2N 61.2E",
-  "levels": "60",
   "text": ""
  },
  "5E4B": {
   "title": "Olthoi Brood Hive (40+)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "71.2N, 60.3E, 66.5N, 70.6E",
-  "levels": "40",
   "text": ""
  },
  "5E4C": {
   "title": "Bandit Hideout",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "5E4D": {
   "title": "Bandit Hideout Prison",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "5F43": {
   "title": "Legend of the Tusker King",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Inside [[Tusker Food Storage]]",
-  "levels": "80",
   "text": ""
  },
  "5F44": {
   "title": "Throne of the Tusker King",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Inside [[Legend of the Tusker King]]",
-  "levels": "80",
   "text": ""
  },
  "5F45": {
   "title": "Fir Tree",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "80.0N 45.6W",
-  "levels": "Any",
   "text": ""
  },
  "5F46": {
   "title": "Heart of Innocence (Dungeon)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "33.8N, 38.9E",
-  "levels": "Any",
   "text": ""
  },
  "5F47": {
   "title": "Elemental Caverns",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "82.6S, 47.5W",
-  "levels": "Any",
   "text": ""
  },
  "5F48": {
   "title": "Hidden Cavern",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "37.9S, 65.5W",
-  "levels": "80",
   "text": ""
  },
  "5F49": {
   "title": "Hizk Ri's Test",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "51.5S, 67.9W",
-  "levels": "60-79{{!}}60-79, 80-99, 100",
   "text": ""
  },
  "5F4A": {
   "title": "Hizk Ri's Test",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "51.5S, 67.9W",
-  "levels": "60-79{{!}}60-79, 80-99, 100",
   "text": ""
  },
  "5F4B": {
   "title": "Hizk Ri's Test",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "51.5S, 67.9W",
-  "levels": "60-79{{!}}60-79, 80-99, 100",
   "text": ""
  },
  "5F4C": {
   "title": "Hizk Ri's Sewers",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "51.5S 67.9W",
-  "levels": "60-79{{!}}60-79, 80-99, 100",
   "text": ""
  },
  "5F4D": {
   "title": "Hizk Ri's Sewers",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "51.5S 67.9W",
-  "levels": "60-79{{!}}60-79, 80-99, 100",
   "text": ""
  },
  "5F4E": {
   "title": "Hizk Ri's Sewers",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "51.5S 67.9W",
-  "levels": "60-79{{!}}60-79, 80-99, 100",
   "text": ""
  },
  "5F4F": {
   "title": "Hizk Ri's Boss Dungeon",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "5F50": {
   "title": "Hizk Ri's Boss Dungeon",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "5F51": {
   "title": "Patriarch Zixki",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "51.5S 67.9W",
-  "levels": "100",
   "text": ""
  },
  "6043": {
   "title": "Tusker Warrior's Lair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Inside [[Behind the Waterfall]]",
-  "levels": "80",
   "text": ""
  },
  "6044": {
   "title": "Behind the Waterfall",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "8.7S, 85.7E",
-  "levels": "80",
   "text": ""
  },
  "6045": {
   "title": "Caul Asylum",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "94.8S, 91.0W",
-  "levels": "90",
   "text": ""
  },
  "6046": {
   "title": "Caul Athenaeum",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "94.8S, 91.0W",
-  "levels": "90",
   "text": ""
  },
  "6047": {
   "title": "Caul Sanatorium",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "94.8S, 91.0W",
-  "levels": "90",
   "text": ""
  },
  "6048": {
   "title": "Aerbax's Antechamber",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "94.8S 91.0W",
-  "levels": "90",
   "text": ""
  },
  "6049": {
   "title": "Renegade Garrison",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "44.1N 51.8E",
-  "levels": "40",
   "text": ""
  },
  "604A": {
   "title": "Sclavus Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "82.5S 75.2W",
-  "levels": "60",
   "text": ""
  },
  "604B": {
   "title": "Forbidden Catacombs",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "50",
   "text": ""
  },
  "6143": {
   "title": "Ulgrim's Basement",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "94.8S, 9.7W on [[Ulgrim's Island]]",
-  "levels": "Any",
   "text": ""
  },
  "6144": {
   "title": "Lower Corridor",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "59.9N 71.2E",
-  "levels": "Any",
   "text": ""
  },
  "6145": {
   "title": "Matron Hive West",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "25.0S, 28.1E",
-  "levels": "90",
   "text": ""
  },
  "6146": {
   "title": "Matron Hive East",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "49.8S, 62.0E",
-  "levels": "120",
   "text": ""
  },
  "6147": {
   "title": "Mountain Citadel",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "5.4N, 71.7W",
-  "levels": "Any",
   "text": ""
  },
  "6148": {
   "title": "Desert Citadel",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "84.8S, 59.7W",
-  "levels": "Any",
   "text": ""
  },
  "6149": {
   "title": "Crystal Mine",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "49.3S, 17.9E",
-  "levels": "Any",
   "text": ""
  },
  "614A": {
   "title": "Lair of the Ancient Queen",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "13.2N 0.8E",
-  "levels": "Any",
   "text": ""
  },
  "614B": {
   "title": "Drudge Fight (Dungeon)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "None (only by [[Drudge Fight Portal Gem]])",
-  "levels": "Any",
   "text": ""
  },
  "614C": {
   "title": "Resting Place",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "6243": {
   "title": "6243",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Antechamber of Liazk Itzi]]\n* [[Lair of Liazk Itzi]]\n[[Category:Landblocks]]"
  },
  "6244": {
   "title": "6244",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Liazk Itzi Guardians]]\n* [[Liazk Itzi's Offering Room]]\n[[Category:Landblocks]]"
  },
  "6245": {
   "title": "The Temple of Liazk Itzi",
   "redirect": true,
-  "summary": "Quest",
-  "coordinates": "40.7S, 11.8E",
-  "levels": "",
   "text": ""
  },
  "6246": {
   "title": "6246",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Liazk Itzi's Crypt]]\n* [[Halls of Liazk Itzi]]\n[[Category:Landblocks]]"
  },
  "6247": {
   "title": "Burun Burrow",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "27.5S, 53.9E",
-  "levels": "Any",
   "text": ""
  },
  "6248": {
   "title": "Renegade Fortress (60+)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "29.5S 65.5W",
-  "levels": "60",
   "text": ""
  },
  "6249": {
   "title": "Renegade Stronghold (Lytelthorpe)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "2.4S 63.7E",
-  "levels": "Any",
   "text": ""
  },
  "624A": {
   "title": "Burun Cavern",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.0S, 50.0E",
-  "levels": "Any",
   "text": ""
  },
  "6343": {
   "title": "Barracks",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "60",
   "text": ""
  },
  "6344": {
   "title": "Knorr Trials",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Knorr Portal Gem]]",
-  "levels": "60",
   "text": ""
  },
  "6345": {
   "title": "Subterannean Farm",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "10.6N 58.3E, Inside [[Martine's Retreat]]",
-  "levels": "20",
   "text": ""
  },
  "6346": {
   "title": "Matron Hive South",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "52.5S, 81.9E",
-  "levels": "40",
   "text": ""
  },
  "6347": {
   "title": "Matron Hive North",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "47.5S, 24.9E",
-  "levels": "60",
   "text": ""
  },
  "6348": {
   "title": "Caliginous Bethel",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "35",
   "text": ""
  },
  "6349": {
   "title": "Oubliette (Dungeon)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "None",
-  "levels": "Any",
   "text": ""
  },
  "634A": {
   "title": "Lair of The Homunculus (Dungeon)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Via [[Lair of The Homunculus (Portal Gem)]]",
-  "levels": "Any",
   "text": ""
  },
  "634B": {
   "title": "Sunken Mere",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Portal Gem (see [[The Moars]])",
-  "levels": "Any, 20, 40, 60, 80",
   "text": ""
  },
  "634C": {
   "title": "Tainted Grotto",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "17.8S, 50.6E in the [[17.8S, 50.6E - Tainted Ruins",
-  "levels": "Any",
   "text": ""
  },
  "6443": {
   "title": "Research Chamber",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Knorr Portal Gem]]",
-  "levels": "60",
   "text": ""
  },
  "6444": {
   "title": "Seat of Knorr",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Knorr Portal Gem]]",
-  "levels": "60",
   "text": ""
  },
  "6445": {
   "title": "Forge",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Knorr Portal Gem]]",
-  "levels": "60",
   "text": ""
  },
  "6446": {
   "title": "Tunnels to the Harbinger (Vincadi)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.6S, 46.7E",
-  "levels": "60",
   "text": ""
  },
  "6447": {
   "title": "Tunnels to the Harbinger (Issk)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "12.9S, 46.5E",
-  "levels": "60",
   "text": ""
  },
  "6448": {
   "title": "Mount Ingot",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "67.7S, 25.5E",
-  "levels": "Any",
   "text": ""
  },
  "6449": {
   "title": "6449",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Dragon's Power]]\n* [[Firebird's Splendor]]\n* [[Unicorn's Grace]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "644A": {
   "title": "Decrepit Tower",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "23.8N, 12.2W",
-  "levels": "40",
   "text": ""
  },
  "6543": {
   "title": "Lesser Battle Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "See [[Small Creepy Statue]] for locations.",
-  "levels": "1-50",
   "text": ""
  },
  "6544": {
   "title": "Greater Battle Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "* [[Candeth Keep]] - 87.8S, 66.9W",
-  "levels": "50",
   "text": ""
  },
  "6545": {
   "title": "Blackmire Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "21.7S, 47.7E",
-  "levels": "20",
   "text": ""
  },
  "6546": {
   "title": "Hall of the Arbiter",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "21.7S 47.7E",
-  "levels": "20",
   "text": ""
  },
  "6547": {
   "title": "Hall of the Temple Guardians",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "21.7S 47.7E",
-  "levels": "20",
   "text": ""
  },
  "6548": {
   "title": "The Orphanage",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Random on [[Caul]]",
-  "levels": "90",
   "text": ""
  },
  "6549": {
   "title": "Renegade Stronghold (Stonehold)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "71.4N, 28.6W",
-  "levels": "Any",
   "text": ""
  },
  "654A": {
   "title": "Renegade Stronghold (Tufa)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "17.0S, 5.9E",
-  "levels": "Any",
   "text": ""
  },
  "654B": {
   "title": "Renegade Stronghold (Shoushi)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "34.4S 64.8E",
-  "levels": "Any",
   "text": ""
  },
  "654C": {
   "title": "654C",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Neftet Treasury]]\n* [[Mysterious Hatch (79.9N, 41.5W)]]\n* [[Mysterious Hatch (77.9N, 42.5W)]]\n* [[Mysterious Hatch (78.9N, 40.1W)]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "654D": {
   "title": "654D",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Hoshino Kei's Fortress]]\n* [[Hoshino Kei's Treasury]]\n* [[Private Quarters]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "6651": {
   "title": "Hoshino Tower",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "79.2N, 40.3W",
-  "levels": "200",
   "text": ""
  },
  "665E": {
   "title": "Falatacot Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "78.1N 48.2W",
-  "levels": "200",
   "text": ""
  },
  "6678": {
   "title": "Olthoi Warrior Nest",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "46.9N, 81.2W",
-  "levels": "70",
   "text": ""
  },
  "6679": {
   "title": "Crumbling Empyrean Mansion",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "46.8N, 67.8W",
-  "levels": "Any",
   "text": ""
  },
  "667A": {
   "title": "Mutilator Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "52.8N, 78.1W",
-  "levels": "80",
   "text": ""
  },
  "6757": {
   "title": "Tanada Toresen Temple",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "42.5S, 72.3E",
-  "levels": "200",
   "text": ""
  },
  "7200": {
   "title": "Atrium Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Baishi]] - 49.3S, 62.4E<br>[[Glenden Wood]] - 29.7N, 27.0E<br>[[Qalaba'r]] - 74.1S, 19.2E",
-  "levels": "Any",
   "text": ""
  },
  "7202": {
   "title": "Training Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "7203": {
   "title": "Training Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "7204": {
   "title": "Training Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "7300": {
   "title": "Atrium Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Baishi]] - 49.3S, 62.4E<br>[[Glenden Wood]] - 29.7N, 27.0E<br>[[Qalaba'r]] - 74.1S, 19.2E",
-  "levels": "Any",
   "text": ""
  },
  "7302": {
   "title": "Training Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "7303": {
   "title": "Training Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "7400": {
   "title": "Atrium Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Baishi]] - 49.3S, 62.4E<br>[[Glenden Wood]] - 29.7N, 27.0E<br>[[Qalaba'r]] - 74.1S, 19.2E",
-  "levels": "Any",
   "text": ""
  },
  "7500": {
   "title": "Atrium Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Baishi]] - 49.3S, 62.4E<br>[[Glenden Wood]] - 29.7N, 27.0E<br>[[Qalaba'r]] - 74.1S, 19.2E",
-  "levels": "Any",
   "text": ""
  },
  "7600": {
   "title": "Atrium Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Baishi]] - 49.3S, 62.4E<br>[[Glenden Wood]] - 29.7N, 27.0E<br>[[Qalaba'r]] - 74.1S, 19.2E",
-  "levels": "Any",
   "text": ""
  },
  "7700": {
   "title": "Atrium Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Baishi]] - 49.3S, 62.4E<br>[[Glenden Wood]] - 29.7N, 27.0E<br>[[Qalaba'r]] - 74.1S, 19.2E",
-  "levels": "Any",
   "text": ""
  },
  "77E7": {
   "title": "Frozen Tomb",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "84.9N, 7.1W",
-  "levels": "200",
   "text": ""
  },
  "7800": {
   "title": "Atrium Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Baishi]] - 49.3S, 62.4E<br>[[Glenden Wood]] - 29.7N, 27.0E<br>[[Qalaba'r]] - 74.1S, 19.2E",
-  "levels": "Any",
   "text": ""
  },
  "7900": {
   "title": "Atrium Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Baishi]] - 49.3S, 62.4E<br>[[Glenden Wood]] - 29.7N, 27.0E<br>[[Qalaba'r]] - 74.1S, 19.2E",
-  "levels": "Any",
   "text": ""
  },
  "79E9": {
   "title": "Bloodstone Factory",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "84.5N 5.1W",
-  "levels": "200",
   "text": ""
  },
  "7A00": {
   "title": "Atrium Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Baishi]] - 49.3S, 62.4E<br>[[Glenden Wood]] - 29.7N, 27.0E<br>[[Qalaba'r]] - 74.1S, 19.2E",
-  "levels": "Any",
   "text": ""
  },
  "7B00": {
   "title": "Atrium Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Baishi]] - 49.3S, 62.4E<br>[[Glenden Wood]] - 29.7N, 27.0E<br>[[Qalaba'r]] - 74.1S, 19.2E",
-  "levels": "Any",
   "text": ""
  },
  "7C00": {
   "title": "Oriel Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Mayoi]] - 61.8S, 81.6E<br>[[Khayyaban]] - 47.4S, 25.1E<br>[[Plateau Village]] - 44.0N, 43.1W",
-  "levels": "Any",
   "text": ""
  },
  "7D00": {
   "title": "Oriel Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Mayoi]] - 61.8S, 81.6E<br>[[Khayyaban]] - 47.4S, 25.1E<br>[[Plateau Village]] - 44.0N, 43.1W",
-  "levels": "Any",
   "text": ""
  },
  "7E00": {
   "title": "Oriel Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Mayoi]] - 61.8S, 81.6E<br>[[Khayyaban]] - 47.4S, 25.1E<br>[[Plateau Village]] - 44.0N, 43.1W",
-  "levels": "Any",
   "text": ""
  },
  "7E02": {
   "title": "The Shadows",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "29.5S, 94.2E",
-  "levels": "200",
   "text": ""
  },
  "7E03": {
   "title": "Dark Cavern",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "87.9N, 9.3W",
-  "levels": "180",
   "text": ""
  },
  "7E04": {
   "title": "Thug Hideout",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "49.5S 62.8E",
-  "levels": "Any",
   "text": ""
  },
  "7F00": {
   "title": "Oriel Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Mayoi]] - 61.8S, 81.6E<br>[[Khayyaban]] - 47.4S, 25.1E<br>[[Plateau Village]] - 44.0N, 43.1W",
-  "levels": "Any",
   "text": ""
  },
  "7F02": {
   "title": "Apostate Nexus",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "40.1S, 79.2W",
-  "levels": "150",
   "text": ""
  },
  "7F03": {
   "title": "Training Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "7F04": {
   "title": "Training Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "7F66": {
   "title": "Small Fledgling Mukkir Nest",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Holtburg]] - 43.5N 36.1E<br>[[Shoushi]] - 31.3S 74.8E<br>[[Yaraq]] - 20.3S 0.2W",
-  "levels": "Any",
   "text": ""
  },
  "8000": {
   "title": "Oriel Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Mayoi]] - 61.8S, 81.6E<br>[[Khayyaban]] - 47.4S, 25.1E<br>[[Plateau Village]] - 44.0N, 43.1W",
-  "levels": "Any",
   "text": ""
  },
  "8002": {
   "title": "Training Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "8003": {
   "title": "Training Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "8004": {
   "title": "Training Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "8100": {
   "title": "Oriel Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Mayoi]] - 61.8S, 81.6E<br>[[Khayyaban]] - 47.4S, 25.1E<br>[[Plateau Village]] - 44.0N, 43.1W",
-  "levels": "Any",
   "text": ""
  },
  "8200": {
   "title": "Oriel Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Mayoi]] - 61.8S, 81.6E<br>[[Khayyaban]] - 47.4S, 25.1E<br>[[Plateau Village]] - 44.0N, 43.1W",
-  "levels": "Any",
   "text": ""
  },
  "8300": {
   "title": "Oriel Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Mayoi]] - 61.8S, 81.6E<br>[[Khayyaban]] - 47.4S, 25.1E<br>[[Plateau Village]] - 44.0N, 43.1W",
-  "levels": "Any",
   "text": ""
  },
  "8400": {
   "title": "Oriel Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Mayoi]] - 61.8S, 81.6E<br>[[Khayyaban]] - 47.4S, 25.1E<br>[[Plateau Village]] - 44.0N, 43.1W",
-  "levels": "Any",
   "text": ""
  },
  "8500": {
   "title": "Oriel Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Mayoi]] - 61.8S, 81.6E<br>[[Khayyaban]] - 47.4S, 25.1E<br>[[Plateau Village]] - 44.0N, 43.1W",
-  "levels": "Any",
   "text": ""
  },
  "8600": {
   "title": "Haven Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Lytelthorpe]] - 0.6N, 51.6E<br>[[Tou-Tou]] - 28.2S, 95.6E<br>[[Uziz]] - 24.9S, 28.3E",
-  "levels": "Any",
   "text": ""
  },
  "8602": {
   "title": "Training Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "8603": {
   "title": "Training Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "8604": {
   "title": "Training Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "8700": {
   "title": "Haven Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Lytelthorpe]] - 0.6N, 51.6E<br>[[Tou-Tou]] - 28.2S, 95.6E<br>[[Uziz]] - 24.9S, 28.3E",
-  "levels": "Any",
   "text": ""
  },
  "8702": {
   "title": "Training Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "8703": {
   "title": "Training Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "8704": {
   "title": "Crystalline Portal (Level 90)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "90",
   "text": ""
  },
  "8800": {
   "title": "Haven Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Lytelthorpe]] - 0.6N, 51.6E<br>[[Tou-Tou]] - 28.2S, 95.6E<br>[[Uziz]] - 24.9S, 28.3E",
-  "levels": "Any",
   "text": ""
  },
  "8802": {
   "title": "Roost Dungeon",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "",
   "text": ""
  },
  "8803": {
   "title": "Crystalline Portal (Level 110)",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "17.0S, 61.2W",
-  "levels": "110",
   "text": ""
  },
  "8804": {
   "title": "Mar'uun",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "8852": {
   "title": "Gear Knight Excavation",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "36.0S, 7.2E",
-  "levels": "Any",
   "text": ""
  },
  "8900": {
   "title": "Haven Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Lytelthorpe]] - 0.6N, 51.6E<br>[[Tou-Tou]] - 28.2S, 95.6E<br>[[Uziz]] - 24.9S, 28.3E",
-  "levels": "Any",
   "text": ""
  },
  "8902": {
   "title": "Mar'uun",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "8903": {
   "title": "8903",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Acid Elemental Plane]]\n* [[Electric Elemental Plane]]\n* [[Fire Elemental Plane]]\n* [[Frost Elemental Plane]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "8904": {
   "title": "8904",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Empyrean Facility Lower Level]]\n* [[Empyrean Facility Middle Level]]\n* [[Empyrean Facility Upper Level]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "8954": {
   "title": "Temple of Twilight",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "34.5S, 8.4E",
-  "levels": "Any",
   "text": ""
  },
  "8A00": {
   "title": "Haven Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Lytelthorpe]] - 0.6N, 51.6E<br>[[Tou-Tou]] - 28.2S, 95.6E<br>[[Uziz]] - 24.9S, 28.3E",
-  "levels": "Any",
   "text": ""
  },
  "8A02": {
   "title": "Facility Hub",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "Accessed via portal space only",
-  "levels": "10",
   "text": ""
  },
  "8A03": {
   "title": "Society Infiltration Dungeon",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "8A04": {
   "title": "Night Club",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "25.6N 49.2E, 39.3S 83.1E, 71.8N 60.9W, 13.7N 0.6E",
-  "levels": "Any",
   "text": ""
  },
  "8A63": {
   "title": "Temple of Mornings",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "22.1S, 8.6E",
-  "levels": "150",
   "text": ""
  },
  "8B00": {
   "title": "Haven Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Lytelthorpe]] - 0.6N, 51.6E<br>[[Tou-Tou]] - 28.2S, 95.6E<br>[[Uziz]] - 24.9S, 28.3E",
-  "levels": "Any",
   "text": ""
  },
  "8B02": {
   "title": "Forgotten Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "92.9S, 56.4W<br>93.1S, 56.9W<br>93.6S, 56.6W",
-  "levels": "180",
   "text": ""
  },
  "8B03": {
   "title": "Mysterious Portal",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "7.2S 75.0W",
-  "levels": "150",
   "text": ""
  },
  "8B04": {
   "title": "Frozen Wight Lair",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "85.3N 7.5W",
-  "levels": "180",
   "text": ""
  },
  "8C00": {
   "title": "Haven Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Lytelthorpe]] - 0.6N, 51.6E<br>[[Tou-Tou]] - 28.2S, 95.6E<br>[[Uziz]] - 24.9S, 28.3E",
-  "levels": "Any",
   "text": ""
  },
  "8C03": {
   "title": "Mhoire Castle",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "64.7S 45.2W",
-  "levels": "Any",
   "text": ""
  },
  "8C04": {
   "title": "Training Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "8D00": {
   "title": "Haven Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Lytelthorpe]] - 0.6N, 51.6E<br>[[Tou-Tou]] - 28.2S, 95.6E<br>[[Uziz]] - 24.9S, 28.3E",
-  "levels": "Any",
   "text": ""
  },
  "8D02": {
   "title": "Training Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "8D03": {
   "title": "Training Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "8D04": {
   "title": "Training Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "8E00": {
   "title": "Haven Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Lytelthorpe]] - 0.6N, 51.6E<br>[[Tou-Tou]] - 28.2S, 95.6E<br>[[Uziz]] - 24.9S, 28.3E",
-  "levels": "Any",
   "text": ""
  },
  "8E02": {
   "title": "Training Academy",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "N/A",
-  "levels": "Any",
   "text": ""
  },
  "8F00": {
   "title": "Haven Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Lytelthorpe]] - 0.6N, 51.6E<br>[[Tou-Tou]] - 28.2S, 95.6E<br>[[Uziz]] - 24.9S, 28.3E",
-  "levels": "Any",
   "text": ""
  },
  "9000": {
   "title": "Victory Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Khayyaban]] - 48.0S, 24.5E<br>[[Lin]] - 54.3S, 73.1E<br>[[Samsur]] - 3.2S, 19.1E",
-  "levels": "Any",
   "text": ""
  },
  "9100": {
   "title": "Victory Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Khayyaban]] - 48.0S, 24.5E<br>[[Lin]] - 54.3S, 73.1E<br>[[Samsur]] - 3.2S, 19.1E",
-  "levels": "Any",
   "text": ""
  },
  "9200": {
   "title": "Victory Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Khayyaban]] - 48.0S, 24.5E<br>[[Lin]] - 54.3S, 73.1E<br>[[Samsur]] - 3.2S, 19.1E",
-  "levels": "Any",
   "text": ""
  },
  "9300": {
   "title": "Victory Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Khayyaban]] - 48.0S, 24.5E<br>[[Lin]] - 54.3S, 73.1E<br>[[Samsur]] - 3.2S, 19.1E",
-  "levels": "Any",
   "text": ""
  },
  "9302": {
   "title": "Geraine's Study",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "82.9N, 6.4W",
-  "levels": "150",
   "text": ""
  },
  "9400": {
   "title": "Victory Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Khayyaban]] - 48.0S, 24.5E<br>[[Lin]] - 54.3S, 73.1E<br>[[Samsur]] - 3.2S, 19.1E",
-  "levels": "Any",
   "text": ""
  },
  "9500": {
   "title": "Victory Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Khayyaban]] - 48.0S, 24.5E<br>[[Lin]] - 54.3S, 73.1E<br>[[Samsur]] - 3.2S, 19.1E",
-  "levels": "Any",
   "text": ""
  },
  "9600": {
   "title": "Victory Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Khayyaban]] - 48.0S, 24.5E<br>[[Lin]] - 54.3S, 73.1E<br>[[Samsur]] - 3.2S, 19.1E",
-  "levels": "Any",
   "text": ""
  },
  "9700": {
   "title": "Victory Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Khayyaban]] - 48.0S, 24.5E<br>[[Lin]] - 54.3S, 73.1E<br>[[Samsur]] - 3.2S, 19.1E",
-  "levels": "Any",
   "text": ""
  },
  "9800": {
   "title": "Victory Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Khayyaban]] - 48.0S, 24.5E<br>[[Lin]] - 54.3S, 73.1E<br>[[Samsur]] - 3.2S, 19.1E",
-  "levels": "Any",
   "text": ""
  },
  "9900": {
   "title": "Victory Residential Halls",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Khayyaban]] - 48.0S, 24.5E<br>[[Lin]] - 54.3S, 73.1E<br>[[Samsur]] - 3.2S, 19.1E",
-  "levels": "Any",
   "text": ""
  },
  "9EE5": {
   "title": "Northwatch Castle Black Market",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "81.5N 25.0E (Inside cave)",
-  "levels": "180",
   "text": ""
  },
  "A05B": {
   "title": "Old Scratchy's Cave",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "29.0S, 26.6E",
-  "levels": "Any",
   "text": ""
  },
  "A1A3": {
   "title": "Cavern",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "29.2N, 27.2E",
-  "levels": "Any",
   "text": ""
  },
  "ACB5": {
   "title": "Small Fledgling Mukkir Nest",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Holtburg]] - 43.5N 36.1E<br>[[Shoushi]] - 31.3S 74.8E<br>[[Yaraq]] - 20.3S 0.2W",
-  "levels": "Any",
   "text": ""
  },
  "B070": {
   "title": "Granite Quarry",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "11.8S, 39.0E",
-  "levels": "Any",
   "text": ""
  },
  "B5F0": {
   "title": "Aerfalle's Sanctum",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "From [[Aerfalle Keep]]",
-  "levels": "150",
   "text": ""
  },
  "C4B4": {
   "title": "Ward Guardian Cave",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "43.1N 55.1E",
-  "levels": "Any",
   "text": ""
  },
  "C4B5": {
   "title": "C4B5",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Empty Paradox Olthoi Cave]]\n* [[Paradox Olthoi Refuge]]\n* [[Ward Guardian Cave]]\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "C4F2": {
   "title": "Sclavus Tunnels",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "92.3N 55.5E",
-  "levels": "150",
   "text": ""
  },
  "C7B7": {
   "title": "C7B7",
   "redirect": false,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": "* [[Paradox-Touched Olthoi Queen's Lair]]\n* [[Sealed Olthoi Passage]]\n* Cave at 44.5N 57.3E used to return to the Queen's Lair.\n\n[[Category:Landblocks]]\n[[Category:Disambiguation]]"
  },
  "CAEC": {
   "title": "Vaeshok's Cave",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "D2D4": {
   "title": "Targor's Cave",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "68.2N 66.5E in [[Olthoi North]]",
-  "levels": "Any",
   "text": ""
  },
  "D756": {
   "title": "Rat King's Cave",
   "redirect": true,
-  "summary": "",
-  "coordinates": "",
-  "levels": "",
   "text": ""
  },
  "DC58": {
   "title": "Small Fledgling Mukkir Nest",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "[[Holtburg]] - 43.5N 36.1E<br>[[Shoushi]] - 31.3S 74.8E<br>[[Yaraq]] - 20.3S 0.2W",
-  "levels": "Any",
   "text": ""
  },
  "EA6C": {
   "title": "Whispering Caverns",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "14.9S 86.0E'''<br> on [[Aphus Lassel]]",
-  "levels": "130",
   "text": ""
  },
  "EB1D": {
   "title": "Mosswart Holding",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "78.2S, 86.7E",
-  "levels": "Any",
   "text": ""
  },
  "F784": {
   "title": "Tusker Emporium",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "4.3N, 95.8E",
-  "levels": "Any",
   "text": ""
  },
  "F81E": {
   "title": "Blessed Cave",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "77.9S, 96.6E",
-  "levels": "150",
   "text": ""
  },
  "F838": {
   "title": "Moarsman Prison",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "56.4S 96.9E",
-  "levels": "180",
   "text": ""
  },
  "F83B": {
   "title": "Bandit Magma Tubes",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "54.4S, 97.2E on [[Freebooter Isle]]",
-  "levels": "180",
   "text": ""
  },
  "F92F": {
   "title": "Freebooter Keep Black Market",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "64.0S 97.5E on [[Freebooter Isle]] (Inside cave)",
-  "levels": "180",
   "text": ""
  },
  "F930": {
   "title": "Freebooter Phyntos Wasp Hive",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "63.1S 97.5E",
-  "levels": "180",
   "text": ""
  },
  "F93B": {
   "title": "Bandit Magma Tubes",
   "redirect": true,
-  "summary": "Dungeon",
-  "coordinates": "54.4S, 97.2E on [[Freebooter Isle]]",
-  "levels": "180",
   "text": ""
  }
 }

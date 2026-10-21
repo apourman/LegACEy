@@ -1,6 +1,6 @@
 # Crawls asheron.fandom.com Category:Landblocks: each member is a landblock id page that redirects to its place's article.
 # Writes raw.json beside this file; compile.py turns it into Content/landblock-names.tsv (run it after this).
-import json, os, re, time, urllib.parse, urllib.request
+import json, os, time, urllib.parse, urllib.request
 API = 'https://asheron.fandom.com/api.php'
 def get(**q):
     q['format'] = 'json'
@@ -27,8 +27,7 @@ for i in range(0, len(titles), 50):
         target = to.get(norm.get(t, t), norm.get(t, t))
         p = pages.get(target, {})
         text = p.get('revisions', [{}])[0].get('slots', {}).get('main', {}).get('*', '')
-        field = lambda k: (m.group(1).strip() if (m := re.search(r'\|\s*' + k + r'\s*=\s*([^\n|]*)', text)) else '')
-        out[t] = {'title': target, 'redirect': target != t, 'summary': (m.group(1) if (m := re.search(r'\{\{(\w[\w ]*?) Summary', text)) else ''),
-                  'coordinates': field('Coordinates'), 'levels': field('Level Restrictions'), 'text': text if target == t else ''}
+        out[t] = {'title': target, 'redirect': target != t, 'text': text if target == t else ''}
     time.sleep(1)
-json.dump(out, open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'raw.json'), 'w'), indent=1)
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'raw.json'), 'w') as f:
+    json.dump(out, f, indent=1)
