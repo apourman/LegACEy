@@ -148,10 +148,13 @@ The Dereth radar replaces retail's radar, at retail's place: the land around the
 heading tape above and the coordinates below. Hover a dot to name it with its distance and direction, click it to select it, and use the
 wheel to zoom. Indoors the radar draws the floor plan of the place from the DATs instead: the player's floor solid, the others faint, and
 a building's town ground under it. A ladder beside the bezel has a pip a level, top first; hovering a pip peeks at that level in teal, and the
-player's floor is left out until the pointer leaves. Stairs to another level are ▲ or ▼ marks on the plan, and a dot on another level is drawn
+player's floor is left out until the pointer leaves. A dot on another level is drawn
 as a ▲ or ▼ arrow. The bezel's lock button locks and unlocks retail's UI; its gear opens the options (Show map, North up,
 Range rings, Zoom), kept per character, with the indoor zoom kept apart from the outdoor one. With the UI unlocked, hovering the radar
-shows gold corners: drag one, or an edge, to draw it larger or smaller, from its 1× layout to three times it; it opens at twice. Creating
+shows gold corners: drag one, or an edge, to draw it larger or smaller, from its 1× layout to three times it; it opens at twice.
+Ctrl+click a spot on the radar to ping it: a pulsing diamond shows there for 15 seconds, in a colour picked from the sender's name, and
+a ping past the radar's range is an arrow on the rim. On a LegACEy server your fellowship sees it too (fellows in the same instance on
+their radar, every fellow as a fellowship chat line with the coordinates); without a fellowship, or on another server, only you do. Creating
 an empty file named `retail-radar-native` beside the main DLL gives retail's radar back within a second; deleting it takes the radar over
 again.
 
