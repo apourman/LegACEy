@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/apourman/LegACEy/compare/v0.12.0...v0.13.0) (2026-10-21)
+
+
+### Features
+
+* radar pings ([#110](https://github.com/apourman/LegACEy/issues/110)) ([db0f503](https://github.com/apourman/LegACEy/commit/db0f503bda5ecb3994ef616a482707983b1382e2))
+
 ## [0.12.0](https://github.com/apourman/LegACEy/compare/v0.11.0...v0.12.0) (2026-10-21)
 
 
