@@ -40,7 +40,7 @@ public sealed class ShortcutBarTests
     });
 
     [Fact]
-    public void A_click_uses_the_slot_it_lands_on_and_an_empty_slot_uses_nothing() => RenderThread.Run(() =>
+    public void A_click_selects_and_uses_the_slot_it_lands_on_and_an_empty_slot_does_nothing() => RenderThread.Run(() =>
     {
         var held = new Dictionary<uint, ShortcutItem> { [0x200] = Swords };
         var port = new FakeShortcutPort(new[] { new RetailShortcut(4, 0x200) });
@@ -50,6 +50,7 @@ public sealed class ShortcutBarTests
         Click(panel, bar, bar.SlotAt(1));
         Click(panel, bar, bar.SlotAt(4));
 
+        Assert.Equal(new[] { 0x200u }, port.Selected);
         Assert.Equal(new[] { 4 }, port.Used);
     });
 
@@ -314,6 +315,8 @@ public sealed class ShortcutBarTests
         public bool IsPanelOpen(RetailPanel panel) => false;
         public void SetPanelOpen(RetailPanel panel, bool open) { }
         public void UseShortcut(int index) => Used.Add(index);
+        public void Select(uint objectId) => Selected.Add(objectId);
+        public List<uint> Selected { get; } = new();
         public void AddShortcut(int index, uint objectId)
         {
             Edits.Add($"add {index} 0x{objectId:X}");

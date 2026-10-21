@@ -47,6 +47,8 @@ public interface IRetailToolbarPort
     IReadOnlyList<RetailShortcut> Shortcuts { get; }
     /// <summary>Uses the shortcut in a slot, as the number key does.</summary>
     void UseShortcut(int index);
+    /// <summary>Selects an object, as a click on it in a retail item list does, so it can be examined.</summary>
+    void Select(uint objectId);
     /// <summary>Puts an object into a slot as a shortcut, as retail's add does, so the server keeps it.</summary>
     void AddShortcut(int index, uint objectId);
     /// <summary>Takes the shortcut out of a slot, as retail's remove does, so the server drops it.</summary>
