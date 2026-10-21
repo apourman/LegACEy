@@ -39,7 +39,7 @@ namespace ACE.Server.ClientChannel
         /// </summary>
         internal static string NameFor(ushort landblock, RealmDefinition realm)
         {
-            if (realm is { Id: not 0, Name: { Length: > 0 } name }) return name;
+            if (realm != null && realm.Id != RealmDefinition.BaseWorld.Id && !string.IsNullOrEmpty(realm.Name)) return realm.Name;
             var names = LandblockNames.Get(landblock);
             return names.Count == 1 ? names[0] : string.Empty;
         }
