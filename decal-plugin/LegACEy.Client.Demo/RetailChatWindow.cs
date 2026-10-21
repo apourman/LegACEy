@@ -438,7 +438,8 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         foreach (var line in _lines.Children)
         {
             if (line.Tag is not DateTime arrived) continue;
-            var opacity = _fade.LineOpacity(arrived, now);
+            // With a backdrop left when idle, the log stays readable over it, as retail's does.
+            var opacity = InactiveOpacity > 0 ? 1 : _fade.LineOpacity(arrived, now);
             SetOpacity(line, opacity);
             var effect = idle ? LineShadow : null;
             if (line.Effect != effect) line.Effect = effect;
@@ -514,8 +515,20 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     /// <summary>The log's backdrop opacity in percent while the window is awake. A change applies on the next frame.</summary>
     public int ActiveOpacity { get; set; } = RetailChatWindows.DefaultActiveOpacity;
 
-    /// <summary>The log's backdrop opacity in percent once the window is idle. A change applies on the next frame.</summary>
-    public int InactiveOpacity { get; set; } = RetailChatWindows.DefaultInactiveOpacity;
+    /// <summary>
+    /// The log's backdrop opacity in percent once the window is idle; above 0 the lines stay shown over it rather than fading. A change applies
+    /// on the next frame.
+    /// </summary>
+    public int InactiveOpacity
+    {
+        get => _inactiveOpacity;
+        set
+        {
+            _inactiveOpacity = value;
+            _linesSettled = false;
+        }
+    }
+    private int _inactiveOpacity = RetailChatWindows.DefaultInactiveOpacity;
 
     /// <summary>The text size the window's content is drawn at, 1 for its design size.</summary>
     public double TextScale

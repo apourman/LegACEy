@@ -248,11 +248,14 @@ public sealed class RetailChatWindowsTests
         using var first = ChatDesk.Open(port, path, Character, positions, clock: () => clock.Now);
         first.Chat.SetActiveOpacity(80);
         first.Chat.SetInactiveOpacity(30);
+        port.Say(new RetailChatLine(RetailChatKind.Allegiance, "Kaelith tells the allegiance, \"pull the next\"", Stamp, "Kaelith"));
         first.Tick();
         Assert.Equal(0.8, Seen(Groove(first.Main)));
         clock.Advance(TimeSpan.FromSeconds(RetailChatFade.DefaultIdleAfterSeconds + RetailChatFade.ChromeFadeSeconds));
         first.Tick();
         Assert.Equal(0.3, Seen(Groove(first.Main)));
+        // With a backdrop left, the line outlasts its stay instead of fading.
+        Assert.Equal(1.0, Seen(first.Main.GetVisualDescendants().OfType<Control>().First(part => part.Tag is DateTime)));
         first.Dispose();
 
         // The opacities are kept for Alice, so her window opens awake at the active opacity.
