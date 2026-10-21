@@ -219,6 +219,27 @@ public sealed class RetailChatWindowsTests
     }));
 
     [Fact]
+    public void Instant_fades_the_window_as_soon_as_it_is_left_alone() => RenderThread.Run(() => WithStore(path =>
+    {
+        var clock = new DeskClock(Stamp);
+        var positions = new MemoryWindowPositionStore();
+        var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };
+        using var first = ChatDesk.Open(port, path, Character, positions, clock: () => clock.Now);
+        Assert.Equal(1.0, Seen(Frame(first.Main)));
+        first.Chat.SetFadeSeconds(RetailChatWindows.FadesInstantly);
+        clock.Advance(TimeSpan.FromSeconds(0.3));
+        first.Tick();
+        Assert.Equal(0.0, Seen(Frame(first.Main)));
+        first.Dispose();
+
+        // Instant is kept for Alice, so her window fades at once when it reopens.
+        using var second = ChatDesk.Open(port, path, Character, positions, clock: () => clock.Now);
+        clock.Advance(TimeSpan.FromSeconds(0.3));
+        second.Tick();
+        Assert.Equal(0.0, Seen(Frame(second.Main)));
+    }));
+
+    [Fact]
     public void Unread_counts_work_in_a_torn_off_window_and_the_main_window() => RenderThread.Run(() => WithStore(path =>
     {
         var port = new RetailChatTests.FakeChatPort { Membership = InFellowship };

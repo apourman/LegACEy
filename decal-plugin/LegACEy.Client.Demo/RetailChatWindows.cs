@@ -41,10 +41,12 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     public const int DefaultTextSize = 120;
     public const int SmallestTextSize = 80, LargestTextSize = 200, TextSizeStep = 10;
     private int _textSize = DefaultTextSize;
-    // How long a chat window is left alone before it fades, in seconds, kept per character in the position store. NeverFades keeps it awake.
+    // How long a chat window is left alone before it fades, in seconds, kept per character in the position store. NeverFades keeps it awake;
+    // FadesInstantly fades as soon as it is left alone.
     public const string FadeKey = "dereth-chat-fade";
     public const int NeverFades = 0;
-    public static readonly IReadOnlyList<int> FadeChoices = new[] { NeverFades, 10, RetailChatFade.DefaultIdleAfterSeconds, 30, 60 };
+    public const int FadesInstantly = -1;
+    public static readonly IReadOnlyList<int> FadeChoices = new[] { NeverFades, FadesInstantly, 10, RetailChatFade.DefaultIdleAfterSeconds, 30, 60 };
     private int _fadeSeconds = RetailChatFade.DefaultIdleAfterSeconds;
     // Where a torn-off window opens from the pointer: the tab it came from is under the pointer, so the window follows it.
     private static readonly Size Grab = new(24, 9);
@@ -314,9 +316,9 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
         positions.Save(server, character, TextSizeKey, (new Point(ClampTextSize(percent), 0), null));
 
     /// <summary>The idle delay every chat window uses, or null when it never fades.</summary>
-    private int? FadeDelay => _fadeSeconds == NeverFades ? null : _fadeSeconds;
+    private int? FadeDelay => _fadeSeconds switch { NeverFades => null, FadesInstantly => 0, var seconds => seconds };
 
-    /// <summary>Sets how long every chat window is left alone before it fades, in seconds (<see cref="NeverFades"/> keeps them awake), and keeps it for the character.</summary>
+    /// <summary>Sets how long every chat window is left alone before it fades, in seconds (<see cref="NeverFades"/> keeps them awake, <see cref="FadesInstantly"/> fades them at once), and keeps it for the character.</summary>
     public void SetFadeSeconds(int seconds)
     {
         if (_disposed) return;

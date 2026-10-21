@@ -147,7 +147,7 @@ public sealed class SettingsPanelTests
         settings.Radar = new OptionChoice<RadarOptions>(new RadarOptions(Map: false), _ => { });
 
         TextOf(panel, "140%");
-        Assert.Equal(4, TextOf(panel, "60 s").GetVisualAncestors().OfType<DerethSegmented>().First().Selected);
+        Assert.Equal(5, TextOf(panel, "60 s").GetVisualAncestors().OfType<DerethSegmented>().First().Selected);
         Assert.False(ground.On);
     });
 

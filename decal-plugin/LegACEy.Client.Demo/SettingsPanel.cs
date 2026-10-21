@@ -396,13 +396,14 @@ public sealed class SettingsPanel : UserControl
         return OptionRow("Text size", stepper);
     }
 
-    /// <summary>How long the chat waits before it fades when left alone. Never is 0 seconds.</summary>
+    /// <summary>How long the chat waits before it fades when left alone. Never is 0 seconds; Instant fades as soon as it is left.</summary>
     private Control ChatFadeRow()
     {
         // Labelled as the mockup does: only the longest choice carries its unit.
         var fade = new DerethSegmented(RetailChatWindows.FadeChoices.Select(seconds => seconds switch
         {
             RetailChatWindows.NeverFades => "Never",
+            RetailChatWindows.FadesInstantly => "Instant",
             60 => "60 s",
             _ => seconds.ToString(CultureInfo.InvariantCulture),
         }).ToArray());
