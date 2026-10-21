@@ -47,6 +47,8 @@ internal static class RetailAttackCatalogue
     internal const uint AutoTarget = 0x005D3E90, SetAutoTarget = 0x005D3EA0;
     // PlayerModule::ViewCombatTarget and SetViewCombatTarget (bit 0x80).
     internal const uint ViewCombatTarget = 0x005D3CB0, SetViewCombatTarget = 0x005D3CC0;
+    // PlayerModule::AdvancedCombatUI (bit 0x1000). SetCombatMode caches it at ClientCombatSystem+0x50 and picks the power-bar mode from it.
+    internal const uint AdvancedCombatUI = 0x005D3E40;
 
     // The height, set point, charge, options and combat mode lists. Every list is checked on its own.
     internal static readonly IReadOnlyList<NativeUiEntry> Height = new[]
@@ -91,6 +93,8 @@ internal static class RetailAttackCatalogue
             "ThisCall () -> bool"),
         Entry("PlayerModule::SetViewCombatTarget (sets bit 0x80 and notifies the change)", SetViewCombatTarget,
             "8B 91 8C 00 00 00 8A 44 24 04 C1 EA 07 80 E2 01 3A D0 74 29", "ThisCall (bool)"),
+        Entry("PlayerModule::AdvancedCombatUI (CharacterOptions1 bit 0x1000)", AdvancedCombatUI, "8B 81 8C 00 00 00 C1 E8 0C 83 E0 01 C3",
+            "ThisCall () -> bool"),
         Entry("PlayerModule receiver: CPlayerSystem+0x34 (lea ecx, [eax+0x34]) before the option reads", PlayerModuleReceiverForOptions,
             "8D 48 34 E8 2A 73 06 00", "instruction reference (PlayerModule at +0x34)")
     };
