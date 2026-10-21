@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
@@ -170,6 +171,20 @@ public sealed class RetailRadarWindowTests
 
         Assert.Equal(3, window.Frame!.PlanLevels.Count);
         Assert.Equal(0, window.TilesDrawn);
+    });
+
+    [Fact]
+    public void Overlapping_floors_of_a_level_fill_as_one_with_no_hole_where_they_cross() => RenderThread.Run(() =>
+    {
+        // The plan's paths are platform geometry: a panel starts the platform.
+        using var panel = Open(PortWith(), out _);
+        IReadOnlyList<GroundPoint> Square(float x, float y) =>
+            new[] { new GroundPoint(x, y), new GroundPoint(x + 4, y), new GroundPoint(x + 4, y + 4), new GroundPoint(x, y + 4) };
+        var cell = new IndoorCell(0x0100, 0, new[] { Square(0, 0), Square(2, 2) }, Array.Empty<(GroundPoint, GroundPoint)>(),
+            Array.Empty<(Vec3, ushort)>());
+        var level = new RadarPlanLevel(new IndoorLevel(new[] { cell }), Array.Empty<(GroundPoint, bool)>());
+
+        Assert.True(level.Floors.FillContains(new Point(3, 3)));
     });
 
     [Fact]

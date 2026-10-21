@@ -38,14 +38,15 @@ public sealed class RadarPlanLevel
 
     private static Geometry FloorPath(IndoorLevel level)
     {
-        // Overlapping floors fill as one, as a canvas path does. Avalonia 11.3's StreamGeometryContext has no fill rule to set, so the
-        // floors are a path geometry, whose FillRule is non-zero.
-        var geometry = new PathGeometry { FillRule = FillRule.NonZero };
+        var geometry = new StreamGeometry();
+        using var context = geometry.Open();
+        // Overlapping floors fill as one, as a canvas path does.
+        context.SetFillRule(FillRule.NonZero);
         foreach (var floor in level.Floors)
         {
-            var figure = new PathFigure { StartPoint = At(floor[0]), IsClosed = true, IsFilled = true };
-            for (var i = 1; i < floor.Count; i++) figure.Segments!.Add(new LineSegment { Point = At(floor[i]) });
-            geometry.Figures!.Add(figure);
+            context.BeginFigure(At(floor[0]), true);
+            for (var i = 1; i < floor.Count; i++) context.LineTo(At(floor[i]));
+            context.EndFigure(true);
         }
         return geometry;
     }
