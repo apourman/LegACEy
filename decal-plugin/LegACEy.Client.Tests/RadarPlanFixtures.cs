@@ -17,7 +17,7 @@ internal static class RadarPlanFixtures
     private const float Y0 = 82;
 
     /// <summary>Three rooms stacked 4 m apart: the lowest (0x0100) and the top (0x0102) each a stair from the middle (0x0101).</summary>
-    public static IndoorPlan Dungeon() => IndoorPlan.Build(0xC6, 0xA9, new[]
+    public static IndoorPlan Dungeon(int x = 0xC6, int y = 0xA9) => IndoorPlan.Build(x, y, new[]
     {
         Room(0x0100, Near, 0, 0x0101),
         Room(0x0101, Near, 4, 0x0100, 0x0102),

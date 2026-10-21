@@ -46,6 +46,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     private readonly Action<RadarOptions> _saved;
     private readonly Func<uint> _selected;
     private readonly Action _startMove;
+    private readonly Func<uint, string?>? _serverName;
     // Each landblock's tile as a bitmap, converted once per tile and dropped once it leaves the nine around the player.
     private readonly Dictionary<ushort, (GameImage Source, WriteableBitmap Bitmap)> _bitmaps = new();
     // The tiles drawn last read, and the landblocks among them; both refilled each read, so the lists are kept rather than made anew. The
@@ -101,8 +102,9 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     /// <param name="saved">Told each time an option or the zoom changes, to keep it for the character.</param>
     /// <param name="selected">The selected object's id, or 0, for the green ring.</param>
     /// <param name="startMove">Starts the window's move, from a press on the frame when the UI is not locked.</param>
+    /// <param name="serverName">The server's name for a cell's place, or null when the server names none; see <see cref="RadarScope.Plaque"/>.</param>
     public RetailRadarWindow(IRadarPort port, Func<GroundTiles?> ground, Func<IndoorPlanCache?> plans, RadarOptions options, Action<RadarOptions> saved,
-        Func<uint> selected, Action startMove)
+        Func<uint> selected, Action startMove, Func<uint, string?>? serverName = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _ground = ground ?? throw new ArgumentNullException(nameof(ground));
@@ -111,6 +113,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         _saved = saved ?? throw new ArgumentNullException(nameof(saved));
         _selected = selected ?? throw new ArgumentNullException(nameof(selected));
         _startMove = startMove ?? throw new ArgumentNullException(nameof(startMove));
+        _serverName = serverName;
 
         _bezel = new DerethRadarBezel { Width = Diameter + 22, Height = Diameter + 22, Margin = new Thickness(ScopeOrigin.X - 11, ScopeOrigin.Y - 11, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, IsHitTestVisible = false };
         _coordinates = DerethPalette.CentreInk(new TextBlock { FontFamily = DerethPalette.Title, FontSize = 10, Foreground = DerethPalette.CreamBrush });
@@ -195,7 +198,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         Child = new HeightScaled(LayoutHeight) { Child = grid };
     }
 
-    /// <summary>The coordinates plaque was clicked, with the coordinates it shows.</summary>
+    /// <summary>The plaque was clicked, with the text it shows.</summary>
     public event Action<string>? CoordinatesClicked;
 
     /// <summary>Whether the resize corners show: while the pointer is over the radar and the UI is unlocked.</summary>
@@ -294,7 +297,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     // Draws the radar from the last read, with the options and hover as they are now. Makes no game calls, so the events can use it.
     private void Rebuild()
     {
-        var frame = RadarScope.Build(_player, _objects, Options, Radius, _plan);
+        var frame = RadarScope.Build(_player, _objects, Options, Radius, _plan, _serverName);
         _frame = frame;
         var tiles = GroundFor(frame);
         _tilesDrawn = tiles.Count;
@@ -326,8 +329,8 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
 
         _bezel.Turn = frame.Turn;
         _tape.Heading = frame.Heading;
-        _coordinates.Text = frame.Coordinates ?? string.Empty;
-        _coordinatesPlaque.IsVisible = frame.Coordinates != null;
+        _coordinates.Text = frame.Plaque ?? string.Empty;
+        _coordinatesPlaque.IsVisible = frame.Plaque != null;
         // Without retail's lock natives the port's UiLocked does nothing, so the button is not shown.
         _lock.IsVisible = _port.UiLockAvailable;
         // The medallion redraws on every set, so it is set only when the lock changes.

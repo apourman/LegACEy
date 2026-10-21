@@ -58,7 +58,9 @@ public sealed class RetailRadarRenderTests
         using var indoors = new IndoorDat(portalPath, cellPath);
         var plans = new IndoorPlanCache(indoors.ReadPlan);
 
+        Render(folder, "radar-indoor-0099-1x.png", 1, ground, new RadarOptions(), player: Standing(plans, 0x00990100), plans: plans);
         Render(folder, "radar-indoor-0099-2x.png", 2, ground, new RadarOptions(), player: Standing(plans, 0x00990100), plans: plans);
+        Render(folder, "radar-indoor-house-1x.png", 1, ground, new RadarOptions(), player: Standing(plans, 0xC6A90168), plans: plans);
         Render(folder, "radar-indoor-house-2x.png", 2, ground, new RadarOptions(), player: Standing(plans, 0xC6A90168), plans: plans);
         Render(folder, "radar-indoor-house-25m-2x.png", 2, ground, new RadarOptions(IndoorZoom: 25), player: Standing(plans, 0xC6A90168),
             plans: plans);

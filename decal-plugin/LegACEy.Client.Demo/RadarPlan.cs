@@ -74,13 +74,29 @@ public sealed class RadarPlan
     {
         _place = landblock.Place(cell);
         Levels = _place.Levels.Select(level => new RadarPlanLevel(level)).ToArray();
-        Building = _place.Cells.Any(c => c.Doors.Any(door => door.Beyond == Outside));
+        // The levels run top first, so the lowest level with a door outside is the largest index among the cells with one.
+        Ground = _place.Cells.Where(c => c.Doors.Any(door => door.Beyond == Outside))
+            .Select(c => _place.LevelOf(c.Id)).DefaultIfEmpty(-1).Max();
     }
 
     public IReadOnlyList<RadarPlanLevel> Levels { get; }
 
+    /// <summary>The index in <see cref="Levels"/> of a building's ground floor, the lowest level with a door outside; -1 in a dungeon.</summary>
+    public int Ground { get; }
+
     /// <summary>Whether a door leads outside: a building, not a dungeon.</summary>
-    public bool Building { get; }
+    public bool Building => Ground >= 0;
+
+    /// <summary>
+    /// A level's name in a building, as the plaque gives it: Ground; Upstairs for the level above it, then Floor n for the levels above that;
+    /// Cellar for the level below it, then Cellar n.
+    /// </summary>
+    public string FloorName(int level)
+    {
+        if (level < Ground) return Ground - level == 1 ? "Upstairs" : $"Floor {Ground - level + 1}";
+        if (level == Ground) return "Ground";
+        return level - Ground == 1 ? "Cellar" : $"Cellar {level - Ground}";
+    }
 
     /// <summary>Whether the cell, the low word of its full id, is in this place.</summary>
     public bool Contains(ushort cell) => _place.LevelOf(cell) >= 0;

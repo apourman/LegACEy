@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Avalonia;
+using LegACEy.Client.GameArt;
 
 namespace LegACEy.Client.Demo;
 
@@ -79,7 +80,7 @@ public sealed record RadarPlanDraw(RadarPlanLevel Level, bool Solid);
 public sealed class RadarScopeFrame
 {
     public RadarScopeFrame(IReadOnlyList<RadarScopeDot> dots, IReadOnlyList<RadarScopeTile> tiles, double turn, double pixelsPerMetre,
-        string? coordinates, double heading, IReadOnlyList<RadarPlanDraw> planLevels, Point planOrigin)
+        string? coordinates, double heading, IReadOnlyList<RadarPlanDraw> planLevels, Point planOrigin, string? plaque)
     {
         Dots = dots;
         Tiles = tiles;
@@ -89,6 +90,7 @@ public sealed class RadarScopeFrame
         Heading = heading;
         PlanLevels = planLevels;
         PlanOrigin = planOrigin;
+        Plaque = plaque;
     }
 
     public IReadOnlyList<RadarScopeDot> Dots { get; }
@@ -106,6 +108,8 @@ public sealed class RadarScopeFrame
     public double PixelsPerMetre { get; }
     /// <summary>The player's coordinates as retail writes them, or null without a player.</summary>
     public string? Coordinates { get; }
+    /// <summary>The plaque's text, as <see cref="RadarScope.Plaque"/> makes it, or null without a player.</summary>
+    public string? Plaque { get; }
     /// <summary>The player's heading in degrees (0 north, 90 east), or 0 without a player.</summary>
     public double Heading { get; }
 }
@@ -117,6 +121,8 @@ public static class RadarScope
     private const double LevelMetres = 5, FadedAlpha = 0.65;
     // Retail's hover reach, in pixels.
     private const double HoverReach = 6;
+    // The plaque fits about this many characters at the radar's size: a name too long for it beside the level is cut, with an ellipsis.
+    private const int PlaqueCharacters = 27;
     private const double LandblockMetres = 192;
     private static readonly string[] Points = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
 
@@ -125,8 +131,9 @@ public static class RadarScope
     /// <param name="options">The radar's options: the map, north-up and zoom.</param>
     /// <param name="radius">The scope's radius in DIPs.</param>
     /// <param name="plan">The plan of the place the player is in, or null outdoors and until it is built.</param>
+    /// <param name="serverName">The server's name for a cell's place, or null; see <see cref="Plaque"/>.</param>
     public static RadarScopeFrame Build(RadarPlayer? player, IReadOnlyList<RadarObject> objects, RadarOptions options, double radius,
-        RadarPlan? plan = null)
+        RadarPlan? plan = null, Func<uint, string?>? serverName = null)
     {
         var indoors = player is { Position.Outdoors: false };
         var range = indoors ? RadarZoom.ClampIndoor(options.IndoorZoom) : RadarZoom.Clamp(options.Zoom);
@@ -152,7 +159,40 @@ public static class RadarScope
         }
         var planLevels = drawn?.DrawOrder(level) ?? Array.Empty<RadarPlanDraw>();
         var origin = player == null ? default : new Point(player.Position.X, player.Position.Y);
-        return new RadarScopeFrame(dots, tiles, turn, scale, player?.Position.Coordinates, player?.Heading ?? 0, planLevels, origin);
+        return new RadarScopeFrame(dots, tiles, turn, scale, player?.Position.Coordinates, player?.Heading ?? 0, planLevels, origin,
+            Plaque(player, plan, serverName));
+    }
+
+    /// <summary>
+    /// The plaque's text: the coordinates outdoors and until the plan is built. In a building, the coordinates and the floor
+    /// ("33.6N, 56.7E · Ground"). In a dungeon, the place's name and the level from the top ("Arwic Mines · Level 2 of 6"), the name cut
+    /// with an ellipsis when it is too long, or the level alone without a name. Null without a player.
+    /// </summary>
+    /// <param name="serverName">The server's name for the cell's place, which wins; null or empty leaves the shared list to name it.</param>
+    public static string? Plaque(RadarPlayer? player, RadarPlan? plan, Func<uint, string?>? serverName = null)
+    {
+        if (player == null) return null;
+        var coordinates = player.Position.Coordinates;
+        var level = plan == null ? -1 : plan.LevelOf((ushort)(player.Position.Cell & 0xFFFF));
+        if (plan == null || level < 0) return coordinates;
+        if (plan.Building) return $"{coordinates} · {plan.FloorName(level)}";
+        var where = $"Level {level + 1} of {plan.Levels.Count}";
+        return PlaceName(player.Position.Cell, serverName) is { } name ? $"{Fitted(name, where)} · {where}" : where;
+    }
+
+    private static string Fitted(string name, string level)
+    {
+        var room = PlaqueCharacters - level.Length - " · ".Length;
+        return name.Length <= room ? name : name.Substring(0, room - 1) + "…";
+    }
+
+    // The place's name: the server's when it gives one, else the shared list's when the landblock has exactly one name. Several names
+    // are no name, since a wrong one is worse than none.
+    private static string? PlaceName(uint cell, Func<uint, string?>? serverName)
+    {
+        if (serverName?.Invoke(cell) is { Length: > 0 } named) return named;
+        var names = LandblockNames.Get((ushort)(cell >> 16));
+        return names.Count == 1 ? names[0] : null;
     }
 
     /// <summary>The dot under the pointer, the nearest within the hover reach, or null.</summary>
