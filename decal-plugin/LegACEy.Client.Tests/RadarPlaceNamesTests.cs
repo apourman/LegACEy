@@ -45,6 +45,28 @@ public sealed class RadarPlaceNamesTests
     }
 
     [Fact]
+    public void Stepping_outdoors_ends_the_visit_so_walking_into_a_copy_of_the_same_dungeon_asks_again()
+    {
+        var channel = new AnsweringChannel();
+        var names = new RadarPlaceNames();
+        names.Reset(channel, new[] { PlaceProtocol.Name });
+
+        Assert.Null(names.NameOf(0x00990101));
+        channel.Answer(0, "Black Totem Temple");
+        Assert.Equal("Black Totem Temple", names.NameOf(0x00990101));
+
+        // Out of the portal onto the land, then into a copy that shares the dungeon's landblock id.
+        Assert.Null(names.NameOf(0xA9B40021));
+        Assert.Single(channel.Requests);
+        Assert.Null(names.NameOf(0x00990101));
+        Assert.Equal(2, channel.Requests.Count);
+
+        channel.Answer(0, "Black Totem Temple");
+        channel.Answer(1, "Black Totem Crypt");
+        Assert.Equal("Black Totem Crypt", names.NameOf(0x00990101));
+    }
+
+    [Fact]
     public void A_new_hello_forgets_the_answers_and_an_answer_to_an_earlier_one_is_dropped()
     {
         var channel = new AnsweringChannel();

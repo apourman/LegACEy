@@ -241,6 +241,8 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         _player = _port.Player;
         _objects = _player == null ? Array.Empty<RadarObject>() : _port.Objects;
         _plan = PlaceOf(_player);
+        // Told every read, not only when the plaque names a dungeon, so stepping outdoors ends the visit to its landblock.
+        if (_player != null) _serverName?.Invoke(_player.Position.Cell);
         _convertedThisRead = false;
         Rebuild();
     }
