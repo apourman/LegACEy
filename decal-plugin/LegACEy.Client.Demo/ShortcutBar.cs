@@ -237,7 +237,12 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
             _pressed = null;
             if (!wasPressed) return;
             if (_dragIcon != null) EndDrag();
-            else if (view.Item != null && new Rect(slot.Bounds.Size).Contains(e.GetPosition(slot))) _port.UseShortcut(view.Index);
+            else if (view.Item != null && new Rect(slot.Bounds.Size).Contains(e.GetPosition(slot)))
+            {
+                // A click selects the item too, as retail's slot click does, so it can be examined; the number key only uses it.
+                if (ShortcutEdits.ObjectAt(_port.Shortcuts, view.Index) is var objectId and not 0) _port.Select(objectId);
+                _port.UseShortcut(view.Index);
+            }
             if (_refreshPending) Refresh();
         };
         // A capture that ends mid-drag cancels it. After a release the drag is already over, so this does nothing then.

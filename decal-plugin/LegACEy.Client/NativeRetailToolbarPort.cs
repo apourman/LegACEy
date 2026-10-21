@@ -225,6 +225,8 @@ internal sealed class NativeRetailToolbarPort : IRetailToolbarPort
         if (toolbar != IntPtr.Zero) UseShortcutNative(toolbar, index, true);
     }
 
+    public void Select(uint objectId) => Bridge.SelectItem(objectId);
+
     /// <summary>
     /// Puts the object into the slot through retail's add, which sends AddShortCut to the server and updates the list. The caller empties
     /// the slot first, as retail's drop does.
