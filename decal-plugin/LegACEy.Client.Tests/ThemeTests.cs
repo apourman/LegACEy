@@ -23,6 +23,41 @@ public sealed class ThemeTests
         Assert.Null(panel.LastError);
     });
 
+    [Theory]
+    [InlineData(0.85)]
+    [InlineData(1.25)]
+    [InlineData(2)]
+    public void An_item_icon_in_a_framed_slot_draws_its_art_pixel_for_pixel_at_any_ui_size(double scale) => RenderThread.Run(() =>
+    {
+        Control? icon = null;
+        using var panel = AvaloniaPanel.Create(() =>
+        {
+            // A one-pixel checkerboard: any resampling turns it grey.
+            var art = new WriteableBitmap(new PixelSize(32, 32), new Vector(96, 96), Avalonia.Platform.PixelFormat.Bgra8888, Avalonia.Platform.AlphaFormat.Premul);
+            using (var buffer = art.Lock())
+                for (var y = 0; y < 32; y++)
+                for (var x = 0; x < 32; x++)
+                    System.Runtime.InteropServices.Marshal.WriteInt32(buffer.Address, y * buffer.RowBytes + x * 4, ((x + y) & 1) == 0 ? -1 : unchecked((int)0xFF000000));
+            icon = DerethItemCells.Icon(art);
+            return new DerethFrame(DerethFrameArt.Window) { Child = new DerethSlot(icon) };
+        }, 240, 240, scale);
+        // The host themes every panel, which also turns off bitmap smoothing at the root, overriding the frame's.
+        panel.ApplyTheme(new DerethClientTheme());
+        panel.Tick();
+
+        var multiple = (int)Math.Max(1, Math.Round(scale));
+        var origin = icon!.TranslatePoint(default, panel.Content)!.Value;
+        var (left, top) = ((int)Math.Round(origin.X * scale), (int)Math.Round(origin.Y * scale));
+        Assert.Equal(32 * multiple, (int)Math.Round(icon.Bounds.Width * scale));
+        var frame = panel.Frame;
+        for (var y = 0; y < 32 * multiple; y++)
+        for (var x = 0; x < 32 * multiple; x++)
+        {
+            var expected = ((x / multiple + y / multiple) & 1) == 0 ? 255 : 0;
+            Assert.Equal(expected, frame.Pixels[(top + y) * frame.Stride + (left + x) * 4 + 1]);
+        }
+    });
+
     [Fact]
     public void Switching_theme_restyles_an_open_panel_without_recreating_its_content() => RenderThread.Run(() =>
     {

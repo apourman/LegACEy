@@ -17,7 +17,7 @@ public sealed record ShortcutItem(ItemVisual Visual, int StackCount);
 public sealed record ShortcutSlotView(int Index, ShortcutItem? Item);
 
 /// <summary>
-/// One shortcut row as a window of its own: a row tag and nine 30 DIP slots. A slot shows its item's icon and stack count, with its key
+/// One shortcut row as a window of its own: a row tag and nine item slots, which keep icons at native size (see <see cref="ItemCellSize"/>). A slot shows its item's icon and stack count, with its key
 /// number in the corner, or only its key number when empty. A click uses the slot. The frame and the tag drag the bar, unless retail's UI
 /// is locked; a press on a slot never does. A drag from a slot moves the shortcut to the slot it is released on, or takes it off the bars
 /// when no LegACEy window takes it. A drop of an item from outside binds it to the slot it is released on.
@@ -27,7 +27,6 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     /// <summary>The bar's height in DIPs, the toolbar's.</summary>
     public const int BarHeight = 48;
     public const int SlotCount = 9;
-    private const double SlotSize = 30;
     private const double Gap = 3;
     private const double DragThreshold = 4;
     // The slot index a drag over the bar would land on, lit while it is there.
@@ -55,8 +54,8 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     // The drag of a shortcut from a slot: its icon while it is held.
     private IDisposable? _dragIcon;
     // The tag first, then one slot per shortcut.
-    // The toolbar's row height inside the same frame, so at any UI size both bars round to the same height.
-    private readonly StackPanel _row = new() { Orientation = Orientation.Horizontal, Spacing = Gap, Height = 32 };
+    // A row as tall as the toolbar's, inside the same frame, so at any UI size both bars are the same height.
+    private readonly DerethItemRow _row = new() { Spacing = Gap };
     private readonly ShortcutSlotView?[] _shown = new ShortcutSlotView?[SlotCount];
     // The icon each slot's art was drawn into; a slot's icon is disposed when the slot is rebuilt or the bar closes.
     private readonly WriteableBitmap?[] _icons = new WriteableBitmap?[SlotCount];
@@ -96,7 +95,7 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
             }
         });
-        for (var i = 0; i < SlotCount; i++) _row.Children.Add(new DerethSlot(null) { Width = SlotSize, Height = SlotSize });
+        for (var i = 0; i < SlotCount; i++) _row.Children.Add(new DerethSlot(null));
 
         // A transparent square takes the pointer over the whole frame, as the medallions do; a frame alone takes none.
         var hit = new Border
@@ -245,7 +244,7 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     private DerethSlot Slot(ShortcutSlotView view, int position)
     {
         _icons[position] = null;
-        var slot = new DerethSlot(Contents(view, position)) { Width = SlotSize, Height = SlotSize };
+        var slot = new DerethSlot(Contents(view, position));
         slot.PointerPressed += (_, e) =>
         {
             e.Handled = true;
@@ -362,6 +361,6 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
             return new TextBlock { Text = "?", FontFamily = DerethPalette.Body, FontSize = 12, Foreground = DerethPalette.MutedBrush,
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         _icons[position] = bitmap;
-        return new Image { Source = bitmap, Width = 28, Height = 28, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        return DerethItemCells.Icon(bitmap);
     }
 }

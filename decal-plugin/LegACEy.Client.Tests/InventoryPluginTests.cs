@@ -373,7 +373,7 @@ public sealed class InventoryPluginTests
         Assert.Null(panel.LastError);
         AssertNothingOutsideFrame(panel);
         var grid = Assert.Single(panel.Content.GetVisualDescendants().OfType<DerethSlotGrid>());
-        Assert.True(grid.Bounds.Height >= DerethSlotGrid.CellSize, $"The grid is {grid.Bounds.Height} px tall, less than one row.");
+        Assert.True(grid.Bounds.Height >= ItemCellSize.At(1).Cell, $"The grid is {grid.Bounds.Height} px tall, less than one row.");
     }
 
     /// <summary>The main pack, the divider and the seven side packs are eight pack tabs, and they all sit on one row.</summary>
