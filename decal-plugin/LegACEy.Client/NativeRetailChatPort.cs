@@ -53,6 +53,8 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private static readonly Regex TellTag = new(@"<Tell:IIDString:([^:>]*):([^>]*)>(.*?)<(?:\\+|/)Tell\s*>", RegexOptions.Compiled);
     // Retail's text escapes: \n is a line break, \q a quote mark, and a backslash before any other character is that character (\[, \], \\).
     private static readonly Regex Escape = new(@"\\(.)", RegexOptions.Compiled | RegexOptions.Singleline);
+    // GoArrow's and UtilityBelt's coordinate links: the tag names the coordinates twice, as a player's names them, but is no sender.
+    private const uint CoordinatesLinkId = 110011;
     private static readonly Regex ChannelPrefix = new(@"^\[([^\]]+)\]", RegexOptions.Compiled);
 
     // Delegates to fixed retail functions, made once: their addresses never change.
@@ -460,7 +462,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
                 // Retail writes the id with %d, so an id past 0x7FFFFFFF is negative.
                 var id = long.TryParse(match.Groups[1].Value, out var parsed) ? unchecked((uint)parsed) : 0;
                 // A player's tag names them twice; a plugin's link (GoArrow's "Update Now") names a command, not a sender.
-                if (match.Groups[2].Value == match.Groups[3].Value && sender == null)
+                if (match.Groups[2].Value == match.Groups[3].Value && id != CoordinatesLinkId && sender == null)
                 {
                     sender = shown;
                     senderId = id;

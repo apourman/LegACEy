@@ -28,6 +28,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     private const double ClickSlop = 4;
     // How far a tab press must move outside the tab strip before the tab is dragged out into a window of its own.
     private const double TearOffSlop = 6;
+    private static readonly IBrush LinkBrush = DerethPalette.Brush(DerethChatPalette.Link);
     // The dark shadow under each line while the window is idle, so pale lines read over bright ground once the chrome has faded.
     private static readonly IEffect LineShadow = new DropShadowDirectionEffect { Color = Colors.Black, Direction = 90, ShadowDepth = 1, BlurRadius = 1, Opacity = 1 };
     private readonly IRetailChatPort _port;
@@ -645,9 +646,9 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         foreach (var link in links ?? Array.Empty<RetailChatLink>())
         {
             if (link.Start > at) Add(DerethChatParts.TextRun(line.Text.Substring(at, link.Start - at), brush, italic));
-            var start = written;
-            Add(DerethChatParts.TextRun(line.Text.Substring(link.Start, link.Length), brush, italic));
             var tell = link.Tag == line.Sender && link.Id == line.SenderId ? line.TellBack : null;
+            var start = written;
+            Add(DerethChatParts.TextRun(line.Text.Substring(link.Start, link.Length), tell != null ? brush : LinkBrush, italic));
             WireClick(view, start, written, () =>
             {
                 if (!_port.Click(link.Id, link.Tag) && tell != null) TellTo(tell);

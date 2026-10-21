@@ -289,6 +289,8 @@ public sealed class RetailChatTests
         port.Say(Line(RetailChatKind.TellIn, "Mirra tells you, \"hi\"", "Mirra"));
         panel.Tick();
 
+        // A plugin's link is drawn in retail's link green; the sender's name keeps the line's colour.
+        Assert.Equal(DerethChatPalette.Link, ((SolidColorBrush)LineOf(panel, "Meet at").Inlines!.OfType<Run>().Last().Foreground!).Color);
         ClickName(panel, "Meet at", "10.7N");
         Assert.Equal((110011u, "10.7N, 52.3E"), port.Clicks.Last());
 

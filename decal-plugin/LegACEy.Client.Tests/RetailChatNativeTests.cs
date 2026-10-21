@@ -57,6 +57,7 @@ public sealed class RetailChatNativeTests
             var coords = Parse($"Meet at <Tell:IIDString:110011:10.7N, 52.3E>10.7N, 52.3E{close} \\[UB\\]");
             Assert.Equal("Meet at 10.7N, 52.3E [UB]", coords.Text);
             Assert.Equal(new RetailChatLink(8, 12, 110011, "10.7N, 52.3E"), Assert.Single(coords.Links!));
+            Assert.Null(coords.Sender);
         }
 
         static RetailChatLine Parse(string raw) => NativeRetailChatPort.RetailChatTypes.Parse(RetailChatKind.Plugin, raw, Time);
