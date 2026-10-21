@@ -415,7 +415,7 @@ public sealed class SettingsPanel : UserControl
 
     private IEnumerable<Control> RadarRows()
     {
-        yield return RadarToggle("Ground map", options => options.Ground, (options, on) => options with { Ground = on });
+        yield return RadarToggle("Show map", options => options.Map, (options, on) => options with { Map = on });
         yield return RadarToggle("North up", options => options.NorthUp, (options, on) => options with { NorthUp = on });
         yield return RadarToggle("Range rings", options => options.Rings, (options, on) => options with { Rings = on });
         yield return RadarRange();

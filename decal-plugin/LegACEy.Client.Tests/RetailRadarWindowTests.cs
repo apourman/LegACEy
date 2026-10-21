@@ -156,10 +156,39 @@ public sealed class RetailRadarWindowTests
     });
 
     [Fact]
+    public void Indoors_the_window_draws_the_plan_of_the_place_it_is_in_once_it_is_built() => RenderThread.Run(() =>
+    {
+        var port = PortWith();
+        port.Player = new RadarPlayer(new RadarPosition(RadarPlanFixtures.DungeonCell, 60, 84, 0), 0);
+        var plans = new IndoorPlanCache((x, y) => RadarPlanFixtures.Dungeon());
+        using var panel = Open(port, out var window, plans: plans);
+        WaitForPlan(plans);
+
+        window.Refresh();
+        panel.Tick();
+
+        Assert.Equal(3, window.Frame!.PlanLevels.Count);
+        Assert.Equal(0, window.TilesDrawn);
+    });
+
+    [Fact]
+    public void The_wheel_indoors_changes_the_indoor_zoom_and_leaves_the_outdoor_zoom() => RenderThread.Run(() =>
+    {
+        var port = PortWith();
+        port.Player = new RadarPlayer(new RadarPosition(RadarPlanFixtures.DungeonCell, 60, 84, 0), 0);
+        using var panel = Open(port, out var window);
+
+        Wheel(panel, window, notches: 10);
+
+        Assert.Equal(RadarZoom.IndoorMin, window.Options.IndoorZoom);
+        Assert.Equal(RadarZoom.Default, window.Options.Zoom);
+    });
+
+    [Fact]
     public void Ground_off_draws_dots_on_dark() => RenderThread.Run(() =>
     {
         var ground = new GroundTiles(new FakeGround());
-        using var panel = Open(PortWith(), out var window, ground: ground, options: new RadarOptions(Ground: false));
+        using var panel = Open(PortWith(), out var window, ground: ground, options: new RadarOptions(Map: false));
 
         window.Refresh();
 
@@ -230,12 +259,12 @@ public sealed class RetailRadarWindowTests
         Assert.Equal(captures + 1, panel.FrameCaptureCount);
     });
 
-    // A radar window over the port and ground, shown at its size, with its frame drawn once.
+    // A radar window over the port, ground and plans, shown at its size, with its frame drawn once.
     private static AvaloniaPanel Open(FakeRadarPort port, out RetailRadarWindow window, GroundTiles? ground = null, RadarOptions? options = null,
-        Action<RadarOptions>? saved = null, Action? startMove = null)
+        Action<RadarOptions>? saved = null, Action? startMove = null, IndoorPlanCache? plans = null)
     {
         RetailRadarWindow? created = null;
-        var panel = AvaloniaPanel.Create(() => created = new RetailRadarWindow(port, () => ground, options ?? new RadarOptions(), saved ?? (_ => { }),
+        var panel = AvaloniaPanel.Create(() => created = new RetailRadarWindow(port, () => ground, () => plans, options ?? new RadarOptions(), saved ?? (_ => { }),
             () => 0, startMove ?? (() => { })), RetailRadarWindow.DesignWidth, RetailRadarWindow.DesignHeight);
         window = created!;
         window.Refresh();
@@ -298,6 +327,17 @@ public sealed class RetailRadarWindowTests
     // A popover row: the text inside it takes the press, and the row takes it as its own.
     private static Control Row(AvaloniaPanel panel, string text) =>
         panel.Content.GetVisualDescendants().OfType<TextBlock>().First(block => block.Text == text);
+
+    private static void WaitForPlan(IndoorPlanCache plans)
+    {
+        var until = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < until)
+        {
+            if (plans.PlanAsync(0xC6, 0xA9).IsCompletedSuccessfully) return;
+            System.Threading.Thread.Sleep(10);
+        }
+        Assert.Fail("The fake plan did not build in time.");
+    }
 
     private static void WaitForGround(GroundTiles ground)
     {

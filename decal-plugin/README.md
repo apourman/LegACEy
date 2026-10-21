@@ -137,8 +137,9 @@ a second; deleting it takes them over again.
 
 The Dereth radar replaces retail's radar, at retail's place: the land around the player from the DATs, dots in retail's radar colours, a
 heading tape above and the coordinates below. Hover a dot to name it with its distance and direction, click it to select it, and use the
-wheel to zoom. The bezel's lock button locks and unlocks retail's UI; its gear opens the options (Show ground, North up, Range rings,
-Zoom), kept per character. With the UI unlocked, hovering the radar shows gold corners: drag one, or an edge, to draw it larger or smaller,
+wheel to zoom. Indoors the radar draws the floor plan of the place from the DATs instead: the player's floor solid, the others faint, and
+a building's town ground under it. The bezel's lock button locks and unlocks retail's UI; its gear opens the options (Show map, North up,
+Range rings, Zoom), kept per character, with the indoor zoom kept apart from the outdoor one. With the UI unlocked, hovering the radar shows gold corners: drag one, or an edge, to draw it larger or smaller,
 from its 1× layout to three times it; it
 opens at twice. Creating an empty file named `retail-radar-native` beside the main DLL gives retail's radar back within a
 second; deleting it takes the radar over again.

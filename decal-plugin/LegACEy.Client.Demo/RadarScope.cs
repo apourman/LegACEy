@@ -7,43 +7,59 @@ using Avalonia;
 namespace LegACEy.Client.Demo;
 
 /// <summary>
-/// The Dereth radar's settings, kept per character: whether the land is drawn, north-up or heading-up, the range rings, and the zoom
-/// in metres.
+/// The Dereth radar's settings, kept per character: whether the map is drawn (the land outdoors, the floor plan indoors),
+/// north-up or heading-up, the range rings, and the zoom in metres outdoors and indoors.
 /// </summary>
-public sealed record RadarOptions(bool Ground = true, bool NorthUp = false, bool Rings = false, int Zoom = RadarZoom.Default)
+public sealed record RadarOptions(bool Map = true, bool NorthUp = false, bool Rings = false, int Zoom = RadarZoom.Default, int IndoorZoom = RadarZoom.IndoorDefault)
 {
-    // The bits of the flags kept in the settings store's X; the zoom is its Y.
-    private const int GroundBit = 1, NorthUpBit = 2, RingsBit = 4;
+    // The bits of the flags kept in the settings store's X, the indoor zoom above them; the zoom is its Y.
+    private const int MapBit = 1, NorthUpBit = 2, RingsBit = 4, IndoorZoomShift = 8;
 
     /// <summary>The flags and the zoom, as two numbers the per-character settings store keeps.</summary>
     public (int Flags, int Zoom) Encode() =>
-        ((Ground ? GroundBit : 0) | (NorthUp ? NorthUpBit : 0) | (Rings ? RingsBit : 0), Zoom);
+        ((Map ? MapBit : 0) | (NorthUp ? NorthUpBit : 0) | (Rings ? RingsBit : 0) | (IndoorZoom << IndoorZoomShift), Zoom);
 
-    public static RadarOptions Decode(int flags, int zoom) => new((flags & GroundBit) != 0, (flags & NorthUpBit) != 0,
-        (flags & RingsBit) != 0, RadarZoom.Clamp(zoom));
+    public static RadarOptions Decode(int flags, int zoom)
+    {
+        // Flags saved before the indoor zoom existed carry none: the default stands in.
+        var indoor = (flags >> IndoorZoomShift) & 0xFF;
+        return new((flags & MapBit) != 0, (flags & NorthUpBit) != 0, (flags & RingsBit) != 0, RadarZoom.Clamp(zoom),
+            indoor == 0 ? RadarZoom.IndoorDefault : RadarZoom.ClampIndoor(indoor));
+    }
 }
 
-/// <summary>The radar's zoom: the range in metres from the centre to its rim, 25 to 150, 70 by default.</summary>
+/// <summary>
+/// The radar's zoom: the range in metres from the centre to its rim. Outdoors it is 25 to 150, 70 by default; indoors 12 to 150, 40 by
+/// default, kept apart.
+/// </summary>
 public static class RadarZoom
 {
     public const int Min = 25, Max = 150, Default = 70;
+    public const int IndoorMin = 12, IndoorDefault = 40;
     // The zoom options step through these.
     public static readonly IReadOnlyList<int> Presets = new[] { 25, 40, 70, 110, 150 };
+    public static readonly IReadOnlyList<int> IndoorPresets = new[] { 12, 25, 40, 70, 110, 150 };
     // Each wheel notch changes the range by this factor.
     private const double Notch = 1.15;
 
-    public static int Clamp(int metres) => Math.Max(Min, Math.Min(Max, metres));
+    public static int Clamp(int metres) => Within(metres, Min);
+
+    public static int ClampIndoor(int metres) => Within(metres, IndoorMin);
 
     /// <summary>The range after the wheel moves <paramref name="notches"/> notches: up (positive) zooms in, a shorter range.</summary>
-    public static int Wheel(int range, int notches) => Clamp((int)Math.Round(range * Math.Pow(Notch, -notches), MidpointRounding.AwayFromZero));
+    public static int Wheel(int range, int notches, bool indoors = false) =>
+        Within((int)Math.Round(range * Math.Pow(Notch, -notches), MidpointRounding.AwayFromZero), indoors ? IndoorMin : Min);
 
     /// <summary>The next preset above the range, or the smallest after the largest.</summary>
-    public static int Next(int range)
+    public static int Next(int range, bool indoors = false)
     {
-        foreach (var preset in Presets)
+        var presets = indoors ? IndoorPresets : Presets;
+        foreach (var preset in presets)
             if (preset > range) return preset;
-        return Presets[0];
+        return presets[0];
     }
+
+    private static int Within(int metres, int min) => Math.Max(min, Math.Min(Max, metres));
 }
 
 /// <summary>A dot on the radar: an object in retail's radar colour, where it sits on the scope, and its name, range and bearing.</summary>
@@ -55,10 +71,14 @@ public sealed record RadarScopeDot(uint Id, string Name, RadarColor Colour, doub
 /// </summary>
 public sealed record RadarScopeTile(ushort Landblock, Rect Metres);
 
+/// <summary>One level of the indoor plan to draw: the player's own level is solid, the others are faint.</summary>
+public sealed record RadarPlanDraw(RadarPlanLevel Level, bool Solid);
+
 /// <summary>What the radar shows this frame. Dots and the centre are in DIPs from the scope's top-left.</summary>
 public sealed class RadarScopeFrame
 {
-    public RadarScopeFrame(IReadOnlyList<RadarScopeDot> dots, IReadOnlyList<RadarScopeTile> tiles, double turn, double pixelsPerMetre, string? coordinates, double heading)
+    public RadarScopeFrame(IReadOnlyList<RadarScopeDot> dots, IReadOnlyList<RadarScopeTile> tiles, double turn, double pixelsPerMetre, string? coordinates, double heading,
+        IReadOnlyList<RadarPlanDraw> planLevels, Point planOrigin)
     {
         Dots = dots;
         Tiles = tiles;
@@ -66,11 +86,20 @@ public sealed class RadarScopeFrame
         PixelsPerMetre = pixelsPerMetre;
         Coordinates = coordinates;
         Heading = heading;
+        PlanLevels = planLevels;
+        PlanOrigin = planOrigin;
     }
 
     public IReadOnlyList<RadarScopeDot> Dots { get; }
-    /// <summary>The ground around the player, empty when it is off or the player is indoors.</summary>
+    /// <summary>The ground around the player: outdoors, or under a building's plan. Empty when the map is off, or in a dungeon.</summary>
     public IReadOnlyList<RadarScopeTile> Tiles { get; }
+    /// <summary>
+    /// The indoor plan's levels in drawing order: the others below the player's, then the others above, then the player's own, solid.
+    /// Empty outdoors, with the map off, or until the plan is built.
+    /// </summary>
+    public IReadOnlyList<RadarPlanDraw> PlanLevels { get; }
+    /// <summary>The player's position in landblock metres, from which the plan's paths are drawn.</summary>
+    public Point PlanOrigin { get; }
     /// <summary>The clockwise turn of the world on screen, in degrees: the heading turned away when heading-up, 0 when north-up.</summary>
     public double Turn { get; }
     public double PixelsPerMetre { get; }
@@ -92,13 +121,18 @@ public static class RadarScope
 
     /// <param name="player">The player, or null outside the world.</param>
     /// <param name="objects">The objects retail has placed near the player.</param>
-    /// <param name="options">The radar's options: ground, north-up and zoom.</param>
+    /// <param name="options">The radar's options: the map, north-up and zoom.</param>
     /// <param name="radius">The scope's radius in DIPs.</param>
-    public static RadarScopeFrame Build(RadarPlayer? player, IReadOnlyList<RadarObject> objects, RadarOptions options, double radius)
+    /// <param name="plan">The plan of the place the player is in, or null outdoors and until it is built.</param>
+    public static RadarScopeFrame Build(RadarPlayer? player, IReadOnlyList<RadarObject> objects, RadarOptions options, double radius, RadarPlan? plan = null)
     {
-        var range = RadarZoom.Clamp(options.Zoom);
+        var indoors = player is { Position.Outdoors: false };
+        var range = indoors ? RadarZoom.ClampIndoor(options.IndoorZoom) : RadarZoom.Clamp(options.Zoom);
         var scale = radius / range;
         var turn = player == null || options.NorthUp ? 0 : -player.Heading;
+        // Indoors the plan is drawn when the place has one; a building keeps the ground under it, a dungeon has none.
+        var drawn = indoors && options.Map && plan is { PlayerLevel: >= 0 } ? plan : null;
+        var tiles = player != null && options.Map && (!indoors || drawn is { Building: true }) ? GroundAround(player) : Array.Empty<RadarScopeTile>();
         var dots = new List<RadarScopeDot>();
         if (player != null)
         {
@@ -113,7 +147,9 @@ public static class RadarScope
                 dots.Add(new RadarScopeDot(found.Id, found.Name, found.Colour, distance, Bearing(east, north), alpha, at));
             }
         }
-        return new RadarScopeFrame(dots, GroundAround(player, options), turn, scale, player?.Position.Coordinates, player?.Heading ?? 0);
+        var planLevels = drawn == null ? Array.Empty<RadarPlanDraw>() : PlanDraws(drawn);
+        var origin = player == null ? default : new Point(player.Position.X, player.Position.Y);
+        return new RadarScopeFrame(dots, tiles, turn, scale, player?.Position.Coordinates, player?.Heading ?? 0, planLevels, origin);
     }
 
     /// <summary>The dot under the pointer, the nearest within the hover reach, or null.</summary>
@@ -154,10 +190,19 @@ public static class RadarScope
 
     private static double Normalise(double degrees) => ((degrees % 360) + 360) % 360;
 
-    // The nine landblocks around the player's, each as a rectangle in metres from the player (south is positive y, as the screen runs).
-    private static IReadOnlyList<RadarScopeTile> GroundAround(RadarPlayer? player, RadarOptions options)
+    // The levels below the player's, then above, then the player's own, solid last so it sits on the others.
+    private static IReadOnlyList<RadarPlanDraw> PlanDraws(RadarPlan plan)
     {
-        if (player == null || !options.Ground || !player.Position.Outdoors) return Array.Empty<RadarScopeTile>();
+        var draws = new List<RadarPlanDraw>(plan.Levels.Count);
+        for (var level = plan.PlayerLevel + 1; level < plan.Levels.Count; level++) draws.Add(new RadarPlanDraw(plan.Levels[level], false));
+        for (var level = 0; level < plan.PlayerLevel; level++) draws.Add(new RadarPlanDraw(plan.Levels[level], false));
+        draws.Add(new RadarPlanDraw(plan.Levels[plan.PlayerLevel], true));
+        return draws;
+    }
+
+    // The nine landblocks around the player's, each as a rectangle in metres from the player (south is positive y, as the screen runs).
+    private static IReadOnlyList<RadarScopeTile> GroundAround(RadarPlayer player)
+    {
         var cell = player.Position.Cell;
         var x = (int)(cell >> 24);
         var y = (int)((cell >> 16) & 0xFF);

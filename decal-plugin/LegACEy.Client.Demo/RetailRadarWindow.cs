@@ -13,8 +13,8 @@ using LegACEy.Client.Themes;
 namespace LegACEy.Client.Demo;
 
 /// <summary>
-/// The Dereth radar: a round minimap in a gold bezel, drawn over the land around the player, heading-up as retail's is. A heading tape
-/// reads the heading in degrees above it, and the coordinates sit below. Dots are in retail's radar colours; hovering names one, a click
+/// The Dereth radar: a round minimap in a gold bezel, drawn over the land around the player, or indoors over the floor plan of the place
+/// they are in, heading-up as retail's is. A heading tape reads the heading in degrees above it, and the coordinates sit below. Dots are in retail's radar colours; hovering names one, a click
 /// selects it, the wheel zooms, and the bezel holds retail's UI lock and an options popover. It reads the game once a frame through
 /// <see cref="Refresh"/>; every other change is made from what was read last.
 /// </summary>
@@ -42,6 +42,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
 
     private readonly IRadarPort _port;
     private readonly Func<GroundTiles?> _ground;
+    private readonly Func<IndoorPlanCache?> _plans;
     private readonly Action<RadarOptions> _saved;
     private readonly Func<uint> _selected;
     private readonly Action _startMove;
@@ -62,9 +63,13 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     private bool _pointerOver;
     private readonly DerethMedallion _gear;
     private readonly Control _popover;
-    private readonly OptionRow _groundRow, _northRow, _ringsRow, _zoomRow;
+    private readonly OptionRow _mapRow, _northRow, _ringsRow, _zoomRow;
     private RadarPlayer? _player;
     private IReadOnlyList<RadarObject> _objects = Array.Empty<RadarObject>();
+    // The place the player is in, made once for each cell, and the one drawn this read (null outdoors or while its plan is built).
+    private RadarPlan? _place;
+    private uint _placeCell;
+    private RadarPlan? _plan;
     private RadarScopeFrame? _frame;
     private uint? _hovered;
     private uint? _pressed;
@@ -81,19 +86,22 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     /// <summary>The hovered dot's label, as the scope draws it; null when no dot is hovered.</summary>
     public string? HoverLabel { get; private set; }
 
-    /// <summary>How many landblocks of ground the radar drew last: nine outdoors with the ground on and built, else none.</summary>
+    /// <summary>How many landblocks of ground the radar drew last: nine outdoors (or under a building's plan) with the map on and built, else none.</summary>
     public int TilesDrawn => _tilesDrawn;
 
     /// <param name="port">The radar's game.</param>
     /// <param name="ground">The ground's tiles, or null until they can be built.</param>
+    /// <param name="plans">The indoor plans, or null until the DATs they are read from can be opened.</param>
     /// <param name="options">The options kept for this character.</param>
     /// <param name="saved">Told each time an option or the zoom changes, to keep it for the character.</param>
     /// <param name="selected">The selected object's id, or 0, for the green ring.</param>
     /// <param name="startMove">Starts the window's move, from a press on the frame when the UI is not locked.</param>
-    public RetailRadarWindow(IRadarPort port, Func<GroundTiles?> ground, RadarOptions options, Action<RadarOptions> saved, Func<uint> selected, Action startMove)
+    public RetailRadarWindow(IRadarPort port, Func<GroundTiles?> ground, Func<IndoorPlanCache?> plans, RadarOptions options, Action<RadarOptions> saved,
+        Func<uint> selected, Action startMove)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _ground = ground ?? throw new ArgumentNullException(nameof(ground));
+        _plans = plans ?? throw new ArgumentNullException(nameof(plans));
         Options = options;
         _saved = saved ?? throw new ArgumentNullException(nameof(saved));
         _selected = selected ?? throw new ArgumentNullException(nameof(selected));
@@ -129,15 +137,15 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         ToolTip.SetTip(_lock, LockTip);
         ToolTip.SetTip(_gear, OptionsTip);
 
-        _groundRow = new OptionRow("Show ground", () => Change(Options with { Ground = !Options.Ground }));
+        _mapRow = new OptionRow("Show map", () => Change(Options with { Map = !Options.Map }));
         _northRow = new OptionRow("North up", () => Change(Options with { NorthUp = !Options.NorthUp }));
         _ringsRow = new OptionRow("Range rings", () => Change(Options with { Rings = !Options.Rings }));
-        _zoomRow = new OptionRow("Zoom", () => Change(Options with { Zoom = RadarZoom.Next(Options.Zoom) }));
+        _zoomRow = new OptionRow("Zoom", () => Change(Zoomed((range, indoors) => RadarZoom.Next(range, indoors))));
         _popover = new DerethFrame(DerethFrameArt.Window)
         {
             Width = 112, Margin = new Thickness(26, ScopeOrigin.Y + 34, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
             IsVisible = false,
-            Child = new StackPanel { Children = { _groundRow, _northRow, _ringsRow, _zoomRow } }
+            Child = new StackPanel { Children = { _mapRow, _northRow, _ringsRow, _zoomRow } }
         };
 
         _scope.PointerMoved += (_, e) => Hover(e.GetPosition(_scope));
@@ -163,7 +171,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
             var notches = (int)Math.Round(e.Delta.Y);
             if (notches == 0) return;
             e.Handled = true;
-            Change(Options with { Zoom = RadarZoom.Wheel(Options.Zoom, notches) });
+            Change(Zoomed((range, indoors) => RadarZoom.Wheel(range, notches, indoors)));
         };
 
         var grid = new Grid
@@ -201,9 +209,32 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     {
         _player = _port.Player;
         _objects = _player == null ? Array.Empty<RadarObject>() : _port.Objects;
+        _plan = PlaceOf(_player);
         _convertedThisRead = false;
         Rebuild();
     }
+
+    // The indoor place the player is in, made once for each cell. Null outdoors, and until the landblock's plan is built: the plan is only
+    // asked for, never waited for, so the UI thread does not stall on the DATs.
+    private RadarPlan? PlaceOf(RadarPlayer? player)
+    {
+        if (player is not { Position.Outdoors: false } || _plans() is not { } plans) return null;
+        var cell = player.Position.Cell;
+        var landblock = plans.PlanAsync((int)(cell >> 24), (int)((cell >> 16) & 0xFF));
+        if (landblock.Status != System.Threading.Tasks.TaskStatus.RanToCompletion) return null;
+        if (_place == null || _placeCell != cell)
+        {
+            _place = new RadarPlan(landblock.Result, (ushort)(cell & 0xFFFF));
+            _placeCell = cell;
+        }
+        return _place;
+    }
+
+    private bool Indoors => _player is { Position.Outdoors: false };
+
+    // The options with the zoom that is in use changed: indoors its own zoom, outdoors the outdoor one. The wheel and the zoom row use it.
+    private RadarOptions Zoomed(Func<int, bool, int> zoom) =>
+        Indoors ? Options with { IndoorZoom = zoom(Options.IndoorZoom, true) } : Options with { Zoom = zoom(Options.Zoom, false) };
 
     /// <summary>Frees the ground's bitmaps. The window draws nothing after this, and a later read converts none.</summary>
     public void Dispose()
@@ -254,11 +285,15 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     // Draws the radar from the last read, with the options and hover as they are now. Makes no game calls, so the events can use it.
     private void Rebuild()
     {
-        var frame = RadarScope.Build(_player, _objects, Options, Radius);
+        var frame = RadarScope.Build(_player, _objects, Options, Radius, _plan);
         _frame = frame;
         var tiles = GroundFor(frame);
         _tilesDrawn = tiles.Count;
         if (!tiles.SequenceEqual(_scope.Tiles)) _scope.Tiles = tiles.ToArray();
+        var planLevels = frame.PlanLevels.Select(draw => (draw.Level.Floors, draw.Level.Walls, draw.Solid)).ToArray();
+        if (!planLevels.SequenceEqual(_scope.PlanLevels)) _scope.PlanLevels = planLevels;
+        _scope.PlanOrigin = frame.PlanOrigin;
+        _scope.PlanBuilding = _plan is { Building: true };
         _scope.Turn = frame.Turn;
         _scope.PixelsPerMetre = frame.PixelsPerMetre;
         _scope.Rings = Options.Rings;
@@ -293,13 +328,13 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
         }
         ShowCorners();
 
-        _groundRow.Show(Options.Ground);
+        _mapRow.Show(Options.Map);
         _northRow.Show(Options.NorthUp);
         _ringsRow.Show(Options.Rings);
-        _zoomRow.Show(null, $"{Options.Zoom} m");
+        _zoomRow.Show(null, $"{(Indoors ? Options.IndoorZoom : Options.Zoom)} m");
     }
 
-    // The tiles of the ground that are built, each with its bitmap. Outdoors only, and only while the ground is on.
+    // The tiles of the ground that are built, each with its bitmap. Outdoors, or a building's under its plan, and only while the map is on.
     private List<(IImage Image, Rect Metres)> GroundFor(RadarScopeFrame frame)
     {
         _drawnTiles.Clear();
