@@ -130,6 +130,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string RetailVitalsSwitchFile = "retail-vitals-native";
     // Beside the DLL: while this file exists, retail's radar stays retail's. Without it the Dereth radar replaces it.
     private const string RetailRadarSwitchFile = "retail-radar-native";
+    // Beside the DLL: while this file exists, the Dereth attack bar replaces retail's attack panel in melee and missile. Opt-in until the play-test
+    // signs it off: without the file retail's panel stays as it is.
+    private const string RetailAttackSwitchFile = "retail-attack-takeover";
     // A window switch whose file could not be written or deleted this session: its state (true for LegACEy's) until the file can be changed.
     // Runtime only, so the next session reads the file again.
     private readonly Dictionary<string, bool> _switchHeld = new(StringComparer.Ordinal);
@@ -271,6 +274,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _radarReleaseLogged;
     private bool _radarSwitch;
     private DateTime _lastRadarSwitchCheck;
+    // The Dereth attack bar over retail's attack panel: its checked natives, the held panel and window, and the port the window reads. Opt-in.
+    private RetailAttackNatives? _attackNatives;
+    private RetailAttackTakeover? _attack;
+    private NativeAttackBarPort? _attackPort;
+    private bool _attackSwitch;
+    private DateTime _lastAttackSwitchCheck;
     private readonly GameStatePort _gameState = new(new GameStateSnapshot("unknown-character", "unknown-server", 0, 0, 0, 0, 0, 0));
     private readonly GameStatePoller _gameStatePoller;
     private ClientUiFramework? _clientUi;
@@ -759,6 +768,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         catch (Exception exception) { Log($"Could not give the retail chat back at logoff: {exception}"); }
         // The Dereth vitals window closes and retail's vitals come back; the next login holds them again while the switch is on.
         _vitals?.Release();
+        // The attack bar closes and retail's attack panel comes back; the next melee or missile holds it again while the switch is on.
+        _attack?.Release();
         try { ReleaseRetailRadar(); }
         catch (Exception exception) { Log($"Could not give the retail radar back at logoff: {exception}"); }
         _toast?.Hide();
@@ -1121,6 +1132,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             TickRetailChat();
             TickRetailVitals();
             TickRetailRadar();
+            TickRetailAttack();
             // Portal space at login comes before Decal's login complete: retail's inventory opened then is parked already,
             // and our window opens for it once the windows can.
             if (!_inGame) TickRetailPanels(loggingIn: true);
@@ -2943,16 +2955,127 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Whether a feature's switch is on: on while its file is missing beside the DLL, or while a write this session could not change it
-    /// holds (see <see cref="SwitchCustom"/>). The file is looked for once a second.
+    /// Holds retail's attack panel in melee and missile and draws the Dereth attack bar over it, while the <c>retail-attack-takeover</c> file is
+    /// beside the DLL. Without the file retail's panel is left as it is. The bar's port is polled each frame while its window is open.
     /// </summary>
-    private bool SwitchOn(string file, ref DateTime lastCheck, ref bool on)
+    private void TickRetailAttack()
+    {
+        _attack ??= new RetailAttackTakeover(AttackNatives, HoldRetailAttack, RetailAttackPlace, OpenAttackBar, Log);
+        try
+        {
+            var switchOn = SwitchOn(RetailAttackSwitchFile, ref _lastAttackSwitchCheck, ref _attackSwitch, onWhenMissing: false);
+            // Retail's panel is given back if the post-UI draw is gone or the LegACEy windows failed, as the radar's is.
+            var canDraw = _postUiDrawHook?.IsInstalled == true && !(_windows != null && !_windowsEnabled);
+            var stance = switchOn && _inGame ? (RetailStance)Bridge.Fact(BridgeFact.CombatMode) : RetailStance.Peace;
+            _attack.Tick(switchOn, canDraw, _inGame, stance, GameDevice.ViewportSize(_device));
+            _attackPort?.Poll();
+        }
+        catch (Exception exception)
+        {
+            AttackFailed(exception);
+        }
+    }
+
+    /// <summary>
+    /// The attack bar's natives, checked once a session; null until the UI can be read. A check that cannot complete turns every feature off.
+    /// </summary>
+    private RetailAttackNatives? AttackNatives()
+    {
+        if (!NativeUi.Ready || _device == IntPtr.Zero) return null;
+        return _attackNatives ??= ValidateAttackNatives();
+    }
+
+    private RetailAttackNatives ValidateAttackNatives()
+    {
+        try { return RetailAttackCatalogue.Validate(NativeUi.ReadMemory, Log); }
+        catch (Exception exception)
+        {
+            Log($"Dereth attack bar is off: its native addresses could not be checked: {exception.Message}");
+            return new RetailAttackNatives(false, false, false, false, false);
+        }
+    }
+
+    /// <summary>Retail's attack panel, held by its placed id: hidden while the takeover holds it.</summary>
+    private static RetailHeldWindows HoldRetailAttack() => new(new[] { RetailAttackCatalogue.CombatPanel });
+
+    /// <summary>
+    /// Where the bar opens: centred over retail's attack panel. With the panel not laid out, at the bottom centre of the screen. The window keeps
+    /// the place the character left it at once it has one.
+    /// </summary>
+    private Point RetailAttackPlace()
+    {
+        var definition = DerethAttackBarWindow.DefinitionOf();
+        var screen = _windows?.Screen ?? Size.Empty;
+        var element = NativeUi.GetElement(RetailAttackCatalogue.CombatPanel);
+        if (element == IntPtr.Zero)
+            return new Point(Math.Max(0, (screen.Width - definition.Width) / 2), Math.Max(0, screen.Height - definition.Height - 120));
+        var bounds = NativeUi.GetBounds(element);
+        return new Point(bounds.X + (bounds.Width - definition.Width) / 2, bounds.Y + (bounds.Height - definition.Height) / 2);
+    }
+
+    /// <summary>
+    /// Opens the Dereth attack bar at <paramref name="at"/> with its port, and shows its host surface only while the bar is shown: hidden
+    /// content still takes input. Null while the windows cannot open yet, so the next frame asks again.
+    /// </summary>
+    private IDisposable? OpenAttackBar(Point at)
+    {
+        if (!CanOpenWindows || _attackNatives is not { } natives) return null;
+        var port = new NativeAttackBarPort(natives, HudNatives().Lock);
+        var window = new DerethAttackBarWindow(port, () => _windows?.BeginMove(DerethAttackBarWindow.WindowId, _pointer));
+        var definition = DerethAttackBarWindow.DefinitionOf();
+        try { OpenWindowCore(definition, window, at, AttackFailed); }
+        catch
+        {
+            window.Dispose();
+            throw;
+        }
+        _attackPort = port;
+        window.ShownChanged += () => ShowAttackSurface(window.Shown);
+        ShowAttackSurface(window.Shown);
+        return new AttackWindowHandle(this, window, definition.Id);
+    }
+
+    private void ShowAttackSurface(bool shown)
+    {
+        if (_featureSurfaces.TryGetValue(DerethAttackBarWindow.WindowId, out var surface)) surface.Visible = shown;
+    }
+
+    private void AttackFailed(Exception exception) => _attack?.Fail(exception);
+
+    private sealed class AttackWindowHandle : IDisposable
+    {
+        private readonly ClientUiRuntime _owner;
+        private readonly DerethAttackBarWindow _window;
+        private readonly string _windowId;
+
+        public AttackWindowHandle(ClientUiRuntime owner, DerethAttackBarWindow window, string windowId)
+        {
+            _owner = owner;
+            _window = window;
+            _windowId = windowId;
+        }
+
+        public void Dispose()
+        {
+            _owner._attackPort = null;
+            _window.Dispose();
+            _owner.ReleaseFeatureWindow(_windowId);
+        }
+    }
+
+    /// <summary>
+    /// Whether a feature's switch is on: on while its file is missing beside the DLL, or while a write this session could not change it
+    /// holds (see <see cref="SwitchCustom"/>). An opt-in switch (<paramref name="onWhenMissing"/> false) is on while the file exists. The file
+    /// is looked for once a second.
+    /// </summary>
+    private bool SwitchOn(string file, ref DateTime lastCheck, ref bool on, bool onWhenMissing = true)
     {
         var now = DateTime.UtcNow;
         if (now - lastCheck >= TimeSpan.FromSeconds(1))
         {
             lastCheck = now;
-            on = SwitchCustom(IOPath.Combine(PluginDirectory, file));
+            // SwitchCustom is on while the file is missing, so an opt-in switch is on where it is not.
+            on = SwitchCustom(IOPath.Combine(PluginDirectory, file)) == onWhenMissing;
         }
         return on;
     }
@@ -3665,6 +3788,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         }
         catch (Exception exception) { Log($"Could not give the retail radar back during unload: {exception}"); }
         if (_radarTakeover != null) Log("Retail's radar is still held after two tries at unload; it stays hidden until the client restarts.");
+        try { _attack?.Dispose(); }
+        catch (Exception exception) { Log($"Could not give the retail attack panel back during unload: {exception}"); }
         DisposeRadarGround();
         if (_itemDragActive)
             try { _retailDrag?.ClearDropIndicator(); } catch (Exception exception) { Log($"Could not clear the inventory drop indicator: {exception.Message}"); }

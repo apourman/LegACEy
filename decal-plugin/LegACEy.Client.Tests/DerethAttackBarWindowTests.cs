@@ -48,11 +48,11 @@ public sealed class DerethAttackBarWindowTests
         Assert.Equal(0.75, view.Face.SetPoint, 3);
         Assert.Equal("Power 75%", view.BarTooltip);
 
-        // The groove's hit area runs a little past either end of the bar, and the set point stops at the bar's ends, as the mockup clamps it.
+        // The groove's hit area runs a little past either end of the bar, and the set point stops at the bar's ends, 0 to 1 as retail clamps it.
         Click(panel, GrooveHitRight, GrooveY);
         Assert.Equal(1, port.SetPoint, 3);
         Click(panel, GrooveHitLeft, GrooveY);
-        Assert.Equal(0.05, port.SetPoint, 3);
+        Assert.Equal(0, port.SetPoint, 3);
     });
 
     [Fact]

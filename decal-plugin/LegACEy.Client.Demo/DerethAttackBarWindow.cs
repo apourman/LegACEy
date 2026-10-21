@@ -16,8 +16,6 @@ public sealed class DerethAttackBarWindow : UserControl, IDisposable
 {
     /// <summary>The window's id, under which its place and size are kept for the character.</summary>
     public const string WindowId = "dereth-attack";
-    // The set point stops short of the bar's end, so its pin can always be seen; the mockup clamps it so.
-    private const double MinimumSetPoint = 0.05;
 
     private readonly IAttackBarPort _port;
     private readonly Action _startMove;
@@ -85,7 +83,8 @@ public sealed class DerethAttackBarWindow : UserControl, IDisposable
     private void SetPointAt(double x)
     {
         var fraction = (x - DerethAttackBarArt.GrooveRect.X) / DerethAttackBarArt.GrooveRect.Width;
-        _port.SetPoint = Math.Max(MinimumSetPoint, DerethAttackBarArt.Clamp01(fraction));
+        // Retail's power bar clamps the set point to 0 to 1, so the bar does too.
+        _port.SetPoint = DerethAttackBarArt.Clamp01(fraction);
         Sync();
     }
 
