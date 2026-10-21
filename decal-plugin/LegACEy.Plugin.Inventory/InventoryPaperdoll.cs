@@ -36,8 +36,9 @@ internal sealed class InventoryPaperdoll : Canvas
         (PaperdollSlot.Head, 84, 28), (PaperdollSlot.UpperArms, 48, 64), (PaperdollSlot.Chest, 84, 64), (PaperdollSlot.LowerArms, 48, 100),
         (PaperdollSlot.Abdomen, 84, 100), (PaperdollSlot.UpperLegs, 120, 100), (PaperdollSlot.Hands, 48, 136), (PaperdollSlot.LowerLegs, 120, 136),
         (PaperdollSlot.Feet, 120, 172),
-        (PaperdollSlot.AetheriaOne, 126, 8), (PaperdollSlot.AetheriaTwo, 158, 8), (PaperdollSlot.AetheriaThree, 190, 8),
-        (PaperdollSlot.LeftWrist, 156, 80), (PaperdollSlot.LeftRing, 156, 116), (PaperdollSlot.Weapon, 156, 172), (PaperdollSlot.Ammo, 190, 172),
+        // Retail packs the aetheria at 126, 158 and 190 and the ammo at 190, off the columns below; here each sits on a column, the first aetheria inside the doll area.
+        (PaperdollSlot.AetheriaOne, 120, 8), (PaperdollSlot.AetheriaTwo, 156, 8), (PaperdollSlot.AetheriaThree, 192, 8),
+        (PaperdollSlot.LeftWrist, 156, 80), (PaperdollSlot.LeftRing, 156, 116), (PaperdollSlot.Weapon, 156, 172), (PaperdollSlot.Ammo, 192, 172),
         (PaperdollSlot.Cloak, 192, 44), (PaperdollSlot.Shirt, 192, 80), (PaperdollSlot.Pants, 192, 116),
     };
 
