@@ -27,6 +27,8 @@ public interface ILegACEyPlugin
 public interface ILegACEyClient
 {
     IServerChannel ServerChannel { get; }
+    /// <summary>Objects' looks, for a <see cref="PaperdollView"/>: what the game sent, or the LegACEy server's answer.</summary>
+    ILookSource Looks { get; }
     /// <summary>The client's portal.dat path, for reading models off the game thread.</summary>
     string PortalPath { get; }
     /// <summary>The client's interface art, read on the game thread. Images are decoded once and shared.</summary>
@@ -73,7 +75,7 @@ public interface ILegACEyClient
     void ShowAppraisal(byte[] appraisal, string name, ItemVisual? visual, int stackCount);
     /// <summary>
     /// Opens the Inspect window on an object's 3D paperdoll, or puts the object in it when it is open. Zero is the player, which needs
-    /// only paperdoll.look; any other object needs paperdoll.inspect. The name and icon head the window.
+    /// any object whose look the game sent, or the LegACEy server knows. The name and icon head the window.
     /// </summary>
     void Inspect(uint objectId, string name, ItemVisual? visual);
     /// <summary>True while the appraisal window is open, so a plugin's own selection can follow it as the game's selection does.</summary>
@@ -112,6 +114,8 @@ public interface ILegACEyClient
 public interface ILegACEyPluginHost
 {
     IServerChannel ServerChannel { get; }
+    /// <summary>Objects' looks for the paperdoll. See <see cref="ILegACEyClient.Looks"/>.</summary>
+    ILookSource Looks { get; }
     string PortalPath { get; }
     IGameArtSource Art { get; }
     IItemDragHost ItemDrag { get; }

@@ -483,6 +483,7 @@ public sealed class RetailToolbarTests
 
         public IReadOnlyList<RetailShortcut> Shortcuts => Array.Empty<RetailShortcut>();
         public void UseShortcut(int index) { }
+        public void Select(uint objectId) { }
         public void AddShortcut(int index, uint objectId) { }
         public void RemoveShortcut(int index) { }
     }
@@ -544,6 +545,7 @@ public sealed class RetailToolbarTests
 
         public IReadOnlyList<RetailShortcut> Shortcuts => Array.Empty<RetailShortcut>();
         public void UseShortcut(int index) { }
+        public void Select(uint objectId) { }
         public void AddShortcut(int index, uint objectId) { }
         public void RemoveShortcut(int index) { }
     }

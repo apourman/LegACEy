@@ -258,6 +258,7 @@ public sealed class PluginRegistry
         }
 
         public IServerChannel ServerChannel { get; }
+        public ILookSource Looks => _registry._host.Looks;
         public string PortalPath => _registry._host.PortalPath;
         public IGameArtSource Art => _registry._host.Art;
         public IItemDragHost ItemDrag => _registry._host.ItemDrag;
