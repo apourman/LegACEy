@@ -77,12 +77,12 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     }
 
     /// <summary>
-    /// Gives a window its 3D character when the server lists the look action. The list can arrive after a window was built (the
-    /// window opens before channel.hello), so every open and the list's arrival ask again; a window that already has its character is left alone.
+    /// Gives a window its 3D character once its look is known: the game sent it, or the server lists the look action. The list can arrive
+    /// after a window was built (the window opens before channel.hello), so every open and the list's arrival ask again; a window that already has its character is left alone.
     /// </summary>
     private static void GiveDoll(ILegACEyClient client, InventoryWindow window)
     {
-        if (!window.HasDoll && client.SupportsAction(PaperdollProtocol.Look)) window.SetDoll(new PaperdollView(client.ServerChannel, client.PortalPath));
+        if (!window.HasDoll && client.Looks.Knows(0)) window.SetDoll(new PaperdollView(client.Looks, client.PortalPath));
     }
 
     /// <summary>Opens the window of a view, or hides it when the client has it open.</summary>

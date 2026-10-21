@@ -24,13 +24,13 @@ public sealed class InspectWindow
         GradientStops = { new GradientStop(Color.Parse("#2A2519"), 0), new GradientStop(Color.Parse("#0A0805"), 1) },
     };
 
-    private readonly IServerChannel _channel;
+    private readonly ILookSource _looks;
     private readonly string _portalPath;
     private readonly Border _stage;
 
-    public InspectWindow(IServerChannel channel, string portalPath)
+    public InspectWindow(ILookSource looks, string portalPath)
     {
-        _channel = channel ?? throw new ArgumentNullException(nameof(channel));
+        _looks = looks ?? throw new ArgumentNullException(nameof(looks));
         _portalPath = portalPath;
         _stage = new Border
         {
@@ -65,6 +65,6 @@ public sealed class InspectWindow
         Window.SetIcon(icon);
         if (objectId == ObjectId) return;
         ObjectId = objectId;
-        _stage.Child = new PaperdollView(_channel, _portalPath, objectId);
+        _stage.Child = new PaperdollView(_looks, _portalPath, objectId);
     }
 }
