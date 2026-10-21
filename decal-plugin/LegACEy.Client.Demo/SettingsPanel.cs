@@ -411,7 +411,9 @@ public sealed class SettingsPanel : UserControl
         fade.Chosen += index => _settings.ChatFade?.Set(RetailChatWindows.FadeChoices[index]);
         _redraws.Add(Show);
         Show();
-        return OptionRow("Fade when idle", fade);
+        // Six choices leave no room beside the label, so they sit on their own line under it.
+        fade.HorizontalAlignment = HorizontalAlignment.Right;
+        return new StackPanel { Spacing = 6, Children = { ScopedLabel("Fade when idle", thisCharacter: true), fade } };
     }
 
     private IEnumerable<Control> RadarRows()
