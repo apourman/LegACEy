@@ -2670,28 +2670,21 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             {
                 var natives = ChatNatives();
                 if (!NativeUi.Ready || !natives.ChatWindow) return;
-                var port = NewChatPort(natives);
-                try { port.Attach(); }
-                catch (InvalidOperationException)
-                {
-                    // Retail's notice registrar is not ready yet; the next frame tries again.
-                    port.Dispose();
-                    return;
-                }
-                _chatPort = port;
+                // Kept before it attaches, so a failure after retail registered its handler still stops it.
+                _chatPort = NewChatPort(natives);
                 carried.Dispose();
-                _carriedChatHistory = new RetailChatHistory(port, carried);
+                _carriedChatHistory = new RetailChatHistory(_chatPort, carried);
             }
+            // Retail's notice registrar may not be ready yet; the next frame tries again.
+            try { _chatPort.Attach(); }
+            catch (InvalidOperationException) { return; }
             _chatPort.Poll(holdsEntry: false);
         }
         catch (Exception exception)
         {
             _chatListenFailed = true;
             Log($"Dereth chat stopped listening while retail's chat is shown; lines until it comes back are not kept: {exception}");
-            var port = _chatPort;
-            _chatPort = null;
-            try { port?.Dispose(); }
-            catch (Exception disposeError) { Log($"Could not stop the chat port: {disposeError}"); }
+            ReleaseRetailChat();
         }
     }
 
