@@ -124,7 +124,7 @@ public sealed class SettingsPanelTests
         Assert.Equal(new object[]
         {
             false, 130, 0, 30, VitalsLayout.SideBySide,
-            new RadarOptions(Ground: false), new RadarOptions(NorthUp: true), new RadarOptions(Rings: true), new RadarOptions(Zoom: 150),
+            new RadarOptions(Map: false), new RadarOptions(NorthUp: true), new RadarOptions(Rings: true), new RadarOptions(Zoom: 150),
         }, changes);
     });
 
@@ -144,7 +144,7 @@ public sealed class SettingsPanelTests
         // The window's own menu moves both values; the open panel draws them as they now are.
         settings.ChatTextSize = new OptionChoice<int>(140, _ => { });
         settings.ChatFade = new OptionChoice<int>(60, _ => { });
-        settings.Radar = new OptionChoice<RadarOptions>(new RadarOptions(Ground: false), _ => { });
+        settings.Radar = new OptionChoice<RadarOptions>(new RadarOptions(Map: false), _ => { });
 
         TextOf(panel, "140%");
         Assert.Equal(4, TextOf(panel, "60 s").GetVisualAncestors().OfType<DerethSegmented>().First().Selected);

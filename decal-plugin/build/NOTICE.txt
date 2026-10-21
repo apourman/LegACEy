@@ -1,0 +1,5 @@
+Third-party notices
+
+Landblock place names (the list the radar and the server read) come from the Asheron's Call
+Community Wiki, https://asheron.fandom.com/wiki/Category:Landblocks, licensed under CC BY-SA.
+The names were extracted from the wiki and reformatted into one line per landblock.
