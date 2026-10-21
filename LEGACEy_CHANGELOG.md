@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/apourman/LegACEy/compare/v0.11.0...v0.12.0) (2026-10-21)
+
+
+### Features
+
+* **decal-plugin:** the radar maps dungeons and buildings ([#96](https://github.com/apourman/LegACEy/issues/96)) ([048c4dc](https://github.com/apourman/LegACEy/commit/048c4dc96ff4d8b3fd2d2da9b4772a7f7e5a6f63))
+
 ## [0.11.0](https://github.com/apourman/LegACEy/compare/v0.10.1...v0.11.0) (2026-10-20)
 
 
