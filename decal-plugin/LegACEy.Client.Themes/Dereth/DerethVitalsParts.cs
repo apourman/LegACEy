@@ -118,13 +118,16 @@ public sealed class DerethGildedPlate : Decorator
     private static readonly StreamGeometry CornerScroll = CornerScrollGeometry();
     private readonly double _cut;
     private readonly bool _ornate;
+    private readonly double? _ornamentX;
 
     /// <param name="cut">How far the corners are cut, in DIPs.</param>
     /// <param name="ornate">Whether the corners, the top lozenge and the bottom stud are drawn.</param>
-    public DerethGildedPlate(double cut, bool ornate)
+    /// <param name="ornamentX">Where the top lozenge, the bottom rule and the stud are centred, in DIPs; the plate's middle when null.</param>
+    public DerethGildedPlate(double cut, bool ornate, double? ornamentX = null)
     {
         _cut = cut;
         _ornate = ornate;
+        _ornamentX = ornamentX;
     }
 
     public override void Render(DrawingContext context)
@@ -147,10 +150,11 @@ public sealed class DerethGildedPlate : Decorator
                 context.DrawEllipse(DerethPalette.GoldBrush, null, new Point(7.4, 7.4), 0.8, 0.8);
             }
         }
-        DerethGilt.Lozenge(context, size.Width / 2, 4.4, 4.2);
+        var ornament = _ornamentX ?? size.Width / 2;
+        DerethGilt.Lozenge(context, ornament, 4.4, 4.2);
         var bottom = size.Height - 0.8;
-        context.DrawLine(BottomRule, new Point(size.Width / 2 - 22, bottom), new Point(size.Width / 2 + 22, bottom));
-        context.DrawEllipse(DerethGilt.GoldRound, DerethGilt.Outline, new Point(size.Width / 2, size.Height - 2.3), 2.2, 2.2);
+        context.DrawLine(BottomRule, new Point(ornament - 22, bottom), new Point(ornament + 22, bottom));
+        context.DrawEllipse(DerethGilt.GoldRound, DerethGilt.Outline, new Point(ornament, size.Height - 2.3), 2.2, 2.2);
     }
 
     private static void DrawDamask(DrawingContext context, Size size)
@@ -254,21 +258,21 @@ public sealed class DerethVitalBar : Control
     private const double ShineJump = 0.02;
     private static readonly TimeSpan ShineTime = TimeSpan.FromSeconds(0.9);
     private const double ShineWidth = 30;
-    private static readonly IBrush Groove = new LinearGradientBrush
+    internal static readonly IBrush Groove = new LinearGradientBrush
     {
         StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative),
         EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
         GradientStops = { new GradientStop(Color.Parse("#040302"), 0), new GradientStop(Color.Parse("#16130C"), 0.55), new GradientStop(Color.Parse("#080705"), 1) }
     };
-    private static readonly IPen GrooveEdge = new Pen(DerethPalette.GrooveEdgeBrush, 0.7);
-    private static readonly IBrush Highlight = DerethPalette.Brush(Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF));
+    internal static readonly IPen GrooveEdge = new Pen(DerethPalette.GrooveEdgeBrush, 0.7);
+    internal static readonly IBrush Highlight = DerethPalette.Brush(Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF));
     private static readonly IBrush Shine = new LinearGradientBrush
     {
         StartPoint = new RelativePoint(0, 0.5, RelativeUnit.Relative),
         EndPoint = new RelativePoint(1, 0.5, RelativeUnit.Relative),
         GradientStops = { new GradientStop(Color.FromArgb(0, 0xFF, 0xFF, 0xFF), 0), new GradientStop(Color.FromArgb(0x4D, 0xFF, 0xFF, 0xFF), 0.5), new GradientStop(Color.FromArgb(0, 0xFF, 0xFF, 0xFF), 1) }
     };
-    private static readonly IPen TickPen = new Pen(DerethPalette.Brush(DerethPalette.Gold.WithAlpha(0x99)), 0.7);
+    internal static readonly IPen TickPen = new Pen(DerethPalette.Brush(DerethPalette.Gold.WithAlpha(0x99)), 0.7);
     private static readonly Color PulseRed = Color.Parse("#E0554E");
     // The pulse's glow and edge: a pen and brush each, made once; Show sets the brushes' opacity, so drawing allocates nothing.
     private readonly SolidColorBrush _glowBrush = new(PulseRed);
@@ -381,7 +385,7 @@ public sealed class DerethVitalBar : Control
     }
 
     // A gold collar at the bar's end with a point outward: from x towards dir.
-    private static void DrawCap(DrawingContext context, double x, double dir, double height)
+    internal static void DrawCap(DrawingContext context, double x, double dir, double height)
     {
         var geometry = new StreamGeometry();
         using (var g = geometry.Open())
