@@ -341,9 +341,9 @@ public sealed class SettingsPanel : UserControl
         if (window == "Toolbar" && _settings.ShortcutRow2 != null) rows.Add(ShortcutRow2Row());
         if (window == "Chat" && _settings.ChatTextSize != null) rows.Add(ChatTextSizeRow());
         if (window == "Chat" && _settings.ChatFade != null) rows.Add(ChatFadeRow());
-        if (window == "Chat" && _settings.ChatActiveOpacity != null) rows.Add(SliderRow("Active opacity", RetailChatWindows.SmallestOpacity, RetailChatWindows.LargestOpacity, RetailChatWindows.OpacityStep,
+        if (window == "Chat" && _settings.ChatActiveOpacity != null) rows.Add(SliderRow("Active opacity", 0, 100, RetailChatWindows.OpacityStep,
             () => _settings.ChatActiveOpacity?.Value, value => _settings.ChatActiveOpacity?.Set(value), thisCharacter: true));
-        if (window == "Chat" && _settings.ChatInactiveOpacity != null) rows.Add(SliderRow("Inactive opacity", RetailChatWindows.SmallestOpacity, RetailChatWindows.LargestOpacity, RetailChatWindows.OpacityStep,
+        if (window == "Chat" && _settings.ChatInactiveOpacity != null) rows.Add(SliderRow("Inactive opacity", 0, 100, RetailChatWindows.OpacityStep,
             () => _settings.ChatInactiveOpacity?.Value, value => _settings.ChatInactiveOpacity?.Set(value), thisCharacter: true));
         if (window == "Vitals" && _settings.Vitals != null) rows.Add(VitalsRow());
         if (window == "Radar" && _settings.Radar != null) rows.AddRange(RadarRows());

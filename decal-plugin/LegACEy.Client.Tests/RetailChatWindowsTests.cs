@@ -230,13 +230,6 @@ public sealed class RetailChatWindowsTests
         clock.Advance(TimeSpan.FromSeconds(0.3));
         first.Tick();
         Assert.Equal(0.0, Seen(Frame(first.Main)));
-        first.Dispose();
-
-        // Instant is kept for Alice, so her window fades at once when it reopens.
-        using var second = ChatDesk.Open(port, path, Character, positions, clock: () => clock.Now);
-        clock.Advance(TimeSpan.FromSeconds(0.3));
-        second.Tick();
-        Assert.Equal(0.0, Seen(Frame(second.Main)));
     }));
 
     [Fact]

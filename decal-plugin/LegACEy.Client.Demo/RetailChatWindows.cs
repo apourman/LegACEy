@@ -51,7 +51,7 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     // The log backdrop's opacity in percent while a chat window is awake and once it is idle, kept per character in the position store.
     public const string ActiveOpacityKey = "dereth-chat-active-opacity", InactiveOpacityKey = "dereth-chat-inactive-opacity";
     public const int DefaultActiveOpacity = 60, DefaultInactiveOpacity = 0;
-    public const int SmallestOpacity = 0, LargestOpacity = 100, OpacityStep = 5;
+    public const int OpacityStep = 5;
     private int _activeOpacity = DefaultActiveOpacity;
     private int _inactiveOpacity = DefaultInactiveOpacity;
     // Where a torn-off window opens from the pointer: the tab it came from is under the pointer, so the window follows it.
@@ -324,30 +324,24 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
         positions.Save(server, character, TextSizeKey, (new Point(ClampTextSize(percent), 0), null));
 
     /// <summary>Sets the log backdrop's opacity in percent when every chat window is awake, and keeps it for the character.</summary>
-    public void SetActiveOpacity(int percent)
-    {
-        if (_disposed) return;
-        var opacity = ClampOpacity(percent);
-        if (opacity == _activeOpacity) return;
-        _activeOpacity = opacity;
-        SaveOpacity(_positions, _server, _character, ActiveOpacityKey, opacity);
-        foreach (var (_, window) in _chats) window.ActiveOpacity = opacity;
-    }
+    public void SetActiveOpacity(int percent) => SetOpacity(ActiveOpacityKey, ref _activeOpacity, percent, (window, opacity) => window.ActiveOpacity = opacity);
 
     /// <summary>Sets the log backdrop's opacity in percent when every chat window is idle, and keeps it for the character.</summary>
-    public void SetInactiveOpacity(int percent)
+    public void SetInactiveOpacity(int percent) => SetOpacity(InactiveOpacityKey, ref _inactiveOpacity, percent, (window, opacity) => window.InactiveOpacity = opacity);
+
+    private void SetOpacity(string key, ref int current, int percent, Action<RetailChatWindow, int> apply)
     {
         if (_disposed) return;
         var opacity = ClampOpacity(percent);
-        if (opacity == _inactiveOpacity) return;
-        _inactiveOpacity = opacity;
-        SaveOpacity(_positions, _server, _character, InactiveOpacityKey, opacity);
-        foreach (var (_, window) in _chats) window.InactiveOpacity = opacity;
+        if (opacity == current) return;
+        current = opacity;
+        SaveOpacity(_positions, _server, _character, key, opacity);
+        foreach (var (_, window) in _chats) apply(window, opacity);
     }
 
     /// <summary>An opacity in percent kept within the bounds and rounded to the step.</summary>
     public static int ClampOpacity(int percent) =>
-        Math.Max(SmallestOpacity, Math.Min(LargestOpacity, (int)Math.Round(percent / (double)OpacityStep) * OpacityStep));
+        Math.Max(0, Math.Min(100, (int)Math.Round(percent / (double)OpacityStep) * OpacityStep));
 
     /// <summary>The character's opacity under <paramref name="key"/> in percent, the default before one is saved.</summary>
     public static int LoadOpacity(IWindowPositionStore positions, string server, string character, string key, int fallback) =>
