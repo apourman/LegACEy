@@ -19,6 +19,7 @@ namespace ACE.Server.Tests.ClientChannel
             PaperdollChannelActions.Register();
             VaultChannelActions.Register();
             StationChannelActions.Register();
+            PlaceChannelActions.Register();
 
             var reader = new BinaryReader(new MemoryStream(ChannelHelloActions.Body("Tester")), Encoding.UTF8);
 
@@ -40,6 +41,7 @@ namespace ACE.Server.Tests.ClientChannel
                     VaultChannelActions.WithdrawBatch,
                     VaultChannelActions.DepositBatch,
                     StationChannelActions.Leave,
+                    PlaceChannelActions.Name,
                 },
                 names);
         }
