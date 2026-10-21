@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.12.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.11.4...decal-plugin-v0.12.0) (2026-10-21)
+
+
+### Features
+
+* **decal-plugin:** check for plugin updates every 30 minutes ([#94](https://github.com/apourman/LegACEy/issues/94)) ([41a031e](https://github.com/apourman/LegACEy/commit/41a031ebaaf20da91360190a5e4e7c0c06ad39a8))
+* **decal-plugin:** per-window scaling ([#95](https://github.com/apourman/LegACEy/issues/95)) ([10effa8](https://github.com/apourman/LegACEy/commit/10effa8da79f0c90b1bb79d6e57d7421d7819a04))
+* **decal-plugin:** the radar maps dungeons and buildings ([#96](https://github.com/apourman/LegACEy/issues/96)) ([048c4dc](https://github.com/apourman/LegACEy/commit/048c4dc96ff4d8b3fd2d2da9b4772a7f7e5a6f63))
+* **decal-plugin:** window snapping ([#93](https://github.com/apourman/LegACEy/issues/93)) ([debfe95](https://github.com/apourman/LegACEy/commit/debfe95772ae3e0ee37e802409b19ad0bf8b4867))
+
 ## [0.11.4](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.11.3...decal-plugin-v0.11.4) (2026-10-20)
 
 
