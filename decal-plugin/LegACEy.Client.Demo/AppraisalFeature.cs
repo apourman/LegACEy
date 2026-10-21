@@ -38,6 +38,8 @@ public sealed class AppraisalFeature
     private uint _requested;
     private long _requestedAt;
     private uint _shownId;
+    // Whether the window shows a stored item (a Vault item), which is not in the world.
+    private bool _shownStored;
     // A plugin's selected stored item, examined in place of the game's selection; null when there is none.
     private Action? _storedSelection;
     private AppraisalWindow? _view;
@@ -285,8 +287,20 @@ public sealed class AppraisalFeature
             _hidden = false;
         }
         _shownId = response.ObjectId;
+        _shownStored = stored != null;
         Shown = content;
         return true;
+    }
+
+    /// <summary>
+    /// The switch turned to retail's examination window: closes the open window and returns the world object it showed, for retail to
+    /// examine. Zero, with the window left open, when it is closed or shows a stored item, which retail cannot show.
+    /// </summary>
+    public uint HandOff()
+    {
+        if (_shownId == 0 || _shownStored || _view?.Close is not { } close || !_host.IsWindowOpen(WindowId)) return 0;
+        close();
+        return _shownId;
     }
 
     /// <summary>

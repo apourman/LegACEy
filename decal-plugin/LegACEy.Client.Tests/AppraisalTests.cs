@@ -253,6 +253,23 @@ public sealed class AppraisalTests
     });
 
     [Fact]
+    public void Switching_to_retail_closes_the_window_on_a_world_item_for_retail_to_examine_but_keeps_a_stored_item() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost();
+        var appraisals = new AppraisalFeature(host, _ => { });
+        Assert.Equal(0u, appraisals.HandOff());
+
+        appraisals.Request(Potion);
+        appraisals.Receive(PotionMessage(Potion, 75));
+        Assert.Equal(Potion, appraisals.HandOff());
+        Assert.False(host.IsWindowOpen(AppraisalFeature.WindowId));
+
+        appraisals.ShowStored(InscribedPotion(Gem, "Mine", "Aerbax"), "Gift Potion", null, 1);
+        Assert.Equal(0u, appraisals.HandOff());
+        Assert.True(host.IsWindowOpen(AppraisalFeature.WindowId));
+    });
+
+    [Fact]
     public void An_unrequested_response_only_caches_and_never_opens_the_window() => OnWindowThread(() =>
     {
         var host = new FakeAppraisalHost();

@@ -295,6 +295,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private DateTime _lastRetailPanelSwitchCheck;
     private bool _retailAppraisalSwitch;
     private DateTime _lastAppraisalSwitchCheck;
+    // The Appraisal card was switched: once the switch is read, a turn to retail hands the open appraisal over to retail's panel.
+    private bool _appraisalSwitched;
+    private RetailExamine? _retailExamine;
     // Retail's examination panel, taken over for the session when the native UI check passes; each showing is an appraisal in our window.
     private RetailExaminationTakeover? _examination;
     private readonly BridgeInventoryPort _inventory = new(Log);
@@ -387,6 +390,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             catch (Exception exception) { Log($"LegACEy server channel disabled: {exception.Message}"); }
             try { _retailDrag = new RetailItemDrag(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"Item drag and drop disabled: {exception.Message}"); }
+            try { _retailExamine = new RetailExamine(NativeUi.ReadMemory, Log); }
+            catch (Exception exception) { Log($"Switching the appraisal window to retail won't reopen the item in retail's: {exception.Message}"); }
             try { _busyCursor = new RetailBusyCursor(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"The busy cursor while an appraisal loads is off: {exception.Message}"); }
             try { _textMode = new RetailTextMode(NativeUi.ReadMemory, Log); }
@@ -944,7 +949,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private IReadOnlyList<UiWindowChoice> WindowChoices() => new[]
     {
         Choice("Inventory", RetailPanelSwitchFile, () => _lastRetailPanelSwitchCheck = default),
-        Choice("Appraisal", RetailAppraisalSwitchFile, () => _lastAppraisalSwitchCheck = default),
+        Choice("Appraisal", RetailAppraisalSwitchFile, () => { _lastAppraisalSwitchCheck = default; _appraisalSwitched = true; }),
         Choice("Toolbar", RetailToolbarSwitchFile, () => _lastToolbarSwitchCheck = default),
         Choice("Chat", RetailChatSwitchFile, () => _lastChatSwitchCheck = default),
         Choice("Vitals", RetailVitalsSwitchFile, () => _lastVitalsSwitchCheck = default),
@@ -1462,7 +1467,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var enabled = canOpen && SwitchOn(RetailPanelSwitchFile, ref _lastRetailPanelSwitchCheck, ref _retailPanelSwitch);
         foreach (var takeover in _retailPanels.ToArray())
             takeover.Tick(enabled, canShow: !loggingIn);
-        _examination?.Tick(canOpen && SwitchOn(RetailAppraisalSwitchFile, ref _lastAppraisalSwitchCheck, ref _retailAppraisalSwitch), canShow: !loggingIn);
+        var appraisalOn = SwitchOn(RetailAppraisalSwitchFile, ref _lastAppraisalSwitchCheck, ref _retailAppraisalSwitch);
+        _examination?.Tick(canOpen && appraisalOn, canShow: !loggingIn);
+        // Turned to retail: the item in our window opens in retail's panel, now given back. The other way, the takeover already parks an
+        // open retail panel and examines the selection in our window.
+        if (_appraisalSwitched)
+        {
+            _appraisalSwitched = false;
+            if (!appraisalOn && _appraisal.HandOff() is var shown and not 0 && _retailExamine?.Examine(shown) != true)
+                Log("The appraisal window was switched to retail; retail's window could not reopen the item.");
+        }
     }
 
     /// <summary>
