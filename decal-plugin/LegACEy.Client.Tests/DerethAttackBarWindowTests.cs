@@ -224,7 +224,7 @@ public sealed class DerethAttackBarWindowTests
     });
 
     [Fact]
-    public void A_corner_drag_draws_the_bar_larger_at_its_shape_up_to_three_times_unless_the_UI_is_locked() => RenderThread.Run(() =>
+    public void An_edge_drag_gives_the_bar_more_width_or_height_on_its_own_unless_the_UI_is_locked() => RenderThread.Run(() =>
     {
         var port = new FakeAttackBarPort { Stance = RetailStance.Melee };
         var view = new DerethAttackBarWindow(port, () => { });
@@ -236,31 +236,47 @@ public sealed class DerethAttackBarWindowTests
 
         var windows = new WindowManager(new Size(1600, 1000), new MemoryWindowPositionStore(), "Thistledown", "Alice");
         var window = windows.Open(DerethAttackBarWindow.DefinitionOf(() => port.UiLocked), new Point(100, 100));
-        DragCorner(windows, window, 160);
-        // Half again as large, its height carried along to keep the bar's shape (to the pixel).
-        Assert.Equal(87, window.Height);
-        Assert.InRange(window.Width, 479, 481);
-        DragCorner(windows, window, 2000);
-        Assert.Equal(new Size(960, 174), window.Size);
-        // Down to three quarters: 240 by 43.5 at the bar's shape, so the manager settles on 243 by 44.
-        DragCorner(windows, window, -2000);
-        Assert.Equal(new Size(243, 44), window.Size);
+        Drag(windows, new Point(window.Bounds.Right - 2, window.Bounds.Top + 29), 160, 0);
+        Assert.Equal(new Size(480, 58), window.Size);
+        Drag(windows, new Point(window.Bounds.Left + 200, window.Bounds.Bottom - 2), 0, 40);
+        Assert.Equal(new Size(480, 98), window.Size);
+        Drag(windows, new Point(window.Bounds.Right - 2, window.Bounds.Bottom - 2), 2000, 2000);
+        Assert.Equal(new Size(960, 150), window.Size);
+        Drag(windows, new Point(window.Bounds.Right - 2, window.Bounds.Bottom - 2), -2000, -2000);
+        Assert.Equal(new Size(280, 58), window.Size);
 
         port.UiLocked = true;
-        DragCorner(windows, window, 160);
-        Assert.Equal(new Size(243, 44), window.Size);
+        Drag(windows, new Point(window.Bounds.Right - 2, window.Bounds.Top + 29), 160, 0);
+        Assert.Equal(new Size(280, 58), window.Size);
         panel.PointerMove(400, 400);
         panel.PointerMove(150, 3);
         panel.Tick();
         Assert.False(view.CornersVisible);
     });
 
-    /// <summary>A player's drag of the window's bottom-right corner by <paramref name="dx"/> across.</summary>
-    private static void DragCorner(WindowManager windows, ManagedWindow window, int dx)
+    [Fact]
+    public void A_wider_bar_is_longer_and_its_plaques_follow_the_right_edge_with_text_at_its_size() => RenderThread.Run(() =>
     {
-        var corner = new Point(window.Bounds.Right - 2, window.Bounds.Bottom - 2);
-        windows.Press(corner);
-        windows.Move(new Point(corner.X + dx, corner.Y));
+        var port = new FakeAttackBarPort();
+        var view = new DerethAttackBarWindow(port, () => { });
+        using var panel = AvaloniaPanel.Create(() => view, 480, 98, 1);
+
+        // The groove is 160 DIPs longer, so its middle is 80 further right.
+        Click(panel, GrooveLeft + (GrooveWidth + 160) / 2, 31);
+        Assert.Equal(0.5, port.SetPoint, 2);
+        // The plaques moved 160 right with the edge; the low one is lower in the taller window.
+        Click(panel, PlaqueX + 160, 72);
+        Assert.Equal(AttackHeight.Low, port.Height);
+        // The gems spread: the third sits a further 2 × 160 / 3 DIPs right, and the row is lower.
+        Click(panel, GemX[2] + 2 * 160 / 3.0, GemY + 30);
+        Assert.True(port.ViewCombatTarget);
+    });
+
+    /// <summary>A player's drag from <paramref name="from"/> by (<paramref name="dx"/>, <paramref name="dy"/>).</summary>
+    private static void Drag(WindowManager windows, Point from, int dx, int dy)
+    {
+        windows.Press(from);
+        windows.Move(new Point(from.X + dx, from.Y + dy));
         windows.Release();
     }
 
@@ -281,6 +297,15 @@ public sealed class DerethAttackBarWindowTests
                 };
                 Render(Path.Combine(folder, $"{name}-{scale:0}x.png"), port, scale);
             }
+        // Stretched: wider, taller, and both.
+        foreach (var (width, height) in new[] { (480, 58), (320, 98), (560, 120) })
+        {
+            var port = new FakeAttackBarPort { SetPoint = 0.75, Charge = 0.45, Height = AttackHeight.Medium, AutoRepeatAttack = true, AutoTarget = true };
+            var view = new DerethAttackBarWindow(port, () => { });
+            using var panel = AvaloniaPanel.Create(() => view, width, height, 1);
+            panel.Tick();
+            PanelPng.Save(panel, Path.Combine(folder, $"stretched-{width}x{height}.png"));
+        }
     });
 
     private static void Render(string path, FakeAttackBarPort port, double scale)

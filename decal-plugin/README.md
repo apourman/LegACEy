@@ -149,8 +149,8 @@ again.
 The Dereth attack bar replaces retail's attack panel in melee and missile combat, centred over retail's place the first time. Click the
 groove to set the power (accuracy with a bow; hover it for the percentage), a plaque to pick High, Medium or Low, and a gem to switch
 Repeat Attacks, Auto Target or Keep in View; retail's keys still work and the bar follows them. The charge fills the groove as retail
-builds it. With the UI unlocked, hovering the bar shows gold corners: drag one, or an edge, to draw it larger or smaller, from three
-quarters of its size to three times it, keeping its shape. In peace and magic the bar closes and retail's panels are left as retail draws them. Creating an empty file named
+builds it. With the UI unlocked, hovering the bar shows gold corners: drag a side edge to make the bar longer or the bottom edge to
+give it more height (up to 960 by 150 DIPs); the text keeps its size, and Ctrl+wheel scales the whole bar. In peace and magic the bar closes and retail's panels are left as retail draws them. Creating an empty file named
 `retail-attack-native` beside the main DLL (or the Settings window's Attack bar row) gives retail's panel back within a second.
 
 The LegACEy menu's UI size row scales every LegACEy window, the toolbar and the shortcut bars, from 60 to 150 percent (85 to start),

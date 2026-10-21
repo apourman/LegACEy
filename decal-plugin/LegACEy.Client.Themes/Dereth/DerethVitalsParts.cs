@@ -118,7 +118,7 @@ public sealed class DerethGildedPlate : Decorator
     private static readonly StreamGeometry CornerScroll = CornerScrollGeometry();
     private readonly double _cut;
     private readonly bool _ornate;
-    private readonly double? _ornamentX;
+    private double? _ornamentX;
 
     /// <param name="cut">How far the corners are cut, in DIPs.</param>
     /// <param name="ornate">Whether the corners, the top lozenge and the bottom stud are drawn.</param>
@@ -128,6 +128,18 @@ public sealed class DerethGildedPlate : Decorator
         _cut = cut;
         _ornate = ornate;
         _ornamentX = ornamentX;
+    }
+
+    /// <summary>Where the top lozenge, the bottom rule and the stud are centred, in DIPs; the plate's middle when null.</summary>
+    public double? OrnamentX
+    {
+        get => _ornamentX;
+        set
+        {
+            if (_ornamentX == value) return;
+            _ornamentX = value;
+            InvalidateVisual();
+        }
     }
 
     public override void Render(DrawingContext context)

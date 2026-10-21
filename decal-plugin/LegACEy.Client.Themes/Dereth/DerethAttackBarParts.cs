@@ -11,27 +11,65 @@ namespace LegACEy.Client.Themes;
 public readonly record struct DerethAttackFace(bool Accuracy, double SetPoint, double Charge, int LitPlaque, bool RepeatAttacks, bool AutoTarget, bool KeepInView);
 
 /// <summary>
-/// The attack bar's art, drawn at the mockup's coordinates in DIPs (320 by 58): the Speed ↔ Power (or Accuracy) bar in the vitals' glass groove
-/// between gold end caps, its set point as a green gem on a gold pin, the charge filling from the left, three height plaques behind a gold
-/// divider with the lit one's arrows, and three option gems. It draws only when its face changes, so a still bar draws no new frame. Its click
-/// areas are here too, beside the places they cover, so the window only maps them to actions.
+/// Where the attack bar's parts sit for a size in DIPs. At the design size, 320 by 58, it is the mockup's layout. Width added lengthens the bar,
+/// carrying its right label, the divider and the plaques with the right edge, and spreads the option gems. Height added thickens the bar and
+/// spreads the rows: the bar keeps to the top, the gems to the bottom, and the plaques grow and space out down the divider. Text stays its size.
+/// </summary>
+public sealed class DerethAttackLayout
+{
+    private const int DesignWidth = 320, DesignHeight = 58;
+    private readonly double _wide, _tall;
+
+    public DerethAttackLayout(Size size)
+    {
+        Size = size;
+        _wide = size.Width - DesignWidth;
+        _tall = Math.Max(0, size.Height - DesignHeight);
+        Groove = new Rect(46, 14 + _tall * 0.15, Math.Max(40, 168 + _wide), Math.Min(18, 10 + _tall * 0.3));
+        GrooveHit = new Rect(Groove.X - 4, Groove.Y - 7, Groove.Width + 8, Groove.Height + 12);
+    }
+
+    public Size Size { get; }
+    /// <summary>The groove: the bar's glass, whose middle line is the bar's centre.</summary>
+    public Rect Groove { get; }
+    /// <summary>The groove's click area: 4 DIPs past each end of the bar, so a press just outside the glass still sets the point.</summary>
+    public Rect GrooveHit { get; }
+    /// <summary>Where the Power or Accuracy label starts: just past the bar's right cap.</summary>
+    public double RightLabelX => Groove.Right + 8;
+    /// <summary>The gold divider before the plaques, and how far down it runs.</summary>
+    public double DividerX => Size.Width - 58;
+    public double DividerBottom => 49 + _tall;
+    /// <summary>Where the plate's top lozenge, bottom rule and stud are centred: over the bar, as the mockup places them.</summary>
+    public double OrnamentX => 122 + _wide / 2;
+
+    /// <summary>A height plaque's rectangle, drawn and clicked: 0 High, 1 Medium, 2 Low, from the top.</summary>
+    public Rect Plaque(int index)
+    {
+        // At the design size the plaques are 12 tall on a 14 DIP pitch from y 9; added height grows both.
+        double pitch = 14 + _tall / 3, height = Math.Min(22, 12 + _tall * 0.2);
+        var middle = 9 + pitch * index + pitch / 2 - 1;
+        return new Rect(Size.Width - 46, middle - height / 2, 36, height);
+    }
+
+    /// <summary>An option gem's centre: Repeat Attacks, Auto Target, Keep in View, from the left.</summary>
+    public Point Toggle(int index) => new(16 + index * (74 + Math.Max(0, _wide) / 3), 42 + _tall * 0.75);
+
+    /// <summary>An option's click area: its gem and its label. The last label is shorter, so its area is narrower, as the mockup's.</summary>
+    public Rect ToggleHit(int index) => new(Toggle(index).X - 6, Toggle(index).Y - 7, index == 2 ? 64 : 70, 14);
+}
+
+/// <summary>
+/// The attack bar's art, laid out by <see cref="DerethAttackLayout"/> for its size: the Speed ↔ Power (or Accuracy) bar in the vitals' glass
+/// groove between gold end caps, its set point as a green gem on a gold pin, the charge filling from the left, three height plaques behind a
+/// gold divider with the lit one's arrows, and three option gems. It draws only when its face or its size changes, so a still bar draws no
+/// new frame.
 /// </summary>
 public sealed class DerethAttackBarArt : Control
 {
-    /// <summary>The bar's design size in DIPs; the window is this size, scaled as a whole.</summary>
+    /// <summary>The bar's design size in DIPs: the size it opens at and the smallest height it lays out for.</summary>
     public const int DesignWidth = 320, DesignHeight = 58;
-    /// <summary>Where the plate's top lozenge, bottom rule and stud are centred: over the bar, as the mockup places them.</summary>
-    public const double PlateOrnamentX = 122;
-    /// <summary>The groove: the bar's glass, whose middle line is the bar's centre.</summary>
-    public static readonly Rect GrooveRect = new(46, 14, 168, 10);
-    /// <summary>The groove's click area: 4 DIPs past each end of the bar, so a press just outside the glass still sets the point.</summary>
-    public static readonly Rect GrooveHitRect = new(42, 7, 176, 22);
-    /// <summary>A height plaque's rectangle, drawn and clicked: 0 High, 1 Medium, 2 Low, from the top.</summary>
-    public static Rect PlaqueRect(int index) => new(274, 9 + 14 * index, 36, 12);
-    /// <summary>An option gem's centre: Repeat Attacks, Auto Target, Keep in View, from the left.</summary>
-    public static Point ToggleCentre(int index) => new(index switch { 0 => 16, 1 => 90, _ => 164 }, 42);
-    /// <summary>An option's click area: its gem and its label. The last label is shorter, so its area is narrower, as the mockup's.</summary>
-    public static Rect ToggleHitRect(int index) => new(ToggleCentre(index).X - 6, 35, index == 2 ? 64 : 70, 14);
+    /// <summary>The narrowest the bar lays out for, its bar 128 DIPs long, and the largest size, in DIPs.</summary>
+    public const int MinimumWidth = 280, MaximumWidth = 960, MaximumHeight = 150;
 
     private const double GemRadius = 3.4;
     private static readonly string[] PlaqueNames = { "High", "Medium", "Low" };
@@ -69,12 +107,7 @@ public sealed class DerethAttackBarArt : Control
 
     private DerethAttackFace _face = new(false, 0, 0, 0, false, false, false);
 
-    public DerethAttackBarArt()
-    {
-        Width = DesignWidth;
-        Height = DesignHeight;
-        IsHitTestVisible = false;
-    }
+    public DerethAttackBarArt() => IsHitTestVisible = false;
 
     /// <summary>The face as last shown.</summary>
     public DerethAttackFace Face => _face;
@@ -93,19 +126,20 @@ public sealed class DerethAttackBarArt : Control
     public override void Render(DrawingContext context)
     {
         var face = _face;
-        var middle = GrooveRect.Center.Y;
+        var layout = new DerethAttackLayout(Bounds.Size);
+        var middle = layout.Groove.Center.Y;
         Text(context, "Speed", 9, DerethPalette.MutedBrush, 12, middle, centred: false);
-        Text(context, face.Accuracy ? "Accuracy" : "Power", 9, DerethPalette.MutedBrush, 222, middle, centred: false);
-        DrawGroove(context, face);
-        context.DrawLine(Divider, new Point(262, 9), new Point(262, 49));
-        context.DrawLine(DividerShadow, new Point(263, 9), new Point(263, 49));
-        for (var i = 0; i < PlaqueNames.Length; i++) DrawPlaque(context, i, i == face.LitPlaque);
-        for (var i = 0; i < ToggleNames.Length; i++) DrawToggle(context, i, i switch { 0 => face.RepeatAttacks, 1 => face.AutoTarget, _ => face.KeepInView });
+        Text(context, face.Accuracy ? "Accuracy" : "Power", 9, DerethPalette.MutedBrush, layout.RightLabelX, middle, centred: false);
+        DrawGroove(context, layout.Groove, face);
+        context.DrawLine(Divider, new Point(layout.DividerX, 9), new Point(layout.DividerX, layout.DividerBottom));
+        context.DrawLine(DividerShadow, new Point(layout.DividerX + 1, 9), new Point(layout.DividerX + 1, layout.DividerBottom));
+        for (var i = 0; i < PlaqueNames.Length; i++) DrawPlaque(context, layout.Plaque(i), i, i == face.LitPlaque);
+        for (var i = 0; i < ToggleNames.Length; i++)
+            DrawToggle(context, layout.Toggle(i), i, i switch { 0 => face.RepeatAttacks, 1 => face.AutoTarget, _ => face.KeepInView });
     }
 
-    private static void DrawGroove(DrawingContext context, DerethAttackFace face)
+    private static void DrawGroove(DrawingContext context, Rect body, DerethAttackFace face)
     {
-        var body = GrooveRect;
         var set = Clamp01(face.SetPoint);
         var glass = new Rect(0, 0, body.Width, body.Height);
         using (context.PushTransform(Matrix.CreateTranslation(body.X, body.Y)))
@@ -133,9 +167,8 @@ public sealed class DerethAttackBarArt : Control
         context.DrawEllipse(GemOn, null, new Point(pin, body.Y - 2.6), 1.5, 1.5);
     }
 
-    private static void DrawPlaque(DrawingContext context, int index, bool lit)
+    private static void DrawPlaque(DrawingContext context, Rect rect, int index, bool lit)
     {
-        var rect = PlaqueRect(index);
         var middle = rect.Center.Y;
         context.DrawGeometry(lit ? PlateLit : DerethGilt.Inlay, lit ? LitEdge : UnlitEdge, DerethGilt.Chamfered(rect, 2.5));
         Text(context, PlaqueNames[index], 8.6, lit ? LitText : DerethPalette.MutedBrush, rect.Center.X, middle, centred: true);
@@ -147,9 +180,8 @@ public sealed class DerethAttackBarArt : Control
             Polygon(new Point(rect.Right + 6, middle - 3.2), new Point(rect.Right + 1.6, middle), new Point(rect.Right + 6, middle + 3.2)));
     }
 
-    private static void DrawToggle(DrawingContext context, int index, bool on)
+    private static void DrawToggle(DrawingContext context, Point centre, int index, bool on)
     {
-        var centre = ToggleCentre(index);
         context.DrawEllipse(DerethGilt.GoldRound, GemEdge, centre, GemRadius + 1, GemRadius + 1);
         context.DrawEllipse(on ? GemOn : GemOff, null, centre, GemRadius, GemRadius);
         Text(context, ToggleNames[index], 8.6, on ? DerethPalette.CreamBrush : DerethPalette.MutedBrush, centre.X + 7, centre.Y, centred: false);
