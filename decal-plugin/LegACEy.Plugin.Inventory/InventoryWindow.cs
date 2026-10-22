@@ -546,15 +546,16 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     }
 
     /// <summary>
-    /// While a worn item is lifted, the body parts it covers are outlined on the doll: the ones the server says it draws, else those its
-    /// coverage names, else those it is worn over. Anything else leaves the doll as it is.
+    /// While a worn item is lifted, the body parts it covers are outlined on the doll: the ones the clothing tables say it draws, else
+    /// those its coverage and wield slots name. Anything else leaves the doll as it is.
     /// </summary>
     private void OutlineLifted(uint dragged)
     {
-        if (!DollShown || _port.Snapshot.Wielded.FirstOrDefault(item => item.Id == dragged) is not { } worn) return;
-        var parts = _doll!.PartsDrawnBy(worn.Id);
-        if (parts.Count == 0) parts = InventorySnapshotBuilder.PartsCovered(_port.CoverageOf(worn.Id));
-        _doll.Outline(parts.Count > 0 ? parts : InventorySnapshotBuilder.PartsUnder(worn.EquippedMask), LiftedOutline);
+        var wielded = _port.Snapshot.Wielded;
+        var index = wielded.ToList().FindIndex(item => item.Id == dragged);
+        if (!DollShown || index < 0) return;
+        var parts = DrawnParts(wielded)[index];
+        _doll!.Outline(parts.Count > 0 ? parts : ClaimOf(wielded[index]), LiftedOutline);
     }
 
     /// <summary>Shows the drop indicator over the slot, in the colour.</summary>
@@ -608,21 +609,27 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private InventorySlotId? PressAt(Point point) => SlotAt(point)?.Tag as InventorySlotId ?? WornAt(point);
 
     /// <summary>
-    /// The worn item drawn under a point of the doll: the one the server says draws that body part (tall boots up to the knee), or, from
-    /// a server that does not say, the outermost worn there by where it is worn (a coat over the shirt beneath it). Null off the doll,
-    /// or where that part wears nothing.
+    /// The worn item drawn under a point of the doll: the one the clothing tables say draws that body part (tall boots up to the knee),
+    /// or, where they can't tell, the outermost worn there by where it is worn (a coat over the shirt beneath it). Null off the doll, or
+    /// where that part wears nothing.
     /// </summary>
     private InventorySlotId? WornAt(Point point)
     {
         if (_doll == null || DollArea.Child != _doll || this.TranslatePoint(point, _doll) is not { } at) return null;
         var wielded = _port.Snapshot.Wielded;
         var part = _doll.PartAt(at);
-        var drawing = _doll.ItemDrawing(part);
-        if (wielded.FirstOrDefault(item => item.Id == drawing) is { } drawn)
-            return new InventorySlotId(SlotPlace.Paperdoll, drawn.Id, 0, -1, drawn.Slots.Count > 0 ? drawn.Slots[0] : null);
-        var worn = InventorySnapshotBuilder.WornOn(wielded, part);
+        var drawn = DrawnParts(wielded);
+        var worn = wielded.Where((_, i) => drawn[i].Contains(part)).FirstOrDefault() ?? InventorySnapshotBuilder.WornOn(wielded, part);
         return worn == null ? null : new InventorySlotId(SlotPlace.Paperdoll, worn.Id, 0, -1, worn.Slots.Count > 0 ? worn.Slots[0] : null);
     }
+
+    /// <summary>The body parts each worn item draws on the doll, in the order of <paramref name="wielded"/>; empty where the doll can't tell.</summary>
+    private IReadOnlyList<IReadOnlyCollection<int>> DrawnParts(IReadOnlyList<WieldedItem> wielded) =>
+        _doll!.PartsDrawn(wielded.Select(ClaimOf).ToList());
+
+    /// <summary>The body parts a worn item says it covers: its coverage, and where it is worn.</summary>
+    private IReadOnlyCollection<int> ClaimOf(WieldedItem item) =>
+        InventorySnapshotBuilder.PartsCovered(_port.CoverageOf(item.Id)).Union(InventorySnapshotBuilder.PartsUnder(item.EquippedMask)).ToList();
 
     /// <summary>
     /// What a press on a slot carries: its item, a side pack, or the main pack, which is the character and only goes to retail (a

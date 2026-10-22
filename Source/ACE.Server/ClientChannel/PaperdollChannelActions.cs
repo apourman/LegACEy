@@ -29,16 +29,9 @@ namespace ACE.Server.ClientChannel
         /// </summary>
         public const string Inspect = "paperdoll.inspect";
 
-        /// <summary>
-        /// Reply: u16 count of (u8 part, u32 item guid): the worn item that draws each body part of the player's look, so the client's
-        /// doll picks what it shows under the pointer. Parts no worn item draws are left out.
-        /// </summary>
-        public const string Parts = "paperdoll.parts";
-
         public static void Register()
         {
             ServerChannel.Register(Look, context => context.Reply(LookBody(context.Player)));
-            ServerChannel.Register(Parts, context => context.Reply(PartsBody(context.Player)));
             ServerChannel.Register(Inspect, context =>
             {
                 uint guid;
@@ -79,18 +72,6 @@ namespace ACE.Server.ClientChannel
                 w.Write((uint)item.ParentLocation.Value);
                 w.Write(item.ObjScale ?? 1f);
                 WriteLook(w, item);
-            }
-        });
-
-        internal static byte[] PartsBody(Creature creature) => ChannelWire.Body(w =>
-        {
-            var parts = new Dictionary<byte, uint>();
-            creature.CalculateObjDesc(parts);
-            w.Write((ushort)parts.Count);
-            foreach (var part in parts)
-            {
-                w.Write(part.Key);
-                w.Write(part.Value);
             }
         });
 

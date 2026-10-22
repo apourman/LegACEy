@@ -462,7 +462,6 @@ public sealed class InventoryWindowTests
         public bool Knows(uint objectId) => true;
         public void Request(uint objectId, Action<LegACEy.Client.GameArt.CharacterAppearance?, string> reply) { }
         public IDisposable WhenChanged(uint objectId, Action changed) => new Nothing();
-        public void RequestParts(Action<IReadOnlyDictionary<int, uint>?> reply) => reply(null);
 
         private sealed class Nothing : IDisposable
         {

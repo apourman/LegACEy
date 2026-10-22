@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -24,8 +25,12 @@ public sealed class PaperdollView : Border
     // Counts requests and leaving the tree: a reply or build from an older request, or from before the view left, is dropped.
     private int _request;
     private readonly uint _target;
-    // A still doll's worn item for each body part it draws, while the look source knows them.
-    private IReadOnlyDictionary<int, uint>? _partItems;
+    // A still doll's look and its body's clothing tables, once built: what works out which worn item draws which part.
+    private (CharacterAppearance Look, ClothingTables Tables)? _clothing;
+    // The last answer of PartsDrawn, which a drag asks for on every move: it holds until the claims or the look change.
+    private (List<IReadOnlyCollection<int>> Claims, IReadOnlyList<IReadOnlyCollection<int>> Drawn)? _drawn;
+    // The clothing tables of each portal.dat and body setup, read once: a few thousand small reads.
+    private static readonly Dictionary<(string Path, uint Setup), ClothingTables> Tables = new();
 
     /// <param name="target">The object to show, zero for the player.</param>
     public PaperdollView(ILookSource looks, string portalPath, uint target = 0)
@@ -56,17 +61,24 @@ public sealed class PaperdollView : Border
     /// <summary>The body part (a setup part number) drawn at a point of this view, or -1.</summary>
     public int PartAt(Avalonia.Point point) => _view.PartAt(point);
 
-    /// <summary>The worn item a still doll draws the body part with, as its look source tells it; zero when that is not known.</summary>
-    public uint ItemDrawing(int part) => _partItems != null && _partItems.TryGetValue(part, out var item) ? item : 0;
-
-    /// <summary>The body parts the look source says the worn item draws; empty when that is not known.</summary>
-    public IReadOnlyCollection<int> PartsDrawnBy(uint item)
+    /// <summary>
+    /// The body parts each worn item draws on a still doll, found from the clothing tables in portal.dat (see
+    /// <see cref="ClothingTables.PartsDrawn"/>). <paramref name="claims"/> holds each worn item's parts by its coverage. Empty for every
+    /// item until the doll is built.
+    /// </summary>
+    public IReadOnlyList<IReadOnlyCollection<int>> PartsDrawn(IReadOnlyList<IReadOnlyCollection<int>> claims)
     {
-        var parts = new List<int>();
-        if (_partItems != null)
-            foreach (var pair in _partItems)
-                if (pair.Value == item) parts.Add(pair.Key);
-        return parts;
+        if (_clothing is not { } clothing)
+        {
+            var none = new IReadOnlyCollection<int>[claims.Count];
+            for (var i = 0; i < none.Length; i++) none[i] = Array.Empty<int>();
+            return none;
+        }
+        if (_drawn is { } last && last.Claims.Count == claims.Count && last.Claims.Zip(claims, (a, b) => a.SequenceEqual(b)).All(same => same))
+            return last.Drawn;
+        var drawn = clothing.Tables.PartsDrawn(clothing.Look, claims);
+        _drawn = (claims.ToList(), drawn);
+        return drawn;
     }
 
     /// <summary>Outlines the body parts in the colour (RGB), or none for an empty set.</summary>
@@ -74,6 +86,16 @@ public sealed class PaperdollView : Border
     {
         _view.Outlined = parts;
         _view.OutlineColour = colour;
+    }
+
+    private ClothingTables TablesFor(PortalDat dat, uint setup)
+    {
+        lock (Tables)
+        {
+            if (!Tables.TryGetValue((_portalPath, setup), out var tables))
+                Tables[(_portalPath, setup)] = tables = ClothingTables.Read(dat, setup);
+            return tables;
+        }
     }
 
     private void Start()
@@ -94,11 +116,6 @@ public sealed class PaperdollView : Border
         if (_view.Model == null) _status.Text = "Loading…";
         var request = ++_request;
         var still = Still;
-        if (still)
-            _looks.RequestParts(parts =>
-            {
-                if (request == _request) _partItems = parts;
-            });
         _looks.Request(_target, (appearance, why) =>
         {
             if (request != _request) return;
@@ -111,9 +128,10 @@ public sealed class PaperdollView : Border
             Task.Run(() =>
             {
                 using var dat = new PortalDat(_portalPath);
-                return CharacterModel.Build(dat, still
+                var model = CharacterModel.Build(dat, still
                     ? new CharacterAppearance(appearance.SetupId, appearance.PaletteId, appearance.SubPalettes, appearance.TextureChanges, appearance.PartChanges)
                     : appearance);
+                return (Model: model, Tables: still ? TablesFor(dat, appearance.SetupId) : null);
             }).ContinueWith(task => Dispatcher.UIThread.Post(() =>
             {
                 if (request != _request) return;
@@ -122,7 +140,9 @@ public sealed class PaperdollView : Border
                     _status.Text = $"Could not build the model: {task.Exception.GetBaseException().Message}";
                     return;
                 }
-                _view.Model = task.Result;
+                _view.Model = task.Result.Model;
+                _clothing = task.Result.Tables is { } tables ? (appearance, tables) : null;
+                _drawn = null;
                 _status.Text = string.Empty;
             }), TaskScheduler.Default);
         });

@@ -32,10 +32,7 @@ namespace ACE.Server.WorldObjects
             PlayerManager.LogBroadcastChat(Channel.AllBroadcast, this, message);
         }
 
-        public override ACE.Entity.ObjDesc CalculateObjDesc() => CalculateObjDesc(null);
-
-        /// <param name="partItems">When given, filled with the worn item that drew each body part: the last to change it, the one on top.</param>
-        public ACE.Entity.ObjDesc CalculateObjDesc(Dictionary<byte, uint> partItems)
+        public override ACE.Entity.ObjDesc CalculateObjDesc()
         {
             ACE.Entity.ObjDesc objDesc = new ACE.Entity.ObjDesc();
             ClothingTable item;
@@ -181,8 +178,6 @@ namespace ACE.Server.WorldObjects
                         {
                             byte partNum = (byte)t.Index;
                             coverage.Add(partNum);
-                            if (partItems != null)
-                                partItems[partNum] = w.Guid.ClientGUID;
 
                             objDesc.AddAnimPartChange(new PropertiesAnimPart { Index = (byte)t.Index, AnimationId = t.ModelId });
 

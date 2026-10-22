@@ -11,19 +11,6 @@ public static class PaperdollProtocol
     /// <summary>Asks for any object's look by its id; the reply reads as <see cref="ReadLook"/>.</summary>
     public const string Inspect = "paperdoll.inspect";
 
-    /// <summary>Asks which worn item draws each body part of the player's look; the reply reads as <see cref="ReadParts"/>.</summary>
-    public const string Parts = "paperdoll.parts";
-
-    /// <summary>Each body part (a setup part number) a worn item draws, and that item's id.</summary>
-    public static IReadOnlyDictionary<int, uint> ReadParts(byte[] body)
-    {
-        var reader = ChannelWire.Reader(body);
-        var parts = new Dictionary<int, uint>();
-        for (int i = 0, count = reader.ReadUInt16(); i < count; i++)
-            parts[reader.ReadByte()] = reader.ReadUInt32();
-        return parts;
-    }
-
     public static byte[] InspectBody(uint objectId) => ChannelWire.Body(writer => writer.Write(objectId));
 
     /// <summary>A look: the object's own, then (from servers that send them) what it holds, each with its holding location and scale.</summary>
