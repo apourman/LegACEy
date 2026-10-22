@@ -55,6 +55,23 @@ public sealed class PanelHostRenderingTests
     });
 
     [Fact]
+    public void A_scaled_panel_clears_hover_when_the_pointer_leaves_even_after_a_repaint_over_its_corner() => RenderThread.Run(() =>
+    {
+        if (!AvaloniaPanel.CanScale) return;
+        using var panel = AvaloniaPanel.Create(() => new Border { Width = 100, Height = 40, Background = Brushes.Gray }, 90, 36, 0.9);
+        var border = (Border)panel.Content;
+        panel.PointerMove(30, 20);
+        Assert.True(border.IsPointerOver);
+
+        panel.PointerLeave();
+        // A move to (-1, -1) is remembered as (0, 0) at 0.9 (the pixel point truncates), so a repaint there would hover the border again.
+        border.Background = Brushes.Black;
+        panel.Tick();
+
+        Assert.False(border.IsPointerOver);
+    });
+
+    [Fact]
     public void A_scaled_panel_lays_out_at_design_size_and_maps_presses_to_it() => RenderThread.Run(() =>
     {
         Point? pressed = null;
