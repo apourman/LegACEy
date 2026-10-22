@@ -299,6 +299,9 @@ public sealed class AvaloniaPanel : IDisposable
         ((IRenderRoot)_window).Renderer.Paint(new Rect(_window.ClientSize));
     }
 
+    /// <summary>Whether this panel's window shows a visual of <paramref name="type"/>, its overlays and adorners included.</summary>
+    internal bool Shows(Type type) => _window.GetSelfAndVisualDescendants().Any(type.IsInstanceOfType);
+
     private unsafe bool CaptureFrame()
     {
         try

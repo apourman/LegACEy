@@ -5,7 +5,6 @@ using System.Linq;
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Threading;
-using Avalonia.VisualTree;
 
 namespace LegACEy.Client.PanelHost;
 
@@ -25,6 +24,7 @@ public static class PanelCompositor
     private static readonly List<AvaloniaPanel> Capturing = new();
     private static readonly PanelFailureBudget StepBudget = new();
     private static readonly Stopwatch StepClock = new();
+    private static bool _stalled;
 
     internal static void Register(AvaloniaPanel panel) => Panels.Add(panel);
 
@@ -63,15 +63,44 @@ public static class PanelCompositor
     /// </summary>
     internal static void Step()
     {
+        // A thrown failure's owner was closed by the client since (its plugin turned off); the panels left run again.
+        if (_stalled) ResumePanels();
         try { StepCore(); }
-        catch (Exception exception) when (OwnerOf(exception) is { } owner)
+        catch (Exception exception)
         {
-            // The owner's handler closes it (its plugin turns off) or the client UI; then the panels left run again. One whose
-            // handler left it failing fails again here, and that is thrown.
+            // A failure inside a pass stops Avalonia drawing any window until the panels resume (see AvaloniaPanel.Resume).
+            if (OwnerOf(exception) is not { } owner)
+            {
+                _stalled = true;
+                throw;
+            }
+            // The owner's handler closes it (its plugin turns off) or the client UI; then the panels left run again.
             owner.ReportError(exception);
-            for (var i = 0; i < Panels.Count; i++) Panels[i].Resume();
+            ResumePanels();
         }
     }
+
+    /// <summary>
+    /// Resume every panel after a failed pass. A panel failing again goes to the error handler of the panel that raised it, or of the
+    /// one resuming; then the panels resume again at the next step.
+    /// </summary>
+    private static void ResumePanels()
+    {
+        _stalled = false;
+        // A copy: an error handler may dispose panels.
+        foreach (var panel in Panels.ToArray())
+        {
+            try { panel.Resume(); }
+            catch (Exception exception)
+            {
+                (OwnerOf(exception) ?? panel).ReportError(exception);
+                _stalled = true;
+            }
+        }
+    }
+
+    /// <summary>Start the shared step's slow-frame count over, as after a fast step.</summary>
+    internal static void ResetStepBudget() => StepBudget.Record(TimeSpan.Zero);
 
     private static void StepCore()
     {
@@ -98,7 +127,7 @@ public static class PanelCompositor
     /// <remarks>
     /// ponytail: the stack attributes the failure, not a separate layout and paint per panel, which Avalonia doesn't offer. A frame
     /// inlined away in Release attributes less; what is left unattributed is thrown, and the client turns off the plugin whose code is
-    /// on the stack, or else its own UI.
+    /// on the stack, or else its own UI. A popup in its own popup window is not searched, so its failure is not attributed either.
     /// </remarks>
     private static AvaloniaPanel? OwnerOf(Exception exception)
     {
@@ -107,7 +136,7 @@ public static class PanelCompositor
                 for (var type = frame.GetMethod()?.DeclaringType; type != null; type = type.DeclaringType)
                 {
                     if (!typeof(Visual).IsAssignableFrom(type)) continue;
-                    var showing = Panels.Where(panel => panel.Content.GetSelfAndVisualDescendants().Any(type.IsInstanceOfType)).Take(2).ToList();
+                    var showing = Panels.Where(panel => panel.Shows(type)).Take(2).ToList();
                     if (showing.Count == 1) return showing[0];
                 }
         return null;
