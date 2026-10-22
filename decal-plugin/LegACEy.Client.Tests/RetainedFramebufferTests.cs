@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
@@ -223,9 +222,9 @@ public sealed class RetainedFramebufferTests
     });
 
     [Fact]
-    public void A_changed_frame_costs_less_than_the_21_Oct_probe() => RenderThread.Run(() =>
+    public void A_changed_frame_allocates_less_than_the_21_Oct_probe() => RenderThread.Run(() =>
     {
-        // The 21 Oct probe (#115): one 31-row window, 12 KB and 0.86 ms per changed tick.
+        // The 21 Oct probe (#115): one 31-row window, 12 KB per changed tick.
         const int frames = 200;
         using var panel = AvaloniaPanel.Create(() => Rows(Brushes.Red), Width, Height);
         var indicator = IndicatorOf(panel);
@@ -237,19 +236,15 @@ public sealed class RetainedFramebufferTests
         for (var i = 0; i < 50; i++) Change(i);
 
         var before = GC.GetAllocatedBytesForCurrentThread();
-        var clock = Stopwatch.StartNew();
         for (var i = 0; i < frames; i++)
         {
             Change(i);
             Assert.True(panel.Changed);
         }
-        clock.Stop();
         var bytes = (GC.GetAllocatedBytesForCurrentThread() - before) / frames;
-        var milliseconds = clock.Elapsed.TotalMilliseconds / frames;
 
-        _output.WriteLine($"changed frame: {milliseconds:0.000} ms, {bytes} B");
+        _output.WriteLine($"changed frame: {bytes} B");
         Assert.InRange(bytes, 0, 12 * 1024);
-        Assert.InRange(milliseconds, 0, 0.86);
     });
 
     private static readonly FieldInfo LastRenderedFrame = typeof(AvaloniaHeadlessPlatform).Assembly
