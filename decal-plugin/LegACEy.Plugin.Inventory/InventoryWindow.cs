@@ -597,7 +597,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         var snapshot = _port.Snapshot;
         var visual = snapshot.Items.FirstOrDefault(item => item.Id == id)?.Visual ?? snapshot.Wielded.FirstOrDefault(item => item.Id == id)?.Visual
-            ?? new ItemVisual(PackOf(snapshot, id)?.Icon ?? 0, 0, 0, 0);
+            ?? PackOf(snapshot, id)?.Visual ?? new ItemVisual(0, 0, 0, 0);
         return ItemIcon.Draw(_art, visual.Underlay, visual.Icon, visual.Overlay, 0, visual.UiEffects);
     }
 
@@ -786,7 +786,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         }
         else
         {
-            tile = Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(new ItemVisual(pack.Icon, 0, 0, 0)), PackOutlined(snapshot, pack.Id, open));
+            tile = Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(pack.Visual), PackOutlined(snapshot, pack.Id, open));
             bar = FillBar(ItemsIn(snapshot, pack.Id), pack.Capacity);
         }
         row.Children.Add(tile);
@@ -804,7 +804,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             return stack;
         }
         var selected = pack.Id == open.Id;
-        stack.Children.Add(Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(new ItemVisual(pack.Icon, 0, 0, 0)), PackOutlined(snapshot, pack.Id, open)));
+        stack.Children.Add(Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(pack.Visual), PackOutlined(snapshot, pack.Id, open)));
         var count = Label(pack.Capacity > 0 ? $"{ItemsIn(snapshot, pack.Id)}/{pack.Capacity}" : " ", selected ? TealTextBrush : MutedBrush, 10);
         count.HorizontalAlignment = HorizontalAlignment.Center;
         stack.Children.Add(count);

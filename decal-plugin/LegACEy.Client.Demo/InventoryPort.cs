@@ -42,22 +42,24 @@ public interface IInventoryPort
 /// <summary>A pack in the pack column. The main pack comes first, then the side packs in slot order. Id zero is an empty side-pack slot.</summary>
 public sealed class InventoryPack : IEquatable<InventoryPack>
 {
-    public InventoryPack(uint id, string name, uint icon, int capacity)
+    public InventoryPack(uint id, string name, uint icon, int capacity) : this(id, name, new ItemVisual(icon, 0, 0, 0), capacity) { }
+
+    public InventoryPack(uint id, string name, ItemVisual visual, int capacity)
     {
         Id = id;
         Name = name ?? string.Empty;
-        Icon = icon;
+        Visual = visual;
         Capacity = capacity;
     }
 
     public uint Id { get; }
     public string Name { get; }
-    /// <summary>The portal icon of the pack's container.</summary>
-    public uint Icon { get; }
+    /// <summary>The pack's icon layers. A focus needs its overlay: Foci of Shadow is Foci of Strife's icon under a purple overlay.</summary>
+    public ItemVisual Visual { get; }
     /// <summary>The number of slots the pack holds.</summary>
     public int Capacity { get; }
 
-    public bool Equals(InventoryPack? other) => other != null && (Id, Name, Icon, Capacity).Equals((other.Id, other.Name, other.Icon, other.Capacity));
+    public bool Equals(InventoryPack? other) => other != null && (Id, Name, Visual, Capacity).Equals((other.Id, other.Name, other.Visual, other.Capacity));
     public override bool Equals(object? obj) => Equals(obj as InventoryPack);
     public override int GetHashCode() => Id.GetHashCode();
 }
