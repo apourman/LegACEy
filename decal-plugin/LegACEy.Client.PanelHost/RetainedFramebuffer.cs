@@ -15,7 +15,8 @@ namespace LegACEy.Client.PanelHost;
 
 /// <summary>
 /// The surface a panel's headless window renders into: the panel's frame, kept between renders, so Avalonia's compositor draws straight
-/// into it and only inside its dirty area. That area is what changed, so nothing is copied or compared.
+/// into it and only inside its dirty area. Only that painted area is read back: the panel compares it with, and copies it into, its copy
+/// of the last capture, to tell new pixels from the same ones drawn again.
 /// </summary>
 /// <remarks>
 /// The headless window's own surface creates a new bitmap for every render (each one adds GC memory pressure) and keeps nothing, so the
@@ -83,7 +84,11 @@ internal sealed class RetainedFramebuffer : IFramebufferPlatformSurface, IFrameb
         Allocate(width, height);
     }
 
-    /// <summary>Unpin the frame. The window must be closed: Skia keeps its address.</summary>
+    /// <summary>
+    /// Unpin the frame, while no lock is outstanding. Skia keeps a surface on the frame's address between locks, but every lock checks the
+    /// address and size it is handed and makes a new surface when either changed, so a frame replaced or released is never drawn to again;
+    /// a lock after the last release throws instead.
+    /// </summary>
     public void Release()
     {
         if (_pin.IsAllocated) _pin.Free();
@@ -107,6 +112,7 @@ internal sealed class RetainedFramebuffer : IFramebufferPlatformSurface, IFrameb
     public ILockedFramebuffer Lock(out FramebufferLockProperties properties)
     {
         if (_locked) throw new InvalidOperationException("A panel's frame is already locked.");
+        if (!_pin.IsAllocated) throw new ObjectDisposedException(nameof(RetainedFramebuffer));
         _locked = true;
         properties = new FramebufferLockProperties(!_fresh);
         // The compositor has updated its scene and paints its dirty area once this returns. A new frame, or a full redraw it asked for, must

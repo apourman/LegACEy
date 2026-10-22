@@ -39,7 +39,7 @@ public sealed class AvaloniaPanel : IDisposable
     private readonly Window _window;
     private readonly int _ownerThreadId;
     private readonly RetainedFramebuffer _framebuffer;
-    // The frame's dirty rectangles: one, Avalonia's painted area, reused capture to capture.
+    // The array behind the frame's dirty rectangles when a capture changed something: its one changed area, reused capture to capture.
     private readonly Rectangle[] _dirty = new Rectangle[1];
     // The frame's pixels as of the last capture, to tell a repaint that changed pixels from one that drew the same.
     private byte[] _captured = Array.Empty<byte>();
@@ -99,7 +99,11 @@ public sealed class AvaloniaPanel : IDisposable
     /// <summary>Layout passes this panel's window ran in the last advance.</summary>
     public int LayoutPasses { get; private set; }
 
-    /// <summary>The pixels Avalonia painted for this panel between its previous capture and the last one; 0 when it painted nothing.</summary>
+    /// <summary>
+    /// The area, in pixels, of the bounding rectangle of what Avalonia painted for this panel between its previous capture and the last one;
+    /// 0 when it painted nothing. It counts painting work, so it can be above 0 while <see cref="Changed"/> is false: a repaint that drew
+    /// the same pixels.
+    /// </summary>
     public long PaintedArea { get; private set; }
 
     /// <summary>How long the last capture took: this panel's own share of a frame, apart from Avalonia's shared work.</summary>
@@ -690,9 +694,12 @@ public sealed class AvaloniaPanel : IDisposable
         StopObservingRenderResources();
         _rendererObserver.Dispose();
         _window.LayoutUpdated -= OnLayoutUpdated;
-        _window.Close();
-        _framebuffer.Release();
-        _mouseDevice.Dispose();
+        try { _window.Close(); }
+        finally
+        {
+            _framebuffer.Release();
+            _mouseDevice.Dispose();
+        }
     }
 
 
