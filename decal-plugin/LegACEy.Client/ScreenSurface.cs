@@ -73,6 +73,14 @@ internal sealed unsafe class ScreenSurface : IDisposable
 
     public int DirtyRectangles { get; set; }
 
+    // Attribution summed since the last performance log line: this panel's layout passes and painted pixels, and every panel's painted
+    // pixels over the same advances, so the log can show this panel's share of the shared step.
+    public int LayoutPasses { get; set; }
+
+    public long PaintedPixels { get; set; }
+
+    public long StepPixels { get; set; }
+
     public Rectangle Bounds => new(Location, new Size(Panel.Frame.Width, Panel.Frame.Height));
 
     /// <summary>Upload the frame this game frame's compositor advance captured, without drawing it.</summary>
@@ -85,6 +93,9 @@ internal sealed unsafe class ScreenSurface : IDisposable
         TickTimes.Add(elapsed.TotalMilliseconds);
         if (changed) ChangedFrames++;
         DirtyRectangles += Panel.Frame.DirtyRectangles.Count;
+        LayoutPasses += Panel.LayoutPasses;
+        PaintedPixels += Panel.PaintedArea;
+        StepPixels += PanelCompositor.PaintedArea;
         if (Panel.LastError != null)
             return;
         if (_failureBudget.Record(elapsed))

@@ -1300,8 +1300,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// Every 30 s, logs the UI frame and post-UI draw times (p50/p95/max ms), the GC, the frame's phases with what each allocated,
-    /// the world effects, then one line per window that ran: its tick, texture upload and draw times, and how many of its ticks changed
-    /// pixels. Ticks that changed nothing are the waste to cut.
+    /// the world effects, then one line per window that ran: its tick, texture upload and draw times, how many of its ticks changed
+    /// pixels, its layout passes, the pixels it painted and its share of the shared step's painted pixels. Ticks that changed nothing
+    /// are the waste to cut.
     /// </summary>
     private void RecordPerformanceMeasurement()
     {
@@ -1353,9 +1354,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (surface == null || surface.TickTimes.Count == 0 && surface.DrawTimes.Count == 0) return;
         var ticks = surface.TickTimes.Count;
-        Log($"UI performance surface {name}: ticks={ticks} changed={surface.ChangedFrames} dirtyRects={surface.DirtyRectangles} tick={surface.TickTimes.TakeSummary()}ms upload={surface.UploadTimes.TakeSummary()}ms draw={surface.DrawTimes.TakeSummary()}ms.");
+        // ponytail: the share is of the step's painted pixels, not its time: Avalonia lays out and paints every window in one shared call.
+        var share = surface.StepPixels == 0 ? 0 : 100.0 * surface.PaintedPixels / surface.StepPixels;
+        Log($"UI performance surface {name}: ticks={ticks} changed={surface.ChangedFrames} dirtyRects={surface.DirtyRectangles} layoutPasses={surface.LayoutPasses} paintedPixels={surface.PaintedPixels} share={share:F1}% tick={surface.TickTimes.TakeSummary()}ms upload={surface.UploadTimes.TakeSummary()}ms draw={surface.DrawTimes.TakeSummary()}ms.");
         surface.ChangedFrames = 0;
         surface.DirtyRectangles = 0;
+        surface.LayoutPasses = 0;
+        surface.PaintedPixels = 0;
+        surface.StepPixels = 0;
     }
 
     /// <summary>
