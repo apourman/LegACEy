@@ -49,10 +49,11 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private static readonly IBrush MutedBrush = DerethPalette.MutedBrush;
     private static readonly IBrush InvalidBrush = DerethPalette.InvalidBrush;
     private static readonly IBrush TealTextBrush = DerethPalette.Brush(DerethPalette.TealText);
-    private static readonly IBrush GoldFillBrush = new LinearGradientBrush
+    // Retail's burden meter is green up to the limit.
+    private static readonly IBrush BurdenFillBrush = new LinearGradientBrush
     {
         StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative),
-        GradientStops = { new GradientStop(Color.Parse("#E2C27E"), 0), new GradientStop(Color.Parse("#9C7A3C"), 1) },
+        GradientStops = { new GradientStop(Color.Parse("#7FD46A"), 0), new GradientStop(Color.Parse("#3E8A2E"), 1) },
     };
 
     private readonly IInventoryPort _port;
@@ -863,7 +864,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         return track;
     }
 
-    /// <summary>A groove filled in gold to the burden, full at the most a character can carry (three times the limit). Over the limit the fill turns red.</summary>
+    /// <summary>A groove filled in green to the burden, full at the most a character can carry (three times the limit). Over the limit the fill turns red.</summary>
     private static Control BurdenMeter(InventorySnapshot snapshot, bool over, bool vertical)
     {
         var share = snapshot.BurdenLimit <= 0 ? 0 : Math.Min(1.0, (double)snapshot.Burden / (3 * snapshot.BurdenLimit));
@@ -881,7 +882,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         {
             track.Height = 8;
         }
-        var fill = new Border { Background = over ? InvalidBrush : GoldFillBrush, CornerRadius = new CornerRadius(1) };
+        var fill = new Border { Background = over ? InvalidBrush : BurdenFillBrush, CornerRadius = new CornerRadius(1) };
         var holder = new Grid();
         if (vertical)
         {
