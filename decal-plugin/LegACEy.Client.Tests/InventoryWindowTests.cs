@@ -134,6 +134,22 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
+    public void Clicking_a_focus_selects_it_and_outlines_it_without_opening_it() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot(focus: true));
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+
+        InventoryDriver.Press(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Focus));
+        Assert.Equal(new[] { $"select 0x{InventorySample.Focus:X8}" }, port.Commands);
+        Assert.Contains("Contents of Main Pack", host.Texts());
+
+        port.Push(InventorySample.Snapshot(focus: true, selected: InventorySample.Focus));
+        InventoryDriver.Tick(host.Host);
+        Assert.True(InventoryDriver.PackSlot(host.Host, InventorySample.Focus).Selected);
+    });
+
+    [Fact]
     public void The_main_pack_drags_out_to_retail_as_the_character_and_never_moves_inside_the_window() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();

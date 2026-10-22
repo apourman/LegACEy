@@ -428,8 +428,9 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
                 _picked = slot.Container;
                 Render(_port.Snapshot);
             }
-            // The main pack is the character: a click selects them, or makes them the target of an item in use (a healing kit).
-            if (TargetOf(slot) is var character and not 0) _port.Select(character);
+            // The main pack is the character: a click selects them, or makes them the target of an item in use (a healing kit). A focus
+            // is an item, so a click selects it.
+            if (TargetOf(slot) is var target and not 0) _port.Select(target);
             return;
         }
         if (slot.ItemId == 0) return;
@@ -545,7 +546,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             if (slot.Tag is InventorySlotId tag && DraggedId(tag) == id)
             {
                 slot.Opacity = lifted ? LiftedOpacity : 1;
-                slot.Selected = lifted || (tag.Place == SlotPlace.Pack ? tag.Container == OpenPack(_port.Snapshot).Id : id == _port.Snapshot.Selected);
+                slot.Selected = lifted || (tag.Place == SlotPlace.Pack ? PackOutlined(_port.Snapshot, tag.Container, OpenPack(_port.Snapshot)) : id == _port.Snapshot.Selected);
             }
     }
 
@@ -576,9 +577,16 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         return slot.Container != 0 && (slot.Container == s.MainPack.Id || s.SidePacks.Any(pack => pack.Id == slot.Container)) ? slot.Container : 0;
     }
 
-    /// <summary>The object a slot stands for when it is selected or targeted: its item, or the character for the main pack.</summary>
+    /// <summary>The object a slot stands for when it is selected or targeted: its item, the character for the main pack, or a focus.</summary>
     private uint TargetOf(InventorySlotId slot) =>
-        slot.Place != SlotPlace.Pack ? slot.ItemId : slot.Container != 0 && slot.Container == _port.Snapshot.MainPack.Id ? slot.Container : 0;
+        slot.Place != SlotPlace.Pack ? slot.ItemId
+        : slot.Container != 0 && (slot.Container == _port.Snapshot.MainPack.Id || IsFocus(_port.Snapshot, slot.Container)) ? slot.Container : 0;
+
+    /// <summary>Whether a side-pack slot holds a focus: it takes the slot but holds nothing.</summary>
+    private static bool IsFocus(InventorySnapshot s, uint id) => PackOf(s, id)?.Capacity == 0;
+
+    /// <summary>A pack tile is outlined while its pack is open, and a focus while it is retail's selection.</summary>
+    private static bool PackOutlined(InventorySnapshot s, uint id, InventoryPack open) => id == open.Id || id == s.Selected && IsFocus(s, id);
 
     private GameImage? DragImage(uint id)
     {
@@ -773,7 +781,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         }
         else
         {
-            tile = Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(new ItemVisual(pack.Icon, 0, 0, 0)), pack.Id == open.Id);
+            tile = Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(new ItemVisual(pack.Icon, 0, 0, 0)), PackOutlined(snapshot, pack.Id, open));
             bar = FillBar(ItemsIn(snapshot, pack.Id), pack.Capacity);
         }
         row.Children.Add(tile);
@@ -791,7 +799,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             return stack;
         }
         var selected = pack.Id == open.Id;
-        stack.Children.Add(Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(new ItemVisual(pack.Icon, 0, 0, 0)), selected));
+        stack.Children.Add(Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(new ItemVisual(pack.Icon, 0, 0, 0)), PackOutlined(snapshot, pack.Id, open)));
         var count = Label(pack.Capacity > 0 ? $"{ItemsIn(snapshot, pack.Id)}/{pack.Capacity}" : " ", selected ? TealTextBrush : MutedBrush, 10);
         count.HorizontalAlignment = HorizontalAlignment.Center;
         stack.Children.Add(count);
