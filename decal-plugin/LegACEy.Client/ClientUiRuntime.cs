@@ -2619,7 +2619,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (worn.Id == id) return new ShortcutItem(worn.Visual, worn.StackCount);
         // A pack bound to a slot opens it, as retail's shortcut to a pack does; the main pack is the character itself.
         foreach (var pack in snapshot.SidePacks.Prepend(snapshot.MainPack))
-            if (pack.Id == id) return new ShortcutItem(new ItemVisual(pack.Icon, 0, 0, 0), 1);
+            if (pack.Id == id) return new ShortcutItem(pack.Visual, 1);
         return null;
     }
 

@@ -178,8 +178,11 @@ public static class InventorySnapshotBuilder
             var pack = packs.FirstOrDefault(candidate => candidate.Slot == index);
             result[index] = pack == null
                 ? new InventoryPack(0, string.Empty, 0, 0)
-                : new InventoryPack(pack.Id, pack.Name, pack.Visual.Icon, pack.ItemSlots);
+                : new InventoryPack(pack.Id, pack.Name, WithoutPlate(pack.Visual), pack.ItemSlots);
         }
         return result;
     }
+
+    /// <summary>The pack column draws no item-type plate behind a pack.</summary>
+    private static ItemVisual WithoutPlate(ItemVisual visual) => new(visual.Icon, visual.Underlay, visual.Overlay, visual.UiEffects);
 }
