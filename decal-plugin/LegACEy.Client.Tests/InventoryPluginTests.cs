@@ -418,8 +418,8 @@ public sealed class InventoryPluginTests
         foreach (var icon in icons)
         {
             var drawn = icon.TranslatePoint(new Avalonia.Point(icon.Bounds.Width, icon.Bounds.Height), panel.Content)!.Value - icon.TranslatePoint(default, panel.Content)!.Value;
-            Assert.Equal(ItemCellSize.At(1).Icon, drawn.X, 1);
-            Assert.Equal(ItemCellSize.At(1).Icon, drawn.Y, 1);
+            Assert.Equal(ItemCellSize.Standard.Icon, drawn.X, 1);
+            Assert.Equal(ItemCellSize.Standard.Icon, drawn.Y, 1);
         }
     });
 
@@ -442,7 +442,7 @@ public sealed class InventoryPluginTests
         Assert.Null(panel.LastError);
         AssertNothingOutsideFrame(panel);
         var grid = Assert.Single(panel.Content.GetVisualDescendants().OfType<DerethSlotGrid>());
-        Assert.True(grid.Bounds.Height >= ItemCellSize.At(1).Cell, $"The grid is {grid.Bounds.Height} px tall, less than one row.");
+        Assert.True(grid.Bounds.Height >= ItemCellSize.Standard.Cell, $"The grid is {grid.Bounds.Height} px tall, less than one row.");
     }
 
     /// <summary>The main pack, the divider and the seven side packs are eight pack tabs, and they all sit on one row.</summary>

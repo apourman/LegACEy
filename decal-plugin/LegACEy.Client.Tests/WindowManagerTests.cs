@@ -4,7 +4,6 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using LegACEy.Client.Demo;
-using LegACEy.Client.Themes;
 using Xunit;
 
 namespace LegACEy.Client.Tests;
@@ -84,26 +83,6 @@ public sealed class WindowManagerTests
         Assert.Equal(new Size(100, 60), store.Get("server", "character", "one")!.Value.Size);
         Assert.Equal(new Size(50, 30), manager.Open(new WindowDefinition("one", "One", 200, 120, titleBarHeight: 20, resizing: resizing), new Point(10, 10)).Size);
     }
-
-    [Fact]
-    public void An_item_slot_window_shrinks_with_the_global_ui_size()
-    {
-        var manager = new WindowManager(new Size(800, 600), new MemoryWindowPositionStore(), "server", "character", scale: 0.85);
-        var bag = new WindowDefinition("bag", "Bag", 200, 120, titleBarHeight: 20, resizing: new WindowResizing(new Size(100, 60)) { ItemSlots = true });
-        var window = manager.Open(bag, new Point(10, 10));
-
-        // The global UI size shrinks the icons, and the window with them.
-        Assert.Equal(new Size(170, 102), window.Size);
-        Assert.Equal(new Size(85, 51), window.Definition.Resizing!.Minimum);
-    }
-
-    [Theory]
-    [InlineData(0.85, 0.85, 0.85)]
-    [InlineData(0.8, 1, 1)]
-    [InlineData(0.7, 0.85, 0.85)]
-    [InlineData(1.6, 0.85, 2)]
-    public void Icons_shrink_only_to_the_global_ui_size(double scale, double uiScale, double multiple) =>
-        Assert.Equal(multiple, ItemCellSize.Multiple(scale, uiScale));
 
     [Fact]
     public void A_window_rescales_on_its_own_on_top_of_the_manager_scale_and_keeps_its_size_for_the_character()

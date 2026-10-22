@@ -97,7 +97,7 @@ internal sealed class InventoryPaperdoll : Canvas
     // Everything is placed from the pitch, which follows the window's scale and can change without a rebuild, and from the width given.
     protected override Size MeasureOverride(Size availableSize)
     {
-        var size = ItemCellSize.Of(this);
+        var size = ItemCellSize.Standard;
         _size = size;
         var width = Math.Max(Columns * size.Pitch + 2 * SideGap, double.IsInfinity(availableSize.Width) ? 0 : Math.Floor(availableSize.Width));
         if (size != _placedSize || width != _width) Place(size, width);

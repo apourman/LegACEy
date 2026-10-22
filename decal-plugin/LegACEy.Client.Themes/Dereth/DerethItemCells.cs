@@ -12,7 +12,7 @@ public static class DerethItemCells
 {
     private static readonly IBrush ShadowBrush = DerethPalette.Brush(Colors.Black);
 
-    /// <summary>An icon at native size on screen, centred: see <see cref="ItemCellSize"/>. Missing art shows a question mark.</summary>
+    /// <summary>An icon at the icon size, centred: see <see cref="ItemCellSize"/>. Missing art shows a question mark.</summary>
     public static Grid Icon(WriteableBitmap? bitmap)
     {
         var layers = new Grid { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
@@ -51,36 +51,13 @@ public static class DerethItemCells
 }
 
 /// <summary>
-/// The size of an item icon, its slot and the slot pitch, in DIPs, for a window drawn at a scale. Icons draw at a whole multiple
-/// of their 32 px art on screen, the nearest to the scale and at least one, and the slot grows or shrinks round them, so item grids
-/// keep retail's sharp icons while the rest of the window scales. Only the global UI size may draw them smaller: below 100% it shrinks
-/// them with the window, and a window's own size cannot take them below it. At scale 1 they are 32, 34 and 35.
+/// The size of an item icon, its slot and the slot pitch, in DIPs: the 32 px art, a 34 px slot round it, 35 px apart. Icons scale with
+/// their window like everything in it, so a window drawn at any size, by the UI size or its own, keeps its proportions; a layout never
+/// squeezes an icon into a smaller box.
 /// </summary>
 public readonly record struct ItemCellSize(double Icon, double Cell, double Pitch)
 {
-    private const int ArtPixels = 32;
-
-    /// <summary>The global UI size, as a scale. The client sets it before it opens windows; changing it rebuilds every window.</summary>
-    public static double UiScale { get; set; } = 1;
-
-    /// <summary>How many screen pixels each art pixel takes at a scale: the scale rounded to a whole number, at least one, or below 100% the global UI size.</summary>
-    public static double Multiple(double scale) => Multiple(scale, UiScale);
-
-    /// <summary>
-    /// <see cref="Multiple(double)"/> for a global UI size: at or above 1 the scale rounded to a whole number; below 1 the scale itself, but
-    /// never under the global UI size or over 1, so a window shrunk on its own keeps the icons the global size gives.
-    /// </summary>
-    public static double Multiple(double scale, double uiScale) =>
-        scale >= 1 ? Math.Max(1, Math.Round(scale)) : Math.Max(scale, Math.Min(1, uiScale));
-
-    public static ItemCellSize At(double scale)
-    {
-        var icon = ArtPixels * Multiple(scale) / scale;
-        return new ItemCellSize(icon, icon + 2, icon + 3);
-    }
-
-    /// <summary>The size for the window <paramref name="control"/> is in, or for scale 1 while it is in none.</summary>
-    public static ItemCellSize Of(Layoutable control) => At(LayoutHelper.GetLayoutScale(control));
+    public static ItemCellSize Standard { get; } = new(32, 34, 35);
 }
 
 /// <summary>
@@ -93,14 +70,14 @@ public sealed class DerethItemRow : StackPanel
 
     protected override Size MeasureOverride(Size availableSize)
     {
-        var height = ItemCellSize.Of(this).Cell;
+        var height = ItemCellSize.Standard.Cell;
         return base.MeasureOverride(availableSize.WithHeight(height)).WithHeight(height);
     }
 }
 
 /// <summary>
-/// Draws a bitmap at a whole multiple of its pixels on screen, whatever the window's scale, so a 32 px icon stays as sharp as
-/// retail's. Scaled to a fraction, the art would be resampled and blur.
+/// Draws an icon's bitmap at the icon size, scaled with its window: pixel for pixel at 100% and 200%, as sharp as retail's, and
+/// smoothed at any other size.
 /// </summary>
 public sealed class DerethItemIcon : Control
 {
@@ -111,13 +88,13 @@ public sealed class DerethItemIcon : Control
 
     protected override Size MeasureOverride(Size availableSize)
     {
-        var side = ItemCellSize.Of(this).Icon;
+        var side = ItemCellSize.Standard.Icon;
         return new Size(side, side);
     }
 
     public override void Render(DrawingContext context)
     {
-        // At a whole multiple of the art the pixels stay sharp; shrunk by the global UI size they are smoothed, or they would break up.
+        // At a whole multiple of the art (100%, 200%) the pixels stay sharp; at any other size they are smoothed, or they would break up.
         var onScreen = Bounds.Width * LayoutHelper.GetLayoutScale(this);
         if (Math.Abs(onScreen / _bitmap.PixelSize.Width - Math.Round(onScreen / _bitmap.PixelSize.Width)) < 0.01)
         {

@@ -53,7 +53,7 @@ public sealed class VaultShellTests
         Assert.Contains(vault.Host.Content.GetVisualDescendants().OfType<TextBlock>(),
             text => text.IsVisible && (text.Text ?? string.Empty).StartsWith("Drop Fine Sword", StringComparison.Ordinal));
         var grid = Assert.Single(vault.Host.Content.GetVisualDescendants().OfType<DerethSlotGrid>());
-        Assert.True(grid.Bounds.Height >= ItemCellSize.At(1).Cell, $"The grid is {grid.Bounds.Height} px tall, less than one {ItemCellSize.At(1).Cell} px row.");
+        Assert.True(grid.Bounds.Height >= ItemCellSize.Standard.Cell, $"The grid is {grid.Bounds.Height} px tall, less than one {ItemCellSize.Standard.Cell} px row.");
         AssertNothingOutsideFrame(vault.Host);
         Assert.Null(vault.Host.LastError);
     });

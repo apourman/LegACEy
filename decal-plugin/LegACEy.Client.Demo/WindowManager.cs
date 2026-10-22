@@ -42,12 +42,6 @@ public sealed class WindowResizing
     public bool NoCorners { get; }
     public (double Narrowest, double Widest)? Shape { get; }
 
-    /// <summary>
-    /// The window is mostly item slots, which keep icons at native size (see <see cref="ItemCellSize"/>) instead of scaling. Its default and
-    /// minimum sizes then scale by at least the icons' pixel multiple, so below 100% they keep their 100% size on screen.
-    /// </summary>
-    public bool ItemSlots { get; init; }
-
     /// <summary>Whether the height is fixed: the window has no top or bottom edge to drag.</summary>
     public bool FixedHeight => Maximum is { } top && top.Height == Minimum.Height;
 
@@ -680,18 +674,14 @@ public sealed class WindowManager
     private WindowPlacement Placement(ManagedWindow window) =>
         (window.PreferredLocation, window.Definition.Resizing == null ? null : window.DesignSize ?? Scaled(window.PreferredSize, 1 / window.Scale));
 
-    /// <summary>
-    /// The definition at a scale: what its window measures on screen. An item-slot window is sized by its icons: below 100% only the
-    /// manager's scale, the global UI size, shrinks them, so a window shrunk on its own keeps the size that scale gives.
-    /// </summary>
-    private WindowDefinition Scaled(WindowDefinition definition, double scale)
+    /// <summary>The definition at a scale: what its window measures on screen.</summary>
+    private static WindowDefinition Scaled(WindowDefinition definition, double scale)
     {
         if (scale == 1) return definition;
-        var sizeScale = definition.Resizing?.ItemSlots == true ? Math.Max(scale, ItemCellSize.Multiple(scale, Scale)) : scale;
         return new WindowDefinition(
-            definition.Id, definition.Title, Scaled(definition.Width, sizeScale), Scaled(definition.Height, sizeScale), Scaled(definition.TitleBarHeight, scale), definition.Theme,
+            definition.Id, definition.Title, Scaled(definition.Width, scale), Scaled(definition.Height, scale), Scaled(definition.TitleBarHeight, scale), definition.Theme,
             definition.Resizing is { } resizing
-                ? new WindowResizing(Scaled(resizing.Minimum, sizeScale), resizing.Maximum is { } top ? Scaled(top, sizeScale) : null, resizing.Locked, resizing.NoCorners, resizing.Shape) { ItemSlots = resizing.ItemSlots }
+                ? new WindowResizing(Scaled(resizing.Minimum, scale), resizing.Maximum is { } top ? Scaled(top, scale) : null, resizing.Locked, resizing.NoCorners, resizing.Shape)
                 : null,
             definition.SharesLocationWith, definition.DragsFromContent);
     }

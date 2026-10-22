@@ -399,7 +399,7 @@ public sealed class DerethWindow : UserControl
         if (content == null) throw new ArgumentNullException(nameof(content));
         var columns = headerActions == null ? "Auto,*,Auto" : stretchActions ? "Auto,Auto,*,Auto" : "Auto,*,Auto,Auto";
         var header = new Grid { ColumnDefinitions = new ColumnDefinitions(columns), ColumnSpacing = centreTitle ? ActionGap : 8, Height = 40 };
-        // The emblem's frame fits round its icon, which keeps its native size: icons are never scaled down. It is always there, and
+        // The emblem's frame fits round its icon at the icon size: a layout never squeezes an icon. It is always there, and
         // takes no space while it has no icon, so a window that changes its icon keeps the same header.
         _emblem = new DerethFrame(DerethFrameArt.Button) { VerticalAlignment = VerticalAlignment.Center };
         header.Children.Add(_emblem);
@@ -511,10 +511,9 @@ public sealed class DerethSlotGrid : UserControl
         Content = scroll;
     }
 
-    // The pitch follows the window's scale, which can change without a rebuild.
     protected override Size MeasureOverride(Size availableSize)
     {
-        _cells.ItemWidth = _cells.ItemHeight = ItemCellSize.Of(this).Pitch;
+        _cells.ItemWidth = _cells.ItemHeight = ItemCellSize.Standard.Pitch;
         _cells.Width = Columns > 0 ? Columns * _cells.ItemWidth : double.NaN;
         return base.MeasureOverride(availableSize);
     }
@@ -631,7 +630,7 @@ public sealed class DerethSlot : Grid
 
     protected override Size MeasureOverride(Size availableSize)
     {
-        var side = ItemCellSize.Of(this).Cell;
+        var side = ItemCellSize.Standard.Cell;
         base.MeasureOverride(new Size(side, side));
         return new Size(side, side);
     }

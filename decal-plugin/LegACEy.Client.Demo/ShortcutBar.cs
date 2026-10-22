@@ -17,7 +17,7 @@ public sealed record ShortcutItem(ItemVisual Visual, int StackCount);
 public sealed record ShortcutSlotView(int Index, ShortcutItem? Item);
 
 /// <summary>
-/// One shortcut row inside the toolbar: a row tag and nine item slots, which keep icons at native size (see <see cref="ItemCellSize"/>). A slot
+/// One shortcut row inside the toolbar: a row tag and nine item slots, sized by <see cref="ItemCellSize"/>. A slot
 /// shows its item's icon and stack count, with its key number in the corner, or only its key number when empty. A click uses the slot. A
 /// press on the tag or between slots is left to the toolbar, which moves; a press on a slot never does. A drag from a slot moves the
 /// shortcut to the slot it is released on, or takes it off the bars when no LegACEy window takes it. A drop of an item from outside binds
