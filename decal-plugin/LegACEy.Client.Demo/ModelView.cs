@@ -99,6 +99,12 @@ public sealed class ModelView : Border
 
     public float Zoom { get; set; } = 1f;
 
+    /// <summary>Model parts the host draws again under a see-through tint of <see cref="GlowColour"/>; replaced as a whole.</summary>
+    public IReadOnlyCollection<int> Glowing { get; set; } = Array.Empty<int>();
+
+    /// <summary>The tint of the glowing parts, as ARGB.</summary>
+    public uint GlowColour { get; set; }
+
 
     /// <summary>The height the view centres on, as a share of the model's height: 0 its feet, 1 its top.</summary>
     public float Focus { get; set; } = 0.5f;

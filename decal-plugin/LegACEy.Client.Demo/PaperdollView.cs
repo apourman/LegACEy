@@ -59,6 +59,23 @@ public sealed class PaperdollView : Border
     /// <summary>The worn item a still doll draws the body part with, as its look source tells it; zero when that is not known.</summary>
     public uint ItemDrawing(int part) => _partItems != null && _partItems.TryGetValue(part, out var item) ? item : 0;
 
+    /// <summary>The body parts the look source says the worn item draws; empty when that is not known.</summary>
+    public IReadOnlyCollection<int> PartsDrawnBy(uint item)
+    {
+        var parts = new List<int>();
+        if (_partItems != null)
+            foreach (var pair in _partItems)
+                if (pair.Value == item) parts.Add(pair.Key);
+        return parts;
+    }
+
+    /// <summary>Tints the body parts (ARGB), or none for an empty set.</summary>
+    public void Glow(IReadOnlyCollection<int> parts, uint colour)
+    {
+        _view.Glowing = parts;
+        _view.GlowColour = colour;
+    }
+
     private void Start()
     {
         _changed = _looks.WhenChanged(_target, Refresh);

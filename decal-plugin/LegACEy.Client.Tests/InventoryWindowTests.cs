@@ -432,6 +432,41 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
+    public void Dragging_an_item_over_the_3D_doll_lights_the_body_parts_it_would_cover_instead() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: false);
+        host.Window.SetDoll(new PaperdollView(new SilentLooks(), string.Empty) { Still = true });
+        InventoryDriver.Tick(host.Host);
+        var doll = host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DollArea");
+        var model = host.Host.Content.GetVisualDescendants().OfType<ModelView>().Single();
+
+        InventoryDriver.DragTo(host.Host, host.Cells[9], doll);
+
+        // The cap goes on the head (part 16), in gold; no frame round the doll.
+        Assert.Equal(new[] { 16 }, model.Glowing);
+        Assert.Equal(DerethPalette.Gold.WithAlpha(0x80).ToUInt32(), model.GlowColour);
+        Assert.False(host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DropIndicator").IsVisible);
+        InventoryDriver.Release(host.Host, doll);
+        Assert.Empty(model.Glowing);
+    });
+
+    /// <summary>A look source that never has a look: the doll stays without a model, which is all a glow needs.</summary>
+    private sealed class SilentLooks : ILookSource
+    {
+        public bool Knows(uint objectId) => true;
+        public void Request(uint objectId, Action<LegACEy.Client.GameArt.CharacterAppearance?, string> reply) { }
+        public IDisposable WhenChanged(uint objectId, Action changed) => new Nothing();
+        public void RequestParts(Action<IReadOnlyDictionary<int, uint>?> reply) => reply(null);
+
+        private sealed class Nothing : IDisposable
+        {
+            public void Dispose() { }
+        }
+    }
+
+    [Fact]
     public void A_drag_from_our_inventory_shows_its_icon_without_retail_s_drop_indicator() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();

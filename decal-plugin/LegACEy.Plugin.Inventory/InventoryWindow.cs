@@ -354,7 +354,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             if (_retailItem != 0)
             {
                 _retailItem = 0;
-                _dropIndicator.IsVisible = false;
+                HideIndicator();
             }
             return;
         }
@@ -378,7 +378,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         else if (_withdrawOver)
         {
             _withdrawOver = false;
-            _dropIndicator.IsVisible = false;
+            HideIndicator();
         }
     }
 
@@ -401,7 +401,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     public bool RetailDrop(uint itemId, string itemName, Point position)
     {
         _retailItem = 0;
-        _dropIndicator.IsVisible = false;
+        HideIndicator();
         if (_disposed || itemId == 0) return false;
         var snapshot = _port.Snapshot;
         var external = !snapshot.Contains(itemId);
@@ -463,7 +463,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         _dragIcon?.Dispose();
         _dragIcon = null;
         _indicatorAt = null;
-        _dropIndicator.IsVisible = false;
+        HideIndicator();
     }
 
     /// <summary>
@@ -496,10 +496,21 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var drop = at is not { } place ? null : set ? JudgeSet(_port.Snapshot, _carried, place.Target) : Judge(_port, dragged, place.Target, external);
         if (at == null || drop == null)
         {
-            _dropIndicator.IsVisible = false;
+            HideIndicator();
+            GlowLifted(dragged);
+            return;
+        }
+        // Over the doll the body parts the item would cover glow, rather than a frame round the doll.
+        if (at.Value.Shown == DollArea && DollShown && at.Value.Target.Equipment is { } wornAt)
+        {
+            HideIndicator();
+            var mask = _port.WieldMask(dragged, wornAt);
+            _doll!.Glow(InventorySnapshotBuilder.PartsUnder(mask != 0 ? mask : _port.Snapshot.ValidLocationsOf(dragged) ?? 0),
+                drop.Value.Accepted ? GoldGlow : InvalidGlow);
             return;
         }
         Light(at.Value.Shown, drop.Value.Accepted ? GoldBrush : InvalidBrush);
+        GlowLifted(dragged);
     }
 
     /// <summary>
@@ -522,12 +533,36 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private bool Over(Control control, Point point) =>
         control.IsEffectivelyVisible && control.TranslatePoint(default, this) is { } origin && new Rect(origin, control.Bounds.Size).Contains(point);
 
+    private static readonly uint GoldGlow = DerethPalette.Gold.WithAlpha(0x80).ToUInt32();
+    private static readonly uint InvalidGlow = DerethPalette.Invalid.WithAlpha(0x80).ToUInt32();
+    private static readonly uint LiftedGlow = DerethPalette.Teal.WithAlpha(0x80).ToUInt32();
+
+    private bool DollShown => _doll != null && DollArea.Child == _doll;
+
+    /// <summary>Hides the drop indicator and stops the doll glowing.</summary>
+    private void HideIndicator()
+    {
+        _dropIndicator.IsVisible = false;
+        _doll?.Glow(Array.Empty<int>(), 0);
+    }
+
+    /// <summary>
+    /// While a worn item is lifted, the body parts it covers glow on the doll: the ones the server says it draws, else those it is worn
+    /// over. Anything else leaves the doll as it is.
+    /// </summary>
+    private void GlowLifted(uint dragged)
+    {
+        if (!DollShown || _port.Snapshot.Wielded.FirstOrDefault(item => item.Id == dragged) is not { } worn) return;
+        var drawn = _doll!.PartsDrawnBy(worn.Id);
+        _doll.Glow(drawn.Count > 0 ? drawn : InventorySnapshotBuilder.PartsUnder(worn.EquippedMask), LiftedGlow);
+    }
+
     /// <summary>Shows the drop indicator over the slot, in the colour.</summary>
     private void Light(Control slot, IBrush brush)
     {
         if (slot.TranslatePoint(default, this) is not { } origin)
         {
-            _dropIndicator.IsVisible = false;
+            HideIndicator();
             return;
         }
         _dropIndicator.Margin = new Thickness(origin.X, origin.Y, 0, 0);
@@ -728,7 +763,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         if (_disposed) return;
         // The slots are rebuilt, so a drop indicator on the old ones goes; a drag in progress gets it back once they are laid out.
-        _dropIndicator.IsVisible = false;
+        HideIndicator();
         var open = OpenPack(snapshot);
         _selection.Keep(OpenOrder(snapshot));
         var worn = new Dictionary<PaperdollSlot, WieldedItem>();

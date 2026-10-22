@@ -139,6 +139,22 @@ public static class InventorySnapshotBuilder
         return null;
     }
 
+    /// <summary>The body parts an item worn at the EquipMask bits covers, as <see cref="WornOn(IReadOnlyList{WieldedItem}, int)"/> numbers them.</summary>
+    public static IReadOnlyCollection<int> PartsUnder(uint mask)
+    {
+        var parts = new List<int>();
+        for (var part = 0; part <= HeadPart; part++)
+            foreach (var bits in WornOn(part))
+                if ((mask & bits) == bits)
+                {
+                    parts.Add(part);
+                    break;
+                }
+        return parts;
+    }
+
+    private const int HeadPart = 16;
+
     private static uint[] WornOn(int part) => part switch
     {
         0 => [0x400, 0x4],                // AbdomenArmor, AbdomenWear

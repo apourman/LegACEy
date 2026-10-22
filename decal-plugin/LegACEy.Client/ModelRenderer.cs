@@ -17,10 +17,12 @@ internal sealed unsafe class ModelRenderer : IDisposable
     private readonly IntPtr _device;
     private readonly List<Mesh> _meshes = new();
     private CharacterModel? _model;
+    private HashSet<int> _glowing = new();
 
     public ModelRenderer(IntPtr device) => _device = device;
 
-    public void Draw(CharacterModel model, Rectangle area, Quaternion orientation, float zoom, float focus)
+    /// <param name="glowing">Model parts drawn again under a see-through tint of <paramref name="glow"/> (ARGB): what a drop adds or a lift takes off.</param>
+    public void Draw(CharacterModel model, Rectangle area, Quaternion orientation, float zoom, float focus, IReadOnlyCollection<int> glowing, uint glow)
     {
         area.Intersect(Viewport(_device));
         if (area.Width <= 0 || area.Height <= 0) return;
@@ -86,17 +88,51 @@ internal sealed unsafe class ModelRenderer : IDisposable
             SetSamplerState(_device, 0, SamplerState.AddressV, AddressWrap);
 
             foreach (var mesh in _meshes)
+                DrawMesh(mesh, mesh.Vertices);
+
+            if (glowing.Count == 0) return;
+            if (!_glowing.SetEquals(glowing))
             {
-                SetRenderState(_device, RenderState.AlphaTestEnable, mesh.Clipped ? 1 : 0);
-                SetTexture(_device, 0, mesh.Texture);
-                fixed (ModelVertex* vertices = mesh.Vertices)
-                    DrawPrimitiveUP(_device, TriangleList, mesh.Vertices.Length / 3, vertices, sizeof(ModelVertex));
+                _glowing = new HashSet<int>(glowing);
+                foreach (var mesh in _meshes) mesh.Glowing = null;
             }
+            // The same triangles again at the same depth, in the tint, its alpha cut by the texture's so cut-out edges stay cut.
+            SetRenderState(_device, RenderState.ZWriteEnable, 0);
+            SetRenderState(_device, RenderState.AlphaBlendEnable, 1);
+            SetRenderState(_device, RenderState.SrcBlend, BlendSrcAlpha);
+            SetRenderState(_device, RenderState.DestBlend, BlendInvSrcAlpha);
+            SetRenderState(_device, RenderState.TextureFactor, unchecked((int)glow));
+            SetStageState(_device, 0, StageState.ColorOp, OpSelectArg1);
+            SetStageState(_device, 0, StageState.ColorArg1, ArgFactor);
+            SetStageState(_device, 0, StageState.AlphaOp, OpModulate);
+            SetStageState(_device, 0, StageState.AlphaArg1, ArgTexture);
+            SetStageState(_device, 0, StageState.AlphaArg2, ArgFactor);
+            foreach (var mesh in _meshes)
+                DrawMesh(mesh, mesh.Glowing ??= GlowingOf(mesh));
         }
         finally
         {
             RestoreState(saved);
         }
+    }
+
+    private void DrawMesh(Mesh mesh, ModelVertex[] vertices)
+    {
+        if (vertices.Length == 0) return;
+        SetRenderState(_device, RenderState.AlphaTestEnable, mesh.Clipped ? 1 : 0);
+        SetTexture(_device, 0, mesh.Texture);
+        fixed (ModelVertex* first = vertices)
+            DrawPrimitiveUP(_device, TriangleList, vertices.Length / 3, first, sizeof(ModelVertex));
+    }
+
+    /// <summary>The mesh's triangles that belong to a glowing part.</summary>
+    private ModelVertex[] GlowingOf(Mesh mesh)
+    {
+        var glowing = new List<ModelVertex>();
+        for (var i = 0; i + 2 < mesh.Vertices.Length; i += 3)
+            if (_glowing.Contains(mesh.Parts[i]))
+                glowing.AddRange(new[] { mesh.Vertices[i], mesh.Vertices[i + 1], mesh.Vertices[i + 2] });
+        return glowing.ToArray();
     }
 
     public void Dispose()
@@ -113,7 +149,7 @@ internal sealed unsafe class ModelRenderer : IDisposable
         {
             if (mesh.Vertices.Count == 0) continue;
             // ModelVertex is already a D3DFVF_XYZ | NORMAL | TEX1 vertex: position, normal, then u and v.
-            _meshes.Add(new Mesh(Upload(mesh.Texture), mesh.Clipped, mesh.Vertices.ToArray()));
+            _meshes.Add(new Mesh(Upload(mesh.Texture), mesh.Clipped, mesh.Vertices.ToArray(), mesh.Parts.ToArray()));
         }
         _model = model;
     }
@@ -137,5 +173,9 @@ internal sealed unsafe class ModelRenderer : IDisposable
         _meshes.Clear();
     }
 
-    private readonly record struct Mesh(IntPtr Texture, bool Clipped, ModelVertex[] Vertices);
+    private sealed record Mesh(IntPtr Texture, bool Clipped, ModelVertex[] Vertices, int[] Parts)
+    {
+        /// <summary>The triangles of the glowing parts, worked out once per set of glowing parts.</summary>
+        public ModelVertex[]? Glowing { get; set; }
+    }
 }

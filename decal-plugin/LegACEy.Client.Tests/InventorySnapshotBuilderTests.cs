@@ -173,5 +173,9 @@ public sealed class InventorySnapshotBuilderTests
         Assert.Same(shirt, InventorySnapshotBuilder.WornOn(wielded, 11));
         // A bare thigh, under nothing: the shirt reaches the abdomen but not the legs.
         Assert.Null(InventorySnapshotBuilder.WornOn(wielded, 1));
+
+        // Knee-high boots cover the feet and shins; shoes only the feet.
+        Assert.Equal(new[] { 2, 3, 4, 6, 7, 8 }, InventorySnapshotBuilder.PartsUnder(0x100 | 0x80));
+        Assert.Equal(new[] { 3, 4, 7, 8 }, InventorySnapshotBuilder.PartsUnder(0x100));
     }
 }
