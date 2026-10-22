@@ -36,11 +36,16 @@ internal sealed unsafe class ScreenSurface : IDisposable
 
     public bool Visible { get; set; }
 
-    public double LastTickMilliseconds { get; private set; }
+    // Timings and counts since the last performance log line; the runtime reads and resets them.
+    public FrameSamples TickTimes { get; } = new();
 
-    public double LastUploadMilliseconds { get; private set; }
+    public FrameSamples UploadTimes { get; } = new();
 
-    public int LastDirtyRectangleCount { get; private set; }
+    public FrameSamples DrawTimes { get; } = new();
+
+    public int ChangedFrames { get; set; }
+
+    public int DirtyRectangles { get; set; }
 
     public Rectangle Bounds => new(Location, new Size(Panel.Frame.Width, Panel.Frame.Height));
 
@@ -52,15 +57,16 @@ internal sealed unsafe class ScreenSurface : IDisposable
             Panel.DrainDispatcher();
             return;
         }
-        var timer = Stopwatch.StartNew();
+        var start = Stopwatch.GetTimestamp();
         var changed = Panel.Tick();
-        timer.Stop();
-        LastTickMilliseconds = timer.Elapsed.TotalMilliseconds;
-        LastDirtyRectangleCount = Panel.Frame.DirtyRectangles.Count;
+        var elapsed = Stopwatch.GetElapsedTime(start);
+        TickTimes.Add(elapsed.TotalMilliseconds);
+        if (changed) ChangedFrames++;
+        DirtyRectangles += Panel.Frame.DirtyRectangles.Count;
         if (Panel.LastError != null)
             return;
-        if (_failureBudget.Record(timer.Elapsed))
-            throw new TimeoutException($"Panel tick exceeded 50 ms for {_failureBudget.ConsecutiveSlowTicks} consecutive frames ({timer.Elapsed.TotalMilliseconds:F1} ms).");
+        if (_failureBudget.Record(elapsed))
+            throw new TimeoutException($"Panel tick exceeded 50 ms for {_failureBudget.ConsecutiveSlowTicks} consecutive frames ({elapsed.TotalMilliseconds:F1} ms).");
         // _uploaded is true only while a texture holds a complete frame.
         if (changed || !_uploaded)
             Upload(Panel.Frame);
@@ -71,7 +77,9 @@ internal sealed unsafe class ScreenSurface : IDisposable
     {
         if (!Visible || !_uploaded)
             return;
+        var start = Stopwatch.GetTimestamp();
         Draw(Panel.Frame.Width, Panel.Frame.Height);
+        DrawTimes.Add(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
     }
 
     public void Dispose()
@@ -97,7 +105,7 @@ internal sealed unsafe class ScreenSurface : IDisposable
             _textureHeight = frame.Height;
         }
 
-        var timer = Stopwatch.StartNew();
+        var start = Stopwatch.GetTimestamp();
         IReadOnlyList<Rectangle> dirty = _uploaded ? frame.DirtyRectangles : new[] { new Rectangle(0, 0, frame.Width, frame.Height) };
         for (var i = 0; i < dirty.Count; i++)
         {
@@ -105,8 +113,7 @@ internal sealed unsafe class ScreenSurface : IDisposable
             if (rect.Width <= 0 || rect.Height <= 0) continue;
             D3D9.Upload(_texture, rect, frame.Pixels, frame.Stride);
         }
-        timer.Stop();
-        LastUploadMilliseconds = timer.Elapsed.TotalMilliseconds;
+        UploadTimes.Add(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
         _uploaded = true;
     }
 

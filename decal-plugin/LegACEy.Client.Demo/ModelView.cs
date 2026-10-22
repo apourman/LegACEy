@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
@@ -20,6 +22,24 @@ public sealed class ModelView : Border
     public const float Framing = 1.06f;
     public const float MinZoom = 0.3f;
     public const float MaxZoom = 12f;
+
+    // The views in a visual tree, so the host finds them without walking every window each frame. UI thread only.
+    private static readonly List<ModelView> AttachedViews = new();
+
+    /// <summary>Every view now in a visual tree, in any window.</summary>
+    public static IReadOnlyList<ModelView> Attached => AttachedViews;
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        AttachedViews.Add(this);
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        AttachedViews.Remove(this);
+    }
 
     private Avalonia.Point? _dragFrom;
     private bool _panning;

@@ -175,6 +175,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private readonly Dictionary<ModelView, ModelRenderer> _modelRenderers = new();
     private readonly HashSet<ModelView> _failedModelViews = new();
     private readonly HashSet<ModelView> _drawnModelViews = new();
+    private readonly List<ModelView> _releasedModelViews = new();
     private WindowManager? _windows;
     // Kept for the session, not rebuilt with the windows: its session overlay holds what a failed write could not save.
     private readonly FileWindowPositionStore _positionStore = new(IOPath.Combine(PluginDirectory, "window-positions.txt"));
@@ -195,8 +196,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _firstPostUiWindow = true;
     private DateTime _lastMeasurementLog = DateTime.UtcNow;
     private DateTime _lastTestFailureCheck;
-    private TimeSpan _maxUiFrame;
-    private TimeSpan _maxPostUiDraw;
+    private readonly FrameSamples _uiFrameTimes = new();
+    private readonly FrameSamples _postUiDrawTimes = new();
+    // The parts of a frame, timed separately to show where the worst frames go.
+    private readonly PhaseTimes _phaseTimes = new();
+    private long _lastFrameEndBytes;
+    private long _betweenFrameBytes;
+    private long _lastAllocatedBytes = GC.GetTotalAllocatedBytes();
+    private TimeSpan _lastGcPause = GC.GetTotalPauseDuration();
     private ScreenSurface? _hovered;
     private readonly InputRouterService _inputRouter = new();
     private Point _pointer;
@@ -334,6 +341,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // a LegACEy item being dragged out of a window: the inventory cell under it shows the client's drop indicator
     private bool _itemDragActive;
     private readonly Dictionary<string, ScreenSurface> _featureSurfaces = new(StringComparer.Ordinal);
+    private readonly List<KeyValuePair<string, ScreenSurface>> _preparing = new();
     // Plugin windows the player closed: kept, texture and all, so reopening skips building the content again.
     // ponytail: kept until logoff, still subscribed and running (the paperdoll rebuilds on equip changes); add a cap,
     // or tell plugins when they are shown and hidden, once more plugins arrive
@@ -1095,7 +1103,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     public void Frame()
     {
-        var timer = Stopwatch.StartNew();
+        // What this thread allocated since the last frame ended: hooks, the post-UI draw, Decal's events.
+        if (_lastFrameEndBytes != 0) _betweenFrameBytes += GC.GetAllocatedBytesForCurrentThread() - _lastFrameEndBytes;
+        var start = Stopwatch.GetTimestamp();
         if (_loggedIn)
         {
             // A failed line is tried again next frame, logged once per streak.
@@ -1113,8 +1123,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         try { FrameCore(); }
         finally
         {
-            if (timer.Elapsed > _maxUiFrame) _maxUiFrame = timer.Elapsed;
+            _uiFrameTimes.Add(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
             RecordPerformanceMeasurement();
+            _lastFrameEndBytes = GC.GetAllocatedBytesForCurrentThread();
         }
     }
 
@@ -1164,6 +1175,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
         Guard(() =>
         {
+            var start = PhaseTimes.Start();
             PublishGameState();
             _inventory.Flush(_inGame);
             _inventory.TargetMode?.Tick();
@@ -1181,11 +1193,22 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     return;
                 CreateUi();
             }
+            _phaseTimes.Add("state", start);
+            start = PhaseTimes.Start();
             TickRetailToolbar();
+            _phaseTimes.Add("toolbar", start);
+            start = PhaseTimes.Start();
             TickRetailChat();
+            _phaseTimes.Add("chat", start);
+            start = PhaseTimes.Start();
             TickRetailVitals();
+            _phaseTimes.Add("vitals", start);
+            start = PhaseTimes.Start();
             TickRetailRadar();
+            _phaseTimes.Add("radar", start);
+            start = PhaseTimes.Start();
             TickRetailAttack();
+            _phaseTimes.Add("attack", start);
             // Portal space at login comes before Decal's login complete: retail's inventory opened then is parked already,
             // and our window opens for it once the windows can.
             if (!_inGame) TickRetailPanels(loggingIn: true);
@@ -1206,12 +1229,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 }
             }
 
+            var start = PhaseTimes.Start();
             TickRetailPanels();
             TickSettingsLock();
             UpdateRetailDrag();
             if (_itemDragActive)
                 _retailDrag?.UpdateDropIndicator();
+            _phaseTimes.Add("panels", start);
+            start = PhaseTimes.Start();
             PrepareFeatureWindows();
+            _phaseTimes.Add("windows", start);
             PrepareUpdateToast();
             if (_dragIconSurface != null)
             {
@@ -1221,25 +1248,29 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         });
     }
 
-    /// <summary>Logs the longest frame and post-UI draw since the last sample, then starts counting again.</summary>
+    /// <summary>
+    /// Every 30 s, logs the UI frame and post-UI draw times (p50/p95/max ms), the GC, the frame's phases with what each allocated,
+    /// the world effects, then one line per window that ran: its tick, texture upload and draw times, and how many of its ticks changed
+    /// pixels. Ticks that changed nothing are the waste to cut.
+    /// </summary>
     private void RecordPerformanceMeasurement()
     {
         var now = DateTime.UtcNow;
         if (now - _lastMeasurementLog < TimeSpan.FromSeconds(30)) return;
         _lastMeasurementLog = now;
-        var uiFrame = _maxUiFrame;
-        var postUiDraw = _maxPostUiDraw;
-        _maxUiFrame = TimeSpan.Zero;
-        _maxPostUiDraw = TimeSpan.Zero;
         try
         {
-            var surfaces = new List<ScreenSurface>();
-            surfaces.AddRange(_featureSurfaces.Values);
             using var process = Process.GetCurrentProcess();
-            var maxTick = surfaces.Count == 0 ? 0 : surfaces.Max(surface => surface.LastTickMilliseconds);
-            var maxUpload = surfaces.Count == 0 ? 0 : surfaces.Max(surface => surface.LastUploadMilliseconds);
-            var dirtyRectangles = surfaces.Sum(surface => surface.LastDirtyRectangleCount);
-            Log($"UI performance sample: maxUiFrame={uiFrame.TotalMilliseconds:F2}ms maxPostUiDraw={postUiDraw.TotalMilliseconds:F2}ms surfaces={surfaces.Count} maxPanelTick={maxTick:F2}ms maxTextureUpload={maxUpload:F2}ms dirtyRects={dirtyRectangles} privateBytes={process.PrivateMemorySize64} virtualBytes={process.VirtualMemorySize64} managedBytes={GC.GetTotalMemory(false)}.");
+            Log($"UI performance sample: frames={_uiFrameTimes.Count} uiFrame={_uiFrameTimes.TakeSummary()}ms postUiDraw={_postUiDrawTimes.TakeSummary()}ms surfaces={_featureSurfaces.Count} privateBytes={process.PrivateMemorySize64} virtualBytes={process.VirtualMemorySize64} managedBytes={GC.GetTotalMemory(false)} gen0={GC.CollectionCount(0)} gen1={GC.CollectionCount(1)} gen2={GC.CollectionCount(2)}.");
+            LogGcSample();
+            Log($"UI performance phases: {_phaseTimes.TakeSummary()} betweenFrames={_betweenFrameBytes / 1024}KB.");
+            _betweenFrameBytes = 0;
+            if (_worldEffects != null) Log($"UI performance world: {_worldEffects.TakePerformanceSummary()}.");
+            LogSurfaceSample("toolbar", _toolbarSurface);
+            foreach (var pair in _featureSurfaces) LogSurfaceSample(pair.Key, pair.Value);
+            LogSurfaceSample("split-tab", _splitTabSurface);
+            LogSurfaceSample("update-toast", _updateToastSurface);
+            LogSurfaceSample("drag-icon", _dragIconSurface);
         }
         catch (Exception exception)
         {
@@ -1248,12 +1279,45 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
+    /// Why the GC runs: what was allocated and how long the game was paused since the last line, the memory load against the
+    /// threshold where the GC turns aggressive, and the last full and background pauses.
+    /// </summary>
+    private void LogGcSample()
+    {
+        var allocated = GC.GetTotalAllocatedBytes();
+        var pause = GC.GetTotalPauseDuration();
+        var info = GC.GetGCMemoryInfo(GCKind.Any);
+        var full = GC.GetGCMemoryInfo(GCKind.FullBlocking);
+        var background = GC.GetGCMemoryInfo(GCKind.Background);
+        const double MB = 1024 * 1024;
+        Log($"UI performance gc: allocatedMB={(allocated - _lastAllocatedBytes) / MB:F1} pausedMs={(pause - _lastGcPause).TotalMilliseconds:F1} " +
+            $"heapMB={info.HeapSizeBytes / MB:F1} fragmentedMB={info.FragmentedBytes / MB:F1} committedMB={info.TotalCommittedBytes / MB:F1} " +
+            $"loadMB={info.MemoryLoadBytes / MB:F0} highLoadMB={info.HighMemoryLoadThresholdBytes / MB:F0} availableMB={info.TotalAvailableMemoryBytes / MB:F0} " +
+            $"lastFullPauseMs={(full.Index == 0 ? "-" : full.PauseDurations[0].TotalMilliseconds.ToString("F1"))} " +
+            $"lastBackgroundPauseMs={(background.Index == 0 ? "-" : background.PauseDurations[0].TotalMilliseconds.ToString("F1"))}.");
+        _lastAllocatedBytes = allocated;
+        _lastGcPause = pause;
+    }
+
+    private static void LogSurfaceSample(string name, ScreenSurface? surface)
+    {
+        if (surface == null || surface.TickTimes.Count == 0 && surface.DrawTimes.Count == 0) return;
+        var ticks = surface.TickTimes.Count;
+        Log($"UI performance surface {name}: ticks={ticks} changed={surface.ChangedFrames} dirtyRects={surface.DirtyRectangles} tick={surface.TickTimes.TakeSummary()}ms upload={surface.UploadTimes.TakeSummary()}ms draw={surface.DrawTimes.TakeSummary()}ms.");
+        surface.ChangedFrames = 0;
+        surface.DirtyRectangles = 0;
+    }
+
+    /// <summary>
     /// Ticks each LegACEy window. A failure, including a panel over its tick budget, goes to the window's error handler:
     /// a plugin's window turns off that plugin, a client window disables the client UI.
     /// </summary>
     private void PrepareFeatureWindows()
     {
-        foreach (var pair in _featureSurfaces.ToArray())
+        // A failure handler may close windows mid-loop, so walk a copy; the buffer is reused frame to frame.
+        _preparing.Clear();
+        _preparing.AddRange(_featureSurfaces);
+        foreach (var pair in _preparing)
         {
             // An earlier failure in this loop may have closed the window.
             if (!_featureSurfaces.ContainsKey(pair.Key)) continue;
@@ -1272,9 +1336,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>Called by IDirect3DDevice9.EndScene after retail and Decal UI drawing.</summary>
     private void DrawAfterRetailUi()
     {
-        var timer = Stopwatch.StartNew();
+        var start = Stopwatch.GetTimestamp();
         try { DrawAfterRetailUiCore(); }
-        finally { if (timer.Elapsed > _maxPostUiDraw) _maxPostUiDraw = timer.Elapsed; }
+        finally { _postUiDrawTimes.Add(Stopwatch.GetElapsedTime(start).TotalMilliseconds); }
     }
 
     private void DrawAfterRetailUiCore()
@@ -1286,9 +1350,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (windows)
         {
             _drawnModelViews.Clear();
-            foreach (var window in _windows!.ZOrder.Reverse())
+            var order = _windows!.ZOrder;
+            for (var i = order.Count - 1; i >= 0; i--)
             {
-                var surface = SurfaceById(window.Id);
+                var surface = SurfaceById(order[i].Id);
                 surface?.DrawNow();
                 DrawModelViews(surface);
                 if (_firstPostUiWindow)
@@ -1335,9 +1400,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private void DrawModelViews(ScreenSurface? surface)
     {
         if (surface is not { Visible: true } || _device == IntPtr.Zero || surface.Panel.Content is not Avalonia.Visual window) return;
-        // ponytail: walks the window's visual tree every frame; cache the views per window if a big window makes it show up in the frame budget
-        foreach (var view in Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<ModelView>())
+        // Walking each window's tree for its views every frame was most of the plugin's garbage; the views list themselves instead.
+        var views = ModelView.Attached;
+        for (var i = 0; i < views.Count; i++)
         {
+            var view = views[i];
+            if (!Avalonia.VisualTree.VisualExtensions.IsVisualAncestorOf(window, view)) continue;
             _drawnModelViews.Add(view);
             if (view.Model is not { } model || !view.IsEffectivelyVisible || _failedModelViews.Contains(view)) continue;
             try
@@ -1366,11 +1434,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>Frees the GPU resources of 3D views that are no longer in an open window (all of them for an empty set).</summary>
     private void ReleaseModelRenderers(ISet<ModelView> keep)
     {
-        foreach (var view in _modelRenderers.Keys.Where(view => !keep.Contains(view)).ToList())
+        // Runs every frame: collect into a reused list rather than a fresh LINQ one.
+        foreach (var view in _modelRenderers.Keys)
+            if (!keep.Contains(view)) _releasedModelViews.Add(view);
+        foreach (var view in _releasedModelViews)
         {
             _modelRenderers[view].Dispose();
             _modelRenderers.Remove(view);
         }
+        _releasedModelViews.Clear();
         _failedModelViews.IntersectWith(keep);
     }
 
@@ -1395,7 +1467,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _retailDragIcon.Dispose();
             _retailDragIcon = null;
         }
-        foreach (var pair in _featureSurfaces.ToArray())
+        // A failure handler may close windows mid-loop, so walk a copy; the buffer is reused frame to frame.
+        _preparing.Clear();
+        _preparing.AddRange(_featureSurfaces);
+        foreach (var pair in _preparing)
         {
             // An earlier failure in this loop may have closed the window.
             if (!_featureSurfaces.ContainsKey(pair.Key)) continue;
