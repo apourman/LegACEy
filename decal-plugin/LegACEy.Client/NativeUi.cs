@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Diagnostics;
@@ -124,9 +125,17 @@ internal static class NativeUi
         return manager == IntPtr.Zero ? IntPtr.Zero : GetElementNative(manager, id);
     }
 
+    // One delegate per native function and type: the item-drag walks call through vtables every frame.
+    private static readonly Dictionary<(IntPtr, Type), Delegate> VirtualDelegates = new();
+
     /// <summary>The function at a vtable slot of an object, as a delegate. Call on the game thread.</summary>
-    internal static T Virtual<T>(IntPtr instance, int slot) where T : Delegate =>
-        (T)Marshal.GetDelegateForFunctionPointer(Marshal.ReadIntPtr(Marshal.ReadIntPtr(instance), slot), typeof(T));
+    internal static T Virtual<T>(IntPtr instance, int slot) where T : Delegate
+    {
+        var function = Marshal.ReadIntPtr(Marshal.ReadIntPtr(instance), slot);
+        if (!VirtualDelegates.TryGetValue((function, typeof(T)), out var cached))
+            VirtualDelegates[(function, typeof(T))] = cached = Marshal.GetDelegateForFunctionPointer(function, typeof(T));
+        return (T)cached;
+    }
 
     public static bool IsVisible(IntPtr element) { EnsureReady(); return IsVisibleNative(element) != 0; }
 

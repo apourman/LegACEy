@@ -318,8 +318,11 @@ public sealed class AvaloniaPanel : IDisposable
     {
         if (_disposed) throw new ObjectDisposedException(nameof(AvaloniaPanel));
         VerifyThreadAccess();
-        _window.Hide();
-        _renderingSuspended = true;
+        if (!_renderingSuspended)
+        {
+            _window.Hide();
+            _renderingSuspended = true;
+        }
         try { Dispatcher.UIThread.RunJobs(); }
         catch (Exception exception) { ReportError(exception); }
     }
