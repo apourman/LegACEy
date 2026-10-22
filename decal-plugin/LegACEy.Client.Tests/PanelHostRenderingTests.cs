@@ -387,6 +387,66 @@ public sealed class PanelHostRenderingTests
     });
 
     [Fact]
+    public void Mutating_a_gradient_or_transform_assigned_in_code_without_a_tree_change_repaints() => RenderThread.Run(() =>
+    {
+        var border = new Border { Width = 4, Height = 4, HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top, Background = Brushes.Black };
+        using var panel = AvaloniaPanel.Create(() => new Canvas { Background = Brushes.Black, Children = { border } }, 8, 8);
+        Assert.False(panel.Tick());
+
+        var gradient = new LinearGradientBrush
+        {
+            GradientStops = { new GradientStop(Colors.Black, 0), new GradientStop(Colors.Black, 1) }
+        };
+        border.Background = gradient;
+        panel.Tick();
+        gradient.GradientStops[0].Color = Colors.White;
+        gradient.GradientStops[1].Color = Colors.White;
+        Assert.True(panel.Tick());
+        Assert.Equal(0xff, panel.Frame.Pixels[0]);
+
+        var move = new TranslateTransform();
+        border.RenderTransform = new TransformGroup { Children = { move } };
+        panel.Tick();
+        move.X = 4;
+        Assert.True(panel.Tick());
+        Assert.Equal(0, panel.Frame.Pixels[0]);
+        Assert.False(panel.Tick());
+    });
+
+    [Fact]
+    public void The_walk_after_tree_and_theme_changes_observes_what_a_fresh_full_walk_finds() => RenderThread.Run(() =>
+    {
+        var stop = new GradientStop(Colors.Black, 0);
+        var gradient = new LinearGradientBrush { GradientStops = { stop, new GradientStop(Colors.White, 1) } };
+        var move = new TranslateTransform();
+        var group = new TransformGroup { Children = { move } };
+        var host = new StackPanel { Children = { new Border { Height = 2, Background = Brushes.Gray } } };
+        using var panel = AvaloniaPanel.Create(() => host, 8, 8);
+        panel.Tick();
+
+        var dropped = new Border { Height = 2, Background = new SolidColorBrush(Colors.Red) };
+        host.Children.Add(dropped);
+        panel.Tick();
+        host.Children.Add(new Border { Height = 2, Background = gradient, RenderTransform = group });
+        host.Children.Remove(dropped);
+        panel.Tick();
+        panel.ApplyTheme(new LegACEy.Client.Themes.DerethClientTheme());
+        panel.Tick();
+
+        Assert.Contains(gradient, panel.ObservedRenderResources);
+        Assert.Contains(stop, panel.ObservedRenderResources);
+        Assert.Contains(move, panel.ObservedRenderResources);
+        Assert.Contains(group.Children, panel.ObservedRenderCollections);
+        Assert.DoesNotContain((AvaloniaObject)dropped.Background!, panel.ObservedRenderResources);
+        var resources = panel.ObservedRenderResources.ToHashSet();
+        var collections = panel.ObservedRenderCollections.ToHashSet();
+        panel.WalkRenderResources();
+        Assert.True(resources.SetEquals(panel.ObservedRenderResources));
+        Assert.True(collections.SetEquals(panel.ObservedRenderCollections));
+    });
+
+    [Fact]
     public void A_changed_frame_walks_render_resources_only_after_its_tree_or_theme_changed() => RenderThread.Run(() =>
     {
         var brush = new SolidColorBrush(Colors.Black);

@@ -55,6 +55,9 @@ public sealed class AvaloniaPanel : IDisposable
     private bool _walkRenderResources = true;
     private readonly IDisposable _treeChanges;
     internal int RenderResourceWalks { get; private set; }
+    internal IReadOnlyCollection<AvaloniaObject> ObservedRenderResources => _renderResources;
+    internal IReadOnlyCollection<INotifyCollectionChanged> ObservedRenderCollections => _renderCollections;
+    internal void WalkRenderResources() => ObserveRenderResources();
 
     private readonly RendererInvalidationObserver _rendererObserver;
     private readonly HashSet<AvaloniaObject> _renderResources = new();
