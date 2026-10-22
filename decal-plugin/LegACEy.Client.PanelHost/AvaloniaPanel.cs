@@ -38,7 +38,11 @@ public sealed class AvaloniaPanel : IDisposable
     private static bool _runtimeInitialized;
     private readonly Window _window;
     private readonly int _ownerThreadId;
-    private PanelFrame _frame;
+    private readonly RetainedFramebuffer _framebuffer;
+    // The array behind the frame's dirty rectangles when a capture changed something: its one changed area, reused capture to capture.
+    private readonly Rectangle[] _dirty = new Rectangle[1];
+    // The frame's pixels as of the last capture, to tell a repaint that changed pixels from one that drew the same.
+    private byte[] _captured = Array.Empty<byte>();
     private bool _disposed;
     private bool _forceFullFrame = true;
     private bool _hasInvalidation;
@@ -75,15 +79,19 @@ public sealed class AvaloniaPanel : IDisposable
         _content = content;
         _scale = scale;
         _window = CreateWindow(content, width, height, scale);
-        _frame = new PanelFrame(width, height);
+        _framebuffer = RetainedFramebuffer.Install(_window, width, height);
+        _window.Show();
         _rendererObserver = new RendererInvalidationObserver(_window, () => _hasInvalidation = true);
         _window.LayoutUpdated += OnLayoutUpdated;
         PanelCompositor.Register(this);
         Tick();
     }
 
-    /// <summary>The latest rendered BGRA frame. Its pixel buffer is reused across ticks.</summary>
-    public PanelFrame Frame => _frame;
+    /// <summary>
+    /// The latest rendered BGRA frame. Avalonia draws straight into its pixel buffer, which is kept until the panel is resized; its dirty
+    /// rectangles say what the last capture changed.
+    /// </summary>
+    public PanelFrame Frame => _framebuffer.Frame;
 
     /// <summary>Whether the last capture changed the frame's pixels; the frame's dirty rectangles say where.</summary>
     public bool Changed { get; private set; }
@@ -92,8 +100,9 @@ public sealed class AvaloniaPanel : IDisposable
     public int LayoutPasses { get; private set; }
 
     /// <summary>
-    /// Pixels in the frame's dirty rectangles after the last capture, or 0 when nothing changed: the area this panel painted.
-    /// ponytail: the captured changes stand in for what Avalonia painted; a retained framebuffer would report its dirty areas directly.
+    /// The area, in pixels, of the bounding rectangle of what Avalonia painted for this panel between its previous capture and the last one;
+    /// 0 when it painted nothing. It counts painting work, so it can be above 0 while <see cref="Changed"/> is false: a repaint that drew
+    /// the same pixels.
     /// </summary>
     public long PaintedArea { get; private set; }
 
@@ -179,6 +188,7 @@ public sealed class AvaloniaPanel : IDisposable
         if (scale != 1 && !CanScale) scale = 1;
         EnsureRuntimeInitialized();
         var window = CreateWindow(control, 1, 1, scale);
+        window.Show();
         try
         {
             control.Measure(available);
@@ -234,7 +244,6 @@ public sealed class AvaloniaPanel : IDisposable
         // DPI does: layout rounding snaps every edge and border to whole panel pixels, where a scale transform smears 1 px borders.
         // The headless window fixes its scaling at 1, so this sets it.
         if (scale != 1) SetScaling(window, scale);
-        window.Show();
         return window;
     }
 
@@ -277,7 +286,6 @@ public sealed class AvaloniaPanel : IDisposable
         if (_disposed) return;
         _captureClock.Restart();
         Changed = CaptureFrame();
-        PaintedArea = Changed ? AreaOf(_frame.DirtyRectangles) : 0;
         _captureClock.Stop();
     }
 
@@ -317,76 +325,30 @@ public sealed class AvaloniaPanel : IDisposable
     /// <summary>Whether this panel's window shows a visual of <paramref name="type"/>, its overlays and adorners included.</summary>
     internal bool Shows(Type type) => _window.GetSelfAndVisualDescendants().Any(type.IsInstanceOfType);
 
-    private unsafe bool CaptureFrame()
+    private bool CaptureFrame()
     {
         try
         {
+            var frame = Frame;
             if (_renderingSuspended || (!_forceFullFrame && !_hasInvalidation))
             {
-                _frame.DirtyRectangles = Array.Empty<Rectangle>();
+                frame.DirtyRectangles = Array.Empty<Rectangle>();
                 return false;
             }
 
-            // Read the frame produced by the timer without requesting another render.
+            // Avalonia already drew into the frame. What it painted changed, unless it drew the same pixels again (a style or hover that
+            // looks the same).
             FrameCaptureCount++;
-            using var bitmap = _window.GetLastRenderedFrame();
-            if (bitmap == null) return false;
-
-            using var locked = bitmap.Lock();
-            if (locked.Format != PixelFormat.Bgra8888)
-                throw new NotSupportedException($"The Skia backend returned unsupported pixel format {locked.Format}.");
-
-            var width = locked.Size.Width;
-            var height = locked.Size.Height;
-            if (width != _frame.Width || height != _frame.Height)
-            {
-                _frame = new PanelFrame(width, height);
-                _forceFullFrame = true;
-            }
-
-            var dirty = _forceFullFrame
-                ? new[] { new Rectangle(0, 0, width, height) }
-                : Array.Empty<Rectangle>();
-            if (dirty.Length == 0)
-                _frame.DirtyRectangles = Array.Empty<Rectangle>();
-            var actualDirtyRectangles = new List<Rectangle>();
-            var changed = false;
-            for (var row = 0; row < height; row++)
-            {
-                var source = new ReadOnlySpan<byte>((byte*)locked.Address + (row * locked.RowBytes), _frame.Stride);
-                var target = new Span<byte>(_frame.Pixels, row * _frame.Stride, _frame.Stride);
-                var firstChangedPixel = -1;
-                var lastChangedPixel = -1;
-                for (var x = 0; x < width; x++)
-                {
-                    if (source.Slice(x * 4, 4).SequenceEqual(target.Slice(x * 4, 4))) continue;
-                    if (firstChangedPixel < 0) firstChangedPixel = x;
-                    lastChangedPixel = x;
-                }
-                source.CopyTo(new Span<byte>(_frame.Pixels, row * _frame.Stride, _frame.Stride));
-                if (firstChangedPixel < 0) continue;
-                changed = true;
-                if (dirty.Length != 0) continue;
-                var rowRect = new Rectangle(firstChangedPixel, row, lastChangedPixel - firstChangedPixel + 1, 1);
-                if (actualDirtyRectangles.Count > 0 &&
-                    actualDirtyRectangles[actualDirtyRectangles.Count - 1].Bottom == row &&
-                    actualDirtyRectangles[actualDirtyRectangles.Count - 1].Left <= rowRect.Right &&
-                    actualDirtyRectangles[actualDirtyRectangles.Count - 1].Right >= rowRect.Left)
-                {
-                    actualDirtyRectangles[actualDirtyRectangles.Count - 1] = Rectangle.Union(actualDirtyRectangles[actualDirtyRectangles.Count - 1], rowRect);
-                }
-                else
-                    actualDirtyRectangles.Add(rowRect);
-            }
-
-            if (dirty.Length != 0)
-                _frame.DirtyRectangles = dirty;
-            else
-                _frame.DirtyRectangles = actualDirtyRectangles;
+            var painted = _framebuffer.TakePainted();
+            PaintedArea = (long)painted.Width * painted.Height;
+            var changed = _forceFullFrame ? new Rectangle(0, 0, frame.Width, frame.Height) : painted;
+            if (!KeepCaptured(frame, changed) && !_forceFullFrame) changed = Rectangle.Empty;
+            _dirty[0] = changed;
+            frame.DirtyRectangles = changed.IsEmpty ? Array.Empty<Rectangle>() : _dirty;
             ObserveRenderResources();
             _hasInvalidation = false;
             _forceFullFrame = false;
-            return dirty.Length != 0 || changed;
+            return !changed.IsEmpty;
         }
         catch (Exception exception)
         {
@@ -395,14 +357,23 @@ public sealed class AvaloniaPanel : IDisposable
         }
     }
 
-    private void OnLayoutUpdated(object? sender, EventArgs e) => LayoutPasses++;
-
-    private static long AreaOf(IReadOnlyList<Rectangle> rectangles)
+    /// <summary>Bring the copy of the last capture up to date over <paramref name="area"/>; true when any of its pixels differed.</summary>
+    private bool KeepCaptured(PanelFrame frame, Rectangle area)
     {
-        long area = 0;
-        for (var i = 0; i < rectangles.Count; i++) area += (long)rectangles[i].Width * rectangles[i].Height;
-        return area;
+        if (_captured.Length != frame.Pixels.Length) _captured = new byte[frame.Pixels.Length];
+        var differed = false;
+        for (var row = area.Top; row < area.Bottom; row++)
+        {
+            var now = new ReadOnlySpan<byte>(frame.Pixels, row * frame.Stride + area.X * 4, area.Width * 4);
+            var then = new Span<byte>(_captured, row * frame.Stride + area.X * 4, area.Width * 4);
+            if (now.SequenceEqual(then)) continue;
+            now.CopyTo(then);
+            differed = true;
+        }
+        return differed;
     }
+
+    private void OnLayoutUpdated(object? sender, EventArgs e) => LayoutPasses++;
 
     /// <summary>
     /// Hide the panel and run queued Avalonia work without rendering. The plugin hides panels through <see cref="Visible"/> instead,
@@ -440,7 +411,7 @@ public sealed class AvaloniaPanel : IDisposable
         _forceFullFrame = true;
         _window.Width = width / _scale;
         _window.Height = height / _scale;
-        _frame = new PanelFrame(width, height);
+        _framebuffer.Resize(width, height);
         // The next advance lays out and renders the new size before it captures, so the capture is not the old size's last frame.
         _resized = true;
     }
@@ -456,16 +427,15 @@ public sealed class AvaloniaPanel : IDisposable
 
     /// <summary>
     /// Request a render after a custom control invalidates through its own drawing logic.
-    /// The optional rectangle limits whether the request intersects this panel. Incremental dirty
-    /// rectangles are derived from full-frame pixel differences; resize and content loss can force
-    /// a full-frame upload.
+    /// The optional rectangle limits whether the request intersects this panel. Dirty rectangles are
+    /// the area Avalonia painted; resize and content loss can force a full-frame upload.
     /// </summary>
     public void Invalidate(Rectangle? dirtyRegion = null)
     {
         VerifyUsable();
         var clipped = dirtyRegion.HasValue
-            ? Rectangle.Intersect(dirtyRegion.Value, new Rectangle(0, 0, _frame.Width, _frame.Height))
-            : new Rectangle(0, 0, _frame.Width, _frame.Height);
+            ? Rectangle.Intersect(dirtyRegion.Value, new Rectangle(0, 0, Frame.Width, Frame.Height))
+            : new Rectangle(0, 0, Frame.Width, Frame.Height);
         if (clipped.Width > 0 && clipped.Height > 0)
             _hasInvalidation = true;
     }
@@ -739,8 +709,12 @@ public sealed class AvaloniaPanel : IDisposable
         StopObservingRenderResources();
         _rendererObserver.Dispose();
         _window.LayoutUpdated -= OnLayoutUpdated;
-        _window.Close();
-        _mouseDevice.Dispose();
+        try { _window.Close(); }
+        finally
+        {
+            _framebuffer.Release();
+            _mouseDevice.Dispose();
+        }
     }
 
 

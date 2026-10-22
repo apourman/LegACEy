@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using LegACEy.Client.PanelHost;
@@ -139,13 +138,16 @@ internal sealed unsafe class ScreenSurface : IDisposable
         }
 
         var start = Stopwatch.GetTimestamp();
-        IReadOnlyList<Rectangle> dirty = _uploaded ? frame.DirtyRectangles : new[] { new Rectangle(0, 0, frame.Width, frame.Height) };
-        for (var i = 0; i < dirty.Count; i++)
+        // One texture lock per frame, over everything that changed.
+        var area = new Rectangle(0, 0, frame.Width, frame.Height);
+        if (_uploaded)
         {
-            var rect = dirty[i];
-            if (rect.Width <= 0 || rect.Height <= 0) continue;
-            D3D9.Upload(_texture, rect, frame.Pixels, frame.Stride);
+            area = Rectangle.Empty;
+            var dirty = frame.DirtyRectangles;
+            for (var i = 0; i < dirty.Count; i++)
+                if (dirty[i].Width > 0 && dirty[i].Height > 0) area = area.IsEmpty ? dirty[i] : Rectangle.Union(area, dirty[i]);
         }
+        if (!area.IsEmpty) D3D9.Upload(_texture, area, frame.Pixels, frame.Stride);
         UploadTimes.Add(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
         _uploaded = true;
     }
