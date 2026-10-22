@@ -12,8 +12,8 @@ namespace LegACEy.Client.DecalPlugin;
 /// </summary>
 /// <remarks>
 /// The texture lives in the managed pool, so Direct3D keeps a system-memory copy and restores it after a device reset; there is
-/// nothing to recreate. Retail surfaces are rendered from the frame event; LegACEy windows prepare their frame there and draw it
-/// later from the post-UI EndScene seam.
+/// nothing to recreate. The frame event advances every panel at once (<see cref="PanelCompositor"/>), then each surface uploads its
+/// panel's frame there and draws it later from the post-UI EndScene seam.
 /// </remarks>
 internal sealed unsafe class ScreenSurface : IDisposable
 {
@@ -28,13 +28,19 @@ internal sealed unsafe class ScreenSurface : IDisposable
     {
         _device = device;
         Panel = panel;
+        Panel.Visible = false;
     }
 
     public AvaloniaPanel Panel { get; }
 
     public Point Location { get; set; }
 
-    public bool Visible { get; set; }
+    /// <summary>Whether the surface draws. A hidden surface's panel is hidden too, so it costs nothing until it shows again.</summary>
+    public bool Visible
+    {
+        get => Panel.Visible;
+        set => Panel.Visible = value;
+    }
 
     // Timings and counts since the last performance log line; the runtime reads and resets them.
     public FrameSamples TickTimes { get; } = new();
@@ -49,24 +55,20 @@ internal sealed unsafe class ScreenSurface : IDisposable
 
     public Rectangle Bounds => new(Location, new Size(Panel.Frame.Width, Panel.Frame.Height));
 
-    /// <summary>Tick Avalonia and upload the frame without drawing it.</summary>
+    /// <summary>Upload the frame this game frame's compositor advance captured, without drawing it.</summary>
     public void Prepare()
     {
         if (!Visible)
-        {
-            Panel.DrainDispatcher();
             return;
-        }
-        var start = Stopwatch.GetTimestamp();
-        var changed = Panel.Tick();
-        var elapsed = Stopwatch.GetElapsedTime(start);
+        var changed = Panel.Changed;
+        var elapsed = Panel.CaptureTime;
         TickTimes.Add(elapsed.TotalMilliseconds);
         if (changed) ChangedFrames++;
         DirtyRectangles += Panel.Frame.DirtyRectangles.Count;
         if (Panel.LastError != null)
             return;
         if (_failureBudget.Record(elapsed))
-            throw new TimeoutException($"Panel tick exceeded 50 ms for {_failureBudget.ConsecutiveSlowTicks} consecutive frames ({elapsed.TotalMilliseconds:F1} ms).");
+            throw new TimeoutException($"Panel capture exceeded 50 ms for {_failureBudget.ConsecutiveSlowTicks} consecutive frames ({elapsed.TotalMilliseconds:F1} ms).");
         // _uploaded is true only while a texture holds a complete frame.
         if (changed || !_uploaded)
             Upload(Panel.Frame);
