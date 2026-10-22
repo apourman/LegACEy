@@ -40,6 +40,13 @@ public sealed class PaperdollView : Border
     /// <summary>Turns, zooms and moves the view back to its first one: facing the viewer, the whole character, centred.</summary>
     public void ResetView() => _view.ResetView();
 
+    /// <summary>The wheel zooms toward the head rather than the pointer: see <see cref="ModelView.ZoomsToTop"/>.</summary>
+    public bool ZoomsToTop
+    {
+        get => _view.ZoomsToTop;
+        set => _view.ZoomsToTop = value;
+    }
+
     private void Start()
     {
         _changed = _looks.WhenChanged(_target, Refresh);

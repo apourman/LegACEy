@@ -72,8 +72,8 @@ public sealed class ModelView : Border
         PointerReleased += (_, e) => { _dragFrom = null; e.Pointer.Capture(null); };
         PointerWheelChanged += (_, e) =>
         {
-            // The height under the pointer stays under it as the zoom changes.
-            var offset = (float)(0.5 - e.GetPosition(this).Y / ViewHeight()) * Framing;
+            // The height under the pointer stays under it as the zoom changes; with ZoomsToTop, the height at the view's top edge does.
+            var offset = (float)(0.5 - (ZoomsToTop ? 0 : e.GetPosition(this).Y / ViewHeight())) * Framing;
             var under = Focus + offset / Zoom;
             Zoom = Math.Max(MinZoom, Math.Min(MaxZoom, Zoom * (e.Delta.Y > 0 ? 1.1f : 1 / 1.1f)));
             Focus = Clamp01(under - offset / Zoom);
@@ -97,6 +97,9 @@ public sealed class ModelView : Border
     private static readonly Quaternion Facing = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, (float)Math.PI);
 
     public float Zoom { get; set; } = 1f;
+
+    /// <summary>The wheel zooms toward the model's top rather than the pointer, so a character's head stays in view.</summary>
+    public bool ZoomsToTop { get; set; }
 
     /// <summary>The height the view centres on, as a share of the model's height: 0 its feet, 1 its top.</summary>
     public float Focus { get; set; } = 0.5f;

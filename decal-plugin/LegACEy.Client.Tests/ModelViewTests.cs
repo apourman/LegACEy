@@ -43,5 +43,12 @@ public sealed class ModelViewTests
         Assert.True(view.Zoom > 1);
         Assert.True(view.Focus > 0.5f);
         Assert.Equal(before, view.Focus + (0.5f - 20 / 200f) * ModelView.Framing / view.Zoom, 3);
+
+        // Zooming toward the top keeps the view's top edge, above the head, wherever the pointer is.
+        view.ResetView();
+        view.ZoomsToTop = true;
+        panel.MouseWheel(50, 150, 0, 1);
+        Assert.True(view.Zoom > 1);
+        Assert.Equal(0.5f + 0.5f * ModelView.Framing, view.Focus + 0.5f * ModelView.Framing / view.Zoom, 3);
     });
 }
