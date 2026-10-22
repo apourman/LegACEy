@@ -57,6 +57,24 @@ public sealed class ClothingTablesTests
         Assert.Equal(coatClaim, drawn[1]);
     }
 
+    [Fact]
+    public void Real_dat_boots_over_a_shirt_draw_the_legs_and_feet_and_leave_the_shirts_sleeves_to_it()
+    {
+        var path = Environment.GetEnvironmentVariable("LEGACEY_PORTAL_DAT");
+        if (string.IsNullOrWhiteSpace(path)) return;
+        using var dat = new PortalDat(path);
+
+        var tables = ClothingTables.Read(dat, HumanMale);
+        var shirt = tables.Effects.Single(effect => effect.Table == 0x100000FD); // Baggy Shirt
+        var boots = tables.Effects.Single(effect => effect.Table == KneeBoots);  // Leather Boots
+        var look = Wearing(shirt, boots);
+
+        var drawn = tables.PartsDrawn(look, [[0, 9, 10, 11, 13, 14], [2, 3, 4, 6, 7, 8]]);
+
+        Assert.Equal(new[] { 2, 3, 4, 6, 7, 8 }, drawn[1]);
+        Assert.Contains(11, drawn[0]);
+    }
+
     private static CharacterAppearance Wearing(params ClothingEffect[] items) => new(HumanMale, 0, Array.Empty<SubPalette>(),
         items.SelectMany(item => item.Parts.Values.SelectMany(part => part.Textures)).ToList(),
         items.SelectMany(item => item.Parts.Select(part => new PartChange(part.Key, part.Value.Model))).ToList());

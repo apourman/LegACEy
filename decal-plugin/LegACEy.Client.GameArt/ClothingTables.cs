@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace LegACEy.Client.GameArt;
 
@@ -96,8 +97,8 @@ public sealed class ClothingTables
     /// in the order the look draws the items, under to over. Every table whose changes the look shows is the item's whose claim it
     /// shows on most, the later on a tie; of its tables, an item takes those that show
     /// on the most of its claim and then explain the most of the look. Its parts are all those its tables show, past its claim: knee-high
-    /// boots, named for the feet, draw the shins too, and shoes drawing the same feet would leave those shins unexplained. An item none of
-    /// whose tables show, as a shirt under a coat, draws nothing.
+    /// boots, named for the feet, draw the shins too, and shoes drawing the same feet would leave those shins unexplained. Past its claim
+    /// it gives up what another item claims and draws. An item none of whose tables show, as a shirt under a coat, draws nothing.
     /// </summary>
     public IReadOnlyList<IReadOnlyCollection<int>> PartsDrawn(CharacterAppearance look, IReadOnlyList<IReadOnlyCollection<int>> claims)
     {
@@ -154,6 +155,11 @@ public sealed class ClothingTables
             }
             parts[owner].UnionWith(shown);
         }
+        // A part past an item's claim that another item claims and draws is that item's: a table drawing boots and sleeves alike
+        // shows on boots over a shirt, and the sleeves are the shirt's.
+        for (var i = 0; i < parts.Length; i++)
+            parts[i].RemoveWhere(part => !claimed[i].Contains(part)
+                && Enumerable.Range(0, parts.Length).Any(j => j != i && claimed[j].Contains(part) && parts[j].Contains(part)));
         return parts;
     }
 }
