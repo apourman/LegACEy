@@ -432,7 +432,7 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
-    public void Dragging_an_item_over_the_3D_doll_lights_the_body_parts_it_would_cover_instead() => RenderThread.Run(() =>
+    public void Dragging_an_item_over_the_3D_doll_outlines_the_body_parts_it_would_cover_instead() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
@@ -445,14 +445,14 @@ public sealed class InventoryWindowTests
         InventoryDriver.DragTo(host.Host, host.Cells[9], doll);
 
         // The cap goes on the head (part 16), in gold; no frame round the doll.
-        Assert.Equal(new[] { 16 }, model.Glowing);
-        Assert.Equal(DerethPalette.Gold.WithAlpha(0x80).ToUInt32(), model.GlowColour);
+        Assert.Equal(new[] { 16 }, model.Outlined);
+        Assert.Equal(DerethPalette.Gold.ToUInt32(), model.OutlineColour);
         Assert.False(host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DropIndicator").IsVisible);
         InventoryDriver.Release(host.Host, doll);
-        Assert.Empty(model.Glowing);
+        Assert.Empty(model.Outlined);
     });
 
-    /// <summary>A look source that never has a look: the doll stays without a model, which is all a glow needs.</summary>
+    /// <summary>A look source that never has a look: the doll stays without a model, which is all an outline needs.</summary>
     private sealed class SilentLooks : ILookSource
     {
         public bool Knows(uint objectId) => true;

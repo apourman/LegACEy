@@ -497,20 +497,20 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         if (at == null || drop == null)
         {
             HideIndicator();
-            GlowLifted(dragged);
+            OutlineLifted(dragged);
             return;
         }
-        // Over the doll the body parts the item would cover glow, rather than a frame round the doll.
+        // Over the doll the body parts the item would cover are outlined, rather than a frame drawn round the doll.
         if (at.Value.Shown == DollArea && DollShown && at.Value.Target.Equipment is { } wornAt)
         {
             HideIndicator();
             var mask = _port.WieldMask(dragged, wornAt);
-            _doll!.Glow(InventorySnapshotBuilder.PartsUnder(mask != 0 ? mask : _port.Snapshot.ValidLocationsOf(dragged) ?? 0),
-                drop.Value.Accepted ? GoldGlow : InvalidGlow);
+            _doll!.Outline(InventorySnapshotBuilder.PartsUnder(mask != 0 ? mask : _port.Snapshot.ValidLocationsOf(dragged) ?? 0),
+                drop.Value.Accepted ? GoldOutline : InvalidOutline);
             return;
         }
         Light(at.Value.Shown, drop.Value.Accepted ? GoldBrush : InvalidBrush);
-        GlowLifted(dragged);
+        OutlineLifted(dragged);
     }
 
     /// <summary>
@@ -533,28 +533,28 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private bool Over(Control control, Point point) =>
         control.IsEffectivelyVisible && control.TranslatePoint(default, this) is { } origin && new Rect(origin, control.Bounds.Size).Contains(point);
 
-    private static readonly uint GoldGlow = DerethPalette.Gold.WithAlpha(0x80).ToUInt32();
-    private static readonly uint InvalidGlow = DerethPalette.Invalid.WithAlpha(0x80).ToUInt32();
-    private static readonly uint LiftedGlow = DerethPalette.Teal.WithAlpha(0x80).ToUInt32();
+    private static readonly uint GoldOutline = DerethPalette.Gold.ToUInt32();
+    private static readonly uint InvalidOutline = DerethPalette.Invalid.ToUInt32();
+    private static readonly uint LiftedOutline = DerethPalette.Teal.ToUInt32();
 
     private bool DollShown => _doll != null && DollArea.Child == _doll;
 
-    /// <summary>Hides the drop indicator and stops the doll glowing.</summary>
+    /// <summary>Hides the drop indicator and the doll's outline.</summary>
     private void HideIndicator()
     {
         _dropIndicator.IsVisible = false;
-        _doll?.Glow(Array.Empty<int>(), 0);
+        _doll?.Outline(Array.Empty<int>(), 0);
     }
 
     /// <summary>
-    /// While a worn item is lifted, the body parts it covers glow on the doll: the ones the server says it draws, else those it is worn
+    /// While a worn item is lifted, the body parts it covers are outlined on the doll: the ones the server says it draws, else those it is worn
     /// over. Anything else leaves the doll as it is.
     /// </summary>
-    private void GlowLifted(uint dragged)
+    private void OutlineLifted(uint dragged)
     {
         if (!DollShown || _port.Snapshot.Wielded.FirstOrDefault(item => item.Id == dragged) is not { } worn) return;
         var drawn = _doll!.PartsDrawnBy(worn.Id);
-        _doll.Glow(drawn.Count > 0 ? drawn : InventorySnapshotBuilder.PartsUnder(worn.EquippedMask), LiftedGlow);
+        _doll.Outline(drawn.Count > 0 ? drawn : InventorySnapshotBuilder.PartsUnder(worn.EquippedMask), LiftedOutline);
     }
 
     /// <summary>Shows the drop indicator over the slot, in the colour.</summary>

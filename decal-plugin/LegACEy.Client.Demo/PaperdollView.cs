@@ -69,11 +69,11 @@ public sealed class PaperdollView : Border
         return parts;
     }
 
-    /// <summary>Tints the body parts (ARGB), or none for an empty set.</summary>
-    public void Glow(IReadOnlyCollection<int> parts, uint colour)
+    /// <summary>Outlines the body parts in the colour (RGB), or none for an empty set.</summary>
+    public void Outline(IReadOnlyCollection<int> parts, uint colour)
     {
-        _view.Glowing = parts;
-        _view.GlowColour = colour;
+        _view.Outlined = parts;
+        _view.OutlineColour = colour;
     }
 
     private void Start()
