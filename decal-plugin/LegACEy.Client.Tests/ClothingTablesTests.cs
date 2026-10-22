@@ -27,13 +27,34 @@ public sealed class ClothingTablesTests
         // The look ACE sends: the trousers, then the boots over them.
         var look = Wearing(trousers, boots);
 
-        var drawn = tables.PartsDrawn(look, new[] { new[] { 3, 4, 7, 8 }, new[] { 0, 1, 2, 5, 6 } });
+        // Claims in the order the look draws the items: the trousers, then the boots.
+        var drawn = tables.PartsDrawn(look, new[] { new[] { 0, 1, 2, 5, 6 }, new[] { 3, 4, 7, 8 } });
 
-        Assert.Equal(new[] { 2, 3, 4, 6, 7, 8 }, drawn[0]);
+        Assert.Equal(new[] { 2, 3, 4, 6, 7, 8 }, drawn[1]);
         // The trousers keep the parts they change themselves (some tables list a part only to leave it bare) that the boots don't cover.
         Assert.Equal(trousers.Parts.Where(part => part.Value.Model != baseParts[part.Key] || part.Value.Textures.Any(t => t.NewTexture != t.OldTexture))
-            .Select(part => part.Key).Except(boots.Parts.Keys).OrderBy(part => part), drawn[1]);
-        Assert.Contains(1, drawn[1]);
+            .Select(part => part.Key).Except(boots.Parts.Keys).OrderBy(part => part), drawn[0]);
+        Assert.Contains(1, drawn[0]);
+    }
+
+    [Fact]
+    public void Real_dat_a_coat_over_a_shirt_worn_on_the_same_parts_draws_them_and_the_shirt_draws_nothing()
+    {
+        var path = Environment.GetEnvironmentVariable("LEGACEY_PORTAL_DAT");
+        if (string.IsNullOrWhiteSpace(path)) return;
+        using var dat = new PortalDat(path);
+
+        var tables = ClothingTables.Read(dat, HumanMale);
+        var shirt = tables.Effects.Single(effect => effect.Table == 0x100000FD); // Baggy Shirt
+        var coat = tables.Effects.Single(effect => effect.Table == 0x10000286);  // Academy Coat
+        var look = Wearing(shirt, coat);
+        // The shirt is worn on the abdomen too, so it claims all the coat does.
+        int[] shirtClaim = [0, 9, 10, 11, 13, 14], coatClaim = [0, 9, 10, 11, 13, 14];
+
+        var drawn = tables.PartsDrawn(look, [shirtClaim, coatClaim]);
+
+        Assert.Empty(drawn[0]);
+        Assert.Equal(coatClaim, drawn[1]);
     }
 
     private static CharacterAppearance Wearing(params ClothingEffect[] items) => new(HumanMale, 0, Array.Empty<SubPalette>(),

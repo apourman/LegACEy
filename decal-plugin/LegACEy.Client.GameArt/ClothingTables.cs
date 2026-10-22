@@ -92,8 +92,9 @@ public sealed class ClothingTables
     }
 
     /// <summary>
-    /// The parts each worn item draws in the look. <paramref name="claims"/> holds, for each worn item, the parts its coverage names.
-    /// Every table whose changes the look shows is the item's whose claim it shows on most; of its tables, an item takes those that show
+    /// The parts each worn item draws in the look. <paramref name="claims"/> holds, for each worn item, the parts its coverage names,
+    /// in the order the look draws the items, under to over. Every table whose changes the look shows is the item's whose claim it
+    /// shows on most, the later on a tie; of its tables, an item takes those that show
     /// on the most of its claim and then explain the most of the look. Its parts are all those its tables show, past its claim: knee-high
     /// boots, named for the feet, draw the shins too, and shoes drawing the same feet would leave those shins unexplained. An item none of
     /// whose tables show, as a shirt under a coat, draws nothing.
@@ -140,7 +141,8 @@ public sealed class ClothingTables
                 var on = 0;
                 foreach (var part in shown)
                     if (claimed[i].Contains(part)) on++;
-                if (on > most) (owner, most) = (i, on);
+                // A tie goes to the later claim, the item drawn over the other: a coat over a shirt worn on the same parts.
+                if (on > 0 && on >= most) (owner, most) = (i, on);
             }
             if (owner < 0) continue;
             var score = (most, shown.Count);

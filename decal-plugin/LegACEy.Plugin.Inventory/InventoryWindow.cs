@@ -502,6 +502,12 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         if (at.Value.Shown == DollArea && DollShown && at.Value.Target.Equipment is { } wornAt)
         {
             HideIndicator();
+            // A worn item lifted over its own doll keeps its lift outline: dropping it there puts nothing new on.
+            if (_port.Snapshot.Wielded.Any(item => item.Id == dragged))
+            {
+                OutlineLifted(dragged);
+                return;
+            }
             var covered = InventorySnapshotBuilder.PartsCovered(_port.CoverageOf(dragged));
             var mask = _port.WieldMask(dragged, wornAt);
             _doll!.Outline(covered.Count > 0 ? covered : InventorySnapshotBuilder.PartsUnder(mask != 0 ? mask : _port.Snapshot.ValidLocationsOf(dragged) ?? 0),
@@ -609,9 +615,9 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private InventorySlotId? PressAt(Point point) => SlotAt(point)?.Tag as InventorySlotId ?? WornAt(point);
 
     /// <summary>
-    /// The worn item drawn under a point of the doll: the one the clothing tables say draws that body part (tall boots up to the knee),
-    /// or, where they can't tell, the outermost worn there by where it is worn (a coat over the shirt beneath it). Null off the doll, or
-    /// where that part wears nothing.
+    /// The worn item drawn under a point of the doll: the outermost the clothing tables say draws that body part (tall boots up to the
+    /// knee), or, where they can't tell, the outermost worn there by where it is worn (a coat over the shirt beneath it). Null off the
+    /// doll, or where that part wears nothing.
     /// </summary>
     private InventorySlotId? WornAt(Point point)
     {
@@ -619,13 +625,29 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var wielded = _port.Snapshot.Wielded;
         var part = _doll.PartAt(at);
         var drawn = DrawnParts(wielded);
-        var worn = wielded.Where((_, i) => drawn[i].Contains(part)).FirstOrDefault() ?? InventorySnapshotBuilder.WornOn(wielded, part);
+        var worn = wielded.Where((_, i) => drawn[i].Contains(part)).OrderBy(Layer).LastOrDefault() ?? InventorySnapshotBuilder.WornOn(wielded, part);
         return worn == null ? null : new InventorySlotId(SlotPlace.Paperdoll, worn.Id, 0, -1, worn.Slots.Count > 0 ? worn.Slots[0] : null);
     }
 
     /// <summary>The body parts each worn item draws on the doll, in the order of <paramref name="wielded"/>; empty where the doll can't tell.</summary>
-    private IReadOnlyList<IReadOnlyCollection<int>> DrawnParts(IReadOnlyList<WieldedItem> wielded) =>
-        _doll!.PartsDrawn(wielded.Select(ClaimOf).ToList());
+    private IReadOnlyList<IReadOnlyCollection<int>> DrawnParts(IReadOnlyList<WieldedItem> wielded)
+    {
+        // PartsDrawn takes the items in the order the look draws them, so a coat claiming all a shirt does wins the parts it covers.
+        var order = Enumerable.Range(0, wielded.Count).OrderBy(i => Layer(wielded[i])).ToList();
+        var drawn = _doll!.PartsDrawn(order.Select(i => ClaimOf(wielded[i])).ToList());
+        var parts = new IReadOnlyCollection<int>[wielded.Count];
+        for (var i = 0; i < order.Count; i++) parts[order[i]] = drawn[i];
+        return parts;
+    }
+
+    /// <summary>
+    /// Where a worn item comes in the look, as ACE builds it: clothing first, then armour and what is worn on the head, hands and feet
+    /// over it, each by its coverage. Sorting by it puts the items under to over.
+    /// </summary>
+    private (bool Over, uint Coverage) Layer(WieldedItem item) => ((item.EquippedMask & ArmourAndExtremities) != 0, _port.CoverageOf(item.Id));
+
+    // EquipMask's armour (chest to lower legs) and extremities (head, hands, feet).
+    private const uint ArmourAndExtremities = 0x7E00 | 0x121;
 
     /// <summary>The body parts a worn item says it covers: its coverage, and where it is worn.</summary>
     private IReadOnlyCollection<int> ClaimOf(WieldedItem item) =>
