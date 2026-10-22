@@ -30,7 +30,6 @@ namespace LegACEy.Plugin.Inventory;
 /// </summary>
 public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZone, IRetailItemDropTarget
 {
-    internal const uint BackpackIcon = InventorySnapshotBuilder.MainPackIcon;
     internal const string Title = "Inventory";
     /// <summary>The vertical layout's grid is retail's main pack: six columns, whatever the width.</summary>
     internal const int RetailColumns = 6;
@@ -128,7 +127,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             : new WrapPanel { Orientation = Orientation.Horizontal };
 
         var body = _layout == InventoryLayout.Vertical ? VerticalBody() : HorizontalBody();
-        _frame = new DerethWindow(Title, Icon(new ItemVisual(BackpackIcon, 0, 0, 0)), body, LayoutToggles(), centreTitle: true);
+        _frame = new DerethWindow(Title, null, body, LayoutToggles(), centreTitle: true);
         _frame.CloseRequested += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
         Content = new Grid { Children = { _frame, _dropIndicator } };
         // The window takes the pointer on its own handlers, so a drag that leaves a slot, or the window, still ends here.
