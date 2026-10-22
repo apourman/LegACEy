@@ -2447,12 +2447,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void FitToolbar()
     {
-        if (_toolbar is not { } toolbar || _toolbarSurface is not { } surface) return;
+        if (_toolbar == null || _toolbarSurface is not { } surface) return;
         var before = surface.Bounds;
         var scale = surface.Panel.Scale;
-        toolbar.InvalidateMeasure();
-        toolbar.Measure(Avalonia.Size.Infinity);
-        surface.Panel.Resize(WholePixels(toolbar.DesiredSize.Width * scale), WholePixels(toolbar.DesiredSize.Height * scale));
+        var wanted = surface.Panel.MeasureContent(Avalonia.Size.Infinity);
+        surface.Panel.Resize(WholePixels(wanted.Width * scale), WholePixels(wanted.Height * scale));
         var size = surface.Bounds.Size;
         var lower = before.Top + before.Height / 2 > GameDevice.ViewportSize(_device).Height / 2;
         var kept = OnScreen(new Point(before.X, lower ? before.Bottom - size.Height : before.Y), size);
