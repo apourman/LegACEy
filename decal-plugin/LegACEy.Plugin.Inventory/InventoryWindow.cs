@@ -504,8 +504,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     /// <summary>
     /// Where one item dropped at the point goes, and what lights up for it: the slot under the point, or, over the doll, the paperdoll
-    /// slot the item is worn in (an empty one first, else the first it fits). That slot lights when it shows; a hidden armour slot lights
-    /// the doll. Null where nothing takes a drop.
+    /// slot the item is worn in (an empty one first, else the first it fits), and the doll lights. Null where nothing takes a drop.
     /// </summary>
     private (Control Shown, InventorySlotId Target)? DropAt(Point point, uint item)
     {
@@ -517,7 +516,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var into = fits.Where(slot => !worn.Contains(slot)).DefaultIfEmpty(fits[0]).First();
         var shown = _paperdoll.GetVisualDescendants().OfType<DerethSlot>()
             .FirstOrDefault(slot => slot.Tag is InventorySlotId { Place: SlotPlace.Paperdoll } id && id.Equipment == into);
-        return (shown ?? (Control)DollArea, shown?.Tag as InventorySlotId ?? new InventorySlotId(SlotPlace.Paperdoll, 0, 0, -1, into));
+        return (DollArea, shown?.Tag as InventorySlotId ?? new InventorySlotId(SlotPlace.Paperdoll, 0, 0, -1, into));
     }
 
     private bool Over(Control control, Point point) =>
