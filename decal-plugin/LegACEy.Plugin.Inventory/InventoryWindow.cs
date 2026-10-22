@@ -762,13 +762,24 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     }
 
     /// <summary>A pack in the vertical column: its icon, with a fill bar along the foot. An empty side-pack slot is a placeholder.</summary>
-    private DerethSlot PackColumnSlot(InventorySnapshot snapshot, InventoryPack pack, int position, InventoryPack open)
+    private Control PackColumnSlot(InventorySnapshot snapshot, InventoryPack pack, int position, InventoryPack open)
     {
-        if (pack.Id == 0) return Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, position, null));
-        var layers = new Grid();
-        layers.Children.Add(Icon(new ItemVisual(pack.Icon, 0, 0, 0)));
-        if (pack.Capacity > 0) layers.Children.Add(FillBar(ItemsIn(snapshot, pack.Id), pack.Capacity));
-        return Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), layers, pack.Id == open.Id);
+        // The fill bar stands right of the tile; an empty slot keeps the bar's width, so every tile lines up.
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = FillGap };
+        Control tile, bar;
+        if (pack.Id == 0)
+        {
+            tile = Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, position, null));
+            bar = new Control { Width = FillWidth };
+        }
+        else
+        {
+            tile = Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(new ItemVisual(pack.Icon, 0, 0, 0)), pack.Id == open.Id);
+            bar = FillBar(ItemsIn(snapshot, pack.Id), pack.Capacity);
+        }
+        row.Children.Add(tile);
+        row.Children.Add(bar);
+        return row;
     }
 
     /// <summary>A pack in the horizontal strip: its icon, with "n/cap" under it. An empty side-pack slot is a placeholder.</summary>
@@ -826,15 +837,17 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private static int ItemsIn(InventorySnapshot snapshot, uint container) => snapshot.Items.Count(item => item.Container == container);
 
+    private const double FillWidth = 4, FillGap = 3;
+
+    /// <summary>A pack's fill: a narrow upright groove, filled in gold from the foot to the share of its slots in use.</summary>
     private static Control FillBar(int count, int capacity)
     {
         var share = capacity <= 0 ? 0 : Math.Min(1.0, (double)count / capacity);
         var track = new Border
         {
-            Width = 30, Height = 3, Background = DerethPalette.GrooveBrush, VerticalAlignment = VerticalAlignment.Bottom,
-            Margin = new Thickness(0, 0, 0, 2),
+            Width = FillWidth, Height = 30, Background = DerethPalette.GrooveBrush, VerticalAlignment = VerticalAlignment.Center, CornerRadius = new CornerRadius(1),
         };
-        track.Child = new Border { Width = 30 * share, HorizontalAlignment = HorizontalAlignment.Left, Background = GoldBrush };
+        track.Child = new Border { Height = 30 * share, VerticalAlignment = VerticalAlignment.Bottom, Background = GoldBrush, CornerRadius = new CornerRadius(1) };
         return track;
     }
 
@@ -892,35 +905,38 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private Control VerticalBody()
     {
-        // Six columns, with the scrollbar beside them; the paperdoll above is wider, and the width it leaves stays to their right.
+        // The paperdoll is the widest part; the pack's six columns sit under its left column, with the contents line across their width.
         _grid.Columns = RetailColumns;
-        _grid.HorizontalAlignment = HorizontalAlignment.Left;
-        var left = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*") };
-        if (!_collapsed)
-        {
-            left.Children.Add(At(_paperdoll, 0));
-            left.Children.Add(At(new DerethRule { Margin = new Thickness(0, 8, 0, 0), Opacity = 0.7 }, 1));
-        }
-        left.Children.Add(At(ContentsLine(), 2));
-        left.Children.Add(At(_grid, 3));
+        // The paperdoll insets each cell 1 px in its pitch, so the pack's columns do too, and the two sections line up.
+        var pack = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(1, 0, 0, 0) };
+        pack.Children.Add(At(ContentsLine(), 0));
+        pack.Children.Add(At(_grid, 1));
 
-        // The pack column: burden at its head, then the main pack, a rule and the side packs, which scroll.
+        // The pack column fills the width beside the grid, its fill bars against the right edge as the paperdoll's right column is:
+        // burden at its head, then the main pack, a rule and the side packs, which scroll.
         var packs = new ScrollViewer
         {
             Content = _packList, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Margin = new Thickness(0, 4, 0, 0),
         };
-        var column = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Width = 44 };
-        column.Children.Add(At(Centred(_burdenMeter), 0));
-        column.Children.Add(At(Centred(_burdenText), 1));
+        var column = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 6, 1, 0) };
+        // The burden sits centred over the tiles, not over the tiles and their fill bars.
+        var overTiles = new Thickness(0, 0, FillWidth + FillGap, 0);
+        column.Children.Add(At(new Border { Margin = overTiles, Child = Centred(_burdenMeter) }, 0));
+        column.Children.Add(At(new Border { Margin = overTiles, Child = Centred(_burdenText) }, 1));
         column.Children.Add(At(packs, 2));
+        var section = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        section.Children.Add(pack);
+        section.Children.Add(At(column, 0, 1));
 
-        var body = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), RowDefinitions = new RowDefinitions("*,Auto"), ColumnSpacing = 8, Margin = new Thickness(2, 8, 2, 0) };
-        body.Children.Add(At(left, 0, 0));
-        body.Children.Add(At(column, 0, 1));
-        var footer = PyrealsFooter();
-        body.Children.Add(At(footer, 1, 0));
-        Grid.SetColumnSpan(footer, 2);
+        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto"), Margin = new Thickness(2, 8, 2, 0) };
+        if (!_collapsed)
+        {
+            body.Children.Add(At(_paperdoll, 0));
+            body.Children.Add(At(new DerethRule { Margin = new Thickness(0, 8, 0, 0), Opacity = 0.7 }, 1));
+        }
+        body.Children.Add(At(section, 2));
+        body.Children.Add(At(PyrealsFooter(), 3));
         return body;
     }
 

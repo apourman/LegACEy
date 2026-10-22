@@ -53,14 +53,25 @@ public static class DerethItemCells
 /// <summary>
 /// The size of an item icon, its slot and the slot pitch, in DIPs, for a window drawn at a scale. Icons draw at a whole multiple
 /// of their 32 px art on screen, the nearest to the scale and at least one, and the slot grows or shrinks round them, so item grids
-/// keep retail's sharp icons while the rest of the window scales. At scale 1 they are 32, 34 and 35.
+/// keep retail's sharp icons while the rest of the window scales. Only the global UI size may draw them smaller: below 100% it shrinks
+/// them with the window, and a window's own size cannot take them below it. At scale 1 they are 32, 34 and 35.
 /// </summary>
 public readonly record struct ItemCellSize(double Icon, double Cell, double Pitch)
 {
     private const int ArtPixels = 32;
 
-    /// <summary>How many screen pixels each art pixel takes at a scale: the scale rounded to a whole number, at least one.</summary>
-    public static double Multiple(double scale) => Math.Max(1, Math.Round(scale));
+    /// <summary>The global UI size, as a scale. The client sets it before it opens windows; changing it rebuilds every window.</summary>
+    public static double UiScale { get; set; } = 1;
+
+    /// <summary>How many screen pixels each art pixel takes at a scale: the scale rounded to a whole number, at least one, or below 100% the global UI size.</summary>
+    public static double Multiple(double scale) => Multiple(scale, UiScale);
+
+    /// <summary>
+    /// <see cref="Multiple(double)"/> for a global UI size: at or above 1 the scale rounded to a whole number; below 1 the scale itself, but
+    /// never under the global UI size or over 1, so a window shrunk on its own keeps the icons the global size gives.
+    /// </summary>
+    public static double Multiple(double scale, double uiScale) =>
+        scale >= 1 ? Math.Max(1, Math.Round(scale)) : Math.Max(scale, Math.Min(1, uiScale));
 
     public static ItemCellSize At(double scale)
     {
@@ -104,5 +115,16 @@ public sealed class DerethItemIcon : Control
         return new Size(side, side);
     }
 
-    public override void Render(DrawingContext context) => context.DrawImage(_bitmap, new Rect(Bounds.Size));
+    public override void Render(DrawingContext context)
+    {
+        // At a whole multiple of the art the pixels stay sharp; shrunk by the global UI size they are smoothed, or they would break up.
+        var onScreen = Bounds.Width * LayoutHelper.GetLayoutScale(this);
+        if (Math.Abs(onScreen / _bitmap.PixelSize.Width - Math.Round(onScreen / _bitmap.PixelSize.Width)) < 0.01)
+        {
+            context.DrawImage(_bitmap, new Rect(Bounds.Size));
+            return;
+        }
+        using (context.PushRenderOptions(new RenderOptions { BitmapInterpolationMode = BitmapInterpolationMode.HighQuality }))
+            context.DrawImage(_bitmap, new Rect(Bounds.Size));
+    }
 }

@@ -680,11 +680,14 @@ public sealed class WindowManager
     private WindowPlacement Placement(ManagedWindow window) =>
         (window.PreferredLocation, window.Definition.Resizing == null ? null : window.DesignSize ?? Scaled(window.PreferredSize, 1 / window.Scale));
 
-    /// <summary>The definition at a scale: what its window measures on screen.</summary>
-    private static WindowDefinition Scaled(WindowDefinition definition, double scale)
+    /// <summary>
+    /// The definition at a scale: what its window measures on screen. An item-slot window is sized by its icons: below 100% only the
+    /// manager's scale, the global UI size, shrinks them, so a window shrunk on its own keeps the size that scale gives.
+    /// </summary>
+    private WindowDefinition Scaled(WindowDefinition definition, double scale)
     {
         if (scale == 1) return definition;
-        var sizeScale = definition.Resizing?.ItemSlots == true ? Math.Max(scale, ItemCellSize.Multiple(scale)) : scale;
+        var sizeScale = definition.Resizing?.ItemSlots == true ? Math.Max(scale, ItemCellSize.Multiple(scale, Scale)) : scale;
         return new WindowDefinition(
             definition.Id, definition.Title, Scaled(definition.Width, sizeScale), Scaled(definition.Height, sizeScale), Scaled(definition.TitleBarHeight, scale), definition.Theme,
             definition.Resizing is { } resizing

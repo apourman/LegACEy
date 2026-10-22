@@ -884,6 +884,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (_device == IntPtr.Zero) return;
         if (!AvaloniaPanel.CanScale) Log("This Avalonia cannot scale panels; LegACEy windows show at their design size.");
+        ItemCellSize.UiScale = WindowScale;
         _windows = new WindowManager(GameDevice.ViewportSize(_device), _positionStore, SessionServer(), SessionCharacter(), WindowScale, () => NativeUi.IsUiLocked,
             ToolbarSnapTargets);
         _windowsEnabled = EnsurePostUiDrawHook();

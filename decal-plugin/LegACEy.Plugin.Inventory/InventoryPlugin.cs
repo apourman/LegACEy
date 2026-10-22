@@ -90,7 +90,7 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     {
         var (width, height, sizing) = Shape(view);
         client.ToggleWindowWithChrome(WindowId(view), InventoryWindow.Title, width, height, DefaultLocation,
-            close => CreateWindow(client, view, close), new DerethClientTheme(), sizing, DerethWindow.TitleBarHeight + DerethWindow.TitleRowHeight,
+            close => CreateWindow(client, view, close), new DerethClientTheme(), sizing, DerethWindow.CentredTitleBarHeight,
             view.Collapsed ? WindowId(new InventoryView(view.Layout, false)) : null);
     }
 
@@ -149,13 +149,13 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     /// The vertical views are retail's panel, so only their height changes: as wide as the paperdoll with room before the pack column,
     /// and the full one opens with the grid's six columns eleven rows deep, as retail's does.
     /// </summary>
-    private const int VerticalWidth = 328, TallestVertical = 10_000;
+    private const int VerticalWidth = 326, TallestVertical = 10_000;
 
     private static (int Width, int Height, WindowResizing Sizing) Shape(InventoryView view) => (view.Layout, view.Collapsed) switch
     {
-        (InventoryLayout.Horizontal, false) => (640, 400, new WindowResizing(new Size(600, 330)) { ItemSlots = true }),
-        (InventoryLayout.Horizontal, true) => (420, 320, new WindowResizing(new Size(340, 220)) { ItemSlots = true }),
-        (_, false) => (VerticalWidth, 805, new WindowResizing(new Size(VerticalWidth, 448), new Size(VerticalWidth, TallestVertical)) { ItemSlots = true }),
+        (InventoryLayout.Horizontal, false) => (671, 441, new WindowResizing(new Size(631, 371)) { ItemSlots = true }),
+        (InventoryLayout.Horizontal, true) => (420, 361, new WindowResizing(new Size(340, 261)) { ItemSlots = true }),
+        (_, false) => (VerticalWidth, 818, new WindowResizing(new Size(VerticalWidth, 448), new Size(VerticalWidth, TallestVertical)) { ItemSlots = true }),
         _ => (VerticalWidth, 300, new WindowResizing(new Size(VerticalWidth, 228), new Size(VerticalWidth, TallestVertical)) { ItemSlots = true }),
     };
 }

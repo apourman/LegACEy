@@ -378,8 +378,11 @@ public sealed class DerethWindow : UserControl
     /// </summary>
     public const int TitleBarHeight = 48;
 
-    /// <summary>The title's own row under the header, in a window that centres its title; it adds to the title-bar height.</summary>
-    public const int TitleRowHeight = 28;
+    /// <summary>The title's own row under the header, in a window that centres its title.</summary>
+    public const int TitleRowHeight = 36;
+
+    /// <summary>The title-bar height of a window that centres its title: the header, the 5 px rule under it and the title row.</summary>
+    public const int CentredTitleBarHeight = TitleBarHeight + 5 + TitleRowHeight;
 
     /// <summary>The gap between header buttons in a window that centres its title: its actions use it too, so every button is evenly spaced.</summary>
     public const int ActionGap = 4;
@@ -420,19 +423,24 @@ public sealed class DerethWindow : UserControl
         Grid.SetColumn(close, headerActions == null ? 2 : 3);
         header.Children.Add(close);
 
-        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*"), Margin = new Thickness(6, 0, 6, 6) };
+        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,*"), Margin = new Thickness(6, 0, 6, 6) };
         body.Children.Add(header);
         if (centreTitle)
         {
-            var titleRow = new Border { Height = TitleRowHeight, Child = _name };
-            Grid.SetRow(titleRow, 1);
+            // A rule under the header sets it apart as the window's control strip, and the title is a row of its own.
+            var strip = new DerethRule { Margin = new Thickness(-6, 0, -6, 0) };
+            Grid.SetRow(strip, 1);
+            body.Children.Add(strip);
+            // Centred by its capitals: Palatino's tall ascent would leave them low in the row.
+            var titleRow = new Border { Height = TitleRowHeight, Child = DerethPalette.CentreInk(_name) };
+            Grid.SetRow(titleRow, 2);
             body.Children.Add(titleRow);
         }
         // The rule runs nearly frame to frame, as in the concept.
         var rule = new DerethRule { Margin = new Thickness(-6, 0, -6, 0) };
-        Grid.SetRow(rule, 2);
+        Grid.SetRow(rule, 3);
         body.Children.Add(rule);
-        Grid.SetRow(content, 3);
+        Grid.SetRow(content, 4);
         body.Children.Add(content);
         Content = new DerethFrame(DerethFrameArt.Window) { Child = body };
     }
@@ -570,10 +578,14 @@ public sealed class DerethSlot : Grid
     private readonly Border _outline;
     private bool _carried;
 
-    /// <summary>A slot holding the content: a framed well round a native-size icon (see <see cref="ItemCellSize"/>), centred in its pitch, with a selected state.</summary>
+    /// <summary>
+    /// A slot holding the content: a framed well round a native-size icon (see <see cref="ItemCellSize"/>), with a selected state. It sits at the
+    /// start of its pitch: centred, the pitch's odd pixel would round it left and right in turn, and the gaps between slots would alternate.
+    /// </summary>
     public DerethSlot(Control? content)
     {
-        HorizontalAlignment = HorizontalAlignment.Center;
+        HorizontalAlignment = HorizontalAlignment.Left;
+        VerticalAlignment = VerticalAlignment.Top;
         Background = Brushes.Transparent;
         _wash = new Border { Margin = new Thickness(2), CornerRadius = new CornerRadius(3), Background = WashBrush, IsVisible = false, IsHitTestVisible = false };
         var inner = new Grid();
