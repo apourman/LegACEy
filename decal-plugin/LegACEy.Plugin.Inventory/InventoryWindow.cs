@@ -232,22 +232,21 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     }
 
     /// <summary>
-    /// A press on a slot. A right press assesses what the slot shows, as retail does. A left press sends nothing yet: a release
-    /// decides between a click and a drop.
+    /// A press on a slot, or on a worn item on the doll. A right press assesses what the slot shows, as retail does. A left press sends
+    /// nothing yet: a release decides between a click and a drop.
     /// </summary>
     private void OnPressed(object? sender, PointerPressedEventArgs e)
     {
         var button = e.GetCurrentPoint(this).Properties;
-        if (SlotAt(e.GetPosition(this)) is not { } slot) return;
+        if (PressAt(e.GetPosition(this)) is not { } id) return;
         if (button.IsRightButtonPressed && _press == null)
         {
-            var id = (InventorySlotId)slot.Tag!;
             var item = id.Place == SlotPlace.Pack ? id.Container : id.ItemId;
             if (item != 0) _port.Assess(item);
             return;
         }
         if (!button.IsLeftButtonPressed) return;
-        _press = (InventorySlotId)slot.Tag!;
+        _press = id;
         _pressModifiers = e.KeyModifiers;
         _pressPoint = e.GetPosition(this);
         _pressClicks = e.ClickCount;
@@ -260,7 +259,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var point = e.GetPosition(this);
         if (_press is not { } press)
         {
-            Hover(SlotAt(point)?.Tag is InventorySlotId hovered ? TargetOf(hovered) : 0);
+            Hover(PressAt(point) is { } hovered ? TargetOf(hovered) : 0);
             return;
         }
         if (_dragged == 0)
@@ -353,7 +352,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             if (_retailItem != 0)
             {
                 _retailItem = 0;
-                _dropIndicator.IsVisible = false;
+                HideIndicator();
             }
             return;
         }
@@ -377,7 +376,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         else if (_withdrawOver)
         {
             _withdrawOver = false;
-            _dropIndicator.IsVisible = false;
+            HideIndicator();
         }
     }
 
@@ -400,7 +399,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     public bool RetailDrop(uint itemId, string itemName, Point position)
     {
         _retailItem = 0;
-        _dropIndicator.IsVisible = false;
+        HideIndicator();
         if (_disposed || itemId == 0) return false;
         var snapshot = _port.Snapshot;
         var external = !snapshot.Contains(itemId);
@@ -462,7 +461,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         _dragIcon?.Dispose();
         _dragIcon = null;
         _indicatorAt = null;
-        _dropIndicator.IsVisible = false;
+        HideIndicator();
     }
 
     /// <summary>
@@ -495,16 +494,37 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var drop = at is not { } place ? null : set ? JudgeSet(_port.Snapshot, _carried, place.Target) : Judge(_port, dragged, place.Target, external);
         if (at == null || drop == null)
         {
-            _dropIndicator.IsVisible = false;
+            HideIndicator();
+            OutlineLifted(dragged);
             return;
         }
+        // Over the doll the body parts the item would cover are outlined, rather than a frame drawn round the doll.
+        if (at.Value.Shown == DollArea && DollShown && at.Value.Target.Equipment is { } wornAt)
+        {
+            HideIndicator();
+            // A worn item lifted over its own doll keeps its lift outline: dropping it there puts nothing new on.
+            if (_port.Snapshot.Wielded.Any(item => item.Id == dragged))
+            {
+                OutlineLifted(dragged);
+                return;
+            }
+            var covered = InventorySnapshotBuilder.PartsCovered(_port.CoverageOf(dragged));
+            var mask = _port.WieldMask(dragged, wornAt);
+            var parts = covered.Count > 0 ? covered : InventorySnapshotBuilder.PartsUnder(mask != 0 ? mask : _port.Snapshot.ValidLocationsOf(dragged) ?? 0);
+            // A weapon or a ring covers no body part, so the doll is framed instead.
+            if (parts.Count > 0)
+            {
+                _doll!.Outline(parts, drop.Value.Accepted ? GoldOutline : InvalidOutline);
+                return;
+            }
+        }
         Light(at.Value.Shown, drop.Value.Accepted ? GoldBrush : InvalidBrush);
+        OutlineLifted(dragged);
     }
 
     /// <summary>
     /// Where one item dropped at the point goes, and what lights up for it: the slot under the point, or, over the doll, the paperdoll
-    /// slot the item is worn in (an empty one first, else the first it fits). That slot lights when it shows; a hidden armour slot lights
-    /// the doll. Null where nothing takes a drop.
+    /// slot the item is worn in (an empty one first, else the first it fits), and the doll lights. Null where nothing takes a drop.
     /// </summary>
     private (Control Shown, InventorySlotId Target)? DropAt(Point point, uint item)
     {
@@ -516,18 +536,44 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var into = fits.Where(slot => !worn.Contains(slot)).DefaultIfEmpty(fits[0]).First();
         var shown = _paperdoll.GetVisualDescendants().OfType<DerethSlot>()
             .FirstOrDefault(slot => slot.Tag is InventorySlotId { Place: SlotPlace.Paperdoll } id && id.Equipment == into);
-        return (shown ?? (Control)DollArea, shown?.Tag as InventorySlotId ?? new InventorySlotId(SlotPlace.Paperdoll, 0, 0, -1, into));
+        return (DollArea, shown?.Tag as InventorySlotId ?? new InventorySlotId(SlotPlace.Paperdoll, 0, 0, -1, into));
     }
 
     private bool Over(Control control, Point point) =>
         control.IsEffectivelyVisible && control.TranslatePoint(default, this) is { } origin && new Rect(origin, control.Bounds.Size).Contains(point);
+
+    private static readonly uint GoldOutline = DerethPalette.Gold.ToUInt32();
+    private static readonly uint InvalidOutline = DerethPalette.Invalid.ToUInt32();
+    private static readonly uint LiftedOutline = DerethPalette.Teal.ToUInt32();
+
+    private bool DollShown => _doll != null && DollArea.Child == _doll;
+
+    /// <summary>Hides the drop indicator and the doll's outline.</summary>
+    private void HideIndicator()
+    {
+        _dropIndicator.IsVisible = false;
+        _doll?.Outline(Array.Empty<int>(), 0);
+    }
+
+    /// <summary>
+    /// While a worn item is lifted, the body parts it covers are outlined on the doll: the ones the clothing tables say it draws, else
+    /// those its coverage and wield slots name. Anything else leaves the doll as it is.
+    /// </summary>
+    private void OutlineLifted(uint dragged)
+    {
+        var wielded = _port.Snapshot.Wielded;
+        var index = wielded.ToList().FindIndex(item => item.Id == dragged);
+        if (!DollShown || index < 0) return;
+        var parts = DrawnParts(wielded)[index];
+        _doll!.Outline(parts.Count > 0 ? parts : ClaimOf(wielded[index]), LiftedOutline);
+    }
 
     /// <summary>Shows the drop indicator over the slot, in the colour.</summary>
     private void Light(Control slot, IBrush brush)
     {
         if (slot.TranslatePoint(default, this) is not { } origin)
         {
-            _dropIndicator.IsVisible = false;
+            HideIndicator();
             return;
         }
         _dropIndicator.Margin = new Thickness(origin.X, origin.Y, 0, 0);
@@ -568,6 +614,48 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             if (visual is DerethSlot { Tag: InventorySlotId } slot) return slot;
         return null;
     }
+
+    /// <summary>What a press at a point acts on: the slot under it, or, on the doll, the worn item over the body part there.</summary>
+    private InventorySlotId? PressAt(Point point) => SlotAt(point)?.Tag as InventorySlotId ?? WornAt(point);
+
+    /// <summary>
+    /// The worn item drawn under a point of the doll: the outermost the clothing tables say draws that body part (tall boots up to the
+    /// knee), or, where they can't tell, the outermost worn there by where it is worn (a coat over the shirt beneath it). Null off the
+    /// doll, or where that part wears nothing.
+    /// </summary>
+    private InventorySlotId? WornAt(Point point)
+    {
+        if (_doll == null || DollArea.Child != _doll || !Over(_doll, point) || this.TranslatePoint(point, _doll) is not { } at) return null;
+        var wielded = _port.Snapshot.Wielded;
+        var part = _doll.PartAt(at);
+        var drawn = DrawnParts(wielded);
+        var worn = wielded.Where((_, i) => drawn[i].Contains(part)).OrderBy(Layer).LastOrDefault() ?? InventorySnapshotBuilder.WornOn(wielded, part);
+        return worn == null ? null : new InventorySlotId(SlotPlace.Paperdoll, worn.Id, 0, -1, worn.Slots.Count > 0 ? worn.Slots[0] : null);
+    }
+
+    /// <summary>The body parts each worn item draws on the doll, in the order of <paramref name="wielded"/>; empty where the doll can't tell.</summary>
+    private IReadOnlyList<IReadOnlyCollection<int>> DrawnParts(IReadOnlyList<WieldedItem> wielded)
+    {
+        // PartsDrawn takes the items in the order the look draws them, so a coat claiming all a shirt does wins the parts it covers.
+        var order = Enumerable.Range(0, wielded.Count).OrderBy(i => Layer(wielded[i])).ToList();
+        var drawn = _doll!.PartsDrawn(order.Select(i => ClaimOf(wielded[i])).ToList());
+        var parts = new IReadOnlyCollection<int>[wielded.Count];
+        for (var i = 0; i < order.Count; i++) parts[order[i]] = drawn[i];
+        return parts;
+    }
+
+    /// <summary>
+    /// Where a worn item comes in the look, as ACE builds it: clothing first, then armour and what is worn on the head, hands and feet
+    /// over it, each by its coverage. Sorting by it puts the items under to over.
+    /// </summary>
+    private (bool Over, uint Coverage) Layer(WieldedItem item) => ((item.EquippedMask & ArmourAndExtremities) != 0, _port.CoverageOf(item.Id));
+
+    // EquipMask's armour (chest to lower legs) and extremities (head, hands, feet).
+    private const uint ArmourAndExtremities = 0x7E00 | 0x121;
+
+    /// <summary>The body parts a worn item says it covers: its coverage, and where it is worn.</summary>
+    private IReadOnlyCollection<int> ClaimOf(WieldedItem item) =>
+        InventorySnapshotBuilder.PartsCovered(_port.CoverageOf(item.Id)).Union(InventorySnapshotBuilder.PartsUnder(item.EquippedMask)).ToList();
 
     /// <summary>
     /// What a press on a slot carries: its item, a side pack, or the main pack, which is the character and only goes to retail (a
@@ -708,7 +796,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         if (_disposed) return;
         // The slots are rebuilt, so a drop indicator on the old ones goes; a drag in progress gets it back once they are laid out.
-        _dropIndicator.IsVisible = false;
+        HideIndicator();
         var open = OpenPack(snapshot);
         _selection.Keep(OpenOrder(snapshot));
         var worn = new Dictionary<PaperdollSlot, WieldedItem>();

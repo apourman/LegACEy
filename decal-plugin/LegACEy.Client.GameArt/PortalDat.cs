@@ -203,6 +203,31 @@ public sealed class PortalDat : IDisposable, IGameArtSource
         lock (_stream) return FindFile(id);
     }
 
+    /// <summary>The ids of the files from first to last, in order, reading only the directory nodes that can hold them.</summary>
+    internal List<uint> FileIds(uint first, uint last)
+    {
+        var ids = new List<uint>();
+        lock (_stream) CollectIds(_rootDirectory, first, last, ids);
+        return ids;
+    }
+
+    private void CollectIds(uint node, uint first, uint last, List<uint> ids)
+    {
+        if (node == 0) return;
+        var directory = ReadBlocks(node, DirectorySize);
+        var count = BitConverter.ToInt32(directory, BranchCount * 4);
+        var isLeaf = BitConverter.ToUInt32(directory, 0) == 0;
+        uint EntryId(int i) => BitConverter.ToUInt32(directory, (BranchCount * 4) + 4 + (i * EntrySize) + 4);
+        for (var i = 0; i <= count; i++)
+        {
+            // Branch i holds the ids between entry i - 1 and entry i.
+            var below = i < count ? EntryId(i) : uint.MaxValue;
+            var above = i > 0 ? EntryId(i - 1) : 0;
+            if (!isLeaf && below >= first && above <= last) CollectIds(BitConverter.ToUInt32(directory, i * 4), first, last, ids);
+            if (i < count && below >= first && below <= last) ids.Add(below);
+        }
+    }
+
     private byte[]? FindFile(uint id)
     {
         var node = _rootDirectory;

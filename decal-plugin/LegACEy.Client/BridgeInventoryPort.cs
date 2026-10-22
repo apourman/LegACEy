@@ -113,6 +113,13 @@ internal sealed class BridgeInventoryPort : IInventoryPort
         if (mask != 0) Bridge.AutoWield(itemId, mask, 1, 0);
     }
 
+    // Read as the pointer moves during a drag, so a failed read or a released object reads as covering nothing.
+    public uint CoverageOf(uint itemId)
+    {
+        try { return Bridge.CoverageOf(itemId); }
+        catch (COMException) { return 0; }
+    }
+
     // A move onto a stack merges the stacks where the server allows it.
     public void MergeStack(uint itemId, uint targetStackId) => Bridge.MergeItem(itemId, targetStackId);
 

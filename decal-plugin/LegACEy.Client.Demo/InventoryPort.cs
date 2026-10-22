@@ -35,6 +35,11 @@ public interface IInventoryPort
     uint WieldMask(uint itemId, PaperdollSlot slot);
     /// <summary>Wields an item into a paperdoll slot. Nothing is sent when <see cref="WieldMask"/> is zero for it.</summary>
     void Wield(uint itemId, PaperdollSlot slot);
+    /// <summary>
+    /// Where an item covers the body when worn: the AC clothing priority bits, as the appraisal window's Covers line reads them, read
+    /// from the world. Zero when the world does not say. A coat's reach past its wield slots (its skirt over the thighs) shows here.
+    /// </summary>
+    uint CoverageOf(uint itemId);
     /// <summary>Moves a stack onto another stack of the same item, which merges them where the server allows.</summary>
     void MergeStack(uint itemId, uint targetStackId);
 }
@@ -129,8 +134,10 @@ public sealed class InventoryItem : IEquatable<InventoryItem>
 /// <summary>An equipped item and the paperdoll slots it covers.</summary>
 public sealed class WieldedItem : IEquatable<WieldedItem>
 {
-    public WieldedItem(uint id, string name, ItemVisual visual, int stackCount, int stackMax, int wcid, uint validLocations, IReadOnlyList<PaperdollSlot> slots)
+    public WieldedItem(uint id, string name, ItemVisual visual, int stackCount, int stackMax, int wcid, uint validLocations, IReadOnlyList<PaperdollSlot> slots,
+        uint equippedMask = 0)
     {
+        EquippedMask = equippedMask;
         Id = id;
         Name = name ?? string.Empty;
         Visual = visual ?? throw new ArgumentNullException(nameof(visual));
@@ -152,9 +159,12 @@ public sealed class WieldedItem : IEquatable<WieldedItem>
     public uint ValidLocations { get; }
     /// <summary>Every paperdoll slot the item is drawn in: one for most items, several for a multi-slot item.</summary>
     public IReadOnlyList<PaperdollSlot> Slots { get; }
+    /// <summary>Where it is worn (the AC EquipMask bits): finer than <see cref="Slots"/>, which lumps the abdomen and legs into Pants.</summary>
+    public uint EquippedMask { get; }
 
-    public bool Equals(WieldedItem? other) => other != null && (Id, Name, Visual, StackCount, StackMax, Wcid, ValidLocations)
-        .Equals((other.Id, other.Name, other.Visual, other.StackCount, other.StackMax, other.Wcid, other.ValidLocations)) && Slots.SequenceEqual(other.Slots);
+    public bool Equals(WieldedItem? other) => other != null && (Id, Name, Visual, StackCount, StackMax, Wcid, ValidLocations, EquippedMask)
+        .Equals((other.Id, other.Name, other.Visual, other.StackCount, other.StackMax, other.Wcid, other.ValidLocations, other.EquippedMask))
+        && Slots.SequenceEqual(other.Slots);
     public override bool Equals(object? obj) => Equals(obj as WieldedItem);
     public override int GetHashCode() => Id.GetHashCode();
 }
@@ -263,6 +273,10 @@ public sealed class FakeInventoryPort : IInventoryPort
         var valid = Snapshot.ValidLocationsOf(itemId) ?? (WorldLocations.TryGetValue(itemId, out var world) ? world : 0u);
         return InventorySnapshot.MaskFor(valid, slot);
     }
+
+    /// <summary>Each item's coverage bits, as the world would read them; unlisted items cover nothing.</summary>
+    public Dictionary<uint, uint> Coverage { get; } = new();
+    public uint CoverageOf(uint itemId) => Coverage.TryGetValue(itemId, out var coverage) ? coverage : 0;
 
     // The same rule as the port: nothing is sent when the item cannot go in the slot.
     public void Wield(uint itemId, PaperdollSlot slot)

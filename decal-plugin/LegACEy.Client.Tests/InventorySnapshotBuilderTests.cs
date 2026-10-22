@@ -169,4 +169,28 @@ public sealed class InventorySnapshotBuilderTests
         public uint OpenContainer { get; set; }
         public uint Selected { get; set; }
     }
+
+    [Fact]
+    public void The_doll_picks_the_item_on_top_of_each_body_part_by_where_it_is_worn()
+    {
+        WieldedItem Worn(uint id, uint mask) => new(id, "", new ItemVisual(0, 0, 0, 0), 1, 1, 0, mask, Array.Empty<PaperdollSlot>(), mask);
+        var shirt = Worn(1, 0x2 | 0x8 | 0x10 | 0x4); // a baggy shirt: chest, arms and abdomen
+        var coat = Worn(2, 0x200 | 0x800);
+        var boots = Worn(3, 0x100 | 0x80);           // reaching the knee
+        var greaves = Worn(4, 0x4000);
+        var wielded = new[] { shirt, coat, boots, greaves };
+
+        Assert.Same(coat, InventorySnapshotBuilder.WornOn(wielded, 9));
+        Assert.Same(shirt, InventorySnapshotBuilder.WornOn(wielded, 0));
+        Assert.Same(boots, InventorySnapshotBuilder.WornOn(wielded, 2));
+        Assert.Same(shirt, InventorySnapshotBuilder.WornOn(wielded, 11));
+        // A bare thigh, under nothing: the shirt reaches the abdomen but not the legs.
+        Assert.Null(InventorySnapshotBuilder.WornOn(wielded, 1));
+
+        // Knee-high boots cover the feet and shins; shoes only the feet.
+        Assert.Equal(new[] { 2, 3, 4, 6, 7, 8 }, InventorySnapshotBuilder.PartsUnder(0x100 | 0x80));
+        Assert.Equal(new[] { 3, 4, 7, 8 }, InventorySnapshotBuilder.PartsUnder(0x100));
+        // A long coat's coverage reaches past its wield slots: chest, abdomen, both arms, and its skirt over the thighs.
+        Assert.Equal(new[] { 0, 1, 5, 9, 10, 11, 13, 14 }, InventorySnapshotBuilder.PartsCovered(0x0400 | 0x0800 | 0x1000 | 0x2000 | 0x0100));
+    }
 }

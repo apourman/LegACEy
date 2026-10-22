@@ -28,7 +28,8 @@ internal sealed class InventoryPaperdoll : Canvas
     private const int ArmourLeft = 1, ArmourRight = 3, RightLeft = 4;
     private const double DollClearance = 2, SideGap = 6;
     // The Slots toggle sits in the doll area's bottom-left corner, as retail's does, on one row with the expand button in the
-    // bottom-right corner; the doll is inset above that row.
+    // bottom-right corner; the doll takes all the height above that row, as retail's fills its panel. The host draws the doll over
+    // the window, so it stays off the row rather than hide the toggle.
     private const int CornerInset = 4;
     private const int CornerRowHeight = 20;
 
@@ -110,8 +111,7 @@ internal sealed class InventoryPaperdoll : Canvas
         var height = Scale(RetailHeight);
         DollArea.Width = (ArmourRight - ArmourLeft) * Cells.Pitch + Cells.Cell + 2 * DollClearance + _spare;
         DollArea.Height = height;
-        // The panel keeps its full size, and whatever is put in it (the 3D character) is inset to clear the corner row.
-        DollArea.Padding = new Thickness(0, CornerInset, 0, CornerRowHeight + 2 * CornerInset);
+        DollArea.Padding = new Thickness(0, 0, 0, CornerRowHeight + 2 * CornerInset);
         SetLeft(DollArea, ArmourLeft * Cells.Pitch + SideGap + 1 - DollClearance);
         SetLeft(SlotsToggle, GetLeft(DollArea) + CornerInset);
         SetTop(SlotsToggle, height - CornerRowHeight - CornerInset);

@@ -314,6 +314,8 @@ public sealed class AppraisalFeature
             var window = _inspect ??= new InspectWindow(_host.Looks, _host.PortalPath);
             window.Show(objectId, name, AppraisalWindow.Icon(visual, _host.Art));
             if (_host.IsWindowOpen(InspectWindow.WindowId)) return;
+            // Each open starts from the first view: closing the window forgets how the player turned it.
+            window.ResetView();
             var definition = new WindowDefinition(InspectWindow.WindowId, "Inspect", InspectWindow.Width, InspectWindow.Height,
                 DerethWindow.TitleBarHeight, new DerethClientTheme(), InspectWindow.Sizing);
             var opened = _host.OpenWindow(definition, InspectLocation, close =>
@@ -449,5 +451,6 @@ public sealed class AppraisingInventoryPort : IInventoryPort
     public void MoveToContainer(uint itemId, uint containerId, int slotIndex) => _inner.MoveToContainer(itemId, containerId, slotIndex);
     public uint WieldMask(uint itemId, PaperdollSlot slot) => _inner.WieldMask(itemId, slot);
     public void Wield(uint itemId, PaperdollSlot slot) => _inner.Wield(itemId, slot);
+    public uint CoverageOf(uint itemId) => _inner.CoverageOf(itemId);
     public void MergeStack(uint itemId, uint targetStackId) => _inner.MergeStack(itemId, targetStackId);
 }

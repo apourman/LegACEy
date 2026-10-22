@@ -82,7 +82,7 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     /// </summary>
     private static void GiveDoll(ILegACEyClient client, InventoryWindow window)
     {
-        if (!window.HasDoll && client.Looks.Knows(0)) window.SetDoll(new PaperdollView(client.Looks, client.PortalPath));
+        if (!window.HasDoll && client.Looks.Knows(0)) window.SetDoll(new PaperdollView(client.Looks, client.PortalPath) { Still = true });
     }
 
     /// <summary>Opens the window of a view, or hides it when the client has it open.</summary>
