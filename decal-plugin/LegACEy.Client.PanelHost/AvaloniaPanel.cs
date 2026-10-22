@@ -50,11 +50,19 @@ public sealed class AvaloniaPanel : IDisposable
     private bool _resized;
     private readonly Stopwatch _captureClock = new();
     internal int FrameCaptureCount { get; private set; }
+    // Set when a visual was attached or detached in the window, its theme was applied, or an observed resource took a new nested
+    // resource; the next capture walks the render resources then, not every capture.
+    private bool _walkRenderResources = true;
+    private readonly IDisposable _treeChanges;
+    internal int RenderResourceWalks { get; private set; }
+    internal IReadOnlyCollection<AvaloniaObject> ObservedRenderResources => _renderResources;
+    internal IReadOnlyCollection<INotifyCollectionChanged> ObservedRenderCollections => _renderCollections;
+    internal void WalkRenderResources() => ObserveRenderResources();
 
     private readonly RendererInvalidationObserver _rendererObserver;
     private readonly HashSet<AvaloniaObject> _renderResources = new();
     private readonly HashSet<INotifyCollectionChanged> _renderCollections = new();
-    // Scratch for ObserveRenderResources, reused every captured frame; the property lists are shared by all panels on the UI thread.
+    // Scratch for ObserveRenderResources, reused every walk; the property lists are shared by all panels on the UI thread.
     private readonly HashSet<AvaloniaObject> _scanResources = new();
     private readonly HashSet<INotifyCollectionChanged> _scanCollections = new();
     private readonly Stack<Visual> _scanVisuals = new();
@@ -83,6 +91,7 @@ public sealed class AvaloniaPanel : IDisposable
         _window.Show();
         _rendererObserver = new RendererInvalidationObserver(_window, () => _hasInvalidation = true);
         _window.LayoutUpdated += OnLayoutUpdated;
+        _treeChanges = Visual.VisualParentProperty.Changed.AddClassHandler<Visual>(OnVisualParentChanged);
         PanelCompositor.Register(this);
         Tick();
     }
@@ -330,7 +339,8 @@ public sealed class AvaloniaPanel : IDisposable
         try
         {
             var frame = Frame;
-            if (_renderingSuspended || (!_forceFullFrame && !_hasInvalidation))
+            // A repaint Avalonia did by itself (an unobserved brush mutated in place) is captured too.
+            if (_renderingSuspended || (!_forceFullFrame && !_hasInvalidation && !_framebuffer.HasPainted))
             {
                 frame.DirtyRectangles = Array.Empty<Rectangle>();
                 return false;
@@ -345,7 +355,7 @@ public sealed class AvaloniaPanel : IDisposable
             if (!KeepCaptured(frame, changed) && !_forceFullFrame) changed = Rectangle.Empty;
             _dirty[0] = changed;
             frame.DirtyRectangles = changed.IsEmpty ? Array.Empty<Rectangle>() : _dirty;
-            ObserveRenderResources();
+            if (_walkRenderResources) ObserveRenderResources();
             _hasInvalidation = false;
             _forceFullFrame = false;
             return !changed.IsEmpty;
@@ -566,6 +576,7 @@ public sealed class AvaloniaPanel : IDisposable
         _themeStyles = theme.CreateStyles();
         _window.Styles.Add(_themeStyles);
         _theme = theme;
+        _walkRenderResources = true;
         if (Content is ThemeWindowChrome rootChrome)
             rootChrome.ApplyTheme(theme);
         foreach (var chrome in Content.GetVisualDescendants().OfType<ThemeWindowChrome>())
@@ -576,12 +587,16 @@ public sealed class AvaloniaPanel : IDisposable
     {
         // Composition can update mutable brushes without a SceneInvalidated event.
         // Follow their nested resources (including gradient stops), releasing old trees.
-        // Runs after every captured frame, so it allocates nothing: scratch sets and the walk stack are reused,
-        // and only properties that can hold a resource are read (reading value-typed ones would box).
+        // Only after a tree or theme change: on a large window the walk costs milliseconds. Between walks a brush assigned in code is not
+        // followed, but its repaint is still captured, since what Avalonia painted gates capture too.
+        // Scratch sets and the walk stack are reused; only properties that can hold a resource are read (reading value-typed ones would box).
+        RenderResourceWalks++;
         var current = _scanResources;
         var collections = _scanCollections;
         current.Clear();
         collections.Clear();
+        _scanVisuals.Clear();
+        _scanRemoved.Clear();
         _scanVisuals.Push(_window);
         while (_scanVisuals.Count > 0)
         {
@@ -615,6 +630,8 @@ public sealed class AvaloniaPanel : IDisposable
         foreach (var added in collections)
             if (_renderCollections.Add(added))
                 added.CollectionChanged += OnRenderCollectionInvalidated;
+        // Cleared only once the walk completed, so a walk that threw runs again at the next capture.
+        _walkRenderResources = false;
     }
 
     /// <summary>The registered properties of a type that can hold a brush, transform or collection: not value types, not strings.</summary>
@@ -642,8 +659,23 @@ public sealed class AvaloniaPanel : IDisposable
         }
     }
 
-    private void OnRenderResourceInvalidated(object? sender, AvaloniaPropertyChangedEventArgs e) => _hasInvalidation = true;
-    private void OnRenderCollectionInvalidated(object? sender, NotifyCollectionChangedEventArgs e) => _hasInvalidation = true;
+    private void OnRenderResourceInvalidated(object? sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        _hasInvalidation = true;
+        // A resource that took a new nested one (a brush's transform, its gradient stop list) needs the new one followed.
+        if (!e.Property.PropertyType.IsValueType) _walkRenderResources = true;
+    }
+
+    private void OnRenderCollectionInvalidated(object? sender, NotifyCollectionChangedEventArgs e) =>
+        _hasInvalidation = _walkRenderResources = true;
+
+    // Raised for every visual of every window: only an attach or detach in this panel's window walks again.
+    private void OnVisualParentChanged(Visual visual, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (InWindow(visual) || InWindow(e.OldValue as Visual)) _walkRenderResources = true;
+    }
+
+    private bool InWindow(Visual? visual) => visual?.GetVisualRoot() == _window;
 
     private void StopObservingRenderResources()
     {
@@ -707,6 +739,7 @@ public sealed class AvaloniaPanel : IDisposable
         _disposed = true;
         PanelCompositor.Unregister(this);
         StopObservingRenderResources();
+        _treeChanges.Dispose();
         _rendererObserver.Dispose();
         _window.LayoutUpdated -= OnLayoutUpdated;
         try { _window.Close(); }
