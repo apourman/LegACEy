@@ -58,6 +58,9 @@ public sealed class InspectWindow
     /// <summary>The object the window shows; zero is the player, and also the value before the first object.</summary>
     public uint ObjectId { get; private set; }
 
+    /// <summary>Turns, zooms and moves the paperdoll back to its first view.</summary>
+    public void ResetView() => (_stage.Child as PaperdollView)?.ResetView();
+
     /// <summary>Shows the object's paperdoll, under its name and icon. The same object already shown is left as it is, turned as the player left it.</summary>
     public void Show(uint objectId, string name, Control? icon)
     {

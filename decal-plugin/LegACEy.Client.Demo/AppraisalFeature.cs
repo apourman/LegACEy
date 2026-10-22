@@ -314,6 +314,8 @@ public sealed class AppraisalFeature
             var window = _inspect ??= new InspectWindow(_host.Looks, _host.PortalPath);
             window.Show(objectId, name, AppraisalWindow.Icon(visual, _host.Art));
             if (_host.IsWindowOpen(InspectWindow.WindowId)) return;
+            // Each open starts from the first view: closing the window forgets how the player turned it.
+            window.ResetView();
             var definition = new WindowDefinition(InspectWindow.WindowId, "Inspect", InspectWindow.Width, InspectWindow.Height,
                 DerethWindow.TitleBarHeight, new DerethClientTheme(), InspectWindow.Sizing);
             var opened = _host.OpenWindow(definition, InspectLocation, close =>

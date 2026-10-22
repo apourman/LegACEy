@@ -124,6 +124,23 @@ public sealed class AppraisalTests
     });
 
     [Fact]
+    public void Inspect_keeps_its_view_while_open_and_starts_from_the_first_view_when_reopened() => OnWindowThread(() =>
+    {
+        var host = new FakeAppraisalHost();
+        var appraisals = new AppraisalFeature(host, _ => { });
+        appraisals.Inspect(0, "Pourman", null);
+        var view = host.LastWindow!.GetLogicalDescendants().OfType<ModelView>().Single();
+        view.Zoom = 3;
+
+        appraisals.Inspect(0, "Pourman", null);
+        Assert.Equal(3, view.Zoom);
+
+        host.HideWindow(InspectWindow.WindowId);
+        appraisals.Inspect(0, "Pourman", null);
+        Assert.Equal(1, view.Zoom);
+    });
+
+    [Fact]
     public void Inspect_opens_one_paperdoll_window_that_follows_the_inspected_object() => OnWindowThread(() =>
     {
         var host = new FakeAppraisalHost();
