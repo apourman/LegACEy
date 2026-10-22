@@ -197,6 +197,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private DateTime _lastTestFailureCheck;
     private readonly FrameSamples _uiFrameTimes = new();
     private readonly FrameSamples _postUiDrawTimes = new();
+    // The parts of a frame, timed separately to show where the worst frames go.
+    private readonly PhaseTimes _phaseTimes = new();
     // One listener for the process: the runtime is rebuilt per session, the GC is not.
     private static readonly GcStarts GcStartCounts = new();
     private long _lastAllocatedBytes = GC.GetTotalAllocatedBytes();
@@ -1169,6 +1171,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
         Guard(() =>
         {
+            var start = Stopwatch.GetTimestamp();
             PublishGameState();
             _inventory.Flush(_inGame);
             _inventory.TargetMode?.Tick();
@@ -1186,11 +1189,22 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     return;
                 CreateUi();
             }
+            _phaseTimes.Add("state", start);
+            start = Stopwatch.GetTimestamp();
             TickRetailToolbar();
+            _phaseTimes.Add("toolbar", start);
+            start = Stopwatch.GetTimestamp();
             TickRetailChat();
+            _phaseTimes.Add("chat", start);
+            start = Stopwatch.GetTimestamp();
             TickRetailVitals();
+            _phaseTimes.Add("vitals", start);
+            start = Stopwatch.GetTimestamp();
             TickRetailRadar();
+            _phaseTimes.Add("radar", start);
+            start = Stopwatch.GetTimestamp();
             TickRetailAttack();
+            _phaseTimes.Add("attack", start);
             // Portal space at login comes before Decal's login complete: retail's inventory opened then is parked already,
             // and our window opens for it once the windows can.
             if (!_inGame) TickRetailPanels(loggingIn: true);
@@ -1211,12 +1225,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 }
             }
 
+            var start = Stopwatch.GetTimestamp();
             TickRetailPanels();
             TickSettingsLock();
             UpdateRetailDrag();
             if (_itemDragActive)
                 _retailDrag?.UpdateDropIndicator();
+            _phaseTimes.Add("panels", start);
+            start = Stopwatch.GetTimestamp();
             PrepareFeatureWindows();
+            _phaseTimes.Add("windows", start);
             PrepareUpdateToast();
             if (_dragIconSurface != null)
             {
@@ -1240,6 +1258,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             using var process = Process.GetCurrentProcess();
             Log($"UI performance sample: frames={_uiFrameTimes.Count} uiFrame={_uiFrameTimes.TakeSummary()}ms postUiDraw={_postUiDrawTimes.TakeSummary()}ms surfaces={_featureSurfaces.Count} privateBytes={process.PrivateMemorySize64} virtualBytes={process.VirtualMemorySize64} managedBytes={GC.GetTotalMemory(false)} gen0={GC.CollectionCount(0)} gen1={GC.CollectionCount(1)} gen2={GC.CollectionCount(2)}.");
             LogGcSample();
+            Log($"UI performance phases: {_phaseTimes.TakeSummary()}.");
+            if (_worldEffects != null) Log($"UI performance world: {_worldEffects.TakePerformanceSummary()}.");
             LogSurfaceSample("toolbar", _toolbarSurface);
             foreach (var pair in _featureSurfaces) LogSurfaceSample(pair.Key, pair.Value);
             LogSurfaceSample("split-tab", _splitTabSurface);

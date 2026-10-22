@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -176,11 +177,26 @@ internal sealed unsafe class WorldEffects : IDisposable
     /// <summary>How strong the water is: 0 leaves retail's water, 1 is the look as designed.</summary>
     public float WaterStrength { get => _water.Strength; set => _water.Strength = value; }
 
+    // Performance counters, read and reset by the runtime's 30 s log line.
+    private readonly PhaseTimes _phases = new();
+    private int _drawCalls;
+    private int _frames;
+
+    /// <summary>The effect timings and how many of retail's indexed draws passed through the hook per world frame, then starts again.</summary>
+    public string TakePerformanceSummary()
+    {
+        var summary = $"frames={_frames} drawCallsPerFrame={(_frames == 0 ? 0 : _drawCalls / _frames)} {_phases.TakeSummary()}";
+        _drawCalls = 0;
+        _frames = 0;
+        return summary;
+    }
+
     /// <summary>The object to outline, zero for none. Set each frame.</summary>
     public uint Selected { get; set; }
 
     private int OnDrawIndexed(IntPtr device, int type, int baseVertex, uint minIndex, uint vertices, uint startIndex, uint primitives)
     {
+        _drawCalls++;
         var original = _drawHook.OriginalFunction;
         if (_forcing)
         {
@@ -251,8 +267,10 @@ internal sealed unsafe class WorldEffects : IDisposable
             RestoreFog(retailFog);
         }
         if (_failed) return;
+        var start = Stopwatch.GetTimestamp();
         try { DrawOutside(PlayerCell(), shown: true); }
         catch (Exception exception) { Fail(exception); }
+        _phases.Add("outside", start);
         _outsideDrawn = true;
     }
 
@@ -391,11 +409,21 @@ internal sealed unsafe class WorldEffects : IDisposable
                 var cell = PlayerCell();
                 // The water first, so the fog and weather fall over it.
                 _water.PlayerCell = cell;
+                var start = Stopwatch.GetTimestamp();
                 _water.Draw();
+                _phases.Add("water", start);
                 // From indoors they were drawn after the landscape, or, with no opening to outside in view, not at all.
-                if (!_outsideDrawn) DrawOutside(cell, shown: !_viewIndoors);
+                if (!_outsideDrawn)
+                {
+                    start = Stopwatch.GetTimestamp();
+                    DrawOutside(cell, shown: !_viewIndoors);
+                    _phases.Add("outside", start);
+                }
+                start = Stopwatch.GetTimestamp();
                 _combat.Draw(_fog);
                 if (!_outlined && Selected != 0) DrawCulledSelection();
+                _phases.Add("combat+selection", start);
+                _frames++;
             }
             catch (Exception exception) { Fail(exception); }
         }
