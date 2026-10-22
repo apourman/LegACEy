@@ -163,4 +163,22 @@ public sealed class PanelCompositorTests
         // Measured at 6.7 KB per changed advance before attribution; attribution adds nothing to that.
         Assert.InRange((GC.GetAllocatedBytesForCurrentThread() - before) / 100, 0, 8 * 1024);
     });
+
+    [Fact]
+    public void A_panel_disposed_mid_walk_reports_no_change_and_no_painted_area() => RenderThread.Run(() =>
+    {
+        var border = new Border { Background = Brushes.Gray };
+        var panel = AvaloniaPanel.Create(() => border, 16, 12);
+        PanelCompositor.Advance();
+        border.Background = Brushes.White;
+        PanelCompositor.Advance();
+        Assert.True(panel.PaintedArea > 0);
+
+        // An earlier panel's error handler can dispose a panel the advance is still walking; its capture then runs on a disposed panel.
+        panel.Dispose();
+        panel.Capture();
+
+        Assert.False(panel.Changed);
+        Assert.Equal(0L, panel.PaintedArea);
+    });
 }

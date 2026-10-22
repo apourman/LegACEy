@@ -270,6 +270,9 @@ public sealed class AvaloniaPanel : IDisposable
     /// <summary>Capture the frame Avalonia rendered, if this panel is shown and its content changed. A failure goes to the error handler.</summary>
     internal void Capture()
     {
+        // A disposed panel an advance is still walking reports nothing, not its last advance's pixels.
+        Changed = false;
+        PaintedArea = 0;
         if (_disposed) return;
         _captureClock.Restart();
         Changed = CaptureFrame();
