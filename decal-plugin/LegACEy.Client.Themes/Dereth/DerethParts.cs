@@ -496,6 +496,7 @@ public sealed class DerethSlotGrid : UserControl
 {
     private readonly WrapPanel _cells = new()
     {
+        ItemWidth = ItemCellSize.Standard.Pitch, ItemHeight = ItemCellSize.Standard.Pitch,
         // The margin keeps the top and bottom rows' drop frames off the scroll area's clipped edge.
         HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 1)
     };
@@ -513,7 +514,6 @@ public sealed class DerethSlotGrid : UserControl
 
     protected override Size MeasureOverride(Size availableSize)
     {
-        _cells.ItemWidth = _cells.ItemHeight = ItemCellSize.Standard.Pitch;
         _cells.Width = Columns > 0 ? Columns * _cells.ItemWidth : double.NaN;
         return base.MeasureOverride(availableSize);
     }
@@ -578,7 +578,7 @@ public sealed class DerethSlot : Grid
     private bool _carried;
 
     /// <summary>
-    /// A slot holding the content: a framed well round a native-size icon (see <see cref="ItemCellSize"/>), with a selected state. It sits at the
+    /// A slot holding the content: a framed well round an icon (see <see cref="ItemCellSize"/>), with a selected state. It sits at the
     /// start of its pitch: centred, the pitch's odd pixel would round it left and right in turn, and the gaps between slots would alternate.
     /// </summary>
     public DerethSlot(Control? content)

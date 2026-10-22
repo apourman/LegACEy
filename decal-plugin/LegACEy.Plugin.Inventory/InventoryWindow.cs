@@ -760,7 +760,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             _packList.Children.Add(PackTab(snapshot, snapshot.SidePacks[position], position, open));
     }
 
-    /// <summary>A pack in the vertical column: its icon, with a fill bar along the foot. An empty side-pack slot is a placeholder.</summary>
+    /// <summary>A pack in the vertical column: its icon, with an upright fill bar on its right. An empty side-pack slot is a placeholder.</summary>
     private Control PackColumnSlot(InventorySnapshot snapshot, InventoryPack pack, int position, InventoryPack open)
     {
         // The fill bar stands right of the tile; an empty slot keeps the bar's width, so every tile lines up.

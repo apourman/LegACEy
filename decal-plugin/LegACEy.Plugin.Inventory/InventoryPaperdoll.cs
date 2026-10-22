@@ -11,7 +11,7 @@ using LegACEy.Client.Themes;
 namespace LegACEy.Plugin.Inventory;
 
 /// <summary>
-/// The paperdoll block: retail's paperdoll on six columns at the <see cref="ItemCellSize"/> pitch, which follows the window's scale: the left
+/// The paperdoll block: retail's paperdoll on six columns at the <see cref="ItemCellSize"/> pitch: the left
 /// jewellery column, three armour columns over the doll and two right columns, the aetheria and the cloak a square at the top of those, so
 /// none of it sits over the doll. Rows keep retail's spacing. It fills the width it is given: the left column keeps to the left edge, the
 /// right columns to the right edge, and the doll area takes the rest, with the armour slots centred over it. The doll area is the one control
@@ -52,7 +52,7 @@ internal sealed class InventoryPaperdoll : Canvas
     };
 
     private readonly List<(Control Cell, int X, int Y)> _placed = new();
-    private ItemCellSize _size, _placedSize;
+    private static readonly ItemCellSize Cells = ItemCellSize.Standard;
     // The width the block was placed for, and how much of it is past the narrowest: the doll area takes it.
     private double _width, _spare;
     private readonly Border _slotsMark = new()
@@ -94,28 +94,25 @@ internal sealed class InventoryPaperdoll : Canvas
         Children.Add(ExpandButton);
     }
 
-    // Everything is placed from the pitch, which follows the window's scale and can change without a rebuild, and from the width given.
+    // Everything is placed from the pitch and from the width given, again when the width changes.
     protected override Size MeasureOverride(Size availableSize)
     {
-        var size = ItemCellSize.Standard;
-        _size = size;
-        var width = Math.Max(Columns * size.Pitch + 2 * SideGap, double.IsInfinity(availableSize.Width) ? 0 : Math.Floor(availableSize.Width));
-        if (size != _placedSize || width != _width) Place(size, width);
+        var width = Math.Max(Columns * Cells.Pitch + 2 * SideGap, double.IsInfinity(availableSize.Width) ? 0 : Math.Floor(availableSize.Width));
+        if (width != _width) Place(width);
         base.MeasureOverride(availableSize);
         return new Size(width, Scale(RetailHeight));
     }
 
-    private void Place(ItemCellSize size, double width)
+    private void Place(double width)
     {
-        _placedSize = size;
         _width = width;
-        _spare = width - Columns * size.Pitch - 2 * SideGap;
+        _spare = width - Columns * Cells.Pitch - 2 * SideGap;
         var height = Scale(RetailHeight);
-        DollArea.Width = (ArmourRight - ArmourLeft) * size.Pitch + size.Cell + 2 * DollClearance + _spare;
+        DollArea.Width = (ArmourRight - ArmourLeft) * Cells.Pitch + Cells.Cell + 2 * DollClearance + _spare;
         DollArea.Height = height;
         // The panel keeps its full size, and whatever is put in it (the 3D character) is inset to clear the corner row.
         DollArea.Padding = new Thickness(0, CornerInset, 0, CornerRowHeight + 2 * CornerInset);
-        SetLeft(DollArea, ArmourLeft * size.Pitch + SideGap + 1 - DollClearance);
+        SetLeft(DollArea, ArmourLeft * Cells.Pitch + SideGap + 1 - DollClearance);
         SetLeft(SlotsToggle, GetLeft(DollArea) + CornerInset);
         SetTop(SlotsToggle, height - CornerRowHeight - CornerInset);
         SetLeft(ExpandButton, GetLeft(DollArea) + DollArea.Width - ExpandButton.Width - CornerInset);
@@ -127,7 +124,7 @@ internal sealed class InventoryPaperdoll : Canvas
     {
         // The left column stays at the left edge, the armour over the doll moves half the spare width, and the right side all of it.
         var shift = column >= RightLeft ? 2 * SideGap + _spare : column >= ArmourLeft ? SideGap + Math.Round(_spare / 2) : 0;
-        SetLeft(cell, column * _size.Pitch + shift + 1);
+        SetLeft(cell, column * Cells.Pitch + shift + 1);
         SetTop(cell, Scale(y) + 1);
     }
 
@@ -172,5 +169,5 @@ internal sealed class InventoryPaperdoll : Canvas
     }
 
     /// <summary>Retail's position, scaled to the pitch and rounded to whole pixels.</summary>
-    private double Scale(int retail) => Math.Round(retail * _size.Pitch / RetailCell);
+    private double Scale(int retail) => Math.Round(retail * Cells.Pitch / RetailCell);
 }

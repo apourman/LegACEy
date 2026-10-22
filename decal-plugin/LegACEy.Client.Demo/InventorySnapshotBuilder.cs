@@ -58,6 +58,7 @@ public sealed class InventoryObjectRead
 public interface IInventoryReader
 {
     uint CharacterId { get; }
+    /// <summary>The character's name, for the window's title; empty when the game has not given it.</summary>
     string CharacterName { get; }
     /// <summary>Everything the character holds: the packs, the items in them and the wielded items.</summary>
     IReadOnlyList<InventoryObjectRead> Objects { get; }

@@ -3845,6 +3845,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         ? _toolbarTakeover?.Holds == true
         : id != null && _windows?.Get(id) != null && !RetailChatWindows.IsChat(id);
 
+    // How long a window's size shows over it after a wheel notch.
+    private static readonly TimeSpan ScaleNoteTime = TimeSpan.FromSeconds(1.2);
+
     /// <summary>
     /// Makes a window or the toolbar a step bigger or smaller, from Ctrl and the wheel over it. The toolbar, with its shortcut rows, lays out
     /// again; any other window's panel draws at the new scale in place.
@@ -3861,8 +3864,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // The window's size shows over it while the wheel turns, at a limit too, as the Settings slider shows the UI size.
         SurfaceById(id)?.Panel.ShowNote($"{_windows.SizePercentOf(placeId)}%", ScaleNoteTime);
     }
-
-    private static readonly TimeSpan ScaleNoteTime = TimeSpan.FromSeconds(1.2);
 
     /// <summary>Puts a window's surface where the window manager has it, at the window's size and scale. A new size re-lays out the panel.</summary>
     private static void FitSurface(ScreenSurface surface, ManagedWindow window)

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -82,7 +83,9 @@ public sealed class DerethItemRow : StackPanel
 public sealed class DerethItemIcon : Control
 {
     private readonly WriteableBitmap _bitmap;
-    private Bitmap? _resampled;
+    // Each art's resampled copies by side, shared by every icon drawing it and freed with the art: windows rebuild their icons on every
+    // change, and resampling again for each would cost a frame's time and leave a bitmap behind each time.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<WriteableBitmap, Dictionary<int, WriteableBitmap>> Resampled = new();
 
     // An ancestor's bitmap smoothing overrides a child's, so this relies on the panel root turning it off, as AvaloniaPanel.ApplyTheme does.
     public DerethItemIcon(WriteableBitmap bitmap) => _bitmap = bitmap;
@@ -97,7 +100,7 @@ public sealed class DerethItemIcon : Control
     {
         // The panel draws every bitmap nearest-neighbour, and no element below its root can change that. At a whole multiple of the art
         // (100%, 200%) that keeps the pixels sharp; at any other size it would drop rows and columns, so the art is resampled smoothly to
-        // the size it takes on screen, once per size, and drawn pixel for pixel.
+        // the size it takes on screen, once per art and size, and drawn pixel for pixel.
         var pixels = (int)Math.Round(Bounds.Width * LayoutHelper.GetLayoutScale(this));
         var art = _bitmap.PixelSize.Width;
         if (pixels <= 0 || pixels % art == 0)
@@ -105,12 +108,9 @@ public sealed class DerethItemIcon : Control
             context.DrawImage(_bitmap, new Rect(Bounds.Size));
             return;
         }
-        if (_resampled?.PixelSize.Width != pixels)
-        {
-            _resampled?.Dispose();
-            _resampled = Resample(_bitmap, pixels);
-        }
-        context.DrawImage(_resampled, new Rect(Bounds.Size));
+        var sides = Resampled.GetOrCreateValue(_bitmap);
+        if (!sides.TryGetValue(pixels, out var resampled)) sides[pixels] = resampled = Resample(_bitmap, pixels);
+        context.DrawImage(resampled, new Rect(Bounds.Size));
     }
 
     /// <summary>

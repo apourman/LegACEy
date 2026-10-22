@@ -143,14 +143,15 @@ public sealed class InventoryPlugin : ILegACEyPlugin
 
     private static string WindowId(InventoryView view) => "inventory-" + view.Layout.ToString().ToLowerInvariant() + (view.Collapsed ? "-compact" : string.Empty);
 
+    private const int VerticalWidth = 305, TallestVertical = 10_000;
+
     /// <summary>
     /// Each view's default size and minimum. The minimum keeps the paperdoll, unless it is collapsed, and one row of the grid visible,
     /// and the horizontal one also keeps the pack strip on one row: the strip is the main pack, a divider and seven side packs, 295 px across.
     /// The vertical views are retail's panel, so only their height changes: retail's width, the paperdoll and grid with the pack column
-    /// on their right, and the full one opens with the grid's six columns eleven rows deep, as retail's does. Only the global UI size
-    /// makes them smaller.
+    /// on their right, and the full one opens with the grid's six columns eleven rows deep, as retail's does. Scaling, by the UI size or
+    /// Ctrl and the wheel, changes the whole window.
     /// </summary>
-    private const int VerticalWidth = 305, TallestVertical = 10_000;
 
     private static (int Width, int Height, WindowResizing Sizing) Shape(InventoryView view) => (view.Layout, view.Collapsed) switch
     {
