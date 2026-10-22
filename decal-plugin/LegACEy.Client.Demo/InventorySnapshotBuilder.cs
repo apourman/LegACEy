@@ -58,6 +58,8 @@ public sealed class InventoryObjectRead
 public interface IInventoryReader
 {
     uint CharacterId { get; }
+    /// <summary>The character's name, for the window's title; empty when the game has not given it.</summary>
+    string CharacterName { get; }
     /// <summary>Everything the character holds: the packs, the items in them and the wielded items.</summary>
     IReadOnlyList<InventoryObjectRead> Objects { get; }
     /// <summary>The main pack's slot count, which is the character's own.</summary>
@@ -150,7 +152,7 @@ public static class InventorySnapshotBuilder
         }
 
         return new InventorySnapshot(mainPack, sidePacks, items, wielded, reader.Burden,
-            BurdenLimit(reader.Strength, reader.CarryingAugmentations), pyreals, reader.OpenContainer, reader.Selected);
+            BurdenLimit(reader.Strength, reader.CarryingAugmentations), pyreals, reader.OpenContainer, reader.Selected, reader.CharacterName);
     }
 
     /// <summary>The paperdoll slots an equip mask covers, in paperdoll order. A multi-slot mask covers every slot it touches.</summary>

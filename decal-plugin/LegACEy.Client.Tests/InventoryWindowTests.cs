@@ -607,10 +607,14 @@ public sealed class InventoryWindowTests
     {
         private readonly InventoryWindow _window;
 
-        public InventoryHost(FakeInventoryPort port, InventoryLayout layout, bool showSlots, int width = 360, int height = 530)
+        /// <param name="width">The panel's width; by default the vertical window's fixed width, or 360 for the horizontal one.</param>
+        /// <param name="height">The panel's height; by default the vertical window's default height, or 530 for the horizontal one.</param>
+        public InventoryHost(FakeInventoryPort port, InventoryLayout layout, bool showSlots, int? width = null, int? height = null)
         {
             InventoryWindow? window = null;
-            Host = AvaloniaPanel.Create(() => window = new InventoryWindow(port, new InventorySample.NoArt(), new InventorySettings(layout, showSlots), Drag), width, height);
+            var vertical = layout == InventoryLayout.Vertical;
+            Host = AvaloniaPanel.Create(() => window = new InventoryWindow(port, new InventorySample.NoArt(), new InventorySettings(layout, showSlots), Drag),
+                width ?? (vertical ? 305 : 360), height ?? (vertical ? 818 : 530));
             Host.ApplyTheme(new DerethClientTheme());
             _window = window!;
             InventoryDriver.Tick(Host);

@@ -161,7 +161,7 @@ public sealed class WieldedItem : IEquatable<WieldedItem>
 public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
 {
     public InventorySnapshot(InventoryPack mainPack, IReadOnlyList<InventoryPack> sidePacks, IReadOnlyList<InventoryItem> items,
-        IReadOnlyList<WieldedItem> wielded, int burden, int burdenLimit, int pyreals, uint openContainer, uint selected)
+        IReadOnlyList<WieldedItem> wielded, int burden, int burdenLimit, int pyreals, uint openContainer, uint selected, string characterName = "")
     {
         MainPack = mainPack ?? throw new ArgumentNullException(nameof(mainPack));
         SidePacks = sidePacks ?? throw new ArgumentNullException(nameof(sidePacks));
@@ -172,6 +172,7 @@ public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
         Pyreals = pyreals;
         OpenContainer = openContainer;
         Selected = selected;
+        CharacterName = characterName ?? string.Empty;
     }
 
     /// <summary>A snapshot with no packs and nothing carried: what a window shows before the character is in the world.</summary>
@@ -193,6 +194,8 @@ public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
     public uint OpenContainer { get; }
     /// <summary>The selected item's id, or zero when nothing is selected.</summary>
     public uint Selected { get; }
+    /// <summary>The character's name, which titles the window as retail's does; empty when it is not known.</summary>
+    public string CharacterName { get; }
 
     /// <summary>Whether the id is the main pack, a side pack, or an item or wielded item in this snapshot.</summary>
     public bool Contains(uint id) => id != 0 && (MainPack.Id == id || SidePacks.Any(pack => pack.Id == id)
@@ -222,7 +225,7 @@ public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
 
     public bool Equals(InventorySnapshot? other) => other != null && MainPack.Equals(other.MainPack)
         && SidePacks.SequenceEqual(other.SidePacks) && Items.SequenceEqual(other.Items) && Wielded.SequenceEqual(other.Wielded)
-        && (Burden, BurdenLimit, Pyreals, OpenContainer, Selected).Equals((other.Burden, other.BurdenLimit, other.Pyreals, other.OpenContainer, other.Selected));
+        && (Burden, BurdenLimit, Pyreals, OpenContainer, Selected, CharacterName).Equals((other.Burden, other.BurdenLimit, other.Pyreals, other.OpenContainer, other.Selected, other.CharacterName));
     public override bool Equals(object? obj) => Equals(obj as InventorySnapshot);
     public override int GetHashCode() => OpenContainer.GetHashCode();
 }

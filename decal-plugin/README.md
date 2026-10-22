@@ -112,7 +112,8 @@ over the same 30 s: `layoutPasses` (layout passes its window ran in the shared s
 (its part of every window's painted pixels, a stand-in for its part of the shared step, which Avalonia cannot time per window).
 
 The LegACEy Inventory replaces retail's inventory panel: it parks retail's panel and opens and closes its own window with it (by key,
-toolbar or item). The appraisal window likewise replaces retail's examination window: when retail's examination panel shows, it is parked
+toolbar or item). Its vertical layout follows retail's panel: retail's width, "Inventory of" the character's name, the paperdoll over the
+main pack's six columns, and the burden and packs in a column on the right, each pack's fill in an upright bar; only its height changes. The appraisal window likewise replaces retail's examination window: when retail's examination panel shows, it is parked
 and closed, and the appraised object opens in LegACEy's window. Its header's Inspect button opens the Inspect window: the object's 3D
 paperdoll alone, which drags to turn. The client reads every object's look from the game's own messages, so Inspect and the inventory's
 doll work on any server; only objects outside the world (Vault items) ask a LegACEy server (`paperdoll.inspect`). The expand button in the
@@ -179,7 +180,8 @@ The Settings window's Windows tab has a Dereth / Retail switch on each window's 
 writes or deletes every `retail-*-native` file at once. It lights neither choice while the windows differ.
 
 The LegACEy menu's UI size row scales every LegACEy window and the toolbar with its shortcut rows, from 60 to 150 percent (85 to start),
-for every character. A change rebuilds the LegACEy UI at once, as a relog does: plugin windows that were open close and the chat history
+for every character. Ctrl and the wheel over a window or the toolbar scales it on its own, in 5 percent steps from 50 to 200 percent,
+per character, and shows its size over it while it changes. Item icons scale with their window like the rest of it. A change rebuilds the LegACEy UI at once, as a relog does: plugin windows that were open close and the chat history
 clears.
 
 The LegACEy menu's Windows section switches each of the inventory, appraisal, toolbar, chat, vitals, radar and attack bar between LegACEy's window (Custom, the

@@ -14,7 +14,7 @@ public sealed class VaultPlugin : ILegACEyPlugin
     private const string Station = "vault";
     // The window resizes freely; the grid centres its columns in the spare width. The minimum width fits "N selected", Withdraw N and
     // Clear on one line, and at the minimum height one grid row still fits with the status line shown.
-    private static readonly WindowResizing Sizing = new(new Size(290, 306)) { ItemSlots = true };
+    private static readonly WindowResizing Sizing = new(new Size(290, 306));
 
     public string Name => "Vault";
     public string Version => typeof(VaultPlugin).Assembly.GetName().Version.ToString(3);

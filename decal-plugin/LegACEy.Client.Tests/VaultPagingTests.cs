@@ -28,8 +28,8 @@ public sealed class VaultPagingTests
         var grid = vault.Host.Content.GetVisualDescendants().OfType<ScrollViewer>().Single(viewer => viewer.FindAncestorOfType<DerethSlotGrid>() != null);
         Assert.Equal(100, vault.Client.Snapshot!.Items.Count);
         // Ten columns by ten rows, beside the scrollbar that the extra empty drop cell brings.
-        Assert.True(grid.Viewport.Width >= 10 * ItemCellSize.At(1).Pitch, $"viewport {grid.Viewport}");
-        Assert.True(grid.Viewport.Height >= 10 * ItemCellSize.At(1).Pitch, $"viewport {grid.Viewport}");
+        Assert.True(grid.Viewport.Width >= 10 * ItemCellSize.Standard.Pitch, $"viewport {grid.Viewport}");
+        Assert.True(grid.Viewport.Height >= 10 * ItemCellSize.Standard.Pitch, $"viewport {grid.Viewport}");
     });
 
     [Fact]

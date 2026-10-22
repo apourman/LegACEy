@@ -10,6 +10,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Input.Raw;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
@@ -80,13 +81,26 @@ public sealed class AvaloniaPanel : IDisposable
 
     private readonly Control _content;
     private double _scale;
+    // A short note over the content, such as the size while Ctrl and the wheel rescale the window. It hides itself when its time is up.
+    private readonly Border _note;
+    private readonly TextBlock _noteText;
+    private readonly Stopwatch _noteClock = new();
+    private TimeSpan _noteTime;
 
     private AvaloniaPanel(Control content, int width, int height, double scale)
     {
         _ownerThreadId = Thread.CurrentThread.ManagedThreadId;
         _content = content;
         _scale = scale;
-        _window = CreateWindow(content, width, height, scale);
+        _noteText = new TextBlock { FontFamily = DerethPalette.Title, FontSize = 18, Foreground = DerethPalette.CreamBrush };
+        _note = new Border
+        {
+            Background = DerethPalette.Brush(Color.Parse("#E6141109")), BorderBrush = DerethPalette.GoldBrush, BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(14, 6), HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false, IsVisible = false, Child = DerethPalette.CentreInk(_noteText),
+        };
+        // The note lies over the content in the window; Content stays the content, which the host and plugins read.
+        _window = CreateWindow(new Grid { Children = { content, _note } }, width, height, scale);
         _framebuffer = RetainedFramebuffer.Install(_window, width, height);
         _window.Show();
         _rendererObserver = new RendererInvalidationObserver(_window, () => _hasInvalidation = true);
@@ -286,9 +300,23 @@ public sealed class AvaloniaPanel : IDisposable
         return Changed;
     }
 
+    /// <summary>
+    /// Shows <paramref name="text"/> in a plaque centred over the content for <paramref name="time"/>, at the same size on screen whatever the
+    /// panel's scale. Showing it again replaces the text and restarts the time.
+    /// </summary>
+    public void ShowNote(string text, TimeSpan time)
+    {
+        _noteText.Text = text;
+        _note.RenderTransform = new ScaleTransform(1 / _scale, 1 / _scale);
+        _note.IsVisible = true;
+        _noteTime = time;
+        _noteClock.Restart();
+    }
+
     /// <summary>Capture the frame Avalonia rendered, if this panel is shown and its content changed. A failure goes to the error handler.</summary>
     internal void Capture()
     {
+        if (_note.IsVisible && _noteClock.Elapsed >= _noteTime) _note.IsVisible = false;
         // A disposed panel an advance is still walking reports nothing, not its last advance's pixels.
         Changed = false;
         PaintedArea = 0;

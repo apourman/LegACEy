@@ -36,12 +36,12 @@ public sealed class InventoryPluginTests
     public void Switching_layout_hides_one_window_and_opens_the_other_at_its_own_saved_size() => RenderThread.Run(() =>
     {
         var positions = new MemoryWindowPositionStore();
-        positions.Save("Server", "Character", Vertical, (new Point(100, 100), new Size(380, 600)));
+        positions.Save("Server", "Character", Vertical, (new Point(100, 100), new Size(305, 600)));
         positions.Save("Server", "Character", Horizontal, (new Point(120, 120), new Size(700, 500)));
         using var client = new FakeInventoryClient(positions);
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
-        Assert.Equal(new Size(380, 600), client.Windows.Get(Vertical)!.Size);
+        Assert.Equal(new Size(305, 600), client.Windows.Get(Vertical)!.Size);
 
         InventoryDriver.PressLayout(client.Panel(Vertical), InventoryLayout.Horizontal);
         Assert.Null(client.Windows.Get(Vertical));
@@ -51,7 +51,7 @@ public sealed class InventoryPluginTests
         // Hiding kept the vertical window's size; it comes back at that size.
         InventoryDriver.PressLayout(client.Panel(Horizontal), InventoryLayout.Vertical);
         Assert.Null(client.Windows.Get(Horizontal));
-        Assert.Equal(new Size(380, 600), client.Windows.Get(Vertical)!.Size);
+        Assert.Equal(new Size(305, 600), client.Windows.Get(Vertical)!.Size);
         Assert.Equal(VerticalSlotsOn, client.Settings);
     });
 
@@ -380,12 +380,69 @@ public sealed class InventoryPluginTests
         if (layout == InventoryLayout.Horizontal) AssertPackTabsOnOneRow(panel);
     });
 
+    /// <summary>
+    /// The vertical window opens as retail's panel does: the main pack six cells across and eleven down, titled with the character's name.
+    /// Its width is fixed, and the grid has no spare width beside its columns.
+    /// </summary>
+    [Fact]
+    public void The_vertical_window_opens_with_retail_s_six_by_eleven_main_pack_and_the_character_s_name() => RenderThread.Run(() =>
+    {
+        using var client = new FakeInventoryClient(new MemoryWindowPositionStore()) { Art = new InventorySample.SolidArt() };
+        client.Port.Push(InventorySample.Snapshot(characterName: "R o Z"));
+        new InventoryPlugin().Start(client);
+        client.Retail!.Toggle();
+
+        var (width, _, resizing) = client.Requested[Vertical];
+        Assert.Equal(width, resizing!.Minimum.Width);
+        Assert.Equal(width, resizing.Maximum!.Value.Width);
+        var panel = client.Panel(Vertical);
+        InventoryDriver.Tick(panel);
+        var grid = Assert.Single(panel.Content.GetVisualDescendants().OfType<DerethSlotGrid>());
+        var pitch = grid.ColumnPitch;
+        Assert.Equal(6, grid.Cells.Take(12).Select(cell => cell.Bounds.X).Distinct().Count());
+        var viewport = Assert.Single(grid.GetVisualDescendants().OfType<ScrollViewer>()).Viewport.Width;
+        Assert.InRange(viewport - 6 * pitch, 0, pitch / 2);
+        Assert.InRange(grid.Bounds.Height, 11 * pitch, 11.5 * pitch);
+        Assert.Contains(panel.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Inventory of R o Z");
+
+        // The pack column stands right of the paperdoll and the grid, clear of both.
+        var slots = InventoryDriver.Slots(panel);
+        var dollRight = slots.Where(slot => InventoryDriver.Id(slot).Place == SlotPlace.Paperdoll).Max(slot => OnPanel(slot, panel).Right);
+        var packsLeft = slots.Where(slot => InventoryDriver.Id(slot).Place == SlotPlace.Pack).Min(slot => OnPanel(slot, panel).Left);
+        Assert.True(packsLeft > dollRight, "The pack column overlaps the paperdoll.");
+        Assert.True(packsLeft > OnPanel(grid, panel).Right, "The pack column overlaps the grid.");
+
+        // Icons are never scaled down: each one, the header's and the pyreal's too, draws at its native size on the panel.
+        var icons = panel.Content.GetVisualDescendants().OfType<DerethItemIcon>().ToArray();
+        Assert.NotEmpty(icons);
+        foreach (var icon in icons)
+        {
+            var drawn = icon.TranslatePoint(new Avalonia.Point(icon.Bounds.Width, icon.Bounds.Height), panel.Content)!.Value - icon.TranslatePoint(default, panel.Content)!.Value;
+            Assert.Equal(ItemCellSize.Standard.Icon, drawn.X, 1);
+            Assert.Equal(ItemCellSize.Standard.Icon, drawn.Y, 1);
+        }
+    });
+
+    [Fact]
+    public void A_long_character_name_shrinks_the_title_to_fit_down_to_twelve() => RenderThread.Run(() =>
+    {
+        using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
+        client.Port.Push(InventorySample.Snapshot(characterName: "Sir Reginald Ashbourne the Unyielding"));
+        new InventoryPlugin().Start(client);
+        client.Retail!.Toggle();
+        var panel = client.Panel(Vertical);
+        InventoryDriver.Tick(panel);
+
+        var title = Assert.Single(panel.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Inventory of Sir Reginald Ashbourne the Unyielding");
+        Assert.InRange(title.FontSize, 12, 15.5);
+    });
+
     private static void AssertFitsWithOneGridRow(AvaloniaPanel panel)
     {
         Assert.Null(panel.LastError);
         AssertNothingOutsideFrame(panel);
         var grid = Assert.Single(panel.Content.GetVisualDescendants().OfType<DerethSlotGrid>());
-        Assert.True(grid.Bounds.Height >= ItemCellSize.At(1).Cell, $"The grid is {grid.Bounds.Height} px tall, less than one row.");
+        Assert.True(grid.Bounds.Height >= ItemCellSize.Standard.Cell, $"The grid is {grid.Bounds.Height} px tall, less than one row.");
     }
 
     /// <summary>The main pack, the divider and the seven side packs are eight pack tabs, and they all sit on one row.</summary>
@@ -477,7 +534,7 @@ public sealed class InventoryPluginTests
         public LookCache LookCache { get; } = new();
         public ILookSource Looks => new GameLooks(LookCache, () => ServerChannel, SupportsAction, () => Player);
         public string PortalPath => string.Empty;
-        public IGameArtSource Art { get; } = new InventorySample.NoArt();
+        public IGameArtSource Art { get; init; } = new InventorySample.NoArt();
         public IItemDragHost ItemDrag { get; } = new FakeItemDragHost();
         public IInventoryPort Inventory => Port;
         /// <summary>The retail inventory panel the plugin took over, once it has.</summary>

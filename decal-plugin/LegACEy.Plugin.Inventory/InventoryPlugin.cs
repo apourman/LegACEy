@@ -90,7 +90,7 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     {
         var (width, height, sizing) = Shape(view);
         client.ToggleWindowWithChrome(WindowId(view), InventoryWindow.Title, width, height, DefaultLocation,
-            close => CreateWindow(client, view, close), new DerethClientTheme(), sizing, DerethWindow.TitleBarHeight,
+            close => CreateWindow(client, view, close), new DerethClientTheme(), sizing, DerethWindow.CentredTitleBarHeight,
             view.Collapsed ? WindowId(new InventoryView(view.Layout, false)) : null);
     }
 
@@ -143,15 +143,21 @@ public sealed class InventoryPlugin : ILegACEyPlugin
 
     private static string WindowId(InventoryView view) => "inventory-" + view.Layout.ToString().ToLowerInvariant() + (view.Collapsed ? "-compact" : string.Empty);
 
+    private const int VerticalWidth = 305, TallestVertical = 10_000;
+
     /// <summary>
     /// Each view's default size and minimum. The minimum keeps the paperdoll, unless it is collapsed, and one row of the grid visible,
     /// and the horizontal one also keeps the pack strip on one row: the strip is the main pack, a divider and seven side packs, 295 px across.
+    /// The vertical views are retail's panel, so only their height changes: retail's width, the paperdoll and grid with the pack column
+    /// on their right, and the full one opens with the grid's six columns eleven rows deep, as retail's does. Scaling, by the UI size or
+    /// Ctrl and the wheel, changes the whole window.
     /// </summary>
+
     private static (int Width, int Height, WindowResizing Sizing) Shape(InventoryView view) => (view.Layout, view.Collapsed) switch
     {
-        (InventoryLayout.Horizontal, false) => (640, 400, new WindowResizing(new Size(600, 330)) { ItemSlots = true }),
-        (InventoryLayout.Horizontal, true) => (420, 320, new WindowResizing(new Size(340, 220)) { ItemSlots = true }),
-        (_, false) => (360, 530, new WindowResizing(new Size(330, 420)) { ItemSlots = true }),
-        _ => (360, 300, new WindowResizing(new Size(280, 200)) { ItemSlots = true }),
+        (InventoryLayout.Horizontal, false) => (671, 441, new WindowResizing(new Size(631, 371))),
+        (InventoryLayout.Horizontal, true) => (420, 361, new WindowResizing(new Size(340, 261))),
+        (_, false) => (VerticalWidth, 818, new WindowResizing(new Size(VerticalWidth, 448), new Size(VerticalWidth, TallestVertical))),
+        _ => (VerticalWidth, 300, new WindowResizing(new Size(VerticalWidth, 228), new Size(VerticalWidth, TallestVertical))),
     };
 }
