@@ -29,8 +29,18 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     /// <summary>Rebuilds the snapshot when it is stale and the character is in the world.</summary>
     public void Flush(bool inGame)
     {
-        if (inGame) _refresh.Flush();
+        if (!inGame) return;
+        // A buff or debuff on Strength moves the burden limit without any inventory event, so the meter follows it here.
+        var strength = Bridge.Fact(BridgeFact.Strength);
+        if (strength != _strength)
+        {
+            _strength = strength;
+            _refresh.MarkStale();
+        }
+        _refresh.Flush();
     }
+
+    private int _strength;
 
     /// <summary>Logoff: the snapshot empties.</summary>
     public void Clear() => _refresh.Reset();

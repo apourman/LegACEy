@@ -49,11 +49,9 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private static readonly IBrush MutedBrush = DerethPalette.MutedBrush;
     private static readonly IBrush InvalidBrush = DerethPalette.InvalidBrush;
     private static readonly IBrush TealTextBrush = DerethPalette.Brush(DerethPalette.TealText);
-    private static readonly IBrush GoldFillBrush = new LinearGradientBrush
-    {
-        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative),
-        GradientStops = { new GradientStop(Color.Parse("#E2C27E"), 0), new GradientStop(Color.Parse("#9C7A3C"), 1) },
-    };
+    // Retail's burden bands: green to the limit, yellow to twice it, red to three times it.
+    private static readonly IBrush[] BurdenBandBrushes =
+        [DerethPalette.Brush(Color.Parse("#3FA83A")), DerethPalette.Brush(Color.Parse("#D8C23A")), DerethPalette.InvalidBrush];
 
     private readonly IInventoryPort _port;
     private readonly IGameArtSource _art;
@@ -652,7 +650,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         var snapshot = _port.Snapshot;
         var visual = snapshot.Items.FirstOrDefault(item => item.Id == id)?.Visual ?? snapshot.Wielded.FirstOrDefault(item => item.Id == id)?.Visual
-            ?? new ItemVisual(PackOf(snapshot, id)?.Icon ?? 0, 0, 0, 0);
+            ?? PackOf(snapshot, id)?.Visual ?? new ItemVisual(0, 0, 0, 0);
         return ItemIcon.Draw(_art, visual.Underlay, visual.Icon, visual.Overlay, 0, visual.UiEffects);
     }
 
@@ -841,7 +839,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         }
         else
         {
-            tile = Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(new ItemVisual(pack.Icon, 0, 0, 0)), PackOutlined(snapshot, pack.Id, open));
+            tile = Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(pack.Visual), PackOutlined(snapshot, pack.Id, open));
             bar = FillBar(ItemsIn(snapshot, pack.Id), pack.Capacity);
         }
         row.Children.Add(tile);
@@ -859,7 +857,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             return stack;
         }
         var selected = pack.Id == open.Id;
-        stack.Children.Add(Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(new ItemVisual(pack.Icon, 0, 0, 0)), PackOutlined(snapshot, pack.Id, open)));
+        stack.Children.Add(Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(pack.Visual), PackOutlined(snapshot, pack.Id, open)));
         var count = Label(pack.Capacity > 0 ? $"{ItemsIn(snapshot, pack.Id)}/{pack.Capacity}" : " ", selected ? TealTextBrush : MutedBrush, 10);
         count.HorizontalAlignment = HorizontalAlignment.Center;
         stack.Children.Add(count);
@@ -893,13 +891,10 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private void RenderBurden(InventorySnapshot snapshot)
     {
-        var over = snapshot.BurdenLimit > 0 && snapshot.Burden > snapshot.BurdenLimit;
         var percent = snapshot.BurdenLimit > 0 ? snapshot.Burden * 100 / snapshot.BurdenLimit : 0;
         var vertical = _layout == InventoryLayout.Vertical;
-        _burdenMeter.Content = BurdenMeter(snapshot, over, vertical);
-        // Over the limit the reading turns red as well as the meter, so it reads at a glance.
+        _burdenMeter.Content = BurdenMeter(snapshot, vertical);
         _burdenText.Text = vertical ? $"{percent}%" : $"{snapshot.Burden:N0} / {snapshot.BurdenLimit:N0}  ·  {percent}%";
-        _burdenText.Foreground = over ? InvalidBrush : TextBrush;
     }
 
     private static int ItemsIn(InventorySnapshot snapshot, uint container) => snapshot.Items.Count(item => item.Container == container);
@@ -918,10 +913,15 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         return track;
     }
 
-    /// <summary>A groove filled in gold to the burden, full at the most a character can carry (three times the limit). Over the limit the fill turns red.</summary>
-    private static Control BurdenMeter(InventorySnapshot snapshot, bool over, bool vertical)
+    /// <summary>
+    /// A groove filled to the burden, full at the most a character can carry (three times the limit). As retail's, each third
+    /// keeps its band's colour: green to the limit, yellow above it, red above twice it.
+    /// </summary>
+    private static Control BurdenMeter(InventorySnapshot snapshot, bool vertical)
     {
-        var share = snapshot.BurdenLimit <= 0 ? 0 : Math.Min(1.0, (double)snapshot.Burden / (3 * snapshot.BurdenLimit));
+        var load = snapshot.BurdenLimit <= 0 ? 0 : (double)snapshot.Burden / snapshot.BurdenLimit;
+        var bands = BurdenBandBrushes.Select((_, band) => Math.Max(0, Math.Min(1, load - band)) / 3).ToArray();
+        var empty = 1 - bands.Sum();
         var track = new Border
         {
             Background = DerethPalette.GrooveBrush, BorderBrush = DerethPalette.GrooveEdgeBrush, BorderThickness = new Thickness(1),
@@ -936,18 +936,18 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         {
             track.Height = 8;
         }
-        var fill = new Border { Background = over ? InvalidBrush : GoldFillBrush, CornerRadius = new CornerRadius(1) };
+        // The bands run from the foot (or the left) in order; the empty share sits at the far end.
+        var shares = bands.Append(empty).Select(share => $"{share:0.###}*").ToArray();
         var holder = new Grid();
-        if (vertical)
+        if (vertical) holder.RowDefinitions = new RowDefinitions(string.Join(",", Enumerable.Reverse(shares)));
+        else holder.ColumnDefinitions = new ColumnDefinitions(string.Join(",", shares));
+        for (var band = 0; band < bands.Length; band++)
         {
-            holder.RowDefinitions = new RowDefinitions($"{1 - share:0.###}*,{share:0.###}*");
-            Grid.SetRow(fill, 1);
+            var fill = new Border { Background = BurdenBandBrushes[band] };
+            if (vertical) Grid.SetRow(fill, bands.Length - band);
+            else Grid.SetColumn(fill, band);
+            holder.Children.Add(fill);
         }
-        else
-        {
-            holder.ColumnDefinitions = new ColumnDefinitions($"{share:0.###}*,{1 - share:0.###}*");
-        }
-        holder.Children.Add(fill);
         track.Child = holder;
         return track;
     }

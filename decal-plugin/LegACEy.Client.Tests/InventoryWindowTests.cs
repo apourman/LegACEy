@@ -46,12 +46,11 @@ public sealed class InventoryWindowTests
         Assert.True(Slot(host, PaperdollSlot.LowerArms).Selected);
         Assert.False(Slot(host, PaperdollSlot.Head).Selected);
 
-        // Over the limit the reading and the meter's fill both turn to the invalid colour.
+        // Over the limit the reading keeps its plain colour, as retail's does; only the meter's bands colour the load.
         port.Push(InventorySample.Snapshot(burden: 6000));
         InventoryDriver.Tick(host.Host);
         var reading = Assert.Single(host.Host.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "111%");
-        Assert.Same(DerethPalette.InvalidBrush, reading.Foreground);
-        Assert.Single(host.Host.Content.GetVisualDescendants().OfType<Border>(), border => ReferenceEquals(border.Background, DerethPalette.InvalidBrush));
+        Assert.Same(DerethPalette.TextBrush, reading.Foreground);
     });
 
     [Fact]

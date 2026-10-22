@@ -39,6 +39,19 @@ public sealed class InventorySnapshotBuilderTests
     }
 
     [Fact]
+    public void A_focus_keeps_its_overlay_so_Foci_of_Shadow_is_not_drawn_as_Foci_of_Strife()
+    {
+        var reader = new FakeReader { SidePackCapacity = 1 };
+        // Foci of Shadow (WCID 43173) is Foci of Strife's icon under a purple overlay.
+        reader.Objects.Add(new InventoryObjectRead(PackInSlotZero, "Foci of Shadow", Character, 0, 0, 0, 1, 0, 0, true, 43173,
+            new ItemVisual(0x06001F64, underlay: 0, overlay: 0x06006E7A, uiEffects: 0, plate: 0x06005D2D)));
+
+        var focus = InventorySnapshotBuilder.Build(reader).SidePacks.Single().Visual;
+
+        Assert.Equal(new ItemVisual(0x06001F64, 0, 0x06006E7A, 0), focus);
+    }
+
+    [Fact]
     public void Items_sit_at_their_slot_index_in_their_own_pack_and_equipped_items_are_not_items()
     {
         var reader = new FakeReader { SidePackCapacity = 1 };
