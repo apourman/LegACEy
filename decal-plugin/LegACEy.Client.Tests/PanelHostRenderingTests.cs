@@ -341,6 +341,64 @@ public sealed class PanelHostRenderingTests
     });
 
     [Fact]
+    public void Brushes_gradient_stops_transforms_and_collections_added_after_the_first_render_repaint_when_mutated() => RenderThread.Run(() =>
+    {
+        var host = new StackPanel();
+        using var panel = AvaloniaPanel.Create(() => host, 8, 8);
+        Assert.False(panel.Tick());
+        var solid = new SolidColorBrush(Colors.Black);
+        var gradient = new LinearGradientBrush
+        {
+            GradientStops = { new GradientStop(Colors.Black, 0), new GradientStop(Colors.Black, 1) }
+        };
+        var move = new TranslateTransform();
+        var group = new TransformGroup { Children = { move } };
+        host.Children.Add(new Border { Height = 2, Background = solid });
+        host.Children.Add(new Border { Height = 2, Background = gradient });
+        host.Children.Add(new Border { Width = 4, Height = 2, Background = Brushes.White, RenderTransform = group });
+        Assert.True(panel.Tick());
+        Assert.False(panel.Tick());
+
+        solid.Color = Colors.White;
+        Assert.True(panel.Tick());
+        Assert.Equal(0xff, panel.Frame.Pixels[0]);
+        gradient.GradientStops[0].Color = Colors.White;
+        Assert.True(panel.Tick());
+        move.X = 4;
+        Assert.True(panel.Tick());
+        group.Children.Add(new ScaleTransform(0.5, 0.5));
+        Assert.True(panel.Tick());
+        Assert.False(panel.Tick());
+    });
+
+    [Fact]
+    public void A_changed_frame_walks_render_resources_only_after_its_tree_or_theme_changed() => RenderThread.Run(() =>
+    {
+        var brush = new SolidColorBrush(Colors.Black);
+        var host = new StackPanel { Children = { new Border { Height = 4, Background = brush } } };
+        using var panel = AvaloniaPanel.Create(() => host, 8, 8);
+        Assert.False(panel.Tick());
+        var walks = panel.RenderResourceWalks;
+
+        brush.Color = Colors.White;
+        Assert.True(panel.Tick());
+        Assert.Equal(walks, panel.RenderResourceWalks);
+
+        var added = new Border { Height = 4, Background = Brushes.Red };
+        host.Children.Add(added);
+        Assert.True(panel.Tick());
+        Assert.Equal(++walks, panel.RenderResourceWalks);
+
+        host.Children.Remove(added);
+        Assert.True(panel.Tick());
+        Assert.Equal(++walks, panel.RenderResourceWalks);
+
+        panel.ApplyTheme(new LegACEy.Client.Themes.DerethClientTheme());
+        panel.Tick();
+        Assert.Equal(++walks, panel.RenderResourceWalks);
+    });
+
+    [Fact]
     public void Hidden_panel_drains_work_without_capturing_when_another_panel_ticks() => RenderThread.Run(() =>
     {
         using var hidden = AvaloniaPanel.Create(() => new RenderCountControl(), 8, 8);
