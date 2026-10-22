@@ -372,6 +372,21 @@ public sealed class PanelHostRenderingTests
     });
 
     [Fact]
+    public void Mutating_a_brush_assigned_in_code_without_a_tree_change_repaints() => RenderThread.Run(() =>
+    {
+        var border = new Border { Background = Brushes.Black };
+        using var panel = AvaloniaPanel.Create(() => border, 8, 8);
+        Assert.False(panel.Tick());
+        var brush = new SolidColorBrush(Colors.Red);
+        border.Background = brush;
+        Assert.True(panel.Tick());
+        brush.Color = Colors.White;
+        Assert.True(panel.Tick());
+        Assert.Equal(0xff, panel.Frame.Pixels[0]);
+        Assert.False(panel.Tick());
+    });
+
+    [Fact]
     public void A_changed_frame_walks_render_resources_only_after_its_tree_or_theme_changed() => RenderThread.Run(() =>
     {
         var brush = new SolidColorBrush(Colors.Black);

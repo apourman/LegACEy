@@ -336,7 +336,8 @@ public sealed class AvaloniaPanel : IDisposable
         try
         {
             var frame = Frame;
-            if (_renderingSuspended || (!_forceFullFrame && !_hasInvalidation))
+            // A repaint Avalonia did by itself (an unobserved brush mutated in place) is captured too.
+            if (_renderingSuspended || (!_forceFullFrame && !_hasInvalidation && !_framebuffer.HasPainted))
             {
                 frame.DirtyRectangles = Array.Empty<Rectangle>();
                 return false;
@@ -586,8 +587,8 @@ public sealed class AvaloniaPanel : IDisposable
         // Runs on a captured frame after the tree or theme changed, not every one: on a large window it costs milliseconds and allocates
         // per collection it enumerates. Scratch sets and the walk stack are reused, and only properties that can hold a resource are read
         // (reading value-typed ones would box).
-        // ponytail: a brush assigned to a visual's property in code is followed from the next tree change or theme; until then mutating it
-        // in place repaints but sets no invalidation, so its capture waits for the panel's next one. Today's controls invalidate themselves.
+        // A brush assigned to a visual's property in code is followed from the next tree change or theme; until then, mutating it in
+        // place still repaints, and the capture takes what Avalonia painted.
         _walkRenderResources = false;
         RenderResourceWalks++;
         var current = _scanResources;

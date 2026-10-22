@@ -67,6 +67,9 @@ internal sealed class RetainedFramebuffer : IFramebufferPlatformSurface, IFrameb
     /// </summary>
     public PanelFrame Frame => _frame;
 
+    /// <summary>Whether Avalonia painted anything since the last <see cref="TakePainted"/>.</summary>
+    public bool HasPainted => !_painted.IsEmpty;
+
     /// <summary>The union of the areas Avalonia painted since the last call, then clears it: renders can run between two captures.</summary>
     public Rectangle TakePainted()
     {
