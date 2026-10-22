@@ -573,14 +573,19 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private InventorySlotId? PressAt(Point point) => SlotAt(point)?.Tag as InventorySlotId ?? WornAt(point);
 
     /// <summary>
-    /// The worn item on the body part under a point of the doll, outermost first, as retail picks: a coat over the shirt beneath it.
-    /// Null off the doll, or where that part wears nothing.
+    /// The worn item drawn under a point of the doll: the one the server says draws that body part (tall boots up to the knee), or, from
+    /// a server that does not say, the outermost worn there by slot (a coat over the shirt beneath it). Null off the doll, or where that
+    /// part wears nothing.
     /// </summary>
     private InventorySlotId? WornAt(Point point)
     {
         if (_doll == null || DollArea.Child != _doll || this.TranslatePoint(point, _doll) is not { } at) return null;
         var wielded = _port.Snapshot.Wielded;
-        foreach (var slot in InventoryPaperdoll.SlotsOn(_doll.PartAt(at)))
+        var part = _doll.PartAt(at);
+        var drawing = _doll.ItemDrawing(part);
+        if (wielded.FirstOrDefault(item => item.Id == drawing) is { } drawn)
+            return new InventorySlotId(SlotPlace.Paperdoll, drawn.Id, 0, -1, drawn.Slots.Count > 0 ? drawn.Slots[0] : null);
+        foreach (var slot in InventoryPaperdoll.SlotsOn(part))
             if (wielded.FirstOrDefault(item => item.Slots.Contains(slot)) is { } item)
                 return new InventorySlotId(SlotPlace.Paperdoll, item.Id, 0, -1, slot);
         return null;

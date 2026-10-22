@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -23,6 +24,8 @@ public sealed class PaperdollView : Border
     // Counts requests and leaving the tree: a reply or build from an older request, or from before the view left, is dropped.
     private int _request;
     private readonly uint _target;
+    // A still doll's worn item for each body part it draws, while the look source knows them.
+    private IReadOnlyDictionary<int, uint>? _partItems;
 
     /// <param name="target">The object to show, zero for the player.</param>
     public PaperdollView(ILookSource looks, string portalPath, uint target = 0)
@@ -53,6 +56,9 @@ public sealed class PaperdollView : Border
     /// <summary>The body part (a setup part number) drawn at a point of this view, or -1.</summary>
     public int PartAt(Avalonia.Point point) => _view.PartAt(point);
 
+    /// <summary>The worn item a still doll draws the body part with, as its look source tells it; zero when that is not known.</summary>
+    public uint ItemDrawing(int part) => _partItems != null && _partItems.TryGetValue(part, out var item) ? item : 0;
+
     private void Start()
     {
         _changed = _looks.WhenChanged(_target, Refresh);
@@ -71,6 +77,11 @@ public sealed class PaperdollView : Border
         if (_view.Model == null) _status.Text = "Loading…";
         var request = ++_request;
         var still = Still;
+        if (still)
+            _looks.RequestParts(parts =>
+            {
+                if (request == _request) _partItems = parts;
+            });
         _looks.Request(_target, (appearance, why) =>
         {
             if (request != _request) return;

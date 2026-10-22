@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using LegACEy.Client.GameArt;
 
 namespace LegACEy.Client.Demo;
@@ -12,6 +13,8 @@ public interface ILookSource
     void Request(uint objectId, Action<CharacterAppearance?, string> reply);
     /// <summary>Calls <paramref name="changed"/> when the object's look may have changed, until disposed.</summary>
     IDisposable WhenChanged(uint objectId, Action changed);
+    /// <summary>Asks which worn item draws each body part of the player's look; the reply is null where that is not known.</summary>
+    void RequestParts(Action<IReadOnlyDictionary<int, uint>?> reply);
 }
 
 /// <summary>
@@ -70,6 +73,25 @@ public sealed class GameLooks : ILookSource
                 return;
             }
             reply(read, string.Empty);
+        });
+    }
+
+    /// <summary>Only the LegACEy server knows: the look the game sends merges every worn item into one.</summary>
+    public void RequestParts(Action<IReadOnlyDictionary<int, uint>?> reply)
+    {
+        var channel = _channel();
+        if (!_serverHas(PaperdollProtocol.Parts) || !channel.IsAvailable)
+        {
+            reply(null);
+            return;
+        }
+        channel.Request(PaperdollProtocol.Parts, Array.Empty<byte>(), answer =>
+        {
+            IReadOnlyDictionary<int, uint>? parts = null;
+            // A refused or garbled reply is not thrown, which would turn off the plugin that asked: the parts are just not known.
+            try { if (answer.Ok) parts = PaperdollProtocol.ReadParts(answer.Body); }
+            catch (Exception) { }
+            reply(parts);
         });
     }
 

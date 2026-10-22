@@ -23,6 +23,22 @@ public sealed class PaperdollProtocolTests
     }
 
     [Fact]
+    public void Parts_name_the_worn_item_that_draws_each_body_part()
+    {
+        var body = ChannelWire.Body(w =>
+        {
+            w.Write((ushort)2);
+            w.Write((byte)2); w.Write(0x80000010u); // a lower leg, drawn by tall boots
+            w.Write((byte)16); w.Write(0x80000011u);
+        });
+
+        var parts = PaperdollProtocol.ReadParts(body);
+
+        Assert.Equal(0x80000010u, parts[2]);
+        Assert.Equal(0x80000011u, parts[16]);
+    }
+
+    [Fact]
     public void A_look_brings_what_the_character_holds_and_a_look_without_them_holds_nothing()
     {
         var body = ChannelWire.Body(w =>

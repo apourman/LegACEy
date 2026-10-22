@@ -2,6 +2,7 @@ using System;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
+using ACE.Entity.Enum;
 using ACE.Server.ClientChannel;
 using ACE.Server.Market;
 using ACE.Server.Tests.ClientChannel;
@@ -23,6 +24,28 @@ namespace ACE.Server.Tests.Market
 
                 Assert.AreEqual(ChannelStatus.Ok, inspect.Status, ChannelTestClient.Text(inspect.Body));
                 CollectionAssert.AreEqual(look.Body, inspect.Body);
+            }
+        }
+
+        [TestMethod]
+        public void Parts_NameTheWornItemThatDrawsEachBodyPart()
+        {
+            PaperdollChannelActions.Register();
+            var player = VaultTestWorld.NewPlayer(VaultTestWorld.NewAccountId());
+            var helm = VaultTestWorld.NewItem(VaultTestWorld.HelmWcid);
+            Assert.IsTrue(player.TryEquipObject(helm, EquipMask.HeadWear));
+            player.SetCharacterOption(CharacterOption.ShowYourHelmOrHeadGear, true); // a hidden helm draws nothing
+            using (VaultTestWorld.Online(player))
+            {
+                var reply = ChannelTestClient.Request(player, PaperdollChannelActions.Parts, Array.Empty<byte>());
+
+                Assert.AreEqual(ChannelStatus.Ok, reply.Status);
+                var parts = new System.Collections.Generic.Dictionary<byte, uint>();
+                using (var reader = new System.IO.BinaryReader(new System.IO.MemoryStream(reply.Body)))
+                    for (int i = 0, count = reader.ReadUInt16(); i < count; i++)
+                        parts[reader.ReadByte()] = reader.ReadUInt32();
+                // The head is part 16 of the human setups.
+                Assert.AreEqual(helm.Guid.ClientGUID, parts[16]);
             }
         }
 
