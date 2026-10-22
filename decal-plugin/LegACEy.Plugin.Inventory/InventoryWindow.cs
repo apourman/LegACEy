@@ -510,9 +510,13 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             }
             var covered = InventorySnapshotBuilder.PartsCovered(_port.CoverageOf(dragged));
             var mask = _port.WieldMask(dragged, wornAt);
-            _doll!.Outline(covered.Count > 0 ? covered : InventorySnapshotBuilder.PartsUnder(mask != 0 ? mask : _port.Snapshot.ValidLocationsOf(dragged) ?? 0),
-                drop.Value.Accepted ? GoldOutline : InvalidOutline);
-            return;
+            var parts = covered.Count > 0 ? covered : InventorySnapshotBuilder.PartsUnder(mask != 0 ? mask : _port.Snapshot.ValidLocationsOf(dragged) ?? 0);
+            // A weapon or a ring covers no body part, so the doll is framed instead.
+            if (parts.Count > 0)
+            {
+                _doll!.Outline(parts, drop.Value.Accepted ? GoldOutline : InvalidOutline);
+                return;
+            }
         }
         Light(at.Value.Shown, drop.Value.Accepted ? GoldBrush : InvalidBrush);
         OutlineLifted(dragged);
@@ -621,7 +625,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     /// </summary>
     private InventorySlotId? WornAt(Point point)
     {
-        if (_doll == null || DollArea.Child != _doll || this.TranslatePoint(point, _doll) is not { } at) return null;
+        if (_doll == null || DollArea.Child != _doll || !Over(_doll, point) || this.TranslatePoint(point, _doll) is not { } at) return null;
         var wielded = _port.Snapshot.Wielded;
         var part = _doll.PartAt(at);
         var drawn = DrawnParts(wielded);
