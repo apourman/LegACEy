@@ -95,6 +95,7 @@ internal sealed class RetainedFramebuffer : IFramebufferPlatformSurface, IFrameb
         // Pinned while Avalonia may draw into it: Skia wraps the address and reuses it render after render.
         _pin = GCHandle.Alloc(_frame.Pixels, GCHandleType.Pinned);
         _fresh = true;
+        _painted = Rectangle.Empty;
     }
 
     public IFramebufferRenderTarget CreateFramebufferRenderTarget() => this;
@@ -136,31 +137,35 @@ internal sealed class RetainedFramebuffer : IFramebufferPlatformSurface, IFrameb
     /// <summary>The compositor target's internals the frame reads and widens, compiled once.</summary>
     private static class CompositorTarget
     {
-        private static readonly Type Type = typeof(Compositor).Assembly.GetType("Avalonia.Rendering.Composition.Server.ServerCompositionTarget")
-            ?? throw Moved("ServerCompositionTarget");
+        private static readonly Type ServerType = typeof(Compositor).Assembly
+            .GetType("Avalonia.Rendering.Composition.Server.ServerCompositionTarget") ?? throw Moved("ServerCompositionTarget");
         private static readonly ParameterExpression Target = Expression.Parameter(typeof(object));
-        private static readonly ParameterExpression Rect = Expression.Parameter(typeof(LtrbPixelRect));
-        private static readonly MemberExpression DirtyRects = Expression.Field(Expression.Convert(Target, Type), Type.GetField("DirtyRects") ?? throw Moved("DirtyRects"));
+        private static readonly ParameterExpression Area = Expression.Parameter(typeof(LtrbPixelRect));
+        private static readonly UnaryExpression Server = Expression.Convert(Target, ServerType);
+        private static readonly MemberExpression DirtyRects = Expression.Field(Server, ServerType.GetField("DirtyRects") ?? throw Moved("DirtyRects"));
 
         /// <summary>The area the compositor paints next: DirtyRects.CombinedRect.</summary>
         public static readonly Func<object, LtrbPixelRect> Dirty = Expression.Lambda<Func<object, LtrbPixelRect>>(
             Expression.Property(DirtyRects, DirtyRects.Type.GetProperty("CombinedRect") ?? throw Moved("CombinedRect")), Target).Compile();
 
         /// <summary>Set when the target's own properties (size, scaling, shown) changed: the whole window must be painted.</summary>
-        public static readonly Func<object, bool> FullRedrawRequested = Expression.Lambda<Func<object, bool>>(Expression.Field(Expression.Convert(Target, Type),
-            Type.GetField("_fullRedrawRequested", BindingFlags.Instance | BindingFlags.NonPublic) ?? throw Moved("_fullRedrawRequested")), Target).Compile();
+        public static readonly Func<object, bool> FullRedrawRequested = Expression.Lambda<Func<object, bool>>(Expression.Field(Server,
+            ServerType.GetField("_fullRedrawRequested", BindingFlags.Instance | BindingFlags.NonPublic) ?? throw Moved("_fullRedrawRequested")),
+            Target).Compile();
 
         public static readonly Action<object, LtrbPixelRect> AddDirty = Expression.Lambda<Action<object, LtrbPixelRect>>(
-            Expression.Call(DirtyRects, DirtyRects.Type.GetMethod("AddRect") ?? throw Moved("AddRect"), Rect), Target, Rect).Compile();
+            Expression.Call(DirtyRects, DirtyRects.Type.GetMethod("AddRect") ?? throw Moved("AddRect"), Area), Target, Area).Compile();
 
         /// <summary>A window's server-side compositor target: its CompositingRenderer's CompositionTarget's Server.</summary>
         public static object Of(Window window)
         {
             var renderer = ((IRenderRoot)window).Renderer;
-            var target = renderer.GetType().GetProperty("CompositionTarget", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(renderer);
+            var target = renderer.GetType().GetProperty("CompositionTarget", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.GetValue(renderer);
             // CompositionTarget's Server hides its base class's, so only the declared one has the target's type.
-            var server = target?.GetType().GetProperty("Server", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)?.GetValue(target);
-            return server != null && Type.IsInstanceOfType(server) ? server : throw Moved("CompositionTarget.Server");
+            var server = target?.GetType().GetProperty("Server", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
+                ?.GetValue(target);
+            return server != null && ServerType.IsInstanceOfType(server) ? server : throw Moved("CompositionTarget.Server");
         }
 
         private static NotSupportedException Moved(string member) =>
