@@ -2450,7 +2450,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_toolbar is not { } toolbar || _toolbarSurface is not { } surface) return;
         var before = surface.Bounds;
         var scale = surface.Panel.Scale;
-        toolbar.InvalidateMeasure();
+        // Every part, not just the toolbar: outside a layout pass a measure skips a part last measured at the same size, though a row
+        // added inside it changed it. A shown window's layout pass catches it up; the toolbar's is hidden until its first draw.
+        Avalonia.Layout.LayoutHelper.InvalidateSelfAndChildrenMeasure(toolbar);
         toolbar.Measure(Avalonia.Size.Infinity);
         surface.Panel.Resize(WholePixels(toolbar.DesiredSize.Width * scale), WholePixels(toolbar.DesiredSize.Height * scale));
         var size = surface.Bounds.Size;

@@ -515,7 +515,8 @@ public sealed class AvaloniaPanel : IDisposable
         {
             Invalidate();
             _pointerPosition = new Point(-1, -1);
-            SendPointer(RawPointerEventType.Move, new Point(-1, -1));
+            // Not a move to (-1, -1): below 100% the remembered pixel point truncates to (0, 0), inside the window, and the next repaint hovers it again.
+            SendPointer(RawPointerEventType.LeaveWindow, new Point(-1, -1));
         });
     }
 
