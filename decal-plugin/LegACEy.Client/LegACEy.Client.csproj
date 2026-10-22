@@ -18,6 +18,8 @@
   <PropertyGroup>
     <PublishTrimmed>true</PublishTrimmed>
     <TrimMode>partial</TrimMode>
+    <!-- Trimming turns EventSource off by default; GcStarts reads the runtime's GC events for the performance log. -->
+    <EventSourceSupport>true</EventSourceSupport>
     <!-- Trim warnings show on publish only; plain builds and tests stay quiet. -->
     <EnableTrimAnalyzer Condition="'$(_IsPublishing)' != 'true'">false</EnableTrimAnalyzer>
     <!-- Precompiled x86 code: without it the first in-world frame spent about 1 s in the JIT (in game, 11 Oct). -->

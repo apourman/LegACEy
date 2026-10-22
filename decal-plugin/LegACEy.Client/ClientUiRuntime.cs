@@ -197,6 +197,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private DateTime _lastTestFailureCheck;
     private readonly FrameSamples _uiFrameTimes = new();
     private readonly FrameSamples _postUiDrawTimes = new();
+    // One listener for the process: the runtime is rebuilt per session, the GC is not.
+    private static readonly GcStarts GcStartCounts = new();
+    private long _lastAllocatedBytes = GC.GetTotalAllocatedBytes();
+    private TimeSpan _lastGcPause = GC.GetTotalPauseDuration();
     private ScreenSurface? _hovered;
     private readonly InputRouterService _inputRouter = new();
     private Point _pointer;
@@ -1235,6 +1239,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             using var process = Process.GetCurrentProcess();
             Log($"UI performance sample: frames={_uiFrameTimes.Count} uiFrame={_uiFrameTimes.TakeSummary()}ms postUiDraw={_postUiDrawTimes.TakeSummary()}ms surfaces={_featureSurfaces.Count} privateBytes={process.PrivateMemorySize64} virtualBytes={process.VirtualMemorySize64} managedBytes={GC.GetTotalMemory(false)} gen0={GC.CollectionCount(0)} gen1={GC.CollectionCount(1)} gen2={GC.CollectionCount(2)}.");
+            LogGcSample();
             LogSurfaceSample("toolbar", _toolbarSurface);
             foreach (var pair in _featureSurfaces) LogSurfaceSample(pair.Key, pair.Value);
             LogSurfaceSample("split-tab", _splitTabSurface);
@@ -1245,6 +1250,28 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             Log($"Could not collect a UI performance sample: {exception.Message}");
         }
+    }
+
+    /// <summary>
+    /// Why the GC runs: what was allocated and how long the game was paused since the last line, the memory load against the
+    /// threshold where the GC turns aggressive, the last full collection's pause, and the collections by generation and reason.
+    /// </summary>
+    private void LogGcSample()
+    {
+        var allocated = GC.GetTotalAllocatedBytes();
+        var pause = GC.GetTotalPauseDuration();
+        var info = GC.GetGCMemoryInfo(GCKind.Any);
+        var full = GC.GetGCMemoryInfo(GCKind.FullBlocking);
+        var background = GC.GetGCMemoryInfo(GCKind.Background);
+        const double MB = 1024 * 1024;
+        Log($"UI performance gc: allocatedMB={(allocated - _lastAllocatedBytes) / MB:F1} pausedMs={(pause - _lastGcPause).TotalMilliseconds:F1} " +
+            $"heapMB={info.HeapSizeBytes / MB:F1} fragmentedMB={info.FragmentedBytes / MB:F1} committedMB={info.TotalCommittedBytes / MB:F1} " +
+            $"loadMB={info.MemoryLoadBytes / MB:F0} highLoadMB={info.HighMemoryLoadThresholdBytes / MB:F0} availableMB={info.TotalAvailableMemoryBytes / MB:F0} " +
+            $"lastFullPauseMs={(full.Index == 0 ? "-" : full.PauseDurations[0].TotalMilliseconds.ToString("F1"))} " +
+            $"lastBackgroundPauseMs={(background.Index == 0 ? "-" : background.PauseDurations[0].TotalMilliseconds.ToString("F1"))} " +
+            $"starts: {GcStartCounts.TakeSummary()}.");
+        _lastAllocatedBytes = allocated;
+        _lastGcPause = pause;
     }
 
     private static void LogSurfaceSample(string name, ScreenSurface? surface)
