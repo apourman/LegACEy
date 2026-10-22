@@ -47,6 +47,12 @@ public sealed class AvaloniaPanel : IDisposable
     private readonly RendererInvalidationObserver _rendererObserver;
     private readonly HashSet<AvaloniaObject> _renderResources = new();
     private readonly HashSet<INotifyCollectionChanged> _renderCollections = new();
+    // Scratch for ObserveRenderResources, reused every captured frame; the property lists are shared by all panels on the UI thread.
+    private readonly HashSet<AvaloniaObject> _scanResources = new();
+    private readonly HashSet<INotifyCollectionChanged> _scanCollections = new();
+    private readonly Stack<Visual> _scanVisuals = new();
+    private readonly List<object> _scanRemoved = new();
+    private static readonly Dictionary<Type, AvaloniaProperty[]> ResourceProperties = new();
     private IStyle? _themeStyles;
     private IClientTheme? _theme;
     // Use one mouse device per window so implicit capture and click state survive
@@ -518,28 +524,56 @@ public sealed class AvaloniaPanel : IDisposable
     {
         // Composition can update mutable brushes without a SceneInvalidated event.
         // Follow their nested resources (including gradient stops), releasing old trees.
-        var current = new HashSet<AvaloniaObject>();
-        var collections = new HashSet<INotifyCollectionChanged>();
-        foreach (var visual in _window.GetVisualDescendants().Prepend(_window))
-            foreach (var property in AvaloniaPropertyRegistry.Instance.GetRegistered(visual.GetType()))
+        // Runs after every captured frame, so it allocates nothing: scratch sets and the walk stack are reused,
+        // and only properties that can hold a resource are read (reading value-typed ones would box).
+        var current = _scanResources;
+        var collections = _scanCollections;
+        current.Clear();
+        collections.Clear();
+        _scanVisuals.Push(_window);
+        while (_scanVisuals.Count > 0)
+        {
+            var visual = _scanVisuals.Pop();
+            foreach (var property in ResourcePropertiesOf(visual.GetType()))
                 CollectRenderResource(visual.GetValue(property), current, collections);
+            if (visual.GetVisualChildren() is IReadOnlyList<Visual> children)
+                for (var i = children.Count - 1; i >= 0; i--) _scanVisuals.Push(children[i]);
+            else
+                foreach (var child in visual.GetVisualChildren()) _scanVisuals.Push(child);
+        }
 
-        foreach (var removed in _renderResources.Except(current).ToArray())
+        foreach (var resource in _renderResources)
+            if (!current.Contains(resource)) _scanRemoved.Add(resource);
+        foreach (AvaloniaObject removed in _scanRemoved)
         {
             removed.PropertyChanged -= OnRenderResourceInvalidated;
             _renderResources.Remove(removed);
         }
+        _scanRemoved.Clear();
         foreach (var added in current)
             if (_renderResources.Add(added))
                 added.PropertyChanged += OnRenderResourceInvalidated;
-        foreach (var removed in _renderCollections.Except(collections).ToArray())
+        foreach (var collection in _renderCollections)
+            if (!collections.Contains(collection)) _scanRemoved.Add(collection);
+        foreach (INotifyCollectionChanged removed in _scanRemoved)
         {
             removed.CollectionChanged -= OnRenderCollectionInvalidated;
             _renderCollections.Remove(removed);
         }
+        _scanRemoved.Clear();
         foreach (var added in collections)
             if (_renderCollections.Add(added))
                 added.CollectionChanged += OnRenderCollectionInvalidated;
+    }
+
+    /// <summary>The registered properties of a type that can hold a brush, transform or collection: not value types, not strings.</summary>
+    private static AvaloniaProperty[] ResourcePropertiesOf(Type type)
+    {
+        if (!ResourceProperties.TryGetValue(type, out var properties))
+            ResourceProperties[type] = properties = AvaloniaPropertyRegistry.Instance.GetRegistered(type)
+                .Where(property => !property.PropertyType.IsValueType && property.PropertyType != typeof(string))
+                .ToArray();
+        return properties;
     }
 
     private static void CollectRenderResource(object? value, HashSet<AvaloniaObject> resources,
@@ -547,7 +581,7 @@ public sealed class AvaloniaPanel : IDisposable
     {
         if (value is AvaloniaObject resource && resource is not StyledElement && resources.Add(resource))
         {
-            foreach (var property in AvaloniaPropertyRegistry.Instance.GetRegistered(resource.GetType()))
+            foreach (var property in ResourcePropertiesOf(resource.GetType()))
                 CollectRenderResource(resource.GetValue(property), resources, collections);
         }
         else if (value is INotifyCollectionChanged collection && collections.Add(collection) && value is IEnumerable items)
