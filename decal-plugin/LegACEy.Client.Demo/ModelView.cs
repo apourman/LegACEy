@@ -51,7 +51,7 @@ public sealed class ModelView : Border
         PointerPressed += (_, e) =>
         {
             _dragFrom = e.GetPosition(this);
-            _panning = (e.KeyModifiers & KeyModifiers.Shift) != 0;
+            _panning = !TurnsOnly && (e.KeyModifiers & KeyModifiers.Shift) != 0;
             e.Pointer.Capture(this);
             e.Handled = true;
         };
@@ -66,14 +66,15 @@ public sealed class ModelView : Border
                 // About the view's axes, after the turn the model has, so a drag always turns it the way the pointer goes.
                 Orientation = Quaternion.Normalize(Quaternion.Concatenate(Orientation, Quaternion.Concatenate(
                     Quaternion.CreateFromAxisAngle(Vector3.UnitZ, (float)(point.X - from.X) * 0.01f),
-                    Quaternion.CreateFromAxisAngle(Vector3.UnitX, (float)(point.Y - from.Y) * 0.01f))));
+                    Quaternion.CreateFromAxisAngle(Vector3.UnitX, TurnsOnly ? 0 : (float)(point.Y - from.Y) * 0.01f))));
             _dragFrom = point;
         };
         PointerReleased += (_, e) => { _dragFrom = null; e.Pointer.Capture(null); };
         PointerWheelChanged += (_, e) =>
         {
-            // The height under the pointer stays under it as the zoom changes; with ZoomsToTop, the height at the view's top edge does.
-            var offset = (float)(0.5 - (ZoomsToTop ? 0 : e.GetPosition(this).Y / ViewHeight())) * Framing;
+            if (TurnsOnly) return;
+            // The height under the pointer stays under it as the zoom changes.
+            var offset = (float)(0.5 - e.GetPosition(this).Y / ViewHeight()) * Framing;
             var under = Focus + offset / Zoom;
             Zoom = Math.Max(MinZoom, Math.Min(MaxZoom, Zoom * (e.Delta.Y > 0 ? 1.1f : 1 / 1.1f)));
             Focus = Clamp01(under - offset / Zoom);
@@ -98,8 +99,8 @@ public sealed class ModelView : Border
 
     public float Zoom { get; set; } = 1f;
 
-    /// <summary>The wheel zooms toward the model's top rather than the pointer, so a character's head stays in view.</summary>
-    public bool ZoomsToTop { get; set; }
+    /// <summary>Dragging only turns the model about its upright axis: no tilt, no Shift-drag move, no wheel zoom.</summary>
+    public bool TurnsOnly { get; set; }
 
     /// <summary>The height the view centres on, as a share of the model's height: 0 its feet, 1 its top.</summary>
     public float Focus { get; set; } = 0.5f;

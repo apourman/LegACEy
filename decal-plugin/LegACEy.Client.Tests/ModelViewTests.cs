@@ -44,11 +44,18 @@ public sealed class ModelViewTests
         Assert.True(view.Focus > 0.5f);
         Assert.Equal(before, view.Focus + (0.5f - 20 / 200f) * ModelView.Framing / view.Zoom, 3);
 
-        // Zooming toward the top keeps the view's top edge, above the head, wherever the pointer is.
+        // Turning only: an up-and-down drag, a Shift-drag and the wheel leave the model upright, unmoved and unzoomed.
         view.ResetView();
-        view.ZoomsToTop = true;
-        panel.MouseWheel(50, 150, 0, 1);
-        Assert.True(view.Zoom > 1);
-        Assert.Equal(0.5f + 0.5f * ModelView.Framing, view.Focus + 0.5f * ModelView.Framing / view.Zoom, 3);
+        view.TurnsOnly = true;
+        panel.PointerDown(50, 50);
+        panel.PointerMove(50, 150);
+        panel.PointerUp(50, 150);
+        panel.PointerDown(50, 100, KeyModifiers.Shift);
+        panel.PointerMove(50, 150);
+        panel.PointerUp(50, 150);
+        panel.MouseWheel(50, 100, 0, 1);
+        Assert.Equal(-1, System.Numerics.Vector3.Transform(System.Numerics.Vector3.UnitY, view.Orientation).Y, 3);
+        Assert.Equal(0.5f, view.Focus, 3);
+        Assert.Equal(1f, view.Zoom, 3);
     });
 }
