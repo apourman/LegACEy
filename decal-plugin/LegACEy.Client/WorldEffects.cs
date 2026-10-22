@@ -181,11 +181,18 @@ internal sealed unsafe class WorldEffects : IDisposable
     private readonly PhaseTimes _phases = new();
     private int _drawCalls;
     private int _frames;
+    private long _hookTicks;
+    private long _hookBytes;
+    private long _retailDrawTicks;
 
     /// <summary>The effect timings and how many of retail's indexed draws passed through the hook per world frame, then starts again.</summary>
     public string TakePerformanceSummary()
     {
-        var summary = $"frames={_frames} drawCallsPerFrame={(_frames == 0 ? 0 : _drawCalls / _frames)} {_phases.TakeSummary()}";
+        var hookMs = Stopwatch.GetElapsedTime(0, _hookTicks).TotalMilliseconds;
+        var summary = $"frames={_frames} drawCallsPerFrame={(_frames == 0 ? 0 : _drawCalls / _frames)} " +
+            $"drawHook={(_frames == 0 ? 0 : hookMs / _frames):F3}ms/frame,{_hookBytes / 1024}KB {_phases.TakeSummary()}";
+        _hookTicks = 0;
+        _hookBytes = 0;
         _drawCalls = 0;
         _frames = 0;
         return summary;
@@ -194,9 +201,23 @@ internal sealed unsafe class WorldEffects : IDisposable
     /// <summary>The object to outline, zero for none. Set each frame.</summary>
     public uint Selected { get; set; }
 
+    // Measures what the hook adds to each of retail's draws: its own time (retail's draw excluded) and allocation.
     private int OnDrawIndexed(IntPtr device, int type, int baseVertex, uint minIndex, uint vertices, uint startIndex, uint primitives)
     {
         _drawCalls++;
+        var start = Stopwatch.GetTimestamp();
+        var bytes = GC.GetAllocatedBytesForCurrentThread();
+        _retailDrawTicks = 0;
+        try { return OnDrawIndexedCore(device, type, baseVertex, minIndex, vertices, startIndex, primitives); }
+        finally
+        {
+            _hookTicks += Stopwatch.GetTimestamp() - start - _retailDrawTicks;
+            _hookBytes += GC.GetAllocatedBytesForCurrentThread() - bytes;
+        }
+    }
+
+    private int OnDrawIndexedCore(IntPtr device, int type, int baseVertex, uint minIndex, uint vertices, uint startIndex, uint primitives)
+    {
         var original = _drawHook.OriginalFunction;
         if (_forcing)
         {
@@ -211,7 +232,9 @@ internal sealed unsafe class WorldEffects : IDisposable
             try { ApplyFog(fog); }
             catch (Exception exception) { Fail(exception); }
         }
+        var retailStart = Stopwatch.GetTimestamp();
         var result = original(device, type, baseVertex, minIndex, vertices, startIndex, primitives);
+        _retailDrawTicks = Stopwatch.GetTimestamp() - retailStart;
         // A glow's black fog colour is not left for a draw that does not pass through these hooks.
         if (Fogging && _worldFog is { } grey && device == _device && !_failed)
         {
@@ -267,7 +290,7 @@ internal sealed unsafe class WorldEffects : IDisposable
             RestoreFog(retailFog);
         }
         if (_failed) return;
-        var start = Stopwatch.GetTimestamp();
+        var start = PhaseTimes.Start();
         try { DrawOutside(PlayerCell(), shown: true); }
         catch (Exception exception) { Fail(exception); }
         _phases.Add("outside", start);
@@ -409,17 +432,17 @@ internal sealed unsafe class WorldEffects : IDisposable
                 var cell = PlayerCell();
                 // The water first, so the fog and weather fall over it.
                 _water.PlayerCell = cell;
-                var start = Stopwatch.GetTimestamp();
+                var start = PhaseTimes.Start();
                 _water.Draw();
                 _phases.Add("water", start);
                 // From indoors they were drawn after the landscape, or, with no opening to outside in view, not at all.
                 if (!_outsideDrawn)
                 {
-                    start = Stopwatch.GetTimestamp();
+                    start = PhaseTimes.Start();
                     DrawOutside(cell, shown: !_viewIndoors);
                     _phases.Add("outside", start);
                 }
-                start = Stopwatch.GetTimestamp();
+                start = PhaseTimes.Start();
                 _combat.Draw(_fog);
                 if (!_outlined && Selected != 0) DrawCulledSelection();
                 _phases.Add("combat+selection", start);

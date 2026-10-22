@@ -29,24 +29,56 @@ internal sealed class FrameSamples
     private double Percentile(double p) => _values[Math.Max(0, (int)Math.Ceiling(p * _values.Count) - 1)];
 }
 
-/// <summary>Named <see cref="FrameSamples"/>, one per phase of a frame, so the log shows where the worst frames go.</summary>
-internal sealed class PhaseTimes
+/// <summary>The worst and total of a timing, for parts too many to keep every sample of.</summary>
+internal sealed class PeakTimes
 {
-    private readonly Dictionary<string, FrameSamples> _phases = new(StringComparer.Ordinal);
+    private double _max;
+    private double _total;
 
-    /// <summary>Records the time since <paramref name="start"/>, a <see cref="System.Diagnostics.Stopwatch.GetTimestamp"/>, under the phase.</summary>
-    public void Add(string phase, long start)
+    public void Add(double milliseconds)
     {
-        if (!_phases.TryGetValue(phase, out var samples)) _phases[phase] = samples = new FrameSamples();
-        samples.Add(System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds);
+        if (milliseconds > _max) _max = milliseconds;
+        _total += milliseconds;
     }
 
-    /// <summary>"phase=p50/p95/max …" for each phase that ran, then forgets the samples; "-" when none ran.</summary>
+    /// <summary>"max/total" in milliseconds, then starts again.</summary>
+    public string TakeSummary()
+    {
+        var summary = string.Format(CultureInfo.InvariantCulture, "{0:F2}/{1:F1}", _max, _total);
+        _max = _total = 0;
+        return summary;
+    }
+}
+
+/// <summary>Named phases of a frame: their times (<see cref="FrameSamples"/>) and the bytes this thread allocated in each.</summary>
+internal sealed class PhaseTimes
+{
+    private readonly Dictionary<string, (FrameSamples Times, long[] Bytes)> _phases = new(StringComparer.Ordinal);
+
+    /// <summary>Where a phase starts: the time and this thread's allocated bytes.</summary>
+    public readonly record struct Mark(long Timestamp, long Bytes);
+
+    public static Mark Start() => new(System.Diagnostics.Stopwatch.GetTimestamp(), GC.GetAllocatedBytesForCurrentThread());
+
+    /// <summary>Records the time and allocation since <paramref name="start"/> under the phase.</summary>
+    public void Add(string phase, Mark start)
+    {
+        var bytes = GC.GetAllocatedBytesForCurrentThread() - start.Bytes;
+        if (!_phases.TryGetValue(phase, out var entry)) _phases[phase] = entry = (new FrameSamples(), new long[1]);
+        entry.Times.Add(System.Diagnostics.Stopwatch.GetElapsedTime(start.Timestamp).TotalMilliseconds);
+        entry.Bytes[0] += bytes;
+    }
+
+    /// <summary>"phase=p50/p95/max ms,KB allocated" for each phase that ran, then forgets the samples; "-" when none ran.</summary>
     public string TakeSummary()
     {
         var parts = new List<string>();
         foreach (var pair in _phases)
-            if (pair.Value.Count > 0) parts.Add($"{pair.Key}={pair.Value.TakeSummary()}");
+        {
+            if (pair.Value.Times.Count == 0) continue;
+            parts.Add($"{pair.Key}={pair.Value.Times.TakeSummary()},{pair.Value.Bytes[0] / 1024}KB");
+            pair.Value.Bytes[0] = 0;
+        }
         return parts.Count == 0 ? "-" : string.Join(" ", parts);
     }
 }
