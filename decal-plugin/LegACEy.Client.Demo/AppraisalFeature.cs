@@ -451,5 +451,6 @@ public sealed class AppraisingInventoryPort : IInventoryPort
     public void MoveToContainer(uint itemId, uint containerId, int slotIndex) => _inner.MoveToContainer(itemId, containerId, slotIndex);
     public uint WieldMask(uint itemId, PaperdollSlot slot) => _inner.WieldMask(itemId, slot);
     public void Wield(uint itemId, PaperdollSlot slot) => _inner.Wield(itemId, slot);
+    public uint CoverageOf(uint itemId) => _inner.CoverageOf(itemId);
     public void MergeStack(uint itemId, uint targetStackId) => _inner.MergeStack(itemId, targetStackId);
 }

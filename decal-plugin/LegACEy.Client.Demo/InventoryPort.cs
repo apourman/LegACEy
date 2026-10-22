@@ -35,6 +35,11 @@ public interface IInventoryPort
     uint WieldMask(uint itemId, PaperdollSlot slot);
     /// <summary>Wields an item into a paperdoll slot. Nothing is sent when <see cref="WieldMask"/> is zero for it.</summary>
     void Wield(uint itemId, PaperdollSlot slot);
+    /// <summary>
+    /// Where an item covers the body when worn: the AC clothing priority bits, as the appraisal window's Covers line reads them, read
+    /// from the world. Zero when the world does not say. A coat's reach past its wield slots (its skirt over the thighs) shows here.
+    /// </summary>
+    uint CoverageOf(uint itemId);
     /// <summary>Moves a stack onto another stack of the same item, which merges them where the server allows.</summary>
     void MergeStack(uint itemId, uint targetStackId);
 }
@@ -266,6 +271,10 @@ public sealed class FakeInventoryPort : IInventoryPort
         var valid = Snapshot.ValidLocationsOf(itemId) ?? (WorldLocations.TryGetValue(itemId, out var world) ? world : 0u);
         return InventorySnapshot.MaskFor(valid, slot);
     }
+
+    /// <summary>Each item's coverage bits, as the world would read them; unlisted items cover nothing.</summary>
+    public Dictionary<uint, uint> Coverage { get; } = new();
+    public uint CoverageOf(uint itemId) => Coverage.TryGetValue(itemId, out var coverage) ? coverage : 0;
 
     // The same rule as the port: nothing is sent when the item cannot go in the slot.
     public void Wield(uint itemId, PaperdollSlot slot)

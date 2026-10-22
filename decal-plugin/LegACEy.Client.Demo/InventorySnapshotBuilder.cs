@@ -155,6 +155,25 @@ public static class InventorySnapshotBuilder
 
     private const int HeadPart = 16;
 
+    /// <summary>
+    /// The body parts an item covers by its clothing priority bits (see <see cref="IInventoryPort.CoverageOf"/>): each area's underwear
+    /// and outerwear bit, as OpenAC's ClothingCoverage names them. Hands are 0x8000 in ACE and 0x80 in OpenAC, so either counts.
+    /// </summary>
+    public static IReadOnlyCollection<int> PartsCovered(uint coverage)
+    {
+        var parts = new List<int>();
+        foreach (var (bits, areaParts) in CoverageParts)
+            if ((coverage & bits) != 0) parts.AddRange(areaParts);
+        parts.Sort();
+        return parts;
+    }
+
+    private static readonly (uint Bits, int[] Parts)[] CoverageParts =
+    {
+        (0x4000, [16]), (0x0008 | 0x0400, [9]), (0x0010 | 0x0800, [0]), (0x0020 | 0x1000, [10, 13]), (0x0040 | 0x2000, [11, 14]),
+        (0x0080 | 0x8000, [12, 15]), (0x0002 | 0x0100, [1, 5]), (0x0004 | 0x0200, [2, 6]), (0x10000, [3, 4, 7, 8]),
+    };
+
     private static uint[] WornOn(int part) => part switch
     {
         0 => [0x400, 0x4],                // AbdomenArmor, AbdomenWear

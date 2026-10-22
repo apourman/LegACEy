@@ -446,6 +446,11 @@ public sealed class InventoryWindowTests
 
         // The cap goes on the head (part 16), in gold; no frame round the doll.
         Assert.Equal(new[] { 16 }, model.Outlined);
+        // What the world says it covers counts over where it is wielded: a hood that reaches the chest outlines the chest too.
+        InventoryDriver.Release(host.Host, host.Cells[9]);
+        port.Coverage[InventorySample.Cap] = 0x4000 | 0x0400;
+        InventoryDriver.DragTo(host.Host, host.Cells[9], doll);
+        Assert.Equal(new[] { 9, 16 }, model.Outlined);
         Assert.Equal(DerethPalette.Gold.ToUInt32(), model.OutlineColour);
         Assert.False(host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DropIndicator").IsVisible);
         InventoryDriver.Release(host.Host, doll);

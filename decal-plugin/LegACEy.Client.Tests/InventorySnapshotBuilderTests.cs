@@ -177,5 +177,7 @@ public sealed class InventorySnapshotBuilderTests
         // Knee-high boots cover the feet and shins; shoes only the feet.
         Assert.Equal(new[] { 2, 3, 4, 6, 7, 8 }, InventorySnapshotBuilder.PartsUnder(0x100 | 0x80));
         Assert.Equal(new[] { 3, 4, 7, 8 }, InventorySnapshotBuilder.PartsUnder(0x100));
+        // A long coat's coverage reaches past its wield slots: chest, abdomen, both arms, and its skirt over the thighs.
+        Assert.Equal(new[] { 0, 1, 5, 9, 10, 11, 13, 14 }, InventorySnapshotBuilder.PartsCovered(0x0400 | 0x0800 | 0x1000 | 0x2000 | 0x0100));
     }
 }

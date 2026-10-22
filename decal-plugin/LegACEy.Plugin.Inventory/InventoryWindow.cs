@@ -504,8 +504,9 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         if (at.Value.Shown == DollArea && DollShown && at.Value.Target.Equipment is { } wornAt)
         {
             HideIndicator();
+            var covered = InventorySnapshotBuilder.PartsCovered(_port.CoverageOf(dragged));
             var mask = _port.WieldMask(dragged, wornAt);
-            _doll!.Outline(InventorySnapshotBuilder.PartsUnder(mask != 0 ? mask : _port.Snapshot.ValidLocationsOf(dragged) ?? 0),
+            _doll!.Outline(covered.Count > 0 ? covered : InventorySnapshotBuilder.PartsUnder(mask != 0 ? mask : _port.Snapshot.ValidLocationsOf(dragged) ?? 0),
                 drop.Value.Accepted ? GoldOutline : InvalidOutline);
             return;
         }
@@ -547,14 +548,15 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     }
 
     /// <summary>
-    /// While a worn item is lifted, the body parts it covers are outlined on the doll: the ones the server says it draws, else those it is worn
-    /// over. Anything else leaves the doll as it is.
+    /// While a worn item is lifted, the body parts it covers are outlined on the doll: the ones the server says it draws, else those its
+    /// coverage names, else those it is worn over. Anything else leaves the doll as it is.
     /// </summary>
     private void OutlineLifted(uint dragged)
     {
         if (!DollShown || _port.Snapshot.Wielded.FirstOrDefault(item => item.Id == dragged) is not { } worn) return;
-        var drawn = _doll!.PartsDrawnBy(worn.Id);
-        _doll.Outline(drawn.Count > 0 ? drawn : InventorySnapshotBuilder.PartsUnder(worn.EquippedMask), LiftedOutline);
+        var parts = _doll!.PartsDrawnBy(worn.Id);
+        if (parts.Count == 0) parts = InventorySnapshotBuilder.PartsCovered(_port.CoverageOf(worn.Id));
+        _doll.Outline(parts.Count > 0 ? parts : InventorySnapshotBuilder.PartsUnder(worn.EquippedMask), LiftedOutline);
     }
 
     /// <summary>Shows the drop indicator over the slot, in the colour.</summary>
