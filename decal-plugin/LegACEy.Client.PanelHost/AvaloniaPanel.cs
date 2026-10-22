@@ -256,7 +256,8 @@ public sealed class AvaloniaPanel : IDisposable
 
     /// <summary>
     /// Show this panel, run Avalonia's shared work once (see <see cref="PanelCompositor.Advance"/>) and capture this panel alone, for
-    /// single-panel use. In the plugin only the compositor advances.
+    /// single-panel use. In the plugin only the compositor advances. A failure in the shared work goes to the error handler of the panel
+    /// that raised it, or of this one when no panel did.
     /// </summary>
     /// <returns>True when the captured pixels differ from the previous frame.</returns>
     /// <exception cref="InvalidOperationException">Called from a thread other than the one that initialized Avalonia.</exception>
@@ -309,6 +310,20 @@ public sealed class AvaloniaPanel : IDisposable
         _forceFullFrame = true;
         return true;
     }
+
+    /// <summary>
+    /// After a pass of the shared step threw: lay this panel out and commit Avalonia's drawing again. The throw left the rest of the
+    /// pass undone (other windows' queued layout among it), and Avalonia commits no window's drawing again until a commit completes.
+    /// </summary>
+    internal void Resume()
+    {
+        if (_disposed) return;
+        _window.UpdateLayout();
+        ((IRenderRoot)_window).Renderer.Paint(new Rect(_window.ClientSize));
+    }
+
+    /// <summary>Whether this panel's window shows a visual of <paramref name="type"/>, its overlays and adorners included.</summary>
+    internal bool Shows(Type type) => _window.GetSelfAndVisualDescendants().Any(type.IsInstanceOfType);
 
     private bool CaptureFrame()
     {
@@ -656,7 +671,7 @@ public sealed class AvaloniaPanel : IDisposable
         catch (Exception exception) { ReportError(exception); }
     }
 
-    private void ReportError(Exception exception)
+    internal void ReportError(Exception exception)
     {
         LastError = exception;
         try { Error?.Invoke(exception); }

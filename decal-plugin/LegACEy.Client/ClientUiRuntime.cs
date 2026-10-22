@@ -200,8 +200,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private readonly FrameSamples _postUiDrawTimes = new();
     // The parts of a frame, timed separately to show where the worst frames go.
     private readonly PhaseTimes _phaseTimes = new();
-    // Avalonia's shared step, every window's layout and paint at once, against the same 50 ms budget a window's capture has.
-    private readonly PanelFailureBudget _stepBudget = new();
     private long _lastFrameEndBytes;
     private long _betweenFrameBytes;
     private long _lastAllocatedBytes = GC.GetTotalAllocatedBytes();
@@ -1254,9 +1252,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Runs Avalonia once for every LegACEy window (<see cref="PanelCompositor.Advance"/>), then uploads each shown window's frame. A failure
-    /// in the shared step belongs to no one window and is thrown; a window's own failure, including a capture over its budget, goes to
-    /// that window's error handler.
+    /// Runs Avalonia once for every LegACEy window (<see cref="PanelCompositor.Advance"/>), then uploads each shown window's frame. A window's
+    /// own failure, in the shared step or its capture, or a capture over its budget, goes to that window's error handler; a failure in
+    /// the shared step that no window raised, or the step over its budget, is thrown.
     /// </summary>
     private void AdvancePanels()
     {
@@ -1268,10 +1266,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
         var start = PhaseTimes.Start();
         PanelCompositor.Advance();
-        var elapsed = Stopwatch.GetElapsedTime(start.Timestamp);
         _phaseTimes.Add("avalonia", start);
-        if (_stepBudget.Record(elapsed))
-            throw new TimeoutException($"Avalonia's shared step exceeded 50 ms for {_stepBudget.ConsecutiveSlowTicks} consecutive frames ({elapsed.TotalMilliseconds:F1} ms).");
 
         start = PhaseTimes.Start();
         // A toolbar failure drops the split tab too, so the tab is read after it.

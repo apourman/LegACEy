@@ -1,5 +1,7 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Rectangle = System.Drawing.Rectangle;
 using LegACEy.Client.PanelHost;
 using Xunit;
@@ -109,6 +111,129 @@ public sealed class PanelCompositorTests
         Assert.True(panel.Changed);
         Assert.Contains(new Rectangle(0, 0, 12, 10), panel.Frame.DirtyRectangles);
     });
+
+    [Theory]
+    [InlineData(Faulty.Stage.Layout)]
+    [InlineData(Faulty.Stage.Render)]
+    public void A_control_failing_in_one_panel_reports_to_that_panel_and_the_others_keep_rendering(Faulty.Stage stage) => RenderThread.Run(() =>
+    {
+        // B first, so its failure cuts short a pass before A's part of it.
+        var faulty = new Faulty();
+        using var b = AvaloniaPanel.Create(() => faulty, 8, 8);
+        var square = new Border { Background = Brushes.Black };
+        using var a = AvaloniaPanel.Create(() => square, 8, 8);
+        var errors = new List<(string Panel, Exception Error)>();
+        a.Error += error => errors.Add(("a", error));
+        // As in the plugin, the failed window's handler closes it (a plugin window turns its plugin off).
+        b.Error += error =>
+        {
+            errors.Add(("b", error));
+            b.Dispose();
+        };
+        PanelCompositor.Advance();
+
+        faulty.Fails = stage;
+        square.Background = Brushes.White;
+        PanelCompositor.Advance();
+        PanelCompositor.Advance();
+
+        var (panel, error) = Assert.Single(errors);
+        Assert.Equal("b", panel);
+        Assert.Equal(Faulty.Failure, error.Message);
+        Assert.Equal(0xff, a.Frame.Pixels[0]);
+        square.Background = Brushes.Gray;
+        PanelCompositor.Advance();
+        Assert.True(a.Changed);
+        Assert.Equal(0x80, a.Frame.Pixels[0]);
+    });
+
+    [Fact]
+    public void A_failure_in_the_shared_step_that_no_panel_raised_is_thrown() => RenderThread.Run(() =>
+    {
+        using var a = AvaloniaPanel.Create(() => new Border { Background = Brushes.Black }, 8, 8);
+        using var b = AvaloniaPanel.Create(() => new Border { Background = Brushes.Gray }, 8, 8);
+        var reported = 0;
+        a.Error += _ => reported++;
+        b.Error += _ => reported++;
+        PanelCompositor.Advance();
+
+        Dispatcher.UIThread.Post(() => throw new InvalidOperationException("no panel's"));
+
+        // The client takes a thrown failure down its own failure path: the client UI turns off.
+        Assert.Equal("no panel's", Assert.Throws<InvalidOperationException>(PanelCompositor.Advance).Message);
+        Assert.Equal(0, reported);
+    });
+
+    [Fact]
+    public void A_shared_step_over_budget_for_consecutive_frames_fails_as_a_slow_tick_does() => RenderThread.Run(() =>
+    {
+        var slow = new Faulty();
+        using var panel = AvaloniaPanel.Create(() => slow, 8, 8);
+        // The count is shared by every test's advances: start it, and leave it, at zero.
+        PanelCompositor.ResetStepBudget();
+        PanelCompositor.Advance();
+        PanelCompositor.ResetStepBudget();
+        try
+        {
+            slow.Fails = Faulty.Stage.Slowly;
+            for (var frame = 1; frame < PanelFailureBudget.ConsecutiveSlowTickLimit; frame++)
+            {
+                PanelCompositor.Advance();
+                slow.InvalidateVisual();
+            }
+            Assert.Throws<TimeoutException>(PanelCompositor.Advance);
+        }
+        finally { PanelCompositor.ResetStepBudget(); }
+    });
+
+    [Fact]
+    public void After_a_failure_no_panel_raised_the_other_panels_keep_rendering() => RenderThread.Run(() =>
+    {
+        // The same control type in both panels: the stack can't tell which panel raised the failure.
+        var faulty = new Faulty();
+        using var b = AvaloniaPanel.Create(() => faulty, 8, 8);
+        var square = new Border { Background = Brushes.Black, Child = new Faulty() };
+        using var a = AvaloniaPanel.Create(() => square, 8, 8);
+        PanelCompositor.Advance();
+
+        faulty.Fails = Faulty.Stage.Render;
+        Assert.Equal(Faulty.Failure, Assert.Throws<InvalidOperationException>(PanelCompositor.Advance).Message);
+        // The client turns off the plugin whose code is on the stack, closing its window.
+        b.Dispose();
+        square.Background = Brushes.White;
+        PanelCompositor.Advance();
+
+        Assert.True(a.Changed);
+        Assert.Equal(0xff, a.Frame.Pixels[0]);
+    });
+
+    public sealed class Faulty : Control
+    {
+        public const string Failure = "deliberate failure in one panel";
+        public enum Stage { None, Layout, Render, Slowly }
+
+        private Stage _fails;
+
+        public Stage Fails
+        {
+            get => _fails;
+            set
+            {
+                _fails = value;
+                InvalidateMeasure();
+                InvalidateVisual();
+            }
+        }
+
+        protected override Size MeasureOverride(Size availableSize) =>
+            Fails == Stage.Layout ? throw new InvalidOperationException(Failure) : base.MeasureOverride(availableSize);
+
+        public override void Render(DrawingContext context)
+        {
+            if (Fails == Stage.Render) throw new InvalidOperationException(Failure);
+            if (Fails == Stage.Slowly) Thread.Sleep(PanelFailureBudget.MaximumTick + TimeSpan.FromMilliseconds(10));
+        }
+    }
 
     [Fact]
     public void Changing_one_panel_attributes_its_layout_and_paint_to_it() => RenderThread.Run(() =>
