@@ -77,11 +77,12 @@ public sealed class DerethItemRow : StackPanel
 
 /// <summary>
 /// Draws an icon's bitmap at the icon size, scaled with its window: pixel for pixel at 100% and 200%, as sharp as retail's, and
-/// smoothed at any other size.
+/// resampled smoothly at any other size.
 /// </summary>
 public sealed class DerethItemIcon : Control
 {
     private readonly WriteableBitmap _bitmap;
+    private Bitmap? _resampled;
 
     // An ancestor's bitmap smoothing overrides a child's, so this relies on the panel root turning it off, as AvaloniaPanel.ApplyTheme does.
     public DerethItemIcon(WriteableBitmap bitmap) => _bitmap = bitmap;
@@ -94,14 +95,58 @@ public sealed class DerethItemIcon : Control
 
     public override void Render(DrawingContext context)
     {
-        // At a whole multiple of the art (100%, 200%) the pixels stay sharp; at any other size they are smoothed, or they would break up.
-        var onScreen = Bounds.Width * LayoutHelper.GetLayoutScale(this);
-        if (Math.Abs(onScreen / _bitmap.PixelSize.Width - Math.Round(onScreen / _bitmap.PixelSize.Width)) < 0.01)
+        // The panel draws every bitmap nearest-neighbour, and no element below its root can change that. At a whole multiple of the art
+        // (100%, 200%) that keeps the pixels sharp; at any other size it would drop rows and columns, so the art is resampled smoothly to
+        // the size it takes on screen, once per size, and drawn pixel for pixel.
+        var pixels = (int)Math.Round(Bounds.Width * LayoutHelper.GetLayoutScale(this));
+        var art = _bitmap.PixelSize.Width;
+        if (pixels <= 0 || pixels % art == 0)
         {
             context.DrawImage(_bitmap, new Rect(Bounds.Size));
             return;
         }
-        using (context.PushRenderOptions(new RenderOptions { BitmapInterpolationMode = BitmapInterpolationMode.HighQuality }))
-            context.DrawImage(_bitmap, new Rect(Bounds.Size));
+        if (_resampled?.PixelSize.Width != pixels)
+        {
+            _resampled?.Dispose();
+            _resampled = Resample(_bitmap, pixels);
+        }
+        context.DrawImage(_resampled, new Rect(Bounds.Size));
+    }
+
+    /// <summary>
+    /// The square 32-bit art at <paramref name="side"/> pixels, each one the area-weighted average of the art pixels it covers, in the art's
+    /// own pixel format, so shrinking blends neighbours instead of dropping them.
+    /// </summary>
+    private static WriteableBitmap Resample(WriteableBitmap art, int side)
+    {
+        var size = art.PixelSize.Width;
+        var source = new byte[size * size * 4];
+        using (var locked = art.Lock())
+            for (var row = 0; row < size; row++)
+                System.Runtime.InteropServices.Marshal.Copy(locked.Address + row * locked.RowBytes, source, row * size * 4, size * 4);
+        var result = new WriteableBitmap(new PixelSize(side, side), art.Dpi, art.Format ?? Avalonia.Platform.PixelFormat.Bgra8888, art.AlphaFormat ?? Avalonia.Platform.AlphaFormat.Premul);
+        var target = new byte[side * side * 4];
+        var step = (double)size / side;
+        var sums = new double[4];
+        for (var y = 0; y < side; y++)
+        for (var x = 0; x < side; x++)
+        {
+            Array.Clear(sums, 0, 4);
+            double top = y * step, left = x * step;
+            for (var sy = (int)top; sy < Math.Min(size, Math.Ceiling(top + step)); sy++)
+            {
+                var height = Math.Min(sy + 1, top + step) - Math.Max(sy, top);
+                for (var sx = (int)left; sx < Math.Min(size, Math.Ceiling(left + step)); sx++)
+                {
+                    var weight = height * (Math.Min(sx + 1, left + step) - Math.Max(sx, left));
+                    for (var c = 0; c < 4; c++) sums[c] += weight * source[(sy * size + sx) * 4 + c];
+                }
+            }
+            for (var c = 0; c < 4; c++) target[(y * side + x) * 4 + c] = (byte)Math.Round(sums[c] / (step * step));
+        }
+        using (var locked = result.Lock())
+            for (var row = 0; row < side; row++)
+                System.Runtime.InteropServices.Marshal.Copy(target, row * side * 4, locked.Address + row * locked.RowBytes, side * 4);
+        return result;
     }
 }

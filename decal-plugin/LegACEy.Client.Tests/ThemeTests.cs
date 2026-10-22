@@ -48,7 +48,21 @@ public sealed class ThemeTests
 
         // The icon is as big as the window's scale makes it; only at a whole size can its art land pixel for pixel.
         Assert.Equal(Math.Round(32 * scale), Math.Round(icon!.Bounds.Width * scale));
-        if (scale != Math.Round(scale)) return;
+        if (scale != Math.Round(scale))
+        {
+            // Between whole sizes the art is smoothed, not shrunk by dropping pixels: the checkerboard turns mostly grey.
+            var at = icon.TranslatePoint(default, panel.Content)!.Value;
+            int x0 = (int)Math.Ceiling(at.X * scale) + 2, y0 = (int)Math.Ceiling(at.Y * scale) + 2, side = (int)(32 * scale) - 4;
+            var grey = 0;
+            for (var y = 0; y < side; y++)
+            for (var x = 0; x < side; x++)
+            {
+                var value = panel.Frame.Pixels[(y0 + y) * panel.Frame.Stride + (x0 + x) * 4 + 1];
+                if (value > 40 && value < 215) grey++;
+            }
+            Assert.True(grey > side * side / 2, $"{grey} of {side * side} pixels smoothed.");
+            return;
+        }
         var multiple = (int)scale;
         var origin = icon.TranslatePoint(default, panel.Content)!.Value;
         var (left, top) = ((int)Math.Round(origin.X * scale), (int)Math.Round(origin.Y * scale));
