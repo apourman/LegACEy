@@ -1,3 +1,4 @@
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -20,6 +21,23 @@ public sealed class PanelHostRenderingTests
         using var panel = AvaloniaPanel.Create(() => new Grid { Width = 32, Height = 32 }, 32, 32);
         panel.Tick();
 
+        Assert.All(panel.Frame.Pixels, value => Assert.Equal(0, value));
+    });
+
+    [Fact]
+    public void A_note_shows_over_the_content_then_hides_when_its_time_is_up_leaving_the_content_as_it_was() => RenderThread.Run(() =>
+    {
+        var content = new Grid { Width = 120, Height = 80 };
+        using var panel = AvaloniaPanel.Create(() => content, 120, 80);
+
+        panel.ShowNote("85%", System.TimeSpan.FromMinutes(1));
+        panel.Tick();
+        Assert.Same(content, panel.Content);
+        Assert.True(panel.Frame.Pixels.Any(value => value != 0), "The note drew nothing.");
+
+        panel.ShowNote("85%", System.TimeSpan.Zero);
+        panel.Tick();
+        panel.Tick();
         Assert.All(panel.Frame.Pixels, value => Assert.Equal(0, value));
     });
 

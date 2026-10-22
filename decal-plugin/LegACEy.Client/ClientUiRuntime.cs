@@ -3851,10 +3851,18 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void RescaleWindow(string id, int steps)
     {
-        if (!AvaloniaPanel.CanScale || !_windows!.Rescale(id == ToolbarSurfaceId ? ToolbarPlaceId : id, steps)) return;
-        if (id == ToolbarSurfaceId) ScaleToolbar();
-        else SyncWindowLocations();
+        if (!AvaloniaPanel.CanScale || _windows!.Locked) return;
+        var placeId = id == ToolbarSurfaceId ? ToolbarPlaceId : id;
+        if (_windows.Rescale(placeId, steps))
+        {
+            if (id == ToolbarSurfaceId) ScaleToolbar();
+            else SyncWindowLocations();
+        }
+        // The window's size shows over it while the wheel turns, at a limit too, as the Settings slider shows the UI size.
+        SurfaceById(id)?.Panel.ShowNote($"{_windows.SizePercentOf(placeId)}%", ScaleNoteTime);
     }
+
+    private static readonly TimeSpan ScaleNoteTime = TimeSpan.FromSeconds(1.2);
 
     /// <summary>Puts a window's surface where the window manager has it, at the window's size and scale. A new size re-lays out the panel.</summary>
     private static void FitSurface(ScreenSurface surface, ManagedWindow window)

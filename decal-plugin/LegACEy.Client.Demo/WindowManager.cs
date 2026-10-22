@@ -344,7 +344,7 @@ public sealed class WindowManager
     public const int CornerBand = 16;
 
     /// <summary>The smallest and largest a window's own size goes, and the step a wheel notch moves it, in percent.</summary>
-    public const int SmallestSize = 50, LargestSize = 200, SizeStep = 10;
+    public const int SmallestSize = 50, LargestSize = 200, SizeStep = 5;
 
     /// <summary>How near, in screen pixels, a moved window's edge must come to the screen's edge or another window's to snap to it.</summary>
     public const int SnapDistance = 8;
@@ -456,6 +456,9 @@ public sealed class WindowManager
 
     private int SavedSizePercent(string id) =>
         _positions.Load(_server, _character, SizeKey(id))?.Location.X is int percent && percent >= SmallestSize && percent <= LargestSize ? percent : 100;
+
+    /// <summary>A window's own size in percent, on top of the manager's scale: the open window's, or the one saved for its id.</summary>
+    public int SizePercentOf(string id) => Get(id)?.SizePercent ?? SavedSizePercent(id);
 
     public ManagedWindow? Get(string id) => _windows.FirstOrDefault(window => window.Id == id);
 

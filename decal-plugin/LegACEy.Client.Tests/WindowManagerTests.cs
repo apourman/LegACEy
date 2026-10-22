@@ -94,7 +94,7 @@ public sealed class WindowManagerTests
         var window = manager.Open(One(), new Point(10, 10));
         manager.Open(new WindowDefinition("two", "Two", 200, 120), new Point(300, 10));
 
-        Assert.True(manager.Rescale("one", 5));
+        Assert.True(manager.Rescale("one", 10));
         Assert.Equal(150, window.SizePercent);
         Assert.Equal(0.75, window.Scale);
         Assert.Equal(new Size(150, 90), window.Size);
@@ -117,7 +117,7 @@ public sealed class WindowManagerTests
         var store = new MemoryWindowPositionStore();
         var manager = new WindowManager(new Size(800, 600), store, "server", "character", scale: 0.5);
 
-        Assert.True(manager.Rescale("toolbar", -2));
+        Assert.True(manager.Rescale("toolbar", -4));
         Assert.Equal(0.4, manager.ScaleOf("toolbar"), 3);
         Assert.Equal(0.4, new WindowManager(new Size(800, 600), store, "server", "character", scale: 0.5).ScaleOf("toolbar"), 3);
     }
