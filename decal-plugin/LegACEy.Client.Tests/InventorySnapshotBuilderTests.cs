@@ -145,6 +145,7 @@ public sealed class InventorySnapshotBuilderTests
     private sealed class FakeReader : IInventoryReader
     {
         public uint CharacterId => Character;
+        public string CharacterName => "Rand";
         public List<InventoryObjectRead> Objects { get; } = new();
         IReadOnlyList<InventoryObjectRead> IInventoryReader.Objects => Objects;
         public int MainPackCapacity { get; set; } = 96;

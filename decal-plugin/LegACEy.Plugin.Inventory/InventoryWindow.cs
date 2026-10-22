@@ -32,6 +32,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 {
     internal const uint BackpackIcon = InventorySnapshotBuilder.MainPackIcon;
     internal const string Title = "Inventory";
+    /// <summary>The vertical layout's grid is retail's main pack: six columns, whatever the width.</summary>
+    internal const int RetailColumns = 6;
     // The pyreal stack's icon in the portal.
     private const uint PyrealIcon = 0x06001080;
     private const double EmptyOpacity = 0.8;
@@ -710,6 +712,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         ShowSelection();
         RenderBurden(snapshot);
         _pyrealCount.Text = snapshot.Pyreals.ToString("N0");
+        _frame.Title = snapshot.CharacterName.Length == 0 ? Title : Title + " of " + snapshot.CharacterName;
         Fade(_dragged, lifted: true);
         if (_indicatorAt is { } at && (_dragged != 0 || _retailItem != 0))
         {
@@ -889,6 +892,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private Control VerticalBody()
     {
+        _grid.Columns = RetailColumns;
         var left = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*") };
         if (!_collapsed)
         {

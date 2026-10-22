@@ -146,12 +146,16 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     /// <summary>
     /// Each view's default size and minimum. The minimum keeps the paperdoll, unless it is collapsed, and one row of the grid visible,
     /// and the horizontal one also keeps the pack strip on one row: the strip is the main pack, a divider and seven side packs, 295 px across.
+    /// The vertical views are retail's panel: as wide as the paperdoll and the pack column, which holds the six columns with no spare
+    /// width, so only their height changes; the full one opens with eleven rows, as retail's does.
     /// </summary>
+    private const int VerticalWidth = 306, TallestVertical = 10_000;
+
     private static (int Width, int Height, WindowResizing Sizing) Shape(InventoryView view) => (view.Layout, view.Collapsed) switch
     {
         (InventoryLayout.Horizontal, false) => (640, 400, new WindowResizing(new Size(600, 330)) { ItemSlots = true }),
         (InventoryLayout.Horizontal, true) => (420, 320, new WindowResizing(new Size(340, 220)) { ItemSlots = true }),
-        (_, false) => (360, 530, new WindowResizing(new Size(330, 420)) { ItemSlots = true }),
-        _ => (360, 300, new WindowResizing(new Size(280, 200)) { ItemSlots = true }),
+        (_, false) => (VerticalWidth, 765, new WindowResizing(new Size(VerticalWidth, 420), new Size(VerticalWidth, TallestVertical)) { ItemSlots = true }),
+        _ => (VerticalWidth, 300, new WindowResizing(new Size(VerticalWidth, 200), new Size(VerticalWidth, TallestVertical)) { ItemSlots = true }),
     };
 }

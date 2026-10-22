@@ -51,6 +51,9 @@ public sealed class WindowResizing
     /// <summary>Whether the height is fixed: the window has no top or bottom edge to drag.</summary>
     public bool FixedHeight => Maximum is { } top && top.Height == Minimum.Height;
 
+    /// <summary>Whether the width is fixed: the window has no side edges or corners to drag, only its bottom edge.</summary>
+    public bool FixedWidth => Maximum is { } top && top.Width == Minimum.Width;
+
     /// <summary>Whether a press on the edges resizes the window now.</summary>
     internal bool CanResize => Locked?.Invoke() != true;
 
@@ -585,13 +588,13 @@ public sealed class WindowManager
         var right = bounds.Right - 1 - point.X;
         var top = point.Y - bounds.Top;
         var bottom = bounds.Bottom - 1 - point.Y;
-        // A window with a fixed height has no top or bottom edge, so its corners are its side bands. A window with no corners has its sides
-        // and bottom as its edges; what lies between them is its content's to drag.
-        if (!resizing.FixedHeight && !resizing.NoCorners && Math.Min(left, right) < CornerBand && Math.Min(top, bottom) < CornerBand)
+        // A window with a fixed height has no top or bottom edge, so its corners are its side bands, and one with a fixed width has only its
+        // bottom. A window with no corners has its sides and bottom as its edges; what lies between them is its content's to drag.
+        if (!resizing.FixedHeight && !resizing.FixedWidth && !resizing.NoCorners && Math.Min(left, right) < CornerBand && Math.Min(top, bottom) < CornerBand)
             return (left < right ? WindowEdges.Left : WindowEdges.Right) | (top < bottom ? WindowEdges.Top : WindowEdges.Bottom);
         var edges = WindowEdges.None;
-        if (left < ResizeBand) edges |= WindowEdges.Left;
-        if (right < ResizeBand) edges |= WindowEdges.Right;
+        if (!resizing.FixedWidth && left < ResizeBand) edges |= WindowEdges.Left;
+        if (!resizing.FixedWidth && right < ResizeBand) edges |= WindowEdges.Right;
         if (!resizing.FixedHeight && bottom < ResizeBand) edges |= WindowEdges.Bottom;
         return edges;
     }

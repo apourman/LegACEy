@@ -393,7 +393,7 @@ public sealed class DerethWindow : UserControl
         _name = new TextBlock
         {
             Text = title, Foreground = DerethPalette.CreamBrush, FontSize = 16, FontFamily = DerethPalette.Title,
-            VerticalAlignment = VerticalAlignment.Center
+            VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis
         };
         Grid.SetColumn(_name, 1);
         header.Children.Add(_name);
@@ -441,8 +441,8 @@ public sealed class DerethWindow : UserControl
 }
 
 /// <summary>
-/// A scrolling grid of fixed slots on the <see cref="ItemCellSize"/> pitch, as many columns as the width holds, centred, scrolling
-/// vertically. It takes cells and knows nothing about what they show. It wraps a plain ScrollViewer, because a subclass
+/// A scrolling grid of fixed slots on the <see cref="ItemCellSize"/> pitch, as many columns as the width holds (or a fixed
+/// <see cref="Columns"/>), centred, scrolling vertically. It takes cells and knows nothing about what they show. It wraps a plain ScrollViewer, because a subclass
 /// gets no template from the base theme.
 /// </summary>
 public sealed class DerethSlotGrid : UserControl
@@ -468,8 +468,21 @@ public sealed class DerethSlotGrid : UserControl
     protected override Size MeasureOverride(Size availableSize)
     {
         _cells.ItemWidth = _cells.ItemHeight = ItemCellSize.Of(this).Pitch;
+        _cells.Width = Columns > 0 ? Columns * _cells.ItemWidth : double.NaN;
         return base.MeasureOverride(availableSize);
     }
+
+    /// <summary>A fixed number of columns, as retail's main pack keeps six whatever the width; zero for as many as the width holds.</summary>
+    public int Columns
+    {
+        get => _columns;
+        set
+        {
+            _columns = value;
+            InvalidateMeasure();
+        }
+    }
+    private int _columns;
 
     /// <summary>The distance between the left edges of neighbouring columns: the pitch. Width that holds no whole column is split between the sides.</summary>
     public double ColumnPitch => _cells.ItemWidth;

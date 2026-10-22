@@ -36,12 +36,12 @@ public sealed class InventoryPluginTests
     public void Switching_layout_hides_one_window_and_opens_the_other_at_its_own_saved_size() => RenderThread.Run(() =>
     {
         var positions = new MemoryWindowPositionStore();
-        positions.Save("Server", "Character", Vertical, (new Point(100, 100), new Size(380, 600)));
+        positions.Save("Server", "Character", Vertical, (new Point(100, 100), new Size(306, 600)));
         positions.Save("Server", "Character", Horizontal, (new Point(120, 120), new Size(700, 500)));
         using var client = new FakeInventoryClient(positions);
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
-        Assert.Equal(new Size(380, 600), client.Windows.Get(Vertical)!.Size);
+        Assert.Equal(new Size(306, 600), client.Windows.Get(Vertical)!.Size);
 
         InventoryDriver.PressLayout(client.Panel(Vertical), InventoryLayout.Horizontal);
         Assert.Null(client.Windows.Get(Vertical));
@@ -51,7 +51,7 @@ public sealed class InventoryPluginTests
         // Hiding kept the vertical window's size; it comes back at that size.
         InventoryDriver.PressLayout(client.Panel(Horizontal), InventoryLayout.Vertical);
         Assert.Null(client.Windows.Get(Horizontal));
-        Assert.Equal(new Size(380, 600), client.Windows.Get(Vertical)!.Size);
+        Assert.Equal(new Size(306, 600), client.Windows.Get(Vertical)!.Size);
         Assert.Equal(VerticalSlotsOn, client.Settings);
     });
 
@@ -378,6 +378,32 @@ public sealed class InventoryPluginTests
         InventoryDriver.Tick(panel);
         AssertFitsWithOneGridRow(panel);
         if (layout == InventoryLayout.Horizontal) AssertPackTabsOnOneRow(panel);
+    });
+
+    /// <summary>
+    /// The vertical window opens as retail's panel does: the main pack six cells across and eleven down, titled with the character's name.
+    /// Its width is fixed, and the grid has no spare width beside its columns.
+    /// </summary>
+    [Fact]
+    public void The_vertical_window_opens_with_retail_s_six_by_eleven_main_pack_and_the_character_s_name() => RenderThread.Run(() =>
+    {
+        using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
+        client.Port.Push(InventorySample.Snapshot(characterName: "R o Z"));
+        new InventoryPlugin().Start(client);
+        client.Retail!.Toggle();
+
+        var (width, _, resizing) = client.Requested[Vertical];
+        Assert.Equal(width, resizing!.Minimum.Width);
+        Assert.Equal(width, resizing.Maximum!.Value.Width);
+        var panel = client.Panel(Vertical);
+        InventoryDriver.Tick(panel);
+        var grid = Assert.Single(panel.Content.GetVisualDescendants().OfType<DerethSlotGrid>());
+        var pitch = grid.ColumnPitch;
+        Assert.Equal(6, grid.Cells.Take(12).Select(cell => cell.Bounds.X).Distinct().Count());
+        var viewport = Assert.Single(grid.GetVisualDescendants().OfType<ScrollViewer>()).Viewport.Width;
+        Assert.InRange(viewport - 6 * pitch, 0, pitch / 2);
+        Assert.InRange(grid.Bounds.Height, 11 * pitch, 11.5 * pitch);
+        Assert.Contains(panel.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Inventory of R o Z");
     });
 
     private static void AssertFitsWithOneGridRow(AvaloniaPanel panel)

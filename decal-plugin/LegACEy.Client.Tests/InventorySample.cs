@@ -31,7 +31,7 @@ internal static class InventorySample
     /// <param name="extra">Items added to the main pack's sample, for a test that needs one more.</param>
     /// <param name="sackOnGround">The first side pack has been dropped: its slot is empty.</param>
     public static InventorySnapshot Snapshot(uint openContainer = Character, uint selected = 0, int burden = 4212, IEnumerable<InventoryItem>? extra = null,
-        bool sackOnGround = false)
+        bool sackOnGround = false, string characterName = "")
     {
         var main = new InventoryPack(Character, "Main Pack", BackpackIcon, 96);
         var sides = new List<InventoryPack>
@@ -70,7 +70,7 @@ internal static class InventorySample
             Wielded(WieldedSword, "Sword", 0x060010DA, 0x00100000, PaperdollSlot.Weapon),
         };
 
-        return new InventorySnapshot(main, sides, items, worn, burden, 5400, 25000, openContainer, selected);
+        return new InventorySnapshot(main, sides, items, worn, burden, 5400, 25000, openContainer, selected, characterName);
     }
 
     /// <summary>A stack of the main pack's apple kind (same name and type as the sample's apple), for a merge test.</summary>

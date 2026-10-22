@@ -456,6 +456,20 @@ public sealed class WindowManagerTests
         Assert.Equal(expected, hover.Edges);
     }
 
+    [Theory]
+    [InlineData(443, 300, WindowEdges.None)]
+    [InlineData(101, 300, WindowEdges.None)]
+    [InlineData(443, 703, WindowEdges.Bottom)]
+    [InlineData(200, 703, WindowEdges.Bottom)]
+    public void A_fixed_width_window_resizes_only_from_its_bottom_edge(int x, int y, WindowEdges expected)
+    {
+        var manager = NewManager(1920, 1080);
+        manager.Open(new WindowDefinition("inventory", "Inventory", 344, 606, resizing: new WindowResizing(new Size(344, 300), new Size(344, 10_000))),
+            new Point(100, 100));
+
+        Assert.Equal(expected, manager.HoverAt(new Point(x, y)).Edges);
+    }
+
     [Fact]
     public void A_press_on_the_top_edge_moves_any_window_and_a_top_corner_still_resizes()
     {
