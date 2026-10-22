@@ -43,6 +43,8 @@ public sealed class AvaloniaPanel : IDisposable
     private bool _forceFullFrame = true;
     private bool _hasInvalidation;
     private bool _renderingSuspended;
+    private bool _resized;
+    private readonly Stopwatch _captureClock = new();
     internal int FrameCaptureCount { get; private set; }
 
     private readonly RendererInvalidationObserver _rendererObserver;
@@ -75,11 +77,24 @@ public sealed class AvaloniaPanel : IDisposable
         _window = CreateWindow(content, width, height, scale);
         _frame = new PanelFrame(width, height);
         _rendererObserver = new RendererInvalidationObserver(_window, () => _hasInvalidation = true);
+        PanelCompositor.Register(this);
         Tick();
     }
 
     /// <summary>The latest rendered BGRA frame. Its pixel buffer is reused across ticks.</summary>
     public PanelFrame Frame => _frame;
+
+    /// <summary>Whether the last capture changed the frame's pixels; the frame's dirty rectangles say where.</summary>
+    public bool Changed { get; private set; }
+
+    /// <summary>How long the last capture took: this panel's own share of a frame, apart from Avalonia's shared work.</summary>
+    public TimeSpan CaptureTime => _captureClock.Elapsed;
+
+    /// <summary>
+    /// Whether the compositor captures this panel. A hidden panel's window is hidden, so Avalonia paints nothing for it; shown again,
+    /// its next capture is a full frame of its current content. Takes effect at the next advance.
+    /// </summary>
+    public bool Visible { get; set; } = true;
 
     /// <summary>The most recent exception raised while processing panel input or rendering.</summary>
     public Exception? LastError { get; private set; }
@@ -220,33 +235,63 @@ public sealed class AvaloniaPanel : IDisposable
         platform.ScalingChanged?.Invoke(scale);
     }
 
-    /// <summary>Drain queued Avalonia work, run one render-timer tick, and capture the frame.</summary>
+    /// <summary>
+    /// Show this panel, run Avalonia's shared work once (see <see cref="PanelCompositor.Advance"/>) and capture this panel alone, for
+    /// single-panel use. In the plugin only the compositor advances.
+    /// </summary>
     /// <returns>True when the captured pixels differ from the previous frame.</returns>
     /// <exception cref="InvalidOperationException">Called from a thread other than the one that initialized Avalonia.</exception>
-    public unsafe bool Tick()
+    public bool Tick()
     {
         if (_disposed) throw new ObjectDisposedException(nameof(AvaloniaPanel));
         VerifyThreadAccess();
+        Visible = true;
+        try { PanelCompositor.Step(); }
+        catch (Exception exception)
+        {
+            Changed = false;
+            ReportError(exception);
+            return false;
+        }
+        Capture();
+        return Changed;
+    }
 
+    /// <summary>Capture the frame Avalonia rendered, if this panel is shown and its content changed. A failure goes to the error handler.</summary>
+    internal void Capture()
+    {
+        if (_disposed) return;
+        _captureClock.Restart();
+        Changed = CaptureFrame();
+        _captureClock.Stop();
+    }
+
+    /// <summary>
+    /// Before the shared step: hide or show the window as <see cref="Visible"/> asks. True when the window was shown again or resized:
+    /// Avalonia then needs a render to settle before the one that paints the latest content.
+    /// </summary>
+    internal bool BeginStep()
+    {
+        var settle = _resized;
+        _resized = false;
+        if (Visible != _renderingSuspended) return settle;
+        _renderingSuspended = !Visible;
+        if (!Visible)
+        {
+            _window.Hide();
+            return false;
+        }
+        _window.Show();
+        Content.InvalidateVisual();
+        _forceFullFrame = true;
+        return true;
+    }
+
+    private unsafe bool CaptureFrame()
+    {
         try
         {
-            if (_renderingSuspended)
-            {
-                _renderingSuspended = false;
-                _window.Show();
-                Content.InvalidateVisual();
-                _forceFullFrame = true;
-                // Showing the headless window first commits its composition target;
-                // advance that commit before the normal tick paints its latest content.
-                Dispatcher.UIThread.RunJobs();
-                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
-            }
-            Dispatcher.UIThread.RunJobs();
-            // Let Avalonia process layout and drawing invalidations before deciding
-            // whether the rendered frame needs to be copied into our pixel buffer.
-            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
-            Dispatcher.UIThread.RunJobs();
-            if (!_forceFullFrame && !_hasInvalidation)
+            if (_renderingSuspended || (!_forceFullFrame && !_hasInvalidation))
             {
                 _frame.DirtyRectangles = Array.Empty<Rectangle>();
                 return false;
@@ -320,17 +365,19 @@ public sealed class AvaloniaPanel : IDisposable
         }
     }
 
-    /// <summary>Drain dispatcher work without rendering, for a surface hidden from the player.</summary>
+    /// <summary>
+    /// Hide the panel and run queued Avalonia work without rendering. The plugin hides panels through <see cref="Visible"/> instead,
+    /// and the compositor's shared pump serves them.
+    /// </summary>
     public void DrainDispatcher()
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(AvaloniaPanel));
-        VerifyThreadAccess();
-        if (!_renderingSuspended)
+        VerifyUsable();
+        Visible = false;
+        try
         {
-            _window.Hide();
-            _renderingSuspended = true;
+            BeginStep();
+            Dispatcher.UIThread.RunJobs();
         }
-        try { Dispatcher.UIThread.RunJobs(); }
         catch (Exception exception) { ReportError(exception); }
     }
 
@@ -355,13 +402,8 @@ public sealed class AvaloniaPanel : IDisposable
         _window.Width = width / _scale;
         _window.Height = height / _scale;
         _frame = new PanelFrame(width, height);
-        // Lay out and render the new size now, so the next capture is the new size and not the last frame of the old one.
-        try
-        {
-            Dispatcher.UIThread.RunJobs();
-            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
-        }
-        catch (Exception exception) { ReportError(exception); }
+        // The next advance lays out and renders the new size before it captures, so the capture is not the old size's last frame.
+        _resized = true;
     }
 
     /// <summary>Tell the host that the backing texture was lost and needs a complete upload.</summary>
@@ -654,6 +696,7 @@ public sealed class AvaloniaPanel : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        PanelCompositor.Unregister(this);
         StopObservingRenderResources();
         _rendererObserver.Dispose();
         _window.Close();
