@@ -117,7 +117,11 @@ main pack's six columns, and the burden and packs in a column on the right, each
 and closed, and the appraised object opens in LegACEy's window. Its header's Inspect button opens the Inspect window: the object's 3D
 paperdoll alone, which drags to turn. The client reads every object's look from the game's own messages, so Inspect and the inventory's
 doll work on any server; only objects outside the world (Vault items) ask a LegACEy server (`paperdoll.inspect`). The expand button in the
-inventory's doll area opens the same window on your own character. The appraisal window lists an item's lines in the order retail's examination
+inventory's doll area opens the same window on your own character, from its first view each time. The inventory's doll stands still,
+facing front without what it holds, and fills the panel above the Slots row. A click, drag, right-click or double-click on it acts on the
+worn item drawn under the pointer, as on that item's slot, and a drop on it wields the item. While an item is dragged, the body parts
+it covers are outlined: gold where it can be worn, red where it can't, teal for a worn item being lifted. Which worn item draws which
+part is worked out on the client from portal.dat's clothing tables, so this too works on any server. The appraisal window lists an item's lines in the order retail's examination
 text does (tinkering, set and ratings, combat, spells, properties, use, requirements, the rest, then spellcraft, mana and each
 spell's description), under Dereth headings. Creating an empty file named `retail-inventory-native` beside the main DLL
 gives retail's inventory panel back, and `retail-appraisal-native` gives retail's examination panel back; deleting a file
