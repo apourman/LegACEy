@@ -574,8 +574,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     /// <summary>
     /// The worn item drawn under a point of the doll: the one the server says draws that body part (tall boots up to the knee), or, from
-    /// a server that does not say, the outermost worn there by slot (a coat over the shirt beneath it). Null off the doll, or where that
-    /// part wears nothing.
+    /// a server that does not say, the outermost worn there by where it is worn (a coat over the shirt beneath it). Null off the doll,
+    /// or where that part wears nothing.
     /// </summary>
     private InventorySlotId? WornAt(Point point)
     {
@@ -585,10 +585,8 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var drawing = _doll.ItemDrawing(part);
         if (wielded.FirstOrDefault(item => item.Id == drawing) is { } drawn)
             return new InventorySlotId(SlotPlace.Paperdoll, drawn.Id, 0, -1, drawn.Slots.Count > 0 ? drawn.Slots[0] : null);
-        foreach (var slot in InventoryPaperdoll.SlotsOn(part))
-            if (wielded.FirstOrDefault(item => item.Slots.Contains(slot)) is { } item)
-                return new InventorySlotId(SlotPlace.Paperdoll, item.Id, 0, -1, slot);
-        return null;
+        var worn = InventorySnapshotBuilder.WornOn(wielded, part);
+        return worn == null ? null : new InventorySlotId(SlotPlace.Paperdoll, worn.Id, 0, -1, worn.Slots.Count > 0 ? worn.Slots[0] : null);
     }
 
     /// <summary>

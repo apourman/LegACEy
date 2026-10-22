@@ -124,6 +124,35 @@ public static class InventorySnapshotBuilder
     internal static uint Covers(uint mask, PaperdollSlot slot) =>
         slot == PaperdollSlot.Pants && (mask & FootWear) != 0 ? 0 : mask & SlotMasks.Single(pair => pair.Slot == slot).Mask;
 
+    /// <summary>
+    /// The worn item on top over a part of the character's body, judged by where each is worn (its EquipMask bits), as the doll picks
+    /// when the server does not say what draws the part: the armour first, then what is worn under it, and none over bare skin. Boots that reach the knee carry LowerLegWear beside FootWear, and stand over the greaves and pants there.
+    /// Parts are numbered as in the humanoid setups (0x02000001 and its kin): 0 the abdomen, 1 and 5 the upper legs, 2 and 6 the lower
+    /// legs, 3, 4, 7 and 8 the feet, 9 the chest, 10 and 13 the upper arms, 11 and 14 the lower arms, 12 and 15 the hands, 16 the head;
+    /// the rest are markers that draw nothing.
+    /// </summary>
+    public static WieldedItem? WornOn(IReadOnlyList<WieldedItem> wielded, int part)
+    {
+        foreach (var mask in WornOn(part))
+            foreach (var item in wielded)
+                if ((item.EquippedMask & mask) == mask) return item;
+        return null;
+    }
+
+    private static uint[] WornOn(int part) => part switch
+    {
+        0 => [0x400, 0x4],                // AbdomenArmor, AbdomenWear
+        1 or 5 => [0x2000, 0x40],         // UpperLegArmor, UpperLegWear
+        2 or 6 => [0x100 | 0x80, 0x4000, 0x80], // tall boots (FootWear and LowerLegWear), LowerLegArmor, LowerLegWear
+        3 or 4 or 7 or 8 => [0x100],      // FootWear
+        9 => [0x200, 0x2],                // ChestArmor, ChestWear
+        10 or 13 => [0x800, 0x8],         // UpperArmArmor, UpperArmWear
+        11 or 14 => [0x1000, 0x10],       // LowerArmArmor, LowerArmWear
+        12 or 15 => [0x20],               // HandWear
+        16 => [0x1],                      // HeadWear
+        _ => [],
+    };
+
     public static InventorySnapshot Build(IInventoryReader reader)
     {
         if (reader == null) throw new ArgumentNullException(nameof(reader));
@@ -142,7 +171,7 @@ public static class InventorySnapshotBuilder
             if (read.EquippedMask != 0)
             {
                 wielded.Add(new WieldedItem(read.Id, read.Name, read.Visual, read.StackCount, read.StackMax, read.Wcid,
-                    read.ValidLocations, SlotsFor(read.EquippedMask)));
+                    read.ValidLocations, SlotsFor(read.EquippedMask), read.EquippedMask));
                 continue;
             }
             if (read.IsContainer || read.Slot < 0) continue;

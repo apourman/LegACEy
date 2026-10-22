@@ -415,6 +415,23 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
+    public void Dragging_an_item_over_the_doll_lights_the_doll() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: false);
+        var doll = host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DollArea");
+        var indicator = host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DropIndicator");
+
+        InventoryDriver.DragTo(host.Host, host.Cells[9], doll);
+
+        Assert.True(indicator.IsVisible);
+        Assert.Equal(Avalonia.VisualExtensions.TranslatePoint(doll, default, host.Host.Content), Avalonia.VisualExtensions.TranslatePoint(indicator, default, host.Host.Content));
+        Assert.Equal(doll.Bounds.Size, indicator.Bounds.Size);
+        InventoryDriver.Release(host.Host, doll);
+    });
+
+    [Fact]
     public void A_drag_from_our_inventory_shows_its_icon_without_retail_s_drop_indicator() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();
