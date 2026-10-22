@@ -21,6 +21,8 @@ internal sealed unsafe class ScreenSurface : IDisposable
     private readonly PanelFailureBudget _failureBudget = new();
     private IntPtr _texture;
     private bool _uploaded;
+    private bool _visible;
+    private bool _held;
     private int _textureWidth;
     private int _textureHeight;
 
@@ -38,8 +40,26 @@ internal sealed unsafe class ScreenSurface : IDisposable
     /// <summary>Whether the surface draws. A hidden surface's panel is hidden too, so it costs nothing until it shows again.</summary>
     public bool Visible
     {
-        get => Panel.Visible;
-        set => Panel.Visible = value;
+        get => _visible;
+        set
+        {
+            _visible = value;
+            Panel.Visible = _visible && !_held;
+        }
+    }
+
+    /// <summary>
+    /// While held, the surface still draws its last upload, but its panel is hidden from the compositor and nothing is uploaded; let go,
+    /// the panel's next capture is a full frame.
+    /// </summary>
+    public bool Held
+    {
+        get => _held;
+        set
+        {
+            _held = value;
+            Panel.Visible = _visible && !_held;
+        }
     }
 
     // Timings and counts since the last performance log line; the runtime reads and resets them.
@@ -58,7 +78,7 @@ internal sealed unsafe class ScreenSurface : IDisposable
     /// <summary>Upload the frame this game frame's compositor advance captured, without drawing it.</summary>
     public void Prepare()
     {
-        if (!Visible)
+        if (!Visible || Held)
             return;
         var changed = Panel.Changed;
         var elapsed = Panel.CaptureTime;

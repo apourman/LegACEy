@@ -1216,8 +1216,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (!_inGame) TickRetailPanels(loggingIn: true);
         });
 
-        if (!_failed && _inGame && _windowsEnabled) Guard(() =>
+        Guard(() =>
         {
+            if (_failed || !_inGame || !_windowsEnabled)
+                return;
+
             if (_windows != null)
             {
                 var viewport = GameDevice.ViewportSize(_device);
@@ -1257,6 +1260,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void AdvancePanels()
     {
+        // Out of game or with the windows off, the LegACEy windows are neither captured nor uploaded: they keep their last frame.
+        var held = !_inGame || !_windowsEnabled;
+        foreach (var surface in _featureSurfaces.Values) surface.Held = held;
+        if (_updateToastSurface != null) _updateToastSurface.Held = held;
+        if (_dragIconSurface != null) _dragIconSurface.Held = held;
+
         var start = PhaseTimes.Start();
         PanelCompositor.Advance();
         var elapsed = Stopwatch.GetElapsedTime(start.Timestamp);
