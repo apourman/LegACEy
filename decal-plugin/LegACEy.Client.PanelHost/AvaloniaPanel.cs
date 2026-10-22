@@ -77,6 +77,7 @@ public sealed class AvaloniaPanel : IDisposable
         _window = CreateWindow(content, width, height, scale);
         _frame = new PanelFrame(width, height);
         _rendererObserver = new RendererInvalidationObserver(_window, () => _hasInvalidation = true);
+        _window.LayoutUpdated += OnLayoutUpdated;
         PanelCompositor.Register(this);
         Tick();
     }
@@ -86,6 +87,15 @@ public sealed class AvaloniaPanel : IDisposable
 
     /// <summary>Whether the last capture changed the frame's pixels; the frame's dirty rectangles say where.</summary>
     public bool Changed { get; private set; }
+
+    /// <summary>Layout passes this panel's window ran in the last advance.</summary>
+    public int LayoutPasses { get; private set; }
+
+    /// <summary>
+    /// Pixels in the frame's dirty rectangles after the last capture, or 0 when nothing changed: the area this panel painted.
+    /// ponytail: the captured changes stand in for what Avalonia painted; a retained framebuffer would report its dirty areas directly.
+    /// </summary>
+    public long PaintedArea { get; private set; }
 
     /// <summary>How long the last capture took: this panel's own share of a frame, apart from Avalonia's shared work.</summary>
     public TimeSpan CaptureTime => _captureClock.Elapsed;
@@ -260,18 +270,23 @@ public sealed class AvaloniaPanel : IDisposable
     /// <summary>Capture the frame Avalonia rendered, if this panel is shown and its content changed. A failure goes to the error handler.</summary>
     internal void Capture()
     {
+        // A disposed panel an advance is still walking reports nothing, not its last advance's pixels.
+        Changed = false;
+        PaintedArea = 0;
         if (_disposed) return;
         _captureClock.Restart();
         Changed = CaptureFrame();
+        PaintedArea = Changed ? AreaOf(_frame.DirtyRectangles) : 0;
         _captureClock.Stop();
     }
 
     /// <summary>
-    /// Before the shared step: hide or show the window as <see cref="Visible"/> asks. True when the window was shown again or resized:
-    /// Avalonia then needs a render to settle before the one that paints the latest content.
+    /// Before the shared step: hide or show the window as <see cref="Visible"/> asks, and start this advance's layout count. True when the
+    /// window was shown again or resized: Avalonia then needs a render to settle before the one that paints the latest content.
     /// </summary>
     internal bool BeginStep()
     {
+        LayoutPasses = 0;
         var settle = _resized;
         _resized = false;
         if (Visible != _renderingSuspended) return settle;
@@ -363,6 +378,15 @@ public sealed class AvaloniaPanel : IDisposable
             ReportError(exception);
             return false;
         }
+    }
+
+    private void OnLayoutUpdated(object? sender, EventArgs e) => LayoutPasses++;
+
+    private static long AreaOf(IReadOnlyList<Rectangle> rectangles)
+    {
+        long area = 0;
+        for (var i = 0; i < rectangles.Count; i++) area += (long)rectangles[i].Width * rectangles[i].Height;
+        return area;
     }
 
     /// <summary>
@@ -699,6 +723,7 @@ public sealed class AvaloniaPanel : IDisposable
         PanelCompositor.Unregister(this);
         StopObservingRenderResources();
         _rendererObserver.Dispose();
+        _window.LayoutUpdated -= OnLayoutUpdated;
         _window.Close();
         _mouseDevice.Dispose();
     }

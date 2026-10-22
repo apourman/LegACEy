@@ -109,4 +109,76 @@ public sealed class PanelCompositorTests
         Assert.True(panel.Changed);
         Assert.Contains(new Rectangle(0, 0, 12, 10), panel.Frame.DirtyRectangles);
     });
+
+    [Fact]
+    public void Changing_one_panel_attributes_its_layout_and_paint_to_it() => RenderThread.Run(() =>
+    {
+        var text = new TextBlock { Text = "first" };
+        using var a = AvaloniaPanel.Create(() => new TextBlock { Text = "still" }, 60, 20);
+        using var b = AvaloniaPanel.Create(() => text, 60, 20);
+        PanelCompositor.Advance();
+
+        text.Text = "second, longer";
+        PanelCompositor.Advance();
+
+        Assert.True(b.LayoutPasses > 0);
+        Assert.True(b.PaintedArea > 0);
+        Assert.Equal(0, a.LayoutPasses);
+        Assert.Equal(0L, a.PaintedArea);
+        Assert.Equal(b.PaintedArea, PanelCompositor.PaintedArea);
+    });
+
+    [Fact]
+    public void An_idle_panel_reports_no_layout_passes_and_no_painted_area() => RenderThread.Run(() =>
+    {
+        using var a = AvaloniaPanel.Create(() => new TextBlock { Text = "idle" }, 40, 20);
+        using var b = AvaloniaPanel.Create(() => new Border { Background = Brushes.Gray }, 8, 8);
+        PanelCompositor.Advance();
+
+        PanelCompositor.Advance();
+
+        foreach (var panel in new[] { a, b })
+        {
+            Assert.Equal(0, panel.LayoutPasses);
+            Assert.Equal(0L, panel.PaintedArea);
+        }
+        Assert.Equal(0L, PanelCompositor.PaintedArea);
+    });
+
+    [Fact]
+    public void A_changed_advance_allocates_within_its_budget() => RenderThread.Run(() =>
+    {
+        var border = new Border { Background = Brushes.Gray };
+        using var panel = AvaloniaPanel.Create(() => border, 16, 12);
+        PanelCompositor.Advance();
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 100; i++)
+        {
+            border.Background = i % 2 == 0 ? Brushes.White : Brushes.Black;
+            PanelCompositor.Advance();
+        }
+
+        Assert.True(panel.Changed);
+        // Measured at 6.7 KB per changed advance before attribution; attribution adds nothing to that.
+        Assert.InRange((GC.GetAllocatedBytesForCurrentThread() - before) / 100, 0, 8 * 1024);
+    });
+
+    [Fact]
+    public void A_panel_disposed_mid_walk_reports_no_change_and_no_painted_area() => RenderThread.Run(() =>
+    {
+        var border = new Border { Background = Brushes.Gray };
+        var panel = AvaloniaPanel.Create(() => border, 16, 12);
+        PanelCompositor.Advance();
+        border.Background = Brushes.White;
+        PanelCompositor.Advance();
+        Assert.True(panel.PaintedArea > 0);
+
+        // An earlier panel's error handler can dispose a panel the advance is still walking; its capture then runs on a disposed panel.
+        panel.Dispose();
+        panel.Capture();
+
+        Assert.False(panel.Changed);
+        Assert.Equal(0L, panel.PaintedArea);
+    });
 }

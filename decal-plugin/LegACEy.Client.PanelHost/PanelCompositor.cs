@@ -19,19 +19,24 @@ public static class PanelCompositor
     // Advance walks a copy, reused frame to frame: a panel's error handler may dispose panels mid-walk.
     private static readonly List<AvaloniaPanel> Capturing = new();
 
+    /// <summary>The pixels every panel painted in the last advance: the sum of their <see cref="AvaloniaPanel.PaintedArea"/>.</summary>
+    public static long PaintedArea { get; private set; }
+
     internal static void Register(AvaloniaPanel panel) => Panels.Add(panel);
 
     internal static void Unregister(AvaloniaPanel panel) => Panels.Remove(panel);
 
     /// <summary>
     /// Pump Avalonia's work and run its render timer once for every panel, then capture each shown panel whose content changed.
-    /// Afterwards each panel's <see cref="AvaloniaPanel.Changed"/> and its frame's dirty rectangles say what this advance changed.
+    /// Afterwards each panel's <see cref="AvaloniaPanel.Changed"/>, its frame's dirty rectangles and its attribution (layout passes and
+    /// painted area) say what this advance changed and what it cost.
     /// </summary>
     /// <remarks>
     /// A capture's failure goes to its panel's error handler. A failure in the shared work belongs to no one panel, so it is thrown.
     /// </remarks>
     public static void Advance()
     {
+        PaintedArea = 0;
         // Nothing to run, and before the first panel Avalonia may not be initialized: touching its dispatcher would bind it here.
         if (Panels.Count == 0) return;
         Dispatcher.UIThread.VerifyAccess();
@@ -39,7 +44,11 @@ public static class PanelCompositor
         Capturing.AddRange(Panels);
         try
         {
-            foreach (var panel in Capturing) panel.Capture();
+            foreach (var panel in Capturing)
+            {
+                panel.Capture();
+                PaintedArea += panel.PaintedArea;
+            }
         }
         finally { Capturing.Clear(); }
     }
