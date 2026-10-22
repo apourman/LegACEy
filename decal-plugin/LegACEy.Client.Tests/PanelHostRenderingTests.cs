@@ -409,7 +409,9 @@ public sealed class PanelHostRenderingTests
         Assert.Equal(++walks, panel.RenderResourceWalks);
 
         panel.ApplyTheme(new LegACEy.Client.Themes.DerethClientTheme());
+        var captures = panel.FrameCaptureCount;
         panel.Tick();
+        Assert.Equal(captures + 1, panel.FrameCaptureCount);
         Assert.Equal(++walks, panel.RenderResourceWalks);
     });
 

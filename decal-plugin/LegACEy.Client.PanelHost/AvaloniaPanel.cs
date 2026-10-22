@@ -584,17 +584,16 @@ public sealed class AvaloniaPanel : IDisposable
     {
         // Composition can update mutable brushes without a SceneInvalidated event.
         // Follow their nested resources (including gradient stops), releasing old trees.
-        // Runs on a captured frame after the tree or theme changed, not every one: on a large window it costs milliseconds and allocates
-        // per collection it enumerates. Scratch sets and the walk stack are reused, and only properties that can hold a resource are read
-        // (reading value-typed ones would box).
-        // A brush assigned to a visual's property in code is followed from the next tree change or theme; until then, mutating it in
-        // place still repaints, and the capture takes what Avalonia painted.
-        _walkRenderResources = false;
+        // Only after a tree or theme change: on a large window the walk costs milliseconds. Between walks a brush assigned in code is not
+        // followed, but its repaint is still captured, since what Avalonia painted gates capture too.
+        // Scratch sets and the walk stack are reused; only properties that can hold a resource are read (reading value-typed ones would box).
         RenderResourceWalks++;
         var current = _scanResources;
         var collections = _scanCollections;
         current.Clear();
         collections.Clear();
+        _scanVisuals.Clear();
+        _scanRemoved.Clear();
         _scanVisuals.Push(_window);
         while (_scanVisuals.Count > 0)
         {
@@ -628,6 +627,8 @@ public sealed class AvaloniaPanel : IDisposable
         foreach (var added in collections)
             if (_renderCollections.Add(added))
                 added.CollectionChanged += OnRenderCollectionInvalidated;
+        // Cleared only once the walk completed, so a walk that threw runs again at the next capture.
+        _walkRenderResources = false;
     }
 
     /// <summary>The registered properties of a type that can hold a brush, transform or collection: not value types, not strings.</summary>
@@ -668,8 +669,10 @@ public sealed class AvaloniaPanel : IDisposable
     // Raised for every visual of every window: only an attach or detach in this panel's window walks again.
     private void OnVisualParentChanged(Visual visual, AvaloniaPropertyChangedEventArgs e)
     {
-        if (visual.GetVisualRoot() == _window || (e.OldValue as Visual)?.GetVisualRoot() == _window) _walkRenderResources = true;
+        if (InWindow(visual) || InWindow(e.OldValue as Visual)) _walkRenderResources = true;
     }
+
+    private bool InWindow(Visual? visual) => visual?.GetVisualRoot() == _window;
 
     private void StopObservingRenderResources()
     {
