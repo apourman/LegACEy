@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using LegACEy.Client.PanelHost;
@@ -12,8 +11,8 @@ namespace LegACEy.Client.DecalPlugin;
 /// </summary>
 /// <remarks>
 /// The texture lives in the managed pool, so Direct3D keeps a system-memory copy and restores it after a device reset; there is
-/// nothing to recreate. Retail surfaces are rendered from the frame event; LegACEy windows prepare their frame there and draw it
-/// later from the post-UI EndScene seam.
+/// nothing to recreate. The frame event advances every panel at once (<see cref="PanelCompositor"/>), then each surface uploads its
+/// panel's frame there and draws it later from the post-UI EndScene seam.
 /// </remarks>
 internal sealed unsafe class ScreenSurface : IDisposable
 {
@@ -21,6 +20,8 @@ internal sealed unsafe class ScreenSurface : IDisposable
     private readonly PanelFailureBudget _failureBudget = new();
     private IntPtr _texture;
     private bool _uploaded;
+    private bool _visible;
+    private bool _held;
     private int _textureWidth;
     private int _textureHeight;
 
@@ -28,13 +29,37 @@ internal sealed unsafe class ScreenSurface : IDisposable
     {
         _device = device;
         Panel = panel;
+        Panel.Visible = false;
     }
 
     public AvaloniaPanel Panel { get; }
 
     public Point Location { get; set; }
 
-    public bool Visible { get; set; }
+    /// <summary>Whether the surface draws. A hidden surface's panel is hidden too, so it costs nothing until it shows again.</summary>
+    public bool Visible
+    {
+        get => _visible;
+        set
+        {
+            _visible = value;
+            Panel.Visible = _visible && !_held;
+        }
+    }
+
+    /// <summary>
+    /// While held, the surface still draws its last upload, but its panel is hidden from the compositor and nothing is uploaded; let go,
+    /// the panel's next capture is a full frame.
+    /// </summary>
+    public bool Held
+    {
+        get => _held;
+        set
+        {
+            _held = value;
+            Panel.Visible = _visible && !_held;
+        }
+    }
 
     // Timings and counts since the last performance log line; the runtime reads and resets them.
     public FrameSamples TickTimes { get; } = new();
@@ -47,26 +72,33 @@ internal sealed unsafe class ScreenSurface : IDisposable
 
     public int DirtyRectangles { get; set; }
 
+    // Attribution summed since the last performance log line: this panel's layout passes and painted pixels, and every panel's painted
+    // pixels over the same advances, so the log can show this panel's share of the shared step.
+    public int LayoutPasses { get; set; }
+
+    public long PaintedPixels { get; set; }
+
+    public long StepPixels { get; set; }
+
     public Rectangle Bounds => new(Location, new Size(Panel.Frame.Width, Panel.Frame.Height));
 
-    /// <summary>Tick Avalonia and upload the frame without drawing it.</summary>
+    /// <summary>Upload the frame this game frame's compositor advance captured, without drawing it.</summary>
     public void Prepare()
     {
-        if (!Visible)
-        {
-            Panel.DrainDispatcher();
+        if (!Visible || Held)
             return;
-        }
-        var start = Stopwatch.GetTimestamp();
-        var changed = Panel.Tick();
-        var elapsed = Stopwatch.GetElapsedTime(start);
+        var changed = Panel.Changed;
+        var elapsed = Panel.CaptureTime;
         TickTimes.Add(elapsed.TotalMilliseconds);
         if (changed) ChangedFrames++;
         DirtyRectangles += Panel.Frame.DirtyRectangles.Count;
+        LayoutPasses += Panel.LayoutPasses;
+        PaintedPixels += Panel.PaintedArea;
+        StepPixels += PanelCompositor.PaintedArea;
         if (Panel.LastError != null)
             return;
         if (_failureBudget.Record(elapsed))
-            throw new TimeoutException($"Panel tick exceeded 50 ms for {_failureBudget.ConsecutiveSlowTicks} consecutive frames ({elapsed.TotalMilliseconds:F1} ms).");
+            throw new TimeoutException($"Panel capture exceeded 50 ms for {_failureBudget.ConsecutiveSlowTicks} consecutive frames ({elapsed.TotalMilliseconds:F1} ms).");
         // _uploaded is true only while a texture holds a complete frame.
         if (changed || !_uploaded)
             Upload(Panel.Frame);
@@ -106,13 +138,16 @@ internal sealed unsafe class ScreenSurface : IDisposable
         }
 
         var start = Stopwatch.GetTimestamp();
-        IReadOnlyList<Rectangle> dirty = _uploaded ? frame.DirtyRectangles : new[] { new Rectangle(0, 0, frame.Width, frame.Height) };
-        for (var i = 0; i < dirty.Count; i++)
+        // One texture lock per frame, over everything that changed.
+        var area = new Rectangle(0, 0, frame.Width, frame.Height);
+        if (_uploaded)
         {
-            var rect = dirty[i];
-            if (rect.Width <= 0 || rect.Height <= 0) continue;
-            D3D9.Upload(_texture, rect, frame.Pixels, frame.Stride);
+            area = Rectangle.Empty;
+            var dirty = frame.DirtyRectangles;
+            for (var i = 0; i < dirty.Count; i++)
+                if (dirty[i].Width > 0 && dirty[i].Height > 0) area = area.IsEmpty ? dirty[i] : Rectangle.Union(area, dirty[i]);
         }
+        if (!area.IsEmpty) D3D9.Upload(_texture, area, frame.Pixels, frame.Stride);
         UploadTimes.Add(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
         _uploaded = true;
     }

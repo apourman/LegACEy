@@ -105,9 +105,11 @@ Every 30 s in game, `legacey-avalonia.log` gets a set of `UI performance` lines;
 milliseconds. `sample` covers the whole UI frame and the post-UI draw, with memory and GC counts. `gc` gives what was allocated and how
 long the GC paused the game since the last line, memory load, and the last full and background pauses. `phases` times each part of
 the frame (game state, each retail takeover, panels, windows) with the KB it allocated, and what the game thread allocated between frames.
-`world` covers water, weather and combat text, and how many of retail's draws pass through the world draw hook. One `surface` line per
-window gives its tick, upload and draw times and how many ticks changed pixels. Avalonia's jobs and render tick are shared by every window,
-so the window ticked first in a frame (the toolbar) carries the others' layout and paint.
+`avalonia` is Avalonia's one step per frame for every window (its jobs, layout, render tick and each window's capture) and `upload` the
+texture uploads after it. `world` covers water, weather and combat text, and how many of retail's draws pass through the world draw hook.
+One `surface` line per window gives its capture (`tick`), upload and draw times, how many captures changed pixels, and its attribution
+over the same 30 s: `layoutPasses` (layout passes its window ran in the shared step), `paintedPixels` (pixels it painted) and `share`
+(its part of every window's painted pixels, a stand-in for its part of the shared step, which Avalonia cannot time per window).
 
 The LegACEy Inventory replaces retail's inventory panel: it parks retail's panel and opens and closes its own window with it (by key,
 toolbar or item). The appraisal window likewise replaces retail's examination window: when retail's examination panel shows, it is parked

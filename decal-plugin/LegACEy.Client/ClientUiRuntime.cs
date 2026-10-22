@@ -1214,11 +1214,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (!_inGame) TickRetailPanels(loggingIn: true);
         });
 
-        if (_failed || !_inGame || !_windowsEnabled)
-            return;
-
         Guard(() =>
         {
+            if (_failed || !_inGame || !_windowsEnabled)
+                return;
+
             if (_windows != null)
             {
                 var viewport = GameDevice.ViewportSize(_device);
@@ -1237,21 +1237,67 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _retailDrag?.UpdateDropIndicator();
             _phaseTimes.Add("panels", start);
             start = PhaseTimes.Start();
-            PrepareFeatureWindows();
+            TickFeatureWindows();
             _phaseTimes.Add("windows", start);
-            PrepareUpdateToast();
+            PlaceUpdateToast();
             if (_dragIconSurface != null)
-            {
                 _dragIconSurface.Location = new Point(_pointer.X - 16, _pointer.Y - 16);
-                _dragIconSurface.Prepare();
-            }
         });
+
+        // Every window's state is up to date: one Avalonia step lays out, paints and captures them all, then each uploads.
+        // Guard's work, without a delegate allocated every frame.
+        if (_failed) return;
+        try { AdvancePanels(); }
+        catch (Exception exception) { Disable(exception); }
+    }
+
+    /// <summary>
+    /// Runs Avalonia once for every LegACEy window (<see cref="PanelCompositor.Advance"/>), then uploads each shown window's frame. A window's
+    /// own failure, in the shared step or its capture, or a capture over its budget, goes to that window's error handler; a failure in
+    /// the shared step that no window raised, or the step over its budget, is thrown.
+    /// </summary>
+    private void AdvancePanels()
+    {
+        // Out of game or with the windows off, the LegACEy windows are neither captured nor uploaded: they keep their last frame.
+        var held = !_inGame || !_windowsEnabled;
+        foreach (var surface in _featureSurfaces.Values) surface.Held = held;
+        if (_updateToastSurface != null) _updateToastSurface.Held = held;
+        if (_dragIconSurface != null) _dragIconSurface.Held = held;
+
+        var start = PhaseTimes.Start();
+        PanelCompositor.Advance();
+        _phaseTimes.Add("avalonia", start);
+
+        start = PhaseTimes.Start();
+        // A toolbar failure drops the split tab too, so the tab is read after it.
+        if (PrepareSurface(_toolbarSurface) is { } toolbarError) ToolbarFailed(toolbarError);
+        if (PrepareSurface(_splitTabSurface) is { } splitTabError) ToolbarFailed(splitTabError);
+        // A failure handler may close windows mid-loop, so walk a copy; the buffer is reused frame to frame.
+        _preparing.Clear();
+        _preparing.AddRange(_featureSurfaces);
+        foreach (var pair in _preparing)
+        {
+            // An earlier failure in this loop may have closed the window.
+            if (_featureSurfaces.ContainsKey(pair.Key) && PrepareSurface(pair.Value) is { } windowError) _windowFailures[pair.Key](windowError);
+        }
+        if (PrepareSurface(_updateToastSurface) is { } toastError) UpdateToastFailed(toastError);
+        if (PrepareSurface(_dragIconSurface) is { } dragIconError) Disable(dragIconError);
+        _phaseTimes.Add("upload", start);
+    }
+
+    /// <summary>Uploads a surface's frame; what it threw, for the caller's error handler.</summary>
+    private static Exception? PrepareSurface(ScreenSurface? surface)
+    {
+        try { surface?.Prepare(); }
+        catch (Exception exception) { return exception; }
+        return null;
     }
 
     /// <summary>
     /// Every 30 s, logs the UI frame and post-UI draw times (p50/p95/max ms), the GC, the frame's phases with what each allocated,
-    /// the world effects, then one line per window that ran: its tick, texture upload and draw times, and how many of its ticks changed
-    /// pixels. Ticks that changed nothing are the waste to cut.
+    /// the world effects, then one line per window that ran: its tick, texture upload and draw times, how many of its ticks changed
+    /// pixels, its layout passes, the pixels it painted and its share of the shared step's painted pixels. Ticks that changed nothing
+    /// are the waste to cut.
     /// </summary>
     private void RecordPerformanceMeasurement()
     {
@@ -1303,16 +1349,21 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (surface == null || surface.TickTimes.Count == 0 && surface.DrawTimes.Count == 0) return;
         var ticks = surface.TickTimes.Count;
-        Log($"UI performance surface {name}: ticks={ticks} changed={surface.ChangedFrames} dirtyRects={surface.DirtyRectangles} tick={surface.TickTimes.TakeSummary()}ms upload={surface.UploadTimes.TakeSummary()}ms draw={surface.DrawTimes.TakeSummary()}ms.");
+        // ponytail: the share is of the step's painted pixels, not its time: Avalonia lays out and paints every window in one shared call.
+        var share = surface.StepPixels == 0 ? 0 : 100.0 * surface.PaintedPixels / surface.StepPixels;
+        Log($"UI performance surface {name}: ticks={ticks} changed={surface.ChangedFrames} dirtyRects={surface.DirtyRectangles} layoutPasses={surface.LayoutPasses} paintedPixels={surface.PaintedPixels} share={share:F1}% tick={surface.TickTimes.TakeSummary()}ms upload={surface.UploadTimes.TakeSummary()}ms draw={surface.DrawTimes.TakeSummary()}ms.");
         surface.ChangedFrames = 0;
         surface.DirtyRectangles = 0;
+        surface.LayoutPasses = 0;
+        surface.PaintedPixels = 0;
+        surface.StepPixels = 0;
     }
 
     /// <summary>
-    /// Ticks each LegACEy window. A failure, including a panel over its tick budget, goes to the window's error handler:
-    /// a plugin's window turns off that plugin, a client window disables the client UI.
+    /// Runs each LegACEy window's own time. A failure goes to the window's error handler: a plugin's window turns off that plugin, a client
+    /// window disables the client UI.
     /// </summary>
-    private void PrepareFeatureWindows()
+    private void TickFeatureWindows()
     {
         // A failure handler may close windows mid-loop, so walk a copy; the buffer is reused frame to frame.
         _preparing.Clear();
@@ -1326,8 +1377,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 // the panels run no Avalonia timers: a window that keeps time (a toast's) is ticked here
                 if (pair.Key == ToastWindowId) _toast?.Tick();
                 else (pair.Value.Panel.Content as IFrameTick)?.Tick();
-                // a toast whose time was up has just hidden its window
-                if (_featureSurfaces.ContainsKey(pair.Key)) pair.Value.Prepare();
             }
             catch (Exception exception) { _windowFailures[pair.Key](exception); }
         }
@@ -1345,6 +1394,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (_failed) return;
         ThrowIfTestFailureRequested();
+        // Drawn after retail's UI, under the LegACEy windows: drawn before it, retail's portal space would paint over it on a teleport.
         Guard(() => _toolbarSurface?.DrawNow());
         var windows = !_failed && _windowsEnabled && _windows != null;
         if (windows)
@@ -2116,7 +2166,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>Runs the toast's time, and sizes and places it at the bottom centre at the UI size while it shows.</summary>
-    private void PrepareUpdateToast()
+    private void PlaceUpdateToast()
     {
         if (_updateToast is not { } toast || _updateToastSurface is not { } surface) return;
         try
@@ -2135,7 +2185,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 var clear = ClearOf(spot, bars, (int)Math.Round(UpdateToastGap * scale));
                 surface.Location = new Point(Math.Max(0, clear.X), Math.Max(0, clear.Y));
             }
-            surface.Prepare();
         }
         catch (Exception exception) { UpdateToastFailed(exception); }
     }
@@ -2336,9 +2385,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             // The bar stands beside the toolbar only while the takeover holds retail's element; otherwise it closes with it.
             if (_toolbarTakeover.Holds) EnsureShortcutBar();
             else CloseShortcutBar();
-            // Drawn after retail's UI, under the LegACEy windows: drawn before it, retail's portal space would paint over it on a teleport.
-            _toolbarSurface!.Prepare();
-            PrepareSplitTab();
+            PlaceSplitTab();
         }
         catch (Exception exception)
         {
@@ -2350,7 +2397,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// Shows the split tab while the toolbar shows and a stack is selected, at its content's size, centred over the plaque and standing on
     /// the toolbar's top edge; below the toolbar when there is no room above it.
     /// </summary>
-    private void PrepareSplitTab()
+    private void PlaceSplitTab()
     {
         if (_splitTab is not { } tab || _splitTabSurface is not { } surface || _toolbar is not { } toolbar || _toolbarSurface is not { } bar) return;
         surface.Visible = bar.Visible && tab.IsShown;
@@ -2366,7 +2413,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             var y = bar.Location.Y - height;
             surface.Location = new Point(Math.Max(0, Math.Min(screen.Width - width, x)), y >= 0 ? y : bar.Bounds.Bottom);
         }
-        surface.Prepare();
     }
 
     private const string ToolbarPlaceId = "dereth-toolbar";
