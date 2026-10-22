@@ -282,7 +282,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
                 else _selection.Clear();
                 ShowSelection();
             }
-            // Lifting an item selects it, as a click does, so another item's selection clears. A pack is never selected; nor is a set.
+            // Lifting an item selects it, as a click does, so another item's selection clears. A lifted pack is never selected, not even a focus; nor is a set.
             if (press.Place != SlotPlace.Pack && _carried.Count == 0 && _dragged != _port.Snapshot.Selected) _port.Select(_dragged);
             _dragIcon = _dragHost?.ShowDragIcon(DragImage(_dragged), Math.Max(1, _carried.Count), retailDropIndicator: false, _dragged);
             Fade(_dragged, lifted: true);
@@ -423,14 +423,19 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         if (slot.Place == SlotPlace.Pack)
         {
             // A focus takes a pack slot but holds nothing, so it does not open.
-            if (slot.Container != 0 && PackOf(_port.Snapshot, slot.Container)?.Capacity != 0)
+            if (slot.Container != 0 && !IsFocus(_port.Snapshot, slot.Container))
             {
                 _picked = slot.Container;
                 Render(_port.Snapshot);
             }
             // The main pack is the character: a click selects them, or makes them the target of an item in use (a healing kit). A focus
-            // is an item, so a click selects it.
-            if (TargetOf(slot) is var target and not 0) _port.Select(target);
+            // is an item, so a click selects it. Either clears a picked set, as a plain click on an item does.
+            if (TargetOf(slot) is var target and not 0)
+            {
+                _selection.Clear();
+                ShowSelection();
+                _port.Select(target);
+            }
             return;
         }
         if (slot.ItemId == 0) return;
@@ -586,7 +591,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private static bool IsFocus(InventorySnapshot s, uint id) => PackOf(s, id)?.Capacity == 0;
 
     /// <summary>A pack tile is outlined while its pack is open, and a focus while it is retail's selection.</summary>
-    private static bool PackOutlined(InventorySnapshot s, uint id, InventoryPack open) => id == open.Id || id == s.Selected && IsFocus(s, id);
+    private static bool PackOutlined(InventorySnapshot s, uint id, InventoryPack open) => id == open.Id || (id == s.Selected && IsFocus(s, id));
 
     private GameImage? DragImage(uint id)
     {
