@@ -774,21 +774,14 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     /// <summary>A pack in the vertical column: its icon, with an upright fill bar on its right. An empty side-pack slot is a placeholder.</summary>
     private Control PackColumnSlot(InventorySnapshot snapshot, InventoryPack pack, int position, InventoryPack open)
     {
-        // The fill bar stands right of the tile; an empty slot keeps the bar's width, so every tile lines up.
+        // The fill bar stands right of the tile, only for a container holding something; otherwise a gap of the bar's width keeps every tile lined up.
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = FillGap };
-        Control tile, bar;
-        if (pack.Id == 0)
-        {
-            tile = Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, position, null));
-            bar = new Control { Width = FillWidth };
-        }
-        else
-        {
-            tile = Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(pack.Visual), PackOutlined(snapshot, pack.Id, open));
-            bar = FillBar(ItemsIn(snapshot, pack.Id), pack.Capacity);
-        }
+        var count = pack.Id == 0 ? 0 : ItemsIn(snapshot, pack.Id);
+        var tile = pack.Id == 0
+            ? Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, position, null))
+            : Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(pack.Visual), PackOutlined(snapshot, pack.Id, open));
         row.Children.Add(tile);
-        row.Children.Add(bar);
+        row.Children.Add(pack.Capacity > 0 && count > 0 ? FillBar(count, pack.Capacity) : new Control { Width = FillWidth });
         return row;
     }
 

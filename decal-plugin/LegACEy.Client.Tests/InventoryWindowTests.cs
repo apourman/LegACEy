@@ -149,6 +149,20 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
+    public void Only_a_container_holding_something_has_a_fill_line() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot(focus: true));
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        InventoryDriver.Tick(host.Host);
+
+        bool HasLine(uint pack) => ((Panel)InventoryDriver.PackSlot(host.Host, pack).Parent!).Children[1] is Border;
+        Assert.True(HasLine(InventorySample.Potions));
+        Assert.False(HasLine(InventorySample.Sack));
+        Assert.False(HasLine(InventorySample.Focus));
+    });
+
+    [Fact]
     public void The_main_pack_drags_out_to_retail_as_the_character_and_never_moves_inside_the_window() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();
