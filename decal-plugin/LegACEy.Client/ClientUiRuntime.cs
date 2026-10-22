@@ -2447,11 +2447,14 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private void FitToolbar()
     {
-        if (_toolbar == null || _toolbarSurface is not { } surface) return;
+        if (_toolbar is not { } toolbar || _toolbarSurface is not { } surface) return;
         var before = surface.Bounds;
         var scale = surface.Panel.Scale;
-        var wanted = surface.Panel.MeasureContent(Avalonia.Size.Infinity);
-        surface.Panel.Resize(WholePixels(wanted.Width * scale), WholePixels(wanted.Height * scale));
+        // Every part, not just the toolbar: outside a layout pass a measure skips a part last measured at the same size, though a row
+        // added inside it changed it. A shown window's layout pass catches it up; the toolbar's is hidden until its first draw.
+        Avalonia.Layout.LayoutHelper.InvalidateSelfAndChildrenMeasure(toolbar);
+        toolbar.Measure(Avalonia.Size.Infinity);
+        surface.Panel.Resize(WholePixels(toolbar.DesiredSize.Width * scale), WholePixels(toolbar.DesiredSize.Height * scale));
         var size = surface.Bounds.Size;
         var lower = before.Top + before.Height / 2 > GameDevice.ViewportSize(_device).Height / 2;
         var kept = OnScreen(new Point(before.X, lower ? before.Bottom - size.Height : before.Y), size);

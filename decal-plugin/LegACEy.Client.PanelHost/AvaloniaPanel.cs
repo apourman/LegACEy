@@ -10,7 +10,6 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Input.Raw;
-using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
@@ -145,17 +144,6 @@ public sealed class AvaloniaPanel : IDisposable
 
     private static readonly FieldInfo? RenderScaling = typeof(AvaloniaHeadlessPlatform).Assembly.GetType("Avalonia.Headless.HeadlessWindowImpl")
         ?.GetField("<RenderScaling>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic);
-
-    /// <summary>The size the content asks for within <paramref name="available"/>, in DIPs, as it is now, shown or hidden.</summary>
-    public Size MeasureContent(Size available)
-    {
-        VerifyUsable();
-        // Every part, not just the content: outside a layout pass a measure skips a part last measured at the same size, though a child
-        // added inside it changed it. A shown window's layout pass catches such a part up; a hidden window runs none.
-        LayoutHelper.InvalidateSelfAndChildrenMeasure(_content);
-        _content.Measure(available);
-        return _content.DesiredSize;
-    }
 
     /// <summary>A point in panel pixels as the content measures it: the pixels divided by the scale.</summary>
     public Point ToContent(double x, double y) => new(x / _scale, y / _scale);

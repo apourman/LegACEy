@@ -597,23 +597,6 @@ public sealed class PanelHostRenderingTests
     });
 
     [Fact]
-    public void A_hidden_panel_measures_content_added_deep_inside_it() => RenderThread.Run(() =>
-    {
-        // As the client fits the toolbar: sized to its content while hidden, then a shortcut row is added a level down and it is fitted again.
-        var rows = new StackPanel();
-        using var panel = AvaloniaPanel.Create(() => new Border { Child = new Border { Child = rows } }, 1, 1);
-        panel.Visible = false;
-        rows.Children.Add(new Border { Width = 100, Height = 20 });
-        var plaque = panel.MeasureContent(Size.Infinity);
-        panel.Resize((int)plaque.Width, (int)plaque.Height);
-        PanelCompositor.Advance();
-
-        rows.Children.Add(new Border { Width = 100, Height = 30 });
-
-        Assert.Equal(new Size(100, 50), panel.MeasureContent(Size.Infinity));
-    });
-
-    [Fact]
     public void Tick_from_another_thread_is_rejected()
     {
         var panel = RenderThread.Run(() => AvaloniaPanel.Create(() => new Border(), 4, 4));
