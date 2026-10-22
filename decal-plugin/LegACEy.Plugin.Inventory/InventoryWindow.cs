@@ -128,7 +128,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             : new WrapPanel { Orientation = Orientation.Horizontal };
 
         var body = _layout == InventoryLayout.Vertical ? VerticalBody() : HorizontalBody();
-        _frame = new DerethWindow(Title, Icon(new ItemVisual(BackpackIcon, 0, 0, 0)), body, LayoutToggles());
+        _frame = new DerethWindow(Title, Icon(new ItemVisual(BackpackIcon, 0, 0, 0)), body, LayoutToggles(), centreTitle: true);
         _frame.CloseRequested += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
         Content = new Grid { Children = { _frame, _dropIndicator } };
         // The window takes the pointer on its own handlers, so a drag that leaves a slot, or the window, still ends here.
@@ -892,7 +892,9 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private Control VerticalBody()
     {
+        // Six columns, with the scrollbar beside them; the paperdoll above is wider, and the width it leaves stays to their right.
         _grid.Columns = RetailColumns;
+        _grid.HorizontalAlignment = HorizontalAlignment.Left;
         var left = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*") };
         if (!_collapsed)
         {
@@ -957,10 +959,10 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private Control LayoutToggles()
     {
-        var toggles = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 3, VerticalAlignment = VerticalAlignment.Center };
+        var toggles = new StackPanel { Orientation = Orientation.Horizontal, Spacing = DerethWindow.ActionGap, VerticalAlignment = VerticalAlignment.Center };
         toggles.Children.Add(LayoutToggle(InventoryLayout.Vertical, StackedGlyph));
         toggles.Children.Add(LayoutToggle(InventoryLayout.Horizontal, SideBySideGlyph));
-        // Set apart from the layout pair by the spacing and its 5 DIP margin: 8, the header's gap before the close box.
+        // Every header button is the same gap from the next, the close box included.
         toggles.Children.Add(EquipmentToggle());
         return toggles;
     }
@@ -974,7 +976,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             Stroke = _collapsed ? MutedBrush : DerethPalette.TealBrush,
             Fill = _collapsed ? null : DerethPalette.Brush(DerethPalette.Teal.WithAlpha(0x40)),
         };
-        var button = new DerethButton { Width = 24, Height = 24, Name = "EquipmentToggle", Content = icon, Margin = new Thickness(5, 0, 0, 0) };
+        var button = new DerethButton { Width = 24, Height = 24, Name = "EquipmentToggle", Content = icon };
         ToolTip.SetTip(button, _collapsed ? "Show equipment" : "Hide equipment");
         button.Click += (_, _) => SettingsChanged?.Invoke(new InventorySettings(_layout, _showSlots, !_collapsed));
         return button;
@@ -1009,7 +1011,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private Control PyrealsLine()
     {
         var money = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        money.Children.Add(new Image { Source = Bitmap(new ItemVisual(PyrealIcon, 0, 0, 0)), Width = 20, Height = 20 });
+        money.Children.Add(Icon(new ItemVisual(PyrealIcon, 0, 0, 0)));
         money.Children.Add(_pyrealCount);
         return money;
     }

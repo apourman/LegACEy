@@ -36,12 +36,12 @@ public sealed class InventoryPluginTests
     public void Switching_layout_hides_one_window_and_opens_the_other_at_its_own_saved_size() => RenderThread.Run(() =>
     {
         var positions = new MemoryWindowPositionStore();
-        positions.Save("Server", "Character", Vertical, (new Point(100, 100), new Size(306, 600)));
+        positions.Save("Server", "Character", Vertical, (new Point(100, 100), new Size(328, 600)));
         positions.Save("Server", "Character", Horizontal, (new Point(120, 120), new Size(700, 500)));
         using var client = new FakeInventoryClient(positions);
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
-        Assert.Equal(new Size(306, 600), client.Windows.Get(Vertical)!.Size);
+        Assert.Equal(new Size(328, 600), client.Windows.Get(Vertical)!.Size);
 
         InventoryDriver.PressLayout(client.Panel(Vertical), InventoryLayout.Horizontal);
         Assert.Null(client.Windows.Get(Vertical));
@@ -51,7 +51,7 @@ public sealed class InventoryPluginTests
         // Hiding kept the vertical window's size; it comes back at that size.
         InventoryDriver.PressLayout(client.Panel(Horizontal), InventoryLayout.Vertical);
         Assert.Null(client.Windows.Get(Horizontal));
-        Assert.Equal(new Size(306, 600), client.Windows.Get(Vertical)!.Size);
+        Assert.Equal(new Size(328, 600), client.Windows.Get(Vertical)!.Size);
         Assert.Equal(VerticalSlotsOn, client.Settings);
     });
 
@@ -387,7 +387,7 @@ public sealed class InventoryPluginTests
     [Fact]
     public void The_vertical_window_opens_with_retail_s_six_by_eleven_main_pack_and_the_character_s_name() => RenderThread.Run(() =>
     {
-        using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
+        using var client = new FakeInventoryClient(new MemoryWindowPositionStore()) { Art = new InventorySample.SolidArt() };
         client.Port.Push(InventorySample.Snapshot(characterName: "R o Z"));
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
@@ -404,6 +404,36 @@ public sealed class InventoryPluginTests
         Assert.InRange(viewport - 6 * pitch, 0, pitch / 2);
         Assert.InRange(grid.Bounds.Height, 11 * pitch, 11.5 * pitch);
         Assert.Contains(panel.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Inventory of R o Z");
+
+        // The pack column keeps clear of the paperdoll's right-hand slots.
+        var slots = InventoryDriver.Slots(panel);
+        var dollRight = slots.Where(slot => InventoryDriver.Id(slot).Place == SlotPlace.Paperdoll).Max(slot => OnPanel(slot, panel).Right);
+        var packsLeft = slots.Where(slot => InventoryDriver.Id(slot).Place == SlotPlace.Pack).Min(slot => OnPanel(slot, panel).Left);
+        Assert.True(packsLeft - dollRight >= 8, $"The pack column is {packsLeft - dollRight} px from the paperdoll.");
+
+        // Icons are never scaled down: each one, the header's and the pyreal's too, draws at its native size on the panel.
+        var icons = panel.Content.GetVisualDescendants().OfType<DerethItemIcon>().ToArray();
+        Assert.NotEmpty(icons);
+        foreach (var icon in icons)
+        {
+            var drawn = icon.TranslatePoint(new Avalonia.Point(icon.Bounds.Width, icon.Bounds.Height), panel.Content)!.Value - icon.TranslatePoint(default, panel.Content)!.Value;
+            Assert.Equal(ItemCellSize.At(1).Icon, drawn.X, 1);
+            Assert.Equal(ItemCellSize.At(1).Icon, drawn.Y, 1);
+        }
+    });
+
+    [Fact]
+    public void A_long_character_name_shrinks_the_title_to_fit_down_to_twelve() => RenderThread.Run(() =>
+    {
+        using var client = new FakeInventoryClient(new MemoryWindowPositionStore());
+        client.Port.Push(InventorySample.Snapshot(characterName: "Sir Reginald Ashbourne the Unyielding"));
+        new InventoryPlugin().Start(client);
+        client.Retail!.Toggle();
+        var panel = client.Panel(Vertical);
+        InventoryDriver.Tick(panel);
+
+        var title = Assert.Single(panel.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Inventory of Sir Reginald Ashbourne the Unyielding");
+        Assert.InRange(title.FontSize, 12, 15.5);
     });
 
     private static void AssertFitsWithOneGridRow(AvaloniaPanel panel)
@@ -503,7 +533,7 @@ public sealed class InventoryPluginTests
         public LookCache LookCache { get; } = new();
         public ILookSource Looks => new GameLooks(LookCache, () => ServerChannel, SupportsAction, () => Player);
         public string PortalPath => string.Empty;
-        public IGameArtSource Art { get; } = new InventorySample.NoArt();
+        public IGameArtSource Art { get; init; } = new InventorySample.NoArt();
         public IItemDragHost ItemDrag { get; } = new FakeItemDragHost();
         public IInventoryPort Inventory => Port;
         /// <summary>The retail inventory panel the plugin took over, once it has.</summary>

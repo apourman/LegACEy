@@ -378,25 +378,36 @@ public sealed class DerethWindow : UserControl
     /// </summary>
     public const int TitleBarHeight = 48;
 
+    /// <summary>The title's own row under the header, in a window that centres its title; it adds to the title-bar height.</summary>
+    public const int TitleRowHeight = 28;
+
+    /// <summary>The gap between header buttons in a window that centres its title: its actions use it too, so every button is evenly spaced.</summary>
+    public const int ActionGap = 4;
+
     /// <param name="headerActions">Controls for the header, left of the close box. Null when the header has none.</param>
     /// <param name="stretchActions">The header actions take the header's free width, and the title only its own.</param>
-    public DerethWindow(string title, Control? icon, Control content, Control? headerActions = null, bool stretchActions = false)
+    /// <param name="centreTitle">
+    /// The title takes a row of its own under the header, centred across the window as retail centres its panel titles, so a long title
+    /// has the full width; the header keeps the icon, the actions and the close box.
+    /// </param>
+    public DerethWindow(string title, Control? icon, Control content, Control? headerActions = null, bool stretchActions = false,
+        bool centreTitle = false)
     {
         if (content == null) throw new ArgumentNullException(nameof(content));
         var columns = headerActions == null ? "Auto,*,Auto" : stretchActions ? "Auto,Auto,*,Auto" : "Auto,*,Auto,Auto";
-        var header = new Grid { ColumnDefinitions = new ColumnDefinitions(columns), ColumnSpacing = 8, Height = 40 };
-        // The header's emblem is shrunk to fit; item icons elsewhere stay at their native size. It is always there, and takes no
-        // space while it has no icon, so a window that changes its icon keeps the same header.
-        _emblem = new DerethFrame(DerethFrameArt.Button) { Width = 32, Height = 32 };
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions(columns), ColumnSpacing = centreTitle ? ActionGap : 8, Height = 40 };
+        // The emblem's frame fits round its icon, which keeps its native size: icons are never scaled down. It is always there, and
+        // takes no space while it has no icon, so a window that changes its icon keeps the same header.
+        _emblem = new DerethFrame(DerethFrameArt.Button) { VerticalAlignment = VerticalAlignment.Center };
         header.Children.Add(_emblem);
         SetIcon(icon);
-        _name = new TextBlock
+        _name = new DerethTitleText
         {
-            Text = title, Foreground = DerethPalette.CreamBrush, FontSize = 16, FontFamily = DerethPalette.Title,
-            VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis
+            Text = title, Foreground = DerethPalette.CreamBrush, FontFamily = DerethPalette.Title, VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis, TextAlignment = centreTitle ? TextAlignment.Center : TextAlignment.Left
         };
         Grid.SetColumn(_name, 1);
-        header.Children.Add(_name);
+        if (!centreTitle) header.Children.Add(_name);
         var glyph = new DerethSprite(DerethSpriteArt.Close) { Width = 12, Height = 12 };
         var close = new DerethButton { Width = 24, Height = 24, VerticalAlignment = VerticalAlignment.Center, Content = glyph };
         glyph.Follow(close);
@@ -409,13 +420,19 @@ public sealed class DerethWindow : UserControl
         Grid.SetColumn(close, headerActions == null ? 2 : 3);
         header.Children.Add(close);
 
-        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(6, 0, 6, 6) };
+        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*"), Margin = new Thickness(6, 0, 6, 6) };
         body.Children.Add(header);
+        if (centreTitle)
+        {
+            var titleRow = new Border { Height = TitleRowHeight, Child = _name };
+            Grid.SetRow(titleRow, 1);
+            body.Children.Add(titleRow);
+        }
         // The rule runs nearly frame to frame, as in the concept.
         var rule = new DerethRule { Margin = new Thickness(-6, 0, -6, 0) };
-        Grid.SetRow(rule, 1);
+        Grid.SetRow(rule, 2);
         body.Children.Add(rule);
-        Grid.SetRow(content, 2);
+        Grid.SetRow(content, 3);
         body.Children.Add(content);
         Content = new DerethFrame(DerethFrameArt.Window) { Child = body };
     }
@@ -433,11 +450,33 @@ public sealed class DerethWindow : UserControl
     /// <summary>Replaces the header's icon. Null shows no icon, and the title moves to the edge.</summary>
     public void SetIcon(Control? icon)
     {
-        _emblem.Child = icon == null ? null : new Viewbox { Child = icon };
+        _emblem.Child = icon;
         _emblem.IsVisible = icon != null;
     }
 
     public event EventHandler? CloseRequested;
+}
+
+/// <summary>
+/// A window title: 16 DIPs, stepping down to 12 until it fits its width, as a long character name needs; past that it ends in an ellipsis.
+/// </summary>
+internal sealed class DerethTitleText : TextBlock
+{
+    private const double Largest = 16, Smallest = 12;
+
+    protected override Type StyleKeyOverride => typeof(TextBlock);
+
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        // The size is picked from measured text, not by setting FontSize and measuring: a change here invalidates the measure, so it is set once.
+        var typeface = new Typeface(FontFamily, FontStyle, FontWeight);
+        var size = Largest;
+        while (size > Smallest && new FormattedText(Text ?? string.Empty, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, size, null)
+                   .WidthIncludingTrailingWhitespace > availableSize.Width)
+            size -= 0.5;
+        FontSize = size;
+        return base.MeasureOverride(availableSize);
+    }
 }
 
 /// <summary>

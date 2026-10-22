@@ -89,4 +89,10 @@ internal static class InventorySample
     {
         public GameImage? ReadImage(uint id) => null;
     }
+
+    /// <summary>Every icon as solid 32 px art, so the window draws real icons rather than the missing-art mark.</summary>
+    public sealed class SolidArt : IGameArtSource
+    {
+        public GameImage? ReadImage(uint id) => new(32, 32, Enumerable.Repeat((byte)0xff, 32 * 32 * 4).ToArray());
+    }
 }
