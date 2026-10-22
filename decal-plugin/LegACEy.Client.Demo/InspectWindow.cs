@@ -55,7 +55,7 @@ public sealed class InspectWindow
     /// <summary>Runs when the player closes the window with its close box.</summary>
     public Action? Close { get; set; }
 
-    /// <summary>The object the window shows, zero before the first.</summary>
+    /// <summary>The object the window shows; zero is the player, and also the value before the first object.</summary>
     public uint ObjectId { get; private set; }
 
     /// <summary>Shows the object's paperdoll, under its name and icon. The same object already shown is left as it is, turned as the player left it.</summary>
@@ -63,7 +63,8 @@ public sealed class InspectWindow
     {
         Window.Title = name;
         Window.SetIcon(icon);
-        if (objectId == ObjectId) return;
+        // The player is object zero, so the first Show of the player is not a repeat: the stage is still empty.
+        if (objectId == ObjectId && _stage.Child != null) return;
         ObjectId = objectId;
         _stage.Child = new PaperdollView(_looks, _portalPath, objectId);
     }

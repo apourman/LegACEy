@@ -114,6 +114,16 @@ public sealed class AppraisalTests
     });
 
     [Fact]
+    public void Inspecting_the_player_first_shows_the_player_s_paperdoll() => OnWindowThread(() =>
+    {
+        var inspect = new InspectWindow(new FakeAppraisalHost().Looks, string.Empty);
+
+        inspect.Show(0, "Pourman", null);
+
+        Assert.Single(inspect.Window.GetLogicalDescendants().OfType<PaperdollView>());
+    });
+
+    [Fact]
     public void Inspect_opens_one_paperdoll_window_that_follows_the_inspected_object() => OnWindowThread(() =>
     {
         var host = new FakeAppraisalHost();
