@@ -36,12 +36,12 @@ public sealed class InventoryPluginTests
     public void Switching_layout_hides_one_window_and_opens_the_other_at_its_own_saved_size() => RenderThread.Run(() =>
     {
         var positions = new MemoryWindowPositionStore();
-        positions.Save("Server", "Character", Vertical, (new Point(100, 100), new Size(326, 600)));
+        positions.Save("Server", "Character", Vertical, (new Point(100, 100), new Size(305, 600)));
         positions.Save("Server", "Character", Horizontal, (new Point(120, 120), new Size(700, 500)));
         using var client = new FakeInventoryClient(positions);
         new InventoryPlugin().Start(client);
         client.Retail!.Toggle();
-        Assert.Equal(new Size(326, 600), client.Windows.Get(Vertical)!.Size);
+        Assert.Equal(new Size(305, 600), client.Windows.Get(Vertical)!.Size);
 
         InventoryDriver.PressLayout(client.Panel(Vertical), InventoryLayout.Horizontal);
         Assert.Null(client.Windows.Get(Vertical));
@@ -51,7 +51,7 @@ public sealed class InventoryPluginTests
         // Hiding kept the vertical window's size; it comes back at that size.
         InventoryDriver.PressLayout(client.Panel(Horizontal), InventoryLayout.Vertical);
         Assert.Null(client.Windows.Get(Horizontal));
-        Assert.Equal(new Size(326, 600), client.Windows.Get(Vertical)!.Size);
+        Assert.Equal(new Size(305, 600), client.Windows.Get(Vertical)!.Size);
         Assert.Equal(VerticalSlotsOn, client.Settings);
     });
 
@@ -405,12 +405,12 @@ public sealed class InventoryPluginTests
         Assert.InRange(grid.Bounds.Height, 11 * pitch, 11.5 * pitch);
         Assert.Contains(panel.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Inventory of R o Z");
 
-        // The pack column sits beside the grid and its scrollbar, clear of them, and inside the paperdoll's width.
+        // The pack column stands right of the paperdoll and the grid, clear of both.
         var slots = InventoryDriver.Slots(panel);
         var dollRight = slots.Where(slot => InventoryDriver.Id(slot).Place == SlotPlace.Paperdoll).Max(slot => OnPanel(slot, panel).Right);
-        var packs = slots.Where(slot => InventoryDriver.Id(slot).Place == SlotPlace.Pack).Select(slot => OnPanel(slot, panel)).ToArray();
-        Assert.True(packs.Min(pack => pack.Left) > OnPanel(grid, panel).Right, "The pack column overlaps the grid.");
-        Assert.True(packs.Max(pack => pack.Right) <= dollRight, "The pack column runs past the paperdoll.");
+        var packsLeft = slots.Where(slot => InventoryDriver.Id(slot).Place == SlotPlace.Pack).Min(slot => OnPanel(slot, panel).Left);
+        Assert.True(packsLeft > dollRight, "The pack column overlaps the paperdoll.");
+        Assert.True(packsLeft > OnPanel(grid, panel).Right, "The pack column overlaps the grid.");
 
         // Icons are never scaled down: each one, the header's and the pyreal's too, draws at its native size on the panel.
         var icons = panel.Content.GetVisualDescendants().OfType<DerethItemIcon>().ToArray();

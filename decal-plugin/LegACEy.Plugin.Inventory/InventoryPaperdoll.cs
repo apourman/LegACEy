@@ -11,46 +11,39 @@ using LegACEy.Client.Themes;
 namespace LegACEy.Plugin.Inventory;
 
 /// <summary>
-/// The paperdoll block: retail's paperdoll (224×214 at 32 px) with every slot scaled to the <see cref="ItemCellSize"/> pitch, which follows the window's scale,
-/// and the aetheria row moved one column right, so none of it sits over the doll. It fills the width it is given: the left column keeps to the
-/// left edge, the aetheria and right columns to the right edge, and the doll area takes the rest, with the armour slots centred over it. The doll
-/// area is the one control the 3D character fills; the Slots toggle sits in its bottom-left corner. Slots are placed by <see cref="Show"/>.
+/// The paperdoll block: retail's paperdoll on six columns at the <see cref="ItemCellSize"/> pitch, which follows the window's scale: the left
+/// jewellery column, three armour columns over the doll and two right columns, the aetheria and the cloak a square at the top of those, so
+/// none of it sits over the doll. Rows keep retail's spacing. It fills the width it is given: the left column keeps to the left edge, the
+/// right columns to the right edge, and the doll area takes the rest, with the armour slots centred over it. The doll area is the one control
+/// the 3D character fills; the Slots toggle sits in its bottom-left corner. Slots are placed by <see cref="Show"/>.
 /// </summary>
 internal sealed class InventoryPaperdoll : Canvas
 {
-    // Retail's cells are 32 px; the Dereth pitch is 35 px at scale 1. Each retail position is scaled to it, then the cell is centred in the pitch.
+    // Retail's cells are 32 px; rows keep retail's spacing scaled to the Dereth pitch (35 px at scale 1), and columns sit one pitch apart.
     private const int RetailCell = 32;
-    // Retail's 224 with the aetheria's extra column, less the 8 px margin before the left column: the narrowest the block draws.
-    private const int RetailMargin = 8;
-    private const int RetailWidth = 260 - RetailMargin;
-    // Where the aetheria and right columns start; they move with the right edge.
-    private const int RetailRightLeft = 156;
+    private const int Columns = 6;
     private const int RetailHeight = 214;
-    // The armour columns' left edges. Retail's doll area (51 to 151) leaves its outer columns hanging over its sides, so the doll area here is
-    // drawn round the columns instead, the same 2 DIPs clear of them on each side.
-    private const int RetailArmourLeft = 48;
-    private const int RetailArmourRight = 120;
-    private const double DollClearance = 2;
+    // The armour columns run from 1 to 3, round which the doll area is drawn, 2 DIPs clear of them on each side; 4 and 5 are the right side.
+    // A gap on each side of the armour columns keeps the doll area clear of the left and right columns.
+    private const int ArmourLeft = 1, ArmourRight = 3, RightLeft = 4;
+    private const double DollClearance = 2, SideGap = 6;
     // The Slots toggle sits in the doll area's bottom-left corner, as retail's does, on one row with the expand button in the
     // bottom-right corner; the doll is inset above that row.
     private const int CornerInset = 4;
     private const int CornerRowHeight = 20;
 
-    private static readonly (PaperdollSlot Slot, int X, int Y)[] Positions =
+    private static readonly (PaperdollSlot Slot, int Column, int Y)[] Positions =
     {
-        (PaperdollSlot.Neck, 8, 8), (PaperdollSlot.Trinket, 8, 44), (PaperdollSlot.RightWrist, 8, 80), (PaperdollSlot.RightRing, 8, 116),
-        (PaperdollSlot.Shield, 8, 172),
-        (PaperdollSlot.Head, 84, 28), (PaperdollSlot.UpperArms, 48, 64), (PaperdollSlot.Chest, 84, 64), (PaperdollSlot.LowerArms, 48, 100),
-        (PaperdollSlot.Abdomen, 84, 100), (PaperdollSlot.UpperLegs, 120, 100), (PaperdollSlot.Hands, 48, 136), (PaperdollSlot.LowerLegs, 120, 136),
-        (PaperdollSlot.Feet, 120, 172),
-        // Retail packs the aetheria at 126, 158 and 190, over the doll's side; here they sit one column further right, on the columns, the middle one over the cloak.
-        (PaperdollSlot.AetheriaOne, 156, RetailAetheriaTop), (PaperdollSlot.AetheriaTwo, 192, RetailAetheriaTop), (PaperdollSlot.AetheriaThree, 228, RetailAetheriaTop),
-        (PaperdollSlot.LeftWrist, 156, 80), (PaperdollSlot.LeftRing, 156, 116), (PaperdollSlot.Weapon, 156, 172), (PaperdollSlot.Ammo, 192, 172),
-        (PaperdollSlot.Cloak, 192, 44), (PaperdollSlot.Shirt, 192, 80), (PaperdollSlot.Pants, 192, 116),
+        (PaperdollSlot.Neck, 0, 8), (PaperdollSlot.Trinket, 0, 44), (PaperdollSlot.RightWrist, 0, 80), (PaperdollSlot.RightRing, 0, 116),
+        (PaperdollSlot.Shield, 0, 172),
+        (PaperdollSlot.Head, 2, 28), (PaperdollSlot.UpperArms, 1, 64), (PaperdollSlot.Chest, 2, 64), (PaperdollSlot.LowerArms, 1, 100),
+        (PaperdollSlot.Abdomen, 2, 100), (PaperdollSlot.UpperLegs, 3, 100), (PaperdollSlot.Hands, 1, 136), (PaperdollSlot.LowerLegs, 3, 136),
+        (PaperdollSlot.Feet, 3, 172),
+        // Retail packs the aetheria over the doll's side; here they and the cloak make a square at the top of the right columns.
+        (PaperdollSlot.AetheriaOne, 4, 8), (PaperdollSlot.AetheriaTwo, 5, 8), (PaperdollSlot.AetheriaThree, 4, 44), (PaperdollSlot.Cloak, 5, 44),
+        (PaperdollSlot.LeftWrist, 4, 80), (PaperdollSlot.LeftRing, 4, 116), (PaperdollSlot.Weapon, 4, 172), (PaperdollSlot.Ammo, 5, 172),
+        (PaperdollSlot.Shirt, 5, 80), (PaperdollSlot.Pants, 5, 116),
     };
-
-    private const int RetailAetheriaTop = 8;
-
     /// <summary>The armour slots, which sit over the doll and show only while the Slots toggle is on.</summary>
     private static readonly HashSet<PaperdollSlot> Armour = new()
     {
@@ -106,7 +99,7 @@ internal sealed class InventoryPaperdoll : Canvas
     {
         var size = ItemCellSize.Of(this);
         _size = size;
-        var width = Math.Max(Scale(RetailWidth), double.IsInfinity(availableSize.Width) ? 0 : Math.Floor(availableSize.Width));
+        var width = Math.Max(Columns * size.Pitch + 2 * SideGap, double.IsInfinity(availableSize.Width) ? 0 : Math.Floor(availableSize.Width));
         if (size != _placedSize || width != _width) Place(size, width);
         base.MeasureOverride(availableSize);
         return new Size(width, Scale(RetailHeight));
@@ -116,30 +109,27 @@ internal sealed class InventoryPaperdoll : Canvas
     {
         _placedSize = size;
         _width = width;
-        _spare = width - Scale(RetailWidth);
+        _spare = width - Columns * size.Pitch - 2 * SideGap;
         var height = Scale(RetailHeight);
-        DollArea.Width = Scale(RetailArmourRight) - Scale(RetailArmourLeft) + size.Cell + 2 * DollClearance + _spare;
+        DollArea.Width = (ArmourRight - ArmourLeft) * size.Pitch + size.Cell + 2 * DollClearance + _spare;
         DollArea.Height = height;
         // The panel keeps its full size, and whatever is put in it (the 3D character) is inset to clear the corner row.
         DollArea.Padding = new Thickness(0, CornerInset, 0, CornerRowHeight + 2 * CornerInset);
-        SetLeft(DollArea, X(RetailArmourLeft) + 1 - DollClearance);
+        SetLeft(DollArea, ArmourLeft * size.Pitch + SideGap + 1 - DollClearance);
         SetLeft(SlotsToggle, GetLeft(DollArea) + CornerInset);
         SetTop(SlotsToggle, height - CornerRowHeight - CornerInset);
         SetLeft(ExpandButton, GetLeft(DollArea) + DollArea.Width - ExpandButton.Width - CornerInset);
         SetTop(ExpandButton, height - CornerRowHeight - CornerInset);
-        foreach (var (cell, x, y) in _placed) PlaceCell(cell, x, y);
+        foreach (var (cell, column, y) in _placed) PlaceCell(cell, column, y);
     }
 
-    private void PlaceCell(Control cell, int x, int y)
+    private void PlaceCell(Control cell, int column, int y)
     {
         // The left column stays at the left edge, the armour over the doll moves half the spare width, and the right side all of it.
-        var shift = x >= RetailRightLeft ? _spare : x >= RetailArmourLeft ? Math.Round(_spare / 2) : 0;
-        SetLeft(cell, X(x) + shift + 1);
+        var shift = column >= RightLeft ? 2 * SideGap + _spare : column >= ArmourLeft ? SideGap + Math.Round(_spare / 2) : 0;
+        SetLeft(cell, column * _size.Pitch + shift + 1);
         SetTop(cell, Scale(y) + 1);
     }
-
-    /// <summary>A retail x, scaled, with the margin before the left column taken off.</summary>
-    private double X(int retail) => Scale(retail) - Scale(RetailMargin);
 
     private const string ExpandGlyph = "M1,4.5 V1 H4.5 M7.5,1 H11 V4.5 M11,7.5 V11 H7.5 M4.5,11 H1 V7.5";
 
