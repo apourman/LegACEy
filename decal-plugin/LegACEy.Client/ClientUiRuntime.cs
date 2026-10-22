@@ -1404,9 +1404,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private void DrawModelViews(ScreenSurface? surface)
     {
         if (surface is not { Visible: true } || _device == IntPtr.Zero || surface.Panel.Content is not Avalonia.Visual window) return;
-        // ponytail: walks the window's visual tree every frame; cache the views per window if a big window makes it show up in the frame budget
-        foreach (var view in Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<ModelView>())
+        // Walking each window's tree for its views every frame was most of the plugin's garbage; the views list themselves instead.
+        var views = ModelView.Attached;
+        for (var i = 0; i < views.Count; i++)
         {
+            var view = views[i];
+            if (!Avalonia.VisualTree.VisualExtensions.IsVisualAncestorOf(window, view)) continue;
             _drawnModelViews.Add(view);
             if (view.Model is not { } model || !view.IsEffectivelyVisible || _failedModelViews.Contains(view)) continue;
             try

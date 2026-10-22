@@ -222,7 +222,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         if (_forcing)
         {
             // Not on screen: the selection is drawn here only so the outline shows through what culled it.
-            try { if (DrawsSelected()) DrawIntoMask(() => original(device, type, baseVertex, minIndex, vertices, startIndex, primitives), SelectionChannels); }
+            try { if (DrawsSelected()) MaskIndexed(original, device, type, baseVertex, minIndex, vertices, startIndex, primitives, SelectionChannels); }
             catch (Exception exception) { Fail(exception); }
             return 0;
         }
@@ -266,7 +266,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         }
         catch (Exception exception) { Fail(exception); }
         if (channels == 0) return result;
-        try { DrawIntoMask(() => original(device, type, baseVertex, minIndex, vertices, startIndex, primitives), channels); }
+        try { MaskIndexed(original, device, type, baseVertex, minIndex, vertices, startIndex, primitives, channels); }
         catch (Exception exception) { Fail(exception); }
         return result;
     }
@@ -345,6 +345,11 @@ internal sealed unsafe class WorldEffects : IDisposable
         var physicsObject = *(int*)(part + 0xE0);
         return physicsObject != 0 && *(uint*)(physicsObject + 0x8) == Selected;
     }
+
+    // Its own method so the lambda's closure is built only for a masked draw: captured in the hook, the compiler built it on every draw.
+    private void MaskIndexed(DrawIndexedFn original, IntPtr device, int type, int baseVertex, uint minIndex, uint vertices, uint startIndex,
+        uint primitives, int channels) =>
+        DrawIntoMask(() => original(device, type, baseVertex, minIndex, vertices, startIndex, primitives), channels);
 
     /// <summary>Repeats one draw into the mask's channels, flat white and through anything in front, then puts the device back.</summary>
     private void DrawIntoMask(Action draw, int channels)
