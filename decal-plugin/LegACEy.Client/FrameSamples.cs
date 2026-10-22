@@ -29,31 +29,16 @@ internal sealed class FrameSamples
     private double Percentile(double p) => _values[Math.Max(0, (int)Math.Ceiling(p * _values.Count) - 1)];
 }
 
-/// <summary>The worst and total of a timing, for parts too many to keep every sample of.</summary>
-internal sealed class PeakTimes
-{
-    private double _max;
-    private double _total;
-
-    public void Add(double milliseconds)
-    {
-        if (milliseconds > _max) _max = milliseconds;
-        _total += milliseconds;
-    }
-
-    /// <summary>"max/total" in milliseconds, then starts again.</summary>
-    public string TakeSummary()
-    {
-        var summary = string.Format(CultureInfo.InvariantCulture, "{0:F2}/{1:F1}", _max, _total);
-        _max = _total = 0;
-        return summary;
-    }
-}
-
 /// <summary>Named phases of a frame: their times (<see cref="FrameSamples"/>) and the bytes this thread allocated in each.</summary>
 internal sealed class PhaseTimes
 {
-    private readonly Dictionary<string, (FrameSamples Times, long[] Bytes)> _phases = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Phase> _phases = new(StringComparer.Ordinal);
+
+    private sealed class Phase
+    {
+        public readonly FrameSamples Times = new();
+        public long Bytes;
+    }
 
     /// <summary>Where a phase starts: the time and this thread's allocated bytes.</summary>
     public readonly record struct Mark(long Timestamp, long Bytes);
@@ -64,9 +49,9 @@ internal sealed class PhaseTimes
     public void Add(string phase, Mark start)
     {
         var bytes = GC.GetAllocatedBytesForCurrentThread() - start.Bytes;
-        if (!_phases.TryGetValue(phase, out var entry)) _phases[phase] = entry = (new FrameSamples(), new long[1]);
+        if (!_phases.TryGetValue(phase, out var entry)) _phases[phase] = entry = new Phase();
         entry.Times.Add(System.Diagnostics.Stopwatch.GetElapsedTime(start.Timestamp).TotalMilliseconds);
-        entry.Bytes[0] += bytes;
+        entry.Bytes += bytes;
     }
 
     /// <summary>"phase=p50/p95/max ms,KB allocated" for each phase that ran, then forgets the samples; "-" when none ran.</summary>
@@ -76,8 +61,8 @@ internal sealed class PhaseTimes
         foreach (var pair in _phases)
         {
             if (pair.Value.Times.Count == 0) continue;
-            parts.Add($"{pair.Key}={pair.Value.Times.TakeSummary()},{pair.Value.Bytes[0] / 1024}KB");
-            pair.Value.Bytes[0] = 0;
+            parts.Add($"{pair.Key}={pair.Value.Times.TakeSummary()},{pair.Value.Bytes / 1024}KB");
+            pair.Value.Bytes = 0;
         }
         return parts.Count == 0 ? "-" : string.Join(" ", parts);
     }

@@ -43,13 +43,6 @@ internal sealed unsafe class ScreenSurface : IDisposable
 
     public FrameSamples DrawTimes { get; } = new();
 
-    // The parts of the panel's tick: queued jobs, its own layout, the shared render tick, capture and the resource walk.
-    public PeakTimes JobsTimes { get; } = new();
-    public PeakTimes LayoutTimes { get; } = new();
-    public PeakTimes RenderTimes { get; } = new();
-    public PeakTimes CaptureTimes { get; } = new();
-    public PeakTimes WalkTimes { get; } = new();
-
     public int ChangedFrames { get; set; }
 
     public int DirtyRectangles { get; set; }
@@ -68,11 +61,6 @@ internal sealed unsafe class ScreenSurface : IDisposable
         var changed = Panel.Tick();
         var elapsed = Stopwatch.GetElapsedTime(start);
         TickTimes.Add(elapsed.TotalMilliseconds);
-        JobsTimes.Add(Panel.LastJobsMilliseconds);
-        LayoutTimes.Add(Panel.LastLayoutMilliseconds);
-        RenderTimes.Add(Panel.LastRenderMilliseconds);
-        CaptureTimes.Add(Panel.LastCaptureMilliseconds);
-        WalkTimes.Add(Panel.LastWalkMilliseconds);
         if (changed) ChangedFrames++;
         DirtyRectangles += Panel.Frame.DirtyRectangles.Count;
         if (Panel.LastError != null)

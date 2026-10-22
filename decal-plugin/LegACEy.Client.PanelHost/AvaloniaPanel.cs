@@ -45,21 +45,6 @@ public sealed class AvaloniaPanel : IDisposable
     private bool _renderingSuspended;
     internal int FrameCaptureCount { get; private set; }
 
-    // The last Tick's parts, for the performance log. Render is the shared render-timer tick: it paints every window
-    // with pending changes, so the window ticked first in a frame pays for the others.
-    public double LastJobsMilliseconds { get; private set; }
-    public double LastLayoutMilliseconds { get; private set; }
-    public double LastRenderMilliseconds { get; private set; }
-    public double LastCaptureMilliseconds { get; private set; }
-    public double LastWalkMilliseconds { get; private set; }
-
-    private static double Lap(ref long mark)
-    {
-        var now = Stopwatch.GetTimestamp();
-        var elapsed = (now - mark) * 1000.0 / Stopwatch.Frequency;
-        mark = now;
-        return elapsed;
-    }
     private readonly RendererInvalidationObserver _rendererObserver;
     private readonly HashSet<AvaloniaObject> _renderResources = new();
     private readonly HashSet<INotifyCollectionChanged> _renderCollections = new();
@@ -256,19 +241,11 @@ public sealed class AvaloniaPanel : IDisposable
                 Dispatcher.UIThread.RunJobs();
                 AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             }
-            var mark = Stopwatch.GetTimestamp();
             Dispatcher.UIThread.RunJobs();
-            LastJobsMilliseconds = Lap(ref mark);
-            // This window's layout on its own, so the timings tell it apart from the render tick, which serves every window.
-            _window.UpdateLayout();
-            LastLayoutMilliseconds = Lap(ref mark);
             // Let Avalonia process layout and drawing invalidations before deciding
             // whether the rendered frame needs to be copied into our pixel buffer.
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             Dispatcher.UIThread.RunJobs();
-            LastRenderMilliseconds = Lap(ref mark);
-            LastCaptureMilliseconds = 0;
-            LastWalkMilliseconds = 0;
             if (!_forceFullFrame && !_hasInvalidation)
             {
                 _frame.DirtyRectangles = Array.Empty<Rectangle>();
@@ -331,9 +308,7 @@ public sealed class AvaloniaPanel : IDisposable
                 _frame.DirtyRectangles = dirty;
             else
                 _frame.DirtyRectangles = actualDirtyRectangles;
-            LastCaptureMilliseconds = Lap(ref mark);
             ObserveRenderResources();
-            LastWalkMilliseconds = Lap(ref mark);
             _hasInvalidation = false;
             _forceFullFrame = false;
             return dirty.Length != 0 || changed;
@@ -562,10 +537,9 @@ public sealed class AvaloniaPanel : IDisposable
             var visual = _scanVisuals.Pop();
             foreach (var property in ResourcePropertiesOf(visual.GetType()))
                 CollectRenderResource(visual.GetValue(property), current, collections);
-            if (visual.GetVisualChildren() is IReadOnlyList<Visual> children)
-                for (var i = children.Count - 1; i >= 0; i--) _scanVisuals.Push(children[i]);
-            else
-                foreach (var child in visual.GetVisualChildren()) _scanVisuals.Push(child);
+            // Visual children are an IAvaloniaList: index it rather than box an enumerator per visual.
+            var children = (IReadOnlyList<Visual>)visual.GetVisualChildren();
+            for (var i = children.Count - 1; i >= 0; i--) _scanVisuals.Push(children[i]);
         }
 
         foreach (var resource in _renderResources)

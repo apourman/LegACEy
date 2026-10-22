@@ -175,6 +175,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private readonly Dictionary<ModelView, ModelRenderer> _modelRenderers = new();
     private readonly HashSet<ModelView> _failedModelViews = new();
     private readonly HashSet<ModelView> _drawnModelViews = new();
+    private readonly List<ModelView> _releasedModelViews = new();
     private WindowManager? _windows;
     // Kept for the session, not rebuilt with the windows: its session overlay holds what a failed write could not save.
     private readonly FileWindowPositionStore _positionStore = new(IOPath.Combine(PluginDirectory, "window-positions.txt"));
@@ -201,8 +202,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private readonly PhaseTimes _phaseTimes = new();
     private long _lastFrameEndBytes;
     private long _betweenFrameBytes;
-    // One listener for the process: the runtime is rebuilt per session, the GC is not.
-    private static readonly GcStarts GcStartCounts = new();
     private long _lastAllocatedBytes = GC.GetTotalAllocatedBytes();
     private TimeSpan _lastGcPause = GC.GetTotalPauseDuration();
     private ScreenSurface? _hovered;
@@ -1104,9 +1103,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     public void Frame()
     {
-        var frameMark = PhaseTimes.Start();
         // What this thread allocated since the last frame ended: hooks, the post-UI draw, Decal's events.
-        if (_lastFrameEndBytes != 0) _betweenFrameBytes += frameMark.Bytes - _lastFrameEndBytes;
+        if (_lastFrameEndBytes != 0) _betweenFrameBytes += GC.GetAllocatedBytesForCurrentThread() - _lastFrameEndBytes;
         var start = Stopwatch.GetTimestamp();
         if (_loggedIn)
         {
@@ -1126,7 +1124,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         finally
         {
             _uiFrameTimes.Add(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
-            _phaseTimes.Add("frame", frameMark);
             RecordPerformanceMeasurement();
             _lastFrameEndBytes = GC.GetAllocatedBytesForCurrentThread();
         }
@@ -1252,8 +1249,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Every 30 s, logs the UI frame and post-UI draw times (p50/p95/max ms), then one line per window that ran: its tick,
-    /// texture upload and draw times, and how many of its ticks changed pixels. Ticks that changed nothing are the waste to cut.
+    /// Every 30 s, logs the UI frame and post-UI draw times (p50/p95/max ms), the GC, the frame's phases with what each allocated,
+    /// the world effects, then one line per window that ran: its tick, texture upload and draw times, and how many of its ticks changed
+    /// pixels. Ticks that changed nothing are the waste to cut.
     /// </summary>
     private void RecordPerformanceMeasurement()
     {
@@ -1282,7 +1280,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     /// <summary>
     /// Why the GC runs: what was allocated and how long the game was paused since the last line, the memory load against the
-    /// threshold where the GC turns aggressive, the last full collection's pause, and the collections by generation and reason.
+    /// threshold where the GC turns aggressive, and the last full and background pauses.
     /// </summary>
     private void LogGcSample()
     {
@@ -1296,8 +1294,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             $"heapMB={info.HeapSizeBytes / MB:F1} fragmentedMB={info.FragmentedBytes / MB:F1} committedMB={info.TotalCommittedBytes / MB:F1} " +
             $"loadMB={info.MemoryLoadBytes / MB:F0} highLoadMB={info.HighMemoryLoadThresholdBytes / MB:F0} availableMB={info.TotalAvailableMemoryBytes / MB:F0} " +
             $"lastFullPauseMs={(full.Index == 0 ? "-" : full.PauseDurations[0].TotalMilliseconds.ToString("F1"))} " +
-            $"lastBackgroundPauseMs={(background.Index == 0 ? "-" : background.PauseDurations[0].TotalMilliseconds.ToString("F1"))} " +
-            $"starts: {GcStartCounts.TakeSummary()}.");
+            $"lastBackgroundPauseMs={(background.Index == 0 ? "-" : background.PauseDurations[0].TotalMilliseconds.ToString("F1"))}.");
         _lastAllocatedBytes = allocated;
         _lastGcPause = pause;
     }
@@ -1306,8 +1303,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     {
         if (surface == null || surface.TickTimes.Count == 0 && surface.DrawTimes.Count == 0) return;
         var ticks = surface.TickTimes.Count;
-        Log($"UI performance surface {name}: ticks={ticks} changed={surface.ChangedFrames} dirtyRects={surface.DirtyRectangles} tick={surface.TickTimes.TakeSummary()}ms upload={surface.UploadTimes.TakeSummary()}ms draw={surface.DrawTimes.TakeSummary()}ms " +
-            $"max/total: jobs={surface.JobsTimes.TakeSummary()} layout={surface.LayoutTimes.TakeSummary()} render(all windows)={surface.RenderTimes.TakeSummary()} capture={surface.CaptureTimes.TakeSummary()} walk={surface.WalkTimes.TakeSummary()}ms.");
+        Log($"UI performance surface {name}: ticks={ticks} changed={surface.ChangedFrames} dirtyRects={surface.DirtyRectangles} tick={surface.TickTimes.TakeSummary()}ms upload={surface.UploadTimes.TakeSummary()}ms draw={surface.DrawTimes.TakeSummary()}ms.");
         surface.ChangedFrames = 0;
         surface.DirtyRectangles = 0;
     }
@@ -1438,11 +1434,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// <summary>Frees the GPU resources of 3D views that are no longer in an open window (all of them for an empty set).</summary>
     private void ReleaseModelRenderers(ISet<ModelView> keep)
     {
-        foreach (var view in _modelRenderers.Keys.Where(view => !keep.Contains(view)).ToList())
+        // Runs every frame: collect into a reused list rather than a fresh LINQ one.
+        foreach (var view in _modelRenderers.Keys)
+            if (!keep.Contains(view)) _releasedModelViews.Add(view);
+        foreach (var view in _releasedModelViews)
         {
             _modelRenderers[view].Dispose();
             _modelRenderers.Remove(view);
         }
+        _releasedModelViews.Clear();
         _failedModelViews.IntersectWith(keep);
     }
 

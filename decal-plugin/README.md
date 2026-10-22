@@ -101,6 +101,14 @@ next post-UI draw fail in game. The file is deleted, the failure is logged to
 that removal path. With several clients sharing the directory, whichever client
 checks first takes the file; the `[pid N]` prefix shows which one.
 
+Every 30 s in game, `legacey-avalonia.log` gets a set of `UI performance` lines; times are median/95th percentile/worst in
+milliseconds. `sample` covers the whole UI frame and the post-UI draw, with memory and GC counts. `gc` gives what was allocated and how
+long the GC paused the game since the last line, memory load, and the last full and background pauses. `phases` times each part of
+the frame (game state, each retail takeover, panels, windows) with the KB it allocated, and what the game thread allocated between frames.
+`world` covers water, weather and combat text, and how many of retail's draws pass through the world draw hook. One `surface` line per
+window gives its tick, upload and draw times and how many ticks changed pixels. Avalonia's jobs and render tick are shared by every window,
+so the window ticked first in a frame (the toolbar) carries the others' layout and paint.
+
 The LegACEy Inventory replaces retail's inventory panel: it parks retail's panel and opens and closes its own window with it (by key,
 toolbar or item). The appraisal window likewise replaces retail's examination window: when retail's examination panel shows, it is parked
 and closed, and the appraised object opens in LegACEy's window. Its header's Inspect button opens the Inspect window: the object's 3D
