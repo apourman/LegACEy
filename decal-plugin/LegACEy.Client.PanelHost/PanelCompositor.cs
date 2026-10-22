@@ -26,13 +26,17 @@ public static class PanelCompositor
     private static readonly Stopwatch StepClock = new();
     private static bool _stalled;
 
+    /// <summary>The pixels every panel painted in the last advance: the sum of their <see cref="AvaloniaPanel.PaintedArea"/>.</summary>
+    public static long PaintedArea { get; private set; }
+
     internal static void Register(AvaloniaPanel panel) => Panels.Add(panel);
 
     internal static void Unregister(AvaloniaPanel panel) => Panels.Remove(panel);
 
     /// <summary>
     /// Pump Avalonia's work and run its render timer once for every panel, then capture each shown panel whose content changed.
-    /// Afterwards each panel's <see cref="AvaloniaPanel.Changed"/> and its frame's dirty rectangles say what this advance changed.
+    /// Afterwards each panel's <see cref="AvaloniaPanel.Changed"/>, its frame's dirty rectangles and its attribution (layout passes and
+    /// painted area) say what this advance changed and what it cost.
     /// </summary>
     /// <remarks>
     /// A failure goes to the error handler of the panel that raised it (see <see cref="Step"/>), as a capture's does. A failure in the
@@ -41,6 +45,7 @@ public static class PanelCompositor
     /// </remarks>
     public static void Advance()
     {
+        PaintedArea = 0;
         // Nothing to run, and before the first panel Avalonia may not be initialized: touching its dispatcher would bind it here.
         if (Panels.Count == 0) return;
         Dispatcher.UIThread.VerifyAccess();
@@ -52,7 +57,11 @@ public static class PanelCompositor
         Capturing.AddRange(Panels);
         try
         {
-            foreach (var panel in Capturing) panel.Capture();
+            foreach (var panel in Capturing)
+            {
+                panel.Capture();
+                PaintedArea += panel.PaintedArea;
+            }
         }
         finally { Capturing.Clear(); }
     }
