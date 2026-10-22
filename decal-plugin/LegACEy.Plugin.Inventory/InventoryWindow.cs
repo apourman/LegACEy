@@ -234,22 +234,21 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     }
 
     /// <summary>
-    /// A press on a slot. A right press assesses what the slot shows, as retail does. A left press sends nothing yet: a release
-    /// decides between a click and a drop.
+    /// A press on a slot, or on a worn item on the doll. A right press assesses what the slot shows, as retail does. A left press sends
+    /// nothing yet: a release decides between a click and a drop.
     /// </summary>
     private void OnPressed(object? sender, PointerPressedEventArgs e)
     {
         var button = e.GetCurrentPoint(this).Properties;
-        if (SlotAt(e.GetPosition(this)) is not { } slot) return;
+        if (PressAt(e.GetPosition(this)) is not { } id) return;
         if (button.IsRightButtonPressed && _press == null)
         {
-            var id = (InventorySlotId)slot.Tag!;
             var item = id.Place == SlotPlace.Pack ? id.Container : id.ItemId;
             if (item != 0) _port.Assess(item);
             return;
         }
         if (!button.IsLeftButtonPressed) return;
-        _press = (InventorySlotId)slot.Tag!;
+        _press = id;
         _pressModifiers = e.KeyModifiers;
         _pressPoint = e.GetPosition(this);
         _pressClicks = e.ClickCount;
@@ -262,7 +261,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var point = e.GetPosition(this);
         if (_press is not { } press)
         {
-            Hover(SlotAt(point)?.Tag is InventorySlotId hovered ? TargetOf(hovered) : 0);
+            Hover(PressAt(point) is { } hovered ? TargetOf(hovered) : 0);
             return;
         }
         if (_dragged == 0)
@@ -568,6 +567,23 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         for (var visual = this.GetVisualAt(point); visual != null; visual = visual.GetVisualParent())
             if (visual is DerethSlot { Tag: InventorySlotId } slot) return slot;
+        return null;
+    }
+
+    /// <summary>What a press at a point acts on: the slot under it, or, on the doll, the worn item over the body part there.</summary>
+    private InventorySlotId? PressAt(Point point) => SlotAt(point)?.Tag as InventorySlotId ?? WornAt(point);
+
+    /// <summary>
+    /// The worn item on the body part under a point of the doll, outermost first, as retail picks: a coat over the shirt beneath it.
+    /// Null off the doll, or where that part wears nothing.
+    /// </summary>
+    private InventorySlotId? WornAt(Point point)
+    {
+        if (_doll == null || DollArea.Child != _doll || this.TranslatePoint(point, _doll) is not { } at) return null;
+        var wielded = _port.Snapshot.Wielded;
+        foreach (var slot in InventoryPaperdoll.SlotsOn(_doll.PartAt(at)))
+            if (wielded.FirstOrDefault(item => item.Slots.Contains(slot)) is { } item)
+                return new InventorySlotId(SlotPlace.Paperdoll, item.Id, 0, -1, slot);
         return null;
     }
 

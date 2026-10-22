@@ -1,3 +1,4 @@
+using LegACEy.Client.GameArt;
 using Avalonia;
 using Avalonia.Input;
 using LegACEy.Client.Demo;
@@ -44,18 +45,32 @@ public sealed class ModelViewTests
         Assert.True(view.Focus > 0.5f);
         Assert.Equal(before, view.Focus + (0.5f - 20 / 200f) * ModelView.Framing / view.Zoom, 3);
 
-        // Turning only: an up-and-down drag, a Shift-drag and the wheel leave the model upright, unmoved and unzoomed.
-        view.ResetView();
-        view.TurnsOnly = true;
-        panel.PointerDown(50, 50);
-        panel.PointerMove(50, 150);
-        panel.PointerUp(50, 150);
-        panel.PointerDown(50, 100, KeyModifiers.Shift);
-        panel.PointerMove(50, 150);
-        panel.PointerUp(50, 150);
-        panel.MouseWheel(50, 100, 0, 1);
-        Assert.Equal(-1, System.Numerics.Vector3.Transform(System.Numerics.Vector3.UnitY, view.Orientation).Y, 3);
-        Assert.Equal(0.5f, view.Focus, 3);
-        Assert.Equal(1f, view.Zoom, 3);
+    });
+
+    [Fact]
+    public void A_point_on_the_view_finds_the_part_drawn_there_nearest_the_viewer() => RenderThread.Run(() =>
+    {
+        ModelView? view = null;
+        using var panel = AvaloniaPanel.Create(() => view = new ModelView(), 100, 200);
+        var mesh = new ModelMesh(new GameImage(1, 1, new byte[4]), clipped: false);
+        void Triangle(int part, float y, float bottom, float top)
+        {
+            foreach (var (x, z) in new[] { (-0.1f, bottom), (0.1f, bottom), (0f, top) })
+            {
+                mesh.Vertices.Add(new ModelVertex { X = x, Y = y, Z = z });
+                mesh.Parts.Add(part);
+            }
+        }
+        Triangle(16, 0, 1.6f, 1.8f);
+        Triangle(3, 0, 0, 0.2f);
+        Triangle(9, 0, 0.8f, 1.1f);
+        // In front of the chest: the model faces the viewer, so its +Y side is the near one.
+        Triangle(12, 0.2f, 0.8f, 1.0f);
+        view!.Model = new CharacterModel(new[] { mesh });
+
+        Assert.Equal(16, view.PartAt(new Point(50, 20)));
+        Assert.Equal(3, view.PartAt(new Point(50, 180)));
+        Assert.Equal(12, view.PartAt(new Point(50, 100)));
+        Assert.Equal(-1, view.PartAt(new Point(5, 100)));
     });
 }

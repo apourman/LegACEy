@@ -40,12 +40,18 @@ public sealed class PaperdollView : Border
     /// <summary>Turns, zooms and moves the view back to its first one: facing the viewer, the whole character, centred.</summary>
     public void ResetView() => _view.ResetView();
 
-    /// <summary>Dragging only spins the model round: see <see cref="ModelView.TurnsOnly"/>.</summary>
-    public bool TurnsOnly
+    /// <summary>
+    /// The inventory's doll, as retail's: the character holds still facing the viewer, without what it holds, and takes no pointer input,
+    /// so the window under it gets the presses and picks the body part with <see cref="PartAt"/>.
+    /// </summary>
+    public bool Still
     {
-        get => _view.TurnsOnly;
-        set => _view.TurnsOnly = value;
+        get => !_view.IsHitTestVisible;
+        set => _view.IsHitTestVisible = !value;
     }
+
+    /// <summary>The body part (a setup part number) drawn at a point of this view, or -1.</summary>
+    public int PartAt(Avalonia.Point point) => _view.PartAt(point);
 
     private void Start()
     {
@@ -64,6 +70,7 @@ public sealed class PaperdollView : Border
     {
         if (_view.Model == null) _status.Text = "Loading…";
         var request = ++_request;
+        var still = Still;
         _looks.Request(_target, (appearance, why) =>
         {
             if (request != _request) return;
@@ -76,7 +83,9 @@ public sealed class PaperdollView : Border
             Task.Run(() =>
             {
                 using var dat = new PortalDat(_portalPath);
-                return CharacterModel.Build(dat, appearance);
+                return CharacterModel.Build(dat, still
+                    ? new CharacterAppearance(appearance.SetupId, appearance.PaletteId, appearance.SubPalettes, appearance.TextureChanges, appearance.PartChanges)
+                    : appearance);
             }).ContinueWith(task => Dispatcher.UIThread.Post(() =>
             {
                 if (request != _request) return;

@@ -168,6 +168,26 @@ internal sealed class InventoryPaperdoll : Canvas
         }
     }
 
+    /// <summary>
+    /// The paperdoll slots worn over a part of the character's body, outermost first: the armour, then the shirt or pants under it.
+    /// Parts are numbered as in the humanoid setups (0x02000001 and its kin): 0 the abdomen, 1 and 5 the upper legs, 2 and 6 the lower
+    /// legs, 3, 4, 7 and 8 the feet, 9 the chest, 10 and 13 the upper arms, 11 and 14 the lower arms, 12 and 15 the hands, 16 the head;
+    /// the rest are markers that draw nothing.
+    /// </summary>
+    internal static PaperdollSlot[] SlotsOn(int part) => part switch
+    {
+        0 => [PaperdollSlot.Abdomen, PaperdollSlot.Pants],
+        1 or 5 => [PaperdollSlot.UpperLegs, PaperdollSlot.Pants],
+        2 or 6 => [PaperdollSlot.LowerLegs, PaperdollSlot.Pants],
+        3 or 4 or 7 or 8 => [PaperdollSlot.Feet],
+        9 => [PaperdollSlot.Chest, PaperdollSlot.Shirt],
+        10 or 13 => [PaperdollSlot.UpperArms, PaperdollSlot.Shirt],
+        11 or 14 => [PaperdollSlot.LowerArms, PaperdollSlot.Shirt],
+        12 or 15 => [PaperdollSlot.Hands],
+        16 => [PaperdollSlot.Head],
+        _ => [],
+    };
+
     /// <summary>Retail's position, scaled to the pitch and rounded to whole pixels.</summary>
     private double Scale(int retail) => Math.Round(retail * Cells.Pitch / RetailCell);
 }
