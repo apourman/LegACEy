@@ -164,8 +164,7 @@ public sealed class RetailChatWindowsTests
         first.Drag(first.At(main, TabView(main, "Fellowship")), first.Place(main, new System.Drawing.Point(600, 110)));
         Assert.Equal(RetailChatWindows.DefaultTextSize / 100.0, first.Chat.Windows[1].TextScale);
 
-        first.Chat.TextSizeStepped(1);
-        first.Chat.TextSizeStepped(1);
+        first.Chat.SetTextSize(140);
         Assert.All(first.Chat.Windows, window => Assert.Equal(1.4, window.TextScale, 3));
         first.Dispose();
 
@@ -183,9 +182,9 @@ public sealed class RetailChatWindowsTests
         var sizes = new List<int>();
         desk.Chat.TextSizeChanged += sizes.Add;
 
-        desk.Chat.TextSizeStepped(1);
+        desk.Chat.SetTextSize(130);
         desk.Chat.SetTextSize(RetailChatWindows.LargestTextSize);
-        desk.Chat.TextSizeStepped(1);
+        desk.Chat.SetTextSize(RetailChatWindows.LargestTextSize + 10);
 
         Assert.Equal(new[] { 130, RetailChatWindows.LargestTextSize }, sizes);
     }));

@@ -1185,8 +1185,6 @@ public sealed class RetailChatTests
         public void MoveRequested(RetailChatWindow window) { }
 
         public void CloseRequested(RetailChatWindow window) { }
-
-        public void TextSizeStepped(int steps) { }
     }
 
     /// <summary>A fake of retail's chat: lines are raised by the test, sends and timestamp changes are recorded.</summary>
