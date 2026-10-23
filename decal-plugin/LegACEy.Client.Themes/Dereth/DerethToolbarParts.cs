@@ -9,14 +9,15 @@ namespace LegACEy.Client.Themes;
 
 /// <summary>
 /// A round gold medallion with a glyph: a window button, the stance, Use, Examine or the backpack. Normal, hover and pressed
-/// art, and the green ring while <see cref="IsOpen"/>. A click is a release over the medallion after a press on it.
+/// art, and the green ring while <see cref="IsOpen"/>. A click is a release over the medallion after a press on it. Given retail's own
+/// button art with <see cref="SetArt"/>, it draws that art at its size in place of the medallion.
 /// </summary>
 public sealed class DerethMedallion : Decorator
 {
     private static readonly Color GoldLight = Color.Parse("#DDC47D");
     private static readonly IPen RimPen = new Pen(DerethPalette.Brush(Color.Parse("#8A6326")), 1);
     private static readonly IPen InnerPen = new Pen(DerethPalette.Brush(Color.Parse("#DDC47D").WithAlpha(0x59)), 1);
-    private static readonly IPen RingPen = new Pen(DerethPalette.TealBrush, 2.5);
+    private static readonly IPen RingPen = new Pen(DerethPalette.TealBrush, 2);
     private static readonly IBrush PressedFace = DerethPalette.Brush(Color.Parse("#0A0805"));
     private static readonly IBrush NormalFace = Radial(Color.Parse("#2E2A1E"), Color.Parse("#18160F"));
     private static readonly IBrush HoverFace = Radial(Color.Parse("#3E3826"), Color.Parse("#221E14"));
@@ -24,6 +25,7 @@ public sealed class DerethMedallion : Decorator
     private readonly double _diameter;
     private readonly double _glyphSize;
     private DerethGlyph _glyph;
+    private IImage? _art, _hoverArt, _openArt;
     private bool _open;
     private bool _hover;
     private bool _pressed;
@@ -47,6 +49,22 @@ public sealed class DerethMedallion : Decorator
     {
         get => _glyph;
         set { _glyph = value; InvalidateVisual(); }
+    }
+
+    /// <summary>
+    /// Draws retail's button art in place of the medallion, and takes its size: <paramref name="hover"/> while hovered or pressed, and
+    /// <paramref name="open"/> while <see cref="IsOpen"/>, when given.
+    /// </summary>
+    public void SetArt(IImage art, IImage? hover = null, IImage? open = null)
+    {
+        _art = art;
+        _hoverArt = hover;
+        _openArt = open;
+        Width = art.Size.Width;
+        Height = art.Size.Height;
+        ((Border)Child!).Width = Width;
+        ((Border)Child).Height = Height;
+        InvalidateVisual();
     }
 
     /// <summary>Shows the green ring: the window or the menu it opens is open.</summary>
@@ -94,12 +112,18 @@ public sealed class DerethMedallion : Decorator
 
     public override void Render(DrawingContext context)
     {
+        if (_art != null)
+        {
+            var art = _open && _openArt != null ? _openArt : (_hover || _pressed) && _hoverArt != null ? _hoverArt : _art;
+            context.DrawImage(art, new Rect(Bounds.Size));
+            return;
+        }
         var centre = new Point(_diameter / 2, _diameter / 2);
         var radius = _diameter / 2;
         if (_open)
         {
-            // The green ring sits 1 to 3.5 DIPs outside the medallion, as its box-shadow does in the mockup.
-            context.DrawEllipse(null, RingPen, centre, radius + 2.25, radius + 2.25);
+            // The green ring sits 0.75 to 2.75 DIPs outside the medallion, close enough that the toolbar's tightly spaced buttons keep clear of it.
+            context.DrawEllipse(null, RingPen, centre, radius + 1.75, radius + 1.75);
         }
         var face = _pressed ? PressedFace : _hover ? HoverFace : NormalFace;
         context.DrawEllipse(face, RimPen, centre, radius - 0.5, radius - 0.5);

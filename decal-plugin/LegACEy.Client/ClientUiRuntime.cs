@@ -2528,7 +2528,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             () => _inGame, _selectionMeters, _appraisal, _inventory.TargetMode);
         // A move of the selected stack splits by retail's amount while the toolbar that shows the amount is up, and only then.
         _inventory.Split ??= new StackSplitter(new NativeRetailSplitPort());
-        var toolbar = new RetailToolbar(_toolbarPort, ToggleMenuWindow, MoveToMainPack, BeginToolbarDrag);
+        var toolbar = new RetailToolbar(_toolbarPort, ToggleMenuWindow, MoveToMainPack, BeginToolbarDrag, _portal);
         // Drawn at LegACEy's window scale, as the other LegACEy windows are. The Dereth theme makes it larger than it measures
         // without one, so it is measured again under the theme and the panel takes that size, rounded up so no edge is cut.
         var scale = WindowScale;
@@ -2552,8 +2552,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private void EnsureShortcutBar()
     {
         if (_shortcutBar != null || !CanOpenWindows) return;
-        _shortcutBar = NewShortcutRow(1, 0, ToggleShortcutRow2);
-        if (_row2Choice.IsOn(SessionServer(), SessionCharacter())) _shortcutRow2 = NewShortcutRow(2, ShortcutBar.SlotCount, null);
+        _shortcutBar = NewShortcutRow(0);
+        if (_row2Choice.IsOn(SessionServer(), SessionCharacter())) _shortcutRow2 = NewShortcutRow(ShortcutBar.SlotCount);
         ShowShortcutRows();
         Action refresh = () => { _shortcutBar?.Refresh(); _shortcutRow2?.Refresh(); };
         _inventory.Changed += refresh;
@@ -2572,9 +2572,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         foreach (var row in rows) row?.Dispose();
     }
 
-    /// <summary>Row 1's tag: turns row 2 off or on and saves the choice for the character.</summary>
-    private void ToggleShortcutRow2() => SetShortcutRow2(_shortcutRow2 == null);
-
     /// <summary>
     /// Turns row 2 on or off, and keeps the choice for the character. Row 2 sits under row 1, so it shows only while row 1 is up; the choice is
     /// kept either way, and row 1 brings row 2 when it is on.
@@ -2584,7 +2581,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (on && _shortcutBar != null && _shortcutRow2 == null)
         {
             // Row 2 starts at slot 9, the first slot after row 1's nine.
-            _shortcutRow2 = NewShortcutRow(2, ShortcutBar.SlotCount, null);
+            _shortcutRow2 = NewShortcutRow(ShortcutBar.SlotCount);
             ShowShortcutRows();
         }
         else if (!on && _shortcutRow2 is { } row2)
@@ -2597,17 +2594,16 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_settings != null) _settings.ShortcutRow2 = new OptionChoice<bool>(on, SetShortcutRow2);
     }
 
-    /// <summary>Shows the rows there are in the toolbar, sizes the toolbar to them, and names row 1's tag click.</summary>
+    /// <summary>Shows the rows there are in the toolbar and sizes the toolbar to them.</summary>
     private void ShowShortcutRows()
     {
         _toolbar?.SetShortcutRows(new[] { _shortcutBar, _shortcutRow2 }.OfType<ShortcutBar>());
-        _shortcutBar?.SetTagTip(_shortcutRow2 != null ? "Hide shortcut row 2" : "Show shortcut row 2");
         FitToolbar();
     }
 
-    /// <summary>A shortcut row for the toolbar. It has no frame of its own: a press on its tag or between its slots moves the toolbar.</summary>
-    private ShortcutBar NewShortcutRow(int row, int firstIndex, Action? tagClick) =>
-        new(row, firstIndex, _toolbarPort!, ShortcutItemOf, _portal, () => _pointer, tagClick, new ItemDragHost(this), _shortcutDrag);
+    /// <summary>A shortcut row for the toolbar, its slots from <paramref name="firstIndex"/>. It has no frame of its own.</summary>
+    private ShortcutBar NewShortcutRow(int firstIndex) =>
+        new(firstIndex, _toolbarPort!, ShortcutItemOf, _portal, new ItemDragHost(this), _shortcutDrag);
 
     /// <summary>The icon and stack count of an object the player holds, from the inventory snapshot; null when it is not held.</summary>
     private ShortcutItem? ShortcutItemOf(uint id)
