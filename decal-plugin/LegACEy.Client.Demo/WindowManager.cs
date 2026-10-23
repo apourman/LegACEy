@@ -4,6 +4,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using LegACEy.Client.Themes;
 
 using WindowPlacement = (System.Drawing.Point Location, System.Drawing.Size? Size);
@@ -225,7 +226,9 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
         {
             var key = Key(server, character, windowId);
             if (_session.TryGetValue(key, out var held)) return held;
-            return Rows() is { } rows && rows.TryGetValue(key, out var placement) ? placement : (WindowPlacement?)null;
+            if (!File.Exists(_path)) return null;
+            using var file = Open(FileMode.Open, FileAccess.Read, FileShare.Read);
+            return file is not null && Rows(file) is { } rows && rows.TryGetValue(key, out var placement) ? placement : (WindowPlacement?)null;
         }
     }
 
@@ -235,12 +238,7 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
         {
             var key = Key(server, character, windowId);
             // A file that cannot be read is not rewritten: its other rows would be lost with it. The place still holds for this session.
-            if (Rows() is { } rows)
-            {
-                rows[key] = placement;
-                if (WriteRows(rows)) return;
-            }
-            _session[key] = placement;
+            if (!Change(rows => rows[key] = placement)) _session[key] = placement;
         }
     }
 
@@ -253,25 +251,45 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
     {
         lock (_sync)
         {
-            if (Rows() is not { } rows) return false;
             var owned = Encode(server) + "|" + Encode(character) + "|";
             var kept = new HashSet<string>(keep.Select(id => Key(server, character, id)), StringComparer.Ordinal);
-            var forgotten = rows.Keys.Where(key => key.StartsWith(owned, StringComparison.Ordinal) && !kept.Contains(key)).ToList();
-            foreach (var key in forgotten) rows.Remove(key);
-            if (WriteRows(rows)) return true;
+            var forgotten = new List<string>();
+            if (Change(rows =>
+                {
+                    forgotten.AddRange(rows.Keys.Where(key => key.StartsWith(owned, StringComparison.Ordinal) && !kept.Contains(key)));
+                    foreach (var key in forgotten) rows.Remove(key);
+                }))
+                return true;
             foreach (var key in forgotten) _session[key] = null;
             return false;
         }
     }
 
-    /// <summary>Writes the rows, and on success clears the session's changes: the file now holds them.</summary>
-    private bool WriteRows(Dictionary<string, WindowPlacement> rows)
+    /// <summary>
+    /// Reads the rows, changes them and writes them back with the file held open alone the whole time, so a client that saves at the same
+    /// moment waits its turn instead of writing over this change. On success clears the session's changes: the file now holds them. False when
+    /// the file could not be read or written; <paramref name="change"/> ran only if the file was read or there is none.
+    /// </summary>
+    private bool Change(Action<Dictionary<string, WindowPlacement>> change)
     {
         try
         {
             var directory = Path.GetDirectoryName(_path);
             if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-            File.WriteAllLines(_path, rows.Select(pair => Format(pair.Key, pair.Value)));
+            using var file = Open(FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            if (file is null)
+            {
+                // No file that could lose rows, such as a folder in its place: the change still holds for the session's own rows.
+                if (!File.Exists(_path)) change(Rows(null)!);
+                return false;
+            }
+            if (Rows(file) is not { } rows) return false;
+            change(rows);
+            // The whole text in one write, so a client closed mid-save leaves as little of the file cut off as possible.
+            var text = new UTF8Encoding(false).GetBytes(string.Concat(rows.Select(pair => Format(pair.Key, pair.Value) + Environment.NewLine)));
+            file.Position = 0;
+            file.SetLength(0);
+            file.Write(text, 0, text.Length);
             _session.Clear();
             return true;
         }
@@ -279,15 +297,31 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
         catch (UnauthorizedAccessException) { return false; }
     }
 
-    /// <summary>The file's rows with the session's changes applied, or null when the file exists but cannot be read. A missing file has no rows.</summary>
-    private Dictionary<string, WindowPlacement>? Rows()
+    /// <summary>
+    /// Opens the file, waiting up to half a second while another client has it open, since every client on the computer shares it.
+    /// Null when it stays unavailable.
+    /// </summary>
+    private FileStream? Open(FileMode mode, FileAccess access, FileShare share)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try { return new FileStream(_path, mode, access, share); }
+            catch (IOException) when (attempt < 20) { Thread.Sleep(25); }
+            catch (IOException) { return null; }
+            catch (UnauthorizedAccessException) { return null; }
+        }
+    }
+
+    /// <summary>The file's rows with the session's changes applied, or null when it cannot be read. No file: the session's rows alone. The stream is left open.</summary>
+    private Dictionary<string, WindowPlacement>? Rows(FileStream? file)
     {
         var rows = new Dictionary<string, WindowPlacement>(StringComparer.Ordinal);
-        try
+        if (file is not null)
         {
-            if (File.Exists(_path))
+            try
             {
-                foreach (var line in File.ReadAllLines(_path))
+                using var reader = new StreamReader(file, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: 1024, leaveOpen: true);
+                while (reader.ReadLine() is { } line)
                 {
                     var fields = line.Split('|');
                     if (fields.Length is not (5 or 7) || !int.TryParse(fields[3], out var x) || !int.TryParse(fields[4], out var y))
@@ -298,9 +332,8 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
                     rows[fields[0] + "|" + fields[1] + "|" + fields[2]] = (new Point(x, y), size);
                 }
             }
+            catch (IOException) { return null; }
         }
-        catch (IOException) { return null; }
-        catch (UnauthorizedAccessException) { return null; }
         foreach (var pair in _session)
         {
             if (pair.Value is { } placement) rows[pair.Key] = placement;
