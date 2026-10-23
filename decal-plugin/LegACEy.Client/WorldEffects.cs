@@ -165,7 +165,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     }
 
     /// <summary>The safe landblock the storm fog rings, as landblock x and y, or null for no storm.</summary>
-    public (int X, int Y)? StormZone { get => _fog.Zone; set => _fog.Zone = value; }
+    public (int X, int Y)? StormZone { get => _serverStorm; set => _fog.Zone = _serverStorm = value; }
 
     /// <summary>Floating combat text over the targets of the hits the server reports.</summary>
     public CombatText Combat => _combat;
@@ -180,10 +180,13 @@ internal sealed unsafe class WorldEffects : IDisposable
         set
         {
             _testWeather = value;
+            _testFog = null;
+            _fog.Zone = _serverStorm;
             _weather.Current = _serverWeather;
         }
     }
 
+    private (int X, int Y)? _serverStorm, _testFog;
     private (WeatherKind Kind, int X, int Y)? _serverWeather;
     private WeatherKind _testWeather;
 
@@ -299,8 +302,14 @@ internal sealed unsafe class WorldEffects : IDisposable
     /// <summary>The storm and weather; the storm's frame ends here even when nothing is shown.</summary>
     private void DrawOutside(uint cell, bool shown)
     {
-        // The test weather follows the player: the 3×3 landblocks around theirs.
-        if (_testWeather != WeatherKind.None && cell != 0) _weather.Current = (_testWeather, (int)(cell >> 24), (int)(cell >> 16) & 0xFF);
+        if (_testWeather != WeatherKind.None && cell != 0)
+        {
+            int x = (int)(cell >> 24), y = (int)(cell >> 16) & 0xFF;
+            // Test fog rings the landblock the player was in when it was picked, and stays, so they can walk out into it. The other test
+            // weather follows the player: the 3×3 landblocks around theirs.
+            if (_testWeather == WeatherKind.Fog) _fog.Zone = _testFog ??= (x, y);
+            else _weather.Current = (_testWeather, x, y);
+        }
         _fog.Draw(inWorld: shown && cell != 0);
         _weather.PlayerCell = cell;
         if (shown) _weather.Draw();

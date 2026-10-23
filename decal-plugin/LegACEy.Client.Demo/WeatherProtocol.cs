@@ -1,6 +1,6 @@
 namespace LegACEy.Client.Demo;
 
-/// <summary>The weather kinds. The server sends None to Thunderstorm; Fog is the client's own, for the Settings window's test weather.</summary>
+/// <summary>The weather kinds. The server sends None to Thunderstorm; Fog is the client's own: the Settings window's test fog, drawn as the storm's ring.</summary>
 public enum WeatherKind : byte { None = 0, Snow = 1, Blizzard = 2, Thunderstorm = 3, Fog = 4 }
 
 /// <summary>Bodies of the weather test's channel actions; they must match ACE.Server.ClientChannel.WeatherChannelActions.</summary>

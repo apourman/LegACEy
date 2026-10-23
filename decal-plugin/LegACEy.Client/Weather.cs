@@ -36,8 +36,6 @@ internal sealed unsafe class Weather : IDisposable
     private static readonly Fall Snow = new(2500, 1.0f, new Vector2(0.4f, 0.2f), 0.35f, 0.035f, 0xD0, 0xFFFFFF, 0, 0xDCE2EA, 900, 0, false);
     private static readonly Fall Blizzard = new(7000, 2.6f, new Vector2(7f, 2.5f), 0.6f, 0.03f, 0xE0, 0xFFFFFF, 0, 0xDCE2EA, 55, 0, false);
     private static readonly Fall Thunderstorm = new(9000, 9f, new Vector2(1.5f, 0.6f), 0, 0.012f, 0x70, 0xB8C4D4, 0.05f, 0x1C222C, 140, 0.55f, true);
-    // The test weather's fog: no drops, only the storm fog's grey haze.
-    private static readonly Fall Fog = new(0, 0, Vector2.Zero, 0, 0, 0, 0, 0, 0xC8CDCF, 45, 0, false);
     private const int MostDrops = 9000;
     private const uint NightColor = 0x080C16, FlashColor = 0xC8D2FF, BoltColor = 0xE8EEFF;
 
@@ -97,7 +95,7 @@ internal sealed unsafe class Weather : IDisposable
         if (PlayerCell == 0) { Shown("hidden: the player is in no cell (portal space)"); return; }
         if (!SeesOutside(PlayerCell) || (!DrawsIndoors && (PlayerCell & 0xFFFF) >= 0x100)) { Shown($"hidden: no view outside from cell 0x{PlayerCell:X8}"); return; }
         if (_camera.Eye is not { } eye) { Shown("hidden: the camera is not measured yet"); return; }
-        var fall = now.Kind switch { WeatherKind.Blizzard => Blizzard, WeatherKind.Thunderstorm => Thunderstorm, WeatherKind.Fog => Fog, _ => Snow };
+        var fall = now.Kind switch { WeatherKind.Blizzard => Blizzard, WeatherKind.Thunderstorm => Thunderstorm, _ => Snow };
         var centre = new Vector2((now.X + 0.5f) * StormFog.Block, (now.Y + 0.5f) * StormFog.Block);
         var depth = Depth(_camera.Player ?? eye, centre);
         // Drops fall only inside the area, so from outside its edge shows; past a box's reach of it there is nothing to draw.
@@ -119,9 +117,8 @@ internal sealed unsafe class Weather : IDisposable
             if (strength > 0) _camera.DrawHaze(fall.HazeColor, fall.Haze, strength);
             // Lightning lifts the night for its flash.
             if (fall.Night > 0 && strength > 0) Veil((uint)(fall.Night * strength * (1 - 0.8f * flash) * 255) << 24 | NightColor, additive: false);
-            // The fog is haze alone, with no drops to draw.
-            if (fall.Drops > 0 && _shaded == true) DrawShaded(fall, eye, centre, time, building);
-            else if (fall.Drops > 0) DrawDrops(fall, eye, centre, time, building);
+            if (_shaded == true) DrawShaded(fall, eye, centre, time, building);
+            else DrawDrops(fall, eye, centre, time, building);
             if (flash > 0)
             {
                 DrawBolt(eye, flash);
