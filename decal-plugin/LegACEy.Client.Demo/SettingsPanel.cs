@@ -61,6 +61,7 @@ public sealed class ClientSettings
     private OptionChoice<int>? _chatNameColour;
     private OptionChoice<RadarOptions>? _radar;
     private OptionChoice<WeatherKind>? _testWeather;
+    private OptionChoice<bool>? _testFog;
 
     /// <param name="uiSize">The UI size, for all characters. Null where the UI cannot scale, which hides the row.</param>
     /// <param name="update">The version and the check. Null hides the row.</param>
@@ -115,6 +116,9 @@ public sealed class ClientSettings
 
     /// <summary>The weather drawn around the player for testing, for this session only; None is off. Null hides its row.</summary>
     public OptionChoice<WeatherKind>? TestWeather { get => _testWeather; set => Moved(ref _testWeather, value); }
+
+    /// <summary>Whether the storm's fog rings the player's landblock for testing, for this session only. Null hides its row.</summary>
+    public OptionChoice<bool>? TestFog { get => _testFog; set => Moved(ref _testFog, value); }
 
     /// <summary>Puts this character's LegACEy windows back where they first opened, once the player confirms. Null hides its row.</summary>
     public Action? ResetPositions { get; init; }
@@ -563,6 +567,8 @@ public sealed class SettingsPanel : UserControl
             pane.Children.Add(WaterStrengthRow());
         }
         if (_settings.TestWeather != null) pane.Children.Add(TestWeatherRow());
+        if (_settings.TestFog != null) pane.Children.Add(SwitchRow("Test fog", thisCharacter: false,
+            () => _settings.TestFog is { } fog ? (fog.Value, true) : null, on => _settings.TestFog?.Set(on)));
         return pane;
     }
 
@@ -575,7 +581,7 @@ public sealed class SettingsPanel : UserControl
         weather.Chosen += index => _settings.TestWeather?.Set(choices[index]);
         _redraws.Add(Show);
         Show();
-        // Five choices leave no room beside the label, so they sit on their own line under it.
+        // The choices leave no room beside the label, so they sit on their own line under it.
         weather.HorizontalAlignment = HorizontalAlignment.Right;
         return new StackPanel { Spacing = 6, Children = { ScopedLabel("Test weather", thisCharacter: false), weather } };
     }

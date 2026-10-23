@@ -180,15 +180,26 @@ internal sealed unsafe class WorldEffects : IDisposable
         set
         {
             _testWeather = value;
+            _weather.Current = _serverWeather;
+        }
+    }
+
+    /// <summary>Fog for testing, alone or with the test weather: the storm's ring around the player's landblock; false puts the server's storm back.</summary>
+    public bool TestFog
+    {
+        get => _testFogOn;
+        set
+        {
+            _testFogOn = value;
             _testFog = null;
             _fog.Zone = _serverStorm;
-            _weather.Current = _serverWeather;
         }
     }
 
     private (int X, int Y)? _serverStorm, _testFog;
     private (WeatherKind Kind, int X, int Y)? _serverWeather;
     private WeatherKind _testWeather;
+    private bool _testFogOn;
 
     /// <summary>How strong the water is: 0 leaves retail's water, 1 is the look as designed.</summary>
     public float WaterStrength { get => _water.Strength; set => _water.Strength = value; }
@@ -302,13 +313,13 @@ internal sealed unsafe class WorldEffects : IDisposable
     /// <summary>The storm and weather; the storm's frame ends here even when nothing is shown.</summary>
     private void DrawOutside(uint cell, bool shown)
     {
-        if (_testWeather != WeatherKind.None && cell != 0)
+        if (cell != 0)
         {
             int x = (int)(cell >> 24), y = (int)(cell >> 16) & 0xFF;
-            // Test fog rings the landblock the player was in when it was picked, and stays, so they can walk out into it. The other test
-            // weather follows the player: the 3×3 landblocks around theirs.
-            if (_testWeather == WeatherKind.Fog) _fog.Zone = _testFog ??= (x, y);
-            else _weather.Current = (_testWeather, x, y);
+            // Test fog rings the landblock the player was in when it was turned on, and stays, so they can walk out into it. Test weather
+            // follows the player: the 3×3 landblocks around theirs.
+            if (_testFogOn) _fog.Zone = _testFog ??= (x, y);
+            if (_testWeather != WeatherKind.None) _weather.Current = (_testWeather, x, y);
         }
         _fog.Draw(inWorld: shown && cell != 0);
         _weather.PlayerCell = cell;
