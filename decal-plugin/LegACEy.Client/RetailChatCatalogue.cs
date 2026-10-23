@@ -34,6 +34,11 @@ internal static class RetailChatCatalogue
     /// and its ChatState is true while the focused element is one of retail's text entries.
     /// </summary>
     internal const uint SetFocusElement = 0x0045B970;
+    /// <summary>
+    /// UIElement::GetChildRecursive, ThisCall (UIElement*, uint id) -> UIElement*. UIElementManager::GetElement finds top-level windows only,
+    /// so the main chat inside its window is found through this.
+    /// </summary>
+    internal const uint GetChildRecursive = 0x00463C00;
 
     internal static readonly IReadOnlyList<NativeUiEntry> Takeover = new[]
     {
@@ -121,6 +126,9 @@ internal static class RetailChatCatalogue
         // Past the prologue (push esi; mov esi, ecx; mov ecx, [esi+0x60C]), which a hook would change.
         Entry("ChatInterface::DeactivateChatEntry body", DeactivateChatEntry + 9, "8B 01 FF 90 08 01 00 00 8B 8E 0C 06 00 00 8B 11 FF 92 00 01 00 00",
             "ThisCall (ChatInterface*) at 0x004F3C20: the entry's vtable +0x108 and +0x100"),
+        // Past the first instruction (sub esp, 8), which a hook would change.
+        Entry("UIElement::GetChildRecursive body: the direct child first (UIElement::GetChild, 0x00463BA0)", GetChildRecursive + 3,
+            "53 8B 5C 24 10 55 57 53 8B F9 E8 8E FF FF FF", "ThisCall (UIElement*, uint id) -> UIElement* at 0x00463C00"),
         Entry("ChatInterface::HandleEnterKey reads the active window (UIElementManager+0x32C)", 0x004F5F37, "8B B8 2C 03 00 00 85 FF 8B F1 74 5B",
             "instruction reference"),
         Entry("ChatInterface::HandleEnterKey compares the window's focused child with the entry (+0x60C)", 0x004F5F4F,

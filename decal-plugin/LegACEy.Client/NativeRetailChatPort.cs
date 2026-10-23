@@ -59,6 +59,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
 
     // Delegates to fixed retail functions, made once: their addresses never change.
     private static readonly ChatEntryFn DeactivateEntry = Marshal.GetDelegateForFunctionPointer<ChatEntryFn>(At(RetailChatCatalogue.DeactivateChatEntry));
+    private static readonly GetChildRecursiveFn GetChild = Marshal.GetDelegateForFunctionPointer<GetChildRecursiveFn>(At(RetailChatCatalogue.GetChildRecursive));
     private static readonly SetFocusElementFn SetFocus = Marshal.GetDelegateForFunctionPointer<SetFocusElementFn>(At(RetailChatCatalogue.SetFocusElement));
     private static readonly PStringBaseFromWideFn ConstructString = Marshal.GetDelegateForFunctionPointer<PStringBaseFromWideFn>(At(0x00402730));
     private static readonly PStringBaseReleaseFn ReleaseString = Marshal.GetDelegateForFunctionPointer<PStringBaseReleaseFn>(At(0x004011B0));
@@ -103,6 +104,9 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void ChatEntryFn(IntPtr chat);
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate IntPtr GetChildRecursiveFn(IntPtr element, uint id);
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void SetFocusElementFn(IntPtr manager, IntPtr element);
@@ -410,8 +414,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         if (manager == IntPtr.Zero) return false;
         var focused = Marshal.ReadIntPtr(manager, FocusElementOffset);
         if (focused == IntPtr.Zero) return false;
-        var main = NativeUi.GetElement(RetailChatCatalogue.MainChat);
-        return main == IntPtr.Zero || Marshal.ReadIntPtr(IntPtr.Add(main, -4), 0x60C) != focused;
+        return RetailChat() is not { } chat || Marshal.ReadIntPtr(chat, 0x60C) != focused;
     }
 
     /// <summary>
@@ -467,10 +470,16 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         return window != IntPtr.Zero && Marshal.ReadIntPtr(window, 0x1A4) == entry;
     }
 
-    /// <summary>Retail's ChatInterface: the gmMainChatUI element less its UIElement offset of 4, or null before it exists.</summary>
-    private static IntPtr? RetailChat()
+    /// <summary>
+    /// Retail's ChatInterface, or null before it exists: the gmMainChatUI element, found inside the main chat window, less its UIElement
+    /// offset of 4. Only with the Enter entries, which check the child lookup.
+    /// </summary>
+    private IntPtr? RetailChat()
     {
-        var main = NativeUi.GetElement(RetailChatCatalogue.MainChat);
+        if (!_natives.Enter) return null;
+        var window = NativeUi.GetElement(RetailChatCatalogue.MainChatWindow);
+        if (window == IntPtr.Zero) return null;
+        var main = GetChild(window, RetailChatCatalogue.MainChat);
         return main == IntPtr.Zero ? null : IntPtr.Add(main, -4);
     }
 
