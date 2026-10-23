@@ -18,8 +18,8 @@ public sealed record ShortcutSlotView(int Index, ShortcutItem? Item);
 
 /// <summary>
 /// One shortcut row inside the toolbar: nine item slots at the icon size, touching, as retail's are. A slot
-/// shows its item's icon and stack count, with its key number in the corner, or only its key number when empty. A click uses the slot. A
-/// press on a slot never moves the toolbar. A drag from a slot moves the
+/// shows its item's icon and stack count, with its key number in the corner, or only its key number when empty. A click selects and uses
+/// the slot's item, and a slot whose item is selected is lit, so the slot last clicked stays marked. A press on a slot never moves the toolbar. A drag from a slot moves the
 /// shortcut to the slot it is released on, or takes it off the bars when no LegACEy window takes it. A drop of an item from outside binds
 /// it to the slot it is released on.
 /// </summary>
@@ -100,7 +100,7 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
             // The new slot is in place before the old icon goes, so nothing draws a disposed bitmap.
             previous?.Dispose();
         }
-        ShowDropAt();
+        ShowLit();
     }
 
     /// <summary>Stops following the port and frees the icons. The toolbar lets go of the bar first.</summary>
@@ -119,13 +119,20 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
         var at = position is { } point && (itemId != 0 || _dragSource.Slot != null) ? IndexAt(point) : null;
         if (at == _dropAt) return;
         _dropAt = at;
-        ShowDropAt();
+        ShowLit();
     }
 
-    private void ShowDropAt()
+    /// <summary>Lights the slot a drag would land on, and each slot whose item is the selected object.</summary>
+    private void ShowLit()
     {
+        var shortcuts = _port.Shortcuts;
+        var selected = _port.Selection?.Id ?? 0;
         for (var position = 0; position < SlotCount; position++)
-            if (SlotAt(position) is DerethSlot slot) slot.Selected = _firstIndex + position == _dropAt;
+        {
+            var index = _firstIndex + position;
+            var holdsSelected = selected != 0 && _shown[position]?.Item != null && ShortcutEdits.ObjectAt(shortcuts, index) == selected;
+            if (SlotAt(position) is DerethSlot slot) slot.Selected = index == _dropAt || holdsSelected;
+        }
     }
 
     /// <summary>
@@ -135,7 +142,7 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     public bool RetailDrop(uint itemId, string itemName, Point position)
     {
         _dropAt = null;
-        ShowDropAt();
+        ShowLit();
         if (_dragSource.Slot is { } from)
         {
             var objectId = _dragSource.ObjectId;

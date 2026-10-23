@@ -55,6 +55,23 @@ public sealed class ShortcutBarTests
     });
 
     [Fact]
+    public void A_clicked_slot_stays_lit_while_its_item_is_selected() => RenderThread.Run(() =>
+    {
+        var held = new Dictionary<uint, ShortcutItem> { [0x100] = Potions, [0x200] = Swords };
+        var port = new FakeShortcutPort(new[] { new RetailShortcut(2, 0x100), new RetailShortcut(4, 0x200) });
+        using var panel = Open(port, held, out var bar);
+        panel.Tick();
+
+        Click(panel, bar, bar.SlotAt(4));
+        Assert.True(((DerethSlot)bar.SlotAt(4)).Selected);
+        Assert.False(((DerethSlot)bar.SlotAt(2)).Selected);
+
+        Click(panel, bar, bar.SlotAt(2));
+        Assert.True(((DerethSlot)bar.SlotAt(2)).Selected);
+        Assert.False(((DerethSlot)bar.SlotAt(4)).Selected);
+    });
+
+    [Fact]
     public void Row_2_shows_and_uses_slots_9_to_17() => RenderThread.Run(() =>
     {
         var held = new Dictionary<uint, ShortcutItem> { [0x200] = Swords };
@@ -288,7 +305,12 @@ public sealed class ShortcutBarTests
         public bool IsPanelOpen(RetailPanel panel) => false;
         public void SetPanelOpen(RetailPanel panel, bool open) { }
         public void UseShortcut(int index) => Used.Add(index);
-        public void Select(uint objectId) => Selected.Add(objectId);
+        // Selecting announces the change, as retail's selection does.
+        public void Select(uint objectId)
+        {
+            Selected.Add(objectId);
+            Changed?.Invoke();
+        }
         public List<uint> Selected { get; } = new();
         public void AddShortcut(int index, uint objectId)
         {
@@ -304,7 +326,7 @@ public sealed class ShortcutBarTests
             _shortcuts.RemoveAll(shortcut => shortcut.Index == index);
             Changed?.Invoke();
         }
-        public RetailSelection? Selection => null;
+        public RetailSelection? Selection => Selected.Count == 0 ? null : new RetailSelection(Selected[^1], "Item", default);
         public int SplitAmount { get; set; } = 1;
         public void UseSelected() { }
         public void ExamineSelected() { }
