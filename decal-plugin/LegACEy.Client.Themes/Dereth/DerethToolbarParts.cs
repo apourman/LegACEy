@@ -57,6 +57,8 @@ public sealed class DerethMedallion : Decorator
     /// </summary>
     public void SetArt(IImage art, IImage? hover = null, IImage? open = null)
     {
+        // The toolbar sets the stance's art on every refresh; the same art again changes nothing.
+        if (art == _art && hover == _hoverArt && open == _openArt) return;
         _art = art;
         _hoverArt = hover;
         _openArt = open;
