@@ -243,8 +243,6 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         AddHandler(PointerReleasedEvent, (_, _) => TabPointerReleased(), RoutingStrategies.Bubble, handledEventsToo: true);
 
         RebuildTabs();
-        // The chip shows Local until a tab picks its own target; All has none.
-        SetTarget(_target);
         PickTab(0);
 
         _history.LineAdded += OnLineAdded;
@@ -290,6 +288,11 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         {
             // An id the window does not know falls back to Local, so a damaged tab can never throw.
             SetTarget(RetailTalkTargets.All.FirstOrDefault(target => target.Id == id) ?? RetailTalkTargets.Local);
+        }
+        else
+        {
+            // A tab with no target of its own (All) talks Local: another tab's target must not carry over to it.
+            SetTarget(RetailTalkTargets.Local);
         }
     }
 
