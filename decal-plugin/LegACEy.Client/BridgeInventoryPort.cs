@@ -12,9 +12,13 @@ namespace LegACEy.Client.DecalPlugin;
 internal sealed class BridgeInventoryPort : IInventoryPort
 {
     private readonly InventoryRefresh _refresh;
+    private readonly Action<string> _log;
 
-    public BridgeInventoryPort(Action<string> log) =>
+    public BridgeInventoryPort(Action<string> log)
+    {
+        _log = log;
         _refresh = new InventoryRefresh(() => InventorySnapshotBuilder.Build(new BridgeInventoryReader()), log);
+    }
 
     public InventorySnapshot Snapshot => _refresh.Snapshot;
 
@@ -105,12 +109,12 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     public uint WieldMask(uint itemId, PaperdollSlot slot) =>
         InventorySnapshot.MaskFor(_refresh.Snapshot.ValidLocationsOf(itemId) ?? LiveValidLocations(itemId), slot);
 
-    // Explicit placement (1) into the item's valid locations within the slot; nothing is sent when there are none.
-    // Gate: the mask lands in that slot, and a refused slot sends nothing.
+    // The item's valid locations within the slot, sent as retail's paperdoll sends a drop; nothing is sent when there are none.
+    // Decal's AutoWield (explicit placement 1) is the fallback: it sends nothing for a second ring while the other finger is worn.
     public void Wield(uint itemId, PaperdollSlot slot)
     {
         var mask = WieldMask(itemId, slot);
-        if (mask != 0) Bridge.AutoWield(itemId, mask, 1, 0);
+        if (mask != 0 && !NativeWieldSender.TrySend(itemId, mask, _log)) Bridge.AutoWield(itemId, mask, 1, 0);
     }
 
     // Read as the pointer moves during a drag, so a failed read or a released object reads as covering nothing.
