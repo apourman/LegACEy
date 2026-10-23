@@ -21,11 +21,13 @@ internal static class RetailChatCatalogue
     /// <summary>gmMainChatUI (type 0x10000041), the root of LayoutDesc 0x21000006 that the main chat window embeds. A ChatInterface: the UIElement is at +4.</summary>
     internal const uint MainChat = 0x1000000E;
     /// <summary>
-    /// gmMainChatUI's gmNoticeHandler vtable, at the ChatInterface's +0 (acclient.pdb ??_7gmMainChatUI@@6BgmNoticeHandler@@@, moved +0x30 in
-    /// the installed build; its slot +0x04 is ChatInterface::OnAction). The main chat is the element under the main chat window whose
-    /// preceding word is this: GetElement finds top-level windows only, and the element's id inside the window is not its layout's.
+    /// ChatInterface::OnAction, at slot +0x04 of the vtable at a ChatInterface's +0. The main chat is the element under the main chat window
+    /// whose ChatInterface (the word before the element) has a vtable in .rdata with this there: GetElement finds top-level windows only,
+    /// and the element's id inside the window is not its layout's.
     /// </summary>
-    internal const uint MainChatVtable = 0x007BA3E8;
+    internal const uint ChatInterfaceOnAction = 0x004F62F0;
+    /// <summary>acclient.exe's .rdata, where vtables are: a word outside it is not followed.</summary>
+    internal const uint RdataStart = 0x00793000, RdataEnd = 0x0080B000;
     /// <summary>The floating chat windows 1-4 (tags &lt;FCH1&gt;-&lt;FCH4&gt;, gmFloatyChatUI, type 0x10000040), placed in 0x21000005 from 0x2100005B/0x100004F7.</summary>
     internal static readonly IReadOnlyList<uint> FloatingChats = new uint[] { 0x10000505, 0x1000050E, 0x1000050F, 0x10000510 };
     /// <summary>NoticeHandler's own vtable: every slot a no-op of the right size. A handler of ours copies it and replaces slot +0x38.</summary>
@@ -133,8 +135,7 @@ internal static class RetailChatCatalogue
             "81 C2 B4 00 00 00 56 8B 72 6C 33 C0 33 C9 85 F6 76 0E 8B 4A 70 85 C9 74 05 83 C1 F8", "instruction reference"),
         Entry("UIElement::GetChild reads the child (+0x10) and the next link (+0x08)", 0x00463BD1,
             "8B 51 10 85 D2 74 08 39 B2 E4 02 00 00 74 15 8B 49 08 85 C9 74 10 83 C1 F8", "instruction reference"),
-        Entry("gmMainChatUI's notice vtable: slot +0x04 is ChatInterface::OnAction (0x004F62F0)", MainChatVtable + 4, "F0 62 4F 00",
-            "vtable in .rdata"),
+        Entry("A ChatInterface vtable: slot +0x04 is ChatInterface::OnAction (0x004F62F0)", 0x007BA3EC, "F0 62 4F 00", "vtable in .rdata"),
         Entry("ChatInterface::HandleEnterKey reads the active window (UIElementManager+0x32C)", 0x004F5F37, "8B B8 2C 03 00 00 85 FF 8B F1 74 5B",
             "instruction reference"),
         Entry("ChatInterface::HandleEnterKey compares the window's focused child with the entry (+0x60C)", 0x004F5F4F,
