@@ -130,10 +130,10 @@ window. The file is only checked, never consumed. A drag that leaves the LegACEy
 drag when retail's inventory lists show the item, so the world, NPCs and other retail windows take it as they would from retail.
 
 The Dereth toolbar replaces retail's toolbar, drawn at retail's toolbar position, from portal space at login on. It is laid out as retail's is:
-the stance and the backpack at the ends, the window buttons over Use, the selection plaque and Examine, and the two shortcut rows below,
-inside the same frame and as wide as the part above. Press and drag the toolbar's frame, top edge or a row tag (not a button or slot) to move
-it anywhere on screen, unless retail's UI is locked; the place is saved per character in `window-positions.txt`, and retail's own toolbar
-stays where retail left it. Row 1's tag shows or hides row 2. Creating an empty file named `retail-toolbar-native` beside the main DLL gives retail's toolbar back within a
+retail's own stance and backpack art at the ends, the window buttons over Use, the selection plaque and Examine, and the two shortcut rows
+below, inside the same frame and retail's width: nine touching 32 px slots. A long target name wraps to two lines. Press and drag the
+toolbar's frame or top edge (not a button or slot) to move it anywhere on screen, unless retail's UI is locked; the place is saved per
+character in `window-positions.txt`, and retail's own toolbar stays where retail left it. Settings → Windows shows or hides row 2. Creating an empty file named `retail-toolbar-native` beside the main DLL gives retail's toolbar back within a
 second; deleting it takes the toolbar over again.
 
 The Dereth chat window replaces retail's main and floating chat windows. It starts with six tabs (All, Speech, Fellowship, Allegiance,
