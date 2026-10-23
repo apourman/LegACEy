@@ -531,6 +531,22 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         if (_settings != null) _settings.Water = WaterOptionFor(water);
     }
 
+    /// <summary>The Settings window's test weather: drawn around the player at once, kept for this session only.</summary>
+    private void SetTestWeather(WeatherKind weather)
+    {
+        if (_worldEffects == null) return;
+        _worldEffects.TestWeather = weather;
+        if (_settings != null) _settings.TestWeather = new OptionChoice<WeatherKind>(weather, SetTestWeather);
+    }
+
+    /// <summary>The Settings window's test fog: the storm's ring around the player's landblock at once, kept for this session only.</summary>
+    private void SetTestFog(bool on)
+    {
+        if (_worldEffects == null) return;
+        _worldEffects.TestFog = on;
+        if (_settings != null) _settings.TestFog = new OptionChoice<bool>(on, SetTestFog);
+    }
+
     /// <summary>The World tab's water: the setting, and the change it asks for, with the strength kept within the bounds.</summary>
     private WaterOption WaterOptionFor(WaterChoice water) => new(water.On, water.Percent,
         (on, percent) => SetWater(new WaterChoice(on, Math.Clamp(percent, 0, WaterChoice.Most))));
@@ -960,6 +976,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             ChatInactiveOpacity = new OptionChoice<int>(RetailChatWindows.LoadOpacity(_positionStore, SessionServer(), SessionCharacter(), RetailChatWindows.InactiveOpacityKey, RetailChatWindows.DefaultInactiveOpacity), SetChatInactiveOpacity),
             ChatNameColour = new OptionChoice<int>(RetailChatWindows.LoadNameColour(_positionStore, SessionServer(), SessionCharacter()), SetChatNameColour),
             Radar = new OptionChoice<RadarOptions>(LoadRadarOptions(), SetRadarOptions),
+            TestWeather = _worldEffects != null ? new OptionChoice<WeatherKind>(_worldEffects.TestWeather, SetTestWeather) : null,
+            TestFog = _worldEffects != null ? new OptionChoice<bool>(_worldEffects.TestFog, SetTestFog) : null,
             ResetPositions = () => _positionsResetRequested = true,
         };
         _settings = settings;

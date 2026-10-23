@@ -165,13 +165,41 @@ internal sealed unsafe class WorldEffects : IDisposable
     }
 
     /// <summary>The safe landblock the storm fog rings, as landblock x and y, or null for no storm.</summary>
-    public (int X, int Y)? StormZone { get => _fog.Zone; set => _fog.Zone = value; }
+    public (int X, int Y)? StormZone { get => _serverStorm; set => _fog.Zone = _serverStorm = value; }
 
     /// <summary>Floating combat text over the targets of the hits the server reports.</summary>
     public CombatText Combat => _combat;
 
     /// <summary>The weather and the landblock in the middle of it, or null for clear skies.</summary>
-    public (WeatherKind Kind, int X, int Y)? Weather { get => _weather.Current; set => _weather.Current = value; }
+    public (WeatherKind Kind, int X, int Y)? Weather { get => _serverWeather; set => _weather.Current = _serverWeather = value; }
+
+    /// <summary>Weather for testing, drawn around the player's landblock in place of the server's; None puts the server's back.</summary>
+    public WeatherKind TestWeather
+    {
+        get => _testWeather;
+        set
+        {
+            _testWeather = value;
+            _weather.Current = _serverWeather;
+        }
+    }
+
+    /// <summary>Fog for testing, alone or with the test weather: the storm's ring around the player's landblock; false puts the server's storm back.</summary>
+    public bool TestFog
+    {
+        get => _testFogOn;
+        set
+        {
+            _testFogOn = value;
+            _testFog = null;
+            _fog.Zone = _serverStorm;
+        }
+    }
+
+    private (int X, int Y)? _serverStorm, _testFog;
+    private (WeatherKind Kind, int X, int Y)? _serverWeather;
+    private WeatherKind _testWeather;
+    private bool _testFogOn;
 
     /// <summary>How strong the water is: 0 leaves retail's water, 1 is the look as designed.</summary>
     public float WaterStrength { get => _water.Strength; set => _water.Strength = value; }
@@ -285,6 +313,14 @@ internal sealed unsafe class WorldEffects : IDisposable
     /// <summary>The storm and weather; the storm's frame ends here even when nothing is shown.</summary>
     private void DrawOutside(uint cell, bool shown)
     {
+        if (cell != 0)
+        {
+            int x = (int)(cell >> 24), y = (int)(cell >> 16) & 0xFF;
+            // Test fog rings the landblock the player was in when it was turned on, and stays, so they can walk out into it. Test weather
+            // follows the player: the 3×3 landblocks around theirs.
+            if (_testFogOn) _fog.Zone = _testFog ??= (x, y);
+            if (_testWeather != WeatherKind.None) _weather.Current = (_testWeather, x, y);
+        }
         _fog.Draw(inWorld: shown && cell != 0);
         _weather.PlayerCell = cell;
         if (shown) _weather.Draw();

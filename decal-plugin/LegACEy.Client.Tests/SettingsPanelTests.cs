@@ -276,6 +276,27 @@ public sealed class SettingsPanelTests
     });
 
     [Fact]
+    public void The_world_tab_s_test_weather_calls_its_change() => RenderThread.Run(() =>
+    {
+        var calls = new List<WeatherKind>();
+        var fog = new List<bool>();
+        var settings = new ClientSettings(null, null, Array.Empty<UiWindowChoice>())
+        {
+            TestWeather = new OptionChoice<WeatherKind>(WeatherKind.None, calls.Add),
+            TestFog = new OptionChoice<bool>(false, fog.Add),
+        };
+        using var panel = AvaloniaPanel.Create(() => new SettingsPanel(settings, SettingsTab.World), SettingsPanel.WindowWidth, SettingsPanel.WindowHeight);
+        panel.Tick();
+
+        PressCentre(panel, TextOf(panel, "Storm"));
+        Assert.Equal(new[] { WeatherKind.Thunderstorm }, calls);
+
+        // Fog is its own switch, so it goes on beside the weather.
+        PressCentre(panel, panel.Content.GetVisualDescendants().OfType<DerethToggle>().Single());
+        Assert.Equal(new[] { true }, fog);
+    });
+
+    [Fact]
     public void The_lock_switch_calls_the_lock_change_with_the_new_state() => RenderThread.Run(() =>
     {
         var calls = new List<bool>();
