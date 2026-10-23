@@ -291,6 +291,11 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             // An id the window does not know falls back to Local, so a damaged tab can never throw.
             SetTarget(RetailTalkTargets.All.FirstOrDefault(target => target.Id == id) ?? RetailTalkTargets.Local);
         }
+        else
+        {
+            // A tab with no target of its own (All) talks Local: another tab's target must not carry over to it.
+            SetTarget(RetailTalkTargets.Local);
+        }
     }
 
     /// <summary>Sets the talk target and shows it on the chip.</summary>
