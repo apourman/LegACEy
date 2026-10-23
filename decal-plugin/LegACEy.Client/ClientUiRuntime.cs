@@ -2445,21 +2445,21 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private const string ToolbarPlaceId = "dereth-toolbar";
 
     /// <summary>
-    /// Once per toolbar taken over, puts it at this character's saved place, kept on screen. Until then it stands where retail's did. It runs
-    /// once the shortcut rows are in, before the frame draws: a place set on the smaller toolbar would move when the rows grow it, and that
-    /// move would be saved. The place is read before the toolbar is scaled and written back after, as it was rather than kept on this screen,
-    /// since the refit after a new scale saves the place it moved to.
+    /// Once per toolbar taken over, puts it at this character's saved place, kept on screen. Until then it stands where retail's did, and no
+    /// place is saved: the refits as the toolbar is scaled and its shortcut rows go in would write a place from retail's over the saved one.
+    /// It runs once the rows are in, before the frame draws, so the rows growing the toolbar do not move it off its place.
     /// </summary>
     private void LoadToolbarPlace()
     {
         if (_toolbarPlaceLoaded || !_inGame || _toolbarPlace == null || _toolbarSurface == null) return;
-        _toolbarPlaceLoaded = true;
-        var saved = _positionStore.Load(SessionServer(), SessionCharacter(), ToolbarPlaceId);
         ScaleToolbar();
-        if (saved == null) return;
-        _toolbarPlace.Location = OnScreen(saved.Value.Location, _toolbarSurface.Bounds.Size);
-        _toolbarSurface.Location = _toolbarPlace.Location.Value;
-        SaveToolbarPlace(saved.Value.Location);
+        if (_positionStore.Load(SessionServer(), SessionCharacter(), ToolbarPlaceId) is { } saved)
+        {
+            _toolbarPlace.Location = OnScreen(saved.Location, _toolbarSurface.Bounds.Size);
+            _toolbarSurface.Location = _toolbarPlace.Location.Value;
+            Log($"Put the Dereth toolbar at its saved place {saved.Location}, on screen at {_toolbarSurface.Location}.");
+        }
+        _toolbarPlaceLoaded = true;
     }
 
     /// <summary>
@@ -2508,7 +2508,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private void SaveToolbarPlace(Point location)
     {
-        if (_inGame) _positionStore.Save(SessionServer(), SessionCharacter(), ToolbarPlaceId, (location, null));
+        if (_inGame && _toolbarPlaceLoaded) _positionStore.Save(SessionServer(), SessionCharacter(), ToolbarPlaceId, (location, null));
     }
 
     /// <summary>Whether a screen point is on the toolbar's top edge, where a press moves it as a window's top edge does.</summary>
