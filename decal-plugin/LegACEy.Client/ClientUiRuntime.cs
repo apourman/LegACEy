@@ -2766,11 +2766,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             var typing = SurfaceById(_inputRouter.FocusedSurfaceId)?.Panel.WantsKeyboard == true;
             _chatPort!.Poll(typing: typing);
             // ponytail: diagnostic for backlog 036 (VTank while typing); drop once the play-test settles it.
-            var chatState = (typing, _chatPort.RetailEntryActive, Bridge.Fact(BridgeFact.ChatState) != 0);
+            var chatState = (typing, _chatPort.RetailEntryFocused, Bridge.Fact(BridgeFact.ChatState) != 0);
             if (chatState != _lastChatState)
             {
                 _lastChatState = chatState;
-                Log($"Chat keyboard: typing={chatState.typing} retailEntry={chatState.RetailEntryActive} decalChatState={chatState.Item3}.");
+                Log($"Chat keyboard: typing={chatState.typing} retailEntry={chatState.RetailEntryFocused} decalChatState={chatState.Item3}.");
             }
             _chatWindows?.Refresh();
         }

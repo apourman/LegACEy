@@ -29,8 +29,11 @@ internal static class RetailChatCatalogue
     internal const uint ProcessCommandSendCall = 0x004F5D95;
     /// <summary>ChatInterface::DeactivateChatEntry, ThisCall on the ChatInterface: drops the entry's focus and sends ToggleChatEntry(false).</summary>
     internal const uint DeactivateChatEntry = 0x004F3C20;
-    /// <summary>ChatInterface::ActivateChatEntry, ThisCall on the ChatInterface: gives the entry focus and sends ToggleChatEntry(true).</summary>
-    internal const uint ActivateChatEntry = 0x004F3BF0;
+    /// <summary>
+    /// UIElementManager::SetFocusElement, ThisCall (manager, element): retail's keyboard focus. Decal patches its prologue to note the focus,
+    /// and its ChatState is true while the focused element is one of retail's text entries.
+    /// </summary>
+    internal const uint SetFocusElement = 0x0045B970;
 
     internal static readonly IReadOnlyList<NativeUiEntry> Takeover = new[]
     {
@@ -118,8 +121,6 @@ internal static class RetailChatCatalogue
         // Past the prologue (push esi; mov esi, ecx; mov ecx, [esi+0x60C]), which a hook would change.
         Entry("ChatInterface::DeactivateChatEntry body", DeactivateChatEntry + 9, "8B 01 FF 90 08 01 00 00 8B 8E 0C 06 00 00 8B 11 FF 92 00 01 00 00",
             "ThisCall (ChatInterface*) at 0x004F3C20: the entry's vtable +0x108 and +0x100"),
-        Entry("ChatInterface::ActivateChatEntry body", ActivateChatEntry + 9, "8B 01 FF 90 FC 00 00 00 8B 8E 0C 06 00 00 8B 11 FF 92 04 01 00 00",
-            "ThisCall (ChatInterface*) at 0x004F3BF0: the entry's vtable +0xFC and +0x104"),
         Entry("ChatInterface::HandleEnterKey reads the active window (UIElementManager+0x32C)", 0x004F5F37, "8B B8 2C 03 00 00 85 FF 8B F1 74 5B",
             "instruction reference"),
         Entry("ChatInterface::HandleEnterKey compares the window's focused child with the entry (+0x60C)", 0x004F5F4F,
@@ -130,7 +131,7 @@ internal static class RetailChatCatalogue
         Entry("UIElement::GetHasFocus compares the element with UIElementManager's focus element (+0x328)", 0x0046031A,
             "8B B0 28 03 00 00 33 D2 3B F1 0F 94 C2 8A C2 5E C3", "ThisCall () -> bool at 0x00460310 (instance [0x0083E03C])"),
         Entry("UIElementManager::SetFocusElement body reads and stores the focus element at +0x328", 0x0045B992,
-            "8B 8E 28 03 00 00 8B 01 FF 90 B4 00 00 00 85 FF 89 BE 28 03 00 00", "instruction reference (SetFocusElement at 0x0045B970)")
+            "8B 8E 28 03 00 00 8B 01 FF 90 B4 00 00 00 85 FF 89 BE 28 03 00 00", "ThisCall (UIElementManager*, UIElement*) at 0x0045B970, called")
     };
 
     /// <summary>Checks each feature's list on its own: a mismatch, or an address that cannot be read, turns that feature off and logs it.</summary>
