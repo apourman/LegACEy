@@ -2172,10 +2172,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         try
         {
             toast.Tick();
+            var shown = surface.Visible;
             surface.Visible = toast.IsVisible;
             if (surface.Visible)
             {
                 var scale = surface.Panel.Scale;
+                // Just unhidden, no layout pass has caught it up: every part, as FitToolbar does.
+                if (!shown) Avalonia.Layout.LayoutHelper.InvalidateSelfAndChildrenMeasure(toast);
                 toast.Measure(Avalonia.Size.Infinity);
                 int width = WholePixels(toast.DesiredSize.Width * scale), height = WholePixels(toast.DesiredSize.Height * scale);
                 if (surface.Panel.Frame.Width != width || surface.Panel.Frame.Height != height) surface.Panel.Resize(width, height);
@@ -2400,10 +2403,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private void PlaceSplitTab()
     {
         if (_splitTab is not { } tab || _splitTabSurface is not { } surface || _toolbar is not { } toolbar || _toolbarSurface is not { } bar) return;
+        var shown = surface.Visible;
         surface.Visible = bar.Visible && tab.IsShown;
         if (surface.Visible)
         {
             var scale = surface.Panel.Scale;
+            // Just unhidden, no layout pass has caught it up: every part, as FitToolbar does.
+            if (!shown) Avalonia.Layout.LayoutHelper.InvalidateSelfAndChildrenMeasure(tab);
             tab.Measure(Avalonia.Size.Infinity);
             int width = WholePixels(tab.DesiredSize.Width * scale), height = WholePixels(tab.DesiredSize.Height * scale);
             if (surface.Panel.Frame.Width != width || surface.Panel.Frame.Height != height) surface.Panel.Resize(width, height);
