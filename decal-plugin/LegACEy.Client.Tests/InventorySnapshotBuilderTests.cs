@@ -106,6 +106,22 @@ public sealed class InventorySnapshotBuilderTests
     }
 
     [Fact]
+    public void A_shirt_that_covers_the_abdomen_shows_in_the_shirt_slot_only_and_the_pants_keep_theirs()
+    {
+        var shirt = ChestWear | AbdomenWear | UpperArmWear | LowerArmWear;
+        var pants = UpperLegWear | LowerLegWear;
+        var reader = new FakeReader();
+        reader.Objects.Add(Item(0x50000460, container: Character, slot: -1, equippedMask: shirt, validLocations: shirt));
+        reader.Objects.Add(Item(0x50000461, container: Character, slot: -1, equippedMask: pants, validLocations: pants));
+
+        var snapshot = InventorySnapshotBuilder.Build(reader);
+
+        Assert.Equal(new[] { PaperdollSlot.Shirt }, snapshot.Wielded.Single(item => item.Id == 0x50000460).Slots);
+        Assert.Equal(new[] { PaperdollSlot.Pants }, snapshot.Wielded.Single(item => item.Id == 0x50000461).Slots);
+        Assert.Equal(0u, InventorySnapshot.MaskFor(shirt, PaperdollSlot.Pants));
+    }
+
+    [Fact]
     public void Boots_that_cover_the_lower_legs_show_in_feet_only_and_cannot_be_dropped_on_the_pants()
     {
         var boots = FootWear | LowerLegWear;
