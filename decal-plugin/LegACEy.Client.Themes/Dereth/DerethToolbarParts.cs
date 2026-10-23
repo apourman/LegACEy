@@ -10,7 +10,7 @@ namespace LegACEy.Client.Themes;
 /// <summary>
 /// A round gold medallion with a glyph: a window button, the stance, Use, Examine or the backpack. Normal, hover and pressed
 /// art, and the green ring while <see cref="IsOpen"/>. A click is a release over the medallion after a press on it. Given retail's own
-/// button art with <see cref="SetArt"/>, it draws that art at its size in place of the medallion, in a rounded gold rim.
+/// button art with <see cref="SetArt"/>, it draws that art at its size in place of the medallion.
 /// </summary>
 public sealed class DerethMedallion : Decorator
 {
@@ -21,8 +21,6 @@ public sealed class DerethMedallion : Decorator
     private static readonly IBrush PressedFace = DerethPalette.Brush(Color.Parse("#0A0805"));
     private static readonly IBrush NormalFace = Radial(Color.Parse("#2E2A1E"), Color.Parse("#18160F"));
     private static readonly IBrush HoverFace = Radial(Color.Parse("#3E3826"), Color.Parse("#221E14"));
-
-    private const double ArtCorner = 4;
 
     private readonly double _diameter;
     private readonly double _glyphSize;
@@ -117,11 +115,7 @@ public sealed class DerethMedallion : Decorator
         if (_art != null)
         {
             var art = _open && _openArt != null ? _openArt : (_hover || _pressed) && _hoverArt != null ? _hoverArt : _art;
-            var box = new Rect(Bounds.Size);
-            using (context.PushClip(new RoundedRect(box, ArtCorner)))
-                context.DrawImage(art, box);
-            context.DrawRectangle(null, RimPen, box.Deflate(0.5), ArtCorner, ArtCorner);
-            context.DrawRectangle(null, InnerPen, box.Deflate(1.5), ArtCorner - 1, ArtCorner - 1);
+            context.DrawImage(art, new Rect(Bounds.Size));
             return;
         }
         var centre = new Point(_diameter / 2, _diameter / 2);

@@ -88,6 +88,7 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
 
     // Retail's stance buttons in layout 0x21000016, normal then highlighted, and its backpack shut then open (states 1 and 6). Each is drawn
     // cropped to its painting: retail's art carries the gold strips and corner blocks of retail's toolbar frame, which the Dereth frame replaces.
+    // Its black backing fades out, so the painting sits on the toolbar with no box round it.
     private static readonly Dictionary<RetailStance, (uint Normal, uint Hover)> StanceArtIds = new()
     {
         [RetailStance.Peace] = (0x06004CEC, 0x06004CED),
@@ -309,9 +310,25 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         return new Border { Height = 5, CornerRadius = new CornerRadius(3), Background = TrackBrush, Child = bar };
     }
 
-    /// <summary>The part of a retail image inside <paramref name="painting"/>; null when there is no art.</summary>
-    private static IImage? Painting(IGameArtSource? art, uint id, PixelRect painting) =>
-        GameArtImageExtension.CreateBitmap(art, id) is { } bitmap ? new CroppedBitmap(bitmap, painting) : null;
+    // Pixels darker than this, by their brightest channel, fade out in proportion: black is clear, and the painting's dark edges blend in.
+    private const int ClearBelow = 48;
+
+    /// <summary>The part of a retail image inside <paramref name="painting"/>, its black backing made clear; null when there is no art.</summary>
+    private static IImage? Painting(IGameArtSource? art, uint id, PixelRect painting)
+    {
+        if (art?.ReadImage(id) is not { } image) return null;
+        // Premultiplied BGRA, so fading a pixel scales all four channels.
+        var pixels = (byte[])image.Pixels.Clone();
+        for (var i = 0; i + 3 < pixels.Length; i += 4)
+        {
+            var brightest = Math.Max(pixels[i], Math.Max(pixels[i + 1], pixels[i + 2]));
+            if (brightest >= ClearBelow) continue;
+            for (var c = 0; c < 4; c++) pixels[i + c] = (byte)(pixels[i + c] * brightest / ClearBelow);
+        }
+        return GameArtImageExtension.CreateBitmap(new GameImage(image.Width, image.Height, pixels)) is { } bitmap
+            ? new CroppedBitmap(bitmap, painting)
+            : null;
+    }
 
     private static DerethMedallion Medallion(DerethGlyph glyph, double diameter, double glyphSize, string name)
     {
