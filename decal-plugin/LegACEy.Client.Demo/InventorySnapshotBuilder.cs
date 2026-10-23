@@ -116,13 +116,16 @@ public static class InventorySnapshotBuilder
     };
 
     private const uint FootWear = 0x00000100u;
+    private const uint ChestWear = 0x00000002u;
 
     /// <summary>
     /// The bits of <paramref name="mask"/> that land in <paramref name="slot"/>. Boots that also cover the lower legs (FootWear and
-    /// LowerLegWear) belong in Feet only, as retail shows them, so anything with FootWear never reaches Pants.
+    /// LowerLegWear) belong in Feet only, as retail shows them, so anything with FootWear never reaches Pants. Underclothes take one
+    /// slot each, unlike armour: anything with ChestWear is a shirt and belongs in Shirt only, whatever else it covers (most shirts
+    /// carry AbdomenWear, a robe the legs too), so the pants worn with it keep their slot.
     /// </summary>
     internal static uint Covers(uint mask, PaperdollSlot slot) =>
-        slot == PaperdollSlot.Pants && (mask & FootWear) != 0 ? 0 : mask & SlotMasks.Single(pair => pair.Slot == slot).Mask;
+        slot == PaperdollSlot.Pants && (mask & (FootWear | ChestWear)) != 0 ? 0 : mask & SlotMasks.Single(pair => pair.Slot == slot).Mask;
 
     /// <summary>
     /// The worn item on top over a part of the character's body, judged by where each is worn (its EquipMask bits), as the doll picks

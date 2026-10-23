@@ -84,8 +84,9 @@ internal static class InventorySample
     private static InventoryItem Item(uint id, string name, uint container, int slot, uint icon, int stack = 1, uint valid = 0, int stackMax = 0) =>
         new(id, name, container, slot, new ItemVisual(icon, 0, 0, 0), stack, stackMax, 0, valid);
 
+    // Each item is worn in all its valid locations.
     private static WieldedItem Wielded(uint id, string name, uint icon, uint validLocations, params PaperdollSlot[] slots) =>
-        new(id, name, new ItemVisual(icon, 0, 0, 0), 1, 1, 0, validLocations, slots);
+        new(id, name, new ItemVisual(icon, 0, 0, 0), 1, 1, 0, validLocations, slots, validLocations);
 
     /// <summary>A picture-less client: every icon is missing, so each slot draws its placeholder.</summary>
     public sealed class NoArt : IGameArtSource

@@ -709,9 +709,26 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         switch (target.Place)
         {
             case SlotPlace.Paperdoll:
+            {
                 if (target.ItemId == dragged || target.Equipment is not { } slot) return null;
                 // The port's mask covers an item from another window too (it reads the item's locations from the world).
-                return port.WieldMask(dragged, slot) == 0 ? Refused : (true, p => p.Wield(dragged, slot));
+                var mask = port.WieldMask(dragged, slot);
+                if (mask == 0) return Refused;
+                // A weapon or shield takes the place of what is in its slot: retail's paperdoll puts that back in the main pack before
+                // it wields, since the server refuses a wield onto a held location. The weapon slot spans several locations, so a bow
+                // dropped there takes the sword's place though their locations differ. Armour and clothing don't swap: the worn piece
+                // has to come off first, and the server refuses the wield.
+                var swaps = slot is PaperdollSlot.Weapon or PaperdollSlot.Shield;
+                var held = s.Wielded.Where(item => swaps && item.Id != dragged && (item.Slots.Contains(slot) || (item.EquippedMask & mask) != 0))
+                    .Select(item => item.Id).ToList();
+                var free = s.FreeSlots(s.MainPack).Take(held.Count).ToList();
+                if (free.Count < held.Count) return Refused;
+                return (true, p =>
+                {
+                    for (var index = 0; index < held.Count; index++) p.MoveToContainer(held[index], s.MainPack.Id, free[index]);
+                    p.Wield(dragged, slot);
+                });
+            }
 
             case SlotPlace.Pack:
             {
