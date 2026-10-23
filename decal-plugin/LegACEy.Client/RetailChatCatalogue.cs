@@ -20,10 +20,12 @@ internal static class RetailChatCatalogue
     internal const uint MainChatWindow = 0x10000601;
     /// <summary>gmMainChatUI (type 0x10000041), the root of LayoutDesc 0x21000006 that the main chat window embeds. A ChatInterface: the UIElement is at +4.</summary>
     internal const uint MainChat = 0x1000000E;
-    /// <summary>The id the main chat window places gmMainChatUI with (0x2100006F/0x10000014): a placed element takes its placement's id.</summary>
-    internal const uint MainChatPlaced = 0x10000014;
-    /// <summary>ChatInterface::OnAction, slot +0x04 of every ChatInterface vtable: tells a found element is retail's chat.</summary>
-    internal const uint ChatInterfaceOnAction = 0x004F62F0;
+    /// <summary>
+    /// gmMainChatUI's gmNoticeHandler vtable, at the ChatInterface's +0 (acclient.pdb ??_7gmMainChatUI@@6BgmNoticeHandler@@@, moved +0x30 in
+    /// the installed build; its slot +0x04 is ChatInterface::OnAction). The main chat is the element under the main chat window whose
+    /// preceding word is this: GetElement finds top-level windows only, and the element's id inside the window is not its layout's.
+    /// </summary>
+    internal const uint MainChatVtable = 0x007BA3E8;
     /// <summary>The floating chat windows 1-4 (tags &lt;FCH1&gt;-&lt;FCH4&gt;, gmFloatyChatUI, type 0x10000040), placed in 0x21000005 from 0x2100005B/0x100004F7.</summary>
     internal static readonly IReadOnlyList<uint> FloatingChats = new uint[] { 0x10000505, 0x1000050E, 0x1000050F, 0x10000510 };
     /// <summary>NoticeHandler's own vtable: every slot a no-op of the right size. A handler of ours copies it and replaces slot +0x38.</summary>
@@ -38,11 +40,6 @@ internal static class RetailChatCatalogue
     /// and its ChatState is true while the focused element is one of retail's text entries.
     /// </summary>
     internal const uint SetFocusElement = 0x0045B970;
-    /// <summary>
-    /// UIElement::GetChildRecursive, ThisCall (UIElement*, uint id) -> UIElement*. UIElementManager::GetElement finds top-level windows only,
-    /// so the main chat inside its window is found through this.
-    /// </summary>
-    internal const uint GetChildRecursive = 0x00463C00;
 
     internal static readonly IReadOnlyList<NativeUiEntry> Takeover = new[]
     {
@@ -130,9 +127,14 @@ internal static class RetailChatCatalogue
         // Past the prologue (push esi; mov esi, ecx; mov ecx, [esi+0x60C]), which a hook would change.
         Entry("ChatInterface::DeactivateChatEntry body", DeactivateChatEntry + 9, "8B 01 FF 90 08 01 00 00 8B 8E 0C 06 00 00 8B 11 FF 92 00 01 00 00",
             "ThisCall (ChatInterface*) at 0x004F3C20: the entry's vtable +0x108 and +0x100"),
-        // Past the first instruction (sub esp, 8), which a hook would change.
-        Entry("UIElement::GetChildRecursive body: the direct child first (UIElement::GetChild, 0x00463BA0)", GetChildRecursive + 3,
-            "53 8B 5C 24 10 55 57 53 8B F9 E8 8E FF FF FF", "ThisCall (UIElement*, uint id) -> UIElement* at 0x00463C00"),
+        // The child list the port walks: count at +0x120, first link at +0x124; a link is its node + 8, the node holds the child at +0x10 and
+        // the next link at +0x08. Past the prologue.
+        Entry("UIElement::GetChild walks the child list (+0xB4 +0x6C count, +0x70 links, node child +0x10, next +0x08)", 0x00463BA5,
+            "81 C2 B4 00 00 00 56 8B 72 6C 33 C0 33 C9 85 F6 76 0E 8B 4A 70 85 C9 74 05 83 C1 F8", "instruction reference"),
+        Entry("UIElement::GetChild reads the child (+0x10) and the next link (+0x08)", 0x00463BD1,
+            "8B 51 10 85 D2 74 08 39 B2 E4 02 00 00 74 15 8B 49 08 85 C9 74 10 83 C1 F8", "instruction reference"),
+        Entry("gmMainChatUI's notice vtable: slot +0x04 is ChatInterface::OnAction (0x004F62F0)", MainChatVtable + 4, "F0 62 4F 00",
+            "vtable in .rdata"),
         Entry("ChatInterface::HandleEnterKey reads the active window (UIElementManager+0x32C)", 0x004F5F37, "8B B8 2C 03 00 00 85 FF 8B F1 74 5B",
             "instruction reference"),
         Entry("ChatInterface::HandleEnterKey compares the window's focused child with the entry (+0x60C)", 0x004F5F4F,

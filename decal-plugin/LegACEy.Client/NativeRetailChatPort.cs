@@ -59,7 +59,6 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
 
     // Delegates to fixed retail functions, made once: their addresses never change.
     private static readonly ChatEntryFn DeactivateEntry = Marshal.GetDelegateForFunctionPointer<ChatEntryFn>(At(RetailChatCatalogue.DeactivateChatEntry));
-    private static readonly GetChildRecursiveFn GetChild = Marshal.GetDelegateForFunctionPointer<GetChildRecursiveFn>(At(RetailChatCatalogue.GetChildRecursive));
     private static readonly SetFocusElementFn SetFocus = Marshal.GetDelegateForFunctionPointer<SetFocusElementFn>(At(RetailChatCatalogue.SetFocusElement));
     private static readonly PStringBaseFromWideFn ConstructString = Marshal.GetDelegateForFunctionPointer<PStringBaseFromWideFn>(At(0x00402730));
     private static readonly PStringBaseReleaseFn ReleaseString = Marshal.GetDelegateForFunctionPointer<PStringBaseReleaseFn>(At(0x004011B0));
@@ -67,6 +66,8 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private readonly Action<string> _log;
     // Whether a box of ours had the keyboard at the last poll.
     private bool _typing;
+    // Retail's main ChatInterface, once found.
+    private IntPtr _chat;
     private readonly RetailChatNatives _natives;
     private readonly ConcurrentQueue<RetailChatLine> _pending = new();
     // The channel names already logged as matching no tab channel, so each is logged once.
@@ -104,9 +105,6 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void ChatEntryFn(IntPtr chat);
-
-    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-    private delegate IntPtr GetChildRecursiveFn(IntPtr element, uint id);
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void SetFocusElementFn(IntPtr manager, IntPtr element);
@@ -429,13 +427,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         _typing = typing;
         if (RetailChat() is not { } chat)
         {
-            if (started)
-            {
-                var window = NativeUi.GetElement(RetailChatCatalogue.MainChatWindow);
-                _log($"Chat keyboard: retail's main chat element is not found; window {window:X8}, child 0x10000014 " +
-                    $"{(window == IntPtr.Zero ? IntPtr.Zero : GetChild(window, RetailChatCatalogue.MainChatPlaced)):X8}, child 0x1000000E " +
-                    $"{(window == IntPtr.Zero ? IntPtr.Zero : GetChild(window, RetailChatCatalogue.MainChat)):X8}.");
-            }
+            if (started) _log($"Chat keyboard: retail's main chat is not found under its window {NativeUi.GetElement(RetailChatCatalogue.MainChatWindow):X8}.");
             return;
         }
         var entry = Marshal.ReadIntPtr(chat, 0x60C);
@@ -477,24 +469,33 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     }
 
     /// <summary>
-    /// Retail's ChatInterface, or null before it exists: the gmMainChatUI element, found inside the main chat window by the id it is placed
-    /// with (or its layout's own), less its UIElement offset of 4. Taken only when its vtable has ChatInterface::OnAction, and only with
-    /// the Enter entries, which check the child lookup.
+    /// Retail's ChatInterface, or null before it exists: the gmMainChatUI element under the main chat window, less its UIElement offset of
+    /// 4. Found by its vtable (see <see cref="RetailChatCatalogue.MainChatVtable"/>) and kept while it still has it. Only with the Enter
+    /// entries, which check the child list and the vtable.
     /// </summary>
     private IntPtr? RetailChat()
     {
         if (!_natives.Enter) return null;
+        if (_chat != IntPtr.Zero && Marshal.ReadIntPtr(_chat) == At(RetailChatCatalogue.MainChatVtable)) return _chat;
         var window = NativeUi.GetElement(RetailChatCatalogue.MainChatWindow);
-        if (window == IntPtr.Zero) return null;
-        foreach (var id in new[] { RetailChatCatalogue.MainChatPlaced, RetailChatCatalogue.MainChat })
+        _chat = window == IntPtr.Zero ? IntPtr.Zero : FindMainChat(window, 0);
+        return _chat == IntPtr.Zero ? null : _chat;
+    }
+
+    private static IntPtr FindMainChat(IntPtr element, int depth)
+    {
+        if (Marshal.ReadIntPtr(element, -4) == At(RetailChatCatalogue.MainChatVtable)) return IntPtr.Add(element, -4);
+        if (depth >= 8) return IntPtr.Zero;
+        var count = Marshal.ReadInt32(element, 0x120);
+        var link = Marshal.ReadIntPtr(element, 0x124);
+        for (var i = 0; i < count && i < 256 && link != IntPtr.Zero; i++)
         {
-            var main = GetChild(window, id);
-            if (main == IntPtr.Zero) continue;
-            var chat = IntPtr.Add(main, -4);
-            var vtable = Marshal.ReadIntPtr(chat);
-            if (vtable != IntPtr.Zero && Marshal.ReadIntPtr(vtable, 4) == At(RetailChatCatalogue.ChatInterfaceOnAction)) return chat;
+            var node = IntPtr.Add(link, -8);
+            var child = Marshal.ReadIntPtr(node, 0x10);
+            if (child != IntPtr.Zero && FindMainChat(child, depth + 1) is var found && found != IntPtr.Zero) return found;
+            link = Marshal.ReadIntPtr(node, 0x08);
         }
-        return null;
+        return IntPtr.Zero;
     }
 
     private static IntPtr At(uint address) => new(unchecked((int)address));
