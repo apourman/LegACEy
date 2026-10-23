@@ -28,7 +28,7 @@ public sealed class ThemeTests
     [InlineData(1)]
     [InlineData(1.25)]
     [InlineData(2)]
-    public void An_item_icon_scales_with_its_window_and_draws_pixel_for_pixel_at_whole_sizes(double scale) => RenderThread.Run(() =>
+    public void An_item_icon_scales_with_its_window_and_draws_pixel_for_pixel_at_100_percent(double scale) => RenderThread.Run(() =>
     {
         Control? icon = null;
         using var panel = AvaloniaPanel.Create(() =>
@@ -46,7 +46,7 @@ public sealed class ThemeTests
         panel.ApplyTheme(new DerethClientTheme());
         panel.Tick();
 
-        // The icon is as big as the window's scale makes it; only at a whole size can its art land pixel for pixel.
+        // The icon is as big as the window's scale makes it; at 100% its art lands pixel for pixel, and larger it is upscaled.
         Assert.Equal(Math.Round(32 * scale), Math.Round(icon!.Bounds.Width * scale));
         if (scale != Math.Round(scale))
         {
@@ -63,14 +63,14 @@ public sealed class ThemeTests
             Assert.True(grey > side * side / 2, $"{grey} of {side * side} pixels smoothed.");
             return;
         }
-        var multiple = (int)scale;
+        if (scale != 1) return;
         var origin = icon.TranslatePoint(default, panel.Content)!.Value;
         var (left, top) = ((int)Math.Round(origin.X * scale), (int)Math.Round(origin.Y * scale));
         var frame = panel.Frame;
-        for (var y = 0; y < 32 * multiple; y++)
-        for (var x = 0; x < 32 * multiple; x++)
+        for (var y = 0; y < 32; y++)
+        for (var x = 0; x < 32; x++)
         {
-            var expected = ((x / multiple + y / multiple) & 1) == 0 ? 255 : 0;
+            var expected = ((x + y) & 1) == 0 ? 255 : 0;
             Assert.Equal(expected, frame.Pixels[(top + y) * frame.Stride + (left + x) * 4 + 1]);
         }
     });

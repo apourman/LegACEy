@@ -98,13 +98,13 @@ public sealed class DerethItemIcon : Control
 
     public override void Render(DrawingContext context)
     {
-        // The panel draws every bitmap nearest-neighbour, and no element below its root can change that. At a whole multiple of the art
-        // (100%, 200%) that keeps the pixels sharp; at any other size it would drop rows and columns, so the art is resampled smoothly to
-        // the size it takes on screen, once per art and size, and drawn pixel for pixel. The size on screen counts a Viewbox's zoom too.
+        // The panel draws every bitmap nearest-neighbour, and no element below its root can change that. At 100% the art is drawn as it
+        // is; at any other size it is resampled to the size it takes on screen, once per art and size, and drawn pixel for pixel. The size
+        // on screen counts a Viewbox's zoom too.
         var zoom = VisualRoot is Visual root ? this.TransformToVisual(root)?.M11 ?? 1 : 1;
         var pixels = (int)Math.Round(Bounds.Width * zoom * LayoutHelper.GetLayoutScale(this));
         var art = _bitmap.PixelSize.Width;
-        if (pixels <= 0 || pixels % art == 0)
+        if (pixels <= 0 || pixels == art)
         {
             context.DrawImage(_bitmap, new Rect(Bounds.Size));
             return;
@@ -116,8 +116,8 @@ public sealed class DerethItemIcon : Control
 
     /// <summary>
     /// The square 32-bit art at <paramref name="side"/> pixels, each one the area-weighted average of the art pixels it covers, in the art's
-    /// own pixel format, so shrinking blends neighbours instead of dropping them. Enlarging first repeats each art pixel up to the next whole
-    /// multiple, so only the seams between art pixels blend and the art stays crisp.
+    /// own pixel format, so shrinking blends neighbours instead of dropping them. Enlarging first doubles the art with <see cref="Xbr"/>
+    /// until it is at least the size, so outlines come out smooth instead of stepped.
     /// </summary>
     private static WriteableBitmap Resample(WriteableBitmap art, int side)
     {
@@ -126,16 +126,8 @@ public sealed class DerethItemIcon : Control
         using (var locked = art.Lock())
             for (var row = 0; row < size; row++)
                 System.Runtime.InteropServices.Marshal.Copy(locked.Address + row * locked.RowBytes, source, row * size * 4, size * 4);
-        if (side > size)
-        {
-            var times = (side + size - 1) / size;
-            var enlarged = new byte[size * times * size * times * 4];
-            for (var y = 0; y < size * times; y++)
-            for (var x = 0; x < size * times; x++)
-                Array.Copy(source, (y / times * size + x / times) * 4, enlarged, (y * size * times + x) * 4, 4);
-            source = enlarged;
-            size *= times;
-        }
+        for (; size < side; size *= 2)
+            source = Xbr.Double(source, size);
         var result = new WriteableBitmap(new PixelSize(side, side), art.Dpi, art.Format ?? Avalonia.Platform.PixelFormat.Bgra8888, art.AlphaFormat ?? Avalonia.Platform.AlphaFormat.Premul);
         var target = new byte[side * side * 4];
         var step = (double)size / side;
