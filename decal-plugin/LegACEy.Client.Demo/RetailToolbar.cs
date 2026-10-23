@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
 
@@ -85,7 +86,8 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         (RetailPanel.Options, DerethGlyph.Options, "Options"),
     };
 
-    // Retail's stance buttons in layout 0x21000016, normal then highlighted, and its backpack shut then open (states 1 and 6).
+    // Retail's stance buttons in layout 0x21000016, normal then highlighted, and its backpack shut then open (states 1 and 6). Each is drawn
+    // cropped to its painting: retail's art carries the gold strips and corner blocks of retail's toolbar frame, which the Dereth frame replaces.
     private static readonly Dictionary<RetailStance, (uint Normal, uint Hover)> StanceArtIds = new()
     {
         [RetailStance.Peace] = (0x06004CEC, 0x06004CED),
@@ -94,6 +96,7 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         [RetailStance.Magic] = (0x06004CF2, 0x06004CF3),
     };
     private const uint BackpackShutArt = 0x06004CF7, BackpackOpenArt = 0x06004CF8;
+    private static readonly PixelRect StancePainting = new(4, 4, 51, 50), BackpackPainting = new(2, 4, 56, 50);
 
     private static readonly IBrush TrackBrush = DerethPalette.Brush(Color.Parse("#0A0906"));
     private static readonly IBrush HealthBrush = Gradient(Color.Parse("#7E211B"), Color.Parse("#D9584A"));
@@ -146,8 +149,8 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         _stance.Clicked += () => _port.ToggleStance();
 
         foreach (var pair in StanceArtIds)
-            if (GameArtImageExtension.CreateBitmap(art, pair.Value.Normal) is { } normal)
-                _stanceArt[pair.Key] = (normal, GameArtImageExtension.CreateBitmap(art, pair.Value.Hover));
+            if (Painting(art, pair.Value.Normal, StancePainting) is { } normal)
+                _stanceArt[pair.Key] = (normal, Painting(art, pair.Value.Hover, StancePainting));
 
         // Spaced so the open ring, 2.75 DIPs outside a button, stays clear of the next one.
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, HorizontalAlignment = HorizontalAlignment.Center };
@@ -183,8 +186,8 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         var selection = Columns(Centred(_use), new NoWidth { Child = _plaque }, Centred(_examine));
         var middle = new StackPanel { Spacing = 4, Margin = new Thickness(3, 0), VerticalAlignment = VerticalAlignment.Center, Children = { buttons, selection } };
         var backpack = Medallion(DerethGlyph.Backpack, 40, 25, "Inventory");
-        if (GameArtImageExtension.CreateBitmap(art, BackpackShutArt) is { } shut)
-            backpack.SetArt(shut, open: GameArtImageExtension.CreateBitmap(art, BackpackOpenArt));
+        if (Painting(art, BackpackShutArt, BackpackPainting) is { } shut)
+            backpack.SetArt(shut, open: Painting(art, BackpackOpenArt, BackpackPainting));
         _windows.Add(RetailPanel.Inventory, backpack);
         backpack.Clicked += () => TogglePanel(RetailPanel.Inventory);
         _sections.Children.Add(Columns(Centred(_stance), middle, Centred(backpack)));
@@ -309,6 +312,10 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         Grid.SetColumn(fillBar, 0);
         return new Border { Height = 5, CornerRadius = new CornerRadius(3), Background = TrackBrush, Child = bar };
     }
+
+    /// <summary>The part of a retail image inside <paramref name="painting"/>; null when there is no art.</summary>
+    private static IImage? Painting(IGameArtSource? art, uint id, PixelRect painting) =>
+        GameArtImageExtension.CreateBitmap(art, id) is { } bitmap ? new CroppedBitmap(bitmap, painting) : null;
 
     private static DerethMedallion Medallion(DerethGlyph glyph, double diameter, double glyphSize, string name)
     {
