@@ -19,9 +19,9 @@ public sealed record ShortcutSlotView(int Index, ShortcutItem? Item);
 /// <summary>
 /// One shortcut row inside the toolbar: nine item slots at the icon size, touching, as retail's are. A slot
 /// shows its item's icon and stack count, with its key number in the corner, or only its key number when empty. A click selects and uses
-/// the slot's item, and a slot whose item is selected is lit, so the slot last clicked stays marked. A press on a slot never moves the toolbar. A drag from a slot moves the
-/// shortcut to the slot it is released on, or takes it off the bars when no LegACEy window takes it. A drop of an item from outside binds
-/// it to the slot it is released on.
+/// the slot's item, and a slot whose item is selected is lit, so the slot last clicked stays marked. A press on a slot never moves the
+/// toolbar. A drag from a slot moves the shortcut to the slot it is released on, or takes it off the bars when no LegACEy window takes it.
+/// A drop of an item from outside binds it to the slot it is released on.
 /// </summary>
 public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
 {
@@ -130,7 +130,7 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
         for (var position = 0; position < SlotCount; position++)
         {
             var index = _firstIndex + position;
-            var holdsSelected = selected != 0 && _shown[position]?.Item != null && ShortcutEdits.ObjectAt(shortcuts, index) == selected;
+            var holdsSelected = _shown[position]?.Item != null && ShortcutEdits.ObjectAt(shortcuts, index) == selected;
             if (SlotAt(position) is DerethSlot slot) slot.Selected = index == _dropAt || holdsSelected;
         }
     }
