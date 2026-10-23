@@ -70,49 +70,24 @@ public sealed class ShortcutBarTests
     });
 
     [Fact]
-    public void A_drag_on_the_row_tag_does_not_click_it() => RenderThread.Run(() =>
-    {
-        var clicks = 0;
-        var pointer = new Point(0, 0);
-        var port = new FakeShortcutPort(Array.Empty<RetailShortcut>());
-        using var panel = Open(port, new Dictionary<uint, ShortcutItem>(), out var bar,
-            tagClick: () => clicks++, pointer: () => pointer);
-        panel.Tick();
-
-        var centre = bar.RowTag.TranslatePoint(new Avalonia.Point(bar.RowTag.Bounds.Width / 2, bar.RowTag.Bounds.Height / 2), bar)!.Value;
-        panel.PointerDown(centre.X, centre.Y);
-        // The pointer moves 20 px before the button comes up: the toolbar moves with it, and it is a drag.
-        pointer = new Point(20, 0);
-        panel.PointerUp(centre.X, centre.Y);
-
-        Assert.Equal(0, clicks);
-    });
-
-    [Fact]
     public void Row_2_is_on_for_a_character_with_no_saved_choice() =>
         Assert.True(new ShortcutRowChoice(new MemoryWindowPositionStore()).IsOn("server", "Alice"));
 
     [Fact]
-    public void The_row_tag_click_turns_row_2_off_and_on_and_the_choice_is_kept_per_character() => RenderThread.Run(() =>
+    public void Turning_row_2_off_and_on_is_kept_per_character()
     {
         var store = new MemoryWindowPositionStore();
         var choice = new ShortcutRowChoice(store);
-        var port = new FakeShortcutPort(Array.Empty<RetailShortcut>());
-        // The runtime's rule: the tag shows or hides row 2 and saves the new state for the character.
-        var on = true;
-        Action toggle = () => choice.Save("server", "Alice", on = !on);
-        using var panel = Open(port, new Dictionary<uint, ShortcutItem>(), out var bar, tagClick: toggle);
-        panel.Tick();
 
-        Click(panel, bar, bar.RowTag);
+        choice.Save("server", "Alice", false);
         Assert.False(choice.IsOn("server", "Alice"));
         Assert.True(choice.IsOn("server", "Bob"));
         // After a restart, the same store still has row 2 off for Alice.
         Assert.False(new ShortcutRowChoice(store).IsOn("server", "Alice"));
 
-        Click(panel, bar, bar.RowTag);
+        choice.Save("server", "Alice", true);
         Assert.True(choice.IsOn("server", "Alice"));
-    });
+    }
 
     [Fact]
     public void A_drop_on_an_empty_slot_binds_the_item_at_that_index() => RenderThread.Run(() =>
@@ -239,13 +214,11 @@ public sealed class ShortcutBarTests
 
     /// <summary>A bar over a fake port, drawn in a panel of its own. The items it shows are the ones <paramref name="held"/> holds.</summary>
     private static AvaloniaPanel Open(FakeShortcutPort port, IReadOnlyDictionary<uint, ShortcutItem> held, out ShortcutBar bar,
-        int firstIndex = 0, Action? tagClick = null, Func<Point>? pointer = null,
-        FakeItemDragHost? drag = null, ShortcutDragSource? source = null)
+        int firstIndex = 0, FakeItemDragHost? drag = null, ShortcutDragSource? source = null)
     {
         ShortcutBar? created = null;
-        var panel = AvaloniaPanel.Create(() => created = new ShortcutBar(firstIndex == 0 ? 1 : 2, firstIndex, port,
-            id => held.TryGetValue(id, out var item) ? item : null, null,
-            pointer ?? (() => new Point(0, 0)), tagClick, drag ?? new FakeItemDragHost(), source ?? new ShortcutDragSource()), Width, Height);
+        var panel = AvaloniaPanel.Create(() => created = new ShortcutBar(firstIndex, port, id => held.TryGetValue(id, out var item) ? item : null, null,
+            drag ?? new FakeItemDragHost(), source ?? new ShortcutDragSource()), Width, Height);
         bar = created!;
         return panel;
     }

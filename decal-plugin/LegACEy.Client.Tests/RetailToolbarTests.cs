@@ -7,6 +7,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.VisualTree;
 using LegACEy.Client.Demo;
+using LegACEy.Client.GameArt;
 using LegACEy.Client.DecalPlugin;
 using LegACEy.Client.PanelHost;
 using LegACEy.Client.Themes;
@@ -200,7 +201,7 @@ public sealed class RetailToolbarTests
 
         double Left(Control control) => control.TranslatePoint(default, toolbar)!.Value.X;
         double Right(Control control) => Left(control) + control.Bounds.Width;
-        Assert.InRange(Left(toolbar.StanceButton) - Left(row1.RowTag), -1, 1);
+        Assert.InRange(Left(toolbar.StanceButton) - Left(row1.SlotAt(0)), -1, 1);
         Assert.InRange(Right(toolbar.ButtonFor(RetailPanel.Inventory)) - Right(row2.SlotAt(ShortcutBar.SlotCount - 1)), -1, 1);
         Assert.True(row2.SlotAt(0).TranslatePoint(default, toolbar)!.Value.Y > row1.SlotAt(0).TranslatePoint(default, toolbar)!.Value.Y);
     });
@@ -481,7 +482,7 @@ public sealed class RetailToolbarTests
             Changed?.Invoke();
         }
 
-        public IReadOnlyList<RetailShortcut> Shortcuts => Array.Empty<RetailShortcut>();
+        public IReadOnlyList<RetailShortcut> Shortcuts { get; set; } = Array.Empty<RetailShortcut>();
         public void UseShortcut(int index) { }
         public void Select(uint objectId) { }
         public void AddShortcut(int index, uint objectId) { }
@@ -543,12 +544,54 @@ public sealed class RetailToolbarTests
 
         public void Raise() => Changed?.Invoke();
 
-        public IReadOnlyList<RetailShortcut> Shortcuts => Array.Empty<RetailShortcut>();
+        public IReadOnlyList<RetailShortcut> Shortcuts { get; set; } = Array.Empty<RetailShortcut>();
         public void UseShortcut(int index) { }
         public void Select(uint objectId) { }
         public void AddShortcut(int index, uint objectId) { }
         public void RemoveShortcut(int index) { }
     }
+
+    // Looked at by a person, not asserted: LEGACEY_TOOLBAR_RENDER names the folder the PNGs go to, and LEGACEY_PORTAL_DAT the game art.
+    [Fact]
+    public void The_toolbar_renders_to_pngs_when_asked() => RenderThread.Run(() =>
+    {
+        var folder = Environment.GetEnvironmentVariable("LEGACEY_TOOLBAR_RENDER");
+        var portal = Environment.GetEnvironmentVariable("LEGACEY_PORTAL_DAT");
+        if (folder == null || string.IsNullOrWhiteSpace(portal)) return;
+        Directory.CreateDirectory(folder);
+        using var dat = new PortalDat(portal);
+        var held = new Dictionary<uint, ShortcutItem>
+        {
+            [0x100] = new(new ItemVisual(0x06001074, 0, 0, 0), 12),
+            [0x101] = new(new ItemVisual(0x060010DA, 0, 0, 0), 1),
+        };
+        foreach (var scale in new[] { 1.0, 2.0 })
+            foreach (var (name, stance, selection, inventoryOpen) in new[]
+            {
+                ("peace", RetailStance.Peace, (RetailSelection?)null, false),
+                ("magic", RetailStance.Magic, new RetailSelection(1, "Nukurunga Greater Rabid Carenzi", SelectionKind.Creature, 0.6f), true),
+                ("scroll", RetailStance.Peace, new RetailSelection(2, "Scroll of Recklessness Ineptitude Other VII", SelectionKind.Other), false),
+                ("short", RetailStance.Melee, new RetailSelection(3, "Drudge Slinker", SelectionKind.Creature, 0.9f), false),
+            })
+            {
+                var port = new FakeToolbarPort
+                {
+                    Stance = stance, Selection = selection,
+                    Shortcuts = new[] { new RetailShortcut(0, 0x100), new RetailShortcut(1, 0x101), new RetailShortcut(11, 0x100) }
+                };
+                if (inventoryOpen) port.Open(RetailPanel.Inventory, true);
+                RetailToolbar? toolbar = null;
+                using var panel = AvaloniaPanel.Create(() => toolbar = new RetailToolbar(port, () => { }, _ => true, art: dat), 1, 1, scale);
+                panel.ApplyTheme(new DerethClientTheme());
+                var source = new ShortcutDragSource();
+                toolbar!.SetShortcutRows(new[] { 0, ShortcutBar.SlotCount }.Select(first =>
+                    new ShortcutBar(first, port, id => held.TryGetValue(id, out var item) ? item : null, dat, new FakeItemDragHost(), source)));
+                toolbar.Measure(Size.Infinity);
+                panel.Resize((int)Math.Ceiling(toolbar.DesiredSize.Width * scale), (int)Math.Ceiling(toolbar.DesiredSize.Height * scale));
+                panel.Tick();
+                PanelPng.Save(panel, Path.Combine(folder, $"{name}-{scale:0}x.png"));
+            }
+    });
 
     /// <summary>A toolbar in the given state, drawn once: what a player sees after a change must equal this.</summary>
     private static byte[] Render(Action<FakeToolbarPort>? arrange = null, Action<RetailToolbar>? arrangeToolbar = null)
@@ -586,7 +629,7 @@ public sealed class RetailToolbarTests
 
     /// <summary>A shortcut row over an empty shortcut list, for the toolbar to hold.</summary>
     private static ShortcutBar Row(int firstIndex, ShortcutDragSource source) =>
-        new(firstIndex == 0 ? 1 : 2, firstIndex, new FakeToolbarPort(), _ => null, null, () => default, null, new FakeItemDragHost(), source);
+        new(firstIndex, new FakeToolbarPort(), _ => null, null, new FakeItemDragHost(), source);
 
     private static AvaloniaPanel OpenTab(IRetailToolbarPort port, out StackSplitTab tab)
     {

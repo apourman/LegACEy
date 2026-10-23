@@ -573,6 +573,7 @@ public sealed class DerethSlot : Grid
     private static readonly BoxShadows SelectedGlow = new(new BoxShadow { IsInset = true, Blur = 6, Color = DerethPalette.Teal.WithAlpha(0xB0) });
     private static readonly BoxShadows CarriedGlow = new(new BoxShadow { IsInset = true, Blur = 10, Spread = 1, Color = DerethPalette.TealText });
 
+    private readonly double _side;
     private readonly Border _wash;
     private readonly Border _outline;
     private bool _carried;
@@ -580,9 +581,12 @@ public sealed class DerethSlot : Grid
     /// <summary>
     /// A slot holding the content: a framed well round an icon (see <see cref="ItemCellSize"/>), with a selected state. It sits at the
     /// start of its pitch: centred, the pitch's odd pixel would round it left and right in turn, and the gaps between slots would alternate.
+    /// A <paramref name="flush"/> slot is only the icon's size, as retail's shortcut slots are, so slots touch: its well's rim shows round
+    /// an empty slot and the icon covers it.
     /// </summary>
-    public DerethSlot(Control? content)
+    public DerethSlot(Control? content, bool flush = false)
     {
+        _side = flush ? ItemCellSize.Standard.Icon : ItemCellSize.Standard.Cell;
         HorizontalAlignment = HorizontalAlignment.Left;
         VerticalAlignment = VerticalAlignment.Top;
         Background = Brushes.Transparent;
@@ -590,11 +594,10 @@ public sealed class DerethSlot : Grid
         var inner = new Grid();
         inner.Children.Add(_wash);
         if (content != null) inner.Children.Add(content);
-        Children.Add(new Border
-        {
-            Name = "Well", Background = WellBrush, BorderBrush = RimBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3),
-            Child = inner
-        });
+        var well = new Border { Name = "Well", Background = WellBrush, BorderBrush = RimBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3) };
+        Children.Add(well);
+        if (flush) Children.Add(inner);
+        else well.Child = inner;
         _outline = new Border
         {
             BorderBrush = DerethPalette.TealBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(3),
@@ -630,8 +633,7 @@ public sealed class DerethSlot : Grid
 
     protected override Size MeasureOverride(Size availableSize)
     {
-        var side = ItemCellSize.Standard.Cell;
-        base.MeasureOverride(new Size(side, side));
-        return new Size(side, side);
+        base.MeasureOverride(new Size(_side, _side));
+        return new Size(_side, _side);
     }
 }
