@@ -12,9 +12,13 @@ namespace LegACEy.Client.DecalPlugin;
 internal sealed class BridgeInventoryPort : IInventoryPort
 {
     private readonly InventoryRefresh _refresh;
+    private readonly Action<string> _log;
 
-    public BridgeInventoryPort(Action<string> log) =>
+    public BridgeInventoryPort(Action<string> log)
+    {
+        _log = log;
         _refresh = new InventoryRefresh(() => InventorySnapshotBuilder.Build(new BridgeInventoryReader()), log);
+    }
 
     public InventorySnapshot Snapshot => _refresh.Snapshot;
 
@@ -97,6 +101,8 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     public void MoveToContainer(uint itemId, uint containerId, int slotIndex)
     {
         if (Split?.TrySplitToContainer(itemId, containerId, slotIndex) == true) return;
+        // ponytail: diagnostics for backlog 035 (a ring that stops dragging); drop once it is understood.
+        _log($"Inventory: move 0x{itemId:X8} to 0x{containerId:X8} slot {slotIndex}.");
         Bridge.MoveItem(itemId, containerId, slotIndex, stack: false);
     }
 
@@ -110,6 +116,7 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     public void Wield(uint itemId, PaperdollSlot slot)
     {
         var mask = WieldMask(itemId, slot);
+        _log($"Inventory: wield 0x{itemId:X8} to {slot}, mask 0x{mask:X8}, valid 0x{_refresh.Snapshot.ValidLocationsOf(itemId) ?? LiveValidLocations(itemId):X8}.");
         if (mask != 0) Bridge.AutoWield(itemId, mask, 1, 0);
     }
 

@@ -428,6 +428,31 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
+    public void A_ring_dropped_on_the_doll_goes_on_the_free_finger_and_drags_again_after() => RenderThread.Run(() =>
+    {
+        const uint LeftRing = 0x80000020, RightRing = 0x80000021, FingerWear = 0x000C0000;
+        var sample = InventorySample.Snapshot();
+        InventorySnapshot With() => new(sample.MainPack, sample.SidePacks,
+            sample.Items.Append(new InventoryItem(RightRing, "Ivory Ring", InventorySample.Character, 10, new ItemVisual(0x06001F00, 0, 0, 0), 1, 0, 0, FingerWear)).ToList(),
+            sample.Wielded.Append(new WieldedItem(LeftRing, "Ring", new ItemVisual(0x06001F00, 0, 0, 0), 1, 1, 0, FingerWear, new[] { PaperdollSlot.LeftRing }, 0x00040000))
+                .ToList(),
+            sample.Burden, sample.BurdenLimit, sample.Pyreals, sample.OpenContainer, sample.Selected, sample.CharacterName);
+        var port = new FakeInventoryPort();
+        port.Push(With());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: false);
+        host.Window.SetDoll(new PaperdollView(new SilentLooks(), string.Empty) { Still = true });
+        InventoryDriver.Tick(host.Host);
+        var doll = host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DollArea");
+        var ring = host.Cells.Single(cell => InventoryDriver.Id(cell).ItemId == RightRing);
+
+        InventoryDriver.Drop(host.Host, ring, doll);
+        Assert.Equal(new[] { $"wield 0x{RightRing:X8} to RightRing" }, InventoryDriver.Sent(port));
+
+        InventoryDriver.Drop(host.Host, ring, Slot(host, PaperdollSlot.RightRing));
+        Assert.Equal(2, InventoryDriver.Sent(port).Length);
+    });
+
+    [Fact]
     public void Dragging_an_item_over_the_doll_lights_the_doll() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();
