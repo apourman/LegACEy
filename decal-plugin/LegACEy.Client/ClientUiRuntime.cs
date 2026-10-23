@@ -2391,7 +2391,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             }
             if (_toolbarFailed) return;
             if (_toolbarSurface == null && !CreateRetailToolbar()) return;
-            LoadToolbarPlace();
             _toolbarPort!.Poll();
             _toolbarTakeover!.Tick(_toolbarDragOffset != null, GameDevice.ViewportSize(_device));
             // Until login completes, retail's toolbar stays held but ours is not drawn: its saved place is read only then, so it never
@@ -2404,7 +2403,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 return;
             }
             // The bar stands beside the toolbar only while the takeover holds retail's element; otherwise it closes with it.
-            if (_toolbarTakeover.Holds) EnsureShortcutBar();
+            if (_toolbarTakeover.Holds)
+            {
+                EnsureShortcutBar();
+                LoadToolbarPlace();
+            }
             else CloseShortcutBar();
             PlaceSplitTab();
         }
@@ -2441,14 +2444,22 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private const string ToolbarPlaceId = "dereth-toolbar";
 
-    /// <summary>Once per toolbar taken over, puts it at this character's saved place, kept on screen. Until then it stands where retail's did.</summary>
+    /// <summary>
+    /// Once per toolbar taken over, puts it at this character's saved place, kept on screen. Until then it stands where retail's did. It runs
+    /// once the shortcut rows are in, before the frame draws: a place set on the smaller toolbar would move when the rows grow it, and that
+    /// move would be saved. The place is read before the toolbar is scaled and written back after, as it was rather than kept on this screen,
+    /// since the refit after a new scale saves the place it moved to.
+    /// </summary>
     private void LoadToolbarPlace()
     {
         if (_toolbarPlaceLoaded || !_inGame || _toolbarPlace == null || _toolbarSurface == null) return;
         _toolbarPlaceLoaded = true;
+        var saved = _positionStore.Load(SessionServer(), SessionCharacter(), ToolbarPlaceId);
         ScaleToolbar();
-        if (_positionStore.Load(SessionServer(), SessionCharacter(), ToolbarPlaceId) is not { } saved) return;
-        _toolbarPlace.Location = OnScreen(saved.Location, _toolbarSurface.Bounds.Size);
+        if (saved == null) return;
+        _toolbarPlace.Location = OnScreen(saved.Value.Location, _toolbarSurface.Bounds.Size);
+        _toolbarSurface.Location = _toolbarPlace.Location.Value;
+        SaveToolbarPlace(saved.Value.Location);
     }
 
     /// <summary>
