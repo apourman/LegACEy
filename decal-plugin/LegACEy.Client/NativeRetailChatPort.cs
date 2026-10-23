@@ -58,7 +58,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private static readonly Regex ChannelPrefix = new(@"^\[([^\]]+)\]", RegexOptions.Compiled);
 
     // Delegates to fixed retail functions, made once: their addresses never change.
-    private static readonly ChatEntryFn DeactivateEntry = Marshal.GetDelegateForFunctionPointer<ChatEntryFn>(At(RetailChatCatalogue.DeactivateChatEntry));
+    private static readonly DeactivateChatEntryFn DeactivateEntry = Marshal.GetDelegateForFunctionPointer<DeactivateChatEntryFn>(At(RetailChatCatalogue.DeactivateChatEntry));
     private static readonly SetFocusElementFn SetFocus = Marshal.GetDelegateForFunctionPointer<SetFocusElementFn>(At(RetailChatCatalogue.SetFocusElement));
     private static readonly PStringBaseFromWideFn ConstructString = Marshal.GetDelegateForFunctionPointer<PStringBaseFromWideFn>(At(0x00402730));
     private static readonly PStringBaseReleaseFn ReleaseString = Marshal.GetDelegateForFunctionPointer<PStringBaseReleaseFn>(At(0x004011B0));
@@ -66,6 +66,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private readonly Action<string> _log;
     // Whether a box of ours had the keyboard at the last poll.
     private bool _typing;
+    private bool _chatMissingLogged;
     private readonly RetailChatNatives _natives;
     private readonly ConcurrentQueue<RetailChatLine> _pending = new();
     // The channel names already logged as matching no tab channel, so each is logged once.
@@ -102,7 +103,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private delegate void PStringBaseReleaseFn(IntPtr self);
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-    private delegate void ChatEntryFn(IntPtr chat);
+    private delegate void DeactivateChatEntryFn(IntPtr chat);
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void SetFocusElementFn(IntPtr manager, IntPtr element);
@@ -425,42 +426,21 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         _typing = typing;
         if (RetailChat() is not { } chat)
         {
-            if (started) _log("Chat keyboard: retail's main chat is not found.");
+            if (started && !_chatMissingLogged) _log("Retail's main chat is not found: VTank and other Decal plugins see the chat as closed while typing.");
+            _chatMissingLogged |= started;
             return;
         }
         var entry = Marshal.ReadIntPtr(chat, 0x60C);
         var manager = Marshal.ReadIntPtr(At(UIElementManager));
-        if (manager == IntPtr.Zero || entry == IntPtr.Zero)
-        {
-            if (started) _log($"Chat keyboard: no entry ({entry:X8}) or element manager ({manager:X8}).");
-            return;
-        }
-        var before = Marshal.ReadIntPtr(manager, FocusElementOffset);
-        var focused = before == entry;
-        if (started && !focused)
-        {
-            SetFocus(manager, entry);
-            // ponytail: diagnostic for backlog 036; drop with the one in ClientUiRuntime.
-            _log($"Chat keyboard: focus {before:X8} -> {Marshal.ReadIntPtr(manager, FocusElementOffset):X8}, entry {entry:X8}, chat {chat:X8}.");
-        }
+        if (manager == IntPtr.Zero || entry == IntPtr.Zero) return;
+        var focused = Marshal.ReadIntPtr(manager, FocusElementOffset) == entry;
+        if (started && !focused) SetFocus(manager, entry);
         else if (!typing && focused) SetFocus(manager, IntPtr.Zero);
-        if (!typing && EntryActive(chat, entry, manager)) DeactivateEntry(chat);
-    }
-
-    /// <summary>Whether retail's hidden chat entry has retail's keyboard focus, which Decal reports as its ChatState.</summary>
-    public bool RetailEntryFocused
-    {
-        get
-        {
-            if (!_natives.Enter || RetailChat() is not { } chat) return false;
-            var manager = Marshal.ReadIntPtr(At(UIElementManager));
-            var entry = Marshal.ReadIntPtr(chat, 0x60C);
-            return manager != IntPtr.Zero && entry != IntPtr.Zero && Marshal.ReadIntPtr(manager, FocusElementOffset) == entry;
-        }
+        if (!typing && EntryActive(entry, manager)) DeactivateEntry(chat);
     }
 
     /// <summary>Whether the entry is retail's open chat entry: the focused child of retail's active window, as HandleEnterKey tests it.</summary>
-    private static bool EntryActive(IntPtr chat, IntPtr entry, IntPtr manager)
+    private static bool EntryActive(IntPtr entry, IntPtr manager)
     {
         var window = Marshal.ReadIntPtr(manager, 0x32C);
         return window != IntPtr.Zero && Marshal.ReadIntPtr(window, 0x1A4) == entry;

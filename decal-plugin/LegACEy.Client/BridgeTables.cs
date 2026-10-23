@@ -115,9 +115,7 @@ public enum BridgeFact
     /// </summary>
     CharacterMembership,
     /// <summary>CharacterFilter.Vitae: Decal's vitae penalty. Its unit (percent lost or percent kept) is not confirmed yet.</summary>
-    Vitae,
-    /// <summary>Actions.ChatState: 1 while Decal sees retail's chat entry open. VTank waits on it.</summary>
-    ChatState
+    Vitae
 }
 
 /// <summary>The strings <see cref="BridgeCalls.Text"/> answers.</summary>

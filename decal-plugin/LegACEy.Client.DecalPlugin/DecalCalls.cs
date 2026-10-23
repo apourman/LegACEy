@@ -106,7 +106,6 @@ internal static unsafe class DecalCalls
             BridgeFact.CombatMode => (int)core.Actions.CombatMode,
             BridgeFact.CharacterMembership => Membership(character),
             BridgeFact.Vitae => character.Vitae,
-            BridgeFact.ChatState => core.Actions.ChatState ? 1 : 0,
             _ => throw new ArgumentOutOfRangeException(nameof(fact), fact, "Unknown bridge fact.")
         };
     }

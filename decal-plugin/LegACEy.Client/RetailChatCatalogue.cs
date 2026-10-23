@@ -22,8 +22,8 @@ internal static class RetailChatCatalogue
     internal const uint MainChat = 0x1000000E;
     /// <summary>
     /// ChatInterface::OnAction, at slot +0x04 of a ChatInterface's UIElement vtable. The main chat window element (0x10000601) is gmMainChatUI
-    /// itself, its ChatInterface 4 before it (the user's client, 22 Oct: GetElement(0x1000000E) finds nothing, as GetElement finds top-level
-    /// windows only); this tells it is one before the port reads its entry.
+    /// itself, its ChatInterface 4 before it, as the user's client showed on 22 Oct; GetElement finds top-level windows only, so it never finds
+    /// 0x1000000E. This tells the window is one before the port reads its entry.
     /// </summary>
     internal const uint ChatInterfaceOnAction = 0x004F62F0;
     /// <summary>acclient.exe's .rdata, where vtables are: a word outside it is not followed.</summary>
