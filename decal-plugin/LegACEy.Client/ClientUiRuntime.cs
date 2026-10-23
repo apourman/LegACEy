@@ -2837,7 +2837,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // A history that listened while retail's chat was shown stops taking lines: the windows' own history takes them from here.
         _carriedChatHistory?.Dispose();
         _carriedChatHistory = null;
-        // The chat's own text size control moves the Settings window's value too.
+        // A text size set in Settings while the chat is open reaches the Settings window's value through the chat.
         chats.TextSizeChanged += size => { if (_settings != null) _settings.ChatTextSize = new OptionChoice<int>(size, SetChatTextSize); };
         // The main window starts at the bottom left, above the toolbar, until the player moves it; its place is then kept per character.
         var screen = _windows!.Screen;
