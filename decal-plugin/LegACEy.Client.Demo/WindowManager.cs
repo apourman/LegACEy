@@ -285,9 +285,11 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
             }
             if (Rows(file) is not { } rows) return false;
             change(rows);
+            // The whole text in one write, so a client closed mid-save leaves as little of the file cut off as possible.
+            var text = new UTF8Encoding(false).GetBytes(string.Concat(rows.Select(pair => Format(pair.Key, pair.Value) + Environment.NewLine)));
+            file.Position = 0;
             file.SetLength(0);
-            using (var writer = new StreamWriter(file))
-                foreach (var pair in rows) writer.WriteLine(Format(pair.Key, pair.Value));
+            file.Write(text, 0, text.Length);
             _session.Clear();
             return true;
         }
@@ -304,8 +306,6 @@ public sealed class FileWindowPositionStore : IWindowPositionStore
         for (var attempt = 1; ; attempt++)
         {
             try { return new FileStream(_path, mode, access, share); }
-            catch (FileNotFoundException) { return null; }
-            catch (DirectoryNotFoundException) { return null; }
             catch (IOException) when (attempt < 20) { Thread.Sleep(25); }
             catch (IOException) { return null; }
             catch (UnauthorizedAccessException) { return null; }
