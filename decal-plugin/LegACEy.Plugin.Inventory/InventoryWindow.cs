@@ -289,7 +289,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         if (_carried.Count == 0 && !new Rect(Bounds.Size).Contains(point) && _dragHost?.HandToRetail(_dragged) == true)
         {
             // A pack retail drops on the ground comes back to the pack column, as one we dropped there does.
-            if (PackOf(_port.Snapshot, _dragged) != null) _packsOnGround.Add(_dragged);
+            if (_port.Snapshot.SidePacks.Any(pack => pack.Id == _dragged)) _packsOnGround.Add(_dragged);
             EndDrag();
             e.Pointer.Capture(null);
             return;
