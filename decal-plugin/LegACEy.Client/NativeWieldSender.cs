@@ -29,25 +29,27 @@ internal static class NativeWieldSender
     [return: MarshalAs(UnmanagedType.U1)]
     private delegate bool GetAndWieldItemFn(uint itemId, uint location);
 
+    // Null until checked, and after a check the running client failed.
     private static GetAndWieldItemFn? _send;
-    private static bool? _valid;
+    private static bool _checked;
 
-    /// <summary>Sends the wield request. False when the running client does not match, so the caller falls back to Decal's AutoWield.</summary>
+    /// <summary>
+    /// Sends the wield request. False when the running client does not match or retail refused to send it, so the caller falls back to
+    /// Decal's AutoWield.
+    /// </summary>
     public static bool TrySend(uint itemId, uint location, Action<string> log)
     {
-        if (_valid == null)
+        if (!_checked)
         {
             if (!NativeUi.Ready) return false;
-            try { _valid = NativeUiCatalogue.Validate(NativeUi.ReadMemory, log, Entries, "Native wield sender is off; drops on the paperdoll use Decal's AutoWield."); }
-            catch (Exception exception)
+            _checked = true;
+            try
             {
-                log($"Native wield sender is off: its address could not be checked: {exception.Message}");
-                _valid = false;
+                if (NativeUiCatalogue.Validate(NativeUi.ReadMemory, log, Entries, "Native wield sender is off; drops on the paperdoll use Decal's AutoWield."))
+                    _send = Marshal.GetDelegateForFunctionPointer<GetAndWieldItemFn>(new IntPtr(GetAndWieldItem));
             }
-            if (_valid == true) _send = Marshal.GetDelegateForFunctionPointer<GetAndWieldItemFn>(new IntPtr(GetAndWieldItem));
+            catch (Exception exception) { log($"Native wield sender is off: its address could not be checked: {exception.Message}"); }
         }
-        if (_send == null) return false;
-        _send(itemId, location);
-        return true;
+        return _send?.Invoke(itemId, location) == true;
     }
 }
