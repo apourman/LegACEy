@@ -2,6 +2,9 @@ namespace LegACEy.Client.Demo;
 
 public enum WeatherKind : byte { None = 0, Snow = 1, Blizzard = 2, Thunderstorm = 3 }
 
+/// <summary>The weather a tester turns on from the Settings window: drawn around the player wherever they are, with no word from the server.</summary>
+public enum TestWeather { Off, Snow, Blizzard, Thunderstorm, Fog }
+
 /// <summary>Bodies of the weather test's channel actions; they must match ACE.Server.ClientChannel.WeatherChannelActions.</summary>
 public static class WeatherProtocol
 {

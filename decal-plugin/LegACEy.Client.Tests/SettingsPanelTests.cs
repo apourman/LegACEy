@@ -276,6 +276,22 @@ public sealed class SettingsPanelTests
     });
 
     [Fact]
+    public void The_world_tab_s_test_weather_calls_its_change() => RenderThread.Run(() =>
+    {
+        var calls = new List<TestWeather>();
+        var settings = new ClientSettings(null, null, Array.Empty<UiWindowChoice>(), new WaterOption(true, 100, (_, _) => { }))
+        {
+            TestWeather = new OptionChoice<TestWeather>(TestWeather.Off, calls.Add),
+        };
+        using var panel = AvaloniaPanel.Create(() => new SettingsPanel(settings, SettingsTab.World), SettingsPanel.WindowWidth, SettingsPanel.WindowHeight);
+        panel.Tick();
+
+        PressCentre(panel, TextOf(panel, "Storm"));
+        PressCentre(panel, TextOf(panel, "Fog"));
+        Assert.Equal(new[] { TestWeather.Thunderstorm, TestWeather.Fog }, calls);
+    });
+
+    [Fact]
     public void The_lock_switch_calls_the_lock_change_with_the_new_state() => RenderThread.Run(() =>
     {
         var calls = new List<bool>();

@@ -165,13 +165,29 @@ internal sealed unsafe class WorldEffects : IDisposable
     }
 
     /// <summary>The safe landblock the storm fog rings, as landblock x and y, or null for no storm.</summary>
-    public (int X, int Y)? StormZone { get => _fog.Zone; set => _fog.Zone = value; }
+    public (int X, int Y)? StormZone { get => _serverStorm; set => _fog.Zone = _serverStorm = value; }
 
     /// <summary>Floating combat text over the targets of the hits the server reports.</summary>
     public CombatText Combat => _combat;
 
     /// <summary>The weather and the landblock in the middle of it, or null for clear skies.</summary>
-    public (WeatherKind Kind, int X, int Y)? Weather { get => _weather.Current; set => _weather.Current = value; }
+    public (WeatherKind Kind, int X, int Y)? Weather { get => _serverWeather; set => _weather.Current = _serverWeather = value; }
+
+    /// <summary>Weather for testing, drawn around the player's landblock in place of the server's; Off puts the server's back.</summary>
+    public TestWeather TestWeather
+    {
+        get => _testWeather;
+        set
+        {
+            _testWeather = value;
+            _fog.Zone = _serverStorm;
+            _weather.Current = _serverWeather;
+        }
+    }
+
+    private (int X, int Y)? _serverStorm;
+    private (WeatherKind Kind, int X, int Y)? _serverWeather;
+    private TestWeather _testWeather;
 
     /// <summary>How strong the water is: 0 leaves retail's water, 1 is the look as designed.</summary>
     public float WaterStrength { get => _water.Strength; set => _water.Strength = value; }
@@ -285,9 +301,27 @@ internal sealed unsafe class WorldEffects : IDisposable
     /// <summary>The storm and weather; the storm's frame ends here even when nothing is shown.</summary>
     private void DrawOutside(uint cell, bool shown)
     {
+        if (_testWeather != TestWeather.Off && cell != 0) FollowPlayer(cell);
         _fog.Draw(inWorld: shown && cell != 0);
         _weather.PlayerCell = cell;
         if (shown) _weather.Draw();
+    }
+
+    /// <summary>
+    /// Centres the test weather on the player's landblock. The fog fills the ring around a safe landblock, so its safe landblock is the one
+    /// to the west, which puts the player inside the ring.
+    /// </summary>
+    private void FollowPlayer(uint cell)
+    {
+        int x = (int)(cell >> 24), y = (int)(cell >> 16) & 0xFF;
+        if (_testWeather == TestWeather.Fog)
+        {
+            _fog.Zone = (x - 1, y);
+            _weather.Current = null;
+            return;
+        }
+        _fog.Zone = null;
+        _weather.Current = (_testWeather switch { TestWeather.Snow => WeatherKind.Snow, TestWeather.Blizzard => WeatherKind.Blizzard, _ => WeatherKind.Thunderstorm }, x, y);
     }
 
     /// <summary>
