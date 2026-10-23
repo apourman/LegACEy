@@ -2393,8 +2393,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             if (_toolbarSurface == null && !CreateRetailToolbar()) return;
             _toolbarPort!.Poll();
             _toolbarTakeover!.Tick(_toolbarDragOffset != null, GameDevice.ViewportSize(_device));
-            // Until login completes, retail's toolbar stays held but ours is not drawn: its saved place is read only then, so it never
-            // shows at retail's place first and jumps.
+            // Until login completes, retail's toolbar stays held but ours is not drawn: its saved place is read on the first held frame
+            // after, once the shortcut rows are in, so it never shows at retail's place first and jumps.
             if (!_inGame)
             {
                 _toolbarSurface!.Visible = false;
