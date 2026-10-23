@@ -534,17 +534,21 @@ namespace ACE.Server.Market
         }
 
         /// <summary>
-        /// An item's name: from its Vault row while it has one, else from the item's own record, which a sale and a withdrawal leave in place
+        /// An item's name with its material: from its Vault row while it has one, else from the item's own record, which a sale and a withdrawal leave in place
         /// </summary>
         private static string ItemNameOf(uint itemGuid, VaultItem row)
         {
             if (row?.Name is { Length: > 0 } name)
-                return name;
+                return WithMaterial(name, row.MaterialType);
 
             var biota = DatabaseManager.Shard.BaseDatabase.GetBiota(itemGuid, doNotAddToCache: true);
             var named = biota?.BiotaPropertiesString.FirstOrDefault(property => property.Type == (ushort)PropertyString.Name)?.Value;
-            return VaultMessages.ItemName(named);
+            var material = biota?.BiotaPropertiesInt.FirstOrDefault(property => property.Type == (ushort)PropertyInt.MaterialType)?.Value;
+            return string.IsNullOrEmpty(named) ? VaultMessages.ItemName(named) : WithMaterial(named, material);
         }
+
+        private static string WithMaterial(string name, int? materialType) =>
+            AppraisalRules.NameWithMaterial(name, materialType is int material and not 0 ? PortalAppraisalNames.Instance.MaterialName(material) : null);
 
         /// <summary>
         /// Expires every listing past its lifetime, as the portal does before it reads or changes listings. Database write, off the world thread.
