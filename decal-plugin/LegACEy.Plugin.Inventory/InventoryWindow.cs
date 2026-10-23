@@ -709,9 +709,22 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         switch (target.Place)
         {
             case SlotPlace.Paperdoll:
+            {
                 if (target.ItemId == dragged || target.Equipment is not { } slot) return null;
                 // The port's mask covers an item from another window too (it reads the item's locations from the world).
-                return port.WieldMask(dragged, slot) == 0 ? Refused : (true, p => p.Wield(dragged, slot));
+                var mask = port.WieldMask(dragged, slot);
+                if (mask == 0) return Refused;
+                // Retail's paperdoll puts what holds those locations back in the main pack before it wields; the server refuses a wield
+                // onto a held location.
+                var held = s.Wielded.Where(item => item.Id != dragged && (item.EquippedMask & mask) != 0).Select(item => item.Id).ToList();
+                var free = s.FreeSlots(s.MainPack).Take(held.Count).ToList();
+                if (free.Count < held.Count) return Refused;
+                return (true, p =>
+                {
+                    for (var index = 0; index < held.Count; index++) p.MoveToContainer(held[index], s.MainPack.Id, free[index]);
+                    p.Wield(dragged, slot);
+                });
+            }
 
             case SlotPlace.Pack:
             {
