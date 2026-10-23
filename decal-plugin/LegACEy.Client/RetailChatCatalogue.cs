@@ -20,6 +20,10 @@ internal static class RetailChatCatalogue
     internal const uint MainChatWindow = 0x10000601;
     /// <summary>gmMainChatUI (type 0x10000041), the root of LayoutDesc 0x21000006 that the main chat window embeds. A ChatInterface: the UIElement is at +4.</summary>
     internal const uint MainChat = 0x1000000E;
+    /// <summary>The id the main chat window places gmMainChatUI with (0x2100006F/0x10000014): a placed element takes its placement's id.</summary>
+    internal const uint MainChatPlaced = 0x10000014;
+    /// <summary>ChatInterface::OnAction, slot +0x04 of every ChatInterface vtable: tells a found element is retail's chat.</summary>
+    internal const uint ChatInterfaceOnAction = 0x004F62F0;
     /// <summary>The floating chat windows 1-4 (tags &lt;FCH1&gt;-&lt;FCH4&gt;, gmFloatyChatUI, type 0x10000040), placed in 0x21000005 from 0x2100005B/0x100004F7.</summary>
     internal static readonly IReadOnlyList<uint> FloatingChats = new uint[] { 0x10000505, 0x1000050E, 0x1000050F, 0x10000510 };
     /// <summary>NoticeHandler's own vtable: every slot a no-op of the right size. A handler of ours copies it and replaces slot +0x38.</summary>

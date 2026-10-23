@@ -429,7 +429,13 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         _typing = typing;
         if (RetailChat() is not { } chat)
         {
-            if (started) _log("Chat keyboard: retail's main chat element is not found.");
+            if (started)
+            {
+                var window = NativeUi.GetElement(RetailChatCatalogue.MainChatWindow);
+                _log($"Chat keyboard: retail's main chat element is not found; window {window:X8}, child 0x10000014 " +
+                    $"{(window == IntPtr.Zero ? IntPtr.Zero : GetChild(window, RetailChatCatalogue.MainChatPlaced)):X8}, child 0x1000000E " +
+                    $"{(window == IntPtr.Zero ? IntPtr.Zero : GetChild(window, RetailChatCatalogue.MainChat)):X8}.");
+            }
             return;
         }
         var entry = Marshal.ReadIntPtr(chat, 0x60C);
@@ -471,16 +477,24 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     }
 
     /// <summary>
-    /// Retail's ChatInterface, or null before it exists: the gmMainChatUI element, found inside the main chat window, less its UIElement
-    /// offset of 4. Only with the Enter entries, which check the child lookup.
+    /// Retail's ChatInterface, or null before it exists: the gmMainChatUI element, found inside the main chat window by the id it is placed
+    /// with (or its layout's own), less its UIElement offset of 4. Taken only when its vtable has ChatInterface::OnAction, and only with
+    /// the Enter entries, which check the child lookup.
     /// </summary>
     private IntPtr? RetailChat()
     {
         if (!_natives.Enter) return null;
         var window = NativeUi.GetElement(RetailChatCatalogue.MainChatWindow);
         if (window == IntPtr.Zero) return null;
-        var main = GetChild(window, RetailChatCatalogue.MainChat);
-        return main == IntPtr.Zero ? null : IntPtr.Add(main, -4);
+        foreach (var id in new[] { RetailChatCatalogue.MainChatPlaced, RetailChatCatalogue.MainChat })
+        {
+            var main = GetChild(window, id);
+            if (main == IntPtr.Zero) continue;
+            var chat = IntPtr.Add(main, -4);
+            var vtable = Marshal.ReadIntPtr(chat);
+            if (vtable != IntPtr.Zero && Marshal.ReadIntPtr(vtable, 4) == At(RetailChatCatalogue.ChatInterfaceOnAction)) return chat;
+        }
+        return null;
     }
 
     private static IntPtr At(uint address) => new(unchecked((int)address));
