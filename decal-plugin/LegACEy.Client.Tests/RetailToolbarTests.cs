@@ -570,6 +570,8 @@ public sealed class RetailToolbarTests
             {
                 ("peace", RetailStance.Peace, (RetailSelection?)null, false),
                 ("magic", RetailStance.Magic, new RetailSelection(1, "Nukurunga Greater Rabid Carenzi", SelectionKind.Creature, 0.6f), true),
+                ("scroll", RetailStance.Peace, new RetailSelection(2, "Scroll of Recklessness Ineptitude Other VII", SelectionKind.Other), false),
+                ("short", RetailStance.Melee, new RetailSelection(3, "Drudge Slinker", SelectionKind.Creature, 0.9f), false),
             })
             {
                 var port = new FakeToolbarPort

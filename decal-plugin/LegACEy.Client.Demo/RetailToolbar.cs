@@ -117,14 +117,10 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     private readonly DerethMedallion _examine;
     private readonly Border _plaque;
     // The plaque's parts are fixed; a refresh only changes what they show, so a typed figure and the focus survive it.
-    private readonly TextBlock _name = new()
+    private readonly FittedName _name = new()
     {
         FontFamily = DerethPalette.Title,
-        FontSize = 13,
-        // A 13 DIP name line, so the meter fits under it in the plaque's 30.
-        LineHeight = 13,
         TextAlignment = TextAlignment.Center,
-        TextWrapping = TextWrapping.NoWrap,
         TextTrimming = TextTrimming.CharacterEllipsis
     };
     private readonly Border _meterSlot = new() { IsVisible = false };
@@ -167,12 +163,12 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         _use = Medallion(DerethGlyph.Use, 18, 14, "Use selected");
         _use.Clicked += _port.UseSelected;
         _plaqueContent = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center, Children = { _name, _meterSlot } };
-        // The plaque takes the width the buttons around it leave; a long name ends in an ellipsis, named in full on hover.
+        // The plaque takes the width the buttons around it leave; a long name wraps to two smaller lines, as retail's does.
         _plaque = new Border
         {
             // Even, as the buttons beside it are, so they centre on whole DIPs. The padding's odd top leaves an odd height inside, so the name
             // and the meter centre on whole DIPs too: a half-DIP name redrew the buttons' edges on a refresh.
-            Height = 30,
+            Height = 34,
             Margin = new Thickness(3, 0),
             CornerRadius = new CornerRadius(3),
             Background = DerethPalette.GrooveBrush,
@@ -331,6 +327,31 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         Grid.SetColumn(middle, 1);
         Grid.SetColumn(right, 2);
         return grid;
+    }
+
+    /// <summary>
+    /// The selection's name: one 13 DIP line when it fits, or else up to two 11 DIP lines, as retail wraps a long name; a name too long for
+    /// those ends in an ellipsis. The plaque's 31 DIPs inside hold either with the meter, and each is an odd height, as the inside is.
+    /// </summary>
+    private sealed class FittedName : TextBlock
+    {
+        protected override Size MeasureOverride(Size availableSize)
+        {
+            // Laid out apart from the block's own layout, which keeps the width it was last measured at.
+            using var oneLine = new Avalonia.Media.TextFormatting.TextLayout(Text, new Typeface(FontFamily, FontStyle, FontWeight), 13, null);
+            Fit(wrapped: oneLine.WidthIncludingTrailingWhitespace > availableSize.Width - Padding.Left - Padding.Right);
+            return base.MeasureOverride(availableSize);
+        }
+
+        // Set only on a change: each set asks for a new measure.
+        private void Fit(bool wrapped)
+        {
+            var (size, line, wrapping, lines) = wrapped ? (11, 11.5, TextWrapping.Wrap, 2) : (13, 13, TextWrapping.NoWrap, 1);
+            if (FontSize != size) FontSize = size;
+            if (LineHeight != line) LineHeight = line;
+            if (TextWrapping != wrapping) TextWrapping = wrapping;
+            if (MaxLines != lines) MaxLines = lines;
+        }
     }
 
     /// <summary>Asks for no width of its own, so a long name in it never widens the toolbar; it takes the width it is given.</summary>
