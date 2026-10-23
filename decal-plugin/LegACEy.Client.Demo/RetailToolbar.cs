@@ -168,7 +168,7 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         {
             // Even, as the buttons beside it are, so they centre on whole DIPs. The padding's odd top leaves an odd height inside, so the name
             // and the meter centre on whole DIPs too: a half-DIP name redrew the buttons' edges on a refresh.
-            Height = 34,
+            Height = 36,
             Margin = new Thickness(3, 0),
             CornerRadius = new CornerRadius(3),
             Background = DerethPalette.GrooveBrush,
@@ -330,8 +330,8 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     }
 
     /// <summary>
-    /// The selection's name: one 13 DIP line when it fits, or else up to two 11 DIP lines, as retail wraps a long name; a name too long for
-    /// those ends in an ellipsis. The plaque's 31 DIPs inside hold either with the meter, and each is an odd height, as the inside is.
+    /// The selection's name: one 13 DIP line when it fits, or else up to two 12 DIP lines, as retail wraps a long name; a name too long for
+    /// those ends in an ellipsis. The plaque's 33 DIPs inside hold either with the meter, and each is an odd height, as the inside is.
     /// </summary>
     private sealed class FittedName : TextBlock
     {
@@ -346,7 +346,7 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         // Set only on a change: each set asks for a new measure.
         private void Fit(bool wrapped)
         {
-            var (size, line, wrapping, lines) = wrapped ? (11, 11.5, TextWrapping.Wrap, 2) : (13, 13, TextWrapping.NoWrap, 1);
+            var (size, line, wrapping, lines) = wrapped ? (12, 12.5, TextWrapping.Wrap, 2) : (13, 13, TextWrapping.NoWrap, 1);
             if (FontSize != size) FontSize = size;
             if (LineHeight != line) LineHeight = line;
             if (TextWrapping != wrapping) TextWrapping = wrapping;
