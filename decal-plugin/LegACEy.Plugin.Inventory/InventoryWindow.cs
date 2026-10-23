@@ -285,9 +285,11 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             Fade(_dragged, lifted: true);
         }
         // Outside the window, with the button still held, retail may take the drag over; then it is no longer ours. Never a set.
-        if (_carried.Count == 0 && !new Rect(Bounds.Size).Contains(point) && !_port.Snapshot.SidePacks.Any(pack => pack.Id == _dragged) &&
-            _dragHost?.HandToRetail(_dragged) == true)
+        // Side packs go too (retail's pack column lists them), so one can be sold to a vendor or dropped as retail drops it.
+        if (_carried.Count == 0 && !new Rect(Bounds.Size).Contains(point) && _dragHost?.HandToRetail(_dragged) == true)
         {
+            // A pack retail drops on the ground comes back to the pack column, as one we dropped there does.
+            if (_port.Snapshot.SidePacks.Any(pack => pack.Id == _dragged)) _packsOnGround.Add(_dragged);
             EndDrag();
             e.Pointer.Capture(null);
             return;
