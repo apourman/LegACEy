@@ -401,12 +401,9 @@ public sealed class InventoryWindowTests
         Assert.Equal(new[] { $"move 0x{InventorySample.Scroll:X8} to 0x{InventorySample.Potions:X8} slot 17" }, InventoryDriver.Sent(port));
     });
 
-    // The worn helm goes back to the main pack's first free slot before the wield, as retail's paperdoll does: the server refuses a wield
-    // onto a worn location.
-    private static readonly string HelmToMainPack = $"move 0x{InventorySample.Helm:X8} to 0x{InventorySample.Character:X8} slot 1";
-
+    // Armour doesn't swap: the worn helm stays, the drop sends only the wield, and the server refuses it until the helm comes off.
     [Fact]
-    public void Dropping_on_a_worn_slot_puts_the_worn_item_in_the_main_pack_then_wields_the_item_there() => RenderThread.Run(() =>
+    public void Dropping_on_an_equipment_slot_wields_the_item_there() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();
         port.Push(InventorySample.Snapshot());
@@ -415,7 +412,7 @@ public sealed class InventoryWindowTests
 
         InventoryDriver.Drop(host.Host, host.Cells[9], head);
 
-        Assert.Equal(new[] { HelmToMainPack, $"wield 0x{InventorySample.Cap:X8} to Head" }, InventoryDriver.Sent(port));
+        Assert.Equal(new[] { $"wield 0x{InventorySample.Cap:X8} to Head" }, InventoryDriver.Sent(port));
     });
 
     [Fact]
@@ -444,7 +441,7 @@ public sealed class InventoryWindowTests
 
         InventoryDriver.Drop(host.Host, host.Cells[9], doll);
 
-        Assert.Equal(new[] { HelmToMainPack, $"wield 0x{InventorySample.Cap:X8} to Head" }, InventoryDriver.Sent(port));
+        Assert.Equal(new[] { $"wield 0x{InventorySample.Cap:X8} to Head" }, InventoryDriver.Sent(port));
     });
 
     [Fact]
@@ -663,13 +660,13 @@ public sealed class InventoryWindowTests
         target.RetailDragOver(CorpseHelm, "Helm", overHead);
         Assert.Same(DerethPalette.GoldBrush, indicator.BorderBrush);
         Assert.True(target.RetailDrop(CorpseHelm, "Helm", overHead));
-        Assert.Equal(new[] { HelmToMainPack, $"wield 0x{CorpseHelm:X8} to Head" }, port.Commands);
+        Assert.Equal(new[] { $"wield 0x{CorpseHelm:X8} to Head" }, port.Commands);
 
         // A helm cannot go in the shield slot: the indicator is red, and the drop sends nothing.
         target.RetailDragOver(CorpseHelm, "Helm", overShield);
         Assert.Same(DerethPalette.InvalidBrush, indicator.BorderBrush);
         Assert.False(target.RetailDrop(CorpseHelm, "Helm", overShield));
-        Assert.Equal(2, port.Commands.Count);
+        Assert.Single(port.Commands);
     });
 
     [Fact]
