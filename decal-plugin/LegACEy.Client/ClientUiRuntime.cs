@@ -532,11 +532,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>The Settings window's test weather: drawn around the player at once, kept for this session only.</summary>
-    private void SetTestWeather(TestWeather weather)
+    private void SetTestWeather(WeatherKind weather)
     {
         if (_worldEffects == null) return;
         _worldEffects.TestWeather = weather;
-        if (_settings != null) _settings.TestWeather = new OptionChoice<TestWeather>(weather, SetTestWeather);
+        if (_settings != null) _settings.TestWeather = new OptionChoice<WeatherKind>(weather, SetTestWeather);
     }
 
     /// <summary>The World tab's water: the setting, and the change it asks for, with the strength kept within the bounds.</summary>
@@ -968,7 +968,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             ChatInactiveOpacity = new OptionChoice<int>(RetailChatWindows.LoadOpacity(_positionStore, SessionServer(), SessionCharacter(), RetailChatWindows.InactiveOpacityKey, RetailChatWindows.DefaultInactiveOpacity), SetChatInactiveOpacity),
             ChatNameColour = new OptionChoice<int>(RetailChatWindows.LoadNameColour(_positionStore, SessionServer(), SessionCharacter()), SetChatNameColour),
             Radar = new OptionChoice<RadarOptions>(LoadRadarOptions(), SetRadarOptions),
-            TestWeather = _worldEffects != null ? new OptionChoice<TestWeather>(_worldEffects.TestWeather, SetTestWeather) : null,
+            TestWeather = _worldEffects != null ? new OptionChoice<WeatherKind>(_worldEffects.TestWeather, SetTestWeather) : null,
             ResetPositions = () => _positionsResetRequested = true,
         };
         _settings = settings;

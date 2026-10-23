@@ -60,7 +60,7 @@ public sealed class ClientSettings
     private OptionChoice<int>? _chatInactiveOpacity;
     private OptionChoice<int>? _chatNameColour;
     private OptionChoice<RadarOptions>? _radar;
-    private OptionChoice<TestWeather>? _testWeather;
+    private OptionChoice<WeatherKind>? _testWeather;
 
     /// <param name="uiSize">The UI size, for all characters. Null where the UI cannot scale, which hides the row.</param>
     /// <param name="update">The version and the check. Null hides the row.</param>
@@ -113,8 +113,8 @@ public sealed class ClientSettings
     /// <summary>The radar's options for this character. Null hides its rows.</summary>
     public OptionChoice<RadarOptions>? Radar { get => _radar; set => Moved(ref _radar, value); }
 
-    /// <summary>The weather drawn around the player for testing, for this session only. Null hides its row.</summary>
-    public OptionChoice<TestWeather>? TestWeather { get => _testWeather; set => Moved(ref _testWeather, value); }
+    /// <summary>The weather drawn around the player for testing, for this session only; None is off. Null hides its row.</summary>
+    public OptionChoice<WeatherKind>? TestWeather { get => _testWeather; set => Moved(ref _testWeather, value); }
 
     /// <summary>Puts this character's LegACEy windows back where they first opened, once the player confirms. Null hides its row.</summary>
     public Action? ResetPositions { get; init; }
@@ -566,11 +566,11 @@ public sealed class SettingsPanel : UserControl
         return pane;
     }
 
-    /// <summary>Weather for testing, drawn around the player in any landblock without the server; Off leaves the server's weather.</summary>
+    /// <summary>Weather for testing, drawn around the player in any landblock without the server; Off puts the server's weather back.</summary>
     private Control TestWeatherRow()
     {
-        var choices = (TestWeather[])Enum.GetValues(typeof(TestWeather));
-        var weather = new DerethSegmented(choices.Select(choice => choice == TestWeather.Thunderstorm ? "Storm" : choice.ToString()).ToArray());
+        var choices = (WeatherKind[])Enum.GetValues(typeof(WeatherKind));
+        var weather = new DerethSegmented(choices.Select(choice => choice switch { WeatherKind.None => "Off", WeatherKind.Thunderstorm => "Storm", _ => choice.ToString() }).ToArray());
         void Show() => weather.Selected = _settings.TestWeather is { } choice ? Array.IndexOf(choices, choice.Value) : -1;
         weather.Chosen += index => _settings.TestWeather?.Set(choices[index]);
         _redraws.Add(Show);
