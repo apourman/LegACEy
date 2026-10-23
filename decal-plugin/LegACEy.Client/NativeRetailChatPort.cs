@@ -58,11 +58,14 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private static readonly Regex ChannelPrefix = new(@"^\[([^\]]+)\]", RegexOptions.Compiled);
 
     // Delegates to fixed retail functions, made once: their addresses never change.
-    private static readonly DeactivateChatEntryFn DeactivateEntry = Marshal.GetDelegateForFunctionPointer<DeactivateChatEntryFn>(At(RetailChatCatalogue.DeactivateChatEntry));
+    private static readonly ChatEntryFn DeactivateEntry = Marshal.GetDelegateForFunctionPointer<ChatEntryFn>(At(RetailChatCatalogue.DeactivateChatEntry));
+    private static readonly ChatEntryFn ActivateEntry = Marshal.GetDelegateForFunctionPointer<ChatEntryFn>(At(RetailChatCatalogue.ActivateChatEntry));
     private static readonly PStringBaseFromWideFn ConstructString = Marshal.GetDelegateForFunctionPointer<PStringBaseFromWideFn>(At(0x00402730));
     private static readonly PStringBaseReleaseFn ReleaseString = Marshal.GetDelegateForFunctionPointer<PStringBaseReleaseFn>(At(0x004011B0));
 
     private readonly Action<string> _log;
+    // Whether a box of ours had the keyboard at the last poll.
+    private bool _typing;
     private readonly RetailChatNatives _natives;
     private readonly ConcurrentQueue<RetailChatLine> _pending = new();
     // The channel names already logged as matching no tab channel, so each is logged once.
@@ -99,7 +102,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private delegate void PStringBaseReleaseFn(IntPtr self);
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-    private delegate void DeactivateChatEntryFn(IntPtr chat);
+    private delegate void ChatEntryFn(IntPtr chat);
 
     /// <param name="log">Writes a line to the client's log.</param>
     /// <param name="natives">Which chat features the running client matched; a feature that did not match is off.</param>
@@ -171,7 +174,8 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     /// once a second.
     /// </summary>
     /// <param name="holdsEntry">False while retail's chat is shown, so its entry keeps the keyboard the player gave it.</param>
-    public void Poll(bool holdsEntry = true)
+    /// <param name="typing">Whether a LegACEy text box has the keyboard.</param>
+    public void Poll(bool holdsEntry = true, bool typing = false)
     {
         while (_pending.TryDequeue(out var line))
         {
@@ -189,7 +193,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
                 TimestampsChanged?.Invoke();
             }
         }
-        if (holdsEntry && _natives.Enter) ReleaseRetailEntryFocus();
+        if (holdsEntry && _natives.Enter) SyncRetailEntry(typing);
     }
 
     /// <summary>
@@ -408,11 +412,15 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     }
 
     /// <summary>
-    /// Retail's hidden chat entry keeps the keyboard when the player presses Enter while retail's chat is held. Each frame it is let go, so
-    /// the typed keys reach our input. The chat object is the gmMainChatUI element less its UIElement offset of 4.
+    /// Retail's hidden chat entry is active while a box of ours has the keyboard, and only then. Active, it tells Decal the chat is open
+    /// (its ChatState, which VTank waits on before it posts movement keys again); our input router keeps the typed characters out of it.
+    /// It is activated once as typing starts, so an entry retail lets go meanwhile (Escape) is not taken back every frame; Enter in the
+    /// game activates it as well. The chat object is the gmMainChatUI element less its UIElement offset of 4.
     /// </summary>
-    private static void ReleaseRetailEntryFocus()
+    private void SyncRetailEntry(bool typing)
     {
+        var started = typing && !_typing;
+        _typing = typing;
         var main = NativeUi.GetElement(RetailChatCatalogue.MainChat);
         if (main == IntPtr.Zero) return;
         var chat = IntPtr.Add(main, -4);
@@ -420,8 +428,9 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         var manager = Marshal.ReadIntPtr(At(UIElementManager));
         if (manager == IntPtr.Zero || entry == IntPtr.Zero) return;
         var window = Marshal.ReadIntPtr(manager, 0x32C);
-        if (window == IntPtr.Zero || Marshal.ReadIntPtr(window, 0x1A4) != entry) return;
-        DeactivateEntry(chat);
+        var active = window != IntPtr.Zero && Marshal.ReadIntPtr(window, 0x1A4) == entry;
+        if (started && !active) ActivateEntry(chat);
+        else if (!typing && active) DeactivateEntry(chat);
     }
 
     private static IntPtr At(uint address) => new(unchecked((int)address));

@@ -28,6 +28,7 @@ public sealed class InputRouterService
     private string? _focusedSurfaceId;
     private InputModifiers _modifiers;
     private bool _shortcutCharPending;
+    private readonly HashSet<int> _gameHeldKeys = new();
 
     public string? CapturedSurfaceId => _capturedSurfaceId;
     public string? FocusedSurfaceId => _focusedSurfaceId;
@@ -128,8 +129,15 @@ public sealed class InputRouterService
         UpdateModifiers(vk, keyDown);
         // a key's character comes between its key down and key up: only the key down can have one to swallow
         _shortcutCharPending = false;
+        // A key the game saw go down sees its release too, even if a text box took the keyboard since: else the game holds it for good,
+        // and a turn key (VTank posts its own) spins the character.
+        if (!keyDown && _gameHeldKeys.Remove(vk)) return new InputRoute();
         var target = FindFocusedKeyboardSurface(surfaces, vk);
-        if (target == null) return new InputRoute();
+        if (target == null)
+        {
+            if (keyDown) _gameHeldKeys.Add(vk);
+            return new InputRoute();
+        }
         // a shortcut the surface takes while it doesn't want the keyboard: its character goes with the key, not to the text the surface may now focus
         if (keyDown && !target.WantsKeyboard) _shortcutCharPending = true;
         return new InputRoute(action, target.Id, true, keyCode: vk, modifiers: _modifiers);
@@ -153,6 +161,7 @@ public sealed class InputRouterService
         _focusedSurfaceId = null;
         _modifiers = InputModifiers.None;
         _shortcutCharPending = false;
+        _gameHeldKeys.Clear();
         return new InputRoute(InputAction.Reset, releaseCaptureSurfaceId: captured, clearFocusSurfaceId: focused);
     }
 
