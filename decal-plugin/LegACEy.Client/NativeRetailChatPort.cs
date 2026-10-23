@@ -415,22 +415,37 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     /// Retail's hidden chat entry is active while a box of ours has the keyboard, and only then. Active, it tells Decal the chat is open
     /// (its ChatState, which VTank waits on before it posts movement keys again); our input router keeps the typed characters out of it.
     /// It is activated once as typing starts, so an entry retail lets go meanwhile (Escape) is not taken back every frame; Enter in the
-    /// game activates it as well. The chat object is the gmMainChatUI element less its UIElement offset of 4.
+    /// game activates it as well.
     /// </summary>
     private void SyncRetailEntry(bool typing)
     {
         var started = typing && !_typing;
         _typing = typing;
-        var main = NativeUi.GetElement(RetailChatCatalogue.MainChat);
-        if (main == IntPtr.Zero) return;
-        var chat = IntPtr.Add(main, -4);
-        var entry = Marshal.ReadIntPtr(chat, 0x60C);
-        var manager = Marshal.ReadIntPtr(At(UIElementManager));
-        if (manager == IntPtr.Zero || entry == IntPtr.Zero) return;
-        var window = Marshal.ReadIntPtr(manager, 0x32C);
-        var active = window != IntPtr.Zero && Marshal.ReadIntPtr(window, 0x1A4) == entry;
+        if (RetailChat() is not { } chat) return;
+        var active = RetailEntryActive;
         if (started && !active) ActivateEntry(chat);
         else if (!typing && active) DeactivateEntry(chat);
+    }
+
+    /// <summary>Whether retail's hidden chat entry is active: the focused child of retail's active window, as HandleEnterKey tests it.</summary>
+    public bool RetailEntryActive
+    {
+        get
+        {
+            if (!_natives.Enter || RetailChat() is not { } chat) return false;
+            var entry = Marshal.ReadIntPtr(chat, 0x60C);
+            var manager = Marshal.ReadIntPtr(At(UIElementManager));
+            if (manager == IntPtr.Zero || entry == IntPtr.Zero) return false;
+            var window = Marshal.ReadIntPtr(manager, 0x32C);
+            return window != IntPtr.Zero && Marshal.ReadIntPtr(window, 0x1A4) == entry;
+        }
+    }
+
+    /// <summary>Retail's ChatInterface: the gmMainChatUI element less its UIElement offset of 4, or null before it exists.</summary>
+    private static IntPtr? RetailChat()
+    {
+        var main = NativeUi.GetElement(RetailChatCatalogue.MainChat);
+        return main == IntPtr.Zero ? null : IntPtr.Add(main, -4);
     }
 
     private static IntPtr At(uint address) => new(unchecked((int)address));

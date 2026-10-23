@@ -313,6 +313,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private RetailBusyCursor? _busyCursor;
     private WorldEffects? _worldEffects;
     private RetailTextMode? _textMode;
+    private (bool, bool, bool) _lastChatState;
     // The inventory as plugins and windows get it: the bridge port, with an Assess also asking for the appraisal window.
     private readonly AppraisingInventoryPort _appraisingInventory;
     private uint _retailDragItem;
@@ -2762,7 +2763,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _chatTakeover!.Tick(GameDevice.ViewportSize(_device));
             if (!_inGame) return;
             if (_chatWindows == null && !OpenRetailChat()) return;
-            _chatPort!.Poll(typing: SurfaceById(_inputRouter.FocusedSurfaceId)?.Panel.WantsKeyboard == true);
+            var typing = SurfaceById(_inputRouter.FocusedSurfaceId)?.Panel.WantsKeyboard == true;
+            _chatPort!.Poll(typing: typing);
+            // ponytail: diagnostic for backlog 036 (VTank while typing); drop once the play-test settles it.
+            var chatState = (typing, _chatPort.RetailEntryActive, Bridge.Fact(BridgeFact.ChatState) != 0);
+            if (chatState != _lastChatState)
+            {
+                _lastChatState = chatState;
+                Log($"Chat keyboard: typing={chatState.typing} retailEntry={chatState.RetailEntryActive} decalChatState={chatState.Item3}.");
+            }
             _chatWindows?.Refresh();
         }
         catch (Exception exception)
