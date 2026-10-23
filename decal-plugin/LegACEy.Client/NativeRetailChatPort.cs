@@ -42,6 +42,10 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private const uint DefaultSourceWindow = 1;
     // UIElementManager's keyboard focus element: SetFocusElement stores it, UIElement::GetHasFocus compares with it.
     private const int FocusElementOffset = 0x328;
+    // UIElementManager's active window, and a window's focused child: HandleEnterKey reads both to tell the chat entry is open.
+    private const int ActiveWindowOffset = 0x32C, FocusedChildOffset = 0x1A4;
+    // ChatInterface's text entry element.
+    private const int ChatEntryOffset = 0x60C;
     // The PlayerModule inside CPlayerSystem: CharacterOptions1 is at +0x8C of it, CharacterOptions2 at +0x90.
     private const int PlayerModule = 0x34;
     // GoArrow's and UtilityBelt's coordinate links: the tag names the coordinates twice, as a player's names them, but is no name.
@@ -411,7 +415,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         if (manager == IntPtr.Zero) return false;
         var focused = Marshal.ReadIntPtr(manager, FocusElementOffset);
         if (focused == IntPtr.Zero) return false;
-        return RetailChat() is not { } chat || Marshal.ReadIntPtr(chat, 0x60C) != focused;
+        return RetailChat() is not { } chat || Marshal.ReadIntPtr(chat, ChatEntryOffset) != focused;
     }
 
     /// <summary>
@@ -430,20 +434,15 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
             _chatMissingLogged |= started;
             return;
         }
-        var entry = Marshal.ReadIntPtr(chat, 0x60C);
+        var entry = Marshal.ReadIntPtr(chat, ChatEntryOffset);
         var manager = Marshal.ReadIntPtr(At(UIElementManager));
         if (manager == IntPtr.Zero || entry == IntPtr.Zero) return;
         var focused = Marshal.ReadIntPtr(manager, FocusElementOffset) == entry;
         if (started && !focused) SetFocus(manager, entry);
         else if (!typing && focused) SetFocus(manager, IntPtr.Zero);
-        if (!typing && EntryActive(entry, manager)) DeactivateEntry(chat);
-    }
-
-    /// <summary>Whether the entry is retail's open chat entry: the focused child of retail's active window, as HandleEnterKey tests it.</summary>
-    private static bool EntryActive(IntPtr entry, IntPtr manager)
-    {
-        var window = Marshal.ReadIntPtr(manager, 0x32C);
-        return window != IntPtr.Zero && Marshal.ReadIntPtr(window, 0x1A4) == entry;
+        // An entry Enter in the game opened is the focused child of retail's active window.
+        var window = Marshal.ReadIntPtr(manager, ActiveWindowOffset);
+        if (!typing && window != IntPtr.Zero && Marshal.ReadIntPtr(window, FocusedChildOffset) == entry) DeactivateEntry(chat);
     }
 
     /// <summary>

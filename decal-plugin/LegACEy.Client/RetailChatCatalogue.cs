@@ -18,12 +18,14 @@ internal static class RetailChatCatalogue
 
     /// <summary>Retail's main chat window (tag &lt;CHAT&gt;): placed in 0x21000005 from 0x2100006F/0x10000600; it embeds gmMainChatUI.</summary>
     internal const uint MainChatWindow = 0x10000601;
-    /// <summary>gmMainChatUI (type 0x10000041), the root of LayoutDesc 0x21000006 that the main chat window embeds. A ChatInterface: the UIElement is at +4.</summary>
+    /// <summary>
+    /// gmMainChatUI's id as the root of LayoutDesc 0x21000006. At runtime the main chat window element is gmMainChatUI itself, and
+    /// GetElement, which searches top-level windows only, finds nothing for this id.
+    /// </summary>
     internal const uint MainChat = 0x1000000E;
     /// <summary>
-    /// ChatInterface::OnAction, at slot +0x04 of a ChatInterface's UIElement vtable. The main chat window element (0x10000601) is gmMainChatUI
-    /// itself, its ChatInterface 4 before it, as the user's client showed on 22 Oct; GetElement finds top-level windows only, so it never finds
-    /// 0x1000000E. This tells the window is one before the port reads its entry.
+    /// ChatInterface::OnAction, at slot +0x04 of a ChatInterface's UIElement vtable. The main chat window element is gmMainChatUI, its
+    /// ChatInterface 4 bytes before it; this slot confirms the element is a chat before the port reads its entry.
     /// </summary>
     internal const uint ChatInterfaceOnAction = 0x004F62F0;
     /// <summary>acclient.exe's .rdata, where vtables are: a word outside it is not followed.</summary>
@@ -130,7 +132,7 @@ internal static class RetailChatCatalogue
         Entry("ChatInterface::DeactivateChatEntry body", DeactivateChatEntry + 9, "8B 01 FF 90 08 01 00 00 8B 8E 0C 06 00 00 8B 11 FF 92 00 01 00 00",
             "ThisCall (ChatInterface*) at 0x004F3C20: the entry's vtable +0x108 and +0x100"),
         Entry("gmMainChatUI's UIElement vtable: slot +0x04 is ChatInterface::OnAction (0x004F62F0)", 0x007BC694, "F0 62 4F 00",
-            "vtable in .rdata, read from the user's client"),
+            "vtable in .rdata"),
         Entry("ChatInterface::HandleEnterKey reads the active window (UIElementManager+0x32C)", 0x004F5F37, "8B B8 2C 03 00 00 85 FF 8B F1 74 5B",
             "instruction reference"),
         Entry("ChatInterface::HandleEnterKey compares the window's focused child with the entry (+0x60C)", 0x004F5F4F,
