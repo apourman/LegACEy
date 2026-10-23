@@ -68,7 +68,7 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
     private readonly DerethRadarScope _scope = new() { Width = Diameter, Height = Diameter, Margin = new Thickness(ScopeOrigin.X, ScopeOrigin.Y, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
     private readonly DerethRadarBezel _bezel;
     private readonly DerethHeadingTape _tape = new();
-    // The plaque's place name, cut with an ellipsis when it does not fit, and the rest of its line, which is always whole.
+    // The plaque's place name and the rest of its line; the plaque shrinks the line when it does not fit.
     private readonly TextBlock _placeText, _plaqueText;
     private readonly Border _plaque;
     private string? _plaqueLine;
