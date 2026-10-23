@@ -157,7 +157,7 @@ public sealed class InventoryPlugin : ILegACEyPlugin
     {
         (InventoryLayout.Horizontal, false) => (671, 441, new WindowResizing(new Size(631, 371))),
         (InventoryLayout.Horizontal, true) => (420, 361, new WindowResizing(new Size(340, 261))),
-        (_, false) => (VerticalWidth, 818, new WindowResizing(new Size(VerticalWidth, 448), new Size(VerticalWidth, TallestVertical))),
+        (_, false) => (VerticalWidth, 818, new WindowResizing(new Size(VerticalWidth, 449), new Size(VerticalWidth, TallestVertical))),
         _ => (VerticalWidth, 300, new WindowResizing(new Size(VerticalWidth, 228), new Size(VerticalWidth, TallestVertical))),
     };
 }
