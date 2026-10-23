@@ -247,18 +247,19 @@ namespace ACE.Server.Market
         }
 
         /// <summary>
-        /// A listing's card facts, in order: id (int64), item guid (uint32), name, type, material, workmanship, level, arcane lore (int32 each, -1 for none),
+        /// A listing's card facts, in order: id (int64), item guid (uint32), name (with its material, as the game names it), type, material, workmanship, level, arcane lore (int32 each, -1 for none),
         /// summary, stack size (int32), price (int64), seller, listed time (unix seconds, int64), your listing (byte), plate, underlay, icon, overlay,
         /// overlay secondary, ui effects (uint32 each).
         /// </summary>
         internal static void WriteListing(System.IO.BinaryWriter w, ListingCatalog.Row row, AppraisalItem item, uint viewerAccountId)
         {
             w.Write(row.Listing.Id);
+            var material = AppraisalRules.MaterialName(item, row.Item.MaterialType);
             w.Write((uint)row.Listing.ItemGuid);
-            ChannelWire.WriteString(w, row.Item.Name);
+            ChannelWire.WriteString(w, AppraisalRules.NameWithMaterial(row.Item.Name, material));
             ChannelWire.WriteString(w, ListingCatalog.ItemTypeName(row.Item.ItemType));
             ChannelWire.WriteString(w, ListingCatalog.ItemTypeLabel(row.Item.ItemType));
-            ChannelWire.WriteString(w, AppraisalRules.MaterialName(item, row.Item.MaterialType) ?? string.Empty);
+            ChannelWire.WriteString(w, material ?? string.Empty);
             w.Write(row.Item.Workmanship ?? NoStat);
             w.Write(ListingCatalog.LevelOf(row.Item) ?? NoStat);
             w.Write(row.Item.ArcaneLore ?? NoStat);

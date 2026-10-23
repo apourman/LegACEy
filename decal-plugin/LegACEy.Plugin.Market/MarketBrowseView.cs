@@ -443,7 +443,8 @@ public sealed class MarketBrowseView : UserControl, IDisposable
 
         // head: the icon, the name and what it is
         var title = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 14, Margin = new Thickness(20, 16, 20, 12) };
-        title.Children.Add(MarketParts.IconTile(_icons.For(listing), 56));
+        // 72 leaves 64 for the 32-pixel art: an exact 2x stays sharp, where 1.5x blurs
+        title.Children.Add(MarketParts.IconTile(_icons.For(listing), 72));
         var names = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
         var name = MarketParts.Text(listing.Name, DerethPalette.CreamBrush, 19, title: true);
         name.TextWrapping = TextWrapping.Wrap;
