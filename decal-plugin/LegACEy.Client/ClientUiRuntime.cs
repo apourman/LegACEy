@@ -1769,8 +1769,6 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         {
             var icon = _owner.ShowDragIcon(image, count);
             _owner._ownDragItem = itemId;
-            // ponytail: diagnostics for backlog 035 (a ring that stops dragging); drop once it is understood.
-            Log($"Inventory: drag of 0x{itemId:X8} began at {_owner._pointer}.");
             return new ItemDrag(_owner, icon, retailDropIndicator);
         }
 
