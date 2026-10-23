@@ -152,7 +152,7 @@ namespace ACE.Database.Market
 
         /// <summary>The name the game shows for an item: its material first ("Steel Breastplate"), as WorldObject.GetNameWithMaterial words it</summary>
         public static string NameWithMaterial(string name, string material) =>
-            string.IsNullOrEmpty(material) ? name : $"{material} {name.Replace(material, "").Trim()}";
+            string.IsNullOrEmpty(material) || string.IsNullOrEmpty(name) ? name : $"{material} {name.Replace(material, "").Trim()}";
 
         // ---- value formats
 

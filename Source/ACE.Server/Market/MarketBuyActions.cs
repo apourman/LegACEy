@@ -76,7 +76,7 @@ namespace ACE.Server.Market
                         try
                         {
                             var item = biota == null ? null : WorldObjectFactory.CreateWorldObject(biota);
-                            var refusal = item == null ? MarketBrowseActions.GoneMessage : Vault.CheckIntoPack(player, item) is VaultOutcome outcome ? VaultMessages.For(outcome, item.Name) : null;
+                            var refusal = item == null ? MarketBrowseActions.GoneMessage : Vault.CheckIntoPack(player, item) is VaultOutcome outcome ? VaultMessages.For(outcome, item.NameWithMaterial) : null;
                             var slots = (player.ItemCapacity ?? 0) + player.Inventory.Values.OfType<Container>().Sum(pack => pack.ItemCapacity ?? 0);
 
                             context.Reply(ChannelWire.Body(w =>
@@ -217,7 +217,8 @@ namespace ACE.Server.Market
         private static void Deliver(ChannelContext context, string key, PurchaseReceipt receipt, bool toPack)
         {
             var player = context.Player;
-            var name = VaultStore.Get(receipt.ItemGuid)?.Name;
+            var row = VaultStore.Get(receipt.ItemGuid);
+            var name = PortalAppraisalNames.Instance.NameWithMaterial(row?.Name, row?.MaterialType);
 
             void Settled(string message, bool inPack)
             {
