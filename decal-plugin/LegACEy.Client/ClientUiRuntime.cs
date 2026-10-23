@@ -2391,11 +2391,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             }
             if (_toolbarFailed) return;
             if (_toolbarSurface == null && !CreateRetailToolbar()) return;
-            LoadToolbarPlace();
             _toolbarPort!.Poll();
             _toolbarTakeover!.Tick(_toolbarDragOffset != null, GameDevice.ViewportSize(_device));
-            // Until login completes, retail's toolbar stays held but ours is not drawn: its saved place is read only then, so it never
-            // shows at retail's place first and jumps.
+            // Until login completes, retail's toolbar stays held but ours is not drawn: its saved place is read on the first held frame
+            // after, once the shortcut rows are in, so it never shows at retail's place first and jumps.
             if (!_inGame)
             {
                 _toolbarSurface!.Visible = false;
@@ -2404,7 +2403,11 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 return;
             }
             // The bar stands beside the toolbar only while the takeover holds retail's element; otherwise it closes with it.
-            if (_toolbarTakeover.Holds) EnsureShortcutBar();
+            if (_toolbarTakeover.Holds)
+            {
+                EnsureShortcutBar();
+                LoadToolbarPlace();
+            }
             else CloseShortcutBar();
             PlaceSplitTab();
         }
@@ -2441,14 +2444,22 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private const string ToolbarPlaceId = "dereth-toolbar";
 
-    /// <summary>Once per toolbar taken over, puts it at this character's saved place, kept on screen. Until then it stands where retail's did.</summary>
+    /// <summary>
+    /// Once per toolbar taken over, puts it at this character's saved place, kept on screen. Until then it stands where retail's did, and no
+    /// place is saved: the refits as the toolbar is scaled and its shortcut rows go in would write a place from retail's over the saved one.
+    /// It runs once the rows are in, before the frame draws, so the rows growing the toolbar do not move it off its place.
+    /// </summary>
     private void LoadToolbarPlace()
     {
         if (_toolbarPlaceLoaded || !_inGame || _toolbarPlace == null || _toolbarSurface == null) return;
-        _toolbarPlaceLoaded = true;
         ScaleToolbar();
-        if (_positionStore.Load(SessionServer(), SessionCharacter(), ToolbarPlaceId) is not { } saved) return;
-        _toolbarPlace.Location = OnScreen(saved.Location, _toolbarSurface.Bounds.Size);
+        if (_positionStore.Load(SessionServer(), SessionCharacter(), ToolbarPlaceId) is { } saved)
+        {
+            _toolbarPlace.Location = OnScreen(saved.Location, _toolbarSurface.Bounds.Size);
+            _toolbarSurface.Location = _toolbarPlace.Location.Value;
+            Log($"Put the Dereth toolbar at its saved place {saved.Location}, on screen at {_toolbarSurface.Location}.");
+        }
+        _toolbarPlaceLoaded = true;
     }
 
     /// <summary>
@@ -2497,7 +2508,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
 
     private void SaveToolbarPlace(Point location)
     {
-        if (_inGame) _positionStore.Save(SessionServer(), SessionCharacter(), ToolbarPlaceId, (location, null));
+        if (_inGame && _toolbarPlaceLoaded) _positionStore.Save(SessionServer(), SessionCharacter(), ToolbarPlaceId, (location, null));
     }
 
     /// <summary>Whether a screen point is on the toolbar's top edge, where a press moves it as a window's top edge does.</summary>
