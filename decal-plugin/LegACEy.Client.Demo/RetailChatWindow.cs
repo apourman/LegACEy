@@ -243,8 +243,6 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         AddHandler(PointerReleasedEvent, (_, _) => TabPointerReleased(), RoutingStrategies.Bubble, handledEventsToo: true);
 
         RebuildTabs();
-        // The chip shows Local until a tab picks its own target; All has none.
-        SetTarget(_target);
         PickTab(0);
 
         _history.LineAdded += OnLineAdded;
