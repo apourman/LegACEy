@@ -419,6 +419,22 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
+    public void A_bow_dropped_on_the_weapon_slot_puts_the_worn_sword_in_the_main_pack_first() => RenderThread.Run(() =>
+    {
+        const uint bow = 0x90000003;
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        port.WorldLocations[bow] = 0x00400000; // MissileWeapon: not the sword's MeleeWeapon location, but the same slot
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        var target = (IRetailItemDropTarget)host.Window;
+
+        Assert.True(target.RetailDrop(bow, "Bow", InventoryDriver.Centre(host.Host, Slot(host, PaperdollSlot.Weapon))));
+
+        Assert.Equal(new[] { $"move 0x{InventorySample.WieldedSword:X8} to 0x{InventorySample.Character:X8} slot 1", $"wield 0x{bow:X8} to Weapon" },
+            port.Commands);
+    });
+
+    [Fact]
     public void Dropping_on_the_doll_wields_the_item_in_its_slot_even_while_that_slot_is_hidden() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();
