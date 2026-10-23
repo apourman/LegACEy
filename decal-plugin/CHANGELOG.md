@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.14.0...decal-plugin-v0.14.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **decal-plugin:** keep a grid row in the shortest vertical inventory ([#129](https://github.com/apourman/LegACEy/issues/129)) ([7452651](https://github.com/apourman/LegACEy/commit/7452651da693f3ea2ee76b3654e1e5b7f48f176c))
+
 ## [0.14.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.13.0...decal-plugin-v0.14.0) (2026-10-23)
 
 
