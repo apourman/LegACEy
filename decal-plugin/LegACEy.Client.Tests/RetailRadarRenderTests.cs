@@ -66,6 +66,8 @@ public sealed class RetailRadarRenderTests
         Render(folder, "radar-indoor-house-25m-2x.png", 2, ground, new RadarOptions(IndoorZoom: 25), player: Standing(plans, 0xC6A90168),
             plans: plans);
         Render(folder, "radar-indoor-0099-peek-2x.png", 2, ground, new RadarOptions(), player: Standing(plans, 0x00990100), plans: plans, peek: 4);
+        Render(folder, "radar-indoor-long-name-2x.png", 2, ground, new RadarOptions(), player: Standing(plans, 0x00990100), plans: plans,
+            serverName: _ => "Entrance to Palenqual's Hidden Lair of the Black Totem");
     }
 
     // A cell's centre, at its height, facing east: where the mockup starts a player in a cell.
@@ -78,13 +80,14 @@ public sealed class RetailRadarRenderTests
     }
 
     private static void Render(string folder, string file, int scale, GroundTiles? ground, RadarOptions options,
-        bool openOptions = false, bool hover = false, RadarPlayer? player = null, IndoorPlanCache? plans = null, int peek = -1)
+        bool openOptions = false, bool hover = false, RadarPlayer? player = null, IndoorPlanCache? plans = null, int peek = -1,
+        Func<uint, string?>? serverName = null)
     {
         var port = new FakeRadarPort { Player = player ?? new RadarPlayer(new RadarPosition(Cell, 96, 96, 0), 270) };
         port.Objects.AddRange(Scene(port.Player.Position));
         RetailRadarWindow? window = null;
         var panel = AvaloniaPanel.Create(
-            () => window = new RetailRadarWindow(port, () => ground, () => plans, options, _ => { }, () => 0, () => { }),
+            () => window = new RetailRadarWindow(port, () => ground, () => plans, options, _ => { }, () => 0, () => { }, serverName),
             RetailRadarWindow.DesignWidth * scale, RetailRadarWindow.DesignHeight * scale, scale);
         try
         {
