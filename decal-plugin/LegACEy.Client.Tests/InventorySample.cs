@@ -11,6 +11,7 @@ internal static class InventorySample
     public const uint Character = 0x50000001;
     public const uint Sack = 0x50000010;
     public const uint Potions = 0x50000011;
+    public const uint Focus = 0x50000012;
 
     public const uint Helm = 0x80000001;
     public const uint Coat = 0x80000002;
@@ -30,8 +31,9 @@ internal static class InventorySample
     /// <summary>The whole sample: main pack open or a side pack open, with one item selected.</summary>
     /// <param name="extra">Items added to the main pack's sample, for a test that needs one more.</param>
     /// <param name="sackOnGround">The first side pack has been dropped: its slot is empty.</param>
+    /// <param name="focus">A focus takes the third side-pack slot: it holds nothing.</param>
     public static InventorySnapshot Snapshot(uint openContainer = Character, uint selected = 0, int burden = 4212, IEnumerable<InventoryItem>? extra = null,
-        bool sackOnGround = false)
+        bool sackOnGround = false, string characterName = "", bool focus = false)
     {
         var main = new InventoryPack(Character, "Main Pack", BackpackIcon, 96);
         var sides = new List<InventoryPack>
@@ -41,6 +43,7 @@ internal static class InventorySample
         };
         for (var empty = 0; empty < 5; empty++) sides.Add(new InventoryPack(0, string.Empty, 0, 0));
         if (sackOnGround) sides[0] = new InventoryPack(0, string.Empty, 0, 0);
+        if (focus) sides[2] = new InventoryPack(Focus, "Foci of Strife", SackIcon, 0);
 
         var items = new List<InventoryItem>
         {
@@ -70,7 +73,7 @@ internal static class InventorySample
             Wielded(WieldedSword, "Sword", 0x060010DA, 0x00100000, PaperdollSlot.Weapon),
         };
 
-        return new InventorySnapshot(main, sides, items, worn, burden, 5400, 25000, openContainer, selected);
+        return new InventorySnapshot(main, sides, items, worn, burden, 5400, 25000, openContainer, selected, characterName);
     }
 
     /// <summary>A stack of the main pack's apple kind (same name and type as the sample's apple), for a merge test.</summary>
@@ -88,5 +91,11 @@ internal static class InventorySample
     public sealed class NoArt : IGameArtSource
     {
         public GameImage? ReadImage(uint id) => null;
+    }
+
+    /// <summary>Every icon as solid 32 px art, so the window draws real icons rather than the missing-art mark.</summary>
+    public sealed class SolidArt : IGameArtSource
+    {
+        public GameImage? ReadImage(uint id) => new(32, 32, Enumerable.Repeat((byte)0xff, 32 * 32 * 4).ToArray());
     }
 }

@@ -12,9 +12,13 @@ namespace LegACEy.Client.DecalPlugin;
 internal sealed class BridgeInventoryPort : IInventoryPort
 {
     private readonly InventoryRefresh _refresh;
+    private readonly Action<string> _log;
 
-    public BridgeInventoryPort(Action<string> log) =>
+    public BridgeInventoryPort(Action<string> log)
+    {
+        _log = log;
         _refresh = new InventoryRefresh(() => InventorySnapshotBuilder.Build(new BridgeInventoryReader()), log);
+    }
 
     public InventorySnapshot Snapshot => _refresh.Snapshot;
 
@@ -29,8 +33,18 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     /// <summary>Rebuilds the snapshot when it is stale and the character is in the world.</summary>
     public void Flush(bool inGame)
     {
-        if (inGame) _refresh.Flush();
+        if (!inGame) return;
+        // A buff or debuff on Strength moves the burden limit without any inventory event, so the meter follows it here.
+        var strength = Bridge.Fact(BridgeFact.Strength);
+        if (strength != _strength)
+        {
+            _strength = strength;
+            _refresh.MarkStale();
+        }
+        _refresh.Flush();
     }
+
+    private int _strength;
 
     /// <summary>Logoff: the snapshot empties.</summary>
     public void Clear() => _refresh.Reset();
@@ -95,12 +109,19 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     public uint WieldMask(uint itemId, PaperdollSlot slot) =>
         InventorySnapshot.MaskFor(_refresh.Snapshot.ValidLocationsOf(itemId) ?? LiveValidLocations(itemId), slot);
 
-    // Explicit placement (1) into the item's valid locations within the slot; nothing is sent when there are none.
-    // Gate: the mask lands in that slot, and a refused slot sends nothing.
+    // The item's valid locations within the slot, sent as retail's paperdoll sends a drop; nothing is sent when there are none.
+    // Decal's AutoWield (explicit placement 1) is the fallback: it sends nothing for a second ring while the other finger is worn.
     public void Wield(uint itemId, PaperdollSlot slot)
     {
         var mask = WieldMask(itemId, slot);
-        if (mask != 0) Bridge.AutoWield(itemId, mask, 1, 0);
+        if (mask != 0 && !NativeWieldSender.TrySend(itemId, mask, _log)) Bridge.AutoWield(itemId, mask, 1, 0);
+    }
+
+    // Read as the pointer moves during a drag, so a failed read or a released object reads as covering nothing.
+    public uint CoverageOf(uint itemId)
+    {
+        try { return Bridge.CoverageOf(itemId); }
+        catch (COMException) { return 0; }
     }
 
     // A move onto a stack merges the stacks where the server allows it.
@@ -117,6 +138,7 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     private sealed class BridgeInventoryReader : IInventoryReader
     {
         public uint CharacterId => (uint)Bridge.Fact(BridgeFact.CharacterId);
+        public string CharacterName => Bridge.Text(BridgeText.CharacterName);
         public IReadOnlyList<InventoryObjectRead> Objects => Bridge.Inventory();
         public int MainPackCapacity => Bridge.Fact(BridgeFact.MainPackCapacity);
         public int SidePackCapacity => Bridge.Fact(BridgeFact.SidePackCapacity);

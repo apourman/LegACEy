@@ -6,6 +6,8 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using LegACEy.Client.GameArt;
 using LegACEy.Client.Themes;
 
 namespace LegACEy.Client.Demo;
@@ -68,8 +70,8 @@ public interface IRetailToolbarPort
 /// <summary>
 /// The Dereth toolbar that replaces retail's, laid out as retail's is: the stance on the left and the backpack on the right; between them
 /// six window buttons and the LegACEy menu, over Use, a selection plaque and Examine; and the shortcut rows below, inside the same frame and
-/// as wide as the part above. The rows set the width, so the toolbar cannot be wider than nine slots. It shows the port's state and asks the
-/// port for each change.
+/// as wide as the part above. The rows set the width, so the toolbar is retail's: nine touching 32 DIP slots. Given game art, the stance and
+/// the backpack are retail's own buttons. It shows the port's state and asks the port for each change.
 /// </summary>
 public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDropTarget
 {
@@ -84,6 +86,19 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         (RetailPanel.Options, DerethGlyph.Options, "Options"),
     };
 
+    // Retail's stance buttons in layout 0x21000016, normal then highlighted, and its backpack shut then open (states 1 and 6). Each is drawn
+    // cropped to its painting: retail's art carries the gold strips and corner blocks of retail's toolbar frame, which the Dereth frame replaces.
+    // Its black backing fades out, so the painting sits on the toolbar with no box round it.
+    private static readonly Dictionary<RetailStance, (uint Normal, uint Hover)> StanceArtIds = new()
+    {
+        [RetailStance.Peace] = (0x06004CEC, 0x06004CED),
+        [RetailStance.Melee] = (0x06004CEE, 0x06004CEF),
+        [RetailStance.Missile] = (0x06004CF0, 0x06004CF1),
+        [RetailStance.Magic] = (0x06004CF2, 0x06004CF3),
+    };
+    private const uint BackpackShutArt = 0x06004CF7, BackpackOpenArt = 0x06004CF8;
+    private static readonly PixelRect StancePainting = new(4, 4, 51, 50), BackpackPainting = new(2, 4, 56, 50);
+
     private static readonly IBrush TrackBrush = DerethPalette.Brush(Color.Parse("#0A0906"));
     private static readonly IBrush HealthBrush = Gradient(Color.Parse("#7E211B"), Color.Parse("#D9584A"));
     private static readonly IBrush ManaBrush = Gradient(Color.Parse("#24507F"), Color.Parse("#5AA0E0"));
@@ -94,6 +109,8 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     private readonly Action _openMenu;
     private readonly Func<IReadOnlyList<uint>, bool> _moveToMainPack;
     private readonly Action? _startMove;
+    // Retail's stance art by stance; empty without game art, when the stance is a medallion.
+    private readonly Dictionary<RetailStance, (IImage Normal, IImage? Hover)> _stanceArt = new();
     private readonly DerethMedallion _stance;
     private readonly Dictionary<RetailPanel, DerethMedallion> _windows = new();
     private readonly DerethMedallion _menu;
@@ -101,25 +118,23 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     private readonly DerethMedallion _examine;
     private readonly Border _plaque;
     // The plaque's parts are fixed; a refresh only changes what they show, so a typed figure and the focus survive it.
-    private readonly TextBlock _name = new()
+    private readonly FittedName _name = new()
     {
         FontFamily = DerethPalette.Title,
-        FontSize = 11,
-        // The mockup's name line is 11 DIP tall, so the meter fits under it in the plaque's 30.
-        LineHeight = 11,
         TextAlignment = TextAlignment.Center,
-        TextWrapping = TextWrapping.NoWrap,
         TextTrimming = TextTrimming.CharacterEllipsis
     };
     private readonly Border _meterSlot = new() { IsVisible = false };
     private readonly StackPanel _plaqueContent;
-    // The part above the rows, then the shortcut rows in order.
-    private readonly StackPanel _sections = new() { Spacing = 4 };
+    // The part above the rows, then the shortcut rows in order, touching as retail's do.
+    private readonly StackPanel _sections = new();
     /// <param name="port">Retail's toolbar, as the client reaches it.</param>
     /// <param name="openMenu">Opens or closes the LegACEy menu. The caller shows the menu's state with <see cref="SetMenuOpen"/>.</param>
     /// <param name="moveToMainPack">Moves the items to the player's main pack, in order, as a drop on the backpack does. True when one moved.</param>
     /// <param name="startMove">Run on a press on the frame that no button or control takes, which starts the toolbar's move; null for none.</param>
-    public RetailToolbar(IRetailToolbarPort port, Action openMenu, Func<IReadOnlyList<uint>, bool> moveToMainPack, Action? startMove = null)
+    /// <param name="art">Game art for retail's stance and backpack buttons; null draws them as medallions.</param>
+    public RetailToolbar(IRetailToolbarPort port, Action openMenu, Func<IReadOnlyList<uint>, bool> moveToMainPack, Action? startMove = null,
+        IGameArtSource? art = null)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _openMenu = openMenu ?? throw new ArgumentNullException(nameof(openMenu));
@@ -130,51 +145,58 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         ToolTip.SetTip(_stance, "Combat stance");
         _stance.Clicked += () => _port.ToggleStance();
 
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, HorizontalAlignment = HorizontalAlignment.Center };
+        foreach (var pair in StanceArtIds)
+            if (Painting(art, pair.Value.Normal, StancePainting) is { } normal)
+                _stanceArt[pair.Key] = (normal, Painting(art, pair.Value.Hover, StancePainting));
+
+        // Spaced so the open ring, 2.75 DIPs outside a button, stays clear of the next one.
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, HorizontalAlignment = HorizontalAlignment.Center };
         foreach (var (panel, glyph, name) in WindowButtons)
         {
-            var button = Medallion(glyph, 26, 16, name);
+            var button = Medallion(glyph, 20, 13, name);
             button.Clicked += () => TogglePanel(panel);
             _windows.Add(panel, button);
             buttons.Children.Add(button);
         }
-        _menu = Medallion(DerethGlyph.LegACEy, 26, 16, "LegACEy menu");
+        _menu = Medallion(DerethGlyph.LegACEy, 20, 13, "LegACEy menu");
         _menu.Clicked += _openMenu;
         buttons.Children.Add(_menu);
-        _use = Medallion(DerethGlyph.Use, 20, 16, "Use selected");
+        _use = Medallion(DerethGlyph.Use, 18, 14, "Use selected");
         _use.Clicked += _port.UseSelected;
         _plaqueContent = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center, Children = { _name, _meterSlot } };
-        // The plaque takes the width the buttons around it leave; a long name ends in an ellipsis, named in full on hover.
+        // The plaque takes the width the buttons around it leave; a long name wraps to two smaller lines, as retail's does.
         _plaque = new Border
         {
             // Even, as the buttons beside it are, so they centre on whole DIPs. The padding's odd top leaves an odd height inside, so the name
             // and the meter centre on whole DIPs too: a half-DIP name redrew the buttons' edges on a refresh.
-            Height = 30,
-            Margin = new Thickness(5, 0),
+            Height = 36,
+            Margin = new Thickness(3, 0),
             CornerRadius = new CornerRadius(3),
             Background = DerethPalette.GrooveBrush,
             BorderBrush = DerethPalette.GrooveEdgeBrush,
             BorderThickness = new Thickness(1),
-            Padding = new Thickness(7, 1, 7, 0),
+            Padding = new Thickness(5, 1, 5, 0),
             Child = _plaqueContent
         };
-        _examine = Medallion(DerethGlyph.Examine, 20, 16, "Examine selected");
+        _examine = Medallion(DerethGlyph.Examine, 18, 14, "Examine selected");
         _examine.Clicked += _port.ExamineSelected;
         var selection = Columns(Centred(_use), new NoWidth { Child = _plaque }, Centred(_examine));
-        var middle = new StackPanel { Spacing = 4, Margin = new Thickness(6, 0), VerticalAlignment = VerticalAlignment.Center, Children = { buttons, selection } };
+        var middle = new StackPanel { Spacing = 4, Margin = new Thickness(3, 0), VerticalAlignment = VerticalAlignment.Center, Children = { buttons, selection } };
         var backpack = Medallion(DerethGlyph.Backpack, 40, 25, "Inventory");
+        if (Painting(art, BackpackShutArt, BackpackPainting) is { } shut)
+            backpack.SetArt(shut, open: Painting(art, BackpackOpenArt, BackpackPainting));
         _windows.Add(RetailPanel.Inventory, backpack);
         backpack.Clicked += () => TogglePanel(RetailPanel.Inventory);
         _sections.Children.Add(Columns(Centred(_stance), middle, Centred(backpack)));
 
-        // A transparent frame takes the press wherever no button or control does (a medallion marks its presses handled), so a press there
-        // starts the move.
-        var frame = new Border { Padding = new Thickness(4), Background = Brushes.Transparent, Child = _sections };
+        // A transparent backing takes the press wherever no button or control does (a medallion marks its presses handled), the frame's edge
+        // included, so a press there starts the move. The frame holds the sections with no padding, so the toolbar is retail's width.
+        var frame = new Border { Background = Brushes.Transparent, Child = new DerethFrame(DerethFrameArt.Window) { Child = _sections } };
         frame.PointerPressed += (_, e) =>
         {
             if (e.GetCurrentPoint(frame).Properties.IsLeftButtonPressed) _startMove?.Invoke();
         };
-        Child = new DerethFrame(DerethFrameArt.Window) { Child = frame };
+        Child = frame;
         Refresh();
         port.Changed += Refresh;
     }
@@ -248,6 +270,7 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
     private void Refresh()
     {
         _stance.Glyph = GlyphOf(_port.Stance);
+        if (_stanceArt.TryGetValue(_port.Stance, out var stanceArt)) _stance.SetArt(stanceArt.Normal, stanceArt.Hover);
         foreach (var pair in _windows) pair.Value.IsOpen = _port.IsPanelOpen(pair.Key);
         ShowSelection(_port.Selection);
     }
@@ -287,6 +310,26 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         return new Border { Height = 5, CornerRadius = new CornerRadius(3), Background = TrackBrush, Child = bar };
     }
 
+    // Pixels darker than this, by their brightest channel, fade out in proportion: black is clear, and the painting's dark edges blend in.
+    private const int ClearBelow = 48;
+
+    /// <summary>The part of a retail image inside <paramref name="painting"/>, its black backing made clear; null when there is no art.</summary>
+    private static IImage? Painting(IGameArtSource? art, uint id, PixelRect painting)
+    {
+        if (art?.ReadImage(id) is not { } image) return null;
+        // Premultiplied BGRA, so fading a pixel scales all four channels.
+        var pixels = (byte[])image.Pixels.Clone();
+        for (var i = 0; i + 3 < pixels.Length; i += 4)
+        {
+            var brightest = Math.Max(pixels[i], Math.Max(pixels[i + 1], pixels[i + 2]));
+            if (brightest >= ClearBelow) continue;
+            for (var c = 0; c < 4; c++) pixels[i + c] = (byte)(pixels[i + c] * brightest / ClearBelow);
+        }
+        return GameArtImageExtension.CreateBitmap(new GameImage(image.Width, image.Height, pixels)) is { } bitmap
+            ? new CroppedBitmap(bitmap, painting)
+            : null;
+    }
+
     private static DerethMedallion Medallion(DerethGlyph glyph, double diameter, double glyphSize, string name)
     {
         var medallion = new DerethMedallion(glyph, diameter, glyphSize);
@@ -301,6 +344,31 @@ public sealed class RetailToolbar : Decorator, IRetailItemDropTarget, IItemSetDr
         Grid.SetColumn(middle, 1);
         Grid.SetColumn(right, 2);
         return grid;
+    }
+
+    /// <summary>
+    /// The selection's name: one 13 DIP line when it fits, or else up to two 12 DIP lines, as retail wraps a long name; a name too long for
+    /// those ends in an ellipsis. The plaque's 33 DIPs inside hold either with the meter, and each is an odd height, as the inside is.
+    /// </summary>
+    private sealed class FittedName : TextBlock
+    {
+        protected override Size MeasureOverride(Size availableSize)
+        {
+            // Laid out apart from the block's own layout, which keeps the width it was last measured at.
+            using var oneLine = new Avalonia.Media.TextFormatting.TextLayout(Text, new Typeface(FontFamily, FontStyle, FontWeight), 13, null);
+            Fit(wrapped: oneLine.WidthIncludingTrailingWhitespace > availableSize.Width - Padding.Left - Padding.Right);
+            return base.MeasureOverride(availableSize);
+        }
+
+        // Set only on a change: each set asks for a new measure.
+        private void Fit(bool wrapped)
+        {
+            var (size, line, wrapping, lines) = wrapped ? (12, 12.5, TextWrapping.Wrap, 2) : (13, 13, TextWrapping.NoWrap, 1);
+            if (FontSize != size) FontSize = size;
+            if (LineHeight != line) LineHeight = line;
+            if (TextWrapping != wrapping) TextWrapping = wrapping;
+            if (MaxLines != lines) MaxLines = lines;
+        }
     }
 
     /// <summary>Asks for no width of its own, so a long name in it never widens the toolbar; it takes the width it is given.</summary>

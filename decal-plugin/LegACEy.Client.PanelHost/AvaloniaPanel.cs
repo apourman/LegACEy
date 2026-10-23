@@ -10,6 +10,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Input.Raw;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
@@ -38,15 +39,36 @@ public sealed class AvaloniaPanel : IDisposable
     private static bool _runtimeInitialized;
     private readonly Window _window;
     private readonly int _ownerThreadId;
-    private PanelFrame _frame;
+    private readonly RetainedFramebuffer _framebuffer;
+    // The array behind the frame's dirty rectangles when a capture changed something: its one changed area, reused capture to capture.
+    private readonly Rectangle[] _dirty = new Rectangle[1];
+    // The frame's pixels as of the last capture, to tell a repaint that changed pixels from one that drew the same.
+    private byte[] _captured = Array.Empty<byte>();
     private bool _disposed;
     private bool _forceFullFrame = true;
     private bool _hasInvalidation;
     private bool _renderingSuspended;
+    private bool _resized;
+    private readonly Stopwatch _captureClock = new();
     internal int FrameCaptureCount { get; private set; }
+    // Set when a visual was attached or detached in the window, its theme was applied, or an observed resource took a new nested
+    // resource; the next capture walks the render resources then, not every capture.
+    private bool _walkRenderResources = true;
+    private readonly IDisposable _treeChanges;
+    internal int RenderResourceWalks { get; private set; }
+    internal IReadOnlyCollection<AvaloniaObject> ObservedRenderResources => _renderResources;
+    internal IReadOnlyCollection<INotifyCollectionChanged> ObservedRenderCollections => _renderCollections;
+    internal void WalkRenderResources() => ObserveRenderResources();
+
     private readonly RendererInvalidationObserver _rendererObserver;
     private readonly HashSet<AvaloniaObject> _renderResources = new();
     private readonly HashSet<INotifyCollectionChanged> _renderCollections = new();
+    // Scratch for ObserveRenderResources, reused every walk; the property lists are shared by all panels on the UI thread.
+    private readonly HashSet<AvaloniaObject> _scanResources = new();
+    private readonly HashSet<INotifyCollectionChanged> _scanCollections = new();
+    private readonly Stack<Visual> _scanVisuals = new();
+    private readonly List<object> _scanRemoved = new();
+    private static readonly Dictionary<Type, AvaloniaProperty[]> ResourceProperties = new();
     private IStyle? _themeStyles;
     private IClientTheme? _theme;
     // Use one mouse device per window so implicit capture and click state survive
@@ -59,20 +81,62 @@ public sealed class AvaloniaPanel : IDisposable
 
     private readonly Control _content;
     private double _scale;
+    // A short note over the content, such as the size while Ctrl and the wheel rescale the window. It hides itself when its time is up.
+    private readonly Border _note;
+    private readonly TextBlock _noteText;
+    private readonly Stopwatch _noteClock = new();
+    private TimeSpan _noteTime;
 
     private AvaloniaPanel(Control content, int width, int height, double scale)
     {
         _ownerThreadId = Thread.CurrentThread.ManagedThreadId;
         _content = content;
         _scale = scale;
-        _window = CreateWindow(content, width, height, scale);
-        _frame = new PanelFrame(width, height);
+        _noteText = new TextBlock { FontFamily = DerethPalette.Title, FontSize = 18, Foreground = DerethPalette.CreamBrush };
+        _note = new Border
+        {
+            Background = DerethPalette.Brush(Color.Parse("#E6141109")), BorderBrush = DerethPalette.GoldBrush, BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(14, 6), HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false, IsVisible = false, Child = DerethPalette.CentreInk(_noteText),
+        };
+        // The note lies over the content in the window; Content stays the content, which the host and plugins read.
+        _window = CreateWindow(new Grid { Children = { content, _note } }, width, height, scale);
+        _framebuffer = RetainedFramebuffer.Install(_window, width, height);
+        _window.Show();
         _rendererObserver = new RendererInvalidationObserver(_window, () => _hasInvalidation = true);
+        _window.LayoutUpdated += OnLayoutUpdated;
+        _treeChanges = Visual.VisualParentProperty.Changed.AddClassHandler<Visual>(OnVisualParentChanged);
+        PanelCompositor.Register(this);
         Tick();
     }
 
-    /// <summary>The latest rendered BGRA frame. Its pixel buffer is reused across ticks.</summary>
-    public PanelFrame Frame => _frame;
+    /// <summary>
+    /// The latest rendered BGRA frame. Avalonia draws straight into its pixel buffer, which is kept until the panel is resized; its dirty
+    /// rectangles say what the last capture changed.
+    /// </summary>
+    public PanelFrame Frame => _framebuffer.Frame;
+
+    /// <summary>Whether the last capture changed the frame's pixels; the frame's dirty rectangles say where.</summary>
+    public bool Changed { get; private set; }
+
+    /// <summary>Layout passes this panel's window ran in the last advance.</summary>
+    public int LayoutPasses { get; private set; }
+
+    /// <summary>
+    /// The area, in pixels, of the bounding rectangle of what Avalonia painted for this panel between its previous capture and the last one;
+    /// 0 when it painted nothing. It counts painting work, so it can be above 0 while <see cref="Changed"/> is false: a repaint that drew
+    /// the same pixels.
+    /// </summary>
+    public long PaintedArea { get; private set; }
+
+    /// <summary>How long the last capture took: this panel's own share of a frame, apart from Avalonia's shared work.</summary>
+    public TimeSpan CaptureTime => _captureClock.Elapsed;
+
+    /// <summary>
+    /// Whether the compositor captures this panel. A hidden panel's window is hidden, so Avalonia paints nothing for it; shown again,
+    /// its next capture is a full frame of its current content. Takes effect at the next advance.
+    /// </summary>
+    public bool Visible { get; set; } = true;
 
     /// <summary>The most recent exception raised while processing panel input or rendering.</summary>
     public Exception? LastError { get; private set; }
@@ -147,6 +211,7 @@ public sealed class AvaloniaPanel : IDisposable
         if (scale != 1 && !CanScale) scale = 1;
         EnsureRuntimeInitialized();
         var window = CreateWindow(control, 1, 1, scale);
+        window.Show();
         try
         {
             control.Measure(available);
@@ -202,7 +267,6 @@ public sealed class AvaloniaPanel : IDisposable
         // DPI does: layout rounding snaps every edge and border to whole panel pixels, where a scale transform smears 1 px borders.
         // The headless window fixes its scaling at 1, so this sets it.
         if (scale != 1) SetScaling(window, scale);
-        window.Show();
         return window;
     }
 
@@ -213,98 +277,116 @@ public sealed class AvaloniaPanel : IDisposable
         platform.ScalingChanged?.Invoke(scale);
     }
 
-    /// <summary>Drain queued Avalonia work, run one render-timer tick, and capture the frame.</summary>
+    /// <summary>
+    /// Show this panel, run Avalonia's shared work once (see <see cref="PanelCompositor.Advance"/>) and capture this panel alone, for
+    /// single-panel use. In the plugin only the compositor advances. A failure in the shared work goes to the error handler of the panel
+    /// that raised it, or of this one when no panel did.
+    /// </summary>
     /// <returns>True when the captured pixels differ from the previous frame.</returns>
     /// <exception cref="InvalidOperationException">Called from a thread other than the one that initialized Avalonia.</exception>
-    public unsafe bool Tick()
+    public bool Tick()
     {
         if (_disposed) throw new ObjectDisposedException(nameof(AvaloniaPanel));
         VerifyThreadAccess();
+        Visible = true;
+        try { PanelCompositor.Step(); }
+        catch (Exception exception)
+        {
+            Changed = false;
+            ReportError(exception);
+            return false;
+        }
+        Capture();
+        return Changed;
+    }
 
+    /// <summary>
+    /// Shows <paramref name="text"/> in a plaque centred over the content for <paramref name="time"/>, at the same size on screen whatever the
+    /// panel's scale. Showing it again replaces the text and restarts the time.
+    /// </summary>
+    public void ShowNote(string text, TimeSpan time)
+    {
+        _noteText.Text = text;
+        _note.RenderTransform = new ScaleTransform(1 / _scale, 1 / _scale);
+        _note.IsVisible = true;
+        _noteTime = time;
+        _noteClock.Restart();
+    }
+
+    /// <summary>Capture the frame Avalonia rendered, if this panel is shown and its content changed. A failure goes to the error handler.</summary>
+    internal void Capture()
+    {
+        if (_note.IsVisible && _noteClock.Elapsed >= _noteTime) _note.IsVisible = false;
+        // A disposed panel an advance is still walking reports nothing, not its last advance's pixels.
+        Changed = false;
+        PaintedArea = 0;
+        if (_disposed) return;
+        _captureClock.Restart();
+        Changed = CaptureFrame();
+        _captureClock.Stop();
+    }
+
+    /// <summary>
+    /// Before the shared step: hide or show the window as <see cref="Visible"/> asks, and start this advance's layout count. True when the
+    /// window was shown again or resized: Avalonia then needs a render to settle before the one that paints the latest content.
+    /// </summary>
+    internal bool BeginStep()
+    {
+        LayoutPasses = 0;
+        var settle = _resized;
+        _resized = false;
+        if (Visible != _renderingSuspended) return settle;
+        _renderingSuspended = !Visible;
+        if (!Visible)
+        {
+            _window.Hide();
+            return false;
+        }
+        _window.Show();
+        Content.InvalidateVisual();
+        _forceFullFrame = true;
+        return true;
+    }
+
+    /// <summary>
+    /// After a pass of the shared step threw: lay this panel out and commit Avalonia's drawing again. The throw left the rest of the
+    /// pass undone (other windows' queued layout among it), and Avalonia commits no window's drawing again until a commit completes.
+    /// </summary>
+    internal void Resume()
+    {
+        if (_disposed) return;
+        _window.UpdateLayout();
+        ((IRenderRoot)_window).Renderer.Paint(new Rect(_window.ClientSize));
+    }
+
+    /// <summary>Whether this panel's window shows a visual of <paramref name="type"/>, its overlays and adorners included.</summary>
+    internal bool Shows(Type type) => _window.GetSelfAndVisualDescendants().Any(type.IsInstanceOfType);
+
+    private bool CaptureFrame()
+    {
         try
         {
-            if (_renderingSuspended)
+            var frame = Frame;
+            // A repaint Avalonia did by itself (an unobserved brush mutated in place) is captured too.
+            if (_renderingSuspended || (!_forceFullFrame && !_hasInvalidation && !_framebuffer.HasPainted))
             {
-                _renderingSuspended = false;
-                _window.Show();
-                Content.InvalidateVisual();
-                _forceFullFrame = true;
-                // Showing the headless window first commits its composition target;
-                // advance that commit before the normal tick paints its latest content.
-                Dispatcher.UIThread.RunJobs();
-                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
-            }
-            Dispatcher.UIThread.RunJobs();
-            // Let Avalonia process layout and drawing invalidations before deciding
-            // whether the rendered frame needs to be copied into our pixel buffer.
-            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
-            Dispatcher.UIThread.RunJobs();
-            if (!_forceFullFrame && !_hasInvalidation)
-            {
-                _frame.DirtyRectangles = Array.Empty<Rectangle>();
+                frame.DirtyRectangles = Array.Empty<Rectangle>();
                 return false;
             }
 
-            // Read the frame produced by the timer without requesting another render.
+            // Avalonia already drew into the frame. What it painted changed, unless it drew the same pixels again (a style or hover that
+            // looks the same).
             FrameCaptureCount++;
-            using var bitmap = _window.GetLastRenderedFrame();
-            if (bitmap == null) return false;
-
-            using var locked = bitmap.Lock();
-            if (locked.Format != PixelFormat.Bgra8888)
-                throw new NotSupportedException($"The Skia backend returned unsupported pixel format {locked.Format}.");
-
-            var width = locked.Size.Width;
-            var height = locked.Size.Height;
-            if (width != _frame.Width || height != _frame.Height)
-            {
-                _frame = new PanelFrame(width, height);
-                _forceFullFrame = true;
-            }
-
-            var dirty = _forceFullFrame
-                ? new[] { new Rectangle(0, 0, width, height) }
-                : Array.Empty<Rectangle>();
-            if (dirty.Length == 0)
-                _frame.DirtyRectangles = Array.Empty<Rectangle>();
-            var actualDirtyRectangles = new List<Rectangle>();
-            var changed = false;
-            for (var row = 0; row < height; row++)
-            {
-                var source = new ReadOnlySpan<byte>((byte*)locked.Address + (row * locked.RowBytes), _frame.Stride);
-                var target = new Span<byte>(_frame.Pixels, row * _frame.Stride, _frame.Stride);
-                var firstChangedPixel = -1;
-                var lastChangedPixel = -1;
-                for (var x = 0; x < width; x++)
-                {
-                    if (source.Slice(x * 4, 4).SequenceEqual(target.Slice(x * 4, 4))) continue;
-                    if (firstChangedPixel < 0) firstChangedPixel = x;
-                    lastChangedPixel = x;
-                }
-                source.CopyTo(new Span<byte>(_frame.Pixels, row * _frame.Stride, _frame.Stride));
-                if (firstChangedPixel < 0) continue;
-                changed = true;
-                if (dirty.Length != 0) continue;
-                var rowRect = new Rectangle(firstChangedPixel, row, lastChangedPixel - firstChangedPixel + 1, 1);
-                if (actualDirtyRectangles.Count > 0 &&
-                    actualDirtyRectangles[actualDirtyRectangles.Count - 1].Bottom == row &&
-                    actualDirtyRectangles[actualDirtyRectangles.Count - 1].Left <= rowRect.Right &&
-                    actualDirtyRectangles[actualDirtyRectangles.Count - 1].Right >= rowRect.Left)
-                {
-                    actualDirtyRectangles[actualDirtyRectangles.Count - 1] = Rectangle.Union(actualDirtyRectangles[actualDirtyRectangles.Count - 1], rowRect);
-                }
-                else
-                    actualDirtyRectangles.Add(rowRect);
-            }
-
-            if (dirty.Length != 0)
-                _frame.DirtyRectangles = dirty;
-            else
-                _frame.DirtyRectangles = actualDirtyRectangles;
-            ObserveRenderResources();
+            var painted = _framebuffer.TakePainted();
+            PaintedArea = (long)painted.Width * painted.Height;
+            var changed = _forceFullFrame ? new Rectangle(0, 0, frame.Width, frame.Height) : painted;
+            if (!KeepCaptured(frame, changed) && !_forceFullFrame) changed = Rectangle.Empty;
+            _dirty[0] = changed;
+            frame.DirtyRectangles = changed.IsEmpty ? Array.Empty<Rectangle>() : _dirty;
+            if (_walkRenderResources) ObserveRenderResources();
             _hasInvalidation = false;
             _forceFullFrame = false;
-            return dirty.Length != 0 || changed;
+            return !changed.IsEmpty;
         }
         catch (Exception exception)
         {
@@ -313,14 +395,37 @@ public sealed class AvaloniaPanel : IDisposable
         }
     }
 
-    /// <summary>Drain dispatcher work without rendering, for a surface hidden from the player.</summary>
+    /// <summary>Bring the copy of the last capture up to date over <paramref name="area"/>; true when any of its pixels differed.</summary>
+    private bool KeepCaptured(PanelFrame frame, Rectangle area)
+    {
+        if (_captured.Length != frame.Pixels.Length) _captured = new byte[frame.Pixels.Length];
+        var differed = false;
+        for (var row = area.Top; row < area.Bottom; row++)
+        {
+            var now = new ReadOnlySpan<byte>(frame.Pixels, row * frame.Stride + area.X * 4, area.Width * 4);
+            var then = new Span<byte>(_captured, row * frame.Stride + area.X * 4, area.Width * 4);
+            if (now.SequenceEqual(then)) continue;
+            now.CopyTo(then);
+            differed = true;
+        }
+        return differed;
+    }
+
+    private void OnLayoutUpdated(object? sender, EventArgs e) => LayoutPasses++;
+
+    /// <summary>
+    /// Hide the panel and run queued Avalonia work without rendering. The plugin hides panels through <see cref="Visible"/> instead,
+    /// and the compositor's shared pump serves them.
+    /// </summary>
     public void DrainDispatcher()
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(AvaloniaPanel));
-        VerifyThreadAccess();
-        _window.Hide();
-        _renderingSuspended = true;
-        try { Dispatcher.UIThread.RunJobs(); }
+        VerifyUsable();
+        Visible = false;
+        try
+        {
+            BeginStep();
+            Dispatcher.UIThread.RunJobs();
+        }
         catch (Exception exception) { ReportError(exception); }
     }
 
@@ -344,14 +449,9 @@ public sealed class AvaloniaPanel : IDisposable
         _forceFullFrame = true;
         _window.Width = width / _scale;
         _window.Height = height / _scale;
-        _frame = new PanelFrame(width, height);
-        // Lay out and render the new size now, so the next capture is the new size and not the last frame of the old one.
-        try
-        {
-            Dispatcher.UIThread.RunJobs();
-            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
-        }
-        catch (Exception exception) { ReportError(exception); }
+        _framebuffer.Resize(width, height);
+        // The next advance lays out and renders the new size before it captures, so the capture is not the old size's last frame.
+        _resized = true;
     }
 
     /// <summary>Tell the host that the backing texture was lost and needs a complete upload.</summary>
@@ -365,16 +465,15 @@ public sealed class AvaloniaPanel : IDisposable
 
     /// <summary>
     /// Request a render after a custom control invalidates through its own drawing logic.
-    /// The optional rectangle limits whether the request intersects this panel. Incremental dirty
-    /// rectangles are derived from full-frame pixel differences; resize and content loss can force
-    /// a full-frame upload.
+    /// The optional rectangle limits whether the request intersects this panel. Dirty rectangles are
+    /// the area Avalonia painted; resize and content loss can force a full-frame upload.
     /// </summary>
     public void Invalidate(Rectangle? dirtyRegion = null)
     {
         VerifyUsable();
         var clipped = dirtyRegion.HasValue
-            ? Rectangle.Intersect(dirtyRegion.Value, new Rectangle(0, 0, _frame.Width, _frame.Height))
-            : new Rectangle(0, 0, _frame.Width, _frame.Height);
+            ? Rectangle.Intersect(dirtyRegion.Value, new Rectangle(0, 0, Frame.Width, Frame.Height))
+            : new Rectangle(0, 0, Frame.Width, Frame.Height);
         if (clipped.Width > 0 && clipped.Height > 0)
             _hasInvalidation = true;
     }
@@ -444,7 +543,8 @@ public sealed class AvaloniaPanel : IDisposable
         {
             Invalidate();
             _pointerPosition = new Point(-1, -1);
-            SendPointer(RawPointerEventType.Move, new Point(-1, -1));
+            // Not a move to (-1, -1): below 100% the remembered pixel point truncates to (0, 0), inside the window, and the next repaint hovers it again.
+            SendPointer(RawPointerEventType.LeaveWindow, new Point(-1, -1));
         });
     }
 
@@ -505,6 +605,7 @@ public sealed class AvaloniaPanel : IDisposable
         _themeStyles = theme.CreateStyles();
         _window.Styles.Add(_themeStyles);
         _theme = theme;
+        _walkRenderResources = true;
         if (Content is ThemeWindowChrome rootChrome)
             rootChrome.ApplyTheme(theme);
         foreach (var chrome in Content.GetVisualDescendants().OfType<ThemeWindowChrome>())
@@ -515,28 +616,61 @@ public sealed class AvaloniaPanel : IDisposable
     {
         // Composition can update mutable brushes without a SceneInvalidated event.
         // Follow their nested resources (including gradient stops), releasing old trees.
-        var current = new HashSet<AvaloniaObject>();
-        var collections = new HashSet<INotifyCollectionChanged>();
-        foreach (var visual in _window.GetVisualDescendants().Prepend(_window))
-            foreach (var property in AvaloniaPropertyRegistry.Instance.GetRegistered(visual.GetType()))
+        // Only after a tree or theme change: on a large window the walk costs milliseconds. Between walks a brush assigned in code is not
+        // followed, but its repaint is still captured, since what Avalonia painted gates capture too.
+        // Scratch sets and the walk stack are reused; only properties that can hold a resource are read (reading value-typed ones would box).
+        RenderResourceWalks++;
+        var current = _scanResources;
+        var collections = _scanCollections;
+        current.Clear();
+        collections.Clear();
+        _scanVisuals.Clear();
+        _scanRemoved.Clear();
+        _scanVisuals.Push(_window);
+        while (_scanVisuals.Count > 0)
+        {
+            var visual = _scanVisuals.Pop();
+            foreach (var property in ResourcePropertiesOf(visual.GetType()))
                 CollectRenderResource(visual.GetValue(property), current, collections);
+            // Visual children are an IAvaloniaList: index it rather than box an enumerator per visual.
+            var children = (IReadOnlyList<Visual>)visual.GetVisualChildren();
+            for (var i = children.Count - 1; i >= 0; i--) _scanVisuals.Push(children[i]);
+        }
 
-        foreach (var removed in _renderResources.Except(current).ToArray())
+        foreach (var resource in _renderResources)
+            if (!current.Contains(resource)) _scanRemoved.Add(resource);
+        foreach (AvaloniaObject removed in _scanRemoved)
         {
             removed.PropertyChanged -= OnRenderResourceInvalidated;
             _renderResources.Remove(removed);
         }
+        _scanRemoved.Clear();
         foreach (var added in current)
             if (_renderResources.Add(added))
                 added.PropertyChanged += OnRenderResourceInvalidated;
-        foreach (var removed in _renderCollections.Except(collections).ToArray())
+        foreach (var collection in _renderCollections)
+            if (!collections.Contains(collection)) _scanRemoved.Add(collection);
+        foreach (INotifyCollectionChanged removed in _scanRemoved)
         {
             removed.CollectionChanged -= OnRenderCollectionInvalidated;
             _renderCollections.Remove(removed);
         }
+        _scanRemoved.Clear();
         foreach (var added in collections)
             if (_renderCollections.Add(added))
                 added.CollectionChanged += OnRenderCollectionInvalidated;
+        // Cleared only once the walk completed, so a walk that threw runs again at the next capture.
+        _walkRenderResources = false;
+    }
+
+    /// <summary>The registered properties of a type that can hold a brush, transform or collection: not value types, not strings.</summary>
+    private static AvaloniaProperty[] ResourcePropertiesOf(Type type)
+    {
+        if (!ResourceProperties.TryGetValue(type, out var properties))
+            ResourceProperties[type] = properties = AvaloniaPropertyRegistry.Instance.GetRegistered(type)
+                .Where(property => !property.PropertyType.IsValueType && property.PropertyType != typeof(string))
+                .ToArray();
+        return properties;
     }
 
     private static void CollectRenderResource(object? value, HashSet<AvaloniaObject> resources,
@@ -544,7 +678,7 @@ public sealed class AvaloniaPanel : IDisposable
     {
         if (value is AvaloniaObject resource && resource is not StyledElement && resources.Add(resource))
         {
-            foreach (var property in AvaloniaPropertyRegistry.Instance.GetRegistered(resource.GetType()))
+            foreach (var property in ResourcePropertiesOf(resource.GetType()))
                 CollectRenderResource(resource.GetValue(property), resources, collections);
         }
         else if (value is INotifyCollectionChanged collection && collections.Add(collection) && value is IEnumerable items)
@@ -554,8 +688,23 @@ public sealed class AvaloniaPanel : IDisposable
         }
     }
 
-    private void OnRenderResourceInvalidated(object? sender, AvaloniaPropertyChangedEventArgs e) => _hasInvalidation = true;
-    private void OnRenderCollectionInvalidated(object? sender, NotifyCollectionChangedEventArgs e) => _hasInvalidation = true;
+    private void OnRenderResourceInvalidated(object? sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        _hasInvalidation = true;
+        // A resource that took a new nested one (a brush's transform, its gradient stop list) needs the new one followed.
+        if (!e.Property.PropertyType.IsValueType) _walkRenderResources = true;
+    }
+
+    private void OnRenderCollectionInvalidated(object? sender, NotifyCollectionChangedEventArgs e) =>
+        _hasInvalidation = _walkRenderResources = true;
+
+    // Raised for every visual of every window: only an attach or detach in this panel's window walks again.
+    private void OnVisualParentChanged(Visual visual, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (InWindow(visual) || InWindow(e.OldValue as Visual)) _walkRenderResources = true;
+    }
+
+    private bool InWindow(Visual? visual) => visual?.GetVisualRoot() == _window;
 
     private void StopObservingRenderResources()
     {
@@ -583,7 +732,7 @@ public sealed class AvaloniaPanel : IDisposable
         catch (Exception exception) { ReportError(exception); }
     }
 
-    private void ReportError(Exception exception)
+    internal void ReportError(Exception exception)
     {
         LastError = exception;
         try { Error?.Invoke(exception); }
@@ -617,10 +766,17 @@ public sealed class AvaloniaPanel : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        PanelCompositor.Unregister(this);
         StopObservingRenderResources();
+        _treeChanges.Dispose();
         _rendererObserver.Dispose();
-        _window.Close();
-        _mouseDevice.Dispose();
+        _window.LayoutUpdated -= OnLayoutUpdated;
+        try { _window.Close(); }
+        finally
+        {
+            _framebuffer.Release();
+            _mouseDevice.Dispose();
+        }
     }
 
 

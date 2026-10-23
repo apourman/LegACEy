@@ -85,19 +85,6 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
-    public void An_item_slot_window_keeps_its_full_size_default_and_minimum_below_100_percent()
-    {
-        var manager = new WindowManager(new Size(800, 600), new MemoryWindowPositionStore(), "server", "character", scale: 0.85);
-        var window = manager.Open(new WindowDefinition("bag", "Bag", 200, 120, titleBarHeight: 20,
-            resizing: new WindowResizing(new Size(100, 60)) { ItemSlots = true }), new Point(10, 10));
-
-        // Its icons stay 32 px, so its slots take as much screen as at 100%.
-        Assert.Equal(new Size(200, 120), window.Size);
-        Assert.Equal(new Size(100, 60), window.Definition.Resizing!.Minimum);
-        Assert.Equal(17, window.Definition.TitleBarHeight);
-    }
-
-    [Fact]
     public void A_window_rescales_on_its_own_on_top_of_the_manager_scale_and_keeps_its_size_for_the_character()
     {
         var store = new MemoryWindowPositionStore();
@@ -107,7 +94,7 @@ public sealed class WindowManagerTests
         var window = manager.Open(One(), new Point(10, 10));
         manager.Open(new WindowDefinition("two", "Two", 200, 120), new Point(300, 10));
 
-        Assert.True(manager.Rescale("one", 5));
+        Assert.True(manager.Rescale("one", 10));
         Assert.Equal(150, window.SizePercent);
         Assert.Equal(0.75, window.Scale);
         Assert.Equal(new Size(150, 90), window.Size);
@@ -130,7 +117,7 @@ public sealed class WindowManagerTests
         var store = new MemoryWindowPositionStore();
         var manager = new WindowManager(new Size(800, 600), store, "server", "character", scale: 0.5);
 
-        Assert.True(manager.Rescale("toolbar", -2));
+        Assert.True(manager.Rescale("toolbar", -4));
         Assert.Equal(0.4, manager.ScaleOf("toolbar"), 3);
         Assert.Equal(0.4, new WindowManager(new Size(800, 600), store, "server", "character", scale: 0.5).ScaleOf("toolbar"), 3);
     }
@@ -454,6 +441,20 @@ public sealed class WindowManagerTests
 
         Assert.Equal("vault", hover.WindowId);
         Assert.Equal(expected, hover.Edges);
+    }
+
+    [Theory]
+    [InlineData(443, 300, WindowEdges.None)]
+    [InlineData(101, 300, WindowEdges.None)]
+    [InlineData(443, 703, WindowEdges.Bottom)]
+    [InlineData(200, 703, WindowEdges.Bottom)]
+    public void A_fixed_width_window_resizes_only_from_its_bottom_edge(int x, int y, WindowEdges expected)
+    {
+        var manager = NewManager(1920, 1080);
+        manager.Open(new WindowDefinition("inventory", "Inventory", 344, 606, resizing: new WindowResizing(new Size(344, 300), new Size(344, 10_000))),
+            new Point(100, 100));
+
+        Assert.Equal(expected, manager.HoverAt(new Point(x, y)).Edges);
     }
 
     [Fact]

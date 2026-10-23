@@ -1,3 +1,4 @@
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -20,6 +21,23 @@ public sealed class PanelHostRenderingTests
         using var panel = AvaloniaPanel.Create(() => new Grid { Width = 32, Height = 32 }, 32, 32);
         panel.Tick();
 
+        Assert.All(panel.Frame.Pixels, value => Assert.Equal(0, value));
+    });
+
+    [Fact]
+    public void A_note_shows_over_the_content_then_hides_when_its_time_is_up_leaving_the_content_as_it_was() => RenderThread.Run(() =>
+    {
+        var content = new Grid { Width = 120, Height = 80 };
+        using var panel = AvaloniaPanel.Create(() => content, 120, 80);
+
+        panel.ShowNote("85%", System.TimeSpan.FromMinutes(1));
+        panel.Tick();
+        Assert.Same(content, panel.Content);
+        Assert.True(panel.Frame.Pixels.Any(value => value != 0), "The note drew nothing.");
+
+        panel.ShowNote("85%", System.TimeSpan.Zero);
+        panel.Tick();
+        panel.Tick();
         Assert.All(panel.Frame.Pixels, value => Assert.Equal(0, value));
     });
 
@@ -52,6 +70,23 @@ public sealed class PanelHostRenderingTests
 
         Assert.Equal(1, clicks);
         Assert.Same(button.Cursor, panel.CursorKind);
+    });
+
+    [Fact]
+    public void A_scaled_panel_clears_hover_when_the_pointer_leaves_even_after_a_repaint_over_its_corner() => RenderThread.Run(() =>
+    {
+        if (!AvaloniaPanel.CanScale) return;
+        using var panel = AvaloniaPanel.Create(() => new Border { Width = 100, Height = 40, Background = Brushes.Gray }, 90, 36, 0.9);
+        var border = (Border)panel.Content;
+        panel.PointerMove(30, 20);
+        Assert.True(border.IsPointerOver);
+
+        panel.PointerLeave();
+        // A move to (-1, -1) is remembered as (0, 0) at 0.9 (the pixel point truncates), so a repaint there would hover the border again.
+        border.Background = Brushes.Black;
+        panel.Tick();
+
+        Assert.False(border.IsPointerOver);
     });
 
     [Fact]
@@ -338,6 +373,141 @@ public sealed class PanelHostRenderingTests
         Assert.True(panel.Tick());
         Assert.NotEqual(0, panel.Frame.Pixels[0]);
         Assert.False(panel.Tick());
+    });
+
+    [Fact]
+    public void Brushes_gradient_stops_transforms_and_collections_added_after_the_first_render_repaint_when_mutated() => RenderThread.Run(() =>
+    {
+        var host = new StackPanel();
+        using var panel = AvaloniaPanel.Create(() => host, 8, 8);
+        Assert.False(panel.Tick());
+        var solid = new SolidColorBrush(Colors.Black);
+        var gradient = new LinearGradientBrush
+        {
+            GradientStops = { new GradientStop(Colors.Black, 0), new GradientStop(Colors.Black, 1) }
+        };
+        var move = new TranslateTransform();
+        var group = new TransformGroup { Children = { move } };
+        host.Children.Add(new Border { Height = 2, Background = solid });
+        host.Children.Add(new Border { Height = 2, Background = gradient });
+        host.Children.Add(new Border { Width = 4, Height = 2, Background = Brushes.White, RenderTransform = group });
+        Assert.True(panel.Tick());
+        Assert.False(panel.Tick());
+
+        solid.Color = Colors.White;
+        Assert.True(panel.Tick());
+        Assert.Equal(0xff, panel.Frame.Pixels[0]);
+        gradient.GradientStops[0].Color = Colors.White;
+        Assert.True(panel.Tick());
+        move.X = 4;
+        Assert.True(panel.Tick());
+        group.Children.Add(new ScaleTransform(0.5, 0.5));
+        Assert.True(panel.Tick());
+        Assert.False(panel.Tick());
+    });
+
+    [Fact]
+    public void Mutating_a_brush_assigned_in_code_without_a_tree_change_repaints() => RenderThread.Run(() =>
+    {
+        var border = new Border { Background = Brushes.Black };
+        using var panel = AvaloniaPanel.Create(() => border, 8, 8);
+        Assert.False(panel.Tick());
+        var brush = new SolidColorBrush(Colors.Red);
+        border.Background = brush;
+        Assert.True(panel.Tick());
+        brush.Color = Colors.White;
+        Assert.True(panel.Tick());
+        Assert.Equal(0xff, panel.Frame.Pixels[0]);
+        Assert.False(panel.Tick());
+    });
+
+    [Fact]
+    public void Mutating_a_gradient_or_transform_assigned_in_code_without_a_tree_change_repaints() => RenderThread.Run(() =>
+    {
+        var border = new Border { Width = 4, Height = 4, HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top, Background = Brushes.Black };
+        using var panel = AvaloniaPanel.Create(() => new Canvas { Background = Brushes.Black, Children = { border } }, 8, 8);
+        Assert.False(panel.Tick());
+
+        var gradient = new LinearGradientBrush
+        {
+            GradientStops = { new GradientStop(Colors.Black, 0), new GradientStop(Colors.Black, 1) }
+        };
+        border.Background = gradient;
+        panel.Tick();
+        gradient.GradientStops[0].Color = Colors.White;
+        gradient.GradientStops[1].Color = Colors.White;
+        Assert.True(panel.Tick());
+        Assert.Equal(0xff, panel.Frame.Pixels[0]);
+
+        var move = new TranslateTransform();
+        border.RenderTransform = new TransformGroup { Children = { move } };
+        panel.Tick();
+        move.X = 4;
+        Assert.True(panel.Tick());
+        Assert.Equal(0, panel.Frame.Pixels[0]);
+        Assert.False(panel.Tick());
+    });
+
+    [Fact]
+    public void The_walk_after_tree_and_theme_changes_observes_what_a_fresh_full_walk_finds() => RenderThread.Run(() =>
+    {
+        var stop = new GradientStop(Colors.Black, 0);
+        var gradient = new LinearGradientBrush { GradientStops = { stop, new GradientStop(Colors.White, 1) } };
+        var move = new TranslateTransform();
+        var group = new TransformGroup { Children = { move } };
+        var host = new StackPanel { Children = { new Border { Height = 2, Background = Brushes.Gray } } };
+        using var panel = AvaloniaPanel.Create(() => host, 8, 8);
+        panel.Tick();
+
+        var dropped = new Border { Height = 2, Background = new SolidColorBrush(Colors.Red) };
+        host.Children.Add(dropped);
+        panel.Tick();
+        host.Children.Add(new Border { Height = 2, Background = gradient, RenderTransform = group });
+        host.Children.Remove(dropped);
+        panel.Tick();
+        panel.ApplyTheme(new LegACEy.Client.Themes.DerethClientTheme());
+        panel.Tick();
+
+        Assert.Contains(gradient, panel.ObservedRenderResources);
+        Assert.Contains(stop, panel.ObservedRenderResources);
+        Assert.Contains(move, panel.ObservedRenderResources);
+        Assert.Contains(group.Children, panel.ObservedRenderCollections);
+        Assert.DoesNotContain((AvaloniaObject)dropped.Background!, panel.ObservedRenderResources);
+        var resources = panel.ObservedRenderResources.ToHashSet();
+        var collections = panel.ObservedRenderCollections.ToHashSet();
+        panel.WalkRenderResources();
+        Assert.True(resources.SetEquals(panel.ObservedRenderResources));
+        Assert.True(collections.SetEquals(panel.ObservedRenderCollections));
+    });
+
+    [Fact]
+    public void A_changed_frame_walks_render_resources_only_after_its_tree_or_theme_changed() => RenderThread.Run(() =>
+    {
+        var brush = new SolidColorBrush(Colors.Black);
+        var host = new StackPanel { Children = { new Border { Height = 4, Background = brush } } };
+        using var panel = AvaloniaPanel.Create(() => host, 8, 8);
+        Assert.False(panel.Tick());
+        var walks = panel.RenderResourceWalks;
+
+        brush.Color = Colors.White;
+        Assert.True(panel.Tick());
+        Assert.Equal(walks, panel.RenderResourceWalks);
+
+        var added = new Border { Height = 4, Background = Brushes.Red };
+        host.Children.Add(added);
+        Assert.True(panel.Tick());
+        Assert.Equal(++walks, panel.RenderResourceWalks);
+
+        host.Children.Remove(added);
+        Assert.True(panel.Tick());
+        Assert.Equal(++walks, panel.RenderResourceWalks);
+
+        panel.ApplyTheme(new LegACEy.Client.Themes.DerethClientTheme());
+        var captures = panel.FrameCaptureCount;
+        panel.Tick();
+        Assert.Equal(captures + 1, panel.FrameCaptureCount);
+        Assert.Equal(++walks, panel.RenderResourceWalks);
     });
 
     [Fact]

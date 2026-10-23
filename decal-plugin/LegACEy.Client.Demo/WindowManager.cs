@@ -42,14 +42,11 @@ public sealed class WindowResizing
     public bool NoCorners { get; }
     public (double Narrowest, double Widest)? Shape { get; }
 
-    /// <summary>
-    /// The window is mostly item slots, which keep icons at native size (see <see cref="ItemCellSize"/>) instead of scaling. Its default and
-    /// minimum sizes then scale by at least the icons' pixel multiple, so below 100% they keep their 100% size on screen.
-    /// </summary>
-    public bool ItemSlots { get; init; }
-
     /// <summary>Whether the height is fixed: the window has no top or bottom edge to drag.</summary>
     public bool FixedHeight => Maximum is { } top && top.Height == Minimum.Height;
+
+    /// <summary>Whether the width is fixed: the window has no side edges or corners to drag, only its bottom edge.</summary>
+    public bool FixedWidth => Maximum is { } top && top.Width == Minimum.Width;
 
     /// <summary>Whether a press on the edges resizes the window now.</summary>
     internal bool CanResize => Locked?.Invoke() != true;
@@ -347,7 +344,7 @@ public sealed class WindowManager
     public const int CornerBand = 16;
 
     /// <summary>The smallest and largest a window's own size goes, and the step a wheel notch moves it, in percent.</summary>
-    public const int SmallestSize = 50, LargestSize = 200, SizeStep = 10;
+    public const int SmallestSize = 50, LargestSize = 200, SizeStep = 5;
 
     /// <summary>How near, in screen pixels, a moved window's edge must come to the screen's edge or another window's to snap to it.</summary>
     public const int SnapDistance = 8;
@@ -459,6 +456,9 @@ public sealed class WindowManager
 
     private int SavedSizePercent(string id) =>
         _positions.Load(_server, _character, SizeKey(id))?.Location.X is int percent && percent >= SmallestSize && percent <= LargestSize ? percent : 100;
+
+    /// <summary>A window's own size in percent, on top of the manager's scale: the open window's, or the one saved for its id.</summary>
+    public int SizePercentOf(string id) => Get(id)?.SizePercent ?? SavedSizePercent(id);
 
     public ManagedWindow? Get(string id) => _windows.FirstOrDefault(window => window.Id == id);
 
@@ -585,13 +585,13 @@ public sealed class WindowManager
         var right = bounds.Right - 1 - point.X;
         var top = point.Y - bounds.Top;
         var bottom = bounds.Bottom - 1 - point.Y;
-        // A window with a fixed height has no top or bottom edge, so its corners are its side bands. A window with no corners has its sides
-        // and bottom as its edges; what lies between them is its content's to drag.
-        if (!resizing.FixedHeight && !resizing.NoCorners && Math.Min(left, right) < CornerBand && Math.Min(top, bottom) < CornerBand)
+        // A window with a fixed height has no top or bottom edge, so its corners are its side bands, and one with a fixed width has only its
+        // bottom. A window with no corners has its sides and bottom as its edges; what lies between them is its content's to drag.
+        if (!resizing.FixedHeight && !resizing.FixedWidth && !resizing.NoCorners && Math.Min(left, right) < CornerBand && Math.Min(top, bottom) < CornerBand)
             return (left < right ? WindowEdges.Left : WindowEdges.Right) | (top < bottom ? WindowEdges.Top : WindowEdges.Bottom);
         var edges = WindowEdges.None;
-        if (left < ResizeBand) edges |= WindowEdges.Left;
-        if (right < ResizeBand) edges |= WindowEdges.Right;
+        if (!resizing.FixedWidth && left < ResizeBand) edges |= WindowEdges.Left;
+        if (!resizing.FixedWidth && right < ResizeBand) edges |= WindowEdges.Right;
         if (!resizing.FixedHeight && bottom < ResizeBand) edges |= WindowEdges.Bottom;
         return edges;
     }
@@ -681,11 +681,10 @@ public sealed class WindowManager
     private static WindowDefinition Scaled(WindowDefinition definition, double scale)
     {
         if (scale == 1) return definition;
-        var sizeScale = definition.Resizing?.ItemSlots == true ? Math.Max(scale, ItemCellSize.Multiple(scale)) : scale;
         return new WindowDefinition(
-            definition.Id, definition.Title, Scaled(definition.Width, sizeScale), Scaled(definition.Height, sizeScale), Scaled(definition.TitleBarHeight, scale), definition.Theme,
+            definition.Id, definition.Title, Scaled(definition.Width, scale), Scaled(definition.Height, scale), Scaled(definition.TitleBarHeight, scale), definition.Theme,
             definition.Resizing is { } resizing
-                ? new WindowResizing(Scaled(resizing.Minimum, sizeScale), resizing.Maximum is { } top ? Scaled(top, sizeScale) : null, resizing.Locked, resizing.NoCorners, resizing.Shape) { ItemSlots = resizing.ItemSlots }
+                ? new WindowResizing(Scaled(resizing.Minimum, scale), resizing.Maximum is { } top ? Scaled(top, scale) : null, resizing.Locked, resizing.NoCorners, resizing.Shape)
                 : null,
             definition.SharesLocationWith, definition.DragsFromContent);
     }

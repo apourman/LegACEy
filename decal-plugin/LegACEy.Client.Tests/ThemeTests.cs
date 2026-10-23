@@ -25,9 +25,10 @@ public sealed class ThemeTests
 
     [Theory]
     [InlineData(0.85)]
+    [InlineData(1)]
     [InlineData(1.25)]
     [InlineData(2)]
-    public void An_item_icon_in_a_framed_slot_draws_its_art_pixel_for_pixel_at_any_ui_size(double scale) => RenderThread.Run(() =>
+    public void An_item_icon_scales_with_its_window_and_draws_pixel_for_pixel_at_whole_sizes(double scale) => RenderThread.Run(() =>
     {
         Control? icon = null;
         using var panel = AvaloniaPanel.Create(() =>
@@ -45,10 +46,26 @@ public sealed class ThemeTests
         panel.ApplyTheme(new DerethClientTheme());
         panel.Tick();
 
-        var multiple = (int)Math.Max(1, Math.Round(scale));
-        var origin = icon!.TranslatePoint(default, panel.Content)!.Value;
+        // The icon is as big as the window's scale makes it; only at a whole size can its art land pixel for pixel.
+        Assert.Equal(Math.Round(32 * scale), Math.Round(icon!.Bounds.Width * scale));
+        if (scale != Math.Round(scale))
+        {
+            // Between whole sizes the art is smoothed, not shrunk by dropping pixels: the checkerboard turns mostly grey.
+            var at = icon.TranslatePoint(default, panel.Content)!.Value;
+            int x0 = (int)Math.Ceiling(at.X * scale) + 2, y0 = (int)Math.Ceiling(at.Y * scale) + 2, side = (int)(32 * scale) - 4;
+            var grey = 0;
+            for (var y = 0; y < side; y++)
+            for (var x = 0; x < side; x++)
+            {
+                var value = panel.Frame.Pixels[(y0 + y) * panel.Frame.Stride + (x0 + x) * 4 + 1];
+                if (value > 40 && value < 215) grey++;
+            }
+            Assert.True(grey > side * side / 2, $"{grey} of {side * side} pixels smoothed.");
+            return;
+        }
+        var multiple = (int)scale;
+        var origin = icon.TranslatePoint(default, panel.Content)!.Value;
         var (left, top) = ((int)Math.Round(origin.X * scale), (int)Math.Round(origin.Y * scale));
-        Assert.Equal(32 * multiple, (int)Math.Round(icon.Bounds.Width * scale));
         var frame = panel.Frame;
         for (var y = 0; y < 32 * multiple; y++)
         for (var x = 0; x < 32 * multiple; x++)

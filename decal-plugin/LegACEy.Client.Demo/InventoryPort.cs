@@ -35,6 +35,11 @@ public interface IInventoryPort
     uint WieldMask(uint itemId, PaperdollSlot slot);
     /// <summary>Wields an item into a paperdoll slot. Nothing is sent when <see cref="WieldMask"/> is zero for it.</summary>
     void Wield(uint itemId, PaperdollSlot slot);
+    /// <summary>
+    /// Where an item covers the body when worn: the AC clothing priority bits, as the appraisal window's Covers line reads them, read
+    /// from the world. Zero when the world does not say. A coat's reach past its wield slots (its skirt over the thighs) shows here.
+    /// </summary>
+    uint CoverageOf(uint itemId);
     /// <summary>Moves a stack onto another stack of the same item, which merges them where the server allows.</summary>
     void MergeStack(uint itemId, uint targetStackId);
 }
@@ -42,22 +47,24 @@ public interface IInventoryPort
 /// <summary>A pack in the pack column. The main pack comes first, then the side packs in slot order. Id zero is an empty side-pack slot.</summary>
 public sealed class InventoryPack : IEquatable<InventoryPack>
 {
-    public InventoryPack(uint id, string name, uint icon, int capacity)
+    public InventoryPack(uint id, string name, uint icon, int capacity) : this(id, name, new ItemVisual(icon, 0, 0, 0), capacity) { }
+
+    public InventoryPack(uint id, string name, ItemVisual visual, int capacity)
     {
         Id = id;
         Name = name ?? string.Empty;
-        Icon = icon;
+        Visual = visual;
         Capacity = capacity;
     }
 
     public uint Id { get; }
     public string Name { get; }
-    /// <summary>The portal icon of the pack's container.</summary>
-    public uint Icon { get; }
+    /// <summary>The pack's icon layers. A focus needs its overlay: Foci of Shadow is Foci of Strife's icon under a purple overlay.</summary>
+    public ItemVisual Visual { get; }
     /// <summary>The number of slots the pack holds.</summary>
     public int Capacity { get; }
 
-    public bool Equals(InventoryPack? other) => other != null && (Id, Name, Icon, Capacity).Equals((other.Id, other.Name, other.Icon, other.Capacity));
+    public bool Equals(InventoryPack? other) => other != null && (Id, Name, Visual, Capacity).Equals((other.Id, other.Name, other.Visual, other.Capacity));
     public override bool Equals(object? obj) => Equals(obj as InventoryPack);
     public override int GetHashCode() => Id.GetHashCode();
 }
@@ -127,8 +134,10 @@ public sealed class InventoryItem : IEquatable<InventoryItem>
 /// <summary>An equipped item and the paperdoll slots it covers.</summary>
 public sealed class WieldedItem : IEquatable<WieldedItem>
 {
-    public WieldedItem(uint id, string name, ItemVisual visual, int stackCount, int stackMax, int wcid, uint validLocations, IReadOnlyList<PaperdollSlot> slots)
+    public WieldedItem(uint id, string name, ItemVisual visual, int stackCount, int stackMax, int wcid, uint validLocations, IReadOnlyList<PaperdollSlot> slots,
+        uint equippedMask = 0)
     {
+        EquippedMask = equippedMask;
         Id = id;
         Name = name ?? string.Empty;
         Visual = visual ?? throw new ArgumentNullException(nameof(visual));
@@ -150,9 +159,12 @@ public sealed class WieldedItem : IEquatable<WieldedItem>
     public uint ValidLocations { get; }
     /// <summary>Every paperdoll slot the item is drawn in: one for most items, several for a multi-slot item.</summary>
     public IReadOnlyList<PaperdollSlot> Slots { get; }
+    /// <summary>Where it is worn (the AC EquipMask bits): finer than <see cref="Slots"/>, which lumps the abdomen and legs into Pants.</summary>
+    public uint EquippedMask { get; }
 
-    public bool Equals(WieldedItem? other) => other != null && (Id, Name, Visual, StackCount, StackMax, Wcid, ValidLocations)
-        .Equals((other.Id, other.Name, other.Visual, other.StackCount, other.StackMax, other.Wcid, other.ValidLocations)) && Slots.SequenceEqual(other.Slots);
+    public bool Equals(WieldedItem? other) => other != null && (Id, Name, Visual, StackCount, StackMax, Wcid, ValidLocations, EquippedMask)
+        .Equals((other.Id, other.Name, other.Visual, other.StackCount, other.StackMax, other.Wcid, other.ValidLocations, other.EquippedMask))
+        && Slots.SequenceEqual(other.Slots);
     public override bool Equals(object? obj) => Equals(obj as WieldedItem);
     public override int GetHashCode() => Id.GetHashCode();
 }
@@ -161,7 +173,7 @@ public sealed class WieldedItem : IEquatable<WieldedItem>
 public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
 {
     public InventorySnapshot(InventoryPack mainPack, IReadOnlyList<InventoryPack> sidePacks, IReadOnlyList<InventoryItem> items,
-        IReadOnlyList<WieldedItem> wielded, int burden, int burdenLimit, int pyreals, uint openContainer, uint selected)
+        IReadOnlyList<WieldedItem> wielded, int burden, int burdenLimit, int pyreals, uint openContainer, uint selected, string characterName = "")
     {
         MainPack = mainPack ?? throw new ArgumentNullException(nameof(mainPack));
         SidePacks = sidePacks ?? throw new ArgumentNullException(nameof(sidePacks));
@@ -172,6 +184,7 @@ public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
         Pyreals = pyreals;
         OpenContainer = openContainer;
         Selected = selected;
+        CharacterName = characterName ?? string.Empty;
     }
 
     /// <summary>A snapshot with no packs and nothing carried: what a window shows before the character is in the world.</summary>
@@ -193,6 +206,8 @@ public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
     public uint OpenContainer { get; }
     /// <summary>The selected item's id, or zero when nothing is selected.</summary>
     public uint Selected { get; }
+    /// <summary>The character's name, which titles the window as retail's does; empty when it is not known.</summary>
+    public string CharacterName { get; }
 
     /// <summary>Whether the id is the main pack, a side pack, or an item or wielded item in this snapshot.</summary>
     public bool Contains(uint id) => id != 0 && (MainPack.Id == id || SidePacks.Any(pack => pack.Id == id)
@@ -222,7 +237,7 @@ public sealed class InventorySnapshot : IEquatable<InventorySnapshot>
 
     public bool Equals(InventorySnapshot? other) => other != null && MainPack.Equals(other.MainPack)
         && SidePacks.SequenceEqual(other.SidePacks) && Items.SequenceEqual(other.Items) && Wielded.SequenceEqual(other.Wielded)
-        && (Burden, BurdenLimit, Pyreals, OpenContainer, Selected).Equals((other.Burden, other.BurdenLimit, other.Pyreals, other.OpenContainer, other.Selected));
+        && (Burden, BurdenLimit, Pyreals, OpenContainer, Selected, CharacterName).Equals((other.Burden, other.BurdenLimit, other.Pyreals, other.OpenContainer, other.Selected, other.CharacterName));
     public override bool Equals(object? obj) => Equals(obj as InventorySnapshot);
     public override int GetHashCode() => OpenContainer.GetHashCode();
 }
@@ -258,6 +273,10 @@ public sealed class FakeInventoryPort : IInventoryPort
         var valid = Snapshot.ValidLocationsOf(itemId) ?? (WorldLocations.TryGetValue(itemId, out var world) ? world : 0u);
         return InventorySnapshot.MaskFor(valid, slot);
     }
+
+    /// <summary>Each item's coverage bits, as the world would read them; unlisted items cover nothing.</summary>
+    public Dictionary<uint, uint> Coverage { get; } = new();
+    public uint CoverageOf(uint itemId) => Coverage.TryGetValue(itemId, out var coverage) ? coverage : 0;
 
     // The same rule as the port: nothing is sent when the item cannot go in the slot.
     public void Wield(uint itemId, PaperdollSlot slot)

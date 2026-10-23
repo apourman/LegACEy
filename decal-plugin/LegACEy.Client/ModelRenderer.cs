@@ -14,25 +14,20 @@ namespace LegACEy.Client.DecalPlugin;
 /// </summary>
 internal sealed unsafe class ModelRenderer : IDisposable
 {
-    private const float FieldOfView = MathF.PI / 6;
-
     private readonly IntPtr _device;
     private readonly List<Mesh> _meshes = new();
     private CharacterModel? _model;
+    private HashSet<int> _outlined = new();
+    private float _shellThickness;
 
     public ModelRenderer(IntPtr device) => _device = device;
 
-    public void Draw(CharacterModel model, Rectangle area, Quaternion orientation, float zoom, float focus)
+    /// <param name="outlined">Model parts outlined in <paramref name="colour"/> (RGB): what a drop adds or a lift takes off.</param>
+    public void Draw(CharacterModel model, Rectangle area, Quaternion orientation, float zoom, float focus, IReadOnlyCollection<int> outlined, uint colour)
     {
         area.Intersect(Viewport(_device));
         if (area.Width <= 0 || area.Height <= 0) return;
-        // The camera stands back far enough for the model's height. A model wider than it is tall (a shield, a sword lying down) is
-        // fitted by its width at any turn instead, so it shows whole; a character keeps its tight height framing. An empty model or
-        // no zoom gives no distance: CreateLookAt would make NaNs.
-        var height = model.Top - model.Bottom;
-        var span = 2 * model.Radius > height ? Math.Max(height, 2 * model.Radius * area.Height / (float)area.Width) : height;
-        var fit = span * LegACEy.Client.Demo.ModelView.Framing / 2 / MathF.Tan(FieldOfView / 2);
-        if (!(fit > 0) || !(zoom > 0)) return;
+        if (LegACEy.Client.Demo.ModelView.Camera(model, area.Width, area.Height, orientation, zoom, focus) is not { } camera) return;
         if (!ReferenceEquals(model, _model)) Load(model);
 
         var saved = SaveState(_device);
@@ -42,14 +37,9 @@ internal sealed unsafe class ModelRenderer : IDisposable
             // the game's depth buffer is finished with by now; clear only our rectangle of it
             ClearDepth(_device, area, 1f);
 
-            var middle = model.Bottom + (model.Top - model.Bottom) * focus;
-            var distance = fit / zoom;
-            // System.Numerics builds the same right-handed matrices as D3DX's RotationZ, LookAtRH and PerspectiveFovRH.
-            // Turned around its centre at the height the view centres on, so the model spins in place where the player is looking.
-            SetTransform(_device, TransformWorld, Matrix4x4.CreateTranslation(-model.CentreX, -model.CentreY, -middle)
-                * Matrix4x4.CreateFromQuaternion(orientation) * Matrix4x4.CreateTranslation(0, 0, middle));
-            SetTransform(_device, TransformView, Matrix4x4.CreateLookAt(new Vector3(0, -distance, middle), new Vector3(0, 0, middle), Vector3.UnitZ));
-            SetTransform(_device, TransformProjection, Matrix4x4.CreatePerspectiveFieldOfView(FieldOfView, area.Width / (float)area.Height, 0.1f, distance + 5));
+            SetTransform(_device, TransformWorld, camera.World);
+            SetTransform(_device, TransformView, camera.View);
+            SetTransform(_device, TransformProjection, camera.Projection);
 
             UseFixedFunction(_device, FvfXyz | FvfNormal | FvfTex1);
             SetRenderState(_device, RenderState.ZEnable, 1);
@@ -99,17 +89,72 @@ internal sealed unsafe class ModelRenderer : IDisposable
             SetSamplerState(_device, 0, SamplerState.AddressV, AddressWrap);
 
             foreach (var mesh in _meshes)
+                DrawMesh(mesh, mesh.Vertices);
+
+            if (outlined.Count == 0) return;
+            if (!_outlined.SetEquals(outlined))
             {
-                SetRenderState(_device, RenderState.AlphaTestEnable, mesh.Clipped ? 1 : 0);
-                SetTexture(_device, 0, mesh.Texture);
-                fixed (ModelVertex* vertices = mesh.Vertices)
-                    DrawPrimitiveUP(_device, TriangleList, mesh.Vertices.Length / 3, vertices, sizeof(ModelVertex));
+                _outlined = new HashSet<int>(outlined);
+                foreach (var mesh in _meshes) mesh.Outlined = mesh.Shell = null;
             }
+            // A rim about 1.5 pixels wide: the outlined parts pushed out along their normals by that much at the model's distance, drawn
+            // flat in the colour where nothing nearer is (a hand in front of a coat keeps its place), then the parts themselves again over
+            // the push, at the depth they already hold, so only the rim outside them is left.
+            var thickness = 1.5f * (model.Top - model.Bottom) * LegACEy.Client.Demo.ModelView.Framing / zoom / area.Height;
+            if (thickness != _shellThickness)
+            {
+                _shellThickness = thickness;
+                foreach (var mesh in _meshes) mesh.Shell = null;
+            }
+            SetRenderState(_device, RenderState.ZWriteEnable, 0);
+            SetRenderState(_device, RenderState.TextureFactor, unchecked((int)(0xFF000000 | colour)));
+            SetStageState(_device, 0, StageState.ColorOp, OpSelectArg1);
+            SetStageState(_device, 0, StageState.ColorArg1, ArgFactor);
+            foreach (var mesh in _meshes)
+                DrawMesh(mesh, mesh.Shell ??= Pushed(mesh.Outlined ??= OutlinedOf(mesh), thickness));
+            SetStageState(_device, 0, StageState.ColorOp, OpModulate);
+            SetStageState(_device, 0, StageState.ColorArg1, ArgTexture);
+            foreach (var mesh in _meshes)
+                DrawMesh(mesh, mesh.Outlined!);
         }
         finally
         {
             RestoreState(saved);
         }
+    }
+
+    private void DrawMesh(Mesh mesh, ModelVertex[] vertices)
+    {
+        if (vertices.Length == 0) return;
+        SetRenderState(_device, RenderState.AlphaTestEnable, mesh.Clipped ? 1 : 0);
+        SetTexture(_device, 0, mesh.Texture);
+        fixed (ModelVertex* first = vertices)
+            DrawPrimitiveUP(_device, TriangleList, vertices.Length / 3, first, sizeof(ModelVertex));
+    }
+
+    /// <summary>The mesh's triangles that belong to an outlined part.</summary>
+    private ModelVertex[] OutlinedOf(Mesh mesh)
+    {
+        var outlined = new List<ModelVertex>();
+        for (var i = 0; i + 2 < mesh.Vertices.Length; i += 3)
+            if (_outlined.Contains(mesh.Parts[i]))
+                outlined.AddRange(new[] { mesh.Vertices[i], mesh.Vertices[i + 1], mesh.Vertices[i + 2] });
+        return outlined.ToArray();
+    }
+
+    /// <summary>The vertices moved out along their normals by the distance.</summary>
+    private static ModelVertex[] Pushed(ModelVertex[] vertices, float distance)
+    {
+        var pushed = (ModelVertex[])vertices.Clone();
+        for (var i = 0; i < pushed.Length; i++)
+        {
+            var normal = Vector3.Normalize(new Vector3(pushed[i].NX, pushed[i].NY, pushed[i].NZ));
+            if (float.IsNaN(normal.X)) continue;
+            pushed[i].X += normal.X * distance;
+            pushed[i].Y += normal.Y * distance;
+            pushed[i].Z += normal.Z * distance;
+        }
+        return pushed;
     }
 
     public void Dispose()
@@ -126,7 +171,7 @@ internal sealed unsafe class ModelRenderer : IDisposable
         {
             if (mesh.Vertices.Count == 0) continue;
             // ModelVertex is already a D3DFVF_XYZ | NORMAL | TEX1 vertex: position, normal, then u and v.
-            _meshes.Add(new Mesh(Upload(mesh.Texture), mesh.Clipped, mesh.Vertices.ToArray()));
+            _meshes.Add(new Mesh(Upload(mesh.Texture), mesh.Clipped, mesh.Vertices.ToArray(), mesh.Parts.ToArray()));
         }
         _model = model;
     }
@@ -150,5 +195,11 @@ internal sealed unsafe class ModelRenderer : IDisposable
         _meshes.Clear();
     }
 
-    private readonly record struct Mesh(IntPtr Texture, bool Clipped, ModelVertex[] Vertices);
+    private sealed record Mesh(IntPtr Texture, bool Clipped, ModelVertex[] Vertices, int[] Parts)
+    {
+        /// <summary>The triangles of the outlined parts, worked out once per set of outlined parts.</summary>
+        public ModelVertex[]? Outlined { get; set; }
+        /// <summary>Those triangles pushed out into the rim's shell, worked out again when its thickness changes.</summary>
+        public ModelVertex[]? Shell { get; set; }
+    }
 }

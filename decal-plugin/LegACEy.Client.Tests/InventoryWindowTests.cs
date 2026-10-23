@@ -46,12 +46,11 @@ public sealed class InventoryWindowTests
         Assert.True(Slot(host, PaperdollSlot.LowerArms).Selected);
         Assert.False(Slot(host, PaperdollSlot.Head).Selected);
 
-        // Over the limit the reading and the meter's fill both turn to the invalid colour.
+        // Over the limit the reading keeps its plain colour, as retail's does; only the meter's bands colour the load.
         port.Push(InventorySample.Snapshot(burden: 6000));
         InventoryDriver.Tick(host.Host);
         var reading = Assert.Single(host.Host.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "111%");
-        Assert.Same(DerethPalette.InvalidBrush, reading.Foreground);
-        Assert.Single(host.Host.Content.GetVisualDescendants().OfType<Border>(), border => ReferenceEquals(border.Background, DerethPalette.InvalidBrush));
+        Assert.Same(DerethPalette.TextBrush, reading.Foreground);
     });
 
     [Fact]
@@ -131,6 +130,36 @@ public sealed class InventoryWindowTests
         Assert.Contains("Contents of Main Pack", host.Texts());
         // The main pack is the character: clicking it selects them, as retail's does, so an item in use can target them.
         Assert.Equal(new[] { $"select 0x{InventorySample.Character:X8}" }, port.Commands);
+    });
+
+    [Fact]
+    public void Clicking_a_focus_selects_it_and_outlines_it_without_opening_it() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot(focus: true));
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+
+        InventoryDriver.Press(host.Host, InventoryDriver.PackSlot(host.Host, InventorySample.Focus));
+        Assert.Equal(new[] { $"select 0x{InventorySample.Focus:X8}" }, port.Commands);
+        Assert.Contains("Contents of Main Pack", host.Texts());
+
+        port.Push(InventorySample.Snapshot(focus: true, selected: InventorySample.Focus));
+        InventoryDriver.Tick(host.Host);
+        Assert.True(InventoryDriver.PackSlot(host.Host, InventorySample.Focus).Selected);
+    });
+
+    [Fact]
+    public void Only_a_container_holding_something_has_a_fill_line() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot(focus: true));
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: true);
+        InventoryDriver.Tick(host.Host);
+
+        bool HasLine(uint pack) => ((Panel)InventoryDriver.PackSlot(host.Host, pack).Parent!).Children[1] is Border;
+        Assert.True(HasLine(InventorySample.Potions));
+        Assert.False(HasLine(InventorySample.Sack));
+        Assert.False(HasLine(InventorySample.Focus));
     });
 
     [Fact]
@@ -399,6 +428,62 @@ public sealed class InventoryWindowTests
     });
 
     [Fact]
+    public void Dragging_an_item_over_the_doll_lights_the_doll() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: false);
+        var doll = host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DollArea");
+        var indicator = host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DropIndicator");
+
+        InventoryDriver.DragTo(host.Host, host.Cells[9], doll);
+
+        Assert.True(indicator.IsVisible);
+        Assert.Equal(Avalonia.VisualExtensions.TranslatePoint(doll, default, host.Host.Content), Avalonia.VisualExtensions.TranslatePoint(indicator, default, host.Host.Content));
+        Assert.Equal(doll.Bounds.Size, indicator.Bounds.Size);
+        InventoryDriver.Release(host.Host, doll);
+    });
+
+    [Fact]
+    public void Dragging_an_item_over_the_3D_doll_outlines_the_body_parts_it_would_cover_instead() => RenderThread.Run(() =>
+    {
+        var port = new FakeInventoryPort();
+        port.Push(InventorySample.Snapshot());
+        using var host = new InventoryHost(port, InventoryLayout.Vertical, showSlots: false);
+        host.Window.SetDoll(new PaperdollView(new SilentLooks(), string.Empty) { Still = true });
+        InventoryDriver.Tick(host.Host);
+        var doll = host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DollArea");
+        var model = host.Host.Content.GetVisualDescendants().OfType<ModelView>().Single();
+
+        InventoryDriver.DragTo(host.Host, host.Cells[9], doll);
+
+        // The cap goes on the head (part 16), in gold; no frame round the doll.
+        Assert.Equal(new[] { 16 }, model.Outlined);
+        // What the world says it covers counts over where it is wielded: a hood that reaches the chest outlines the chest too.
+        InventoryDriver.Release(host.Host, host.Cells[9]);
+        port.Coverage[InventorySample.Cap] = 0x4000 | 0x0400;
+        InventoryDriver.DragTo(host.Host, host.Cells[9], doll);
+        Assert.Equal(new[] { 9, 16 }, model.Outlined);
+        Assert.Equal(DerethPalette.Gold.ToUInt32(), model.OutlineColour);
+        Assert.False(host.Host.Content.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "DropIndicator").IsVisible);
+        InventoryDriver.Release(host.Host, doll);
+        Assert.Empty(model.Outlined);
+    });
+
+    /// <summary>A look source that never has a look: the doll stays without a model, which is all an outline needs.</summary>
+    private sealed class SilentLooks : ILookSource
+    {
+        public bool Knows(uint objectId) => true;
+        public void Request(uint objectId, Action<LegACEy.Client.GameArt.CharacterAppearance?, string> reply) { }
+        public IDisposable WhenChanged(uint objectId, Action changed) => new Nothing();
+
+        private sealed class Nothing : IDisposable
+        {
+            public void Dispose() { }
+        }
+    }
+
+    [Fact]
     public void A_drag_from_our_inventory_shows_its_icon_without_retail_s_drop_indicator() => RenderThread.Run(() =>
     {
         var port = new FakeInventoryPort();
@@ -607,10 +692,14 @@ public sealed class InventoryWindowTests
     {
         private readonly InventoryWindow _window;
 
-        public InventoryHost(FakeInventoryPort port, InventoryLayout layout, bool showSlots, int width = 360, int height = 530)
+        /// <param name="width">The panel's width; by default the vertical window's fixed width, or 360 for the horizontal one.</param>
+        /// <param name="height">The panel's height; by default the vertical window's default height, or 530 for the horizontal one.</param>
+        public InventoryHost(FakeInventoryPort port, InventoryLayout layout, bool showSlots, int? width = null, int? height = null)
         {
             InventoryWindow? window = null;
-            Host = AvaloniaPanel.Create(() => window = new InventoryWindow(port, new InventorySample.NoArt(), new InventorySettings(layout, showSlots), Drag), width, height);
+            var vertical = layout == InventoryLayout.Vertical;
+            Host = AvaloniaPanel.Create(() => window = new InventoryWindow(port, new InventorySample.NoArt(), new InventorySettings(layout, showSlots), Drag),
+                width ?? (vertical ? 305 : 360), height ?? (vertical ? 818 : 530));
             Host.ApplyTheme(new DerethClientTheme());
             _window = window!;
             InventoryDriver.Tick(Host);

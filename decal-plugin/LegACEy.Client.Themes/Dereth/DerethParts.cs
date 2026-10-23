@@ -378,25 +378,39 @@ public sealed class DerethWindow : UserControl
     /// </summary>
     public const int TitleBarHeight = 48;
 
+    /// <summary>The title's own row under the header, in a window that centres its title.</summary>
+    public const int TitleRowHeight = 36;
+
+    /// <summary>The title-bar height of a window that centres its title: the header, the 5 px rule under it and the title row.</summary>
+    public const int CentredTitleBarHeight = TitleBarHeight + 5 + TitleRowHeight;
+
+    /// <summary>The gap between header buttons in a window that centres its title: its actions use it too, so every button is evenly spaced.</summary>
+    public const int ActionGap = 4;
+
     /// <param name="headerActions">Controls for the header, left of the close box. Null when the header has none.</param>
     /// <param name="stretchActions">The header actions take the header's free width, and the title only its own.</param>
-    public DerethWindow(string title, Control? icon, Control content, Control? headerActions = null, bool stretchActions = false)
+    /// <param name="centreTitle">
+    /// The title takes a row of its own under the header, centred across the window as retail centres its panel titles, so a long title
+    /// has the full width; the header keeps the icon, the actions and the close box.
+    /// </param>
+    public DerethWindow(string title, Control? icon, Control content, Control? headerActions = null, bool stretchActions = false,
+        bool centreTitle = false)
     {
         if (content == null) throw new ArgumentNullException(nameof(content));
         var columns = headerActions == null ? "Auto,*,Auto" : stretchActions ? "Auto,Auto,*,Auto" : "Auto,*,Auto,Auto";
-        var header = new Grid { ColumnDefinitions = new ColumnDefinitions(columns), ColumnSpacing = 8, Height = 40 };
-        // The header's emblem is shrunk to fit; item icons elsewhere stay at their native size. It is always there, and takes no
-        // space while it has no icon, so a window that changes its icon keeps the same header.
-        _emblem = new DerethFrame(DerethFrameArt.Button) { Width = 32, Height = 32 };
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions(columns), ColumnSpacing = centreTitle ? ActionGap : 8, Height = 40 };
+        // The emblem's frame fits round its icon at the icon size: a layout never squeezes an icon. It is always there, and
+        // takes no space while it has no icon, so a window that changes its icon keeps the same header.
+        _emblem = new DerethFrame(DerethFrameArt.Button) { VerticalAlignment = VerticalAlignment.Center };
         header.Children.Add(_emblem);
         SetIcon(icon);
-        _name = new TextBlock
+        _name = new DerethTitleText
         {
-            Text = title, Foreground = DerethPalette.CreamBrush, FontSize = 16, FontFamily = DerethPalette.Title,
-            VerticalAlignment = VerticalAlignment.Center
+            Text = title, Foreground = DerethPalette.CreamBrush, FontFamily = DerethPalette.Title, VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis, TextAlignment = centreTitle ? TextAlignment.Center : TextAlignment.Left
         };
         Grid.SetColumn(_name, 1);
-        header.Children.Add(_name);
+        if (!centreTitle) header.Children.Add(_name);
         var glyph = new DerethSprite(DerethSpriteArt.Close) { Width = 12, Height = 12 };
         var close = new DerethButton { Width = 24, Height = 24, VerticalAlignment = VerticalAlignment.Center, Content = glyph };
         glyph.Follow(close);
@@ -409,13 +423,24 @@ public sealed class DerethWindow : UserControl
         Grid.SetColumn(close, headerActions == null ? 2 : 3);
         header.Children.Add(close);
 
-        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(6, 0, 6, 6) };
+        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,*"), Margin = new Thickness(6, 0, 6, 6) };
         body.Children.Add(header);
+        if (centreTitle)
+        {
+            // A rule under the header sets it apart as the window's control strip, and the title is a row of its own.
+            var strip = new DerethRule { Margin = new Thickness(-6, 0, -6, 0) };
+            Grid.SetRow(strip, 1);
+            body.Children.Add(strip);
+            // Centred by its capitals: Palatino's tall ascent would leave them low in the row.
+            var titleRow = new Border { Height = TitleRowHeight, Child = DerethPalette.CentreInk(_name) };
+            Grid.SetRow(titleRow, 2);
+            body.Children.Add(titleRow);
+        }
         // The rule runs nearly frame to frame, as in the concept.
         var rule = new DerethRule { Margin = new Thickness(-6, 0, -6, 0) };
-        Grid.SetRow(rule, 1);
+        Grid.SetRow(rule, 3);
         body.Children.Add(rule);
-        Grid.SetRow(content, 2);
+        Grid.SetRow(content, 4);
         body.Children.Add(content);
         Content = new DerethFrame(DerethFrameArt.Window) { Child = body };
     }
@@ -433,7 +458,7 @@ public sealed class DerethWindow : UserControl
     /// <summary>Replaces the header's icon. Null shows no icon, and the title moves to the edge.</summary>
     public void SetIcon(Control? icon)
     {
-        _emblem.Child = icon == null ? null : new Viewbox { Child = icon };
+        _emblem.Child = icon;
         _emblem.IsVisible = icon != null;
     }
 
@@ -441,14 +466,37 @@ public sealed class DerethWindow : UserControl
 }
 
 /// <summary>
-/// A scrolling grid of fixed slots on the <see cref="ItemCellSize"/> pitch, as many columns as the width holds, centred, scrolling
-/// vertically. It takes cells and knows nothing about what they show. It wraps a plain ScrollViewer, because a subclass
+/// A window title: 16 DIPs, stepping down to 12 until it fits its width, as a long character name needs; past that it ends in an ellipsis.
+/// </summary>
+internal sealed class DerethTitleText : TextBlock
+{
+    private const double Largest = 16, Smallest = 12;
+
+    protected override Type StyleKeyOverride => typeof(TextBlock);
+
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        // The size is picked from measured text, not by setting FontSize and measuring: a change here invalidates the measure, so it is set once.
+        var typeface = new Typeface(FontFamily, FontStyle, FontWeight);
+        var size = Largest;
+        while (size > Smallest && new FormattedText(Text ?? string.Empty, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, size, null)
+                   .WidthIncludingTrailingWhitespace > availableSize.Width)
+            size -= 0.5;
+        FontSize = size;
+        return base.MeasureOverride(availableSize);
+    }
+}
+
+/// <summary>
+/// A scrolling grid of fixed slots on the <see cref="ItemCellSize"/> pitch, as many columns as the width holds (or a fixed
+/// <see cref="Columns"/>), centred, scrolling vertically. It takes cells and knows nothing about what they show. It wraps a plain ScrollViewer, because a subclass
 /// gets no template from the base theme.
 /// </summary>
 public sealed class DerethSlotGrid : UserControl
 {
     private readonly WrapPanel _cells = new()
     {
+        ItemWidth = ItemCellSize.Standard.Pitch, ItemHeight = ItemCellSize.Standard.Pitch,
         // The margin keeps the top and bottom rows' drop frames off the scroll area's clipped edge.
         HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 1)
     };
@@ -464,12 +512,23 @@ public sealed class DerethSlotGrid : UserControl
         Content = scroll;
     }
 
-    // The pitch follows the window's scale, which can change without a rebuild.
     protected override Size MeasureOverride(Size availableSize)
     {
-        _cells.ItemWidth = _cells.ItemHeight = ItemCellSize.Of(this).Pitch;
+        _cells.Width = Columns > 0 ? Columns * _cells.ItemWidth : double.NaN;
         return base.MeasureOverride(availableSize);
     }
+
+    /// <summary>A fixed number of columns, as retail's main pack keeps six whatever the width; zero for as many as the width holds.</summary>
+    public int Columns
+    {
+        get => _columns;
+        set
+        {
+            _columns = value;
+            InvalidateMeasure();
+        }
+    }
+    private int _columns;
 
     /// <summary>The distance between the left edges of neighbouring columns: the pitch. Width that holds no whole column is split between the sides.</summary>
     public double ColumnPitch => _cells.ItemWidth;
@@ -514,24 +573,31 @@ public sealed class DerethSlot : Grid
     private static readonly BoxShadows SelectedGlow = new(new BoxShadow { IsInset = true, Blur = 6, Color = DerethPalette.Teal.WithAlpha(0xB0) });
     private static readonly BoxShadows CarriedGlow = new(new BoxShadow { IsInset = true, Blur = 10, Spread = 1, Color = DerethPalette.TealText });
 
+    private readonly double _side;
     private readonly Border _wash;
     private readonly Border _outline;
     private bool _carried;
 
-    /// <summary>A slot holding the content: a framed well round a native-size icon (see <see cref="ItemCellSize"/>), centred in its pitch, with a selected state.</summary>
-    public DerethSlot(Control? content)
+    /// <summary>
+    /// A slot holding the content: a framed well round an icon (see <see cref="ItemCellSize"/>), with a selected state. It sits at the
+    /// start of its pitch: centred, the pitch's odd pixel would round it left and right in turn, and the gaps between slots would alternate.
+    /// A <paramref name="flush"/> slot is only the icon's size, as retail's shortcut slots are, so slots touch: its well's rim shows round
+    /// an empty slot and the icon covers it.
+    /// </summary>
+    public DerethSlot(Control? content, bool flush = false)
     {
-        HorizontalAlignment = HorizontalAlignment.Center;
+        _side = flush ? ItemCellSize.Standard.Icon : ItemCellSize.Standard.Cell;
+        HorizontalAlignment = HorizontalAlignment.Left;
+        VerticalAlignment = VerticalAlignment.Top;
         Background = Brushes.Transparent;
         _wash = new Border { Margin = new Thickness(2), CornerRadius = new CornerRadius(3), Background = WashBrush, IsVisible = false, IsHitTestVisible = false };
         var inner = new Grid();
         inner.Children.Add(_wash);
         if (content != null) inner.Children.Add(content);
-        Children.Add(new Border
-        {
-            Name = "Well", Background = WellBrush, BorderBrush = RimBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3),
-            Child = inner
-        });
+        var well = new Border { Name = "Well", Background = WellBrush, BorderBrush = RimBrush, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3) };
+        Children.Add(well);
+        if (flush) Children.Add(inner);
+        else well.Child = inner;
         _outline = new Border
         {
             BorderBrush = DerethPalette.TealBrush, BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(3),
@@ -567,8 +633,7 @@ public sealed class DerethSlot : Grid
 
     protected override Size MeasureOverride(Size availableSize)
     {
-        var side = ItemCellSize.Of(this).Cell;
-        base.MeasureOverride(new Size(side, side));
-        return new Size(side, side);
+        base.MeasureOverride(new Size(_side, _side));
+        return new Size(_side, _side);
     }
 }

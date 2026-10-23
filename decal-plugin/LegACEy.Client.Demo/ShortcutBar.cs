@@ -17,105 +17,63 @@ public sealed record ShortcutItem(ItemVisual Visual, int StackCount);
 public sealed record ShortcutSlotView(int Index, ShortcutItem? Item);
 
 /// <summary>
-/// One shortcut row inside the toolbar: a row tag and nine item slots, which keep icons at native size (see <see cref="ItemCellSize"/>). A slot
+/// One shortcut row inside the toolbar: nine item slots at the icon size, touching, as retail's are. A slot
 /// shows its item's icon and stack count, with its key number in the corner, or only its key number when empty. A click uses the slot. A
-/// press on the tag or between slots is left to the toolbar, which moves; a press on a slot never does. A drag from a slot moves the
+/// press on a slot never moves the toolbar. A drag from a slot moves the
 /// shortcut to the slot it is released on, or takes it off the bars when no LegACEy window takes it. A drop of an item from outside binds
 /// it to the slot it is released on.
 /// </summary>
 public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
 {
     public const int SlotCount = 9;
-    private const double Gap = 3;
     private const double DragThreshold = 4;
     // The slot index a drag over the bar would land on, lit while it is there.
     private int? _dropAt;
     private bool _refreshPending;
 
-    private static readonly IBrush TagFace = DerethPalette.Brush(Color.Parse("#0A0906"));
-    private static readonly IBrush TagEdge = DerethPalette.Brush(Color.Parse("#4A3F2A"));
     private static readonly IBrush EmptyKey = DerethPalette.Brush(Color.Parse("#3E3626"));
 
     private readonly IRetailToolbarPort _port;
     private readonly Func<uint, ShortcutItem?> _itemOf;
     private readonly IGameArtSource? _art;
     private readonly int _firstIndex;
-    private readonly Func<System.Drawing.Point> _pointer;
-    private readonly Action? _tagClick;
     private readonly IItemDragHost _drag;
     private readonly ShortcutDragSource _dragSource;
-    private System.Drawing.Point? _tagPressAt;
     // The slot a press on a slot began at, and where, in the bar's coordinates. A drag starts once the pointer moves past the threshold.
     private int? _pressed;
     private Point _pressAt;
     // The drag of a shortcut from a slot: its icon while it is held.
     private IDisposable? _dragIcon;
-    // The tag first, then one slot per shortcut.
-    private readonly DerethItemRow _row = new() { Spacing = Gap };
+    // One slot per shortcut.
+    private readonly StackPanel _row = new() { Orientation = Orientation.Horizontal };
     private readonly ShortcutSlotView?[] _shown = new ShortcutSlotView?[SlotCount];
     // The icon each slot's art was drawn into; a slot's icon is disposed when the slot is rebuilt or the bar closes.
     private readonly WriteableBitmap?[] _icons = new WriteableBitmap?[SlotCount];
 
-    /// <param name="row">The row's number, shown on its tag.</param>
     /// <param name="firstIndex">The slot index of the row's first slot: 0 for row 1, 9 for row 2.</param>
     /// <param name="port">Retail's shortcut list and its use.</param>
     /// <param name="itemOf">The icon and stack count of an object the player holds; null when it is not held.</param>
     /// <param name="art">Game art for the icons; null draws a placeholder.</param>
-    /// <param name="pointer">The pointer's place now, in screen pixels: a tag press and release at one place is a click.</param>
-    /// <param name="tagClick">Run on a click on the row tag; null for a tag that does nothing but drag.</param>
     /// <param name="drag">The client's drag services: a shortcut dragged from a slot is handed to the LegACEy window under the pointer.</param>
     /// <param name="dragSource">The slot a shortcut drag started from, shared with the other bars.</param>
-    public ShortcutBar(int row, int firstIndex, IRetailToolbarPort port, Func<uint, ShortcutItem?> itemOf, IGameArtSource? art,
-        Func<System.Drawing.Point> pointer, Action? tagClick, IItemDragHost drag, ShortcutDragSource dragSource)
+    public ShortcutBar(int firstIndex, IRetailToolbarPort port, Func<uint, ShortcutItem?> itemOf, IGameArtSource? art, IItemDragHost drag,
+        ShortcutDragSource dragSource)
     {
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _itemOf = itemOf ?? throw new ArgumentNullException(nameof(itemOf));
         _art = art;
         _firstIndex = firstIndex;
-        _pointer = pointer ?? throw new ArgumentNullException(nameof(pointer));
-        _tagClick = tagClick;
         _drag = drag ?? throw new ArgumentNullException(nameof(drag));
         _dragSource = dragSource ?? throw new ArgumentNullException(nameof(dragSource));
 
-        _row.Children.Add(new Border
-        {
-            Width = 16, Height = 30, CornerRadius = new CornerRadius(3), Background = TagFace, BorderBrush = TagEdge, BorderThickness = new Thickness(1),
-            VerticalAlignment = VerticalAlignment.Center,
-            Child = new TextBlock
-            {
-                Text = row.ToString(), FontFamily = DerethPalette.Title, FontSize = 10, Foreground = DerethPalette.GoldBrush,
-                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
-            }
-        });
-        for (var i = 0; i < SlotCount; i++) _row.Children.Add(new DerethSlot(null));
-
-        // A tag press that ends where the pointer started is a click; a move in between was a drag of the bar.
-        RowTag.PointerPressed += (_, e) =>
-        {
-            if (e.GetCurrentPoint(RowTag).Properties.IsLeftButtonPressed) _tagPressAt = _pointer();
-        };
-        RowTag.PointerReleased += (_, e) =>
-        {
-            var pressedAt = _tagPressAt;
-            _tagPressAt = null;
-            if (pressedAt is { } at && at == _pointer()) _tagClick?.Invoke();
-        };
-        // A press that ends off the tag is not a click on it, so a stale press cannot toggle later.
-        RowTag.PointerExited += (_, _) => _tagPressAt = null;
-        RowTag.PointerCaptureLost += (_, _) => _tagPressAt = null;
+        for (var i = 0; i < SlotCount; i++) _row.Children.Add(new DerethSlot(null, flush: true));
         Child = _row;
         Refresh();
         port.Changed += Refresh;
     }
 
-    /// <summary>The bar's row tag: a press on it drags the toolbar, and a click on it runs the tag's click.</summary>
-    public Control RowTag => (Control)_row.Children[0];
-
-    /// <summary>The hover name of the row tag: what a click on it does.</summary>
-    public void SetTagTip(string tip) => ToolTip.SetTip(RowTag, tip);
-
     /// <summary>The slot at a position in the row, zero-based: where the player clicks it.</summary>
-    public Control SlotAt(int position) => (Control)_row.Children[position + 1];
+    public Control SlotAt(int position) => (Control)_row.Children[position];
 
     /// <summary>Whether a shortcut dragged off a bar is in hand: only a bar takes it, so the toolbar's backpack must not.</summary>
     public bool ShortcutInHand => _dragSource.Slot != null;
@@ -138,7 +96,7 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
             if (view == _shown[position]) continue;
             _shown[position] = view;
             var previous = _icons[position];
-            _row.Children[position + 1] = Slot(view, position);
+            _row.Children[position] = Slot(view, position);
             // The new slot is in place before the old icon goes, so nothing draws a disposed bitmap.
             previous?.Dispose();
         }
@@ -212,7 +170,7 @@ public sealed class ShortcutBar : Decorator, IDisposable, IRetailItemDropTarget
     private DerethSlot Slot(ShortcutSlotView view, int position)
     {
         _icons[position] = null;
-        var slot = new DerethSlot(Contents(view, position));
+        var slot = new DerethSlot(Contents(view, position), flush: true);
         slot.PointerPressed += (_, e) =>
         {
             e.Handled = true;

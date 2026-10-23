@@ -30,8 +30,9 @@ namespace LegACEy.Plugin.Inventory;
 /// </summary>
 public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZone, IRetailItemDropTarget
 {
-    internal const uint BackpackIcon = InventorySnapshotBuilder.MainPackIcon;
     internal const string Title = "Inventory";
+    /// <summary>The vertical layout's grid is retail's main pack: six columns, whatever the width.</summary>
+    internal const int RetailColumns = 6;
     // The pyreal stack's icon in the portal.
     private const uint PyrealIcon = 0x06001080;
     private const double EmptyOpacity = 0.8;
@@ -48,11 +49,9 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private static readonly IBrush MutedBrush = DerethPalette.MutedBrush;
     private static readonly IBrush InvalidBrush = DerethPalette.InvalidBrush;
     private static readonly IBrush TealTextBrush = DerethPalette.Brush(DerethPalette.TealText);
-    private static readonly IBrush GoldFillBrush = new LinearGradientBrush
-    {
-        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative),
-        GradientStops = { new GradientStop(Color.Parse("#E2C27E"), 0), new GradientStop(Color.Parse("#9C7A3C"), 1) },
-    };
+    // Retail's burden bands: green to the limit, yellow to twice it, red to three times it.
+    private static readonly IBrush[] BurdenBandBrushes =
+        [DerethPalette.Brush(Color.Parse("#3FA83A")), DerethPalette.Brush(Color.Parse("#D8C23A")), DerethPalette.InvalidBrush];
 
     private readonly IInventoryPort _port;
     private readonly IGameArtSource _art;
@@ -126,7 +125,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             : new WrapPanel { Orientation = Orientation.Horizontal };
 
         var body = _layout == InventoryLayout.Vertical ? VerticalBody() : HorizontalBody();
-        _frame = new DerethWindow(Title, Icon(new ItemVisual(BackpackIcon, 0, 0, 0)), body, LayoutToggles());
+        _frame = new DerethWindow(Title, null, body, LayoutToggles(), centreTitle: true);
         _frame.CloseRequested += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
         Content = new Grid { Children = { _frame, _dropIndicator } };
         // The window takes the pointer on its own handlers, so a drag that leaves a slot, or the window, still ends here.
@@ -233,22 +232,21 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     }
 
     /// <summary>
-    /// A press on a slot. A right press assesses what the slot shows, as retail does. A left press sends nothing yet: a release
-    /// decides between a click and a drop.
+    /// A press on a slot, or on a worn item on the doll. A right press assesses what the slot shows, as retail does. A left press sends
+    /// nothing yet: a release decides between a click and a drop.
     /// </summary>
     private void OnPressed(object? sender, PointerPressedEventArgs e)
     {
         var button = e.GetCurrentPoint(this).Properties;
-        if (SlotAt(e.GetPosition(this)) is not { } slot) return;
+        if (PressAt(e.GetPosition(this)) is not { } id) return;
         if (button.IsRightButtonPressed && _press == null)
         {
-            var id = (InventorySlotId)slot.Tag!;
             var item = id.Place == SlotPlace.Pack ? id.Container : id.ItemId;
             if (item != 0) _port.Assess(item);
             return;
         }
         if (!button.IsLeftButtonPressed) return;
-        _press = (InventorySlotId)slot.Tag!;
+        _press = id;
         _pressModifiers = e.KeyModifiers;
         _pressPoint = e.GetPosition(this);
         _pressClicks = e.ClickCount;
@@ -261,7 +259,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var point = e.GetPosition(this);
         if (_press is not { } press)
         {
-            Hover(SlotAt(point)?.Tag is InventorySlotId hovered ? TargetOf(hovered) : 0);
+            Hover(PressAt(point) is { } hovered ? TargetOf(hovered) : 0);
             return;
         }
         if (_dragged == 0)
@@ -281,7 +279,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
                 else _selection.Clear();
                 ShowSelection();
             }
-            // Lifting an item selects it, as a click does, so another item's selection clears. A pack is never selected; nor is a set.
+            // Lifting an item selects it, as a click does, so another item's selection clears. A lifted pack is never selected, not even a focus; nor is a set.
             if (press.Place != SlotPlace.Pack && _carried.Count == 0 && _dragged != _port.Snapshot.Selected) _port.Select(_dragged);
             _dragIcon = _dragHost?.ShowDragIcon(DragImage(_dragged), Math.Max(1, _carried.Count), retailDropIndicator: false, _dragged);
             Fade(_dragged, lifted: true);
@@ -354,7 +352,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             if (_retailItem != 0)
             {
                 _retailItem = 0;
-                _dropIndicator.IsVisible = false;
+                HideIndicator();
             }
             return;
         }
@@ -378,7 +376,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         else if (_withdrawOver)
         {
             _withdrawOver = false;
-            _dropIndicator.IsVisible = false;
+            HideIndicator();
         }
     }
 
@@ -401,7 +399,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     public bool RetailDrop(uint itemId, string itemName, Point position)
     {
         _retailItem = 0;
-        _dropIndicator.IsVisible = false;
+        HideIndicator();
         if (_disposed || itemId == 0) return false;
         var snapshot = _port.Snapshot;
         var external = !snapshot.Contains(itemId);
@@ -422,13 +420,19 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         if (slot.Place == SlotPlace.Pack)
         {
             // A focus takes a pack slot but holds nothing, so it does not open.
-            if (slot.Container != 0 && PackOf(_port.Snapshot, slot.Container)?.Capacity != 0)
+            if (slot.Container != 0 && !IsFocus(_port.Snapshot, slot.Container))
             {
                 _picked = slot.Container;
                 Render(_port.Snapshot);
             }
-            // The main pack is the character: a click selects them, or makes them the target of an item in use (a healing kit).
-            if (TargetOf(slot) is var character and not 0) _port.Select(character);
+            // The main pack is the character: a click selects them, or makes them the target of an item in use (a healing kit). A focus
+            // is an item, so a click selects it. Either clears a picked set, as a plain click on an item does.
+            if (TargetOf(slot) is var target and not 0)
+            {
+                _selection.Clear();
+                ShowSelection();
+                _port.Select(target);
+            }
             return;
         }
         if (slot.ItemId == 0) return;
@@ -457,7 +461,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         _dragIcon?.Dispose();
         _dragIcon = null;
         _indicatorAt = null;
-        _dropIndicator.IsVisible = false;
+        HideIndicator();
     }
 
     /// <summary>
@@ -490,16 +494,37 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var drop = at is not { } place ? null : set ? JudgeSet(_port.Snapshot, _carried, place.Target) : Judge(_port, dragged, place.Target, external);
         if (at == null || drop == null)
         {
-            _dropIndicator.IsVisible = false;
+            HideIndicator();
+            OutlineLifted(dragged);
             return;
         }
+        // Over the doll the body parts the item would cover are outlined, rather than a frame drawn round the doll.
+        if (at.Value.Shown == DollArea && DollShown && at.Value.Target.Equipment is { } wornAt)
+        {
+            HideIndicator();
+            // A worn item lifted over its own doll keeps its lift outline: dropping it there puts nothing new on.
+            if (_port.Snapshot.Wielded.Any(item => item.Id == dragged))
+            {
+                OutlineLifted(dragged);
+                return;
+            }
+            var covered = InventorySnapshotBuilder.PartsCovered(_port.CoverageOf(dragged));
+            var mask = _port.WieldMask(dragged, wornAt);
+            var parts = covered.Count > 0 ? covered : InventorySnapshotBuilder.PartsUnder(mask != 0 ? mask : _port.Snapshot.ValidLocationsOf(dragged) ?? 0);
+            // A weapon or a ring covers no body part, so the doll is framed instead.
+            if (parts.Count > 0)
+            {
+                _doll!.Outline(parts, drop.Value.Accepted ? GoldOutline : InvalidOutline);
+                return;
+            }
+        }
         Light(at.Value.Shown, drop.Value.Accepted ? GoldBrush : InvalidBrush);
+        OutlineLifted(dragged);
     }
 
     /// <summary>
     /// Where one item dropped at the point goes, and what lights up for it: the slot under the point, or, over the doll, the paperdoll
-    /// slot the item is worn in (an empty one first, else the first it fits). That slot lights when it shows; a hidden armour slot lights
-    /// the doll. Null where nothing takes a drop.
+    /// slot the item is worn in (an empty one first, else the first it fits), and the doll lights. Null where nothing takes a drop.
     /// </summary>
     private (Control Shown, InventorySlotId Target)? DropAt(Point point, uint item)
     {
@@ -511,18 +536,44 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         var into = fits.Where(slot => !worn.Contains(slot)).DefaultIfEmpty(fits[0]).First();
         var shown = _paperdoll.GetVisualDescendants().OfType<DerethSlot>()
             .FirstOrDefault(slot => slot.Tag is InventorySlotId { Place: SlotPlace.Paperdoll } id && id.Equipment == into);
-        return (shown ?? (Control)DollArea, shown?.Tag as InventorySlotId ?? new InventorySlotId(SlotPlace.Paperdoll, 0, 0, -1, into));
+        return (DollArea, shown?.Tag as InventorySlotId ?? new InventorySlotId(SlotPlace.Paperdoll, 0, 0, -1, into));
     }
 
     private bool Over(Control control, Point point) =>
         control.IsEffectivelyVisible && control.TranslatePoint(default, this) is { } origin && new Rect(origin, control.Bounds.Size).Contains(point);
+
+    private static readonly uint GoldOutline = DerethPalette.Gold.ToUInt32();
+    private static readonly uint InvalidOutline = DerethPalette.Invalid.ToUInt32();
+    private static readonly uint LiftedOutline = DerethPalette.Teal.ToUInt32();
+
+    private bool DollShown => _doll != null && DollArea.Child == _doll;
+
+    /// <summary>Hides the drop indicator and the doll's outline.</summary>
+    private void HideIndicator()
+    {
+        _dropIndicator.IsVisible = false;
+        _doll?.Outline(Array.Empty<int>(), 0);
+    }
+
+    /// <summary>
+    /// While a worn item is lifted, the body parts it covers are outlined on the doll: the ones the clothing tables say it draws, else
+    /// those its coverage and wield slots name. Anything else leaves the doll as it is.
+    /// </summary>
+    private void OutlineLifted(uint dragged)
+    {
+        var wielded = _port.Snapshot.Wielded;
+        var index = wielded.ToList().FindIndex(item => item.Id == dragged);
+        if (!DollShown || index < 0) return;
+        var parts = DrawnParts(wielded)[index];
+        _doll!.Outline(parts.Count > 0 ? parts : ClaimOf(wielded[index]), LiftedOutline);
+    }
 
     /// <summary>Shows the drop indicator over the slot, in the colour.</summary>
     private void Light(Control slot, IBrush brush)
     {
         if (slot.TranslatePoint(default, this) is not { } origin)
         {
-            _dropIndicator.IsVisible = false;
+            HideIndicator();
             return;
         }
         _dropIndicator.Margin = new Thickness(origin.X, origin.Y, 0, 0);
@@ -544,7 +595,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             if (slot.Tag is InventorySlotId tag && DraggedId(tag) == id)
             {
                 slot.Opacity = lifted ? LiftedOpacity : 1;
-                slot.Selected = lifted || (tag.Place == SlotPlace.Pack ? tag.Container == OpenPack(_port.Snapshot).Id : id == _port.Snapshot.Selected);
+                slot.Selected = lifted || (tag.Place == SlotPlace.Pack ? PackOutlined(_port.Snapshot, tag.Container, OpenPack(_port.Snapshot)) : id == _port.Snapshot.Selected);
             }
     }
 
@@ -564,6 +615,48 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         return null;
     }
 
+    /// <summary>What a press at a point acts on: the slot under it, or, on the doll, the worn item over the body part there.</summary>
+    private InventorySlotId? PressAt(Point point) => SlotAt(point)?.Tag as InventorySlotId ?? WornAt(point);
+
+    /// <summary>
+    /// The worn item drawn under a point of the doll: the outermost the clothing tables say draws that body part (tall boots up to the
+    /// knee), or, where they can't tell, the outermost worn there by where it is worn (a coat over the shirt beneath it). Null off the
+    /// doll, or where that part wears nothing.
+    /// </summary>
+    private InventorySlotId? WornAt(Point point)
+    {
+        if (_doll == null || DollArea.Child != _doll || !Over(_doll, point) || this.TranslatePoint(point, _doll) is not { } at) return null;
+        var wielded = _port.Snapshot.Wielded;
+        var part = _doll.PartAt(at);
+        var drawn = DrawnParts(wielded);
+        var worn = wielded.Where((_, i) => drawn[i].Contains(part)).OrderBy(Layer).LastOrDefault() ?? InventorySnapshotBuilder.WornOn(wielded, part);
+        return worn == null ? null : new InventorySlotId(SlotPlace.Paperdoll, worn.Id, 0, -1, worn.Slots.Count > 0 ? worn.Slots[0] : null);
+    }
+
+    /// <summary>The body parts each worn item draws on the doll, in the order of <paramref name="wielded"/>; empty where the doll can't tell.</summary>
+    private IReadOnlyList<IReadOnlyCollection<int>> DrawnParts(IReadOnlyList<WieldedItem> wielded)
+    {
+        // PartsDrawn takes the items in the order the look draws them, so a coat claiming all a shirt does wins the parts it covers.
+        var order = Enumerable.Range(0, wielded.Count).OrderBy(i => Layer(wielded[i])).ToList();
+        var drawn = _doll!.PartsDrawn(order.Select(i => ClaimOf(wielded[i])).ToList());
+        var parts = new IReadOnlyCollection<int>[wielded.Count];
+        for (var i = 0; i < order.Count; i++) parts[order[i]] = drawn[i];
+        return parts;
+    }
+
+    /// <summary>
+    /// Where a worn item comes in the look, as ACE builds it: clothing first, then armour and what is worn on the head, hands and feet
+    /// over it, each by its coverage. Sorting by it puts the items under to over.
+    /// </summary>
+    private (bool Over, uint Coverage) Layer(WieldedItem item) => ((item.EquippedMask & ArmourAndExtremities) != 0, _port.CoverageOf(item.Id));
+
+    // EquipMask's armour (chest to lower legs) and extremities (head, hands, feet).
+    private const uint ArmourAndExtremities = 0x7E00 | 0x121;
+
+    /// <summary>The body parts a worn item says it covers: its coverage, and where it is worn.</summary>
+    private IReadOnlyCollection<int> ClaimOf(WieldedItem item) =>
+        InventorySnapshotBuilder.PartsCovered(_port.CoverageOf(item.Id)).Union(InventorySnapshotBuilder.PartsUnder(item.EquippedMask)).ToList();
+
     /// <summary>
     /// What a press on a slot carries: its item, a side pack, or the main pack, which is the character and only goes to retail (a
     /// shortcut on the bar). Zero for an empty slot.
@@ -575,15 +668,22 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         return slot.Container != 0 && (slot.Container == s.MainPack.Id || s.SidePacks.Any(pack => pack.Id == slot.Container)) ? slot.Container : 0;
     }
 
-    /// <summary>The object a slot stands for when it is selected or targeted: its item, or the character for the main pack.</summary>
+    /// <summary>The object a slot stands for when it is selected or targeted: its item, the character for the main pack, or a focus.</summary>
     private uint TargetOf(InventorySlotId slot) =>
-        slot.Place != SlotPlace.Pack ? slot.ItemId : slot.Container != 0 && slot.Container == _port.Snapshot.MainPack.Id ? slot.Container : 0;
+        slot.Place != SlotPlace.Pack ? slot.ItemId
+        : slot.Container != 0 && (slot.Container == _port.Snapshot.MainPack.Id || IsFocus(_port.Snapshot, slot.Container)) ? slot.Container : 0;
+
+    /// <summary>Whether a side-pack slot holds a focus: it takes the slot but holds nothing.</summary>
+    private static bool IsFocus(InventorySnapshot s, uint id) => PackOf(s, id)?.Capacity == 0;
+
+    /// <summary>A pack tile is outlined while its pack is open, and a focus while it is retail's selection.</summary>
+    private static bool PackOutlined(InventorySnapshot s, uint id, InventoryPack open) => id == open.Id || (id == s.Selected && IsFocus(s, id));
 
     private GameImage? DragImage(uint id)
     {
         var snapshot = _port.Snapshot;
         var visual = snapshot.Items.FirstOrDefault(item => item.Id == id)?.Visual ?? snapshot.Wielded.FirstOrDefault(item => item.Id == id)?.Visual
-            ?? new ItemVisual(PackOf(snapshot, id)?.Icon ?? 0, 0, 0, 0);
+            ?? PackOf(snapshot, id)?.Visual ?? new ItemVisual(0, 0, 0, 0);
         return ItemIcon.Draw(_art, visual.Underlay, visual.Icon, visual.Overlay, 0, visual.UiEffects);
     }
 
@@ -696,7 +796,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     {
         if (_disposed) return;
         // The slots are rebuilt, so a drop indicator on the old ones goes; a drag in progress gets it back once they are laid out.
-        _dropIndicator.IsVisible = false;
+        HideIndicator();
         var open = OpenPack(snapshot);
         _selection.Keep(OpenOrder(snapshot));
         var worn = new Dictionary<PaperdollSlot, WieldedItem>();
@@ -710,6 +810,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         ShowSelection();
         RenderBurden(snapshot);
         _pyrealCount.Text = snapshot.Pyreals.ToString("N0");
+        _frame.Title = snapshot.CharacterName.Length == 0 ? Title : Title + " of " + snapshot.CharacterName;
         Fade(_dragged, lifted: true);
         if (_indicatorAt is { } at && (_dragged != 0 || _retailItem != 0))
         {
@@ -758,14 +859,18 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             _packList.Children.Add(PackTab(snapshot, snapshot.SidePacks[position], position, open));
     }
 
-    /// <summary>A pack in the vertical column: its icon, with a fill bar along the foot. An empty side-pack slot is a placeholder.</summary>
-    private DerethSlot PackColumnSlot(InventorySnapshot snapshot, InventoryPack pack, int position, InventoryPack open)
+    /// <summary>A pack in the vertical column: its icon, with an upright fill bar on its right. An empty side-pack slot is a placeholder.</summary>
+    private Control PackColumnSlot(InventorySnapshot snapshot, InventoryPack pack, int position, InventoryPack open)
     {
-        if (pack.Id == 0) return Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, position, null));
-        var layers = new Grid();
-        layers.Children.Add(Icon(new ItemVisual(pack.Icon, 0, 0, 0)));
-        if (pack.Capacity > 0) layers.Children.Add(FillBar(ItemsIn(snapshot, pack.Id), pack.Capacity));
-        return Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), layers, pack.Id == open.Id);
+        // The fill bar stands right of the tile, only for a container holding something; otherwise a gap of the bar's width keeps every tile lined up.
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = FillGap };
+        var count = pack.Id == 0 ? 0 : ItemsIn(snapshot, pack.Id);
+        var tile = pack.Id == 0
+            ? Empty(new InventorySlotId(SlotPlace.Pack, 0, 0, position, null))
+            : Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(pack.Visual), PackOutlined(snapshot, pack.Id, open));
+        row.Children.Add(tile);
+        row.Children.Add(pack.Capacity > 0 && count > 0 ? FillBar(count, pack.Capacity) : new Control { Width = FillWidth });
+        return row;
     }
 
     /// <summary>A pack in the horizontal strip: its icon, with "n/cap" under it. An empty side-pack slot is a placeholder.</summary>
@@ -778,7 +883,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             return stack;
         }
         var selected = pack.Id == open.Id;
-        stack.Children.Add(Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(new ItemVisual(pack.Icon, 0, 0, 0)), selected));
+        stack.Children.Add(Slot(new InventorySlotId(SlotPlace.Pack, 0, pack.Id, position, null), Icon(pack.Visual), PackOutlined(snapshot, pack.Id, open)));
         var count = Label(pack.Capacity > 0 ? $"{ItemsIn(snapshot, pack.Id)}/{pack.Capacity}" : " ", selected ? TealTextBrush : MutedBrush, 10);
         count.HorizontalAlignment = HorizontalAlignment.Center;
         stack.Children.Add(count);
@@ -812,33 +917,37 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private void RenderBurden(InventorySnapshot snapshot)
     {
-        var over = snapshot.BurdenLimit > 0 && snapshot.Burden > snapshot.BurdenLimit;
         var percent = snapshot.BurdenLimit > 0 ? snapshot.Burden * 100 / snapshot.BurdenLimit : 0;
         var vertical = _layout == InventoryLayout.Vertical;
-        _burdenMeter.Content = BurdenMeter(snapshot, over, vertical);
-        // Over the limit the reading turns red as well as the meter, so it reads at a glance.
+        _burdenMeter.Content = BurdenMeter(snapshot, vertical);
         _burdenText.Text = vertical ? $"{percent}%" : $"{snapshot.Burden:N0} / {snapshot.BurdenLimit:N0}  ·  {percent}%";
-        _burdenText.Foreground = over ? InvalidBrush : TextBrush;
     }
 
     private static int ItemsIn(InventorySnapshot snapshot, uint container) => snapshot.Items.Count(item => item.Container == container);
 
+    private const double FillWidth = 4, FillGap = 3;
+
+    /// <summary>A pack's fill: a narrow upright groove, filled in gold from the foot to the share of its slots in use.</summary>
     private static Control FillBar(int count, int capacity)
     {
         var share = capacity <= 0 ? 0 : Math.Min(1.0, (double)count / capacity);
         var track = new Border
         {
-            Width = 30, Height = 3, Background = DerethPalette.GrooveBrush, VerticalAlignment = VerticalAlignment.Bottom,
-            Margin = new Thickness(0, 0, 0, 2),
+            Width = FillWidth, Height = 30, Background = DerethPalette.GrooveBrush, VerticalAlignment = VerticalAlignment.Center, CornerRadius = new CornerRadius(1),
         };
-        track.Child = new Border { Width = 30 * share, HorizontalAlignment = HorizontalAlignment.Left, Background = GoldBrush };
+        track.Child = new Border { Height = 30 * share, VerticalAlignment = VerticalAlignment.Bottom, Background = GoldBrush, CornerRadius = new CornerRadius(1) };
         return track;
     }
 
-    /// <summary>A groove filled in gold to the burden, full at the most a character can carry (three times the limit). Over the limit the fill turns red.</summary>
-    private static Control BurdenMeter(InventorySnapshot snapshot, bool over, bool vertical)
+    /// <summary>
+    /// A groove filled to the burden, full at the most a character can carry (three times the limit). As retail's, each third
+    /// keeps its band's colour: green to the limit, yellow above it, red above twice it.
+    /// </summary>
+    private static Control BurdenMeter(InventorySnapshot snapshot, bool vertical)
     {
-        var share = snapshot.BurdenLimit <= 0 ? 0 : Math.Min(1.0, (double)snapshot.Burden / (3 * snapshot.BurdenLimit));
+        var load = snapshot.BurdenLimit <= 0 ? 0 : (double)snapshot.Burden / snapshot.BurdenLimit;
+        var bands = BurdenBandBrushes.Select((_, band) => Math.Max(0, Math.Min(1, load - band)) / 3).ToArray();
+        var empty = 1 - bands.Sum();
         var track = new Border
         {
             Background = DerethPalette.GrooveBrush, BorderBrush = DerethPalette.GrooveEdgeBrush, BorderThickness = new Thickness(1),
@@ -853,18 +962,18 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
         {
             track.Height = 8;
         }
-        var fill = new Border { Background = over ? InvalidBrush : GoldFillBrush, CornerRadius = new CornerRadius(1) };
+        // The bands run from the foot (or the left) in order; the empty share sits at the far end.
+        var shares = bands.Append(empty).Select(share => $"{share:0.###}*").ToArray();
         var holder = new Grid();
-        if (vertical)
+        if (vertical) holder.RowDefinitions = new RowDefinitions(string.Join(",", Enumerable.Reverse(shares)));
+        else holder.ColumnDefinitions = new ColumnDefinitions(string.Join(",", shares));
+        for (var band = 0; band < bands.Length; band++)
         {
-            holder.RowDefinitions = new RowDefinitions($"{1 - share:0.###}*,{share:0.###}*");
-            Grid.SetRow(fill, 1);
+            var fill = new Border { Background = BurdenBandBrushes[band] };
+            if (vertical) Grid.SetRow(fill, bands.Length - band);
+            else Grid.SetColumn(fill, band);
+            holder.Children.Add(fill);
         }
-        else
-        {
-            holder.ColumnDefinitions = new ColumnDefinitions($"{share:0.###}*,{1 - share:0.###}*");
-        }
-        holder.Children.Add(fill);
         track.Child = holder;
         return track;
     }
@@ -889,31 +998,41 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private Control VerticalBody()
     {
-        var left = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*") };
-        if (!_collapsed)
-        {
-            left.Children.Add(At(_paperdoll, 0));
-            left.Children.Add(At(new DerethRule { Margin = new Thickness(0, 8, 0, 0), Opacity = 0.7 }, 1));
-        }
-        left.Children.Add(At(ContentsLine(), 2));
-        left.Children.Add(At(_grid, 3));
+        // The pack's six columns sit under the paperdoll's left column, with the contents line across their width.
+        _grid.Columns = RetailColumns;
+        // The paperdoll insets each cell 1 px in its pitch, so the pack's columns do too, and the two sections line up.
+        var pack = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(1, 0, 0, 0) };
+        pack.Children.Add(At(ContentsLine(), 0));
+        pack.Children.Add(At(_grid, 1));
 
-        // The pack column: burden at its head, then the main pack, a rule and the side packs, which scroll.
+        // The pack column stands on the right, as retail's does, the window's full height: burden at its head, then the main pack, a
+        // rule and the side packs, which scroll.
         var packs = new ScrollViewer
         {
             Content = _packList, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Margin = new Thickness(0, 4, 0, 0),
         };
-        var column = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Width = 44 };
-        column.Children.Add(At(Centred(_burdenMeter), 0));
-        column.Children.Add(At(Centred(_burdenText), 1));
+        var column = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(6, 0, 0, 0) };
+        // The burden sits centred over the tiles, not over the tiles and their fill bars.
+        var overTiles = new Thickness(0, 0, FillWidth + FillGap, 0);
+        column.Children.Add(At(new Border { Margin = overTiles, Child = Centred(_burdenMeter) }, 0));
+        column.Children.Add(At(new Border { Margin = overTiles, Child = Centred(_burdenText) }, 1));
         column.Children.Add(At(packs, 2));
 
-        var body = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), RowDefinitions = new RowDefinitions("*,Auto"), ColumnSpacing = 8, Margin = new Thickness(2, 8, 2, 0) };
-        body.Children.Add(At(left, 0, 0));
+        var body = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto"), RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto"), Margin = new Thickness(2, 8, 2, 0)
+        };
+        if (!_collapsed)
+        {
+            body.Children.Add(At(_paperdoll, 0));
+            body.Children.Add(At(new DerethRule { Margin = new Thickness(0, 8, 0, 0), Opacity = 0.7 }, 1));
+        }
+        body.Children.Add(At(pack, 2));
         body.Children.Add(At(column, 0, 1));
+        Grid.SetRowSpan(column, 3);
         var footer = PyrealsFooter();
-        body.Children.Add(At(footer, 1, 0));
+        body.Children.Add(At(footer, 3));
         Grid.SetColumnSpan(footer, 2);
         return body;
     }
@@ -953,10 +1072,10 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
 
     private Control LayoutToggles()
     {
-        var toggles = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 3, VerticalAlignment = VerticalAlignment.Center };
+        var toggles = new StackPanel { Orientation = Orientation.Horizontal, Spacing = DerethWindow.ActionGap, VerticalAlignment = VerticalAlignment.Center };
         toggles.Children.Add(LayoutToggle(InventoryLayout.Vertical, StackedGlyph));
         toggles.Children.Add(LayoutToggle(InventoryLayout.Horizontal, SideBySideGlyph));
-        // Set apart from the layout pair by the spacing and its 5 DIP margin: 8, the header's gap before the close box.
+        // Every header button is the same gap from the next, the close box included.
         toggles.Children.Add(EquipmentToggle());
         return toggles;
     }
@@ -970,7 +1089,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
             Stroke = _collapsed ? MutedBrush : DerethPalette.TealBrush,
             Fill = _collapsed ? null : DerethPalette.Brush(DerethPalette.Teal.WithAlpha(0x40)),
         };
-        var button = new DerethButton { Width = 24, Height = 24, Name = "EquipmentToggle", Content = icon, Margin = new Thickness(5, 0, 0, 0) };
+        var button = new DerethButton { Width = 24, Height = 24, Name = "EquipmentToggle", Content = icon };
         ToolTip.SetTip(button, _collapsed ? "Show equipment" : "Hide equipment");
         button.Click += (_, _) => SettingsChanged?.Invoke(new InventorySettings(_layout, _showSlots, !_collapsed));
         return button;
@@ -1005,7 +1124,7 @@ public sealed class InventoryWindow : UserControl, IDisposable, IInventoryDropZo
     private Control PyrealsLine()
     {
         var money = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        money.Children.Add(new Image { Source = Bitmap(new ItemVisual(PyrealIcon, 0, 0, 0)), Width = 20, Height = 20 });
+        money.Children.Add(Icon(new ItemVisual(PyrealIcon, 0, 0, 0)));
         money.Children.Add(_pyrealCount);
         return money;
     }

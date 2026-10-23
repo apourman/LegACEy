@@ -101,12 +101,27 @@ next post-UI draw fail in game. The file is deleted, the failure is logged to
 that removal path. With several clients sharing the directory, whichever client
 checks first takes the file; the `[pid N]` prefix shows which one.
 
+Every 30 s in game, `legacey-avalonia.log` gets a set of `UI performance` lines; times are median/95th percentile/worst in
+milliseconds. `sample` covers the whole UI frame and the post-UI draw, with memory and GC counts. `gc` gives what was allocated and how
+long the GC paused the game since the last line, memory load, and the last full and background pauses. `phases` times each part of
+the frame (game state, each retail takeover, panels, windows) with the KB it allocated, and what the game thread allocated between frames.
+`avalonia` is Avalonia's one step per frame for every window (its jobs, layout, render tick and each window's capture) and `upload` the
+texture uploads after it. `world` covers water, weather and combat text, and how many of retail's draws pass through the world draw hook.
+One `surface` line per window gives its capture (`tick`), upload and draw times, how many captures changed pixels, and its attribution
+over the same 30 s: `layoutPasses` (layout passes its window ran in the shared step), `paintedPixels` (pixels it painted) and `share`
+(its part of every window's painted pixels, a stand-in for its part of the shared step, which Avalonia cannot time per window).
+
 The LegACEy Inventory replaces retail's inventory panel: it parks retail's panel and opens and closes its own window with it (by key,
-toolbar or item). The appraisal window likewise replaces retail's examination window: when retail's examination panel shows, it is parked
+toolbar or item). Its vertical layout follows retail's panel: retail's width, "Inventory of" the character's name, the paperdoll over the
+main pack's six columns, and the burden and packs in a column on the right, each pack's fill in an upright bar; only its height changes. The appraisal window likewise replaces retail's examination window: when retail's examination panel shows, it is parked
 and closed, and the appraised object opens in LegACEy's window. Its header's Inspect button opens the Inspect window: the object's 3D
 paperdoll alone, which drags to turn. The client reads every object's look from the game's own messages, so Inspect and the inventory's
 doll work on any server; only objects outside the world (Vault items) ask a LegACEy server (`paperdoll.inspect`). The expand button in the
-inventory's doll area opens the same window on your own character. The appraisal window lists an item's lines in the order retail's examination
+inventory's doll area opens the same window on your own character, from its first view each time. The inventory's doll stands still,
+facing front without what it holds, and fills the panel above the Slots row. A click, drag, right-click or double-click on it acts on the
+worn item drawn under the pointer, as on that item's slot, and a drop on it wields the item. While an item is dragged, the body parts
+it covers are outlined: gold where it can be worn, red where it can't, teal for a worn item being lifted. Which worn item draws which
+part is worked out on the client from portal.dat's clothing tables, so this too works on any server. The appraisal window lists an item's lines in the order retail's examination
 text does (tinkering, set and ratings, combat, spells, properties, use, requirements, the rest, then spellcraft, mana and each
 spell's description), under Dereth headings. Creating an empty file named `retail-inventory-native` beside the main DLL
 gives retail's inventory panel back, and `retail-appraisal-native` gives retail's examination panel back; deleting a file
@@ -115,10 +130,10 @@ window. The file is only checked, never consumed. A drag that leaves the LegACEy
 drag when retail's inventory lists show the item, so the world, NPCs and other retail windows take it as they would from retail.
 
 The Dereth toolbar replaces retail's toolbar, drawn at retail's toolbar position, from portal space at login on. It is laid out as retail's is:
-the stance and the backpack at the ends, the window buttons over Use, the selection plaque and Examine, and the two shortcut rows below,
-inside the same frame and as wide as the part above. Press and drag the toolbar's frame, top edge or a row tag (not a button or slot) to move
-it anywhere on screen, unless retail's UI is locked; the place is saved per character in `window-positions.txt`, and retail's own toolbar
-stays where retail left it. Row 1's tag shows or hides row 2. Creating an empty file named `retail-toolbar-native` beside the main DLL gives retail's toolbar back within a
+retail's own stance and backpack art at the ends, the window buttons over Use, the selection plaque and Examine, and the two shortcut rows
+below, inside the same frame and retail's width: nine touching 32 px slots. A long target name wraps to two lines. Press and drag the
+toolbar's frame or top edge (not a button or slot) to move it anywhere on screen, unless retail's UI is locked; the place is saved per
+character in `window-positions.txt`, and retail's own toolbar stays where retail left it. Settings → Windows shows or hides row 2. Creating an empty file named `retail-toolbar-native` beside the main DLL gives retail's toolbar back within a
 second; deleting it takes the toolbar over again.
 
 The Dereth chat window replaces retail's main and floating chat windows. It starts with six tabs (All, Speech, Fellowship, Allegiance,
@@ -169,7 +184,8 @@ The Settings window's Windows tab has a Dereth / Retail switch on each window's 
 writes or deletes every `retail-*-native` file at once. It lights neither choice while the windows differ.
 
 The LegACEy menu's UI size row scales every LegACEy window and the toolbar with its shortcut rows, from 60 to 150 percent (85 to start),
-for every character. A change rebuilds the LegACEy UI at once, as a relog does: plugin windows that were open close and the chat history
+for every character. Ctrl and the wheel over a window or the toolbar scales it on its own, in 5 percent steps from 50 to 200 percent,
+per character, and shows its size over it while it changes. Item icons scale with their window like the rest of it. A change rebuilds the LegACEy UI at once, as a relog does: plugin windows that were open close and the chat history
 clears.
 
 The LegACEy menu's Windows section switches each of the inventory, appraisal, toolbar, chat, vitals, radar and attack bar between LegACEy's window (Custom, the

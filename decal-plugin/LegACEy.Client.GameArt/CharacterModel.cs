@@ -79,6 +79,9 @@ public sealed class ModelMesh
     public bool Clipped { get; }
 
     public List<ModelVertex> Vertices { get; } = new();
+
+    /// <summary>The setup part each vertex belongs to, beside <see cref="Vertices"/>; -1 for a held item's.</summary>
+    public List<int> Parts { get; } = new();
 }
 
 /// <summary>A character's parts placed in its default pose and grouped by texture, in AC object space (metres, Z up).</summary>
@@ -196,6 +199,7 @@ public sealed class CharacterModel
                                     (placed.X, placed.Y, placed.Z, placed.NX, placed.NY, placed.NZ) = (p.X, p.Y, p.Z, n.X, n.Y, n.Z);
                                 }
                                 mesh.Vertices.Add(placed);
+                                mesh.Parts.Add(held == null ? part : -1);
                             }
                     }
                 }

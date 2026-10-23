@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -12,7 +13,7 @@ public static class DerethItemCells
 {
     private static readonly IBrush ShadowBrush = DerethPalette.Brush(Colors.Black);
 
-    /// <summary>An icon at native size on screen, centred: see <see cref="ItemCellSize"/>. Missing art shows a question mark.</summary>
+    /// <summary>An icon at the icon size, centred: see <see cref="ItemCellSize"/>. Missing art shows a question mark.</summary>
     public static Grid Icon(WriteableBitmap? bitmap)
     {
         var layers = new Grid { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
@@ -51,25 +52,13 @@ public static class DerethItemCells
 }
 
 /// <summary>
-/// The size of an item icon, its slot and the slot pitch, in DIPs, for a window drawn at a scale. Icons draw at a whole multiple
-/// of their 32 px art on screen, the nearest to the scale and at least one, and the slot grows or shrinks round them, so item grids
-/// keep retail's sharp icons while the rest of the window scales. At scale 1 they are 32, 34 and 35.
+/// The size of an item icon, its slot and the slot pitch, in DIPs: the 32 px art, a 34 px slot round it, 35 px apart. Icons scale with
+/// their window like everything in it, so a window drawn at any size, by the UI size or its own, keeps its proportions; a layout never
+/// squeezes an icon into a smaller box.
 /// </summary>
 public readonly record struct ItemCellSize(double Icon, double Cell, double Pitch)
 {
-    private const int ArtPixels = 32;
-
-    /// <summary>How many screen pixels each art pixel takes at a scale: the scale rounded to a whole number, at least one.</summary>
-    public static double Multiple(double scale) => Math.Max(1, Math.Round(scale));
-
-    public static ItemCellSize At(double scale)
-    {
-        var icon = ArtPixels * Multiple(scale) / scale;
-        return new ItemCellSize(icon, icon + 2, icon + 3);
-    }
-
-    /// <summary>The size for the window <paramref name="control"/> is in, or for scale 1 while it is in none.</summary>
-    public static ItemCellSize Of(Layoutable control) => At(LayoutHelper.GetLayoutScale(control));
+    public static ItemCellSize Standard { get; } = new(32, 34, 35);
 }
 
 /// <summary>
@@ -82,27 +71,82 @@ public sealed class DerethItemRow : StackPanel
 
     protected override Size MeasureOverride(Size availableSize)
     {
-        var height = ItemCellSize.Of(this).Cell;
+        var height = ItemCellSize.Standard.Cell;
         return base.MeasureOverride(availableSize.WithHeight(height)).WithHeight(height);
     }
 }
 
 /// <summary>
-/// Draws a bitmap at a whole multiple of its pixels on screen, whatever the window's scale, so a 32 px icon stays as sharp as
-/// retail's. Scaled to a fraction, the art would be resampled and blur.
+/// Draws an icon's bitmap at the icon size, scaled with its window: pixel for pixel at 100% and 200%, as sharp as retail's, and
+/// resampled smoothly at any other size.
 /// </summary>
 public sealed class DerethItemIcon : Control
 {
     private readonly WriteableBitmap _bitmap;
+    // Each art's resampled copies by side, shared by every icon drawing it and freed with the art: windows rebuild their icons on every
+    // change, and resampling again for each would cost a frame's time and leave a bitmap behind each time.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<WriteableBitmap, Dictionary<int, WriteableBitmap>> Resampled = new();
 
     // An ancestor's bitmap smoothing overrides a child's, so this relies on the panel root turning it off, as AvaloniaPanel.ApplyTheme does.
     public DerethItemIcon(WriteableBitmap bitmap) => _bitmap = bitmap;
 
     protected override Size MeasureOverride(Size availableSize)
     {
-        var side = ItemCellSize.Of(this).Icon;
+        var side = ItemCellSize.Standard.Icon;
         return new Size(side, side);
     }
 
-    public override void Render(DrawingContext context) => context.DrawImage(_bitmap, new Rect(Bounds.Size));
+    public override void Render(DrawingContext context)
+    {
+        // The panel draws every bitmap nearest-neighbour, and no element below its root can change that. At a whole multiple of the art
+        // (100%, 200%) that keeps the pixels sharp; at any other size it would drop rows and columns, so the art is resampled smoothly to
+        // the size it takes on screen, once per art and size, and drawn pixel for pixel.
+        var pixels = (int)Math.Round(Bounds.Width * LayoutHelper.GetLayoutScale(this));
+        var art = _bitmap.PixelSize.Width;
+        if (pixels <= 0 || pixels % art == 0)
+        {
+            context.DrawImage(_bitmap, new Rect(Bounds.Size));
+            return;
+        }
+        var sides = Resampled.GetOrCreateValue(_bitmap);
+        if (!sides.TryGetValue(pixels, out var resampled)) sides[pixels] = resampled = Resample(_bitmap, pixels);
+        context.DrawImage(resampled, new Rect(Bounds.Size));
+    }
+
+    /// <summary>
+    /// The square 32-bit art at <paramref name="side"/> pixels, each one the area-weighted average of the art pixels it covers, in the art's
+    /// own pixel format, so shrinking blends neighbours instead of dropping them.
+    /// </summary>
+    private static WriteableBitmap Resample(WriteableBitmap art, int side)
+    {
+        var size = art.PixelSize.Width;
+        var source = new byte[size * size * 4];
+        using (var locked = art.Lock())
+            for (var row = 0; row < size; row++)
+                System.Runtime.InteropServices.Marshal.Copy(locked.Address + row * locked.RowBytes, source, row * size * 4, size * 4);
+        var result = new WriteableBitmap(new PixelSize(side, side), art.Dpi, art.Format ?? Avalonia.Platform.PixelFormat.Bgra8888, art.AlphaFormat ?? Avalonia.Platform.AlphaFormat.Premul);
+        var target = new byte[side * side * 4];
+        var step = (double)size / side;
+        var sums = new double[4];
+        for (var y = 0; y < side; y++)
+        for (var x = 0; x < side; x++)
+        {
+            Array.Clear(sums, 0, 4);
+            double top = y * step, left = x * step;
+            for (var sy = (int)top; sy < Math.Min(size, Math.Ceiling(top + step)); sy++)
+            {
+                var height = Math.Min(sy + 1, top + step) - Math.Max(sy, top);
+                for (var sx = (int)left; sx < Math.Min(size, Math.Ceiling(left + step)); sx++)
+                {
+                    var weight = height * (Math.Min(sx + 1, left + step) - Math.Max(sx, left));
+                    for (var c = 0; c < 4; c++) sums[c] += weight * source[(sy * size + sx) * 4 + c];
+                }
+            }
+            for (var c = 0; c < 4; c++) target[(y * side + x) * 4 + c] = (byte)Math.Round(sums[c] / (step * step));
+        }
+        using (var locked = result.Lock())
+            for (var row = 0; row < side; row++)
+                System.Runtime.InteropServices.Marshal.Copy(target, row * side * 4, locked.Address + row * locked.RowBytes, side * 4);
+        return result;
+    }
 }
