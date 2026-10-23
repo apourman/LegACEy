@@ -115,6 +115,24 @@ public sealed class InputRouterTests
     }
 
     [Fact]
+    public void A_key_the_game_saw_go_down_is_released_in_the_game_after_a_text_box_takes_the_keyboard()
+    {
+        var router = new InputRouterService();
+        var surfaces = new[] { Surface("chat", 1, wantsKeyboard: true) };
+        var turnDown = router.Route(new NativeInputMessage(InputRouterService.WmKeyDown, (nint)0x27, 0), surfaces);
+        router.FocusSurface("chat");
+
+        var turnUp = router.Route(new NativeInputMessage(InputRouterService.WmKeyUp, (nint)0x27, 0), surfaces);
+        var typedDown = router.Route(new NativeInputMessage(InputRouterService.WmKeyDown, (nint)0x27, 0), surfaces);
+        var typedUp = router.Route(new NativeInputMessage(InputRouterService.WmKeyUp, (nint)0x27, 0), surfaces);
+
+        Assert.False(turnDown.Eat);
+        Assert.False(turnUp.Eat);
+        Assert.Equal((InputAction.KeyDown, "chat"), (typedDown.Action, typedDown.SurfaceId));
+        Assert.Equal((InputAction.KeyUp, "chat"), (typedUp.Action, typedUp.SurfaceId));
+    }
+
+    [Fact]
     public void Surface_focus_is_not_keyboard_focus_until_the_host_reports_text_focus()
     {
         var router = new InputRouterService();

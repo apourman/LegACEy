@@ -2764,7 +2764,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _chatTakeover!.Tick(GameDevice.ViewportSize(_device));
             if (!_inGame) return;
             if (_chatWindows == null && !OpenRetailChat()) return;
-            _chatPort!.Poll();
+            _chatPort!.Poll(typing: SurfaceById(_inputRouter.FocusedSurfaceId)?.Panel.WantsKeyboard == true);
             _chatWindows?.Refresh();
         }
         catch (Exception exception)

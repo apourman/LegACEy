@@ -42,6 +42,10 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private const uint DefaultSourceWindow = 1;
     // UIElementManager's keyboard focus element: SetFocusElement stores it, UIElement::GetHasFocus compares with it.
     private const int FocusElementOffset = 0x328;
+    // UIElementManager's active window, and a window's focused child: HandleEnterKey reads both to tell the chat entry is open.
+    private const int ActiveWindowOffset = 0x32C, FocusedChildOffset = 0x1A4;
+    // ChatInterface's text entry element.
+    private const int ChatEntryOffset = 0x60C;
     // The PlayerModule inside CPlayerSystem: CharacterOptions1 is at +0x8C of it, CharacterOptions2 at +0x90.
     private const int PlayerModule = 0x34;
     // GoArrow's and UtilityBelt's coordinate links: the tag names the coordinates twice, as a player's names them, but is no name.
@@ -59,10 +63,14 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
 
     // Delegates to fixed retail functions, made once: their addresses never change.
     private static readonly DeactivateChatEntryFn DeactivateEntry = Marshal.GetDelegateForFunctionPointer<DeactivateChatEntryFn>(At(RetailChatCatalogue.DeactivateChatEntry));
+    private static readonly SetFocusElementFn SetFocus = Marshal.GetDelegateForFunctionPointer<SetFocusElementFn>(At(RetailChatCatalogue.SetFocusElement));
     private static readonly PStringBaseFromWideFn ConstructString = Marshal.GetDelegateForFunctionPointer<PStringBaseFromWideFn>(At(0x00402730));
     private static readonly PStringBaseReleaseFn ReleaseString = Marshal.GetDelegateForFunctionPointer<PStringBaseReleaseFn>(At(0x004011B0));
 
     private readonly Action<string> _log;
+    // Whether a box of ours had the keyboard at the last poll.
+    private bool _typing;
+    private bool _chatMissingLogged;
     private readonly RetailChatNatives _natives;
     private readonly ConcurrentQueue<RetailChatLine> _pending = new();
     // The channel names already logged as matching no tab channel, so each is logged once.
@@ -100,6 +108,9 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void DeactivateChatEntryFn(IntPtr chat);
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void SetFocusElementFn(IntPtr manager, IntPtr element);
 
     /// <param name="log">Writes a line to the client's log.</param>
     /// <param name="natives">Which chat features the running client matched; a feature that did not match is off.</param>
@@ -171,7 +182,8 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     /// once a second.
     /// </summary>
     /// <param name="holdsEntry">False while retail's chat is shown, so its entry keeps the keyboard the player gave it.</param>
-    public void Poll(bool holdsEntry = true)
+    /// <param name="typing">Whether a LegACEy text box has the keyboard.</param>
+    public void Poll(bool holdsEntry = true, bool typing = false)
     {
         while (_pending.TryDequeue(out var line))
         {
@@ -189,7 +201,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
                 TimestampsChanged?.Invoke();
             }
         }
-        if (holdsEntry && _natives.Enter) ReleaseRetailEntryFocus();
+        if (holdsEntry && _natives.Enter) SyncRetailEntry(typing);
     }
 
     /// <summary>
@@ -403,25 +415,50 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         if (manager == IntPtr.Zero) return false;
         var focused = Marshal.ReadIntPtr(manager, FocusElementOffset);
         if (focused == IntPtr.Zero) return false;
-        var main = NativeUi.GetElement(RetailChatCatalogue.MainChat);
-        return main == IntPtr.Zero || Marshal.ReadIntPtr(IntPtr.Add(main, -4), 0x60C) != focused;
+        return RetailChat() is not { } chat || Marshal.ReadIntPtr(chat, ChatEntryOffset) != focused;
     }
 
     /// <summary>
-    /// Retail's hidden chat entry keeps the keyboard when the player presses Enter while retail's chat is held. Each frame it is let go, so
-    /// the typed keys reach our input. The chat object is the gmMainChatUI element less its UIElement offset of 4.
+    /// Retail's hidden chat entry has retail's keyboard focus while a box of ours has the keyboard, and only then. Decal's ChatState follows
+    /// that focus, and VTank waits on ChatState before it posts movement keys again; our input router keeps the typed characters out of
+    /// the entry. Focus is given once as typing starts, so an entry retail lets go meanwhile (Escape) is not taken back every frame. When
+    /// typing ends, the focus is let go, and an entry Enter in the game opened is closed.
     /// </summary>
-    private static void ReleaseRetailEntryFocus()
+    private void SyncRetailEntry(bool typing)
     {
-        var main = NativeUi.GetElement(RetailChatCatalogue.MainChat);
-        if (main == IntPtr.Zero) return;
-        var chat = IntPtr.Add(main, -4);
-        var entry = Marshal.ReadIntPtr(chat, 0x60C);
+        var started = typing && !_typing;
+        _typing = typing;
+        if (RetailChat() is not { } chat)
+        {
+            if (started && !_chatMissingLogged) _log("Retail's main chat is not found: VTank and other Decal plugins see the chat as closed while typing.");
+            _chatMissingLogged |= started;
+            return;
+        }
+        var entry = Marshal.ReadIntPtr(chat, ChatEntryOffset);
         var manager = Marshal.ReadIntPtr(At(UIElementManager));
         if (manager == IntPtr.Zero || entry == IntPtr.Zero) return;
-        var window = Marshal.ReadIntPtr(manager, 0x32C);
-        if (window == IntPtr.Zero || Marshal.ReadIntPtr(window, 0x1A4) != entry) return;
-        DeactivateEntry(chat);
+        var focused = Marshal.ReadIntPtr(manager, FocusElementOffset) == entry;
+        if (started && !focused) SetFocus(manager, entry);
+        else if (!typing && focused) SetFocus(manager, IntPtr.Zero);
+        // An entry Enter in the game opened is the focused child of retail's active window.
+        var window = Marshal.ReadIntPtr(manager, ActiveWindowOffset);
+        if (!typing && window != IntPtr.Zero && Marshal.ReadIntPtr(window, FocusedChildOffset) == entry) DeactivateEntry(chat);
+    }
+
+    /// <summary>
+    /// Retail's ChatInterface, or null before it exists: the main chat window element less its UIElement offset of 4, taken when the
+    /// element's vtable has ChatInterface::OnAction (see <see cref="RetailChatCatalogue.ChatInterfaceOnAction"/>). Only with the Enter
+    /// entries, which check that vtable.
+    /// </summary>
+    private IntPtr? RetailChat()
+    {
+        if (!_natives.Enter) return null;
+        var window = NativeUi.GetElement(RetailChatCatalogue.MainChatWindow);
+        if (window == IntPtr.Zero) return null;
+        var vtable = unchecked((uint)Marshal.ReadInt32(window));
+        var isChat = vtable >= RetailChatCatalogue.RdataStart && vtable < RetailChatCatalogue.RdataEnd
+            && Marshal.ReadIntPtr(At(vtable), 4) == At(RetailChatCatalogue.ChatInterfaceOnAction);
+        return isChat ? IntPtr.Add(window, -4) : null;
     }
 
     private static IntPtr At(uint address) => new(unchecked((int)address));

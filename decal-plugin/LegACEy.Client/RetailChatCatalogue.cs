@@ -18,8 +18,18 @@ internal static class RetailChatCatalogue
 
     /// <summary>Retail's main chat window (tag &lt;CHAT&gt;): placed in 0x21000005 from 0x2100006F/0x10000600; it embeds gmMainChatUI.</summary>
     internal const uint MainChatWindow = 0x10000601;
-    /// <summary>gmMainChatUI (type 0x10000041), the root of LayoutDesc 0x21000006 that the main chat window embeds. A ChatInterface: the UIElement is at +4.</summary>
+    /// <summary>
+    /// gmMainChatUI's id as the root of LayoutDesc 0x21000006. At runtime the main chat window element is gmMainChatUI itself, and
+    /// GetElement, which searches top-level windows only, finds nothing for this id.
+    /// </summary>
     internal const uint MainChat = 0x1000000E;
+    /// <summary>
+    /// ChatInterface::OnAction, at slot +0x04 of a ChatInterface's UIElement vtable. The main chat window element is gmMainChatUI, its
+    /// ChatInterface 4 bytes before it; this slot confirms the element is a chat before the port reads its entry.
+    /// </summary>
+    internal const uint ChatInterfaceOnAction = 0x004F62F0;
+    /// <summary>acclient.exe's .rdata, where vtables are: a word outside it is not followed.</summary>
+    internal const uint RdataStart = 0x00793000, RdataEnd = 0x0080B000;
     /// <summary>The floating chat windows 1-4 (tags &lt;FCH1&gt;-&lt;FCH4&gt;, gmFloatyChatUI, type 0x10000040), placed in 0x21000005 from 0x2100005B/0x100004F7.</summary>
     internal static readonly IReadOnlyList<uint> FloatingChats = new uint[] { 0x10000505, 0x1000050E, 0x1000050F, 0x10000510 };
     /// <summary>NoticeHandler's own vtable: every slot a no-op of the right size. A handler of ours copies it and replaces slot +0x38.</summary>
@@ -29,6 +39,11 @@ internal static class RetailChatCatalogue
     internal const uint ProcessCommandSendCall = 0x004F5D95;
     /// <summary>ChatInterface::DeactivateChatEntry, ThisCall on the ChatInterface: drops the entry's focus and sends ToggleChatEntry(false).</summary>
     internal const uint DeactivateChatEntry = 0x004F3C20;
+    /// <summary>
+    /// UIElementManager::SetFocusElement, ThisCall (manager, element): retail's keyboard focus. Decal patches its prologue to note the focus,
+    /// and its ChatState is true while the focused element is one of retail's text entries.
+    /// </summary>
+    internal const uint SetFocusElement = 0x0045B970;
 
     internal static readonly IReadOnlyList<NativeUiEntry> Takeover = new[]
     {
@@ -116,6 +131,8 @@ internal static class RetailChatCatalogue
         // Past the prologue (push esi; mov esi, ecx; mov ecx, [esi+0x60C]), which a hook would change.
         Entry("ChatInterface::DeactivateChatEntry body", DeactivateChatEntry + 9, "8B 01 FF 90 08 01 00 00 8B 8E 0C 06 00 00 8B 11 FF 92 00 01 00 00",
             "ThisCall (ChatInterface*) at 0x004F3C20: the entry's vtable +0x108 and +0x100"),
+        Entry("gmMainChatUI's UIElement vtable: slot +0x04 is ChatInterface::OnAction (0x004F62F0)", 0x007BC694, "F0 62 4F 00",
+            "vtable in .rdata"),
         Entry("ChatInterface::HandleEnterKey reads the active window (UIElementManager+0x32C)", 0x004F5F37, "8B B8 2C 03 00 00 85 FF 8B F1 74 5B",
             "instruction reference"),
         Entry("ChatInterface::HandleEnterKey compares the window's focused child with the entry (+0x60C)", 0x004F5F4F,
@@ -126,7 +143,7 @@ internal static class RetailChatCatalogue
         Entry("UIElement::GetHasFocus compares the element with UIElementManager's focus element (+0x328)", 0x0046031A,
             "8B B0 28 03 00 00 33 D2 3B F1 0F 94 C2 8A C2 5E C3", "ThisCall () -> bool at 0x00460310 (instance [0x0083E03C])"),
         Entry("UIElementManager::SetFocusElement body reads and stores the focus element at +0x328", 0x0045B992,
-            "8B 8E 28 03 00 00 8B 01 FF 90 B4 00 00 00 85 FF 89 BE 28 03 00 00", "instruction reference (SetFocusElement at 0x0045B970)")
+            "8B 8E 28 03 00 00 8B 01 FF 90 B4 00 00 00 85 FF 89 BE 28 03 00 00", "ThisCall (UIElementManager*, UIElement*) at 0x0045B970, called")
     };
 
     /// <summary>Checks each feature's list on its own: a mismatch, or an address that cannot be read, turns that feature off and logs it.</summary>
