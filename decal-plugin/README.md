@@ -131,7 +131,7 @@ drag when retail's inventory lists show the item, so the world, NPCs and other r
 
 The Dereth toolbar replaces retail's toolbar, drawn at retail's toolbar position, from portal space at login on. It is laid out as retail's is:
 retail's own stance and backpack art at the ends, the window buttons over Use, the selection plaque and Examine, and the two shortcut rows
-below, inside the same frame and retail's width: nine touching 32 px slots. A long target name wraps to two lines. Press and drag the
+below, inside the same frame and retail's width: nine touching 32 px slots. A click on a shortcut selects and uses its item, and the slot stays lit while its item is selected. A long target name wraps to two lines. Press and drag the
 toolbar's frame or top edge (not a button or slot) to move it anywhere on screen, unless retail's UI is locked; the place is saved per
 character in `window-positions.txt`, and retail's own toolbar stays where retail left it. Settings → Windows shows or hides row 2. Creating an empty file named `retail-toolbar-native` beside the main DLL gives retail's toolbar back within a
 second; deleting it takes the toolbar over again.
