@@ -66,9 +66,6 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     private readonly Action<string> _log;
     // Whether a box of ours had the keyboard at the last poll.
     private bool _typing;
-    // Retail's main ChatInterface, once found.
-    private IntPtr _chat;
-    private bool _treeLogged;
     private readonly RetailChatNatives _natives;
     private readonly ConcurrentQueue<RetailChatLine> _pending = new();
     // The channel names already logged as matching no tab channel, so each is logged once.
@@ -428,7 +425,7 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
         _typing = typing;
         if (RetailChat() is not { } chat)
         {
-            if (started) _log($"Chat keyboard: retail's main chat is not found under its window {NativeUi.GetElement(RetailChatCatalogue.MainChatWindow):X8}.");
+            if (started) _log("Chat keyboard: retail's main chat is not found.");
             return;
         }
         var entry = Marshal.ReadIntPtr(chat, 0x60C);
@@ -470,61 +467,19 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     }
 
     /// <summary>
-    /// Retail's ChatInterface, or null before it exists: the element under the main chat window that is a ChatInterface's UIElement (see
-    /// <see cref="RetailChatCatalogue.ChatInterfaceOnAction"/>), less its offset of 4. Kept while it still is one. Only with the Enter
-    /// entries, which check the child list.
+    /// Retail's ChatInterface, or null before it exists: the main chat window element less its UIElement offset of 4, taken when the
+    /// element's vtable has ChatInterface::OnAction (see <see cref="RetailChatCatalogue.ChatInterfaceOnAction"/>). Only with the Enter
+    /// entries, which check that vtable.
     /// </summary>
     private IntPtr? RetailChat()
     {
         if (!_natives.Enter) return null;
-        if (_chat != IntPtr.Zero && IsChatInterface(_chat)) return _chat;
         var window = NativeUi.GetElement(RetailChatCatalogue.MainChatWindow);
-        _chat = window == IntPtr.Zero ? IntPtr.Zero : FindMainChat(window, 0);
-        if (_chat == IntPtr.Zero && window != IntPtr.Zero && !_treeLogged)
-        {
-            // ponytail: diagnostic for backlog 036; drop once the main chat is found on the user's client.
-            _treeLogged = true;
-            var tree = new StringBuilder();
-            LogTree(window, 0, tree);
-            _log($"Chat keyboard: the main chat window's elements (depth id element [element-4] [element]):{tree}");
-        }
-        return _chat == IntPtr.Zero ? null : _chat;
-    }
-
-    private static bool IsChatInterface(IntPtr chat)
-    {
-        var vtable = unchecked((uint)Marshal.ReadInt32(chat));
-        return vtable >= RetailChatCatalogue.RdataStart && vtable < RetailChatCatalogue.RdataEnd
+        if (window == IntPtr.Zero) return null;
+        var vtable = unchecked((uint)Marshal.ReadInt32(window));
+        var isChat = vtable >= RetailChatCatalogue.RdataStart && vtable < RetailChatCatalogue.RdataEnd
             && Marshal.ReadIntPtr(At(vtable), 4) == At(RetailChatCatalogue.ChatInterfaceOnAction);
-    }
-
-    private static IntPtr FindMainChat(IntPtr element, int depth)
-    {
-        if (IsChatInterface(IntPtr.Add(element, -4))) return IntPtr.Add(element, -4);
-        if (depth >= 8) return IntPtr.Zero;
-        foreach (var child in Children(element))
-            if (FindMainChat(child, depth + 1) is var found && found != IntPtr.Zero) return found;
-        return IntPtr.Zero;
-    }
-
-    private static void LogTree(IntPtr element, int depth, StringBuilder tree)
-    {
-        tree.Append($" | {depth} {Marshal.ReadInt32(element, 0x2E4):X8} {element:X8} {Marshal.ReadInt32(element, -4):X8} {Marshal.ReadInt32(element):X8}");
-        if (depth < 6) foreach (var child in Children(element)) LogTree(child, depth + 1, tree);
-    }
-
-    /// <summary>The element's children: count at +0x120, first link at +0x124; a link is its node + 8, the node holds the child at +0x10.</summary>
-    private static IEnumerable<IntPtr> Children(IntPtr element)
-    {
-        var count = Marshal.ReadInt32(element, 0x120);
-        var link = Marshal.ReadIntPtr(element, 0x124);
-        for (var i = 0; i < count && i < 256 && link != IntPtr.Zero; i++)
-        {
-            var node = IntPtr.Add(link, -8);
-            var child = Marshal.ReadIntPtr(node, 0x10);
-            if (child != IntPtr.Zero) yield return child;
-            link = Marshal.ReadIntPtr(node, 0x08);
-        }
+        return isChat ? IntPtr.Add(window, -4) : null;
     }
 
     private static IntPtr At(uint address) => new(unchecked((int)address));

@@ -21,9 +21,9 @@ internal static class RetailChatCatalogue
     /// <summary>gmMainChatUI (type 0x10000041), the root of LayoutDesc 0x21000006 that the main chat window embeds. A ChatInterface: the UIElement is at +4.</summary>
     internal const uint MainChat = 0x1000000E;
     /// <summary>
-    /// ChatInterface::OnAction, at slot +0x04 of the vtable at a ChatInterface's +0. The main chat is the element under the main chat window
-    /// whose ChatInterface (the word before the element) has a vtable in .rdata with this there: GetElement finds top-level windows only,
-    /// and the element's id inside the window is not its layout's.
+    /// ChatInterface::OnAction, at slot +0x04 of a ChatInterface's UIElement vtable. The main chat window element (0x10000601) is gmMainChatUI
+    /// itself, its ChatInterface 4 before it (the user's client, 22 Oct: GetElement(0x1000000E) finds nothing, as GetElement finds top-level
+    /// windows only); this tells it is one before the port reads its entry.
     /// </summary>
     internal const uint ChatInterfaceOnAction = 0x004F62F0;
     /// <summary>acclient.exe's .rdata, where vtables are: a word outside it is not followed.</summary>
@@ -129,13 +129,8 @@ internal static class RetailChatCatalogue
         // Past the prologue (push esi; mov esi, ecx; mov ecx, [esi+0x60C]), which a hook would change.
         Entry("ChatInterface::DeactivateChatEntry body", DeactivateChatEntry + 9, "8B 01 FF 90 08 01 00 00 8B 8E 0C 06 00 00 8B 11 FF 92 00 01 00 00",
             "ThisCall (ChatInterface*) at 0x004F3C20: the entry's vtable +0x108 and +0x100"),
-        // The child list the port walks: count at +0x120, first link at +0x124; a link is its node + 8, the node holds the child at +0x10 and
-        // the next link at +0x08. Past the prologue.
-        Entry("UIElement::GetChild walks the child list (+0xB4 +0x6C count, +0x70 links, node child +0x10, next +0x08)", 0x00463BA5,
-            "81 C2 B4 00 00 00 56 8B 72 6C 33 C0 33 C9 85 F6 76 0E 8B 4A 70 85 C9 74 05 83 C1 F8", "instruction reference"),
-        Entry("UIElement::GetChild reads the child (+0x10) and the next link (+0x08)", 0x00463BD1,
-            "8B 51 10 85 D2 74 08 39 B2 E4 02 00 00 74 15 8B 49 08 85 C9 74 10 83 C1 F8", "instruction reference"),
-        Entry("A ChatInterface vtable: slot +0x04 is ChatInterface::OnAction (0x004F62F0)", 0x007BA3EC, "F0 62 4F 00", "vtable in .rdata"),
+        Entry("gmMainChatUI's UIElement vtable: slot +0x04 is ChatInterface::OnAction (0x004F62F0)", 0x007BC694, "F0 62 4F 00",
+            "vtable in .rdata, read from the user's client"),
         Entry("ChatInterface::HandleEnterKey reads the active window (UIElementManager+0x32C)", 0x004F5F37, "8B B8 2C 03 00 00 85 FF 8B F1 74 5B",
             "instruction reference"),
         Entry("ChatInterface::HandleEnterKey compares the window's focused child with the entry (+0x60C)", 0x004F5F4F,
