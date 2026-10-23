@@ -424,12 +424,26 @@ internal sealed class NativeRetailChatPort : IRetailChatPort, IDisposable
     {
         var started = typing && !_typing;
         _typing = typing;
-        if (RetailChat() is not { } chat) return;
+        if (RetailChat() is not { } chat)
+        {
+            if (started) _log("Chat keyboard: retail's main chat element is not found.");
+            return;
+        }
         var entry = Marshal.ReadIntPtr(chat, 0x60C);
         var manager = Marshal.ReadIntPtr(At(UIElementManager));
-        if (manager == IntPtr.Zero || entry == IntPtr.Zero) return;
-        var focused = Marshal.ReadIntPtr(manager, FocusElementOffset) == entry;
-        if (started && !focused) SetFocus(manager, entry);
+        if (manager == IntPtr.Zero || entry == IntPtr.Zero)
+        {
+            if (started) _log($"Chat keyboard: no entry ({entry:X8}) or element manager ({manager:X8}).");
+            return;
+        }
+        var before = Marshal.ReadIntPtr(manager, FocusElementOffset);
+        var focused = before == entry;
+        if (started && !focused)
+        {
+            SetFocus(manager, entry);
+            // ponytail: diagnostic for backlog 036; drop with the one in ClientUiRuntime.
+            _log($"Chat keyboard: focus {before:X8} -> {Marshal.ReadIntPtr(manager, FocusElementOffset):X8}, entry {entry:X8}, chat {chat:X8}.");
+        }
         else if (!typing && focused) SetFocus(manager, IntPtr.Zero);
         if (!typing && EntryActive(chat, entry, manager)) DeactivateEntry(chat);
     }
