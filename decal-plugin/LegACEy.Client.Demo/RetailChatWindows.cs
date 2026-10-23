@@ -18,8 +18,6 @@ public interface IRetailChatWindowHost
     void TabDraggedOut(RetailChatWindow window, int index);
     void MoveRequested(RetailChatWindow window);
     void CloseRequested(RetailChatWindow window);
-    /// <summary>The player stepped the text size up (1) or down (-1).</summary>
-    void TextSizeStepped(int steps);
 }
 
 /// <summary>
@@ -305,10 +303,8 @@ public sealed class RetailChatWindows : IRetailChatWindowHost, IDisposable
     /// <summary>The text size of every chat window, in percent.</summary>
     public int TextSize => _textSize;
 
-    /// <summary>Told when the text size moves, from the chat's own menu or the Settings window.</summary>
+    /// <summary>Told when the text size moves, from the Settings window.</summary>
     public event Action<int>? TextSizeChanged;
-
-    public void TextSizeStepped(int steps) => SetTextSize(_textSize + steps * TextSizeStep);
 
     /// <summary>Sets the text size of every chat window, in percent, within the bounds, and keeps it for the character.</summary>
     public void SetTextSize(int percent)

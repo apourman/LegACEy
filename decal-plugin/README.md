@@ -148,8 +148,8 @@ colour except in a spell's words, where they are green; Name colour can pick Gre
 Retail's chat keeps running out of sight, so Decal plugins see chat as before. Creating an empty file named `retail-chat-native` beside
 the main DLL gives retail's chat back within a second; deleting it takes the chat over again, with the lines that came meanwhile in its log. In the chat box, Up and Down bring back what you sent, Ctrl+V pastes, and Ctrl+C and Ctrl+X copy. A drag
 in the log selects across lines and copies as you let go; Ctrl+C copies it again without the game seeing the key, until you click
-outside the chat. The chat's text size is set by its Aa
-button (click larger, right-click smaller) or Ctrl and the wheel, per character.
+outside the chat. Ctrl and the wheel scale the chat window like
+any other; Settings → Windows → Chat → Text size sets the size of its text, per character.
 
 Retail's Lock UI locks every LegACEy window too: while it is on, none moves or resizes, and none shows resize grips or corners.
 

@@ -2837,7 +2837,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         // A history that listened while retail's chat was shown stops taking lines: the windows' own history takes them from here.
         _carriedChatHistory?.Dispose();
         _carriedChatHistory = null;
-        // The chat's own text size control moves the Settings window's value too.
+        // A text size set in Settings while the chat is open reaches the Settings window's value through the chat.
         chats.TextSizeChanged += size => { if (_settings != null) _settings.ChatTextSize = new OptionChoice<int>(size, SetChatTextSize); };
         // The main window starts at the bottom left, above the toolbar, until the player moves it; its place is then kept per character.
         var screen = _windows!.Screen;
@@ -3638,8 +3638,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                     eat = route.Eat;
                     break;
                 case InputAction.MouseWheel:
-                    // Ctrl and the wheel over a LegACEy window or the toolbar make it bigger or smaller, and its content does not scroll. Over
-                    // chat they keep changing its text size.
+                    // Ctrl and the wheel over a LegACEy window or the toolbar make it bigger or smaller, and its content does not scroll.
                     if ((route.Modifiers & InputModifiers.Control) != 0 && Rescalable(route.SurfaceId))
                         RescaleWindow(route.SurfaceId!, Math.Sign(route.WheelDelta));
                     else
@@ -3871,10 +3870,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// </summary>
     private static int WholePixels(double length) => (int)Math.Ceiling(length - 0.001);
 
-    /// <summary>Whether Ctrl and the wheel over a surface resize it: the held toolbar, or a LegACEy window other than chat.</summary>
+    /// <summary>Whether Ctrl and the wheel over a surface resize it: the held toolbar, or a LegACEy window, chat included.</summary>
     private bool Rescalable(string? id) => id == ToolbarSurfaceId
         ? _toolbarTakeover?.Holds == true
-        : id != null && _windows?.Get(id) != null && !RetailChatWindows.IsChat(id);
+        : id != null && _windows?.Get(id) != null;
 
     // How long a window's size shows over it after a wheel notch.
     private static readonly TimeSpan ScaleNoteTime = TimeSpan.FromSeconds(1.2);

@@ -229,14 +229,6 @@ public sealed class RetailChatWindow : Decorator, IDisposable
         // The jump pill keeps its own visibility: it is the cue for lines that arrived while the log was scrolled up.
         _chrome.AddRange(new Control[] { _frame, tabBar, _grooveEdge, inputRow });
         Child = new Grid { Background = Brushes.Transparent, Children = { _frame, _scaled } };
-        // Ctrl and the wheel change the text size, anywhere over the window.
-        AddHandler(PointerWheelChangedEvent, (_, e) =>
-        {
-            if (!e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.Delta.Y == 0) return;
-            _host.TextSizeStepped(Math.Sign(e.Delta.Y));
-            e.Handled = true;
-        }, RoutingStrategies.Tunnel);
-
         // A tab press that moves out of the strip is a drag; a press released on the tab is a click. Both are read from the window's own
         // events, so a press that moves outside the tab (where the tab itself gets no moves) still reaches the window.
         AddHandler(PointerMovedEvent, (_, e) => TabPointerMoved(e), RoutingStrategies.Bubble, handledEventsToo: true);
@@ -493,7 +485,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             // A torn-off window has no add button; its close medallion merges its tabs back into the main window.
             var close = DerethChatParts.CloseMedallion();
             close.Click += (_, _) => _host.CloseRequested(this);
-            _tabEnd.Child = WithTextSize(close);
+            _tabEnd.Child = close;
             return;
         }
         var add = DerethChatParts.AddTab();
@@ -503,7 +495,7 @@ public sealed class RetailChatWindow : Decorator, IDisposable
             OpenEditor(-1);
             e.Handled = true;
         };
-        _tabEnd.Child = WithTextSize(add);
+        _tabEnd.Child = add;
     }
 
     /// <summary>How long the window is left alone before it fades, in seconds; null keeps it awake. A change applies on the next frame.</summary>
@@ -553,22 +545,6 @@ public sealed class RetailChatWindow : Decorator, IDisposable
     {
         get => _scaled.LayoutTransform is ScaleTransform scale ? scale.ScaleX : 1;
         set => _scaled.LayoutTransform = new ScaleTransform(value, value);
-    }
-
-    /// <summary>The strip's end with the text size button before it: a click makes the text larger, a right click smaller.</summary>
-    private Control WithTextSize(Control end)
-    {
-        var size = DerethChatParts.TextSizeTab();
-        ToolTip.SetTip(size, "Text size: click for larger, right-click for smaller (or Ctrl and the wheel)");
-        size.PointerPressed += (_, e) =>
-        {
-            var point = e.GetCurrentPoint(size).Properties;
-            if (point.IsLeftButtonPressed) _host.TextSizeStepped(1);
-            else if (point.IsRightButtonPressed) _host.TextSizeStepped(-1);
-            else return;
-            e.Handled = true;
-        };
-        return new StackPanel { Orientation = Orientation.Horizontal, Children = { size, end } };
     }
 
     /// <summary>Scrolls the tabs sideways by a wheel's notches: up or left shows the earlier tabs.</summary>
