@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.14.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.13.0...decal-plugin-v0.14.0) (2026-10-23)
+
+
+### Features
+
+* **decal-plugin:** retail-style Dereth inventory ([#118](https://github.com/apourman/LegACEy/issues/118)) ([5f92b82](https://github.com/apourman/LegACEy/commit/5f92b82e76568b1961530ee69adf1388d72464a7))
+* **decal-plugin:** retail-style inventory doll ([#123](https://github.com/apourman/LegACEy/issues/123)) ([5096a97](https://github.com/apourman/LegACEy/commit/5096a973375308e4b378724bb0f27f8f53d7a7df))
+
+
+### Bug Fixes
+
+* **decal-plugin:** chat fade and toolbar size at small UI sizes ([#117](https://github.com/apourman/LegACEy/issues/117)) ([f9d9838](https://github.com/apourman/LegACEy/commit/f9d983829be62f2abcbc9474b2e4c382a51868e1))
+* **decal-plugin:** draw Foci of Shadow in its own colour ([#121](https://github.com/apourman/LegACEy/issues/121)) ([9ea1bff](https://github.com/apourman/LegACEy/commit/9ea1bffe113de49c031bd89e1b08b19170696e8f))
+* **decal-plugin:** hide the pack fill line when empty ([#122](https://github.com/apourman/LegACEy/issues/122)) ([adb5b48](https://github.com/apourman/LegACEy/commit/adb5b48794d44d4450402b9e5eabb4d4b919b234))
+* **decal-plugin:** retail burden meter colours ([#120](https://github.com/apourman/LegACEy/issues/120)) ([02fe45c](https://github.com/apourman/LegACEy/commit/02fe45caffc1f4568bc8e359cf3dd2cdb8024efc))
+* **decal-plugin:** retail-width Dereth toolbar ([#126](https://github.com/apourman/LegACEy/issues/126)) ([daf1226](https://github.com/apourman/LegACEy/commit/daf12265e48f185be5a18df3aaea5e0e52d44a40))
+* **decal-plugin:** select foci in the Dereth inventory ([#119](https://github.com/apourman/LegACEy/issues/119)) ([49717f6](https://github.com/apourman/LegACEy/commit/49717f62ea73d5dc45ce68e8768fcf3337d972f9))
+* **decal-plugin:** stop VTank spinning while typing in chat ([#124](https://github.com/apourman/LegACEy/issues/124)) ([f836a3d](https://github.com/apourman/LegACEy/commit/f836a3d0a7c6b77f5cd3703a984684932ee4bead))
+* **decal-plugin:** wield a second ring from the Dereth inventory ([#125](https://github.com/apourman/LegACEy/issues/125)) ([ed1d9ee](https://github.com/apourman/LegACEy/commit/ed1d9ee4c7f71032c2521afeb7cadf300bed71a0))
+
+
+### Performance
+
+* **decal-plugin:** cut per-frame garbage and log frame timings ([#115](https://github.com/apourman/LegACEy/issues/115)) ([96d128d](https://github.com/apourman/LegACEy/commit/96d128d821e5e29f070b387c05dd6366863fef2f))
+* **decal-plugin:** run Avalonia once per frame for every window ([#116](https://github.com/apourman/LegACEy/issues/116)) ([2ecd035](https://github.com/apourman/LegACEy/commit/2ecd0354bcbe21ee46dce3c1d72e874ef0d7b0c4))
+
 ## [0.13.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.12.0...decal-plugin-v0.13.0) (2026-10-21)
 
 
