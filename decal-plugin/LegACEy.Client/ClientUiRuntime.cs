@@ -359,6 +359,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     // without one, says what this server needs. Null when the plugin couldn't start them.
     private WorldUpdates? _world;
     private RetailEnterGame? _enterGame;
+    // Spike: a world patch served from memory instead of written into the dats, on while legacey-dat-overlay.patch sits beside acclient.exe.
+    private DatOverlay? _datOverlay;
+    private const string DatOverlayFile = "legacey-dat-overlay.patch";
     // The world update toast last shown, so another shows only when the state or percent changes; cleared by an Enter press, which raises
     // the toast again (and shows Checking, which otherwise stays quiet).
     private (WorldState State, int Percent)? _worldShown;
@@ -457,6 +460,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _updates.Dispose();
             _enterGame?.Dispose();
             _enterGame = null;
+            _datOverlay?.Dispose();
+            _datOverlay = null;
             _postUiDrawHook?.Dispose();
             _postUiDrawHook = null;
             _worldEffects?.Dispose();
@@ -2250,7 +2255,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         try
         {
             using var process = Process.GetCurrentProcess();
-            var world = new WorldUpdates(IOPath.GetDirectoryName(process.MainModule!.FileName)!);
+            var game = IOPath.GetDirectoryName(process.MainModule!.FileName)!;
+            _datOverlay = DatOverlay.Create(IOPath.Combine(game, DatOverlayFile), NativeUi.ReadMemory, Log);
+            if (_datOverlay != null)
+            {
+                // The overlay is the world: the folder's dats stay retail, so the world update would only see them as behind.
+                Log($"World updates are off while the dat overlay serves world {_datOverlay.Version}.");
+                return;
+            }
+            var world = new WorldUpdates(game);
             _world = world;
             _enterGame = RetailEnterGame.Create(NativeUi.ReadMemory, () => world.HoldsEnter, () =>
             {
