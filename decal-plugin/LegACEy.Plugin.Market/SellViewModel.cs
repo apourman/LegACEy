@@ -138,13 +138,6 @@ public sealed class SellViewModel : IDisposable
         Changed?.Invoke();
     }
 
-    /// <summary>Leaves the price panel (a narrow window's Back).</summary>
-    public void Back()
-    {
-        Selected = null;
-        Changed?.Invoke();
-    }
-
     /// <summary>Takes the typed price: digits only, so the field holds a whole number of MMD.</summary>
     public void SetPrice(string text)
     {

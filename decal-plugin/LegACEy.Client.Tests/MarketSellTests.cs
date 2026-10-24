@@ -269,34 +269,39 @@ public sealed class MarketSellTests
     });
 
     [Fact]
-    public void A_medium_window_shows_the_items_above_the_price_panel_on_screen_and_the_price_panel_stays_in_view() => RenderThread.Run(() =>
+    public void A_medium_window_puts_the_items_and_the_price_side_by_side_with_the_listings_under_them() => RenderThread.Run(() =>
     {
         using var medium = new MarketFixture(980);
         medium.Panel.Show(MarketScreen.Sell);
         medium.Settle();
-        var itemsTop = TopOnScreen(medium, "Your items");
-        var priceTop = TopOnScreen(medium, "PRICE, WHOLE STACK");
         var listingsTop = TopOnScreen(medium, "Your listings");
-        Assert.True(itemsTop < priceTop, "the items are above the price panel");
-        Assert.True(priceTop < listingsTop, "the listings are below the price panel");
-        Assert.True(priceTop + BottomOffset(medium, "PRICE, WHOLE STACK") <= medium.Window.Bounds.Height, "the price panel is in view, not pushed off the bottom");
+        Assert.True(TopOnScreen(medium, "PRICE, WHOLE STACK") < listingsTop, "the price panel is above the listings");
+        Assert.True(LeftOnScreen(medium, "PRICE, WHOLE STACK") > LeftOnScreen(medium, "Your items"), "the price panel is to the right of the items");
+        Assert.True(listingsTop < medium.Window.Bounds.Height * 0.6, "the listings take the lower part of the window, not a strip at the bottom");
+    });
 
+    [Fact]
+    public void A_narrow_window_keeps_the_items_in_view_while_one_is_picked_and_the_listings_on_their_own_tab() => RenderThread.Run(() =>
+    {
         using var narrow = new MarketFixture(520);
         narrow.Panel.Show(MarketScreen.Sell);
         narrow.Settle();
         Assert.True(IsShown(narrow, "Your items"), "the narrow window opens on the items");
         Assert.False(IsShown(narrow, "PRICE, WHOLE STACK"), "the price panel waits for a pick");
+        Assert.False(IsShown(narrow, "Your listings"), "the listings wait on their tab");
 
         PutInPack(narrow, 0x5005, "Ring of Rejuvenation");
         narrow.Settle();
         narrow.Sell.Model.Pick(0x5005);
         narrow.Settle();
         Assert.True(IsShown(narrow, "PRICE, WHOLE STACK"), "a pick opens the price panel");
-        Assert.False(IsShown(narrow, "Your items"), "in place of the items");
+        Assert.True(IsShown(narrow, "Your items"), "and the items stay, so another can be picked");
+        Assert.True(TopOnScreen(narrow, "Your items") < TopOnScreen(narrow, "PRICE, WHOLE STACK"), "the price panel sits under the items");
 
-        Click(narrow, "‹ Back");
+        Click(narrow, "Listings");
         narrow.Settle();
-        Assert.True(IsShown(narrow, "Your items"), "Back returns to the items");
+        Assert.True(IsShown(narrow, "Your listings"), "the Listings tab shows the listings");
+        Assert.False(IsShown(narrow, "Your items"));
         Assert.False(IsShown(narrow, "PRICE, WHOLE STACK"));
     });
 
