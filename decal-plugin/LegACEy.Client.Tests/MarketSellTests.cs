@@ -268,16 +268,18 @@ public sealed class MarketSellTests
         Assert.Equal(0x5004u, market.Sell.Model.Selected?.Guid);
     });
 
-    [Fact]
-    public void A_medium_window_puts_the_items_and_the_price_side_by_side_with_the_listings_under_them() => RenderThread.Run(() =>
+    [Theory]
+    [InlineData(980)]
+    [InlineData(1200)]
+    public void A_medium_or_wide_window_splits_the_items_and_price_from_the_listings_running_the_full_height(int width) => RenderThread.Run(() =>
     {
-        using var medium = new MarketFixture(980);
-        medium.Panel.Show(MarketScreen.Sell);
-        medium.Settle();
-        var listingsTop = TopOnScreen(medium, "Your listings");
-        Assert.True(TopOnScreen(medium, "PRICE, WHOLE STACK") < listingsTop, "the price panel is above the listings");
-        Assert.True(LeftOnScreen(medium, "PRICE, WHOLE STACK") > LeftOnScreen(medium, "Your items"), "the price panel is to the right of the items");
-        Assert.True(listingsTop < medium.Window.Bounds.Height * 0.6, "the listings take the lower part of the window, not a strip at the bottom");
+        using var market = new MarketFixture(width);
+        market.Panel.Show(MarketScreen.Sell);
+        market.Settle();
+
+        Assert.True(TopOnScreen(market, "Your items") < TopOnScreen(market, "PRICE, WHOLE STACK"), "the price panel is under the items");
+        Assert.True(LeftOnScreen(market, "Your listings") > LeftOnScreen(market, "PRICE, WHOLE STACK"), "the listings are beside them, on the right");
+        Assert.True(Math.Abs(TopOnScreen(market, "Your items") - TopOnScreen(market, "Your listings")) < 10, "both start at the top");
     });
 
     [Fact]
@@ -303,19 +305,6 @@ public sealed class MarketSellTests
         Assert.True(IsShown(narrow, "Your listings"), "the Listings tab shows the listings");
         Assert.False(IsShown(narrow, "Your items"));
         Assert.False(IsShown(narrow, "PRICE, WHOLE STACK"));
-    });
-
-    [Fact]
-    public void A_wide_window_puts_the_items_and_the_price_side_by_side_with_the_listings_under_them() => RenderThread.Run(() =>
-    {
-        using var wide = new MarketFixture(1200);
-        wide.Panel.Show(MarketScreen.Sell);
-        wide.Settle();
-
-        var listingsTop = TopOnScreen(wide, "Your listings");
-        Assert.True(TopOnScreen(wide, "Your items") < listingsTop, "the items are above the listings");
-        Assert.True(TopOnScreen(wide, "PRICE, WHOLE STACK") < listingsTop, "the price panel is above the listings");
-        Assert.True(LeftOnScreen(wide, "PRICE, WHOLE STACK") > LeftOnScreen(wide, "Your items"), "the price panel is to the right of the items");
     });
 
     [Fact]
