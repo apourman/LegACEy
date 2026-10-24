@@ -52,5 +52,17 @@ namespace ACE.Server.Tests.ClientChannel
 
             CollectionAssert.AreEqual(new byte[] { 0x01, 0x00, 0x01, 0x02, 0x07, 0x00, 0x00, 0x00, 0x01, 0x00, (byte)'x', 0x01, 0x00, 0x00, 0x00, 0x09 }, stream.ToArray());
         }
+
+        [TestMethod]
+        public void WorldNote_LaysOutTheBodyThePluginReads()
+        {
+            // The plugin's WorldNoteTests decode these same bytes.
+            CollectionAssert.AreEqual(new byte[]
+            {
+                0x05, 0x00, (byte)'I', (byte)'s', (byte)'l', (byte)'e', (byte)'s',
+                0xD7, 0x03, 0x00, 0x00,
+                0x09, 0x00, (byte)'h', (byte)'t', (byte)'t', (byte)'p', (byte)'s', (byte)':', (byte)'/', (byte)'/', (byte)'w'
+            }, WorldNote.Body("Isles", 983, "https://w"));
+        }
     }
 }

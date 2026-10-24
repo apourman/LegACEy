@@ -355,7 +355,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _inGame;
     // Kept apart from the UI, which may have failed: the plugin's own updates still check, and tell the player in chat.
     private readonly PluginUpdates _updates = new(PluginDirectory);
-    // World updates at character select, checked from the plugin's start; Enter is held while one is pending. Null when off.
+    // World updates at character select: Enter is held from the plugin's start until the server's note, or the end of the DDD exchange
+    // without one, says what this server needs. Null when the plugin couldn't start them.
     private WorldUpdates? _world;
     private RetailEnterGame? _enterGame;
     // The world update toast last shown, so another shows only when the state or percent changes; cleared by an Enter press, which raises
@@ -413,6 +414,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
                 _serverChannel.Subscribe(WeatherProtocol.Changed, ShowWeather);
                 _serverChannel.Subscribe(CombatTextProtocol.Hit, ShowHit);
                 _serverChannel.Subscribe(PingProtocol.Placed, ShowPing);
+                _serverChannel.Subscribe(WorldNoteProtocol.Topic, HeardWorld);
             }
             catch (Exception exception) { Log($"LegACEy server channel disabled: {exception.Message}"); }
             try { _retailDrag = new RetailItemDrag(NativeUi.ReadMemory, Log); }
@@ -618,6 +620,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         _toolbarPort?.ObjectChanged(id);
     }
 
+    // DDD_EndDDD, which ends the DDD exchange at connect (ACE's GameMessageOpcode).
+    internal const int DddEndMessage = 0xF7EA;
+
     // InventoryPutObjInContainer, WieldObject and InventoryPutObjectIn3D (ACE's GameEventType).
     private static readonly uint[] InventoryMoveEvents = { 0x0022, 0x0023, 0x019A };
 
@@ -638,6 +643,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         foreach (var moved in InventoryMoveEvents)
             if (GameChannelTransport.GameEventPayload(type, raw, moved) != null)
                 _inventory.MarkStale();
+        // The server's DDD exchange ended: a LegACEy server with a world sent its note before this.
+        if (type == DddEndMessage) _world?.NoNote();
         if (_serverChannel == null || _channelTransport == null)
             return;
         byte[]? payload;
@@ -2237,19 +2244,13 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         return _updateToast = toast;
     }
 
-    /// <summary>Starts the world update check and, unless world updates are off, the Enter hold at character select.</summary>
+    /// <summary>Starts world updates and the Enter hold at character select, which waits for the server's world note.</summary>
     private void StartWorldUpdates()
     {
         try
         {
             using var process = Process.GetCurrentProcess();
-            var world = new WorldUpdates(IOPath.GetDirectoryName(process.MainModule!.FileName)!, WorldUpdates.ManifestUrl(PluginDirectory));
-            world.Start();
-            if (world.State == WorldState.Off)
-            {
-                Log($"World updates are off: no {WorldUpdates.ManifestUrlFile} beside the plugin.");
-                return;
-            }
+            var world = new WorldUpdates(IOPath.GetDirectoryName(process.MainModule!.FileName)!);
             _world = world;
             _enterGame = RetailEnterGame.Create(NativeUi.ReadMemory, () => world.HoldsEnter, () =>
             {
@@ -2258,6 +2259,19 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             }, Log);
         }
         catch (Exception exception) { Log($"World updates are off: {exception.Message}"); }
+    }
+
+    /// <summary>The server's world note, pushed at character select.</summary>
+    private void HeardWorld(byte[] body)
+    {
+        WorldNote note;
+        try { note = WorldNoteProtocol.Read(body); }
+        catch (Exception exception)
+        {
+            Log($"Could not read the server's world note: {exception.Message}");
+            return;
+        }
+        _world?.Heard(note);
     }
 
     /// <summary>
@@ -2275,7 +2289,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         var shown = (world.State, world.Percent);
         if (_worldShown != shown)
         {
-            if (WorldToast(shown.State, shown.Percent, _worldRaised) is not { } toast) _worldShown = shown;
+            if (WorldToast(world, shown.State, shown.Percent, _worldRaised) is not { } toast) _worldShown = shown;
             else if (ShowWorldToast(toast)) _worldShown = shown;
         }
         if (!_loggedIn) PlaceUpdateToast();
@@ -2298,15 +2312,18 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     /// The world update's toast, or null for none. Checking shows only once Enter was pressed; a handed-off update the game isn't closing for
     /// (the character is already in the world, or the close failed) installs at the next close.
     /// </summary>
-    private static ToastNotice? WorldToast(WorldState state, int percent, bool raised) => state switch
+    private static ToastNotice? WorldToast(WorldUpdates world, WorldState state, int percent, bool raised) => state switch
     {
-        WorldState.Checking when raised => new ToastNotice(ToastIcon.Search, "Checking for world updates…", "Enter opens once the check is done.", Busy: true),
+        WorldState.Waiting or WorldState.Checking when raised => new ToastNotice(ToastIcon.Search, "Checking for world updates…", "Enter opens once the check is done.", Busy: true),
         WorldState.Downloading => new ToastNotice(ToastIcon.New, $"World update needed: downloading {percent}%", "Enter opens once it's installed.", Busy: true),
         WorldState.Ready or WorldState.Closing => new ToastNotice(ToastIcon.New, "World update ready",
             "The game will close; click Launch in ThwargLauncher to come back.", Busy: true),
         WorldState.HandedOff => new ToastNotice(ToastIcon.New, "World update downloaded", "It installs when you close the game."),
-        WorldState.Unavailable => new ToastNotice(ToastIcon.Failed, "Couldn't check for world updates", "You can play; the next launch tries again.",
-            Lifetime: TimeSpan.FromSeconds(8)),
+        WorldState.Unavailable => new ToastNotice(ToastIcon.Failed, "Couldn't download the world update",
+            "This server may refuse Enter until it's installed; the next launch tries again.", Lifetime: TimeSpan.FromSeconds(12)),
+        WorldState.OtherWorld => new ToastNotice(ToastIcon.Failed, $"This game folder holds {world.Folder?.Name ?? "another world"}",
+            $"{world.Server?.Name ?? "This server"} is a different world and needs its own game folder: in ThwargLauncher, give this account "
+            + "its own game folder (a copy of retail)."),
         _ => null,
     };
 

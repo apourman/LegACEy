@@ -72,10 +72,24 @@ public sealed class WorldPatch(int version, IReadOnlyList<WorldPatchRecord> reco
     }
 }
 
-/// <summary>Where a game folder keeps its world version and its staged world patches.</summary>
+/// <summary>
+/// The world a game folder holds: its version (the cell dat edition the world's patch brought it to), and the world's update-list address
+/// and name. A folder without a world file is retail: version 1, no address.
+/// </summary>
+public sealed class WorldFolder(int version, string? address, string? name)
+{
+    public int Version { get; } = version;
+    public string? Address { get; } = address;
+    public string? Name { get; } = name;
+}
+
+/// <summary>Where a game folder keeps its world and its staged world patches.</summary>
 public static class WorldFiles
 {
-    /// <summary>Beside the dats: <c>{ "version": N }</c>. A folder without it is version 1, retail.</summary>
+    /// <summary>
+    /// Beside the dats: <c>{ "version": N, "address": "…", "name": "…" }</c>. A folder without it is version 1, retail. A stage holds one
+    /// too, naming the world its patch belongs to, which the updater copies beside the dats with the patch's version.
+    /// </summary>
     public const string VersionFile = "legacey-world.json";
     /// <summary>Under the game folder: <c>world-update\&lt;version&gt;\</c> holds the patch, then <c>ready</c> once it is verified.</summary>
     public const string UpdateFolder = "world-update";
@@ -88,20 +102,26 @@ public static class WorldFiles
     public const string UpdaterMutex = @"Local\LegACEy.WorldUpdater";
 
     private static readonly Regex VersionValue = new(@"""version""\s*:\s*(\d+)", RegexOptions.Compiled);
+    private static readonly Regex AddressValue = Text("address"), NameValue = Text("name");
 
     public static string Stage(string game, int version) => Path.Combine(game, UpdateFolder, version.ToString());
 
     /// <summary>The game folder's world version: 1 when the file is missing or can't be read.</summary>
-    public static int ReadVersion(string game)
+    public static int ReadVersion(string game) => ReadWorld(game).Version;
+
+    /// <summary>The world in <paramref name="folder"/>'s world file: retail (version 1, no address) when it is missing or can't be read.</summary>
+    public static WorldFolder ReadWorld(string folder)
     {
         try
         {
-            var path = Path.Combine(game, VersionFile);
-            if (!File.Exists(path)) return 1;
-            var match = VersionValue.Match(File.ReadAllText(path));
-            return match.Success && int.TryParse(match.Groups[1].Value, out var version) && version >= 1 ? version : 1;
+            var path = Path.Combine(folder, VersionFile);
+            if (!File.Exists(path)) return new WorldFolder(1, null, null);
+            var json = File.ReadAllText(path);
+            var match = VersionValue.Match(json);
+            var version = match.Success && int.TryParse(match.Groups[1].Value, out var number) && number >= 1 ? number : 1;
+            return new WorldFolder(version, Value(AddressValue, json), Value(NameValue, json));
         }
-        catch (Exception) { return 1; }
+        catch (Exception) { return new WorldFolder(1, null, null); }
     }
 
     /// <summary>A file's SHA-256, lower-case hex.</summary>
@@ -112,5 +132,19 @@ public static class WorldFiles
         return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "").ToLowerInvariant();
     }
 
-    public static string VersionJson(int version) => $"{{ \"version\": {version} }}";
+    public static string WorldJson(int version, string? address, string? name) =>
+        $"{{ \"version\": {version}" + (address != null ? $", \"address\": {Quote(address)}" : "") + (name != null ? $", \"name\": {Quote(name)}" : "") + " }";
+
+    private static Regex Text(string key) => new($@"""{key}""\s*:\s*""((?:[^""\\]|\\.)*)""", RegexOptions.Compiled);
+
+    private static string? Value(Regex key, string json) => key.Match(json) is { Success: true } match ? Regex.Unescape(match.Groups[1].Value) : null;
+
+    // The few escapes JSON needs; Regex.Unescape reads them back.
+    private static string Quote(string value)
+    {
+        var quoted = new StringBuilder("\"");
+        foreach (var c in value)
+            quoted.Append(c is '"' or '\\' ? "\\" + c : c < ' ' ? $"\\u{(int)c:x4}" : c.ToString());
+        return quoted.Append('"').ToString();
+    }
 }

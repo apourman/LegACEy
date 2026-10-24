@@ -1,20 +1,22 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using LegACEy.Client.Demo;
 using LegACEy.Updater;
 
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
-/// Where a world update stands. Checking, Downloading, Ready and Closing hold Enter at character select; Off (no manifest address),
-/// UpToDate, Unavailable (the manifest or patch couldn't be had, or the last apply failed) and HandedOff (the updater waits, but the game
-/// isn't closing for it) leave it alone.
+/// Where a world update stands. Waiting (for the server's note), Checking, Downloading, Ready, Closing and OtherWorld hold Enter at
+/// character select; Off (a plain server: no note), UpToDate, Unavailable (the update list or patch couldn't be had, or the last apply
+/// failed) and HandedOff (the updater waits, but the game isn't closing for it) leave it alone.
 /// </summary>
-internal enum WorldState { Off, Checking, UpToDate, Downloading, Ready, Closing, HandedOff, Unavailable }
+internal enum WorldState { Waiting, Off, Checking, UpToDate, Downloading, Ready, Closing, HandedOff, Unavailable, OtherWorld }
 
 /// <summary>The world manifest: the world version it brings a game to, and the patch's address, size in bytes and SHA-256.</summary>
 internal sealed record WorldManifest(int Version, string Patch, long Size, string Sha256)
@@ -29,16 +31,16 @@ internal sealed record WorldManifest(int Version, string Patch, long Size, strin
 }
 
 /// <summary>
-/// Keeps the game folder's dats at the world version the manifest asks for. Started once, when the plugin starts at character select: off
-/// the game thread it reads the manifest, and when the folder is behind it downloads the patch into <c>world-update\&lt;version&gt;\</c> and
-/// checks its size and SHA-256 (a bad download is thrown away and tried once more), then says Ready. <see cref="HandOff"/> then starts the
-/// updater, which applies the patch once every game client has exited. Any failure is logged and ends in Unavailable, which never holds
-/// Enter: a down update host locks nobody out. The manifest address is the first line of <c>world-manifest-url</c> beside the stub; with no
-/// such file world updates are off.
+/// Keeps the game folder's dats at the world of the server logged into. Enter waits from the plugin's start at character select until the
+/// server's note (<see cref="Heard"/>) or the end of the DDD exchange without one (<see cref="NoNote"/>, a plain server: the folder is
+/// never touched). With a note, off the game thread: a folder holding another world's address is left alone and Enter stays held; one at
+/// the note's edition is up to date; otherwise it reads the note's update list and downloads the patch into
+/// <c>world-update\&lt;version&gt;\</c>, checks its size and SHA-256 (a bad download is thrown away and tried once more), then says Ready.
+/// <see cref="HandOff"/> then starts the updater, which applies the patch once every game client has exited. Any failure is logged and
+/// ends in Unavailable, which never holds Enter: the server decides then.
 /// </summary>
 internal sealed class WorldUpdates
 {
-    public const string ManifestUrlFile = "world-manifest-url";
     private const string UpdaterName = "LegACEy.Updater.exe";
     // Short: Enter is held while the manifest is fetched.
     private static readonly TimeSpan ManifestDeadline = TimeSpan.FromSeconds(15);
@@ -46,7 +48,6 @@ internal sealed class WorldUpdates
     private static readonly HttpClient Http = new() { Timeout = Timeout.InfiniteTimeSpan, DefaultRequestHeaders = { { "User-Agent", "LegACEy-decal-plugin" } } };
 
     private readonly string _game;
-    private readonly string? _manifestUrl;
     private readonly Func<string, CancellationToken, Task<string>> _getString;
     private readonly Func<string, Stream, Action<long>, CancellationToken, Task> _download;
     private int _state;
@@ -55,11 +56,10 @@ internal sealed class WorldUpdates
 
     /// <param name="getString">Fetches the manifest; null for HTTP.</param>
     /// <param name="download">Writes the patch at an address into a stream, reporting the bytes written so far; null for HTTP.</param>
-    public WorldUpdates(string game, string? manifestUrl, Func<string, CancellationToken, Task<string>>? getString = null,
+    public WorldUpdates(string game, Func<string, CancellationToken, Task<string>>? getString = null,
         Func<string, Stream, Action<long>, CancellationToken, Task>? download = null)
     {
         _game = game;
-        _manifestUrl = manifestUrl;
         _getString = getString ?? ((url, cancel) => Http.GetStringAsync(url, cancel));
         _download = download ?? Fetch;
     }
@@ -72,46 +72,88 @@ internal sealed class WorldUpdates
     /// <summary>The manifest of the update being downloaded or ready; null until the check finds the folder behind.</summary>
     public WorldManifest? Target { get; private set; }
 
-    /// <summary>Whether entering the world waits: while the check, download or hand-off runs.</summary>
-    public bool HoldsEnter => State is WorldState.Checking or WorldState.Downloading or WorldState.Ready or WorldState.Closing;
+    /// <summary>The server's world, once its note came.</summary>
+    public WorldNote? Server { get; private set; }
 
-    /// <summary>The manifest address in <c>world-manifest-url</c> beside the stub, or null when world updates are off.</summary>
-    public static string? ManifestUrl(string install)
-    {
-        try
-        {
-            var path = Path.Combine(install, ManifestUrlFile);
-            if (!File.Exists(path)) return null;
-            foreach (var line in File.ReadLines(path))
-                if (line.Trim() is { Length: > 0 } url) return url;
-        }
-        catch (Exception exception) { ClientUiRuntime.Log($"Could not read {ManifestUrlFile}: {exception.Message}"); }
-        return null;
-    }
+    /// <summary>The world this folder holds; read when the note comes.</summary>
+    public WorldFolder? Folder { get; private set; }
 
-    /// <summary>Starts the check once; later calls return the same task. The task never fails.</summary>
-    public Task Start()
+    /// <summary>Whether entering the world waits: for the note, while the check, download or hand-off runs, and for good when the folder
+    /// holds another world.</summary>
+    public bool HoldsEnter => State is WorldState.Waiting or WorldState.Checking or WorldState.Downloading or WorldState.Ready or WorldState.Closing
+        or WorldState.OtherWorld;
+
+    /// <summary>The server's note: starts the check once; later calls return the same task. The task never fails.</summary>
+    public Task Heard(WorldNote note)
     {
-        if (_manifestUrl == null || Interlocked.CompareExchange(ref _state, (int)WorldState.Checking, (int)WorldState.Off) != (int)WorldState.Off)
+        if (Interlocked.CompareExchange(ref _state, (int)WorldState.Checking, (int)WorldState.Waiting) != (int)WorldState.Waiting)
             return _running;
-        return _running = Task.Run(Run);
+        Server = note;
+        ClientUiRuntime.Log($"World update: the server runs {note.Name}, edition {note.Edition}, update list {note.UpdateList}.");
+        return _running = Task.Run(() => Run(note));
     }
 
-    private async Task Run()
+    /// <summary>The DDD exchange ended without a note: a plain server, so world updates are off and the folder is left alone.</summary>
+    public void NoNote()
+    {
+        if (Interlocked.CompareExchange(ref _state, (int)WorldState.Off, (int)WorldState.Waiting) == (int)WorldState.Waiting)
+            ClientUiRuntime.Log("World update: Off. The server sent no world note, so this game folder is left alone.");
+    }
+
+    /// <summary>https anywhere; plain http only to this machine or a private network, for local testing.</summary>
+    public static bool Allowed(string address) =>
+        Uri.TryCreate(address, UriKind.Absolute, out var uri)
+        && (uri.Scheme == Uri.UriSchemeHttps || (uri.Scheme == Uri.UriSchemeHttp && (uri.IsLoopback || Private(uri))));
+
+    private static bool Private(Uri uri)
+    {
+        if (!IPAddress.TryParse(uri.Host, out var ip)) return false;
+        if (ip.IsIPv6LinkLocal || ip.IsIPv6UniqueLocal) return true;
+        var b = ip.GetAddressBytes();
+        return b.Length == 4 && (b[0] == 10 || (b[0] == 172 && b[1] >= 16 && b[1] < 32) || (b[0] == 192 && b[1] == 168));
+    }
+
+    /// <summary>An address <see cref="Allowed"/> refuses ends the check in Unavailable.</summary>
+    private bool Refused(string address)
+    {
+        if (Allowed(address)) return false;
+        ClientUiRuntime.Log($"World update address {address} refused: only https, or http to this machine or a private network.");
+        Set(WorldState.Unavailable);
+        return true;
+    }
+
+    private async Task Run(WorldNote note)
     {
         try
         {
-            WorldManifest manifest;
-            using (var deadline = new CancellationTokenSource(ManifestDeadline))
-                manifest = WorldManifest.Parse(await _getString(_manifestUrl!, deadline.Token));
-            var local = WorldFiles.ReadVersion(_game);
-            ClientUiRuntime.Log($"World update check: this game is at world {local}; {_manifestUrl} has world {manifest.Version}.");
-            if (manifest.Version <= local)
+            var folder = Folder = WorldFiles.ReadWorld(_game);
+            if (folder.Address != null && folder.Address != note.UpdateList)
             {
-                RemoveOldStages(local);
+                ClientUiRuntime.Log($"World update: this game folder holds {folder.Name ?? folder.Address} ({folder.Address}), not {note.Name}. "
+                    + "Enter stays held; the folder is left alone.");
+                Set(WorldState.OtherWorld);
+                return;
+            }
+            if (folder.Address != null && folder.Version >= note.Edition)
+            {
+                RemoveOldStages(folder.Version);
                 Set(WorldState.UpToDate);
                 return;
             }
+            if (Refused(note.UpdateList)) return;
+            WorldManifest manifest;
+            using (var deadline = new CancellationTokenSource(ManifestDeadline))
+                manifest = WorldManifest.Parse(await _getString(note.UpdateList, deadline.Token));
+            ClientUiRuntime.Log($"World update check: this game is at world {folder.Version}; {note.UpdateList} has world {manifest.Version}.");
+            if (manifest.Version < note.Edition)
+                ClientUiRuntime.Log($"The update list's world {manifest.Version} is behind the server's edition {note.Edition}; the server may still refuse Enter.");
+            if (manifest.Version <= folder.Version)
+            {
+                RemoveOldStages(folder.Version);
+                Set(WorldState.UpToDate);
+                return;
+            }
+            if (Refused(manifest.Patch)) return;
             Target = manifest;
             var stage = WorldFiles.Stage(_game, manifest.Version);
             if (File.Exists(Path.Combine(stage, WorldFiles.FailedFile)))
@@ -122,6 +164,9 @@ internal sealed class WorldUpdates
                 Set(WorldState.Unavailable);
                 return;
             }
+            // Names the world the patch belongs to, for the updater to record beside the dats.
+            Directory.CreateDirectory(stage);
+            File.WriteAllText(Path.Combine(stage, WorldFiles.VersionFile), WorldFiles.WorldJson(manifest.Version, note.UpdateList, note.Name));
             if (Staged(stage, manifest))
             {
                 ClientUiRuntime.Log($"World update {manifest.Version} is already downloaded.");

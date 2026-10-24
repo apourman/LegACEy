@@ -3,23 +3,33 @@ using DatReaderWriter.Lib.IO.DatBTree;
 using DatReaderWriter.Options;
 using LegACEy.Updater;
 
-// build <retail> <edited> <out> <world version> <url folder>: writes <out>/world-<version>.patch, every record of <edited>'s dats that
-//   differs from <retail>'s, and <out>/world-manifest.json pointing at <url folder>/world-<version>.patch.
+// build <retail> <edited> <out> <url folder>: writes <out>/world-<edition>.patch, every record of <edited>'s dats that differs from
+//   <retail>'s (their edition records too), and <out>/world-manifest.json pointing at <url folder>/world-<edition>.patch. The world
+//   version is the edited cell dat's edition, which the server announces; it must be above retail's.
 // check <retail> <edited> <patch>: applies the patch to a copy of <retail> with the updater's own apply, then compares every patched
 //   record with <edited>. A developer check; it copies the patched dats to a temporary folder.
 switch (args)
 {
-    case ["build", var retail, var edited, var output, var version, var url] when int.TryParse(version, out var number) && number > 1:
-        return Build(retail, edited, output, number, url);
+    case ["build", var retail, var edited, var output, var url]:
+        return Build(retail, edited, output, url);
     case ["check", var retail, var edited, var patch]:
         return Check(retail, edited, patch);
     default:
-        Console.Error.WriteLine("usage: build <retail> <edited> <out> <world version, 2 or more> <url folder> | check <retail> <edited> <patch>");
+        Console.Error.WriteLine("usage: build <retail> <edited> <out> <url folder> | check <retail> <edited> <patch>");
         return 2;
 }
 
-static int Build(string retail, string edited, string output, int version, string url)
+static int Build(string retail, string edited, string output, string url)
 {
+    const string Cell = "client_cell_1.dat";
+    int version, retailEdition;
+    using (var before = Open(Path.Combine(retail, Cell))) retailEdition = before.Iteration.CurrentIteration;
+    using (var after = Open(Path.Combine(edited, Cell))) version = after.Iteration.CurrentIteration;
+    if (version <= retailEdition)
+    {
+        Console.Error.WriteLine($"{Cell} is at edition {version}, retail's is {retailEdition}: raise the edited cell dat's edition, which is the world version.");
+        return 1;
+    }
     var records = new List<WorldPatchRecord>();
     foreach (var path in Directory.GetFiles(edited, "client_*.dat").Order())
     {
@@ -36,8 +46,6 @@ static int Build(string retail, string edited, string output, int version, strin
         foreach (var file in after.Tree)
         {
             kept.Add(file.Id);
-            // The dat's own iteration record stays retail's, so ACE's connect-time check sees no newer dats (see the world-updates spec).
-            if (file.Id == 0xFFFF0001) continue;
             if (!after.TryGetFileBytes(file.Id, out var bytes) || bytes == null) throw new IOException($"{name}: can't read {file.Id:X8}");
             var old = before.TryGetFileBytes(file.Id, out var retailBytes) ? retailBytes : null;
             if (old != null && old.AsSpan().SequenceEqual(bytes)) continue;
@@ -93,7 +101,14 @@ static int Check(string retail, string edited, string patchPath)
                 Console.Error.WriteLine($"{dat.Key} {record.Id:X8} differs after the patch");
             }
         }
-        Console.WriteLine(different == 0 ? $"All {patch.Records.Count} patched records match the edited dats." : $"{different} records differ.");
+        int edition;
+        using (var cell = Open(Path.Combine(game, "client_cell_1.dat"))) edition = cell.Iteration.CurrentIteration;
+        if (edition != patch.Version)
+        {
+            different++;
+            Console.Error.WriteLine($"The patched cell dat is at edition {edition}, not the world version {patch.Version}");
+        }
+        Console.WriteLine(different == 0 ? $"All {patch.Records.Count} patched records match the edited dats; the cell dat is at edition {edition}." : $"{different} records differ.");
         return different == 0 ? 0 : 1;
     }
     finally { Directory.Delete(game, true); }

@@ -8,7 +8,7 @@ using Reloaded.Hooks.Definitions.X86;
 namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
-/// Holds entering the world while a world update is pending. Two retail functions are held, each on its own:
+/// Holds entering the world while the game folder doesn't match the server's world: waiting for its note, updating, or another world. Two retail functions are held, each on its own:
 /// <list type="bullet">
 /// <item><c>gmCharacterManagementUI::EnterGame</c>, which character select's Enter button and a double click on a character call. Held
 /// there, the player stays at character select with no Entering World dialog.</item>
@@ -116,7 +116,7 @@ internal sealed class RetailEnterGame : IDisposable
             Report($"Could not ask whether to hold entering the world; letting it through: {exception.Message}");
             return false;
         }
-        Report($"{what}: a world update is pending.");
+        Report($"{what}: the game folder doesn't match this server's world yet (see the world update toast).");
         try { _held(); }
         catch (Exception exception) { Report($"Could not show the world update toast: {exception.Message}"); }
         return true;
