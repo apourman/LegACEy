@@ -24,6 +24,7 @@ internal sealed unsafe class WorldEffects : IDisposable
 {
     private const string Source = "acclient.pdb (C:\\Turbine\\Asheron's Call, a near build; +0xAD0 near 0x50E000, +0xA0 near 0x455000) for names; our objdump read of installed acclient.exe";
     private const uint SmartBoxDrawAddress = 0x00455610, GetObjectAddress = 0x0050FF60, PartDrawAddress = 0x0050E270;
+    private const uint SphereTestAddress = 0x0054CE60;
     private const uint LandscapeDrawAddress = 0x00506D90;
     // CPhysicsPart* being drawn by CPhysicsPart::Draw, zero otherwise; part +0xE0 is its CPhysicsObj, whose +0x8 is the object id.
     private static readonly int* DrawingPart = (int*)0x008EE3D8;
@@ -60,7 +61,9 @@ internal sealed unsafe class WorldEffects : IDisposable
             Source, "the layout read here: CPartArray part count +0x58, parts +0x5C"),
         // Past the prologue, in case a hook patches it.
         new NativeUiEntry("CPhysicsPart::Draw reads its force flag", PartDrawAddress + 0x13, NativeUiCatalogue.Bytes("55 8B 6C 24 0C 85 ED 57 75 12"),
-            Source, "ThisCall (int force): forced, it skips the drawn-this-frame check, and RenderDeviceD3D::DrawMesh (0x5A1970) draws a part outside every view cone"),
+            Source, "ThisCall (int force): unforced, it skips a part already drawn this frame; forced, RenderDeviceD3D::DrawMesh (0x5A1970) queues it through the paperdoll's BSP path, which never reaches the device draws hooked here"),
+        new NativeUiEntry("The view-cone sphere test", SphereTestAddress, NativeUiCatalogue.Bytes("83 EC 1C D9 05 84 FC 81 00 8B 15 34 73 86 00"),
+            Source, "Cdecl (CSphere*): 0 when a part's bounding sphere is outside the view cone; RenderDeviceD3D::DrawMesh skips the part then. Hooked only while the culled selection is drawn"),
         new NativeUiEntry("CPhysicsObj::SetLuminosity reads the part array", 0x00512374, NativeUiCatalogue.Bytes("8B 4E 10 85 C9 74 76"),
             Source, "the layout read here: CPhysicsObj +0x10 is its CPartArray")
     };
@@ -102,6 +105,9 @@ internal sealed unsafe class WorldEffects : IDisposable
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void DrawPartFn(IntPtr part, int force);
 
+    [Function(CallingConventions.Cdecl)]
+    private delegate int SphereTestFn(IntPtr sphere);
+
     private readonly GetObjectFn _getObject = Marshal.GetDelegateForFunctionPointer<GetObjectFn>(new IntPtr(GetObjectAddress));
     private readonly DrawPartFn _drawPart = Marshal.GetDelegateForFunctionPointer<DrawPartFn>(new IntPtr(PartDrawAddress));
     // While retail draws its world: parts drawn outside it (retail's 3D paperdoll in the inventory, with its own camera) are not measured or
@@ -117,6 +123,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     private readonly IHook<DrawIndexedFn> _drawHook;
     private readonly IHook<DrawFn> _drawPrimitiveHook;
     private readonly IHook<ResetFn> _resetHook;
+    private readonly IHook<SphereTestFn> _sphereHook;
     private readonly StormFog _fog;
     private readonly Weather _weather;
     private readonly Water _water;
@@ -149,6 +156,9 @@ internal sealed unsafe class WorldEffects : IDisposable
         _drawHook = ReloadedHooks.Instance.CreateHook<DrawIndexedFn>(OnDrawIndexed, Method(device, DrawIndexedPrimitiveSlot).ToInt64());
         _drawPrimitiveHook = ReloadedHooks.Instance.CreateHook<DrawFn>(OnDraw, Method(device, DrawPrimitiveSlot).ToInt64());
         _resetHook = ReloadedHooks.Instance.CreateHook<ResetFn>(OnReset, Method(device, ResetSlot).ToInt64());
+        _sphereHook = ReloadedHooks.Instance.CreateHook<SphereTestFn>(OnSphereTest, SphereTestAddress);
+        _sphereHook.Activate();
+        _sphereHook.Disable();
         _resetHook.Activate();
         _drawHook.Activate();
         _drawPrimitiveHook.Activate();
@@ -519,9 +529,9 @@ internal sealed unsafe class WorldEffects : IDisposable
     }
 
     /// <summary>
-    /// Has retail draw the selected object's parts again, into the mask only: indoors, retail culls what is in rooms out of view. Forced:
-    /// unforced, as CPartArray::Draw draws them, a part outside every portal's view cone is skipped, so a target in a room out of sight,
-    /// even around a corner, was not outlined (backlog 051).
+    /// Has retail draw the selected object's parts again, into the mask only: indoors, retail culls what is in rooms out of view. Unforced,
+    /// with the view-cone test passing every part: retail skips a part whose sphere is outside every portal's cone, so a target a room or
+    /// two away was not outlined, and forced, the parts went through the paperdoll's path and never reached the device (backlog 051).
     /// ponytail: a culled object's draw position is where retail last placed it; a moving one may lag until it is in view again.
     /// </summary>
     private void DrawCulledSelection()
@@ -535,6 +545,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         var list = Marshal.ReadIntPtr(parts, 0x5C);
         _culledFrames++;
         _forcing = true;
+        _sphereHook.Enable();
         try
         {
             for (var i = 0; i < count; i++)
@@ -542,10 +553,21 @@ internal sealed unsafe class WorldEffects : IDisposable
                 var part = Marshal.ReadIntPtr(list, i * 4);
                 if (part == IntPtr.Zero) continue;
                 _culledParts++;
-                _drawPart(part, 1);
+                _drawPart(part, 0);
             }
         }
-        finally { _forcing = false; }
+        finally
+        {
+            _sphereHook.Disable();
+            _forcing = false;
+        }
+    }
+
+    // Retail's test still runs for what it records; outside the cone (0) becomes 1, partly in view.
+    private int OnSphereTest(IntPtr sphere)
+    {
+        var inView = _sphereHook.OriginalFunction(sphere);
+        return _forcing && inView == 0 ? 1 : inView;
     }
 
     /// <summary>Spreads the mask into the glow texture, then adds the glow to the screen in gold outside the mask.</summary>
@@ -691,6 +713,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         _drawHook.Disable();
         _drawPrimitiveHook.Disable();
         _resetHook.Disable();
+        _sphereHook.Disable();
         ReleaseTextures();
         _fog.Dispose();
         _weather.Dispose();
