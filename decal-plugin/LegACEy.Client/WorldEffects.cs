@@ -261,23 +261,13 @@ internal sealed unsafe class WorldEffects : IDisposable
     private readonly PhaseTimes _phases = new();
     private int _drawCalls;
     private int _frames;
-    // ponytail: backlog 051 diagnostic, drop once a play-test shows the culled outline: frames the selection was culled, its parts
-    // drawn forced, and the draws of them that reached the mask.
-    private int _culledFrames, _culledParts, _culledMasked, _culledEmpty;
-    // ponytail: same diagnostic: every 60th culled frame logs where the selection and its first part are and how many mask pixels the
-    // pass covered (an occlusion query, read a frame or more later).
-    private IntPtr _culledQuery;
-    private bool _culledQueryPending;
-    private string _culledSample = "";
 
     /// <summary>The effect timings and how many of retail's indexed draws passed through the hook per world frame, then starts again.</summary>
     public string TakePerformanceSummary()
     {
-        var summary = $"frames={_frames} drawCallsPerFrame={(_frames == 0 ? 0 : _drawCalls / _frames)} {_phases.TakeSummary()} " +
-            $"culledSelection={_culledFrames}/{_culledParts}/{_culledMasked}/{_culledEmpty}";
+        var summary = $"frames={_frames} drawCallsPerFrame={(_frames == 0 ? 0 : _drawCalls / _frames)} {_phases.TakeSummary()}";
         _drawCalls = 0;
         _frames = 0;
-        _culledFrames = _culledParts = _culledMasked = _culledEmpty = 0;
         return summary;
     }
 
@@ -469,7 +459,6 @@ internal sealed unsafe class WorldEffects : IDisposable
                 SetStageState(_device, 1, StageState.ColorOp, OpDisable);
                 SetStageState(_device, 1, StageState.AlphaOp, OpDisable);
                 draw();
-                if (_forcing) _culledMasked++;
                 _masked = true;
                 _outlined |= channels == SelectionChannels;
             }
@@ -586,23 +575,6 @@ internal sealed unsafe class WorldEffects : IDisposable
         _updateParts(physicsObject);
         int count = Marshal.ReadInt32(parts, 0x58);
         var list = Marshal.ReadIntPtr(parts, 0x5C);
-        _culledFrames++;
-        var masked = _culledMasked;
-        var sample = _culledFrames % 60 == 1;
-        if (_culledQueryPending && QueryPixels(_culledQuery) is { } pixels)
-        {
-            _culledQueryPending = false;
-            _log($"{_culledSample} covered {pixels} mask pixels.");
-        }
-        if (sample && !_culledQueryPending)
-        {
-            if (_culledQuery == IntPtr.Zero) _culledQuery = CreateOcclusionQuery(_device);
-            _culledSample = $"Culled selection {Selected:X8}: object in {Marshal.ReadInt32(physicsObject, 0x4C):X8} at {Origin(physicsObject + 0x84)}" +
-                $", camera {_fog.Eye} (render = game + {_fog.Offset})";
-            BeginQuery(_culledQuery);
-            _culledQueryPending = true;
-        }
-        else sample = false;
         // The last room's view is not the selection's: its polygons were cut to that room's doorway. Through the whole screen instead.
         for (var i = 0; i < ViewGlobals.Length; i++) _savedView[i] = *ViewGlobals[i];
         _useFullView();
@@ -614,7 +586,6 @@ internal sealed unsafe class WorldEffects : IDisposable
             {
                 var part = Marshal.ReadIntPtr(list, i * 4);
                 if (part == IntPtr.Zero) continue;
-                _culledParts++;
                 _partViewerDistance(part);
                 _drawPart(part, 0);
             }
@@ -624,19 +595,8 @@ internal sealed unsafe class WorldEffects : IDisposable
             _sphereHook.Disable();
             _forcing = false;
             for (var i = 0; i < ViewGlobals.Length; i++) *ViewGlobals[i] = _savedView[i];
-            if (_culledMasked == masked) _culledEmpty++;
-            if (sample)
-            {
-                EndQuery(_culledQuery);
-                var first = count > 0 ? Marshal.ReadIntPtr(list) : IntPtr.Zero;
-                _culledSample += (first == IntPtr.Zero ? ", no first part" : $", first part drawn in {Marshal.ReadInt32(first, 0x7C):X8} at {Origin(first + 0xB4)}") +
-                    $", {_culledMasked - masked} masked draws,";
-            }
         }
     }
-
-    private static string Origin(IntPtr at) =>
-        $"({BitConverter.Int32BitsToSingle(Marshal.ReadInt32(at)):0.0}, {BitConverter.Int32BitsToSingle(Marshal.ReadInt32(at, 4)):0.0}, {BitConverter.Int32BitsToSingle(Marshal.ReadInt32(at, 8)):0.0})";
 
     // Retail's test still runs for what it records; outside the cone (0) becomes 1, partly in view.
     private int OnSphereTest(IntPtr sphere)
@@ -769,13 +729,7 @@ internal sealed unsafe class WorldEffects : IDisposable
     // Default-pool textures must be gone before the device resets, or the reset fails.
     private int OnReset(IntPtr device, IntPtr parameters)
     {
-        if (device == _device)
-        {
-            ReleaseTextures();
-            Release(_culledQuery);
-            _culledQuery = IntPtr.Zero;
-            _culledQueryPending = false;
-        }
+        if (device == _device) ReleaseTextures();
         return _resetHook.OriginalFunction(device, parameters);
     }
 
@@ -796,7 +750,6 @@ internal sealed unsafe class WorldEffects : IDisposable
         _resetHook.Disable();
         _sphereHook.Disable();
         ReleaseTextures();
-        Release(_culledQuery);
         _fog.Dispose();
         _weather.Dispose();
         _water.Dispose();

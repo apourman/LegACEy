@@ -137,27 +137,6 @@ internal static unsafe class D3D9
         if (com != IntPtr.Zero) ((delegate* unmanaged[Stdcall]<IntPtr, uint>)Vt(com)[ReleaseSlot])(com);
     }
 
-    private const int CreateQuerySlot = 118, QueryIssueSlot = 6, QueryGetDataSlot = 7;
-
-    /// <summary>An occlusion query: counts the pixels drawn between <see cref="BeginQuery"/> and <see cref="EndQuery"/>.</summary>
-    public static IntPtr CreateOcclusionQuery(IntPtr device)
-    {
-        IntPtr query;
-        Check(((delegate* unmanaged[Stdcall]<IntPtr, int, IntPtr*, int>)Vt(device)[CreateQuerySlot])(device, 9, &query), "CreateQuery");
-        return query;
-    }
-
-    public static void BeginQuery(IntPtr query) => ((delegate* unmanaged[Stdcall]<IntPtr, int, int>)Vt(query)[QueryIssueSlot])(query, 2);
-
-    public static void EndQuery(IntPtr query) => ((delegate* unmanaged[Stdcall]<IntPtr, int, int>)Vt(query)[QueryIssueSlot])(query, 1);
-
-    /// <summary>The pixels the query counted, or null while the GPU has not finished it.</summary>
-    public static uint? QueryPixels(IntPtr query)
-    {
-        uint pixels;
-        return ((delegate* unmanaged[Stdcall]<IntPtr, uint*, int, int, int>)Vt(query)[QueryGetDataSlot])(query, &pixels, 4, 0) == 0 ? pixels : null;
-    }
-
     /// <summary>Records every device state; <see cref="RestoreState"/> puts them back and frees the record.</summary>
     public static IntPtr SaveState(IntPtr device)
     {
