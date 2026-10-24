@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.15.0](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.14.1...decal-plugin-v0.15.0) (2026-10-24)
+
+
+### Features
+
+* **decal-plugin:** test weather in Settings ([#136](https://github.com/apourman/LegACEy/issues/136)) ([bae1479](https://github.com/apourman/LegACEy/commit/bae1479b32b1a40c3da6b748e050b27b98f16794))
+* smoother enlarged item icons ([#142](https://github.com/apourman/LegACEy/issues/142)) ([658207e](https://github.com/apourman/LegACEy/commit/658207e2f9ebd7405daa1a3d7b6f421ef32ce7fb))
+
+
+### Bug Fixes
+
+* **decal-plugin:** chat scales with Ctrl+wheel like every window ([#140](https://github.com/apourman/LegACEy/issues/140)) ([48a5e57](https://github.com/apourman/LegACEy/commit/48a5e57706bd5627c6521d38ece98ea96d7f70ff))
+* **decal-plugin:** chat sends and the All tab's channel ([#134](https://github.com/apourman/LegACEy/issues/134)) ([8a47495](https://github.com/apourman/LegACEy/commit/8a474956a45c4a18706a6c36b3a34fd80bd843ad))
+* **decal-plugin:** keep the toolbar's place across relogs ([#139](https://github.com/apourman/LegACEy/issues/139)) ([c23dfd9](https://github.com/apourman/LegACEy/commit/c23dfd9dc26e5d8ebab5c415c307d8adb49718de))
+* **decal-plugin:** keep window places when several clients save at once ([#138](https://github.com/apourman/LegACEy/issues/138)) ([924c8e6](https://github.com/apourman/LegACEy/commit/924c8e612c4974d868df5f8f44c2fff19cf3dad6))
+* **decal-plugin:** light the clicked shortcut slot ([#132](https://github.com/apourman/LegACEy/issues/132)) ([a539350](https://github.com/apourman/LegACEy/commit/a539350e2a2c6a5aa4c27e240e1e775f7ddc89c0))
+* **decal-plugin:** sell packs to a vendor ([#135](https://github.com/apourman/LegACEy/issues/135)) ([cd721d2](https://github.com/apourman/LegACEy/commit/cd721d2ff670ecc530b9dcdade66debbed5a6d6a))
+* **decal-plugin:** show long radar place names in full ([#131](https://github.com/apourman/LegACEy/issues/131)) ([c2c00e4](https://github.com/apourman/LegACEy/commit/c2c00e4aadc51b05e4462632204336fd1084ebff))
+* **decal-plugin:** split tab and update toast sizing ([#133](https://github.com/apourman/LegACEy/issues/133)) ([3d15dd4](https://github.com/apourman/LegACEy/commit/3d15dd43ee6d4ed10791f6f39300d9a3abaf5079))
+* **decal-plugin:** weapon swaps and shirt slots on the paperdoll ([#137](https://github.com/apourman/LegACEy/issues/137)) ([2ba5fca](https://github.com/apourman/LegACEy/commit/2ba5fca73901551516f3e3dde1e3096e479e1145))
+* full item names in the Market ([#141](https://github.com/apourman/LegACEy/issues/141)) ([176bccd](https://github.com/apourman/LegACEy/commit/176bccd771d5ff9d178015b52a3e187eca7d345b))
+* Market Sell tab keeps items and listings in view ([#144](https://github.com/apourman/LegACEy/issues/144)) ([cf735b2](https://github.com/apourman/LegACEy/commit/cf735b2052e8f326caccacb542461058d937b9a8))
+* move several picked items between packs ([#143](https://github.com/apourman/LegACEy/issues/143)) ([74c3d9d](https://github.com/apourman/LegACEy/commit/74c3d9d72111b0985ea6fa43b61dc949cfd405b0))
+
 ## [0.14.1](https://github.com/apourman/LegACEy/compare/decal-plugin-v0.14.0...decal-plugin-v0.14.1) (2026-10-23)
 
 
