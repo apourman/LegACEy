@@ -13,7 +13,8 @@ public static class WorldApply
     /// <summary>
     /// Applies the world patch staged in <paramref name="stage"/> (<c>&lt;game&gt;\world-update\&lt;version&gt;\</c>) to the game folder's dats,
     /// once its <c>ready</c> file exists and the patch still matches the SHA-256 in it. Every record is written into a copy of its dat first;
-    /// the copies are swapped in only once all of them are written, then the world version file is written. On any failure the original
+    /// the copies are swapped in only once all of them are written, then the world file is written: the patch's version, and the world's
+    /// address and name from the stage's own world file. On any failure the original
     /// dats and the version file are put back and the stage is kept. Logs to <paramref name="install"/>'s <c>updater.log</c>.
     /// </summary>
     public static ApplyResult Apply(string install, string game, string stage)
@@ -78,7 +79,8 @@ public static class WorldApply
                 undo.Push(() => { if (File.Exists(versionPath)) File.Delete(versionPath); File.Move(savedVersion, versionPath); });
             }
             else undo.Push(() => { if (File.Exists(versionPath)) File.Delete(versionPath); });
-            File.WriteAllText(versionPath, WorldFiles.VersionJson(version));
+            var world = WorldFiles.ReadWorld(stage);
+            File.WriteAllText(versionPath, WorldFiles.WorldJson(version, world.Address, world.Name));
         }
         catch (Exception error)
         {

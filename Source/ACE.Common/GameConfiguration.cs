@@ -12,6 +12,17 @@ namespace ACE.Common
 
         public string DatFilesDirectory { get; set; } = "c:\\ACE\\Dats\\";
 
+        /// <summary>
+        /// The LegACEy world these dats hold, shown to players by the LegACEy plugin; empty uses WorldName.
+        /// </summary>
+        public string LegaceyWorldName { get; set; } = "";
+
+        /// <summary>
+        /// The address of the LegACEy world's update list. When set, the server tells the LegACEy plugin at character select which world
+        /// it runs, so the plugin brings the game folder's dats to the server's. Empty: no world of its own, and no note is sent.
+        /// </summary>
+        public string LegaceyWorldUpdateUrl { get; set; } = "";
+
         public string ModsDirectory { get; set; }
 
         /// <summary>

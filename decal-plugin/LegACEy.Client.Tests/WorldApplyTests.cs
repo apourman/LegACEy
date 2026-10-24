@@ -28,6 +28,7 @@ public sealed class WorldApplyTests : IDisposable
     {
         Stage2(new WorldPatchRecord(Cell, 0x22A8FFFF, 982, false, new byte[] { 9, 9, 9, 9 }),
             new WorldPatchRecord(Cell, 0x22A80100, 982, false, new byte[] { 7 }));
+        File.WriteAllText(Path.Combine(Stage, WorldFiles.VersionFile), WorldFiles.WorldJson(2, "https://isles.test/l.json", "Bob's \"Isles\""));
 
         Assert.Equal(ApplyResult.Applied, WorldApply.Apply(game, game, Stage));
 
@@ -38,7 +39,8 @@ public sealed class WorldApplyTests : IDisposable
             Assert.True(dat.TryGetFileBytes(0x22A80100, out var cell));
             Assert.Equal(new byte[] { 7 }, cell);
         }
-        Assert.Equal(2, WorldFiles.ReadVersion(game));
+        var world = WorldFiles.ReadWorld(game);
+        Assert.Equal((2, "https://isles.test/l.json", "Bob's \"Isles\""), (world.Version, world.Address, world.Name));
         Assert.False(File.Exists(Path.Combine(Stage, WorldFiles.ReadyFile)));
         Assert.False(File.Exists(Path.Combine(Stage, WorldFiles.PatchFile)));
     }

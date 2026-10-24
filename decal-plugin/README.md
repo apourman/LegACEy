@@ -212,43 +212,74 @@ install. `/legacey` in chat opens or closes the menu, so it can be reached with 
 
 ## World updates
 
-LegACEy can ship changed dats (new land, towns, dungeons) as a world patch:
-every dat record that differs from retail, plus the world version it brings a
-game folder to. A folder without `legacey-world.json` is world 1, retail. The
-server keeps retail's dat iteration record, so ACE's connect-time dat check
-never sees a newer edition.
+A LegACEy server can run a world of its own (new land, towns, dungeons) and
+ship it as a world patch: every dat record that differs from retail, the cell
+dat's edition record included, so a patched folder reports the server's
+edition. The world version is that edition.
 
-World updates are off unless a file named `world-manifest-url` beside the main
-DLL holds a manifest address on its first line. With it, the client reads the
-manifest (`{ "version": N, "patch": "<url>", "size": <bytes>, "sha256": "<hex>" }`)
-when the plugin starts at character select. It holds entering the world (hooks
-on retail's `gmCharacterManagementUI::EnterGame`, behind the Enter button, and
-`CPlayerSystem::LogOnCharacter`, which character creation and auto-login filters
-also reach) while it checks; when the game
-folder is behind it keeps holding it, downloads the patch into `<game>\world-update\<version>\` with a toast showing
-progress, checks its size and SHA-256 (a bad download is retried once), starts
-the updater in world mode, and closes the game a few seconds later; the toast
-tells the player to click Launch in ThwargLauncher again. If the game hasn't
-closed 30 seconds later, Enter opens and the update installs whenever the game
-does close. An unreachable manifest or patch shows a toast and leaves Enter
-working. A patch that fails to apply leaves the dats as they were, shows a
-toast and isn't tried again until the manifest names a different patch
-(another SHA-256). Each step is logged
-to `legacey-avalonia.log`.
+The server announces its world at character select. With
+`LegaceyWorldUpdateUrl` set in its `Config.js`, it sends a LegACEy channel note
+right after the character list: the world's name (`LegaceyWorldName`), the
+cell dat edition it runs, and the update list's address. A server without one
+sends nothing, and the plugin never touches the game folder there.
 
-Build a patch and its manifest from WSL or Windows:
+The plugin holds entering the world (hooks on retail's
+`gmCharacterManagementUI::EnterGame`, behind the Enter button, and
+`CPlayerSystem::LogOnCharacter`, which character creation and auto-login
+filters also reach) from its start until it knows what the server needs: the
+note, or the end of the DDD exchange (`DDD_EndDDD`) without one. Then:
+
+- **No note:** a plain server. Enter opens; the folder is left alone.
+- **The folder holds another world** (its `legacey-world.json` names a
+  different update-list address): a toast names both worlds and says this
+  server needs its own game folder (in ThwargLauncher, an account's own game
+  folder). Enter stays held; the folder is never changed.
+- **The folder is at the server's edition:** Enter opens without asking the
+  update host.
+- **Otherwise** (retail, or behind): the plugin reads the update list
+  (`{ "version": N, "patch": "<url>", "size": <bytes>, "sha256": "<hex>" }`),
+  downloads the patch into `<game>\world-update\<version>\` with a toast
+  showing progress, checks its size and SHA-256 (a bad download is retried
+  once), starts the updater in world mode, and closes the game a few seconds
+  later; the toast tells the player to click Launch in ThwargLauncher again.
+  The updater records the world's version, address and name in
+  `legacey-world.json` beside the dats. If the game hasn't closed 30 seconds
+  later, Enter opens and the update installs whenever the game does close.
+
+Addresses must be https; plain http works only for this machine and private
+networks, for local testing. A download that fails shows a toast and opens
+Enter, but the server may refuse a client whose dats are behind (below). A
+patch that fails to apply leaves the dats as they were, shows a toast, and
+isn't tried again until the update list names a different patch (another
+SHA-256). Each step is logged to `legacey-avalonia.log`.
+
+With DAT patching off, ACE no longer kicks clients whose dats are older than
+the server's at connect: they reach character select, so the plugin can update
+them, and are refused at Enter with a message to launch with the LegACEy
+plugin. The `refuse_older_dats` server setting (on by default) can instead let
+them in with a chat warning. Clients with newer dats are still kicked at
+connect.
+
+A player on several LegACEy worlds keeps one game folder per world. A retail
+folder takes the first world it joins.
+
+Build a patch and its update list from WSL or Windows, after raising the
+edited cell dat's edition above retail's:
 
 ```bash
-dotnet run --project decal-plugin/LegACEy.WorldPatchBuilder -- build <retail dats> <edited dats> <out> <world version> <url folder>
-dotnet run --project decal-plugin/LegACEy.WorldPatchBuilder -- check <retail dats> <edited dats> <out>/world-<version>.patch
+dotnet run --project decal-plugin/LegACEy.WorldPatchBuilder -- build <retail dats> <edited dats> <out> <url folder>
+dotnet run --project decal-plugin/LegACEy.WorldPatchBuilder -- check <retail dats> <edited dats> <out>/world-<edition>.patch
 ```
 
-`build` writes `world-<version>.patch` and `world-manifest.json` (whose patch
-address is `<url folder>/world-<version>.patch`); `check` applies the patch to
+`build` writes `world-<edition>.patch` and `world-manifest.json` (whose patch
+address is `<url folder>/world-<edition>.patch`); `check` applies the patch to
 a temporary copy of the retail dats with the updater's own code and confirms
-every patched record matches the edited dats. For a local test, serve `<out>`
-with `python3 -m http.server` and put the manifest's address in
-`world-manifest-url`.
+every patched record matches the edited dats and the cell dat reports the
+edition. Upload both to a GitHub release and set the server's
+`LegaceyWorldUpdateUrl` to
+`https://github.com/<owner>/<repo>/releases/latest/download/world-manifest.json`,
+which follows each new release. For a local test, serve `<out>` with
+`python3 -m http.server` and use that address.
 
 ## Tests
 

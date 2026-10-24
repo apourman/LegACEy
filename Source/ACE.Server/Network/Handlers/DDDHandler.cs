@@ -151,12 +151,14 @@ namespace ACE.Server.Network.Handlers
             if (clientIsMissingIterations && !enableDATpatching) logMsg += ", but DAT patching is disabled";
             log.Info(logMsg);
 
-            if (clientHasExtraIterations)
+            var verdict = DatGate.Decide(clientIsMissingIterations, clientHasExtraIterations, enableDATpatching, PropertyManager.GetBool(DatGate.RefuseOlderKey).Item);
+
+            if (verdict == DatVerdict.KickNewer)
             {
                 var msg = PropertyManager.GetString("dat_newer_warning_msg").Item;
                 session.Terminate(SessionTerminationReason.DATsNewerThanServer, new GameMessageBootAccount($" because {msg[..^1]}"));
             }
-            else if (clientIsMissingIterations && enableDATpatching)
+            else if (verdict == DatVerdict.Patch)
             {
                 var totalMissingIterations = DDDManager.GetMissingIterations(clientPortalDatIntSet, clientCellDatIntSet, clientLanguageDatIntSet, clientHighResDatIntSet, out var totalFileSize, out var missingIterations);                
                 var patchStatusMessage = new GameMessageDDDBeginDDD(totalMissingIterations, totalFileSize, missingIterations);
@@ -215,13 +217,12 @@ namespace ACE.Server.Network.Handlers
                     }
                 }
             }
-            else if (clientIsMissingIterations && !enableDATpatching)
+            else
             {
-                var msg = PropertyManager.GetString("dat_older_warning_msg").Item;
-                session.Terminate(SessionTerminationReason.DATsPatchingDisabled, new GameMessageBootAccount($" because {msg.TrimEnd('.')}"));
-            }
-            else // client dat files are up to date
-            {
+                // Older dats without DAT patching reach character select, where the LegACEy plugin updates the game folder; Enter decides.
+                session.DatVerdict = verdict;
+                if (verdict != DatVerdict.LetIn)
+                    log.Info($"[DDD] client {session.Account} has older dats: {(verdict == DatVerdict.RefuseAtEnter ? "refused" : "warned")} at Enter");
                 session.Network.EnqueueSend(new GameMessageDDDEndDDD());
             }
         }

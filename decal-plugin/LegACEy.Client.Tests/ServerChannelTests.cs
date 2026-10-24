@@ -26,6 +26,20 @@ public sealed class ServerChannelTests
     }
 
     [Fact]
+    public void World_note_decodes_the_servers_encoding()
+    {
+        // ACE.Server.Tests' ChannelWireTests encodes these same bytes.
+        byte[] body =
+        {
+            0x05, 0x00, (byte)'I', (byte)'s', (byte)'l', (byte)'e', (byte)'s',
+            0xD7, 0x03, 0x00, 0x00,
+            0x09, 0x00, (byte)'h', (byte)'t', (byte)'t', (byte)'p', (byte)'s', (byte)':', (byte)'/', (byte)'/', (byte)'w'
+        };
+
+        Assert.Equal(new WorldNote("Isles", 983, "https://w"), WorldNoteProtocol.Read(body));
+    }
+
+    [Fact]
     public void Replies_complete_their_own_request_with_round_trip_time()
     {
         var clock = new Clock();

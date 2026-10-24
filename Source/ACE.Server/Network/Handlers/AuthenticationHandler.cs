@@ -11,6 +11,7 @@ using ACE.Database.Models.Auth;
 using ACE.Database.Models.Shard;
 using ACE.Entity.Enum;
 using ACE.Server.Entity;
+using ACE.Server.ClientChannel;
 using ACE.Server.Managers;
 using ACE.Server.Network.Enum;
 using ACE.Server.Network.GameMessages.Messages;
@@ -261,6 +262,7 @@ namespace ACE.Server.Network.Handlers
 
             session.Network.EnqueueSend(characterListMessage, serverNameMessage);
             session.Network.EnqueueSend(dddInterrogation);
+            WorldNote.Send(session);
         }
     }
 }
