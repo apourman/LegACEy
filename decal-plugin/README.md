@@ -171,7 +171,9 @@ as a ▲ or ▼ arrow. The bezel's lock button locks and unlocks retail's UI; it
 Range rings, Zoom), kept per character, with the indoor zoom kept apart from the outdoor one. With the UI unlocked, hovering the radar
 shows gold corners: drag one, or an edge, to draw it larger or smaller, from its 1× layout to three times it; it opens at twice.
 Ctrl+click a spot on the radar to ping it: a pulsing diamond shows there for 15 seconds, in a colour picked from the sender's name, and
-a ping past the radar's range is an arrow on the rim. On a LegACEy server your fellowship sees it too (fellows in the same instance on
+a ping past the radar's range is an arrow on the rim. The same spot gets a pillar of light of that colour in the world, with a pulsing
+ring on the ground, for as long as the ping lasts; it shows through walls and terrain, and indoors the walls around it light up
+with a sweeping scan. Indoors a ping lands on the level drawn under the pointer: the bright one, or a dimmed one where only it has floor. On a LegACEy server your fellowship sees it too (fellows in the same instance on
 their radar, every fellow as a fellowship chat line with the coordinates); without a fellowship, or on another server, only you do. Creating
 an empty file named `retail-radar-native` beside the main DLL gives retail's radar back within a second; deleting it takes the radar over
 again.
