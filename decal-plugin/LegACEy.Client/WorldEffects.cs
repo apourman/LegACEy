@@ -24,7 +24,7 @@ internal sealed unsafe class WorldEffects : IDisposable
 {
     private const string Source = "acclient.pdb (C:\\Turbine\\Asheron's Call, a near build; +0xAD0 near 0x50E000, +0xA0 near 0x455000) for names; our objdump read of installed acclient.exe";
     private const uint SmartBoxDrawAddress = 0x00455610, GetObjectAddress = 0x0050FF60, PartDrawAddress = 0x0050E270;
-    private const uint SphereTestAddress = 0x0054CE60, UpdatePartsAddress = 0x00510140;
+    private const uint SphereTestAddress = 0x0054CE60, UpdatePartsAddress = 0x00510140, PartViewerDistanceAddress = 0x0050EB00;
     private const uint LandscapeDrawAddress = 0x00506D90;
     // CPhysicsPart* being drawn by CPhysicsPart::Draw, zero otherwise; part +0xE0 is its CPhysicsObj, whose +0x8 is the object id.
     private static readonly int* DrawingPart = (int*)0x008EE3D8;
@@ -74,6 +74,8 @@ internal sealed unsafe class WorldEffects : IDisposable
         new NativeUiEntry("CPhysicsObj::UpdatePartsInternal", UpdatePartsAddress,
             NativeUiCatalogue.Bytes("8B 81 A8 00 00 00 F6 C4 10 75 12 8B 41 10 85 C0 74 0B 83 C1 50 51 8B C8 E8"),
             Source, "ThisCall (): CPartArray::SetFrame (0x519E40) with the object's frame (+0x50) places its parts where it is now"),
+        new NativeUiEntry("CPhysicsPart::UpdateViewerDistance", PartViewerDistanceAddress, NativeUiCatalogue.Bytes("83 EC 1C 56 8B F1 8B 46 20 D9 46 24 8B 00 D8 48 7C"),
+            Source, "ThisCall (): picks the part's detail by the viewer's distance, then calc_draw_frame (0x50EA70) copies its place (+0x34, +0x38) to the place it is drawn at (+0x78)"),
         new NativeUiEntry("Render: draw through the whole screen", FullViewAddress, NativeUiCatalogue.Bytes("8A 0D 38 03 87 00 56 B8 01 00 00 00 33 F6 84 C8"),
             Source, "Cdecl (): the portal views become one full-screen view (0x8702F0), set as the current view; as before the landscape"),
         new NativeUiEntry("Render: set the current view", 0x0054DCF0, NativeUiCatalogue.Bytes(
@@ -133,9 +135,14 @@ internal sealed unsafe class WorldEffects : IDisposable
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void UpdatePartsFn(IntPtr physicsObject);
 
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void PartViewerDistanceFn(IntPtr part);
+
     private readonly GetObjectFn _getObject = Marshal.GetDelegateForFunctionPointer<GetObjectFn>(new IntPtr(GetObjectAddress));
     private readonly DrawPartFn _drawPart = Marshal.GetDelegateForFunctionPointer<DrawPartFn>(new IntPtr(PartDrawAddress));
     private readonly UpdatePartsFn _updateParts = Marshal.GetDelegateForFunctionPointer<UpdatePartsFn>(new IntPtr(UpdatePartsAddress));
+    private readonly PartViewerDistanceFn _partViewerDistance =
+        Marshal.GetDelegateForFunctionPointer<PartViewerDistanceFn>(new IntPtr(PartViewerDistanceAddress));
     private readonly FullViewFn _useFullView = Marshal.GetDelegateForFunctionPointer<FullViewFn>(new IntPtr(FullViewAddress));
     // While retail draws its world: parts drawn outside it (retail's 3D paperdoll in the inventory, with its own camera) are not measured or
     // outlined. While the selection, culled this frame, is drawn into the mask only.
@@ -574,7 +581,8 @@ internal sealed unsafe class WorldEffects : IDisposable
         if (physicsObject == IntPtr.Zero || Marshal.ReadIntPtr(physicsObject, 0x90) == IntPtr.Zero) return;
         var parts = Marshal.ReadIntPtr(physicsObject, 0x10);
         if (parts == IntPtr.Zero) return;
-        // Retail places the parts only when it draws the object: never drawn, they sit at zero; out of view, where it was last seen.
+        // Retail places the parts only for objects in rooms it draws: never drawn, they are drawn at zero; out of view, where they were last
+        // seen. The object's frame to its parts, then (per part, below) their places to where they are drawn.
         _updateParts(physicsObject);
         int count = Marshal.ReadInt32(parts, 0x58);
         var list = Marshal.ReadIntPtr(parts, 0x5C);
@@ -589,9 +597,7 @@ internal sealed unsafe class WorldEffects : IDisposable
         if (sample && !_culledQueryPending)
         {
             if (_culledQuery == IntPtr.Zero) _culledQuery = CreateOcclusionQuery(_device);
-            var first = count > 0 ? Marshal.ReadIntPtr(list) : IntPtr.Zero;
-            _culledSample = $"Culled selection {Selected:X8}: object in {Marshal.ReadInt32(physicsObject, 0x4C):X8} at {Origin(physicsObject + 0x84)}, " +
-                (first == IntPtr.Zero ? "no first part" : $"first part in {Marshal.ReadInt32(first, 0x7C):X8} at {Origin(first + 0xB4)}") +
+            _culledSample = $"Culled selection {Selected:X8}: object in {Marshal.ReadInt32(physicsObject, 0x4C):X8} at {Origin(physicsObject + 0x84)}" +
                 $", camera {_fog.Eye} (render = game + {_fog.Offset})";
             BeginQuery(_culledQuery);
             _culledQueryPending = true;
@@ -609,6 +615,7 @@ internal sealed unsafe class WorldEffects : IDisposable
                 var part = Marshal.ReadIntPtr(list, i * 4);
                 if (part == IntPtr.Zero) continue;
                 _culledParts++;
+                _partViewerDistance(part);
                 _drawPart(part, 0);
             }
         }
@@ -621,7 +628,9 @@ internal sealed unsafe class WorldEffects : IDisposable
             if (sample)
             {
                 EndQuery(_culledQuery);
-                _culledSample += $", {_culledMasked - masked} masked draws,";
+                var first = count > 0 ? Marshal.ReadIntPtr(list) : IntPtr.Zero;
+                _culledSample += (first == IntPtr.Zero ? ", no first part" : $", first part drawn in {Marshal.ReadInt32(first, 0x7C):X8} at {Origin(first + 0xB4)}") +
+                    $", {_culledMasked - masked} masked draws,";
             }
         }
     }
