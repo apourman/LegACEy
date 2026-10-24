@@ -2324,6 +2324,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         WorldState.OtherWorld => new ToastNotice(ToastIcon.Failed, $"This game folder holds {world.Folder?.Name ?? "another world"}",
             $"{world.Server?.Name ?? "This server"} is a different world and needs its own game folder: in ThwargLauncher, give this account "
             + "its own game folder (a copy of retail)."),
+        WorldState.InstallFailed => new ToastNotice(ToastIcon.Failed, "The world update couldn't install",
+            "This server may refuse Enter until a fixed update is out.", Lifetime: TimeSpan.FromSeconds(12)),
         _ => null,
     };
 
