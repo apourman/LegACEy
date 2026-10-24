@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.1](https://github.com/apourman/LegACEy/compare/v0.13.0...v0.13.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* full item names in the Market ([#141](https://github.com/apourman/LegACEy/issues/141)) ([176bccd](https://github.com/apourman/LegACEy/commit/176bccd771d5ff9d178015b52a3e187eca7d345b))
+
 ## [0.13.0](https://github.com/apourman/LegACEy/compare/v0.12.0...v0.13.0) (2026-10-21)
 
 
