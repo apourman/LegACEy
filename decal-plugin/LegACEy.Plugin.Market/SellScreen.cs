@@ -125,7 +125,7 @@ public sealed class SellScreen : UserControl, IDisposable
             Place(_itemsPanel, 0, 0, 1, 1);
             Place(_pricePanel, 0, 1, 1, 1);
             Place(_listingsPanel, 1, 0, 1, 2);
-            // medium: two rows of items, so the top row is no taller than the price panel and the listings keep the height
+            // the item grid scrolls; medium shows two rows of items, so the top row is no taller than the price panel and the listings keep the height
             _itemsScroll.MaxHeight = _mode == MarketLayoutMode.Wide ? 140 : 92;
         }
         _narrowTabs.IsVisible = _mode == MarketLayoutMode.Narrow;
