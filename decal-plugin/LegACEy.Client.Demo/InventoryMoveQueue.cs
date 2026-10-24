@@ -4,9 +4,9 @@ using System.Collections.Generic;
 namespace LegACEy.Client.Demo;
 
 /// <summary>
-/// Sends item moves one at a time. Retail drops a move sent while an earlier one still waits on the server, so a set dragged into a
-/// pack moved only its first item. The next move goes once the inventory changes (the server answered the last one), or after
-/// <see cref="Timeout"/> when no answer comes (a refused move).
+/// Sends item moves one at a time. Retail refuses a move sent while an earlier request still waits on the server ("You can only move
+/// or use one item at a time"), so a set dragged into a pack moved only its first item. The next move goes once the client has no
+/// request in flight, or after <see cref="Timeout"/> when one never clears.
 /// </summary>
 public sealed class InventoryMoveQueue
 {
@@ -14,14 +14,16 @@ public sealed class InventoryMoveQueue
 
     private readonly Action<uint, uint, int> _send;
     private readonly Func<TimeSpan> _clock;
+    private readonly Func<bool> _pending;
     private readonly Queue<(uint Item, uint Container, int Slot)> _waiting = new();
     private TimeSpan? _sentAt;
-    private bool _answered;
 
-    public InventoryMoveQueue(Action<uint, uint, int> send, Func<TimeSpan> clock)
+    /// <param name="pending">True while the client waits on the server for an earlier request.</param>
+    public InventoryMoveQueue(Action<uint, uint, int> send, Func<TimeSpan> clock, Func<bool> pending)
     {
         _send = send ?? throw new ArgumentNullException(nameof(send));
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+        _pending = pending ?? throw new ArgumentNullException(nameof(pending));
     }
 
     public void Move(uint itemId, uint containerId, int slotIndex)
@@ -30,18 +32,13 @@ public sealed class InventoryMoveQueue
         Pump();
     }
 
-    /// <summary>The inventory changed: the move in flight has landed.</summary>
-    public void Answered() => _answered = true;
-
-    /// <summary>Sends the next move when none is in flight. Call each frame, after the inventory flush.</summary>
+    /// <summary>Sends the next move when no request is in flight. Call each frame.</summary>
     public void Pump()
     {
-        if (_sentAt is { } sentAt && !_answered && _clock() - sentAt < Timeout) return;
-        _sentAt = null;
         if (_waiting.Count == 0) return;
+        if (_pending() && !(_sentAt is { } sentAt && _clock() - sentAt >= Timeout)) return;
         var (item, container, slot) = _waiting.Dequeue();
         _sentAt = _clock();
-        _answered = false;
         _send(item, container, slot);
     }
 

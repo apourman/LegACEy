@@ -20,11 +20,14 @@ internal sealed class BridgeInventoryPort : IInventoryPort
         _log = log;
         _refresh = new InventoryRefresh(() => InventorySnapshotBuilder.Build(new BridgeInventoryReader()), log);
         var clock = Stopwatch.StartNew();
-        _moves = new InventoryMoveQueue(Send, () => clock.Elapsed);
-        _refresh.Changed += _moves.Answered;
+        // Without retail's request flag, every move after the first waits out the queue's timeout.
+        _moves = new InventoryMoveQueue(Send, () => clock.Elapsed, () => Request?.Pending ?? true);
     }
 
     private readonly InventoryMoveQueue _moves;
+
+    /// <summary>Retail's inventory request in flight, set once the native UI is checked; null paces moves by the timeout alone.</summary>
+    public RetailInventoryRequest? Request { get; set; }
 
     public InventorySnapshot Snapshot => _refresh.Snapshot;
 
@@ -108,7 +111,7 @@ internal sealed class BridgeInventoryPort : IInventoryPort
         Bridge.DropItem(itemId);
     }
 
-    // Queued: retail drops a move sent while another waits on the server.
+    // Queued: retail refuses a move sent while another request waits on the server.
     public void MoveToContainer(uint itemId, uint containerId, int slotIndex) => _moves.Move(itemId, containerId, slotIndex);
 
     // Stack false places the item in the slot rather than adding it to a stack there.

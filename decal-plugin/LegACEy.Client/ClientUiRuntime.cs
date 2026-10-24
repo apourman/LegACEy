@@ -412,6 +412,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             catch (Exception exception) { Log($"Keys typed in LegACEy text boxes also reach the game: {exception.Message}"); }
             try { _inventory.TargetMode = new RetailTargetMode(NativeUi.ReadMemory, Log); }
             catch (Exception exception) { Log($"Using an item on a target in LegACEy windows is off: {exception.Message}"); }
+            try { _inventory.Request = new RetailInventoryRequest(NativeUi.ReadMemory, Log); }
+            catch (Exception exception) { Log($"Moving several items at once waits two seconds between items: {exception.Message}"); }
             LoadPlugins();
         }
         catch

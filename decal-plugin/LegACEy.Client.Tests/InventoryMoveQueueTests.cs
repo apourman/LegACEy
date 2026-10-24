@@ -8,10 +8,12 @@ namespace LegACEy.Client.Tests;
 public sealed class InventoryMoveQueueTests
 {
     [Fact]
-    public void A_set_of_moves_goes_one_at_a_time_as_each_is_answered()
+    public void A_set_of_moves_goes_one_at_a_time_as_each_request_clears()
     {
+        var pending = false;
         var sent = new List<uint>();
-        var queue = new InventoryMoveQueue((item, _, _) => sent.Add(item), () => TimeSpan.Zero);
+        // Sending a move puts it in flight, as retail does.
+        var queue = new InventoryMoveQueue((item, _, _) => { sent.Add(item); pending = true; }, () => TimeSpan.Zero, () => pending);
 
         queue.Move(1, 9, 0);
         queue.Move(2, 9, 1);
@@ -19,22 +21,22 @@ public sealed class InventoryMoveQueueTests
         queue.Pump();
         Assert.Equal(new uint[] { 1 }, sent);
 
-        queue.Answered();
+        pending = false;
         queue.Pump();
         queue.Pump();
         Assert.Equal(new uint[] { 1, 2 }, sent);
 
-        queue.Answered();
+        pending = false;
         queue.Pump();
         Assert.Equal(new uint[] { 1, 2, 3 }, sent);
     }
 
     [Fact]
-    public void An_unanswered_move_lets_the_next_go_after_the_timeout()
+    public void A_request_that_never_clears_lets_the_next_move_go_after_the_timeout()
     {
         var now = TimeSpan.Zero;
         var sent = new List<uint>();
-        var queue = new InventoryMoveQueue((item, _, _) => sent.Add(item), () => now);
+        var queue = new InventoryMoveQueue((item, _, _) => sent.Add(item), () => now, () => sent.Count > 0);
 
         queue.Move(1, 9, 0);
         queue.Move(2, 9, 1);
