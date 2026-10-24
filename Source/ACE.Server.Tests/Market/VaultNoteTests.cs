@@ -150,6 +150,26 @@ namespace ACE.Server.Tests.Market
         }
 
         [TestMethod]
+        public void SplitIntoASidePack_StillSplitsAStackThePackHolds()
+        {
+            var account = VaultTestWorld.NewAccountId();
+            var player = VaultTestWorld.NewPlayer(account);
+            var pack = (Container)VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.PackWcid));
+            var notes = GiveNotes(player, 10);
+            var splitPart = VaultTestWorld.NewItem(TradeNoteWcid);
+            splitPart.SetStackSize(4);
+
+            var split = false;
+            VaultTestWorld.OnWorldThread(() => split = (bool)typeof(Player).GetMethod("DoHandleActionStackableSplitToContainer", BindingFlags.NonPublic | BindingFlags.Instance)
+                .Invoke(player, new object[] { notes, player, player, pack, player, splitPart, 0, 4 }));
+
+            Assert.IsTrue(split);
+            Assert.AreEqual(6, notes.StackSize);
+            Assert.AreSame(splitPart, pack.Inventory[splitPart.Guid]);
+            Assert.AreEqual(10, NotesInPacks(player));
+        }
+
+        [TestMethod]
         public void DepositNotes_WhileTrading_IsRefused()
         {
             var account = VaultTestWorld.NewAccountId();
