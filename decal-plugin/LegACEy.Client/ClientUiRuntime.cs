@@ -2305,8 +2305,10 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         WorldState.Ready or WorldState.Closing => new ToastNotice(ToastIcon.New, "World update ready",
             "The game will close; click Launch in ThwargLauncher to come back.", Busy: true),
         WorldState.HandedOff => new ToastNotice(ToastIcon.New, "World update downloaded", "It installs when you close the game."),
-        WorldState.Unavailable => new ToastNotice(ToastIcon.Failed, "Couldn't check for world updates", "You can play; the next launch tries again.",
+        WorldState.Unavailable => new ToastNotice(ToastIcon.Failed, "Couldn't get the world update", "You can play; the next launch tries again.",
             Lifetime: TimeSpan.FromSeconds(8)),
+        WorldState.InstallFailed => new ToastNotice(ToastIcon.Failed, "The world update couldn't install",
+            "You can play; it installs once a fixed update is out.", Lifetime: TimeSpan.FromSeconds(8)),
         _ => null,
     };
 

@@ -11,10 +11,10 @@ namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
 /// Where a world update stands. Checking, Downloading, Ready and Closing hold Enter at character select; Off (no manifest address),
-/// UpToDate, Unavailable (the manifest or patch couldn't be had, or the last apply failed) and HandedOff (the updater waits, but the game
-/// isn't closing for it) leave it alone.
+/// UpToDate, Unavailable (the manifest or patch couldn't be had, or the updater couldn't start), InstallFailed (this patch failed to apply
+/// before) and HandedOff (the updater waits, but the game isn't closing for it) leave it alone.
 /// </summary>
-internal enum WorldState { Off, Checking, UpToDate, Downloading, Ready, Closing, HandedOff, Unavailable }
+internal enum WorldState { Off, Checking, UpToDate, Downloading, Ready, Closing, HandedOff, Unavailable, InstallFailed }
 
 /// <summary>The world manifest: the world version it brings a game to, and the patch's address, size in bytes and SHA-256.</summary>
 internal sealed record WorldManifest(int Version, string Patch, long Size, string Sha256)
@@ -32,7 +32,7 @@ internal sealed record WorldManifest(int Version, string Patch, long Size, strin
 /// Keeps the game folder's dats at the world version the manifest asks for. Started once, when the plugin starts at character select: off
 /// the game thread it reads the manifest, and when the folder is behind it downloads the patch into <c>world-update\&lt;version&gt;\</c> and
 /// checks its size and SHA-256 (a bad download is thrown away and tried once more), then says Ready. <see cref="HandOff"/> then starts the
-/// updater, which applies the patch once every game client has exited. Any failure is logged and ends in Unavailable, which never holds
+/// updater, which applies the patch once every game client has exited. Any failure is logged and ends in Unavailable (or InstallFailed), which never holds
 /// Enter: a down update host locks nobody out. The manifest address is the first line of <c>world-manifest-url</c> beside the stub; with no
 /// such file world updates are off.
 /// </summary>
@@ -114,13 +114,19 @@ internal sealed class WorldUpdates
             }
             Target = manifest;
             var stage = WorldFiles.Stage(_game, manifest.Version);
-            if (File.Exists(Path.Combine(stage, WorldFiles.FailedFile)))
+            var failed = Path.Combine(stage, WorldFiles.FailedFile);
+            if (File.Exists(failed))
             {
-                ClientUiRuntime.Log($"World update {manifest.Version} failed to apply last time: {File.ReadAllText(Path.Combine(stage, WorldFiles.FailedFile))}. "
-                    + "Its stage is thrown away and Enter is open; the next launch downloads it again.");
+                // The same patch would fail again and close the game for nothing; a new one (another SHA-256) is downloaded.
+                if (SameSha(Path.Combine(stage, WorldFiles.ReadyFile), manifest))
+                {
+                    ClientUiRuntime.Log($"World update {manifest.Version} failed to apply: {File.ReadAllText(failed)}. Enter is open; it isn't tried again "
+                        + "until the manifest names a different patch.");
+                    Set(WorldState.InstallFailed);
+                    return;
+                }
+                ClientUiRuntime.Log($"World update {manifest.Version} failed to apply before; the manifest now names a different patch, so it is downloaded.");
                 Directory.Delete(stage, true);
-                Set(WorldState.Unavailable);
-                return;
             }
             if (Staged(stage, manifest))
             {
@@ -175,6 +181,13 @@ internal sealed class WorldUpdates
         try { File.Delete(part); }
         catch (Exception) { }
         return false;
+    }
+
+    /// <summary>Whether the <c>ready</c> file at <paramref name="ready"/> holds the manifest's SHA-256.</summary>
+    private static bool SameSha(string ready, WorldManifest manifest)
+    {
+        try { return File.Exists(ready) && File.ReadAllText(ready).Trim().Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase); }
+        catch (Exception) { return false; }
     }
 
     /// <summary>Whether a client has already downloaded and verified this update.</summary>

@@ -56,7 +56,7 @@ public sealed class WorldApplyTests : IDisposable
         Assert.Equal(before, File.ReadAllBytes(Path.Combine(game, Cell)));
         Assert.Equal(1, WorldFiles.ReadVersion(game));
         Assert.True(File.Exists(Path.Combine(Stage, WorldFiles.ReadyFile)));
-        // failed tells the plugin to throw the stage away rather than close the game for it again.
+        // failed tells the plugin not to close the game for this patch again.
         Assert.Equal(new[] { WorldFiles.FailedFile, WorldFiles.PatchFile, WorldFiles.ReadyFile }.Order(),
             Directory.GetFileSystemEntries(Stage).Select(Path.GetFileName).Order());
         Assert.Contains(WorldFiles.VersionFile, File.ReadAllText(Path.Combine(game, "updater.log")));

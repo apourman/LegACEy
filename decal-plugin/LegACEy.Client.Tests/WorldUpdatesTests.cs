@@ -82,20 +82,40 @@ public sealed class WorldUpdatesTests : IDisposable
         Assert.False(unreachable.HoldsEnter);
     }
 
-    [Fact]
-    public async Task AStageThatFailedToApplyIsThrownAwayAndEnterOpens()
+    private string FailedStage(string readySha)
     {
         var stage = WorldFiles.Stage(game, 2);
         Directory.CreateDirectory(stage);
         File.WriteAllBytes(Path.Combine(stage, WorldFiles.PatchFile), Patch);
-        File.WriteAllText(Path.Combine(stage, WorldFiles.ReadyFile), Convert.ToHexStringLower(SHA256.HashData(Patch)));
+        File.WriteAllText(Path.Combine(stage, WorldFiles.ReadyFile), readySha);
         File.WriteAllText(Path.Combine(stage, WorldFiles.FailedFile), "disk full");
+        return stage;
+    }
+
+    [Fact]
+    public async Task APatchThatFailedToApplyIsNotTriedAgainAndEnterOpens()
+    {
+        var stage = FailedStage(Convert.ToHexStringLower(SHA256.HashData(Patch)));
         var updates = Updates(() => Manifest(2), Patch);
 
         await updates.Start();
 
-        Assert.Equal(WorldState.Unavailable, updates.State);
-        Assert.False(Directory.Exists(stage));
+        Assert.Equal(WorldState.InstallFailed, updates.State);
+        Assert.False(updates.HoldsEnter);
+        Assert.True(File.Exists(Path.Combine(stage, WorldFiles.FailedFile)));
         Assert.Equal(0, downloads);
+    }
+
+    [Fact]
+    public async Task ANewPatchForAVersionThatFailedIsDownloaded()
+    {
+        var stage = FailedStage("an older patch's sha256");
+        var updates = Updates(() => Manifest(2), Patch);
+
+        await updates.Start();
+
+        Assert.Equal(WorldState.Ready, updates.State);
+        Assert.False(File.Exists(Path.Combine(stage, WorldFiles.FailedFile)));
+        Assert.Equal(1, downloads);
     }
 }

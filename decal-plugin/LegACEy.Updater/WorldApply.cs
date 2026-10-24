@@ -89,7 +89,7 @@ public static class WorldApply
                 foreach (var copy in copies) if (File.Exists(copy)) File.Delete(copy);
                 if (Directory.Exists(rollback)) Directory.Delete(rollback, true);
                 File.WriteAllText(Path.Combine(stage, WorldFiles.FailedFile), error.Message);
-                StageApply.Log(install, "World dats unchanged; the plugin throws the stage away at the next launch");
+                StageApply.Log(install, "World dats unchanged; the plugin won't try this patch again");
             }
             catch (Exception rollbackError)
             {
