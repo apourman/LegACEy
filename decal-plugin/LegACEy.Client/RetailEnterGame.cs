@@ -35,7 +35,7 @@ internal sealed class RetailEnterGame : IDisposable
     private readonly IHook<EnterGameFn> _hook;
     private GCHandle _root;
     // Set by Dispose: a hook that could not be removed lets every Enter through.
-    private bool _off;
+    private volatile bool _off;
 
     private RetailEnterGame(Func<bool> hold, Action held, Action<string> log)
     {
@@ -43,8 +43,16 @@ internal sealed class RetailEnterGame : IDisposable
         _held = held;
         _log = log;
         _root = GCHandle.Alloc(this);
-        _hook = ReloadedHooks.Instance.CreateHook<EnterGameFn>(OnEnterGame, EnterGameAddress);
-        _hook.Activate();
+        try
+        {
+            _hook = ReloadedHooks.Instance.CreateHook<EnterGameFn>(OnEnterGame, EnterGameAddress);
+            _hook.Activate();
+        }
+        catch
+        {
+            _root.Free();
+            throw;
+        }
     }
 
     /// <summary>The hold, or null, logged, when the running client doesn't match its entry or the hook can't be placed: Enter then always works.</summary>

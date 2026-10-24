@@ -28,7 +28,7 @@ internal static class Program
         }
         catch (Exception) { return 2; }
 
-        using var mutex = new Mutex(false, world ? @"Local\LegACEy.WorldUpdater" : @"Local\LegACEy.Updater");
+        using var mutex = new Mutex(false, world ? WorldFiles.UpdaterMutex : @"Local\LegACEy.Updater");
         try
         {
             if (!mutex.WaitOne(0))

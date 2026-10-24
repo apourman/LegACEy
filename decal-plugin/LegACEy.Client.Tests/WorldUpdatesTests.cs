@@ -81,4 +81,21 @@ public sealed class WorldUpdatesTests : IDisposable
         Assert.Equal(WorldState.Unavailable, unreachable.State);
         Assert.False(unreachable.HoldsEnter);
     }
+
+    [Fact]
+    public async Task AStageThatFailedToApplyIsThrownAwayAndEnterOpens()
+    {
+        var stage = WorldFiles.Stage(game, 2);
+        Directory.CreateDirectory(stage);
+        File.WriteAllBytes(Path.Combine(stage, WorldFiles.PatchFile), Patch);
+        File.WriteAllText(Path.Combine(stage, WorldFiles.ReadyFile), Convert.ToHexStringLower(SHA256.HashData(Patch)));
+        File.WriteAllText(Path.Combine(stage, WorldFiles.FailedFile), "disk full");
+        var updates = Updates(() => Manifest(2), Patch);
+
+        await updates.Start();
+
+        Assert.Equal(WorldState.Unavailable, updates.State);
+        Assert.False(Directory.Exists(stage));
+        Assert.Equal(0, downloads);
+    }
 }

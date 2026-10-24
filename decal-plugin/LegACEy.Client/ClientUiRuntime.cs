@@ -364,9 +364,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _worldRaised;
     // Whether the toast's own surface was tried at character select, before any LegACEy window exists.
     private bool _worldToastHostTried;
-    // When the game closes for a ready world update: long enough to read the toast first.
-    private DateTime? _worldCloseAt;
-    private static readonly TimeSpan WorldCloseDelay = TimeSpan.FromSeconds(8);
+    // When the game closes for a ready world update (long enough to read the toast first), and when, still running, it stops holding Enter.
+    private DateTime? _worldCloseAt, _worldGiveUpAt;
+    private static readonly TimeSpan WorldCloseDelay = TimeSpan.FromSeconds(8), WorldCloseWait = TimeSpan.FromSeconds(30);
     private bool _loggedIn;
     private bool _noticeFailLogged;
     private bool _failed;
@@ -832,8 +832,8 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         CloseGame("to update");
     }
 
-    /// <summary>Closes the game as its window's × does, never by ending the process from under it.</summary>
-    private void CloseGame(string why)
+    /// <summary>Closes the game as its window's × does, never by ending the process from under it. False when it couldn't be asked to.</summary>
+    private bool CloseGame(string why)
     {
         const int WmClose = 0x0010;
         var window = _gameWindow;
@@ -843,8 +843,12 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             window = process.MainWindowHandle;
         }
         if (window == IntPtr.Zero || !PostMessage(window, WmClose, IntPtr.Zero, IntPtr.Zero))
+        {
             Log($"Could not close the game {why}: window {window}");
-        else Log($"Closing the game {why}.");
+            return false;
+        }
+        Log($"Closing the game {why}.");
+        return true;
     }
 
     public void Logoff()
@@ -2263,32 +2267,44 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private void TickWorldUpdates()
     {
         var world = _world!;
-        if (world.State == WorldState.Ready && world.HandOff(PluginDirectory) && !_loggedIn) _worldCloseAt = DateTime.UtcNow + WorldCloseDelay;
+        if (world.State == WorldState.Ready && world.HandOff(PluginDirectory))
+        {
+            if (_loggedIn) world.StayOpen();
+            else _worldCloseAt = DateTime.UtcNow + WorldCloseDelay;
+        }
         var shown = (world.State, world.Percent);
         if (_worldShown != shown)
         {
-            if (WorldToast(shown.State, shown.Percent, _worldRaised, closing: _worldCloseAt != null) is not { } toast) _worldShown = shown;
+            if (WorldToast(shown.State, shown.Percent, _worldRaised) is not { } toast) _worldShown = shown;
             else if (ShowWorldToast(toast)) _worldShown = shown;
         }
         if (!_loggedIn) PlaceUpdateToast();
-        if (_worldCloseAt is { } at && DateTime.UtcNow >= at)
+        var now = DateTime.UtcNow;
+        if (_worldCloseAt is { } at && now >= at)
         {
             _worldCloseAt = null;
-            CloseGame("to install the world update");
+            if (CloseGame("to install the world update")) _worldGiveUpAt = now + WorldCloseWait;
+            else world.StayOpen();
+        }
+        if (_worldGiveUpAt is { } giveUp && now >= giveUp)
+        {
+            _worldGiveUpAt = null;
+            Log("The game did not close for the world update; Enter is open and the update installs whenever the game closes.");
+            world.StayOpen();
         }
     }
 
     /// <summary>
-    /// The world update's toast, or null for none. Checking shows only once Enter was pressed; a ready update that can't close the game
-    /// (the character is already in the world) installs at the next close.
+    /// The world update's toast, or null for none. Checking shows only once Enter was pressed; a handed-off update the game isn't closing for
+    /// (the character is already in the world, or the close failed) installs at the next close.
     /// </summary>
-    private static ToastNotice? WorldToast(WorldState state, int percent, bool raised, bool closing) => state switch
+    private static ToastNotice? WorldToast(WorldState state, int percent, bool raised) => state switch
     {
         WorldState.Checking when raised => new ToastNotice(ToastIcon.Search, "Checking for world updates…", "Enter opens once the check is done.", Busy: true),
         WorldState.Downloading => new ToastNotice(ToastIcon.New, $"World update needed: downloading {percent}%", "Enter opens once it's installed.", Busy: true),
-        WorldState.Ready or WorldState.Closing when closing => new ToastNotice(ToastIcon.New, "World update ready",
+        WorldState.Ready or WorldState.Closing => new ToastNotice(ToastIcon.New, "World update ready",
             "The game will close; click Launch in ThwargLauncher to come back.", Busy: true),
-        WorldState.Ready or WorldState.Closing => new ToastNotice(ToastIcon.New, "World update downloaded", "It installs when you close the game."),
+        WorldState.HandedOff => new ToastNotice(ToastIcon.New, "World update downloaded", "It installs when you close the game."),
         WorldState.Unavailable => new ToastNotice(ToastIcon.Failed, "Couldn't check for world updates", "You can play; the next launch tries again.",
             Lifetime: TimeSpan.FromSeconds(8)),
         _ => null,

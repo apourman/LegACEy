@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
 using DatReaderWriter;
 using DatReaderWriter.Options;
 
@@ -33,11 +32,19 @@ public static class WorldApply
         int version;
         try
         {
-            string actual;
-            using (var stream = File.OpenRead(patchPath))
-            using (var sha = SHA256.Create())
-                actual = BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "");
-            if (!actual.Equals(File.ReadAllText(ready).Trim(), StringComparison.OrdinalIgnoreCase))
+            // Left by a run that was killed mid-swap: it holds the originals, so they go back before anything else.
+            if (Directory.Exists(rollback))
+            {
+                foreach (var saved in Directory.GetFiles(rollback))
+                {
+                    var target = Path.Combine(game, Path.GetFileName(saved));
+                    if (File.Exists(target)) File.Delete(target);
+                    File.Move(saved, target);
+                }
+                Directory.Delete(rollback, true);
+                StageApply.Log(install, "Put back the originals a killed world update left in rollback");
+            }
+            if (!WorldFiles.Sha256(patchPath).Equals(File.ReadAllText(ready).Trim(), StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("the staged patch does not match its checksum");
             WorldPatch patch;
             using (var stream = File.OpenRead(patchPath)) patch = WorldPatch.Read(stream);
@@ -60,8 +67,6 @@ public static class WorldApply
                 Write(copy, dat);
             }
 
-            // Left over by a run that was killed mid-swap: its originals are lost, and the patch goes on over what it left.
-            if (Directory.Exists(rollback)) Directory.Delete(rollback, true);
             Directory.CreateDirectory(rollback);
             foreach (var dat in dats) Swap(Path.Combine(stage, dat.Key), Path.Combine(game, dat.Key), rollback, undo);
 
@@ -83,7 +88,8 @@ public static class WorldApply
                 while (undo.Count > 0) undo.Pop()();
                 foreach (var copy in copies) if (File.Exists(copy)) File.Delete(copy);
                 if (Directory.Exists(rollback)) Directory.Delete(rollback, true);
-                StageApply.Log(install, "World dats unchanged; the stage is kept for the next try");
+                File.WriteAllText(Path.Combine(stage, WorldFiles.FailedFile), error.Message);
+                StageApply.Log(install, "World dats unchanged; the plugin throws the stage away at the next launch");
             }
             catch (Exception rollbackError)
             {

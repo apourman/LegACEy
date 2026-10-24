@@ -50,8 +50,7 @@ public sealed class WorldPatch(int version, IReadOnlyList<WorldPatchRecord> reco
     public static WorldPatch Read(Stream stream)
     {
         using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
-        var magic = reader.ReadBytes(Magic.Length);
-        if (magic.Length != Magic.Length || magic[0] != Magic[0] || magic[1] != Magic[1] || magic[2] != Magic[2] || magic[3] != Magic[3])
+        if (Encoding.ASCII.GetString(reader.ReadBytes(Magic.Length)) != "LWP1")
             throw new InvalidDataException("Not a LegACEy world patch.");
         var version = reader.ReadInt32();
         var count = reader.ReadInt32();
@@ -83,6 +82,10 @@ public static class WorldFiles
     public const string PatchFile = "world.patch";
     /// <summary>Written last, holding the patch's SHA-256, so the updater checks the patch again before it applies it.</summary>
     public const string ReadyFile = "ready";
+    /// <summary>Written by the updater when applying failed: the plugin then throws the stage away and leaves Enter open, so a patch that
+    /// won't apply never closes the game at every launch.</summary>
+    public const string FailedFile = "failed";
+    public const string UpdaterMutex = @"Local\LegACEy.WorldUpdater";
 
     private static readonly Regex VersionValue = new(@"""version""\s*:\s*(\d+)", RegexOptions.Compiled);
 
@@ -99,6 +102,14 @@ public static class WorldFiles
             return match.Success && int.TryParse(match.Groups[1].Value, out var version) && version >= 1 ? version : 1;
         }
         catch (Exception) { return 1; }
+    }
+
+    /// <summary>A file's SHA-256, lower-case hex.</summary>
+    public static string Sha256(string path)
+    {
+        using var stream = File.OpenRead(path);
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "").ToLowerInvariant();
     }
 
     public static string VersionJson(int version) => $"{{ \"version\": {version} }}";

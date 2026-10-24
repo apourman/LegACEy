@@ -2,7 +2,6 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
-using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,9 +11,10 @@ namespace LegACEy.Client.DecalPlugin;
 
 /// <summary>
 /// Where a world update stands. Checking, Downloading, Ready and Closing hold Enter at character select; Off (no manifest address),
-/// UpToDate and Unavailable (the manifest or patch couldn't be had) leave it alone.
+/// UpToDate, Unavailable (the manifest or patch couldn't be had, or the last apply failed) and HandedOff (the updater waits, but the game
+/// isn't closing for it) leave it alone.
 /// </summary>
-internal enum WorldState { Off, Checking, UpToDate, Downloading, Ready, Closing, Unavailable }
+internal enum WorldState { Off, Checking, UpToDate, Downloading, Ready, Closing, HandedOff, Unavailable }
 
 /// <summary>The world manifest: the world version it brings a game to, and the patch's address, size in bytes and SHA-256.</summary>
 internal sealed record WorldManifest(int Version, string Patch, long Size, string Sha256)
@@ -40,7 +40,6 @@ internal sealed class WorldUpdates
 {
     public const string ManifestUrlFile = "world-manifest-url";
     private const string UpdaterName = "LegACEy.Updater.exe";
-    private const string UpdaterMutex = @"Local\LegACEy.WorldUpdater";
     // Short: Enter is held while the manifest is fetched.
     private static readonly TimeSpan ManifestDeadline = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan DownloadDeadline = TimeSpan.FromMinutes(10);
@@ -115,6 +114,14 @@ internal sealed class WorldUpdates
             }
             Target = manifest;
             var stage = WorldFiles.Stage(_game, manifest.Version);
+            if (File.Exists(Path.Combine(stage, WorldFiles.FailedFile)))
+            {
+                ClientUiRuntime.Log($"World update {manifest.Version} failed to apply last time: {File.ReadAllText(Path.Combine(stage, WorldFiles.FailedFile))}. "
+                    + "Its stage is thrown away and Enter is open; the next launch downloads it again.");
+                Directory.Delete(stage, true);
+                Set(WorldState.Unavailable);
+                return;
+            }
             if (Staged(stage, manifest))
             {
                 ClientUiRuntime.Log($"World update {manifest.Version} is already downloaded.");
@@ -153,7 +160,7 @@ internal sealed class WorldUpdates
                 await _download(manifest.Patch, file,
                     bytes => Volatile.Write(ref _percent, manifest.Size > 0 ? (int)Math.Min(99, bytes * 100 / manifest.Size) : 0), deadline.Token);
             var size = new FileInfo(part).Length;
-            var sha = Sha256(part);
+            var sha = WorldFiles.Sha256(part);
             if (size == manifest.Size && sha.Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase))
             {
                 File.Move(part, Path.Combine(stage, WorldFiles.PatchFile), overwrite: true);
@@ -175,7 +182,7 @@ internal sealed class WorldUpdates
     {
         var ready = Path.Combine(stage, WorldFiles.ReadyFile);
         var patch = Path.Combine(stage, WorldFiles.PatchFile);
-        try { return File.Exists(ready) && File.Exists(patch) && Sha256(patch).Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase); }
+        try { return File.Exists(ready) && File.Exists(patch) && WorldFiles.Sha256(patch).Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase); }
         catch (Exception) { return false; }
     }
 
@@ -190,7 +197,7 @@ internal sealed class WorldUpdates
         var stage = WorldFiles.Stage(_game, target.Version);
         try
         {
-            var waiting = Mutex.TryOpenExisting(UpdaterMutex, out var held);
+            var waiting = Mutex.TryOpenExisting(WorldFiles.UpdaterMutex, out var held);
             held?.Dispose();
             if (waiting)
             {
@@ -213,6 +220,13 @@ internal sealed class WorldUpdates
             Set(WorldState.Unavailable);
             return false;
         }
+    }
+
+    /// <summary>The game won't close for the handed-off update (the character is in the world, or the close failed): Enter opens, and it
+    /// installs whenever the game does close.</summary>
+    public void StayOpen()
+    {
+        if (State == WorldState.Closing) Set(WorldState.HandedOff);
     }
 
     /// <summary>Removes the stages of updates this folder already has: what an updater left after applying (its exe).</summary>
@@ -247,11 +261,5 @@ internal sealed class WorldUpdates
             await file.WriteAsync(buffer.AsMemory(0, read), cancel);
             progress(total += read);
         }
-    }
-
-    private static string Sha256(string path)
-    {
-        using var stream = File.OpenRead(path);
-        return Convert.ToHexStringLower(SHA256.HashData(stream));
     }
 }

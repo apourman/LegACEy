@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using DatReaderWriter;
 using DatReaderWriter.Lib.IO.DatBTree;
 using DatReaderWriter.Options;
@@ -55,7 +54,7 @@ static int Build(string retail, string edited, string output, int version, strin
     var patchPath = Path.Combine(output, patchName);
     using (var stream = File.Create(patchPath)) new WorldPatch(version, records).Write(stream);
     var size = new FileInfo(patchPath).Length;
-    var sha = Sha256(patchPath);
+    var sha = WorldFiles.Sha256(patchPath);
     File.WriteAllText(Path.Combine(output, "world-manifest.json"),
         $$"""{ "version": {{version}}, "patch": "{{url.TrimEnd('/')}}/{{patchName}}", "size": {{size}}, "sha256": "{{sha}}" }""" + "\n");
     Console.WriteLine($"{patchPath}: {records.Count} records, {size} bytes, sha256 {sha}");
@@ -74,7 +73,7 @@ static int Check(string retail, string edited, string patchPath)
         var stage = WorldFiles.Stage(game, patch.Version);
         Directory.CreateDirectory(stage);
         File.Copy(patchPath, Path.Combine(stage, WorldFiles.PatchFile));
-        File.WriteAllText(Path.Combine(stage, WorldFiles.ReadyFile), Sha256(patchPath));
+        File.WriteAllText(Path.Combine(stage, WorldFiles.ReadyFile), WorldFiles.Sha256(patchPath));
         var result = WorldApply.Apply(game, game, stage);
         if (result != ApplyResult.Applied || WorldFiles.ReadVersion(game) != patch.Version)
         {
@@ -117,10 +116,4 @@ static bool SameBytes(string a, string b)
     while ((read = left.ReadAtLeast(x, x.Length, throwOnEndOfStream: false)) > 0)
         if (right.ReadAtLeast(y, read, throwOnEndOfStream: false) != read || !x.AsSpan(0, read).SequenceEqual(y.AsSpan(0, read))) return false;
     return true;
-}
-
-static string Sha256(string path)
-{
-    using var stream = File.OpenRead(path);
-    return Convert.ToHexStringLower(SHA256.HashData(stream));
 }
