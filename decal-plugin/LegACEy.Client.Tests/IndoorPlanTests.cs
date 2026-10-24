@@ -45,6 +45,25 @@ public sealed class IndoorPlanTests
     }
 
     [Fact]
+    public void The_wall_over_a_doorway_is_not_a_wall_across_it()
+    {
+        // A 3 m high doorway (polygon 7) in a 4 m high east wall, with the wall above it (8) from 3 m up.
+        var room = new IndoorCellShape(0x0100, Frame.Identity, new Dictionary<ushort, Vec3[]>
+        {
+            [1] = new[] { V(0, 0, 0), V(4, 0, 0), V(4, 4, 0), V(0, 4, 0) },
+            [5] = new[] { V(4, 0, 0), V(4, 1, 0), V(4, 1, 4), V(4, 0, 4) },
+            [6] = new[] { V(4, 3, 0), V(4, 4, 0), V(4, 4, 4), V(4, 3, 4) },
+            [7] = new[] { V(4, 1, 0), V(4, 3, 0), V(4, 3, 3), V(4, 1, 3) },
+            [8] = new[] { V(4, 1, 3), V(4, 3, 3), V(4, 3, 4), V(4, 1, 4) },
+        }, new[] { ((ushort)7, (ushort)0x0101) });
+
+        var walls = IndoorPlan.Build(0x00, 0x99, new[] { room }).Cell(0x0100)!.Walls;
+
+        Assert.Equal(2, walls.Count);
+        Assert.DoesNotContain(walls, wall => wall.A.Y > 1.5f && wall.A.Y < 2.5f || wall.B.Y > 1.5f && wall.B.Y < 2.5f || Math.Abs(wall.A.Y - wall.B.Y) > 1.5f);
+    }
+
+    [Fact]
     public void A_cell_frame_turns_and_moves_its_polygons_into_landblock_metres()
     {
         // A quarter turn about z, then 10 m east: the local corner (1, 0) lands at (10, 1).
