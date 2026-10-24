@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using LegACEy.Client.Demo;
 
@@ -18,7 +19,12 @@ internal sealed class BridgeInventoryPort : IInventoryPort
     {
         _log = log;
         _refresh = new InventoryRefresh(() => InventorySnapshotBuilder.Build(new BridgeInventoryReader()), log);
+        var clock = Stopwatch.StartNew();
+        _moves = new InventoryMoveQueue(Send, () => clock.Elapsed);
+        _refresh.Changed += _moves.Answered;
     }
+
+    private readonly InventoryMoveQueue _moves;
 
     public InventorySnapshot Snapshot => _refresh.Snapshot;
 
@@ -42,12 +48,17 @@ internal sealed class BridgeInventoryPort : IInventoryPort
             _refresh.MarkStale();
         }
         _refresh.Flush();
+        _moves.Pump();
     }
 
     private int _strength;
 
     /// <summary>Logoff: the snapshot empties.</summary>
-    public void Clear() => _refresh.Reset();
+    public void Clear()
+    {
+        _refresh.Reset();
+        _moves.Clear();
+    }
 
     /// <summary>
     /// A world object was created, changed, released or moved. It matters when it is the character, sits in the character's inventory,
@@ -97,8 +108,11 @@ internal sealed class BridgeInventoryPort : IInventoryPort
         Bridge.DropItem(itemId);
     }
 
+    // Queued: retail drops a move sent while another waits on the server.
+    public void MoveToContainer(uint itemId, uint containerId, int slotIndex) => _moves.Move(itemId, containerId, slotIndex);
+
     // Stack false places the item in the slot rather than adding it to a stack there.
-    public void MoveToContainer(uint itemId, uint containerId, int slotIndex)
+    private void Send(uint itemId, uint containerId, int slotIndex)
     {
         if (Split?.TrySplitToContainer(itemId, containerId, slotIndex) == true) return;
         Bridge.MoveItem(itemId, containerId, slotIndex, stack: false);
