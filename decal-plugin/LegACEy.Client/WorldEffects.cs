@@ -23,7 +23,7 @@ namespace LegACEy.Client.DecalPlugin;
 internal sealed unsafe class WorldEffects : IDisposable
 {
     private const string Source = "acclient.pdb (C:\\Turbine\\Asheron's Call, a near build; +0xAD0 near 0x50E000, +0xA0 near 0x455000) for names; our objdump read of installed acclient.exe";
-    private const uint SmartBoxDrawAddress = 0x00455610, GetObjectAddress = 0x0050FF60, PartArrayDrawAddress = 0x00518E00;
+    private const uint SmartBoxDrawAddress = 0x00455610, GetObjectAddress = 0x0050FF60, PartDrawAddress = 0x0050E270;
     private const uint LandscapeDrawAddress = 0x00506D90;
     // CPhysicsPart* being drawn by CPhysicsPart::Draw, zero otherwise; part +0xE0 is its CPhysicsObj, whose +0x8 is the object id.
     private static readonly int* DrawingPart = (int*)0x008EE3D8;
@@ -56,8 +56,11 @@ internal sealed unsafe class WorldEffects : IDisposable
             Source, "the layout read here: CPhysicsObj +0x4C is its cell id: the player's, for the storm and weather (outdoors, a building's room, a dungeon)"),
         new NativeUiEntry("CPhysicsObj::GetObjectA", GetObjectAddress, NativeUiCatalogue.Bytes("8B 0D 64 4D 84 00 85 C9 74 0B 8B 44 24 04 50"),
             Source, "Cdecl (object id): CObjectMaint lookup, null when the object is not in the world"),
-        new NativeUiEntry("CPartArray::Draw", PartArrayDrawAddress, NativeUiCatalogue.Bytes("56 57 8B F9 8B 47 58 33 F6 85 C0 76 1C 8D 49 00 8B 47 5C 8B 0C B0 85 C9 74 07 6A 00"),
-            Source, "ThisCall (Position*, unused): CPhysicsPart::Draw(0) for each part; part count +0x58, parts +0x5C"),
+        new NativeUiEntry("CPartArray::Draw", 0x00518E00, NativeUiCatalogue.Bytes("56 57 8B F9 8B 47 58 33 F6 85 C0 76 1C 8D 49 00 8B 47 5C 8B 0C B0 85 C9 74 07 6A 00"),
+            Source, "the layout read here: CPartArray part count +0x58, parts +0x5C"),
+        // Past the prologue, in case a hook patches it.
+        new NativeUiEntry("CPhysicsPart::Draw reads its force flag", PartDrawAddress + 0x13, NativeUiCatalogue.Bytes("55 8B 6C 24 0C 85 ED 57 75 12"),
+            Source, "ThisCall (int force): forced, it skips the drawn-this-frame check, and RenderDeviceD3D::DrawMesh (0x5A1970) draws a part outside every view cone"),
         new NativeUiEntry("CPhysicsObj::SetLuminosity reads the part array", 0x00512374, NativeUiCatalogue.Bytes("8B 4E 10 85 C9 74 76"),
             Source, "the layout read here: CPhysicsObj +0x10 is its CPartArray")
     };
@@ -97,10 +100,10 @@ internal sealed unsafe class WorldEffects : IDisposable
     private delegate IntPtr GetObjectFn(uint objectId);
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-    private delegate void DrawPartsFn(IntPtr partArray, IntPtr position);
+    private delegate void DrawPartFn(IntPtr part, int force);
 
     private readonly GetObjectFn _getObject = Marshal.GetDelegateForFunctionPointer<GetObjectFn>(new IntPtr(GetObjectAddress));
-    private readonly DrawPartsFn _drawParts = Marshal.GetDelegateForFunctionPointer<DrawPartsFn>(new IntPtr(PartArrayDrawAddress));
+    private readonly DrawPartFn _drawPart = Marshal.GetDelegateForFunctionPointer<DrawPartFn>(new IntPtr(PartDrawAddress));
     // While retail draws its world: parts drawn outside it (retail's 3D paperdoll in the inventory, with its own camera) are not measured or
     // outlined. While the selection, culled this frame, is drawn into the mask only.
     private bool _inWorld, _forcing;
@@ -348,6 +351,13 @@ internal sealed unsafe class WorldEffects : IDisposable
     /// </summary>
     private int OnDraw(IntPtr device, int type, uint startVertex, uint primitives)
     {
+        if (_forcing)
+        {
+            // As in OnDrawIndexed: the forced selection goes into the mask only.
+            try { if (DrawsSelected()) DrawIntoMask(() => _drawPrimitiveHook.OriginalFunction(device, type, startVertex, primitives), SelectionChannels); }
+            catch (Exception exception) { Fail(exception); }
+            return 0;
+        }
         if (Fogging && _worldFog is { } fog && device == _device && !_failed)
         {
             try { ApplyFog(fog); }
@@ -500,7 +510,9 @@ internal sealed unsafe class WorldEffects : IDisposable
     }
 
     /// <summary>
-    /// Has retail draw the selected object's parts again, into the mask only: indoors, retail culls what is in rooms out of view.
+    /// Has retail draw the selected object's parts again, into the mask only: indoors, retail culls what is in rooms out of view. Forced:
+    /// unforced, as CPartArray::Draw draws them, a part outside every portal's view cone is skipped, so a target in a room out of sight,
+    /// even around a corner, was not outlined (backlog 051).
     /// ponytail: a culled object's draw position is where retail last placed it; a moving one may lag until it is in view again.
     /// </summary>
     private void DrawCulledSelection()
@@ -509,9 +521,18 @@ internal sealed unsafe class WorldEffects : IDisposable
         // Out of the world (picked up into a pack, or gone): no cell, and its parts keep the place it was last drawn.
         if (physicsObject == IntPtr.Zero || Marshal.ReadIntPtr(physicsObject, 0x90) == IntPtr.Zero) return;
         var parts = Marshal.ReadIntPtr(physicsObject, 0x10);
-        if (parts == IntPtr.Zero || Marshal.ReadInt32(parts, 0x58) == 0) return;
+        if (parts == IntPtr.Zero) return;
+        int count = Marshal.ReadInt32(parts, 0x58);
+        var list = Marshal.ReadIntPtr(parts, 0x5C);
         _forcing = true;
-        try { _drawParts(parts, IntPtr.Zero); }
+        try
+        {
+            for (var i = 0; i < count; i++)
+            {
+                var part = Marshal.ReadIntPtr(list, i * 4);
+                if (part != IntPtr.Zero) _drawPart(part, 1);
+            }
+        }
         finally { _forcing = false; }
     }
 
