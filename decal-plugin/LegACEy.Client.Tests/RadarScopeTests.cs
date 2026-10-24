@@ -378,6 +378,21 @@ public sealed class RadarScopeTests
     }
 
     [Fact]
+    public void A_ping_on_a_peeked_level_lands_in_that_levels_room_at_its_floor()
+    {
+        var plan = new RadarPlan(RadarPlanFixtures.Dungeon(), 0x0101);
+        var standing = new RadarPosition(RadarPlanFixtures.DungeonCell, 60, 84, 4);
+
+        var above = plan.Levels[0].Pin(standing);
+        var nowhere = plan.Levels[0].Pin(standing with { X = 90 });
+
+        Assert.Equal(0xC6A90102u, above.Cell);
+        Assert.Equal(8f, above.Z);
+        Assert.Equal(RadarPlanFixtures.DungeonCell, nowhere.Cell);
+        Assert.Equal(plan.Levels[0].Height, nowhere.Z);
+    }
+
+    [Fact]
     public void A_dot_on_another_level_is_an_arrow_and_its_label_says_above_or_below()
     {
         var plan = new RadarPlan(RadarPlanFixtures.Dungeon(), 0x0101);

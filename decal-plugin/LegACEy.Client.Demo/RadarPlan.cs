@@ -26,6 +26,28 @@ public sealed class RadarPlanLevel
     /// <summary>The level's height in landblock metres.</summary>
     public float Height { get; }
 
+    /// <summary>
+    /// A spot on this level: the cell whose floor it is over and that floor's height, so a ping placed while another level is shown lands
+    /// on that level. Over no floor, it keeps its cell and takes the level's height.
+    /// </summary>
+    public RadarPosition Pin(RadarPosition at)
+    {
+        foreach (var cell in _level.Cells)
+            if (cell.Floors.Any(floor => Inside(floor, at.X, at.Y)))
+                return at with { Cell = (at.Cell & 0xFFFF0000) | cell.Id, Z = cell.Height };
+        return at with { Z = Height };
+    }
+
+    private static bool Inside(IReadOnlyList<GroundPoint> polygon, float x, float y)
+    {
+        var inside = false;
+        for (int i = 0, j = polygon.Count - 1; i < polygon.Count; j = i++)
+            if ((polygon[i].Y > y) != (polygon[j].Y > y) &&
+                x < (polygon[j].X - polygon[i].X) * (y - polygon[i].Y) / (polygon[j].Y - polygon[i].Y) + polygon[i].X)
+                inside = !inside;
+        return inside;
+    }
+
     /// <summary>The floors as one path. Built on first use, so the seam's tests never make platform geometry.</summary>
     public Geometry Floors => _floors ??= FloorPath(_level);
 

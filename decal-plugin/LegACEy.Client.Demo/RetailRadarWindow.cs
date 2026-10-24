@@ -198,7 +198,10 @@ public sealed class RetailRadarWindow : Decorator, IDisposable
             if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && _player != null)
             {
                 e.Handled = true;
-                PingRequested?.Invoke(RadarScope.PositionAt(_player, Options, Radius, e.GetPosition(_scope)));
+                var at = RadarScope.PositionAt(_player, Options, Radius, e.GetPosition(_scope));
+                // Indoors, on the level the radar shows: the peeked one, or the player's own.
+                if (_plan != null && _frame?.Ladder is { } ladder) at = _plan.Levels[ladder.Peek >= 0 ? ladder.Peek : ladder.Current].Pin(at);
+                PingRequested?.Invoke(at);
                 return;
             }
             var hit = _frame == null ? null : RadarScope.Hit(_frame, e.GetPosition(_scope));

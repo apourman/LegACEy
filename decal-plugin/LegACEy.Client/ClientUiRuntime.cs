@@ -783,7 +783,15 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private void ShowPing(string sender, RadarPosition at)
     {
         _radar?.ShowPing(sender, at);
-        _worldEffects?.Pings.Show(sender, at, RetailRadarWindow.PingColour(sender).ToUInt32());
+        if (_worldEffects is not { } effects) return;
+        effects.Pings.Show(sender, at, RetailRadarWindow.PingColour(sender).ToUInt32());
+        // Indoors, the walls around the spot are scanned once the landblock's plan is read.
+        if (at.Outdoors || RadarPlans() is not { } plans) return;
+        plans.PlanAsync((int)(at.Cell >> 24), (int)((at.Cell >> 16) & 0xFF)).ContinueWith(read =>
+        {
+            try { if (read.IsCompletedSuccessfully) effects.Pings.Scan(sender, at, read.Result); }
+            catch (Exception exception) { Log($"Could not scan around a ping: {exception.Message}"); }
+        }, TaskScheduler.Default);
     }
 
     private static IEnumerable<string> ServerActionsFrom(ChannelReply reply)
