@@ -2843,6 +2843,7 @@ namespace ACE.Server.WorldObjects
                         if (!AdjustStack(stack, -amount, stackFoundInContainer, stackRootOwner))
                         {
                             Session.Network.EnqueueSend(new GameEventInventoryServerSaveFailed(Session, stackId, WeenieError.ActionCancelled));
+                            EnqueuePickupDone(pickupMotion);
                             return;
                         }
 
