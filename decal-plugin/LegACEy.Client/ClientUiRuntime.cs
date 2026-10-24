@@ -355,19 +355,21 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     private bool _inGame;
     // Kept apart from the UI, which may have failed: the plugin's own updates still check, and tell the player in chat.
     private readonly PluginUpdates _updates = new(PluginDirectory);
-    // World updates at character select: Enter is held from the plugin's start until the server's note, or the end of the DDD exchange
-    // without one, says what this server needs. Null when the plugin couldn't start them.
+    // The server's world, laid over the retail dats: switched on at startup for a cached world, and at character select, where Enter is held
+    // from the plugin's start until the server's note, or the end of the DDD exchange without one, says what this server needs. Null when
+    // the plugin couldn't start them (then the client is pure retail and the server decides at Enter).
     private WorldUpdates? _world;
+    private DatOverlay? _datOverlay;
+    private RetailDatReport? _datReport;
     private RetailEnterGame? _enterGame;
+    private DateTime _lastOverlaySummary = DateTime.UtcNow;
+    private static readonly TimeSpan OverlaySummaryEvery = TimeSpan.FromMinutes(5);
     // The world update toast last shown, so another shows only when the state or percent changes; cleared by an Enter press, which raises
     // the toast again (and shows Checking, which otherwise stays quiet).
     private (WorldState State, int Percent)? _worldShown;
     private bool _worldRaised;
     // Whether the toast's own surface was tried at character select, before any LegACEy window exists.
     private bool _worldToastHostTried;
-    // When the game closes for a ready world update (long enough to read the toast first), and when, still running, it stops holding Enter.
-    private DateTime? _worldCloseAt, _worldGiveUpAt;
-    private static readonly TimeSpan WorldCloseDelay = TimeSpan.FromSeconds(8), WorldCloseWait = TimeSpan.FromSeconds(30);
     private bool _loggedIn;
     private bool _noticeFailLogged;
     private bool _failed;
@@ -457,6 +459,9 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             _updates.Dispose();
             _enterGame?.Dispose();
             _enterGame = null;
+            LogOverlaySummary();
+            _datOverlay?.Dispose();
+            _datOverlay = null;
             _postUiDrawHook?.Dispose();
             _postUiDrawHook = null;
             _worldEffects?.Dispose();
@@ -864,6 +869,7 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         Guard(() => _hovered?.Panel.PointerLeave());
         _inGame = false;
         _loggedIn = false;
+        LogOverlaySummary();
         _carriedChatHistory = null;
         _chatListenFailed = false;
         // The next character reads its own toolbar place; until then the toolbar stands where retail's window is.
@@ -2244,21 +2250,29 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
         return _updateToast = toast;
     }
 
-    /// <summary>Starts world updates and the Enter hold at character select, which waits for the server's world note.</summary>
+    /// <summary>
+    /// Places the dat overlay and switches on the world cached for the server the game was launched for, before the client opens its dats;
+    /// then starts world updates and the Enter hold at character select, which waits for the server's world note.
+    /// </summary>
     private void StartWorldUpdates()
     {
         try
         {
+            _datOverlay = DatOverlay.Create(NativeUi.ReadMemory, Log);
+            if (_datOverlay == null) return;
             using var process = Process.GetCurrentProcess();
-            var world = new WorldUpdates(IOPath.GetDirectoryName(process.MainModule!.FileName)!);
+            var game = IOPath.GetDirectoryName(process.MainModule!.FileName)!;
+            var world = new WorldUpdates(new WorldCache(game), WorldCache.Server(WorldCache.CommandLine()));
+            _datOverlay.Use(world.AtStartup());
             _world = world;
+            _datReport = RetailDatReport.Create(NativeUi.ReadMemory, Log);
             _enterGame = RetailEnterGame.Create(NativeUi.ReadMemory, () => world.HoldsEnter, () =>
             {
                 _worldRaised = true;
                 _worldShown = null;
             }, Log);
         }
-        catch (Exception exception) { Log($"World updates are off: {exception.Message}"); }
+        catch (Exception exception) { Log($"Worlds are off: {exception.Message}"); }
     }
 
     /// <summary>The server's world note, pushed at character select.</summary>
@@ -2275,17 +2289,20 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
     }
 
     /// <summary>
-    /// Each frame: hands a ready world update to the updater, which at character select closes the game a few seconds later; shows the
-    /// world update's toast as it changes, and places it while at character select.
+    /// Each frame: switches a pending world on and sends the dat report again, so the server lets the character in; keeps the overlay on
+    /// the world <see cref="WorldUpdates.Active"/> names; shows the world's toast as it changes, and places it while at character select;
+    /// logs the overlay's summary every few minutes.
     /// </summary>
     private void TickWorldUpdates()
     {
         var world = _world!;
-        if (world.State == WorldState.Ready && world.HandOff(PluginDirectory))
+        var overlay = _datOverlay!;
+        if (world.State == WorldState.Switching && world.Pending is { } pending)
         {
-            if (_loggedIn) world.StayOpen();
-            else _worldCloseAt = DateTime.UtcNow + WorldCloseDelay;
+            overlay.Use(pending);
+            world.SwitchedOn(_datReport?.Resend() == true);
         }
+        if (overlay.Patch != world.ActivePatch && world.State != WorldState.Switching) overlay.Use(world.ActivePatch);
         var shown = (world.State, world.Percent);
         if (_worldShown != shown)
         {
@@ -2293,39 +2310,27 @@ internal sealed class ClientUiRuntime : IClientUiHost, ILegACEyPluginHost, IClie
             else if (ShowWorldToast(toast)) _worldShown = shown;
         }
         if (!_loggedIn) PlaceUpdateToast();
-        var now = DateTime.UtcNow;
-        if (_worldCloseAt is { } at && now >= at)
-        {
-            _worldCloseAt = null;
-            if (CloseGame("to install the world update")) _worldGiveUpAt = now + WorldCloseWait;
-            else world.StayOpen();
-        }
-        if (_worldGiveUpAt is { } giveUp && now >= giveUp)
-        {
-            _worldGiveUpAt = null;
-            Log("The game did not close for the world update; Enter is open and the update installs whenever the game closes.");
-            world.StayOpen();
-        }
+        if (DateTime.UtcNow - _lastOverlaySummary >= OverlaySummaryEvery) LogOverlaySummary();
     }
 
-    /// <summary>
-    /// The world update's toast, or null for none. Checking shows only once Enter was pressed; a handed-off update the game isn't closing for
-    /// (the character is already in the world, or the close failed) installs at the next close.
-    /// </summary>
+    private void LogOverlaySummary()
+    {
+        _lastOverlaySummary = DateTime.UtcNow;
+        if (_datOverlay?.TakeSummary() is { } summary) Log(summary);
+    }
+
+    /// <summary>The world's toast, or null for none. Checking shows only once Enter was pressed.</summary>
     private static ToastNotice? WorldToast(WorldUpdates world, WorldState state, int percent, bool raised) => state switch
     {
-        WorldState.Waiting or WorldState.Checking when raised => new ToastNotice(ToastIcon.Search, "Checking for world updates…", "Enter opens once the check is done.", Busy: true),
-        WorldState.Downloading => new ToastNotice(ToastIcon.New, $"World update needed: downloading {percent}%", "Enter opens once it's installed.", Busy: true),
-        WorldState.Ready or WorldState.Closing => new ToastNotice(ToastIcon.New, "World update ready",
-            "The game will close; click Launch in ThwargLauncher to come back.", Busy: true),
-        WorldState.HandedOff => new ToastNotice(ToastIcon.New, "World update downloaded", "It installs when you close the game."),
-        WorldState.Unavailable => new ToastNotice(ToastIcon.Failed, "Couldn't download the world update",
-            "This server may refuse Enter until it's installed; the next launch tries again.", Lifetime: TimeSpan.FromSeconds(12)),
-        WorldState.OtherWorld => new ToastNotice(ToastIcon.Failed, $"This game folder holds {world.Folder?.Name ?? "another world"}",
-            $"{world.Server?.Name ?? "This server"} is a different world and needs its own game folder: in ThwargLauncher, give this account "
-            + "its own game folder (a copy of retail)."),
-        WorldState.InstallFailed => new ToastNotice(ToastIcon.Failed, "The world update couldn't install",
-            "This server may refuse Enter until a fixed update is out.", Lifetime: TimeSpan.FromSeconds(12)),
+        WorldState.Waiting or WorldState.Checking when raised => new ToastNotice(ToastIcon.Search, "Checking this server's world…", "Enter opens once the check is done.", Busy: true),
+        WorldState.Downloading => new ToastNotice(ToastIcon.New, $"Downloading {world.Server?.Name ?? "this server's world"}: {percent}%", "Enter opens once it's ready.", Busy: true),
+        WorldState.On => new ToastNotice(ToastIcon.New, $"{world.Active?.Name ?? "This server's world"} is ready",
+            world.PortalNeedsRelaunch ? "Press Enter to play. Some of its new art shows after you relaunch the game." : "Press Enter to play.",
+            Lifetime: TimeSpan.FromSeconds(8)),
+        WorldState.Relaunch => new ToastNotice(ToastIcon.New, $"{world.Active?.Name ?? "This server's world"} is downloaded",
+            "Relaunch the game to enter it."),
+        WorldState.Unavailable => new ToastNotice(ToastIcon.Failed, "Couldn't download this server's world",
+            "This server may refuse Enter without it; the next launch tries again.", Lifetime: TimeSpan.FromSeconds(12)),
         _ => null,
     };
 

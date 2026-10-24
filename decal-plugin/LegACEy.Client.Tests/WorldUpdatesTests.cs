@@ -2,31 +2,41 @@ using System.Security.Cryptography;
 using System.Text;
 using LegACEy.Client.Demo;
 using LegACEy.Client.DecalPlugin;
-using LegACEy.Updater;
 
 namespace LegACEy.Client.Tests;
 
 public sealed class WorldUpdatesTests : IDisposable
 {
     private const string Isles = "https://isles.test/world-manifest.json";
-    private static readonly byte[] Patch = Encoding.ASCII.GetBytes("a world patch");
-    private static readonly string PatchSha = Convert.ToHexStringLower(SHA256.HashData(Patch));
+    private const string Server = "10.0.0.5:9000";
     private readonly string game = Path.Combine(Path.GetTempPath(), "legacey-world-check-" + Guid.NewGuid().ToString("N"));
+    private readonly WorldCache cache;
     private int fetches, downloads;
 
-    public WorldUpdatesTests() => Directory.CreateDirectory(game);
+    public WorldUpdatesTests()
+    {
+        Directory.CreateDirectory(game);
+        cache = new WorldCache(game);
+    }
 
     public void Dispose() => Directory.Delete(game, true);
 
     private static WorldNote Note(int edition, string updateList = Isles) => new("Bob's Isles", edition, updateList);
 
-    private static string Manifest(int version) =>
-        $$"""{ "version": {{version}}, "patch": "https://isles.test/world-{{version}}.patch", "size": {{Patch.Length}}, "sha256": "{{PatchSha}}" }""";
+    private static byte[] Patch(int version, params WorldPatchRecord[] records)
+    {
+        var all = records.Prepend(new WorldPatchRecord("client_cell_1.dat", 0xFFFF0001, version, false, BitConverter.GetBytes(version))).ToList();
+        using var stream = new MemoryStream();
+        new WorldPatch(version, all).Write(stream);
+        return stream.ToArray();
+    }
 
-    private void Holds(int version, string address, string name = "Bob's Isles") =>
-        File.WriteAllText(Path.Combine(game, WorldFiles.VersionFile), WorldFiles.WorldJson(version, address, name));
+    private static string Manifest(int version, byte[] patch) =>
+        $$"""{ "version": {{version}}, "patch": "https://isles.test/world-{{version}}.patch", "size": {{patch.Length}}, "sha256": "{{Convert.ToHexStringLower(SHA256.HashData(patch))}}" }""";
 
-    private WorldUpdates Updates(Func<string> manifest, params byte[][] bodies) => new(game,
+    private WorldUpdates Updates(Func<string> manifest, params byte[][] bodies) => Updates(Server, manifest, bodies);
+
+    private WorldUpdates Updates(string? server, Func<string> manifest, params byte[][] bodies) => new(cache, server,
         (_, _) =>
         {
             fetches++;
@@ -39,76 +49,143 @@ public sealed class WorldUpdatesTests : IDisposable
             progress(body.Length);
         });
 
-    [Fact]
-    public void EnterWaitsForTheNoteAndAPlainServerLeavesTheFolderAlone()
+    private static WorldUpdates Unreachable(WorldCache cache, string? server = Server) =>
+        new(cache, server, (_, _) => throw new HttpRequestException("No route to host"), (_, _, _, _) => throw new HttpRequestException("No route to host"));
+
+    /// <summary>A first visit: downloaded, switched on and reported, so the world is cached for <see cref="Server"/>.</summary>
+    private async Task Visit(int version)
     {
-        var updates = Updates(() => Manifest(983), Patch);
-        Assert.True(updates.HoldsEnter);
-
-        updates.NoNote();
-
-        Assert.Equal(WorldState.Off, updates.State);
-        Assert.False(updates.HoldsEnter);
-        Assert.Equal(0, fetches);
-        Assert.Empty(Directory.GetFileSystemEntries(game));
+        var patch = Patch(version);
+        var updates = Updates(() => Manifest(version, patch), patch);
+        await updates.Heard(Note(version));
+        updates.SwitchedOn(reported: true);
+        (fetches, downloads) = (0, 0);
     }
 
     [Fact]
-    public async Task ARetailFolderDownloadsTheServersWorldAndTheStageNamesIt()
+    public async Task AFirstVisitDownloadsHoldsEnterUntilSwitchedOnAndTheNextStartHasTheWorld()
     {
-        var updates = Updates(() => Manifest(983), Patch);
+        var patch = Patch(983);
+        var updates = Updates(() => Manifest(983, patch), patch);
+        Assert.Null(updates.AtStartup());
+        Assert.True(updates.HoldsEnter);
 
         await updates.Heard(Note(983));
 
-        Assert.Equal(WorldState.Ready, updates.State);
+        Assert.Equal(WorldState.Switching, updates.State);
         Assert.True(updates.HoldsEnter);
-        var stage = WorldFiles.Stage(game, 983);
-        Assert.Equal(Patch, File.ReadAllBytes(Path.Combine(stage, WorldFiles.PatchFile)));
-        Assert.Equal(PatchSha, File.ReadAllText(Path.Combine(stage, WorldFiles.ReadyFile)));
-        var world = WorldFiles.ReadWorld(stage);
-        Assert.Equal((983, Isles, "Bob's Isles"), (world.Version, world.Address, world.Name));
+        Assert.Equal(983, updates.Pending!.Version);
+        Assert.Null(updates.ActivePatch);
+
+        updates.SwitchedOn(reported: true);
+
+        Assert.Equal(WorldState.On, updates.State);
+        Assert.False(updates.HoldsEnter);
+        Assert.Equal(983, updates.ActivePatch!.Version);
+        Assert.Equal(983, Updates(() => throw new InvalidOperationException()).AtStartup()!.Version);
+        Assert.Null(Updates("10.0.0.6:9000", () => throw new InvalidOperationException()).AtStartup());
     }
 
     [Fact]
-    public async Task ABehindFolderOfTheSameWorldDownloads()
+    public async Task AReturningPlayerAtTheNotesEditionIsUpToDateWithoutAsking()
     {
-        Holds(983, Isles);
-        var updates = Updates(() => Manifest(984), Patch);
-
-        await updates.Heard(Note(984));
-
-        Assert.Equal(WorldState.Ready, updates.State);
-        Assert.Equal(1, downloads);
-    }
-
-    [Fact]
-    public async Task AFolderAtTheServersEditionIsUpToDateWithoutAsking()
-    {
-        Holds(983, Isles);
-        var updates = Updates(() => throw new HttpRequestException("No route to host"));
+        await Visit(983);
+        var updates = Unreachable(cache);
+        Assert.NotNull(updates.AtStartup());
 
         await updates.Heard(Note(983));
 
         Assert.Equal(WorldState.UpToDate, updates.State);
         Assert.False(updates.HoldsEnter);
-        Assert.Equal(0, fetches);
     }
 
     [Fact]
-    public async Task AFolderHoldingAnotherWorldKeepsEnterHeldAndIsNeverChanged()
+    public async Task ACachedWorldReachedThroughAnotherHostSwitchesOnWithoutDownloading()
     {
-        Holds(983, Isles);
-        var before = File.ReadAllText(Path.Combine(game, WorldFiles.VersionFile));
-        var updates = Updates(() => Manifest(990), Patch);
+        await Visit(983);
+        var updates = Unreachable(cache, "isles.example:9000");
 
-        await updates.Heard(new WorldNote("Frost Reach", 990, "https://frost.test/world-manifest.json"));
+        await updates.Heard(Note(983));
 
-        Assert.Equal(WorldState.OtherWorld, updates.State);
-        Assert.True(updates.HoldsEnter);
-        Assert.Equal("Bob's Isles", updates.Folder!.Name);
-        Assert.Equal((0, 0), (fetches, downloads));
-        Assert.Equal(before, File.ReadAllText(Path.Combine(game, WorldFiles.VersionFile)));
-        Assert.False(Directory.Exists(Path.Combine(game, WorldFiles.UpdateFolder)));
+        Assert.Equal(WorldState.Switching, updates.State);
+        Assert.Equal(983, updates.Pending!.Version);
+    }
+
+    [Fact]
+    public async Task ANewReleaseDownloadsAndSaysWhenItsPortalRecordsNeedARelaunch()
+    {
+        await Visit(983);
+        var patch = Patch(984, new WorldPatchRecord("client_portal.dat", 0x01000001, 2, false, new byte[] { 1, 2 }));
+        var updates = Updates(() => Manifest(984, patch), patch);
+        updates.AtStartup();
+
+        await updates.Heard(Note(984));
+        updates.SwitchedOn(reported: true);
+
+        Assert.Equal((WorldState.On, 984, 1), (updates.State, updates.ActivePatch!.Version, downloads));
+        Assert.True(updates.PortalNeedsRelaunch);
+    }
+
+    [Fact]
+    public async Task APlainServerSwitchesTheStartupWorldOffAndIsForgotten()
+    {
+        await Visit(983);
+        var updates = Unreachable(cache);
+        Assert.NotNull(updates.AtStartup());
+
+        updates.NoNote();
+        updates.NoNote();
+
+        Assert.Equal(WorldState.Off, updates.State);
+        Assert.False(updates.HoldsEnter);
+        Assert.Null(updates.ActivePatch);
+        Assert.Null(Unreachable(cache).AtStartup());
+    }
+
+    [Fact]
+    public async Task ACachedPatchThatFailsItsChecksumIsIgnoredAtStartup()
+    {
+        await Visit(983);
+        var file = Directory.GetFiles(Path.Combine(game, WorldCache.FolderName), "world-983.patch", SearchOption.AllDirectories).Single();
+        File.AppendAllText(file, "damage");
+
+        Assert.Null(Unreachable(cache).AtStartup());
+    }
+
+    [Fact]
+    public async Task ABadDownloadIsThrownAwayAndTriedOnceMore()
+    {
+        var patch = Patch(983);
+        var updates = Updates(() => Manifest(983, patch), Encoding.ASCII.GetBytes("a damaged patch"), patch);
+
+        await updates.Heard(Note(983));
+
+        Assert.Equal(WorldState.Switching, updates.State);
+        Assert.Equal(2, downloads);
+    }
+
+    [Fact]
+    public async Task TwoBadDownloadsOrNoUpdateListLeaveEnterToTheServer()
+    {
+        var patch = Patch(983);
+        var damaged = Updates(() => Manifest(983, patch), Encoding.ASCII.GetBytes("a damaged patch"));
+        await damaged.Heard(Note(983));
+        Assert.Equal(WorldState.Unavailable, damaged.State);
+        Assert.False(damaged.HoldsEnter);
+        Assert.Equal(2, downloads);
+        Assert.Null(cache.Find(Isles));
+
+        var unreachable = Unreachable(cache);
+        await unreachable.Heard(Note(983));
+        Assert.Equal(WorldState.Unavailable, unreachable.State);
+        Assert.False(unreachable.HoldsEnter);
+    }
+
+    [Fact]
+    public void OnlyTheServerIsReadFromTheCommandLine()
+    {
+        Assert.Equal("10.0.0.5:9000", WorldCache.Server(new[] { "acclient.exe", "-a", "bob", "-v", "hunter2", "-h", "10.0.0.5", "-p", "9000", "-rodat", "on" }));
+        Assert.Null(WorldCache.Server(new[] { "acclient.exe", "-h", "10.0.0.5", "-a", "bob" }));
     }
 
     [Theory]
@@ -116,85 +193,37 @@ public sealed class WorldUpdatesTests : IDisposable
     [InlineData("ftp://isles.test/world-manifest.json", false)]
     [InlineData("https://isles.test/world-manifest.json", true)]
     [InlineData("http://localhost:8080/world-manifest.json", true)]
-    [InlineData("http://127.0.0.1/world-manifest.json", true)]
     [InlineData("http://172.26.254.65:8080/world-manifest.json", true)]
     [InlineData("http://192.168.1.4/world-manifest.json", true)]
     [InlineData("http://172.32.0.1/world-manifest.json", false)]
     public void PlainHttpIsOnlyForThisMachineOrAPrivateNetwork(string address, bool allowed) => Assert.Equal(allowed, WorldUpdates.Allowed(address));
 
     [Fact]
-    public async Task APublicHttpUpdateListIsRefusedAndEnterOpens()
+    public void ThePatchIndexServesEveryRecordsExactBytesAndRefusesACutShortPatch()
     {
-        var updates = Updates(() => Manifest(983), Patch);
+        var records = new[]
+        {
+            new WorldPatchRecord("client_cell_1.dat", 0xA9B4FFFF, 3, true, Encoding.ASCII.GetBytes("a landblock")),
+            new WorldPatchRecord("client_cell_1.dat", 0xA9B40100, 1, false, Array.Empty<byte>()),
+            new WorldPatchRecord("client_portal.dat", 0x01000001, 2, false, Encoding.ASCII.GetBytes("a model")),
+        };
+        var path = Path.Combine(game, "test.patch");
+        File.WriteAllBytes(path, Patch(983, records));
 
-        await updates.Heard(Note(983, "http://isles.test/world-manifest.json"));
+        using (var index = WorldPatchIndex.Open(path))
+        {
+            Assert.Equal((983, 4), (index.Version, index.Count));
+            foreach (var record in records)
+            {
+                var entry = index.Records(record.Dat)![record.Id];
+                Assert.Equal(record.Iteration, entry.Iteration);
+                Assert.Equal(record.Data, index.Read(entry));
+            }
+            Assert.Null(index.Records("client_highres.dat"));
+        }
 
-        Assert.Equal(WorldState.Unavailable, updates.State);
-        Assert.False(updates.HoldsEnter);
-        Assert.Equal(0, fetches);
-    }
-
-    [Fact]
-    public async Task ABadDownloadIsThrownAwayAndTriedOnceMore()
-    {
-        var updates = Updates(() => Manifest(983), Encoding.ASCII.GetBytes("a damaged patch"), Patch);
-
-        await updates.Heard(Note(983));
-
-        Assert.Equal(WorldState.Ready, updates.State);
-        Assert.Equal(2, downloads);
-    }
-
-    [Fact]
-    public async Task TwoBadDownloadsOrNoUpdateListLeaveEnterOpen()
-    {
-        var damaged = Updates(() => Manifest(983), Encoding.ASCII.GetBytes("a damaged patch"));
-        await damaged.Heard(Note(983));
-        Assert.Equal(WorldState.Unavailable, damaged.State);
-        Assert.False(damaged.HoldsEnter);
-        Assert.Equal(2, downloads);
-        Assert.False(File.Exists(Path.Combine(WorldFiles.Stage(game, 983), WorldFiles.PatchFile)));
-
-        var unreachable = Updates(() => throw new HttpRequestException("No route to host"));
-        await unreachable.Heard(Note(983));
-        Assert.Equal(WorldState.Unavailable, unreachable.State);
-        Assert.False(unreachable.HoldsEnter);
-    }
-
-    private string FailedStage(byte[] patch)
-    {
-        var stage = WorldFiles.Stage(game, 983);
-        Directory.CreateDirectory(stage);
-        File.WriteAllBytes(Path.Combine(stage, WorldFiles.PatchFile), patch);
-        File.WriteAllText(Path.Combine(stage, WorldFiles.ReadyFile), Convert.ToHexStringLower(SHA256.HashData(patch)));
-        File.WriteAllText(Path.Combine(stage, WorldFiles.FailedFile), "disk full");
-        return stage;
-    }
-
-    [Fact]
-    public async Task APatchThatFailedToApplyIsNotTriedAgainAndEnterOpens()
-    {
-        var stage = FailedStage(Patch);
-        var updates = Updates(() => Manifest(983), Patch);
-
-        await updates.Heard(Note(983));
-
-        Assert.Equal(WorldState.InstallFailed, updates.State);
-        Assert.False(updates.HoldsEnter);
-        Assert.True(File.Exists(Path.Combine(stage, WorldFiles.FailedFile)));
-        Assert.Equal(0, downloads);
-    }
-
-    [Fact]
-    public async Task ANewPatchForAVersionThatFailedIsDownloaded()
-    {
-        var stage = FailedStage(Encoding.ASCII.GetBytes("an older patch"));
-        var updates = Updates(() => Manifest(983), Patch);
-
-        await updates.Heard(Note(983));
-
-        Assert.Equal(WorldState.Ready, updates.State);
-        Assert.False(File.Exists(Path.Combine(stage, WorldFiles.FailedFile)));
-        Assert.Equal(1, downloads);
+        var bytes = File.ReadAllBytes(path);
+        File.WriteAllBytes(path, bytes[..^3]);
+        Assert.Throws<InvalidDataException>(() => WorldPatchIndex.Open(path));
     }
 }

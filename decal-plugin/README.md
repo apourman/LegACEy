@@ -75,18 +75,6 @@ keeps the stage for the next try. Exit codes: 0
 applied, 1 failed and rolled back, 2 bad arguments or no ready stage, 3 another
 updater is already running.
 
-Run as `LegACEy.Updater.exe world <install> <game> <game>\world-update\<version>`,
-it applies a world patch instead, once no `acclient.exe` is left: when the
-stage's `ready` file exists and `world.patch` still matches the SHA-256 in it,
-it writes the patch's records into copies of the affected dats, swaps them in
-only once every record is written, then writes `legacey-world.json` (`{
-"version": N }`) beside the dats. A failure puts the dats and the version file
-back and leaves a `failed` file in the stage, which the plugin then throws
-away, leaving Enter open (the next launch downloads the patch again). It logs to `<install>\updater.log` and holds its own
-mutex, so a plugin update and a world update waiting together both apply. The
-exe carries its dat library (`Chorizite.DatReaderWriter`) and that library's
-dependencies inside it, because it is copied into a stage on its own.
-
 An install made by setup.exe can update itself; a build from a checkout never
 does, because only setup.exe puts `install.json` beside the main DLL. Nothing
 installs until the player asks. At login and every 30 minutes the client asks
@@ -210,18 +198,36 @@ The LegACEy menu's Windows section switches each of the inventory, appraisal, to
 default) and retail's (Native). It creates or deletes that window's switch file above, so the choice holds for every character on the
 install. `/legacey` in chat opens or closes the menu, so it can be reached with retail's toolbar too.
 
-## World updates
+## Worlds
 
 A LegACEy server can run a world of its own (new land, towns, dungeons) and
 ship it as a world patch: every dat record that differs from retail, the cell
-dat's edition record included, so a patched folder reports the server's
-edition. The world version is that edition.
+dat's edition record included. The world version is that edition.
+
+The plugin never writes a world into the dat files. It lays the patch over the
+retail dats while the game is connected to that world's server: one hook on
+retail's `DiskController::LoadDataEx`, which every dat read, existence check
+and edition read goes through, answers from the patch when it has the record
+and lets every other read through to the retail file. So one game folder plays
+every server, LegACEy worlds and plain ACE alike, and nothing ever needs
+repairing. The patch's index is held in memory and its records are read from
+the file when the client asks for them. Every few minutes and at logout,
+`legacey-avalonia.log` gets a line with the hook's calls, records served,
+look-ups answered and time spent inside it.
+
+Each world the folder has visited is cached under
+`<game>\legacey-worlds\<world key>\` (`world.json` and
+`world-<edition>.patch`), keyed by its update-list address;
+`legacey-worlds\servers.json` maps `host:port` to a world. At startup the
+plugin reads the server from the game's `-h` and `-p` arguments (nothing else
+from that line, which also carries the account and password) and switches that
+server's cached world on before the client opens its dats, after checking its
+SHA-256. The client then reports the world's edition when it connects.
 
 The server announces its world at character select. With
 `LegaceyWorldUpdateUrl` set in its `Config.js`, it sends a LegACEy channel note
 right after the character list: the world's name (`LegaceyWorldName`), the
-cell dat edition it runs, and the update list's address. A server without one
-sends nothing, and the plugin never touches the game folder there.
+cell dat edition it runs, and the update list's address.
 
 The plugin holds entering the world (hooks on retail's
 `gmCharacterManagementUI::EnterGame`, behind the Enter button, and
@@ -229,54 +235,54 @@ The plugin holds entering the world (hooks on retail's
 filters also reach) from its start until it knows what the server needs: the
 note, or the end of the DDD exchange (`DDD_EndDDD`) without one. Then:
 
-- **No note:** a plain server. Enter opens; the folder is left alone.
-- **The folder holds another world** (its `legacey-world.json` names a
-  different update-list address): a toast names both worlds and says this
-  server needs its own game folder (in ThwargLauncher, an account's own game
-  folder). Enter stays held; the folder is never changed.
-- **The folder is at the server's edition:** Enter opens without asking the
+- **No note:** a plain server. The overlay goes off (and that server is
+  forgotten, if a world was switched on for it at startup); Enter opens.
+- **The world on is at the server's edition:** Enter opens without asking the
   update host.
-- **Otherwise** (retail, or behind): the plugin reads the update list
-  (`{ "version": N, "patch": "<url>", "size": <bytes>, "sha256": "<hex>" }`),
-  downloads the patch into `<game>\world-update\<version>\` with a toast
-  showing progress, checks its size and SHA-256 (a bad download is retried
-  once), starts the updater in world mode, and closes the game a few seconds
-  later; the toast tells the player to click Launch in ThwargLauncher again.
-  The updater records the world's version, address and name in
-  `legacey-world.json` beside the dats. If the game hasn't closed 30 seconds
-  later, Enter opens and the update installs whenever the game does close.
+- **The world is cached at that edition** (reached through another host, or
+  not on yet): it's switched on, and Enter opens once the client has sent its
+  dat report again (below).
+- **Otherwise** (first visit, or a new release): the plugin reads the update
+  list (`{ "version": N, "patch": "<url>", "size": <bytes>, "sha256": "<hex>" }`),
+  downloads the patch into the cache with a toast showing progress, checks its
+  size and SHA-256 (a bad download is retried once), switches it on and sends
+  the dat report again. No restart. A new release whose `client_portal.dat`
+  records the old one didn't have says those show after a relaunch: the
+  client may already hold the old ones.
+
+Sending the report again calls retail's `CLCache::OnServerInterrogation`,
+which builds the report from each dat's edition record at send time, so the
+overlay's edition goes out. ACE re-decides the session's dat verdict on a
+repeat report, without starting DDD or ending the exchange again. If the
+client doesn't match the entry, the toast asks the player to relaunch: the
+world is cached and switches on at startup.
 
 Addresses must be https; plain http works only for this machine and private
 networks, for local testing. A download that fails shows a toast and opens
-Enter, but the server may refuse a client whose dats are behind (below). A
-patch that fails to apply leaves the dats as they were, shows a toast, and
-isn't tried again until the update list names a different patch (another
-SHA-256). Each step is logged to `legacey-avalonia.log`.
+Enter, and the server decides (below). Each step is logged to
+`legacey-avalonia.log`.
 
 With DAT patching off, ACE no longer kicks clients whose dats are older than
-the server's at connect: they reach character select, so the plugin can update
-them, and are refused at Enter with a message to launch with the LegACEy
-plugin. The `refuse_older_dats` server setting (on by default) can instead let
-them in with a chat warning. Clients with newer dats are still kicked at
+the server's at connect: they reach character select, where the plugin can
+switch the world on, and are refused at Enter with a message to log in with
+the LegACEy plugin. Keep the `refuse_older_dats` server setting on (the
+default) for world servers: then nobody without the world enters it. Off, they
+get in with a chat warning. Clients with newer dats are still kicked at
 connect.
-
-A player on several LegACEy worlds keeps one game folder per world. A retail
-folder takes the first world it joins.
 
 Build a patch and its update list from WSL or Windows, after raising the
 edited cell dat's edition above retail's:
 
 ```bash
 dotnet run --project decal-plugin/LegACEy.WorldPatchBuilder -- build <retail dats> <edited dats> <out> <url folder>
-dotnet run --project decal-plugin/LegACEy.WorldPatchBuilder -- check <retail dats> <edited dats> <out>/world-<edition>.patch
+dotnet run --project decal-plugin/LegACEy.WorldPatchBuilder -- check <edited dats> <out>/world-<edition>.patch
 ```
 
 `build` writes `world-<edition>.patch` and `world-manifest.json` (whose patch
-address is `<url folder>/world-<edition>.patch`); `check` applies the patch to
-a temporary copy of the retail dats with the updater's own code and confirms
-every patched record matches the edited dats and the cell dat reports the
-edition. Upload both to a GitHub release and set the server's
-`LegaceyWorldUpdateUrl` to
+address is `<url folder>/world-<edition>.patch`); `check` reads every record
+back through the index the overlay serves it with, confirms each matches the
+edited dats, and that the patch carries the cell dat's edition record. Upload
+both to a GitHub release and set the server's `LegaceyWorldUpdateUrl` to
 `https://github.com/<owner>/<repo>/releases/latest/download/world-manifest.json`,
 which follows each new release. For a local test, serve `<out>` with
 `python3 -m http.server` and use that address.

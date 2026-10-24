@@ -9,16 +9,4 @@
          into its output root. -->
     <OutDir>$(MSBuildProjectDirectory)/bin/$(Configuration)/$(TargetFramework)/</OutDir>
   </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="Chorizite.DatReaderWriter" Version="2.1.7" />
-  </ItemGroup>
-  <!-- The exe is copied on its own (into the stage it applies), so every referenced DLL is embedded in it and loaded from there
-       (Program.EmbeddedAssembly). -->
-  <Target Name="EmbedReferencedAssemblies" AfterTargets="ResolveAssemblyReferences">
-    <ItemGroup>
-      <EmbeddedResource Include="@(ReferenceCopyLocalPaths)" Condition="'%(ReferenceCopyLocalPaths.Extension)' == '.dll'">
-        <LogicalName>%(ReferenceCopyLocalPaths.Filename)%(ReferenceCopyLocalPaths.Extension)</LogicalName>
-      </EmbeddedResource>
-    </ItemGroup>
-  </Target>
 </Project>

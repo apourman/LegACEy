@@ -1,0 +1,140 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
+using Microsoft.Win32.SafeHandles;
+
+namespace LegACEy.Client.DecalPlugin;
+
+/// <summary>One changed or new dat record: which dat, its file id, its iteration, whether the dat stores it compressed, and its bytes (always decompressed).</summary>
+public sealed record WorldPatchRecord(string Dat, uint Id, int Iteration, bool Compressed, byte[] Data);
+
+/// <summary>
+/// A world patch: every dat record that differs from retail, and the world version (the cell dat edition) it brings a game to. The client
+/// never writes it into the dats: <see cref="WorldPatchIndex"/> serves it to the client's dat reads. Also compiled into the patch builder.
+/// </summary>
+public sealed class WorldPatch(int version, IReadOnlyList<WorldPatchRecord> records)
+{
+    public int Version { get; } = version;
+    public IReadOnlyList<WorldPatchRecord> Records { get; } = records;
+
+    internal static readonly byte[] Magic = Encoding.ASCII.GetBytes("LWP1");
+    // Only the game's own dat files, by bare name: a patch never names a path.
+    internal static readonly Regex DatName = new(@"^client_[A-Za-z0-9_]+\.dat$", RegexOptions.Compiled);
+
+    public void Write(Stream stream)
+    {
+        using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
+        writer.Write(Magic);
+        writer.Write(Version);
+        writer.Write(Records.Count);
+        foreach (var record in Records)
+        {
+            writer.Write(record.Dat);
+            writer.Write(record.Id);
+            writer.Write(record.Iteration);
+            writer.Write(record.Compressed);
+            writer.Write(record.Data.Length);
+            writer.Write(record.Data);
+        }
+    }
+
+    /// <summary>A file's SHA-256, lower-case hex.</summary>
+    public static string Sha256(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexStringLower(SHA256.HashData(stream));
+    }
+}
+
+/// <summary>Where one record's bytes sit in a patch file, and its iteration.</summary>
+public readonly record struct WorldPatchEntry(int Iteration, long Offset, int Length);
+
+/// <summary>
+/// A patch file's index: every record's dat, id, iteration, offset and length, read once, with the file kept open so a record's bytes are
+/// read only when the client asks for them. Lookups and reads are safe from several threads at once (the client's loader threads).
+/// </summary>
+public sealed class WorldPatchIndex : IDisposable
+{
+    private readonly Dictionary<string, Dictionary<uint, WorldPatchEntry>> _dats;
+    private readonly SafeFileHandle _file;
+
+    public int Version { get; }
+    public string Path { get; }
+    public int Count { get; }
+
+    private WorldPatchIndex(string path, int version, Dictionary<string, Dictionary<uint, WorldPatchEntry>> dats, int count, SafeFileHandle file)
+    {
+        Path = path;
+        Version = version;
+        _dats = dats;
+        Count = count;
+        _file = file;
+    }
+
+    /// <summary>Indexes the patch at <paramref name="path"/>; throws <see cref="InvalidDataException"/> when it isn't one, names anything
+    /// but a game dat, or is cut short.</summary>
+    public static WorldPatchIndex Open(string path)
+    {
+        // Shared for delete, so a newer patch can replace the cache's files while this one is still served.
+        var file = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+        try
+        {
+            using var stream = new FileStream(new SafeFileHandle(file.DangerousGetHandle(), ownsHandle: false), FileAccess.Read);
+            using var reader = new BinaryReader(stream, Encoding.UTF8);
+            if (Encoding.ASCII.GetString(reader.ReadBytes(WorldPatch.Magic.Length)) != "LWP1") throw new InvalidDataException("Not a LegACEy world patch.");
+            var version = reader.ReadInt32();
+            var count = reader.ReadInt32();
+            if (version < 1 || count < 0) throw new InvalidDataException("A world patch with a bad header.");
+            var dats = new Dictionary<string, Dictionary<uint, WorldPatchEntry>>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < count; i++)
+            {
+                var dat = reader.ReadString();
+                if (!WorldPatch.DatName.IsMatch(dat)) throw new InvalidDataException($"A world patch naming {dat}, not a game dat.");
+                var id = reader.ReadUInt32();
+                var iteration = reader.ReadInt32();
+                reader.ReadBoolean();
+                var length = reader.ReadInt32();
+                var offset = stream.Position;
+                if (length < 0 || offset + length > stream.Length) throw new InvalidDataException("A world patch cut short.");
+                stream.Seek(length, SeekOrigin.Current);
+                if (!dats.TryGetValue(dat, out var ids)) dats[dat] = ids = new Dictionary<uint, WorldPatchEntry>();
+                ids[id] = new WorldPatchEntry(iteration, offset, length);
+            }
+            return new WorldPatchIndex(path, version, dats, count, file);
+        }
+        catch (EndOfStreamException)
+        {
+            file.Dispose();
+            throw new InvalidDataException("A world patch cut short.");
+        }
+        catch
+        {
+            file.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>The patch's records for one dat, by id; null when it has none.</summary>
+    public IReadOnlyDictionary<uint, WorldPatchEntry>? Records(string dat) => _dats.TryGetValue(dat, out var ids) ? ids : null;
+
+    public IEnumerable<string> Dats => _dats.Keys;
+
+    /// <summary>A record's bytes, read from the file.</summary>
+    public byte[] Read(WorldPatchEntry entry)
+    {
+        var bytes = new byte[entry.Length];
+        var done = 0;
+        while (done < bytes.Length)
+        {
+            var read = RandomAccess.Read(_file, bytes.AsSpan(done), entry.Offset + done);
+            if (read == 0) throw new InvalidDataException("A world patch cut short.");
+            done += read;
+        }
+        return bytes;
+    }
+
+    public void Dispose() => _file.Dispose();
+}

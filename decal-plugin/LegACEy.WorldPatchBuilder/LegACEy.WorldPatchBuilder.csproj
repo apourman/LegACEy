@@ -10,9 +10,7 @@
     <PackageReference Include="Chorizite.DatReaderWriter" Version="2.1.7" />
   </ItemGroup>
   <ItemGroup>
-    <!-- The patch format, and for the check the updater's own apply. -->
-    <Compile Include="..\LegACEy.Updater\WorldFiles.cs" LinkBase="Updater" />
-    <Compile Include="..\LegACEy.Updater\WorldApply.cs" LinkBase="Updater" />
-    <Compile Include="..\LegACEy.Updater\StageApply.cs" LinkBase="Updater" />
+    <!-- The patch format, and the index the client's overlay reads it through. -->
+    <Compile Include="..\LegACEy.Client\WorldPatch.cs" LinkBase="Client" />
   </ItemGroup>
 </Project>

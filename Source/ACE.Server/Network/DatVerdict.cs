@@ -8,8 +8,8 @@ namespace ACE.Server.Network
         Patch,
         /// <summary>Newer dats than the server's: kicked at connect, as ACE always has.</summary>
         KickNewer,
-        /// <summary>Older dats and no DAT patching: reaches character select, where the LegACEy plugin updates the game folder, and is
-        /// refused at Enter.</summary>
+        /// <summary>Older dats and no DAT patching: reaches character select, where the LegACEy plugin can switch the server's world on
+        /// and report again, and is otherwise refused at Enter.</summary>
         RefuseAtEnter,
         /// <summary>As <see cref="RefuseAtEnter"/> with refuse_older_dats off: enters with a chat warning.</summary>
         WarnAtEnter,
@@ -20,7 +20,7 @@ namespace ACE.Server.Network
         /// <summary>The server setting, on by default: refuse clients with older dats at Enter rather than letting them in with a warning.</summary>
         public const string RefuseOlderKey = "refuse_older_dats";
 
-        public const string OlderMessage = "your game files are older than this server's world. Launch the game with the LegACEy plugin to update them, then log in again";
+        public const string OlderMessage = "your game doesn't have this server's world. Log in with the LegACEy plugin to get it";
 
         public static DatVerdict Decide(bool clientIsMissingIterations, bool clientHasExtraIterations, bool datPatching, bool refuseOlder)
         {
@@ -32,5 +32,11 @@ namespace ACE.Server.Network
                 return DatVerdict.Patch;
             return refuseOlder ? DatVerdict.RefuseAtEnter : DatVerdict.WarnAtEnter;
         }
+
+        /// <summary>
+        /// The verdict after a repeat report at character select (the LegACEy plugin switched the server's world on): the new report decides,
+        /// except that DDD is never started then, so a report DAT patching would patch keeps the verdict the session had.
+        /// </summary>
+        public static DatVerdict Recheck(DatVerdict fresh, DatVerdict current) => fresh == DatVerdict.Patch ? current : fresh;
     }
 }

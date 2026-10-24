@@ -35,6 +35,18 @@ namespace ACE.Server.Network.Handlers
 
             var showDatWarning = PropertyManager.GetBool("show_dat_warning").Item;
 
+            // A repeat report: the LegACEy plugin switched the server's world on at character select and reports again. It only re-decides
+            // the verdict; DDD isn't started and the exchange isn't ended again.
+            var repeat = session.DatReported;
+            session.DatReported = true;
+            if (repeat)
+            {
+                session.DatWarnPortal = false;
+                session.DatWarnCell = false;
+                session.DatWarnLanguage = false;
+                session.DatWarnHighRes = false;
+            }
+
             message.Payload.ReadUInt32(); // m_ClientLanguage
 
             var ItersWithKeys = message.Payload.ReadCAllIterationList();
@@ -142,7 +154,7 @@ namespace ACE.Server.Network.Handlers
 
             var enableDATpatching = ConfigManager.Config.DDD.EnableDATPatching;
 
-            var logMsg = $"[DDD] client {session.Account} responded to Interrogation:\n client_portal.dat: {clientPortalDatIntSet.Iterations} | client_cell_1.dat: {clientCellDatIntSet.Iterations} | client_Local_English.dat: {clientLanguageDatIntSet.Iterations}";
+            var logMsg = $"[DDD] client {session.Account} {(repeat ? "reported again" : "responded to Interrogation")}:\n client_portal.dat: {clientPortalDatIntSet.Iterations} | client_cell_1.dat: {clientCellDatIntSet.Iterations} | client_Local_English.dat: {clientLanguageDatIntSet.Iterations}";
             if (PropertyManager.GetBool("allow_highres_dat").Item)
                 logMsg += $"\n client_highres.dat: {clientHighResDatIntSet.Iterations}{(DatManager.HighResDat == null ? " (server allows but does not have client_highres.dat to validate)" : "")}";
             if (clientHasExtraIterations) logMsg += " | client has more iterations than server, cannot update";
@@ -152,6 +164,8 @@ namespace ACE.Server.Network.Handlers
             log.Info(logMsg);
 
             var verdict = DatGate.Decide(clientIsMissingIterations, clientHasExtraIterations, enableDATpatching, PropertyManager.GetBool(DatGate.RefuseOlderKey).Item);
+            if (repeat)
+                verdict = DatGate.Recheck(verdict, session.DatVerdict);
 
             if (verdict == DatVerdict.KickNewer)
             {
@@ -223,7 +237,10 @@ namespace ACE.Server.Network.Handlers
                 session.DatVerdict = verdict;
                 if (verdict != DatVerdict.LetIn)
                     log.Info($"[DDD] client {session.Account} has older dats: {(verdict == DatVerdict.RefuseAtEnter ? "refused" : "warned")} at Enter");
-                session.Network.EnqueueSend(new GameMessageDDDEndDDD());
+                else if (repeat)
+                    log.Info($"[DDD] client {session.Account} now has this server's dats: let in at Enter");
+                if (!repeat)
+                    session.Network.EnqueueSend(new GameMessageDDDEndDDD());
             }
         }
 
