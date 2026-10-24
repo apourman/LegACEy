@@ -57,6 +57,13 @@ namespace ACE.Server.Market
                 return;
             }
 
+            // a trade window lists a side pack, not the notes inside it
+            if (VaultChannel.CheckStart(player) is VaultOutcome refusal)
+            {
+                FinishNotes(player, refusal, 0, 0, completed);
+                return;
+            }
+
             var notes = new List<WorldObject>();
 
             foreach (var note in player.GetTradeNotes().Where(n => n.WeenieClassId == ShardDatabase.TradeNoteWcid && !player.ItemsInTradeWindow.Contains(n.Guid)))

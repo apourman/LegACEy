@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text.RegularExpressions;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -115,6 +116,45 @@ namespace ACE.Server.Tests.Market
 
             Assert.AreEqual(5, NotesInPacks(player), "the notes stay in the pack");
             Assert.AreEqual(0, Count($"SELECT COUNT(*) FROM market_ledger_entry WHERE account_Id = {account};"));
+        }
+
+        [TestMethod]
+        public void DepositNotes_ThenADelayedSplitOrGive_TakesNothingFromTheBankedStack()
+        {
+            var account = VaultTestWorld.NewAccountId();
+            var player = VaultTestWorld.NewPlayer(account);
+            var notes = GiveNotes(player, 10);
+
+            // a split to the ground or a partial give captures the stack, waits for an animation or a walk, then shrinks it
+            Assert.AreEqual(VaultOutcome.NotesDeposited, VaultTestWorld.DepositNotes(player).Outcome);
+
+            var adjusted = true;
+            var adjustStack = typeof(Player).GetMethod("AdjustStack", BindingFlags.NonPublic | BindingFlags.Instance);
+            VaultTestWorld.OnWorldThread(() => adjusted = (bool)adjustStack.Invoke(player, new object[] { notes, -4, player, player }));
+
+            Assert.IsFalse(adjusted, "the stack is in the Vault now, not the pack");
+            Assert.AreEqual(10, notes.StackSize, "nothing split off the banked stack");
+        }
+
+        [TestMethod]
+        public void DepositNotes_WhileTrading_IsRefused()
+        {
+            var account = VaultTestWorld.NewAccountId();
+            var player = VaultTestWorld.NewPlayer(account);
+            var pack = (Container)VaultTestWorld.Give(player, VaultTestWorld.NewItem(VaultTestWorld.PackWcid));
+            GiveNotes(player, 5, pack); // the pack may be in the trade window, which only lists the pack
+
+            SetTrading(player, true);
+            try
+            {
+                Assert.AreEqual(VaultOutcome.Trading, VaultTestWorld.DepositNotes(player).Outcome);
+            }
+            finally
+            {
+                SetTrading(player, false);
+            }
+
+            Assert.AreEqual(5, NotesInPacks(player), "the notes stay in the pack");
         }
 
         // ---- withdraw
